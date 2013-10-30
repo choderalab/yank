@@ -911,11 +911,8 @@ if __name__ == '__main__':
 
     # DEBUG: ANALYSIS PATH IS HARD-CODED FOR NOW
 
+    source_directory = "examples/benzene-toluene"
     #source_directory = "examples/p-xylene"
-    source_directory = "examples/chk1"
-    #source_directory = "examples/benzene-toluene"
-    #source_directory = "../test-systems/T4-lysozyme-L99A/amber-gbsa/amber-gbsa/p-xylene"
-    #source_directory = "../test-systems/T4-lysozyme-L99A/amber-gbsa/amber-gbsa/1-methylpyrrole"
 
     # Storage for different phases.
     data = dict()

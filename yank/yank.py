@@ -592,7 +592,7 @@ class Yank(object):
         else:
             vacuum_simulation.platform = openmm.Platform.getPlatformByName('Reference')
         vacuum_simulation.nsteps_per_iteration = 500
-        #vacuum_simulation.run() # DEBUG
+        vacuum_simulation.run() # DEBUG
         
         # 
         # Set up ligand in solvent simulation.
@@ -606,7 +606,7 @@ class Yank(object):
         if self.platform:
             solvent_simulation.platform = self.platform
         solvent_simulation.nsteps_per_iteration = 500
-        #solvent_simulation.run() # DEBUG
+        solvent_simulation.run() # DEBUG
         
         #
         # Set up ligand in complex simulation.

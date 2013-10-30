@@ -179,6 +179,20 @@ class AbsoluteAlchemicalFactory(object):
 
         alchemical_states = list()
 
+        # Test protocol.
+        alchemical_states.append(AlchemicalState(0.00, 1.00, 1.00, 1.)) # fully interacting
+        alchemical_states.append(AlchemicalState(0.00, 0.75, 1.00, 1.)) 
+        alchemical_states.append(AlchemicalState(0.00, 0.50, 1.00, 1.)) 
+        alchemical_states.append(AlchemicalState(0.00, 0.24, 1.00, 1.)) 
+        alchemical_states.append(AlchemicalState(0.00, 0.00, 1.00, 1.)) # discharged
+        alchemical_states.append(AlchemicalState(0.00, 0.00, 0.75, 1.)) 
+        alchemical_states.append(AlchemicalState(0.00, 0.00, 0.50, 1.)) 
+        alchemical_states.append(AlchemicalState(0.00, 0.00, 0.25, 1.)) 
+        alchemical_states.append(AlchemicalState(0.00, 0.00, 0.00, 1.)) # discharged, LJ annihilated
+
+        return alchemical_states
+        
+        # Protocol for SAMPL4.
         alchemical_states.append(AlchemicalState(0.00, 1.00, 1.00, 1.)) # 0
         alchemical_states.append(AlchemicalState(0.00, 1.00, 1.00, 1.)) # 1
         alchemical_states.append(AlchemicalState(0.00, 1.00, 1.00, 1.)) # 2 fully interacting
@@ -664,10 +678,12 @@ class AbsoluteAlchemicalFactory(object):
         >>> timestep = 1.0 * units.femtosecond
         >>> reference_integrator = openmm.VerletIntegrator(timestep)
         >>> reference_context = openmm.Context(reference_system, reference_integrator)
+        >>> reference_context.setPositions(coordinates)
         >>> reference_state = reference_context.getState(getEnergy=True)
         >>> reference_potential = reference_state.getPotentialEnergy()
         >>> alchemical_integrator = openmm.VerletIntegrator(timestep)
         >>> alchemical_context = openmm.Context(alchemical_system, alchemical_integrator)
+        >>> alchemical_context.setPositions(coordinates)
         >>> alchemical_state = alchemical_context.getState(getEnergy=True)
         >>> alchemical_potential = alchemical_state.getPotentialEnergy()
         >>> delta = alchemical_potential - reference_potential 

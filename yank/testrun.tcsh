@@ -13,8 +13,8 @@ setenv JOBDIR "examples/benzene-toluene"
 rm -f ${JOBDIR}/*.nc
 
 # SERIAL EXECUTION
-python yank.py --complex_prmtop $JOBDIR/complex.prmtop --receptor_prmtop $JOBDIR/receptor.prmtop --ligand_prmtop $JOBDIR/ligand.prmtop --complex_crd $JOBDIR/complex.crd --output $JOBDIR --verbose --iterations 100 --randomize_ligand
+python yank.py --complex_prmtop $JOBDIR/complex.prmtop --receptor_prmtop $JOBDIR/receptor.prmtop --ligand_prmtop $JOBDIR/ligand.prmtop --complex_crd $JOBDIR/complex.crd --output $JOBDIR --verbose --iterations 40 --randomize_ligand
 
 # PARALLEL EXECUTION (requires mpi4py and MPI)
-#mpirun -np 4 python yank.py --mpi --complex_prmtop $JOBDIR/complex.prmtop --receptor_prmtop $JOBDIR/receptor.prmtop --ligand_prmtop $JOBDIR/ligand.prmtop --complex_crd $JOBDIR/complex.crd --output $JOBDIR --verbose --iterations 100 --randomize_ligand
+#mpirun -np 4 python yank.py --mpi --complex_prmtop $JOBDIR/complex.prmtop --receptor_prmtop $JOBDIR/receptor.prmtop --ligand_prmtop $JOBDIR/ligand.prmtop --complex_crd $JOBDIR/complex.crd --output $JOBDIR --verbose --iterations 40 --randomize_ligand
 
