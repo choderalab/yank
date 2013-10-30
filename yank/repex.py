@@ -883,6 +883,7 @@ class ReplicaExchange(object):
             else:
                 # Serial implementation.
                 for replica_index in range(self.nstates):
+                    if self.verbose: print "minimizing replica %d / %d" % (replica_index, self.nstates)
                     self._minimize_replica(replica_index)
 
         # Equilibrate

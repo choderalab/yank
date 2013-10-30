@@ -461,7 +461,7 @@ class Yank(object):
         self.verbose = False # Don't show verbose output
         self.online_analysis = False # if True, simulation will be analyzed each iteration
         self.temperature = 298.0 * units.kelvin # simulation temperature
-        self.pressure = 1.0 * units.atmosphere # simulation pressure, if explicit solvent; None otherwise
+        self.pressure = 1.0 * units.atmosphere # simulation pressure (for explicit solvent)
         self.niterations = 2000 # number of production iterations
         self.perform_sanity_checks = True # perform some sanity checks to ensure correct results
         self.platform = None # don't specify a platform
@@ -503,8 +503,6 @@ class Yank(object):
             self.solvent_protocol = AbsoluteAlchemicalFactory.defaultSolventProtocolImplicit()
             self.complex_protocol = AbsoluteAlchemicalFactory.defaultComplexProtocolImplicit() 
         
-        # TODO: For explicit solvent protocol, solvate ligand.
-
         # Determine atom indices in complex.
         self.receptor_atoms = range(0, self.receptor.getNumParticles()) # list of receptor atoms
         self.ligand_atoms = range(self.receptor.getNumParticles(), self.complex.getNumParticles()) # list of ligand atoms
@@ -515,7 +513,7 @@ class Yank(object):
 
         # Store complex coordinates.
         # TODO: Make sure each coordinate set is packaged as a numpy array.  For now, we require the user to pass in a list of Quantity objects that contain numpy arrays.
-        # TODO: Switch to a special Coordinate object (with box size) to support explicit solvent simulations.
+        # TODO: Switch to a special Coordinate object (with box size) to support explicit solvent simulations?
         self.complex_coordinates = copy.deepcopy(complex_coordinates)
 
         # Type of restraints requested.
@@ -551,7 +549,7 @@ class Yank(object):
         # DEBUG
         #self.protocol['number_of_equilibration_iterations'] = 0
         #self.protocol['minimize'] = False
-        self.protocol['minimize_maxIterations'] = 500
+        self.protocol['minimize_maxIterations'] = 50
         self.protocol['show_mixing_statistics'] = False
 
         return
@@ -691,8 +689,9 @@ class Yank(object):
 
         # Specify which CPUs should be attached to specific GPUs for maximum performance.
         cpu_platform_name = 'Reference'
-        gpu_platform_name = 'CUDA' 
-        #gpu_platform_name = 'OpenCL'
+        #gpu_platform_name = 'CPU' 
+        #gpu_platform_name = 'CUDA' 
+        gpu_platform_name = 'OpenCL'
         
         if not cpuid_gpuid_mapping:
             # TODO: Determine number of GPUs and set up simple mapping.
@@ -801,7 +800,7 @@ class Yank(object):
             # Set up Hamiltonian exchange simulation.
             complex_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.complex_coordinates, store_filename, displacement_sigma=self.displacement_sigma, mc_atoms=self.ligand_atoms, protocol=self.protocol, mpicomm=comm, metadata=metadata)
             complex_simulation.platform = platform
-            complex_simulation.nsteps_per_iteration = 2500
+            complex_simulation.nsteps_per_iteration = 500
             complex_simulation.run()        
 
         else:
@@ -1128,12 +1127,11 @@ if __name__ == '__main__':
     parser.add_option("-i", "--iterations", dest="niterations", default=None, help="number of iterations", metavar="ITERATIONS")
     parser.add_option("-o", "--online", dest="online_analysis", default=False, help="perform online analysis")
     parser.add_option("-m", "--mpi", action="store_true", dest="mpi", default=False, help="use mpi if possible")
-    parser.add_option("--restraints", dest="restraint_type", default=None, help="specify ligand restraint type: 'harmonic', 'flat-bottom', or 'none' [explicit only] (default: 'harmonic')")
+    parser.add_option("--restraints", dest="restraint_type", default=None, help="specify ligand restraint type: 'harmonic' or 'flat-bottom' (default: 'harmonic')")
     parser.add_option("--output", dest="output_directory", default=None, help="specify output directory---must be unique for each calculation (default: current directory)")
     parser.add_option("--doctests", action="store_true", dest="doctests", default=False, help="run doctests first (default: False)")
     parser.add_option("--randomize_ligand", action="store_true", dest="randomize_ligand", default=False, help="randomize ligand positions and orientations (default: False)")
     parser.add_option("--ignore_signal", action="append", dest="ignore_signals", default=[], help="signals to trap and ignore (default: None)")
-    parser.add_option("--simulation_method", dest="simulation_method", default='OBC2', help="simulation method: 'explicit' or 'OBC2' (default: OBC2)")
 
     # Parse command-line arguments.
     (options, args) = parser.parse_args()
@@ -1188,24 +1186,14 @@ if __name__ == '__main__':
             parser.error("Could not initialize MPI.")
 
     # Select simulation parameters.
-    # TODO: We need a better way to select which implicit/explicit parameters to use.
-    is_explicit = False
+    # TODO: Simulation parameters will be different for explicit solvent.
     import simtk.openmm.app as app
-    if options.simulation_method == 'explicit':
-        nonbondedMethod = app.CutoffPeriodic
-        implicitSolvent = None
-        constraints = app.HBonds
-        removeCMMotion = False
-        is_explicit = True
-    else:
-        nonbondedMethod = app.NoCutoff
-        implicitSolvent = app.OBC2
-        constraints = app.HBonds
-        removeCMMotion = False
-        is_explicit = False
+    nonbondedMethod = app.NoCutoff
+    implicitSolvent = app.OBC2
+    constraints = app.HBonds
+    removeCMMotion = False
 
     # Create System objects for ligand and receptor.
-    # TODO: What do we do about flexible constraints?
     ligand_system = app.AmberPrmtopFile(options.ligand_prmtop_filename).createSystem(nonbondedMethod=nonbondedMethod, implicitSolvent=implicitSolvent, constraints=constraints, removeCMMotion=removeCMMotion)
     receptor_system = app.AmberPrmtopFile(options.receptor_prmtop_filename).createSystem(nonbondedMethod=nonbondedMethod, implicitSolvent=implicitSolvent, constraints=constraints, removeCMMotion=removeCMMotion)
     
@@ -1226,7 +1214,7 @@ if __name__ == '__main__':
     if (options.complex_crd_filename or options.complex_pdb_filename):
         # Read coordinates for whole complex.
         if options.complex_crd_filename:
-            coordinates = read_amber_crd(options.complex_crd_filename, natoms_complex, options.verbose, loadBoxVectors=is_explicit)            
+            coordinates = read_amber_crd(options.complex_crd_filename, natoms_complex, options.verbose)
             complex_coordinates.append(coordinates)
         else:
             try:
@@ -1235,14 +1223,14 @@ if __name__ == '__main__':
                 coordinates_list = read_pdb_crd(options.complex_pdb_filename, natoms_complex, options.verbose)
             complex_coordinates += coordinates_list
     elif options.ligand_crd_filename:
-        coordinates = read_amber_crd(options.ligand_crd_filename, natoms_ligand, options.verbose, loadBoxVectors=is_explicit)
+        coordinates = read_amber_crd(options.ligand_crd_filename, natoms_ligand, options.verbose)
         coordinates = units.Quantity(numpy.array(coordinates / coordinates.unit), coordinates.unit)
         ligand_coordinates.append(coordinates)
     elif options.ligand_mol2_filename:
         coordinates_list = read_openeye_crd(options.ligand_mol2_filename, natoms_ligand, options.verbose)
         ligand_coordinates += coordinates_list
     elif options.receptor_crd_filename:
-        coordinates = read_amber_crd(options.receptor_crd_filename, natoms_receptor, options.verbose, loadBoxVectors=is_explicit)
+        coordinates = read_amber_crd(options.receptor_crd_filename, natoms_receptor, options.verbose)
         coordinates = units.Quantity(numpy.array(coordinates / coordinates.unit), coordinates.unit)
         receptor_coordinates.append(coordinates)
     elif options.receptor_pdb_filename:
@@ -1293,7 +1281,7 @@ if __name__ == '__main__':
         yank.run_mpi(options.mpi, cpuid_gpuid_mapping=cpuid_gpuid_mapping, ncpus_per_node=ncpus_per_node)
     else:
         # Run serial version.
-        yank.platform = openmm.Platform.getPlatformByName("CUDA") # DEBUG: Use CUDA platform for serial version
+        yank.platform = openmm.Platform.getPlatformByName("CPU") # DEBUG: Use CPU platform for serial version
         yank.run()
 
     # Run analysis.
