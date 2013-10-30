@@ -1,0 +1,24 @@
+# Create a benzene-toluene system.
+
+# Load parameters and ions.
+parm99 = loadamberparams parm99.dat
+loadOff ions94.lib
+gaff = loadamberparams gaff.dat
+
+# Create receptor.
+receptor = loadmol2 benzene.gaff.mol2
+receptor_params = loadamberparams benzene.frcmod
+saveamberparm receptor receptor.prmtop receptor.crd
+
+# Create ligand.
+ligand = loadmol2 toluene.gaff.mol2
+translate ligand { 1.5 1.5 0 }
+#translate ligand { 0.01 0.01 0 }
+ligand_params = loadamberparams toluene.frcmod
+saveamberparm ligand ligand.prmtop ligand.crd
+
+# Create complex.
+complex = combine { receptor ligand }
+saveamberparm complex complex.prmtop complex.crd
+
+quit

@@ -1,0 +1,25 @@
+# Create NaCl system in explicit solvent for YANK.
+source leaprc.ff99SB
+
+# Create receptor.
+receptor = loadpdb solvent.pdb
+
+# Create ligand.
+ligand = loadpdb nacl.pdb
+
+# Create complex.
+complex = combine { receptor ligand }
+
+check complex
+
+saveamberparm receptor receptor.prmtop receptor.crd
+savepdb receptor receptor.pdb
+
+saveamberparm ligand ligand.prmtop ligand.crd
+savepdb ligand ligand.pdb
+
+saveamberparm complex complex.prmtop complex.crd
+savepdb complex complex.pdb
+
+quit
+
