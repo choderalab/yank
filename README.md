@@ -14,9 +14,12 @@ Authors
 -------
 
 * John D. Chodera | jchodera@gmail.com
-* Kim Branson | kim.branson@gmail.com
-* Imran Haque | ihaque@gmail.com
+* Kyle A. Beauchamp | kyleabeauchamp@gmail.com
+* Danny L. Parton | danny.parton@gmail.com
+* Patrick B. Grinaway | pgrinaway@gmail.com
 * Michael Shirts | mrshirts@gmail.com
+* Imran Haque | ihaque@gmail.com
+* Kim Branson | kim.branson@gmail.com
 
 Copyright
 ---------
