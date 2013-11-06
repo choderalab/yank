@@ -192,8 +192,8 @@ PARTICULAR PURPOSE.  See the GNU General Public License for more details.
 You should have received a copy of the GNU General Public License along with
 this program.  If not, see <http://www.gnu.org/licenses/>.
 
-Acknowledgents
---------------
+Acknowledgents and Contributions
+--------------------------------
 
 The authors are extremely grateful to the OpenMM development team for their help
 in the development of YANK, especially (but not limited to):
@@ -261,4 +261,4 @@ Please cite the following papers if you use YANK for a publication:
   J. Phys. Chem. 111:13052, 2007.
   http://dx.doi.org/10.1021/jp0735987
 
-s
+
