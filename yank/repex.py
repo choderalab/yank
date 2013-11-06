@@ -198,7 +198,7 @@ class ReplicaExchange(object):
     (This is just an illustrative example; use ParallelTempering class for actual production parallel tempering simulations.)
     
     >>> # Create test system.
-    >>> import simtk.pyopenmm.extras.testsystems as testsystems
+    >>> import testsystems
     >>> [system, coordinates] = testsystems.AlanineDipeptideImplicit()
     >>> # Create thermodynamic states for parallel tempering with exponentially-spaced schedule.
     >>> import simtk.unit as units
@@ -456,14 +456,11 @@ class ReplicaExchange(object):
         """
 
         if self._initialized:
-            print "Simulation has already been initialized."
-            raise Error
+            raise Error("Simulation has already been initialized.")
 
-        # TODO: If no platform is specified, get the default platform.
+        # TODO: If no platform is specified, use the Reference platform.
         if self.platform is None:
-            print "No platform is specified, using default."
-            print "Not implemented."
-            return Error
+            self.platform = self.mm.Platform.getPlatformByName("Reference")
 
         # Turn off verbosity if not master node.
         if self.mpicomm:
@@ -536,7 +533,7 @@ class ReplicaExchange(object):
                     state._context = self.mm.Context(state.system, state._integrator, self.platform)
                 else:
                     state._context = self.mm.Context(state.system, state._integrator)
-                print "Context creation took %.3f s" % (time.time() - initial_context_time) # DEBUG            
+                if self.verbose: print "Context creation took %.3f s" % (time.time() - initial_context_time) # DEBUG            
         final_time = time.time()
         elapsed_time = final_time - initial_time
         if self.verbose: print "%.3f s elapsed." % elapsed_time
@@ -570,7 +567,7 @@ class ReplicaExchange(object):
         # Assign initial replica states.
         for replica_index in range(self.nstates):
             self.replica_states[replica_index] = replica_index
-
+            
         if self.resume:
             # Resume from NetCDF file.
             self._resume_from_netcdf()
@@ -1848,7 +1845,7 @@ class ParallelTempering(ReplicaExchange):
     Parallel tempering of alanine dipeptide in implicit solvent.
     
     >>> # Create alanine dipeptide test system.
-    >>> import simtk.pyopenmm.extras.testsystems as testsystems
+    >>> import testsystems
     >>> [system, coordinates] = testsystems.AlanineDipeptideImplicit()
     >>> # Create temporary file for storing output.
     >>> import tempfile
@@ -1869,7 +1866,7 @@ class ParallelTempering(ReplicaExchange):
     Parallel tempering of alanine dipeptide in explicit solvent at 1 atm.
     
     >>> # Create alanine dipeptide system
-    >>> import simtk.pyopenmm.extras.testsystems as testsystems
+    >>> import testsystems
     >>> [system, coordinates] = testsystems.AlanineDipeptideExplicit()
     >>> # Add Monte Carlo barsostat to system (must be same pressure as simulation).
     >>> import simtk.openmm as openmm
@@ -2030,7 +2027,7 @@ class HamiltonianExchange(ReplicaExchange):
     EXAMPLES
     
     >>> # Create reference system
-    >>> import simtk.pyopenmm.extras.testsystems as testsystems
+    >>> import testsystems
     >>> [reference_system, coordinates] = testsystems.AlanineDipeptideImplicit()
     >>> # Copy reference system.
     >>> systems = [reference_system for index in range(10)]
