@@ -461,7 +461,7 @@ class Yank(object):
         self.verbose = False # Don't show verbose output
         self.online_analysis = False # if True, simulation will be analyzed each iteration
         self.temperature = 298.0 * units.kelvin # simulation temperature
-        self.pressure = 1.0 * units.atmosphere # simulation pressure, if explicit solvent; None otherwise
+        self.pressure = 1.0 * units.atmosphere # simulation pressure (for explicit solvent)
         self.niterations = 2000 # number of production iterations
         self.perform_sanity_checks = True # perform some sanity checks to ensure correct results
         self.platform = None # don't specify a platform
@@ -503,8 +503,6 @@ class Yank(object):
             self.solvent_protocol = AbsoluteAlchemicalFactory.defaultSolventProtocolImplicit()
             self.complex_protocol = AbsoluteAlchemicalFactory.defaultComplexProtocolImplicit() 
         
-        # TODO: For explicit solvent protocol, solvate ligand.
-
         # Determine atom indices in complex.
         self.receptor_atoms = range(0, self.receptor.getNumParticles()) # list of receptor atoms
         self.ligand_atoms = range(self.receptor.getNumParticles(), self.complex.getNumParticles()) # list of ligand atoms
@@ -515,7 +513,7 @@ class Yank(object):
 
         # Store complex coordinates.
         # TODO: Make sure each coordinate set is packaged as a numpy array.  For now, we require the user to pass in a list of Quantity objects that contain numpy arrays.
-        # TODO: Switch to a special Coordinate object (with box size) to support explicit solvent simulations.
+        # TODO: Switch to a special Coordinate object (with box size) to support explicit solvent simulations?
         self.complex_coordinates = copy.deepcopy(complex_coordinates)
 
         # Type of restraints requested.
@@ -551,7 +549,7 @@ class Yank(object):
         # DEBUG
         #self.protocol['number_of_equilibration_iterations'] = 0
         #self.protocol['minimize'] = False
-        self.protocol['minimize_maxIterations'] = 500
+        self.protocol['minimize_maxIterations'] = 50
         self.protocol['show_mixing_statistics'] = False
 
         return
@@ -594,7 +592,7 @@ class Yank(object):
         else:
             vacuum_simulation.platform = openmm.Platform.getPlatformByName('Reference')
         vacuum_simulation.nsteps_per_iteration = 500
-        #vacuum_simulation.run() # DEBUG
+        vacuum_simulation.run() # DEBUG
         
         # 
         # Set up ligand in solvent simulation.
@@ -608,7 +606,7 @@ class Yank(object):
         if self.platform:
             solvent_simulation.platform = self.platform
         solvent_simulation.nsteps_per_iteration = 500
-        #solvent_simulation.run() # DEBUG
+        solvent_simulation.run() # DEBUG
         
         #
         # Set up ligand in complex simulation.
@@ -691,8 +689,9 @@ class Yank(object):
 
         # Specify which CPUs should be attached to specific GPUs for maximum performance.
         cpu_platform_name = 'Reference'
-        gpu_platform_name = 'CUDA' 
-        #gpu_platform_name = 'OpenCL'
+        #gpu_platform_name = 'CPU' 
+        #gpu_platform_name = 'CUDA' 
+        gpu_platform_name = 'OpenCL'
         
         if not cpuid_gpuid_mapping:
             # TODO: Determine number of GPUs and set up simple mapping.
@@ -801,7 +800,7 @@ class Yank(object):
             # Set up Hamiltonian exchange simulation.
             complex_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.complex_coordinates, store_filename, displacement_sigma=self.displacement_sigma, mc_atoms=self.ligand_atoms, protocol=self.protocol, mpicomm=comm, metadata=metadata)
             complex_simulation.platform = platform
-            complex_simulation.nsteps_per_iteration = 2500
+            complex_simulation.nsteps_per_iteration = 500
             complex_simulation.run()        
 
         else:
@@ -1034,273 +1033,21 @@ def read_pdb_crd(filename, natoms_expected, verbose=False):
 
     """
     
-    # Open PDB file.
-    pdbfile = open(filename, 'r')
-
-    # Storage for sets of coordinates.
-    coordinates_list = list()
-    coordinates = units.Quantity(numpy.zeros([natoms_expected,3], numpy.float32), units.angstroms) # coordinates[atom_index,dim_index] is coordinates of dim_index dimension of atom atom_index
-
-    # Extract the ATOM entries.
-    # Format described here: http://bmerc-www.bu.edu/needle-doc/latest/atom-format.html
-    atom_index = 0
-    atoms = list()
-    for line in pdbfile:
-        if line[0:6] == "MODEL ":
-            # Reset atom counter.
-            atom_index = 0
-            atoms = list()
-        elif (line[0:6] == "ENDMDL") or (line[0:6] == "END   "):
-            # Store model.
-            coordinates_list.append(copy.deepcopy(coordinates))
-            coordinates *= 0
-            atom_index = 0
-        elif line[0:6] == "ATOM  ":
-            # Parse line into fields.
-            atom = dict()
-            atom["serial"] = line[6:11]
-            atom["atom"] = line[12:16]
-            atom["altLoc"] = line[16:17]
-            atom["resName"] = line[17:20]
-            atom["chainID"] = line[21:22]
-            atom["Seqno"] = line[22:26]
-            atom["iCode"] = line[26:27]
-            atom["x"] = line[30:38]
-            atom["y"] = line[38:46]
-            atom["z"] = line[46:54]
-            atom["occupancy"] = line[54:60]
-            atom["tempFactor"] = line[60:66]
-            atoms.append(atom)
-            coordinates[atom_index,:] = units.Quantity(numpy.array([float(atom["x"]), float(atom["y"]), float(atom["z"])]), units.angstroms)
-            atom_index += 1
-
-    # Close PDB file.
-    pdbfile.close()
+    import simtk.openmm.app as app
+    pdb = app.PDBFile(filename)
+    coordinates_list = pdb.getPositions(asNumpy=True)
+    natoms = coordinates_list.shape[0]
+    if natoms != natoms_expected:
+        raise Exception("Read coordinate set from '%s' that had %d atoms (expected %d)." % (filename, natoms, natoms_expected))
 
     # Append if we haven't dumped coordinates yet.
-    if (atom_index == natoms_expected):
-        coordinates_list.append(copy.deepcopy(coordinates))
+ #   if (atom_index == natoms_expected):
+  #       coordinates_list.append(copy.deepcopy(coordinates))
 
     # Return coordinates.
     return coordinates_list
 
-if __name__ == '__main__':    
-    # Initialize command-line argument parser.
 
-    """
-    USAGE
-
-    %prog --ligand_prmtop PRMTOP --receptor_prmtop PRMTOP { {--ligand_crd CRD | --ligand_mol2 MOL2} {--receptor_crd CRD | --receptor_pdb PDB} | {--complex_crd CRD | --complex_pdb PDB} } [-v | --verbose] [-i | --iterations ITERATIONS] [-o | --online] [-m | --mpi] [--restraints restraint-type] [--doctests] [--randomize_ligand]
-
-    EXAMPLES
-
-    # Specify AMBER prmtop/crd files for ligand and receptor.
-    %prog --ligand_prmtop ligand.prmtop --receptor_prmtop receptor.prmtop --ligand_crd ligand.crd --receptor_crd receptor.crd --iterations 1000
-
-    # Specify (potentially multi-conformer) mol2 file for ligand and (potentially multi-model) PDB file for receptor.
-    %prog --ligand_prmtop ligand.prmtop --receptor_prmtop receptor.prmtop --ligand_mol2 ligand.mol2 --receptor_pdb receptor.pdb --iterations 1000
-
-    # Specify (potentially multi-model) PDB file for complex, along with flat-bottom restraints (instead of harmonic).
-    %prog --ligand_prmtop ligand.prmtop --receptor_prmtop receptor.prmtop --complex_pdb complex.pdb --iterations 1000 --restraints flat-bottom
-
-    # Specify (potentially multi-model) PDB file for complex, along with flat-bottom restraints (instead of harmonic); randomize ligand positions/orientations at start.
-    %prog --ligand_prmtop ligand.prmtop --receptor_prmtop receptor.prmtop --complex_pdb complex.pdb --iterations 1000 --restraints flat-bottom --randomize_ligand
-
-    NOTES
-
-    In atom ordering, receptor comes before ligand atoms.
-
-    """
-
-    # Parse command-line arguments.
-    from optparse import OptionParser
-    parser = OptionParser()
-    parser.add_option("--ligand_prmtop", dest="ligand_prmtop_filename", default=None, help="ligand Amber parameter file", metavar="LIGAND_PRMTOP")
-    parser.add_option("--receptor_prmtop", dest="receptor_prmtop_filename", default=None, help="receptor Amber parameter file", metavar="RECEPTOR_PRMTOP")    
-    parser.add_option("--ligand_crd", dest="ligand_crd_filename", default=None, help="ligand Amber crd file", metavar="LIGAND_CRD")
-    parser.add_option("--receptor_crd", dest="receptor_crd_filename", default=None, help="receptor Amber crd file", metavar="RECEPTOR_CRD")
-    parser.add_option("--ligand_mol2", dest="ligand_mol2_filename", default=None, help="ligand mol2 file (can contain multiple conformations)", metavar="LIGAND_MOL2")
-    parser.add_option("--receptor_pdb", dest="receptor_pdb_filename", default=None, help="receptor PDB file (can contain multiple MODELs)", metavar="RECEPTOR_PDB")
-    parser.add_option("--complex_prmtop", dest="complex_prmtop_filename", default=None, help="complex Amber parameter file", metavar="COMPLEX_PRMTOP")
-    parser.add_option("--complex_crd", dest="complex_crd_filename", default=None, help="complex Amber crd file", metavar="COMPLEX_CRD")
-    parser.add_option("--complex_pdb", dest="complex_pdb_filename", default=None, help="complex PDB file (can contain multiple MODELs)", metavar="COMPLEX_PDB")
-    parser.add_option("-v", "--verbose", action="store_true", dest="verbose", default=False, help="verbosity flag")
-    parser.add_option("-i", "--iterations", dest="niterations", default=None, help="number of iterations", metavar="ITERATIONS")
-    parser.add_option("-o", "--online", dest="online_analysis", default=False, help="perform online analysis")
-    parser.add_option("-m", "--mpi", action="store_true", dest="mpi", default=False, help="use mpi if possible")
-    parser.add_option("--restraints", dest="restraint_type", default=None, help="specify ligand restraint type: 'harmonic', 'flat-bottom', or 'none' [explicit only] (default: 'harmonic')")
-    parser.add_option("--output", dest="output_directory", default=None, help="specify output directory---must be unique for each calculation (default: current directory)")
-    parser.add_option("--doctests", action="store_true", dest="doctests", default=False, help="run doctests first (default: False)")
-    parser.add_option("--randomize_ligand", action="store_true", dest="randomize_ligand", default=False, help="randomize ligand positions and orientations (default: False)")
-    parser.add_option("--ignore_signal", action="append", dest="ignore_signals", default=[], help="signals to trap and ignore (default: None)")
-    parser.add_option("--simulation_method", dest="simulation_method", default='OBC2', help="simulation method: 'explicit' or 'OBC2' (default: OBC2)")
-
-    # Parse command-line arguments.
-    (options, args) = parser.parse_args()
-    
-    if options.doctests:
-        print "Running doctests..."
-        import doctest
-        (failure_count, test_count) = doctest.testmod(verbose=options.verbose)
-        if failure_count == 0:
-            print "All doctests pass."
-            sys.exit(0)
-        else:
-            print "WARNING: There were %d doctest failures." % failure_count
-            sys.exit(1)
-
-    # Check arguments for validity.
-    if not (options.ligand_prmtop_filename and options.receptor_prmtop_filename):
-        parser.error("ligand and receptor prmtop files must be specified")        
-    if not (bool(options.ligand_mol2_filename) ^ bool(options.ligand_crd_filename) ^ bool(options.complex_pdb_filename) ^ bool(options.complex_crd_filename)):
-        parser.error("Ligand coordinates must be specified through only one of --ligand_crd, --ligand_mol2, --complex_crd, or --complex_pdb.")
-    if not (bool(options.receptor_pdb_filename) ^ bool(options.receptor_crd_filename) ^ bool(options.complex_pdb_filename) ^ bool(options.complex_crd_filename)):
-        parser.error("Receptor coordinates must be specified through only one of --receptor_crd, --receptor_pdb, --complex_crd, or --complex_pdb.")    
-
-    # DEBUG: Require complex prmtop files to be specified while JDC debugs automatic combination of systems.
-    if not (options.complex_prmtop_filename):
-        parser.error("Please specify --complex_prmtop [complex_prmtop_filename] argument.  JDC is still debugging automatic generation of complex topologies from receptor+ligand.")
-
-    # Ignore requested signals.
-    if len(options.ignore_signals) > 0:
-        import signal
-        # Create a dummy signal handler.
-        def signal_handler(signal, frame):
-            print 'Signal %s received and ignored.' % str(signal)
-        # Register the dummy signal handler.
-        for signal_name in options.ignore_signals:
-            print "Will ignore signal %s" % signal_name
-            signal.signal(getattr(signal, signal_name), signal_handler)
-
-    # Initialize MPI if requested.
-    if options.mpi:
-        # Initialize MPI. 
-        try:
-            from mpi4py import MPI # MPI wrapper
-            hostname = os.uname()[1]
-            options.mpi = MPI.COMM_WORLD
-            if not MPI.COMM_WORLD.rank == 0: 
-                options.verbose = False
-            MPI.COMM_WORLD.barrier()
-            if MPI.COMM_WORLD.rank == 0: print "Initialized MPI on %d processes." % (MPI.COMM_WORLD.size)
-        except Exception as e:
-            print e
-            parser.error("Could not initialize MPI.")
-
-    # Select simulation parameters.
-    # TODO: We need a better way to select which implicit/explicit parameters to use.
-    is_explicit = False
-    import simtk.openmm.app as app
-    if options.simulation_method == 'explicit':
-        nonbondedMethod = app.CutoffPeriodic
-        implicitSolvent = None
-        constraints = app.HBonds
-        removeCMMotion = False
-        is_explicit = True
-    else:
-        nonbondedMethod = app.NoCutoff
-        implicitSolvent = app.OBC2
-        constraints = app.HBonds
-        removeCMMotion = False
-        is_explicit = False
-
-    # Create System objects for ligand and receptor.
-    # TODO: What do we do about flexible constraints?
-    ligand_system = app.AmberPrmtopFile(options.ligand_prmtop_filename).createSystem(nonbondedMethod=nonbondedMethod, implicitSolvent=implicitSolvent, constraints=constraints, removeCMMotion=removeCMMotion)
-    receptor_system = app.AmberPrmtopFile(options.receptor_prmtop_filename).createSystem(nonbondedMethod=nonbondedMethod, implicitSolvent=implicitSolvent, constraints=constraints, removeCMMotion=removeCMMotion)
-    
-    # Load complex prmtop if specified.
-    complex_system = None
-    if options.complex_prmtop_filename:
-        complex_system = app.AmberPrmtopFile(options.complex_prmtop_filename).createSystem(nonbondedMethod=nonbondedMethod, implicitSolvent=implicitSolvent, constraints=constraints, removeCMMotion=removeCMMotion)
-
-    # Determine number of atoms for each system.
-    natoms_receptor = receptor_system.getNumParticles()
-    natoms_ligand = ligand_system.getNumParticles()
-    natoms_complex = natoms_receptor + natoms_ligand
-
-    # Read ligand and receptor coordinates.
-    ligand_coordinates = list()
-    receptor_coordinates = list()
-    complex_coordinates = list()
-    if (options.complex_crd_filename or options.complex_pdb_filename):
-        # Read coordinates for whole complex.
-        if options.complex_crd_filename:
-            coordinates = read_amber_crd(options.complex_crd_filename, natoms_complex, options.verbose, loadBoxVectors=is_explicit)            
-            complex_coordinates.append(coordinates)
-        else:
-            try:
-                coordinates_list = read_openeye_crd(options.complex_pdb_filename, natoms_complex, options.verbose)
-            except:
-                coordinates_list = read_pdb_crd(options.complex_pdb_filename, natoms_complex, options.verbose)
-            complex_coordinates += coordinates_list
-    elif options.ligand_crd_filename:
-        coordinates = read_amber_crd(options.ligand_crd_filename, natoms_ligand, options.verbose, loadBoxVectors=is_explicit)
-        coordinates = units.Quantity(numpy.array(coordinates / coordinates.unit), coordinates.unit)
-        ligand_coordinates.append(coordinates)
-    elif options.ligand_mol2_filename:
-        coordinates_list = read_openeye_crd(options.ligand_mol2_filename, natoms_ligand, options.verbose)
-        ligand_coordinates += coordinates_list
-    elif options.receptor_crd_filename:
-        coordinates = read_amber_crd(options.receptor_crd_filename, natoms_receptor, options.verbose, loadBoxVectors=is_explicit)
-        coordinates = units.Quantity(numpy.array(coordinates / coordinates.unit), coordinates.unit)
-        receptor_coordinates.append(coordinates)
-    elif options.receptor_pdb_filename:
-        try:
-            coordinates_list = read_openeye_crd(options.receptor_pdb_filename, natoms_receptor, options.verbose)
-        except:
-            coordinates_list = read_pdb_crd(options.receptor_pdb_filename, natoms_receptor, options.verbose)
-        receptor_coordinates += coordinates_list
-
-    # Assemble complex coordinates if we haven't read any.
-    if len(complex_coordinates)==0:
-        for x in receptor_coordinates:
-            for y in ligand_coordinates:
-                z = units.Quantity(numpy.zeros([natoms_complex,3]), units.angstroms)
-                z[0:natoms_receptor,:] = x[:,:]
-                z[natoms_receptor:natoms_complex,:] = y[:,:]
-                complex_coordinates.append(z)
-
-    # Initialize YANK object.
-    yank = Yank(receptor=receptor_system, ligand=ligand_system, complex=complex_system, complex_coordinates=complex_coordinates, output_directory=options.output_directory, verbose=options.verbose)
-
-    # Configure YANK object with command-line parameter overrides.
-    if options.niterations is not None:
-        yank.niterations = int(options.niterations)
-    if options.verbose:
-        yank.verbose = options.verbose
-    if options.online_analysis:
-        yank.online_analysis = options.online_analysis
-    if options.restraint_type is not None:
-        yank.restraint_type = options.restraint_type
-    if options.randomize_ligand:
-        yank.randomize_ligand = True 
-
-    # cpuid:gpuid for NCSA Forge # TODO: Make a configuration file or command-line argument for this, or have it autodetect.
-    #cpuid_gpuid_mapping = { 0:0, 1:1, 8:2, 9:3, 10:4, 11:5 } 
-
-    # cpuid:gpuid for Blue Waters
-    #cpuid_gpuid_mapping = { 0:0, 8:0, } 
-    #ncpus_per_node = 16
-
-    # cpuid:gpuid for Exxact 4xGPU nodes
-    cpuid_gpuid_mapping = { 0:0, 1:1, 2:2, 3:3 } 
-    ncpus_per_node = None
-
-    # Run calculation.
-    if options.mpi:
-        # Run MPI version.
-        yank.run_mpi(options.mpi, cpuid_gpuid_mapping=cpuid_gpuid_mapping, ncpus_per_node=ncpus_per_node)
-    else:
-        # Run serial version.
-        yank.platform = openmm.Platform.getPlatformByName("CUDA") # DEBUG: Use CUDA platform for serial version
-        yank.run()
-
-    # Run analysis.
-    #results = yank.analyze()
-
-    # TODO: Print/write results.
-    #print results
 
     
 
