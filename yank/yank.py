@@ -547,9 +547,9 @@ class Yank(object):
         self.protocol['show_mixing_statistics'] = False # this causes slowdown with iteration and should not be used for production
 
         # DEBUG
-        #self.protocol['number_of_equilibration_iterations'] = 0
-        #self.protocol['minimize'] = False
-        self.protocol['minimize_maxIterations'] = 50
+        self.protocol['number_of_equilibration_iterations'] = 0
+        self.protocol['minimize'] = False
+        self.protocol['minimize_maxIterations'] = 5
         self.protocol['show_mixing_statistics'] = False
 
         return
@@ -588,11 +588,12 @@ class Yank(object):
         store_filename = os.path.join(self.output_directory, 'vacuum.nc')
         vacuum_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.ligand_coordinates, store_filename, protocol=self.protocol)
         if self.platform:
+            if self.verbose: print "Using platform '%s'" % self.platform.getName()
             vacuum_simulation.platform = self.platform
         else:
             vacuum_simulation.platform = openmm.Platform.getPlatformByName('Reference')
         vacuum_simulation.nsteps_per_iteration = 500
-        vacuum_simulation.run() # DEBUG
+        #vacuum_simulation.run() # DEBUG
         
         # 
         # Set up ligand in solvent simulation.
@@ -604,9 +605,10 @@ class Yank(object):
         store_filename = os.path.join(self.output_directory, 'solvent.nc')
         solvent_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.ligand_coordinates, store_filename, protocol=self.protocol)
         if self.platform:
+            if self.verbose: print "Using platform '%s'" % self.platform.getName()
             solvent_simulation.platform = self.platform
         solvent_simulation.nsteps_per_iteration = 500
-        solvent_simulation.run() # DEBUG
+        #solvent_simulation.run() # DEBUG
         
         #
         # Set up ligand in complex simulation.
@@ -657,6 +659,7 @@ class Yank(object):
         complex_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.complex_coordinates, store_filename, displacement_sigma=self.displacement_sigma, mc_atoms=self.ligand_atoms, protocol=self.protocol, metadata=metadata)
         complex_simulation.nsteps_per_iteration = 500
         if self.platform:
+            if self.verbose: print "Using platform '%s'" % self.platform.getName()
             complex_simulation.platform = self.platform
 
         # Run the simulation.
