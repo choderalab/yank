@@ -10,9 +10,7 @@ Module to generate Systems and coordinates for simple reference molecular system
 DESCRIPTION
 
 This module provides functions for building a number of test systems of varying complexity,
-useful for testing both OpenMM and various codes based on pyopenmm.
-
-Note that the PYOPENMM_SOURCE_DIR must be set to point to where the PyOpenMM package is unpacked.
+useful for testing OpenMM and codes based on it.
 
 EXAMPLES
 
