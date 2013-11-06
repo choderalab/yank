@@ -61,7 +61,7 @@ class ThermodynamicState(object):
     Specify an NVT state for a water box at 298 K.
 
     >>> import simtk.unit as units
-    >>> import simtk.pyopenmm.extras.testsystems as testsystems
+    >>> import testsystems
     >>> [system, coordinates] = testsystems.WaterBox()    
     >>> state = ThermodynamicState(system=system, temperature=298.0*units.kelvin)
 
@@ -214,7 +214,7 @@ class ThermodynamicState(object):
         Compute the reduced potential of a Lennard-Jones cluster at 100 K.
         
         >>> import simtk.unit as units
-        >>> import simtk.pyopenmm.extras.testsystems as testsystems
+        >>> import testsystems
         >>> [system, coordinates] = testsystems.LennardJonesCluster()
         >>> state = ThermodynamicState(system=system, temperature=100.0*units.kelvin)
         >>> potential = state.reduced_potential(coordinates)
@@ -321,7 +321,7 @@ class ThermodynamicState(object):
         Compute the reduced potential of a Lennard-Jones cluster at multiple configurations at 100 K.
         
         >>> import simtk.unit as units
-        >>> import simtk.pyopenmm.extras.testsystems as testsystems
+        >>> import testsystems
         >>> [system, coordinates] = testsystems.LennardJonesCluster()
         >>> state = ThermodynamicState(system=system, temperature=100.0*units.kelvin)
         >>> # create example list of coordinates
@@ -412,7 +412,7 @@ class ThermodynamicState(object):
         Create NVT and NPT states.
         
         >>> import simtk.unit as units
-        >>> import simtk.pyopenmm.extras.testsystems as testsystems
+        >>> import testsystems
         >>> [system, coordinates] = testsystems.LennardJonesCluster()
         >>> nvt_state = ThermodynamicState(system=system, temperature=100.0*units.kelvin)
         >>> npt_state = ThermodynamicState(system=system, temperature=100.0*units.kelvin, pressure=1.0*units.atmospheres)
@@ -450,7 +450,7 @@ class ThermodynamicState(object):
         Create an NVT state.
         
         >>> import simtk.unit as units
-        >>> import simtk.pyopenmm.extras.testsystems as testsystems
+        >>> import testsystems
         >>> [system, coordinates] = testsystems.LennardJonesCluster()
         >>> state = ThermodynamicState(system=system, temperature=100.0*units.kelvin)
 
@@ -486,7 +486,7 @@ class ThermodynamicState(object):
         
         Compute the volume of a Lennard-Jones fluid at 100 K and 1 atm.
 
-        >>> import simtk.pyopenmm.extras.testsystems as testsystems
+        >>> import testsystems
         >>> [system, coordinates] = testsystems.LennardJonesFluid()
         >>> state = ThermodynamicState(system=system, temperature=100.0*units.kelvin, pressure=1.0*units.atmosphere)
         >>> box_vectors = system.getDefaultPeriodicBoxVectors()
