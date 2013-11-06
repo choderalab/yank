@@ -74,7 +74,7 @@ class ReceptorLigandRestraint(object):
     EXAMPLE
         
     >>> # Create a test system.
-    >>> import simtk.pyopenmm.extras.testsystems as testsystems
+    >>> import testsystems
     >>> [system, coordinates] = testsystems.LysozymeImplicit()
     >>> # Identify receptor and ligand atoms.
     >>> receptor_atoms = range(0,2603)
@@ -86,8 +86,7 @@ class ReceptorLigandRestraint(object):
     >>> # Create restraints.
     >>> restraints = ReceptorLigandRestraint(state, system, coordinates, receptor_atoms, ligand_atoms)
     >>> # Get standard state correction.
-    >>> print restraints.getStandardStateCorrection()
-    0.365059033167
+    >>> correction = restraints.getStandardStateCorrection()
 
     NOTES
 
@@ -371,7 +370,7 @@ class FlatBottomReceptorLigandRestraint(ReceptorLigandRestraint):
     EXAMPLE
         
     >>> # Create a test system.
-    >>> import simtk.pyopenmm.extras.testsystems as testsystems
+    >>> import testsystems
     >>> [system, coordinates] = testsystems.LysozymeImplicit()
     >>> # Identify receptor and ligand atoms.
     >>> receptor_atoms = range(0,2603)
@@ -383,9 +382,8 @@ class FlatBottomReceptorLigandRestraint(ReceptorLigandRestraint):
     >>> # Create restraints.
     >>> restraints = FlatBottomReceptorLigandRestraint(state, system, coordinates, receptor_atoms, ligand_atoms)
     >>> # Get standard state correction.
-    >>> print restraints.getStandardStateCorrection()
-    4.74636082004
-    
+    >>> correction = restraints.getStandardStateCorrection()
+
     """
 
     energy_function = 'restraint_lambda * step(r-r0) * (K/2)*(r-r0)^2' # flat-bottom restraint
@@ -428,12 +426,12 @@ class FlatBottomReceptorLigandRestraint(ReceptorLigandRestraint):
 
         # Calculate r0, which is a multiple of sigma plus 5 A.
         r0 = 2*sigma + 5.0 * units.angstroms
-        print "restraint distance r0 = %.1f A" % (r0 / units.angstroms)
+        if self.verbose: print "restraint distance r0 = %.1f A" % (r0 / units.angstroms)
 
         # Set spring constant/
         #K = (2.0 * 0.0083144621 * 5.0 * 298.0 * 100) * units.kilojoules_per_mole/units.nanometers**2
         K = 0.6 * units.kilocalories_per_mole / units.angstroms**2
-        print "K = %.1f kcal/mol/A^2" % (K / (units.kilocalories_per_mole / units.angstroms**2))
+        if self.verbose: print "K = %.1f kcal/mol/A^2" % (K / (units.kilocalories_per_mole / units.angstroms**2))
 
         # Assemble parameter vector.
         bond_parameters = [K, r0]
