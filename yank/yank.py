@@ -1033,56 +1033,20 @@ def read_pdb_crd(filename, natoms_expected, verbose=False):
     coordinates_list (list of numpy array of simtk.unit.Quantity) - list of coordinate sets read
 
     """
-    
-    # Open PDB file.
-    pdbfile = open(filename, 'r')
-
-    # Storage for sets of coordinates.
-    coordinates_list = list()
-    coordinates = units.Quantity(numpy.zeros([natoms_expected,3], numpy.float32), units.angstroms) # coordinates[atom_index,dim_index] is coordinates of dim_index dimension of atom atom_index
-
-    # Extract the ATOM entries.
-    # Format described here: http://bmerc-www.bu.edu/needle-doc/latest/atom-format.html
-    atom_index = 0
-    atoms = list()
-    for line in pdbfile:
-        if line[0:6] == "MODEL ":
-            # Reset atom counter.
-            atom_index = 0
-            atoms = list()
-        elif (line[0:6] == "ENDMDL") or (line[0:6] == "END   "):
-            # Store model.
-            coordinates_list.append(copy.deepcopy(coordinates))
-            coordinates *= 0
-            atom_index = 0
-        elif line[0:6] == "ATOM  ":
-            # Parse line into fields.
-            atom = dict()
-            atom["serial"] = line[6:11]
-            atom["atom"] = line[12:16]
-            atom["altLoc"] = line[16:17]
-            atom["resName"] = line[17:20]
-            atom["chainID"] = line[21:22]
-            atom["Seqno"] = line[22:26]
-            atom["iCode"] = line[26:27]
-            atom["x"] = line[30:38]
-            atom["y"] = line[38:46]
-            atom["z"] = line[46:54]
-            atom["occupancy"] = line[54:60]
-            atom["tempFactor"] = line[60:66]
-            atoms.append(atom)
-            coordinates[atom_index,:] = units.Quantity(numpy.array([float(atom["x"]), float(atom["y"]), float(atom["z"])]), units.angstroms)
-            atom_index += 1
-
-    # Close PDB file.
-    pdbfile.close()
+    import simtk.openmm.app as app
+    pdb = app.PDBFile(filename)
+    coordinates_list = pdb.getPositions(asNumpy=True)
+    natoms = coordinates_list.shape[0]
+    if natoms != natoms_expected:
+        raise Exception("Read coordinate set from '%s' that had %d atoms (expected %d)." % (filename, natoms, natoms_expected))
 
     # Append if we haven't dumped coordinates yet.
-    if (atom_index == natoms_expected):
-        coordinates_list.append(copy.deepcopy(coordinates))
+ #   if (atom_index == natoms_expected):
+  #       coordinates_list.append(copy.deepcopy(coordinates))
 
     # Return coordinates.
     return coordinates_list
+
 
 if __name__ == '__main__':    
     # Initialize command-line argument parser.
