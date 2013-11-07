@@ -3,11 +3,11 @@
 # Simple YANK test script to be run from yank/yank/ directory (with examples/ subdirectory present).
 
 # Simple benzene-toluene test.
-#setenv JOBDIR "examples/benzene-toluene"
+setenv JOBDIR "examples/benzene-toluene"
 
 # More expensive T4 lysozyme L99A test
 # (uncomment this to override other test)
-setenv JOBDIR "examples/p-xylene"
+#setenv JOBDIR "examples/p-xylene"
 
 # Clean up data files before run.
 rm -f ${JOBDIR}/*.nc
