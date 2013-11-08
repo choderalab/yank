@@ -54,15 +54,14 @@ TODO
 # GLOBAL IMPORTS
 #=============================================================================================
 
-import os
-import numpy
-import copy
+import numpy as np
 import time
 
 import simtk.openmm as openmm
 import simtk.unit as units
 
-from sets import Set
+import logging
+logger = logging.getLogger(__name__)
 
 from alchemy import AlchemicalState, AbsoluteAlchemicalFactory
 
@@ -86,12 +85,12 @@ def compareSystemEnergies(coordinates, systems, descriptions, platform=None):
         potential = state.getPotentialEnergy()    
         potentials.append(potential)
 
-    print "========"
+    logger.info("========")
     for i in range(len(systems)):
-        print "%32s : %24.8f kcal/mol" % (descriptions[i], potentials[i] / units.kilocalories_per_mole)
+        logger.info("%32s : %24.8f kcal/mol" % (descriptions[i], potentials[i] / units.kilocalories_per_mole))
         if (i > 0):
             delta = potentials[i] - potentials[0]
-            print "%32s : %24.8f kcal/mol" % ('ERROR', delta / units.kilocalories_per_mole)
+            logger.info("%32s : %24.8f kcal/mol" % ('ERROR', delta / units.kilocalories_per_mole))
 
     return potentials
 
@@ -108,17 +107,13 @@ def testAlchemicalFactory(reference_system, coordinates, receptor_atoms, ligand_
 
     """
 
-    import simtk.unit as units
-    import simtk.openmm as openmm
-    import time
-
     # Create a factory to produce alchemical intermediates.
-    print "Creating alchemical factory..."
+    logger.info("Creating alchemical factory...")
     initial_time = time.time()
     factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=ligand_atoms)
     final_time = time.time()
     elapsed_time = final_time - initial_time
-    print "AbsoluteAlchemicalFactory initialization took %.3f s" % elapsed_time
+    logger.info("AbsoluteAlchemicalFactory initialization took %.3f s" % elapsed_time)
 
     platform = openmm.Platform.getPlatformByName(platform_name)
 
@@ -151,12 +146,12 @@ def benchmark(reference_system, coordinates, receptor_atoms, ligand_atoms, platf
     import time
 
     # Create a factory to produce alchemical intermediates.
-    print "Creating alchemical factory..."
+    logger.info("Creating alchemical factory...")
     initial_time = time.time()
     factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=ligand_atoms)
     final_time = time.time()
     elapsed_time = final_time - initial_time
-    print "AbsoluteAlchemicalFactory initialization took %.3f s" % elapsed_time
+    logger.info("AbsoluteAlchemicalFactory initialization took %.3f s" % elapsed_time)
 
     # Create an alchemically-perturbed state corresponding to nearly fully-interacting.
     # NOTE: We use a lambda slightly smaller than 1.0 because the AlchemicalFactory does not use Custom*Force softcore versions if lambda = 1.0 identically.
@@ -168,20 +163,20 @@ def benchmark(reference_system, coordinates, receptor_atoms, ligand_atoms, platf
     platform = openmm.Platform.getPlatformByName(platform_name)
     
     # Create the perturbed system.
-    print "Creating alchemically-modified state..."
+    logger.info("Creating alchemically-modified state...")
     initial_time = time.time()
     alchemical_system = factory.createPerturbedSystem(alchemical_state)    
     final_time = time.time()
     elapsed_time = final_time - initial_time
     # Compare energies.
     timestep = 1.0 * units.femtosecond
-    print "Computing reference energies..."
+    logger.info("Computing reference energies...")
     reference_integrator = openmm.VerletIntegrator(timestep)
     reference_context = openmm.Context(reference_system, reference_integrator, platform)
     reference_context.setPositions(coordinates)
     reference_state = reference_context.getState(getEnergy=True)
     reference_potential = reference_state.getPotentialEnergy()    
-    print "Computing alchemical energies..."
+    logger.info("Computing alchemical energies...")
     alchemical_integrator = openmm.VerletIntegrator(timestep)
     alchemical_context = openmm.Context(alchemical_system, alchemical_integrator, platform)
     alchemical_context.setPositions(coordinates)
@@ -195,14 +190,14 @@ def benchmark(reference_system, coordinates, receptor_atoms, ligand_atoms, platf
 
     # Time simulations.
     import time
-    print "Simulating reference system..."
+    logger.info("Simulating reference system...")
     initial_time = time.time()
     reference_integrator.step(nsteps)
     reference_state = reference_context.getState(getEnergy=True)
     reference_potential = reference_state.getPotentialEnergy()    
     final_time = time.time()
     reference_time = final_time - initial_time
-    print "Simulating alchemical system..."
+    logger.info("Simulating alchemical system...")
     initial_time = time.time()
     alchemical_integrator.step(nsteps)
     alchemical_state = alchemical_context.getState(getEnergy=True)
@@ -210,10 +205,10 @@ def benchmark(reference_system, coordinates, receptor_atoms, ligand_atoms, platf
     final_time = time.time()
     alchemical_time = final_time - initial_time
 
-    print "TIMINGS"
-    print "reference system       : %12.3f s for %8d steps (%12.3f ms/step)" % (reference_time, nsteps, reference_time/nsteps*1000)
-    print "alchemical system      : %12.3f s for %8d steps (%12.3f ms/step)" % (alchemical_time, nsteps, alchemical_time/nsteps*1000)
-    print "alchemical simulation is %12.3f x slower than unperturbed system" % (alchemical_time / reference_time)
+    logger.info("TIMINGS")
+    logger.info("reference system       : %12.3f s for %8d steps (%12.3f ms/step)" % (reference_time, nsteps, reference_time/nsteps*1000))
+    logger.info("alchemical system      : %12.3f s for %8d steps (%12.3f ms/step)" % (alchemical_time, nsteps, alchemical_time/nsteps*1000))
+    logger.info("alchemical simulation is %12.3f x slower than unperturbed system" % (alchemical_time / reference_time))
 
     return delta
 
@@ -227,7 +222,7 @@ def test_overlap():
     # Create a reference system.    
     import testsystems
 
-    print "Creating Lennard-Jones cluster system..."
+    logger.info("Creating Lennard-Jones cluster system...")
     #[reference_system, coordinates] = testsystems.LennardJonesFluid()
     #receptor_atoms = [0]
     #ligand_atoms = [1]
@@ -238,27 +233,27 @@ def test_overlap():
 
     import simtk.unit as units
     unit = coordinates.unit
-    coordinates = units.Quantity(numpy.array(coordinates / unit), unit)
+    coordinates = units.Quantity(np.array(coordinates / unit), unit)
 
     factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=ligand_atoms)
     alchemical_state = AlchemicalState(0.00, 0.00, 0.00, 1.0)
 
     # Create the perturbed system.
-    print "Creating alchemically-modified state..."
+    logger.info("Creating alchemically-modified state...")
     alchemical_system = factory.createPerturbedSystem(alchemical_state)    
     # Compare energies.
     import simtk.unit as units
     import simtk.openmm as openmm
     timestep = 1.0 * units.femtosecond
-    print "Computing reference energies..."
+    logger.info("Computing reference energies...")
     integrator = openmm.VerletIntegrator(timestep)
     context = openmm.Context(reference_system, integrator)
     context.setPositions(coordinates)
     state = context.getState(getEnergy=True)
     reference_potential = state.getPotentialEnergy()    
     del state, context, integrator
-    print reference_potential
-    print "Computing alchemical energies..."
+    logger.info(reference_potential)
+    logger.info("Computing alchemical energies...")
     integrator = openmm.VerletIntegrator(timestep)
     context = openmm.Context(alchemical_system, integrator)
     dr = 0.1 * units.angstroms # TODO: Why does 0.1 cause periodic 'nan's?
@@ -274,7 +269,7 @@ def test_overlap():
         context.setPositions(coordinates)
         state = context.getState(getEnergy=True)
         alchemical_potential = state.getPotentialEnergy()    
-        print "%8.3f A : %f " % (r / units.angstroms, alchemical_potential / units.kilocalories_per_mole)
+        logger.info("%8.3f A : %f " % (r / units.angstroms, alchemical_potential / units.kilocalories_per_mole))
     del state, context, integrator
 
     return
@@ -310,7 +305,7 @@ def lambda_trace(reference_system, coordinates, receptor_atoms, ligand_atoms, pl
         potential = compute_potential(alchemical_system, coordinates, platform)
         line = '%12.6f %24.6f' % (lambda_value, potential / units.kilocalories_per_mole)
         outfile.write(line + '\n')
-        print line
+        logger.info(line)
     outfile.close()
 
     # decoupling
@@ -321,7 +316,7 @@ def lambda_trace(reference_system, coordinates, receptor_atoms, ligand_atoms, pl
         potential = compute_potential(alchemical_system, coordinates, platform)
         line = '%12.6f %24.6f' % (lambda_value, potential / units.kilocalories_per_mole)
         outfile.write(line + '\n')
-        print line
+        logger.info(line)
     outfile.close()
 
     return
@@ -331,73 +326,73 @@ def test_intermediates():
     if False:
         # DEBUG
         import testsystems
-        print "Creating T4 lysozyme system..."
+        logger.info("Creating T4 lysozyme system...")
         [reference_system, coordinates] = testsystems.LysozymeImplicit()
         receptor_atoms = range(0,2603) # T4 lysozyme L99A
         ligand_atoms = range(2603,2621) # p-xylene
         lambda_trace(reference_system, coordinates, receptor_atoms, ligand_atoms)    
         testAlchemicalFactory(reference_system, coordinates, receptor_atoms, ligand_atoms)    
         benchmark(reference_system, coordinates, receptor_atoms, ligand_atoms)    
-        print ""
+        logger.info("")
         stop
 
     # Run tests on individual systems.
     import testsystems
 
-    print "Creating T4 lysozyme system..."
+    logger.info("Creating T4 lysozyme system...")
     [reference_system, coordinates] = testsystems.LysozymeImplicit()
     receptor_atoms = range(0,2603) # T4 lysozyme L99A
     ligand_atoms = range(2603,2621) # p-xylene
     testAlchemicalFactory(reference_system, coordinates, receptor_atoms, ligand_atoms)    
     benchmark(reference_system, coordinates, receptor_atoms, ligand_atoms)    
-    print ""
+    logger.info("")
 
-    print "Creating Lennard-Jones fluid system without dispersion correction..."
+    logger.info("Creating Lennard-Jones fluid system without dispersion correction...")
     [reference_system, coordinates] = testsystems.LennardJonesFluid(dispersion_correction=False)
     ligand_atoms = range(0,1) # first atom
     receptor_atoms = range(2,3) # second atom
     testAlchemicalFactory(reference_system, coordinates, receptor_atoms, ligand_atoms)
-    print ""
+    logger.info("")
 
-    print "Creating Lennard-Jones fluid system with dispersion correction..."
+    logger.info("Creating Lennard-Jones fluid system with dispersion correction...")
     [reference_system, coordinates] = testsystems.LennardJonesFluid(dispersion_correction=True)
     ligand_atoms = range(0,1) # first atom
     receptor_atoms = range(2,3) # second atom
     testAlchemicalFactory(reference_system, coordinates, receptor_atoms, ligand_atoms)
     benchmark(reference_system, coordinates, receptor_atoms, ligand_atoms)    
-    print ""
+    logger.info("")
 
-    print "Creating Lennard-Jones cluster..."
+    logger.info("Creating Lennard-Jones cluster...")
     [reference_system, coordinates] = testsystems.LennardJonesCluster()
     ligand_atoms = range(0,1) # first atom
     receptor_atoms = range(1,2) # second atom
     testAlchemicalFactory(reference_system, coordinates, receptor_atoms, ligand_atoms)
-    print ""
+    logger.info("")
 
-    print "Creating alanine dipeptide implicit system..."
+    logger.info("Creating alanine dipeptide implicit system...")
     [reference_system, coordinates] = testsystems.AlanineDipeptideImplicit()
     ligand_atoms = range(0,4) # methyl group
     receptor_atoms = range(4,22) # rest of system
     testAlchemicalFactory(reference_system, coordinates, receptor_atoms, ligand_atoms)
     benchmark(reference_system, coordinates, receptor_atoms, ligand_atoms)    
-    print ""
+    logger.info("")
 
-    print "Creating alanine dipeptide explicit system..."
+    logger.info("Creating alanine dipeptide explicit system...")
     [reference_system, coordinates] = testsystems.AlanineDipeptideExplicit()
     ligand_atoms = range(0,22) # alanine residue
     receptor_atoms = range(22,25) # one water
     testAlchemicalFactory(reference_system, coordinates, receptor_atoms, ligand_atoms)
     benchmark(reference_system, coordinates, receptor_atoms, ligand_atoms)    
-    print ""
+    logger.info("")
 
-    print "Creating alanine dipeptide explicit system without dispersion correction..."
+    logger.info("Creating alanine dipeptide explicit system without dispersion correction...")
     #forces = { reference_system.getForce(index).__class__.__name__ : reference_system.getForce(index)) for index in range(reference_system.getNumForces()) } # requires Python 2.7 features
     forces = dict( (reference_system.getForce(index).__class__.__name__,  reference_system.getForce(index)) for index in range(reference_system.getNumForces()) ) # python 2.6 compatible
     forces['NonbondedForce'].setUseDispersionCorrection(False) # turn off dispersion correction
     ligand_atoms = range(0,22) # alanine residue
     receptor_atoms = range(22,25) # one water
     testAlchemicalFactory(reference_system, coordinates, receptor_atoms, ligand_atoms)
-    print ""
+    logger.info("")
 
 
 #=============================================================================================
