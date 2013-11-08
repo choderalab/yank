@@ -35,6 +35,9 @@ import simtk.unit as units
 
 import netCDF4 as netcdf # netcdf4-python is used in place of scipy.io.netcdf for now
 
+import logging
+logger = logging.getLogger(__name__)
+
 #=============================================================================================
 # MODULE CONSTANTS
 #=============================================================================================
@@ -160,8 +163,6 @@ if __name__ == "__main__":
     import timeseries
     import pymbar
 
-    verbose = True
-
     # Use reference platform.
     platform = simtk.openmm.Platform.getPlatformByName("Reference")
 
@@ -218,14 +219,13 @@ if __name__ == "__main__":
 
     # Initialize YANK object.
     from yank import Yank
-    yank = Yank(receptor=receptor_system, ligand=ligand_system, complex_coordinates=[complex_coordinates], output_directory=output_directory, verbose=True)
+    yank = Yank(receptor=receptor_system, ligand=ligand_system, complex_coordinates=[complex_coordinates], output_directory=output_directory)
     yank.solvent_protocol = yank.vacuum_protocol
     yank.complex_protocol = yank.vacuum_protocol
     yank.restraint_type = 'flat-bottom'
     yank.temperature = temperature
     yank.niterations = 100
     yank.platform = openmm.Platform.getPlatformByName("Reference")
-    yank.verbose = False
 
     # Run the simulation.
     yank.run()
@@ -234,7 +234,7 @@ if __name__ == "__main__":
     # Analyze the data.
     #
     
-    results = yank.analyze(verbose=True)
+    results = yank.analyze()
 
     # TODO: Check results against analytical results.
 

@@ -29,20 +29,23 @@
 # IMPORTS
 #=============================================================================================
 
-import numpy
-from numpy import *
+import numpy as np
+#from numpy import *
 #from Scientific.IO import NetCDF # scientific python
 #import scipy.io.netcdf as netcdf
 import netCDF4 as netcdf # netcdf4-python
 import os
 import sys
 import os.path
-import math
-import gzip
 from pymbar import MBAR # multistate Bennett acceptance ratio
-import timeseries # for statistical inefficiency analysis
+from pymbar import timeseries # for statistical inefficiency analysis
+
+from utils import show_mixing_statistics
 
 import simtk.unit as units
+
+import logging
+logger = logging.getLogger(__name__)
 
 #=============================================================================================
 # PARAMETERS
@@ -249,7 +252,7 @@ def write_netcdf_replica_trajectories(directory, prefix, title, ncfile):
         ncoutfile = netcdf.Dataset(output_filename, 'w')
         initialize_netcdf(ncoutfile, title + " (replica %d)" % replica, natoms)
         for iteration in range(niterations):
-            coordinates = array(ncfile.variables['positions'][iteration,replica,:,:])
+            coordinates = np.array(ncfile.variables['positions'][iteration,replica,:,:])
             coordinates *= 10.0 # convert nm to angstroms
             write_netcdf_frame(ncoutfile, iteration, time = 1.0 * iteration, coordinates = coordinates)
         ncoutfile.close()
@@ -277,10 +280,10 @@ def compute_torsion_trajectories(ncfile, filename):
         vBC = positions[atoms[2],:] - positions[atoms[1],:]
         vCB = positions[atoms[1],:] - positions[atoms[2],:]
         vCD = positions[atoms[3],:] - positions[atoms[2],:]
-        v1 = cross(vBA,vBC)
-        v2 = cross(vCB,vCD)
-        cos_theta = dot(v1,v2) / sqrt(dot(v1,v1) * dot(v2,v2))
-        theta = arccos(cos_theta) * 180.0 / math.pi
+        v1 = np.cross(vBA,vBC)
+        v2 = np.cross(vCB,vCD)
+        cos_theta = np.dot(v1,v2) / np.sqrt(np.dot(v1,v1) * np.dot(v2,v2))
+        theta = np.arccos(cos_theta) * 180.0 / np.pi
         return theta
                 
     # Compute torsion angles for each replica
@@ -288,7 +291,7 @@ def compute_torsion_trajectories(ncfile, filename):
     for iteration in range(niterations):
         for replica in range(nstates):
             # Compute torsion
-            torsion = compute_torsion(array(ncfile.variables['positions'][iteration,replica,:,:]), atoms)
+            torsion = compute_torsion(np.array(ncfile.variables['positions'][iteration,replica,:,:]), atoms)
             # Write torsion
             contents += "%8.1f" % torsion
         contents += "\n"
@@ -368,7 +371,7 @@ def write_pdb(atoms, filename, iteration, replica, title, ncfile):
     """
 
     # Extract coordinates to be written.
-    coordinates = array(ncfile.variables['positions'][iteration,replica,:,:])
+    coordinates = np.array(ncfile.variables['positions'][iteration,replica,:,:])
     coordinates *= 10.0 # convert nm to angstroms
 
     # Create file.
@@ -392,7 +395,7 @@ def write_crd(filename, iteration, replica, title, ncfile):
 
     """
     # Extract coordinates to be written.
-    coordinates = array(ncfile.variables['positions'][iteration,replica,:,:])
+    coordinates = np.array(ncfile.variables['positions'][iteration,replica,:,:])
     coordinates *= 10.0 # convert nm to angstroms
 
     # Create file.
@@ -412,120 +415,7 @@ def write_crd(filename, iteration, replica, title, ncfile):
         
     # Close file.
     outfile.close()
-    
-def show_mixing_statistics(ncfile, cutoff=0.05, nequil=0):
-    """
-    Print summary of mixing statistics.
 
-    ARGUMENTS
-
-    ncfile (netCDF4.Dataset) - NetCDF file
-    
-    OPTIONAL ARGUMENTS
-
-    cutoff (float) - only transition probabilities above 'cutoff' will be printed (default: 0.05)
-    nequil (int) - if specified, only samples nequil:end will be used in analysis (default: 0)
-    
-    """
-    
-    # Get dimensions.
-    niterations = ncfile.variables['states'].shape[0]
-    nstates = ncfile.variables['states'].shape[1]
-
-    # Compute statistics of transitions.
-    Nij = numpy.zeros([nstates,nstates], numpy.float64)
-    for iteration in range(nequil, niterations-1):
-        for ireplica in range(nstates):
-            istate = ncfile.variables['states'][iteration,ireplica]
-            jstate = ncfile.variables['states'][iteration+1,ireplica]
-            Nij[istate,jstate] += 0.5
-            Nij[jstate,istate] += 0.5
-    Tij = numpy.zeros([nstates,nstates], numpy.float64)
-    for istate in range(nstates):
-        Tij[istate,:] = Nij[istate,:] / Nij[istate,:].sum()
-
-    # Print observed transition probabilities.
-    print "Cumulative symmetrized state mixing transition matrix:"
-    print "%6s" % "",
-    for jstate in range(nstates):
-        print "%6d" % jstate,
-    print ""
-    for istate in range(nstates):
-        print "%-6d" % istate,
-        for jstate in range(nstates):
-            P = Tij[istate,jstate]
-            if (P >= cutoff):
-                print "%6.3f" % P,
-            else:
-                print "%6s" % "",
-        print ""
-
-    # Estimate second eigenvalue and equilibration time.
-    mu = numpy.linalg.eigvals(Tij)
-    mu = -numpy.sort(-mu) # sort in descending order
-    if (mu[1] >= 1):
-        print "Perron eigenvalue is unity; Markov chain is decomposable."
-    else:
-        print "Perron eigenvalue is %9.5f; state equilibration timescale is ~ %.1f iterations" % (mu[1], 1.0 / (1.0 - mu[1]))
-        
-    return
-
-def show_mixing_statistics(ncfile, cutoff=0.05, nequil=0):
-    """
-    Print summary of mixing statistics.
-
-    ARGUMENTS
-
-    ncfile (netCDF4.Dataset) - NetCDF file
-    
-    OPTIONAL ARGUMENTS
-
-    cutoff (float) - only transition probabilities above 'cutoff' will be printed (default: 0.05)
-    nequil (int) - if specified, only samples nequil:end will be used in analysis (default: 0)
-    
-    """
-    
-    # Get dimensions.
-    niterations = ncfile.variables['states'].shape[0]
-    nstates = ncfile.variables['states'].shape[1]
-
-    # Compute statistics of transitions.
-    Nij = numpy.zeros([nstates,nstates], numpy.float64)
-    for iteration in range(nequil, niterations-1):
-        for ireplica in range(nstates):
-            istate = ncfile.variables['states'][iteration,ireplica]
-            jstate = ncfile.variables['states'][iteration+1,ireplica]
-            Nij[istate,jstate] += 0.5
-            Nij[jstate,istate] += 0.5
-    Tij = numpy.zeros([nstates,nstates], numpy.float64)
-    for istate in range(nstates):
-        Tij[istate,:] = Nij[istate,:] / Nij[istate,:].sum()
-
-    # Print observed transition probabilities.
-    print "Cumulative symmetrized state mixing transition matrix:"
-    print "%6s" % "",
-    for jstate in range(nstates):
-        print "%6d" % jstate,
-    print ""
-    for istate in range(nstates):
-        print "%-6d" % istate,
-        for jstate in range(nstates):
-            P = Tij[istate,jstate]
-            if (P >= cutoff):
-                print "%6.3f" % P,
-            else:
-                print "%6s" % "",
-        print ""
-
-    # Estimate second eigenvalue and equilibration time.
-    mu = numpy.linalg.eigvals(Tij)
-    mu = -numpy.sort(-mu) # sort in descending order
-    if (mu[1] >= 1):
-        print "Perron eigenvalue is unity; Markov chain is decomposable."
-    else:
-        print "Perron eigenvalue is %9.5f; state equilibration timescale is ~ %.1f iterations" % (mu[1], 1.0 / (1.0 - mu[1]))
-        
-    return
 
 def analyze_acceptance_probabilities(ncfile, cutoff = 0.4):
     """Analyze acceptance probabilities.
@@ -542,14 +432,14 @@ def analyze_acceptance_probabilities(ncfile, cutoff = 0.4):
     nstates = ncfile.variables['mixing'].shape[1]
 
     # Compute mean.
-    print "Computing mean of mixing probabilities..."
+    logger.info("Computing mean of mixing probabilities...")
     mixing = ncfile.variables['mixing'][:,:,:]
-    Pij = mean(mixing, 0)
+    Pij = np.mean(mixing, 0)
 
     # Write title.
-    print "Average state-to-state acceptance probabilities"
-    print "(Probabilities less than %(cutoff)f shown as blank.)" % vars()
-    print ""
+    logger.info("Average state-to-state acceptance probabilities")
+    logger.info("(Probabilities less than %(cutoff)f shown as blank.)" % vars())
+    logger.info("")
 
     # Write header.
     print "%4s" % "",
@@ -583,20 +473,20 @@ def check_energies(ncfile, atoms):
     nstates = ncfile.variables['energies'].shape[1]
 
     # Extract energies.
-    print "Reading energies..."
+    logger.info("Reading energies...")
     energies = ncfile.variables['energies']
-    u_kln_replica = zeros([nstates, nstates, niterations], float64)
+    u_kln_replica = np.zeros([nstates, nstates, niterations], np.float64)
     for n in range(niterations):
         u_kln_replica[:,:,n] = energies[n,:,:]
-    print "Done."
+    logger.info("Done.")
 
     # Deconvolute replicas
-    print "Deconvoluting replicas..."
-    u_kln = zeros([nstates, nstates, niterations], float64)
+    logger.info("Deconvoluting replicas...")
+    u_kln = np.zeros([nstates, nstates, niterations], np.float64)
     for iteration in range(niterations):
         state_indices = ncfile.variables['states'][iteration,:]
         u_kln[state_indices,:,iteration] = energies[iteration,:,:]
-    print "Done."
+    logger.info("Done.")
 
     # Show all self-energies
     show_self_energies = False
@@ -609,28 +499,28 @@ def check_energies(ncfile, atoms):
             print ''
 
     # If no energies are 'nan', we're clean.
-    if not any(isnan(energies[:,:,:])):
+    if not any(np.isnan(energies[:,:,:])):
         return
 
     # There are some energies that are 'nan', so check if the first iteration has nans in their *own* energies:
-    u_k = diag(energies[0,:,:])
-    if any(isnan(u_k)):
-        print "First iteration has exploded replicas.  Check to make sure structures are minimized before dynamics"
-        print "Energies for all replicas after equilibration:"
-        print u_k
+    u_k = np.diag(energies[0,:,:])
+    if any(np.isnan(u_k)):
+        logger.info("First iteration has exploded replicas.  Check to make sure structures are minimized before dynamics")
+        logger.info("Energies for all replicas after equilibration:")
+        logger.info(u_k)
         sys.exit(1)
 
     # There are some energies that are 'nan' past the first iteration.  Find the first instances for each replica and write PDB files.
-    first_nan_k = zeros([nstates], int32)
+    first_nan_k = np.zeros([nstates], np.int32)
     for iteration in range(niterations):
         for k in range(nstates):
-            if isnan(energies[iteration,k,k]) and first_nan_k[k]==0:
+            if np.isnan(energies[iteration,k,k]) and first_nan_k[k]==0:
                 first_nan_k[k] = iteration
     if not all(first_nan_k == 0):
-        print "Some replicas exploded during the simulation."
-        print "Iterations where explosions were detected for each replica:"
-        print first_nan_k
-        print "Writing PDB files immediately before explosions were detected..."
+        logger.info("Some replicas exploded during the simulation.")
+        logger.info("Iterations where explosions were detected for each replica:")
+        logger.info(first_nan_k)
+        logger.info("Writing PDB files immediately before explosions were detected...")
         for replica in range(nstates):            
             if (first_nan_k[replica] > 0):
                 state = ncfile.variables['states'][iteration,replica]
@@ -644,7 +534,7 @@ def check_energies(ncfile, atoms):
 
     # There are some energies that are 'nan', but these are energies at foreign lambdas.  We'll just have to be careful with MBAR.
     # Raise a warning.
-    print "WARNING: Some energies at foreign lambdas are 'nan'.  This is recoverable."
+    logger.info("WARNING: Some energies at foreign lambdas are 'nan'.  This is recoverable.")
         
     return
 
@@ -664,15 +554,15 @@ def check_positions(ncfile):
     for iteration in range(niterations):
         for replica in range(nstates):
             # Extract positions
-            positions = array(ncfile.variables['positions'][iteration,replica,:,:])
+            positions = np.array(ncfile.variables['positions'][iteration,replica,:,:])
             # Check for nan
-            if any(isnan(positions)):
+            if any(np.isnan(positions)):
                 # Nan found -- raise error
-                print "Iteration %d, state %d - nan found in positions." % (iteration, replica)
+                logger.info("Iteration %d, state %d - nan found in positions." % (iteration, replica))
                 # Report coordinates
                 for atom_index in range(natoms):
-                    print "%16.3f %16.3f %16.3f" % (positions[atom_index,0], positions[atom_index,1], positions[atom_index,2])
-                    if any(isnan(positions[atom_index,:])):
+                    logger.info("%16.3f %16.3f %16.3f" % (positions[atom_index,0], positions[atom_index,1], positions[atom_index,2]))
+                    if any(np.isnan(positions[atom_index,:])):
                         raise "nan detected in positions"
 
     return
@@ -696,25 +586,25 @@ def estimate_free_energies(ncfile, ndiscard = 0, nuse = None):
     natoms = ncfile.variables['energies'].shape[2]
 
     # Extract energies.
-    print "Reading energies..."
+    logger.info("Reading energies...")
     energies = ncfile.variables['energies']
-    u_kln_replica = zeros([nstates, nstates, niterations], float64)
+    u_kln_replica = np.zeros([nstates, nstates, niterations], np.float64)
     for n in range(niterations):
         u_kln_replica[:,:,n] = energies[n,:,:]
-    print "Done."
+    logger.info("Done.")
 
     # Deconvolute replicas
-    print "Deconvoluting replicas..."
-    u_kln = zeros([nstates, nstates, niterations], float64)
+    logger.info("Deconvoluting replicas...")
+    u_kln = np.zeros([nstates, nstates, niterations], np.float64)
     for iteration in range(niterations):
         state_indices = ncfile.variables['states'][iteration,:]
         u_kln[state_indices,:,iteration] = energies[iteration,:,:]
-    print "Done."
+    logger.info("Done.")
 
     # Compute total negative log probability over all iterations.
-    u_n = zeros([niterations], float64)
+    u_n = np.zeros([niterations], np.float64)
     for iteration in range(niterations):
-        u_n[iteration] = sum(diagonal(u_kln[:,:,iteration]))
+        u_n[iteration] = np.sum(np.diagonal(u_kln[:,:,iteration]))
     #print u_n
 
     # DEBUG
@@ -735,28 +625,28 @@ def estimate_free_energies(ncfile, ndiscard = 0, nuse = None):
         u_n = u_n[0:nuse]
     
     # Subsample data to obtain uncorrelated samples
-    N_k = zeros(nstates, int32)
+    N_k = np.zeros(nstates, np.int32)
     indices = timeseries.subsampleCorrelatedData(u_n) # indices of uncorrelated samples
     #indices = range(0,u_n.size) # DEBUG - assume samples are uncorrelated
     N = len(indices) # number of uncorrelated samples
     N_k[:] = N      
     u_kln[:,:,0:N] = u_kln[:,:,indices]
-    print "number of uncorrelated samples:"
-    print N_k
-    print ""
+    logger.info("number of uncorrelated samples:")
+    logger.info(N_k)
+    logger.info("")
 
     #===================================================================================================
     # Estimate free energy difference with MBAR.
     #===================================================================================================   
    
     # Initialize MBAR (computing free energy estimates, which may take a while)
-    print "Computing free energy differences..."
+    logger.info("Computing free energy differences...")
     mbar = MBAR(u_kln, N_k, verbose = False, method = 'adaptive', maximum_iterations = 50000) # use slow self-consistent-iteration (the default)
     #mbar = MBAR(u_kln, N_k, verbose = False, method = 'self-consistent-iteration', maximum_iterations = 50000) # use slow self-consistent-iteration (the default)
     #mbar = MBAR(u_kln, N_k, verbose = True, method = 'Newton-Raphson') # use faster Newton-Raphson solver
 
     # Get matrix of dimensionless free energy differences and uncertainty estimate.
-    print "Computing covariance matrix..."
+    logger.info("Computing covariance matrix...")
     (Deltaf_ij, dDeltaf_ij) = mbar.getFreeEnergyDifferences(uncertainty_method='svd-ew')
    
 #    # Matrix of free energy differences
@@ -797,25 +687,25 @@ def estimate_enthalpies(ncfile, ndiscard = 0, nuse = None):
     natoms = ncfile.variables['energies'].shape[2]
 
     # Extract energies.
-    print "Reading energies..."
+    logger.info("Reading energies...")
     energies = ncfile.variables['energies']
-    u_kln_replica = zeros([nstates, nstates, niterations], float64)
+    u_kln_replica = np.zeros([nstates, nstates, niterations], np.float64)
     for n in range(niterations):
         u_kln_replica[:,:,n] = energies[n,:,:]
-    print "Done."
+    logger.info("Done.")
 
     # Deconvolute replicas
-    print "Deconvoluting replicas..."
-    u_kln = zeros([nstates, nstates, niterations], float64)
+    logger.info("Deconvoluting replicas...")
+    u_kln = np.zeros([nstates, nstates, niterations], np.float64)
     for iteration in range(niterations):
         state_indices = ncfile.variables['states'][iteration,:]
         u_kln[state_indices,:,iteration] = energies[iteration,:,:]
-    print "Done."
+    logger.info("Done.")
 
     # Compute total negative log probability over all iterations.
-    u_n = zeros([niterations], float64)
+    u_n = np.zeros([niterations], np.float64)
     for iteration in range(niterations):
-        u_n[iteration] = sum(diagonal(u_kln[:,:,iteration]))
+        u_n[iteration] = np.sum(np.diagonal(u_kln[:,:,iteration]))
     #print u_n
 
     # DEBUG
@@ -836,22 +726,22 @@ def estimate_enthalpies(ncfile, ndiscard = 0, nuse = None):
         u_n = u_n[0:nuse]
 
     # Subsample data to obtain uncorrelated samples
-    N_k = zeros(nstates, int32)
+    N_k = np.zeros(nstates, np.int32)
     indices = timeseries.subsampleCorrelatedData(u_n) # indices of uncorrelated samples
     #indices = range(0,u_n.size) # DEBUG - assume samples are uncorrelated
     N = len(indices) # number of uncorrelated samples
     N_k[:] = N      
     u_kln[:,:,0:N] = u_kln[:,:,indices]
-    print "number of uncorrelated samples:"
-    print N_k
-    print ""
+    logger.info("number of uncorrelated samples:")
+    logger.info(N_k)
+    logger.info("")
 
     # Compute average enthalpies.
-    H_k = zeros([nstates], float64) # H_i[i] is estimated enthalpy of state i
-    dH_k = zeros([nstates], float64)
+    H_k = np.zeros([nstates], np.float64) # H_i[i] is estimated enthalpy of state i
+    dH_k = np.zeros([nstates], np.float64)
     for k in range(nstates):
         H_k[k] = u_kln[k,k,:].mean()
-        dH_k[k] = u_kln[k,k,:].std() / sqrt(N)
+        dH_k[k] = u_kln[k,k,:].std() / np.sqrt(N)
 
     return (H_k, dH_k)
 
@@ -867,25 +757,25 @@ def extract_u_n(ncfile):
     natoms = ncfile.variables['energies'].shape[2]
 
     # Extract energies.
-    print "Reading energies..."
+    logger.info("Reading energies...")
     energies = ncfile.variables['energies']
-    u_kln_replica = numpy.zeros([nstates, nstates, niterations], numpy.float64)
+    u_kln_replica = np.zeros([nstates, nstates, niterations], np.float64)
     for n in range(niterations):
         u_kln_replica[:,:,n] = energies[n,:,:]
-    print "Done."
+    logger.info("Done.")
 
     # Deconvolute replicas
-    print "Deconvoluting replicas..."
-    u_kln = numpy.zeros([nstates, nstates, niterations], numpy.float64)
+    logger.info("Deconvoluting replicas...")
+    u_kln = np.zeros([nstates, nstates, niterations], np.float64)
     for iteration in range(niterations):
         state_indices = ncfile.variables['states'][iteration,:]
         u_kln[state_indices,:,iteration] = energies[iteration,:,:]
-    print "Done."
+    logger.info("Done.")
 
     # Compute total negative log probability over all iterations.
-    u_n = numpy.zeros([niterations], numpy.float64)
+    u_n = np.zeros([niterations], np.float64)
     for iteration in range(niterations):
-        u_n[iteration] = numpy.sum(numpy.diagonal(u_kln[:,:,iteration]))
+        u_n[iteration] = np.sum(np.diagonal(u_kln[:,:,iteration]))
 
     return u_n
 
@@ -895,7 +785,7 @@ def detect_equilibration(A_t):
 
     ARGUMENTS
 
-    A_t (numpy.array) - timeseries
+    A_t (np.array) - timeseries
 
     RETURNS
 
@@ -910,8 +800,8 @@ def detect_equilibration(A_t):
     if A_t.std() == 0.0:
         return (0, 1, T)
     
-    g_t = numpy.ones([T-1], numpy.float32)
-    Neff_t = numpy.ones([T-1], numpy.float32)
+    g_t = np.ones([T-1], np.float32)
+    Neff_t = np.ones([T-1], np.float32)
     for t in range(T-1):
         g_t[t] = timeseries.statisticalInefficiency(A_t[t:T])
         Neff_t[t] = (T-t+1) / g_t[t]
@@ -941,7 +831,7 @@ import commands
 molecules = commands.getoutput('ls -1 %s' % data_directory).split()
 for molecule in molecules:
     source_directory = os.path.join(data_directory, molecule)
-    print source_directory
+    logger.info(source_directory)
 
     # Storage for different phases.
     data = dict()
@@ -957,19 +847,19 @@ for molecule in molecules:
         if (not os.path.exists(fullpath)): continue
 
         # Open NetCDF file for reading.
-        print "Opening NetCDF trajectory file '%(fullpath)s' for reading..." % vars()
+        logger.info("Opening NetCDF trajectory file '%(fullpath)s' for reading..." % vars())
         ncfile = netcdf.Dataset(fullpath, 'r')
 
         # DEBUG
-        print "dimensions:"
+        logger.info("dimensions:")
         for dimension_name in ncfile.dimensions.keys():
-            print "%16s %8d" % (dimension_name, len(ncfile.dimensions[dimension_name]))
+            logger.info("%16s %8d" % (dimension_name, len(ncfile.dimensions[dimension_name])))
     
         # Read dimensions.
         niterations = ncfile.variables['positions'].shape[0]
         nstates = ncfile.variables['positions'].shape[1]
         natoms = ncfile.variables['positions'].shape[2]
-        print "Read %(niterations)d iterations, %(nstates)d states" % vars()
+        logger.info("Read %(niterations)d iterations, %(nstates)d states" % vars())
 
 #        # Compute torsion trajectories
 #        if phase in ['complex', 'receptor']:
@@ -1004,7 +894,7 @@ for molecule in molecules:
         #    nequil = 2000 # discard 2 ns of complex simulations
         u_n = extract_u_n(ncfile)
         [nequil, g_t, Neff_max] = detect_equilibration(u_n)
-        print [nequil, Neff_max]
+        logger.info([nequil, Neff_max])
  
         # Examine acceptance probabilities.
         show_mixing_statistics(ncfile, cutoff=0.05, nequil=nequil)
@@ -1020,7 +910,7 @@ for molecule in molecules:
         entry['DeltaF'] = Deltaf_ij[0,nstates-1] 
         entry['dDeltaF'] = dDeltaf_ij[0,nstates-1]
         entry['DeltaH'] = DeltaH_i[nstates-1] - DeltaH_i[0]
-        entry['dDeltaH'] = numpy.sqrt(dDeltaH_i[0]**2 + dDeltaH_i[nstates-1]**2)
+        entry['dDeltaH'] = np.sqrt(dDeltaH_i[0]**2 + dDeltaH_i[nstates-1]**2)
         data[phase] = entry
 
         # Get temperatures.
@@ -1037,13 +927,13 @@ for molecule in molecules:
     if (data.haskey('vacuum') and data.haskey('solvent')):
         # Compute hydration free energy (free energy of transfer from vacuum to water)
         DeltaF = data['vacuum']['DeltaF'] - data['solvent']['DeltaF']
-        dDeltaF = numpy.sqrt(data['vacuum']['dDeltaF']**2 + data['solvent']['dDeltaF']**2)
-        print "Hydration free energy: %.3f +- %.3f kT (%.3f +- %.3f kcal/mol)" % (DeltaF, dDeltaF, DeltaF * kT / units.kilocalories_per_mole, dDeltaF * kT / units.kilocalories_per_mole)
+        dDeltaF = np.sqrt(data['vacuum']['dDeltaF']**2 + data['solvent']['dDeltaF']**2)
+        logger.info("Hydration free energy: %.3f +- %.3f kT (%.3f +- %.3f kcal/mol)" % (DeltaF, dDeltaF, DeltaF * kT / units.kilocalories_per_mole, dDeltaF * kT / units.kilocalories_per_mole))
 
         # Compute enthalpy of transfer from vacuum to water
         DeltaH = data['vacuum']['DeltaH'] - data['solvent']['DeltaH']
-        dDeltaH = numpy.sqrt(data['vacuum']['dDeltaH']**2 + data['solvent']['dDeltaH']**2)
-        print "Enthalpy of hydration: %.3f +- %.3f kT (%.3f +- %.3f kcal/mol)" % (DeltaH, dDeltaH, DeltaH * kT / units.kilocalories_per_mole, dDeltaH * kT / units.kilocalories_per_mole)
+        dDeltaH = np.sqrt(data['vacuum']['dDeltaH']**2 + data['solvent']['dDeltaH']**2)
+        logger.info("Enthalpy of hydration: %.3f +- %.3f kT (%.3f +- %.3f kcal/mol)" % (DeltaH, dDeltaH, DeltaH * kT / units.kilocalories_per_mole, dDeltaH * kT / units.kilocalories_per_mole))
 
     # Read standard state correction free energy.
     DeltaF_restraints = 0.0
@@ -1055,20 +945,20 @@ for molecule in molecules:
     
     # Compute binding free energy (free energy of transfer from vacuum to water)
     DeltaF = data['solvent']['DeltaF'] - DeltaF_restraints - data['complex']['DeltaF']
-    dDeltaF = numpy.sqrt(data['solvent']['dDeltaF']**2 + data['complex']['dDeltaF']**2)
-    print ""
-    print "Binding free energy : %16.3f +- %.3f kT (%16.3f +- %.3f kcal/mol)" % (DeltaF, dDeltaF, DeltaF * kT / units.kilocalories_per_mole, dDeltaF * kT / units.kilocalories_per_mole)
-    print ""
-    print "DeltaG vacuum       : %16.3f +- %.3f kT" % (data['vacuum']['DeltaF'], data['vacuum']['dDeltaF'])
-    print "DeltaG solvent      : %16.3f +- %.3f kT" % (data['solvent']['DeltaF'], data['solvent']['dDeltaF'])
-    print "DeltaG complex      : %16.3f +- %.3f kT" % (data['complex']['DeltaF'], data['complex']['dDeltaF'])
-    print "DeltaG restraint    : %16.3f          kT" % DeltaF_restraints
-    print ""
+    dDeltaF = np.sqrt(data['solvent']['dDeltaF']**2 + data['complex']['dDeltaF']**2)
+    logger.info("")
+    logger.info("Binding free energy : %16.3f +- %.3f kT (%16.3f +- %.3f kcal/mol)" % (DeltaF, dDeltaF, DeltaF * kT / units.kilocalories_per_mole, dDeltaF * kT / units.kilocalories_per_mole))
+    logger.info("")
+    logger.info("DeltaG vacuum       : %16.3f +- %.3f kT" % (data['vacuum']['DeltaF'], data['vacuum']['dDeltaF']))
+    logger.info("DeltaG solvent      : %16.3f +- %.3f kT" % (data['solvent']['DeltaF'], data['solvent']['dDeltaF']))
+    logger.info("DeltaG complex      : %16.3f +- %.3f kT" % (data['complex']['DeltaF'], data['complex']['dDeltaF']))
+    logger.info("DeltaG restraint    : %16.3f          kT" % DeltaF_restraints)
+    logger.info("")
 
     # Compute binding enthalpy
     DeltaH = data['solvent']['DeltaH'] - DeltaF_restraints - data['complex']['DeltaH'] 
-    dDeltaH = numpy.sqrt(data['solvent']['dDeltaH']**2 + data['complex']['dDeltaH']**2)
-    print "Binding enthalpy    : %16.3f +- %.3f kT (%16.3f +- %.3f kcal/mol)" % (DeltaH, dDeltaH, DeltaH * kT / units.kilocalories_per_mole, dDeltaH * kT / units.kilocalories_per_mole)
+    dDeltaH = np.sqrt(data['solvent']['dDeltaH']**2 + data['complex']['dDeltaH']**2)
+    logger.info("Binding enthalpy    : %16.3f +- %.3f kT (%16.3f +- %.3f kcal/mol)" % (DeltaH, dDeltaH, DeltaH * kT / units.kilocalories_per_mole, dDeltaH * kT / units.kilocalories_per_mole))
 
     # Store molecule data.
     molecule_data[molecule] = data
@@ -1091,25 +981,25 @@ sorted_molecules = ['1-methylpyrrole',
                     'phenol',
                     'toluene']
 
-print ""
-print "DeltaG"                                                                           
+logger.info("")
+logger.info("DeltaG")
 for molecule in sorted_molecules:
     try:
         DeltaF = molecule_data[molecule]['solvent']['DeltaF'] - molecule_data[molecule]['DeltaF_restraints'] - molecule_data[molecule]['complex']['DeltaF']
-        dDeltaF = sqrt(molecule_data[molecule]['solvent']['dDeltaF']**2 + molecule_data[molecule]['complex']['dDeltaF']**2)
-        print "%8.3f %8.3f %% %s" % (DeltaF, dDeltaF, molecule)
+        dDeltaF = np.sqrt(molecule_data[molecule]['solvent']['dDeltaF']**2 + molecule_data[molecule]['complex']['dDeltaF']**2)
+        logger.info("%8.3f %8.3f %% %s" % (DeltaF, dDeltaF, molecule))
     except:
-        print "%8.3f %8.3f %% %s" % (0.0, 0.0, molecule)        
+        logger.info("%8.3f %8.3f %% %s" % (0.0, 0.0, molecule))
         pass
 
-print ""
-print "DeltaH"                                                                           
+logger.info("")
+logger.info("DeltaH")                                
 for molecule in sorted_molecules:
     try:
         DeltaH = molecule_data[molecule]['solvent']['DeltaH'] - molecule_data[molecule]['complex']['DeltaH']
-        dDeltaH = sqrt(molecule_data[molecule]['solvent']['dDeltaH']**2 + molecule_data[molecule]['complex']['dDeltaH']**2)
-        print "%8.3f %8.3f %% %s" % (DeltaH, dDeltaH, molecule)
+        dDeltaH = np.sqrt(molecule_data[molecule]['solvent']['dDeltaH']**2 + molecule_data[molecule]['complex']['dDeltaH']**2)
+        logger.info("%8.3f %8.3f %% %s" % (DeltaH, dDeltaH, molecule))
     except:
-        print "%8.3f %8.3f %% %s" % (0.0, 0.0, molecule)                
+        logger.info("%8.3f %8.3f %% %s" % (0.0, 0.0, molecule))
         pass
 
