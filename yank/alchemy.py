@@ -852,7 +852,7 @@ class AbsoluteAlchemicalFactory(object):
         
         return system
 
-    def createPerturbedSystems(self, alchemical_states, verbose=False, mpicomm=None):
+    def createPerturbedSystems(self, alchemical_states, mpicomm=None):
         """
         Create a list of perturbed copies of the system given a specified set of alchemical states.
 
@@ -862,7 +862,6 @@ class AbsoluteAlchemicalFactory(object):
         
         OPTIONAL ARGUMENTS
 
-        verbose (boolean) - if True, will print verbose output
         mpicomm (mpi4py communicator) - if given, will create perturbed system objects in parallel (default: None)
 
         RETURNS
@@ -894,7 +893,7 @@ class AbsoluteAlchemicalFactory(object):
             for state_index in range(mpicomm.rank, nstates, mpicomm.size):
                 alchemical_state = alchemical_states[state_index]
                 logger.debug("node %d / %d : Creating alchemical system %d / %d..." % (mpicomm.rank, mpicomm.size, state_index, len(alchemical_states)))
-                system = self.createPerturbedSystem(alchemical_state, verbose=verbose)
+                system = self.createPerturbedSystem(alchemical_state)
                 local_systems.append(system)
             # Collect System objects from all processors.
             if (mpicomm.rank == 0):
@@ -915,7 +914,7 @@ class AbsoluteAlchemicalFactory(object):
             systems = list()
             for (state_index, alchemical_state) in enumerate(alchemical_states):            
                 logger.debug("Creating alchemical system %d / %d..." % (state_index, len(alchemical_states)))
-                system = self.createPerturbedSystem(alchemical_state, verbose=verbose)
+                system = self.createPerturbedSystem(alchemical_state)
                 systems.append(system)
 
         return systems
