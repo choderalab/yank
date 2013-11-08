@@ -628,7 +628,7 @@ class Yank(object):
                 self.standard_state_correction = 0.0 
         
         factory = AbsoluteAlchemicalFactory(self.complex, ligand_atoms=self.ligand_atoms)
-        systems = factory.createPerturbedSystems(self.complex_protocol, verbose=self.verbose)
+        systems = factory.createPerturbedSystems(self.complex_protocol)
         store_filename = os.path.join(self.output_directory, 'complex.nc')
 
         metadata = dict()
@@ -768,7 +768,7 @@ class Yank(object):
         except Exception as e:        
             # Create states using alchemical factory.
             factory = AbsoluteAlchemicalFactory(self.complex, ligand_atoms=self.ligand_atoms)
-            systems = factory.createPerturbedSystems(self.complex_protocol, verbose=self.verbose, mpicomm=MPI.COMM_WORLD)
+            systems = factory.createPerturbedSystems(self.complex_protocol, mpicomm=MPI.COMM_WORLD)
             resume = False
 
         if this_is_gpu_process:
