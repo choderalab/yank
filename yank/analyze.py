@@ -39,7 +39,7 @@ import numpy as np
 import netCDF4 as netcdf # netcdf4-python
 
 from pymbar import MBAR # multistate Bennett acceptance ratio
-import timeseries # for statistical inefficiency analysis
+from pymbar import timeseries # for statistical inefficiency analysis
 
 import simtk.unit as units
 
@@ -920,7 +920,7 @@ if __name__ == '__main__':
     # Storage for different phases.
     data = dict()
 
-    phases = ['vacuum', 'solvent', 'complex']
+    phases = ['solvent', 'complex']
 
     # Process each netcdf file.
     for phase in phases:
@@ -1006,14 +1006,14 @@ if __name__ == '__main__':
         ncfile.close()
     
     # Compute hydration free energy (free energy of transfer from vacuum to water)
-    DeltaF = data['vacuum']['DeltaF'] - data['solvent']['DeltaF']
-    dDeltaF = np.sqrt(data['vacuum']['dDeltaF']**2 + data['solvent']['dDeltaF']**2)
-    logger.info("Hydration free energy: %.3f +- %.3f kT (%.3f +- %.3f kcal/mol)" % (DeltaF, dDeltaF, DeltaF * kT / units.kilocalories_per_mole, dDeltaF * kT / units.kilocalories_per_mole))
+    #DeltaF = data['vacuum']['DeltaF'] - data['solvent']['DeltaF']
+    #dDeltaF = numpy.sqrt(data['vacuum']['dDeltaF']**2 + data['solvent']['dDeltaF']**2)
+    #print "Hydration free energy: %.3f +- %.3f kT (%.3f +- %.3f kcal/mol)" % (DeltaF, dDeltaF, DeltaF * kT / units.kilocalories_per_mole, dDeltaF * kT / units.kilocalories_per_mole)
 
     # Compute enthalpy of transfer from vacuum to water
-    DeltaH = data['vacuum']['DeltaH'] - data['solvent']['DeltaH']
-    dDeltaH = np.sqrt(data['vacuum']['dDeltaH']**2 + data['solvent']['dDeltaH']**2)
-    logger.info("Enthalpy of hydration: %.3f +- %.3f kT (%.3f +- %.3f kcal/mol)" % (DeltaH, dDeltaH, DeltaH * kT / units.kilocalories_per_mole, dDeltaH * kT / units.kilocalories_per_mole))
+    #DeltaH = data['vacuum']['DeltaH'] - data['solvent']['DeltaH']
+    #dDeltaH = numpy.sqrt(data['vacuum']['dDeltaH']**2 + data['solvent']['dDeltaH']**2)
+    #print "Enthalpy of hydration: %.3f +- %.3f kT (%.3f +- %.3f kcal/mol)" % (DeltaH, dDeltaH, DeltaH * kT / units.kilocalories_per_mole, dDeltaH * kT / units.kilocalories_per_mole)
 
     # Read standard state correction free energy.
     DeltaF_restraints = 0.0

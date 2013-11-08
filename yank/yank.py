@@ -67,9 +67,6 @@ import numpy.random
 import simtk.unit as units
 import simtk.openmm as openmm
 
-import pyopenmm
-
-#from enumerative_factories import AbsoluteAlchemicalFactory
 from alchemy import AbsoluteAlchemicalFactory
 from thermodynamics import ThermodynamicState
 from repex import HamiltonianExchange, ReplicaExchange
@@ -91,7 +88,7 @@ class ModifiedHamiltonianExchange(HamiltonianExchange):
     EXAMPLES
     
     >>> # Create reference system.
-    >>> import simtk.pyopenmm.extras.testsystems as testsystems
+    >>> import testsystems
     >>> [reference_system, coordinates] = testsystems.AlanineDipeptideImplicit()
     >>> # Copy reference system.
     >>> systems = [reference_system for index in range(10)]
@@ -474,14 +471,7 @@ class Yank(object):
         self.randomize_ligand = False
 
         # Create complex and store atom indices.
-        if complex is None:
-            # TODO: We need to strip out solvent from ligand system if it is solvated.
-            if verbose: print "Combining receptor and ligand systems..."
-            self.complex_pyopenmm = pyopenmm.System(self.receptor) + pyopenmm.System(self.ligand) # append ligand atoms to receptor atoms to form System object for complex
-            self.complex = self.complex_pyopenmm.asSwig()
-        else:
-            self.complex = copy.deepcopy(complex)
-            self.complex_pyopenmm = pyopenmm.System(self.complex)
+        self.complex = copy.deepcopy(complex)
 
         # Set up output directory.
         if output_directory is None:
@@ -491,8 +481,8 @@ class Yank(object):
         # DEBUG
         #if self.verbose: print "receptor has %d atoms; ligand has %d atoms" % (self.receptor.getNumParticles(), self.ligand.getNumParticles())
 
-        # Determine whether system is periodic.
-        self.is_periodic = self.complex_pyopenmm.is_periodic
+        # TODO: Determine whether system is periodic.
+        self.is_periodic = False
         
         # Select default protocols for alchemical transformation.
         self.vacuum_protocol = AbsoluteAlchemicalFactory.defaultVacuumProtocol()
@@ -575,24 +565,24 @@ class Yank(object):
         # Set up ligand in vacuum simulation.
         #
 
-        # Remove any implicit solvation forces, if present.
-        vacuum_ligand = pyopenmm.System(self.ligand)
-        for force in vacuum_ligand.forces:
-            if type(force) in pyopenmm.IMPLICIT_SOLVATION_FORCES:
-                vacuum_ligand.removeForce(force)
-        vacuum_ligand = vacuum_ligand.asSwig()
+        # TODO: Remove any implicit solvation forces, if present.
+        #vacuum_ligand = pyopenmm.System(self.ligand)
+        #for force in vacuum_ligand.forces:
+        #    if type(force) in pyopenmm.IMPLICIT_SOLVATION_FORCES:
+        #        vacuum_ligand.removeForce(force)
+        #vacuum_ligand = vacuum_ligand.asSwig()
 
-        if self.verbose: print "Running vacuum simulation..."
-        factory = AbsoluteAlchemicalFactory(vacuum_ligand, ligand_atoms=range(self.ligand.getNumParticles()))
-        systems = factory.createPerturbedSystems(self.vacuum_protocol)
-        store_filename = os.path.join(self.output_directory, 'vacuum.nc')
-        vacuum_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.ligand_coordinates, store_filename, protocol=self.protocol)
-        if self.platform:
-            if self.verbose: print "Using platform '%s'" % self.platform.getName()
-            vacuum_simulation.platform = self.platform
-        else:
-            vacuum_simulation.platform = openmm.Platform.getPlatformByName('Reference')
-        vacuum_simulation.nsteps_per_iteration = 500
+        #if self.verbose: print "Running vacuum simulation..."
+        #factory = AbsoluteAlchemicalFactory(vacuum_ligand, ligand_atoms=range(self.ligand.getNumParticles()))
+        #systems = factory.createPerturbedSystems(self.vacuum_protocol)
+        #store_filename = os.path.join(self.output_directory, 'vacuum.nc')
+        #vacuum_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.ligand_coordinates, store_filename, protocol=self.protocol)
+        #if self.platform:
+        #    if self.verbose: print "Using platform '%s'" % self.platform.getName()
+        #    vacuum_simulation.platform = self.platform
+        #else:
+        #    vacuum_simulation.platform = openmm.Platform.getPlatformByName('Reference')
+        #vacuum_simulation.nsteps_per_iteration = 500
         #vacuum_simulation.run() # DEBUG
         
         # 
@@ -608,7 +598,7 @@ class Yank(object):
             if self.verbose: print "Using platform '%s'" % self.platform.getName()
             solvent_simulation.platform = self.platform
         solvent_simulation.nsteps_per_iteration = 500
-        #solvent_simulation.run() # DEBUG
+        solvent_simulation.run() # DEBUG
         
         #
         # Set up ligand in complex simulation.
@@ -824,19 +814,19 @@ class Yank(object):
 
             # Run ligand in vacuum simulation on CPUs.                        
             # Remove any implicit solvation forces, if present.
-            vacuum_ligand = pyopenmm.System(self.ligand)
-            for force in vacuum_ligand.forces:
-                if type(force) in pyopenmm.IMPLICIT_SOLVATION_FORCES:
-                    vacuum_ligand.removeForce(force)
-            vacuum_ligand = vacuum_ligand.asSwig()
-                
-            factory = AbsoluteAlchemicalFactory(vacuum_ligand, ligand_atoms=range(self.ligand.getNumParticles()))
-            systems = factory.createPerturbedSystems(self.vacuum_protocol)
-            store_filename = os.path.join(self.output_directory, 'vacuum.nc')
-            vacuum_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.ligand_coordinates, store_filename, protocol=self.protocol, mpicomm=comm)
-            vacuum_simulation.platform = openmm.Platform.getPlatformByName(cpu_platform_name)
-            vacuum_simulation.nsteps_per_iteration = 500
-            vacuum_simulation.run() # DEBUG
+            #vacuum_ligand = pyopenmm.System(self.ligand)
+            #for force in vacuum_ligand.forces:
+            #    if type(force) in pyopenmm.IMPLICIT_SOLVATION_FORCES:
+            #        vacuum_ligand.removeForce(force)
+            #vacuum_ligand = vacuum_ligand.asSwig()
+            #    
+            #factory = AbsoluteAlchemicalFactory(vacuum_ligand, ligand_atoms=range(self.ligand.getNumParticles()))
+            #systems = factory.createPerturbedSystems(self.vacuum_protocol)
+            #store_filename = os.path.join(self.output_directory, 'vacuum.nc')
+            #vacuum_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.ligand_coordinates, store_filename, protocol=self.protocol, mpicomm=comm)
+            #vacuum_simulation.platform = openmm.Platform.getPlatformByName(cpu_platform_name)
+            #vacuum_simulation.nsteps_per_iteration = 500
+            #vacuum_simulation.run() # DEBUG
         
 
         # Wait for all nodes to finish.
@@ -897,7 +887,8 @@ class Yank(object):
 
         # Process each netcdf file in output directory.
         source_directory = self.output_directory
-        phases = ['vacuum', 'solvent', 'complex']
+        #phases = ['vacuum', 'solvent', 'complex'] # DEBUG
+        phases = ['solvent', 'complex']
         for phase in phases:
             # Construct full path to NetCDF file.
             fullpath = os.path.join(source_directory, phase + '.nc')
