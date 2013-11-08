@@ -54,14 +54,16 @@ TODO
 # GLOBAL IMPORTS
 #=============================================================================================
 
-import os
-import numpy
+import numpy as np
 import copy
 import time
 
 import simtk.openmm as openmm
 
 from sets import Set
+
+import logging
+logger = logging.getLogger(__name__)
 
 #=============================================================================================
 # AlchemicalState
@@ -646,7 +648,7 @@ class AbsoluteAlchemicalFactory(object):
 
         return custom
 
-    def createPerturbedSystem(self, alchemical_state, mm=None, verbose=False):
+    def createPerturbedSystem(self, alchemical_state, mm=None):
         """
         Create a perturbed copy of the system given the specified alchemical state.
 
@@ -728,7 +730,7 @@ class AbsoluteAlchemicalFactory(object):
 
         # Record timing statistics.
         initial_time = time.time()
-        if verbose: print "Creating alchemically modified intermediate..."
+        logger.debug("Creating alchemically modified intermediate...")
 
         reference_system = self.reference_system
 
@@ -801,7 +803,7 @@ class AbsoluteAlchemicalFactory(object):
             elif isinstance(reference_force, openmm.GBSAOBCForce) and (alchemical_state.ligandElectrostatics != 1.0):
 
                 # Create a CustomNonbondedForce to implement softcore interactions.
-                particle_lambdas = numpy.ones([system.getNumParticles()], numpy.float32)
+                particle_lambdas = np.ones([system.getNumParticles()], np.float32)
                 particle_lambdas[self.ligand_atoms] = alchemical_state.ligandElectrostatics
                 custom_force = AbsoluteAlchemicalFactory._createCustomSoftcoreGBOBC(reference_force, particle_lambdas)
                 system.addForce(custom_force)
@@ -846,7 +848,7 @@ class AbsoluteAlchemicalFactory(object):
         # Record timing statistics.
         final_time = time.time()
         elapsed_time = final_time - initial_time
-        if verbose: print "Elapsed time %.3f s." % (elapsed_time)
+        logger.debug("Elapsed time %.3f s." % (elapsed_time))
         
         return system
 
@@ -891,12 +893,12 @@ class AbsoluteAlchemicalFactory(object):
             local_systems = list()
             for state_index in range(mpicomm.rank, nstates, mpicomm.size):
                 alchemical_state = alchemical_states[state_index]
-                if verbose: print "node %d / %d : Creating alchemical system %d / %d..." % (mpicomm.rank, mpicomm.size, state_index, len(alchemical_states))
+                logger.debug("node %d / %d : Creating alchemical system %d / %d..." % (mpicomm.rank, mpicomm.size, state_index, len(alchemical_states)))
                 system = self.createPerturbedSystem(alchemical_state, verbose=verbose)
                 local_systems.append(system)
             # Collect System objects from all processors.
-            if verbose and (mpicomm.rank == 0): print "Collecting alchemically-modified System objects from all processes..."
-            import time
+            if (mpicomm.rank == 0):
+                logger.debug("Collecting alchemically-modified System objects from all processes...")
             initial_time = time.time()
             gathered_systems = mpicomm.allgather(local_systems)
             systems = list()
@@ -907,11 +909,12 @@ class AbsoluteAlchemicalFactory(object):
             mpicomm.barrier()
             final_time = time.time()
             elapsed_time = final_time - initial_time
-            if verbose and (mpicomm.rank == 0): print "Elapsed time %.3f s." % elapsed_time
+            if (mpicomm.rank == 0):
+                logger.debug("Elapsed time %.3f s." % elapsed_time)
         else:
             systems = list()
             for (state_index, alchemical_state) in enumerate(alchemical_states):            
-                if verbose: print "Creating alchemical system %d / %d..." % (state_index, len(alchemical_states))
+                logger.debug("Creating alchemical system %d / %d..." % (state_index, len(alchemical_states)))
                 system = self.createPerturbedSystem(alchemical_state, verbose=verbose)
                 systems.append(system)
 
