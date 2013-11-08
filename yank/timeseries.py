@@ -66,6 +66,9 @@ import math
 import numpy 
 import numpy.linalg
 
+import logging
+logger = logging.getLogger(__name__)
+
 #=============================================================================================
 # Exception class.
 #=============================================================================================
@@ -298,7 +301,7 @@ def statisticalInefficiencyMultiple(A_kn, fast=True, return_correlation_function
 
     # compute normalized fluctuation correlation function at time t
     C = C / sigma2
-    #print "C[%5d] = %16f (%16f / %16f)" % (t, C, numerator, denominator)    
+    logger.debug("C[%5d] = %16f (%16f / %16f)" % (t, C, numerator, denominator))
 
     # Store estimate of correlation function.
     Ct.append( (t,C) )
@@ -558,7 +561,7 @@ def normalizedFluctuationCorrelationFunctionMultiple(A_kn, B_kn=None, N_max=None
   # Return the computed fluctuation correlation function.
   return C_n
 #=============================================================================================
-def subsampleCorrelatedData(A_t, g=None, fast=True, conservative=False, verbose=False):
+def subsampleCorrelatedData(A_t, g=None, fast=True, conservative=False):
   """Determine the indices of an uncorrelated subsample of the data.
 
   REQUIRED ARGUMENTS  
@@ -570,7 +573,6 @@ def subsampleCorrelatedData(A_t, g=None, fast=True, conservative=False, verbose=
     conservative (logical) - if set to True, uniformly-spaced indices are chosen with interval ceil(g), where
       g is the statistical inefficiency.  Otherwise, indices are chosen non-uniformly with interval of
       approximately g in order to end up with approximately T/g total indices
-    verbose (logical) - if True, some output is printed
 
   RETURNS  
     indices (list of int) - the indices of an uncorrelated subsample of the data
@@ -619,21 +621,19 @@ def subsampleCorrelatedData(A_t, g=None, fast=True, conservative=False, verbose=
 
   # Compute the statistical inefficiency for the timeseries.
   if not g:
-    if verbose: print "Computing statistical inefficiency..."
+    logger.debug("Computing statistical inefficiency...")
     g = statisticalInefficiency(A_t, A_t, fast = fast)
-    if verbose: print "g = %f" % g
+    logger.debug("g = %f" % g)
 
   if conservative:
     # Round g up to determine the stride we can use to pick out regularly-spaced uncorrelated samples.
-    import math
     stride = int(math.ceil(g))
-    if verbose: print "conservative subsampling: using stride of %d" % stride
+    logger.debug("conservative subsampling: using stride of %d" % stride)
     
     # Assemble list of indices of uncorrelated snapshots.
     indices = range(0, T, stride)
   else:
     # Choose indices as floor(n*g), with n = 0,1,2,..., until we run out of data.
-    import math
     indices = []
     n = 0
     while int(round(n*g)) < T:
@@ -642,12 +642,12 @@ def subsampleCorrelatedData(A_t, g=None, fast=True, conservative=False, verbose=
       if (n == 0) or (t != indices[n-1]):
         indices.append(t)
       n += 1
-    if verbose: print "standard subsampling: using average stride of %f" % g
+    logger.debug("standard subsampling: using average stride of %f" % g)
 
   # Number of samples in subsampled timeseries.
   N = len(indices)
   
-  if verbose: print "The resulting subsampled set has %d samples (original timeseries had %d)." % (N, T)
+  logger.debug("The resulting subsampled set has %d samples (original timeseries had %d)." % (N, T))
 
   # Return the list of indices of uncorrelated snapshots.
   return indices

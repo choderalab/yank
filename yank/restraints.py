@@ -48,6 +48,9 @@ import scipy.integrate
 import simtk.unit as units
 import simtk.openmm as openmm
 
+import logging
+logger = logging.getLogger(__name__)
+
 #=============================================================================================
 # MODULE CONSTANTS
 #=============================================================================================
@@ -103,7 +106,7 @@ class ReceptorLigandRestraint(object):
     energy_function = 'restraint_lambda * (K/2) * r^2' # harmonic restraint
     bond_parameter_names = ['K'] # list of bond parameters that appear in energy function above
 
-    def __init__(self, state, system, coordinates, receptor_atoms, ligand_atoms, verbose=False):
+    def __init__(self, state, system, coordinates, receptor_atoms, ligand_atoms):
         """
         Initialize a receptor-ligand restraint class.
 
@@ -116,8 +119,6 @@ class ReceptorLigandRestraint(object):
 
         OPTIONAL ARGUMENTS
 
-        verbose (bool) - if True, will print verbose output
-
         """
 
         self.state = state
@@ -125,8 +126,6 @@ class ReceptorLigandRestraint(object):
         self.coordinates = units.Quantity(numpy.array(coordinates / coordinates.unit), coordinates.unit)
         self.receptor_atoms = list(receptor_atoms)
         self.ligand_atoms = list(ligand_atoms)
-
-        self.verbose = verbose
 
         self.temperature = state.temperature
         self.kT = kB * self.temperature # thermal energy
@@ -136,9 +135,8 @@ class ReceptorLigandRestraint(object):
         self.restrained_receptor_atom = self._closestAtomToCentroid(self.coordinates, self.receptor_atoms)
         self.restrained_ligand_atom = self._closestAtomToCentroid(self.coordinates, self.ligand_atoms) 
         
-        if self.verbose: 
-            print "restrained receptor atom: %d" % self.restrained_receptor_atom
-            print "restrained ligand atom: %d" % self.restrained_ligand_atom
+        logger.debug("restrained receptor atom: %d" % self.restrained_receptor_atom)
+        logger.debug("restrained ligand atom: %d" % self.restrained_ligand_atom)
 
         # Determine parameters
         self.bond_parameters = self._determineBondParameters()
@@ -221,7 +219,6 @@ class ReceptorLigandRestraint(object):
                 
         """
 
-        verbose = False
         r_min = 0 * units.nanometers
         r_max = 100 * units.nanometers # TODO: Use maximum distance between atoms?
 
@@ -261,16 +258,16 @@ class ReceptorLigandRestraint(object):
             return dI
 
         (shell_volume, shell_volume_error) = scipy.integrate.quad(lambda r : integrand(r), r_min / units.nanometers, r_max / units.nanometers) * units.nanometers**3 # integrate shell volume
-        if verbose: print "shell_volume = %f nm^3" % (shell_volume / units.nanometers**3)
+        logger.debug("shell_volume = %f nm^3" % (shell_volume / units.nanometers**3))
         
         # Compute standard-state volume for a single molecule in a box of size (1 L) / (avogadros number)
         liter = 1000.0 * units.centimeters**3 # one liter        
         box_volume = liter / (units.AVOGADRO_CONSTANT_NA*units.mole) # standard state volume
-        if verbose: print "box_volume = %f nm^3" % (box_volume / units.nanometers**3)
+        logger.debug("box_volume = %f nm^3" % (box_volume / units.nanometers**3))
         
         # Compute standard state correction for releasing shell restraints into standard-state box (in units of kT).
         DeltaG = - math.log(box_volume / shell_volume)
-        if verbose: print "Standard state correction: %.3f kT" % DeltaG
+        logger.debug("Standard state correction: %.3f kT" % DeltaG)
         
         # Return standard state correction (in kT).
         return DeltaG
@@ -426,12 +423,12 @@ class FlatBottomReceptorLigandRestraint(ReceptorLigandRestraint):
 
         # Calculate r0, which is a multiple of sigma plus 5 A.
         r0 = 2*sigma + 5.0 * units.angstroms
-        if self.verbose: print "restraint distance r0 = %.1f A" % (r0 / units.angstroms)
+        logger.debug("restraint distance r0 = %.1f A" % (r0 / units.angstroms))
 
         # Set spring constant/
         #K = (2.0 * 0.0083144621 * 5.0 * 298.0 * 100) * units.kilojoules_per_mole/units.nanometers**2
         K = 0.6 * units.kilocalories_per_mole / units.angstroms**2
-        if self.verbose: print "K = %.1f kcal/mol/A^2" % (K / (units.kilocalories_per_mole / units.angstroms**2))
+        logger.debug("K = %.1f kcal/mol/A^2" % (K / (units.kilocalories_per_mole / units.angstroms**2)))
 
         # Assemble parameter vector.
         bond_parameters = [K, r0]

@@ -85,6 +85,9 @@ import simtk
 import simtk.chem.openmm as openmm
 import simtk.unit as units
 
+import logging
+logger = logging.getLogger(__name__)
+
 #=============================================================================================
 # REVISION CONTROL
 #=============================================================================================
@@ -495,7 +498,7 @@ class MonteCarloVolumeMove(MarkovChainMonteCarloMove):
         old_volume = self._volume(state.system.getPeriodicBoxVectors)
         
         for attempt in range(self.nattempts):
-            if verbose: print "MC volume attempt %d / %d" % (attempt, self.nattempts)
+            logger.debug("MC volume attempt %d / %d" % (attempt, self.nattempts))
 
             # Choose volume perturbation.
             DeltaV = 0.0
@@ -545,7 +548,7 @@ class MonteCarloVolumeMove(MarkovChainMonteCarloMove):
                 # Update energy
                 reduced_potential_old = reduced_potential
 
-                if self.verbose: print "rejected"
+                logger.debug("rejected")
             else:
                 # Reject.
 
@@ -556,7 +559,7 @@ class MonteCarloVolumeMove(MarkovChainMonteCarloMove):
                 for iatom in range(state.system.getNumParticles()):
                     positions[i] = old_positions[i]
 
-                if self.verbose: print "accepted"
+                logger.debug("accepted")
 
         return new_positions
 
