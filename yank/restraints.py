@@ -77,7 +77,7 @@ class ReceptorLigandRestraint(object):
     EXAMPLE
         
     >>> # Create a test system.
-    >>> import testsystems
+    >>> from yanktools import testsystems
     >>> system_container = testsystems.LysozymeImplicit()
     >>> (system, positions) = system_container.system, system_container.positions
     >>> # Identify receptor and ligand atoms.
@@ -368,7 +368,7 @@ class FlatBottomReceptorLigandRestraint(ReceptorLigandRestraint):
     EXAMPLE
         
     >>> # Create a test system.
-    >>> import testsystems
+    >>> from yanktools import testsystems
     >>> system_container = testsystems.LysozymeImplicit()
     >>> (system, positions) = system_container.system, system_container.positions
     >>> # Identify receptor and ligand atoms.

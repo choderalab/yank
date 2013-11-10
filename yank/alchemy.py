@@ -116,7 +116,7 @@ class AbsoluteAlchemicalFactory(object):
     Create alchemical intermediates for 'denihilating' one water in a water box.
     
     >>> # Create a reference system.
-    >>> import testsystems
+    >>> from yanktools import testsystems
     >>> system_container = testsystems.WaterBox()
     >>> (reference_system, positions) = system_container.system, system_container.positions
     >>> # Create a factory to produce alchemical intermediates.
@@ -129,7 +129,7 @@ class AbsoluteAlchemicalFactory(object):
     Create alchemical intermediates for 'denihilating' p-xylene in T4 lysozyme L99A in GBSA.
 
     >>> # Create a reference system.
-    >>> import testsystems
+    >>> from yanktools import testsystems
     >>> system_container = testsystems.LysozymeImplicit()
     >>> (reference_system, positions) = system_container.system, system_container.positions
     >>> # Create a factory to produce alchemical intermediates.
@@ -668,7 +668,7 @@ class AbsoluteAlchemicalFactory(object):
         Create alchemical intermediates for 'denihilating' one water in a water box.
         
         >>> # Create a reference system.
-        >>> import testsystems
+        >>> from yanktools import testsystems
         >>> system_container = testsystems.WaterBox()
         >>> (reference_system, positions) = system_container.system, system_container.positions
         >>> # Create a factory to produce alchemical intermediates.
@@ -698,7 +698,7 @@ class AbsoluteAlchemicalFactory(object):
         Create alchemical intermediates for 'denihilating' p-xylene in T4 lysozyme L99A in GBSA.
         
         >>> # Create a reference system.
-        >>> import testsystems
+        >>> from yanktools import testsystems
         >>> system_container = testsystems.LysozymeImplicit()
         >>> (reference_system, positions) = system_container.system, system_container.positions
         >>> # Compute reference potential.
@@ -877,7 +877,7 @@ class AbsoluteAlchemicalFactory(object):
         Create alchemical intermediates for 'denihilating' p-xylene in T4 lysozyme L99A in GBSA.
         
         >>> # Create a reference system.
-        >>> import testsystems
+        >>> from yanktools import testsystems
         >>> system_container = testsystems.LysozymeImplicit()
         >>> (reference_system, positions) = system_container.system, system_container.positions        
         >>> # Create a factory to produce alchemical intermediates.
@@ -941,7 +941,7 @@ class AbsoluteAlchemicalFactory(object):
         Various tests.
         
         >>> # Create a reference system.
-        >>> import testsystems
+        >>> from yanktools import testsystems
         >>> system_container = testsystems.AlanineDipeptideImplicit()
         >>> (reference_system, positions) = system_container.system, system_container.positions                
         >>> # Create a factory.
