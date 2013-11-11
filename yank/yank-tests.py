@@ -158,7 +158,7 @@ if __name__ == "__main__":
     import doctest
     doctest.testmod()
 
-    import repex
+    import oldrepex as repex
     import simtk.pyopenmm.extras.testsystems as testsystems
     import timeseries
     import pymbar

@@ -113,7 +113,7 @@ import simtk.unit as units
 import netCDF4 as netcdf # netcdf4-python is used in place of scipy.io.netcdf for now
 #import tables as hdf5 # HDF5 will be supported in the future
 
-from thermodynamics import ThermodynamicState
+from repex.thermodynamics import ThermodynamicState
 
 #=============================================================================================
 # REVISION CONTROL
