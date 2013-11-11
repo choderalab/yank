@@ -77,14 +77,14 @@ class ReceptorLigandRestraint(object):
     EXAMPLE
         
     >>> # Create a test system.
-    >>> from yanktools import testsystems
+    >>> from repex import testsystems
     >>> system_container = testsystems.LysozymeImplicit()
     >>> (system, positions) = system_container.system, system_container.positions
     >>> # Identify receptor and ligand atoms.
     >>> receptor_atoms = range(0,2603)
     >>> ligand_atoms = range(2603,2621)
     >>> # Construct a reference thermodynamic state.
-    >>> from thermodynamics import ThermodynamicState
+    >>> from repex.thermodynamics import ThermodynamicState
     >>> temperature = 298.0 * units.kelvin
     >>> state = ThermodynamicState(temperature=temperature)
     >>> # Create restraints.
@@ -368,14 +368,14 @@ class FlatBottomReceptorLigandRestraint(ReceptorLigandRestraint):
     EXAMPLE
         
     >>> # Create a test system.
-    >>> from yanktools import testsystems
+    >>> from repex import testsystems
     >>> system_container = testsystems.LysozymeImplicit()
     >>> (system, positions) = system_container.system, system_container.positions
     >>> # Identify receptor and ligand atoms.
     >>> receptor_atoms = range(0,2603)
     >>> ligand_atoms = range(2603,2621)
     >>> # Construct a reference thermodynamic state.
-    >>> from thermodynamics import ThermodynamicState
+    >>> from repex.thermodynamics import ThermodynamicState
     >>> temperature = 298.0 * units.kelvin
     >>> state = ThermodynamicState(temperature=temperature)
     >>> # Create restraints.
