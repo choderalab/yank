@@ -116,8 +116,9 @@ class AbsoluteAlchemicalFactory(object):
     Create alchemical intermediates for 'denihilating' one water in a water box.
     
     >>> # Create a reference system.
-    >>> import testsystems
-    >>> [reference_system, coordinates] = testsystems.WaterBox()
+    >>> from repex import testsystems
+    >>> system_container = testsystems.WaterBox()
+    >>> (reference_system, positions) = system_container.system, system_container.positions
     >>> # Create a factory to produce alchemical intermediates.
     >>> factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=[0, 1, 2])
     >>> # Get the default protocol for 'denihilating' in solvent.
@@ -128,8 +129,9 @@ class AbsoluteAlchemicalFactory(object):
     Create alchemical intermediates for 'denihilating' p-xylene in T4 lysozyme L99A in GBSA.
 
     >>> # Create a reference system.
-    >>> import testsystems
-    >>> [reference_system, coordinates] = testsystems.LysozymeImplicit()
+    >>> from repex import testsystems
+    >>> system_container = testsystems.LysozymeImplicit()
+    >>> (reference_system, positions) = system_container.system, system_container.positions
     >>> # Create a factory to produce alchemical intermediates.
     >>> receptor_atoms = range(0,2603) # T4 lysozyme L99A
     >>> ligand_atoms = range(2603,2621) # p-xylene
@@ -666,8 +668,9 @@ class AbsoluteAlchemicalFactory(object):
         Create alchemical intermediates for 'denihilating' one water in a water box.
         
         >>> # Create a reference system.
-        >>> import testsystems
-        >>> [reference_system, coordinates] = testsystems.WaterBox()
+        >>> from repex import testsystems
+        >>> system_container = testsystems.WaterBox()
+        >>> (reference_system, positions) = system_container.system, system_container.positions
         >>> # Create a factory to produce alchemical intermediates.
         >>> factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=[0, 1, 2])
         >>> # Create an alchemically-perturbed state corresponding to fully-interacting.
@@ -680,12 +683,12 @@ class AbsoluteAlchemicalFactory(object):
         >>> timestep = 1.0 * units.femtosecond
         >>> reference_integrator = openmm.VerletIntegrator(timestep)
         >>> reference_context = openmm.Context(reference_system, reference_integrator)
-        >>> reference_context.setPositions(coordinates)
+        >>> reference_context.setPositions(positions)
         >>> reference_state = reference_context.getState(getEnergy=True)
         >>> reference_potential = reference_state.getPotentialEnergy()
         >>> alchemical_integrator = openmm.VerletIntegrator(timestep)
         >>> alchemical_context = openmm.Context(alchemical_system, alchemical_integrator)
-        >>> alchemical_context.setPositions(coordinates)
+        >>> alchemical_context.setPositions(positions)
         >>> alchemical_state = alchemical_context.getState(getEnergy=True)
         >>> alchemical_potential = alchemical_state.getPotentialEnergy()
         >>> delta = alchemical_potential - reference_potential 
@@ -695,13 +698,14 @@ class AbsoluteAlchemicalFactory(object):
         Create alchemical intermediates for 'denihilating' p-xylene in T4 lysozyme L99A in GBSA.
         
         >>> # Create a reference system.
-        >>> import testsystems
-        >>> [reference_system, coordinates] = testsystems.LysozymeImplicit()
+        >>> from repex import testsystems
+        >>> system_container = testsystems.LysozymeImplicit()
+        >>> (reference_system, positions) = system_container.system, system_container.positions
         >>> # Compute reference potential.
         >>> timestep = 1.0 * units.femtosecond
         >>> reference_integrator = openmm.VerletIntegrator(timestep)
         >>> reference_context = openmm.Context(reference_system, reference_integrator)
-        >>> reference_context.setPositions(coordinates)
+        >>> reference_context.setPositions(positions)
         >>> reference_state = reference_context.getState(getEnergy=True)
         >>> reference_potential = reference_state.getPotentialEnergy()
         >>> # Create a factory to produce alchemical intermediates.
@@ -715,7 +719,7 @@ class AbsoluteAlchemicalFactory(object):
         >>> # Compare energies.        
         >>> alchemical_integrator = openmm.VerletIntegrator(timestep)
         >>> alchemical_context = openmm.Context(alchemical_system, alchemical_integrator)
-        >>> alchemical_context.setPositions(coordinates)
+        >>> alchemical_context.setPositions(positions)
         >>> alchemical_state = alchemical_context.getState(getEnergy=True)
         >>> alchemical_potential = alchemical_state.getPotentialEnergy()
         >>> delta = alchemical_potential - reference_potential 
@@ -873,8 +877,9 @@ class AbsoluteAlchemicalFactory(object):
         Create alchemical intermediates for 'denihilating' p-xylene in T4 lysozyme L99A in GBSA.
         
         >>> # Create a reference system.
-        >>> import testsystems
-        >>> [reference_system, coordinates] = testsystems.LysozymeImplicit()
+        >>> from repex import testsystems
+        >>> system_container = testsystems.LysozymeImplicit()
+        >>> (reference_system, positions) = system_container.system, system_container.positions        
         >>> # Create a factory to produce alchemical intermediates.
         >>> receptor_atoms = range(0,2603) # T4 lysozyme L99A
         >>> ligand_atoms = range(2603,2621) # p-xylene
@@ -936,8 +941,9 @@ class AbsoluteAlchemicalFactory(object):
         Various tests.
         
         >>> # Create a reference system.
-        >>> import testsystems
-        >>> [reference_system, coordinates] = testsystems.AlanineDipeptideImplicit()
+        >>> from repex import testsystems
+        >>> system_container = testsystems.AlanineDipeptideImplicit()
+        >>> (reference_system, positions) = system_container.system, system_container.positions                
         >>> # Create a factory.
         >>> factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=[0, 1, 2])
         >>> factory._is_restraint([0,1,2])

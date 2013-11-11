@@ -68,8 +68,8 @@ import simtk.unit as units
 import simtk.openmm as openmm
 
 from alchemy import AbsoluteAlchemicalFactory
-from thermodynamics import ThermodynamicState
-from repex import HamiltonianExchange, ReplicaExchange
+from repex.thermodynamics import ThermodynamicState
+from oldrepex import HamiltonianExchange, ReplicaExchange
 
 #=============================================================================================
 # Modified Hamiltonian exchange class.
@@ -97,7 +97,7 @@ class ModifiedHamiltonianExchange(HamiltonianExchange):
     >>> file = tempfile.NamedTemporaryFile() # temporary file for testing
     >>> store_filename = file.name
     >>> # Create reference state.
-    >>> from thermodynamics import ThermodynamicState
+    >>> from repex.thermodynamics import ThermodynamicState
     >>> reference_state = ThermodynamicState(reference_system, temperature=298.0*units.kelvin)
     >>> displacement_sigma = 1.0 * units.nanometer
     >>> mc_atoms = range(0, reference_system.getNumParticles())
