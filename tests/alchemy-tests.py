@@ -64,7 +64,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 from alchemy import AlchemicalState, AbsoluteAlchemicalFactory
-from yanktools import testsystems
+from repex import testsystems
 
 #=============================================================================================
 # MAIN AND UNIT TESTS
