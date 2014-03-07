@@ -381,8 +381,8 @@ class ThermodynamicState(object):
         if self.pressure is not None:
             reduced_potential += beta * self.pressure * self._volume(box_vectors) * units.AVOGADRO_CONSTANT_NA
 
-        # Clean up context if requested, or if we're using Cuda (which can only have one active Context at a time).
-        if (not self._cache_context) or (self._context.getPlatform().getName() == 'Cuda'):
+        # Clean up context if requested.
+        if (not self._cache_context):
             self._cleanup_context()
 
         return reduced_potential
@@ -477,8 +477,8 @@ class ThermodynamicState(object):
             if self.pressure is not None:
                 u_k[k] += beta * self.pressure * self._volume(box_vectors_list[k]) * units.AVOGADRO_CONSTANT_NA
 
-        # Clean up context if requested, or if we're using Cuda (which can only have one active Context at a time).
-        if (not self._cache_context) or (self._context.getPlatform().getName() == 'Cuda'):
+        # Clean up context if requested.
+        if (not self._cache_context):
             self._cleanup_context()
 
         return u_k
