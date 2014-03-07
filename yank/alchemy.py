@@ -463,19 +463,26 @@ class AbsoluteAlchemicalFactory(object):
         
         This version uses the new group-based restriction capabilities of CustomNonbondedForce.
 
-        ARGUMENTS
-
-        system (simtk.openmm.System) - system to modify
-        nonbonded_force (implements NonbondedForce API) - the NonbondedForce to modify
-        alchemical_atom_indices (list of int) - atom indices to be alchemically modified
-        alchemical_state (AlchemicalState)
-
-        OPTIONAL ARGUMENTS
-
-        annihilate (boolean) - if True, will annihilate alchemically-modified self-interactions; if False, will decouple
-        alpha (float) - softcore parameter
-        a, b, c (float) - parameters describing softcore force        
-        mm (simtk.openmm implementation) - OpenMM implementation to use
+        Parameters
+        ----------
+        cls : class
+           This class.           
+        system : simtk.openmm.System
+           The system to modify.
+        nonbonded_force : simtk.openmm.NonbondedForce 
+           The nonbonded force to modify.
+        alchemical_atom_indices : list of int
+           Atom indices to be alchemically modified
+        alchemical_state : AlchemicalState
+           The alchemical state defining the perturbation.
+        annihilate : boolean
+           If True, will annihilate alchemically-modified self-interactions; if False, will decouple.
+        alpha : float
+           Softcore parameterK
+        a, b, c : float
+           Parameters describing softcore force (see Shirts paper)
+        mm : simtk.openmm implementation
+           OpenMM implementation to use.
         
         """
 
@@ -581,6 +588,78 @@ class AbsoluteAlchemicalFactory(object):
         return 
 
     @classmethod
+    def _alchemicallyModifyAmoebaVdwForce(cls, system, reference_force, alchemical_atom_indices, alchemical_state, mm=None):
+        """
+        Alchemically modify AmoebaVdwForce term.
+        
+        Parameters
+        ----------
+        cls : class
+           This class.
+        system : simtk.openmm.System
+           The System object to use as a template for generating alchemical intermediates.
+        reference_force : simtk.openmm.AmoebaVdwForce
+           The AmoebaVdwForce term to create a softcore variant of.
+           
+        WARNING
+        -------
+        This version currently ignores exclusions, so should only be used on annihilating single-atom systems.
+
+        """
+
+        # Create a softcore force to add back modulated vdW interactions with alchemically-modified atoms.
+        # Softcore Halgren potential from Eq. 3 of
+        # Shi, Y., Jiao, D., Schnieders, M.J., and Ren, P. (2009). Trypsin-ligand binding free energy calculation with AMOEBA. Conf Proc IEEE Eng Med Biol Soc 2009, 2328-2331.
+        energy_expression = 'lambda^5 * epsilon * (1.07^7 / (0.7*(1-lambda)^2+(rho+0.07)^7)) * (1.12 / (0.7*(1-lambda)^2 + rho^7 + 0.12) - 2);'
+        energy_expression += 'epsilon = 4*epsilon1*epsilon2 / (sqrt(epsilon1) + sqrt(epsilon2))^2;'
+        energy_expression += 'rho = r / R0;'
+        energy_expression += 'R0 = (R01^3 + R02^3) / (R01^2 + R02^2);'
+        energy_expression += 'lambda = vdw_lambda * (ligand1*(1-ligand2) + ligand2*(1-ligand1)) + ligand1*ligand2;'
+        energy_expression += 'vdw_lambda = %f;' % vdw_lambda
+
+        softcore_force = openmm.CustomNonbondedForce(energy_expression)
+        softcore_force.addPerParticleParameter('epsilon')
+        softcore_force.addPerParticleParameter('R0')
+        softcore_force.addPerParticleParameter('ligand')
+
+        for particle_index in range(system.getNumParticles()):
+            # Retrieve parameters from vdW force.
+            [parentIndex, sigma, epsilon, reductionFactor] = reference_force.getParticleParameters(particle_index)   
+            # Add parameters to CustomNonbondedForce.
+            if particle_index in alchemical_atom_indices:
+                softcore_force.addParticle([epsilon, sigma, 1])
+            else:
+                softcore_force.addParticle([epsilon, sigma, 0])
+
+            # Deal with exclusions.
+            excluded_atoms = force.getParticleExclusions(particle_index)
+            for jatom in excluded_atoms:
+                if (particle_index < jatom):
+                    softcore_force.addExclusion(particle_index, jatom)
+
+        # Make sure periodic boundary conditions are treated the same way.
+        if reference_force.getPBC():
+            softcore_force.setNonbondedMethod( openmm.CustomNonbondedForce.CutoffPeriodic )
+        else:
+            softcore_force.setNonbondedMethod( openmm.CustomNonbondedForce.CutoffNonperiodic )
+        softcore_force.setCutoffDistance( force.getCutoff() )
+
+        # Add the softcore force.
+        system.addForce( softcore_force )
+
+        # Turn off vdW interactions for alchemically-modified atoms.
+        for particle_index in alchemical_atom_indices:
+            # Retrieve parameters.
+            [parentIndex, sigma, epsilon, reductionFactor] = force.getParticleParameters(particle_index)
+            epsilon = 1.0e-6 * epsilon # TODO: Can we use zero?
+            force.setParticleParameters(particle_index, parentIndex, sigma, epsilon, reductionFactor)
+
+        # Deal with exceptions here.
+        # TODO
+
+        return 
+
+    @classmethod
     def _createCustomSoftcoreGBOBC(cls, reference_force, particle_lambdas, sasa_model='ACE', mm=None):
         """
         Create a softcore OBC GB force using CustomGBForce.
@@ -649,6 +728,7 @@ class AbsoluteAlchemicalFactory(object):
             custom.addParticle(parameters)
 
         return custom
+
 
     def createPerturbedSystem(self, alchemical_state, mm=None):
         """
@@ -771,6 +851,25 @@ class AbsoluteAlchemicalFactory(object):
                         k *= alchemical_state.ligandTorsions
                     force.addTorsion(particle1, particle2, particle3, particle4, periodicity, phase, k)
                 system.addForce(force)
+
+            elif isinstance(reference_force, openmm.AmoebaMultipoleForce):
+                # AmoebaMultipoleForce
+                force = openmm.AmoebaMultipoleForce
+                for particle_index in self.ligand_atomset:
+                    # Retrieve parameters.
+                    [charge, molecularDipole, molecularQuadrupole, axisType, multipoleAtomZ, multipoleAtomX, multipoleAtomY, thole, dampingFactor, polarizibility] = reference_force.getMultipoleParameters(particle_index)
+                    # Modify parameters.
+                    charge = charge * coulomb_lambda
+                    molecularDipole = coulomb_lambda * numpy.array(molecularDipole)
+                    molecularQuadrupole = coulomb_lambda * numpy.array(molecularQuadrupole)
+                    polarizibility *= coulomb_lambda                
+                    force.addParticle(charge, molecularDipole, molecularQuadrupole, axisType, multipoleAtomZ, multipoleAtomX, multipoleAtomY, thole, dampingFactor, polarizibility)
+                system.addForce(force)
+
+            elif isinstance(reference_force, openmm.AmoebaVdwForce):
+                
+                # Modify AmoebaVdwForce.
+                self._alchemicallyModifyAmoebaVdwForce(system, force, self.ligand_atoms, alchemical_state)                
 
             elif isinstance(reference_force, openmm.NonbondedForce):
 
@@ -971,6 +1070,6 @@ class AbsoluteAlchemicalFactory(object):
 if __name__ == "__main__":
     # Run doctests.
     import doctest
-    doctest.testmod(verbose=False)
+    doctest.testmod(verbose=True)
 
     
