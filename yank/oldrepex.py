@@ -1622,7 +1622,9 @@ class ReplicaExchange(object):
         Print summary of mixing statistics.
 
         """
-
+        # TODO: Replace this with a call to analyze.show_mixing_statistics().
+        # TODO: This code slows down as the number of iterations grows.  Can we speed this up?
+        
         # Only root node can print.
         if self.mpicomm and (self.mpicomm.rank != 0):
             return
@@ -1693,8 +1695,6 @@ class ReplicaExchange(object):
             if self.mpicomm.rank != 0: return
 
         # Open NetCDF 4 file for writing.
-        #ncfile = netcdf.NetCDFFile(self.store_filename, 'w', version=2)
-        #ncfile = netcdf.Dataset(self.store_filename, 'w', version=2)        
         ncfile = netcdf.Dataset(self.store_filename, 'w', version='NETCDF4')
         
         # Create dimensions.
