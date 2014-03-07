@@ -68,7 +68,7 @@ import simtk.unit as units
 import simtk.openmm as openmm
 
 from alchemy import AbsoluteAlchemicalFactory
-from repex.thermodynamics import ThermodynamicState
+from oldrepex import ThermodynamicState
 from oldrepex import HamiltonianExchange, ReplicaExchange
 
 #=============================================================================================
