@@ -1248,5 +1248,8 @@ if __name__ == '__main__':
     # TODO: Print/write results.
     #print results
 
-    
+if __name__ == '__main__':    
+    # Run the driver.
+    import driver
+    driver.driver()
 

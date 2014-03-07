@@ -1,11 +1,27 @@
+#=============================================================================================
+# MODULE DOCSTRING
+#=============================================================================================
+
+"""
+YANK command-line driver
+
+"""
+
+#=============================================================================================
+# GLOBAL IMPORTS
+#=============================================================================================
+
 import yank
 import sys
 
+#=============================================================================================
+# DRIVER
+#=============================================================================================
 
-if __name__ == '__main__':    
+def driver():
     # Initialize command-line argument parser.
 
-    """
+    usage = """
     USAGE
 
     %prog --ligand_prmtop PRMTOP --receptor_prmtop PRMTOP { {--ligand_crd CRD | --ligand_mol2 MOL2} {--receptor_crd CRD | --receptor_pdb PDB} | {--complex_crd CRD | --complex_pdb PDB} } [-v | --verbose] [-i | --iterations ITERATIONS] [-o | --online] [-m | --mpi] [--restraints restraint-type] [--doctests] [--randomize_ligand]
@@ -32,7 +48,7 @@ if __name__ == '__main__':
 
     # Parse command-line arguments.
     from optparse import OptionParser
-    parser = OptionParser()
+    parser = OptionParser(usage=usage)
     parser.add_option("--ligand_prmtop", dest="ligand_prmtop_filename", default=None, help="ligand Amber parameter file", metavar="LIGAND_PRMTOP")
     parser.add_option("--receptor_prmtop", dest="receptor_prmtop_filename", default=None, help="receptor Amber parameter file", metavar="RECEPTOR_PRMTOP")    
     parser.add_option("--ligand_crd", dest="ligand_crd_filename", default=None, help="ligand Amber crd file", metavar="LIGAND_CRD")
@@ -208,3 +224,10 @@ if __name__ == '__main__':
 
     # TODO: Print/write results.
     #print results
+
+#=============================================================================================
+# MAIN
+#=============================================================================================
+
+if __name__ == '__main__':    
+    driver()
