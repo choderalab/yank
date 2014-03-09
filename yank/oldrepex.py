@@ -261,8 +261,6 @@ class ThermodynamicState(object):
         else:
             self._context = self._mm.Context(self.system, self._integrator)
             
-        print "_create_context created a new integrator and context" # DEBUG
-
         return
 
     def _cleanup_context(self):
@@ -637,7 +635,6 @@ class ReplicaExchange(object):
     
     TODO
 
-    * Improve speed of Maxwell-Boltzmann velocity assignment.
     * Replace hard-coded Langevin dynamics with general MCMC moves.
     * Allow parallel resource to be used, if available (likely via Parallel Python).
     * Add support for and autodetection of other NetCDF4 interfaces.
@@ -659,7 +656,6 @@ class ReplicaExchange(object):
     >>> T_min = 298.0 * units.kelvin # minimum temperature
     >>> T_max = 600.0 * units.kelvin # maximum temperature
     >>> T_i = [ T_min + (T_max - T_min) * (math.exp(float(i) / float(nreplicas-1)) - 1.0) / (math.e - 1.0) for i in range(nreplicas) ]
-    >>> from thermodynamics import ThermodynamicState
     >>> states = [ ThermodynamicState(system=system, temperature=T_i[i]) for i in range(nreplicas) ]
     >>> import tempfile
     >>> file = tempfile.NamedTemporaryFile() # use a temporary file for testing -- you will want to keep this file, since it stores output and checkpoint data
@@ -1155,8 +1151,7 @@ class ReplicaExchange(object):
         context.setPositions(positions)
         setpositions_end_time = time.time()
         # Assign Maxwell-Boltzmann velocities.
-        velocities = self._assign_Maxwell_Boltzmann_velocities(state.system, state.temperature) 
-        context.setVelocities(velocities)
+        context.setVelocitiesToTemperature(state.temperature) # TODO: May need to worry about seed for this.
         setvelocities_end_time = time.time()
         # Run dynamics.
         integrator.step(self.nsteps_per_iteration)
@@ -1508,7 +1503,7 @@ class ReplicaExchange(object):
         Nij_accepted = self.Nij_accepted
 
         # Execute inline C code with weave.
-        info = weave.inline(code, ['nstates', 'replica_states', 'u_kl', 'Nij_proposed', 'Nij_accepted'], headers=['<math.h>', '<stdlib.h>'], verbose=2)
+        info = weave.inline(code, ['nstates', 'replica_states', 'u_kl', 'Nij_proposed', 'Nij_accepted'], headers=['<math.h>', '<stdlib.h>'], verbose=False)
 
         # Store results.
         self.replica_states = replica_states
@@ -1716,7 +1711,7 @@ class ReplicaExchange(object):
         setattr(ncfile, 'title', self.title)
         setattr(ncfile, 'application', 'YANK')
         setattr(ncfile, 'program', 'yank.py')
-        setattr(ncfile, 'programVersion', __version__)
+        setattr(ncfile, 'programVersion', 'unknown') # TODO: Include actual version.
         setattr(ncfile, 'Conventions', 'YANK')
         setattr(ncfile, 'ConventionVersion', '0.1')
         
@@ -2126,56 +2121,6 @@ class ReplicaExchange(object):
 
         return
 
-    def _assign_Maxwell_Boltzmann_velocities(self, system, temperature):
-        """
-        Generate Maxwell-Boltzmann velocities.
-
-        ARGUMENTS
-
-        system (simtk.openmm.System) - the system for which velocities are to be assigned
-        temperature (simtk.unit.Quantity with units temperature) - the temperature at which velocities are to be assigned
-
-        RETURN VALUES
-
-        velocities (simtk.unit.Quantity wrapping numpy array of dimension natoms x 3 with units of distance/time) - drawn from the Maxwell-Boltzmann distribution at the appropriate temperature
-
-        """
-
-        # Get number of atoms
-        natoms = system.getNumParticles()
-
-        # Decorate System object with vector of masses for efficiency.
-        if not hasattr(system, 'masses'):
-            masses = simtk.unit.Quantity(numpy.zeros([natoms,3], numpy.float64), units.amu)
-            for atom_index in range(natoms):
-                mass = system.getParticleMass(atom_index) # atomic mass
-                masses[atom_index,:] = mass
-            setattr(system, 'masses', masses)
-
-        # Retrieve masses.
-        masses = getattr(system, 'masses')
-  
-        # Compute thermal energy and velocity scaling factors.
-        kT = kB * temperature # thermal energy
-        sigma2 = kT / masses
-
-        # Assign velocities from the Maxwell-Boltzmann distribution.
-        # TODO: This is wacky because units.sqrt cannot operate on numpy vectors.
-        
-        # NEW (working) CODE
-        velocity_unit = units.nanometers / units.picoseconds
-        velocities = units.Quantity(numpy.sqrt(sigma2 / (velocity_unit**2)) * numpy.random.randn(natoms, 3), velocity_unit)
-        
-        # OLD (broken) CODE
-        #velocities = units.Quantity(numpy.sqrt(sigma2/sigma2.unit) * numpy.random.randn(natoms, 3), units.sqrt(sigma2.unit))
-
-        # DEBUG: Print kinetic energy.
-        #kinetic_energy = units.sum(units.sum(0.5 * masses * velocities**2)) 
-        #print kinetic_energy / units.kilocalories_per_mole
-    
-        # Return velocities
-        return velocities
-
     def _analysis(self):
         """
         Perform online analysis each iteration.
@@ -2209,12 +2154,13 @@ class ReplicaExchange(object):
                 u_kln[state_index,:,iteration] = u_nkl_replica[iteration,replica_index,:]
 
         # Determine optimal equilibration time, statistical inefficiency, and effectively uncorrelated sample indices.
-        import timeseries
-        [equilibration_end, g, Neff_max, indices] = timeseries.detectEquilibration(u_n)
+        from pymbar import timeseries
+        [t0, g, Neff_max] = timeseries.detectEquilibration(u_n)
+        indices = t0 + timeseries.subsampleCorrelatedData(u_n[t0:], g=g) # TODO: This could be computed as part of 'timeseries.detectEquilibration()'
         N_k = indices.size * numpy.ones([nstates], numpy.int32)
 
         # Next, analyze with pymbar, initializing with last estimate of free energies.
-        import pymbar
+        from pymbar import pymbar
         if hasattr(self, 'f_k'):
             mbar = pymbar.MBAR(u_kln[:,:,indices], N_k, f_k_initial=self.f_k)
         else:
@@ -2232,7 +2178,7 @@ class ReplicaExchange(object):
         # Store analysis summary.
         # TODO: Convert this to an object?
         analysis = dict()
-        analysis['equilibration_end'] = equilibration_end
+        analysis['equilibration_end'] = t0
         analysis['g'] = g
         analysis['indices'] = indices
         analysis['Delta_f_ij'] = Delta_f_ij
@@ -2297,8 +2243,9 @@ class ParallelTempering(ReplicaExchange):
     Parallel tempering of alanine dipeptide in implicit solvent.
     
     >>> # Create alanine dipeptide test system.
-    >>> import testsystems
-    >>> [system, positions] = testsystems.AlanineDipeptideImplicit()
+    >>> from repex import testsystems
+    >>> testsystem = testsystems.AlanineDipeptideImplicit()
+    >>> [system, positions] = [testsystem.system, testsystem.positions]
     >>> # Create temporary file for storing output.
     >>> import tempfile
     >>> file = tempfile.NamedTemporaryFile() # temporary file for testing
@@ -2318,8 +2265,9 @@ class ParallelTempering(ReplicaExchange):
     Parallel tempering of alanine dipeptide in explicit solvent at 1 atm.
     
     >>> # Create alanine dipeptide system
-    >>> import testsystems
-    >>> [system, positions] = testsystems.AlanineDipeptideExplicit()
+    >>> from repex import testsystems
+    >>> testsystem = testsystems.AlanineDipeptideExplicit()
+    >>> [system, positions] = [testsystem.system, testsystem.positions]
     >>> # Add Monte Carlo barsostat to system (must be same pressure as simulation).
     >>> import simtk.openmm as openmm
     >>> pressure = 1.0 * units.atmosphere
@@ -2479,8 +2427,9 @@ class HamiltonianExchange(ReplicaExchange):
     EXAMPLES
     
     >>> # Create reference system
-    >>> import testsystems
-    >>> [reference_system, positions] = testsystems.AlanineDipeptideImplicit()
+    >>> from repex import testsystems
+    >>> testsystem = testsystems.AlanineDipeptideImplicit()
+    >>> [reference_system, positions] = [testsystem.system, testsystem.positions]
     >>> # Copy reference system.
     >>> systems = [reference_system for index in range(10)]
     >>> # Create temporary file for storing output.
@@ -2488,7 +2437,6 @@ class HamiltonianExchange(ReplicaExchange):
     >>> file = tempfile.NamedTemporaryFile() # temporary file for testing
     >>> store_filename = file.name
     >>> # Create reference state.
-    >>> from thermodynamics import ThermodynamicState
     >>> reference_state = ThermodynamicState(reference_system, temperature=298.0*units.kelvin)
     >>> # Create simulation.
     >>> simulation = HamiltonianExchange(reference_state, systems, positions, store_filename)

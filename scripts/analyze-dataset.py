@@ -40,7 +40,7 @@ import os.path
 from pymbar import MBAR # multistate Bennett acceptance ratio
 from pymbar import timeseries # for statistical inefficiency analysis
 
-from utils import show_mixing_statistics
+from yank.analyze import show_mixing_statistics
 
 import simtk.unit as units
 

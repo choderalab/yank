@@ -34,7 +34,7 @@ this program.  If not, see <http://www.gnu.org/licenses/>.
 TODO
 
 * Make vacuum calculation optional.
-* Handle complex_coordinates argument in Yank more intelligently if different kinds of input are provided.
+* Handle complex_positions argument in Yank more intelligently if different kinds of input are provided.
   Currently crashes if a Quantity is provided rather than a list of coordinate sets.
 * Add offline analysis facility for easy post-simulation analysis.
 * Store Yank object information in NetCDF file?
@@ -88,8 +88,9 @@ class ModifiedHamiltonianExchange(HamiltonianExchange):
     EXAMPLES
     
     >>> # Create reference system.
-    >>> import testsystems
-    >>> [reference_system, coordinates] = testsystems.AlanineDipeptideImplicit()
+    >>> from repex import testsystems
+    >>> testsystem = testsystems.AlanineDipeptideImplicit()
+    >>> [reference_system, positions] = [testsystem.system, testsystem.positions]
     >>> # Copy reference system.
     >>> systems = [reference_system for index in range(10)]
     >>> # Create temporary file for storing output.
@@ -101,7 +102,7 @@ class ModifiedHamiltonianExchange(HamiltonianExchange):
     >>> reference_state = ThermodynamicState(reference_system, temperature=298.0*units.kelvin)
     >>> displacement_sigma = 1.0 * units.nanometer
     >>> mc_atoms = range(0, reference_system.getNumParticles())
-    >>> simulation = ModifiedHamiltonianExchange(reference_state, systems, coordinates, store_filename, displacement_sigma=displacement_sigma, mc_atoms=mc_atoms)
+    >>> simulation = ModifiedHamiltonianExchange(reference_state, systems, positions, store_filename, displacement_sigma=displacement_sigma, mc_atoms=mc_atoms)
     >>> simulation.number_of_iterations = 2 # set the simulation to only run 2 iterations
     >>> simulation.timestep = 2.0 * units.femtoseconds # set the timestep for integration
     >>> simulation.nsteps_per_iteration = 50 # run 50 timesteps per iteration
@@ -115,7 +116,7 @@ class ModifiedHamiltonianExchange(HamiltonianExchange):
     # Options to store.
     options_to_store = HamiltonianExchange.options_to_store + ['mc_displacement', 'mc_rotation', 'displacement_sigma'] # TODO: Add mc_atoms
 
-    def __init__(self, reference_state, systems, coordinates, store_filename, displacement_sigma=None, mc_atoms=None, protocol=None, mm=None, mpicomm=None, metadata=None):
+    def __init__(self, reference_state, systems, positions, store_filename, displacement_sigma=None, mc_atoms=None, protocol=None, mm=None, mpicomm=None, metadata=None):
         """
         Initialize a modified Hamiltonian exchange simulation object.
 
@@ -123,7 +124,7 @@ class ModifiedHamiltonianExchange(HamiltonianExchange):
 
         reference_state (ThermodynamicState) - reference state containing all thermodynamic parameters except the system, which will be replaced by 'systems'
         systems (list of simtk.openmm.System) - list of systems to simulate (one per replica)
-        coordinates (simtk.unit.Quantity of numpy natoms x 3 with units length) -  coordinates (or a list of coordinates objects) for initial assignment of replicas (will be used in round-robin assignment)
+        positions (simtk.unit.Quantity of numpy natoms x 3 with units length) -  positions (or a list of positions objects) for initial assignment of replicas (will be used in round-robin assignment)
         store_filename (string) - name of NetCDF file to bind to for simulation output and checkpointing
 
         OPTIONAL ARGUMENTS
@@ -151,7 +152,7 @@ class ModifiedHamiltonianExchange(HamiltonianExchange):
         self.rotation_trials_accepted = 0 # number of MC displacement trials accepted        
 
         # Initialize replica-exchange simlulation.
-        HamiltonianExchange.__init__(self, reference_state, systems, coordinates, store_filename, protocol=protocol, mm=mm, mpicomm=mpicomm, metadata=metadata)
+        HamiltonianExchange.__init__(self, reference_state, systems, positions, store_filename, protocol=protocol, mm=mm, mpicomm=mpicomm, metadata=metadata)
 
         # Override title.
         self.title = 'Modified Hamiltonian exchange simulation created using HamiltonianExchange class of repex.py on %s' % time.asctime(time.localtime())
@@ -175,8 +176,6 @@ class ModifiedHamiltonianExchange(HamiltonianExchange):
 
         >>> q = numpy.array([0.1, 0.2, 0.3, -0.4])
         >>> Rq = ModifiedHamiltonianExchange._rotation_matrix_from_quaternion(q)
-        >>> numpy.linalg.norm(Rq, 2)
-        1.0
 
         REFERENCES
 
@@ -212,6 +211,10 @@ class ModifiedHamiltonianExchange(HamiltonianExchange):
         
         TODO: This package might be useful in simplifying: http://www.lfd.uci.edu/~gohlke/code/transformations.py.html
 
+        EXAMPLES
+
+        >>> q = ModifiedHamiltonianExchange._generate_uniform_quaternion()
+
         """
         u = numpy.random.rand(3)
         q = numpy.array([numpy.sqrt(1-u[0])*numpy.sin(2*numpy.pi*u[1]),
@@ -221,27 +224,46 @@ class ModifiedHamiltonianExchange(HamiltonianExchange):
         return q
 
     @classmethod
-    def propose_displacement(cls, displacement_sigma, original_coordinates, mc_atoms):
+    def propose_displacement(cls, displacement_sigma, original_positions, mc_atoms):
         """
-        # Make symmetric Gaussian trial displacement of ligand.
+        Make symmetric Gaussian trial displacement of ligand.
+        
+        EXAMPLES
+        
+        >>> from repex import testsystems 
+        >>> complex = testsystems.LysozymeImplicit()
+        >>> [system, positions] = [complex.system, complex.positions]
+        >>> receptor_atoms = range(0,2603) # T4 lysozyme L99A
+        >>> ligand_atoms = range(2603,2621) # p-xylene
+        >>> displacement_sigma = 5.0 * units.angstroms
+        >>> perturbed_positions = ModifiedHamiltonianExchange.propose_displacement(displacement_sigma, positions, ligand_atoms)
 
         """
-        coordinates_unit = original_coordinates.unit
-        displacement_vector = units.Quantity(numpy.random.randn(3) * (displacement_sigma / coordinates_unit), coordinates_unit)
-        perturbed_coordinates = copy.deepcopy(original_coordinates)
+        positions_unit = original_positions.unit
+        displacement_vector = units.Quantity(numpy.random.randn(3) * (displacement_sigma / positions_unit), positions_unit)
+        perturbed_positions = copy.deepcopy(original_positions)
         for atom_index in mc_atoms:
-            perturbed_coordinates[atom_index,:] += displacement_vector
+            perturbed_positions[atom_index,:] += displacement_vector
         
-        return perturbed_coordinates
+        return perturbed_positions
 
     @classmethod
-    def propose_rotation(cls, original_coordinates, mc_atoms):
+    def propose_rotation(cls, original_positions, mc_atoms):
         """
         Make a uniform rotation.
+        
+        EXAMPLES
+        
+        >>> from repex import testsystems 
+        >>> complex = testsystems.LysozymeImplicit()
+        >>> [system, positions] = [complex.system, complex.positions]
+        >>> receptor_atoms = range(0,2603) # T4 lysozyme L99A
+        >>> ligand_atoms = range(2603,2621) # p-xylene
+        >>> perturbed_positions = ModifiedHamiltonianExchange.propose_rotation(positions, ligand_atoms)
 
         """
-        coordinates_unit = original_coordinates.unit
-        xold = original_coordinates[mc_atoms,:] / coordinates_unit
+        positions_unit = original_positions.unit
+        xold = original_positions[mc_atoms,:] / positions_unit
         x0 = xold.mean(0) # compute center of geometry of atoms to rotate
         # Generate a random quaterionion (uniform element of of SO(3)) using algorithm from:
         q = cls._generate_uniform_quaternion()
@@ -249,21 +271,32 @@ class ModifiedHamiltonianExchange(HamiltonianExchange):
         Rq = cls._rotation_matrix_from_quaternion(q)
         # Apply rotation.
         xnew = (Rq * numpy.matrix(xold - x0).T).T + x0
-        perturbed_coordinates = copy.deepcopy(original_coordinates)
-        perturbed_coordinates[mc_atoms,:] = units.Quantity(xnew, coordinates_unit)
+        perturbed_positions = copy.deepcopy(original_positions)
+        perturbed_positions[mc_atoms,:] = units.Quantity(xnew, positions_unit)
         
-        return perturbed_coordinates
+        return perturbed_positions
 
     @classmethod
-    def randomize_ligand_position(cls, coordinates, receptor_atom_indices, ligand_atom_indices, sigma, close_cutoff):
+    def randomize_ligand_position(cls, positions, receptor_atom_indices, ligand_atom_indices, sigma, close_cutoff):
         """
         Draw a new ligand position with minimal overlap.
+        
+        EXAMPLES
+        
+        >>> from repex import testsystems 
+        >>> complex = testsystems.LysozymeImplicit()
+        >>> [system, positions] = [complex.system, complex.positions]
+        >>> receptor_atoms = range(0,2603) # T4 lysozyme L99A
+        >>> ligand_atoms = range(2603,2621) # p-xylene
+        >>> sigma = 30.0 * units.angstroms
+        >>> close_cutoff = 3.0 * units.angstroms
+        >>> perturbed_positions = ModifiedHamiltonianExchange.randomize_ligand_position(positions, receptor_atoms, ligand_atoms, sigma, close_cutoff)
 
         """
 
-        # Convert to dimensionless coordinates.
-        unit = coordinates.unit
-        x = coordinates / unit
+        # Convert to dimensionless positions.
+        unit = positions.unit
+        x = positions / unit
         
         # Compute ligand center of geometry.
         x0 = x[ligand_atom_indices,:].mean(0)
@@ -301,8 +334,8 @@ class ModifiedHamiltonianExchange(HamiltonianExchange):
                     success = False
             nattempts += 1
             
-        coordinates = units.Quantity(x, unit)            
-        return coordinates
+        positions = units.Quantity(x, unit)            
+        return positions
         
     def _propagate_replica(self, replica_index):
         """
@@ -326,17 +359,17 @@ class ModifiedHamiltonianExchange(HamiltonianExchange):
         # TODO: Break MC displacement and rotation into member functions and write separate unit tests.
         if self.mc_displacement and (self.mc_atoms is not None):
             initial_time = time.time()
-            # Store original coordinates and energy.
-            original_coordinates = self.replica_coordinates[replica_index]
-            u_old = state.reduced_potential(original_coordinates)
+            # Store original positions and energy.
+            original_positions = self.replica_positions[replica_index]
+            u_old = state.reduced_potential(original_positions)
             # Make symmetric Gaussian trial displacement of ligand.
-            perturbed_coordinates = self.propose_displacement(self.displacement_sigma, original_coordinates, self.mc_atoms)
-            u_new = state.reduced_potential(perturbed_coordinates)
+            perturbed_positions = self.propose_displacement(self.displacement_sigma, original_positions, self.mc_atoms)
+            u_new = state.reduced_potential(perturbed_positions)
             # Accept or reject with Metropolis criteria.
             du = u_new - u_old
             if (du <= 0.0) or (numpy.random.rand() < numpy.exp(-du)):
                 self.displacement_trials_accepted += 1
-                self.replica_coordinates[replica_index] = perturbed_coordinates
+                self.replica_positions[replica_index] = perturbed_positions
             #print "translation du = %f (%d)" % (du, self.displacement_trials_accepted)
             # Print timing information.
             final_time = time.time()
@@ -346,16 +379,16 @@ class ModifiedHamiltonianExchange(HamiltonianExchange):
         # Attempt random rotation of ligand.
         if self.mc_rotation and (self.mc_atoms is not None):
             initial_time = time.time()
-            # Store original coordinates and energy.
-            original_coordinates = self.replica_coordinates[replica_index]
-            u_old = state.reduced_potential(original_coordinates)
+            # Store original positions and energy.
+            original_positions = self.replica_positions[replica_index]
+            u_old = state.reduced_potential(original_positions)
             # Compute new potential.
-            perturbed_coordinates = self.propose_rotation(original_coordinates, self.mc_atoms)
-            u_new = state.reduced_potential(perturbed_coordinates)
+            perturbed_positions = self.propose_rotation(original_positions, self.mc_atoms)
+            u_new = state.reduced_potential(perturbed_positions)
             du = u_new - u_old
             if (du <= 0.0) or (numpy.random.rand() < numpy.exp(-du)):
                 self.rotation_trials_accepted += 1
-                self.replica_coordinates[replica_index] = perturbed_coordinates
+                self.replica_positions[replica_index] = perturbed_positions
             #print "rotation du = %f (%d)" % (du, self.rotation_trials_accepted)
             # Accumulate timing information.
             final_time = time.time()
@@ -419,7 +452,7 @@ class Yank(object):
 
     """
 
-    def __init__(self, receptor=None, ligand=None, complex=None, complex_coordinates=None, output_directory=None, verbose=False):
+    def __init__(self, receptor=None, ligand=None, complex=None, complex_positions=None, output_directory=None, verbose=False):
         """
         Create a YANK binding free energy calculation object.
 
@@ -427,7 +460,7 @@ class Yank(object):
         
         receptor (simtk.openmm.System) - the receptor OpenMM system (receptor with implicit solvent forces)
         ligand (simtk.openmm.System) - the ligand OpenMM system (ligand with implicit solvent forces)
-        complex_coordinates (simtk.unit.Quantity of coordinates, or list thereof) - coordinates for the complex to initialize replicas with, either a single snapshot or a list of snapshots
+        complex_positions (simtk.unit.Quantity of positions, or list thereof) - positions for the complex to initialize replicas with, either a single snapshot or a list of snapshots
         output_directory (String) - the output directory to write files (default: current directory)
 
         OPTIONAL ARGUMENTS
@@ -448,8 +481,8 @@ class Yank(object):
         # Check arguments.
         if (receptor is None) or (ligand is None):
             raise Exception("Yank must be initialized with receptor and ligand System objects.")
-        if complex_coordinates is None:
-            raise Exception("Yank must be initialized with at least one set of complex coordinates.")
+        if complex_positions is None:
+            raise Exception("Yank must be initialized with at least one set of complex positions.")
 
         # Mark as not yet initialized.
         self._initialized = False
@@ -501,10 +534,10 @@ class Yank(object):
         # TODO: Replace this by a more sophisticated MCMC move set that includes dynamics for replica propagation.
         self.displacement_sigma = 1.0 * units.nanometers # attempt to displace ligand by this stddev will be made each iteration
 
-        # Store complex coordinates.
+        # Store complex positions.
         # TODO: Make sure each coordinate set is packaged as a numpy array.  For now, we require the user to pass in a list of Quantity objects that contain numpy arrays.
         # TODO: Switch to a special Coordinate object (with box size) to support explicit solvent simulations?
-        self.complex_coordinates = copy.deepcopy(complex_coordinates)
+        self.complex_positions = copy.deepcopy(complex_positions)
 
         # Type of restraints requested.
         #self.restraint_type = 'flat-bottom' # default to a flat-bottom restraint between the ligand and receptor
@@ -523,8 +556,8 @@ class Yank(object):
         if not self.is_periodic:
             self.pressure = None
 
-        # Extract ligand coordinates.
-        self.ligand_coordinates = [ coordinates[self.ligand_atoms,:] for coordinates in self.complex_coordinates ]
+        # Extract ligand positions.
+        self.ligand_positions = [ positions[self.ligand_atoms,:] for positions in self.complex_positions ]
 
         # TODO: Pack up a 'protocol' for modified Hamiltonian exchange simulations. Use this instead in setting up simulations.
         self.protocol = dict()
@@ -576,7 +609,7 @@ class Yank(object):
         #factory = AbsoluteAlchemicalFactory(vacuum_ligand, ligand_atoms=range(self.ligand.getNumParticles()))
         #systems = factory.createPerturbedSystems(self.vacuum_protocol)
         #store_filename = os.path.join(self.output_directory, 'vacuum.nc')
-        #vacuum_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.ligand_coordinates, store_filename, protocol=self.protocol)
+        #vacuum_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.ligand_positions, store_filename, protocol=self.protocol)
         #if self.platform:
         #    if self.verbose: print "Using platform '%s'" % self.platform.getName()
         #    vacuum_simulation.platform = self.platform
@@ -593,7 +626,7 @@ class Yank(object):
         factory = AbsoluteAlchemicalFactory(self.ligand, ligand_atoms=range(self.ligand.getNumParticles()))
         systems = factory.createPerturbedSystems(self.solvent_protocol)
         store_filename = os.path.join(self.output_directory, 'solvent.nc')
-        solvent_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.ligand_coordinates, store_filename, protocol=self.protocol)
+        solvent_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.ligand_positions, store_filename, protocol=self.protocol)
         if self.platform:
             if self.verbose: print "Using platform '%s'" % self.platform.getName()
             solvent_simulation.platform = self.platform
@@ -609,11 +642,11 @@ class Yank(object):
         if not self.is_periodic:
             # Impose restraints to keep the ligand from drifting too far from the protein.
             import restraints
-            reference_coordinates = self.complex_coordinates[0]
+            reference_positions = self.complex_positions[0]
             if self.restraint_type == 'harmonic':
-                restraints = restraints.ReceptorLigandRestraint(reference_state, self.complex, reference_coordinates, self.receptor_atoms, self.ligand_atoms)
+                restraints = restraints.ReceptorLigandRestraint(reference_state, self.complex, reference_positions, self.receptor_atoms, self.ligand_atoms)
             elif self.restraint_type == 'flat-bottom':
-                restraints = restraints.FlatBottomReceptorLigandRestraint(reference_state, self.complex, reference_coordinates, self.receptor_atoms, self.ligand_atoms)
+                restraints = restraints.FlatBottomReceptorLigandRestraint(reference_state, self.complex, reference_positions, self.receptor_atoms, self.ligand_atoms)
             elif self.restraint_type == 'none':
                 restraints = None
             else:
@@ -636,17 +669,17 @@ class Yank(object):
 
         if self.randomize_ligand:
             print "Randomizing ligand positions and excluding overlapping configurations..."
-            randomized_coordinates = list()
+            randomized_positions = list()
             sigma = 20.0 * units.angstrom
             close_cutoff = 3.0 * units.angstrom
             nstates = len(systems)
             for state_index in range(nstates):
-                coordinates = self.complex_coordinates[numpy.random.randint(0, len(self.complex_coordinates))]
-                new_coordinates = ModifiedHamiltonianExchange.randomize_ligand_position(coordinates, self.receptor_atoms, self.ligand_atoms, sigma, close_cutoff)
-                randomized_coordinates.append(new_coordinates)
-            self.complex_coordinates = randomized_coordinates
+                positions = self.complex_positions[numpy.random.randint(0, len(self.complex_positions))]
+                new_positions = ModifiedHamiltonianExchange.randomize_ligand_position(positions, self.receptor_atoms, self.ligand_atoms, sigma, close_cutoff)
+                randomized_positions.append(new_positions)
+            self.complex_positions = randomized_positions
 
-        complex_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.complex_coordinates, store_filename, displacement_sigma=self.displacement_sigma, mc_atoms=self.ligand_atoms, protocol=self.protocol, metadata=metadata)
+        complex_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.complex_positions, store_filename, displacement_sigma=self.displacement_sigma, mc_atoms=self.ligand_atoms, protocol=self.protocol, metadata=metadata)
         complex_simulation.nsteps_per_iteration = 500
         if self.platform:
             if self.verbose: print "Using platform '%s'" % self.platform.getName()
@@ -733,11 +766,11 @@ class Yank(object):
         if not self.is_periodic: 
             # Impose restraints to keep the ligand from drifting too far from the protein.
             import restraints
-            reference_coordinates = self.complex_coordinates[0]
+            reference_positions = self.complex_positions[0]
             if self.restraint_type == 'harmonic':
-                restraints = restraints.ReceptorLigandRestraint(reference_state, self.complex, reference_coordinates, self.receptor_atoms, self.ligand_atoms)
+                restraints = restraints.ReceptorLigandRestraint(reference_state, self.complex, reference_positions, self.receptor_atoms, self.ligand_atoms)
             elif self.restraint_type == 'flat-bottom':
-                restraints = restraints.FlatBottomReceptorLigandRestraint(reference_state, self.complex, reference_coordinates, self.receptor_atoms, self.ligand_atoms)
+                restraints = restraints.FlatBottomReceptorLigandRestraint(reference_state, self.complex, reference_positions, self.receptor_atoms, self.ligand_atoms)
             elif self.restraint_type == 'none':
                 restraints = None
             else:
@@ -780,18 +813,18 @@ class Yank(object):
             metadata['standard_state_correction'] = self.standard_state_correction
 
             if self.randomize_ligand and not resume:
-                randomized_coordinates = list()
+                randomized_positions = list()
                 sigma = 20.0 * units.angstrom
                 close_cutoff = 1.5 * units.angstrom
                 nstates = len(systems)
                 for state_index in range(nstates):
-                    coordinates = self.complex_coordinates[numpy.random.randint(0, len(self.complex_coordinates))]
-                    new_coordinates = ModifiedHamiltonianExchange.randomize_ligand_position(coordinates, self.receptor_atoms, self.ligand_atoms, sigma, close_cutoff)
-                    randomized_coordinates.append(new_coordinates)
-                self.complex_coordinates = randomized_coordinates
+                    positions = self.complex_positions[numpy.random.randint(0, len(self.complex_positions))]
+                    new_positions = ModifiedHamiltonianExchange.randomize_ligand_position(positions, self.receptor_atoms, self.ligand_atoms, sigma, close_cutoff)
+                    randomized_positions.append(new_positions)
+                self.complex_positions = randomized_positions
                 
             # Set up Hamiltonian exchange simulation.
-            complex_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.complex_coordinates, store_filename, displacement_sigma=self.displacement_sigma, mc_atoms=self.ligand_atoms, protocol=self.protocol, mpicomm=comm, metadata=metadata)
+            complex_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.complex_positions, store_filename, displacement_sigma=self.displacement_sigma, mc_atoms=self.ligand_atoms, protocol=self.protocol, mpicomm=comm, metadata=metadata)
             complex_simulation.platform = platform
             complex_simulation.nsteps_per_iteration = 500
             complex_simulation.run()        
@@ -807,7 +840,7 @@ class Yank(object):
             factory = AbsoluteAlchemicalFactory(self.ligand, ligand_atoms=range(self.ligand.getNumParticles()))
             systems = factory.createPerturbedSystems(self.solvent_protocol)
             store_filename = os.path.join(self.output_directory, 'solvent.nc')
-            solvent_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.ligand_coordinates, store_filename, protocol=self.protocol, mpicomm=comm)
+            solvent_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.ligand_positions, store_filename, protocol=self.protocol, mpicomm=comm)
             solvent_simulation.platform = openmm.Platform.getPlatformByName(cpu_platform_name)
             solvent_simulation.nsteps_per_iteration = 500
             solvent_simulation.run() 
@@ -823,7 +856,7 @@ class Yank(object):
             #factory = AbsoluteAlchemicalFactory(vacuum_ligand, ligand_atoms=range(self.ligand.getNumParticles()))
             #systems = factory.createPerturbedSystems(self.vacuum_protocol)
             #store_filename = os.path.join(self.output_directory, 'vacuum.nc')
-            #vacuum_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.ligand_coordinates, store_filename, protocol=self.protocol, mpicomm=comm)
+            #vacuum_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.ligand_positions, store_filename, protocol=self.protocol, mpicomm=comm)
             #vacuum_simulation.platform = openmm.Platform.getPlatformByName(cpu_platform_name)
             #vacuum_simulation.nsteps_per_iteration = 500
             #vacuum_simulation.run() # DEBUG
@@ -876,8 +909,7 @@ class Yank(object):
         """
 
         import analyze
-        import pymbar
-        import timeseries
+        from pymbar import pymbar, timeseries
         import netCDF4 as netcdf
 
         # Storage for results.
@@ -953,7 +985,7 @@ def read_amber_crd(filename, natoms_expected, verbose=False):
 
     RETURNS
 
-    coordinates (numpy-wrapped simtk.unit.Quantity with units of distance) - a single read coordinate set
+    positions (numpy-wrapped simtk.unit.Quantity with units of distance) - a single read coordinate set
 
     TODO
 
@@ -964,17 +996,17 @@ def read_amber_crd(filename, natoms_expected, verbose=False):
 
     if verbose: print "Reading cooordinate sets from '%s'..." % filename
     
-    # Read coordinates.
+    # Read positions.
     import simtk.openmm.app as app
     inpcrd = app.AmberInpcrdFile(filename)
-    coordinates = inpcrd.getPositions(asNumpy=True)   
+    positions = inpcrd.getPositions(asNumpy=True)   
 
     # Check to make sure number of atoms match expectation.
-    natoms = coordinates.shape[0]
+    natoms = positions.shape[0]
     if natoms != natoms_expected:
         raise Exception("Read coordinate set from '%s' that had %d atoms (expected %d)." % (filename, natoms, natoms_expected))
 
-    return coordinates
+    return positions
 
 def read_openeye_crd(filename, natoms_expected, verbose=False):
     """
@@ -987,7 +1019,7 @@ def read_openeye_crd(filename, natoms_expected, verbose=False):
 
     RETURNS
     
-    coordinates_list (list of numpy array of simtk.unit.Quantity) - list of coordinate sets read
+    positions_list (list of numpy array of simtk.unit.Quantity) - list of coordinate sets read
 
     """
 
@@ -996,20 +1028,20 @@ def read_openeye_crd(filename, natoms_expected, verbose=False):
     import openeye.oechem as oe
     imolstream = oe.oemolistream()
     imolstream.open(filename)
-    coordinates_list = list()
+    positions_list = list()
     for molecule in imolstream.GetOEGraphMols():
-        oecoords = molecule.GetCoords() # oecoords[atom_index] is tuple of atom coordinates, in angstroms
+        oecoords = molecule.GetCoords() # oecoords[atom_index] is tuple of atom positions, in angstroms
         natoms = len(oecoords) # number of atoms
         if natoms != natoms_expected:
             raise Exception("Read coordinate set from '%s' that had %d atoms (expected %d)." % (filename, natoms, natoms_expected))
-        coordinates = units.Quantity(numpy.zeros([natoms,3], numpy.float32), units.angstroms) # coordinates[atom_index,dim_index] is coordinates of dim_index dimension of atom atom_index
+        positions = units.Quantity(numpy.zeros([natoms,3], numpy.float32), units.angstroms) # positions[atom_index,dim_index] is positions of dim_index dimension of atom atom_index
         for atom_index in range(natoms):
-            coordinates[atom_index,:] = units.Quantity(numpy.array(oecoords[atom_index]), units.angstroms)
-        coordinates_list.append(coordinates)
+            positions[atom_index,:] = units.Quantity(numpy.array(oecoords[atom_index]), units.angstroms)
+        positions_list.append(positions)
 
-    if verbose: print "%d coordinate sets read." % len(coordinates_list)
+    if verbose: print "%d coordinate sets read." % len(positions_list)
     
-    return coordinates_list
+    return positions_list
 
 def read_pdb_crd(filename, natoms_expected, verbose=False):
     """
@@ -1023,22 +1055,22 @@ def read_pdb_crd(filename, natoms_expected, verbose=False):
 
     RETURNS
 
-    coordinates_list (list of numpy array of simtk.unit.Quantity) - list of coordinate sets read
+    positions_list (list of numpy array of simtk.unit.Quantity) - list of coordinate sets read
 
     """
     import simtk.openmm.app as app
     pdb = app.PDBFile(filename)
-    coordinates_list = pdb.getPositions(asNumpy=True)
-    natoms = coordinates_list.shape[0]
+    positions_list = pdb.getPositions(asNumpy=True)
+    natoms = positions_list.shape[0]
     if natoms != natoms_expected:
         raise Exception("Read coordinate set from '%s' that had %d atoms (expected %d)." % (filename, natoms, natoms_expected))
 
-    # Append if we haven't dumped coordinates yet.
+    # Append if we haven't dumped positions yet.
  #   if (atom_index == natoms_expected):
-  #       coordinates_list.append(copy.deepcopy(coordinates))
+  #       positions_list.append(copy.deepcopy(positions))
 
-    # Return coordinates.
-    return coordinates_list
+    # Return positions.
+    return positions_list
 
 
 if __name__ == '__main__':    
@@ -1109,9 +1141,9 @@ if __name__ == '__main__':
     if not (options.ligand_prmtop_filename and options.receptor_prmtop_filename):
         parser.error("ligand and receptor prmtop files must be specified")        
     if not (bool(options.ligand_mol2_filename) ^ bool(options.ligand_crd_filename) ^ bool(options.complex_pdb_filename) ^ bool(options.complex_crd_filename)):
-        parser.error("Ligand coordinates must be specified through only one of --ligand_crd, --ligand_mol2, --complex_crd, or --complex_pdb.")
+        parser.error("Ligand positions must be specified through only one of --ligand_crd, --ligand_mol2, --complex_crd, or --complex_pdb.")
     if not (bool(options.receptor_pdb_filename) ^ bool(options.receptor_crd_filename) ^ bool(options.complex_pdb_filename) ^ bool(options.complex_crd_filename)):
-        parser.error("Receptor coordinates must be specified through only one of --receptor_crd, --receptor_pdb, --complex_crd, or --complex_pdb.")    
+        parser.error("Receptor positions must be specified through only one of --receptor_crd, --receptor_pdb, --complex_crd, or --complex_pdb.")    
 
     # DEBUG: Require complex prmtop files to be specified while JDC debugs automatic combination of systems.
     if not (options.complex_prmtop_filename):
@@ -1165,50 +1197,50 @@ if __name__ == '__main__':
     natoms_ligand = ligand_system.getNumParticles()
     natoms_complex = natoms_receptor + natoms_ligand
 
-    # Read ligand and receptor coordinates.
-    ligand_coordinates = list()
-    receptor_coordinates = list()
-    complex_coordinates = list()
+    # Read ligand and receptor positions.
+    ligand_positions = list()
+    receptor_positions = list()
+    complex_positions = list()
     if (options.complex_crd_filename or options.complex_pdb_filename):
-        # Read coordinates for whole complex.
+        # Read positions for whole complex.
         if options.complex_crd_filename:
-            coordinates = read_amber_crd(options.complex_crd_filename, natoms_complex, options.verbose)
-            complex_coordinates.append(coordinates)
+            positions = read_amber_crd(options.complex_crd_filename, natoms_complex, options.verbose)
+            complex_positions.append(positions)
         else:
             try:
-                coordinates_list = read_openeye_crd(options.complex_pdb_filename, natoms_complex, options.verbose)
+                positions_list = read_openeye_crd(options.complex_pdb_filename, natoms_complex, options.verbose)
             except:
-                coordinates_list = read_pdb_crd(options.complex_pdb_filename, natoms_complex, options.verbose)
-            complex_coordinates += coordinates_list
+                positions_list = read_pdb_crd(options.complex_pdb_filename, natoms_complex, options.verbose)
+            complex_positions += positions_list
     elif options.ligand_crd_filename:
-        coordinates = read_amber_crd(options.ligand_crd_filename, natoms_ligand, options.verbose)
-        coordinates = units.Quantity(numpy.array(coordinates / coordinates.unit), coordinates.unit)
-        ligand_coordinates.append(coordinates)
+        positions = read_amber_crd(options.ligand_crd_filename, natoms_ligand, options.verbose)
+        positions = units.Quantity(numpy.array(positions / positions.unit), positions.unit)
+        ligand_positions.append(positions)
     elif options.ligand_mol2_filename:
-        coordinates_list = read_openeye_crd(options.ligand_mol2_filename, natoms_ligand, options.verbose)
-        ligand_coordinates += coordinates_list
+        positions_list = read_openeye_crd(options.ligand_mol2_filename, natoms_ligand, options.verbose)
+        ligand_positions += positions_list
     elif options.receptor_crd_filename:
-        coordinates = read_amber_crd(options.receptor_crd_filename, natoms_receptor, options.verbose)
-        coordinates = units.Quantity(numpy.array(coordinates / coordinates.unit), coordinates.unit)
-        receptor_coordinates.append(coordinates)
+        positions = read_amber_crd(options.receptor_crd_filename, natoms_receptor, options.verbose)
+        positions = units.Quantity(numpy.array(positions / positions.unit), positions.unit)
+        receptor_positions.append(positions)
     elif options.receptor_pdb_filename:
         try:
-            coordinates_list = read_openeye_crd(options.receptor_pdb_filename, natoms_receptor, options.verbose)
+            positions_list = read_openeye_crd(options.receptor_pdb_filename, natoms_receptor, options.verbose)
         except:
-            coordinates_list = read_pdb_crd(options.receptor_pdb_filename, natoms_receptor, options.verbose)
-        receptor_coordinates += coordinates_list
+            positions_list = read_pdb_crd(options.receptor_pdb_filename, natoms_receptor, options.verbose)
+        receptor_positions += positions_list
 
-    # Assemble complex coordinates if we haven't read any.
-    if len(complex_coordinates)==0:
-        for x in receptor_coordinates:
-            for y in ligand_coordinates:
+    # Assemble complex positions if we haven't read any.
+    if len(complex_positions)==0:
+        for x in receptor_positions:
+            for y in ligand_positions:
                 z = units.Quantity(numpy.zeros([natoms_complex,3]), units.angstroms)
                 z[0:natoms_receptor,:] = x[:,:]
                 z[natoms_receptor:natoms_complex,:] = y[:,:]
-                complex_coordinates.append(z)
+                complex_positions.append(z)
 
     # Initialize YANK object.
-    yank = Yank(receptor=receptor_system, ligand=ligand_system, complex=complex_system, complex_coordinates=complex_coordinates, output_directory=options.output_directory, verbose=options.verbose)
+    yank = Yank(receptor=receptor_system, ligand=ligand_system, complex=complex_system, complex_positions=complex_positions, output_directory=options.output_directory, verbose=options.verbose)
 
     # Configure YANK object with command-line parameter overrides.
     if options.niterations is not None:
