@@ -1,0 +1,34 @@
+language: c
+install:
+    - sudo apt-get update -qq
+    - sudo apt-get install -qq python-dev python-pip python-yaml g++
+    - sudo apt-get install -qq libpcre3 libpcre3-dev gromacs
+    - sudo apt-get install -qq swig doxygen
+    - sudo pip install conda
+    - sudo conda init
+    - conda create --yes --name test numpy scipy pytables numexpr nose pandas cython statsmodels pandas patsy pyyaml matplotlib pip netCDF4 pyflakes
+    - export PATH="$HOME/envs/test/bin/:$PATH"
+    - pip install -q mdtraj git+git://github.com/rmcgibbo/simtk.unit
+    
+script:
+    - git clone https://github.com/SimTk/openmm.git
+    - cd openmm
+    - cmake -DCMAKE_INSTALL_PREFIX=~/OpenMM .
+    - make
+    - make install
+    - export LD_LIBRARY_PATH=~/OpenMM/lib/
+    - export OPENMM_LIB_PATH=~/OpenMM/lib/
+    - export OPENMM_INCLUDE_PATH=~/OpenMM/include/
+    - cd python
+    - python setup.py install
+    - cd ../../
+    - git clone git@github.com:rmcgibbo/mdtraj.git
+    - cd mdtraj
+    - python setup.py install
+    - cd ..
+    - python setup.py install
+    - nosetests
+    - nosetests tests/test_alchemy.py
+
+after_script:
+    - pyflakes yank/*.py
