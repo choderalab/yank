@@ -31,7 +31,7 @@ import simtk.unit as units
 import netCDF4 as netcdf # netcdf4-python is used in place of scipy.io.netcdf for now
 #import tables as hdf5 # HDF5 will be supported in the future
 
-from thermodynamics import ThermodynamicState
+from oldrepex import ThermodynamicState, ReplicaExchange, HamiltonianExchange, ParallelTempering
 
 #=============================================================================================
 # MODULE CONSTANTS
@@ -77,8 +77,6 @@ def test_velocity_assignment(mpicomm=None, verbose=True):
         store_filename = file.name
 
         # Create repex instance.
-        from repex import ReplicaExchange
-        from thermodynamics import ThermodynamicState
         states = [ ThermodynamicState(system, temperature=temperature) ]
         simulation = ReplicaExchange(states=states, coordinates=coordinates, store_filename=store_filename)
 
@@ -207,7 +205,6 @@ def test_replica_exchange(mpicomm=None, verbose=True):
     mass = 12.0 * units.amu
 
     # Define thermodynamic states.
-    from thermodynamics import ThermodynamicState
     states = list() # thermodynamic states
     sigmas = [0.2, 0.3, 0.4] * units.angstroms # standard deviations: beta K = 1/sigma^2 so K = 1/(beta sigma^2)
     temperatures = [300.0, 350.0, 400.0] * units.kelvin # temperatures
@@ -256,7 +253,6 @@ def test_replica_exchange(mpicomm=None, verbose=True):
     #print "node %d : Storing data in temporary file: %s" % (mpicomm.rank, str(store_filename)) # DEBUG
     
     # Create and configure simulation object.
-    from repex import ReplicaExchange
     simulation = ReplicaExchange(states, seed_positions, store_filename, mpicomm=mpicomm) # initialize the replica-exchange simulation
     simulation.number_of_iterations = 1000 # set the simulation to only run 2 iterations
     simulation.timestep = 2.0 * units.femtoseconds # set the timestep for integration
@@ -381,11 +377,9 @@ def test_hamiltonian_exchange(mpi=None, verbose=True):
     #print "Storing data in temporary file: %s" % str(store_filename)
 
     # Create reference thermodynamic state.
-    from thermodynamics import ThermodynamicState
     reference_state = ThermodynamicState(systems[0], temperature=temperature)
     
     # Create and configure simulation object.
-    from repex import HamiltonianExchange
     simulation = HamiltonianExchange(reference_state, systems, seed_positions, store_filename, mpicomm=mpicomm) # initialize the replica-exchange simulation
     simulation.number_of_iterations = 1000 # set the simulation to only run 2 iterations
     simulation.timestep = 2.0 * units.femtoseconds # set the timestep for integration

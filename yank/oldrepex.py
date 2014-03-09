@@ -261,8 +261,6 @@ class ThermodynamicState(object):
         else:
             self._context = self._mm.Context(self.system, self._integrator)
             
-        print "_create_context created a new integrator and context" # DEBUG
-
         return
 
     def _cleanup_context(self):
@@ -659,7 +657,6 @@ class ReplicaExchange(object):
     >>> T_min = 298.0 * units.kelvin # minimum temperature
     >>> T_max = 600.0 * units.kelvin # maximum temperature
     >>> T_i = [ T_min + (T_max - T_min) * (math.exp(float(i) / float(nreplicas-1)) - 1.0) / (math.e - 1.0) for i in range(nreplicas) ]
-    >>> from thermodynamics import ThermodynamicState
     >>> states = [ ThermodynamicState(system=system, temperature=T_i[i]) for i in range(nreplicas) ]
     >>> import tempfile
     >>> file = tempfile.NamedTemporaryFile() # use a temporary file for testing -- you will want to keep this file, since it stores output and checkpoint data
@@ -2297,8 +2294,9 @@ class ParallelTempering(ReplicaExchange):
     Parallel tempering of alanine dipeptide in implicit solvent.
     
     >>> # Create alanine dipeptide test system.
-    >>> import testsystems
-    >>> [system, positions] = testsystems.AlanineDipeptideImplicit()
+    >>> from repex import testsystems
+    >>> testsystem = testsystems.AlanineDipeptideImplicit()
+    >>> [system, positions] = [testsystem.system, testsystem.positions]
     >>> # Create temporary file for storing output.
     >>> import tempfile
     >>> file = tempfile.NamedTemporaryFile() # temporary file for testing
@@ -2318,8 +2316,9 @@ class ParallelTempering(ReplicaExchange):
     Parallel tempering of alanine dipeptide in explicit solvent at 1 atm.
     
     >>> # Create alanine dipeptide system
-    >>> import testsystems
-    >>> [system, positions] = testsystems.AlanineDipeptideExplicit()
+    >>> from repex import testsystems
+    >>> testsystem = testsystems.AlanineDipeptideExplicit()
+    >>> [system, positions] = [testsystem.system, testsystem.positions]
     >>> # Add Monte Carlo barsostat to system (must be same pressure as simulation).
     >>> import simtk.openmm as openmm
     >>> pressure = 1.0 * units.atmosphere
@@ -2479,8 +2478,9 @@ class HamiltonianExchange(ReplicaExchange):
     EXAMPLES
     
     >>> # Create reference system
-    >>> import testsystems
-    >>> [reference_system, positions] = testsystems.AlanineDipeptideImplicit()
+    >>> from repex import testsystems
+    >>> testsystem = testsystems.AlanineDipeptideImplicit()
+    >>> [reference_system, positions] = [testsystem.system, testsystem.positions]
     >>> # Copy reference system.
     >>> systems = [reference_system for index in range(10)]
     >>> # Create temporary file for storing output.
@@ -2488,7 +2488,6 @@ class HamiltonianExchange(ReplicaExchange):
     >>> file = tempfile.NamedTemporaryFile() # temporary file for testing
     >>> store_filename = file.name
     >>> # Create reference state.
-    >>> from thermodynamics import ThermodynamicState
     >>> reference_state = ThermodynamicState(reference_system, temperature=298.0*units.kelvin)
     >>> # Create simulation.
     >>> simulation = HamiltonianExchange(reference_state, systems, positions, store_filename)
