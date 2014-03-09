@@ -399,6 +399,18 @@ def test_tip3p_with_dispersion():
     alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms)
     logger.info("")
 
+def test_alanine_dipeptide_implicit():
+    """
+    Alanine dipeptide in implicit solvent.
+    """
+    logger.info("Creating alanine dipeptide implicit solvent system...")
+    system_container = testsystems.AlanineDipeptideImplicit()
+    (reference_system, positions) = system_container.system, system_container.positions
+    ligand_atoms = range(0,22) # alanine residue
+    receptor_atoms = list()
+    alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms)
+    logger.info("")
+
 def test_alanine_dipeptide_explicit():
     """
     Alanine dipeptide in explicit solvent.
@@ -411,7 +423,8 @@ def test_alanine_dipeptide_explicit():
     alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms)
     logger.info("")
 
-def test_obcgbsa_complex():
+def tooslow_obcgbsa_complex():
+    # This test is too slow for travis-ci.
     logger.info("Creating T4 lysozyme system...")
     system_container = testsystems.LysozymeImplicit()
     (reference_system, positions) = system_container.system, system_container.positions    
@@ -421,7 +434,8 @@ def test_obcgbsa_complex():
     #benchmark(reference_system, positions, receptor_atoms, ligand_atoms)    
     logger.info("")
 
-def test_src_implicit():
+def tooslow_src_implicit():
+    # This test is too slow for travis-ci.
     # TODO: Replace with Abl + imatinib
     logger.info("Creating Src implicit system...")
     system_container = testsystems.SrcImplicit()
@@ -432,7 +446,8 @@ def test_src_implicit():
     #benchmark(reference_system, positions, receptor_atoms, ligand_atoms)    
     logger.info("")
 
-def test_src_explicit():
+def tooslow_src_explicit():
+    # This test is too slow for travis-ci.
     # TODO: Replace with Abl + imatinib
     logger.info("Creating Src explicit system...")
     system_container = testsystems.SrcExplicit()
