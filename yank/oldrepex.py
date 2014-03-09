@@ -1503,7 +1503,7 @@ class ReplicaExchange(object):
         Nij_accepted = self.Nij_accepted
 
         # Execute inline C code with weave.
-        info = weave.inline(code, ['nstates', 'replica_states', 'u_kl', 'Nij_proposed', 'Nij_accepted'], headers=['<math.h>', '<stdlib.h>'], verbose=2)
+        info = weave.inline(code, ['nstates', 'replica_states', 'u_kl', 'Nij_proposed', 'Nij_accepted'], headers=['<math.h>', '<stdlib.h>'], verbose=False)
 
         # Store results.
         self.replica_states = replica_states
