@@ -81,9 +81,17 @@ MAX_DELTA = 0.01 * kB * temperature # maximum allowable deviation
 # MAIN AND UNIT TESTS
 #=============================================================================================
 
-def compareSystemEnergies(positions, systems, descriptions, platform=None):
+def compareSystemEnergies(positions, systems, descriptions, platform=None, precision=None):
     # Compare energies.
     timestep = 1.0 * units.femtosecond
+
+    if platform:
+        platform_name = platform.getName()
+        if precision:
+            if platform_name == 'CUDA':
+                platform.setDefaultPropertyValue('CudaPrecision', precision)
+            elif platform_name == 'OpenCL':
+                platform.setDefaultPropertyValue('OpenCLPrecision', precision)
     
     potentials = list()
     for system in systems:
@@ -92,6 +100,7 @@ def compareSystemEnergies(positions, systems, descriptions, platform=None):
             context = openmm.Context(system, integrator, platform)
         else:
             context = openmm.Context(system, integrator)
+
         context.setPositions(positions)
         state = context.getState(getEnergy=True)
         potential = state.getPotentialEnergy()    
