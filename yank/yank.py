@@ -176,8 +176,6 @@ class ModifiedHamiltonianExchange(HamiltonianExchange):
 
         >>> q = numpy.array([0.1, 0.2, 0.3, -0.4])
         >>> Rq = ModifiedHamiltonianExchange._rotation_matrix_from_quaternion(q)
-        >>> numpy.linalg.norm(Rq, 2)
-        1.0
 
         REFERENCES
 
@@ -213,6 +211,10 @@ class ModifiedHamiltonianExchange(HamiltonianExchange):
         
         TODO: This package might be useful in simplifying: http://www.lfd.uci.edu/~gohlke/code/transformations.py.html
 
+        EXAMPLES
+
+        >>> q = ModifiedHamiltonianExchange._generate_uniform_quaternion()
+
         """
         u = numpy.random.rand(3)
         q = numpy.array([numpy.sqrt(1-u[0])*numpy.sin(2*numpy.pi*u[1]),
@@ -224,7 +226,17 @@ class ModifiedHamiltonianExchange(HamiltonianExchange):
     @classmethod
     def propose_displacement(cls, displacement_sigma, original_positions, mc_atoms):
         """
-        # Make symmetric Gaussian trial displacement of ligand.
+        Make symmetric Gaussian trial displacement of ligand.
+        
+        EXAMPLES
+        
+        >>> from repex import testsystems 
+        >>> complex = testsystems.LysozymeImplicit()
+        >>> [system, positions] = [complex.system, complex.positions]
+        >>> receptor_atoms = range(0,2603) # T4 lysozyme L99A
+        >>> ligand_atoms = range(2603,2621) # p-xylene
+        >>> displacement_sigma = 5.0 * units.angstroms
+        >>> perturbed_positions = ModifiedHamiltonianExchange.propose_displacement(displacement_sigma, positions, ligand_atoms)
 
         """
         positions_unit = original_positions.unit
@@ -239,6 +251,15 @@ class ModifiedHamiltonianExchange(HamiltonianExchange):
     def propose_rotation(cls, original_positions, mc_atoms):
         """
         Make a uniform rotation.
+        
+        EXAMPLES
+        
+        >>> from repex import testsystems 
+        >>> complex = testsystems.LysozymeImplicit()
+        >>> [system, positions] = [complex.system, complex.positions]
+        >>> receptor_atoms = range(0,2603) # T4 lysozyme L99A
+        >>> ligand_atoms = range(2603,2621) # p-xylene
+        >>> perturbed_positions = ModifiedHamiltonianExchange.propose_rotation(positions, ligand_atoms)
 
         """
         positions_unit = original_positions.unit
@@ -259,6 +280,17 @@ class ModifiedHamiltonianExchange(HamiltonianExchange):
     def randomize_ligand_position(cls, positions, receptor_atom_indices, ligand_atom_indices, sigma, close_cutoff):
         """
         Draw a new ligand position with minimal overlap.
+        
+        EXAMPLES
+        
+        >>> from repex import testsystems 
+        >>> complex = testsystems.LysozymeImplicit()
+        >>> [system, positions] = [complex.system, complex.positions]
+        >>> receptor_atoms = range(0,2603) # T4 lysozyme L99A
+        >>> ligand_atoms = range(2603,2621) # p-xylene
+        >>> sigma = 30.0 * units.angstroms
+        >>> close_cutoff = 3.0 * units.angstroms
+        >>> perturbed_positions = ModifiedHamiltonianExchange.randomize_ligand_position(positions, receptor_atoms, ligand_atoms, sigma, close_cutoff)
 
         """
 
