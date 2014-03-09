@@ -84,7 +84,7 @@ def buildKeywordDictionary():
     from distutils.core import Extension
     setupKeywords = {}
     setupKeywords["name"]              = "yank"
-    setupKeywords["version"]           = "2.0.1-beta"
+    setupKeywords["version"]           = "0.1-alpha"
     setupKeywords["author"]            = "Michael R. Shirts and John D. Chodera"
     setupKeywords["author_email"]      = "michael.shirts@virginia.edu, choderaj@mskcc.org"
     setupKeywords["license"]           = "GPL 2.0"

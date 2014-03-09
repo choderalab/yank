@@ -748,26 +748,9 @@ class AbsoluteAlchemicalFactory(object):
         >>> # Create a factory to produce alchemical intermediates.
         >>> factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=[0, 1, 2])
         >>> # Create an alchemically-perturbed state corresponding to fully-interacting.
-        >>> alchemical_state = AlchemicalState(0.00, 1.00, 1.00, 1.)
+        >>> alchemical_state = AlchemicalState(0.00, 1.00, 1.00, 1.00)
         >>> # Create the perturbed system.
         >>> alchemical_system = factory.createPerturbedSystem(alchemical_state)
-        >>> # Compare energies.
-        >>> import simtk.openmm as openmm
-        >>> import simtk.unit as units
-        >>> timestep = 1.0 * units.femtosecond
-        >>> reference_integrator = openmm.VerletIntegrator(timestep)
-        >>> reference_context = openmm.Context(reference_system, reference_integrator)
-        >>> reference_context.setPositions(positions)
-        >>> reference_state = reference_context.getState(getEnergy=True)
-        >>> reference_potential = reference_state.getPotentialEnergy()
-        >>> alchemical_integrator = openmm.VerletIntegrator(timestep)
-        >>> alchemical_context = openmm.Context(alchemical_system, alchemical_integrator)
-        >>> alchemical_context.setPositions(positions)
-        >>> alchemical_state = alchemical_context.getState(getEnergy=True)
-        >>> alchemical_potential = alchemical_state.getPotentialEnergy()
-        >>> delta = alchemical_potential - reference_potential 
-        >>> print delta
-        0.0 kJ/mol
         
         Create alchemical intermediates for 'denihilating' p-xylene in T4 lysozyme L99A in GBSA.
         
@@ -775,13 +758,6 @@ class AbsoluteAlchemicalFactory(object):
         >>> from repex import testsystems
         >>> complex = testsystems.LysozymeImplicit()
         >>> [reference_system, positions] = [complex.system, complex.positions]
-        >>> # Compute reference potential.
-        >>> timestep = 1.0 * units.femtosecond
-        >>> reference_integrator = openmm.VerletIntegrator(timestep)
-        >>> reference_context = openmm.Context(reference_system, reference_integrator)
-        >>> reference_context.setPositions(positions)
-        >>> reference_state = reference_context.getState(getEnergy=True)
-        >>> reference_potential = reference_state.getPotentialEnergy()
         >>> # Create a factory to produce alchemical intermediates.
         >>> receptor_atoms = range(0,2603) # T4 lysozyme L99A
         >>> ligand_atoms = range(2603,2621) # p-xylene
@@ -790,15 +766,6 @@ class AbsoluteAlchemicalFactory(object):
         >>> alchemical_state = AlchemicalState(0.00, 1.00, 1.00, 1.)
         >>> # Create the perturbed systems using this protocol.
         >>> alchemical_system = factory.createPerturbedSystem(alchemical_state)
-        >>> # Compare energies.        
-        >>> alchemical_integrator = openmm.VerletIntegrator(timestep)
-        >>> alchemical_context = openmm.Context(alchemical_system, alchemical_integrator)
-        >>> alchemical_context.setPositions(positions)
-        >>> alchemical_state = alchemical_context.getState(getEnergy=True)
-        >>> alchemical_potential = alchemical_state.getPotentialEnergy()
-        >>> delta = alchemical_potential - reference_potential 
-        >>> print delta
-        0.0 kJ/mol
 
         NOTES
 
@@ -1073,14 +1040,3 @@ class AbsoluteAlchemicalFactory(object):
             return True
 
         return False        
-
-#=============================================================================================
-# MAIN
-#=============================================================================================
-
-if __name__ == "__main__":
-    # Run doctests.
-    import doctest
-    doctest.testmod(verbose=True)
-
-    

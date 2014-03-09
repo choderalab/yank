@@ -69,6 +69,14 @@ from yank import alchemy
 from alchemy import AlchemicalState, AbsoluteAlchemicalFactory
 
 #=============================================================================================
+# CONSTANTS
+#=============================================================================================
+
+kB = units.BOLTZMANN_CONSTANT_kB * units.AVOGADRO_CONSTANT_NA # Boltzmann constant
+temperature = 300.0 * units.kelvin # reference temperature
+MAX_DELTA = 0.01 * kB * temperature # maximum allowable deviation
+
+#=============================================================================================
 # MAIN AND UNIT TESTS
 #=============================================================================================
 
@@ -94,6 +102,8 @@ def compareSystemEnergies(positions, systems, descriptions, platform=None):
         if (i > 0):
             delta = potentials[i] - potentials[0]
             logger.info("%32s : %24.8f kcal/mol" % ('ERROR', delta / units.kilocalories_per_mole))
+            if (abs(delta) > MAX_DELTA):
+                raise Exception("Maximum allowable deviation (%24.8f kcal/mol) exceeded; test failed." % (MAX_DELTA / units.kilocalories_per_mole))
 
     return potentials
 
@@ -354,7 +364,7 @@ def test_intermediates():
     receptor_atoms = range(0,2603) # T4 lysozyme L99A
     ligand_atoms = range(2603,2621) # p-xylene
     testAlchemicalFactory(reference_system, positions, receptor_atoms, ligand_atoms)    
-    benchmark(reference_system, positions, receptor_atoms, ligand_atoms)    
+    #benchmark(reference_system, positions, receptor_atoms, ligand_atoms)    
     logger.info("")
 
     logger.info("Creating Lennard-Jones fluid system without dispersion correction...")
@@ -371,7 +381,7 @@ def test_intermediates():
     ligand_atoms = range(0,1) # first atom
     receptor_atoms = range(2,3) # second atom
     testAlchemicalFactory(reference_system, positions, receptor_atoms, ligand_atoms)
-    benchmark(reference_system, positions, receptor_atoms, ligand_atoms)    
+    #benchmark(reference_system, positions, receptor_atoms, ligand_atoms)    
     logger.info("")
 
     logger.info("Creating Lennard-Jones cluster...")
@@ -389,7 +399,7 @@ def test_intermediates():
     ligand_atoms = range(0,4) # methyl group
     receptor_atoms = range(4,22) # rest of system
     testAlchemicalFactory(reference_system, positions, receptor_atoms, ligand_atoms)
-    benchmark(reference_system, positions, receptor_atoms, ligand_atoms)    
+    #benchmark(reference_system, positions, receptor_atoms, ligand_atoms)    
     logger.info("")
 
     logger.info("Creating alanine dipeptide explicit system...")
@@ -398,11 +408,12 @@ def test_intermediates():
     ligand_atoms = range(0,22) # alanine residue
     receptor_atoms = range(22,25) # one water
     testAlchemicalFactory(reference_system, positions, receptor_atoms, ligand_atoms)
-    benchmark(reference_system, positions, receptor_atoms, ligand_atoms)    
+    #benchmark(reference_system, positions, receptor_atoms, ligand_atoms)    
     logger.info("")
 
     logger.info("Creating alanine dipeptide explicit system without dispersion correction...")
-    forces = { reference_system.getForce(index).__class__.__name__ : reference_system.getForce(index) for index in range(reference_system.getNumForces()) } # requires Python 2.7 features
+    #forces = { reference_system.getForce(index).__class__.__name__ : reference_system.getForce(index)) for index in range(reference_system.getNumForces()) } # requires Python 2.7 features
+    forces = dict( (reference_system.getForce(index).__class__.__name__,  reference_system.getForce(index)) for index in range(reference_system.getNumForces()) ) # python 2.6 compatible
     forces['NonbondedForce'].setUseDispersionCorrection(False) # turn off dispersion correction
     ligand_atoms = range(0,22) # alanine residue
     receptor_atoms = range(22,25) # one water
