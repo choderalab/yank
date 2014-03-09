@@ -9,7 +9,7 @@ install:
     - conda config --add channels http://conda.binstar.org/rmcgibbo
     - conda create --yes --name test numpy scipy pytables numexpr nose pandas cython statsmodels pandas patsy pyyaml pip netCDF4 pyflakes openmm
     - export PATH="$HOME/envs/test/bin/:$PATH"
-    - pip install pymbar
+    - pip install pymbar==2.0.1-beta
     - pip install -q mdtraj git+git://github.com/rmcgibbo/simtk.unit
     
 script:
