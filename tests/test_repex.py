@@ -226,7 +226,7 @@ def test_replica_exchange(mpicomm=None, verbose=True):
     if verbose: print "PASSED."
     return 
 
-def test_hamiltonian_exchange(mpi=None, verbose=True):
+def test_hamiltonian_exchange(mpicomm=None, verbose=True):
     """
     Test that free energies and avergae potential energies of a 3D harmonic oscillator are correctly computed
     when running HamiltonianExchange.
