@@ -9,7 +9,7 @@ import os
 import subprocess
 
 ##########################
-VERSION = "0.9.9"
+VERSION = "0.1.0"
 ISRELEASED = False
 __version__ = VERSION
 ##########################
@@ -84,10 +84,10 @@ def buildKeywordDictionary():
     from distutils.core import Extension
     setupKeywords = {}
     setupKeywords["name"]              = "yank"
-    setupKeywords["version"]           = "0.1-alpha"
-    setupKeywords["author"]            = "Michael R. Shirts and John D. Chodera"
+    setupKeywords["version"]           = "0.1.0"
+    setupKeywords["author"]            = "John D. Chodera, Kyle A. Beauchamp, Michael R. Shirts, and Kai Wang"
     setupKeywords["author_email"]      = "michael.shirts@virginia.edu, choderaj@mskcc.org"
-    setupKeywords["license"]           = "GPL 2.0"
+    setupKeywords["license"]           = "LGPL 3.0"
     setupKeywords["url"]               = "http://github.com/choderalab/yank"
     setupKeywords["download_url"]      = "http://github.com/choderalab/yank"
     setupKeywords["packages"]          = ['yank']
@@ -96,10 +96,11 @@ def buildKeywordDictionary():
     #setupKeywords["ext_modules"]       = [CMBAR]
     #setupKeywords["test_suite"]        = "tests" # requires we migrate to setuptools
     setupKeywords["platforms"]         = ["Linux", "Mac OS X", "Windows"]
-    setupKeywords["description"]       = "Python implementation of the multistate Bennett acceptance ratio (MBAR) method."
-    setupKeywords["requires"]          = ["numpy", "scipy", "pandas", "nose"]
+    setupKeywords["description"]       = "Testbed for GPU-accelerated alchemical binding free energy calculations."
+    setupKeywords["requires"]          = ["numpy", "scipy", "pandas", "nose", "pymbar"]
     setupKeywords["long_description"]  = """
-    What is Yank?
+    YANK is a testbed for experimenting with algorithms for the efficient computation of small molecule binding free energies to biomolecular targets using alchemical methods.
+    YANK is built on OpenMM, the API for molecular simulation, and uses its GPU-accelerated library implementation for hardware acceleration.
     """
     outputString=""
     firstTab     = 40
