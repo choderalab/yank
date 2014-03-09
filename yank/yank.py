@@ -68,7 +68,7 @@ import simtk.unit as units
 import simtk.openmm as openmm
 
 from alchemy import AbsoluteAlchemicalFactory
-from repex.thermodynamics import ThermodynamicState
+from oldrepex import ThermodynamicState
 from oldrepex import HamiltonianExchange, ReplicaExchange
 
 #=============================================================================================
@@ -1248,5 +1248,8 @@ if __name__ == '__main__':
     # TODO: Print/write results.
     #print results
 
-    
+if __name__ == '__main__':    
+    # Run the driver.
+    import driver
+    driver.driver()
 

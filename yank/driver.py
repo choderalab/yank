@@ -1,11 +1,27 @@
+#=============================================================================================
+# MODULE DOCSTRING
+#=============================================================================================
+
+"""
+YANK command-line driver
+
+"""
+
+#=============================================================================================
+# GLOBAL IMPORTS
+#=============================================================================================
+
 import yank
 import sys
 
+#=============================================================================================
+# DRIVER
+#=============================================================================================
 
-if __name__ == '__main__':    
+def driver():
     # Initialize command-line argument parser.
 
-    """
+    usage = """
     USAGE
 
     %prog --ligand_prmtop PRMTOP --receptor_prmtop PRMTOP { {--ligand_crd CRD | --ligand_mol2 MOL2} {--receptor_crd CRD | --receptor_pdb PDB} | {--complex_crd CRD | --complex_pdb PDB} } [-v | --verbose] [-i | --iterations ITERATIONS] [-o | --online] [-m | --mpi] [--restraints restraint-type] [--doctests] [--randomize_ligand]
@@ -32,7 +48,7 @@ if __name__ == '__main__':
 
     # Parse command-line arguments.
     from optparse import OptionParser
-    parser = OptionParser()
+    parser = OptionParser(usage=usage)
     parser.add_option("--ligand_prmtop", dest="ligand_prmtop_filename", default=None, help="ligand Amber parameter file", metavar="LIGAND_PRMTOP")
     parser.add_option("--receptor_prmtop", dest="receptor_prmtop_filename", default=None, help="receptor Amber parameter file", metavar="RECEPTOR_PRMTOP")    
     parser.add_option("--ligand_crd", dest="ligand_crd_filename", default=None, help="ligand Amber crd file", metavar="LIGAND_CRD")
@@ -56,8 +72,10 @@ if __name__ == '__main__':
     (options, args) = parser.parse_args()
     
     if options.doctests:
-        print "Running doctests..."
+        print "Running doctests for all modules..."
         import doctest
+        # TODO: Test all modules
+        import yank, oldrepex, alchemy, analyze, utils
         (failure_count, test_count) = doctest.testmod(verbose=options.verbose)
         if failure_count == 0:
             print "All doctests pass."
@@ -73,21 +91,8 @@ if __name__ == '__main__':
         parser.error("Ligand coordinates must be specified through only one of --ligand_crd, --ligand_mol2, --complex_crd, or --complex_pdb.")
     if not (bool(options.receptor_pdb_filename) ^ bool(options.receptor_crd_filename) ^ bool(options.complex_pdb_filename) ^ bool(options.complex_crd_filename)):
         parser.error("Receptor coordinates must be specified through only one of --receptor_crd, --receptor_pdb, --complex_crd, or --complex_pdb.")    
-
-    # DEBUG: Require complex prmtop files to be specified while JDC debugs automatic combination of systems.
     if not (options.complex_prmtop_filename):
-        parser.error("Please specify --complex_prmtop [complex_prmtop_filename] argument.  JDC is still debugging automatic generation of complex topologies from receptor+ligand.")
-
-    # Ignore requested signals.
-    if len(options.ignore_signals) > 0:
-        import signal
-        # Create a dummy signal handler.
-        def signal_handler(signal, frame):
-            print 'Signal %s received and ignored.' % str(signal)
-        # Register the dummy signal handler.
-        for signal_name in options.ignore_signals:
-            print "Will ignore signal %s" % signal_name
-            signal.signal(getattr(signal, signal_name), signal_handler)
+        parser.error("Please specify --complex_prmtop [complex_prmtop_filename] argument.")
 
     # Initialize MPI if requested.
     if options.mpi:
@@ -105,7 +110,9 @@ if __name__ == '__main__':
             parser.error("Could not initialize MPI.")
 
     # Select simulation parameters.
-    # TODO: Simulation parameters will be different for explicit solvent.
+    # TODO: Allow user selection or intelligent automated selection of simulation parameters.
+    # NOTE: Simulation paramters are hard-coded for now.
+    # NOTE: Simulation parameters will be different for explicit solvent.
     import simtk.openmm.app as app
     nonbondedMethod = app.NoCutoff
     implicitSolvent = app.OBC2
@@ -115,16 +122,14 @@ if __name__ == '__main__':
     # Create System objects for ligand and receptor.
     ligand_system = app.AmberPrmtopFile(options.ligand_prmtop_filename).createSystem(nonbondedMethod=nonbondedMethod, implicitSolvent=implicitSolvent, constraints=constraints, removeCMMotion=removeCMMotion)
     receptor_system = app.AmberPrmtopFile(options.receptor_prmtop_filename).createSystem(nonbondedMethod=nonbondedMethod, implicitSolvent=implicitSolvent, constraints=constraints, removeCMMotion=removeCMMotion)
-    
-    # Load complex prmtop if specified.
-    complex_system = None
-    if options.complex_prmtop_filename:
-        complex_system = app.AmberPrmtopFile(options.complex_prmtop_filename).createSystem(nonbondedMethod=nonbondedMethod, implicitSolvent=implicitSolvent, constraints=constraints, removeCMMotion=removeCMMotion)
+    complex_system = app.AmberPrmtopFile(options.complex_prmtop_filename).createSystem(nonbondedMethod=nonbondedMethod, implicitSolvent=implicitSolvent, constraints=constraints, removeCMMotion=removeCMMotion)
 
     # Determine number of atoms for each system.
     natoms_receptor = receptor_system.getNumParticles()
     natoms_ligand = ligand_system.getNumParticles()
-    natoms_complex = natoms_receptor + natoms_ligand
+    natoms_complex = complex_system.getNumParticles()
+    if (natoms_complex != natoms_ligand + natoms_receptor):
+        raise Exception("Number of complex atoms must equal sum of ligand and receptor atoms.")
 
     # Read ligand and receptor coordinates.
     ligand_coordinates = list()
@@ -169,6 +174,7 @@ if __name__ == '__main__':
                 complex_coordinates.append(z)
 
     # Initialize YANK object.
+    from yank import Yank
     yank = Yank(receptor=receptor_system, ligand=ligand_system, complex=complex_system, complex_coordinates=complex_coordinates, output_directory=options.output_directory, verbose=options.verbose)
 
     # Configure YANK object with command-line parameter overrides.
@@ -183,14 +189,8 @@ if __name__ == '__main__':
     if options.randomize_ligand:
         yank.randomize_ligand = True 
 
-    # cpuid:gpuid for NCSA Forge # TODO: Make a configuration file or command-line argument for this, or have it autodetect.
-    #cpuid_gpuid_mapping = { 0:0, 1:1, 8:2, 9:3, 10:4, 11:5 } 
-
-    # cpuid:gpuid for Blue Waters
-    #cpuid_gpuid_mapping = { 0:0, 8:0, } 
-    #ncpus_per_node = 16
-
-    # cpuid:gpuid for Exxact 4xGPU nodes
+    # Hard-coded cpuid:gpuid for Exxact 4xGPU nodes
+    # TODO: Replace this with something automated
     cpuid_gpuid_mapping = { 0:0, 1:1, 2:2, 3:3 } 
     ncpus_per_node = None
 
@@ -200,11 +200,17 @@ if __name__ == '__main__':
         yank.run_mpi(options.mpi, cpuid_gpuid_mapping=cpuid_gpuid_mapping, ncpus_per_node=ncpus_per_node)
     else:
         # Run serial version.
-        yank.platform = openmm.Platform.getPlatformByName("CUDA") # DEBUG: Use CPU platform for serial version
         yank.run()
 
     # Run analysis.
-    #results = yank.analyze()
+    results = yank.analyze()
 
-    # TODO: Print/write results.
-    #print results
+    # Print/write results.
+    print results
+
+#=============================================================================================
+# MAIN
+#=============================================================================================
+
+if __name__ == '__main__':    
+    driver()

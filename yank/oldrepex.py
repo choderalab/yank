@@ -109,17 +109,7 @@ import numpy.linalg
 import simtk.openmm 
 import simtk.unit as units
 
-#import scipy.io.netcdf as netcdf # scipy pure Python netCDF interface - GIVES US TROUBLE FOR NOW
-import netCDF4 as netcdf # netcdf4-python is used in place of scipy.io.netcdf for now
-#import tables as hdf5 # HDF5 will be supported in the future
-
-from repex.thermodynamics import ThermodynamicState
-
-#=============================================================================================
-# REVISION CONTROL
-#=============================================================================================
-
-__version__ = "$Revision: $"
+import netCDF4 as netcdf 
 
 #=============================================================================================
 # MODULE CONSTANTS
@@ -146,6 +136,467 @@ class ParameterException(Exception):
     pass
         
 #=============================================================================================
+# Thermodynamic state description
+#=============================================================================================
+
+class ThermodynamicState(object):
+    """
+    Data specifying a thermodynamic state obeying Boltzmann statistics.
+
+    EXAMPLES
+
+    Specify an NVT state for a water box at 298 K.
+
+    >>> import simtk.unit as units
+    >>> from repex import testsystems
+    >>> waterbox = testsystems.WaterBox()
+    >>> [system, positions] = [waterbox.system, waterbox.positions]
+    >>> state = ThermodynamicState(system=system, temperature=298.0*units.kelvin)
+
+    Specify an NPT state at 298 K and 1 atm pressure.
+
+    >>> state = ThermodynamicState(system=system, temperature=298.0*units.kelvin, pressure=1.0*units.atmospheres)
+    
+    Note that the pressure is only relevant for periodic systems.
+
+    NOTES
+
+    This state object cannot describe states obeying non-Boltzamnn statistics, such as Tsallis statistics.
+
+    TODO
+
+    * Implement a more fundamental ProbabilityState as a base class?
+    * Implement pH.
+
+    """
+    
+    def __init__(self, system=None, temperature=None, pressure=None, mm=None):
+        """
+        Initialize the thermodynamic state.
+
+        OPTIONAL ARGUMENTS
+
+        system (simtk.openmm.System) - a System object describing the potential energy function for the system (default: None)
+        temperature (simtk.unit.Quantity compatible with 'kelvin') - the temperature for a system with constant temperature (default: None)
+        pressure (simtk.unit.Quantity compatible with 'atmospheres') - the pressure for constant-pressure systems (default: None)
+
+        mm (simtk.openmm API) - OpenMM API implementation to use
+        cache_context (boolean) - if True, will try to cache Context objects
+
+        """
+
+        # Initialize.
+        self.system = None          # the System object governing the potential energy computation
+        self.temperature = None     # the temperature
+        self.pressure = None        # the pressure, or None if not isobaric
+
+        self._mm = None             # Cached OpenMM implementation
+
+        self._cache_context = True  # if True, try to cache Context object
+        self._context = None        # cached Context
+        self._integrator = None     # cached Integrator
+
+        # Store OpenMM implementation.
+        if mm:
+            self._mm = mm
+        else:
+            self._mm = simtk.openmm
+
+        # Store provided values.
+        if system is not None:
+            # TODO: Check to make sure system object implements OpenMM System API.
+            self.system = copy.deepcopy(system) # TODO: Do this when deep copy works.
+            # self.system = system # we make a shallow copy for now, which can cause trouble later
+        if temperature is not None:
+            self.temperature = temperature
+        if pressure is not None:
+            self.pressure = pressure
+
+        # If temperature and pressure are specified, make sure MonteCarloBarostat is attached.
+        if temperature and pressure:
+            # Try to find barostat.
+            barostat = False
+            for force_index in range(self.system.getNumForces()):
+                force = self.system.getForce(force_index)
+                # Dispatch forces
+                if isinstance(force, self._mm.MonteCarloBarostat):
+                    barostat = force
+                    break
+            if barostat:
+                # Set temperature.
+                # TODO: Set pressure too, once that option is available.
+                barostat.setTemperature(temperature)                
+            else:
+                # Create barostat.
+                barostat = self._mm.MonteCarloBarostat(pressure, temperature)
+                self.system.addForce(barostat)                    
+
+        return
+
+    def _create_context(self, platform=None):
+        """
+        Create Integrator and Context objects if they do not already exist.
+        
+        """
+
+        # Check if we already have a Context defined.
+        if self._context:
+            #if platform and (platform != self._context.getPlatform()): # TODO: Figure out why requested and cached platforms differed in tests.
+            if platform and (platform.getName() != self._context.getPlatform().getName()): # DEBUG: Only compare Platform names for now; change this later to incorporate GPU IDs.
+                # Platform differs from the one requested; destroy it.
+                print (platform.getName(), self._context.getPlatform().getName())
+                print "Platform differs from the one requested; destroying and recreating..." # DEBUG
+                del self._context, self._integrator
+            else:
+                # Cached context is what we expect; do nothing.
+                return
+
+        # Create an integrator.
+        timestep = 1.0 * units.femtosecond
+        self._integrator = self._mm.VerletIntegrator(timestep)        
+            
+        # Create a new OpenMM context.
+        if platform:                
+            self._context = self._mm.Context(self.system, self._integrator, platform)
+        else:
+            self._context = self._mm.Context(self.system, self._integrator)
+            
+        print "_create_context created a new integrator and context" # DEBUG
+
+        return
+
+    def _cleanup_context(self):
+        del self._context, self._integrator
+        self._context = None
+        self._integrator = None
+
+    def _compute_potential(self, positions, box_vectors):
+        # Must set box vectors first.
+        if box_vectors is not None: self._context.setPeriodicBoxVectors(*box_vectors)                
+        # Set positions.
+        self._context.setPositions(positions)
+        
+        # Retrieve potential energy.
+        openmm_state = self._context.getState(getEnergy=True)
+        potential_energy = openmm_state.getPotentialEnergy()
+
+        return potential_energy
+    
+    def reduced_potential(self, positions, box_vectors=None, mm=None, platform=None):
+        """
+        Compute the reduced potential for the given positions in this thermodynamic state.
+
+        ARGUMENTS
+
+        positions (simtk.unit.Quantity of Nx3 numpy.array) - positions[n,k] is kth coordinate of particle n
+
+        OPTIONAL ARGUMENTS
+        
+        box_vectors - periodic box vectors
+
+        RETURNS
+
+        u (float) - the unitless reduced potential (which can be considered to have units of kT)
+        
+        EXAMPLES
+
+        Compute the reduced potential of a Lennard-Jones cluster at 100 K.
+        
+        >>> import simtk.unit as units
+        >>> from repex import testsystems
+        >>> testsystem = testsystems.LennardJonesCluster()
+        >>> [system, positions] = [testsystem.system, testsystem.positions]
+        >>> state = ThermodynamicState(system=system, temperature=100.0*units.kelvin)
+        >>> potential = state.reduced_potential(positions)
+    
+        Compute the reduced potential of a Lennard-Jones fluid at 100 K and 1 atm.
+
+        >>> testsystem = testsystems.LennardJonesFluid()
+        >>> [system, positions] = [testsystem.system, testsystem.positions]
+        >>> state = ThermodynamicState(system=system, temperature=100.0*units.kelvin, pressure=1.0*units.atmosphere)
+        >>> box_vectors = system.getDefaultPeriodicBoxVectors()
+        >>> potential = state.reduced_potential(positions, box_vectors)
+
+        Compute the reduced potential of a water box at 298 K and 1 atm.
+
+        >>> testsystem = testsystems.WaterBox()
+        >>> [system, positions] = [testsystem.system, testsystem.positions]
+        >>> state = ThermodynamicState(system=system, temperature=298.0*units.kelvin, pressure=1.0*units.atmosphere)
+        >>> box_vectors = system.getDefaultPeriodicBoxVectors()
+        >>> potential = state.reduced_potential(positions, box_vectors)
+    
+        NOTES
+
+        The reduced potential is defined as in Ref. [1]
+
+        u = \beta [U(x) + p V(x) + \mu N(x)]
+
+        where the thermodynamic parameters are
+
+        \beta = 1/(kB T) is he inverse temperature
+        U(x) is the potential energy
+        p is the pressure
+        \mu is the chemical potential
+
+        and the configurational properties are
+
+        x the atomic positions
+        V(x) is the instantaneous box volume
+        N(x) the numbers of various particle species (e.g. protons of titratible groups)
+        
+        REFERENCES
+
+        [1] Shirts MR and Chodera JD. Statistically optimal analysis of equilibrium states. J Chem Phys 129:124105, 2008.
+
+        TODO
+
+        * Instead of requiring configuration and box_vectors be passed separately, develop a Configuration or Snapshot class.
+        
+        """
+
+        # Select OpenMM implementation if not specified.
+        if mm is None: mm = simtk.openmm
+
+        # If pressure is specified, ensure box vectors have been provided.
+        if (self.pressure is not None) and (box_vectors is None):
+            raise ParameterException("box_vectors must be specified if constant-pressure ensemble.")
+
+        # Make sure we have Context and Integrator objects.
+        self._create_context(platform)
+
+        # Compute energy.
+        try:
+            potential_energy = self._compute_potential(positions, box_vectors)
+        except Exception as e:
+            print e # DEBUG
+
+            # Our cached context failed, so try deleting it and creating it anew.
+            self._cleanup_context()
+            self._create_context()
+
+            # Compute energy
+            potential_energy = self._compute_potential(positions, box_vectors)            
+        
+        # Compute inverse temperature.
+        beta = 1.0 / (kB * self.temperature)
+
+        # Compute reduced potential.
+        reduced_potential = beta * potential_energy
+        if self.pressure is not None:
+            reduced_potential += beta * self.pressure * self._volume(box_vectors) * units.AVOGADRO_CONSTANT_NA
+
+        # Clean up context if requested.
+        if (not self._cache_context):
+            self._cleanup_context()
+
+        return reduced_potential
+
+    def reduced_potential_multiple(self, positions_list, box_vectors_list=None, mm=None, platform=None):
+        """
+        Compute the reduced potential for the given sets of positions in this thermodynamic state.
+        This can pontentially be more efficient than repeated calls to reduced_potential.
+
+        ARGUMENTS
+
+        positions_list (list of simtk.unit.Quantity of Nx3 numpy.array) - positions[n,k] is kth coordinate of particle n
+
+        OPTIONAL ARGUMENTS
+        
+        box_vectors - periodic box vectors
+
+        RETURNS
+
+        u_k (K numpy array of float) - the unitless reduced potentials (which can be considered to have units of kT)
+        
+        EXAMPLES
+
+        Compute the reduced potential of a Lennard-Jones cluster at multiple configurations at 100 K.
+        
+        >>> import simtk.unit as units
+        >>> from repex import testsystems
+        >>> testsystem = testsystems.LennardJonesCluster()
+        >>> [system, positions] = [testsystem.system, testsystem.positions]
+        >>> state = ThermodynamicState(system=system, temperature=100.0*units.kelvin)
+        >>> # create example list of positions
+        >>> import copy
+        >>> positions_list = [ copy.deepcopy(positions) for i in range(10) ]
+        >>> # compute potential for all sets of positions
+        >>> potentials = state.reduced_potential_multiple(positions_list)
+
+        NOTES
+
+        The reduced potential is defined as in Ref. [1]
+
+        u = \beta [U(x) + p V(x) + \mu N(x)]
+
+        where the thermodynamic parameters are
+
+        \beta = 1/(kB T) is he inverse temperature
+        U(x) is the potential energy
+        p is the pressure
+        \mu is the chemical potential
+
+        and the configurational properties are
+
+        x the atomic positions
+        V(x) is the instantaneous box volume
+        N(x) the numbers of various particle species (e.g. protons of titratible groups)
+        
+        REFERENCES
+
+        [1] Shirts MR and Chodera JD. Statistically optimal analysis of equilibrium states. J Chem Phys 129:124105, 2008.
+
+        TODO
+
+        * Instead of requiring configuration and box_vectors be passed separately, develop a Configuration or Snapshot class.
+        
+        """
+
+        # Select OpenMM implementation if not specified.
+        if mm is None: mm = simtk.openmm
+
+        # If pressure is specified, ensure box vectors have been provided.
+        if (self.pressure is not None) and (box_vectors_list is None):
+            raise ParameterException("box_vectors must be specified if constant-pressure ensemble.")
+
+        # Make sure we have Context and Integrator objects.
+        self._create_context(platform)
+
+        # Allocate storage.
+        K = len(positions_list)
+        u_k = numpy.zeros([K], numpy.float64)
+
+        # Compute energies.
+        for k in range(K):
+            # Compute energy
+            if box_vectors_list:
+                potential_energy = self._compute_potential(positions_list[k], box_vectors_list[k])
+            else:
+                potential_energy = self._compute_potential(positions_list[k], None)
+        
+            # Compute inverse temperature.
+            beta = 1.0 / (kB * self.temperature)
+
+            # Compute reduced potential.
+            u_k[k] = beta * potential_energy
+            if self.pressure is not None:
+                u_k[k] += beta * self.pressure * self._volume(box_vectors_list[k]) * units.AVOGADRO_CONSTANT_NA
+
+        # Clean up context if requested.
+        if (not self._cache_context):
+            self._cleanup_context()
+
+        return u_k
+
+    def is_compatible_with(self, state):
+        """
+        Determine whether another state is in the same thermodynamic ensemble (e.g. NVT, NPT).
+
+        ARGUMENTS
+
+        state (ThermodynamicState) - thermodynamic state whose compatibility is to be determined
+
+        RETURNS
+        
+        is_compatible (boolean) - True if 'state' is of the same ensemble (e.g. both NVT, both NPT), False otherwise
+
+        EXAMPLES
+
+        Create NVT and NPT states.
+        
+        >>> import simtk.unit as units
+        >>> from repex import testsystems
+        >>> testsystem = testsystems.LennardJonesCluster()
+        >>> [system, positions] = [testsystem.system, testsystem.positions]
+        >>> nvt_state = ThermodynamicState(system=system, temperature=100.0*units.kelvin)
+        >>> npt_state = ThermodynamicState(system=system, temperature=100.0*units.kelvin, pressure=1.0*units.atmospheres)
+
+        Test compatibility.
+
+        >>> test1 = nvt_state.is_compatible_with(nvt_state)
+        >>> test2 = nvt_state.is_compatible_with(npt_state)
+        >>> test3 = npt_state.is_compatible_with(nvt_state)        
+        >>> test4 = npt_state.is_compatible_with(npt_state)        
+
+        """
+
+        is_compatible = True
+
+        # Make sure systems have the same number of atoms.
+        if (self.system.getNumParticles() != state.system.getNumParticles()):
+            is_compatible = False
+
+        # Make sure other terms are defined for both states.
+        # TODO: Use introspection to get list of parameters?
+        for parameter in ['temperature', 'pressure']:
+            if (parameter in dir(self)) is not (parameter in dir(state)):
+                # parameter is not shared by both states
+                is_compatible = False
+
+        return is_compatible
+
+    def __repr__(self):
+        """
+        Returns a string representation of a state.
+
+        EXAMPLES
+
+        Create an NVT state.
+        
+        >>> import simtk.unit as units
+        >>> from repex import testsystems
+        >>> testsystem = testsystems.LennardJonesCluster()
+        >>> [system, positions] = [testsystem.system, testsystem.positions]
+        >>> state = ThermodynamicState(system=system, temperature=100.0*units.kelvin)
+
+        Return a representation of the state.
+        
+        >>> state_string = repr(state)
+
+        """
+
+        r = "<ThermodynamicState object"
+        if self.temperature is not None:
+            r += ", temperature = %s" % str(self.temperature)
+        if self.pressure is not None:
+            r += ", pressure = %s" % str(self.pressure)
+        r += ">"
+
+        return r
+
+    def __str__(self):
+        # TODO: Write a human-readable representation.
+        
+        return repr(r)
+
+    def _volume(self, box_vectors):
+        """
+        Return the volume of the current configuration.
+
+        RETURNS
+
+        volume (simtk.unit.Quantity) - the volume of the system (in units of length^3), or None if no box positions are defined
+
+        EXAMPLES
+        
+        Compute the volume of a Lennard-Jones fluid at 100 K and 1 atm.
+
+        >>> from repex import testsystems
+        >>> testsystem = testsystems.LennardJonesFluid()
+        >>> [system, positions] = [testsystem.system, testsystem.positions]
+        >>> state = ThermodynamicState(system=system, temperature=100.0*units.kelvin, pressure=1.0*units.atmosphere)
+        >>> box_vectors = system.getDefaultPeriodicBoxVectors()
+        >>> volume = state._volume(box_vectors)
+        
+        """
+
+        # Compute volume of parallelepiped.
+        [a,b,c] = box_vectors
+        A = numpy.array([a/a.unit, b/a.unit, c/a.unit])
+        volume = numpy.linalg.det(A) * a.unit**3
+        return volume
+
+#=============================================================================================
 # Replica-exchange simulation
 #=============================================================================================
 
@@ -154,7 +605,7 @@ class ReplicaExchange(object):
     Replica-exchange simulation facility.
 
     This base class provides a general replica-exchange simulation facility, allowing any set of thermodynamic states
-    to be specified, along with a set of initial coordinates to be assigned to the replicas in a round-robin fashion.
+    to be specified, along with a set of initial positions to be assigned to the replicas in a round-robin fashion.
     No distinction is made between one-dimensional and multidimensional replica layout; by default, the replica mixing
     scheme attempts to mix *all* replicas to minimize slow diffusion normally found in multidimensional replica exchange
     simulations.  (Modification of the 'replica_mixing_scheme' setting will allow the tranditional 'neighbor swaps only'
@@ -198,8 +649,9 @@ class ReplicaExchange(object):
     (This is just an illustrative example; use ParallelTempering class for actual production parallel tempering simulations.)
     
     >>> # Create test system.
-    >>> import testsystems
-    >>> [system, coordinates] = testsystems.AlanineDipeptideImplicit()
+    >>> from repex import testsystems
+    >>> testsystem = testsystems.AlanineDipeptideImplicit()
+    >>> [system, positions] = [testsystem.system, testsystem.positions]
     >>> # Create thermodynamic states for parallel tempering with exponentially-spaced schedule.
     >>> import simtk.unit as units
     >>> import math
@@ -212,7 +664,7 @@ class ReplicaExchange(object):
     >>> import tempfile
     >>> file = tempfile.NamedTemporaryFile() # use a temporary file for testing -- you will want to keep this file, since it stores output and checkpoint data
     >>> # Create simulation.
-    >>> simulation = ReplicaExchange(states, coordinates, file.name) # initialize the replica-exchange simulation
+    >>> simulation = ReplicaExchange(states, positions, file.name) # initialize the replica-exchange simulation
     >>> simulation.minimize = False
     >>> simulation.number_of_iterations = 2 # set the simulation to only run 2 iterations
     >>> simulation.timestep = 2.0 * units.femtoseconds # set the timestep for integration
@@ -224,7 +676,7 @@ class ReplicaExchange(object):
     # Options to store.
     options_to_store = ['collision_rate', 'constraint_tolerance', 'timestep', 'nsteps_per_iteration', 'number_of_iterations', 'equilibration_timestep', 'number_of_equilibration_iterations', 'title', 'minimize', 'replica_mixing_scheme', 'online_analysis', 'verbose', 'show_mixing_statistics']
 
-    def __init__(self, states=None, coordinates=None, store_filename=None, protocol=None, mm=None, mpicomm=None, metadata=None):
+    def __init__(self, states=None, positions=None, store_filename=None, protocol=None, mm=None, mpicomm=None, metadata=None):
         """
         Initialize replica-exchange simulation facility.
 
@@ -234,9 +686,9 @@ class ReplicaExchange(object):
            Each state must have a system with the same number of atoms, and the same
            thermodynamic ensemble (combination of temperature, pressure, pH, etc.) must
            be defined for each.
-        coordinates (Coordinate object or iterable container of Coordinate objects) - One or more sets of initial coordinates
+        positions (Coordinate object or iterable container of Coordinate objects) - One or more sets of initial positions
            to be initially assigned to replicas in a round-robin fashion, provided simulation is not resumed from store file.
-           Currently, coordinates must be specified as a list of simtk.unit.Quantity-wrapped numpy arrays.
+           Currently, positions must be specified as a list of simtk.unit.Quantity-wrapped numpy arrays.
         store_filename (string) - Name of file to bind simulation to use as storage for checkpointing and storage of results.
 
         OPTIONAL ARGUMENTS
@@ -250,7 +702,7 @@ class ReplicaExchange(object):
         
         If store_filename exists, the simulation will try to resume from this file.
         If thermodynamic state information can be found in the store file, this will be read, and 'states' will be ignored.
-        If the store file exists, coordinates will be read from this file, and 'coordinates' will be ignored.        
+        If the store file exists, positions will be read from this file, and 'positions' will be ignored.        
         The provided 'protocol' will override any options restored from the store file.
 
         """
@@ -328,11 +780,11 @@ class ReplicaExchange(object):
         if not self.resume:
             # Distribute coordinate information to replicas in a round-robin fashion.
             # We have to explicitly check to see if z is a list or a set here because it turns out that numpy 2D arrays are iterable as well.
-            # TODO: Handle case where coordinates are passed in as a list of tuples, or list of lists, or list of Vec3s, etc.
-            if type(coordinates) in [type(list()), type(set())]:
-                self.provided_coordinates = [ units.Quantity(numpy.array(coordinate_set / coordinate_set.unit), coordinate_set.unit) for coordinate_set in coordinates ] 
+            # TODO: Handle case where positions are passed in as a list of tuples, or list of lists, or list of Vec3s, etc.
+            if type(positions) in [type(list()), type(set())]:
+                self.provided_positions = [ units.Quantity(numpy.array(coordinate_set / coordinate_set.unit), coordinate_set.unit) for coordinate_set in positions ] 
             else:
-                self.provided_coordinates = [ units.Quantity(numpy.array(coordinates / coordinates.unit), coordinates.unit) ]            
+                self.provided_positions = [ units.Quantity(numpy.array(positions / positions.unit), positions.unit) ]            
                     
         # Handle provided 'protocol' dict, replacing any options provided by caller in dictionary.
         # TODO: Look for 'verbose' key first.
@@ -367,7 +819,7 @@ class ReplicaExchange(object):
         r += "Replica-exchange simulation\n"
         r += "\n"
         r += "%d replicas\n" % str(self.nreplicas)
-        r += "%d coordinate sets provided\n" % len(self.provided_coordinates)
+        r += "%d coordinate sets provided\n" % len(self.provided_positions)
         r += "file store: %s\n" % str(self.store_filename)
         r += "initialized: %s\n" % str(self._initialized)
         r += "\n"
@@ -542,7 +994,7 @@ class ReplicaExchange(object):
         self.natoms = self.states[0].system.getNumParticles()
   
         # Allocate storage.
-        self.replica_coordinates = list() # replica_coordinates[i] is the configuration currently held in replica i
+        self.replica_positions = list() # replica_positions[i] is the configuration currently held in replica i
         self.replica_box_vectors = list() # replica_box_vectors[i] is the set of box vectors currently held in replica i  
         self.replica_states     = numpy.zeros([self.nstates], numpy.int32) # replica_states[i] is the state that replica i is currently at
         self.u_kl               = numpy.zeros([self.nstates, self.nstates], numpy.float32)        
@@ -552,7 +1004,7 @@ class ReplicaExchange(object):
 
         # Distribute coordinate information to replicas in a round-robin fashion, making a deep copy.
         if not self.resume:
-            self.replica_coordinates = [ copy.deepcopy(self.provided_coordinates[replica_index % len(self.provided_coordinates)]) for replica_index in range(self.nstates) ]
+            self.replica_positions = [ copy.deepcopy(self.provided_positions[replica_index % len(self.provided_positions)]) for replica_index in range(self.nstates) ]
 
         # Assign default box vectors.
         self.replica_box_vectors = list()
@@ -695,13 +1147,13 @@ class ReplicaExchange(object):
         integrator = state._integrator
         context = state._context
 
-        # Set coordinates.
-        coordinates = self.replica_coordinates[replica_index]            
-        context.setPositions(coordinates)
-        setpositions_end_time = time.time()
         # Set box vectors.
         box_vectors = self.replica_box_vectors[replica_index]
         context.setPeriodicBoxVectors(box_vectors[0,:], box_vectors[1,:], box_vectors[2,:])
+        # Set positions.
+        positions = self.replica_positions[replica_index]            
+        context.setPositions(positions)
+        setpositions_end_time = time.time()
         # Assign Maxwell-Boltzmann velocities.
         velocities = self._assign_Maxwell_Boltzmann_velocities(state.system, state.temperature) 
         context.setVelocities(velocities)
@@ -709,11 +1161,11 @@ class ReplicaExchange(object):
         # Run dynamics.
         integrator.step(self.nsteps_per_iteration)
         integrator_end_time = time.time() 
-        # Store final coordinates
+        # Store final positions
         getstate_start_time = time.time()
         openmm_state = context.getState(getPositions=True)
         getstate_end_time = time.time()
-        self.replica_coordinates[replica_index] = openmm_state.getPositions(asNumpy=True)
+        self.replica_positions[replica_index] = openmm_state.getPositions(asNumpy=True)
         # Store box vectors.
         self.replica_box_vectors[replica_index] = openmm_state.getPeriodicBoxVectors(asNumpy=True)
 
@@ -768,11 +1220,11 @@ class ReplicaExchange(object):
         if self.verbose and (self.mpicomm.rank == 0): print "Synchronizing trajectories..."
         start_time = time.time()
         replica_indices_gather = self.mpicomm.allgather(replica_indices)
-        replica_coordinates_gather = self.mpicomm.allgather([ self.replica_coordinates[replica_index] for replica_index in replica_indices ])
+        replica_positions_gather = self.mpicomm.allgather([ self.replica_positions[replica_index] for replica_index in replica_indices ])
         replica_box_vectors_gather = self.mpicomm.allgather([ self.replica_box_vectors[replica_index] for replica_index in replica_indices ])
         for (source, replica_indices) in enumerate(replica_indices_gather):
             for (index, replica_index) in enumerate(replica_indices):
-                self.replica_coordinates[replica_index] = replica_coordinates_gather[source][index]
+                self.replica_positions[replica_index] = replica_positions_gather[source][index]
                 self.replica_box_vectors[replica_index] = replica_box_vectors_gather[source][index]
         end_time = time.time()
         if self.verbose and (self.mpicomm.rank == 0): print "Synchronizing configurations and box vectors: elapsed time %.3f s" % (end_time - start_time)
@@ -828,17 +1280,17 @@ class ReplicaExchange(object):
         # TODO: This needs to be adapted in case Integrator and Context objects are not cached.
         integrator = state._integrator
         context = state._context
-        # Set coordinates.
-        coordinates = self.replica_coordinates[replica_index]            
-        context.setPositions(coordinates)
         # Set box vectors.
         box_vectors = self.replica_box_vectors[replica_index]
         context.setPeriodicBoxVectors(box_vectors[0,:], box_vectors[1,:], box_vectors[2,:])
+        # Set positions.
+        positions = self.replica_positions[replica_index]            
+        context.setPositions(positions)
         # Minimize energy.
-        minimized_coordinates = self.mm.LocalEnergyMinimizer.minimize(context, self.minimize_tolerance, self.minimize_maxIterations)
-        # Store final coordinates
+        minimized_positions = self.mm.LocalEnergyMinimizer.minimize(context, self.minimize_tolerance, self.minimize_maxIterations)
+        # Store final positions
         openmm_state = context.getState(getPositions=True)
-        self.replica_coordinates[replica_index] = openmm_state.getPositions(asNumpy=True)
+        self.replica_positions[replica_index] = openmm_state.getPositions(asNumpy=True)
         # Clean up.
         del integrator, context
 
@@ -868,12 +1320,12 @@ class ReplicaExchange(object):
 
                 # Send final configurations and box vectors back to all nodes.
                 if self.verbose and (self.mpicomm.rank == 0): print "Synchronizing trajectories..."
-                replica_coordinates_gather = self.mpicomm.allgather(self.replica_coordinates[self.mpicomm.rank:self.nstates:self.mpicomm.size])
+                replica_positions_gather = self.mpicomm.allgather(self.replica_positions[self.mpicomm.rank:self.nstates:self.mpicomm.size])
                 replica_box_vectors_gather = self.mpicomm.allgather(self.replica_box_vectors[self.mpicomm.rank:self.nstates:self.mpicomm.size])        
                 for replica_index in range(self.nstates):
                     source = replica_index % self.mpicomm.size # node with trajectory data
                     index = replica_index // self.mpicomm.size # index within trajectory batch
-                    self.replica_coordinates[replica_index] = replica_coordinates_gather[source][index]
+                    self.replica_positions[replica_index] = replica_positions_gather[source][index]
                     self.replica_box_vectors[replica_index] = replica_box_vectors_gather[source][index]
                 if self.verbose and (self.mpicomm.rank == 0): print "Synchronizing configurations and box vectors: elapsed time %.3f s" % (end_time - start_time)
 
@@ -913,7 +1365,7 @@ class ReplicaExchange(object):
             # Compute energies for this node's share of states.
             for state_index in range(self.mpicomm.rank, self.nstates, self.mpicomm.size):
                 for replica_index in range(self.nstates):
-                    self.u_kl[replica_index,state_index] = self.states[state_index].reduced_potential(self.replica_coordinates[replica_index], box_vectors=self.replica_box_vectors[replica_index], platform=self.platform)
+                    self.u_kl[replica_index,state_index] = self.states[state_index].reduced_potential(self.replica_positions[replica_index], box_vectors=self.replica_box_vectors[replica_index], platform=self.platform)
 
             # Send final energies to all nodes.
             energies_gather = self.mpicomm.allgather(self.u_kl[:,self.mpicomm.rank:self.nstates:self.mpicomm.size])
@@ -926,7 +1378,7 @@ class ReplicaExchange(object):
             # Serial version.
             for state_index in range(self.nstates):
                 for replica_index in range(self.nstates):
-                    self.u_kl[replica_index,state_index] = self.states[state_index].reduced_potential(self.replica_coordinates[replica_index], box_vectors=self.replica_box_vectors[replica_index], platform=self.platform)
+                    self.u_kl[replica_index,state_index] = self.states[state_index].reduced_potential(self.replica_positions[replica_index], box_vectors=self.replica_box_vectors[replica_index], platform=self.platform)
 
         end_time = time.time()
         elapsed_time = end_time - start_time
@@ -1179,7 +1631,9 @@ class ReplicaExchange(object):
         Print summary of mixing statistics.
 
         """
-
+        # TODO: Replace this with a call to analyze.show_mixing_statistics().
+        # TODO: This code slows down as the number of iterations grows.  Can we speed this up?
+        
         # Only root node can print.
         if self.mpicomm and (self.mpicomm.rank != 0):
             return
@@ -1250,8 +1704,6 @@ class ReplicaExchange(object):
             if self.mpicomm.rank != 0: return
 
         # Open NetCDF 4 file for writing.
-        #ncfile = netcdf.NetCDFFile(self.store_filename, 'w', version=2)
-        #ncfile = netcdf.Dataset(self.store_filename, 'w', version=2)        
         ncfile = netcdf.Dataset(self.store_filename, 'w', version='NETCDF4')
         
         # Create dimensions.
@@ -1336,8 +1788,8 @@ class ReplicaExchange(object):
 
         # Store replica positions.
         for replica_index in range(self.nstates):
-            coordinates = self.replica_coordinates[replica_index]
-            x = coordinates / units.nanometers
+            positions = self.replica_positions[replica_index]
+            x = positions / units.nanometers
             self.ncfile.variables['positions'][self.iteration,replica_index,:,:] = x[:,:]
             
         # Store box vectors and volume.
@@ -1386,10 +1838,10 @@ class ReplicaExchange(object):
 
         # Check positions.
         for replica_index in range(self.nreplicas):
-            coordinates = self.replica_coordinates[replica_index]
-            x = coordinates / units.nanometers
+            positions = self.replica_positions[replica_index]
+            x = positions / units.nanometers
             if numpy.any(numpy.isnan(x)):
-                print "nan encountered in replica %d coordinates." % replica_index
+                print "nan encountered in replica %d positions." % replica_index
                 abort = True
 
         # Check energies.
@@ -1612,11 +2064,11 @@ class ReplicaExchange(object):
         if self.verbose: print "iteration = %d, nstates = %d, natoms = %d" % (self.iteration, self.nstates, self.natoms)
 
         # Restore positions.
-        self.replica_coordinates = list()
+        self.replica_positions = list()
         for replica_index in range(self.nstates):
             x = ncfile.variables['positions'][self.iteration,replica_index,:,:].astype(numpy.float64).copy()
-            coordinates = units.Quantity(x, units.nanometers)
-            self.replica_coordinates.append(coordinates)
+            positions = units.Quantity(x, units.nanometers)
+            self.replica_positions.append(positions)
         
         # Restore box vectors.
         self.replica_box_vectors = list()
@@ -1846,7 +2298,7 @@ class ParallelTempering(ReplicaExchange):
     
     >>> # Create alanine dipeptide test system.
     >>> import testsystems
-    >>> [system, coordinates] = testsystems.AlanineDipeptideImplicit()
+    >>> [system, positions] = testsystems.AlanineDipeptideImplicit()
     >>> # Create temporary file for storing output.
     >>> import tempfile
     >>> file = tempfile.NamedTemporaryFile() # temporary file for testing
@@ -1855,7 +2307,7 @@ class ParallelTempering(ReplicaExchange):
     >>> Tmin = 298.0 * units.kelvin
     >>> Tmax = 600.0 * units.kelvin
     >>> nreplicas = 3
-    >>> simulation = ParallelTempering(system, coordinates, store_filename, Tmin=Tmin, Tmax=Tmax, ntemps=nreplicas)
+    >>> simulation = ParallelTempering(system, positions, store_filename, Tmin=Tmin, Tmax=Tmax, ntemps=nreplicas)
     >>> simulation.number_of_iterations = 2 # set the simulation to only run 10 iterations
     >>> simulation.timestep = 2.0 * units.femtoseconds # set the timestep for integration
     >>> simulation.minimize = False
@@ -1867,7 +2319,7 @@ class ParallelTempering(ReplicaExchange):
     
     >>> # Create alanine dipeptide system
     >>> import testsystems
-    >>> [system, coordinates] = testsystems.AlanineDipeptideExplicit()
+    >>> [system, positions] = testsystems.AlanineDipeptideExplicit()
     >>> # Add Monte Carlo barsostat to system (must be same pressure as simulation).
     >>> import simtk.openmm as openmm
     >>> pressure = 1.0 * units.atmosphere
@@ -1879,7 +2331,7 @@ class ParallelTempering(ReplicaExchange):
     >>> Tmin = 298.0 * units.kelvin
     >>> Tmax = 600.0 * units.kelvin    
     >>> nreplicas = 3
-    >>> simulation = ParallelTempering(system, coordinates, store_filename, Tmin=Tmin, Tmax=Tmax, pressure=pressure, ntemps=nreplicas)
+    >>> simulation = ParallelTempering(system, positions, store_filename, Tmin=Tmin, Tmax=Tmax, pressure=pressure, ntemps=nreplicas)
     >>> simulation.number_of_iterations = 2 # set the simulation to only run 10 iterations
     >>> simulation.timestep = 2.0 * units.femtoseconds # set the timestep for integration
     >>> simulation.nsteps_per_iteration = 50 # run 50 timesteps per iteration
@@ -1889,14 +2341,14 @@ class ParallelTempering(ReplicaExchange):
 
     """
 
-    def __init__(self, system, coordinates, store_filename, protocol=None, Tmin=None, Tmax=None, ntemps=None, temperatures=None, pressure=None, mm=None, mpicomm=None, metadata=None):
+    def __init__(self, system, positions, store_filename, protocol=None, Tmin=None, Tmax=None, ntemps=None, temperatures=None, pressure=None, mm=None, mpicomm=None, metadata=None):
         """
         Initialize a parallel tempering simulation object.
 
         ARGUMENTS
         
         system (simtk.openmm.System) - the system to simulate
-        coordinates (simtk.unit.Quantity of numpy natoms x 3 array of units length, or list) - coordinate set(s) for one or more replicas, assigned in a round-robin fashion
+        positions (simtk.unit.Quantity of numpy natoms x 3 array of units length, or list) - coordinate set(s) for one or more replicas, assigned in a round-robin fashion
         store_filename (string) -  name of NetCDF file to bind to for simulation output and checkpointing
 
         OPTIONAL ARGUMENTS
@@ -1924,7 +2376,7 @@ class ParallelTempering(ReplicaExchange):
         states = [ ThermodynamicState(system=system, temperature=self.temperatures[i], pressure=pressure) for i in range(ntemps) ]
 
         # Initialize replica-exchange simlulation.
-        ReplicaExchange.__init__(self, states, coordinates, store_filename, protocol=protocol, mm=mm, mpicomm=mpicomm, metadata=metadata)
+        ReplicaExchange.__init__(self, states, positions, store_filename, protocol=protocol, mm=mm, mpicomm=mpicomm, metadata=metadata)
 
         # Override title.
         self.title = 'Parallel tempering simulation created using ParallelTempering class of repex.py on %s' % time.asctime(time.localtime())
@@ -1956,8 +2408,8 @@ class ParallelTempering(ReplicaExchange):
             context = self.mm.Context(state.system, integrator, self.platform)
 
             for replica_index in range(self.mpicomm.rank, self.nstates, self.mpicomm.size):
-                # Set coordinates.
-                context.setPositions(self.replica_coordinates[replica_index])
+                # Set positions.
+                context.setPositions(self.replica_positions[replica_index])
                 # Compute potential energy.
                 openmm_state = context.getState(getEnergy=True)            
                 potential_energy = openmm_state.getPotentialEnergy()           
@@ -1989,8 +2441,8 @@ class ParallelTempering(ReplicaExchange):
         
             # Compute reduced potentials for all configurations in all states.
             for replica_index in range(self.nstates):
-                # Set coordinates.
-                context.setPositions(self.replica_coordinates[replica_index])
+                # Set positions.
+                context.setPositions(self.replica_positions[replica_index])
                 # Compute potential energy.
                 openmm_state = context.getState(getEnergy=True)            
                 potential_energy = openmm_state.getPotentialEnergy()           
@@ -2028,7 +2480,7 @@ class HamiltonianExchange(ReplicaExchange):
     
     >>> # Create reference system
     >>> import testsystems
-    >>> [reference_system, coordinates] = testsystems.AlanineDipeptideImplicit()
+    >>> [reference_system, positions] = testsystems.AlanineDipeptideImplicit()
     >>> # Copy reference system.
     >>> systems = [reference_system for index in range(10)]
     >>> # Create temporary file for storing output.
@@ -2039,7 +2491,7 @@ class HamiltonianExchange(ReplicaExchange):
     >>> from thermodynamics import ThermodynamicState
     >>> reference_state = ThermodynamicState(reference_system, temperature=298.0*units.kelvin)
     >>> # Create simulation.
-    >>> simulation = HamiltonianExchange(reference_state, systems, coordinates, store_filename)
+    >>> simulation = HamiltonianExchange(reference_state, systems, positions, store_filename)
     >>> simulation.number_of_iterations = 2 # set the simulation to only run 2 iterations
     >>> simulation.timestep = 2.0 * units.femtoseconds # set the timestep for integration
     >>> simulation.nsteps_per_iteration = 50 # run 50 timesteps per iteration
@@ -2049,7 +2501,7 @@ class HamiltonianExchange(ReplicaExchange):
     
     """
 
-    def __init__(self, reference_state, systems, coordinates, store_filename, protocol=None, mm=None, mpicomm=None, metadata=None):
+    def __init__(self, reference_state, systems, positions, store_filename, protocol=None, mm=None, mpicomm=None, metadata=None):
         """
         Initialize a Hamiltonian exchange simulation object.
 
@@ -2057,7 +2509,7 @@ class HamiltonianExchange(ReplicaExchange):
 
         reference_state (ThermodynamicState) - reference state containing all thermodynamic parameters except the system, which will be replaced by 'systems'
         systems (list of simtk.openmm.System) - list of systems to simulate (one per replica)
-        coordinates (simtk.unit.Quantity of numpy natoms x 3 with units length) -  coordinates (or a list of coordinates objects) for initial assignment of replicas (will be used in round-robin assignment)
+        positions (simtk.unit.Quantity of numpy natoms x 3 with units length) -  positions (or a list of positions objects) for initial assignment of replicas (will be used in round-robin assignment)
         store_filename (string) - name of NetCDF file to bind to for simulation output and checkpointing
 
         OPTIONAL ARGUMENTS
@@ -2074,7 +2526,7 @@ class HamiltonianExchange(ReplicaExchange):
             states = [ ThermodynamicState(system=system, temperature=reference_state.temperature, pressure=reference_state.pressure, mm=mm) for system in systems ]
 
         # Initialize replica-exchange simlulation.
-        ReplicaExchange.__init__(self, states, coordinates, store_filename, protocol=protocol, mm=mm, mpicomm=mpicomm, metadata=metadata)
+        ReplicaExchange.__init__(self, states, positions, store_filename, protocol=protocol, mm=mm, mpicomm=mpicomm, metadata=metadata)
 
         # Override title.
         self.title = 'Hamiltonian exchange simulation created using HamiltonianExchange class of repex.py on %s' % time.asctime(time.localtime())
