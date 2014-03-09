@@ -877,8 +877,7 @@ class Yank(object):
         """
 
         import analyze
-        import pymbar
-        import timeseries
+        from pymbar import pymbar, timeseries
         import netCDF4 as netcdf
 
         # Storage for results.

@@ -121,27 +121,18 @@ def test_replica_exchange(mpicomm=None, verbose=True):
 
     if verbose and ((not mpicomm) or (mpicomm.rank==0)): print "Testing replica exchange facility with harmonic oscillators: ",
 
-    # Create test system of harmonic oscillators
-    testsystem = testsystems.HarmonicOscillatorArray()
-    [system, coordinates] = [testsystem.system, testsystem.positions]
-
     # Define mass of carbon atom.
     mass = 12.0 * units.amu
 
     # Define thermodynamic states.
     states = list() # thermodynamic states
-    sigmas = [0.2, 0.3, 0.4] * units.angstroms # standard deviations: beta K = 1/sigma^2 so K = 1/(beta sigma^2)
+    Ks = [500.00, 400.0, 300.0] * units.kilocalories_per_mole / units.angstroms**2 # spring constants
     temperatures = [300.0, 350.0, 400.0] * units.kelvin # temperatures
     seed_positions = list()
     analytical_results = list()
     f_i_analytical = list() # dimensionless free energies
     u_i_analytical = list() # reduced potential
-    for (sigma, temperature) in zip(sigmas, temperatures):
-        # Compute corresponding spring constant.
-        kB = units.BOLTZMANN_CONSTANT_kB * units.AVOGADRO_CONSTANT_NA    
-        kT = kB * temperature # thermal energy
-        beta = 1.0 / kT # inverse temperature
-        K = 1.0 / (beta * sigma**2)
+    for (K, temperature) in zip(Ks, temperatures):
         # Create harmonic oscillator system.
         testsystem = testsystems.HarmonicOscillator(K=K, mass=mass, mm=openmm)
         [system, positions] = [testsystem.system, testsystem.positions]
@@ -154,6 +145,7 @@ def test_replica_exchange(mpicomm=None, verbose=True):
         results = computeHarmonicOscillatorExpectations(K, mass, temperature) 
         analytical_results.append(results)
         f_i_analytical.append(results['f'])
+        kT = kB * temperature # thermal energy
         reduced_potential = results['potential']['mean'] / kT
         u_i_analytical.append(reduced_potential)
         
@@ -182,9 +174,10 @@ def test_replica_exchange(mpicomm=None, verbose=True):
     simulation.number_of_iterations = 1000 # set the simulation to only run 2 iterations
     simulation.timestep = 2.0 * units.femtoseconds # set the timestep for integration
     simulation.nsteps_per_iteration = 500 # run 500 timesteps per iteration
-    simulation.collision_rate = 0.001 / units.picosecond # DEBUG: Use a low collision rate
+    simulation.collision_rate = 20.0 / units.picosecond 
     simulation.platform = openmm.Platform.getPlatformByName('Reference') # use reference platform
-    simulation.verbose = True # DEBUG
+    simulation.verbose = False 
+    simulation.show_mixing_statistics = False
 
     # Run simulation.
     simulation.run() # run the simulation
@@ -249,7 +242,7 @@ def test_hamiltonian_exchange(mpi=None, verbose=True):
 
     # Create test system of harmonic oscillators
     testsystem = testsystems.HarmonicOscillatorArray()
-    [system, coordinates] = testsystems.HarmonicOscillatorArray()
+    [system, coordinates] = [testsystem.system, testsystem.positions]
 
     # Define mass of carbon atom.
     mass = 12.0 * units.amu
@@ -312,6 +305,8 @@ def test_hamiltonian_exchange(mpi=None, verbose=True):
     simulation.nsteps_per_iteration = 500 # run 500 timesteps per iteration
     simulation.collision_rate = 9.2 / units.picosecond 
     simulation.platform = openmm.Platform.getPlatformByName('Reference') # use reference platform
+    simulation.verbose = False 
+    simulation.show_mixing_statistics = False
 
     # Run simulation.
     simulation.run() # run the simulation
@@ -376,9 +371,6 @@ if __name__ == "__main__":
         print e
         print "Could not start MPI. Using serial code instead."
         mpicomm = None
-
-    # Test Maxwell-Boltzmann velocity assignment.
-    test_velocity_assignment(mpicomm)
     
     # Test simple system of harmonic oscillators.
     test_hamiltonian_exchange(mpicomm)

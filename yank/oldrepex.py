@@ -1151,9 +1151,7 @@ class ReplicaExchange(object):
         context.setPositions(positions)
         setpositions_end_time = time.time()
         # Assign Maxwell-Boltzmann velocities.
-        seed = int(numpy.random.randint(MAX_SEED)) # TODO: Is this the right maximum value to use?
-        if self.mpicomm: seed += self.mpicomm.rank 
-        context.setVelocitiesToTemperature(state.temperature, randomSeed=seed)
+        context.setVelocitiesToTemperature(state.temperature) # TODO: May need to worry about seed for this.
         setvelocities_end_time = time.time()
         # Run dynamics.
         integrator.step(self.nsteps_per_iteration)
@@ -2156,12 +2154,13 @@ class ReplicaExchange(object):
                 u_kln[state_index,:,iteration] = u_nkl_replica[iteration,replica_index,:]
 
         # Determine optimal equilibration time, statistical inefficiency, and effectively uncorrelated sample indices.
-        import timeseries
-        [equilibration_end, g, Neff_max, indices] = timeseries.detectEquilibration(u_n)
+        from pymbar import timeseries
+        [t0, g, Neff_max] = timeseries.detectEquilibration(u_n)
+        indices = t0 + timeseries.subsampleCorrelatedData(u_n[t0:], g=g) # TODO: This could be computed as part of 'timeseries.detectEquilibration()'
         N_k = indices.size * numpy.ones([nstates], numpy.int32)
 
         # Next, analyze with pymbar, initializing with last estimate of free energies.
-        import pymbar
+        from pymbar import pymbar
         if hasattr(self, 'f_k'):
             mbar = pymbar.MBAR(u_kln[:,:,indices], N_k, f_k_initial=self.f_k)
         else:
@@ -2179,7 +2178,7 @@ class ReplicaExchange(object):
         # Store analysis summary.
         # TODO: Convert this to an object?
         analysis = dict()
-        analysis['equilibration_end'] = equilibration_end
+        analysis['equilibration_end'] = t0
         analysis['g'] = g
         analysis['indices'] = indices
         analysis['Delta_f_ij'] = Delta_f_ij
