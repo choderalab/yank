@@ -1716,7 +1716,7 @@ class ReplicaExchange(object):
         setattr(ncfile, 'title', self.title)
         setattr(ncfile, 'application', 'YANK')
         setattr(ncfile, 'program', 'yank.py')
-        setattr(ncfile, 'programVersion', __version__)
+        setattr(ncfile, 'programVersion', 'unknown') # TODO: Include actual version.
         setattr(ncfile, 'Conventions', 'YANK')
         setattr(ncfile, 'ConventionVersion', '0.1')
         
