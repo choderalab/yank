@@ -6,7 +6,7 @@ install:
     - sudo apt-get install -qq swig doxygen
     - sudo pip install conda
     - sudo conda init
-    - conda config --add channels http://conda.binstar.org/rmcgibbo
+    - conda config --add channels http://conda.binstar.org/omnia
     - conda create --yes --name test numpy scipy pytables numexpr nose pandas cython statsmodels pandas patsy pyyaml pip netCDF4 pyflakes openmm
     - export PATH="$HOME/envs/test/bin/:$PATH"
     - pip install pymbar==2.0.1-beta
