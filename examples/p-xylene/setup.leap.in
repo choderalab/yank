@@ -10,7 +10,7 @@ source leaprc.gaff
 set default PBRadii mbondi2 
 
 # Load in protein.
-receptor = loadPdb receptor.pdb
+receptor = loadPdb receptor-source.pdb
 
 # Load parameters for ligand.
 mods = loadAmberParams ligand.frcmod
