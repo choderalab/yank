@@ -1121,7 +1121,6 @@ if __name__ == '__main__':
     parser.add_option("--output", dest="output_directory", default=None, help="specify output directory---must be unique for each calculation (default: current directory)")
     parser.add_option("--doctests", action="store_true", dest="doctests", default=False, help="run doctests first (default: False)")
     parser.add_option("--randomize_ligand", action="store_true", dest="randomize_ligand", default=False, help="randomize ligand positions and orientations (default: False)")
-    parser.add_option("--ignore_signal", action="append", dest="ignore_signals", default=[], help="signals to trap and ignore (default: None)")
 
     # Parse command-line arguments.
     (options, args) = parser.parse_args()
@@ -1139,26 +1138,19 @@ if __name__ == '__main__':
 
     # Check arguments for validity.
     if not (options.ligand_prmtop_filename and options.receptor_prmtop_filename):
+        parser.print_help()
         parser.error("ligand and receptor prmtop files must be specified")        
     if not (bool(options.ligand_mol2_filename) ^ bool(options.ligand_crd_filename) ^ bool(options.complex_pdb_filename) ^ bool(options.complex_crd_filename)):
+        parser.print_help()
         parser.error("Ligand positions must be specified through only one of --ligand_crd, --ligand_mol2, --complex_crd, or --complex_pdb.")
     if not (bool(options.receptor_pdb_filename) ^ bool(options.receptor_crd_filename) ^ bool(options.complex_pdb_filename) ^ bool(options.complex_crd_filename)):
+        parser.print_help()
         parser.error("Receptor positions must be specified through only one of --receptor_crd, --receptor_pdb, --complex_crd, or --complex_pdb.")    
 
     # DEBUG: Require complex prmtop files to be specified while JDC debugs automatic combination of systems.
     if not (options.complex_prmtop_filename):
+        parser.print_help()
         parser.error("Please specify --complex_prmtop [complex_prmtop_filename] argument.  JDC is still debugging automatic generation of complex topologies from receptor+ligand.")
-
-    # Ignore requested signals.
-    if len(options.ignore_signals) > 0:
-        import signal
-        # Create a dummy signal handler.
-        def signal_handler(signal, frame):
-            print 'Signal %s received and ignored.' % str(signal)
-        # Register the dummy signal handler.
-        for signal_name in options.ignore_signals:
-            print "Will ignore signal %s" % signal_name
-            signal.signal(getattr(signal, signal_name), signal_handler)
 
     # Initialize MPI if requested.
     if options.mpi:
