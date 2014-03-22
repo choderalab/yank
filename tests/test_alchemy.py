@@ -145,10 +145,16 @@ def alchemical_factory_check(reference_system, positions, receptor_atoms, ligand
     delta = 0.001
     delta = 1.0e-6
 
+    # Create systems.
+    logger.info("partial discharging")
     compareSystemEnergies(positions, [reference_system, factory.createPerturbedSystem(AlchemicalState(0, 1-delta, 1, 1, annihilateElectrostatics=annihilateElectrostatics, annihilateSterics=annihilateSterics))], ['reference', 'partially discharged'], platform=platform)
+    logger.info("discharging")
     compareSystemEnergies(positions, [factory.createPerturbedSystem(AlchemicalState(0, delta, 1, 1, annihilateElectrostatics=annihilateElectrostatics, annihilateSterics=annihilateSterics)), factory.createPerturbedSystem(AlchemicalState(0, 0.0, 1, 1, annihilateElectrostatics=annihilateElectrostatics, annihilateSterics=annihilateSterics))], ['partially charged', 'discharged'], platform=platform)
+    logger.info("partial decoupling")
     compareSystemEnergies(positions, [factory.createPerturbedSystem(AlchemicalState(0, 0, 1, 1, annihilateElectrostatics=annihilateElectrostatics, annihilateSterics=annihilateSterics)), factory.createPerturbedSystem(AlchemicalState(0, 0, 1-delta, 1, annihilateElectrostatics=annihilateElectrostatics, annihilateSterics=annihilateSterics))], ['discharged', 'partially decoupled'], platform=platform)
+    logger.info("decoupling")
     compareSystemEnergies(positions, [factory.createPerturbedSystem(AlchemicalState(0, 0, delta, 1, annihilateElectrostatics=annihilateElectrostatics, annihilateSterics=annihilateSterics)), factory.createPerturbedSystem(AlchemicalState(0, 0, 0, 1, annihilateElectrostatics=annihilateElectrostatics, annihilateSterics=annihilateSterics))], ['partially coupled', 'decoupled'], platform=platform)
+    logger.info("done")
 
     return
     
@@ -399,6 +405,18 @@ def test_tip3p_with_dispersion():
     alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms)
     logger.info("")
 
+def test_alanine_dipeptide_vacuum():
+    """
+    Alanine dipeptide in vacuum.
+    """
+    logger.info("Creating alanine dipeptide vacuum system...")
+    system_container = testsystems.AlanineDipeptideVacuum()
+    (reference_system, positions) = system_container.system, system_container.positions
+    ligand_atoms = range(0,22) # alanine residue
+    receptor_atoms = range(22,22)
+    alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms)
+    logger.info("")
+
 def test_alanine_dipeptide_implicit():
     """
     Alanine dipeptide in implicit solvent.
@@ -407,7 +425,7 @@ def test_alanine_dipeptide_implicit():
     system_container = testsystems.AlanineDipeptideImplicit()
     (reference_system, positions) = system_container.system, system_container.positions
     ligand_atoms = range(0,22) # alanine residue
-    receptor_atoms = list()
+    receptor_atoms = range(22,22)
     alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms)
     logger.info("")
 
@@ -463,5 +481,4 @@ def tooslow_src_explicit():
 #=============================================================================================
 
 if __name__ == "__main__":
-    # Test energy accuracy of intermediates near lambda = 1.
-    test_intermediates()
+    test_alanine_dipeptide_explicit()

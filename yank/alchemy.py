@@ -505,10 +505,12 @@ class AbsoluteAlchemicalFactory(object):
         custom_nonbonded_force.addGlobalParameter("lennard_jones_lambda", alchemical_state.ligandSterics);
         custom_nonbonded_force.addPerParticleParameter("sigma") # Lennard-Jones sigma
         custom_nonbonded_force.addPerParticleParameter("epsilon") # Lennard-Jones epsilon
-        system.addForce(custom_nonbonded_force)
 
         # Restrict interaction evaluation to be between alchemical atoms and rest of environment.
-        custom_nonbonded_force.addInteractionGroup(atomset1, atomset2)
+        # Only add custom nonbonded force if interacting groups are both nonzero in size.
+        if (len(atomset1) != 0) and (len(atomset2) != 0):
+            custom_nonbonded_force.addInteractionGroup(atomset1, atomset2)
+            system.addForce(custom_nonbonded_force)
 
         # Create CustomBondedForce to handle softcore exceptions if alchemically annihilating ligand.
         if alchemical_state.annihilateSterics:
