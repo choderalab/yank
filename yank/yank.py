@@ -663,6 +663,7 @@ class Yank(object):
                 # TODO: Alternatively, we need a scheme for specifying restraints with only protein molecules, not solvent.
                 self.standard_state_correction = 0.0 
         
+        if self.verbose: print "Creating alchemical intermediates..."
         factory = AbsoluteAlchemicalFactory(self.complex, ligand_atoms=self.ligand_atoms)
         systems = factory.createPerturbedSystems(self.complex_protocol)
         store_filename = os.path.join(self.output_directory, 'complex.nc')
@@ -671,10 +672,11 @@ class Yank(object):
         metadata['standard_state_correction'] = self.standard_state_correction
 
         if self.randomize_ligand:
-            print "Randomizing ligand positions and excluding overlapping configurations..."
+            if self.verbose: print "Randomizing ligand positions and excluding overlapping configurations..."
             randomized_positions = list()
-            sigma = 20.0 * units.angstrom
-            close_cutoff = 3.0 * units.angstrom
+            #sigma = 20.0 * units.angstrom
+            sigma = complex_restraints.getReceptorRadiusOfGyration()
+            close_cutoff = 1.5 * units.angstrom # TODO: Allow this to be specified by user.
             nstates = len(systems)
             for state_index in range(nstates):
                 positions = self.complex_positions[numpy.random.randint(0, len(self.complex_positions))]
@@ -682,6 +684,7 @@ class Yank(object):
                 randomized_positions.append(new_positions)
             self.complex_positions = randomized_positions
 
+        if self.verbose: print "Setting up replica exchange simulation..."
         complex_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.complex_positions, store_filename, displacement_sigma=self.displacement_sigma, mc_atoms=self.ligand_atoms, protocol=self.protocol, metadata=metadata)
         complex_simulation.nsteps_per_iteration = 500
         if self.platform:
