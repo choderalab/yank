@@ -139,6 +139,9 @@ class ReceptorLigandRestraint(object):
         logger.debug("restrained receptor atom: %d" % self.restrained_receptor_atom)
         logger.debug("restrained ligand atom: %d" % self.restrained_ligand_atom)
 
+        # Determine radius of gyration of receptor.
+        self.radius_of_gyration = self._computeRadiusOfGyration(self.coordinates[self.receptor_atoms,:])
+
         # Determine parameters
         self.bond_parameters = self._determineBondParameters()
 
@@ -185,6 +188,29 @@ class ReceptorLigandRestraint(object):
         bond_parameters = [K]
 
         return bond_parameters
+
+    def _computeRadiusOfGyration(self, coordinates):
+        """
+        Compute the radius of gyration of the specified coordinate set.
+        
+        """
+        unit = coordinates.unit
+        
+        # Get dimensionless receptor coordinates.
+        x = coordinates / unit
+        
+        # Get dimensionless restrained atom coordinate.
+        xref = x.mean(0)
+        xref = numpy.reshape(xref, (1,3)) # (1,3) array
+        
+        # Compute distances from restrained atom.
+        natoms = x.shape[0]
+        distances = numpy.sqrt(((x - numpy.tile(xref, (natoms, 1)))**2).sum(1)) # distances[i] is the distance from the centroid to particle i
+
+        # Compute std dev of distances from restrained atom.
+        self.radius_of_gyration = distances.std() * unit 
+
+        return
 
     def _createRestraintForce(self, particle1, particle2, mm=None):
         """
@@ -310,6 +336,17 @@ class ReceptorLigandRestraint(object):
 
         """
         return self.standard_state_correction
+
+    def getReceptorRadiusOfGyration(self):
+        """
+        Returns the radius of gyration of the receptor.
+
+        RETURNS
+        
+        radius_of_gyration (simtk.unit.Quantity with units compatible with simtk.unit.angstroms) - radius of gyration of the receptor
+
+        """
+        return self.radius_of_gyration
 
     def _closestAtomToCentroid(self, coordinates, indices=None, masses=None):
         """

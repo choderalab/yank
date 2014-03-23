@@ -92,28 +92,41 @@ def compareSystemEnergies(positions, systems, descriptions, platform=None, preci
                 platform.setDefaultPropertyValue('CudaPrecision', precision)
             elif platform_name == 'OpenCL':
                 platform.setDefaultPropertyValue('OpenCLPrecision', precision)
-    
+
     potentials = list()
+    states = list()
     for system in systems:
         integrator = openmm.VerletIntegrator(timestep)
         if platform:
             context = openmm.Context(system, integrator, platform)
         else:
             context = openmm.Context(system, integrator)
-
         context.setPositions(positions)
-        state = context.getState(getEnergy=True)
+        state = context.getState(getEnergy=True, getPositions=True)
         potential = state.getPotentialEnergy()    
         potentials.append(potential)
+        states.append(state)
+        del context, integrator
 
     logger.info("========")
     for i in range(len(systems)):
         logger.info("%32s : %24.8f kcal/mol" % (descriptions[i], potentials[i] / units.kilocalories_per_mole))
+
+        integrator = openmm.VerletIntegrator(timestep)
+        if platform:
+            context = openmm.Context(systems[i], integrator, platform)
+        else:
+            context = openmm.Context(systems[i], integrator)                  
+        context.setPositions(positions)
+        state = context.getState(getEnergy=True, getPositions=True)
+        potential = state.getPotentialEnergy()    
+        del context, integrator
+
         if (i > 0):
             delta = potentials[i] - potentials[0]
             logger.info("%32s : %24.8f kcal/mol" % ('ERROR', delta / units.kilocalories_per_mole))
             if (abs(delta) > MAX_DELTA):
-                raise Exception("Maximum allowable deviation (%24.8f kcal/mol) exceeded; test failed." % (MAX_DELTA / units.kilocalories_per_mole))
+                raise Exception("Maximum allowable deviation (%24.8f kcal/mol) exceeded; test failed." % (MAX_DELTA / units.kilocalories_per_mole))            
 
     return potentials
 
@@ -137,24 +150,20 @@ def alchemical_factory_check(reference_system, positions, receptor_atoms, ligand
     final_time = time.time()
     elapsed_time = final_time - initial_time
     logger.info("AbsoluteAlchemicalFactory initialization took %.3f s" % elapsed_time)
-    
+
+    platform_name = 'CPU' # DEBUG
+
     platform = None
     if platform_name:
         platform = openmm.Platform.getPlatformByName(platform_name)
 
-    delta = 0.001
-    delta = 1.0e-6
+    delta = 1.0e-5
 
     # Create systems.
-    logger.info("partial discharging")
     compareSystemEnergies(positions, [reference_system, factory.createPerturbedSystem(AlchemicalState(0, 1-delta, 1, 1, annihilateElectrostatics=annihilateElectrostatics, annihilateSterics=annihilateSterics))], ['reference', 'partially discharged'], platform=platform)
-    logger.info("discharging")
     compareSystemEnergies(positions, [factory.createPerturbedSystem(AlchemicalState(0, delta, 1, 1, annihilateElectrostatics=annihilateElectrostatics, annihilateSterics=annihilateSterics)), factory.createPerturbedSystem(AlchemicalState(0, 0.0, 1, 1, annihilateElectrostatics=annihilateElectrostatics, annihilateSterics=annihilateSterics))], ['partially charged', 'discharged'], platform=platform)
-    logger.info("partial decoupling")
     compareSystemEnergies(positions, [factory.createPerturbedSystem(AlchemicalState(0, 0, 1, 1, annihilateElectrostatics=annihilateElectrostatics, annihilateSterics=annihilateSterics)), factory.createPerturbedSystem(AlchemicalState(0, 0, 1-delta, 1, annihilateElectrostatics=annihilateElectrostatics, annihilateSterics=annihilateSterics))], ['discharged', 'partially decoupled'], platform=platform)
-    logger.info("decoupling")
     compareSystemEnergies(positions, [factory.createPerturbedSystem(AlchemicalState(0, 0, delta, 1, annihilateElectrostatics=annihilateElectrostatics, annihilateSterics=annihilateSterics)), factory.createPerturbedSystem(AlchemicalState(0, 0, 0, 1, annihilateElectrostatics=annihilateElectrostatics, annihilateSterics=annihilateSterics))], ['partially coupled', 'decoupled'], platform=platform)
-    logger.info("done")
 
     return
     
@@ -481,4 +490,8 @@ def tooslow_src_explicit():
 #=============================================================================================
 
 if __name__ == "__main__":
-    test_alanine_dipeptide_explicit()
+    #test_alanine_dipeptide_explicit()
+    test_lj_cluster()
+    test_lj_fluid_without_dispersion()
+    test_lj_fluid_with_dispersion()
+
