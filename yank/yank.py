@@ -514,8 +514,11 @@ class Yank(object):
         # DEBUG
         #if self.verbose: print "receptor has %d atoms; ligand has %d atoms" % (self.receptor.getNumParticles(), self.ligand.getNumParticles())
 
-        # TODO: Determine whether system is periodic.
+        # TODO: Use more general approach to determine whether system is periodic.
         self.is_periodic = False
+        forces = { self.complex.getForce(index).__class__.__name__ : self.complex.getForce(index) for index in range(self.complex.getNumForces()) }
+        if forces['NonbondedForce'].getNonbondedMethod in [openmm.NonbondedForce.CutoffPeriodic, openmm.NonbondedForce.Ewald, openmm.NonbondedForce.PME]:
+            self.is_periodic = True
         
         # Select default protocols for alchemical transformation.
         self.vacuum_protocol = AbsoluteAlchemicalFactory.defaultVacuumProtocol()
@@ -631,7 +634,7 @@ class Yank(object):
             if self.verbose: print "Using platform '%s'" % self.platform.getName()
             solvent_simulation.platform = self.platform
         solvent_simulation.nsteps_per_iteration = 500
-        solvent_simulation.run() # DEBUG
+        solvent_simulation.run() 
         
         #
         # Set up ligand in complex simulation.
