@@ -61,8 +61,6 @@ import time
 
 import simtk.openmm as openmm
 
-from sets import Set
-
 import logging
 logger = logging.getLogger(__name__)
 
@@ -205,7 +203,7 @@ class AbsoluteAlchemicalFactory(object):
         self.ligand_atoms = copy.deepcopy(ligand_atoms)
         
         # Store atom sets
-        self.ligand_atomset = Set(self.ligand_atoms)
+        self.ligand_atomset = set(self.ligand_atoms)
 
         return
 
@@ -495,12 +493,17 @@ class AbsoluteAlchemicalFactory(object):
 
         # Create atom groups.
         natoms = system.getNumParticles()
-        atomset1 = Set(alchemical_atom_indices) # only alchemically-modified atoms
-        atomset2 = Set(range(system.getNumParticles())) - atomset1 # all atoms minus intra-alchemical region
+        atomset1 = set(alchemical_atom_indices) # only alchemically-modified atoms
+        atomset2 = set(range(system.getNumParticles())) - atomset1 # all atoms minus intra-alchemical region
 
+        # Create alchemically modified nonbonded force.
+        # TODO: Create a _createCustomNonbondedForce method to duplicate parameters?
         energy_expression += "alpha = %f;" % alpha
         energy_expression += "a = %f; b = %f; c = %f;" % (a,b,c)    
         custom_nonbonded_force = openmm.CustomNonbondedForce(energy_expression)            
+        custom_nonbonded_force.setNonbondedMethod(nonbonded_force.getNonbondedMethod()) # TODO: Make sure these method indices are identical.
+        custom_nonbonded_force.setUseSwitchingFunction(nonbonded_force.getUseSwitchingFunction()) 
+        custom_nonbonded_force.setSwitchingDistance(nonbonded_force.getSwitchingDistance()) 
         custom_nonbonded_force.setUseLongRangeCorrection(nonbonded_force.getUseDispersionCorrection())
         custom_nonbonded_force.addGlobalParameter("lennard_jones_lambda", alchemical_state.ligandSterics);
         custom_nonbonded_force.addPerParticleParameter("sigma") # Lennard-Jones sigma
@@ -525,18 +528,21 @@ class AbsoluteAlchemicalFactory(object):
             custom_bond_force.addPerBondParameter("epsilon") # Lennard-Jones epsilon
             system.addForce(custom_bond_force)
         else:
-            # Add a second CustomNonbondedForce to handle "intra-alchemical" interactions at full strength.
+            # Decoupling of sterics.
+            # Add a second CustomNonbondedForce to restore "intra-alchemical" interactions to full strength.
             energy_expression = "4*epsilon*((sigma/r)^12 - (sigma/r)^6);" 
             energy_expression += "epsilon = sqrt(epsilon1*epsilon2);" # mixing rule for epsilon
             energy_expression += "sigma = 0.5*(sigma1 + sigma2);" # mixing rule for sigma
             custom_nonbonded_force2 = openmm.CustomNonbondedForce(energy_expression)            
+            custom_nonbonded_force2.setUseSwitchingFunction(nonbonded_force.getUseSwitchingFunction()) 
+            custom_nonbonded_force2.setSwitchingDistance(nonbonded_force.getSwitchingDistance()) 
             custom_nonbonded_force2.setUseLongRangeCorrection(nonbonded_force.getUseDispersionCorrection())
             custom_nonbonded_force2.addPerParticleParameter("sigma") # Lennard-Jones sigma
             custom_nonbonded_force2.addPerParticleParameter("epsilon") # Lennard-Jones epsilon
             system.addForce(custom_nonbonded_force2)
             # Restrict interaction evaluation to be between alchemical atoms and rest of environment.
-            atomset1 = Set(alchemical_atom_indices) # only alchemically-modified atoms
-            atomset2 = Set(alchemical_atom_indices) # only alchemically-modified atoms
+            atomset1 = set(alchemical_atom_indices) # only alchemically-modified atoms
+            atomset2 = set(alchemical_atom_indices) # only alchemically-modified atoms
             custom_nonbonded_force2.addInteractionGroup(atomset1, atomset2)
 
         # Copy Lennard-Jones particle parameters.
@@ -839,7 +845,7 @@ class AbsoluteAlchemicalFactory(object):
                 # Copy NonbondedForce.
                 force = copy.deepcopy(reference_force)
                 system.addForce(force)
-
+                
                 # Modify electrostatics.
                 if alchemical_state.ligandElectrostatics != 1.0:
                     for particle_index in range(force.getNumParticles()):
@@ -1036,8 +1042,8 @@ class AbsoluteAlchemicalFactory(object):
 
         """
 
-        valence_atomset = Set(valence_atoms)
-        intersection = Set.intersection(valence_atomset, self.ligand_atomset)
+        valence_atomset = set(valence_atoms)
+        intersection = set.intersection(valence_atomset, self.ligand_atomset)
         if (len(intersection) >= 1) and (len(intersection) < len(valence_atomset)):
             return True
 
