@@ -236,11 +236,15 @@ class AbsoluteAlchemicalFactory(object):
 
         # Protocol used for SAMPL4.
         alchemical_states.append(AlchemicalState(0.00, 1.00, 1.00, 1.)) # fully interacting
-        alchemical_states.append(AlchemicalState(0.00, 1.00, 1.00, 1.)) # fully interacting
-        alchemical_states.append(AlchemicalState(0.00, 1.00, 1.00, 1.)) # fully interacting
+        #alchemical_states.append(AlchemicalState(0.00, 1.00, 1.00, 1.)) # fully interacting
+        #alchemical_states.append(AlchemicalState(0.00, 1.00, 1.00, 1.)) # fully interacting
         alchemical_states.append(AlchemicalState(0.00, 0.975, 1.00, 1.)) # 
         alchemical_states.append(AlchemicalState(0.00, 0.95, 1.00, 1.)) # 
         alchemical_states.append(AlchemicalState(0.00, 0.90, 1.00, 1.)) # 
+
+        # DEBUG
+        return alchemical_states
+
         alchemical_states.append(AlchemicalState(0.00, 0.80, 1.00, 1.)) # 
         alchemical_states.append(AlchemicalState(0.00, 0.70, 1.00, 1.)) # 
         alchemical_states.append(AlchemicalState(0.00, 0.60, 1.00, 1.)) # 

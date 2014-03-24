@@ -906,9 +906,11 @@ class ReplicaExchange(object):
         if self._initialized:
             raise Error("Simulation has already been initialized.")
 
-        # TODO: If no platform is specified, use the Reference platform.
+        # If no platform is specified, use the CPU platform.
+        # TODO: If no platform is specified, instead use the fastest available platform.
         if self.platform is None:
-            self.platform = self.mm.Platform.getPlatformByName("Reference")
+            self.platform = self.mm.Platform.getPlatformByName("CPU")
+            self.platform.setPropertyDefaultValue('CpuThreads', '1') # only use 1 CPU thread
 
         # Turn off verbosity if not master node.
         if self.mpicomm:
@@ -926,6 +928,36 @@ class ReplicaExchange(object):
         # Determine number of alchemical states.
         self.nstates = len(self.states)
 
+        # Determine number of atoms in systems.
+        self.natoms = self.states[0].system.getNumParticles()
+  
+        # Allocate storage.
+        self.replica_positions = list() # replica_positions[i] is the configuration currently held in replica i
+        self.replica_box_vectors = list() # replica_box_vectors[i] is the set of box vectors currently held in replica i  
+        self.replica_states     = numpy.zeros([self.nstates], numpy.int32) # replica_states[i] is the state that replica i is currently at
+        self.u_kl               = numpy.zeros([self.nstates, self.nstates], numpy.float32)        
+        self.swap_Pij_accepted  = numpy.zeros([self.nstates, self.nstates], numpy.float32)
+        self.Nij_proposed       = numpy.zeros([self.nstates,self.nstates], numpy.int64) # Nij_proposed[i][j] is the number of swaps proposed between states i and j, prior of 1
+        self.Nij_accepted       = numpy.zeros([self.nstates,self.nstates], numpy.int64) # Nij_proposed[i][j] is the number of swaps proposed between states i and j, prior of 1
+
+        # Distribute coordinate information to replicas in a round-robin fashion, making a deep copy.
+        if not self.resume:
+            self.replica_positions = [ copy.deepcopy(self.provided_positions[replica_index % len(self.provided_positions)]) for replica_index in range(self.nstates) ]
+
+        # Assign default box vectors.
+        self.replica_box_vectors = list()
+        for state in self.states:
+            [a,b,c] = state.system.getDefaultPeriodicBoxVectors()
+            box_vectors = units.Quantity(numpy.zeros([3,3], numpy.float32), units.nanometers)
+            box_vectors[0,:] = a
+            box_vectors[1,:] = b
+            box_vectors[2,:] = c
+            self.replica_box_vectors.append(box_vectors)
+        
+        # Assign initial replica states.
+        for replica_index in range(self.nstates):
+            self.replica_states[replica_index] = replica_index
+            
         # Create cached Context objects.
         if self.verbose: print "Creating and caching Context objects..."
         MAX_SEED = (1<<31) - 1 # maximum seed value (max size of signed C long)
@@ -941,7 +973,10 @@ class ReplicaExchange(object):
                     integrator = self.mm.LangevinIntegrator(state.temperature, self.collision_rate, self.timestep)                    
                     integrator.setRandomNumberSeed(seed + self.mpicomm.rank) 
                     context = self.mm.Context(state.system, integrator, self.platform)
-                    self.mm.LocalEnergyMinimizer.minimize(context, 0, 1) # DEBUG
+                    box_vectors = self.replica_box_vectors[0]
+                    context.setPeriodicBoxVectors(box_vectors[0,:], box_vectors[1,:], box_vectors[2,:])
+                    context.setPositions(self.replica_positions[0])
+                    self.mm.LocalEnergyMinimizer.minimize(context, 0, 1) # also compile minimizer
                     del context, integrator
             self.mpicomm.barrier()
             final_time = time.time()
@@ -986,36 +1021,6 @@ class ReplicaExchange(object):
         elapsed_time = final_time - initial_time
         if self.verbose: print "%.3f s elapsed." % elapsed_time
 
-        # Determine number of atoms in systems.
-        self.natoms = self.states[0].system.getNumParticles()
-  
-        # Allocate storage.
-        self.replica_positions = list() # replica_positions[i] is the configuration currently held in replica i
-        self.replica_box_vectors = list() # replica_box_vectors[i] is the set of box vectors currently held in replica i  
-        self.replica_states     = numpy.zeros([self.nstates], numpy.int32) # replica_states[i] is the state that replica i is currently at
-        self.u_kl               = numpy.zeros([self.nstates, self.nstates], numpy.float32)        
-        self.swap_Pij_accepted  = numpy.zeros([self.nstates, self.nstates], numpy.float32)
-        self.Nij_proposed       = numpy.zeros([self.nstates,self.nstates], numpy.int64) # Nij_proposed[i][j] is the number of swaps proposed between states i and j, prior of 1
-        self.Nij_accepted       = numpy.zeros([self.nstates,self.nstates], numpy.int64) # Nij_proposed[i][j] is the number of swaps proposed between states i and j, prior of 1
-
-        # Distribute coordinate information to replicas in a round-robin fashion, making a deep copy.
-        if not self.resume:
-            self.replica_positions = [ copy.deepcopy(self.provided_positions[replica_index % len(self.provided_positions)]) for replica_index in range(self.nstates) ]
-
-        # Assign default box vectors.
-        self.replica_box_vectors = list()
-        for state in self.states:
-            [a,b,c] = state.system.getDefaultPeriodicBoxVectors()
-            box_vectors = units.Quantity(numpy.zeros([3,3], numpy.float32), units.nanometers)
-            box_vectors[0,:] = a
-            box_vectors[1,:] = b
-            box_vectors[2,:] = c
-            self.replica_box_vectors.append(box_vectors)
-        
-        # Assign initial replica states.
-        for replica_index in range(self.nstates):
-            self.replica_states[replica_index] = replica_index
-            
         if self.resume:
             # Resume from NetCDF file.
             self._resume_from_netcdf()

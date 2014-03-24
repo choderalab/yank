@@ -205,6 +205,9 @@ class ReceptorLigandRestraint(object):
                 
         """
 
+        import time
+        initial_time = time.time()
+
         r_min = 0 * units.nanometers
         r_max = 100 * units.nanometers # TODO: Use maximum distance between atoms?
 
@@ -253,8 +256,12 @@ class ReceptorLigandRestraint(object):
         
         # Compute standard state correction for releasing shell restraints into standard-state box (in units of kT).
         DeltaG = - math.log(box_volume / shell_volume)
-        logger.debug("Standard state correction: %.3f kT" % DeltaG)
+        logger.debug("Standard state correction: %.3f kT" % DeltaG)        
         
+        final_time = time.time()
+        elapsed_time = final_time - initial_time
+        logger.debug("restraints: _computeStandardStateCorrection: %.3f s elapsed" % elapsed_time)
+
         # Return standard state correction (in kT).
         return DeltaG
 

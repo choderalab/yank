@@ -512,7 +512,7 @@ class Yank(object):
         self.output_directory = output_directory
 
         # DEBUG
-        #if self.verbose: print "receptor has %d atoms; ligand has %d atoms" % (self.receptor.getNumParticles(), self.ligand.getNumParticles())
+        if self.verbose: print "receptor has %d atoms; ligand has %d atoms" % (self.receptor.getNumParticles(), self.ligand.getNumParticles())
 
         # TODO: Use more general approach to determine whether system is periodic.
         self.is_periodic = False
@@ -546,6 +546,9 @@ class Yank(object):
         #self.restraint_type = 'flat-bottom' # default to a flat-bottom restraint between the ligand and receptor
         self.restraint_type = 'harmonic' # default to a single harmonic restraint between the ligand and receptor
 
+        # DEBUG
+        if self.verbose: print "Yank object created."
+
         return
 
     def _initialize(self):
@@ -559,7 +562,7 @@ class Yank(object):
         if not self.is_periodic:
             self.pressure = None
 
-        # Extract ligand positions.
+        # Extract ligand positions from complex.
         self.ligand_positions = [ positions[self.ligand_atoms,:] for positions in self.complex_positions ]
 
         # TODO: Pack up a 'protocol' for modified Hamiltonian exchange simulations. Use this instead in setting up simulations.
@@ -655,7 +658,7 @@ class Yank(object):
             resume = False
 
         #if self.verbose: print "Setting up complex simulation..."
-
+        if options.verbose: print "Creating receptor-ligand restraints..."
         if not self.is_periodic:
             # Impose restraints to keep the ligand from drifting too far from the protein.
             import restraints
@@ -750,7 +753,7 @@ class Yank(object):
         if platform_name == 'CUDA':
             self.platform.setPropertyDefaultValue('CudaDeviceIndex', '%d' % deviceid) # select Cuda device index
         elif platform_name == 'OpenCL':
-            self.platform.setPropertyDefaultValue('OpenCLDeviceIndex', '%d' % devicid) # select OpenCL device index
+            self.platform.setPropertyDefaultValue('OpenCLDeviceIndex', '%d' % deviceid) # select OpenCL device index
         elif platform_name == 'CPU':
             self.platform.setPropertyDefaultValue('CpuThreads', '1') # set number of CPU threads
             
@@ -770,7 +773,7 @@ class Yank(object):
         
         # Run ligand in complex simulation on GPUs.
         #self.protocol['verbose'] = False # DEBUG: Suppress terminal output from ligand in solvent and vacuum simulations.
-
+        if options.verbose: print "Creating receptor-ligand restraints..."
         self.standard_state_correction = 0.0 
         if not self.is_periodic: 
             # Impose restraints to keep the ligand from drifting too far from the protein.
@@ -809,6 +812,7 @@ class Yank(object):
             resume = True
         except Exception as e:        
             # Create states using alchemical factory.
+            if options.verbose: print "Creating alchemical states..."
             factory = AbsoluteAlchemicalFactory(self.complex, ligand_atoms=self.ligand_atoms)
             systems = factory.createPerturbedSystems(self.complex_protocol, mpicomm=MPI.COMM_WORLD)
             resume = False
@@ -821,6 +825,7 @@ class Yank(object):
 
         # Randomize ligand positions.
         if self.randomize_ligand and not resume:
+            if options.verbose: print "Randomizing ligand positions..."
             randomized_positions = list()
             sigma = 2*complex_restraints.getReceptorRadiusOfGyration()
             close_cutoff = 1.5 * units.angstrom # TODO: Allow this to be specified by user.
@@ -832,6 +837,7 @@ class Yank(object):
             self.complex_positions = randomized_positions
                 
         # Set up Hamiltonian exchange simulation.
+        if options.verbose: print "Setting up complex simulation..."
         complex_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.complex_positions, store_filename, displacement_sigma=self.displacement_sigma, mc_atoms=self.ligand_atoms, protocol=self.protocol, mpicomm=comm, metadata=metadata)
         complex_simulation.nsteps_per_iteration = 500
         complex_simulation.run()        
@@ -1020,7 +1026,6 @@ def read_openeye_crd(filename, natoms_expected, verbose=False):
     RETURNS
     
     positions_list (list of numpy array of simtk.unit.Quantity) - list of coordinate sets read
-
     """
 
     if verbose: print "Reading cooordinate sets from '%s'..." % filename
@@ -1149,7 +1154,8 @@ if __name__ == '__main__':
         parser.print_help()
         parser.error("Receptor positions must be specified through only one of --receptor_crd, --receptor_pdb, --complex_crd, or --complex_pdb.")    
 
-    # DEBUG: Require complex prmtop files to be specified while JDC debugs automatic combination of systems.
+    # Require complex prmtop files to be specified.
+    # TODO: Automatically set up solvent system after extracting ligand.
     if not (options.complex_prmtop_filename):
         parser.print_help()
         parser.error("Please specify --complex_prmtop [complex_prmtop_filename] argument.  JDC is still debugging automatic generation of complex topologies from receptor+ligand.")
@@ -1178,13 +1184,12 @@ if __name__ == '__main__':
     removeCMMotion = False
 
     # Create System objects for ligand and receptor.
+    if options.verbose: print "Creating ligand OpenMM System..."
     ligand_system = app.AmberPrmtopFile(options.ligand_prmtop_filename).createSystem(nonbondedMethod=nonbondedMethod, implicitSolvent=implicitSolvent, constraints=constraints, removeCMMotion=removeCMMotion)
+    if options.verbose: print "Creating receptor OpenMM System..."
     receptor_system = app.AmberPrmtopFile(options.receptor_prmtop_filename).createSystem(nonbondedMethod=nonbondedMethod, implicitSolvent=implicitSolvent, constraints=constraints, removeCMMotion=removeCMMotion)
-    
-    # Load complex prmtop if specified.
-    complex_system = None
-    if options.complex_prmtop_filename:
-        complex_system = app.AmberPrmtopFile(options.complex_prmtop_filename).createSystem(nonbondedMethod=nonbondedMethod, implicitSolvent=implicitSolvent, constraints=constraints, removeCMMotion=removeCMMotion)
+    if options.verbose: print "Creating complex OpenMM System..."
+    complex_system = app.AmberPrmtopFile(options.complex_prmtop_filename).createSystem(nonbondedMethod=nonbondedMethod, implicitSolvent=implicitSolvent, constraints=constraints, removeCMMotion=removeCMMotion)
 
     # Determine number of atoms for each system.
     natoms_receptor = receptor_system.getNumParticles()
@@ -1192,6 +1197,7 @@ if __name__ == '__main__':
     natoms_complex = natoms_receptor + natoms_ligand
 
     # Read ligand and receptor positions.
+    if options.verbose: print "Reading coordinates..."
     ligand_positions = list()
     receptor_positions = list()
     complex_positions = list()
