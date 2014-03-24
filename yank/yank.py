@@ -636,7 +636,27 @@ class Yank(object):
         # Set up ligand in complex simulation.
         # 
 
-        if self.verbose: print "Setting up complex simulation..."
+        # Create alchemically perturbed systems if not resuming run.
+        try:
+            # We can attempt to restore if serialized states exist.
+            # TODO: We probably don't need to check this.  
+            import time
+            initial_time = time.time()
+            store_filename = os.path.join(self.output_directory, 'complex.nc')
+            import netCDF4 as netcdf
+            ncfile = netcdf.Dataset(store_filename, 'r') 
+            ncvar_systems = ncfile.groups['thermodynamic_states'].variables['systems']
+            nsystems = ncvar_systems.shape[0]
+            ncfile.close()
+            systems = None
+            resume = True
+        except Exception as e:        
+            # Create states using alchemical factory.
+            factory = AbsoluteAlchemicalFactory(self.complex, ligand_atoms=self.ligand_atoms)
+            systems = factory.createPerturbedSystems(self.complex_protocol, mpicomm=MPI.COMM_WORLD)
+            resume = False
+
+        #if self.verbose: print "Setting up complex simulation..."
 
         if not self.is_periodic:
             # Impose restraints to keep the ligand from drifting too far from the protein.
@@ -659,19 +679,18 @@ class Yank(object):
                 # TODO: Alternatively, we need a scheme for specifying restraints with only protein molecules, not solvent.
                 self.standard_state_correction = 0.0 
         
-        if self.verbose: print "Creating alchemical intermediates..."
-        factory = AbsoluteAlchemicalFactory(self.complex, ligand_atoms=self.ligand_atoms)
-        systems = factory.createPerturbedSystems(self.complex_protocol)
-        store_filename = os.path.join(self.output_directory, 'complex.nc')
+        #if self.verbose: print "Creating alchemical intermediates..."
+        #factory = AbsoluteAlchemicalFactory(self.complex, ligand_atoms=self.ligand_atoms)
+        #systems = factory.createPerturbedSystems(self.complex_protocol)
+        #store_filename = os.path.join(self.output_directory, 'complex.nc')
 
         metadata = dict()
         metadata['standard_state_correction'] = self.standard_state_correction
 
-        if self.randomize_ligand:
+        if self.randomize_ligand and not resume:
             if self.verbose: print "Randomizing ligand positions and excluding overlapping configurations..."
             randomized_positions = list()
             sigma = 2*complex_restraints.getReceptorRadiusOfGyration()
-            print "sigma = %s" % str(sigma)
             close_cutoff = 1.5 * units.angstrom # TODO: Allow this to be specified by user.
             nstates = len(systems)
             for state_index in range(nstates):
