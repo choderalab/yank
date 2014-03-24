@@ -840,6 +840,7 @@ class Yank(object):
         if options.verbose: print "Setting up complex simulation..."
         complex_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.complex_positions, store_filename, displacement_sigma=self.displacement_sigma, mc_atoms=self.ligand_atoms, protocol=self.protocol, mpicomm=comm, metadata=metadata)
         complex_simulation.nsteps_per_iteration = 500
+        complex_simulation.platform = self.platform
         complex_simulation.run()        
         MPI.COMM_WORLD.barrier()
 
@@ -850,6 +851,7 @@ class Yank(object):
         store_filename = os.path.join(self.output_directory, 'solvent.nc')
         solvent_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.ligand_positions, store_filename, protocol=self.protocol, mpicomm=comm)
         solvent_simulation.nsteps_per_iteration = 500
+        solvent_simulation.platform = self.platform
         solvent_simulation.run() 
         MPI.COMM_WORLD.barrier()
         

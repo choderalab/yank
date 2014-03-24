@@ -909,6 +909,7 @@ class ReplicaExchange(object):
         # If no platform is specified, use the CPU platform.
         # TODO: If no platform is specified, instead use the fastest available platform.
         if self.platform is None:
+            print "No platform specified, so selecting CPU platform with one thread."
             self.platform = self.mm.Platform.getPlatformByName("CPU")
             self.platform.setPropertyDefaultValue('CpuThreads', '1') # only use 1 CPU thread
 
@@ -963,25 +964,26 @@ class ReplicaExchange(object):
         MAX_SEED = (1<<31) - 1 # maximum seed value (max size of signed C long)
         seed = int(numpy.random.randint(MAX_SEED)) # TODO: Is this the right maximum value to use?
         if self.mpicomm:
-            # Compile all kernels on master process to avoid nvcc deadlocks.
-            # TODO: Fix this when nvcc fix comes out.
-            initial_time = time.time()
-            if self.mpicomm.rank == 0:
-                for state_index in range(self.nstates):
-                    print "Master node compiling kernels for state %d / %d..." % (state_index, self.nstates) # DEBUG
-                    state = self.states[state_index]
-                    integrator = self.mm.LangevinIntegrator(state.temperature, self.collision_rate, self.timestep)                    
-                    integrator.setRandomNumberSeed(seed + self.mpicomm.rank) 
-                    context = self.mm.Context(state.system, integrator, self.platform)
-                    box_vectors = self.replica_box_vectors[0]
-                    context.setPeriodicBoxVectors(box_vectors[0,:], box_vectors[1,:], box_vectors[2,:])
-                    context.setPositions(self.replica_positions[0])
-                    self.mm.LocalEnergyMinimizer.minimize(context, 0, 1) # also compile minimizer
-                    del context, integrator
-            self.mpicomm.barrier()
-            final_time = time.time()
-            elapsed_time = final_time - initial_time
-            print "Barrier complete.  Compiling kernels took %.1f s." % elapsed_time # DEBUG
+
+            if self.platform.getName() == 'CUDA':
+                # Compile all kernels on master process to avoid nvcc deadlocks.
+                # TODO: We can remove this when nvcc fix comes out.
+                initial_time = time.time()
+                if self.mpicomm.rank == 0:
+                    for state_index in range(self.nstates):
+                        print "Master node compiling kernels for state %d / %d for platform %s..." % (state_index, self.nstates, self.platform.getName())
+                        state = self.states[state_index]
+                        integrator = self.mm.LangevinIntegrator(state.temperature, self.collision_rate, self.timestep)                    
+                        context = self.mm.Context(state.system, integrator, self.platform)
+                        box_vectors = self.replica_box_vectors[0]
+                        context.setPeriodicBoxVectors(box_vectors[0,:], box_vectors[1,:], box_vectors[2,:])
+                        context.setPositions(self.replica_positions[0])
+                        self.mm.LocalEnergyMinimizer.minimize(context, 1, 0) # also compile minimizer
+                        del context, integrator
+                self.mpicomm.barrier()
+                final_time = time.time()
+                elapsed_time = final_time - initial_time
+                print "Barrier complete.  Compiling kernels took %.1f s." % elapsed_time # DEBUG
 
             # Create cached contexts for only the states this process will handle.
             initial_time = time.time()
@@ -991,6 +993,7 @@ class ReplicaExchange(object):
                 try:
                     state._integrator = self.mm.LangevinIntegrator(state.temperature, self.collision_rate, self.timestep)                    
                     state._integrator.setRandomNumberSeed(seed + self.mpicomm.rank) 
+                    # TODO: Also set barostat seeds, etc.
                     initial_context_time = time.time() # DEBUG
                     if self.platform:
                         print "Node %d / %d: Using platform %s" % (self.mpicomm.rank, self.mpicomm.size, self.platform.getName())
@@ -1003,7 +1006,9 @@ class ReplicaExchange(object):
                     print e
             print "Note %d / %d: Context creation done.  Waiting for MPI barrier..." % (self.mpicomm.rank, self.mpicomm.size) # DEBUG
             self.mpicomm.barrier()
-            print "Barrier complete." # DEBUG
+            final_time = time.time()
+            elapsed_time = final_time - initial_time
+            print "Barrier complete. Caching all context objects took %.3f s." % elapsed_time # DEBUG
         else:
             # Serial version.
             initial_time = time.time()
