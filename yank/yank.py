@@ -316,6 +316,8 @@ class ModifiedHamiltonianExchange(HamiltonianExchange):
             x[ligand_atom_indices,:] = (Rq * numpy.matrix(x[ligand_atom_indices,:] - x0).T).T + x0
 
             # Choose a random displacement vector.
+            print "sigma = %s" % str(sigma)
+            print "unit = %s" % str(unit)
             xdisp = (sigma / unit) * numpy.random.randn(3)
             
             # Translate ligand center to receptor atom plus displacement vector.
@@ -570,13 +572,7 @@ class Yank(object):
         self.protocol['timestep'] = 2.0 * units.femtoseconds
         self.protocol['collision_rate'] = 5.0 / units.picoseconds
         self.protocol['minimize'] = True
-        self.protocol['show_mixing_statistics'] = False # this causes slowdown with iteration and should not be used for production
-
-        # DEBUG
-        self.protocol['number_of_equilibration_iterations'] = 0
-        self.protocol['minimize'] = False
-        self.protocol['minimize_maxIterations'] = 5
-        self.protocol['show_mixing_statistics'] = False
+        self.protocol['show_mixing_statistics'] = True # this causes slowdown with iteration and should not be used for production
 
         return
 
@@ -647,17 +643,17 @@ class Yank(object):
             import restraints
             reference_positions = self.complex_positions[0]
             if self.restraint_type == 'harmonic':
-                restraints = restraints.ReceptorLigandRestraint(reference_state, self.complex, reference_positions, self.receptor_atoms, self.ligand_atoms)
+                complex_restraints = restraints.HarmonicReceptorLigandRestraint(reference_state, self.complex, reference_positions, self.receptor_atoms, self.ligand_atoms)
             elif self.restraint_type == 'flat-bottom':
-                restraints = restraints.FlatBottomReceptorLigandRestraint(reference_state, self.complex, reference_positions, self.receptor_atoms, self.ligand_atoms)
+                complex_restraints = restraints.FlatBottomReceptorLigandRestraint(reference_state, self.complex, reference_positions, self.receptor_atoms, self.ligand_atoms)
             elif self.restraint_type == 'none':
-                restraints = None
+                complex_restraints = None
             else:
                 raise Exception("restraint_type of '%s' is not supported." % self.restraint_type)
             if restraints:
-                force = restraints.getRestraintForce() # Get Force object incorporating restraints
+                force = complex_restraints.getRestraintForce() # Get Force object incorporating restraints
                 self.complex.addForce(force)
-                self.standard_state_correction = restraints.getStandardStateCorrection() # standard state correction in kT
+                self.standard_state_correction = complex_restraints.getStandardStateCorrection() # standard state correction in kT
             else:
                 # TODO: We need to include a standard state correction for going from simulation box volume to standard state volume.
                 # TODO: Alternatively, we need a scheme for specifying restraints with only protein molecules, not solvent.
@@ -674,8 +670,8 @@ class Yank(object):
         if self.randomize_ligand:
             if self.verbose: print "Randomizing ligand positions and excluding overlapping configurations..."
             randomized_positions = list()
-            #sigma = 20.0 * units.angstrom
-            sigma = complex_restraints.getReceptorRadiusOfGyration()
+            sigma = 2*complex_restraints.getReceptorRadiusOfGyration()
+            print "sigma = %s" % str(sigma)
             close_cutoff = 1.5 * units.angstrom # TODO: Allow this to be specified by user.
             nstates = len(systems)
             for state_index in range(nstates):
@@ -830,8 +826,7 @@ class Yank(object):
         # Randomize ligand positions.
         if self.randomize_ligand and not resume:
             randomized_positions = list()
-            #sigma = 20.0 * units.angstrom # TODO: Determine this from radius of gyration of protein.
-            sigma = complex_restraints.getReceptorRadiusOfGyration()
+            sigma = 2*complex_restraints.getReceptorRadiusOfGyration()
             close_cutoff = 1.5 * units.angstrom # TODO: Allow this to be specified by user.
             nstates = len(systems)
             for state_index in range(nstates):
