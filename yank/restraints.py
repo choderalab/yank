@@ -167,9 +167,9 @@ class ReceptorLigandRestraint(object):
         distances = numpy.sqrt(((x - numpy.tile(xref, (natoms, 1)))**2).sum(1)) # distances[i] is the distance from the centroid to particle i
 
         # Compute std dev of distances from restrained atom.
-        self.radius_of_gyration = distances.std() * unit 
+        radius_of_gyration = distances.std() * unit 
 
-        return
+        return radius_of_gyration
 
     def _createRestraintForce(self, particle1, particle2, mm=None):
         """
