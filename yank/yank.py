@@ -316,8 +316,6 @@ class ModifiedHamiltonianExchange(HamiltonianExchange):
             x[ligand_atom_indices,:] = (Rq * numpy.matrix(x[ligand_atom_indices,:] - x0).T).T + x0
 
             # Choose a random displacement vector.
-            print "sigma = %s" % str(sigma)
-            print "unit = %s" % str(unit)
             xdisp = (sigma / unit) * numpy.random.randn(3)
             
             # Translate ligand center to receptor atom plus displacement vector.
@@ -712,7 +710,7 @@ class Yank(object):
         
         return
 
-    def run_mpi(self, mpi_comm_world, cpu_threads_per_node, gpu_threads_per_node):
+    def run_mpi(self, mpi_comm_world, gpus_per_node):
         """
         Run a free energy calculation using MPI.
 
@@ -720,10 +718,8 @@ class Yank(object):
         ----------
         mpi_comm_world :  MPI 'world' communicator
             The MPI communicator to use.
-        cpu_threads_per_node : int
-            The number of CPU threads per node to use for solvent and vacuum simulations.
-        gpu_threads_per_node : int
-            The number of GPU threads per node to use for complex simulations.
+        gpus_per_node : int
+            The number of GPUs per node.
 
         Note
         ----
@@ -732,6 +728,7 @@ class Yank(object):
         TODO
         ----
         * Add intelligent way to determine how many threads per node to use for CPUs and GPUs if left unspecified
+        * Restore ability to run CPU solvent and GPU complex threads concurrently.
 
         """
 
@@ -741,46 +738,26 @@ class Yank(object):
         if not (mpi_comm_world.rank==0):
             verbose = False
 
-        # Compute total threads per node.
-        threads_per_node = cpu_threads_per_node + gpu_threads_per_node
-
-        # Ensure the MPI communicator size is an integer multiple of the specified number of threads per node.
-        if (MPI.COMM_WORLD.size % threads_per_node) != 0:
-            raise Exception("Specified %d threads per node (%d CPU / %d GPU) but number of MPI processes (%d) is not integral multiple." % (threads_per_node, cpu_threads_per_node, gpu_threads_per_node, MPI.COMM_WORLD.size))
-
         # Make sure each thread's random number generators have unique seeds.
         # TODO: Also store seed in repex object.
         seed = numpy.random.randint(sys.maxint - MPI.COMM_WORLD.size) + MPI.COMM_WORLD.rank
         numpy.random.seed(seed)
 
         # Choose appropriate platform for each device.
-        # TODO: Support other thread to node allocation schemes.
-        local_thread_id = MPI.COMM_WORLD.rank % threads_per_node 
+        # Set GPU ID or number of threads.
+        deviceid = MPI.COMM_WORLD.rank % gpus_per_node 
         platform_name = self.platform.getName()
-        if local_thread_id < gpu_threads_per_node:
-            # Set GPU ID or number of threads.
-            deviceid = local_thread_id
-            if platform_name == 'CUDA':
-                self.platform.setPropertyDefaultValue('CudaDeviceIndex', '%d' % deviceid) # select Cuda device index
-            elif platform_name == 'OpenCL':
-                self.platform.setPropertyDefaultValue('OpenCLDeviceIndex', '%d' % devicid) # select OpenCL device index
-            elif platform_name == 'CPU':
-                self.platform.setPropertyDefaultValue('CpuThreads', '1') # set number of CPU threads
-        else:
-            # Set number of threads.
-            if platform_name == 'CPU':
-                self.platform.setPropertyDefaultValue('CpuThreads', '1') # set number of CPU threads
-
-            platform = openmm.Platform.getPlatformByName(cpu_platform_name)
-            print "node '%s' MPI_WORLD rank %d/%d running on CPU" % (hostname, MPI.COMM_WORLD.rank, MPI.COMM_WORLD.size)
+        if platform_name == 'CUDA':
+            self.platform.setPropertyDefaultValue('CudaDeviceIndex', '%d' % deviceid) # select Cuda device index
+        elif platform_name == 'OpenCL':
+            self.platform.setPropertyDefaultValue('OpenCLDeviceIndex', '%d' % devicid) # select OpenCL device index
+        elif platform_name == 'CPU':
+            self.platform.setPropertyDefaultValue('CpuThreads', '1') # set number of CPU threads
+            
+        print "node '%s' MPI_WORLD rank %d/%d running on %s" % (hostname, MPI.COMM_WORLD.rank, MPI.COMM_WORLD.size, platform_name)
 
         # Set up CPU and GPU communicators.
-        gpu_process_list = filter(lambda x : x < MPI.COMM_WORLD.size, cpuid_gpuid_mapping.keys())
-        if cpuid in gpu_process_list:
-            this_is_gpu_process = 1 # running on a GPU
-        else:
-            this_is_gpu_process = 0 # running on a CPU
-        comm = MPI.COMM_WORLD.Split(color=this_is_gpu_process)
+        comm = MPI.COMM_WORLD
 
         # Initialize if we haven't yet done so.
         if not self._initialized:
@@ -856,7 +833,6 @@ class Yank(object):
                 
         # Set up Hamiltonian exchange simulation.
         complex_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.complex_positions, store_filename, displacement_sigma=self.displacement_sigma, mc_atoms=self.ligand_atoms, protocol=self.protocol, mpicomm=comm, metadata=metadata)
-        complex_simulation.platform = platform
         complex_simulation.nsteps_per_iteration = 500
         complex_simulation.run()        
         MPI.COMM_WORLD.barrier()
@@ -867,7 +843,6 @@ class Yank(object):
         systems = factory.createPerturbedSystems(self.solvent_protocol)
         store_filename = os.path.join(self.output_directory, 'solvent.nc')
         solvent_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.ligand_positions, store_filename, protocol=self.protocol, mpicomm=comm)
-        solvent_simulation.platform = openmm.Platform.getPlatformByName(cpu_platform_name)
         solvent_simulation.nsteps_per_iteration = 500
         solvent_simulation.run() 
         MPI.COMM_WORLD.barrier()
@@ -886,7 +861,6 @@ class Yank(object):
         #systems = factory.createPerturbedSystems(self.vacuum_protocol)
         #store_filename = os.path.join(self.output_directory, 'vacuum.nc')
         #vacuum_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.ligand_positions, store_filename, protocol=self.protocol, mpicomm=comm)
-        #vacuum_simulation.platform = openmm.Platform.getPlatformByName(cpu_platform_name)
         #vacuum_simulation.nsteps_per_iteration = 500
         #vacuum_simulation.run() # DEBUG
         #MPI.COMM_WORLD.barrier()
@@ -1144,8 +1118,7 @@ if __name__ == '__main__':
     parser.add_option("-o", "--online", dest="online_analysis", default=False, help="perform online analysis")
     parser.add_option("-m", "--mpi", action="store_true", dest="mpi", default=False, help="use mpi if possible")
     parser.add_option("--platform", dest="platform", default=None, help="use specified platform: 'Reference', 'CPU', 'OpenCL', 'CUDA'")
-    parser.add_option("--ncpus_per_node", dest="ncpus_per_node", type='int', default=None, help="number of CPUs per node to use for solvent and vacuum simulations during MPI calculations")
-    parser.add_option("--ngpus_per_node", dest="ngpus_per_node", type='int', default=None, help="number of GPUs per node to use for complex simulations during MPI calculations")
+    parser.add_option("--gpus_per_node", dest="gpus_per_node", type='int', default=None, help="number of GPUs per node to use for complex simulations during MPI calculations")
     parser.add_option("--restraints", dest="restraint_type", default=None, help="specify ligand restraint type: 'harmonic' or 'flat-bottom' (default: 'harmonic')")
     parser.add_option("--output", dest="output_directory", default=None, help="specify output directory---must be unique for each calculation (default: current directory)")
     parser.add_option("--doctests", action="store_true", dest="doctests", default=False, help="run doctests first (default: False)")
@@ -1251,6 +1224,9 @@ if __name__ == '__main__':
             positions_list = read_pdb_crd(options.receptor_pdb_filename, natoms_receptor, options.verbose)
         receptor_positions += positions_list
 
+    if options.mpi and not options.platform:
+        raise Exception("The --platform platform_name option must be specified when using MPI.")
+
     # Assemble complex positions if we haven't read any.
     if len(complex_positions)==0:
         for x in receptor_positions:
@@ -1282,7 +1258,7 @@ if __name__ == '__main__':
     # Run calculation.
     if options.mpi:
         # Run MPI version.
-        yank.run_mpi(options.mpi, ncpus_per_node=options.ncpus_per_node, ngpus_per_node=options.ngpus_per_node)
+        yank.run_mpi(options.mpi, options.gpus_per_node)
     else:
         # Run serial version.
         yank.run()
