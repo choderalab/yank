@@ -573,7 +573,7 @@ class Yank(object):
         self.protocol['timestep'] = 2.0 * units.femtoseconds
         self.protocol['collision_rate'] = 5.0 / units.picoseconds
         self.protocol['minimize'] = True
-        self.protocol['show_mixing_statistics'] = True # this causes slowdown with iteration and should not be used for production
+        self.protocol['show_mixing_statistics'] = False # this causes slowdown with iteration and should not be used for production
 
         return
 
@@ -630,7 +630,7 @@ class Yank(object):
         if self.platform:
             if self.verbose: print "Using platform '%s'" % self.platform.getName()
             solvent_simulation.platform = self.platform
-        solvent_simulation.nsteps_per_iteration = 500
+        solvent_simulation.nsteps_per_iteration = 2500
         solvent_simulation.run() 
         
         #
@@ -702,7 +702,7 @@ class Yank(object):
 
         if self.verbose: print "Setting up replica exchange simulation..."
         complex_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.complex_positions, store_filename, displacement_sigma=self.displacement_sigma, mc_atoms=self.ligand_atoms, protocol=self.protocol, metadata=metadata)
-        complex_simulation.nsteps_per_iteration = 500
+        complex_simulation.nsteps_per_iteration = 2500
         if self.platform:
             if self.verbose: print "Using platform '%s'" % self.platform.getName()
             complex_simulation.platform = self.platform
@@ -780,7 +780,7 @@ class Yank(object):
             import restraints
             reference_positions = self.complex_positions[0]
             if self.restraint_type == 'harmonic':
-                complex_restraints = restraints.ReceptorLigandRestraint(reference_state, self.complex, reference_positions, self.receptor_atoms, self.ligand_atoms)
+                complex_restraints = restraints.HarmonicReceptorLigandRestraint(reference_state, self.complex, reference_positions, self.receptor_atoms, self.ligand_atoms)
             elif self.restraint_type == 'flat-bottom':
                 complex_restraints = restraints.FlatBottomReceptorLigandRestraint(reference_state, self.complex, reference_positions, self.receptor_atoms, self.ligand_atoms)
             elif self.restraint_type == 'none':

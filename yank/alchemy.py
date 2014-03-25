@@ -250,6 +250,7 @@ class AbsoluteAlchemicalFactory(object):
         alchemical_states.append(AlchemicalState(0.00, 0.20, 1.00, 1.)) # 
         alchemical_states.append(AlchemicalState(0.00, 0.10, 1.00, 1.)) # 
         alchemical_states.append(AlchemicalState(0.00, 0.00, 1.00, 1.)) # discharged
+        alchemical_states.append(AlchemicalState(0.00, 0.00, 0.99999, 1.)) # 
         alchemical_states.append(AlchemicalState(0.00, 0.00, 0.99, 1.)) # 
         alchemical_states.append(AlchemicalState(0.00, 0.00, 0.98, 1.)) # 
         alchemical_states.append(AlchemicalState(0.00, 0.00, 0.97, 1.)) #

@@ -1635,6 +1635,8 @@ class ReplicaExchange(object):
         """
         Print summary of mixing statistics.
 
+        TODO: This code is very slow, and gets slower with each iteration!  Needs to be sped up.
+
         """
         # TODO: Replace this with a call to analyze.show_mixing_statistics().
         # TODO: This code slows down as the number of iterations grows.  Can we speed this up?
