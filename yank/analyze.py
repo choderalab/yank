@@ -908,14 +908,8 @@ def detect_equilibration(A_t):
 
 if __name__ == '__main__':    
 
-    #molecules = ['1-methylpyrrole', '12-dichlorobenzene', '2-fluorobenzaldehyde', '23-benzofuran', 'benzene', 'benzenedithiol', 'ethylbenzene', 'indene', 'indole', 'isobutylbenzene', 'n-butylbenzene', 'n-methylaniline', 'n-propylbenzene', 'o-xylene', 'p-xylene', 'phenol', 'thieno_23c_pyridine', 'toluene']
-    #base_directory = '/Users/yank/amber-gbsa'
-
-
     # DEBUG: ANALYSIS PATH IS HARD-CODED FOR NOW
-
-    source_directory = "examples/benzene-toluene"
-    #source_directory = "examples/p-xylene"
+    source_directory = "."
 
     # Storage for different phases.
     data = dict()
@@ -963,19 +957,17 @@ if __name__ == '__main__':
         atoms = read_pdb(reference_pdb_filename)
 
         # Write replica trajectories.
-        title = 'title'
-        write_pdb_replica_trajectories(reference_pdb_filename, source_directory, phase, title, ncfile, trajectory_by_state=False)
+        #title = 'title'
+        #write_pdb_replica_trajectories(reference_pdb_filename, source_directory, phase, title, ncfile, trajectory_by_state=False)
 
         # Check to make sure no self-energies go nan.
         check_energies(ncfile, atoms)
 
         # Check to make sure no positions are nan
-        check_positions(ncfile)
+        #check_positions(ncfile)
 
         # Choose number of samples to discard to equilibration
-        #nequil = 50
-        #if phase == 'complex':
-        #    nequil = 2000 # discard 2 ns of complex simulations
+        # TODO: Switch to pymbar.timeseries module.
         u_n = extract_u_n(ncfile)
         [nequil, g_t, Neff_max] = detect_equilibration(u_n)
         logger.info([nequil, Neff_max])
@@ -1023,13 +1015,13 @@ if __name__ == '__main__':
     DeltaF_restraints = ncfile.groups['metadata'].variables['standard_state_correction'][0]
     ncfile.close()
 
-    # Compute binding free energy (free energy of transfer from vacuum to water)
+    # Compute binding free energy.
     DeltaF = data['solvent']['DeltaF'] - DeltaF_restraints - data['complex']['DeltaF']
     dDeltaF = np.sqrt(data['solvent']['dDeltaF']**2 + data['complex']['dDeltaF']**2)
     logger.info("")
     logger.info("Binding free energy : %16.3f +- %.3f kT (%16.3f +- %.3f kcal/mol)" % (DeltaF, dDeltaF, DeltaF * kT / units.kilocalories_per_mole, dDeltaF * kT / units.kilocalories_per_mole))
     logger.info("")
-    logger.info("DeltaG vacuum       : %16.3f +- %.3f kT" % (data['vacuum']['DeltaF'], data['vacuum']['dDeltaF']))
+    #logger.info("DeltaG vacuum       : %16.3f +- %.3f kT" % (data['vacuum']['DeltaF'], data['vacuum']['dDeltaF']))
     logger.info("DeltaG solvent      : %16.3f +- %.3f kT" % (data['solvent']['DeltaF'], data['solvent']['dDeltaF']))
     logger.info("DeltaG complex      : %16.3f +- %.3f kT" % (data['complex']['DeltaF'], data['complex']['dDeltaF']))
     logger.info("DeltaG restraint    : %16.3f          kT" % DeltaF_restraints)

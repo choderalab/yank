@@ -61,8 +61,6 @@ import time
 
 import simtk.openmm as openmm
 
-from sets import Set
-
 import logging
 logger = logging.getLogger(__name__)
 
@@ -205,7 +203,7 @@ class AbsoluteAlchemicalFactory(object):
         self.ligand_atoms = copy.deepcopy(ligand_atoms)
         
         # Store atom sets
-        self.ligand_atomset = Set(self.ligand_atoms)
+        self.ligand_atomset = set(self.ligand_atoms)
 
         return
 
@@ -236,19 +234,6 @@ class AbsoluteAlchemicalFactory(object):
 
         alchemical_states = list()
 
-        # Test protocol.
-        alchemical_states.append(AlchemicalState(0.00, 1.00, 1.00, 1.)) # fully interacting
-        #alchemical_states.append(AlchemicalState(0.00, 0.75, 1.00, 1.)) 
-        #alchemical_states.append(AlchemicalState(0.00, 0.50, 1.00, 1.)) 
-        #alchemical_states.append(AlchemicalState(0.00, 0.24, 1.00, 1.)) 
-        alchemical_states.append(AlchemicalState(0.00, 0.00, 1.00, 1.)) # discharged
-        #alchemical_states.append(AlchemicalState(0.00, 0.00, 0.75, 1.)) 
-        #alchemical_states.append(AlchemicalState(0.00, 0.00, 0.50, 1.)) 
-        #alchemical_states.append(AlchemicalState(0.00, 0.00, 0.25, 1.)) 
-        alchemical_states.append(AlchemicalState(0.00, 0.00, 0.00, 1.)) # discharged, LJ annihilated
-
-        return alchemical_states
-        
         # Protocol used for SAMPL4.
         alchemical_states.append(AlchemicalState(0.00, 1.00, 1.00, 1.)) # fully interacting
         alchemical_states.append(AlchemicalState(0.00, 1.00, 1.00, 1.)) # fully interacting
@@ -265,6 +250,7 @@ class AbsoluteAlchemicalFactory(object):
         alchemical_states.append(AlchemicalState(0.00, 0.20, 1.00, 1.)) # 
         alchemical_states.append(AlchemicalState(0.00, 0.10, 1.00, 1.)) # 
         alchemical_states.append(AlchemicalState(0.00, 0.00, 1.00, 1.)) # discharged
+        alchemical_states.append(AlchemicalState(0.00, 0.00, 0.99999, 1.)) # 
         alchemical_states.append(AlchemicalState(0.00, 0.00, 0.99, 1.)) # 
         alchemical_states.append(AlchemicalState(0.00, 0.00, 0.98, 1.)) # 
         alchemical_states.append(AlchemicalState(0.00, 0.00, 0.97, 1.)) #
@@ -465,9 +451,6 @@ class AbsoluteAlchemicalFactory(object):
         """
         Alchemically modify the Lennard-Jones force terms.
         
-        This version uses the new group-based restriction capabilities of CustomNonbondedForce.
-
-
         Parameters
         ----------
         system : simtk.openmm.System
@@ -482,35 +465,46 @@ class AbsoluteAlchemicalFactory(object):
             Alchemical softcore parameter.
         a, b, c : float, optional, default a=1, b=1, c=6
             Parameters describing softcore force.
+
+        Details
+        -------
+        
+        First, a CustomNonbondedForce is created to provide interactions between the alchemically-modified atoms and the unmodified remainder of the system.
+        This interaction uses a softcore Lennard-Jones function that should reduce to standard Lennard-Jones at lambda = 1.
         
         """
 
         # Create CustomNonbondedForce to handle softcore interactions between alchemically-modified system and rest of system.
+        # Create atom groups.
+        natoms = system.getNumParticles()
+        atomset1 = set(alchemical_atom_indices) # only alchemically-modified atoms
+        atomset2 = set(range(system.getNumParticles())) - atomset1 # all atoms minus intra-alchemical region
 
+        # Create alchemically modified nonbonded force.
         energy_expression = "4*epsilon*(lambda^a)*x*(x-1.0);"
         energy_expression += "x = (1.0/(alpha*(1.0-lambda)^b + (r/sigma)^c))^(6/c);" 
         energy_expression += "epsilon = sqrt(epsilon1*epsilon2);" # mixing rule for epsilon
         energy_expression += "sigma = 0.5*(sigma1 + sigma2);" # mixing rule for sigma
         energy_expression += "lambda = lennard_jones_lambda;" # lambda
-
-        # Create atom groups.
-        natoms = system.getNumParticles()
-        atomset1 = Set(alchemical_atom_indices) # only alchemically-modified atoms
-        atomset2 = Set(range(system.getNumParticles())) - atomset1 # all atoms minus intra-alchemical region
-
         energy_expression += "alpha = %f;" % alpha
         energy_expression += "a = %f; b = %f; c = %f;" % (a,b,c)    
         custom_nonbonded_force = openmm.CustomNonbondedForce(energy_expression)            
+        custom_nonbonded_force.setUseSwitchingFunction(nonbonded_force.getUseSwitchingFunction()) 
+        custom_nonbonded_force.setCutoffDistance( nonbonded_force.getCutoffDistance() )
+        custom_nonbonded_force.setSwitchingDistance(nonbonded_force.getSwitchingDistance()) 
         custom_nonbonded_force.setUseLongRangeCorrection(nonbonded_force.getUseDispersionCorrection())
         custom_nonbonded_force.addGlobalParameter("lennard_jones_lambda", alchemical_state.ligandSterics);
         custom_nonbonded_force.addPerParticleParameter("sigma") # Lennard-Jones sigma
         custom_nonbonded_force.addPerParticleParameter("epsilon") # Lennard-Jones epsilon
-        system.addForce(custom_nonbonded_force)
 
         # Restrict interaction evaluation to be between alchemical atoms and rest of environment.
-        custom_nonbonded_force.addInteractionGroup(atomset1, atomset2)
+        # Only add custom nonbonded force if interacting groups are both nonzero in size, or else we will get a segfault during energy evaluation.
+        # TODO: Remove this restriction once segfault has been fixed.
+        if (len(atomset1) != 0) and (len(atomset2) != 0):
+            custom_nonbonded_force.addInteractionGroup(atomset1, atomset2)
+            system.addForce(custom_nonbonded_force)
 
-        # Create CustomBondedForce to handle softcore exceptions if alchemically annihilating ligand.
+        # Create CustomBondedForce to handle intramolecular softcore exceptions if alchemically annihilating ligand.
         if alchemical_state.annihilateSterics:
             energy_expression = "4*epsilon*(lambda^a)*x*(x-1.0);"
             energy_expression += "x = (1.0/(alpha*(1.0-lambda)^b + (r/sigma)^c))^(6/c);" 
@@ -522,25 +516,31 @@ class AbsoluteAlchemicalFactory(object):
             custom_bond_force.addPerBondParameter("sigma") # Lennard-Jones sigma
             custom_bond_force.addPerBondParameter("epsilon") # Lennard-Jones epsilon
             system.addForce(custom_bond_force)
-        else:
-            # Add a second CustomNonbondedForce to handle "intra-alchemical" interactions at full strength.
+
+        # Decoupling requires another force term.
+        if not alchemical_state.annihilateSterics:
+            # Add a second CustomNonbondedForce to restore "intra-alchemical" interactions to full strength.
             energy_expression = "4*epsilon*((sigma/r)^12 - (sigma/r)^6);" 
             energy_expression += "epsilon = sqrt(epsilon1*epsilon2);" # mixing rule for epsilon
             energy_expression += "sigma = 0.5*(sigma1 + sigma2);" # mixing rule for sigma
             custom_nonbonded_force2 = openmm.CustomNonbondedForce(energy_expression)            
+            custom_nonbonded_force2.setCutoffDistance( nonbonded_force.getCutoffDistance() )
+            custom_nonbonded_force2.setUseSwitchingFunction(nonbonded_force.getUseSwitchingFunction()) 
+            custom_nonbonded_force2.setSwitchingDistance(nonbonded_force.getSwitchingDistance()) 
             custom_nonbonded_force2.setUseLongRangeCorrection(nonbonded_force.getUseDispersionCorrection())
             custom_nonbonded_force2.addPerParticleParameter("sigma") # Lennard-Jones sigma
             custom_nonbonded_force2.addPerParticleParameter("epsilon") # Lennard-Jones epsilon
             system.addForce(custom_nonbonded_force2)
             # Restrict interaction evaluation to be between alchemical atoms and rest of environment.
-            atomset1 = Set(alchemical_atom_indices) # only alchemically-modified atoms
-            atomset2 = Set(alchemical_atom_indices) # only alchemically-modified atoms
+            atomset1 = set(alchemical_atom_indices) # only alchemically-modified atoms
+            atomset2 = set(alchemical_atom_indices) # only alchemically-modified atoms
             custom_nonbonded_force2.addInteractionGroup(atomset1, atomset2)
 
         # Copy Lennard-Jones particle parameters.
         for particle_index in range(nonbonded_force.getNumParticles()):
             # Retrieve parameters.
-            [charge, sigma, epsilon] = nonbonded_force.getParticleParameters(particle_index)
+            [charge, sigma, epsilon] = nonbonded_force.getParticleParameters(particle_index)            
+            # CustomNonbondedForce will handle interactions with non-alchemical particles.
             # Add corresponding particle to softcore interactions.
             if particle_index in alchemical_atom_indices:
                 # Turn off Lennard-Jones contribution from alchemically-modified particles.
@@ -548,7 +548,10 @@ class AbsoluteAlchemicalFactory(object):
             # Add contribution back to custom force.
             custom_nonbonded_force.addParticle([sigma, epsilon])            
             if not alchemical_state.annihilateSterics:
-                custom_nonbonded_force2.addParticle([sigma, epsilon])
+                if particle_index in alchemical_atom_indices:
+                    custom_nonbonded_force2.addParticle([sigma, epsilon])
+                else:
+                    custom_nonbonded_force2.addParticle([sigma, 0*epsilon])
 
         # Create an exclusion for each exception in the reference NonbondedForce, assuming that NonbondedForce will handle them.
         for exception_index in range(nonbonded_force.getNumExceptions()):
@@ -567,7 +570,7 @@ class AbsoluteAlchemicalFactory(object):
                 custom_bond_force.addBond(iatom, jatom, [sigma, epsilon])
 
         # Set periodicity and cutoff parameters corresponding to reference Force.
-        if nonbonded_force.getNonbondedMethod() in [openmm.NonbondedForce.Ewald, openmm.NonbondedForce.PME]:
+        if nonbonded_force.getNonbondedMethod() in [openmm.NonbondedForce.Ewald, openmm.NonbondedForce.PME, openmm.NonbondedForce.CutoffPeriodic]:
             # Convert Ewald and PME to CutoffPeriodic.
             custom_nonbonded_force.setNonbondedMethod( openmm.CustomNonbondedForce.CutoffPeriodic )
             if not alchemical_state.annihilateSterics:
@@ -576,10 +579,6 @@ class AbsoluteAlchemicalFactory(object):
             custom_nonbonded_force.setNonbondedMethod( nonbonded_force.getNonbondedMethod() )
             if not alchemical_state.annihilateSterics:
                 custom_nonbonded_force2.setNonbondedMethod(nonbonded_force.getNonbondedMethod() )
-
-        custom_nonbonded_force.setCutoffDistance( nonbonded_force.getCutoffDistance() )
-        if not alchemical_state.annihilateSterics:
-            custom_nonbonded_force2.setCutoffDistance( nonbonded_force.getCutoffDistance() )
 
         return 
 
@@ -837,7 +836,7 @@ class AbsoluteAlchemicalFactory(object):
                 # Copy NonbondedForce.
                 force = copy.deepcopy(reference_force)
                 system.addForce(force)
-
+                
                 # Modify electrostatics.
                 if alchemical_state.ligandElectrostatics != 1.0:
                     for particle_index in range(force.getNumParticles()):
@@ -862,7 +861,7 @@ class AbsoluteAlchemicalFactory(object):
                 if alchemical_state.ligandSterics != 1.0:
                     # Create softcore Lennard-Jones interactions by modifying NonbondedForce and adding CustomNonbondedForce.                
                     self._alchemicallyModifyLennardJones(system, force, self.ligand_atoms, alchemical_state)                
-
+                    
             elif isinstance(reference_force, openmm.GBSAOBCForce) and (alchemical_state.ligandElectrostatics != 1.0):
 
                 # Create a CustomNonbondedForce to implement softcore interactions.
@@ -871,43 +870,42 @@ class AbsoluteAlchemicalFactory(object):
                 custom_force = AbsoluteAlchemicalFactory._createCustomSoftcoreGBOBC(reference_force, particle_lambdas)
                 system.addForce(custom_force)
                     
-            elif isinstance(reference_force, openmm.CustomExternalForce):
+#            elif isinstance(reference_force, openmm.CustomExternalForce):
+#
+#                force = openmm.CustomExternalForce( reference_force.getEnergyFunction() )
+#                for parameter_index in range(reference_force.getNumGlobalParameters()):
+#                    name = reference_force.getGlobalParameterName(parameter_index)
+#                    default_value = reference_force.getGlobalParameterDefaultValue(parameter_index)
+#                    force.addGlobalParameter(name, default_value)
+#                for parameter_index in range(reference_force.getNumPerParticleParameters()):
+#                    name = reference_force.getPerParticleParameterName(parameter_index)
+#                    force.addPerParticleParameter(name)
+#                for index in range(reference_force.getNumParticles()):
+#                    [particle_index, parameters] = reference_force.getParticleParameters(index)
+#                    force.addParticle(particle_index, parameters)
+#                system.addForce(force)
 
-                force = openmm.CustomExternalForce( reference_force.getEnergyFunction() )
-                for parameter_index in range(reference_force.getNumGlobalParameters()):
-                    name = reference_force.getGlobalParameterName(parameter_index)
-                    default_value = reference_force.getGlobalParameterDefaultValue(parameter_index)
-                    force.addGlobalParameter(name, default_value)
-                for parameter_index in range(reference_force.getNumPerParticleParameters()):
-                    name = reference_force.getPerParticleParameterName(parameter_index)
-                    force.addPerParticleParameter(name)
-                for index in range(reference_force.getNumParticles()):
-                    [particle_index, parameters] = reference_force.getParticleParameters(index)
-                    force.addParticle(particle_index, parameters)
-                system.addForce(force)
-
-            elif isinstance(reference_force, openmm.CustomBondForce):                                
-
-                force = openmm.CustomBondForce( reference_force.getEnergyFunction() )
-                for parameter_index in range(reference_force.getNumGlobalParameters()):
-                    name = reference_force.getGlobalParameterName(parameter_index)
-                    default_value = reference_force.getGlobalParameterDefaultValue(parameter_index)
-                    force.addGlobalParameter(name, default_value)
-                for parameter_index in range(reference_force.getNumPerBondParameters()):
-                    name = reference_force.getPerBondParameterName(parameter_index)
-                    force.addPerBondParameter(name)
-                for index in range(reference_force.getNumBonds()):
-                    [particle1, particle2, parameters] = reference_force.getBondParameters(index)
-                    force.addBond(particle1, particle2, parameters)
-                system.addForce(force)                    
+#            elif isinstance(reference_force, openmm.CustomBondForce):                                
+#
+#                force = openmm.CustomBondForce( reference_force.getEnergyFunction() )
+#                for parameter_index in range(reference_force.getNumGlobalParameters()):
+#                    name = reference_force.getGlobalParameterName(parameter_index)
+#                    default_value = reference_force.getGlobalParameterDefaultValue(parameter_index)
+#                    force.addGlobalParameter(name, default_value)
+#                for parameter_index in range(reference_force.getNumPerBondParameters()):
+#                    name = reference_force.getPerBondParameterName(parameter_index)
+#                    force.addPerBondParameter(name)
+#                for index in range(reference_force.getNumBonds()):
+#                    [particle1, particle2, parameters] = reference_force.getBondParameters(index)
+#                    force.addBond(particle1, particle2, parameters)
+#                system.addForce(force)                    
 
             else:                
-
                 # Copy force without modification.
                 # TODO: Can speed this up by storing serialized versions of reference forces.
                 force = copy.deepcopy(reference_force)
                 system.addForce(force)
-
+                
         # Record timing statistics.
         final_time = time.time()
         elapsed_time = final_time - initial_time
@@ -1034,8 +1032,8 @@ class AbsoluteAlchemicalFactory(object):
 
         """
 
-        valence_atomset = Set(valence_atoms)
-        intersection = Set.intersection(valence_atomset, self.ligand_atomset)
+        valence_atomset = set(valence_atoms)
+        intersection = set.intersection(valence_atomset, self.ligand_atomset)
         if (len(intersection) >= 1) and (len(intersection) < len(valence_atomset)):
             return True
 

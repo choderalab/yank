@@ -1,9 +1,10 @@
-log started: Wed Mar 19 18:01:55 2014
+log started: Thu Jun 25 06:55:50 2009
 
 Log file: ./leap.log
 >> #
->> # ----- leaprc for loading the ff99SB (Hornak & Simmerling) force field
->> #       modified for the "ILDN" changes
+>> # ----- leaprc for loading the Cornell et al. topology and
+>> #       parm96.dat for proteins
+>> #       assumes that any unspecified nucleic acids are DNA 
 >> #
 >> #	load atom type hybridizations
 >> #
@@ -41,6 +42,7 @@ Log file: ./leap.log
 >> 	{ "CD"  "C" "sp2" }
 >> 	{ "CE"  "C" "sp2" }
 >> 	{ "CF"  "C" "sp2" }
+>> 	{ "CG"  "C" "sp2" }
 >> 	{ "CP"  "C" "sp2" }
 >> 	{ "CI"  "C" "sp2" }
 >> 	{ "CJ"  "C" "sp2" }
@@ -49,7 +51,7 @@ Log file: ./leap.log
 >> 	{ "CR"  "C" "sp2" }
 >> 	{ "CA"  "C" "sp2" }
 >> 	{ "CY"  "C" "sp2" }
->> 	{ "C0"  "Ca" "sp3" }
+>> 	{ "C0"  "C" "sp2" }
 >> 	{ "MG"  "Mg" "sp3" }
 >> 	{ "N"   "N" "sp2" }
 >> 	{ "NA"  "N" "sp2" }
@@ -70,47 +72,31 @@ Log file: ./leap.log
 >> 	{ "BR"  "Br" "sp3" }
 >> 	{ "I"   "I"  "sp3" }
 >> 	{ "FE"  "Fe" "sp3" }
->> 	{ "EP"  ""  "sp3" }
 >> # glycam
 >> 	{ "OG"  "O" "sp3" }
 >> 	{ "OL"  "O" "sp3" }
 >> 	{ "AC"  "C" "sp3" }
 >> 	{ "EC"  "C" "sp3" }
->> #ildn
->> 	{ "C3"  "C" "sp3" }
->> 	{ "C4"  "C" "sp3" }
->> 	{ "C5"   "C" "sp2" }
->> 	{ "C6"   "C" "sp2" }
->> 	{ "NP"   "N" "sp2" }
->> 	{ "OM"   "O" "sp2" } # guess!!!
 >> }
 >> #
 >> #	Load the main parameter set.
 >> #
->> parm99 = loadamberparams parm99.dat
-Loading parameters: /Users/choderaj/code/amber/amber12/dat/leap/parm/parm99.dat
+>> parm96 = loadamberparams parm96.dat
+Loading parameters: /Users/jchodera/local/src/amber10/dat/leap/parm/parm96.dat
 Reading title:
-PARM99 for DNA,RNA,AA, organic molecules, TIP3P wat. Polariz.& LP incl.02/04/99
-(UNKNOWN ATOM TYPE: HZ)
+PARM96 for DNA, RNA and proteins with TIP3P Water. USE SCEE=1.2 in energy progs
 (UNKNOWN ATOM TYPE: IM)
 (UNKNOWN ATOM TYPE: Li)
 (UNKNOWN ATOM TYPE: IP)
 (UNKNOWN ATOM TYPE: K)
 (UNKNOWN ATOM TYPE: Rb)
 (UNKNOWN ATOM TYPE: Cs)
-(UNKNOWN ATOM TYPE: Zn)
 (UNKNOWN ATOM TYPE: IB)
-(UNKNOWN ATOM TYPE: LP)
->> mods = loadamberparams frcmod.ff99SBildn
-Loading parameters: /Users/choderaj/code/amber/amber12/dat/leap/parm/frcmod.ff99SBildn
-Reading force field modification type file (frcmod)
-Reading title:
-Modification/update of parm99.dat (Hornak & Simmerling) + ILDN corrections
 >> #
 >> #	Load DNA/RNA libraries
 >> #
 >> loadOff all_nucleic94.lib
-Loading library: /Users/choderaj/code/amber/amber12/dat/leap/lib/all_nucleic94.lib
+Loading library: /Users/jchodera/local/src/amber10/dat/leap/lib/all_nucleic94.lib
 Loading: DA
 Loading: DA3
 Loading: DA5
@@ -145,10 +131,10 @@ Loading: RU5
 Loading: RUN
 >> #
 >> #	Load main chain and terminating 
->> #	amino acid libraries (i.e. ff94 libs)
+>> #	amino acid libraries.
 >> #
->> loadOff all_amino94ildn.lib
-Loading library: /Users/choderaj/code/amber/amber12/dat/leap/lib/all_amino94ildn.lib
+>> loadOff all_amino94.lib
+Loading library: /Users/jchodera/local/src/amber10/dat/leap/lib/all_amino94.lib
 Loading: ALA
 Loading: ARG
 Loading: ASH
@@ -176,8 +162,8 @@ Loading: THR
 Loading: TRP
 Loading: TYR
 Loading: VAL
->> loadOff all_aminoct94ildn.lib
-Loading library: /Users/choderaj/code/amber/amber12/dat/leap/lib/all_aminoct94ildn.lib
+>> loadOff all_aminoct94.lib
+Loading library: /Users/jchodera/local/src/amber10/dat/leap/lib/all_aminoct94.lib
 Loading: CALA
 Loading: CARG
 Loading: CASN
@@ -203,8 +189,8 @@ Loading: CTYR
 Loading: CVAL
 Loading: NHE
 Loading: NME
->> loadOff all_aminont94ildn.lib
-Loading library: /Users/choderaj/code/amber/amber12/dat/leap/lib/all_aminont94ildn.lib
+>> loadOff all_aminont94.lib
+Loading library: /Users/jchodera/local/src/amber10/dat/leap/lib/all_aminont94.lib
 Loading: ACE
 Loading: NALA
 Loading: NARG
@@ -229,11 +215,9 @@ Loading: NTHR
 Loading: NTRP
 Loading: NTYR
 Loading: NVAL
->> #
->> #       Load water and ions
->> # 
+>> 
 >> loadOff ions94.lib
-Loading library: /Users/choderaj/code/amber/amber12/dat/leap/lib/ions94.lib
+Loading library: /Users/jchodera/local/src/amber10/dat/leap/lib/ions94.lib
 Loading: CIO
 Loading: Cl-
 Loading: Cs+
@@ -244,7 +228,7 @@ Loading: MG2
 Loading: Na+
 Loading: Rb+
 >> loadOff solvents.lib
-Loading library: /Users/choderaj/code/amber/amber12/dat/leap/lib/solvents.lib
+Loading library: /Users/jchodera/local/src/amber10/dat/leap/lib/solvents.lib
 Loading: CHCL3BOX
 Loading: DC4
 Loading: MEOHBOX
@@ -262,13 +246,13 @@ Loading: TIP3PBOX
 Loading: TIP3PFBOX
 Loading: TIP4PBOX
 Loading: TIP4PEWBOX
-Loading: TIP5PBOX
 Loading: TP3
 Loading: TP4
 Loading: TP5
 Loading: TPF
 >> HOH = TP3
 >> WAT = TP3
+>> 
 >> 
 >> #
 >> #	Define the PDB name map for the amino acids and DNA.
@@ -302,14 +286,18 @@ Loading: TPF
 >>   { 0 "ADE" "DA5"  } { 1 "ADE" "DA3"  } { "ADE" "DA" }
 >>   { 0 "CYT" "DC5"  } { 1 "CYT" "DC3"  } { "CYT" "DC" }
 >>   { 0 "THY" "DT5"  } { 1 "THY" "DT3"  } { "THY" "DT" }
->>   { 0 "G" "RG5"  } { 1 "G" "RG3"  } { "G" "RG" } { "GN" "RGN" }
->>   { 0 "A" "RA5"  } { 1 "A" "RA3"  } { "A" "RA" } { "AN" "RAN" }
->>   { 0 "C" "RC5"  } { 1 "C" "RC3"  } { "C" "RC" } { "CN" "RCN" }
->>   { 0 "U" "RU5"  } { 1 "U" "RU3"  } { "U" "RU" } { "UN" "RUN" }
->>   { 0 "DG" "DG5"  } { 1 "DG" "DG3"  }  
->>   { 0 "DA" "DA5"  } { 1 "DA" "DA3"  }  
->>   { 0 "DC" "DC5"  } { 1 "DC" "DC3"  }  
->>   { 0 "DT" "DT5"  } { 1 "DT" "DT3"  }
+>>   { 0 "G" "DG5"  } { 1 "G" "DG3"  } { "G" "DG" } { "GN" "DGN" }
+>>   { 0 "A" "DA5"  } { 1 "A" "DA3"  } { "A" "DA" } { "AN" "DAN" }
+>>   { 0 "C" "DC5"  } { 1 "C" "DC3"  } { "C" "DC" } { "CN" "DCN" }
+>>   { 0 "T" "DT5"  } { 1 "T" "DT3"  } { "T" "DT" } { "TN" "DTN" }
+>>   { 0 "C5" "DC5" }
+>>   { 0 "G5" "DG5" }
+>>   { 0 "A5" "DA5" }
+>>   { 0 "T5" "DT5" }
+>>   { 1 "C3" "DC3" }
+>>   { 1 "G3" "DG3" }
+>>   { 1 "A3" "DA3" }
+>>   { 1 "T3" "DT3" }
 >> 
 >> }
 >> 
@@ -323,26 +311,17 @@ Loading: TPF
 >>   { "C2*" "C2'" }
 >>   { "C1*" "C1'" }
 >>   { "C5M" "C7"  }
->>   { "O2*" "O2'" }
 >>   { "H1*" "H1'" }
 >>   { "H2*1" "H2'1" }
 >>   { "H2*2" "H2'2" }
->>   { "H2'"  "H2'1" }
->>   { "H2''" "H2'2" }
 >>   { "H3*" "H3'" }
 >>   { "H4*" "H4'" }
 >>   { "H5*1" "H5'1" }
 >>   { "H5*2" "H5'2" }
->>   { "H5'"  "H5'1" }
->>   { "H5''" "H5'2" }
->>   { "HO2'" "HO'2" }
->>   { "HO5'" "H5T" }
->>   { "HO3'" "H3T" }
+>> # old ff atom names -> new
 >>   { "O1'" "O4'" }
 >>   { "OA"  "O1P" }
 >>   { "OB"  "O2P" }
->>   { "OP1" "O1P" }
->>   { "OP2" "O2P" }
 >> }
 >> 
 >> 
@@ -356,10 +335,10 @@ Loading: TPF
 > 
 > # Load GAFF parameters.
 > source leaprc.gaff
------ Source: /Users/choderaj/code/amber/amber12/dat/leap/cmd/leaprc.gaff
------ Source of /Users/choderaj/code/amber/amber12/dat/leap/cmd/leaprc.gaff done
+----- Source: /Users/jchodera/local/src/amber10/dat/leap/cmd/leaprc.gaff
+----- Source of /Users/jchodera/local/src/amber10/dat/leap/cmd/leaprc.gaff done
 >> logFile leap.log
-log started: Wed Mar 19 18:01:55 2014
+log started: Thu Jun 25 06:55:50 2009
 
 Log file: ./leap.log
 >> #
@@ -404,7 +383,6 @@ Log file: ./leap.log
 >> 	{ "cv"  "C" "sp2" }
 >> 	{ "cx"  "C" "sp2" }
 >> 	{ "cy"  "C" "sp2" }
->> 	{ "cz"  "C" "sp2" }
 >> 	{ "n"   "N" "sp2" }
 >> 	{ "n1"  "N" "sp2" }
 >> 	{ "n2"  "N" "sp2" }
@@ -432,10 +410,7 @@ Log file: ./leap.log
 >> 	{ "p4"   "P" "sp3" }
 >> 	{ "p5"   "P" "sp3" }
 >> 	{ "pb"   "P" "sp3" }
->> 	{ "pc"   "P" "sp3" }
 >> 	{ "pd"   "P" "sp3" }
->> 	{ "pe"   "P" "sp3" }
->> 	{ "pf"   "P" "sp3" }
 >> 	{ "px"   "P" "sp3" }
 >> 	{ "py"   "P" "sp3" }
 >> 	{ "f"   "F" "sp3" }
@@ -447,9 +422,9 @@ Log file: ./leap.log
 >> #	Load the general force field parameter set.
 >> #
 >> gaff = loadamberparams gaff.dat
-Loading parameters: /Users/choderaj/code/amber/amber12/dat/leap/parm/gaff.dat
+Loading parameters: /Users/jchodera/local/src/amber10/dat/leap/parm/gaff.dat
 Reading title:
-AMBER General Force Field for organic molecules (Version 1.5, January 2013)
+AMBER General Force Field for organic mol., add. info. at the end (June, 2003)
 > 
 > 
 > # Set GB radii to recommended values for OBC.
@@ -457,8 +432,8 @@ AMBER General Force Field for organic molecules (Version 1.5, January 2013)
 Using H(N)-modified Bondi radii
 > 
 > # Load in protein.
-> receptor = loadPdb receptor.pdbfixer.pdb
-Loading PDB file: ./receptor.pdbfixer.pdb
+> receptor = loadPdb receptor.pdb
+Loading PDB file: ./receptor.pdb
 Enter zPdbReadScan from call depth  0.
 Exit  zPdbReadScan from call depth  0.
 Matching PDB residue names to LEaP variables.
@@ -492,7 +467,7 @@ Mapped residue MET, term: Terminal/beginning, seq. number: 0 to: NMET.
 (Residue 27: GLY, Nonterminal, was not found in name map.)
 (Residue 28: ILE, Nonterminal, was not found in name map.)
 (Residue 29: GLY, Nonterminal, was not found in name map.)
-(Residue 30: HIS, Nonterminal, was not found in name map.)
+(Residue 30: HIE, Nonterminal, was not found in name map.)
 (Residue 31: LEU, Nonterminal, was not found in name map.)
 (Residue 32: LEU, Nonterminal, was not found in name map.)
 (Residue 33: THR, Nonterminal, was not found in name map.)
@@ -623,9 +598,7 @@ Mapped residue MET, term: Terminal/beginning, seq. number: 0 to: NMET.
 (Residue 158: ASP, Nonterminal, was not found in name map.)
 (Residue 159: ALA, Nonterminal, was not found in name map.)
 (Residue 160: TYR, Nonterminal, was not found in name map.)
-(Residue 161: LYS, Nonterminal, was not found in name map.)
-(Residue 162: ASN, Nonterminal, was not found in name map.)
-Mapped residue LEU, term: Terminal/last, seq. number: 163 to: CLEU.
+Mapped residue LYS, term: Terminal/last, seq. number: 161 to: CLYS.
 Joining NMET - ASN
 Joining ASN - ILE
 Joining ILE - PHE
@@ -786,63 +759,51 @@ Joining THR - TRP
 Joining TRP - ASP
 Joining ASP - ALA
 Joining ALA - TYR
-Joining TYR - LYS
-Joining LYS - ASN
-Joining ASN - CLEU
-  total atoms in file: 1306
-  Leap added 1330 missing atoms according to residue templates:
-       1330 H / lone pairs
+Joining TYR - CLYS
+  total atoms in file: 1290
+  Leap added 1313 missing atoms according to residue templates:
+       1313 H / lone pairs
 > 
 > # Load parameters for ligand.
-> mods = loadAmberParams ligand.gaff.frcmod
-Loading parameters: ./ligand.gaff.frcmod
+> mods = loadAmberParams ligand.frcmod
+Loading parameters: ./ligand.frcmod
 Reading force field modification type file (frcmod)
 Reading title:
 remark goes here
 > 
 > # Load parameters for ligand.
-> loadAmberParams ligand.gaff.frcmod
-Loading parameters: ./ligand.gaff.frcmod
+> loadAmberParams ligand.frcmod
+Loading parameters: ./ligand.frcmod
 Reading force field modification type file (frcmod)
 Reading title:
 remark goes here
 > 
 > # Load ligand.
-> ligand = loadMol2 ligand.gaff.mol2
-Loading Mol2 file: ./ligand.gaff.mol2
-Reading MOLECULE named p-xylene
+> ligand = loadMol2 ligand.mol2
+Loading Mol2 file: ./ligand.mol2
+Reading MOLECULE named TMP 
 > 
 > # Create complex.
 > complex = combine { receptor ligand }
-  Sequence: default_name
-  Sequence: p-xylene
+  Sequence: 
+  Sequence: TMP
 > 
 > # Check complex.
 > check complex
 Checking 'complex'....
-WARNING: The unperturbed charge of the unit: 8.000000 is not zero.
-Warning: Close contact of 1.038436 angstroms between .R<CLEU 164>.A<CA 3> and .R<CLEU 164>.A<HB2 6>
-Warning: Close contact of 1.060935 angstroms between .R<CLEU 164>.A<HA 4> and .R<CLEU 164>.A<HB2 6>
-Warning: Close contact of 1.367262 angstroms between .R<CLEU 164>.A<HA 4> and .R<CLEU 164>.A<C 18>
-Warning: Close contact of 1.396122 angstroms between .R<CLEU 164>.A<HG 9> and .R<CLEU 164>.A<CD2 14>
-Warning: Close contact of 1.478260 angstroms between .R<ASN 163>.A<N 1> and .R<LYS 162>.A<O 22>
-Warning: Close contact of 1.449711 angstroms between .R<ASN 163>.A<H 2> and .R<LYS 162>.A<C 21>
-Warning: Close contact of 1.313844 angstroms between .R<ASN 163>.A<CA 3> and .R<ASN 163>.A<HB2 6>
-Warning: Close contact of 0.686304 angstroms between .R<ASN 163>.A<HA 4> and .R<ASN 163>.A<C 13>
-Warning: Close contact of 1.494882 angstroms between .R<LYS 162>.A<HZ2 19> and .R<ASP 159>.A<OD1 9>
-Warning: Close contact of 1.379576 angstroms between .R<THR 142>.A<HG1 12> and .R<GLN 105>.A<HE21 14>
-Warning: Close contact of 1.476646 angstroms between .R<GLN 123>.A<HE22 15> and .R<ARG 119>.A<HG2 9>
-Warning: Close contact of 1.471824 angstroms between .R<THR 26>.A<HG1 12> and .R<ASP 20>.A<HB3 7>
+WARNING: The unperturbed charge of the unit: 8.000200 is not zero.
+Warning: Close contact of 1.518782 angstroms between .R<THR 142>.A<HG1 12> and .R<GLN 105>.A<HE21 14>
+Warning: Close contact of 2.072268 angstroms between .R<GLY 30>.A<H 2> and .R<TYR 18>.A<HH 15>
 Checking parameters for unit 'complex'.
 Checking for bond parameters.
 Checking for angle parameters.
-check:  Warnings: 13
+check:  Warnings: 3
 Unit is OK.
 > 
 > # Report on net charge.
 > charge complex
-Total unperturbed charge:   8.000000
-Total perturbed charge:     8.000000
+Total unperturbed charge:   8.000200
+Total perturbed charge:     8.000200
 > 
 > # Write parameters.
 > saveAmberParm ligand ligand.prmtop ligand.crd
@@ -855,7 +816,6 @@ Building proper torsion parameters.
 Building improper torsion parameters.
  total 6 improper torsions applied
 Building H-Bond parameters.
-Incorporating Non-Bonded adjustments.
 Not Marking per-residue atom chain types.
 Marking per-residue atom chain types.
   (Residues lacking connect0/connect1 - 
@@ -863,7 +823,7 @@ Marking per-residue atom chain types.
 
 	res	total affected
 
-	MOL	1
+	TMP	1
   )
  (no restraints)
 > saveAmberParm receptor receptor.prmtop receptor.crd
@@ -890,9 +850,8 @@ Building improper torsion parameters.
         atoms are: CG CE2 CD2 CE3
  ** Warning: No sp2 improper torsion term for  NA-CA-CN-CB
         atoms are: NE1 CZ2 CE2 CD2
- total 522 improper torsions applied
+ total 516 improper torsions applied
 Building H-Bond parameters.
-Incorporating Non-Bonded adjustments.
 Not Marking per-residue atom chain types.
 Marking per-residue atom chain types.
   (Residues lacking connect0/connect1 - 
@@ -900,13 +859,13 @@ Marking per-residue atom chain types.
 
 	res	total affected
 
-	CLEU	1
+	CLYS	1
 	NMET	1
   )
  (no restraints)
 > saveAmberParm complex complex.prmtop complex.crd
 Checking Unit.
-WARNING: The unperturbed charge of the unit: 8.000000 is not zero.
+WARNING: The unperturbed charge of the unit: 8.000200 is not zero.
 
  -- ignoring the warning.
 
@@ -928,9 +887,8 @@ Building improper torsion parameters.
         atoms are: NE1 CZ2 CE2 CD2
  ** Warning: No sp2 improper torsion term for  C*-CN-CB-CA
         atoms are: CG CE2 CD2 CE3
- total 528 improper torsions applied
+ total 522 improper torsions applied
 Building H-Bond parameters.
-Incorporating Non-Bonded adjustments.
 Not Marking per-residue atom chain types.
 Marking per-residue atom chain types.
   (Residues lacking connect0/connect1 - 
@@ -938,9 +896,9 @@ Marking per-residue atom chain types.
 
 	res	total affected
 
-	CLEU	1
-	MOL	1
+	CLYS	1
 	NMET	1
+	TMP	1
   )
  (no restraints)
 > 

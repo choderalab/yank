@@ -906,9 +906,12 @@ class ReplicaExchange(object):
         if self._initialized:
             raise Error("Simulation has already been initialized.")
 
-        # TODO: If no platform is specified, use the Reference platform.
+        # If no platform is specified, use the CPU platform.
+        # TODO: If no platform is specified, instead use the fastest available platform.
         if self.platform is None:
-            self.platform = self.mm.Platform.getPlatformByName("Reference")
+            print "No platform specified, so selecting CPU platform with one thread."
+            self.platform = self.mm.Platform.getPlatformByName("CPU")
+            self.platform.setPropertyDefaultValue('CpuThreads', '1') # only use 1 CPU thread
 
         # Turn off verbosity if not master node.
         if self.mpicomm:
@@ -925,66 +928,6 @@ class ReplicaExchange(object):
 
         # Determine number of alchemical states.
         self.nstates = len(self.states)
-
-        # Create cached Context objects.
-        if self.verbose: print "Creating and caching Context objects..."
-        MAX_SEED = (1<<31) - 1 # maximum seed value (max size of signed C long)
-        seed = int(numpy.random.randint(MAX_SEED)) # TODO: Is this the right maximum value to use?
-        if self.mpicomm:
-            # Compile all kernels on master process to avoid nvcc deadlocks.
-            # TODO: Fix this when nvcc fix comes out.
-            initial_time = time.time()
-            if self.mpicomm.rank == 0:
-                for state_index in range(self.nstates):
-                    print "Master node compiling kernels for state %d / %d..." % (state_index, self.nstates) # DEBUG
-                    state = self.states[state_index]
-                    integrator = self.mm.LangevinIntegrator(state.temperature, self.collision_rate, self.timestep)                    
-                    integrator.setRandomNumberSeed(seed + self.mpicomm.rank) 
-                    context = self.mm.Context(state.system, integrator, self.platform)
-                    self.mm.LocalEnergyMinimizer.minimize(context, 0, 1) # DEBUG
-                    del context, integrator
-            self.mpicomm.barrier()
-            final_time = time.time()
-            elapsed_time = final_time - initial_time
-            print "Barrier complete.  Compiling kernels took %.1f s." % elapsed_time # DEBUG
-
-            # Create cached contexts for only the states this process will handle.
-            initial_time = time.time()
-            for state_index in range(self.mpicomm.rank, self.nstates, self.mpicomm.size):
-                print "Node %d / %d creating Context for state %d..." % (self.mpicomm.rank, self.mpicomm.size, state_index) # DEBUG
-                state = self.states[state_index]
-                try:
-                    state._integrator = self.mm.LangevinIntegrator(state.temperature, self.collision_rate, self.timestep)                    
-                    state._integrator.setRandomNumberSeed(seed + self.mpicomm.rank) 
-                    initial_context_time = time.time() # DEBUG
-                    if self.platform:
-                        print "Node %d / %d: Using platform %s" % (self.mpicomm.rank, self.mpicomm.size, self.platform.getName())
-                        state._context = self.mm.Context(state.system, state._integrator, self.platform)
-                    else:
-                        print "Node %d / %d: No platform specified." % (self.mpicomm.rank, self.mpicomm.size)
-                        state._context = self.mm.Context(state.system, state._integrator)                    
-                    print "Node %d / %d: Context creation took %.3f s" % (self.mpicomm.rank, self.mpicomm.size, time.time() - initial_context_time) # DEBUG
-                except Exception as e:
-                    print e
-            print "Note %d / %d: Context creation done.  Waiting for MPI barrier..." % (self.mpicomm.rank, self.mpicomm.size) # DEBUG
-            self.mpicomm.barrier()
-            print "Barrier complete." # DEBUG
-        else:
-            # Serial version.
-            initial_time = time.time()
-            for (state_index, state) in enumerate(self.states):  
-                if self.verbose: print "Creating Context for state %d..." % state_index
-                state._integrator = self.mm.LangevinIntegrator(state.temperature, self.collision_rate, self.timestep)
-                state._integrator.setRandomNumberSeed(seed)
-                initial_context_time = time.time() # DEBUG
-                if self.platform:
-                    state._context = self.mm.Context(state.system, state._integrator, self.platform)
-                else:
-                    state._context = self.mm.Context(state.system, state._integrator)
-                if self.verbose: print "Context creation took %.3f s" % (time.time() - initial_context_time) # DEBUG            
-        final_time = time.time()
-        elapsed_time = final_time - initial_time
-        if self.verbose: print "%.3f s elapsed." % elapsed_time
 
         # Determine number of atoms in systems.
         self.natoms = self.states[0].system.getNumParticles()
@@ -1016,6 +959,73 @@ class ReplicaExchange(object):
         for replica_index in range(self.nstates):
             self.replica_states[replica_index] = replica_index
             
+        # Create cached Context objects.
+        if self.verbose: print "Creating and caching Context objects..."
+        MAX_SEED = (1<<31) - 1 # maximum seed value (max size of signed C long)
+        seed = int(numpy.random.randint(MAX_SEED)) # TODO: Is this the right maximum value to use?
+        if self.mpicomm:
+
+            if self.platform.getName() == 'CUDA':
+                # Compile all kernels on master process to avoid nvcc deadlocks.
+                # TODO: We can remove this when nvcc fix comes out.
+                initial_time = time.time()
+                if self.mpicomm.rank == 0:
+                    for state_index in range(self.nstates):
+                        print "Master node compiling kernels for state %d / %d for platform %s..." % (state_index, self.nstates, self.platform.getName())
+                        state = self.states[state_index]
+                        integrator = self.mm.LangevinIntegrator(state.temperature, self.collision_rate, self.timestep)                    
+                        context = self.mm.Context(state.system, integrator, self.platform)
+                        box_vectors = self.replica_box_vectors[0]
+                        context.setPeriodicBoxVectors(box_vectors[0,:], box_vectors[1,:], box_vectors[2,:])
+                        context.setPositions(self.replica_positions[0])
+                        self.mm.LocalEnergyMinimizer.minimize(context, 1, 0) # also compile minimizer
+                        del context, integrator
+                self.mpicomm.barrier()
+                final_time = time.time()
+                elapsed_time = final_time - initial_time
+                print "Barrier complete.  Compiling kernels took %.1f s." % elapsed_time # DEBUG
+
+            # Create cached contexts for only the states this process will handle.
+            initial_time = time.time()
+            for state_index in range(self.mpicomm.rank, self.nstates, self.mpicomm.size):
+                print "Node %d / %d creating Context for state %d..." % (self.mpicomm.rank, self.mpicomm.size, state_index) # DEBUG
+                state = self.states[state_index]
+                try:
+                    state._integrator = self.mm.LangevinIntegrator(state.temperature, self.collision_rate, self.timestep)                    
+                    state._integrator.setRandomNumberSeed(seed + self.mpicomm.rank) 
+                    # TODO: Also set barostat seeds, etc.
+                    initial_context_time = time.time() # DEBUG
+                    if self.platform:
+                        print "Node %d / %d: Using platform %s" % (self.mpicomm.rank, self.mpicomm.size, self.platform.getName())
+                        state._context = self.mm.Context(state.system, state._integrator, self.platform)
+                    else:
+                        print "Node %d / %d: No platform specified." % (self.mpicomm.rank, self.mpicomm.size)
+                        state._context = self.mm.Context(state.system, state._integrator)                    
+                    print "Node %d / %d: Context creation took %.3f s" % (self.mpicomm.rank, self.mpicomm.size, time.time() - initial_context_time) # DEBUG
+                except Exception as e:
+                    print e
+            print "Note %d / %d: Context creation done.  Waiting for MPI barrier..." % (self.mpicomm.rank, self.mpicomm.size) # DEBUG
+            self.mpicomm.barrier()
+            final_time = time.time()
+            elapsed_time = final_time - initial_time
+            print "Barrier complete. Caching all context objects took %.3f s." % elapsed_time # DEBUG
+        else:
+            # Serial version.
+            initial_time = time.time()
+            for (state_index, state) in enumerate(self.states):  
+                if self.verbose: print "Creating Context for state %d..." % state_index
+                state._integrator = self.mm.LangevinIntegrator(state.temperature, self.collision_rate, self.timestep)
+                state._integrator.setRandomNumberSeed(seed)
+                initial_context_time = time.time() # DEBUG
+                if self.platform:
+                    state._context = self.mm.Context(state.system, state._integrator, self.platform)
+                else:
+                    state._context = self.mm.Context(state.system, state._integrator)
+                if self.verbose: print "Context creation took %.3f s" % (time.time() - initial_context_time) # DEBUG            
+        final_time = time.time()
+        elapsed_time = final_time - initial_time
+        if self.verbose: print "%.3f s elapsed." % elapsed_time
+
         if self.resume:
             # Resume from NetCDF file.
             self._resume_from_netcdf()
@@ -1624,6 +1634,8 @@ class ReplicaExchange(object):
     def _show_mixing_statistics(self):
         """
         Print summary of mixing statistics.
+
+        TODO: This code is very slow, and gets slower with each iteration!  Needs to be sped up.
 
         """
         # TODO: Replace this with a call to analyze.show_mixing_statistics().

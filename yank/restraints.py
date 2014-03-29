@@ -48,6 +48,8 @@ import scipy.integrate
 import simtk.unit as units
 import simtk.openmm as openmm
 
+from abc import ABCMeta, abstractmethod
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -68,30 +70,6 @@ class ReceptorLigandRestraint(object):
 
     This restraint strength is controlled by a global context parameter called 'restraint_lambda'.
 
-    NOTE
-
-    These restraints should not be used with explicit solvent calculations, since the CustomBondForce
-    does not respect periodic boundary conditions, and the analytical correction term does not include
-    truncation due to a finite simulation box.
-
-    EXAMPLE
-        
-    >>> # Create a test system.
-    >>> from repex import testsystems
-    >>> system_container = testsystems.LysozymeImplicit()
-    >>> (system, positions) = system_container.system, system_container.positions
-    >>> # Identify receptor and ligand atoms.
-    >>> receptor_atoms = range(0,2603)
-    >>> ligand_atoms = range(2603,2621)
-    >>> # Construct a reference thermodynamic state.
-    >>> from oldrepex import ThermodynamicState
-    >>> temperature = 298.0 * units.kelvin
-    >>> state = ThermodynamicState(temperature=temperature)
-    >>> # Create restraints.
-    >>> restraints = ReceptorLigandRestraint(state, system, positions, receptor_atoms, ligand_atoms)
-    >>> # Get standard state correction.
-    >>> correction = restraints.getStandardStateCorrection()
-
     NOTES
 
     To create a subclass that uses a different restraint energy function, follow these steps:
@@ -103,9 +81,11 @@ class ReceptorLigandRestraint(object):
       return them in a list in the same order as 'bond_parameter_names'.
 
     """
-    
-    energy_function = 'restraint_lambda * (K/2) * r^2' # harmonic restraint
-    bond_parameter_names = ['K'] # list of bond parameters that appear in energy function above
+
+    __metaclass__ = ABCMeta
+
+    energy_function = '' # energy function to use in computation of restraint
+    bond_parameter_names = [] # list of bond parameters that appear in energy function above
 
     def __init__(self, state, system, coordinates, receptor_atoms, ligand_atoms):
         """
@@ -139,6 +119,9 @@ class ReceptorLigandRestraint(object):
         logger.debug("restrained receptor atom: %d" % self.restrained_receptor_atom)
         logger.debug("restrained ligand atom: %d" % self.restrained_ligand_atom)
 
+        # Determine radius of gyration of receptor.
+        self.radius_of_gyration = self._computeRadiusOfGyration(self.coordinates[self.receptor_atoms,:])
+
         # Determine parameters
         self.bond_parameters = self._determineBondParameters()
 
@@ -147,6 +130,7 @@ class ReceptorLigandRestraint(object):
 
         return
 
+    @abstractmethod
     def _determineBondParameters(self):
         """
         Determine bond parameters for CustomBondForce between protein and ligand.
@@ -161,14 +145,21 @@ class ReceptorLigandRestraint(object):
         receptor atoms about the receptor restrained atom.
         
         """
+        pass
 
-        unit = self.coordinates.unit
+    
+    def _computeRadiusOfGyration(self, coordinates):
+        """
+        Compute the radius of gyration of the specified coordinate set.
+        
+        """
+        unit = coordinates.unit
         
         # Get dimensionless receptor coordinates.
-        x = self.coordinates[self.receptor_atoms,:] / unit
+        x = coordinates / unit
         
         # Get dimensionless restrained atom coordinate.
-        xref = self.coordinates[self.restrained_receptor_atom,:] / unit # (3,) array
+        xref = x.mean(0)
         xref = numpy.reshape(xref, (1,3)) # (1,3) array
         
         # Compute distances from restrained atom.
@@ -176,15 +167,9 @@ class ReceptorLigandRestraint(object):
         distances = numpy.sqrt(((x - numpy.tile(xref, (natoms, 1)))**2).sum(1)) # distances[i] is the distance from the centroid to particle i
 
         # Compute std dev of distances from restrained atom.
-        sigma = distances.std() * unit 
+        radius_of_gyration = distances.std() * unit 
 
-        # Compute corresponding spring constant.
-        K = self.kT / sigma**2
-
-        # Assemble parameters.
-        bond_parameters = [K]
-
-        return bond_parameters
+        return radius_of_gyration
 
     def _createRestraintForce(self, particle1, particle2, mm=None):
         """
@@ -219,6 +204,9 @@ class ReceptorLigandRestraint(object):
         Equivalent to the free energy of releasing restraints and confining into a box of standard state size.
                 
         """
+
+        import time
+        initial_time = time.time()
 
         r_min = 0 * units.nanometers
         r_max = 100 * units.nanometers # TODO: Use maximum distance between atoms?
@@ -268,8 +256,12 @@ class ReceptorLigandRestraint(object):
         
         # Compute standard state correction for releasing shell restraints into standard-state box (in units of kT).
         DeltaG = - math.log(box_volume / shell_volume)
-        logger.debug("Standard state correction: %.3f kT" % DeltaG)
+        logger.debug("Standard state correction: %.3f kT" % DeltaG)        
         
+        final_time = time.time()
+        elapsed_time = final_time - initial_time
+        logger.debug("restraints: _computeStandardStateCorrection: %.3f s elapsed" % elapsed_time)
+
         # Return standard state correction (in kT).
         return DeltaG
 
@@ -310,6 +302,17 @@ class ReceptorLigandRestraint(object):
 
         """
         return self.standard_state_correction
+
+    def getReceptorRadiusOfGyration(self):
+        """
+        Returns the radius of gyration of the receptor.
+
+        RETURNS
+        
+        radius_of_gyration (simtk.unit.Quantity with units compatible with simtk.unit.angstroms) - radius of gyration of the receptor
+
+        """
+        return self.radius_of_gyration
 
     def _closestAtomToCentroid(self, coordinates, indices=None, masses=None):
         """
@@ -360,6 +363,86 @@ class ReceptorLigandRestraint(object):
 # Harmonic protein-ligand restraint.
 #=============================================================================================
 
+class HarmonicReceptorLigandRestraint(ReceptorLigandRestraint):
+    """
+    Impose a single restraint between ligand and protein to prevent ligand from drifting too far
+    from protein in implicit solvent calculations.
+
+    This restraint strength is controlled by a global context parameter called 'restraint_lambda'.
+
+    NOTE
+
+    These restraints should not be used with explicit solvent calculations, since the CustomBondForce
+    does not respect periodic boundary conditions, and the analytical correction term does not include
+    truncation due to a finite simulation box.
+
+    EXAMPLE
+        
+    >>> # Create a test system.
+    >>> from repex import testsystems
+    >>> system_container = testsystems.LysozymeImplicit()
+    >>> (system, positions) = system_container.system, system_container.positions
+    >>> # Identify receptor and ligand atoms.
+    >>> receptor_atoms = range(0,2603)
+    >>> ligand_atoms = range(2603,2621)
+    >>> # Construct a reference thermodynamic state.
+    >>> from oldrepex import ThermodynamicState
+    >>> temperature = 298.0 * units.kelvin
+    >>> state = ThermodynamicState(temperature=temperature)
+    >>> # Create restraints.
+    >>> restraints = HarmonicReceptorLigandRestraint(state, system, positions, receptor_atoms, ligand_atoms)
+    >>> # Get standard state correction.
+    >>> correction = restraints.getStandardStateCorrection()
+    >>> # Get radius of gyration of receptor.
+    >>> rg = restraints.getReceptorRadiusOfGyration()
+
+    """
+
+    energy_function = 'restraint_lambda * (K/2)*r^2' # harmonic restraint
+    bond_parameter_names = ['K'] # list of bond parameters that appear in energy function above
+
+    def _determineBondParameters(self):
+        """
+        Determine bond parameters for CustomBondForce between protein and ligand.
+
+        RETURNS
+
+        parameters (list) - list of parameters for CustomBondForce
+
+        NOTE
+
+        K, the spring constant, is determined from the radius of gyration
+        
+        """
+
+        unit = self.coordinates.unit
+        
+        # Get dimensionless receptor coordinates.
+        x = self.coordinates[self.receptor_atoms,:] / unit
+        
+        # Get dimensionless restrained atom coordinate.
+        xref = self.coordinates[self.restrained_receptor_atom,:] / unit # (3,) array
+        xref = numpy.reshape(xref, (1,3)) # (1,3) array
+        
+        # Compute distances from restrained atom.
+        natoms = x.shape[0]
+        distances = numpy.sqrt(((x - numpy.tile(xref, (natoms, 1)))**2).sum(1)) # distances[i] is the distance from the centroid to particle i
+
+        # Compute std dev of distances from restrained atom.
+        sigma = distances.std() * unit 
+
+        # Compute corresponding spring constant.
+        K = self.kT / sigma**2
+
+        # Assemble parameters.
+        bond_parameters = [K]
+
+        return bond_parameters
+
+#=============================================================================================
+# Flat-bottom protein-ligand restraint.
+#=============================================================================================
+
 class FlatBottomReceptorLigandRestraint(ReceptorLigandRestraint):
     """
     An alternative choice to receptor-ligand restraints that uses a flat potential inside most of the protein volume
@@ -382,6 +465,8 @@ class FlatBottomReceptorLigandRestraint(ReceptorLigandRestraint):
     >>> restraints = FlatBottomReceptorLigandRestraint(state, system, positions, receptor_atoms, ligand_atoms)
     >>> # Get standard state correction.
     >>> correction = restraints.getStandardStateCorrection()
+    >>> # Get radius of gyration of receptor.
+    >>> rg = restraints.getReceptorRadiusOfGyration()
 
     """
 
