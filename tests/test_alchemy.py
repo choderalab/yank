@@ -151,8 +151,6 @@ def alchemical_factory_check(reference_system, positions, receptor_atoms, ligand
     elapsed_time = final_time - initial_time
     logger.info("AbsoluteAlchemicalFactory initialization took %.3f s" % elapsed_time)
 
-    platform_name = 'CPU' # DEBUG
-
     platform = None
     if platform_name:
         platform = openmm.Platform.getPlatformByName(platform_name)
@@ -450,7 +448,7 @@ def test_alanine_dipeptide_explicit():
     alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms)
     logger.info("")
 
-def tooslow_obcgbsa_complex():
+def test_obcgbsa_complex():
     # This test is too slow for travis-ci.
     logger.info("Creating T4 lysozyme system...")
     system_container = testsystems.LysozymeImplicit()
@@ -461,7 +459,7 @@ def tooslow_obcgbsa_complex():
     #benchmark(reference_system, positions, receptor_atoms, ligand_atoms)    
     logger.info("")
 
-def tooslow_src_implicit():
+def test_src_implicit():
     # This test is too slow for travis-ci.
     # TODO: Replace with Abl + imatinib
     logger.info("Creating Src implicit system...")
@@ -473,7 +471,7 @@ def tooslow_src_implicit():
     #benchmark(reference_system, positions, receptor_atoms, ligand_atoms)    
     logger.info("")
 
-def tooslow_src_explicit():
+def test_src_explicit():
     # This test is too slow for travis-ci.
     # TODO: Replace with Abl + imatinib
     logger.info("Creating Src explicit system...")

@@ -43,7 +43,14 @@ The mbondi2 radii are used, with OBC GBSA in YANK.
 ```
 
 ### Run simulation
+
+Serial:
 ```tcsh
 python ../../yank/yank.py --receptor_prmtop receptor.prmtop --ligand_prmtop ligand.prmtop --complex_prmtop complex.prmtop --complex_crd complex.crd --restraints flat-bottom --randomize_ligand --iterations 1000 --verbose 
+```
+
+MPI:
+```tcsh
+mpirun -np 4 python ../../yank/yank.py --receptor_prmtop receptor.prmtop --ligand_prmtop ligand.prmtop --complex_prmtop complex.prmtop --complex_crd complex.crd --restraints flat-bottom --randomize_ligand --iterations 1000 --verbose --mpi --platform CUDA --gpus_per_node 4
 ```
 
