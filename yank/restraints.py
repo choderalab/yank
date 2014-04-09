@@ -68,7 +68,7 @@ class ReceptorLigandRestraint(object):
     Impose a single restraint between ligand and protein to prevent ligand from drifting too far
     from protein in implicit solvent calculations.
 
-    This restraint strength is controlled by a global context parameter called 'restraint_lambda'.
+    This restraint strength is controlled by a global context parameter called 'lambda_restraints'.
 
     NOTES
 
@@ -184,7 +184,7 @@ class ReceptorLigandRestraint(object):
         if mm is None: mm = openmm
         
         force = openmm.CustomBondForce(self.energy_function)
-        force.addGlobalParameter('restraint_lambda', 1.0)
+        force.addGlobalParameter('lambda_restraints', 1.0)
         for parameter in self.bond_parameter_names:
             force.addPerBondParameter(parameter)
         force.addBond(particle1, particle2, self.bond_parameters)
@@ -368,7 +368,7 @@ class HarmonicReceptorLigandRestraint(ReceptorLigandRestraint):
     Impose a single restraint between ligand and protein to prevent ligand from drifting too far
     from protein in implicit solvent calculations.
 
-    This restraint strength is controlled by a global context parameter called 'restraint_lambda'.
+    This restraint strength is controlled by a global context parameter called 'lambda_restraints'.
 
     NOTE
 
@@ -398,7 +398,7 @@ class HarmonicReceptorLigandRestraint(ReceptorLigandRestraint):
 
     """
 
-    energy_function = 'restraint_lambda * (K/2)*r^2' # harmonic restraint
+    energy_function = 'lambda_restraints * (K/2)*r^2' # harmonic restraint
     bond_parameter_names = ['K'] # list of bond parameters that appear in energy function above
 
     def _determineBondParameters(self):
@@ -470,7 +470,7 @@ class FlatBottomReceptorLigandRestraint(ReceptorLigandRestraint):
 
     """
 
-    energy_function = 'restraint_lambda * step(r-r0) * (K/2)*(r-r0)^2' # flat-bottom restraint
+    energy_function = 'lambda_restraints * step(r-r0) * (K/2)*(r-r0)^2' # flat-bottom restraint
     bond_parameter_names = ['K', 'r0'] # list of bond parameters that appear in energy function above
 
     def _determineBondParameters(self):
