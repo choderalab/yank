@@ -630,7 +630,7 @@ class Yank(object):
         if self.platform:
             if self.verbose: print "Using platform '%s'" % self.platform.getName()
             solvent_simulation.platform = self.platform
-        solvent_simulation.nsteps_per_iteration = 2500
+        solvent_simulation.nsteps_per_iteration = 500
         solvent_simulation.run() 
         
         #
@@ -654,7 +654,7 @@ class Yank(object):
         except Exception as e:        
             # Create states using alchemical factory.
             factory = AbsoluteAlchemicalFactory(self.complex, ligand_atoms=self.ligand_atoms)
-            systems = factory.createPerturbedSystems(self.complex_protocol, mpicomm=MPI.COMM_WORLD)
+            systems = factory.createPerturbedSystems(self.complex_protocol)
             resume = False
 
         #if self.verbose: print "Setting up complex simulation..."
@@ -702,7 +702,7 @@ class Yank(object):
 
         if self.verbose: print "Setting up replica exchange simulation..."
         complex_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.complex_positions, store_filename, displacement_sigma=self.displacement_sigma, mc_atoms=self.ligand_atoms, protocol=self.protocol, metadata=metadata)
-        complex_simulation.nsteps_per_iteration = 2500
+        complex_simulation.nsteps_per_iteration = 500
         if self.platform:
             if self.verbose: print "Using platform '%s'" % self.platform.getName()
             complex_simulation.platform = self.platform
@@ -814,7 +814,7 @@ class Yank(object):
             # Create states using alchemical factory.
             if options.verbose: print "Creating alchemical states..."
             factory = AbsoluteAlchemicalFactory(self.complex, ligand_atoms=self.ligand_atoms)
-            systems = factory.createPerturbedSystems(self.complex_protocol, mpicomm=MPI.COMM_WORLD)
+            systems = factory.createPerturbedSystems(self.complex_protocol)
             resume = False
 
         # COMPLEX simulation

@@ -633,7 +633,7 @@ class AbsoluteAlchemicalFactory(object):
 
         return 
 
-    def _alchemicallyModifyGBOBCForce(self, system, reference_force, sasa_model='ACE'):
+    def _alchemicallyModifyGBSAOBCForce(self, system, reference_force, sasa_model='ACE'):
         """
         Create alchemically-modified version of GBSAOBCForce.
 
@@ -695,7 +695,7 @@ class AbsoluteAlchemicalFactory(object):
             custom_force.addParticle(parameters)
 
         # Add alchemically-modified GBSAOBCForce to system.
-        system.addForce(custom)
+        system.addForce(custom_force)
 
     def _createAlchemicallyModifiedSystem(self, mm=None):
         """
@@ -916,10 +916,6 @@ class AbsoluteAlchemicalFactory(object):
         -------        
         systems : list of simtk.openmm.System
             List of alchemically-modified System objects.  The cached reference system will be unmodified.
-
-        TODO
-        ----
-        Remove MPI code path if there is no performance improvement.
 
         Examples
         --------
