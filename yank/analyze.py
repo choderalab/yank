@@ -730,12 +730,11 @@ def estimate_free_energies(ncfile, ndiscard = 0, nuse = None):
    
     # Initialize MBAR (computing free energy estimates, which may take a while)
     logger.info("Computing free energy differences...")
-    mbar = MBAR(u_kln, N_k, verbose = False, method = 'self-consistent-iteration', maximum_iterations = 50000) # use slow self-consistent-iteration (the default)
-    #mbar = MBAR(u_kln, N_k, verbose = True, method = 'Newton-Raphson') # use faster Newton-Raphson solver
+    mbar = MBAR(u_kln, N_k, verbose=True)
 
     # Get matrix of dimensionless free energy differences and uncertainty estimate.
     logger.info("Computing covariance matrix...")
-    (Deltaf_ij, dDeltaf_ij) = mbar.getFreeEnergyDifferences(uncertainty_method='svd-ew')
+    (Deltaf_ij, dDeltaf_ij) = mbar.getFreeEnergyDifferences()
    
 #    # Matrix of free energy differences
     logger.info("Deltaf_ij:")
@@ -908,6 +907,9 @@ def detect_equilibration(A_t):
 
 if __name__ == '__main__':    
 
+    # Turn on debug info.
+    logging.basicConfig(level=logging.DEBUG)
+
     # DEBUG: ANALYSIS PATH IS HARD-CODED FOR NOW
     source_directory = "."
 
@@ -971,7 +973,7 @@ if __name__ == '__main__':
         u_n = extract_u_n(ncfile)
         [nequil, g_t, Neff_max] = detect_equilibration(u_n)
         logger.info([nequil, Neff_max])
- 
+        
         # Examine acceptance probabilities.
         show_mixing_statistics(ncfile, cutoff=0.05, nequil=nequil)
 

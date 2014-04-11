@@ -1,8 +1,8 @@
 #!/bin/tcsh
 
 # Run in serial mode.
-python yank.py --serial --complex_prmtop complex.prmtop --receptor_prmtop receptor.prmtop --ligand_prmtop ligand.prmtop --complex_crd complex.crd --output . --verbose --iterations 10000 --randomize_ligand
+#python ../../yank/yank.py --receptor_prmtop receptor.prmtop --ligand_prmtop ligand.prmtop --complex_prmtop complex.prmtop --complex_crd complex.crd --restraints harmonic --randomize_ligand --iterations 5 --verbose --platform CUDA
 
-# Run in MPI mode using 4 GPUs and 2 CPUs.
-#mpirun -np 6 python yank.py --mpi --complex_prmtop complex.prmtop --receptor_prmtop receptor.prmtop --ligand_prmtop ligand.prmtop --complex_crd complex.crd --output . --verbose --iterations 10000 --randomize_ligand --ngpus 4 --ncpus 2
+# Run in MPI mode.
+mpirun -rmk pbs python ../../yank/yank.py --receptor_prmtop receptor.prmtop --ligand_prmtop ligand.prmtop --complex_prmtop complex.prmtop --complex_crd complex.crd --restraints harmonic --randomize_ligand --iterations 500 --verbose --mpi --platform OpenCL --gpus_per_node 4
 

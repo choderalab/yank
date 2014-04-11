@@ -573,7 +573,7 @@ class Yank(object):
         self.protocol['timestep'] = 2.0 * units.femtoseconds
         self.protocol['collision_rate'] = 5.0 / units.picoseconds
         self.protocol['minimize'] = True
-        self.protocol['show_mixing_statistics'] = False # this causes slowdown with iteration and should not be used for production
+        self.protocol['show_mixing_statistics'] = True # this causes slowdown with iteration and should not be used for production
 
         return
 
@@ -615,7 +615,7 @@ class Yank(object):
         #    vacuum_simulation.platform = self.platform
         #else:
         #    vacuum_simulation.platform = openmm.Platform.getPlatformByName('Reference')
-        #vacuum_simulation.nsteps_per_iteration = 500
+        #vacuum_simulation.nsteps_per_iteration = 1250
         #vacuum_simulation.run() # DEBUG
         
         # 
@@ -630,7 +630,7 @@ class Yank(object):
         if self.platform:
             if self.verbose: print "Using platform '%s'" % self.platform.getName()
             solvent_simulation.platform = self.platform
-        solvent_simulation.nsteps_per_iteration = 500
+        solvent_simulation.nsteps_per_iteration = 1250
         solvent_simulation.run() 
         
         #
@@ -702,7 +702,7 @@ class Yank(object):
 
         if self.verbose: print "Setting up replica exchange simulation..."
         complex_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.complex_positions, store_filename, displacement_sigma=self.displacement_sigma, mc_atoms=self.ligand_atoms, protocol=self.protocol, metadata=metadata)
-        complex_simulation.nsteps_per_iteration = 500
+        complex_simulation.nsteps_per_iteration = 1250
         if self.platform:
             if self.verbose: print "Using platform '%s'" % self.platform.getName()
             complex_simulation.platform = self.platform
@@ -839,7 +839,7 @@ class Yank(object):
         # Set up Hamiltonian exchange simulation.
         if options.verbose: print "Setting up complex simulation..."
         complex_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.complex_positions, store_filename, displacement_sigma=self.displacement_sigma, mc_atoms=self.ligand_atoms, protocol=self.protocol, mpicomm=comm, metadata=metadata)
-        complex_simulation.nsteps_per_iteration = 500
+        complex_simulation.nsteps_per_iteration = 1250
         complex_simulation.platform = self.platform
         complex_simulation.run()        
         MPI.COMM_WORLD.barrier()
@@ -850,7 +850,7 @@ class Yank(object):
         systems = factory.createPerturbedSystems(self.solvent_protocol)
         store_filename = os.path.join(self.output_directory, 'solvent.nc')
         solvent_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.ligand_positions, store_filename, protocol=self.protocol, mpicomm=comm)
-        solvent_simulation.nsteps_per_iteration = 500
+        solvent_simulation.nsteps_per_iteration = 1250
         solvent_simulation.platform = self.platform
         solvent_simulation.run() 
         MPI.COMM_WORLD.barrier()
@@ -869,7 +869,7 @@ class Yank(object):
         #systems = factory.createPerturbedSystems(self.vacuum_protocol)
         #store_filename = os.path.join(self.output_directory, 'vacuum.nc')
         #vacuum_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.ligand_positions, store_filename, protocol=self.protocol, mpicomm=comm)
-        #vacuum_simulation.nsteps_per_iteration = 500
+        #vacuum_simulation.nsteps_per_iteration = 1250
         #vacuum_simulation.run() # DEBUG
         #MPI.COMM_WORLD.barrier()
        
