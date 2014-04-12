@@ -980,8 +980,12 @@ class AbsoluteAlchemicalFactory(object):
         initial_time = time.time()
         logger.debug("Creating alchemically modified intermediate...")
 
-        # Return an alchemically modified copy.
-        system = copy.deepcopy(self.alchemically_modified_system)
+        if (alchemical_state.ligandElectrostatics == 1.0) and (alchemical_state.ligandSterics == 1.0) and (alchemical_state.ligandTorsions == 1.0):
+            # Make copy of unperturbed reference system.
+            system = copy.deepcopy(self.reference_system)
+        else:
+            # Return an alchemically modified copy.
+            system = copy.deepcopy(self.alchemically_modified_system)
 
         # Perturb the default global parameters for this system according to the alchemical parameters.
         self.perturbSystem(system, alchemical_state)

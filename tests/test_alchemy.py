@@ -160,10 +160,10 @@ def alchemical_factory_check(reference_system, positions, receptor_atoms, ligand
 
     # Create systems.
     compareSystemEnergies(positions, [reference_system, factory.createPerturbedSystem(AlchemicalState(0, 1, 1, 1))], ['reference', 'alchemical'], platform=platform)
-    #compareSystemEnergies(positions, [factory.createPerturbedSystem(AlchemicalState(0, 1, 1, 1)), factory.createPerturbedSystem(AlchemicalState(0, 1-delta, 1, 1))], ['alchemical', 'partially discharged'], platform=platform)
-    #compareSystemEnergies(positions, [factory.createPerturbedSystem(AlchemicalState(0, delta, 1, 1)), factory.createPerturbedSystem(AlchemicalState(0, 0.0, 1, 1))], ['partially charged', 'discharged'], platform=platform)
-    #compareSystemEnergies(positions, [factory.createPerturbedSystem(AlchemicalState(0, 0, 1, 1)), factory.createPerturbedSystem(AlchemicalState(0, 0, 1-delta, 1))], ['discharged', 'partially decoupled'], platform=platform)
-    #compareSystemEnergies(positions, [factory.createPerturbedSystem(AlchemicalState(0, 0, delta, 1)), factory.createPerturbedSystem(AlchemicalState(0, 0, 0, 1))], ['partially coupled', 'decoupled'], platform=platform)
+    compareSystemEnergies(positions, [factory.createPerturbedSystem(AlchemicalState(0, 1, 1, 1)), factory.createPerturbedSystem(AlchemicalState(0, 1-delta, 1, 1))], ['alchemical', 'partially discharged'], platform=platform)
+    compareSystemEnergies(positions, [factory.createPerturbedSystem(AlchemicalState(0, delta, 1, 1)), factory.createPerturbedSystem(AlchemicalState(0, 0.0, 1, 1))], ['partially charged', 'discharged'], platform=platform)
+    compareSystemEnergies(positions, [factory.createPerturbedSystem(AlchemicalState(0, 0, 1, 1)), factory.createPerturbedSystem(AlchemicalState(0, 0, 1-delta, 1))], ['discharged', 'partially decoupled'], platform=platform)
+    compareSystemEnergies(positions, [factory.createPerturbedSystem(AlchemicalState(0, 0, delta, 1)), factory.createPerturbedSystem(AlchemicalState(0, 0, 0, 1))], ['partially coupled', 'decoupled'], platform=platform)
 
     return
     
