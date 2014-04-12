@@ -580,8 +580,8 @@ class AbsoluteAlchemicalFactory(object):
             sterics_energy_expression += "xs = (r - r_switch) / (r_cutoff - r_switch);"
             r_switch= reference_force.getSwitchingDistance()
             r_cutoff = reference_force.getCutoffDistance()
-            sterics_energy_expression += "r_switch = %f;" % r_switch.in_unit_system(unit.md_unit_system).unit
-            sterics_energy_expression += "r_cutoff = %f;" % r_cutoff.in_unit_system(unit.md_unit_system).unit
+            sterics_energy_expression += "r_switch = %f;" % (r_switch / r_switch.in_unit_system(unit.md_unit_system).unit)
+            sterics_energy_expression += "r_cutoff = %f;" % (r_cutoff / r_cutoff.in_unit_system(unit.md_unit_system).unit)
         else:
             sterics_energy_expression += "S = 1;"
 
