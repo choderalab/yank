@@ -158,13 +158,6 @@ def alchemical_factory_check(reference_system, positions, receptor_atoms, ligand
 
     delta = 1.0e-5
 
-    # DEBUG
-    alchemical_system = factory.createPerturbedSystem(AlchemicalState(0, 1, 1, 1))
-    forces = { alchemical_system.getForce(index).__class__.__name__ : alchemical_system.getForce(index) for index in range(alchemical_system.getNumForces()) }
-    custom_nonbonded_force = forces['CustomNonbondedForce']
-    print "*** Number of interaction groups: %d" % custom_nonbonded_force.getNumInteractionGroups()
-
-
     # Create systems.
     compareSystemEnergies(positions, [reference_system, factory.createPerturbedSystem(AlchemicalState(0, 1, 1, 1))], ['reference', 'alchemical'], platform=platform)
     #compareSystemEnergies(positions, [factory.createPerturbedSystem(AlchemicalState(0, 1, 1, 1)), factory.createPerturbedSystem(AlchemicalState(0, 1-delta, 1, 1))], ['alchemical', 'partially discharged'], platform=platform)
