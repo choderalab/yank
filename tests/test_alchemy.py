@@ -82,7 +82,7 @@ MAX_DELTA = 100000 * kB * temperature # maximum allowable deviation # DEBUG
 # MAIN AND UNIT TESTS
 #=============================================================================================
 
-def compareSystemEnergies(positions, systems, descriptions, platform=None, precision=None):
+def compareSystemEnergies(positions, systems, descriptions, platform="Reference", precision=None):
     # Compare energies.
     timestep = 1.0 * units.femtosecond
 
@@ -157,6 +157,13 @@ def alchemical_factory_check(reference_system, positions, receptor_atoms, ligand
         platform = openmm.Platform.getPlatformByName(platform_name)
 
     delta = 1.0e-5
+
+    # DEBUG
+    alchemical_system = factory.createPerturbedSystem(AlchemicalState(0, 1, 1, 1))
+    forces = { alchemical_system.getForce(index).__class__.__name__ : alchemical_system.getForce(index) for index in range(alchemical_system.getNumForces()) }
+    custom_nonbonded_force = forces['CustomNonbondedForce']
+    print "*** Number of interaction groups: %d" % custom_nonbonded_force.getNumInteractionGroups()
+
 
     # Create systems.
     compareSystemEnergies(positions, [reference_system, factory.createPerturbedSystem(AlchemicalState(0, 1, 1, 1))], ['reference', 'alchemical'], platform=platform)
@@ -398,10 +405,46 @@ def test_lj_fluid_with_dispersion():
     logger.info("====================================================================")
     logger.info("")
 
-def test_tip3p_without_dispersion():
+def test_tip3p_discharged():
     logger.info("====================================================================")
-    logger.info("Creating TIP3P explicit system without dispersion correction...")
-    system_container = testsystems.WaterBox(dispersion_correction=False)
+    logger.info("Creating discharged TIP3P explicit system...")
+    system_container = testsystems.DischargedWaterBox(dispersion_correction=False, use_pme=False, switch=False)
+    (reference_system, positions) = system_container.system, system_container.positions
+    natoms = reference_system.getNumParticles()
+    ligand_atoms = range(0,3) # alanine residue
+    receptor_atoms = range(3,natoms) # one water
+    alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms)
+    logger.info("====================================================================")
+    logger.info("")
+
+def test_tip3p_noswitch():
+    logger.info("====================================================================")
+    logger.info("Creating TIP3P explicit system using reaction field, no switch...")
+    system_container = testsystems.WaterBox(dispersion_correction=False, use_pme=False, switch=False)
+    (reference_system, positions) = system_container.system, system_container.positions
+    natoms = reference_system.getNumParticles()
+    ligand_atoms = range(0,3) # alanine residue
+    receptor_atoms = range(3,natoms) # one water
+    alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms)
+    logger.info("====================================================================")
+    logger.info("")
+
+def test_tip3p_reaction_field():
+    logger.info("====================================================================")
+    logger.info("Creating TIP3P explicit system using reaction field...")
+    system_container = testsystems.WaterBox(dispersion_correction=False, use_pme=False)
+    (reference_system, positions) = system_container.system, system_container.positions
+    natoms = reference_system.getNumParticles()
+    ligand_atoms = range(0,3) # alanine residue
+    receptor_atoms = range(3,natoms) # one water
+    alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms)
+    logger.info("====================================================================")
+    logger.info("")
+
+def test_tip3p_pme():
+    logger.info("====================================================================")
+    logger.info("Creating TIP3P explicit system using PME...")
+    system_container = testsystems.WaterBox(dispersion_correction=False, use_pme=True)
     (reference_system, positions) = system_container.system, system_container.positions
     natoms = reference_system.getNumParticles()
     ligand_atoms = range(0,3) # alanine residue
@@ -513,7 +556,10 @@ if __name__ == "__main__":
     test_lj_cluster()
     test_lj_fluid_without_dispersion()
     test_lj_fluid_with_dispersion()
-    test_tip3p_without_dispersion()
+    test_tip3p_discharged()
+    test_tip3p_noswitch()
+    test_tip3p_reaction_field()
+    test_tip3p_pme()
     test_tip3p_with_dispersion()
     test_alanine_dipeptide_vacuum()
     test_alanine_dipeptide_implicit()
