@@ -550,7 +550,7 @@ class AbsoluteAlchemicalFactory(object):
             # reaction-field electrostatics
             epsilon_solvent = reference_force.getReactionFieldDielectric()
             r_cutoff = reference_force.getCutoffDistance()
-            energy_expression += "U_electrostatics = chargeprod*(reff_electrostatics^(-1) + k_rf*reff_electrostatics^2 - c_rf)/ONE_4PI_EPS0;"
+            energy_expression += "U_electrostatics = ONE_4PI_EPS0*chargeprod*(reff_electrostatics^(-1) + k_rf*reff_electrostatics^2 - c_rf);"
             k_rf = r_cutoff**(-3) * ((epsilon_solvent - 1) / (2*epsilon_solvent + 1)) 
             c_rf = r_cutoff**(-1) * ((3*epsilon_solvent) / (2*epsilon_solvent + 1))
             energy_expression += "k_rf = %f;" % (k_rf / k_rf.in_unit_system(unit.md_unit_system).unit)
@@ -566,7 +566,7 @@ class AbsoluteAlchemicalFactory(object):
                 r_cutoff = reference_force.getCutoffDistance()
                 alpha_ewald = numpy.sqrt(-numpy.log(2*delta)) / r_cutoff
             # TODO: Can't use long-range correction here.  Will have to split up Lennard-Jones (with dispersion correction) and electrostatics, or just go without dispersion.
-            energy_expression += "U_electrostatics = chargeprod*erfc(alpha_ewald*reff_electrostatics)/reff_electrostatics/ONE_4PI_EPS0;"
+            energy_expression += "U_electrostatics = ONE_4PI_EPS0*chargeprod*erfc(alpha_ewald*reff_electrostatics)/reff_electrostatics;"
             energy_expression += "alpha_ewald = %f;" % (alpha_ewald / alpha_ewald.in_unit_system(unit.md_unit_system).unit)
             # TODO: Handle reciprocal-space electrostatics
         else:
@@ -585,7 +585,7 @@ class AbsoluteAlchemicalFactory(object):
 
         # Add additional definitions common to all methods.
         energy_expression += "reff6_sterics = (softcore_alpha*(1-lambda_sterics) + (r/sigma)^6);" # effective softcore distance to sixth power for sterics
-        energy_expression += "reff_electrostatics = sqrt(softcore_beta*lambda_electrostatics + r^2);" # effective softcore distance for electrostatics
+        energy_expression += "reff_electrostatics = sqrt(softcore_beta*(1-lambda_electrostatics) + r^2);" # effective softcore distance for electrostatics
         energy_expression += "softcore_alpha = %f;" % softcore_alpha
         energy_expression += "softcore_beta = %f;" % (softcore_beta / softcore_beta.in_unit_system(unit.md_unit_system).unit)
         ONE_4PI_EPS0 = 138.935456 # OpenMM constant for Coulomb interactions (openmm/platforms/reference/include/SimTKOpenMMRealType.h) in OpenMM units
@@ -609,7 +609,7 @@ class AbsoluteAlchemicalFactory(object):
         custom_nonbonded_force.setUseSwitchingFunction(nonbonded_force.getUseSwitchingFunction()) 
         custom_nonbonded_force.setCutoffDistance(nonbonded_force.getCutoffDistance())
         custom_nonbonded_force.setSwitchingDistance(nonbonded_force.getSwitchingDistance()) 
-        custom_nonbonded_force.setUseLongRangeCorrection(nonbonded_force.getUseDispersionCorrection())
+        custom_nonbonded_force.setUseLongRangeCorrection(nonbonded_force.getUseDispersionCorrection()) # TODO: Need to separate into sterics and electrostatics since only one can use dispersion correction.
 
         # Set periodicity and cutoff parameters corresponding to reference Force.
         if nonbonded_force.getNonbondedMethod() in [openmm.NonbondedForce.Ewald, openmm.NonbondedForce.PME, openmm.NonbondedForce.CutoffPeriodic]:
