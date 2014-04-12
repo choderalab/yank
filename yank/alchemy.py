@@ -572,9 +572,6 @@ class AbsoluteAlchemicalFactory(object):
             # TODO: Handle reciprocal-space electrostatics
         else:
             raise Exception("Nonbonded method %s not supported yet." % str(method))
-            # Standard Coulomb electrostatics.
-            coulomb_term = "Celec*charge1*charge2/r"
-            energy_expression += "C_elec = 1.0;" # DEBUG
 
         # Add additional definitions common to all methods.
         energy_expression += "reff6_sterics = (softcore_alpha*(1-lambda_sterics) + (r/sigma)^6);" # effective softcore distance to sixth power for sterics
@@ -597,20 +594,10 @@ class AbsoluteAlchemicalFactory(object):
         custom_nonbonded_force.addPerParticleParameter("charge") # partial charge
         custom_nonbonded_force.addPerParticleParameter("sigma") # Lennard-Jones sigma
         custom_nonbonded_force.addPerParticleParameter("epsilon") # Lennard-Jones epsilon
-        system.addForce(custom_nonbonded_force)
-
-        # Create CustomBondForce to handle exceptions.
-        custom_bond_force = openmm.CustomBondForce(energy_expression)
-        custom_bond_force.addGlobalParameter("lambda_electrostatics", 1.0);
-        custom_bond_force.addGlobalParameter("lambda_sterics", 1.0);
-        custom_bond_force.addPerBondParameter("chargeprod") # charge product
-        custom_bond_force.addPerBondParameter("sigma") # Lennard-Jones effective sigma
-        custom_bond_force.addPerBondParameter("epsilon") # Lennard-Jones effective epsilon
-        system.addForce(custom_bond_force)
 
         # Set parameters to match reference force.
         custom_nonbonded_force.setUseSwitchingFunction(nonbonded_force.getUseSwitchingFunction()) 
-        custom_nonbonded_force.setCutoffDistance( nonbonded_force.getCutoffDistance() )
+        custom_nonbonded_force.setCutoffDistance(nonbonded_force.getCutoffDistance())
         custom_nonbonded_force.setSwitchingDistance(nonbonded_force.getSwitchingDistance()) 
         custom_nonbonded_force.setUseLongRangeCorrection(nonbonded_force.getUseDispersionCorrection())
 
@@ -625,6 +612,18 @@ class AbsoluteAlchemicalFactory(object):
         # TODO: Remove this restriction once segfault has been fixed.
         if (len(atomset1) != 0) and (len(atomset2) != 0):
             custom_nonbonded_force.addInteractionGroup(atomset1, atomset2)
+
+        # Add custom force.
+        system.addForce(custom_nonbonded_force)
+
+        # Create CustomBondForce to handle exceptions.
+        custom_bond_force = openmm.CustomBondForce(energy_expression)
+        custom_bond_force.addGlobalParameter("lambda_electrostatics", 1.0);
+        custom_bond_force.addGlobalParameter("lambda_sterics", 1.0);
+        custom_bond_force.addPerBondParameter("chargeprod") # charge product
+        custom_bond_force.addPerBondParameter("sigma") # Lennard-Jones effective sigma
+        custom_bond_force.addPerBondParameter("epsilon") # Lennard-Jones effective epsilon
+        system.addForce(custom_bond_force)
 
         # Move NonbondedForce particle terms for alchemically-modified particles to CustomNonbondedForce.
         for particle_index in range(nonbonded_force.getNumParticles()):
@@ -780,7 +779,6 @@ class AbsoluteAlchemicalFactory(object):
         nforces = reference_system.getNumForces()
         for force_index in range(nforces):
             reference_force = reference_system.getForce(force_index)
-
             if isinstance(reference_force, openmm.PeriodicTorsionForce):
                 self._alchemicallyModifyPeriodicTorsionForce(system, reference_force)
             elif isinstance(reference_force, openmm.NonbondedForce):

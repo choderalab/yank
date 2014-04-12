@@ -76,6 +76,7 @@ from yank.alchemy import AlchemicalState, AbsoluteAlchemicalFactory
 kB = units.BOLTZMANN_CONSTANT_kB * units.AVOGADRO_CONSTANT_NA # Boltzmann constant
 temperature = 300.0 * units.kelvin # reference temperature
 MAX_DELTA = 0.01 * kB * temperature # maximum allowable deviation
+MAX_DELTA = 100000 * kB * temperature # maximum allowable deviation # DEBUG
 
 #=============================================================================================
 # MAIN AND UNIT TESTS
@@ -130,7 +131,7 @@ def compareSystemEnergies(positions, systems, descriptions, platform=None, preci
 
     return potentials
 
-def alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms, platform_name=None, annihilateElectrostatics=True, annihilateSterics=False):
+def alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms, platform_name=None, annihilate_electrostatics=True, annihilate_sterics=False):
     """
     Compare energies of reference system and fully-interacting alchemically modified system.
 
@@ -146,7 +147,7 @@ def alchemical_factory_check(reference_system, positions, receptor_atoms, ligand
     # Create a factory to produce alchemical intermediates.
     logger.info("Creating alchemical factory...")
     initial_time = time.time()
-    factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=ligand_atoms)
+    factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=ligand_atoms, annihilate_electrostatics=annihilate_electrostatics, annihilate_sterics=annihilate_sterics)
     final_time = time.time()
     elapsed_time = final_time - initial_time
     logger.info("AbsoluteAlchemicalFactory initialization took %.3f s" % elapsed_time)
@@ -158,15 +159,16 @@ def alchemical_factory_check(reference_system, positions, receptor_atoms, ligand
     delta = 1.0e-5
 
     # Create systems.
-    compareSystemEnergies(positions, [reference_system, factory.createPerturbedSystem(AlchemicalState(0, 1-delta, 1, 1, annihilateElectrostatics=annihilateElectrostatics, annihilateSterics=annihilateSterics))], ['reference', 'partially discharged'], platform=platform)
-    compareSystemEnergies(positions, [factory.createPerturbedSystem(AlchemicalState(0, delta, 1, 1, annihilateElectrostatics=annihilateElectrostatics, annihilateSterics=annihilateSterics)), factory.createPerturbedSystem(AlchemicalState(0, 0.0, 1, 1, annihilateElectrostatics=annihilateElectrostatics, annihilateSterics=annihilateSterics))], ['partially charged', 'discharged'], platform=platform)
-    compareSystemEnergies(positions, [factory.createPerturbedSystem(AlchemicalState(0, 0, 1, 1, annihilateElectrostatics=annihilateElectrostatics, annihilateSterics=annihilateSterics)), factory.createPerturbedSystem(AlchemicalState(0, 0, 1-delta, 1, annihilateElectrostatics=annihilateElectrostatics, annihilateSterics=annihilateSterics))], ['discharged', 'partially decoupled'], platform=platform)
-    compareSystemEnergies(positions, [factory.createPerturbedSystem(AlchemicalState(0, 0, delta, 1, annihilateElectrostatics=annihilateElectrostatics, annihilateSterics=annihilateSterics)), factory.createPerturbedSystem(AlchemicalState(0, 0, 0, 1, annihilateElectrostatics=annihilateElectrostatics, annihilateSterics=annihilateSterics))], ['partially coupled', 'decoupled'], platform=platform)
+    compareSystemEnergies(positions, [reference_system, factory.createPerturbedSystem(AlchemicalState(0, 1, 1, 1))], ['reference', 'alchemical'], platform=platform)
+    #compareSystemEnergies(positions, [factory.createPerturbedSystem(AlchemicalState(0, 1, 1, 1)), factory.createPerturbedSystem(AlchemicalState(0, 1-delta, 1, 1))], ['alchemical', 'partially discharged'], platform=platform)
+    #compareSystemEnergies(positions, [factory.createPerturbedSystem(AlchemicalState(0, delta, 1, 1)), factory.createPerturbedSystem(AlchemicalState(0, 0.0, 1, 1))], ['partially charged', 'discharged'], platform=platform)
+    #compareSystemEnergies(positions, [factory.createPerturbedSystem(AlchemicalState(0, 0, 1, 1)), factory.createPerturbedSystem(AlchemicalState(0, 0, 1-delta, 1))], ['discharged', 'partially decoupled'], platform=platform)
+    #compareSystemEnergies(positions, [factory.createPerturbedSystem(AlchemicalState(0, 0, delta, 1)), factory.createPerturbedSystem(AlchemicalState(0, 0, 0, 1))], ['partially coupled', 'decoupled'], platform=platform)
 
     return
     
 
-def benchmark(reference_system, positions, receptor_atoms, ligand_atoms, platform_name=None, annihilateElectrostatics=True, annihilateSterics=False, nsteps=500):
+def benchmark(reference_system, positions, receptor_atoms, ligand_atoms, platform_name=None, annihilate_electrostatics=True, annihilate_sterics=False, nsteps=500):
     """
     Benchmark performance relative to unmodified system.
 
@@ -182,7 +184,7 @@ def benchmark(reference_system, positions, receptor_atoms, ligand_atoms, platfor
     # Create a factory to produce alchemical intermediates.
     logger.info("Creating alchemical factory...")
     initial_time = time.time()
-    factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=ligand_atoms)
+    factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=ligand_atoms, annihilate_electrostatics=annihilate_electrostatics, annihilate_sterics=annihilate_sterics)
     final_time = time.time()
     elapsed_time = final_time - initial_time
     logger.info("AbsoluteAlchemicalFactory initialization took %.3f s" % elapsed_time)
@@ -191,8 +193,6 @@ def benchmark(reference_system, positions, receptor_atoms, ligand_atoms, platfor
     # NOTE: We use a lambda slightly smaller than 1.0 because the AlchemicalFactory does not use Custom*Force softcore versions if lambda = 1.0 identically.
     lambda_value = 1.0 - 1.0e-6
     alchemical_state = AlchemicalState(0.00, lambda_value, lambda_value, lambda_value)
-    alchemical_state.annihilateElectrostatics = annihilateElectrostatics
-    alchemical_state.annihilateSterics = annihilateSterics
 
     platform = None
     if platform_name:
@@ -312,13 +312,13 @@ def overlap_check():
 
     return
 
-def lambda_trace(reference_system, positions, receptor_atoms, ligand_atoms, platform_name=None, annihilateElectrostatics=True, annihilateSterics=False, nsteps=50):
+def lambda_trace(reference_system, positions, receptor_atoms, ligand_atoms, platform_name=None, annihilate_electrostatics=True, annihilate_sterics=False, nsteps=50):
     """
     Compute potential energy as a function of lambda.
 
     """
     # Create a factory to produce alchemical intermediates.
-    factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=ligand_atoms)
+    factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=ligand_atoms, annihilate_electrostatics=annihilate_electrostatics, annihilate_sterics=annihilate_sterics)
 
     platform = None
     if platform_name:
@@ -344,7 +344,7 @@ def lambda_trace(reference_system, positions, receptor_atoms, ligand_atoms, plat
     outfile = open('discharging-trace.out', 'w')
     for i in range(nsteps+1):
         lambda_value = 1.0-i*delta
-        alchemical_system = factory.createPerturbedSystem(AlchemicalState(0, lambda_value, 1, 1, annihilateElectrostatics=annihilateElectrostatics, annihilateSterics=annihilateSterics))
+        alchemical_system = factory.createPerturbedSystem(AlchemicalState(0, lambda_value, 1, 1))
         potential = compute_potential(alchemical_system, positions, platform)
         line = '%12.6f %24.6f' % (lambda_value, potential / units.kilocalories_per_mole)
         outfile.write(line + '\n')
@@ -355,7 +355,7 @@ def lambda_trace(reference_system, positions, receptor_atoms, ligand_atoms, plat
     outfile = open('decoupling-trace.out', 'w')
     for i in range(nsteps+1):
         lambda_value = 1.0-i*delta
-        alchemical_system = factory.createPerturbedSystem(AlchemicalState(0, 0, lambda_value, 1, annihilateElectrostatics=annihilateElectrostatics, annihilateSterics=annihilateSterics))
+        alchemical_system = factory.createPerturbedSystem(AlchemicalState(0, 0, lambda_value, 1))
         potential = compute_potential(alchemical_system, positions, platform)
         line = '%12.6f %24.6f' % (lambda_value, potential / units.kilocalories_per_mole)
         outfile.write(line + '\n')
@@ -365,24 +365,29 @@ def lambda_trace(reference_system, positions, receptor_atoms, ligand_atoms, plat
     return
 
 def test_lj_cluster():
+    logger.info("====================================================================")
     logger.info("Creating Lennard-Jones cluster...")
     system_container = testsystems.LennardJonesCluster()
     (reference_system, positions) = system_container.system, system_container.positions
     ligand_atoms = range(0,1) # first atom
     receptor_atoms = range(1,2) # second atom
     alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms)
+    logger.info("====================================================================")
     logger.info("")
 
 def test_lj_fluid_without_dispersion():
+    logger.info("====================================================================")
     logger.info("Creating Lennard-Jones fluid system without dispersion correction...")
     system_container = testsystems.LennardJonesFluid(dispersion_correction=False)
     (reference_system, positions) = system_container.system, system_container.positions
     ligand_atoms = range(0,1) # first atom
     receptor_atoms = range(2,3) # second atom
     alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms)
+    logger.info("====================================================================")
     logger.info("")
 
 def test_lj_fluid_with_dispersion():
+    logger.info("====================================================================")
     logger.info("Creating Lennard-Jones fluid system with dispersion correction...")    
     system_container = testsystems.LennardJonesFluid(dispersion_correction=True)
     (reference_system, positions) = system_container.system, system_container.positions
@@ -390,9 +395,11 @@ def test_lj_fluid_with_dispersion():
     receptor_atoms = range(2,3) # second atom
     alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms)
     #benchmark(reference_system, positions, receptor_atoms, ligand_atoms)    
+    logger.info("====================================================================")
     logger.info("")
 
 def test_tip3p_without_dispersion():
+    logger.info("====================================================================")
     logger.info("Creating TIP3P explicit system without dispersion correction...")
     system_container = testsystems.WaterBox(dispersion_correction=False)
     (reference_system, positions) = system_container.system, system_container.positions
@@ -400,9 +407,11 @@ def test_tip3p_without_dispersion():
     ligand_atoms = range(0,3) # alanine residue
     receptor_atoms = range(3,natoms) # one water
     alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms)
+    logger.info("====================================================================")
     logger.info("")
 
 def test_tip3p_with_dispersion():
+    logger.info("====================================================================")
     logger.info("Creating TIP3P explicit system with dispersion correction...")
     system_container = testsystems.WaterBox(dispersion_correction=True)
     (reference_system, positions) = system_container.system, system_container.positions
@@ -410,46 +419,54 @@ def test_tip3p_with_dispersion():
     ligand_atoms = range(0,3) # alanine residue
     receptor_atoms = range(3,natoms) # one water
     alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms)
+    logger.info("====================================================================")
     logger.info("")
 
 def test_alanine_dipeptide_vacuum():
     """
     Alanine dipeptide in vacuum.
     """
+    logger.info("====================================================================")
     logger.info("Creating alanine dipeptide vacuum system...")
     system_container = testsystems.AlanineDipeptideVacuum()
     (reference_system, positions) = system_container.system, system_container.positions
     ligand_atoms = range(0,22) # alanine residue
     receptor_atoms = range(22,22)
     alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms)
+    logger.info("====================================================================")
     logger.info("")
 
 def test_alanine_dipeptide_implicit():
     """
     Alanine dipeptide in implicit solvent.
     """
+    logger.info("====================================================================")
     logger.info("Creating alanine dipeptide implicit solvent system...")
     system_container = testsystems.AlanineDipeptideImplicit()
     (reference_system, positions) = system_container.system, system_container.positions
     ligand_atoms = range(0,22) # alanine residue
     receptor_atoms = range(22,22)
     alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms)
+    logger.info("====================================================================")
     logger.info("")
 
 def test_alanine_dipeptide_explicit():
     """
     Alanine dipeptide in explicit solvent.
     """
+    logger.info("====================================================================")
     logger.info("Creating alanine dipeptide explicit solvent system...")
     system_container = testsystems.AlanineDipeptideExplicit()
     (reference_system, positions) = system_container.system, system_container.positions
     ligand_atoms = range(0,22) # alanine residue
     receptor_atoms = range(22,2269) # one water
     alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms)
+    logger.info("====================================================================")
     logger.info("")
 
 def test_obcgbsa_complex():
     # This test is too slow for travis-ci.
+    logger.info("====================================================================")
     logger.info("Creating T4 lysozyme system...")
     system_container = testsystems.LysozymeImplicit()
     (reference_system, positions) = system_container.system, system_container.positions    
@@ -457,11 +474,13 @@ def test_obcgbsa_complex():
     ligand_atoms = range(2603,2621) # p-xylene
     alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms)    
     #benchmark(reference_system, positions, receptor_atoms, ligand_atoms)    
+    logger.info("====================================================================")
     logger.info("")
 
 def test_src_implicit():
     # This test is too slow for travis-ci.
     # TODO: Replace with Abl + imatinib
+    logger.info("====================================================================")
     logger.info("Creating Src implicit system...")
     system_container = testsystems.SrcImplicit()
     (reference_system, positions) = system_container.system, system_container.positions    
@@ -469,11 +488,13 @@ def test_src_implicit():
     receptor_atoms = range(21, 4091)
     alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms)    
     #benchmark(reference_system, positions, receptor_atoms, ligand_atoms)    
+    logger.info("====================================================================")
     logger.info("")
 
 def test_src_explicit():
     # This test is too slow for travis-ci.
     # TODO: Replace with Abl + imatinib
+    logger.info("====================================================================")
     logger.info("Creating Src explicit system...")
     system_container = testsystems.SrcExplicit()
     (reference_system, positions) = system_container.system, system_container.positions    
@@ -481,6 +502,7 @@ def test_src_explicit():
     receptor_atoms = range(21, 4091)
     alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms)    
     #benchmark(reference_system, positions, receptor_atoms, ligand_atoms)    
+    logger.info("====================================================================")
     logger.info("")
 
 #=============================================================================================
@@ -488,8 +510,16 @@ def test_src_explicit():
 #=============================================================================================
 
 if __name__ == "__main__":
-    #test_alanine_dipeptide_explicit()
     test_lj_cluster()
     test_lj_fluid_without_dispersion()
     test_lj_fluid_with_dispersion()
+    test_tip3p_without_dispersion()
+    test_tip3p_with_dispersion()
+    test_alanine_dipeptide_vacuum()
+    test_alanine_dipeptide_implicit()
+    test_alanine_dipeptide_explicit()
+    test_obcgbsa_complex()
+    test_src_implicit()
+    test_src_explicit()
+
 

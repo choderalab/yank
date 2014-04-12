@@ -730,7 +730,7 @@ def estimate_free_energies(ncfile, ndiscard = 0, nuse = None):
    
     # Initialize MBAR (computing free energy estimates, which may take a while)
     logger.info("Computing free energy differences...")
-    mbar = MBAR(u_kln, N_k, verbose=True)
+    mbar = MBAR(u_kln, N_k)
 
     # Get matrix of dimensionless free energy differences and uncertainty estimate.
     logger.info("Computing covariance matrix...")
