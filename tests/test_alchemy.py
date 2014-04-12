@@ -76,7 +76,6 @@ from yank.alchemy import AlchemicalState, AbsoluteAlchemicalFactory
 kB = units.BOLTZMANN_CONSTANT_kB * units.AVOGADRO_CONSTANT_NA # Boltzmann constant
 temperature = 300.0 * units.kelvin # reference temperature
 MAX_DELTA = 0.01 * kB * temperature # maximum allowable deviation
-MAX_DELTA = 100000 * kB * temperature # maximum allowable deviation # DEBUG
 
 #=============================================================================================
 # MAIN AND UNIT TESTS
@@ -425,7 +424,7 @@ def test_tip3p_noswitch():
 def test_tip3p_reaction_field():
     logger.info("====================================================================")
     logger.info("Creating TIP3P explicit system using reaction field...")
-    system_container = testsystems.WaterBox(dispersion_correction=False, use_pme=False)
+    system_container = testsystems.WaterBox(dispersion_correction=False, use_pme=False, switch=True)
     (reference_system, positions) = system_container.system, system_container.positions
     natoms = reference_system.getNumParticles()
     ligand_atoms = range(0,3) # alanine residue

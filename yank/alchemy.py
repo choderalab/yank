@@ -553,7 +553,7 @@ class AbsoluteAlchemicalFactory(object):
             # reaction-field electrostatics
             epsilon_solvent = reference_force.getReactionFieldDielectric()
             r_cutoff = reference_force.getCutoffDistance()
-            electrostatics_energy_expression += "U_electrostatics = ONE_4PI_EPS0*chargeprod*(reff_electrostatics^(-1) + k_rf*reff_electrostatics^2 - c_rf);"
+            electrostatics_energy_expression += "U_electrostatics = lambda_electrostatics*ONE_4PI_EPS0*chargeprod*(reff_electrostatics^(-1) + k_rf*reff_electrostatics^2 - c_rf);"
             k_rf = r_cutoff**(-3) * ((epsilon_solvent - 1) / (2*epsilon_solvent + 1)) 
             c_rf = r_cutoff**(-1) * ((3*epsilon_solvent) / (2*epsilon_solvent + 1))
             electrostatics_energy_expression += "k_rf = %f;" % (k_rf / k_rf.in_unit_system(unit.md_unit_system).unit)
@@ -568,7 +568,7 @@ class AbsoluteAlchemicalFactory(object):
                 delta = reference_force.getEwaldErrorTolerance()
                 r_cutoff = reference_force.getCutoffDistance()
                 alpha_ewald = numpy.sqrt(-numpy.log(2*delta)) / r_cutoff
-            electrostatics_energy_expression += "U_electrostatics = ONE_4PI_EPS0*chargeprod*erfc(alpha_ewald*reff_electrostatics)/reff_electrostatics;"
+            electrostatics_energy_expression += "U_electrostatics = lambda_electrostatics*ONE_4PI_EPS0*chargeprod*erfc(alpha_ewald*reff_electrostatics)/reff_electrostatics;"
             electrostatics_energy_expression += "alpha_ewald = %f;" % (alpha_ewald / alpha_ewald.in_unit_system(unit.md_unit_system).unit)
             # TODO: Handle reciprocal-space electrostatics
         else:
@@ -576,7 +576,7 @@ class AbsoluteAlchemicalFactory(object):
 
         # Handle Lennard-Jones switch.
         if (method not in [openmm.NonbondedForce.NoCutoff]) and reference_force.getUseSwitchingFunction():
-            sterics_energy_expression += "S = 1-6*xs^5+15*xs^4-10*xs^3;"
+            sterics_energy_expression += "S = step(r_switch - r) + step(r - r_switch) * step(r_cutoff - r) * (1-6*xs^5+15*xs^4-10*xs^3);"
             sterics_energy_expression += "xs = (r - r_switch) / (r_cutoff - r_switch);"
             r_switch= reference_force.getSwitchingDistance()
             r_cutoff = reference_force.getCutoffDistance()
