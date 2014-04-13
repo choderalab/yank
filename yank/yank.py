@@ -630,7 +630,7 @@ class Yank(object):
         if self.platform:
             if self.verbose: print "Using platform '%s'" % self.platform.getName()
             solvent_simulation.platform = self.platform
-        solvent_simulation.nsteps_per_iteration = 2500
+        solvent_simulation.nsteps_per_iteration = 5000
         solvent_simulation.run() 
         
         #
@@ -850,7 +850,7 @@ class Yank(object):
         systems = factory.createPerturbedSystems(self.solvent_protocol)
         store_filename = os.path.join(self.output_directory, 'solvent.nc')
         solvent_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.ligand_positions, store_filename, protocol=self.protocol, mpicomm=comm)
-        solvent_simulation.nsteps_per_iteration = 2500
+        solvent_simulation.nsteps_per_iteration = 5000
         solvent_simulation.platform = self.platform
         solvent_simulation.run() 
         MPI.COMM_WORLD.barrier()
