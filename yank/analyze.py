@@ -1022,8 +1022,8 @@ if __name__ == '__main__':
         atoms = read_pdb(reference_pdb_filename)
 
         # Write replica trajectories.
-        #title = 'title'
-        #write_pdb_replica_trajectories(reference_pdb_filename, source_directory, phase, title, ncfile, trajectory_by_state=False)
+        title = 'title'
+        write_pdb_replica_trajectories(reference_pdb_filename, source_directory, phase, title, ncfile, trajectory_by_state=False)
 
         # Check to make sure no self-energies go nan.
         check_energies(ncfile, atoms)
