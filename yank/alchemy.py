@@ -273,16 +273,16 @@ class AbsoluteAlchemicalFactory(object):
         alchemical_states = list()
 
         alchemical_states.append(AlchemicalState(1.00, 1.00, 1.00, 1.)) # fully interacting
-        #alchemical_states.append(AlchemicalState(1.00, 0.90, 0.90, 1.)) 
+        alchemical_states.append(AlchemicalState(1.00, 0.90, 0.90, 1.)) 
         alchemical_states.append(AlchemicalState(1.00, 0.80, 0.80, 1.)) 
-        #alchemical_states.append(AlchemicalState(1.00, 0.70, 0.70, 1.)) 
+        alchemical_states.append(AlchemicalState(1.00, 0.70, 0.70, 1.)) 
         alchemical_states.append(AlchemicalState(1.00, 0.60, 0.60, 1.)) 
-        #alchemical_states.append(AlchemicalState(1.00, 0.50, 0.50, 1.)) 
+        alchemical_states.append(AlchemicalState(1.00, 0.50, 0.50, 1.)) 
         alchemical_states.append(AlchemicalState(1.00, 0.40, 0.40, 1.)) 
-        #alchemical_states.append(AlchemicalState(1.00, 0.35, 0.35, 1.)) 
         alchemical_states.append(AlchemicalState(1.00, 0.30, 0.30, 1.)) 
         alchemical_states.append(AlchemicalState(1.00, 0.20, 0.20, 1.)) 
         alchemical_states.append(AlchemicalState(1.00, 0.10, 0.10, 1.)) 
+        alchemical_states.append(AlchemicalState(1.00, 0.05, 0.05, 1.)) 
         alchemical_states.append(AlchemicalState(1.00, 0.00, 0.00, 1.)) # discharged, LJ annihilated
         
         return alchemical_states
