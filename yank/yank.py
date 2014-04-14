@@ -975,7 +975,7 @@ class Yank(object):
 
             # Close input NetCDF file.
             ncfile.close()
-        
+
         return results
 
 #=============================================================================================
@@ -1003,11 +1003,11 @@ def read_amber_crd(filename, natoms_expected, verbose=False):
     """
 
     if verbose: print "Reading cooordinate sets from '%s'..." % filename
-    
+
     # Read positions.
     import simtk.openmm.app as app
     inpcrd = app.AmberInpcrdFile(filename)
-    positions = inpcrd.getPositions(asNumpy=True)   
+    positions = inpcrd.getPositions(asNumpy=True)
 
     # Check to make sure number of atoms match expectation.
     natoms = positions.shape[0]
@@ -1021,12 +1021,12 @@ def read_openeye_crd(filename, natoms_expected, verbose=False):
     Read one or more coordinate sets from a file that OpenEye supports.
 
     ARGUMENTS
-    
+
     filename (string) - the coordinate filename to be read
     natoms_expected (int) - number of atoms expected
 
     RETURNS
-    
+
     positions_list (list of numpy array of simtk.unit.Quantity) - list of coordinate sets read
     """
 
@@ -1047,7 +1047,7 @@ def read_openeye_crd(filename, natoms_expected, verbose=False):
         positions_list.append(positions)
 
     if verbose: print "%d coordinate sets read." % len(positions_list)
-    
+
     return positions_list
 
 def read_pdb_crd(filename, natoms_expected, verbose=False):
@@ -1080,7 +1080,7 @@ def read_pdb_crd(filename, natoms_expected, verbose=False):
     return positions_list
 
 
-if __name__ == '__main__':    
+def main():
     # Initialize command-line argument parser.
 
     """
@@ -1197,6 +1197,7 @@ if __name__ == '__main__':
     natoms_receptor = receptor_system.getNumParticles()
     natoms_ligand = ligand_system.getNumParticles()
     natoms_complex = natoms_receptor + natoms_ligand
+    print "atom counts: receptor %d, ligand %d, complex %d" % (natoms_receptor, natoms_ligand, natoms_complex)
 
     # Read ligand and receptor positions.
     if options.verbose: print "Reading coordinates..."
@@ -1276,3 +1277,6 @@ if __name__ == '__main__':
 
     # TODO: Print/write results.
     #print results
+
+if __name__ == '__main__':
+    main()
