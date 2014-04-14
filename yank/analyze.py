@@ -968,8 +968,7 @@ def detect_equilibration(A_t):
 # MAIN
 #=============================================================================================
 
-if __name__ == '__main__':    
-
+def main():
     # Turn on debug info.
     logging.basicConfig(level=logging.DEBUG)
 
@@ -997,7 +996,7 @@ if __name__ == '__main__':
         logger.info("dimensions:")
         for dimension_name in ncfile.dimensions.keys():
             logger.info("%16s %8d" % (dimension_name, len(ncfile.dimensions[dimension_name])))
-    
+
         # Read dimensions.
         niterations = ncfile.variables['positions'].shape[0]
         nstates = ncfile.variables['positions'].shape[1]
@@ -1011,7 +1010,7 @@ if __name__ == '__main__':
 
 #        # Write out replica trajectories
 #        print "Writing replica trajectories...\n"
-#        title = 'Source %(source_directory)s phase %(phase)s' % vars()        
+#        title = 'Source %(source_directory)s phase %(phase)s' % vars()
 #        write_netcdf_replica_trajectories(source_directory, phase, title, ncfile)
 
         # Read reference PDB file.
@@ -1036,19 +1035,19 @@ if __name__ == '__main__':
         u_n = extract_u_n(ncfile)
         [nequil, g_t, Neff_max] = detect_equilibration(u_n)
         logger.info([nequil, Neff_max])
-        
+
         # Examine acceptance probabilities.
         show_mixing_statistics(ncfile, cutoff=0.05, nequil=nequil)
 
         # Estimate free energies.
         (Deltaf_ij, dDeltaf_ij) = estimate_free_energies(ncfile, ndiscard = nequil)
-    
+
         # Estimate average enthalpies
         (DeltaH_i, dDeltaH_i) = estimate_enthalpies(ncfile, ndiscard = nequil)
-    
+
         # Accumulate free energy differences
         entry = dict()
-        entry['DeltaF'] = Deltaf_ij[0,nstates-1] 
+        entry['DeltaF'] = Deltaf_ij[0,nstates-1]
         entry['dDeltaF'] = dDeltaf_ij[0,nstates-1]
         entry['DeltaH'] = DeltaH_i[nstates-1] - DeltaH_i[0]
         entry['dDeltaH'] = np.sqrt(dDeltaH_i[0]**2 + dDeltaH_i[nstates-1]**2)
@@ -1061,7 +1060,7 @@ if __name__ == '__main__':
 
         # Close input NetCDF file.
         ncfile.close()
-    
+
     # Compute hydration free energy (free energy of transfer from vacuum to water)
     #DeltaF = data['vacuum']['DeltaF'] - data['solvent']['DeltaF']
     #dDeltaF = numpy.sqrt(data['vacuum']['dDeltaF']**2 + data['solvent']['dDeltaF']**2)
@@ -1093,7 +1092,9 @@ if __name__ == '__main__':
     logger.info("")
 
     # Compute binding enthalpy
-    DeltaH = data['solvent']['DeltaH'] - DeltaF_restraints - data['complex']['DeltaH'] 
+    DeltaH = data['solvent']['DeltaH'] - DeltaF_restraints - data['complex']['DeltaH']
     dDeltaH = np.sqrt(data['solvent']['dDeltaH']**2 + data['complex']['dDeltaH']**2)
     logger.info("Binding enthalpy    : %16.3f +- %.3f kT (%16.3f +- %.3f kcal/mol)" % (DeltaH, dDeltaH, DeltaH * kT / units.kilocalories_per_mole, dDeltaH * kT / units.kilocalories_per_mole))
 
+if __name__ == '__main__':
+    main()

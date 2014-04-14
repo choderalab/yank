@@ -88,6 +88,6 @@ setup(
     package_data={'yank': find_package_data()},
     zip_safe=False,
     install_requires=[],
-    entry_points={'console_scripts': ['yank = yank.yank:main']})
+    entry_points={'console_scripts': ['yank = yank.yank:main', 'yank-analyze = yank.analyze:main']})
 
 check_dependencies()
