@@ -974,7 +974,7 @@ class AbsoluteAlchemicalFactory(object):
         initial_time = time.time()
         logger.debug("Creating alchemically modified intermediate...")
 
-        if False and (alchemical_state.ligandElectrostatics == 1.0) and (alchemical_state.ligandSterics == 1.0) and (alchemical_state.ligandTorsions == 1.0):
+        if (alchemical_state.ligandElectrostatics == 1.0) and (alchemical_state.ligandSterics == 1.0) and (alchemical_state.ligandTorsions == 1.0):
             # Make copy of unperturbed reference system.
             system = copy.deepcopy(self.reference_system)
         else:
