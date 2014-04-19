@@ -32,7 +32,7 @@ TODO
 # GLOBAL IMPORTS
 #=============================================================================================
 
-import numpy 
+import numpy
 import copy
 import time
 
@@ -48,53 +48,53 @@ logging.basicConfig(level=logging.DEBUG)
 #=============================================================================================
 # MODULE UTILITIES
 #=============================================================================================
-    
+
 def _is_periodic(system):
     """
     Determine whether the specified system is periodic.
-    
+
     Parameters
     ----------
-    system : simtk.openmm.System 
+    system : simtk.openmm.System
          The system to check.
-            
+
     Returns
     -------
     is_periodic : bool
         If True, the system uses a nonbonded method recognized as being periodic.
-        
+
     Examples
     --------
-    
+
     >>> from repex import testsystems
-    
+
     Periodic water box.
-    
+
     >>> waterbox = testsystems.WaterBox()
     >>> print _is_periodic(waterbox.system)
     True
-    
+
     Non-periodic Lennard-Jones cluster.
-    
+
     >>> cluster = testsystems.LennardJonesCluster()
     >>> print _is_periodic(cluster.system)
     False
-    
+
     Notes
     -----
     This method simply checks to see if any nonbonded methods recognized to be periodic are in use.
     Addition of new nonbonded methods or force types may require adding to recognized_periodic_methods.
-    
+
     """
     forces = { system.getForce(index).__class__.__name__ for index in range(system.getNumForces()) }
-    
+
     # Only the following nonbonded methods are recognized as being periodic.
     recognized_periodic_methods = {
         'NonbondedForce' : [openmm.NonbondedForce.CutoffPeriodic, openmm.NonbondedForce.Ewald, openmm.NonbondedForce.PME],
         'CustomNonbondedForce' : [openmm.CustomNonbondedForce.CutoffPeriodic],
         'AmoebaVdwForce' : [openmm.AmoebaVdwForce.CutoffPeriodic],
         }
-        
+
     for force_index in range(system.getNumForces()):
         force = system.getForce(force_index)
         force_name = force.__class__.__name__
@@ -113,13 +113,13 @@ def _is_periodic(system):
 class AlchemicalState(object):
     """
     Alchemical state description.
-        
+
     These parameters describe the parameters that affect computation of the energy.
 
     Attributes
     ----------
     relativeRestraints : float
-        Scaling factor for remaining receptor-ligand relative restraint terms (to help keep ligand near protein).     
+        Scaling factor for remaining receptor-ligand relative restraint terms (to help keep ligand near protein).
     ligandElectrostatics : float
         Scaling factor for ligand charges, intrinsic Born radii, and surface area term.
     ligandSterics : float
@@ -132,7 +132,7 @@ class AlchemicalState(object):
     * Rework these structure members into something more general and flexible?
     * Add receptor modulation back in?
     """
-        
+
     def __init__(self, relativeRestraints=1.0, ligandElectrostatics=1.0, ligandSterics=1.0, ligandTorsions=1.0):
         """
         Create an Alchemical state.
@@ -140,7 +140,7 @@ class AlchemicalState(object):
         Parameters
         ----------
         relativeRestraints : float, optional, default = 1.0
-            Scaling factor for remaining receptor-ligand relative restraint terms (to help keep ligand near protein).     
+            Scaling factor for remaining receptor-ligand relative restraint terms (to help keep ligand near protein).
         ligandElectrostatics : float, optional, default = 1.0
             Scaling factor for ligand charges, intrinsic Born radii, and surface area term.
         ligandSterics : float, optional, default = 1.0
@@ -152,7 +152,7 @@ class AlchemicalState(object):
         --------
 
         Create a fully-interacting, unrestrained alchemical state.
-        
+
         >>> alchemical_state = AlchemicalState(relativeRestraints=0.0, ligandElectrostatics=1.0, ligandSterics=1.0, ligandTorsions=1.0)
         >>> # This is equivalent to
         >>> alchemical_state = AlchemicalState()
@@ -176,7 +176,7 @@ class AbsoluteAlchemicalFactory(object):
 
     Examples
     --------
-    
+
     Create alchemical intermediates for default alchemical protocol for p-xylene in T4 lysozyme L99A in GBSA.
 
     >>> # Create a reference system.
@@ -193,7 +193,7 @@ class AbsoluteAlchemicalFactory(object):
     >>> systems = factory.createPerturbedSystems(protocol)
 
     Create alchemical intermediates for default alchemical protocol for one water in a water box.
-    
+
     >>> # Create a reference system.
     >>> from repex import testsystems
     >>> waterbox = testsystems.WaterBox()
@@ -205,7 +205,7 @@ class AbsoluteAlchemicalFactory(object):
     >>> # Create the perturbed systems using this protocol.
     >>> systems = factory.createPerturbedSystems(protocol)
 
-    """    
+    """
 
     # Factory initialization.
     def __init__(self, reference_system, ligand_atoms=[], annihilate_electrostatics=True, annihilate_sterics=False):
@@ -236,7 +236,7 @@ class AbsoluteAlchemicalFactory(object):
 
         # Store copy of atom sets.
         self.ligand_atoms = copy.deepcopy(ligand_atoms)
-        
+
         # Store atom sets
         self.ligand_atomset = set(self.ligand_atoms)
 
@@ -254,7 +254,7 @@ class AbsoluteAlchemicalFactory(object):
         -------
         alchemical_states : list of AlchemicalState
             The list of alchemical states defining the protocol.
-        
+
         Notes
         -----
         The unrestrained, fully interacting system is always listed first.
@@ -273,22 +273,18 @@ class AbsoluteAlchemicalFactory(object):
         alchemical_states = list()
 
         alchemical_states.append(AlchemicalState(1.00, 1.00, 1.00, 1.)) # fully interacting
-        alchemical_states.append(AlchemicalState(1.00, 0.99999, 0.99999, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.95, 0.95, 1.)) 
-        alchemical_states.append(AlchemicalState(1.00, 0.925, 0.925, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.90, 0.90, 1.)) 
-        alchemical_states.append(AlchemicalState(1.00, 0.80, 0.80, 1.)) 
-        alchemical_states.append(AlchemicalState(1.00, 0.70, 0.70, 1.)) 
-        alchemical_states.append(AlchemicalState(1.00, 0.60, 0.60, 1.)) 
-        alchemical_states.append(AlchemicalState(1.00, 0.50, 0.50, 1.)) 
-        alchemical_states.append(AlchemicalState(1.00, 0.40, 0.40, 1.)) 
-        alchemical_states.append(AlchemicalState(1.00, 0.30, 0.30, 1.)) 
-        alchemical_states.append(AlchemicalState(1.00, 0.20, 0.20, 1.)) 
-        alchemical_states.append(AlchemicalState(1.00, 0.10, 0.10, 1.)) 
-        alchemical_states.append(AlchemicalState(1.00, 0.05, 0.05, 1.)) 
-        alchemical_states.append(AlchemicalState(1.00, 0.025, 0.025, 1.))
+        alchemical_states.append(AlchemicalState(1.00, 0.90, 0.90, 1.))
+        alchemical_states.append(AlchemicalState(1.00, 0.80, 0.80, 1.))
+        alchemical_states.append(AlchemicalState(1.00, 0.70, 0.70, 1.))
+        alchemical_states.append(AlchemicalState(1.00, 0.60, 0.60, 1.))
+        alchemical_states.append(AlchemicalState(1.00, 0.50, 0.50, 1.))
+        alchemical_states.append(AlchemicalState(1.00, 0.40, 0.40, 1.))
+        alchemical_states.append(AlchemicalState(1.00, 0.30, 0.30, 1.))
+        alchemical_states.append(AlchemicalState(1.00, 0.20, 0.20, 1.))
+        alchemical_states.append(AlchemicalState(1.00, 0.10, 0.10, 1.))
+        alchemical_states.append(AlchemicalState(1.00, 0.05, 0.05, 1.))
         alchemical_states.append(AlchemicalState(1.00, 0.00, 0.00, 1.)) # discharged, LJ annihilated
-        
+
         return alchemical_states
 
     @classmethod
@@ -300,7 +296,7 @@ class AbsoluteAlchemicalFactory(object):
         -------
         alchemical_states : list of AlchemicalState
             The list of alchemical states defining the protocol.
-        
+
         Notes
         -----
         The unrestrained, fully interacting system is always listed first.
@@ -324,8 +320,8 @@ class AbsoluteAlchemicalFactory(object):
 
         alchemical_states.append(AlchemicalState(1.00, 1.00, 1.00, 1.)) # fully interacting
         alchemical_states.append(AlchemicalState(1.00, 0.00, 1.00, 1.)) # discharged
-        alchemical_states.append(AlchemicalState(1.00, 0.00, 0.95, 1.)) 
-        alchemical_states.append(AlchemicalState(1.00, 0.00, 0.90, 1.)) 
+        alchemical_states.append(AlchemicalState(1.00, 0.00, 0.95, 1.))
+        alchemical_states.append(AlchemicalState(1.00, 0.00, 0.90, 1.))
         alchemical_states.append(AlchemicalState(1.00, 0.00, 0.80, 1.))
         alchemical_states.append(AlchemicalState(1.00, 0.00, 0.70, 1.))
         alchemical_states.append(AlchemicalState(1.00, 0.00, 0.60, 1.))
@@ -335,7 +331,7 @@ class AbsoluteAlchemicalFactory(object):
         alchemical_states.append(AlchemicalState(1.00, 0.00, 0.20, 1.))
         alchemical_states.append(AlchemicalState(1.00, 0.00, 0.10, 1.))
         alchemical_states.append(AlchemicalState(1.00, 0.00, 0.00, 1.)) # discharged, LJ annihilated
-        
+
         return alchemical_states
 
     @classmethod
@@ -347,7 +343,7 @@ class AbsoluteAlchemicalFactory(object):
         -------
         alchemical_states : list of AlchemicalState
             The list of alchemical states defining the protocol.
-        
+
         Notes
         -----
         The unrestrained, fully interacting system is always listed first.
@@ -373,9 +369,9 @@ class AbsoluteAlchemicalFactory(object):
         alchemical_states.append(AlchemicalState(1.00, 0.50, 1.00, 1.))
         #alchemical_states.append(AlchemicalState(1.00, 0.25, 1.00, 1.))
         alchemical_states.append(AlchemicalState(1.00, 0.00, 1.00, 1.)) # discharged
-        #alchemical_states.append(AlchemicalState(1.00, 0.00, 0.50, 1.)) 
+        #alchemical_states.append(AlchemicalState(1.00, 0.00, 0.50, 1.))
         alchemical_states.append(AlchemicalState(1.00, 0.00, 0.00, 1.)) # discharged, LJ annihilated
-        
+
         return alchemical_states
 
     @classmethod
@@ -387,7 +383,7 @@ class AbsoluteAlchemicalFactory(object):
         -------
         alchemical_states : list of AlchemicalState
             The list of alchemical states defining the protocol.
-        
+
         Notes
         -----
         The unrestrained, fully interacting system is always listed first.
@@ -408,7 +404,7 @@ class AbsoluteAlchemicalFactory(object):
         alchemical_states.append(AlchemicalState(1.00, 1.00, 1.00, 1.)) # fully interacting
         alchemical_states.append(AlchemicalState(1.00, 0.00, 1.00, 1.)) # discharged
         alchemical_states.append(AlchemicalState(1.00, 0.00, 0.00, 1.)) # discharged, LJ annihilated
-        
+
         return alchemical_states
 
     @classmethod
@@ -420,7 +416,7 @@ class AbsoluteAlchemicalFactory(object):
         -------
         alchemical_states : list of AlchemicalState
             The list of alchemical states defining the protocol.
-        
+
         Notes
         -----
         The unrestrained, fully interacting system is always listed first.
@@ -437,15 +433,15 @@ class AbsoluteAlchemicalFactory(object):
         >>> [reference_system, positions] = [waterbox.system, waterbox.positions]
         >>> factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=[0, 1, 2])
         >>> protocol = factory.defaultSolventProtocolExplicit()
-        
+
         """
 
         alchemical_states = list()
 
         alchemical_states.append(AlchemicalState(1.00, 1.00, 1.00, 1.)) # fully interacting
         alchemical_states.append(AlchemicalState(1.00, 0.00, 1.00, 1.)) # discharged
-        alchemical_states.append(AlchemicalState(1.00, 0.00, 0.95, 1.)) 
-        alchemical_states.append(AlchemicalState(1.00, 0.00, 0.90, 1.)) 
+        alchemical_states.append(AlchemicalState(1.00, 0.00, 0.95, 1.))
+        alchemical_states.append(AlchemicalState(1.00, 0.00, 0.90, 1.))
         alchemical_states.append(AlchemicalState(1.00, 0.00, 0.80, 1.))
         alchemical_states.append(AlchemicalState(1.00, 0.00, 0.70, 1.))
         alchemical_states.append(AlchemicalState(1.00, 0.00, 0.60, 1.))
@@ -455,7 +451,7 @@ class AbsoluteAlchemicalFactory(object):
         alchemical_states.append(AlchemicalState(1.00, 0.00, 0.20, 1.))
         alchemical_states.append(AlchemicalState(1.00, 0.00, 0.10, 1.))
         alchemical_states.append(AlchemicalState(1.00, 0.00, 0.00, 1.)) # discharged, LJ annihilated
-        
+
         return alchemical_states
 
     def _alchemicallyModifyPeriodicTorsionForce(self, system, reference_force):
@@ -464,13 +460,13 @@ class AbsoluteAlchemicalFactory(object):
 
         Parameters
         ----------
-        system : simtk.openmm.System 
+        system : simtk.openmm.System
             The new alchemically-modified System object being built.  This object will be modified.
         reference_force : simtk.openmm.PeriodicTorsionForce
-            The reference copy of the PeriodicTorsionForce to be alchemically-modified. 
+            The reference copy of the PeriodicTorsionForce to be alchemically-modified.
 
         """
-        
+
         # Create PeriodicTorsionForce to handle normal torsions.
         force = openmm.PeriodicTorsionForce()
 
@@ -500,7 +496,7 @@ class AbsoluteAlchemicalFactory(object):
     def _alchemicallyModifyNonbondedForce(self, system, reference_force, softcore_alpha=0.5, softcore_beta=12*unit.angstrom**2):
         """
         Create alchemically-modified version of NonbondedForce.
-        
+
         Parameters
         ----------
         system : simtk.openmm.System
@@ -517,7 +513,7 @@ class AbsoluteAlchemicalFactory(object):
         Try using a single, common "reff" effective softcore distance for both Lennard-Jones and Coulomb.
 
         """
-        
+
         alchemical_atom_indices = self.ligand_atoms
 
         # Create a copy of the NonbondedForce to handle non-alchemical interactions.
@@ -529,34 +525,36 @@ class AbsoluteAlchemicalFactory(object):
         # Create atom groups.
         natoms = system.getNumParticles()
         atomset1 = set(alchemical_atom_indices) # only alchemically-modified atoms
-        atomset2 = set(range(system.getNumParticles())) - atomset1 # all atoms minus intra-alchemical region
+        atomset2 = set(range(system.getNumParticles())) # all atoms, including alchemical region
 
         # CustomNonbondedForce energy expression.
-        combined_energy_expression = "S*U_sterics + U_electrostatics;" # combined energy expression for exceptions
         sterics_energy_expression = "S*U_sterics;"
         electrostatics_energy_expression = "U_electrostatics;"
-        
+        # exceptions_energy_expression = "4*epsilon*x*(x-1.0) + ONE_4PI_ESP0*chargeprod/r; x = (sigma/r)^6;" # combined energy expression for exceptions
+        exceptions_energy_expression = "S*U_sterics + U_electrostatics;" # combined energy expression for exceptions (more accurate, but not used by OpenMM)
+
         # Select functional form based on nonbonded method.
         method = reference_force.getNonbondedMethod()
         if method in [openmm.NonbondedForce.NoCutoff]:
             # soft-core Lennard-Jones
-            sterics_energy_expression += "U_sterics = lambda_sterics*4*epsilon*x*(x-1.0); x = (1.0/reff6_sterics);"
+            sterics_energy_expression += "U_sterics = lambda_sterics*4*epsilon*x*(x-1.0); x = (sigma/reff_sterics)^6;"
+            # sterics_energy_expression += "U_sterics = lambda_sterics*4*epsilon*x*(x-1.0); x = (sigma/r)^6;" # DEBUG
             # soft-core Coulomb
             electrostatics_energy_expression += "U_electrostatics = ONE_4PI_EPS0*lambda_electrostatics*chargeprod/reff_electrostatics;"
         elif method in [openmm.NonbondedForce.CutoffPeriodic, openmm.NonbondedForce.CutoffNonPeriodic]:
             # soft-core Lennard-Jones
-            sterics_energy_expression += "U_sterics = lambda_sterics*4*epsilon*x*(x-1.0); x = (1.0/reff6_sterics);"
+            sterics_energy_expression += "U_sterics = lambda_sterics*4*epsilon*x*(x-1.0); x = (sigma/reff_sterics)^6;"
             # reaction-field electrostatics
             epsilon_solvent = reference_force.getReactionFieldDielectric()
             r_cutoff = reference_force.getCutoffDistance()
             electrostatics_energy_expression += "U_electrostatics = lambda_electrostatics*ONE_4PI_EPS0*chargeprod*(reff_electrostatics^(-1) + k_rf*reff_electrostatics^2 - c_rf);"
-            k_rf = r_cutoff**(-3) * ((epsilon_solvent - 1) / (2*epsilon_solvent + 1)) 
+            k_rf = r_cutoff**(-3) * ((epsilon_solvent - 1) / (2*epsilon_solvent + 1))
             c_rf = r_cutoff**(-1) * ((3*epsilon_solvent) / (2*epsilon_solvent + 1))
             electrostatics_energy_expression += "k_rf = %f;" % (k_rf / k_rf.in_unit_system(unit.md_unit_system).unit)
             electrostatics_energy_expression += "c_rf = %f;" % (c_rf / c_rf.in_unit_system(unit.md_unit_system).unit)
         elif method in [openmm.NonbondedForce.PME, openmm.NonbondedForce.Ewald]:
             # soft-core Lennard-Jones
-            sterics_energy_expression += "U_sterics = lambda_sterics*4*epsilon*x*(x-1.0); x = (1.0/reff6_sterics);"
+            sterics_energy_expression += "U_sterics = lambda_sterics*4*epsilon*x*(x-1.0); x = (sigma/reff_sterics)^6;"
             # Ewald direct-space electrostatics
             [alpha_ewald, nx, ny, nz] = reference_force.getPMEParameters()
             if alpha_ewald == 0.0:
@@ -572,6 +570,7 @@ class AbsoluteAlchemicalFactory(object):
 
         # Handle Lennard-Jones switch.
         if (method not in [openmm.NonbondedForce.NoCutoff]) and reference_force.getUseSwitchingFunction():
+            # TODO: Factor S
             sterics_energy_expression += "S = step(r_switch - r) + step(r - r_switch) * step(r_cutoff - r) * (1-6*xs^5+15*xs^4-10*xs^3);"
             sterics_energy_expression += "xs = (r - r_switch) / (r_cutoff - r_switch);"
             r_switch= reference_force.getSwitchingDistance()
@@ -582,7 +581,8 @@ class AbsoluteAlchemicalFactory(object):
             sterics_energy_expression += "S = 1;"
 
         # Add additional definitions common to all methods.
-        sterics_energy_expression += "reff6_sterics = (softcore_alpha*(1-lambda_sterics) + (r/sigma)^6);" # effective softcore distance to sixth power for sterics
+        #sterics_energy_expression += "reff6_sterics = (softcore_alpha*(1-lambda_sterics) + (r/sigma)^6);" # effective softcore distance for sterics
+        sterics_energy_expression += "reff_sterics = ((sigma^6)*(softcore_alpha*(1-lambda_sterics) + (r/sigma)^6))^(1/6);" # effective softcore distance for sterics
         sterics_energy_expression += "softcore_alpha = %f;" % softcore_alpha
         electrostatics_energy_expression += "reff_electrostatics = sqrt(softcore_beta*(1-lambda_electrostatics) + r^2);" # effective softcore distance for electrostatics
         electrostatics_energy_expression += "softcore_beta = %f;" % (softcore_beta / softcore_beta.in_unit_system(unit.md_unit_system).unit)
@@ -592,10 +592,10 @@ class AbsoluteAlchemicalFactory(object):
         # Define mixing rules.
         sterics_mixing_rules = ""
         sterics_mixing_rules += "epsilon = sqrt(epsilon1*epsilon2);" # mixing rule for epsilon
-        sterics_mixing_rules += "sigma = 0.5*(sigma1 + sigma2);" # mixing rule for sigma        
+        sterics_mixing_rules += "sigma = 0.5*(sigma1 + sigma2);" # mixing rule for sigma
         electrostatics_mixing_rules = ""
         electrostatics_mixing_rules += "chargeprod = charge1*charge2;" # mixing rule for charges
-            
+
         # Create CustomNonbondedForce to handle interactions between alchemically-modified atoms and rest of system.
         electrostatics_custom_nonbonded_force = openmm.CustomNonbondedForce(electrostatics_energy_expression + electrostatics_mixing_rules)
         electrostatics_custom_nonbonded_force.addGlobalParameter("lambda_electrostatics", 1.0);
@@ -606,13 +606,13 @@ class AbsoluteAlchemicalFactory(object):
         sterics_custom_nonbonded_force.addPerParticleParameter("epsilon") # Lennard-Jones epsilon
 
         # Set parameters to match reference force.
-        sterics_custom_nonbonded_force.setUseSwitchingFunction(nonbonded_force.getUseSwitchingFunction()) 
-        electrostatics_custom_nonbonded_force.setUseSwitchingFunction(None) 
+        sterics_custom_nonbonded_force.setUseSwitchingFunction(nonbonded_force.getUseSwitchingFunction())
+        electrostatics_custom_nonbonded_force.setUseSwitchingFunction(False)
         sterics_custom_nonbonded_force.setCutoffDistance(nonbonded_force.getCutoffDistance())
         electrostatics_custom_nonbonded_force.setCutoffDistance(nonbonded_force.getCutoffDistance())
-        sterics_custom_nonbonded_force.setSwitchingDistance(nonbonded_force.getSwitchingDistance()) 
-        sterics_custom_nonbonded_force.setUseLongRangeCorrection(nonbonded_force.getUseDispersionCorrection()) 
-        electrostatics_custom_nonbonded_force.setUseLongRangeCorrection(False) 
+        sterics_custom_nonbonded_force.setSwitchingDistance(nonbonded_force.getSwitchingDistance())
+        sterics_custom_nonbonded_force.setUseLongRangeCorrection(nonbonded_force.getUseDispersionCorrection())
+        electrostatics_custom_nonbonded_force.setUseLongRangeCorrection(False)
 
         # Set periodicity and cutoff parameters corresponding to reference Force.
         if nonbonded_force.getNonbondedMethod() in [openmm.NonbondedForce.Ewald, openmm.NonbondedForce.PME, openmm.NonbondedForce.CutoffPeriodic]:
@@ -623,18 +623,16 @@ class AbsoluteAlchemicalFactory(object):
             electrostatics_custom_nonbonded_force.setNonbondedMethod( nonbonded_force.getNonbondedMethod() )
 
         # Restrict interaction evaluation to be between alchemical atoms and rest of environment.
-        # Only add custom nonbonded force if interacting groups are both nonzero in size, or else we will get a segfault during energy evaluation.
-        # TODO: Remove this restriction once segfault has been fixed.
-        if (len(atomset1) != 0) and (len(atomset2) != 0):
-            sterics_custom_nonbonded_force.addInteractionGroup(atomset1, atomset2)
-            electrostatics_custom_nonbonded_force.addInteractionGroup(atomset1, atomset2)
+        # TODO: Exclude intra-alchemical region if we are separately handling that through a separate CustomNonbondedForce for decoupling.
+        sterics_custom_nonbonded_force.addInteractionGroup(atomset1, atomset2)
+        electrostatics_custom_nonbonded_force.addInteractionGroup(atomset1, atomset2)
 
         # Add custom forces.
         system.addForce(sterics_custom_nonbonded_force)
         system.addForce(electrostatics_custom_nonbonded_force)
 
         # Create CustomBondForce to handle exceptions for both kinds of interactions.
-        custom_bond_force = openmm.CustomBondForce(combined_energy_expression)
+        custom_bond_force = openmm.CustomBondForce(exceptions_energy_expression)
         custom_bond_force.addGlobalParameter("lambda_electrostatics", 1.0);
         custom_bond_force.addGlobalParameter("lambda_sterics", 1.0);
         custom_bond_force.addPerBondParameter("chargeprod") # charge product
@@ -645,13 +643,13 @@ class AbsoluteAlchemicalFactory(object):
         # Move NonbondedForce particle terms for alchemically-modified particles to CustomNonbondedForce.
         for particle_index in range(nonbonded_force.getNumParticles()):
             # Retrieve parameters.
-            [charge, sigma, epsilon] = nonbonded_force.getParticleParameters(particle_index)            
+            [charge, sigma, epsilon] = nonbonded_force.getParticleParameters(particle_index)
             # Add parameters to custom force handling interactions between alchemically-modified atoms and rest of system.
-            sterics_custom_nonbonded_force.addParticle([sigma, epsilon])            
-            electrostatics_custom_nonbonded_force.addParticle([charge])            
+            sterics_custom_nonbonded_force.addParticle([sigma, epsilon])
+            electrostatics_custom_nonbonded_force.addParticle([charge])
             # Turn off Lennard-Jones contribution from alchemically-modified particles.
             if particle_index in alchemical_atom_indices:
-                nonbonded_force.setParticleParameters(particle_index, 0*charge, sigma, 0*epsilon) 
+                nonbonded_force.setParticleParameters(particle_index, 0*charge, sigma, 0*epsilon)
 
         # Move NonbondedForce exception terms for alchemically-modified particles to CustomNonbondedForce/CustomBondForce.
         for exception_index in range(nonbonded_force.getNumExceptions()):
@@ -670,7 +668,7 @@ class AbsoluteAlchemicalFactory(object):
         # TODO: Add back NonbondedForce terms for alchemical system needed in case of decoupling electrostatics or sterics via second CustomBondForce.
         # TODO: Also need to change current CustomBondForce to not alchemically disappear system.
 
-        return 
+        return
 
     def _alchemicallyModifyGBSAOBCForce(self, system, reference_force, sasa_model='ACE'):
         """
@@ -678,7 +676,7 @@ class AbsoluteAlchemicalFactory(object):
 
         Parameters
         ----------
-        system : simtk.openmm.System 
+        system : simtk.openmm.System
             Alchemically-modified System object being built.  This object will be modified.
         reference_force : simtk.openmm.GBSAOBCForce
             Reference force to use for template.
@@ -695,7 +693,7 @@ class AbsoluteAlchemicalFactory(object):
         custom_force.addPerParticleParameter("radius");
         custom_force.addPerParticleParameter("scale");
         custom_force.addPerParticleParameter("alchemical");
-        
+
         # Set nonbonded method.
         custom_force.setNonbondedMethod(reference_force.getNonbondedMethod())
         custom_force.setCutoffDistance(reference_force.getCutoffDistance())
@@ -750,16 +748,16 @@ class AbsoluteAlchemicalFactory(object):
         --------
 
         Create alchemical intermediates for 'denihilating' one water in a water box.
-        
+
         >>> # Create a reference system.
         >>> from repex import testsystems
         >>> waterbox = testsystems.WaterBox()
         >>> [reference_system, positions] = [waterbox.system, waterbox.positions]
         >>> # Create a factory to produce alchemical intermediates.
         >>> factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=[0, 1, 2])
-        
+
         Create alchemical intermediates for 'denihilating' p-xylene in T4 lysozyme L99A in GBSA.
-        
+
         >>> # Create a reference system.
         >>> from repex import testsystems
         >>> complex = testsystems.LysozymeImplicit()
@@ -779,11 +777,11 @@ class AbsoluteAlchemicalFactory(object):
 
         # Create new deep copy reference system to modify.
         system = openmm.System()
-        
+
         # Set periodic box vectors.
         [a,b,c] = reference_system.getDefaultPeriodicBoxVectors()
         system.setDefaultPeriodicBoxVectors(a,b,c)
-        
+
         # Add atoms.
         for atom_index in range(reference_system.getNumParticles()):
             mass = reference_system.getParticleMass(atom_index)
@@ -792,7 +790,7 @@ class AbsoluteAlchemicalFactory(object):
         # Add constraints
         for constraint_index in range(reference_system.getNumConstraints()):
             [iatom, jatom, r0] = reference_system.getConstraintParameters(constraint_index)
-            system.addConstraint(iatom, jatom, r0)    
+            system.addConstraint(iatom, jatom, r0)
 
         # Modify forces as appropriate, copying other forces without modification.
         nforces = reference_system.getNumForces()
@@ -801,19 +799,19 @@ class AbsoluteAlchemicalFactory(object):
             if isinstance(reference_force, openmm.PeriodicTorsionForce):
                 self._alchemicallyModifyPeriodicTorsionForce(system, reference_force)
             elif isinstance(reference_force, openmm.NonbondedForce):
-                self._alchemicallyModifyNonbondedForce(system, reference_force)                    
+                self._alchemicallyModifyNonbondedForce(system, reference_force)
             elif isinstance(reference_force, openmm.GBSAOBCForce):
                 self._alchemicallyModifyGBSAOBCForce(system, reference_force)
-            else:                
+            else:
                 # Copy force without modification.
                 force = copy.deepcopy(reference_force)
                 system.addForce(force)
-                
+
         # Record timing statistics.
         final_time = time.time()
         elapsed_time = final_time - initial_time
         logger.debug("Elapsed time %.3f s." % (elapsed_time))
-        
+
         return system
 
     def perturbSystem(self, system, alchemical_state):
@@ -831,7 +829,7 @@ class AbsoluteAlchemicalFactory(object):
         --------
 
         Create alchemical intermediates for 'denihilating' one water in a water box.
-        
+
         >>> # Create a reference system.
         >>> from repex import testsystems
         >>> waterbox = testsystems.WaterBox()
@@ -844,7 +842,7 @@ class AbsoluteAlchemicalFactory(object):
         >>> alchemical_system = factory.createPerturbedSystem(alchemical_state)
         >>> # Perturb this system.
         >>> alchemical_state = AlchemicalState(1.00, 0.50, 1.00, 1.00)
-        >>> factory.perturbSystem(alchemical_system, alchemical_state)        
+        >>> factory.perturbSystem(alchemical_system, alchemical_state)
 
         """
 
@@ -864,7 +862,7 @@ class AbsoluteAlchemicalFactory(object):
                     parameter_name = force.getGlobalParameterName(parameter_index)
                     if parameter_name in alchemical_parameters:
                         force.setGlobalParameterDefaultValue(parameter_index, alchemical_parameters[parameter_name])
-                
+
         return
 
     def perturbContext(self, context, alchemical_state):
@@ -882,7 +880,7 @@ class AbsoluteAlchemicalFactory(object):
         --------
 
         Create an alchemically-modified water box and set alchemical parameters appropriately.
-        
+
         >>> # Create a reference system.
         >>> from repex import testsystems
         >>> waterbox = testsystems.WaterBox()
@@ -896,7 +894,7 @@ class AbsoluteAlchemicalFactory(object):
         >>> # Create a Context.
         >>> integrator = openmm.VerletIntegrator(1.0 * unit.femtoseconds)
         >>> context = openmm.Context(alchemical_system, integrator)
-        >>> # Set alchemical state.        
+        >>> # Set alchemical state.
         >>> alchemical_state = AlchemicalState(1.00, 0.50, 1.00, 1.00)
         >>> factory.perturbContext(context, alchemical_state)
 
@@ -917,7 +915,7 @@ class AbsoluteAlchemicalFactory(object):
                 context.setParameter(parameter, alchemical_parameters[parameter])
             except Exception as e:
                 pass
-                
+
         return
 
     def createPerturbedSystem(self, alchemical_state, mm=None):
@@ -939,7 +937,7 @@ class AbsoluteAlchemicalFactory(object):
         --------
 
         Create alchemical intermediates for 'denihilating' one water in a water box.
-        
+
         >>> # Create a reference system.
         >>> from repex import testsystems
         >>> waterbox = testsystems.WaterBox()
@@ -950,9 +948,9 @@ class AbsoluteAlchemicalFactory(object):
         >>> alchemical_state = AlchemicalState(1.00, 1.00, 1.00, 1.00)
         >>> # Create the perturbed system.
         >>> alchemical_system = factory.createPerturbedSystem(alchemical_state)
-        
+
         Create alchemical intermediates for 'denihilating' p-xylene in T4 lysozyme L99A in GBSA.
-        
+
         >>> # Create a reference system.
         >>> from repex import testsystems
         >>> complex = testsystems.LysozymeImplicit()
@@ -968,7 +966,7 @@ class AbsoluteAlchemicalFactory(object):
 
         NOTES
 
-        If lambda = 1.0 is specified for some force terms, they will not be replaced with modified forms.        
+        If lambda = 1.0 is specified for some force terms, they will not be replaced with modified forms.
 
         """
 
@@ -976,7 +974,7 @@ class AbsoluteAlchemicalFactory(object):
         initial_time = time.time()
         logger.debug("Creating alchemically modified intermediate...")
 
-        if (alchemical_state.ligandElectrostatics == 1.0) and (alchemical_state.ligandSterics == 1.0) and (alchemical_state.ligandTorsions == 1.0):
+        if False and (alchemical_state.ligandElectrostatics == 1.0) and (alchemical_state.ligandSterics == 1.0) and (alchemical_state.ligandTorsions == 1.0):
             # Make copy of unperturbed reference system.
             system = copy.deepcopy(self.reference_system)
         else:
@@ -985,12 +983,12 @@ class AbsoluteAlchemicalFactory(object):
 
         # Perturb the default global parameters for this system according to the alchemical parameters.
         self.perturbSystem(system, alchemical_state)
-                
+
         # Record timing statistics.
         final_time = time.time()
         elapsed_time = final_time - initial_time
         logger.debug("Elapsed time %.3f s." % (elapsed_time))
-        
+
         return system
 
     def createPerturbedSystems(self, alchemical_states):
@@ -1003,15 +1001,15 @@ class AbsoluteAlchemicalFactory(object):
             List of alchemical states to generate.
 
         Returns
-        -------        
+        -------
         systems : list of simtk.openmm.System
             List of alchemically-modified System objects.  The cached reference system will be unmodified.
 
         Examples
         --------
-            
+
         Create alchemical intermediates for 'denihilating' p-xylene in T4 lysozyme L99A in GBSA.
-        
+
         >>> # Create a reference system.
         >>> from repex import testsystems
         >>> complex = testsystems.LysozymeImplicit()
@@ -1023,14 +1021,14 @@ class AbsoluteAlchemicalFactory(object):
         >>> # Get the default protocol for 'denihilating' in complex in explicit solvent.
         >>> protocol = factory.defaultComplexProtocolImplicit()
         >>> # Create the perturbed systems using this protocol.
-        >>> systems = factory.createPerturbedSystems(protocol)        
+        >>> systems = factory.createPerturbedSystems(protocol)
 
         """
 
         initial_time = time.time()
 
         systems = list()
-        for (state_index, alchemical_state) in enumerate(alchemical_states):            
+        for (state_index, alchemical_state) in enumerate(alchemical_states):
             logger.debug("Creating alchemical system %d / %d..." % (state_index, len(alchemical_states)))
             system = self.createPerturbedSystem(alchemical_state)
             systems.append(system)
@@ -1050,7 +1048,7 @@ class AbsoluteAlchemicalFactory(object):
         ----------
         valence_atoms : list of int
             Atom indices involved in valence term (bond, angle or torsion).
-            
+
         Returns
         -------
         is_restraint : bool
@@ -1058,9 +1056,9 @@ class AbsoluteAlchemicalFactory(object):
 
         Examples
         --------
-        
+
         Various tests for a simple system.
-        
+
         >>> # Create a reference system.
         >>> from repex import testsystems
         >>> alanine_dipeptide = testsystems.AlanineDipeptideImplicit()
@@ -1083,5 +1081,5 @@ class AbsoluteAlchemicalFactory(object):
         if (len(intersection) >= 1) and (len(intersection) < len(valence_atomset)):
             return True
 
-        return False        
+        return False
 
