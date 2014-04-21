@@ -273,6 +273,8 @@ class AbsoluteAlchemicalFactory(object):
         alchemical_states = list()
 
         alchemical_states.append(AlchemicalState(1.00, 1.00, 1.00, 1.)) # fully interacting
+        alchemical_states.append(AlchemicalState(1.00, 0.97, 0.97, 1.))
+        alchemical_states.append(AlchemicalState(1.00, 0.95, 0.95, 1.))
         alchemical_states.append(AlchemicalState(1.00, 0.90, 0.90, 1.))
         alchemical_states.append(AlchemicalState(1.00, 0.80, 0.80, 1.))
         alchemical_states.append(AlchemicalState(1.00, 0.70, 0.70, 1.))
@@ -283,6 +285,8 @@ class AbsoluteAlchemicalFactory(object):
         alchemical_states.append(AlchemicalState(1.00, 0.20, 0.20, 1.))
         alchemical_states.append(AlchemicalState(1.00, 0.10, 0.10, 1.))
         alchemical_states.append(AlchemicalState(1.00, 0.05, 0.05, 1.))
+        alchemical_states.append(AlchemicalState(1.00, 0.025, 0.025, 1.))
+        alchemical_states.append(AlchemicalState(1.00, 0.01, 0.01, 1.))
         alchemical_states.append(AlchemicalState(1.00, 0.00, 0.00, 1.)) # discharged, LJ annihilated
 
         return alchemical_states
@@ -528,17 +532,15 @@ class AbsoluteAlchemicalFactory(object):
         atomset2 = set(range(system.getNumParticles())) # all atoms, including alchemical region
 
         # CustomNonbondedForce energy expression.
-        sterics_energy_expression = "S*U_sterics;"
-        electrostatics_energy_expression = "U_electrostatics;"
-        # exceptions_energy_expression = "4*epsilon*x*(x-1.0) + ONE_4PI_ESP0*chargeprod/r; x = (sigma/r)^6;" # combined energy expression for exceptions
-        exceptions_energy_expression = "S*U_sterics + U_electrostatics;" # combined energy expression for exceptions (more accurate, but not used by OpenMM)
+        sterics_energy_expression = ""        
+        electrostatics_energy_expression = ""
 
         # Select functional form based on nonbonded method.
         method = reference_force.getNonbondedMethod()
         if method in [openmm.NonbondedForce.NoCutoff]:
             # soft-core Lennard-Jones
             sterics_energy_expression += "U_sterics = lambda_sterics*4*epsilon*x*(x-1.0); x = (sigma/reff_sterics)^6;"
-            # sterics_energy_expression += "U_sterics = lambda_sterics*4*epsilon*x*(x-1.0); x = (sigma/r)^6;" # DEBUG
+            sterics_energy_expression += "U_sterics = lambda_sterics*4*epsilon*x*(x-1.0); x = (sigma/r)^6;" # DEBUG
             # soft-core Coulomb
             electrostatics_energy_expression += "U_electrostatics = ONE_4PI_EPS0*lambda_electrostatics*chargeprod/reff_electrostatics;"
         elif method in [openmm.NonbondedForce.CutoffPeriodic, openmm.NonbondedForce.CutoffNonPeriodic]:
@@ -582,9 +584,13 @@ class AbsoluteAlchemicalFactory(object):
 
         # Add additional definitions common to all methods.
         #sterics_energy_expression += "reff6_sterics = (softcore_alpha*(1-lambda_sterics) + (r/sigma)^6);" # effective softcore distance for sterics
-        sterics_energy_expression += "reff_sterics = ((sigma^6)*(softcore_alpha*(1-lambda_sterics) + (r/sigma)^6))^(1/6);" # effective softcore distance for sterics
+        #sterics_energy_expression += "reff_sterics = (softcore_alpha*(1.-lambda_sterics) + (r/sigma)^6.)^(1./6.);" # effective softcore distance for sterics # DEBUG
+        #sterics_energy_expression += "reff_sterics = (softcore_alpha*(1.-lambda_sterics) + (r/sigma)^6.)^(1./6.);" # effective softcore distance for sterics # DEBUG
+        #sterics_energy_expression += "reff_sterics = sigma*((softcore_alpha*(1.-lambda_sterics) + (r/sigma)^6))^(1/6);" # effective softcore distance for sterics
+        sterics_energy_expression += "reff_sterics = sigma*((softcore_alpha*(1.-lambda_sterics) + (r/sigma)^6))^(1/6);" # effective softcore distance for sterics
+        #sterics_energy_expression += "reff_sterics = (softcore_alpha*(1-lambda_sterics)*sigma + r);" # effective softcore distance for sterics # DEBUG
         sterics_energy_expression += "softcore_alpha = %f;" % softcore_alpha
-        electrostatics_energy_expression += "reff_electrostatics = sqrt(softcore_beta*(1-lambda_electrostatics) + r^2);" # effective softcore distance for electrostatics
+        electrostatics_energy_expression += "reff_electrostatics = sqrt(softcore_beta*(1.-lambda_electrostatics) + r^2);" # effective softcore distance for electrostatics
         electrostatics_energy_expression += "softcore_beta = %f;" % (softcore_beta / softcore_beta.in_unit_system(unit.md_unit_system).unit)
         ONE_4PI_EPS0 = 138.935456 # OpenMM constant for Coulomb interactions (openmm/platforms/reference/include/SimTKOpenMMRealType.h) in OpenMM units
         electrostatics_energy_expression += "ONE_4PI_EPS0 = %f;" % ONE_4PI_EPS0 # already in OpenMM units
@@ -597,10 +603,11 @@ class AbsoluteAlchemicalFactory(object):
         electrostatics_mixing_rules += "chargeprod = charge1*charge2;" # mixing rule for charges
 
         # Create CustomNonbondedForce to handle interactions between alchemically-modified atoms and rest of system.
-        electrostatics_custom_nonbonded_force = openmm.CustomNonbondedForce(electrostatics_energy_expression + electrostatics_mixing_rules)
+        #exceptions_energy_expression = "lambda_sterics*4*epsilon*x*(x-1.0) + lambda_electrostatics*ONE_4PI_ESP0*chargeprod/r; x = (sigma/r)^6;" # combined energy expression for exceptions
+        electrostatics_custom_nonbonded_force = openmm.CustomNonbondedForce("U_electrostatics;" + electrostatics_energy_expression + electrostatics_mixing_rules)
         electrostatics_custom_nonbonded_force.addGlobalParameter("lambda_electrostatics", 1.0);
         electrostatics_custom_nonbonded_force.addPerParticleParameter("charge") # partial charge
-        sterics_custom_nonbonded_force = openmm.CustomNonbondedForce(sterics_energy_expression + sterics_mixing_rules)
+        sterics_custom_nonbonded_force = openmm.CustomNonbondedForce("S*U_sterics;" + sterics_energy_expression + sterics_mixing_rules)
         sterics_custom_nonbonded_force.addGlobalParameter("lambda_sterics", 1.0);
         sterics_custom_nonbonded_force.addPerParticleParameter("sigma") # Lennard-Jones sigma
         sterics_custom_nonbonded_force.addPerParticleParameter("epsilon") # Lennard-Jones epsilon
@@ -632,7 +639,7 @@ class AbsoluteAlchemicalFactory(object):
         system.addForce(electrostatics_custom_nonbonded_force)
 
         # Create CustomBondForce to handle exceptions for both kinds of interactions.
-        custom_bond_force = openmm.CustomBondForce(exceptions_energy_expression)
+        custom_bond_force = openmm.CustomBondForce("S*U_sterics + U_electrostatics;" + sterics_energy_expression + electrostatics_energy_expression)
         custom_bond_force.addGlobalParameter("lambda_electrostatics", 1.0);
         custom_bond_force.addGlobalParameter("lambda_sterics", 1.0);
         custom_bond_force.addPerBondParameter("chargeprod") # charge product

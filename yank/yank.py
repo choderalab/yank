@@ -616,7 +616,7 @@ class Yank(object):
         #    vacuum_simulation.platform = self.platform
         #else:
         #    vacuum_simulation.platform = openmm.Platform.getPlatformByName('Reference')
-        #vacuum_simulation.nsteps_per_iteration = 2500
+        #vacuum_simulation.nsteps_per_iteration = 5000
         #vacuum_simulation.run() # DEBUG
         
         # 
@@ -703,7 +703,7 @@ class Yank(object):
 
         if self.verbose: print "Setting up replica exchange simulation..."
         complex_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.complex_positions, store_filename, displacement_sigma=self.displacement_sigma, mc_atoms=self.ligand_atoms, protocol=self.protocol, metadata=metadata)
-        complex_simulation.nsteps_per_iteration = 2500
+        complex_simulation.nsteps_per_iteration = 5000
         if self.platform:
             if self.verbose: print "Using platform '%s'" % self.platform.getName()
             complex_simulation.platform = self.platform
@@ -838,7 +838,7 @@ class Yank(object):
         # Set up Hamiltonian exchange simulation.
         if self.verbose: print "Setting up complex simulation..."
         complex_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.complex_positions, store_filename, displacement_sigma=self.displacement_sigma, mc_atoms=self.ligand_atoms, protocol=self.protocol, mpicomm=mpicomm, metadata=metadata)
-        complex_simulation.nsteps_per_iteration = 2500
+        complex_simulation.nsteps_per_iteration = 5000
         complex_simulation.platform = self.platform
         complex_simulation.run()        
         mpicomm.barrier()
@@ -868,7 +868,7 @@ class Yank(object):
         #systems = factory.createPerturbedSystems(self.vacuum_protocol)
         #store_filename = os.path.join(self.output_directory, 'vacuum.nc')
         #vacuum_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.ligand_positions, store_filename, protocol=self.protocol, mpicomm=mpicomm)
-        #vacuum_simulation.nsteps_per_iteration = 2500
+        #vacuum_simulation.nsteps_per_iteration = 5000
         #vacuum_simulation.run() # DEBUG
         #mpicomm.barrier()
        
