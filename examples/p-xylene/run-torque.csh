@@ -23,7 +23,7 @@
 ##PBS -V
 #
 # job name (default = name of script file)
-#PBS -N yank-test
+#PBS -N p-xylene
 #
 # specify email
 #PBS -M jchodera@gmail.com
@@ -45,6 +45,6 @@ echo | grep PYTHONPATH
 rm *.nc
 
 date
-mpirun -rmk pbs python ../../yank/yank.py --receptor_prmtop receptor.prmtop --ligand_prmtop ligand.prmtop --complex_prmtop complex.prmtop --complex_crd complex.inpcrd --restraints harmonic --randomize_ligand --iterations 500 --verbose --mpi --platform OpenCL --gpus_per_node 4
+mpirun -rmk pbs python ../../yank/yank.py --receptor_prmtop receptor.prmtop --ligand_prmtop ligand.prmtop --complex_prmtop complex.prmtop --complex_crd complex.inpcrd --restraints harmonic --randomize_ligand --iterations 500 --verbose --mpi --platform OpenCL --gpus_per_node 4 >& output
 date
 
