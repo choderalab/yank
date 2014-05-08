@@ -74,6 +74,7 @@ Many of the prerequisites can be installed via the [conda](http://www.continuum.
 conda config --add channels https://conda.binstar.org/jchodera # remove me when packages migrated to omnia
 conda config --add channels https://conda.binstar.org/omnia
 conda install numpy scipy netcdf4 mpi4py ambermini openmm
+pip install OpenEye-python2.7-ubuntu-10.04-x64-2014.2.2.tar.gz #make sure pip is anaconda's pip
 ```
 
 ### TODO: Installing OpenEye tools with Anaconda.
