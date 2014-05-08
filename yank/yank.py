@@ -413,6 +413,7 @@ class ModifiedHamiltonianExchange(HamiltonianExchange):
         # Print summary statistics.
         if (self.mc_displacement or self.mc_rotation):
             if self.mpicomm:
+                from mpi4py import MPI
                 self.displacement_trials_accepted = self.mpicomm.reduce(self.displacement_trials_accepted, op=MPI.SUM)
                 self.rotation_trials_accepted = self.mpicomm.reduce(self.rotation_trials_accepted, op=MPI.SUM)
             if self.verbose:
@@ -573,7 +574,7 @@ class Yank(object):
         self.protocol['timestep'] = 2.0 * units.femtoseconds
         self.protocol['collision_rate'] = 5.0 / units.picoseconds
         self.protocol['minimize'] = True
-        self.protocol['show_mixing_statistics'] = False # this causes slowdown with iteration and should not be used for production
+        self.protocol['show_mixing_statistics'] = True # this causes slowdown with iteration and should not be used for production
 
         return
 
@@ -615,7 +616,7 @@ class Yank(object):
         #    vacuum_simulation.platform = self.platform
         #else:
         #    vacuum_simulation.platform = openmm.Platform.getPlatformByName('Reference')
-        #vacuum_simulation.nsteps_per_iteration = 500
+        #vacuum_simulation.nsteps_per_iteration = 5000
         #vacuum_simulation.run() # DEBUG
         
         # 
@@ -630,7 +631,7 @@ class Yank(object):
         if self.platform:
             if self.verbose: print "Using platform '%s'" % self.platform.getName()
             solvent_simulation.platform = self.platform
-        solvent_simulation.nsteps_per_iteration = 2500
+        solvent_simulation.nsteps_per_iteration = 5000
         solvent_simulation.run() 
         
         #
@@ -654,11 +655,11 @@ class Yank(object):
         except Exception as e:        
             # Create states using alchemical factory.
             factory = AbsoluteAlchemicalFactory(self.complex, ligand_atoms=self.ligand_atoms)
-            systems = factory.createPerturbedSystems(self.complex_protocol, mpicomm=MPI.COMM_WORLD)
+            systems = factory.createPerturbedSystems(self.complex_protocol)
             resume = False
 
         #if self.verbose: print "Setting up complex simulation..."
-        if options.verbose: print "Creating receptor-ligand restraints..."
+        if self.verbose: print "Creating receptor-ligand restraints..."
         if not self.is_periodic:
             # Impose restraints to keep the ligand from drifting too far from the protein.
             import restraints
@@ -702,7 +703,7 @@ class Yank(object):
 
         if self.verbose: print "Setting up replica exchange simulation..."
         complex_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.complex_positions, store_filename, displacement_sigma=self.displacement_sigma, mc_atoms=self.ligand_atoms, protocol=self.protocol, metadata=metadata)
-        complex_simulation.nsteps_per_iteration = 2500
+        complex_simulation.nsteps_per_iteration = 5000
         if self.platform:
             if self.verbose: print "Using platform '%s'" % self.platform.getName()
             complex_simulation.platform = self.platform
@@ -713,13 +714,13 @@ class Yank(object):
         
         return
 
-    def run_mpi(self, mpi_comm_world, gpus_per_node):
+    def run_mpi(self, mpicomm, gpus_per_node):
         """
         Run a free energy calculation using MPI.
 
         Parameters
         ----------
-        mpi_comm_world :  MPI 'world' communicator
+        mpicomm :  MPI 'world' communicator
             The MPI communicator to use.
         gpus_per_node : int
             The number of GPUs per node.
@@ -738,17 +739,17 @@ class Yank(object):
         # TODO: Reduce code duplication by combining run_mpi() and run() or making more use of class methods.
 
         # Turn off output from non-root nodes:
-        if not (mpi_comm_world.rank==0):
+        if not (mpicomm.rank==0):
             verbose = False
 
         # Make sure each thread's random number generators have unique seeds.
         # TODO: Also store seed in repex object.
-        seed = numpy.random.randint(sys.maxint - MPI.COMM_WORLD.size) + MPI.COMM_WORLD.rank
+        seed = numpy.random.randint(sys.maxint - mpicomm.size) + mpicomm.rank
         numpy.random.seed(seed)
 
         # Choose appropriate platform for each device.
         # Set GPU ID or number of threads.
-        deviceid = MPI.COMM_WORLD.rank % gpus_per_node 
+        deviceid = mpicomm.rank % gpus_per_node 
         platform_name = self.platform.getName()
         if platform_name == 'CUDA':
             self.platform.setPropertyDefaultValue('CudaDeviceIndex', '%d' % deviceid) # select Cuda device index
@@ -757,10 +758,8 @@ class Yank(object):
         elif platform_name == 'CPU':
             self.platform.setPropertyDefaultValue('CpuThreads', '1') # set number of CPU threads
             
-        print "node '%s' MPI_WORLD rank %d/%d running on %s" % (hostname, MPI.COMM_WORLD.rank, MPI.COMM_WORLD.size, platform_name)
-
-        # Set up CPU and GPU communicators.
-        comm = MPI.COMM_WORLD
+        hostname = os.uname()[1]
+        print "node '%s' MPI_WORLD rank %d/%d running on %s" % (hostname, mpicomm.rank, mpicomm.size, platform_name)
 
         # Initialize if we haven't yet done so.
         if not self._initialized:
@@ -773,7 +772,7 @@ class Yank(object):
         
         # Run ligand in complex simulation on GPUs.
         #self.protocol['verbose'] = False # DEBUG: Suppress terminal output from ligand in solvent and vacuum simulations.
-        if options.verbose: print "Creating receptor-ligand restraints..."
+        if self.verbose: print "Creating receptor-ligand restraints..."
         self.standard_state_correction = 0.0 
         if not self.is_periodic: 
             # Impose restraints to keep the ligand from drifting too far from the protein.
@@ -812,9 +811,9 @@ class Yank(object):
             resume = True
         except Exception as e:        
             # Create states using alchemical factory.
-            if options.verbose: print "Creating alchemical states..."
+            if self.verbose: print "Creating alchemical states..."
             factory = AbsoluteAlchemicalFactory(self.complex, ligand_atoms=self.ligand_atoms)
-            systems = factory.createPerturbedSystems(self.complex_protocol, mpicomm=MPI.COMM_WORLD)
+            systems = factory.createPerturbedSystems(self.complex_protocol)
             resume = False
 
         # COMPLEX simulation
@@ -825,7 +824,7 @@ class Yank(object):
 
         # Randomize ligand positions.
         if self.randomize_ligand and not resume:
-            if options.verbose: print "Randomizing ligand positions..."
+            if self.verbose: print "Randomizing ligand positions..."
             randomized_positions = list()
             sigma = 2*complex_restraints.getReceptorRadiusOfGyration()
             close_cutoff = 1.5 * units.angstrom # TODO: Allow this to be specified by user.
@@ -837,23 +836,23 @@ class Yank(object):
             self.complex_positions = randomized_positions
                 
         # Set up Hamiltonian exchange simulation.
-        if options.verbose: print "Setting up complex simulation..."
-        complex_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.complex_positions, store_filename, displacement_sigma=self.displacement_sigma, mc_atoms=self.ligand_atoms, protocol=self.protocol, mpicomm=comm, metadata=metadata)
-        complex_simulation.nsteps_per_iteration = 500
+        if self.verbose: print "Setting up complex simulation..."
+        complex_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.complex_positions, store_filename, displacement_sigma=self.displacement_sigma, mc_atoms=self.ligand_atoms, protocol=self.protocol, mpicomm=mpicomm, metadata=metadata)
+        complex_simulation.nsteps_per_iteration = 5000
         complex_simulation.platform = self.platform
         complex_simulation.run()        
-        MPI.COMM_WORLD.barrier()
+        mpicomm.barrier()
 
         # SOLVENT simulation
         
         factory = AbsoluteAlchemicalFactory(self.ligand, ligand_atoms=range(self.ligand.getNumParticles()))
         systems = factory.createPerturbedSystems(self.solvent_protocol)
         store_filename = os.path.join(self.output_directory, 'solvent.nc')
-        solvent_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.ligand_positions, store_filename, protocol=self.protocol, mpicomm=comm)
-        solvent_simulation.nsteps_per_iteration = 500
+        solvent_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.ligand_positions, store_filename, protocol=self.protocol, mpicomm=mpicomm)
+        solvent_simulation.nsteps_per_iteration = 5000
         solvent_simulation.platform = self.platform
         solvent_simulation.run() 
-        MPI.COMM_WORLD.barrier()
+        mpicomm.barrier()
         
         # VACUUM simulation
 
@@ -868,10 +867,10 @@ class Yank(object):
         #factory = AbsoluteAlchemicalFactory(vacuum_ligand, ligand_atoms=range(self.ligand.getNumParticles()))
         #systems = factory.createPerturbedSystems(self.vacuum_protocol)
         #store_filename = os.path.join(self.output_directory, 'vacuum.nc')
-        #vacuum_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.ligand_positions, store_filename, protocol=self.protocol, mpicomm=comm)
-        #vacuum_simulation.nsteps_per_iteration = 500
+        #vacuum_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.ligand_positions, store_filename, protocol=self.protocol, mpicomm=mpicomm)
+        #vacuum_simulation.nsteps_per_iteration = 5000
         #vacuum_simulation.run() # DEBUG
-        #MPI.COMM_WORLD.barrier()
+        #mpicomm.barrier()
        
         return
 
@@ -975,7 +974,7 @@ class Yank(object):
 
             # Close input NetCDF file.
             ncfile.close()
-        
+
         return results
 
 #=============================================================================================
@@ -1003,11 +1002,11 @@ def read_amber_crd(filename, natoms_expected, verbose=False):
     """
 
     if verbose: print "Reading cooordinate sets from '%s'..." % filename
-    
+
     # Read positions.
     import simtk.openmm.app as app
     inpcrd = app.AmberInpcrdFile(filename)
-    positions = inpcrd.getPositions(asNumpy=True)   
+    positions = inpcrd.getPositions(asNumpy=True)
 
     # Check to make sure number of atoms match expectation.
     natoms = positions.shape[0]
@@ -1021,12 +1020,12 @@ def read_openeye_crd(filename, natoms_expected, verbose=False):
     Read one or more coordinate sets from a file that OpenEye supports.
 
     ARGUMENTS
-    
+
     filename (string) - the coordinate filename to be read
     natoms_expected (int) - number of atoms expected
 
     RETURNS
-    
+
     positions_list (list of numpy array of simtk.unit.Quantity) - list of coordinate sets read
     """
 
@@ -1047,7 +1046,7 @@ def read_openeye_crd(filename, natoms_expected, verbose=False):
         positions_list.append(positions)
 
     if verbose: print "%d coordinate sets read." % len(positions_list)
-    
+
     return positions_list
 
 def read_pdb_crd(filename, natoms_expected, verbose=False):
@@ -1080,7 +1079,7 @@ def read_pdb_crd(filename, natoms_expected, verbose=False):
     return positions_list
 
 
-if __name__ == '__main__':    
+def main():
     # Initialize command-line argument parser.
 
     """
@@ -1163,16 +1162,17 @@ if __name__ == '__main__':
         parser.error("Please specify --complex_prmtop [complex_prmtop_filename] argument.  JDC is still debugging automatic generation of complex topologies from receptor+ligand.")
 
     # Initialize MPI if requested.
+    mpicomm = None
     if options.mpi:
         # Initialize MPI. 
         try:
             from mpi4py import MPI # MPI wrapper
             hostname = os.uname()[1]
-            options.mpi = MPI.COMM_WORLD
             if not MPI.COMM_WORLD.rank == 0: 
                 options.verbose = False
             MPI.COMM_WORLD.barrier()
             if MPI.COMM_WORLD.rank == 0: print "Initialized MPI on %d processes." % (MPI.COMM_WORLD.size)
+            mpicomm = MPI.COMM_WORLD
         except Exception as e:
             print e
             parser.error("Could not initialize MPI.")
@@ -1197,6 +1197,7 @@ if __name__ == '__main__':
     natoms_receptor = receptor_system.getNumParticles()
     natoms_ligand = ligand_system.getNumParticles()
     natoms_complex = natoms_receptor + natoms_ligand
+    print "atom counts: receptor %d, ligand %d, complex %d" % (natoms_receptor, natoms_ligand, natoms_complex)
 
     # Read ligand and receptor positions.
     if options.verbose: print "Reading coordinates..."
@@ -1264,9 +1265,9 @@ if __name__ == '__main__':
         yank.platform = openmm.Platform.getPlatformByName(options.platform)
 
     # Run calculation.
-    if options.mpi:
+    if mpicomm:
         # Run MPI version.
-        yank.run_mpi(options.mpi, options.gpus_per_node)
+        yank.run_mpi(mpicomm, options.gpus_per_node)
     else:
         # Run serial version.
         yank.run()
@@ -1276,3 +1277,6 @@ if __name__ == '__main__':
 
     # TODO: Print/write results.
     #print results
+
+if __name__ == '__main__':
+    main()

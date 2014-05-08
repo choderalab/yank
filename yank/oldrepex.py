@@ -1631,41 +1631,57 @@ class ReplicaExchange(object):
                 
         return
 
-    def _show_mixing_statistics(self):
-        """
-        Print summary of mixing statistics.
+    def _accumulate_mixing_statistics(self):
+        """Return the mixing transition matrix Tij."""
+        try:
+            return self._accumulate_mixing_statistics_update()
+        except AttributeError:
+            pass
+        except ValueError:
+            logger.info("Inconsistent transition count matrix detected, recalculating from scratch.")
 
-        TODO: This code is very slow, and gets slower with each iteration!  Needs to be sped up.
+        return self._accumulate_mixing_statistics_full()
 
-        """
-        # TODO: Replace this with a call to analyze.show_mixing_statistics().
-        # TODO: This code slows down as the number of iterations grows.  Can we speed this up?
-        
-        # Only root node can print.
-        if self.mpicomm and (self.mpicomm.rank != 0):
-            return
-
-        # Don't print anything until we've accumulated some statistics.
-        if self.iteration < 2:
-            return
-
-        # Don't print anything if there is only one replica.
-        if (self.nreplicas < 2):
-            return
-        
-        initial_time = time.time()
-
-        # Compute statistics of transitions.
-        Nij = numpy.zeros([self.nstates,self.nstates], numpy.float64)
-        for iteration in range(self.iteration - 1):
+    def _accumulate_mixing_statistics_full(self):
+        """Compute statistics of transitions iterating over all iterations of repex."""
+        states = self.ncfile.variables['states']
+        self._Nij = numpy.zeros([self.nstates, self.nstates], numpy.float64)
+        for iteration in range(states.shape[0]-1):
             for ireplica in range(self.nstates):
-                istate = self.ncfile.variables['states'][iteration,ireplica]
-                jstate = self.ncfile.variables['states'][iteration+1,ireplica]
-                Nij[istate,jstate] += 0.5
-                Nij[jstate,istate] += 0.5
-        Tij = numpy.zeros([self.nstates,self.nstates], numpy.float64)
+                istate = states[iteration, ireplica]
+                jstate = states[iteration + 1, ireplica]
+                self._Nij[istate, jstate] += 0.5
+                self._Nij[jstate, istate] += 0.5
+        
+        Tij = numpy.zeros([self.nstates, self.nstates], numpy.float64)
         for istate in range(self.nstates):
-            Tij[istate,:] = Nij[istate,:] / Nij[istate,:].sum()
+            Tij[istate] = self._Nij[istate] / self._Nij[istate].sum()
+        
+        return Tij
+    
+    def _accumulate_mixing_statistics_update(self):
+        """Compute statistics of transitions updating Nij of last iteration of repex."""
+
+        states = self.ncfile.variables['states']
+        if self._Nij.sum() != (states.shape[0] - 2) * self.nstates:  # n_iter - 2 = (n_iter - 1) - 1.  Meaning that you have exactly one new iteration to process.
+            raise(ValueError("Inconsistent transition count matrix detected.  Perhaps you tried updating twice in a row?"))
+
+        for ireplica in range(self.nstates):
+            istate = states[self.iteration-2, ireplica]
+            jstate = states[self.iteration-1, ireplica]
+            self._Nij[istate, jstate] += 0.5
+            self._Nij[jstate, istate] += 0.5
+
+        Tij = numpy.zeros([self.nstates, self.nstates], numpy.float64)
+        for istate in range(self.nstates):
+            Tij[istate] = self._Nij[istate] / self._Nij[istate].sum()
+        
+        return Tij
+
+    def _show_mixing_statistics(self):
+        if (self.iteration < 2): return
+
+        Tij = self._accumulate_mixing_statistics()
 
         if self.show_mixing_statistics:
             # Print observed transition probabilities.
@@ -1689,16 +1705,9 @@ class ReplicaExchange(object):
         mu = numpy.linalg.eigvals(Tij)
         mu = -numpy.sort(-mu) # sort in descending order
         if (mu[1] >= 1):
-            print "Perron eigenvalue is unity; Markov chain is decomposable."
+            print "\nPerron eigenvalue is unity; Markov chain is decomposable."
         else:
-            print "Perron eigenvalue is %9.5f; state equilibration timescale is ~ %.1f iterations" % (mu[1], 1.0 / (1.0 - mu[1]))
-
-        # Show time consumption statistics.
-        final_time = time.time()
-        elapsed_time = final_time - initial_time
-        print "Time to compute mixing statistics %.3f s" % elapsed_time
-
-        return
+            print "\nPerron eigenvalue is %9.5f; state equilibration timescale is ~ %.1f iterations" % (mu[1], 1.0 / (1.0 - mu[1]))
 
     def _initialize_netcdf(self):
         """

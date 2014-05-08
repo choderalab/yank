@@ -449,6 +449,69 @@ def write_crd(filename, iteration, replica, title, ncfile):
     # Close file.
     outfile.close()
     
+def _accumulate_mixing_statistics(self):
+    """Return the mixing transition matrix Tij."""
+    try:
+        return self._accumulate_mixing_statistics_update()
+    except AttributeError:
+        pass
+    except ValueError:
+        logger.info("Inconsistent transition count matrix detected, recalculating from scratch.")
+        
+    return self._accumulate_mixing_statistics_full()
+
+def _accumulate_mixing_statistics_full(self):
+    """Compute statistics of transitions iterating over all iterations of repex."""
+    self._Nij = np.zeros([self.n_states, self.n_states], np.float64)
+    for iteration in range(self.states.shape[0] - 1):
+        for ireplica in range(self.n_states):
+            istate = self.states[iteration, ireplica]
+            jstate = self.states[iteration + 1, ireplica]
+            self._Nij[istate, jstate] += 0.5
+            self._Nij[jstate, istate] += 0.5
+        
+    Tij = np.zeros([self.n_states, self.n_states], np.float64)
+    for istate in range(self.n_states):
+        Tij[istate] = self._Nij[istate] / self._Nij[istate].sum()
+        
+    return Tij
+    
+    def _accumulate_mixing_statistics_update(self):
+        """Compute statistics of transitions updating Nij of last iteration of repex."""
+
+        if self._Nij.sum() != (self.states.shape[0] - 2) * self.n_states:  # n_iter - 2 = (n_iter - 1) - 1.  Meaning that you have exactly one new iteration to process.
+            raise(ValueError("Inconsistent transition count matrix detected.  Perhaps you tried updating twice in a row?"))
+
+        for ireplica in range(self.n_states):
+            istate = self.states[-2, ireplica]
+            jstate = self.states[-1, ireplica]
+            self._Nij[istate, jstate] += 0.5
+            self._Nij[jstate, istate] += 0.5
+
+        Tij = np.zeros([self.n_states, self.n_states], np.float64)
+        for istate in range(self.n_states):
+            Tij[istate] = self._Nij[istate] / self._Nij[istate].sum()
+        
+        return Tij
+
+
+    def _show_mixing_statistics(self):
+        Tij = self._accumulate_mixing_statistics()
+
+        P = pd.DataFrame(Tij)
+        logger.info("\nCumulative symmetrized state mixing transition matrix:\n%s" % P.to_string())
+
+        # Estimate second eigenvalue and equilibration time.
+        mu = np.linalg.eigvals(Tij)
+        mu = -np.sort(-mu) # sort in descending order
+        if (mu[1] >= 1):
+            logger.info("\nPerron eigenvalue is unity; Markov chain is decomposable.")
+        else:
+            logger.info("\nPerron eigenvalue is %9.5f; state equilibration timescale is ~ %.1f iterations" % (mu[1], 1.0 / (1.0 - mu[1])))
+
+
+
+
 def show_mixing_statistics(ncfile, cutoff=0.05, nequil=0):
     """
     Print summary of mixing statistics.
@@ -730,12 +793,11 @@ def estimate_free_energies(ncfile, ndiscard = 0, nuse = None):
    
     # Initialize MBAR (computing free energy estimates, which may take a while)
     logger.info("Computing free energy differences...")
-    mbar = MBAR(u_kln, N_k, verbose = False, method = 'self-consistent-iteration', maximum_iterations = 50000) # use slow self-consistent-iteration (the default)
-    #mbar = MBAR(u_kln, N_k, verbose = True, method = 'Newton-Raphson') # use faster Newton-Raphson solver
+    mbar = MBAR(u_kln, N_k)
 
     # Get matrix of dimensionless free energy differences and uncertainty estimate.
     logger.info("Computing covariance matrix...")
-    (Deltaf_ij, dDeltaf_ij) = mbar.getFreeEnergyDifferences(uncertainty_method='svd-ew')
+    (Deltaf_ij, dDeltaf_ij) = mbar.getFreeEnergyDifferences()
    
 #    # Matrix of free energy differences
     logger.info("Deltaf_ij:")
@@ -906,7 +968,9 @@ def detect_equilibration(A_t):
 # MAIN
 #=============================================================================================
 
-if __name__ == '__main__':    
+def main():
+    # Turn on debug info.
+    logging.basicConfig(level=logging.DEBUG)
 
     # DEBUG: ANALYSIS PATH IS HARD-CODED FOR NOW
     source_directory = "."
@@ -932,7 +996,7 @@ if __name__ == '__main__':
         logger.info("dimensions:")
         for dimension_name in ncfile.dimensions.keys():
             logger.info("%16s %8d" % (dimension_name, len(ncfile.dimensions[dimension_name])))
-    
+
         # Read dimensions.
         niterations = ncfile.variables['positions'].shape[0]
         nstates = ncfile.variables['positions'].shape[1]
@@ -946,7 +1010,7 @@ if __name__ == '__main__':
 
 #        # Write out replica trajectories
 #        print "Writing replica trajectories...\n"
-#        title = 'Source %(source_directory)s phase %(phase)s' % vars()        
+#        title = 'Source %(source_directory)s phase %(phase)s' % vars()
 #        write_netcdf_replica_trajectories(source_directory, phase, title, ncfile)
 
         # Read reference PDB file.
@@ -957,8 +1021,8 @@ if __name__ == '__main__':
         atoms = read_pdb(reference_pdb_filename)
 
         # Write replica trajectories.
-        #title = 'title'
-        #write_pdb_replica_trajectories(reference_pdb_filename, source_directory, phase, title, ncfile, trajectory_by_state=False)
+        title = 'title'
+        write_pdb_replica_trajectories(reference_pdb_filename, source_directory, phase, title, ncfile, trajectory_by_state=False)
 
         # Check to make sure no self-energies go nan.
         check_energies(ncfile, atoms)
@@ -971,19 +1035,19 @@ if __name__ == '__main__':
         u_n = extract_u_n(ncfile)
         [nequil, g_t, Neff_max] = detect_equilibration(u_n)
         logger.info([nequil, Neff_max])
- 
+
         # Examine acceptance probabilities.
         show_mixing_statistics(ncfile, cutoff=0.05, nequil=nequil)
 
         # Estimate free energies.
         (Deltaf_ij, dDeltaf_ij) = estimate_free_energies(ncfile, ndiscard = nequil)
-    
+
         # Estimate average enthalpies
         (DeltaH_i, dDeltaH_i) = estimate_enthalpies(ncfile, ndiscard = nequil)
-    
+
         # Accumulate free energy differences
         entry = dict()
-        entry['DeltaF'] = Deltaf_ij[0,nstates-1] 
+        entry['DeltaF'] = Deltaf_ij[0,nstates-1]
         entry['dDeltaF'] = dDeltaf_ij[0,nstates-1]
         entry['DeltaH'] = DeltaH_i[nstates-1] - DeltaH_i[0]
         entry['dDeltaH'] = np.sqrt(dDeltaH_i[0]**2 + dDeltaH_i[nstates-1]**2)
@@ -996,7 +1060,7 @@ if __name__ == '__main__':
 
         # Close input NetCDF file.
         ncfile.close()
-    
+
     # Compute hydration free energy (free energy of transfer from vacuum to water)
     #DeltaF = data['vacuum']['DeltaF'] - data['solvent']['DeltaF']
     #dDeltaF = numpy.sqrt(data['vacuum']['dDeltaF']**2 + data['solvent']['dDeltaF']**2)
@@ -1028,7 +1092,9 @@ if __name__ == '__main__':
     logger.info("")
 
     # Compute binding enthalpy
-    DeltaH = data['solvent']['DeltaH'] - DeltaF_restraints - data['complex']['DeltaH'] 
+    DeltaH = data['solvent']['DeltaH'] - DeltaF_restraints - data['complex']['DeltaH']
     dDeltaH = np.sqrt(data['solvent']['dDeltaH']**2 + data['complex']['dDeltaH']**2)
     logger.info("Binding enthalpy    : %16.3f +- %.3f kT (%16.3f +- %.3f kcal/mol)" % (DeltaH, dDeltaH, DeltaH * kT / units.kilocalories_per_mole, dDeltaH * kT / units.kilocalories_per_mole))
 
+if __name__ == '__main__':
+    main()

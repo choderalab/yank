@@ -5,14 +5,10 @@
 #=============================================================================================
 
 """
-Alchemical factory for free energy calculations that operates directly on OpenMM swig System objects.
+Debugging tools for alchemical factory.
 
 DESCRIPTION
 
-This module contains enumerative factories for generating alchemically-modified System objects
-usable for the calculation of free energy differences of hydration or ligand binding.
-
-The code in this module operates directly on OpenMM Swig-wrapped System objects for efficiency.
 
 EXAMPLES
 
@@ -30,7 +26,7 @@ version.
 This program is distributed in the hope that it will be useful, but WITHOUT ANY
 WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
 PARTICULAR PURPOSE.  See the GNU General Public License for more details.
- 
+
 You should have received a copy of the GNU General Public License along with
 this program.  If not, see <http://www.gnu.org/licenses/>.
 
@@ -77,11 +73,13 @@ kB = units.BOLTZMANN_CONSTANT_kB * units.AVOGADRO_CONSTANT_NA # Boltzmann consta
 temperature = 300.0 * units.kelvin # reference temperature
 MAX_DELTA = 0.01 * kB * temperature # maximum allowable deviation
 
+MAX_DELTA = 1000000.0 * kB * temperature # maximum allowable deviation # DEBUG
+
 #=============================================================================================
 # MAIN AND UNIT TESTS
 #=============================================================================================
 
-def compareSystemEnergies(positions, systems, descriptions, platform="Reference", precision=None):
+def compareSystemEnergies(positions, systems, descriptions, platform=None, precision=None):
     # Compare energies.
     timestep = 1.0 * units.femtosecond
 
@@ -103,7 +101,7 @@ def compareSystemEnergies(positions, systems, descriptions, platform="Reference"
             context = openmm.Context(system, integrator)
         context.setPositions(positions)
         state = context.getState(getEnergy=True, getPositions=True)
-        potential = state.getPotentialEnergy()    
+        potential = state.getPotentialEnergy()
         potentials.append(potential)
         states.append(state)
         del context, integrator
@@ -112,21 +110,11 @@ def compareSystemEnergies(positions, systems, descriptions, platform="Reference"
     for i in range(len(systems)):
         logger.info("%32s : %24.8f kcal/mol" % (descriptions[i], potentials[i] / units.kilocalories_per_mole))
 
-        integrator = openmm.VerletIntegrator(timestep)
-        if platform:
-            context = openmm.Context(systems[i], integrator, platform)
-        else:
-            context = openmm.Context(systems[i], integrator)                  
-        context.setPositions(positions)
-        state = context.getState(getEnergy=True, getPositions=True)
-        potential = state.getPotentialEnergy()    
-        del context, integrator
-
         if (i > 0):
             delta = potentials[i] - potentials[0]
             logger.info("%32s : %24.8f kcal/mol" % ('ERROR', delta / units.kilocalories_per_mole))
             if (abs(delta) > MAX_DELTA):
-                raise Exception("Maximum allowable deviation (%24.8f kcal/mol) exceeded; test failed." % (MAX_DELTA / units.kilocalories_per_mole))            
+                raise Exception("Maximum allowable deviation (%24.8f kcal/mol) exceeded; test failed." % (MAX_DELTA / units.kilocalories_per_mole))
 
     return potentials
 
@@ -135,10 +123,10 @@ def alchemical_factory_check(reference_system, positions, receptor_atoms, ligand
     Compare energies of reference system and fully-interacting alchemically modified system.
 
     ARGUMENTS
-    
+
     reference_system (simtk.openmm.System) - the reference System object to compare with
     positions - the positions to assess energetics for
-    receptor_atoms (list of int) - the list of receptor atoms 
+    receptor_atoms (list of int) - the list of receptor atoms
     ligand_atoms (list of int) - the list of ligand atoms to alchemically modify
 
     """
@@ -158,24 +146,23 @@ def alchemical_factory_check(reference_system, positions, receptor_atoms, ligand
     delta = 1.0e-5
 
     # Create systems.
-    compareSystemEnergies(positions, [reference_system, factory.createPerturbedSystem(AlchemicalState(0, 1, 1, 1))], ['reference', 'alchemical'], platform=platform)
-    compareSystemEnergies(positions, [factory.createPerturbedSystem(AlchemicalState(0, 1, 1, 1)), factory.createPerturbedSystem(AlchemicalState(0, 1-delta, 1, 1))], ['alchemical', 'partially discharged'], platform=platform)
-    compareSystemEnergies(positions, [factory.createPerturbedSystem(AlchemicalState(0, delta, 1, 1)), factory.createPerturbedSystem(AlchemicalState(0, 0.0, 1, 1))], ['partially charged', 'discharged'], platform=platform)
-    compareSystemEnergies(positions, [factory.createPerturbedSystem(AlchemicalState(0, 0, 1, 1)), factory.createPerturbedSystem(AlchemicalState(0, 0, 1-delta, 1))], ['discharged', 'partially decoupled'], platform=platform)
-    compareSystemEnergies(positions, [factory.createPerturbedSystem(AlchemicalState(0, 0, delta, 1)), factory.createPerturbedSystem(AlchemicalState(0, 0, 0, 1))], ['partially coupled', 'decoupled'], platform=platform)
+    compareSystemEnergies(positions, [reference_system, factory.createPerturbedSystem(AlchemicalState(1, 1, 1, 1))], ['reference', 'alchemical'], platform=platform)
+    compareSystemEnergies(positions, [factory.createPerturbedSystem(AlchemicalState(1, 1, 1, 1)), factory.createPerturbedSystem(AlchemicalState(1, 1-delta, 1, 1))], ['alchemical', 'partially discharged'], platform=platform)
+    compareSystemEnergies(positions, [factory.createPerturbedSystem(AlchemicalState(1, delta, 1, 1)), factory.createPerturbedSystem(AlchemicalState(1, 0.0, 1, 1))], ['partially charged', 'discharged'], platform=platform)
+    compareSystemEnergies(positions, [factory.createPerturbedSystem(AlchemicalState(1, 0, 1, 1)), factory.createPerturbedSystem(AlchemicalState(1, 0, 1.-delta, 1))], ['discharged', 'partially decoupled'], platform=platform)
+    compareSystemEnergies(positions, [factory.createPerturbedSystem(AlchemicalState(1, 0, delta, 1)), factory.createPerturbedSystem(AlchemicalState(1, 0, 0, 1))], ['partially coupled', 'decoupled'], platform=platform)
 
     return
-    
 
 def benchmark(reference_system, positions, receptor_atoms, ligand_atoms, platform_name=None, annihilate_electrostatics=True, annihilate_sterics=False, nsteps=500):
     """
     Benchmark performance relative to unmodified system.
 
     ARGUMENTS
-    
+
     reference_system (simtk.openmm.System) - the reference System object to compare with
     positions - the positions to assess energetics for
-    receptor_atoms (list of int) - the list of receptor atoms 
+    receptor_atoms (list of int) - the list of receptor atoms
     ligand_atoms (list of int) - the list of ligand atoms to alchemically modify
 
     """
@@ -196,11 +183,11 @@ def benchmark(reference_system, positions, receptor_atoms, ligand_atoms, platfor
     platform = None
     if platform_name:
         platform = openmm.Platform.getPlatformByName(platform_name)
-    
+
     # Create the perturbed system.
     logger.info("Creating alchemically-modified state...")
     initial_time = time.time()
-    alchemical_system = factory.createPerturbedSystem(alchemical_state)    
+    alchemical_system = factory.createPerturbedSystem(alchemical_state)
     final_time = time.time()
     elapsed_time = final_time - initial_time
     # Compare energies.
@@ -213,7 +200,7 @@ def benchmark(reference_system, positions, receptor_atoms, ligand_atoms, platfor
         reference_context = openmm.Context(reference_system, reference_integrator)
     reference_context.setPositions(positions)
     reference_state = reference_context.getState(getEnergy=True)
-    reference_potential = reference_state.getPotentialEnergy()    
+    reference_potential = reference_state.getPotentialEnergy()
     logger.info("Computing alchemical energies...")
     alchemical_integrator = openmm.VerletIntegrator(timestep)
     if platform:
@@ -223,7 +210,7 @@ def benchmark(reference_system, positions, receptor_atoms, ligand_atoms, platfor
     alchemical_context.setPositions(positions)
     alchemical_state = alchemical_context.getState(getEnergy=True)
     alchemical_potential = alchemical_state.getPotentialEnergy()
-    delta = alchemical_potential - reference_potential 
+    delta = alchemical_potential - reference_potential
 
     # Make sure all kernels are compiled.
     reference_integrator.step(1)
@@ -234,14 +221,14 @@ def benchmark(reference_system, positions, receptor_atoms, ligand_atoms, platfor
     initial_time = time.time()
     reference_integrator.step(nsteps)
     reference_state = reference_context.getState(getEnergy=True)
-    reference_potential = reference_state.getPotentialEnergy()    
+    reference_potential = reference_state.getPotentialEnergy()
     final_time = time.time()
     reference_time = final_time - initial_time
     logger.info("Simulating alchemical system...")
     initial_time = time.time()
     alchemical_integrator.step(nsteps)
     alchemical_state = alchemical_context.getState(getEnergy=True)
-    alchemical_potential = alchemical_state.getPotentialEnergy()    
+    alchemical_potential = alchemical_state.getPotentialEnergy()
     final_time = time.time()
     alchemical_time = final_time - initial_time
 
@@ -259,7 +246,7 @@ def overlap_check():
     * Periodicity in 'nan' if dr = 0.1 even in nonperiodic system
     """
 
-    # Create a reference system.    
+    # Create a reference system.
 
     logger.info("Creating Lennard-Jones cluster system...")
     #[reference_system, positions] = testsystems.LennardJonesFluid()
@@ -279,7 +266,7 @@ def overlap_check():
 
     # Create the perturbed system.
     logger.info("Creating alchemically-modified state...")
-    alchemical_system = factory.createPerturbedSystem(alchemical_state)    
+    alchemical_system = factory.createPerturbedSystem(alchemical_state)
     # Compare energies.
     timestep = 1.0 * units.femtosecond
     logger.info("Computing reference energies...")
@@ -287,7 +274,7 @@ def overlap_check():
     context = openmm.Context(reference_system, integrator)
     context.setPositions(positions)
     state = context.getState(getEnergy=True)
-    reference_potential = state.getPotentialEnergy()    
+    reference_potential = state.getPotentialEnergy()
     del state, context, integrator
     logger.info(reference_potential)
     logger.info("Computing alchemical energies...")
@@ -302,10 +289,10 @@ def overlap_check():
     for i in range(30):
         r = dr * i
         positions[ligand_atoms,0] += dr
-          
+
         context.setPositions(positions)
         state = context.getState(getEnergy=True)
-        alchemical_potential = state.getPotentialEnergy()    
+        alchemical_potential = state.getPotentialEnergy()
         logger.info("%8.3f A : %f " % (r / units.angstroms, alchemical_potential / units.kilocalories_per_mole))
     del state, context, integrator
 
@@ -323,7 +310,7 @@ def lambda_trace(reference_system, positions, receptor_atoms, ligand_atoms, plat
     if platform_name:
         # Get platform.
         platform = openmm.Platform.getPlatformByName(platform_name)
-    
+
     delta = 1.0 / nsteps
 
     def compute_potential(system, positions, platform=None):
@@ -335,10 +322,10 @@ def lambda_trace(reference_system, positions, receptor_atoms, ligand_atoms, plat
             context = openmm.Context(system, integrator)
         context.setPositions(positions)
         state = context.getState(getEnergy=True)
-        potential = state.getPotentialEnergy()    
+        potential = state.getPotentialEnergy()
         del integrator, context
         return potential
-        
+
     # discharging
     outfile = open('discharging-trace.out', 'w')
     for i in range(nsteps+1):
@@ -363,180 +350,39 @@ def lambda_trace(reference_system, positions, receptor_atoms, ligand_atoms, plat
 
     return
 
-def test_lj_cluster():
+def test_amber_implicit(prmtop_filename, inpcrd_filename):
     logger.info("====================================================================")
-    logger.info("Creating Lennard-Jones cluster...")
-    system_container = testsystems.LennardJonesCluster()
-    (reference_system, positions) = system_container.system, system_container.positions
-    ligand_atoms = range(0,1) # first atom
-    receptor_atoms = range(1,2) # second atom
+    logger.info("Creating system...")
+
+    from simtk.openmm import app
+    prmtop = app.AmberPrmtopFile(prmtop_filename)
+    reference_system = prmtop.createSystem(constraints=app.HBonds, nonbondedMethod=app.NoCutoff, implicitSolvent=app.OBC1)
+
+    # Read positions.
+    inpcrd = app.AmberInpcrdFile(inpcrd_filename, loadBoxVectors=False)
+    positions = inpcrd.getPositions(asNumpy=True)
+
+    # Set box vectors.
+    #box_vectors = inpcrd.getBoxVectors(asNumpy=True)
+    #system.setDefaultPeriodicBoxVectors(box_vectors[0], box_vectors[1], box_vectors[2])
+
+    receptor_atoms = range(0,1326)
+    ligand_atoms = range(1326, 1356)
+
+    # Minimize.
+    logger.info("Minimizing...")
+    timestep = 1.0 * units.femtoseconds
+    integrator = openmm.VerletIntegrator(timestep)
+    context = openmm.Context(reference_system, integrator)
+    context.setPositions(positions)
+    openmm.LocalEnergyMinimizer.minimize(context, 1.0, 100)
+    state = context.getState(getEnergy=True, getPositions=True)
+    positions = state.getPositions(asNumpy=True)
+    del context, integrator
+    logger.info("Done.")
+
     alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms)
-    logger.info("====================================================================")
-    logger.info("")
-
-def test_lj_fluid_without_dispersion():
-    logger.info("====================================================================")
-    logger.info("Creating Lennard-Jones fluid system without dispersion correction...")
-    system_container = testsystems.LennardJonesFluid(dispersion_correction=False)
-    (reference_system, positions) = system_container.system, system_container.positions
-    ligand_atoms = range(0,1) # first atom
-    receptor_atoms = range(2,3) # second atom
-    alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms)
-    logger.info("====================================================================")
-    logger.info("")
-
-def test_lj_fluid_with_dispersion():
-    logger.info("====================================================================")
-    logger.info("Creating Lennard-Jones fluid system with dispersion correction...")    
-    system_container = testsystems.LennardJonesFluid(dispersion_correction=True)
-    (reference_system, positions) = system_container.system, system_container.positions
-    ligand_atoms = range(0,1) # first atom
-    receptor_atoms = range(2,3) # second atom
-    alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms)
-    #benchmark(reference_system, positions, receptor_atoms, ligand_atoms)    
-    logger.info("====================================================================")
-    logger.info("")
-
-def test_tip3p_discharged():
-    logger.info("====================================================================")
-    logger.info("Creating discharged TIP3P explicit system...")
-    system_container = testsystems.DischargedWaterBox(dispersion_correction=False, use_pme=False, switch=False)
-    (reference_system, positions) = system_container.system, system_container.positions
-    natoms = reference_system.getNumParticles()
-    ligand_atoms = range(0,3) # alanine residue
-    receptor_atoms = range(3,natoms) # one water
-    alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms)
-    logger.info("====================================================================")
-    logger.info("")
-
-def test_tip3p_noswitch():
-    logger.info("====================================================================")
-    logger.info("Creating TIP3P explicit system using reaction field, no switch...")
-    system_container = testsystems.WaterBox(dispersion_correction=False, use_pme=False, switch=False)
-    (reference_system, positions) = system_container.system, system_container.positions
-    natoms = reference_system.getNumParticles()
-    ligand_atoms = range(0,3) # alanine residue
-    receptor_atoms = range(3,natoms) # one water
-    alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms)
-    logger.info("====================================================================")
-    logger.info("")
-
-def test_tip3p_reaction_field():
-    logger.info("====================================================================")
-    logger.info("Creating TIP3P explicit system using reaction field...")
-    system_container = testsystems.WaterBox(dispersion_correction=False, use_pme=False, switch=True)
-    (reference_system, positions) = system_container.system, system_container.positions
-    natoms = reference_system.getNumParticles()
-    ligand_atoms = range(0,3) # alanine residue
-    receptor_atoms = range(3,natoms) # one water
-    alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms)
-    logger.info("====================================================================")
-    logger.info("")
-
-def test_tip3p_pme():
-    logger.info("====================================================================")
-    logger.info("Creating TIP3P explicit system using PME...")
-    system_container = testsystems.WaterBox(dispersion_correction=False, use_pme=True)
-    (reference_system, positions) = system_container.system, system_container.positions
-    natoms = reference_system.getNumParticles()
-    ligand_atoms = range(0,3) # alanine residue
-    receptor_atoms = range(3,natoms) # one water
-    alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms)
-    logger.info("====================================================================")
-    logger.info("")
-
-def test_tip3p_with_dispersion():
-    logger.info("====================================================================")
-    logger.info("Creating TIP3P explicit system with dispersion correction...")
-    system_container = testsystems.WaterBox(dispersion_correction=True)
-    (reference_system, positions) = system_container.system, system_container.positions
-    natoms = reference_system.getNumParticles()
-    ligand_atoms = range(0,3) # alanine residue
-    receptor_atoms = range(3,natoms) # one water
-    alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms)
-    logger.info("====================================================================")
-    logger.info("")
-
-def test_alanine_dipeptide_vacuum():
-    """
-    Alanine dipeptide in vacuum.
-    """
-    logger.info("====================================================================")
-    logger.info("Creating alanine dipeptide vacuum system...")
-    system_container = testsystems.AlanineDipeptideVacuum()
-    (reference_system, positions) = system_container.system, system_container.positions
-    ligand_atoms = range(0,22) # alanine residue
-    receptor_atoms = range(22,22)
-    alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms)
-    logger.info("====================================================================")
-    logger.info("")
-
-def test_alanine_dipeptide_implicit():
-    """
-    Alanine dipeptide in implicit solvent.
-    """
-    logger.info("====================================================================")
-    logger.info("Creating alanine dipeptide implicit solvent system...")
-    system_container = testsystems.AlanineDipeptideImplicit()
-    (reference_system, positions) = system_container.system, system_container.positions
-    ligand_atoms = range(0,22) # alanine residue
-    receptor_atoms = range(22,22)
-    alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms)
-    logger.info("====================================================================")
-    logger.info("")
-
-def test_alanine_dipeptide_explicit():
-    """
-    Alanine dipeptide in explicit solvent.
-    """
-    logger.info("====================================================================")
-    logger.info("Creating alanine dipeptide explicit solvent system...")
-    system_container = testsystems.AlanineDipeptideExplicit()
-    (reference_system, positions) = system_container.system, system_container.positions
-    ligand_atoms = range(0,22) # alanine residue
-    receptor_atoms = range(22,2269) # one water
-    alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms)
-    logger.info("====================================================================")
-    logger.info("")
-
-def test_obcgbsa_complex():
-    # This test is too slow for travis-ci.
-    logger.info("====================================================================")
-    logger.info("Creating T4 lysozyme system...")
-    system_container = testsystems.LysozymeImplicit()
-    (reference_system, positions) = system_container.system, system_container.positions    
-    receptor_atoms = range(0,2603) # T4 lysozyme L99A
-    ligand_atoms = range(2603,2621) # p-xylene
-    alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms)    
-    #benchmark(reference_system, positions, receptor_atoms, ligand_atoms)    
-    logger.info("====================================================================")
-    logger.info("")
-
-def test_src_implicit():
-    # This test is too slow for travis-ci.
-    # TODO: Replace with Abl + imatinib
-    logger.info("====================================================================")
-    logger.info("Creating Src implicit system...")
-    system_container = testsystems.SrcImplicit()
-    (reference_system, positions) = system_container.system, system_container.positions    
-    ligand_atoms = range(0,21)
-    receptor_atoms = range(21, 4091)
-    alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms)    
-    #benchmark(reference_system, positions, receptor_atoms, ligand_atoms)    
-    logger.info("====================================================================")
-    logger.info("")
-
-def test_src_explicit():
-    # This test is too slow for travis-ci.
-    # TODO: Replace with Abl + imatinib
-    logger.info("====================================================================")
-    logger.info("Creating Src explicit system...")
-    system_container = testsystems.SrcExplicit()
-    (reference_system, positions) = system_container.system, system_container.positions    
-    ligand_atoms = range(0,21)
-    receptor_atoms = range(21, 4091)
-    alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms)    
-    #benchmark(reference_system, positions, receptor_atoms, ligand_atoms)    
+    #benchmark(reference_system, positions, receptor_atoms, ligand_atoms)
     logger.info("====================================================================")
     logger.info("")
 
@@ -545,19 +391,7 @@ def test_src_explicit():
 #=============================================================================================
 
 if __name__ == "__main__":
-    test_lj_cluster()
-    test_lj_fluid_without_dispersion()
-    test_lj_fluid_with_dispersion()
-    test_tip3p_discharged()
-    test_tip3p_noswitch()
-    test_tip3p_reaction_field()
-    test_tip3p_pme()
-    test_tip3p_with_dispersion()
-    test_alanine_dipeptide_vacuum()
-    test_alanine_dipeptide_implicit()
-    test_alanine_dipeptide_explicit()
-    test_obcgbsa_complex()
-    test_src_implicit()
-    test_src_explicit()
-
+    prmtop_filename = 'complex.prmtop'
+    inpcrd_filename = 'complex.inpcrd'
+    test_amber_implicit(prmtop_filename, inpcrd_filename)
 

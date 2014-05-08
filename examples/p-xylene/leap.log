@@ -1,4 +1,4 @@
-log started: Wed Mar 19 18:01:55 2014
+log started: Sun Apr 13 12:56:56 2014
 
 Log file: ./leap.log
 >> #
@@ -359,7 +359,7 @@ Loading: TPF
 ----- Source: /Users/choderaj/code/amber/amber12/dat/leap/cmd/leaprc.gaff
 ----- Source of /Users/choderaj/code/amber/amber12/dat/leap/cmd/leaprc.gaff done
 >> logFile leap.log
-log started: Wed Mar 19 18:01:55 2014
+log started: Sun Apr 13 12:56:57 2014
 
 Log file: ./leap.log
 >> #
@@ -623,9 +623,7 @@ Mapped residue MET, term: Terminal/beginning, seq. number: 0 to: NMET.
 (Residue 158: ASP, Nonterminal, was not found in name map.)
 (Residue 159: ALA, Nonterminal, was not found in name map.)
 (Residue 160: TYR, Nonterminal, was not found in name map.)
-(Residue 161: LYS, Nonterminal, was not found in name map.)
-(Residue 162: ASN, Nonterminal, was not found in name map.)
-Mapped residue LEU, term: Terminal/last, seq. number: 163 to: CLEU.
+Mapped residue LYS, term: Terminal/last, seq. number: 161 to: CLYS.
 Joining NMET - ASN
 Joining ASN - ILE
 Joining ILE - PHE
@@ -786,12 +784,10 @@ Joining THR - TRP
 Joining TRP - ASP
 Joining ASP - ALA
 Joining ALA - TYR
-Joining TYR - LYS
-Joining LYS - ASN
-Joining ASN - CLEU
-  total atoms in file: 1306
-  Leap added 1330 missing atoms according to residue templates:
-       1330 H / lone pairs
+Joining TYR - CLYS
+  total atoms in file: 1290
+  Leap added 1313 missing atoms according to residue templates:
+       1313 H / lone pairs
 > 
 > # Load parameters for ligand.
 > mods = loadAmberParams ligand.gaff.frcmod
@@ -820,32 +816,24 @@ Reading MOLECULE named p-xylene
 > # Check complex.
 > check complex
 Checking 'complex'....
-WARNING: The unperturbed charge of the unit: 8.000000 is not zero.
-Warning: Close contact of 1.038436 angstroms between .R<CLEU 164>.A<CA 3> and .R<CLEU 164>.A<HB2 6>
-Warning: Close contact of 1.060935 angstroms between .R<CLEU 164>.A<HA 4> and .R<CLEU 164>.A<HB2 6>
-Warning: Close contact of 1.367262 angstroms between .R<CLEU 164>.A<HA 4> and .R<CLEU 164>.A<C 18>
-Warning: Close contact of 1.396122 angstroms between .R<CLEU 164>.A<HG 9> and .R<CLEU 164>.A<CD2 14>
-Warning: Close contact of 1.478260 angstroms between .R<ASN 163>.A<N 1> and .R<LYS 162>.A<O 22>
-Warning: Close contact of 1.449711 angstroms between .R<ASN 163>.A<H 2> and .R<LYS 162>.A<C 21>
-Warning: Close contact of 1.313844 angstroms between .R<ASN 163>.A<CA 3> and .R<ASN 163>.A<HB2 6>
-Warning: Close contact of 0.686304 angstroms between .R<ASN 163>.A<HA 4> and .R<ASN 163>.A<C 13>
-Warning: Close contact of 1.494882 angstroms between .R<LYS 162>.A<HZ2 19> and .R<ASP 159>.A<OD1 9>
+WARNING: The unperturbed charge of the unit: 7.999998 is not zero.
+Warning: Close contact of 1.494882 angstroms between .R<CLYS 162>.A<HZ2 19> and .R<ASP 159>.A<OD1 9>
 Warning: Close contact of 1.379576 angstroms between .R<THR 142>.A<HG1 12> and .R<GLN 105>.A<HE21 14>
 Warning: Close contact of 1.476646 angstroms between .R<GLN 123>.A<HE22 15> and .R<ARG 119>.A<HG2 9>
 Warning: Close contact of 1.471824 angstroms between .R<THR 26>.A<HG1 12> and .R<ASP 20>.A<HB3 7>
 Checking parameters for unit 'complex'.
 Checking for bond parameters.
 Checking for angle parameters.
-check:  Warnings: 13
+check:  Warnings: 5
 Unit is OK.
 > 
 > # Report on net charge.
 > charge complex
-Total unperturbed charge:   8.000000
-Total perturbed charge:     8.000000
+Total unperturbed charge:   7.999998
+Total perturbed charge:     7.999998
 > 
 > # Write parameters.
-> saveAmberParm ligand ligand.prmtop ligand.crd
+> saveAmberParm ligand ligand.prmtop ligand.inpcrd
 Checking Unit.
 Building topology.
 Building atom parameters.
@@ -866,7 +854,7 @@ Marking per-residue atom chain types.
 	MOL	1
   )
  (no restraints)
-> saveAmberParm receptor receptor.prmtop receptor.crd
+> saveAmberParm receptor receptor.prmtop receptor.inpcrd
 Checking Unit.
 WARNING: The unperturbed charge of the unit: 8.000000 is not zero.
 
@@ -890,6 +878,44 @@ Building improper torsion parameters.
         atoms are: CG CE2 CD2 CE3
  ** Warning: No sp2 improper torsion term for  NA-CA-CN-CB
         atoms are: NE1 CZ2 CE2 CD2
+ total 516 improper torsions applied
+Building H-Bond parameters.
+Incorporating Non-Bonded adjustments.
+Not Marking per-residue atom chain types.
+Marking per-residue atom chain types.
+  (Residues lacking connect0/connect1 - 
+   these don't have chain types marked:
+
+	res	total affected
+
+	CLYS	1
+	NMET	1
+  )
+ (no restraints)
+> saveAmberParm complex complex.prmtop complex.inpcrd
+Checking Unit.
+WARNING: The unperturbed charge of the unit: 7.999998 is not zero.
+
+ -- ignoring the warning.
+
+Building topology.
+Building atom parameters.
+Building bond parameters.
+Building angle parameters.
+Building proper torsion parameters.
+Building improper torsion parameters.
+ ** Warning: No sp2 improper torsion term for  NA-CA-CN-CB
+        atoms are: NE1 CZ2 CE2 CD2
+ ** Warning: No sp2 improper torsion term for  C*-CN-CB-CA
+        atoms are: CG CE2 CD2 CE3
+ ** Warning: No sp2 improper torsion term for  NA-CA-CN-CB
+        atoms are: NE1 CZ2 CE2 CD2
+ ** Warning: No sp2 improper torsion term for  C*-CN-CB-CA
+        atoms are: CG CE2 CD2 CE3
+ ** Warning: No sp2 improper torsion term for  NA-CA-CN-CB
+        atoms are: NE1 CZ2 CE2 CD2
+ ** Warning: No sp2 improper torsion term for  C*-CN-CB-CA
+        atoms are: CG CE2 CD2 CE3
  total 522 improper torsions applied
 Building H-Bond parameters.
 Incorporating Non-Bonded adjustments.
@@ -900,45 +926,7 @@ Marking per-residue atom chain types.
 
 	res	total affected
 
-	CLEU	1
-	NMET	1
-  )
- (no restraints)
-> saveAmberParm complex complex.prmtop complex.crd
-Checking Unit.
-WARNING: The unperturbed charge of the unit: 8.000000 is not zero.
-
- -- ignoring the warning.
-
-Building topology.
-Building atom parameters.
-Building bond parameters.
-Building angle parameters.
-Building proper torsion parameters.
-Building improper torsion parameters.
- ** Warning: No sp2 improper torsion term for  NA-CA-CN-CB
-        atoms are: NE1 CZ2 CE2 CD2
- ** Warning: No sp2 improper torsion term for  C*-CN-CB-CA
-        atoms are: CG CE2 CD2 CE3
- ** Warning: No sp2 improper torsion term for  NA-CA-CN-CB
-        atoms are: NE1 CZ2 CE2 CD2
- ** Warning: No sp2 improper torsion term for  C*-CN-CB-CA
-        atoms are: CG CE2 CD2 CE3
- ** Warning: No sp2 improper torsion term for  NA-CA-CN-CB
-        atoms are: NE1 CZ2 CE2 CD2
- ** Warning: No sp2 improper torsion term for  C*-CN-CB-CA
-        atoms are: CG CE2 CD2 CE3
- total 528 improper torsions applied
-Building H-Bond parameters.
-Incorporating Non-Bonded adjustments.
-Not Marking per-residue atom chain types.
-Marking per-residue atom chain types.
-  (Residues lacking connect0/connect1 - 
-   these don't have chain types marked:
-
-	res	total affected
-
-	CLEU	1
+	CLYS	1
 	MOL	1
 	NMET	1
   )
