@@ -71,8 +71,9 @@ https://store.continuum.io/cshop/anaconda/
 
 Many of the prerequisites can be installed via the [conda](http://www.continuum.io/blog/conda) package manager:
 ```bash
-conda config --add channels https://conda.binstar.org/jchodera
-conda install numpy scipy netcdf4 mpi4py ambermini
+conda config --add channels https://conda.binstar.org/jchodera # remove me when packages migrated to omnia
+conda config --add channels https://conda.binstar.org/omnia
+conda install numpy scipy netcdf4 mpi4py ambermini openmm
 ```
 
 ### TODO: Installing OpenEye tools with Anaconda.
