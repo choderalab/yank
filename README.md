@@ -78,7 +78,12 @@ pip install OpenEye-python2.7-ubuntu-10.04-x64-2014.2.2.tar.gz #make sure pip is
 ```
 
 ### TODO: Installing OpenEye tools with Anaconda.
+
 ### TODO: In future, we will just be able to do 'conda install yank' once we have conda dependencies set up.
+```bash
+conda config --add channels https://conda.binstar.org/jchodera # switch to omnia later
+conda install yank
+```
 
 Running YANK from the command line
 ----------------------------------
