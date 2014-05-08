@@ -77,6 +77,7 @@ conda install numpy scipy netcdf4 mpi4py ambermini openmm
 ```
 
 ### TODO: Installing OpenEye tools with Anaconda.
+### TODO: In future, we will just be able to do 'conda install yank' once we have conda dependencies set up.
 
 Running YANK from the command line
 ----------------------------------
