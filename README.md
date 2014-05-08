@@ -64,17 +64,18 @@ Use of this module requires the following
 Simplified Python prerequisite installation
 -------------------------------------------
 
-The Enthought Python Distribution (EPD) provides many of these prerequisites (including Python, NetCDF 4, HDF5, netcdf4-python, numpy, and scipy): http://www.enthought.com/products/epd.php
+The continuum.io [Anaconda](https://store.continuum.io/cshop/anaconda/) scientific python distribution is the easiest way to get started with YANK.
 
-*Note that using EPD with OpenEye requires some care, as OpenEye tools are very selective about which Python and library versions are compatible.*
+Download and install the latest version here:
+https://store.continuum.io/cshop/anaconda/
 
-For example, to use EPD 7.1-2 on OS X with OpenEye's latest toolkit, install OpenEye's toolkit and Python wrappers, then:
+Many of the prerequisites can be installed via the [conda](http://www.continuum.io/blog/conda) package manager:
+```bash
+conda config --add channels https://conda.binstar.org/jchodera
+conda install numpy scipy netcdf4 mpi4py ambermini
+```
 
-    # Change to OpenEye libs directory
-    cd /path/to/openeye/python/openeye/libs
-
-    # Create a symlink for your EPD platform to trick OpenEye into thinking it is supported.
-    ln -s osx-10.7-g++4.2-x64-python2.7 osx-10.7-g++4.0-x64-python2.7
+### TODO: Installing OpenEye tools with Anaconda.
 
 Running YANK from the command line
 ----------------------------------
