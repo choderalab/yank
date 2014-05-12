@@ -13,10 +13,110 @@ YANK command-line driver
 
 import yank
 import sys
+import numpy
 
 #=============================================================================================
 # DRIVER
 #=============================================================================================
+
+
+#helper functions to allow driver to operate
+def read_amber_crd(filename, natoms_expected, verbose=False):
+    """
+    Read AMBER coordinate file.
+
+    ARGUMENTS
+
+    filename (string) - AMBER crd file to read
+    natoms_expected (int) - number of atoms expected
+
+    RETURNS
+
+    positions (numpy-wrapped simtk.unit.Quantity with units of distance) - a single read coordinate set
+
+    TODO
+
+    * Automatically handle box vectors for systems in explicit solvent
+    * Merge this function back into main?
+
+    """
+
+    if verbose: print "Reading cooordinate sets from '%s'..." % filename
+
+    # Read positions.
+    import simtk.openmm.app as app
+    inpcrd = app.AmberInpcrdFile(filename)
+    positions = inpcrd.getPositions(asNumpy=True)
+
+    # Check to make sure number of atoms match expectation.
+    natoms = positions.shape[0]
+    if natoms != natoms_expected:
+        raise Exception("Read coordinate set from '%s' that had %d atoms (expected %d)." % (filename, natoms, natoms_expected))
+
+    return positions
+
+def read_openeye_crd(filename, natoms_expected, verbose=False):
+    """
+    Read one or more coordinate sets from a file that OpenEye supports.
+
+    ARGUMENTS
+
+    filename (string) - the coordinate filename to be read
+    natoms_expected (int) - number of atoms expected
+
+    RETURNS
+
+    positions_list (list of numpy array of simtk.unit.Quantity) - list of coordinate sets read
+    """
+
+    if verbose: print "Reading cooordinate sets from '%s'..." % filename
+
+    import openeye.oechem as oe
+    imolstream = oe.oemolistream()
+    imolstream.open(filename)
+    positions_list = list()
+    for molecule in imolstream.GetOEGraphMols():
+        oecoords = molecule.GetCoords() # oecoords[atom_index] is tuple of atom positions, in angstroms
+        natoms = len(oecoords) # number of atoms
+        if natoms != natoms_expected:
+            raise Exception("Read coordinate set from '%s' that had %d atoms (expected %d)." % (filename, natoms, natoms_expected))
+        positions = units.Quantity(numpy.zeros([natoms,3], numpy.float32), units.angstroms) # positions[atom_index,dim_index] is positions of dim_index dimension of atom atom_index
+        for atom_index in range(natoms):
+            positions[atom_index,:] = units.Quantity(numpy.array(oecoords[atom_index]), units.angstroms)
+        positions_list.append(positions)
+
+    if verbose: print "%d coordinate sets read." % len(positions_list)
+
+    return positions_list
+
+def read_pdb_crd(filename, natoms_expected, verbose=False):
+    """
+    Read one or more coordinate sets from a PDB file.
+    Multiple coordinate sets (in the form of multiple MODELs) can be read.
+
+    ARGUMENTS
+
+    filename (string) - name of the file to be read
+    natoms_expected (int) - number of atoms expected
+
+    RETURNS
+
+    positions_list (list of numpy array of simtk.unit.Quantity) - list of coordinate sets read
+
+    """
+    import simtk.openmm.app as app
+    pdb = app.PDBFile(filename)
+    positions_list = pdb.getPositions(asNumpy=True)
+    natoms = positions_list.shape[0]
+    if natoms != natoms_expected:
+        raise Exception("Read coordinate set from '%s' that had %d atoms (expected %d)." % (filename, natoms, natoms_expected))
+
+    # Append if we haven't dumped positions yet.
+ #   if (atom_index == natoms_expected):
+  #       positions_list.append(copy.deepcopy(positions))
+
+    # Return positions.
+    return positions_list
 
 def driver():
     # Initialize command-line argument parser.
@@ -67,6 +167,8 @@ def driver():
     parser.add_option("--doctests", action="store_true", dest="doctests", default=False, help="run doctests first (default: False)")
     parser.add_option("--randomize_ligand", action="store_true", dest="randomize_ligand", default=False, help="randomize ligand positions and orientations (default: False)")
     parser.add_option("--ignore_signal", action="append", dest="ignore_signals", default=[], help="signals to trap and ignore (default: None)")
+    parser.add_option("--platform", dest="platform", default="CPU",help="The platform to use when running simulations")
+    parser.add_option("--gpus_per_node", dest="gpus_per_node", type='int', default=None, help="number of GPUs per node to use for complex simulations during MPI calculations")
 
     # Parse command-line arguments.
     (options, args) = parser.parse_args()
@@ -188,16 +290,19 @@ def driver():
         yank.restraint_type = options.restraint_type
     if options.randomize_ligand:
         yank.randomize_ligand = True 
+    if options.platform:
+        yank.platform = openmm.Platform.getPlatformByName(options.platform)
+
 
     # Hard-coded cpuid:gpuid for Exxact 4xGPU nodes
     # TODO: Replace this with something automated
-    cpuid_gpuid_mapping = { 0:0, 1:1, 2:2, 3:3 } 
-    ncpus_per_node = None
+   # cpuid_gpuid_mapping = { 0:0, 1:1, 2:2, 3:3 }
+    #ncpus_per_node = None
 
     # Run calculation.
     if options.mpi:
         # Run MPI version.
-        yank.run_mpi(options.mpi, cpuid_gpuid_mapping=cpuid_gpuid_mapping, ncpus_per_node=ncpus_per_node)
+        yank.run_mpi(options.mpi, options.gpus_per_node)
     else:
         # Run serial version.
         yank.run()
