@@ -14,6 +14,9 @@ YANK command-line driver
 import yank
 import sys
 import numpy
+import simtk.openmm as openmm
+import simtk.unit as units
+import os
 
 #=============================================================================================
 # DRIVER
@@ -221,7 +224,7 @@ def driver():
     constraints = app.HBonds
     removeCMMotion = False
 
-    # Create System objects for ligand and receptor.
+
     ligand_system = app.AmberPrmtopFile(options.ligand_prmtop_filename).createSystem(nonbondedMethod=nonbondedMethod, implicitSolvent=implicitSolvent, constraints=constraints, removeCMMotion=removeCMMotion)
     receptor_system = app.AmberPrmtopFile(options.receptor_prmtop_filename).createSystem(nonbondedMethod=nonbondedMethod, implicitSolvent=implicitSolvent, constraints=constraints, removeCMMotion=removeCMMotion)
     complex_system = app.AmberPrmtopFile(options.complex_prmtop_filename).createSystem(nonbondedMethod=nonbondedMethod, implicitSolvent=implicitSolvent, constraints=constraints, removeCMMotion=removeCMMotion)
@@ -277,7 +280,7 @@ def driver():
 
     # Initialize YANK object.
     from yank import Yank
-    yank = Yank(receptor=receptor_system, ligand=ligand_system, complex=complex_system, complex_coordinates=complex_coordinates, output_directory=options.output_directory, verbose=options.verbose)
+    yank = Yank(receptor=receptor_system, ligand=ligand_system, complex=complex_system, complex_positions=complex_coordinates, output_directory=options.output_directory, verbose=options.verbose)
 
     # Configure YANK object with command-line parameter overrides.
     if options.niterations is not None:
