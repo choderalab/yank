@@ -120,6 +120,108 @@ def read_pdb_crd(filename, natoms_expected, verbose=False):
 
     # Return positions.
     return positions_list
+def create_ligand_system(mol2_filename, molecule_name="ligand"):
+    """
+    Read in a tripos mol2 file, call antechamber via gaff2xml to parametrize ligand
+
+    ARGUMENTS
+
+    mol2_filename (string) - name of the file in tripos mol2 format
+    molecule_name (string) - name of output ffxml. default "ligand"
+
+
+    RETURNS
+    simtk.openmm.System object of ligand
+    mdtraj trajectory object of ligand
+
+    ffxml filename for ligand to use in creating complex
+
+
+    """
+    import gaff2xml
+    from simtk.openmm import app
+
+
+
+
+    parser =gaff2xml.amber_parser.AmberParser()
+    (gaff_mol2_filename, gaff_frcmod_filename) = gaff2xml.utils.run_antechamber(molecule_name,mol2_filename,charge_method="bcc")
+    print gaff_mol2_filename
+    parser.parse_filenames([gaff_mol2_filename, gaff_frcmod_filename])
+    ffxml_stream = parser.generate_xml()
+    ffxml_filename = molecule_name + '.ffxml'
+    outfile = open(ffxml_filename, 'w')
+    outfile.write(ffxml_stream.read())
+    outfile.close()
+    mol2 = gaff2xml.gafftools.Mol2Parser(gaff_mol2_filename)
+    (topology, positions) = mol2.to_openmm()
+    forcefield = app.ForceField(ffxml_filename)
+    system = forcefield.createSystem(topology, nonbondedMethod=app.NoCutoff, constraints=None, implicitSolvent=app.OBC2)
+    return (system, mol2.to_mdtraj(), ffxml_filename)
+
+
+def create_receptor_system(receptor_pdb, pH=7.0, output_filename='receptor.pdbfixer.pdb'):
+    """
+    Read in a PDB file, run it through pdbfixer, and return an OpenMM system with the receptor
+
+    ARGUMENTS
+    receptor_pdb (string): filename of receptor pdb
+
+    RETURNS
+    simtk.openmm.System object containing receptor
+    mdtraj object of fixed pdb
+    """
+    import pdbfixer
+    import simtk.openmm.app as app
+    from simtk.openmm.app.internal.pdbstructure import PdbStructure
+    import mdtraj
+    fixer = pdbfixer.PDBFixer(PdbStructure(open(receptor_pdb)))
+    fixer.findMissingResidues()
+    fixer.findNonstandardResidues()
+    fixer.replaceNonstandardResidues()
+    fixer.findMissingAtoms()
+    fixer.addMissingAtoms()
+    fixer.removeHeterogens(True)
+    fixer.addMissingHydrogens(pH)
+    app.PDBFile.writeFile(fixer.topology,fixer.positions, file=output_filename)
+    forcefields_to_use = ['amber99sbildn.xml', 'amber99_obc.xml']
+    forcefield = app.ForceField(forcefields_to_use)
+    system = forcefield.createSystem(fixer.topology, nonbondedMethod=app.NoCutoff,constraints=None,implicitSolvent=app.OBC2)
+    return (system, mdtraj.load_pdb(output_filename))
+
+
+
+
+def create_complex_system(ligand_traj, ligand_ffxml_name, receptor_traj):
+    """
+
+    Take in mdtraj objects of ligand and receptor, as well as ligand ffxml, to create complex system
+
+    ARGUMENTS
+    ligand_traj (mdjtraj trajectory): an mdtraj trajectory containing the ligand topology and positions
+    ligand_ffxml_name (string) : the name of the file containing parameters for the ligand, in ffxml format
+    receptor_traj (mdtraj trajectory): an mdtraj trajectory containing the receptor topology and positions
+
+    RETURNS
+    simtk.openmm.System containing ligand and receptor
+    """
+
+    import simtk.openmm.app as app
+    import numpy as np
+    ligand_traj.center_coordinates()
+    ligand_top = ligand_traj.topology.to_openmm()
+    receptor_traj.center_coordinates()
+    receptor_top = receptor_traj.topology.to_openmm()
+    receptor_xyz = receptor_traj.openmm_positions(0)
+    min_atom_pair_distance = ((ligand_traj.xyz[0] ** 2.).sum(1) ** 0.5).max() + ((receptor_traj.xyz[0] ** 2.).sum(1) ** 0.5).max() + 0.3
+    ligand_traj.xyz += np.array([1.0, 0.0, 0.0]) * min_atom_pair_distance
+    ligand_xyz = ligand_traj.openmm_positions(0)
+    forcefield = app.ForceField("amber10.xml", ligand_ffxml_name)
+    model = app.modeller.Modeller(receptor_top, receptor_xyz)
+    model.add(ligand_top, ligand_xyz)
+    system = forcefield.createSystem(model.topology, nonbondedMethod=app.NoCutoff, constraints=None, implicitSolvent=app.OBC2)
+    return system, model.getPositions()
+
 
 def driver():
     # Initialize command-line argument parser.
@@ -152,14 +254,8 @@ def driver():
     # Parse command-line arguments.
     from optparse import OptionParser
     parser = OptionParser(usage=usage)
-    parser.add_option("--ligand_prmtop", dest="ligand_prmtop_filename", default=None, help="ligand Amber parameter file", metavar="LIGAND_PRMTOP")
-    parser.add_option("--receptor_prmtop", dest="receptor_prmtop_filename", default=None, help="receptor Amber parameter file", metavar="RECEPTOR_PRMTOP")    
-    parser.add_option("--ligand_crd", dest="ligand_crd_filename", default=None, help="ligand Amber crd file", metavar="LIGAND_CRD")
-    parser.add_option("--receptor_crd", dest="receptor_crd_filename", default=None, help="receptor Amber crd file", metavar="RECEPTOR_CRD")
     parser.add_option("--ligand_mol2", dest="ligand_mol2_filename", default=None, help="ligand mol2 file (can contain multiple conformations)", metavar="LIGAND_MOL2")
     parser.add_option("--receptor_pdb", dest="receptor_pdb_filename", default=None, help="receptor PDB file (can contain multiple MODELs)", metavar="RECEPTOR_PDB")
-    parser.add_option("--complex_prmtop", dest="complex_prmtop_filename", default=None, help="complex Amber parameter file", metavar="COMPLEX_PRMTOP")
-    parser.add_option("--complex_crd", dest="complex_crd_filename", default=None, help="complex Amber crd file", metavar="COMPLEX_CRD")
     parser.add_option("--complex_pdb", dest="complex_pdb_filename", default=None, help="complex PDB file (can contain multiple MODELs)", metavar="COMPLEX_PDB")
     parser.add_option("-v", "--verbose", action="store_true", dest="verbose", default=False, help="verbosity flag")
     parser.add_option("-i", "--iterations", dest="niterations", default=None, help="number of iterations", metavar="ITERATIONS")
@@ -190,14 +286,14 @@ def driver():
             sys.exit(1)
 
     # Check arguments for validity.
-    if not (options.ligand_prmtop_filename and options.receptor_prmtop_filename):
-        parser.error("ligand and receptor prmtop files must be specified")        
-    if not (bool(options.ligand_mol2_filename) ^ bool(options.ligand_crd_filename) ^ bool(options.complex_pdb_filename) ^ bool(options.complex_crd_filename)):
-        parser.error("Ligand coordinates must be specified through only one of --ligand_crd, --ligand_mol2, --complex_crd, or --complex_pdb.")
-    if not (bool(options.receptor_pdb_filename) ^ bool(options.receptor_crd_filename) ^ bool(options.complex_pdb_filename) ^ bool(options.complex_crd_filename)):
-        parser.error("Receptor coordinates must be specified through only one of --receptor_crd, --receptor_pdb, --complex_crd, or --complex_pdb.")    
-    if not (options.complex_prmtop_filename):
-        parser.error("Please specify --complex_prmtop [complex_prmtop_filename] argument.")
+    if not (options.ligand_mol2_filename):
+        parser.error("Please supply a ligand in mol2 format")
+    if not (options.receptor_pdb_filename):
+        parser.error("Please supply the receptor in pdb format")
+    if not (options.complex_pdb_filename):
+        print("Will combine ligand and receptor")
+
+
 
     # Initialize MPI if requested.
     if options.mpi:
@@ -214,6 +310,14 @@ def driver():
             print e
             parser.error("Could not initialize MPI.")
 
+
+    #create systems
+    (ligand_system, ligand_traj, ffxml_name) = create_ligand_system(options.ligand_mol2_filename)
+    (receptor_system, receptor_traj) = create_receptor_system(options.receptor_pdb_filename)
+    (complex_system, complex_positions) = create_complex_system(ligand_traj,ffxml_name,receptor_traj)
+
+
+
     # Select simulation parameters.
     # TODO: Allow user selection or intelligent automated selection of simulation parameters.
     # NOTE: Simulation paramters are hard-coded for now.
@@ -225,10 +329,6 @@ def driver():
     removeCMMotion = False
 
 
-    ligand_system = app.AmberPrmtopFile(options.ligand_prmtop_filename).createSystem(nonbondedMethod=nonbondedMethod, implicitSolvent=implicitSolvent, constraints=constraints, removeCMMotion=removeCMMotion)
-    receptor_system = app.AmberPrmtopFile(options.receptor_prmtop_filename).createSystem(nonbondedMethod=nonbondedMethod, implicitSolvent=implicitSolvent, constraints=constraints, removeCMMotion=removeCMMotion)
-    complex_system = app.AmberPrmtopFile(options.complex_prmtop_filename).createSystem(nonbondedMethod=nonbondedMethod, implicitSolvent=implicitSolvent, constraints=constraints, removeCMMotion=removeCMMotion)
-
     # Determine number of atoms for each system.
     natoms_receptor = receptor_system.getNumParticles()
     natoms_ligand = ligand_system.getNumParticles()
@@ -236,51 +336,11 @@ def driver():
     if (natoms_complex != natoms_ligand + natoms_receptor):
         raise Exception("Number of complex atoms must equal sum of ligand and receptor atoms.")
 
-    # Read ligand and receptor coordinates.
-    ligand_coordinates = list()
-    receptor_coordinates = list()
-    complex_coordinates = list()
-    if (options.complex_crd_filename or options.complex_pdb_filename):
-        # Read coordinates for whole complex.
-        if options.complex_crd_filename:
-            coordinates = read_amber_crd(options.complex_crd_filename, natoms_complex, options.verbose)
-            complex_coordinates.append(coordinates)
-        else:
-            try:
-                coordinates_list = read_openeye_crd(options.complex_pdb_filename, natoms_complex, options.verbose)
-            except:
-                coordinates_list = read_pdb_crd(options.complex_pdb_filename, natoms_complex, options.verbose)
-            complex_coordinates += coordinates_list
-    elif options.ligand_crd_filename:
-        coordinates = read_amber_crd(options.ligand_crd_filename, natoms_ligand, options.verbose)
-        coordinates = units.Quantity(numpy.array(coordinates / coordinates.unit), coordinates.unit)
-        ligand_coordinates.append(coordinates)
-    elif options.ligand_mol2_filename:
-        coordinates_list = read_openeye_crd(options.ligand_mol2_filename, natoms_ligand, options.verbose)
-        ligand_coordinates += coordinates_list
-    elif options.receptor_crd_filename:
-        coordinates = read_amber_crd(options.receptor_crd_filename, natoms_receptor, options.verbose)
-        coordinates = units.Quantity(numpy.array(coordinates / coordinates.unit), coordinates.unit)
-        receptor_coordinates.append(coordinates)
-    elif options.receptor_pdb_filename:
-        try:
-            coordinates_list = read_openeye_crd(options.receptor_pdb_filename, natoms_receptor, options.verbose)
-        except:
-            coordinates_list = read_pdb_crd(options.receptor_pdb_filename, natoms_receptor, options.verbose)
-        receptor_coordinates += coordinates_list
 
-    # Assemble complex coordinates if we haven't read any.
-    if len(complex_coordinates)==0:
-        for x in receptor_coordinates:
-            for y in ligand_coordinates:
-                z = units.Quantity(numpy.zeros([natoms_complex,3]), units.angstroms)
-                z[0:natoms_receptor,:] = x[:,:]
-                z[natoms_receptor:natoms_complex,:] = y[:,:]
-                complex_coordinates.append(z)
 
     # Initialize YANK object.
     from yank import Yank
-    yank = Yank(receptor=receptor_system, ligand=ligand_system, complex=complex_system, complex_positions=complex_coordinates, output_directory=options.output_directory, verbose=options.verbose)
+    yank = Yank(receptor=receptor_system, ligand=ligand_system, complex=complex_system, complex_positions=complex_positions, output_directory=options.output_directory, verbose=options.verbose)
 
     # Configure YANK object with command-line parameter overrides.
     if options.niterations is not None:
