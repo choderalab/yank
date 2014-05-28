@@ -17,215 +17,13 @@ import numpy
 import simtk.openmm as openmm
 import simtk.unit as units
 import os
-
-#=============================================================================================
-# DRIVER
-#=============================================================================================
-
-
-#helper functions to allow driver to operate
-def read_amber_crd(filename, natoms_expected, verbose=False):
-    """
-    Read AMBER coordinate file.
-
-    ARGUMENTS
-
-    filename (string) - AMBER crd file to read
-    natoms_expected (int) - number of atoms expected
-
-    RETURNS
-
-    positions (numpy-wrapped simtk.unit.Quantity with units of distance) - a single read coordinate set
-
-    TODO
-
-    * Automatically handle box vectors for systems in explicit solvent
-    * Merge this function back into main?
-
-    """
-
-    if verbose: print "Reading cooordinate sets from '%s'..." % filename
-
-    # Read positions.
-    import simtk.openmm.app as app
-    inpcrd = app.AmberInpcrdFile(filename)
-    positions = inpcrd.getPositions(asNumpy=True)
-
-    # Check to make sure number of atoms match expectation.
-    natoms = positions.shape[0]
-    if natoms != natoms_expected:
-        raise Exception("Read coordinate set from '%s' that had %d atoms (expected %d)." % (filename, natoms, natoms_expected))
-
-    return positions
-
-def read_openeye_crd(filename, natoms_expected, verbose=False):
-    """
-    Read one or more coordinate sets from a file that OpenEye supports.
-
-    ARGUMENTS
-
-    filename (string) - the coordinate filename to be read
-    natoms_expected (int) - number of atoms expected
-
-    RETURNS
-
-    positions_list (list of numpy array of simtk.unit.Quantity) - list of coordinate sets read
-    """
-
-    if verbose: print "Reading cooordinate sets from '%s'..." % filename
-
-    import openeye.oechem as oe
-    imolstream = oe.oemolistream()
-    imolstream.open(filename)
-    positions_list = list()
-    for molecule in imolstream.GetOEGraphMols():
-        oecoords = molecule.GetCoords() # oecoords[atom_index] is tuple of atom positions, in angstroms
-        natoms = len(oecoords) # number of atoms
-        if natoms != natoms_expected:
-            raise Exception("Read coordinate set from '%s' that had %d atoms (expected %d)." % (filename, natoms, natoms_expected))
-        positions = units.Quantity(numpy.zeros([natoms,3], numpy.float32), units.angstroms) # positions[atom_index,dim_index] is positions of dim_index dimension of atom atom_index
-        for atom_index in range(natoms):
-            positions[atom_index,:] = units.Quantity(numpy.array(oecoords[atom_index]), units.angstroms)
-        positions_list.append(positions)
-
-    if verbose: print "%d coordinate sets read." % len(positions_list)
-
-    return positions_list
-
-def read_pdb_crd(filename, natoms_expected, verbose=False):
-    """
-    Read one or more coordinate sets from a PDB file.
-    Multiple coordinate sets (in the form of multiple MODELs) can be read.
-
-    ARGUMENTS
-
-    filename (string) - name of the file to be read
-    natoms_expected (int) - number of atoms expected
-
-    RETURNS
-
-    positions_list (list of numpy array of simtk.unit.Quantity) - list of coordinate sets read
-
-    """
-    import simtk.openmm.app as app
-    pdb = app.PDBFile(filename)
-    positions_list = pdb.getPositions(asNumpy=True)
-    natoms = positions_list.shape[0]
-    if natoms != natoms_expected:
-        raise Exception("Read coordinate set from '%s' that had %d atoms (expected %d)." % (filename, natoms, natoms_expected))
-
-    # Append if we haven't dumped positions yet.
- #   if (atom_index == natoms_expected):
-  #       positions_list.append(copy.deepcopy(positions))
-
-    # Return positions.
-    return positions_list
-def create_ligand_system(mol2_filename, molecule_name="ligand"):
-    """
-    Read in a tripos mol2 file, call antechamber via gaff2xml to parametrize ligand
-
-    ARGUMENTS
-
-    mol2_filename (string) - name of the file in tripos mol2 format
-    molecule_name (string) - name of output ffxml. default "ligand"
-
-
-    RETURNS
-    simtk.openmm.System object of ligand
-    mdtraj trajectory object of ligand
-
-    ffxml filename for ligand to use in creating complex
-
-
-    """
-    import gaff2xml
-    from simtk.openmm import app
-
-
-
-
-    parser =gaff2xml.amber_parser.AmberParser()
-    (gaff_mol2_filename, gaff_frcmod_filename) = gaff2xml.utils.run_antechamber(molecule_name,mol2_filename,charge_method="bcc")
-    print gaff_mol2_filename
-    parser.parse_filenames([gaff_mol2_filename, gaff_frcmod_filename])
-    ffxml_stream = parser.generate_xml()
-    ffxml_filename = molecule_name + '.ffxml'
-    outfile = open(ffxml_filename, 'w')
-    outfile.write(ffxml_stream.read())
-    outfile.close()
-    mol2 = gaff2xml.gafftools.Mol2Parser(gaff_mol2_filename)
-    (topology, positions) = mol2.to_openmm()
-    forcefield = app.ForceField(ffxml_filename)
-    system = forcefield.createSystem(topology, nonbondedMethod=app.NoCutoff, constraints=None, implicitSolvent=app.OBC2)
-    return (system, mol2.to_mdtraj(), ffxml_filename)
-
-
-def create_receptor_system(receptor_pdb, pH=7.0, output_filename='receptor.pdbfixer.pdb'):
-    """
-    Read in a PDB file, run it through pdbfixer, and return an OpenMM system with the receptor
-
-    ARGUMENTS
-    receptor_pdb (string): filename of receptor pdb
-
-    RETURNS
-    simtk.openmm.System object containing receptor
-    mdtraj object of fixed pdb
-    """
-    import pdbfixer
-    import simtk.openmm.app as app
-    from simtk.openmm.app.internal.pdbstructure import PdbStructure
-    import mdtraj
-    fixer = pdbfixer.PDBFixer(PdbStructure(open(receptor_pdb)))
-    fixer.findMissingResidues()
-    fixer.findNonstandardResidues()
-    fixer.replaceNonstandardResidues()
-    fixer.findMissingAtoms()
-    fixer.addMissingAtoms()
-    fixer.removeHeterogens(True)
-    fixer.addMissingHydrogens(pH)
-    app.PDBFile.writeFile(fixer.topology,fixer.positions, file=output_filename)
-    forcefields_to_use = ['amber99sbildn.xml', 'amber99_obc.xml']
-    forcefield = app.ForceField(forcefields_to_use)
-    system = forcefield.createSystem(fixer.topology, nonbondedMethod=app.NoCutoff,constraints=None,implicitSolvent=app.OBC2)
-    return (system, mdtraj.load_pdb(output_filename))
-
-
-
-
-def create_complex_system(ligand_traj, ligand_ffxml_name, receptor_traj):
-    """
-
-    Take in mdtraj objects of ligand and receptor, as well as ligand ffxml, to create complex system
-
-    ARGUMENTS
-    ligand_traj (mdjtraj trajectory): an mdtraj trajectory containing the ligand topology and positions
-    ligand_ffxml_name (string) : the name of the file containing parameters for the ligand, in ffxml format
-    receptor_traj (mdtraj trajectory): an mdtraj trajectory containing the receptor topology and positions
-
-    RETURNS
-    simtk.openmm.System containing ligand and receptor
-    """
-
-    import simtk.openmm.app as app
-    import numpy as np
-    ligand_traj.center_coordinates()
-    ligand_top = ligand_traj.topology.to_openmm()
-    receptor_traj.center_coordinates()
-    receptor_top = receptor_traj.topology.to_openmm()
-    receptor_xyz = receptor_traj.openmm_positions(0)
-    min_atom_pair_distance = ((ligand_traj.xyz[0] ** 2.).sum(1) ** 0.5).max() + ((receptor_traj.xyz[0] ** 2.).sum(1) ** 0.5).max() + 0.3
-    ligand_traj.xyz += np.array([1.0, 0.0, 0.0]) * min_atom_pair_distance
-    ligand_xyz = ligand_traj.openmm_positions(0)
-    forcefield = app.ForceField("amber10.xml", ligand_ffxml_name)
-    model = app.modeller.Modeller(receptor_top, receptor_xyz)
-    model.add(ligand_top, ligand_xyz)
-    system = forcefield.createSystem(model.topology, nonbondedMethod=app.NoCutoff, constraints=None, implicitSolvent=app.OBC2)
-    return system, model.getPositions()
+from systembuilder import *
+import os
 
 
 def driver():
     # Initialize command-line argument parser.
-
+    verbose = True
     usage = """
     USAGE
 
@@ -311,10 +109,6 @@ def driver():
             parser.error("Could not initialize MPI.")
 
 
-    #create systems
-    (ligand_system, ligand_traj, ffxml_name) = create_ligand_system(options.ligand_mol2_filename)
-    (receptor_system, receptor_traj) = create_receptor_system(options.receptor_pdb_filename)
-    (complex_system, complex_positions) = create_complex_system(ligand_traj,ffxml_name,receptor_traj)
 
 
 
@@ -329,18 +123,15 @@ def driver():
     removeCMMotion = False
 
 
-    # Determine number of atoms for each system.
-    natoms_receptor = receptor_system.getNumParticles()
-    natoms_ligand = ligand_system.getNumParticles()
-    natoms_complex = complex_system.getNumParticles()
-    if (natoms_complex != natoms_ligand + natoms_receptor):
-        raise Exception("Number of complex atoms must equal sum of ligand and receptor atoms.")
-
-
-
+    #make ligand, receptor, complex objects
+    ligand = Mol2SystemBuilder(options.ligand_mol2_filename)
+    receptor = PDBSystemBuilder(options.receptor_pdb_filename)
+    complex_system = ComplexSystemBuilder(ligand,receptor)
+    print len(complex_system.positions)
     # Initialize YANK object.
+    print complex_system.what_yank_wants[0:3,:]
     from yank import Yank
-    yank = Yank(receptor=receptor_system, ligand=ligand_system, complex=complex_system, complex_positions=complex_positions, output_directory=options.output_directory, verbose=options.verbose)
+    yank = Yank(receptor=receptor.system, ligand=ligand.system, complex=complex_system.system, complex_positions=[complex_system.what_yank_wants], output_directory=options.output_directory, verbose=options.verbose)
 
     # Configure YANK object with command-line parameter overrides.
     if options.niterations is not None:
@@ -362,7 +153,7 @@ def driver():
    # cpuid_gpuid_mapping = { 0:0, 1:1, 2:2, 3:3 }
     #ncpus_per_node = None
 
-    # Run calculation.
+    # Run calculation.brbz
     if options.mpi:
         # Run MPI version.
         yank.run_mpi(options.mpi, options.gpus_per_node)
