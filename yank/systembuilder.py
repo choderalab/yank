@@ -2,7 +2,7 @@ __author__ = 'Patrick Grinaway'
 
 import abc
 #mol2 = Mol2SystemBuilder("ligand.tripos.mol2")
-class SystemBuilder(object, metaclass=abc.ABCmeta):
+class SystemBuilder():
     """
     class SystemBuilder:
         This is a base class for other classes that will create systems for use with Yank
@@ -19,6 +19,9 @@ class SystemBuilder(object, metaclass=abc.ABCmeta):
 
 
     """
+    __metaclass__ = abc.ABCMeta
+
+
 
     def __init__(self, coordinate_file, molecule_name, forcefield_files=None):
         """
@@ -31,12 +34,13 @@ class SystemBuilder(object, metaclass=abc.ABCmeta):
         forcefield_file: ffxml file for the molecule.
 
         """
-        import simtk.openmm.app as app
         self._forcefield_files = forcefield_files
         self._coordinate_file = coordinate_file
         self._molecule_name = molecule_name
-        self._system = self._create_system()
-        self._traj = self._create_traj()
+        self._forcefield = None
+        self._traj = None
+        self._system = None
+
 
 
 
@@ -52,6 +56,8 @@ class SystemBuilder(object, metaclass=abc.ABCmeta):
         pass
 
     def center_coordinates(self):
+        if self._traj is None:
+            self._create_traj()
         self._traj.center_coordinates()
 
     @abc.abstractmethod
@@ -66,7 +72,10 @@ class SystemBuilder(object, metaclass=abc.ABCmeta):
 
     @property
     def system(self):
+        if self._system is None:
+            self._create_system()
         return self._system
+
 
     @property
     def openmm_positions(self):
@@ -74,22 +83,40 @@ class SystemBuilder(object, metaclass=abc.ABCmeta):
 
     @property
     def positions(self):
-        return self._traj.xyz[:,:]
+        if self._traj is None:
+            self._create_traj()
+            return self._traj.xyz[:,:]
+        else:
+            return self._traj.xyz[:,:]
 
     @property
     def forcefield(self):
-        import simtk.openmm.app as app
-        return app.ForceField(*self._forcefield_files)
+        if self._forcefield is None:
+            import simtk.openmm.app as app
+            self._forcefield = app.ForceField(*self._forcefield_files)
+            return self._forcefield
+        else:
+            return self._forcefield
+
 
     @property
-    def forcefield_file(self):
+    def forcefield_files(self):
         return self._forcefield_files
 
-
+    @property
+    def traj(self):
+        return self._traj
+    @traj.setter
+    def traj(self, new_traj):
+        if (new_traj.top!=self._traj.top):
+            raise Exception
+        else:
+            self._traj = new_traj
 
 
 
 class SmallMoleculeBuilder(SystemBuilder):
+
 
     def __init__(self, coordinate_file, molecule_name, forcefield_files=None, parameterization_method="antechamber"):
         """
@@ -101,11 +128,11 @@ class SmallMoleculeBuilder(SystemBuilder):
         molecule_name: name of the molecule (string)
         forcefield_file: ffxml file that contains parameters for the molecule. If none, generate.
         """
-        if self._forcefield_files is None:
+        super(SmallMoleculeBuilder, self).__init__(coordinate_file, molecule_name, forcefield_files)
+        if forcefield_files is None:
             self.build_forcefield(param_method=parameterization_method)
-            super(SmallMoleculeBuilder, self).__init__(coordinate_file, molecule_name, forcefield_files)
-        else:
-            super(SmallMoleculeBuilder, self).__init__(coordinate_file, molecule_name, forcefield_files)
+
+
 
 
     @abc.abstractmethod
@@ -124,53 +151,78 @@ class SmallMoleculeBuilder(SystemBuilder):
 
 
 
+class BiomoleculeSystemBuilder(SystemBuilder):
+    """
+    This is an abstract base class for classes that will read biomolecules (large molecules) from files. This class
+    will not perform parameterization (at least for now)
+    """
+    __metaclass__ = abc.ABCMeta
+
+    def __init__(self,coordinate_file, molecule_name, forcefield_files, chain_ids):
+        #self._chains_to_use = chain_ids
+        super(BiomoleculeSystemBuilder, self).__init__(coordinate_file, molecule_name, forcefield_files)
+        self._chains_to_use = chain_ids
+
+    #set default to amber10 in case forcefield files is none
+    @property
+    def forcefield_files(self):
+        if self._forcefield_files is None:
+            self._forcefield_files = ["amber10.xml"]
+            return self._forcefield_files
+        else:
+            return self._forcefield_files
+    @property
+    def chains_to_use(self):
+        return self._chains_to_use
 
 
 
-class PDBSystemBuilder(SystemBuilder):
 
-    def _create_pdb_system(self, coordinate_file, output_filename='receptor.pdb', pH=7.0, forcefield=None):
-
-        """
-        This function creates a system from a PDB file, assuming it is a protein, and uses the amber99sbildn forcefield by default.
-
-
-        ARGUMENTS:
-
-        coordinate_file (string) : this is the pdb file from which coordinates will be read
-        output_filename (string): this is where the pdbfixer fixed output will go. default: receptor.pdb
-        pH (float) : this is the pH that is used in assigning protonation states
-        forcefield (string): this is the list of names of the forcefield xml file to use. If None (default) amber99sbildn.xml and amber99_obc.xml will be used
+class BiomoleculePDBSystemBuilder(BiomoleculeSystemBuilder):
 
 
 
-        """
+    def __init__(self, coordinate_file, molecule_name, forcefield_files=None, chain_ids=None, pH=7.0 ):
+        self._pH = pH
+        super(BiomoleculePDBSystemBuilder, self).__init__(coordinate_file, molecule_name, forcefield_files, chain_ids)
+        return
+
+    def _create_traj(self):
+        import mdtraj
+        self._traj = mdtraj.load_pdb(self._coordinate_file)
+
+
+
+
+    def _create_system(self):
         import pdbfixer
         import simtk.openmm.app as app
         import mdtraj
-        fixer = pdbfixer.PDBFixer(coordinate_file)
+        fixer = pdbfixer.PDBFixer(self._coordinate_file)
         fixer.findMissingResidues()
         fixer.findNonstandardResidues()
         fixer.replaceNonstandardResidues()
         fixer.findMissingAtoms()
         fixer.addMissingAtoms()
         fixer.removeHeterogens(True)
-        fixer.addMissingHydrogens(pH)
+        fixer.addMissingHydrogens(self._pH)
+        #keep only the chains the user wants
+        if self._chains_to_use is not None:
+            molecule_chains = list(fixer.topology.chains())
+            #figure this out
+            raise NotImplementedError
+        if self._forcefield_files is None:
+            self._forcefield_files = ["amber10.xml"]
+        forcefield = app.ForceField(*self._forcefield_files)
+        #change this later to not have these hardcoded
+        self._system = forcefield.createSystem(fixer.topology, implicitSolvent=app.OBC2)
+        output_filename = "fixed." + self._coordinate_file
         app.PDBFile.writeFile(fixer.topology,fixer.positions, file=open(output_filename,'w'))
-        if forcefield is None:
-            forcefields_to_use = ['amber99sbildn.xml', 'amber99_obc.xml']
-        else:
-            forcefields_to_use = forcefield
-        forcefield = app.ForceField(*forcefields_to_use)
-        system = forcefield.createSystem(fixer.topology, nonbondedMethod=app.NoCutoff,constraints=None,implicitSolvent=app.OBC2)
-        return (system, mdtraj.load_pdb(output_filename), forcefield)
+        self._coordinate_file = output_filename
 
-    def __init__(self, coordinate_file, forcefield_file=None):
-        self._system, self._traj, self._forcefield = self._create_pdb_system(coordinate_file)
-
-        return
-
-
+    @property
+    def pH(self):
+        return self._pH
 
 
 
@@ -183,7 +235,8 @@ class Mol2SystemBuilder(SmallMoleculeBuilder):
 
         ACCEPTS
 
-        coordinate_file: small molecule coordinate file name
+
+        objectcoordinate_file: small molecule coordinate file name
         molecule_name: name of the molecule (string)
         forcefield_file: ffxml file that contains parameters for the molecule. If none, generate.
         parameterization_method: the method used to parameterize the molecule. currently only antechamber
@@ -191,7 +244,7 @@ class Mol2SystemBuilder(SmallMoleculeBuilder):
 
         """
         self._gaff_mol2 = gaff_mol2_file
-        super(Mol2SystemBuilder, self).__init__(self, coordinate_file, molecule_name, forcefield_files=None, parameterization_method="antechamber")
+        super(Mol2SystemBuilder, self).__init__(coordinate_file, molecule_name, forcefield_files=forcefield_files, parameterization_method=parameterization_method)
 
 
 
@@ -209,13 +262,16 @@ class Mol2SystemBuilder(SmallMoleculeBuilder):
         from simtk.openmm import app
         parser = gaff2xml.amber_parser.AmberParser()
         (gaff_mol2_filename, gaff_frcmod_filename) = gaff2xml.utils.run_antechamber(self._molecule_name, self._coordinate_file,charge_method="bcc")
+        self._gaff_mol2 = gaff_mol2_filename
         parser.parse_filenames([gaff_mol2_filename, gaff_frcmod_filename])
         ffxml_stream = parser.generate_xml()
         ffxml_filename = self._molecule_name+ '.ffxml'
         outfile = open(ffxml_filename, 'w')
         outfile.write(ffxml_stream.read())
         outfile.close()
-        self._forcefield_files[0] = ffxml_filename
+        if self._forcefield_files is None:
+            self._forcefield_files = list()
+            self._forcefield_files.append(ffxml_filename)
 
 
 
@@ -233,16 +289,17 @@ class Mol2SystemBuilder(SmallMoleculeBuilder):
         from simtk.openmm import app
         import mdtraj
 
-        mol2 = mdtraj.load_mol2(self._gaff_mol2)
-        positions = mol2.openmm_positions()
+        mol2 = mdtraj.load(self._gaff_mol2)
+        positions = mol2.openmm_positions(0)
         topology = mol2.top.to_openmm()
         forcefield = app.ForceField(*self._forcefield_files)
         self._system = forcefield.createSystem(topology, nonbondedMethod=app.NoCutoff, constraints=None)
 
 
     def _create_traj(self):
-        import mdtraj
-        self._traj=mdtraj.load_mol2(self._gaff_mol2)
+        import mdtraj as md
+        print self._gaff_mol2
+        self._traj=md.load(self._gaff_mol2)
 
 
 
@@ -252,17 +309,23 @@ class Mol2SystemBuilder(SmallMoleculeBuilder):
 
 class ComplexSystemBuilder(SystemBuilder):
 
-    def __init__(self, ligand_system, receptor_system):
+    def __init__(self, ligand_system, receptor_system, complex_name):
         import numpy as np
+
+        #fill in appropriate member variables
         self._ligand_system = ligand_system
         self._receptor_system = receptor_system
+        print type(self._receptor_system.forcefield_files)
 
+        self._forcefield_files = self._ligand_system.forcefield_files + self._receptor_system.forcefield_files
         #center the coordinate systems
         self.center_coordinates()
+        self._complex_name = complex_name
+
 
         #change ligand coordinates to not overlap with protein
         self._adjust_ligand_coordinates()
-        self._system, self._traj = self._combine_systems(receptor_system, ligand_system)
+        self._combine_systems()
         natoms_total = self._traj.n_atoms
         natoms_receptor = self._receptor_system.traj.n_atoms
         self._complex_positions = np.zeros([natoms_total, 3])
@@ -288,12 +351,17 @@ class ComplexSystemBuilder(SystemBuilder):
         self._ligand_system.traj = ligand_traj
         return
 
+    def _create_traj(self):
+        import mdtraj
+        self._traj = mdtraj.load_pdb(self._coordinate_file)
 
 
 
 
+    def _create_system(self):
+        self._combine_systems()
 
-    def _combine_systems(self, receptor_system, ligand_system):
+    def _combine_systems(self):
         """
         This function will combine the two systems
 
@@ -315,26 +383,22 @@ class ComplexSystemBuilder(SystemBuilder):
         import numpy as np
         import mdtraj
         #get ligand ffxml and create forcefield object
-        receptor_positions = receptor_system.traj.openmm_positions(0)
-        receptor_topology = receptor_system.traj.top.to_openmm()
-        ligand_positions = ligand_system.traj.openmm_positions(0)
-        ligand_topology = ligand_system.traj.top.to_openmm()
+        receptor_positions = self._receptor_system.traj.openmm_positions(0)
+        receptor_topology = self._receptor_system.traj.top.to_openmm()
+        ligand_positions = self._ligand_system.traj.openmm_positions(0)
+        ligand_topology = self._ligand_system.traj.top.to_openmm()
+        self._forcefield_files = self._receptor_system.forcefield_files + self._ligand_system.forcefield_files
 
 
-        forcefield = app.ForceField('amber10.xml', ligand_system.forcefield_file)
+        forcefield = app.ForceField(*self._forcefield_files)
         model = app.modeller.Modeller(receptor_topology, receptor_positions)
-        model.add(ligand_system.traj.topology.to_openmm(), ligand_positions)
+        model.add(self._ligand_system.traj.topology.to_openmm(), ligand_positions)
 
         complex_system = forcefield.createSystem(model.topology, nonbondedMethod=app.NoCutoff, constraints=None)
-        app.PDBFile.writeFile(model.topology, model.getPositions(),open('complex.pdb','w'))
-
-
-
-        #intialize complex_positions in the way that yank wants it
-
-
-
-        return complex_system, mdtraj.load_pdb('complex.pdb')
+        app.PDBFile.writeFile(model.topology, model.getPositions(),open(self._complex_name+'.pdb','w'))
+        self._coordinate_file = self._complex_name + '.pdb'
+        self._system = complex_system
+        self._create_traj()
 
 
     @property
@@ -353,9 +417,9 @@ if __name__=="__main__":
     import os
     os.environ['AMBERHOME']='/Users/grinawap/anaconda/pkgs/ambermini-14-py27_0'
     os.chdir('/Users/grinawap/driver/yank/examples/px-test')
-    ligand = Mol2SystemBuilder('ligand.tripos.mol2')
-    receptor = PDBSystemBuilder('receptor.pdb')
-    complex_system = ComplexSystemBuilder(ligand, receptor)
+    ligand = Mol2SystemBuilder('ligand.tripos.mol2', 'ligand')
+    receptor = BiomoleculePDBSystemBuilder('receptor.pdb','protein')
+    complex_system = ComplexSystemBuilder(ligand, receptor, "complex")
     complex_positions = complex_system.positions
     receptor_positions = receptor.positions
     print type(complex_system.what_yank_wants)

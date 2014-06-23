@@ -124,9 +124,9 @@ def driver():
 
 
     #make ligand, receptor, complex objects
-    ligand = Mol2SystemBuilder(options.ligand_mol2_filename)
-    receptor = PDBSystemBuilder(options.receptor_pdb_filename)
-    complex_system = ComplexSystemBuilder(ligand,receptor)
+    ligand = Mol2SystemBuilder(options.ligand_mol2_filename, "ligand")
+    receptor = BiomoleculePDBSystemBuilder(options.receptor_pdb_filename,"receptor")
+    complex_system = ComplexSystemBuilder(ligand,receptor,"complex")
     print len(complex_system.positions)
     # Initialize YANK object.
     print complex_system.what_yank_wants[0:3,:]
