@@ -195,8 +195,6 @@ class BiomoleculeSystemBuilder(SystemBuilder):
     #set default to amber10 in case forcefield files is none
     @property
     def forcefield_files(self):
-        if self._forcefield_files is None:
-            self._forcefield_files = ["amber10.xml"]
         return self._forcefield_files
     @property
     def chains_to_use(self):
