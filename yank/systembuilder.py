@@ -441,7 +441,7 @@ class ComplexSystemBuilder(SystemBuilder):
 
         forcefield = app.ForceField(*self._forcefield_files)
         model = app.modeller.Modeller(receptor_topology, receptor_positions)
-        model.add(ligand_topology.to_openmm(), ligand_positions)
+        model.add(ligand_topology, ligand_positions)
 
         complex_system = forcefield.createSystem(model.topology, nonbondedMethod=app.NoCutoff, constraints=None)
         app.PDBFile.writeFile(model.topology, model.getPositions(),open(self._complex_name+'.pdb','w'))
