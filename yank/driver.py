@@ -127,11 +127,11 @@ def driver():
     ligand = Mol2SystemBuilder(options.ligand_mol2_filename, "ligand")
     receptor = BiomoleculePDBSystemBuilder(options.receptor_pdb_filename,"receptor")
     complex_system = ComplexSystemBuilder(ligand,receptor,"complex")
-    print len(complex_system.positions)
+
     # Initialize YANK object.
-    print complex_system.what_yank_wants[0:3,:]
+
     from yank import Yank
-    yank = Yank(receptor=receptor.system, ligand=ligand.system, complex=complex_system.system, complex_positions=[complex_system.what_yank_wants], output_directory=options.output_directory, verbose=options.verbose)
+    yank = Yank(receptor=receptor.system, ligand=ligand.system, complex=complex_system.system, complex_positions=[complex_system.coordinates_as_quantity], output_directory=options.output_directory, verbose=options.verbose)
 
     # Configure YANK object with command-line parameter overrides.
     if options.niterations is not None:

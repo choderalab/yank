@@ -72,7 +72,7 @@ class SystemBuilder(object):
     def center_coordinates(self):
         """
         Calls the center_coordinates() method on the trajectory object; calls create_traj() to create one if no such object
-        is available
+        is available. This takes the mean along each axis and subtracts it from that frame.
         """
         if self._traj is None:
             self._create_traj()
@@ -389,6 +389,7 @@ class ComplexSystemBuilder(SystemBuilder):
         return
 
     def center_coordinates(self):
+
         self._ligand_system.center_coordinates()
         self._receptor_system.center_coordinates()
         return
