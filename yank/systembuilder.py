@@ -127,7 +127,7 @@ class SystemBuilder(Object):
     @traj.setter
     def traj(self, new_traj):
         if (new_traj.top!=self._traj.top):
-            raise Exception
+           raise ValueError("Cannot set trajectory with incompatible topology.")
         else:
             self._traj = new_traj
 
