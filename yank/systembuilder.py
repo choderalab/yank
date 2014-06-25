@@ -101,8 +101,6 @@ class SystemBuilder(Object):
         if self._traj is None:
             self._create_traj()
             return self._traj.xyz[:,:]
-        else:
-            return self._traj.xyz[:,:]
 
     @property
     def forcefield(self):
