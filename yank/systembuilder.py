@@ -217,7 +217,7 @@ class BiomoleculePDBSystemBuilder(BiomoleculeSystemBuilder):
     """
 
 
-    def __init__(self, coordinate_file, molecule_name, forcefield_files=None, chain_ids=None, pH=7.0 ):
+    def __init__(self, coordinate_file, molecule_name, forcefield_files=['amber10.xml'], chain_ids=None, pH=7.0 ):
         """
         BiomoleculePDBSystemBuilder constructor
 
@@ -268,8 +268,6 @@ class BiomoleculePDBSystemBuilder(BiomoleculeSystemBuilder):
             molecule_chains = list(fixer.topology.chains())
             #figure this out
             raise NotImplementedError
-        if self._forcefield_files is None:
-            self._forcefield_files = ["amber10.xml"]
         forcefield = app.ForceField(*self._forcefield_files)
         #change this later to not have these hardcoded
         self._system = forcefield.createSystem(fixer.topology, implicitSolvent=app.OBC2)
