@@ -1,9 +1,15 @@
 __author__ = 'Patrick Grinaway'
 
 import abc
+import pdbfixer
+import mdtraj
+import numpy as np
+import simtk.openmm.app as app
+import simtk.unit as units
+import gaff2xml
 
 
-class SystemBuilder(Object):
+class SystemBuilder(object):
     """
     class SystemBuilder:
         This is a base class for other classes that will create systems for use with Yank
@@ -106,7 +112,6 @@ class SystemBuilder(Object):
     def forcefield(self):
         """Get the SystemBuilder's simtk.app.ForceField object. Create one if it doesn't exist"""
         if self._forcefield is None:
-            import simtk.openmm.app as app
             self._forcefield = app.ForceField(*self._forcefield_files)
         return self._forcefield
 
@@ -237,7 +242,6 @@ class BiomoleculePDBSystemBuilder(BiomoleculeSystemBuilder):
         This function is an internal function that overrides the parent in order to load a pdb file
         It should only be called internally
         """
-        import mdtraj
         self._traj = mdtraj.load_pdb(self._coordinate_file)
 
 
@@ -250,9 +254,7 @@ class BiomoleculePDBSystemBuilder(BiomoleculeSystemBuilder):
         Additional parameters may be added later. Need to fix chain selection.
         It should only be called internally
         """
-        import pdbfixer
-        import simtk.openmm.app as app
-        import mdtraj
+
         fixer = pdbfixer.PDBFixer(self._coordinate_file)
         fixer.findMissingResidues()
         fixer.findNonstandardResidues()
@@ -263,9 +265,9 @@ class BiomoleculePDBSystemBuilder(BiomoleculeSystemBuilder):
         fixer.addMissingHydrogens(self._pH)
         #keep only the chains the user wants
         if self._chains_to_use is not None:
-            molecule_chains = list(fixer.topology.chains())
-            #figure this out
-            raise NotImplementedError
+            n_chains = len(list(fixer.topology.chains()))
+            chains_to_remove = np.setdiff1d(np.arange(n_chains), self.keep_chains)
+            fixer.removeChains(chains_to_remove)
         forcefield = app.ForceField(*self._forcefield_files)
         #change this later to not have these hardcoded
         self._system = forcefield.createSystem(fixer.topology, implicitSolvent=app.OBC2)
@@ -315,8 +317,7 @@ class Mol2SystemBuilder(SmallMoleculeBuilder):
         **kwargs: will be used to allow extra parameters to be passed to parameterization scheme
 
         """
-        import gaff2xml
-        from simtk.openmm import app
+
         parser = gaff2xml.amber_parser.AmberParser()
         (gaff_mol2_filename, gaff_frcmod_filename) = gaff2xml.utils.run_antechamber(self._molecule_name, self._coordinate_file,charge_method="bcc")
         self._gaff_mol2 = gaff_mol2_filename
@@ -341,11 +342,6 @@ class Mol2SystemBuilder(SmallMoleculeBuilder):
 
         """
 
-
-        import gaff2xml
-        from simtk.openmm import app
-        import mdtraj
-
         mol2 = mdtraj.load(self._gaff_mol2)
         positions = mol2.openmm_positions(0)
         topology = mol2.top.to_openmm()
@@ -354,9 +350,9 @@ class Mol2SystemBuilder(SmallMoleculeBuilder):
 
 
     def _create_traj(self):
-        import mdtraj as md
+
         print self._gaff_mol2
-        self._traj=md.load(self._gaff_mol2)
+        self._traj=mdtraj.load(self._gaff_mol2)
 
 
 
@@ -367,7 +363,6 @@ class Mol2SystemBuilder(SmallMoleculeBuilder):
 class ComplexSystemBuilder(SystemBuilder):
 
     def __init__(self, ligand_system, receptor_system, complex_name):
-        import numpy as np
 
         #fill in appropriate member variables
         self._ligand_system = ligand_system
@@ -400,7 +395,7 @@ class ComplexSystemBuilder(SystemBuilder):
 
 
     def _adjust_ligand_coordinates(self):
-        import numpy as np
+
         ligand_traj = self._ligand_system.traj
         receptor_traj = self._receptor_system.traj
         min_atom_pair_distance = ((ligand_traj.xyz[0] ** 2.).sum(1) ** 0.5).max() + ((receptor_traj.xyz[0] ** 2.).sum(1) ** 0.5).max() + 0.3
@@ -409,7 +404,7 @@ class ComplexSystemBuilder(SystemBuilder):
         return
 
     def _create_traj(self):
-        import mdtraj
+
         self._traj = mdtraj.load_pdb(self._coordinate_file)
 
 
@@ -434,11 +429,7 @@ class ComplexSystemBuilder(SystemBuilder):
 
         """
 
-        import simtk.openmm
-        import simtk.openmm.app as app
-        import simtk.unit as units
-        import numpy as np
-        import mdtraj
+
         #get ligand ffxml and create forcefield object
         receptor_positions = self._receptor_system.traj.openmm_positions(0)
         receptor_topology = self._receptor_system.traj.top.to_openmm()
@@ -463,7 +454,7 @@ class ComplexSystemBuilder(SystemBuilder):
         return self._complex_positions
     @property
     def coordinates_as_quantity(self):
-        import simtk.unit as units
+
         return units.Quantity(self._complex_positions,units.nanometers)
 
 
