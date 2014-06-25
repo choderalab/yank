@@ -108,10 +108,7 @@ class SystemBuilder(Object):
         if self._forcefield is None:
             import simtk.openmm.app as app
             self._forcefield = app.ForceField(*self._forcefield_files)
-            return self._forcefield
-        else:
-            return self._forcefield
-
+        return self._forcefield
 
     @property
     def forcefield_files(self):
@@ -200,9 +197,7 @@ class BiomoleculeSystemBuilder(SystemBuilder):
     def forcefield_files(self):
         if self._forcefield_files is None:
             self._forcefield_files = ["amber10.xml"]
-            return self._forcefield_files
-        else:
-            return self._forcefield_files
+        return self._forcefield_files
     @property
     def chains_to_use(self):
         return self._chains_to_use
