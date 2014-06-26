@@ -320,15 +320,12 @@ class Mol2SystemBuilder(SmallMoleculeBuilder):
 
         """
 
-        parser = gaff2xml.amber_parser.AmberParser()
+
         (gaff_mol2_filename, gaff_frcmod_filename) = gaff2xml.utils.run_antechamber(self._molecule_name, self._coordinate_file,charge_method="bcc")
-        self._gaff_mol2 = gaff_mol2_filename
-        parser.parse_filenames([gaff_mol2_filename, gaff_frcmod_filename])
-        ffxml_stream = parser.generate_xml()
         ffxml_filename = self._molecule_name+ '.ffxml'
-        outfile = open(ffxml_filename, 'w')
-        outfile.write(ffxml_stream.read())
-        outfile.close()
+        gaff2xml.utils.create_ffxml_file(gaff_mol2_filename, gaff_frcmod_filename,ffxml_filename)
+        self._gaff_mol2 = gaff_mol2_filename
+
         if self._forcefield_files is None:
             self._forcefield_files = list()
             self._forcefield_files.append(ffxml_filename)
@@ -463,4 +460,37 @@ class ComplexSystemBuilder(SystemBuilder):
 
 
 
+
+if __name__=="__main__":
+    import os
+    import simtk.unit as unit
+    import simtk.openmm as openmm
+    import numpy as np
+    import simtk.openmm.app as app
+    os.environ['AMBERHOME']='/Users/grinawap/anaconda/pkgs/ambermini-14-py27_0'
+    os.chdir('/Users/grinawap/driver/yank/examples/px-test')
+    ligand = Mol2SystemBuilder('ligand.tripos.mol2', 'ligand')
+    receptor = BiomoleculePDBSystemBuilder('receptor.pdb','protein')
+    complex_system = ComplexSystemBuilder(ligand, receptor, "complex")
+    timestep = 2.0 * unit.femtoseconds # timestep
+    temperature = 300.0 * unit.kelvin # simulation temperature
+    collision_rate = 20.0 / unit.picoseconds # Langevin collision rate
+    systembuilders = [ligand]
+    minimization_tolerance = 10.0 * unit.kilojoules_per_mole / unit.nanometer
+    minimization_steps = 20
+    plat = "CPU"
+    platform = openmm.Platform.getPlatformByName(plat)
+    i=0
+    print str(i)
+    integrator = openmm.LangevinIntegrator(temperature, collision_rate, timestep)
+    context = openmm.Context(systembuilders[i].system, integrator, platform)
+    context.setPositions(systembuilders[i].openmm_positions)
+    openmm.LocalEnergyMinimizer.minimize(context, minimization_tolerance, minimization_steps)
+    #integrator.step(1000)
+    state = context.getState(getEnergy=True, getPositions=True)
+    outfile = open('out6.pdb','w')
+    app.PDBFile.writeHeader(ligand.traj.top.to_openmm(), outfile)
+    app.PDBFile.writeModel(ligand.traj.top.to_openmm(), state.getPositions(), outfile,0)
+    app.PDBFile.writeFooter(ligand.traj.top.to_openmm(), outfile)
+    outfile.close()
 
