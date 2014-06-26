@@ -472,25 +472,24 @@ if __name__=="__main__":
     ligand = Mol2SystemBuilder('ligand.tripos.mol2', 'ligand')
     receptor = BiomoleculePDBSystemBuilder('receptor.pdb','protein')
     complex_system = ComplexSystemBuilder(ligand, receptor, "complex")
-    timestep = 2.0 * unit.femtoseconds # timestep
+    complex_positions = complex_system.positions
+    receptor_positions = receptor.positions
+    print type(complex_system.coordinates_as_quantity)
+    timestep = 2 * unit.femtoseconds # timestep
     temperature = 300.0 * unit.kelvin # simulation temperature
     collision_rate = 20.0 / unit.picoseconds # Langevin collision rate
-    systembuilders = [ligand]
     minimization_tolerance = 10.0 * unit.kilojoules_per_mole / unit.nanometer
     minimization_steps = 20
     plat = "CPU"
+    i=2
     platform = openmm.Platform.getPlatformByName(plat)
-    i=0
-    print str(i)
+    forcefield = app.ForceField
+    systembuilders = [ligand, receptor, complex_system]
     integrator = openmm.LangevinIntegrator(temperature, collision_rate, timestep)
-    context = openmm.Context(systembuilders[i].system, integrator, platform)
-    context.setPositions(systembuilders[i].openmm_positions)
-    openmm.LocalEnergyMinimizer.minimize(context, minimization_tolerance, minimization_steps)
-    #integrator.step(1000)
-    state = context.getState(getEnergy=True, getPositions=True)
-    outfile = open('out6.pdb','w')
-    app.PDBFile.writeHeader(ligand.traj.top.to_openmm(), outfile)
-    app.PDBFile.writeModel(ligand.traj.top.to_openmm(), state.getPositions(), outfile,0)
-    app.PDBFile.writeFooter(ligand.traj.top.to_openmm(), outfile)
-    outfile.close()
-
+    simulation = app.Simulation(systembuilders[i].traj.top.to_openmm(), systembuilders[i].system, integrator)
+    simulation.context.setPositions(systembuilders[i].openmm_positions)
+    simulation.minimizeEnergy(tolerance=10*unit.kilojoule_per_mole)
+    simulation.reporters.append(app.PDBReporter('output3.pdb', 100))
+    for j in range(10):
+        print str(j)
+        simulation.step(100)
