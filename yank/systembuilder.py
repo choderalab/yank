@@ -9,7 +9,7 @@ import simtk.unit as units
 import gaff2xml
 
 
-class SystemBuilder(object):
+class SystemBuilder():
     """
     class SystemBuilder:
         This is a base class for other classes that will create systems for use with Yank
@@ -467,6 +467,7 @@ if __name__=="__main__":
     import simtk.openmm as openmm
     import numpy as np
     import simtk.openmm.app as app
+    import alchemy
     os.environ['AMBERHOME']='/Users/grinawap/anaconda/pkgs/ambermini-14-py27_0'
     os.chdir('/Users/grinawap/driver/yank/examples/px-test')
     ligand = Mol2SystemBuilder('ligand.tripos.mol2', 'ligand')
@@ -480,16 +481,37 @@ if __name__=="__main__":
     collision_rate = 20.0 / unit.picoseconds # Langevin collision rate
     minimization_tolerance = 10.0 * unit.kilojoules_per_mole / unit.nanometer
     minimization_steps = 20
-    plat = "CPU"
+    plat = "CUDA"
     i=2
     platform = openmm.Platform.getPlatformByName(plat)
     forcefield = app.ForceField
     systembuilders = [ligand, receptor, complex_system]
-    integrator = openmm.LangevinIntegrator(temperature, collision_rate, timestep)
-    simulation = app.Simulation(systembuilders[i].traj.top.to_openmm(), systembuilders[i].system, integrator)
-    simulation.context.setPositions(systembuilders[i].openmm_positions)
-    simulation.minimizeEnergy(tolerance=10*unit.kilojoule_per_mole)
-    simulation.reporters.append(app.PDBReporter('output3.pdb', 100))
+    receptor_atoms = range(0,2603)
+    ligand_atoms = range(2603,2621)
+    factory = alchemy.AbsoluteAlchemicalFactory(systembuilders[i].system, ligand_atoms=ligand_atoms)
+    protocol = factory.defaultComplexProtocolImplicit()
+    systems = factory.createPerturbedSystems(protocol)
+    integrator_interacting = openmm.LangevinIntegrator(temperature, collision_rate, timestep)
+    #test an alchemical intermediate and an unperturbed system:
+    fully_interacting = app.Simulation(systembuilders[i].traj.top.to_openmm(),systems[0], integrator_interacting, platform=plat)
+    fully_interacting.context.setPositions(systembuilders[i].openmm_positions)
+    fully_interacting.minimizeEnergy(tolerance=10*unit.kilojoule_per_mole)
+    fully_interacting.reporters.append(app.PDBReporter('fully_interacting.pdb', 10))
     for j in range(10):
         print str(j)
-        simulation.step(100)
+        fully_interacting.step(100)
+    del fully_interacting
+
+
+    for p in range(1, len(systems)):
+        print "now simulating " + str(p)
+        integrator_partialinteracting = openmm.LangevinIntegrator(temperature, collision_rate, timestep)
+        partially_interacting = app.Simulation(systembuilders[i].traj.top.to_openmm(),systems[p], integrator_partialinteracting, platform=plat)
+        partially_interacting.context.setPositions(systembuilders[i].openmm_positions)
+        partially_interacting.minimizeEnergy(tolerance=10*unit.kilojoule_per_mole)
+        partially_interacting.reporters.append(app.PDBReporter('partial_interacting'+str(p)+'.pdb', 10))
+        for k in range(10):
+            print str(k)
+            partially_interacting.step(100)
+        del partially_interacting
+
