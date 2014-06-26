@@ -128,6 +128,8 @@ class SystemBuilder(object):
         This is to avoid inconsistent state in the SystemBuilder.
 
         """
+        if self._traj is None:
+            self._create_traj()
         return self._traj
     @traj.setter
     def traj(self, new_traj):
@@ -457,21 +459,6 @@ class ComplexSystemBuilder(SystemBuilder):
     def coordinates_as_quantity(self):
 
         return units.Quantity(self._complex_positions,units.nanometers)
-
-
-
-
-
-if __name__=="__main__":
-    import os
-    os.environ['AMBERHOME']='/Users/grinawap/anaconda/pkgs/ambermini-14-py27_0'
-    os.chdir('/Users/grinawap/driver/yank/examples/px-test')
-    ligand = Mol2SystemBuilder('ligand.tripos.mol2', 'ligand')
-    receptor = BiomoleculePDBSystemBuilder('receptor.pdb','protein')
-    complex_system = ComplexSystemBuilder(ligand, receptor, "complex")
-    complex_positions = complex_system.positions
-    receptor_positions = receptor.positions
-    print type(complex_system.coordinates_as_quantity)
 
 
 
