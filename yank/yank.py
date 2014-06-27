@@ -1111,7 +1111,7 @@ def main():
     from optparse import OptionParser
     parser = OptionParser()
     parser.add_option("--ligand_prmtop", dest="ligand_prmtop_filename", default=None, help="ligand Amber parameter file", metavar="LIGAND_PRMTOP")
-    parser.add_option("--receptor_prmtop", dest="receptor_prmtop_filename", default=None, help="receptor Amber parameter file", metavar="RECEPTOR_PRMTOP")    
+    parser.add_option("--receptor_prmtop", dest="receptor_prmtop_filename", default=None, help="receptor Amber parameter file", metavar="RECEPTOR_PRMTOP")
     parser.add_option("--ligand_crd", dest="ligand_crd_filename", default=None, help="ligand Amber crd file", metavar="LIGAND_CRD")
     parser.add_option("--receptor_crd", dest="receptor_crd_filename", default=None, help="receptor Amber crd file", metavar="RECEPTOR_CRD")
     parser.add_option("--ligand_mol2", dest="ligand_mol2_filename", default=None, help="ligand mol2 file (can contain multiple conformations)", metavar="LIGAND_MOL2")
@@ -1132,7 +1132,7 @@ def main():
 
     # Parse command-line arguments.
     (options, args) = parser.parse_args()
-    
+
     if options.doctests:
         print "Running doctests..."
         import doctest
@@ -1147,13 +1147,13 @@ def main():
     # Check arguments for validity.
     if not (options.ligand_prmtop_filename and options.receptor_prmtop_filename):
         parser.print_help()
-        parser.error("ligand and receptor prmtop files must be specified")        
+        parser.error("ligand and receptor prmtop files must be specified")
     if not (bool(options.ligand_mol2_filename) ^ bool(options.ligand_crd_filename) ^ bool(options.complex_pdb_filename) ^ bool(options.complex_crd_filename)):
         parser.print_help()
         parser.error("Ligand positions must be specified through only one of --ligand_crd, --ligand_mol2, --complex_crd, or --complex_pdb.")
     if not (bool(options.receptor_pdb_filename) ^ bool(options.receptor_crd_filename) ^ bool(options.complex_pdb_filename) ^ bool(options.complex_crd_filename)):
         parser.print_help()
-        parser.error("Receptor positions must be specified through only one of --receptor_crd, --receptor_pdb, --complex_crd, or --complex_pdb.")    
+        parser.error("Receptor positions must be specified through only one of --receptor_crd, --receptor_pdb, --complex_crd, or --complex_pdb.")
 
     # Require complex prmtop files to be specified.
     # TODO: Automatically set up solvent system after extracting ligand.
@@ -1164,11 +1164,11 @@ def main():
     # Initialize MPI if requested.
     mpicomm = None
     if options.mpi:
-        # Initialize MPI. 
+        # Initialize MPI.
         try:
             from mpi4py import MPI # MPI wrapper
             hostname = os.uname()[1]
-            if not MPI.COMM_WORLD.rank == 0: 
+            if not MPI.COMM_WORLD.rank == 0:
                 options.verbose = False
             MPI.COMM_WORLD.barrier()
             if MPI.COMM_WORLD.rank == 0: print "Initialized MPI on %d processes." % (MPI.COMM_WORLD.size)
@@ -1258,7 +1258,7 @@ def main():
     if options.restraint_type is not None:
         yank.restraint_type = options.restraint_type
     if options.randomize_ligand:
-        yank.randomize_ligand = True 
+        yank.randomize_ligand = True
 
     # Select platform, if specified.
     if options.platform:
