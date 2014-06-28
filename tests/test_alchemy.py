@@ -512,6 +512,25 @@ def test_obcgbsa_complex():
     logger.info("====================================================================")
     logger.info("")
 
+def test_systembuilder_lysozyme_pdb_mol2():
+    logger.info("====================================================================")
+    logger.info("Creating T4 lysozyme L99A in OBC GBSA from PDB and mol2 with SystemBuilder...")
+    # Retrieve receptor and ligand file paths.
+    receptor_pdb_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/receptor.pdb")
+    ligand_mol2_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/ligand.mol2")
+    # Use systembuilder 
+    import yank.systembuilder
+    from yank.systembuilder import Mol2SystemBuilder, BiomoleculePDBSystemBuilder, ComplexSystemBuilder
+    ligand = Mol2SystemBuilder(ligand_mol2_filename, "ligand")
+    receptor = BiomoleculePDBSystemBuilder(receptor_pdb_filename,"receptor")
+    complex = ComplexSystemBuilder(ligand,receptor,"complex")
+    # Test alchemically modified systems.
+    receptor_atoms = range(0,2603) # T4 lysozyme L99A
+    ligand_atoms = range(2603,2621) # p-xylene
+    alchemical_factory_check(complex.system, complex.coordinates_as_quantity, receptor_atoms, ligand_atoms)
+    logger.info("====================================================================")
+    logger.info("")
+
 def test_src_implicit():
     # This test is too slow for travis-ci.
     # TODO: Replace with Abl + imatinib
@@ -545,6 +564,8 @@ def test_src_explicit():
 #=============================================================================================
 
 if __name__ == "__main__":
+    test_systembuilder_lysozyme_pdb_mol2()
+    sys.exit(1) # DEBUG
     test_lj_cluster()
     test_lj_fluid_without_dispersion()
     test_lj_fluid_with_dispersion()
