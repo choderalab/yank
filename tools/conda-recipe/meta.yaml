@@ -1,5 +1,5 @@
 package:
-  name: gaff2xml
+  name: yank
   version: !!str dev
 
 
@@ -11,6 +11,7 @@ requirements:
     - scipy
     - setuptools
     - mdtraj-dev
+    - gaff2xml-dev
     - openmm    
     - ambermini    
 
@@ -19,10 +20,11 @@ requirements:
     - pandas
     - scipy
     - mdtraj-dev
+    - gaff2xml-dev    
     - openmm    
     - ambermini    
 
 about:
-  home: https://github.com/choderalab/gaff2xml
+  home: https://github.com/choderalab/yank
   license: GNU Lesser General Public License v2 or later (LGPLv2+)
 
