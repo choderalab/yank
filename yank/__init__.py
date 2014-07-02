@@ -26,5 +26,4 @@ this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 # Define global version.
-#import version
-#__version__ = version.version
+from . import version
