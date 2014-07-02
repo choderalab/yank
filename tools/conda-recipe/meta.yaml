@@ -1,0 +1,30 @@
+package:
+  name: yank
+  version: !!str dev
+
+
+requirements:
+  build:
+    - python
+    - cython
+    - numpy
+    - scipy
+    - setuptools
+    - mdtraj-dev
+    - gaff2xml-dev
+    - openmm    
+    - ambermini    
+
+  run:
+    - python
+    - pandas
+    - scipy
+    - mdtraj-dev
+    - gaff2xml-dev    
+    - openmm    
+    - ambermini    
+
+about:
+  home: https://github.com/choderalab/yank
+  license: GNU Lesser General Public License v2 or later (LGPLv2+)
+
