@@ -71,9 +71,9 @@ You can either install [Anaconda](https://store.continuum.io/cshop/anaconda/) sc
 pip install conda
 ```
 
-Many of the prerequisites can be installed via the [conda](http://www.continuum.io/blog/conda) package manager:
+Install the development version of YANK and its prerequisites using this conda:
 ```bash
-conda install -c https://conda.binstar.org/omnia yank-devpip install 
+conda install -c https://conda.binstar.org/omnia yank-dev
 ```
 
 To use the optional [OpenEye toolkits](http://www.eyesopen.com/toolkits) to add more small-molecule manipulation capability to YANK
