@@ -11,3 +11,4 @@ openmm
 ambermini
 jinja2
 gaff2xml-dev
+netcdf4
