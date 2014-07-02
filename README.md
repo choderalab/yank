@@ -61,28 +61,24 @@ Use of this module requires the following
 * OpenEye toolkit and Python wrappers (if mol2 and PDB reading features are used ;requires academic or commercial license):
   http://www.eyesopen.com
 
-Simplified Python prerequisite installation
--------------------------------------------
+Simplified Python installation using conda
+------------------------------------------
 
-The continuum.io [Anaconda](https://store.continuum.io/cshop/anaconda/) scientific python distribution is the easiest way to get started with YANK.
+The [conda](http://conda.pydata.org) cross-platform binary Python package manager from [continuum.io](http://continuum.io) is the easiest way to get started with YANK.
 
-Download and install the latest version here:
-https://store.continuum.io/cshop/anaconda/
+You can either install [Anaconda](https://store.continuum.io/cshop/anaconda/) scientific python distribution, or you can install `conda` via `pip`:
+```
+pip install conda
+```
 
 Many of the prerequisites can be installed via the [conda](http://www.continuum.io/blog/conda) package manager:
 ```bash
-conda config --add channels https://conda.binstar.org/jchodera # remove me when packages migrated to omnia
-conda config --add channels https://conda.binstar.org/omnia
-conda install numpy scipy netcdf4 mpi4py ambermini openmm
-pip install OpenEye-python2.7-ubuntu-10.04-x64-2014.2.2.tar.gz #make sure pip is anaconda's pip
+conda install -c https://conda.binstar.org/omnia yank-devpip install 
 ```
 
-### TODO: Installing OpenEye tools with Anaconda.
-
-### TODO: In future, we will just be able to do 'conda install yank' once we have conda dependencies set up.
-```bash
-conda config --add channels https://conda.binstar.org/jchodera # switch to omnia later
-conda install yank
+To use the optional [OpenEye toolkits](http://www.eyesopen.com/toolkits) to add more small-molecule manipulation capability to YANK
+```
+pip install OpenEye-python2.7-ubuntu-10.04-x64-2014.2.2.tar.gz
 ```
 
 Running YANK from the command line
