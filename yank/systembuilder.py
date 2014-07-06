@@ -32,6 +32,8 @@ import mdtraj
 import numpy as np
 import simtk.openmm.app as app
 import simtk.unit as units
+import os, os.path
+import tempfile
 import gaff2xml
 
 #=============================================================================================
@@ -57,23 +59,31 @@ class SystemBuilder():
        The number of atoms in the system.
     ffxmls : list of str
        List of OpenMM ForceField ffxml file contents used to parameterize this System.
+    system_creation_parameters : dict of str
+       Key-value pairs passed to ForceField.createSystem() when system is created.
+
+    TODO:
+    * Make system_creation_parameters private and use setter/getters that only allow changes to dict before self._system has been created.
 
     """
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, ffxml_filenames=None, ffxmls=None):
+    def __init__(self, ffxml_filenames=None, ffxmls=None, system_creation_parameters=None):
         """
         Abstract base class for SystemBuilder classes.
 
         Parameters
         ----------
         ffxml_filenames : list of str, optional, default=None
-           List of OpenMM ForceField ffxml filenames used to parameterize the System.
+           List of OpenMM ForceField ffxml filenames (relative or absolute) used to parameterize the System.
         ffxmls : list of str, optional, default=None
             List of ffxml file contents used to parameterize the System.
+        system_creation_parameters : dict of str, optional, default=None
+            If specified, these key-value parameters are used in the creation of the System object via ForceField.createSystem().
+            If None, an empty dict is used.
 
         """
-        
+
         # Set private class properties.
         self._ffxmls = ffxmls
         self._append_ffxmls(ffxml_filenames)
@@ -82,7 +92,34 @@ class SystemBuilder():
         self._positions = None # OpenMM positions as simtk.unit.Quantity with units compatible with nanometers
         self._system = None # OpenMM System object created by ForceField
 
+        self.system_creation_parameters = system_creation_parameters # dictionary of parameters passed to ForceField.createSystem()
+
         return
+
+    def _read_ffxml(self, ffxml_filename):
+        """
+        Read the contents of the specified ffxml file, using relative or absolute paths.
+
+        Parameters
+        ----------
+        ffxml_filename : str
+           An XML file defining the force field.  Each entry may be an absolute file path, a path relative to the
+           current working directory, or a path relative to this module's data subdirectory (for built in force fields).
+
+        TODO:
+        * Also try append .xml or .ffxml extensions.
+
+        """
+        try:
+            infile = open(ffxml_filename, 'r')
+        except IOError:
+            from simtk.openmm.app import forcefield
+            relative_path = os.path.dirname(simtk.openmm.app.forcefield.__file__)
+            infile = open(relative_path, 'r')
+
+        ffxml = infile.read()
+        infile.close()
+        return ffxml
 
     def _append_ffxmls(self, ffxml_filenames):
         """
@@ -91,7 +128,8 @@ class SystemBuilder():
         Parameters
         ----------
         ffxml_filenames : list of str
-           List of filenames for ffxml files to read and append to self._ffxmls.
+           A list of XML files defining the force field.  Each entry may be an absolute file path, a path relative to the
+           current working directory, or a path relative to this module's data subdirectory (for built in force fields).
 
         """
         if ffxml_filenames:
@@ -105,8 +143,15 @@ class SystemBuilder():
         Create the OpenMM System object.
 
         """
-        forcefield = app.ForceField(*self._ffxmls)
-        self._system = forcefield.createSystem(self._topology)
+        # Create file-like objects from ffxml contents because ForceField cannot yet read strings.
+        from StringIO import StringIO
+        ffxml_streams = list()
+        for ffxml in self._ffxmls:
+            ffxml_streams.append(StringIO(ffxml))
+        # Create ForceField.
+        forcefield = app.ForceField(ffxml_streams)
+        # Create System from topology.
+        self._system = forcefield.createSystem(self._topology, **self.system_creation_parameters)
         return
 
     @property
@@ -118,7 +163,6 @@ class SystemBuilder():
 
         """
         if self._system is None:
-
             self._create_system()
         return self._system
 
@@ -139,7 +183,7 @@ class SystemBuilder():
     def topology(self):
         """
         Return the SystemBuilder's OpenMM topology object.
-        
+
         Returns
         -------
         topology : simtk.openmm.app.Toplogy
@@ -176,7 +220,7 @@ class SystemBuilder():
            The ForceField object associated with this class.  One is created if it does not yet exist.
 
         A deep copy is returned to avoid accidentally modifying these objects.
-           
+
         """
         return copy.deepcopy(self._forcefield)
 
@@ -196,56 +240,7 @@ class SystemBuilder():
         return copy.deepcopy(self._ffxmls)
 
 #=============================================================================================
-# ABSTRACT BASE SMALL MOLECULE BUILDER
-#=============================================================================================
-
-class SmallMoleculeBuilder(SystemBuilder):
-    """
-    class SmallMoleculeBuilder:
-        This is a base class for SystemBuilders that will handle small molecules. In general, this means that forcefield
-        parameters may have to be generated. It does not necessarily imply that this
-
-    TODO:
-    * Allow specification of charge assignment method.
-    * Support additional small molecule parameterization methods (e.g. oeante, paramchem, ATB)
-
-    """
-
-    def __init__(self, coordinate_file, molecule_name, forcefield_files=None, **kwargs):
-        """
-
-        SmallMoleculeBuilder Constructor. This is a stub.
-        It calls the base constructor, then checks to see if there are any forcefield files. If not,
-        it will call the build_forcefield() method using the method specified in parameterization_method
-
-        Parameters
-        ----------
-        coordinate_file : str
-           Coordinate file specifying the small molecule (e.g. PDB, mol2, SDF)
-        molecule_name : str
-           Name of the molecule.
-        forcefield_files : list of str
-           List of OpenMM ffxml files that contain parameters for the molecule.
-           If None, these files will be constructed using the specified parameterization method.
-
-        """
-        super(SmallMoleculeBuilder, self).__init__()
-        if forcefield_files is None:
-            self.build_forcefield(**kwargs)
-
-    @abc.abstractmethod
-    def build_forcefield(self, **kwargs):
-        """
-        Build a forcefield ffxml file from the molecule using the specified method.
-
-        Takes coordinate file and molecule name from member variables
-        Must be overridden by child classes
-
-        """
-        pass
-
-#=============================================================================================
-# ABSTRACT BIOPOLYMER SYSTEM BUILDER 
+# ABSTRACT BIOPOLYMER SYSTEM BUILDER
 #=============================================================================================
 
 class BiopolymerSystemBuilder(SystemBuilder):
@@ -261,18 +256,10 @@ class BiopolymerSystemBuilder(SystemBuilder):
 
         Parameters
         ----------
-        coordinate_file : str
-           Filename specifying biopolymer.
-        molecule_name : str
-           Name of the biopolymer.
-        forcefield_files : list of str
-           ForceField ffxml files.
-        chain_ids : list of str, optional, default=None
-           List of which chains to include, or None if all chains are to be included.
-           e.g. 'ABC'
-           
+
         """
         super(BiopolymerSystemBuilder, self).__init__()
+        return
 
 #=============================================================================================
 # BIOPOLYMER SYSTEM BUILDER FOR PDB FILES
@@ -296,20 +283,30 @@ class BiopolymerPDBSystemBuilder(BiopolymerSystemBuilder):
         ----------
         pdb_filename : str
            PDB filename
-        forcefield_files : list of str, default=None
+        chain_ids : str, default=None
+           List of chain IDs that should be kept (e.g. 'ACFG'), or None if all are kept.
+        ffxml_filenames : list of str, default=None
            List of OpenMM ForceField ffxml files used to parameterize the System.
-        chain_ids : list of str, default=None
-           List of chain IDs that should be kept.
         pH : float, default 7.0
            pH to be used in determining the protonation state of the biopolymer.
+
+        Examples
+        --------
+        Create a SystemBuilder for a PDB file.
+        >>> from repex import testsystems
+        >>> receptor_pdb_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/receptor.pdb")
+        >>> receptor = BiopolymerPDBSystemBuilder(receptor_pdb_filename, pH=7.0)
+        >>> system = receptor.system
+        >>> positions = receptor.positions
+        >>> natoms = receptor.natoms
 
         """
         # Call base constructor.
         super(BiopolymerPDBMoleculeBuilder, self).__init__(ffxml_filenames=ffxml_filenames)
 
-        # Store the desired pH.
+        # Store the desired pH used to assign protonation states.
         self._pH = pH
-        
+
         # Use PDBFixer to add missing atoms and residues and set protonation states appropriately.
         fixer = pdbfixer.PDBFixer(self._coordinate_file)
         fixer.findMissingResidues()
@@ -323,14 +320,14 @@ class BiopolymerPDBSystemBuilder(BiopolymerSystemBuilder):
 
         # Keep only the chains the user wants
         if self._chains_to_use is not None:
-            # TODO: Check correctness.
+            # TODO: Check correctness of this.
             n_chains = len(list(fixer.topology.chains()))
             chains_to_remove = np.setdiff1d(np.arange(n_chains), self.keep_chains)
             fixer.removeChains(chains_to_remove)
-            
+
         # Store OpenMM topology.
         self._topology = fixer.topology
-        
+
         # Store OpenMM positions.
         self._positions = fixer.positions
 
@@ -350,6 +347,439 @@ class BiopolymerPDBSystemBuilder(BiopolymerSystemBuilder):
         return self._pH
 
 #=============================================================================================
+# ABSTRACT BASE SMALL MOLECULE BUILDER
+#=============================================================================================
+
+class SmallMoleculeBuilder(SystemBuilder):
+    """
+    Concrete base class for SystemBuilders that will handle small molecules given OpenMM positions and topology.
+    Parameters may be created by an external tool, if specified.
+
+    This version manages an internal OpenEye OEChem object for convenience.
+    Other tools may be supported as well in the future.
+
+    TODO:
+    * Allow specification of charge assignment method.
+    * Support additional small molecule parameterization methods (e.g. oeante, paramchem, ATB)
+
+    """
+
+    # Loaded OpenEye modules
+    oechem = None
+    oeiupac = None
+    oeomega = None
+    oequacpac = None
+
+    def __init__(self, oemol, parameterize='gaff2xml', parameterize_arguments=None, **kwargs):
+        """
+        SystemBuilder capable of parameterizing small molecules given OpenMM positions and topology.
+
+        Parameters
+        ----------
+        oemol : oec
+        positions : simtk.unit.Quantity with units compatible with nanometers, natoms x 3
+           Atomic positions.
+        topology : simtk.openmm.app.Topology
+           OpenMM Topology object.
+        parameterize : str, optional, default=None
+           External tool used to parameterize the molecule. One of [False, 'gaff2xml'].
+           If False, tool will not be called.
+        parameterize_arguments : dict, optional, default=None
+        **kwargs are passed to external parameterization tool
+
+        """
+        if not self.oechem:
+           # Load and license check for all necessary OpenEye libraries
+           self._load_verify_openeye(oechemlicensepath)
+
+        super(SmallMoleculeBuilder, self).__init__(**kwargs)
+
+    def _parameterize_with_gaff2xml(self, molecule, parameterize_arguments=None):
+        """
+        Parameterize the molecule using gaff2xml, appending the parameters to the set of loaded parameters.
+
+        Parameters
+        ----------
+        parameterize_arguments : dict, optional, default=None
+           Optional kwargs to be passed to gaff2xml.
+
+        """
+        import gaff2xml
+
+        # Create a temporary working directory.
+        cwd = os.cwd()
+        tmpdir = tempfile.mkdtemp()
+        os.chdir(tmpdir)
+
+        # Write Tripos mol2 file.
+        
+
+        # Run antechamber via gaff2xml to generate charges.
+        # TODO: Can this structure be simplified?
+        if parameterize_arguments:
+            (gaff_mol2_filename, gaff_frcmod_filename) = gaff2xml.utils.run_antechamber(molecule_name, mol2_filename, **parameterize_arguments)
+        else:
+            (gaff_mol2_filename, gaff_frcmod_filename) = gaff2xml.utils.run_antechamber(molecule_name, mol2_filename)
+
+        # Write out the ffxml file from gaff2xml.
+        ffxml_filename = tempfile.NamedTemporaryFile(delete=False)
+        gaff2xml.utils.create_ffxml_file(gaff_mol2_filename, gaff_frcmod_filename, ffxml_filename)
+
+        # Append the ffxml file to loaded parameters.
+        self._append_ffxml(ffxml_filename)
+
+        # Restore working directory.
+        os.chdir(cwd)
+
+        # Clean up working directory.
+        for filename in os.listdir(tmpdir):
+            file_path = os.path.join(tmpdir, filename)
+            try:
+                if os.path.isfile(file_path):
+                    os.unlink(file_path)
+            except Exception, e:
+                print e
+
+        return
+
+    def _initialize(self, molecule, charge=None, **kwargs):
+        """Create OpenMM positions, topology, and (if desired) parameters for the specified molecule.
+
+        Parameters
+        ----------
+        molecule : openeye.oechem.OEMol
+           Molecule to be parameterized.
+        charge : int
+           Charge state to be used for molecule.
+
+        Notes
+        -----
+        The molecule is normalized.
+        If no geometry is present, it is generated.
+
+        """
+
+        # Normalize the molecule.
+        molecule = self._normalize_molecule(molecule)
+
+        # Generate a 3D conformation if we don't have a 3-dimensional molecule.
+        if molecule.GetDimension() < 3:
+            molecule = self._expand_conformations(molecule, maxconfs=1)
+
+        # Parameterize if requested.
+        if parameterize:
+            if parameterize == 'gaff2xml':
+                self._parameterize_with_gaff2xml(molecule, parameterize_arguments)
+
+        # Store OpenMM positions and topologies.
+        [self._positions, self._topologies] = self._oemol_to_openmm(molecule)
+
+        return
+
+    def _write_molecule(self, molecule, filename=None, format=None):
+        """Write the given OpenEye molecule to a file.
+
+        Parameters
+        ----------
+        molecule : openeye.oechem.OEMol
+           The molecule to be written to file.
+        filename : str, optional, default=None
+           The name of the file to be written, or None if a temporary file is to be created.
+        format : OEFormat, optional, default=None
+           The format of the file to be written (
+
+        Returns
+        -------
+        filename : str
+           The name of the file written.
+
+        """
+        if filename == None:
+            file = tempfile.NamedTemporaryFile(delete=False)
+            filename = file.name
+            file.close() # close the file so we can open it again
+
+        # Open the output stream
+        ostream = self.oechem.oemolostream(filename)
+
+        # Select the format.
+        if format:
+            ostream.SetFormat(format)
+
+        # Define internal function for writing multiple conformers to an output stream.
+        def write_all_conformers(ostream, molecule):
+            # write all conformers of each molecule
+            for conformer in molecule.GetConfs():
+                if preserve_atomtypes: self.oechem.OEWriteMol2File(ostream, conformer)
+                else: OEWriteConstMolecule(ostream, conformer)
+            return
+
+        # If 'molecule' is actually a list of molecules, write them all.
+        if type(molecule) == type(list()):
+            for individual_molecule in molecule:
+                write_all_conformers(ostream, individual_molecule)
+            else:
+                write_all_conformers(ostream, molecule)
+
+        # Close the stream.
+        ostream.close()
+
+        return filename
+
+    def _oemol_to_openmm(self, molecule):
+        """Extract OpenMM positions and topologies from an OpenEye OEMol molecule.
+
+        Parameters
+        ----------
+        molecule : openeye.oechem.OEMol
+           The molecule from which positions and topology are to be extracted.
+           NOTE: This must be a Tripos format mol2 file, not a GAFF format file.
+
+        Returns
+        -------
+        positions : simtk.unit.Quantity with units compatible with nanometers, natoms x 3
+           The atomic positions.
+        topology : simtk.openmm.app.Topology
+           OpenMM Topology object for the small molecule.
+
+        """
+        # Write a Tripos mol2 file to a temporary file.
+        mol2_filename = self._write_mol2_file(molecule, format=self.oechem.OEFormat_MOL2)
+
+        # Read the mol2 file in MDTraj.
+        mdtraj_molecule = mdtraj.load()
+        positions = mdtraj_molecule.openmm_positions(0)
+        topology = mdtraj_molecule.top.to_openmm()
+
+        # Unlink the file.
+        os.unlink(mol2_filename)
+
+        # Return OpenMM format positions and topology.
+        return [positions, topology]
+
+    def _normalize_molecule(self, molecule, set_name_to_iupac=True):
+        """Normalize the molecule by checking aromaticity, adding explicit hydrogens, and renaming by IUPAC name.
+
+        Parameters
+        ----------
+        molecule : openeye.oechem.OEMol
+           The molecule to be normalized.
+        set_name_to_iupac : book, optional, default=True
+           If True, the molecule title will be set to the IUPAC name.
+
+        Returns
+        -------
+        normalized_molecule : openeye.oechem.OEMol
+           The normalized molecule.
+
+        """
+
+        # Make a copy of the molecule.
+        normalized_molecule = self.oechem.OEMol(molecule)
+
+        # Find ring atoms and bonds
+        # self.oechem.OEFindRingAtomsAndBonds(molecule)
+
+        # Assign aromaticity.
+        self.oechem.OEAssignAromaticFlags(normalized_molecule, self.oechem.OEAroModelOpenEye)
+
+        # Add hydrogens.
+        self.oechem.OEAddExplicitHydrogens(normalized_molecule)
+
+        if set_name_to_iupac:
+            # Set title to IUPAC name.
+            name = self.oechem.OECreateIUPACName(normalized_molecule)
+            normalized_molecule.SetTitle(name)
+
+        return normalized_molecule
+
+    def _expand_conformations(molecule, maxconfs=None, threshold=None, include_original=False, torsionlib=None, verbose=False, strictTyping=None, strictStereo=True):
+        """Enumerate conformations of the molecule with OpenEye's Omega after normalizing molecule.
+
+        Parameters
+        ----------
+        molecule : openeye.oechem.OEMol
+           Molecule to enumerate conformations for.
+        include_original (boolean) - if True, original conformation is included (default: False)
+        maxconfs (integer) - if set to an integer, limits the maximum number of conformations to generated -- maximum of 120 (default: None)
+        threshold (real) - threshold in RMSD (in Angstroms) for retaining conformers -- lower thresholds retain more conformers (default: None)
+        torsionlib (string) - if a path to an Omega torsion library is given, this will be used instead (default: None)
+        verbose (boolean) - if True, omega will print extra information
+        strictTyping (boolean) -- if specified, pass option to SetStrictAtomTypes for Omega to control whether related MMFF types are allowed to be substituted for exact matches.
+        strictStereo (boolean) -- if specified, pass option to SetStrictStereo; otherwise use default.
+
+        Returns
+        -------
+        expanded_molecule : openeye.oechem.OEMol
+           Molecule with expanded conformations.
+
+        """
+
+        # Copy molecule.
+        expanded_molecule = openeye.oechem.OEMol(molecule)
+
+        # Initialize Omega.
+        omega = self.oeomega.OEOmega()
+        if strictstereo != None: omega.SetStrictStereo(strictstereo)  # Fail if stereochemistry is not specified.
+        if stricttyping != None: omega.SetStrictAtomTypes(stricttyping)  # Fail if any atom does not have a valid MMFF atom type.
+        if include_iriginal != None: omega.SetIncludeInput(include_original)  # Include input
+        if torsionlib != None: omega.SetTorsionLibrary(torsionlib)
+        if maxconfs != None: omega.SetMaxConfs(maxconfs)  # Return just one conformation.
+        omega(expanded_molecule)  # Generate conformation.
+
+        return expanded_molecule
+
+    def _formal_charge(self, molecule):
+        """Find the net charge of a molecule
+
+        Parameters
+        ----------
+        molecule : OEMol
+            the molecule whose formal charge is to be determined
+
+        Returns
+        -------
+        int
+            The formal charge of the molecule
+
+        """
+
+        mol_copy = self.oechem.OEMol(molecule)
+        self.oechem.OEFormalPartialCharges(mol_copy)
+        return int(round(self.oechem.OENetCharge(mol_copy)))
+
+    def _enumerate_states(self, molecules, type_of_states="protonation", consider_aromaticity=True, maxstates=200, verbose=False):
+        """Enumerate protonation or tautomer states for a list of molecules.
+
+         Parameters
+         ----------
+         molecules : (OEMol or list of OEMol)
+            molecule(s) for which states are to be enumerated
+         type_of_states : str, optional
+            type of states to expand -- 'protonation' or 'tautomer' (default: 'protonation')
+         consider_aromaticity - bool, optional
+            if True, aromaticity of the states will be evaluated. (default : True)
+         verbose - bool, optional
+            if True, will print out debug output (default : False)
+
+         Returns
+         -------
+         list of OEMol
+            molecules in different protonation or tautomeric states
+
+         """
+
+        # If 'molecules' is not a list, promote it to a list.
+        if type(molecules) != type(list()):
+            molecules = [molecules]
+
+        # Check input arguments.
+        if not ((type_of_states == "protonation") or (type_of_states == "tautomer")):
+            raise "'enumerate' argument must be either 'protonation' or 'tautomer' -- instead got '%s'" % enumerate
+
+        # Create an internal output stream to expand states into.
+        ostream = self.oechem.oemolostream()
+        ostream.openstring()
+        ostream.SetFormat(self.oechem.OEFormat_SDF)
+
+        # Default parameters.
+        only_count_states = False # enumerate states, don't just count them
+
+        # Enumerate states for each molecule in the input list.
+        states_enumerated = 0
+        for molecule in molecules:
+            if verbose:
+                print "Enumerating states for molecule %s." % molecule.GetTitle()
+
+            # Dump enumerated states to output stream (ostream).
+            if type_of_states == "protonation":
+                # Create a functor associated with the output stream.
+                functor = self.oequacpac.OETyperMolFunction(ostream, consider_aromaticity, False, maxstates)
+
+                # Enumerate protonation states.
+                if verbose:
+                    print "Enumerating protonation states..."
+                states_enumerated += self.oequacpac.OEEnumerateFormalCharges(molecule, functor, verbose)
+            elif type_of_states == "tautomer":
+                # Create a functor associated with the output stream.
+                functor = self.oequacpac.OETautomerMolFunction(ostream, consider_aromaticity, False, maxstates)  # TODO: deprecated
+
+                # Enumerate tautomeric states.
+                if verbose:
+                    print "Enumerating tautomer states..."
+                states_enumerated += self.oequacpac.OEEnumerateTautomers(molecule, functor, verbose)
+
+        if verbose:
+            print "Enumerated a total of %d states." % states_enumerated
+
+        # Collect molecules from output stream into a list.
+        states = list()
+        if states_enumerated > 0:
+            state = self.oechem.OEMol()
+            istream = self.oechem.oemolistream()
+            istream.openstring(ostream.GetString())
+            istream.SetFormat(self.oechem.OEFormat_SDF)
+            while self.oechem.OEReadMolecule(istream, state):
+                states.append(self.oechem.OEMol(state)) # append a copy
+
+        # Return the list of expanded states as a Python list of OEMol() molecules.
+        return states
+
+    def _load_verify_openeye(self, oechemlicensepath=None):
+        """Loads required OpenEye libraries and checks licenses
+
+        Parameters
+        ----------
+        oechemlicensepath : str, optional, default=None
+            OpenEye license path to use, or None if environment variables are to be used.
+
+        Raises
+        ------
+        RuntimeError
+            If OE_LICENSE is not found as an environment variable
+            If A valid license is missing
+
+        Notes
+        -----
+        Needs to be run before any of the other functions to assure OpenEye libraries are accessible.
+
+        """
+
+        from openeye import oechem     # For chemical objects
+        from openeye import oeiupac    # For IUPAC conversion
+        from openeye import oeomega    # For conformer generation
+        from openeye import oequacpac  # For pKa estimations
+
+        import os
+
+        if oechemlicensepath is not None:
+            os.environ['OE_LICENSE'] = oechemlicensepath
+
+        try:
+            os.environ['OE_LICENSE']  # See if license path is set.
+        except KeyError:
+            raise RuntimeError("Environment variable OE_LICENSE needs to be set.")
+
+        if not oechem.OEChemIsLicensed():  # Check for OEchem TK license.
+            raise RuntimeError("No valid license available for OEChem TK.")
+
+        if not oeiupac.OEIUPACIsLicensed():  # Check for Lexichem TK license.
+            raise RuntimeError("No valid license available for Lexichem TK.")
+
+        if not oeomega.OEOmegaIsLicensed():  # Check for Omega TK license.
+            raise RuntimeError("No valid license for Omega TK.")
+
+        if not oequacpac.OEQuacPacIsLicensed():  # Check for Quacpac TK license.
+            raise RuntimeError("No valid license for Quacpac TK.")
+
+        #Attach libraries to the instance to only load and check them once at initialization.
+        self.oechem = oechem
+        self.oeiupac = oeiupac
+        self.oeomega = oeomega
+        self.oequacpac = oequacpac
+        return
+
+#=============================================================================================
 # SMALL MOLECULE SYSTEM BUILDER FOR MOL2 FILES
 #=============================================================================================
 
@@ -357,83 +787,74 @@ class Mol2SystemBuilder(SmallMoleculeBuilder):
     """
     Create a system from a small molecule specified in a Tripos mol2 file.
 
-    TODO:
-    * Clean up temporary ffxml file on __del__()
     """
 
-    def __init__(self, coordinate_file, molecule_name, forcefield_files=None, parameterization_method="antechamber", gaff_mol2_file=None):
+    def __init__(self, mol2_filename,, **kwargs):
         """
         Create a system from a Tripos mol2 file.
 
         Parameters
         ----------
-        coordinate_file : str
+        mol2_filename : str
            Small molecule coordinate file in Tripos mol2 format.
-        molecule_name : str
-           Name of the molecule.
-        forcefield_file  : str, optional, default=None
-           ffxml file that contains parameters for the molecule. If none, will be generated by the parameterization method specified.
-        parameterization_method : str, optional, default='antechamber'
-           The method used to parameterize the molecule. One of ['antechamber'].
-        gaff_mol2_file : str
-           A parsed gaff mol2 filename, if available.
+        Other arguments are inherited from SmallMoleculeSystemBuilder.
 
-        """
-        self._gaff_mol2 = gaff_mol2_file
-        super(Mol2SystemBuilder, self).__init__(coordinate_file, molecule_name, forcefield_files=forcefield_files, parameterization_method=parameterization_method)
-
-    def build_forcefield(self, param_method="antechamber", **kwargs):
-        """
-        This function overrides the parent's method, and builds a forcefield ffxml file for the given mol2 using gaff2xml (which in turn runs antechamber)
-
-        Parameters
-        ----------        
-        param_method : str
-           Method to use to parameterize molecule; currently only antechamber is supported.
-        **kwargs
-           Used to allow extra parameters to be passed to parameterization scheme.
-
-        """
-        
-        # Set charge method to 'bcc' if not specified.
-        if 'charge_method' not in kwargs:
-            kwargs['charge_method'] = 'bcc'
-
-        # Run antechamber via gaff2xml to generate charges.
-        (gaff_mol2_filename, gaff_frcmod_filename) = gaff2xml.utils.run_antechamber(self._molecule_name, self._coordinate_file, **kwargs)
-
-        # Write out the ffxml file from gaff2xml.
-        ffxml_filename = tempfile.NamedTemporaryFile(delete=False)
-        gaff2xml.utils.create_ffxml_file(gaff_mol2_filename, gaff_frcmod_filename, ffxml_filename)
-
-        # Store name of generated gaff format mol2 file.
-        self._gaff_mol2 = gaff_mol2_filename
-        
-        # Append forcefield files.
-        if self._forcefield_files is None:
-            self._forcefield_files = list()
-            self._forcefield_files.append(ffxml_filename)
-        pass
-
-    def _create_system(self):
-        """
-        This function overrides the parent's _create_system in order to create a simtk.openmm.System object representing the molecule of interest.
+        Examples
+        --------
+        Create a SystemBuilder from a ligand mol2 file.
+        >>> from repex import testsystems
+        >>> ligand_mol2_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/ligand.mol2")
+        >>> ligand = Mol2SystemBuilder(ligand_mol2_filename, parameterize='antechamber', charge_model='bcc')
+        >>> system = ligand.system
+        >>> positions = ligand.positions
+        >>> natoms = ligand.natoms
 
         TODO
-        * Store mdtraj object, openmm positions, mdtraj topology, and openmm topology.
+        * Work out a way to handle hydrogens and select a particular charge state.
 
         """
-        # Load the mol2 file to create an MDTraj object.
-        mol2 = mdtraj.load(self._gaff_mol2)
-        positions = mol2.openmm_positions(0)
-        topology = mol2.top.to_openmm()
-        forcefield = app.ForceField(*self._forcefield_files)
-        self._system = forcefield.createSystem(topology, nonbondedMethod=app.NoCutoff, constraints=None)
 
-    def _create_traj(self):
-        """
-        """
-        self._mdtraj = mdtraj.load(self._gaff_mol2)
+        # Initialize small molecule parameterization engine.
+        super(Mol2SystemBuilder, self).__init__()
+
+        # Open an input stream
+        istream = self.oechem.oemolistream()
+        istream.open(cdx_filename)
+
+        # Prepare a molecule object
+        molecule = self.oechem.OEMol()
+
+        # Read the molecule
+        self.oechem.OEReadCDXFile(istream, molecule)
+
+        # Close stream
+        istream.close()
+
+        # Initialize from OpenEye molecule.
+        self._initialize(molecule, **kwargs)
+        return
+
+    def deprecated(self):
+        # TODO: Handle mol2 normalization, where we may need to add hydrogens and select a particular charge state.
+
+        # Load the mol2 file.
+        molecule = mdtraj.load(mol2_filename)
+        positions = molecule.openmm_positions(0)
+        topology = molecule.top.to_openmm()
+
+
+        forcefield = app.ForceField(ffxml_streams)
+
+        # Create the parameters.
+        if parameterize
+        self._create_parameters()
+
+        # Read positions and Topology molecule from mol2 file.
+        [positions, topology] = read_mol2_file(mol2_filename)
+        self._positions = positions
+        self._topology = topology
+
+        return
 
 #=============================================================================================
 # SYSTEM BUILDER FOR COMBINING RECEPTOR AND LIGAND INTO A COMPLEX
@@ -461,6 +882,21 @@ class ComplexSystemBuilder(SystemBuilder):
         receptor_atoms : list of int
            List of atoms representing the receptor.
 
+        Examples
+        --------
+        Create a ComplexSystemBuilder from a protein PDB file and a ligand mol2 file.
+        >>> from repex import testsystems
+        >>> receptor_pdb_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/receptor.pdb")
+        >>> ligand_mol2_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/ligand.mol2")
+        >>> receptor = BiopolymerPDBSystemBuilder(receptor_pdb_filename, pH=7.0)
+        >>> ligand = Mol2SystemBuilder(ligand_mol2_filename)
+        >>> complex = ComplexSystemBuilder(ligand, receptor, remove_ligand_overlap=True)
+        >>> system = complex.system
+        >>> positions = complex.positions
+        >>> ligand_atoms = complex.ligand_atoms
+        >>> receptor_atoms = complex.receptor_atoms
+        >>> natoms = complex.natoms
+
         """
 
         # Call base class constructor.
@@ -478,8 +914,8 @@ class ComplexSystemBuilder(SystemBuilder):
         self._positions = model.positions
 
         # Store indices for receptor and ligand.
-        self._ligand_atoms = range(receptor.natoms)
-        self._receptor_atoms = range(receptor.natoms, receptor.natoms + ligand.natoms)
+        self._receptor_atoms = range(receptor.natoms)
+        self._ligand_atoms = range(receptor.natoms, receptor.natoms + ligand.natoms)
 
         # Modify ligand coordinates to not overlap with receptor.
         if remove_ligand_overlap:
@@ -494,7 +930,7 @@ class ComplexSystemBuilder(SystemBuilder):
         Description
         -----------
         The bounding sphere of the ligand and receptor are computed, and the ligand translated along the x-direction to not overlap with the protein.
-        
+
         TODO:
         * This is not guaranteed to work for periodic systems.
 
@@ -507,17 +943,21 @@ class ComplexSystemBuilder(SystemBuilder):
         mdtraj = mdtraj.Trajectory(self._positions, mdtraj_topology)
 
         # Compute centers of receptor and ligand.
-        receptor_center = mdtraj.xyz[0][self._receptor_atoms,:].sum(1)
-        ligand_center = mdtraj.xyz[0][self._ligand_atoms,:].sum(1)
+        receptor_center = mdtraj.xyz[0][self._receptor_atoms,:].mean(1)
+        ligand_center = mdtraj.xyz[0][self._ligand_atoms,:].mean(1)
 
-        # Compute radii of receptor and ligand.
-        receptor_radius = ((ligand_traj.xyz[0][self._receptor_atoms,:] - receptor_center) ** 2.).sum(1) ** 0.5).max()
-        ligand_radius = ((ligand_traj.xyz[0][self._ligand_atoms,:] - receptor_center) ** 2.).sum(1) ** 0.5).max()
+        # Count number of receptor and ligand atoms.
+        nreceptor_atoms = len(self._receptor_atoms)
+        nligand_atoms = len(self._ligand_atoms)
+
+        # Compute max radii of receptor and ligand.
+        receptor_radius = ((ligand_traj.xyz[0][self._receptor_atoms,:] - numpy.tile(receptor_center, (nreceptor_atoms,1)) ** 2.).sum(1) ** 0.5).max()
+        ligand_radius = ((ligand_traj.xyz[0][self._ligand_atoms,:] - numpy.tile(ligand_center, (nligand_atoms,1))) ** 2.).sum(1) ** 0.5).max()
 
         # Translate ligand along x-axis from receptor center with 5% clearance.
         mdtraj.xyz[0][self._ligand_atoms,:] += np.array([1.0, 0.0, 0.0]) * (receptor_radius + ligand_radius) * 1.05 - ligand_center + receptor_center
 
-        # Extract system positions.
+        # Extract updated system positions.
         self._positions = mdtraj.openmm_positions(0)
 
         return
@@ -526,13 +966,17 @@ class ComplexSystemBuilder(SystemBuilder):
 # TEST CODE
 #=============================================================================================
 
-if __name__=="__main__":
+def test_code():
+    # TODO: This code should be updated to test.
+    # TODO: This code must be generalized to be installation independent.
+
     import os
     import simtk.unit as unit
     import simtk.openmm as openmm
     import numpy as np
     import simtk.openmm.app as app
     import alchemy
+
     os.environ['AMBERHOME']='/Users/grinawap/anaconda/pkgs/ambermini-14-py27_0'
     os.chdir('/Users/grinawap/driver/yank/examples/px-test')
     ligand = Mol2SystemBuilder('ligand.tripos.mol2', 'ligand')
@@ -579,4 +1023,13 @@ if __name__=="__main__":
             print str(k)
             partially_interacting.step(100)
         del partially_interacting
+
+#=============================================================================================
+# MAIN AND TESTS
+#=============================================================================================
+
+if __name__ == "__main__":
+    # Run doctests.
+    import doctest
+    doctest.testmod()
 
