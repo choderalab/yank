@@ -7,18 +7,14 @@ install:
     - sudo pip install conda
     - sudo conda init
     - conda config --add channels http://conda.binstar.org/omnia
-    - conda create --yes --name test numpy scipy pytables numexpr nose pandas cython statsmodels pandas patsy pyyaml pip netCDF4 pyflakes openmm
+    - conda create --yes --name test numpy scipy pytables numexpr nose pandas cython statsmodels pandas patsy pyyaml pip netCDF4 pyflakes openmm-dev repex-dev
     - export PATH="$HOME/envs/test/bin/:$PATH"
     - pip install pymbar==2.0.1-beta
     - pip install -q mdtraj git+git://github.com/rmcgibbo/simtk.unit
-    
+
 script:
-    - git clone https://github.com/choderalab/repex.git
-    - cd repex
     - python setup.py install
-    - cd ..
-    - python setup.py install
-    - python travis/cache_mixer.py;    
+    - python travis/cache_mixer.py;
     - nosetests
     - nosetests tests/test_alchemy.py
 
