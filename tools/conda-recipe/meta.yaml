@@ -12,19 +12,21 @@ requirements:
     - setuptools
     - mdtraj-dev
     - gaff2xml-dev
-    - repex-dev    
-    - openmm    
-    - ambermini    
+    - repex-dev
+    - openmm-dev
+    - pymbar-dev
+    - ambermini
 
   run:
     - python
     - pandas
     - scipy
     - mdtraj-dev
-    - gaff2xml-dev    
-    - repex-dev        
-    - openmm    
-    - ambermini    
+    - gaff2xml-dev
+    - repex-dev
+    - openmm-dev
+    - pymbar-dev
+    - ambermini
 
 about:
   home: https://github.com/choderalab/yank
