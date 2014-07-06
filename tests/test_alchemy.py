@@ -524,6 +524,12 @@ def test_systembuilder_lysozyme_pdb_mol2():
     ligand = Mol2SystemBuilder(ligand_mol2_filename, "ligand")
     receptor = BiomoleculePDBSystemBuilder(receptor_pdb_filename,"receptor")
     complex = ComplexSystemBuilder(ligand,receptor,"complex")
+    # DEBUG
+    for name in ['ligand', 'receptor', 'complex']:
+        thing = vars()[name]
+        print "%s has %d particles" % (name, thing.system.getNumParticles())
+        print "%s openmm_positions:" % name
+        print thing.openmm_positions
     # Test alchemically modified systems.
     receptor_atoms = range(0,2603) # T4 lysozyme L99A
     ligand_atoms = range(2603,2621) # p-xylene

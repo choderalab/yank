@@ -126,12 +126,26 @@ def driver():
     #make ligand, receptor, complex objects
     ligand = Mol2SystemBuilder(options.ligand_mol2_filename, "ligand")
     receptor = BiomoleculePDBSystemBuilder(options.receptor_pdb_filename,"receptor")
-    complex_system = ComplexSystemBuilder(ligand,receptor,"complex")
+    complex = ComplexSystemBuilder(ligand,receptor,"complex")
 
+    # DEBUG: Write out ligand, receptor, and complex system objects.
+    debug = False
+    if debug:
+        def write_file(outfile, contents):
+            outfile = open(outfile, 'w')
+            outfile.write(contents)
+            outfile.close()
+        for name in ['receptor', 'ligand', 'complex']:
+            system = vars()[name].system
+            serialized_system = system.__getstate__()
+            filename = name + '.system.xml'
+            print "Writing serialized %s to %s..." % (name, filename)
+            write_file(filename, serialized_system)
+        
     # Initialize YANK object.
 
     from yank import Yank
-    yank = Yank(receptor=receptor.system, ligand=ligand.system, complex=complex_system.system, complex_positions=[complex_system.coordinates_as_quantity], output_directory=options.output_directory, verbose=options.verbose)
+    yank = Yank(receptor=receptor.system, ligand=ligand.system, complex=complex.system, complex_positions=[complex.coordinates_as_quantity], output_directory=options.output_directory, verbose=options.verbose)
 
     # Configure YANK object with command-line parameter overrides.
     if options.niterations is not None:
