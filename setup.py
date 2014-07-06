@@ -11,9 +11,9 @@ import subprocess
 DOCLINES = __doc__.split("\n")
 
 ########################
-__version__ = '1.0'
-VERSION = __version__
+VERSION = "0.9.0"
 ISRELEASED = False
+__version__ = VERSION
 ########################
 CLASSIFIERS = """\
 Development Status :: 3 - Alpha

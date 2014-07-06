@@ -1,0 +1,15 @@
+numpy
+scipy
+pytables
+cython
+pandas
+pyyaml
+pip
+nose
+mdtraj-dev
+openmm
+ambermini
+jinja2
+gaff2xml-dev
+netcdf4
+repex-dev
