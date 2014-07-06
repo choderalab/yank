@@ -27,14 +27,13 @@ __author__ = 'Patrick Grinaway'
 
 import abc
 import copy
-import pdbfixer
-import mdtraj
-import numpy as np
-import simtk.openmm.app as app
-import simtk.unit as units
 import os, os.path
 import tempfile
-import gaff2xml
+
+import numpy as np
+
+import simtk.openmm.app as app
+import simtk.unit as units
 
 #=============================================================================================
 # ABSTRACT BASE CLASS
@@ -46,6 +45,9 @@ class SystemBuilder():
 
     This is a base class for other classes that will create systems for use with Yank
     Only its children should use it. Several unimplemented methods must be overridden
+
+    To be in a valid and consistent state, each subclass must have defined the following properties
+    after initialization: _positions, _topology, _ffxmls
 
     Properties
     ----------
@@ -85,8 +87,8 @@ class SystemBuilder():
         """
 
         # Set private class properties.
-        self._ffxmls = ffxmls
-        self._append_ffxmls(ffxml_filenames)
+        self._ffxmls = ffxmls # Start with contents of any specified ffxml files.
+        self._append_ffxmls(ffxml_filenames) # Append contents of any ffxml files to be read.
 
         self._topology = None # OpenMM Topology object
         self._positions = None # OpenMM positions as simtk.unit.Quantity with units compatible with nanometers
@@ -308,6 +310,7 @@ class BiopolymerPDBSystemBuilder(BiopolymerSystemBuilder):
         self._pH = pH
 
         # Use PDBFixer to add missing atoms and residues and set protonation states appropriately.
+        import pdbfixer
         fixer = pdbfixer.PDBFixer(self._coordinate_file)
         fixer.findMissingResidues()
         fixer.findNonstandardResidues()
@@ -370,31 +373,66 @@ class SmallMoleculeBuilder(SystemBuilder):
     oeomega = None
     oequacpac = None
 
-    def __init__(self, oemol, parameterize='gaff2xml', parameterize_arguments=None, **kwargs):
+    def __init__(self, molecule, parameterize='gaff2xml', parameterize_arguments=None, charge=None, **kwargs):
         """
         SystemBuilder capable of parameterizing small molecules given OpenMM positions and topology.
 
         Parameters
         ----------
-        oemol : oec
-        positions : simtk.unit.Quantity with units compatible with nanometers, natoms x 3
-           Atomic positions.
-        topology : simtk.openmm.app.Topology
-           OpenMM Topology object.
-        parameterize : str, optional, default=None
+        molecule : openeye.oechem.OEMol
+        parameterize : str, optional, default='gaff2xml'
            External tool used to parameterize the molecule. One of [False, 'gaff2xml'].
            If False, tool will not be called.
         parameterize_arguments : dict, optional, default=None
+           Dictionary to be passed to parameterization tool.
+        charge : int, optional, default=None
+           If specified, the appropriate charge state will be selected.
+
         **kwargs are passed to external parameterization tool
 
         """
-        if not self.oechem:
-           # Load and license check for all necessary OpenEye libraries
-           self._load_verify_openeye(oechemlicensepath)
+        # Load and license check for all necessary OpenEye libraries
+        self._load_verify_openeye()
 
+        # Call the constructor.
         super(SmallMoleculeBuilder, self).__init__(**kwargs)
 
-    def _parameterize_with_gaff2xml(self, molecule, parameterize_arguments=None):
+        # Normalize the molecule.
+        molecule = self._normalize_molecule(molecule)
+
+        # Select the desired charge state, if one is specified.
+        if charge is not None:
+            # Enumerate protonation states and select desired state.
+            protonation_states = self._enumerate_states(molecule, type_of_states="protonation")
+
+            # Search through the states for desired charge
+            for molecule in protonation_states:
+                if self._formal_charge(molecule) == charge:
+                    break
+
+            # Throw exception if we are unable to find desired charge.
+            if self._formal_charge(molecule) != charge:
+                print "enumerateStates did not enumerate a molecule with desired formal charge."
+                print "Options are:"
+                for molecule in protonation_states:
+                    print "%s, formal charge %d" % (molecule.GetTitle(), self._formal_charge(molecule))
+                raise RuntimeError("Could not find desired formal charge.")
+
+        # Generate a 3D conformation if we don't have a 3-dimensional molecule.
+        if molecule.GetDimension() < 3:
+            molecule = self._expand_conformations(molecule, maxconfs=1)
+
+        # Parameterize if requested.
+        if parameterize:
+            if parameterize == 'gaff2xml':
+                self._parameterize_with_gaff2xml(molecule, parameterize_arguments)
+
+        # Store OpenMM positions and topologies.
+        [self._positions, self._topologies] = self._oemol_to_openmm(molecule)
+
+        return
+
+    def _parameterize_with_gaff2xml(self, molecule, charge, parameterize_arguments=None):
         """
         Parameterize the molecule using gaff2xml, appending the parameters to the set of loaded parameters.
 
@@ -404,18 +442,16 @@ class SmallMoleculeBuilder(SystemBuilder):
            Optional kwargs to be passed to gaff2xml.
 
         """
+        # Attempt to import gaff2xml.
         import gaff2xml
 
-        # Create a temporary working directory.
-        cwd = os.cwd()
-        tmpdir = tempfile.mkdtemp()
-        os.chdir(tmpdir)
-
         # Write Tripos mol2 file.
-        
+        mol2_filename = self._write_molecule(molecule, 'tripos.mol2')
 
-        # Run antechamber via gaff2xml to generate charges.
+        # Run antechamber via gaff2xml to generate parameters.
+        # TODO: We need a way to pass the net charge.
         # TODO: Can this structure be simplified?
+        formal_charge = self._formal_charge(molecule) # determine formal charge
         if parameterize_arguments:
             (gaff_mol2_filename, gaff_frcmod_filename) = gaff2xml.utils.run_antechamber(molecule_name, mol2_filename, **parameterize_arguments)
         else:
@@ -439,40 +475,6 @@ class SmallMoleculeBuilder(SystemBuilder):
                     os.unlink(file_path)
             except Exception, e:
                 print e
-
-        return
-
-    def _initialize(self, molecule, charge=None, **kwargs):
-        """Create OpenMM positions, topology, and (if desired) parameters for the specified molecule.
-
-        Parameters
-        ----------
-        molecule : openeye.oechem.OEMol
-           Molecule to be parameterized.
-        charge : int
-           Charge state to be used for molecule.
-
-        Notes
-        -----
-        The molecule is normalized.
-        If no geometry is present, it is generated.
-
-        """
-
-        # Normalize the molecule.
-        molecule = self._normalize_molecule(molecule)
-
-        # Generate a 3D conformation if we don't have a 3-dimensional molecule.
-        if molecule.GetDimension() < 3:
-            molecule = self._expand_conformations(molecule, maxconfs=1)
-
-        # Parameterize if requested.
-        if parameterize:
-            if parameterize == 'gaff2xml':
-                self._parameterize_with_gaff2xml(molecule, parameterize_arguments)
-
-        # Store OpenMM positions and topologies.
-        [self._positions, self._topologies] = self._oemol_to_openmm(molecule)
 
         return
 
@@ -547,6 +549,7 @@ class SmallMoleculeBuilder(SystemBuilder):
         mol2_filename = self._write_mol2_file(molecule, format=self.oechem.OEFormat_MOL2)
 
         # Read the mol2 file in MDTraj.
+        import mdtraj
         mdtraj_molecule = mdtraj.load()
         positions = mdtraj_molecule.openmm_positions(0)
         topology = mdtraj_molecule.top.to_openmm()
@@ -630,7 +633,7 @@ class SmallMoleculeBuilder(SystemBuilder):
         return expanded_molecule
 
     def _formal_charge(self, molecule):
-        """Find the net charge of a molecule
+        """Find the net charge of a molecule.
 
         Parameters
         ----------
@@ -643,7 +646,6 @@ class SmallMoleculeBuilder(SystemBuilder):
             The formal charge of the molecule
 
         """
-
         mol_copy = self.oechem.OEMol(molecule)
         self.oechem.OEFormalPartialCharges(mol_copy)
         return int(round(self.oechem.OENetCharge(mol_copy)))
@@ -745,6 +747,10 @@ class SmallMoleculeBuilder(SystemBuilder):
 
         """
 
+        # Don't do anything if we've already imported OpenEye toolkit.
+        if self.oechem: return
+
+        # Import the OpenEye toolkit components.
         from openeye import oechem     # For chemical objects
         from openeye import oeiupac    # For IUPAC conversion
         from openeye import oeomega    # For conformer generation
@@ -789,7 +795,7 @@ class Mol2SystemBuilder(SmallMoleculeBuilder):
 
     """
 
-    def __init__(self, mol2_filename,, **kwargs):
+    def __init__(self, mol2_filename, **kwargs):
         """
         Create a system from a Tripos mol2 file.
 
@@ -801,58 +807,34 @@ class Mol2SystemBuilder(SmallMoleculeBuilder):
 
         Examples
         --------
-        Create a SystemBuilder from a ligand mol2 file.
+        Create a SystemBuilder from a ligand mol2 file, using default parameterization scheme.
         >>> from repex import testsystems
         >>> ligand_mol2_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/ligand.mol2")
-        >>> ligand = Mol2SystemBuilder(ligand_mol2_filename, parameterize='antechamber', charge_model='bcc')
+        >>> ligand = Mol2SystemBuilder(ligand_mol2_filename, charge=0)
         >>> system = ligand.system
         >>> positions = ligand.positions
         >>> natoms = ligand.natoms
 
-        TODO
-        * Work out a way to handle hydrogens and select a particular charge state.
-
         """
 
-        # Initialize small molecule parameterization engine.
-        super(Mol2SystemBuilder, self).__init__()
+        # Initialize the OpenEye toolkit.
+        self._load_verify_openeye()
 
         # Open an input stream
         istream = self.oechem.oemolistream()
-        istream.open(cdx_filename)
+        istream.open(mol2_filename)
 
         # Prepare a molecule object
         molecule = self.oechem.OEMol()
 
         # Read the molecule
-        self.oechem.OEReadCDXFile(istream, molecule)
+        self.oechem.OEReadMolecule(istream, molecule)
 
         # Close stream
         istream.close()
 
-        # Initialize from OpenEye molecule.
-        self._initialize(molecule, **kwargs)
-        return
-
-    def deprecated(self):
-        # TODO: Handle mol2 normalization, where we may need to add hydrogens and select a particular charge state.
-
-        # Load the mol2 file.
-        molecule = mdtraj.load(mol2_filename)
-        positions = molecule.openmm_positions(0)
-        topology = molecule.top.to_openmm()
-
-
-        forcefield = app.ForceField(ffxml_streams)
-
-        # Create the parameters.
-        if parameterize
-        self._create_parameters()
-
-        # Read positions and Topology molecule from mol2 file.
-        [positions, topology] = read_mol2_file(mol2_filename)
-        self._positions = positions
-        self._topology = topology
+        # Initialize small molecule parameterization engine.
+        super(Mol2SystemBuilder, self).__init__(molecule, **kwargs)
 
         return
 
@@ -889,7 +871,7 @@ class ComplexSystemBuilder(SystemBuilder):
         >>> receptor_pdb_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/receptor.pdb")
         >>> ligand_mol2_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/ligand.mol2")
         >>> receptor = BiopolymerPDBSystemBuilder(receptor_pdb_filename, pH=7.0)
-        >>> ligand = Mol2SystemBuilder(ligand_mol2_filename)
+        >>> ligand = Mol2SystemBuilder(ligand_mol2_filename, charge=0)
         >>> complex = ComplexSystemBuilder(ligand, receptor, remove_ligand_overlap=True)
         >>> system = complex.system
         >>> positions = complex.positions
@@ -935,6 +917,7 @@ class ComplexSystemBuilder(SystemBuilder):
         * This is not guaranteed to work for periodic systems.
 
         """
+        import mdtraj
 
         # Create an mdtraj Topology from OpenMM Topology object.
         mdtraj_topology = mdtraj.Topology.from_openmm(self._topology)
@@ -951,8 +934,8 @@ class ComplexSystemBuilder(SystemBuilder):
         nligand_atoms = len(self._ligand_atoms)
 
         # Compute max radii of receptor and ligand.
-        receptor_radius = ((ligand_traj.xyz[0][self._receptor_atoms,:] - numpy.tile(receptor_center, (nreceptor_atoms,1)) ** 2.).sum(1) ** 0.5).max()
-        ligand_radius = ((ligand_traj.xyz[0][self._ligand_atoms,:] - numpy.tile(ligand_center, (nligand_atoms,1))) ** 2.).sum(1) ** 0.5).max()
+        receptor_radius = (((ligand_traj.xyz[0][self._receptor_atoms,:] - numpy.tile(receptor_center, (nreceptor_atoms,1))) ** 2.).sum(1) ** 0.5).max()
+        ligand_radius = (((ligand_traj.xyz[0][self._ligand_atoms,:] - numpy.tile(ligand_center, (nligand_atoms,1))) ** 2.).sum(1) ** 0.5).max()
 
         # Translate ligand along x-axis from receptor center with 5% clearance.
         mdtraj.xyz[0][self._ligand_atoms,:] += np.array([1.0, 0.0, 0.0]) * (receptor_radius + ligand_radius) * 1.05 - ligand_center + receptor_center
@@ -966,10 +949,7 @@ class ComplexSystemBuilder(SystemBuilder):
 # TEST CODE
 #=============================================================================================
 
-def test_code():
-    # TODO: This code should be updated to test.
-    # TODO: This code must be generalized to be installation independent.
-
+def test_alchemy():
     import os
     import simtk.unit as unit
     import simtk.openmm as openmm
@@ -977,33 +957,33 @@ def test_code():
     import simtk.openmm.app as app
     import alchemy
 
-    os.environ['AMBERHOME']='/Users/grinawap/anaconda/pkgs/ambermini-14-py27_0'
-    os.chdir('/Users/grinawap/driver/yank/examples/px-test')
-    ligand = Mol2SystemBuilder('ligand.tripos.mol2', 'ligand')
-    receptor = BiopolymerPDBSystemBuilder('receptor.pdb','protein')
-    complex_system = ComplexSystemBuilder(ligand, receptor, "complex")
-    complex_positions = complex_system.positions
-    receptor_positions = receptor.positions
-    print type(complex_system.coordinates_as_quantity)
+    # Create SystemBuilder objects.
+    from repex import testsystems
+    receptor_pdb_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/receptor.pdb")
+    ligand_mol2_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/ligand.mol2")
+    receptor = BiopolymerPDBSystemBuilder(receptor_pdb_filename, pH=7.0)
+    ligand = Mol2SystemBuilder(ligand_mol2_filename, charge=0)
+    complex = ComplexSystemBuilder(ligand, receptor, remove_ligand_overlap=True)
+
     timestep = 2 * unit.femtoseconds # timestep
     temperature = 300.0 * unit.kelvin # simulation temperature
     collision_rate = 20.0 / unit.picoseconds # Langevin collision rate
     minimization_tolerance = 10.0 * unit.kilojoules_per_mole / unit.nanometer
     minimization_steps = 20
-    plat = "CUDA"
+    plat = "CPU"
     i=2
     platform = openmm.Platform.getPlatformByName(plat)
     forcefield = app.ForceField
-    systembuilders = [ligand, receptor, complex_system]
-    receptor_atoms = range(0,2603)
-    ligand_atoms = range(2603,2621)
+    systembuilders = [ligand, receptor, complex]
+    receptor_atoms = complex.receptor_atoms
+    ligand_atoms = complex.ligand_atoms
     factory = alchemy.AbsoluteAlchemicalFactory(systembuilders[i].system, ligand_atoms=ligand_atoms)
     protocol = factory.defaultComplexProtocolImplicit()
     systems = factory.createPerturbedSystems(protocol)
     integrator_interacting = openmm.LangevinIntegrator(temperature, collision_rate, timestep)
     #test an alchemical intermediate and an unperturbed system:
-    fully_interacting = app.Simulation(systembuilders[i].traj.top.to_openmm(),systems[0], integrator_interacting, platform=plat)
-    fully_interacting.context.setPositions(systembuilders[i].openmm_positions)
+    fully_interacting = app.Simulation(systembuilders[i].topology, systems[0], integrator_interacting, platform=plat)
+    fully_interacting.context.setPositions(systembuilders[i].positions)
     fully_interacting.minimizeEnergy(tolerance=10*unit.kilojoule_per_mole)
     fully_interacting.reporters.append(app.PDBReporter('fully_interacting.pdb', 10))
     for j in range(10):
@@ -1015,8 +995,8 @@ def test_code():
     for p in range(1, len(systems)):
         print "now simulating " + str(p)
         integrator_partialinteracting = openmm.LangevinIntegrator(temperature, collision_rate, timestep)
-        partially_interacting = app.Simulation(systembuilders[i].traj.top.to_openmm(),systems[p], integrator_partialinteracting, platform=plat)
-        partially_interacting.context.setPositions(systembuilders[i].openmm_positions)
+        partially_interacting = app.Simulation(systembuilders[i].topology, systems[p], integrator_partialinteracting, platform=plat)
+        partially_interacting.context.setPositions(systembuilders[i].positions)
         partially_interacting.minimizeEnergy(tolerance=10*unit.kilojoule_per_mole)
         partially_interacting.reporters.append(app.PDBReporter('partial_interacting'+str(p)+'.pdb', 10))
         for k in range(10):
@@ -1033,3 +1013,5 @@ if __name__ == "__main__":
     import doctest
     doctest.testmod()
 
+    # Run test.
+    test_alchemy()
