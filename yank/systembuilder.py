@@ -451,7 +451,12 @@ class SmallMoleculeBuilder(SystemBuilder):
         # Run antechamber via gaff2xml to generate parameters.
         # TODO: We need a way to pass the net charge.
         # TODO: Can this structure be simplified?
-        formal_charge = self._formal_charge(molecule) # determine formal charge
+        if 'charge_method' in parameterize_arguments:
+            if 'net_charge' not in parameterize_arguments:
+                # Specify formal charge.
+                formal_charge = self._formal_charge(molecule)
+                parameterize_arguments['net_charge'] = formal_charge
+
         if parameterize_arguments:
             (gaff_mol2_filename, gaff_frcmod_filename) = gaff2xml.utils.run_antechamber(molecule_name, mol2_filename, **parameterize_arguments)
         else:
