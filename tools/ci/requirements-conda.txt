@@ -7,9 +7,10 @@ pyyaml
 pip
 nose
 mdtraj-dev
-openmm
+openmm-dev
 ambermini
 jinja2
 gaff2xml-dev
 netcdf4
 repex-dev
+pymbar-dev
