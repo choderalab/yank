@@ -81,7 +81,7 @@ MAX_DELTA = 0.01 * kB * temperature # maximum allowable deviation
 # MAIN AND UNIT TESTS
 #=============================================================================================
 
-def compareSystemEnergies(positions, systems, descriptions, platform="Reference", precision=None):
+def compareSystemEnergies(positions, systems, descriptions, platform="CPU", precision=None):
     # Compare energies.
     timestep = 1.0 * units.femtosecond
 
