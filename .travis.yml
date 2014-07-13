@@ -13,7 +13,6 @@ script:
   - conda install $HOME/miniconda/conda-bld/linux-64/yank-dev-*
   - conda list -e
   - # Run tests
-  - export TRAVIS="true" # let tests know that only quick tests will run
   - nosetests -v
 
 env:

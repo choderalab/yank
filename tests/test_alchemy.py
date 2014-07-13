@@ -54,6 +54,7 @@ TODO
 # GLOBAL IMPORTS
 #=============================================================================================
 
+import os
 import numpy as np
 import time
 
@@ -501,6 +502,8 @@ def test_alanine_dipeptide_explicit():
 
 def test_obcgbsa_complex():
     # This test is too slow for travis-ci.
+    if 'TRAVIS' in os.environ: return
+
     logger.info("====================================================================")
     logger.info("Creating T4 lysozyme system...")
     system_container = testsystems.LysozymeImplicit()
@@ -539,6 +542,7 @@ def test_systembuilder_lysozyme_pdb_mol2():
 
 def test_src_implicit():
     # This test is too slow for travis-ci.
+    if 'TRAVIS' in os.environ: return
     # TODO: Replace with Abl + imatinib
     logger.info("====================================================================")
     logger.info("Creating Src implicit system...")
@@ -553,6 +557,7 @@ def test_src_implicit():
 
 def test_src_explicit():
     # This test is too slow for travis-ci.
+    if 'TRAVIS' in os.environ: return
     # TODO: Replace with Abl + imatinib
     logger.info("====================================================================")
     logger.info("Creating Src explicit system...")
@@ -570,8 +575,9 @@ def test_src_explicit():
 #=============================================================================================
 
 if __name__ == "__main__":
-    test_systembuilder_lysozyme_pdb_mol2()
+    test_lj_fluid_with_dispersion()
     sys.exit(1) # DEBUG
+
     test_lj_cluster()
     test_lj_fluid_without_dispersion()
     test_lj_fluid_with_dispersion()
@@ -584,12 +590,4 @@ if __name__ == "__main__":
     test_alanine_dipeptide_implicit()
     test_alanine_dipeptide_explicit()
 
-    # The tests below are too slow for travis-ci.
-    import os
-    print os.environ # DEBUG
-    if 'TRAVIS' not in os.environ:
-        test_obcgbsa_complex()
-        test_src_implicit()
-        test_src_explicit()
-
-
+    test_systembuilder_lysozyme_pdb_mol2()

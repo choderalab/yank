@@ -1,8 +1,5 @@
 #!/bin/bash
 
-# Don't run all tests
-export TRAVIS="true"
-
 cp -r $RECIPE_DIR/../.. $SRC_DIR
 $PYTHON setup.py install
 
