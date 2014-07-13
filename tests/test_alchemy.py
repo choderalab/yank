@@ -583,8 +583,12 @@ if __name__ == "__main__":
     test_alanine_dipeptide_vacuum()
     test_alanine_dipeptide_implicit()
     test_alanine_dipeptide_explicit()
-    test_obcgbsa_complex()
-    test_src_implicit()
-    test_src_explicit()
+
+    # The tests below are too slow for travis-ci.
+    import os
+    if 'TRAVIS' not in os.environ:
+        test_obcgbsa_complex()
+        test_src_implicit()
+        test_src_explicit()
 
 
