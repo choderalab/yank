@@ -768,6 +768,17 @@ class Yank(object):
         # Create reference thermodynamic state corresponding to experimental conditions.
         reference_state = ThermodynamicState(temperature=self.temperature, pressure=self.pressure)
 
+        # SOLVENT simulation
+        
+        factory = AbsoluteAlchemicalFactory(self.ligand, ligand_atoms=range(self.ligand.getNumParticles()))
+        systems = factory.createPerturbedSystems(self.solvent_protocol)
+        store_filename = os.path.join(self.output_directory, 'solvent.nc')
+        solvent_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.ligand_positions, store_filename, protocol=self.protocol, mpicomm=mpicomm)
+        solvent_simulation.nsteps_per_iteration = 5000
+        solvent_simulation.platform = self.platform
+        solvent_simulation.run() 
+        mpicomm.barrier()
+
         # All processes assist in creating alchemically-modified complex.
         
         # Run ligand in complex simulation on GPUs.
@@ -841,17 +852,6 @@ class Yank(object):
         complex_simulation.nsteps_per_iteration = 5000
         complex_simulation.platform = self.platform
         complex_simulation.run()        
-        mpicomm.barrier()
-
-        # SOLVENT simulation
-        
-        factory = AbsoluteAlchemicalFactory(self.ligand, ligand_atoms=range(self.ligand.getNumParticles()))
-        systems = factory.createPerturbedSystems(self.solvent_protocol)
-        store_filename = os.path.join(self.output_directory, 'solvent.nc')
-        solvent_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.ligand_positions, store_filename, protocol=self.protocol, mpicomm=mpicomm)
-        solvent_simulation.nsteps_per_iteration = 5000
-        solvent_simulation.platform = self.platform
-        solvent_simulation.run() 
         mpicomm.barrier()
         
         # VACUUM simulation

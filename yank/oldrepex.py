@@ -909,7 +909,7 @@ class ReplicaExchange(object):
         # If no platform is specified, use the CPU platform.
         # TODO: If no platform is specified, instead use the fastest available platform.
         if self.platform is None:
-            print "No platform specified, so selecting CPU platform with one thread."
+            #print "No platform specified, so selecting CPU platform with one thread."
             self.platform = self.mm.Platform.getPlatformByName("CPU")
             self.platform.setPropertyDefaultValue('CpuThreads', '1') # only use 1 CPU thread
 
