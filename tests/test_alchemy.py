@@ -586,6 +586,7 @@ if __name__ == "__main__":
 
     # The tests below are too slow for travis-ci.
     import os
+    print os.environ # DEBUG
     if 'TRAVIS' not in os.environ:
         test_obcgbsa_complex()
         test_src_implicit()
