@@ -1,26 +1,31 @@
 language: c
-install:
-    - sudo apt-get update -qq
-    - sudo apt-get install -qq python-dev python-pip python-yaml g++
-    - sudo apt-get install -qq libpcre3 libpcre3-dev gromacs
-    - sudo apt-get install -qq swig doxygen
-    - sudo pip install conda
-    - sudo conda init
-    - conda config --add channels http://conda.binstar.org/omnia
-    - conda create --yes --name test numpy scipy pytables numexpr nose pandas cython statsmodels pandas patsy pyyaml pip netCDF4 pyflakes openmm
-    - export PATH="$HOME/envs/test/bin/:$PATH"
-    - pip install pymbar==2.0.1-beta
-    - pip install -q mdtraj git+git://github.com/rmcgibbo/simtk.unit
-    
-script:
-    - git clone https://github.com/choderalab/repex.git
-    - cd repex
-    - python setup.py install
-    - cd ..
-    - python setup.py install
-    - python travis/cache_mixer.py;    
-    - nosetests
-    - nosetests tests/test_alchemy.py
 
-after_script:
-    - pyflakes yank/*.py
+install:
+  - source tools/ci/install.sh
+  - export PYTHONUNBUFFERED=true
+
+script:
+  - export CC="gcc -std=c89"
+  - source deactivate
+  - conda install --yes conda-build
+  - conda build tools/conda-recipe
+  - source activate $python
+  - conda install $HOME/miniconda/conda-bld/linux-64/yank-dev-*
+  - conda list -e
+  - # Run tests
+  - nosetests -v
+
+env:
+  matrix:
+    - python=2.7  CONDA_PY=27
+    - python=3.3  CONDA_PY=33
+
+  global:
+    # encrypted BINSTAR_TOKEN for push of dev package to binstar
+    - secure: "JL1AOSHA0GKQi7O4MM26oJ4tTnByAM14N4Joynq/05D57tzo71nf6g+XN/4spckesckGTQhOq7LTXyNI9iPhzBARqx7eWJ//WRCQcoyZU2jKbyBMrA0Aeu8tzG/vO9dmhXT4XHSiAGG+TZ327bTfPzY9VFveNndoEgD5IA+1u1g="
+
+after_success:
+  - echo "after_success"
+  - source tools/ci/after_sucess.sh
+
+

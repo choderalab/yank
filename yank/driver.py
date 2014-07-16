@@ -17,113 +17,13 @@ import numpy
 import simtk.openmm as openmm
 import simtk.unit as units
 import os
+from systembuilder import *
+import os
 
-#=============================================================================================
-# DRIVER
-#=============================================================================================
-
-
-#helper functions to allow driver to operate
-def read_amber_crd(filename, natoms_expected, verbose=False):
-    """
-    Read AMBER coordinate file.
-
-    ARGUMENTS
-
-    filename (string) - AMBER crd file to read
-    natoms_expected (int) - number of atoms expected
-
-    RETURNS
-
-    positions (numpy-wrapped simtk.unit.Quantity with units of distance) - a single read coordinate set
-
-    TODO
-
-    * Automatically handle box vectors for systems in explicit solvent
-    * Merge this function back into main?
-
-    """
-
-    if verbose: print "Reading cooordinate sets from '%s'..." % filename
-
-    # Read positions.
-    import simtk.openmm.app as app
-    inpcrd = app.AmberInpcrdFile(filename)
-    positions = inpcrd.getPositions(asNumpy=True)
-
-    # Check to make sure number of atoms match expectation.
-    natoms = positions.shape[0]
-    if natoms != natoms_expected:
-        raise Exception("Read coordinate set from '%s' that had %d atoms (expected %d)." % (filename, natoms, natoms_expected))
-
-    return positions
-
-def read_openeye_crd(filename, natoms_expected, verbose=False):
-    """
-    Read one or more coordinate sets from a file that OpenEye supports.
-
-    ARGUMENTS
-
-    filename (string) - the coordinate filename to be read
-    natoms_expected (int) - number of atoms expected
-
-    RETURNS
-
-    positions_list (list of numpy array of simtk.unit.Quantity) - list of coordinate sets read
-    """
-
-    if verbose: print "Reading cooordinate sets from '%s'..." % filename
-
-    import openeye.oechem as oe
-    imolstream = oe.oemolistream()
-    imolstream.open(filename)
-    positions_list = list()
-    for molecule in imolstream.GetOEGraphMols():
-        oecoords = molecule.GetCoords() # oecoords[atom_index] is tuple of atom positions, in angstroms
-        natoms = len(oecoords) # number of atoms
-        if natoms != natoms_expected:
-            raise Exception("Read coordinate set from '%s' that had %d atoms (expected %d)." % (filename, natoms, natoms_expected))
-        positions = units.Quantity(numpy.zeros([natoms,3], numpy.float32), units.angstroms) # positions[atom_index,dim_index] is positions of dim_index dimension of atom atom_index
-        for atom_index in range(natoms):
-            positions[atom_index,:] = units.Quantity(numpy.array(oecoords[atom_index]), units.angstroms)
-        positions_list.append(positions)
-
-    if verbose: print "%d coordinate sets read." % len(positions_list)
-
-    return positions_list
-
-def read_pdb_crd(filename, natoms_expected, verbose=False):
-    """
-    Read one or more coordinate sets from a PDB file.
-    Multiple coordinate sets (in the form of multiple MODELs) can be read.
-
-    ARGUMENTS
-
-    filename (string) - name of the file to be read
-    natoms_expected (int) - number of atoms expected
-
-    RETURNS
-
-    positions_list (list of numpy array of simtk.unit.Quantity) - list of coordinate sets read
-
-    """
-    import simtk.openmm.app as app
-    pdb = app.PDBFile(filename)
-    positions_list = pdb.getPositions(asNumpy=True)
-    natoms = positions_list.shape[0]
-    if natoms != natoms_expected:
-        raise Exception("Read coordinate set from '%s' that had %d atoms (expected %d)." % (filename, natoms, natoms_expected))
-
-    # Append if we haven't dumped positions yet.
- #   if (atom_index == natoms_expected):
-  #       positions_list.append(copy.deepcopy(positions))
-
-    # Return positions.
-    return positions_list
 
 def driver():
     # Initialize command-line argument parser.
-
+    verbose = True
     usage = """
     USAGE
 
@@ -152,14 +52,8 @@ def driver():
     # Parse command-line arguments.
     from optparse import OptionParser
     parser = OptionParser(usage=usage)
-    parser.add_option("--ligand_prmtop", dest="ligand_prmtop_filename", default=None, help="ligand Amber parameter file", metavar="LIGAND_PRMTOP")
-    parser.add_option("--receptor_prmtop", dest="receptor_prmtop_filename", default=None, help="receptor Amber parameter file", metavar="RECEPTOR_PRMTOP")    
-    parser.add_option("--ligand_crd", dest="ligand_crd_filename", default=None, help="ligand Amber crd file", metavar="LIGAND_CRD")
-    parser.add_option("--receptor_crd", dest="receptor_crd_filename", default=None, help="receptor Amber crd file", metavar="RECEPTOR_CRD")
     parser.add_option("--ligand_mol2", dest="ligand_mol2_filename", default=None, help="ligand mol2 file (can contain multiple conformations)", metavar="LIGAND_MOL2")
     parser.add_option("--receptor_pdb", dest="receptor_pdb_filename", default=None, help="receptor PDB file (can contain multiple MODELs)", metavar="RECEPTOR_PDB")
-    parser.add_option("--complex_prmtop", dest="complex_prmtop_filename", default=None, help="complex Amber parameter file", metavar="COMPLEX_PRMTOP")
-    parser.add_option("--complex_crd", dest="complex_crd_filename", default=None, help="complex Amber crd file", metavar="COMPLEX_CRD")
     parser.add_option("--complex_pdb", dest="complex_pdb_filename", default=None, help="complex PDB file (can contain multiple MODELs)", metavar="COMPLEX_PDB")
     parser.add_option("-v", "--verbose", action="store_true", dest="verbose", default=False, help="verbosity flag")
     parser.add_option("-i", "--iterations", dest="niterations", default=None, help="number of iterations", metavar="ITERATIONS")
@@ -190,14 +84,14 @@ def driver():
             sys.exit(1)
 
     # Check arguments for validity.
-    if not (options.ligand_prmtop_filename and options.receptor_prmtop_filename):
-        parser.error("ligand and receptor prmtop files must be specified")        
-    if not (bool(options.ligand_mol2_filename) ^ bool(options.ligand_crd_filename) ^ bool(options.complex_pdb_filename) ^ bool(options.complex_crd_filename)):
-        parser.error("Ligand coordinates must be specified through only one of --ligand_crd, --ligand_mol2, --complex_crd, or --complex_pdb.")
-    if not (bool(options.receptor_pdb_filename) ^ bool(options.receptor_crd_filename) ^ bool(options.complex_pdb_filename) ^ bool(options.complex_crd_filename)):
-        parser.error("Receptor coordinates must be specified through only one of --receptor_crd, --receptor_pdb, --complex_crd, or --complex_pdb.")    
-    if not (options.complex_prmtop_filename):
-        parser.error("Please specify --complex_prmtop [complex_prmtop_filename] argument.")
+    if not (options.ligand_mol2_filename):
+        parser.error("Please supply a ligand in mol2 format")
+    if not (options.receptor_pdb_filename):
+        parser.error("Please supply the receptor in pdb format")
+    if not (options.complex_pdb_filename):
+        print("Will combine ligand and receptor")
+
+
 
     # Initialize MPI if requested.
     if options.mpi:
@@ -214,6 +108,10 @@ def driver():
             print e
             parser.error("Could not initialize MPI.")
 
+
+
+
+
     # Select simulation parameters.
     # TODO: Allow user selection or intelligent automated selection of simulation parameters.
     # NOTE: Simulation paramters are hard-coded for now.
@@ -225,62 +123,29 @@ def driver():
     removeCMMotion = False
 
 
-    ligand_system = app.AmberPrmtopFile(options.ligand_prmtop_filename).createSystem(nonbondedMethod=nonbondedMethod, implicitSolvent=implicitSolvent, constraints=constraints, removeCMMotion=removeCMMotion)
-    receptor_system = app.AmberPrmtopFile(options.receptor_prmtop_filename).createSystem(nonbondedMethod=nonbondedMethod, implicitSolvent=implicitSolvent, constraints=constraints, removeCMMotion=removeCMMotion)
-    complex_system = app.AmberPrmtopFile(options.complex_prmtop_filename).createSystem(nonbondedMethod=nonbondedMethod, implicitSolvent=implicitSolvent, constraints=constraints, removeCMMotion=removeCMMotion)
+    #make ligand, receptor, complex objects
+    ligand = Mol2SystemBuilder(options.ligand_mol2_filename, "ligand")
+    receptor = BiomoleculePDBSystemBuilder(options.receptor_pdb_filename,"receptor")
+    complex = ComplexSystemBuilder(ligand,receptor,"complex")
 
-    # Determine number of atoms for each system.
-    natoms_receptor = receptor_system.getNumParticles()
-    natoms_ligand = ligand_system.getNumParticles()
-    natoms_complex = complex_system.getNumParticles()
-    if (natoms_complex != natoms_ligand + natoms_receptor):
-        raise Exception("Number of complex atoms must equal sum of ligand and receptor atoms.")
-
-    # Read ligand and receptor coordinates.
-    ligand_coordinates = list()
-    receptor_coordinates = list()
-    complex_coordinates = list()
-    if (options.complex_crd_filename or options.complex_pdb_filename):
-        # Read coordinates for whole complex.
-        if options.complex_crd_filename:
-            coordinates = read_amber_crd(options.complex_crd_filename, natoms_complex, options.verbose)
-            complex_coordinates.append(coordinates)
-        else:
-            try:
-                coordinates_list = read_openeye_crd(options.complex_pdb_filename, natoms_complex, options.verbose)
-            except:
-                coordinates_list = read_pdb_crd(options.complex_pdb_filename, natoms_complex, options.verbose)
-            complex_coordinates += coordinates_list
-    elif options.ligand_crd_filename:
-        coordinates = read_amber_crd(options.ligand_crd_filename, natoms_ligand, options.verbose)
-        coordinates = units.Quantity(numpy.array(coordinates / coordinates.unit), coordinates.unit)
-        ligand_coordinates.append(coordinates)
-    elif options.ligand_mol2_filename:
-        coordinates_list = read_openeye_crd(options.ligand_mol2_filename, natoms_ligand, options.verbose)
-        ligand_coordinates += coordinates_list
-    elif options.receptor_crd_filename:
-        coordinates = read_amber_crd(options.receptor_crd_filename, natoms_receptor, options.verbose)
-        coordinates = units.Quantity(numpy.array(coordinates / coordinates.unit), coordinates.unit)
-        receptor_coordinates.append(coordinates)
-    elif options.receptor_pdb_filename:
-        try:
-            coordinates_list = read_openeye_crd(options.receptor_pdb_filename, natoms_receptor, options.verbose)
-        except:
-            coordinates_list = read_pdb_crd(options.receptor_pdb_filename, natoms_receptor, options.verbose)
-        receptor_coordinates += coordinates_list
-
-    # Assemble complex coordinates if we haven't read any.
-    if len(complex_coordinates)==0:
-        for x in receptor_coordinates:
-            for y in ligand_coordinates:
-                z = units.Quantity(numpy.zeros([natoms_complex,3]), units.angstroms)
-                z[0:natoms_receptor,:] = x[:,:]
-                z[natoms_receptor:natoms_complex,:] = y[:,:]
-                complex_coordinates.append(z)
-
+    # DEBUG: Write out ligand, receptor, and complex system objects.
+    debug = False
+    if debug:
+        def write_file(outfile, contents):
+            outfile = open(outfile, 'w')
+            outfile.write(contents)
+            outfile.close()
+        for name in ['receptor', 'ligand', 'complex']:
+            system = vars()[name].system
+            serialized_system = system.__getstate__()
+            filename = name + '.system.xml'
+            print "Writing serialized %s to %s..." % (name, filename)
+            write_file(filename, serialized_system)
+        
     # Initialize YANK object.
+
     from yank import Yank
-    yank = Yank(receptor=receptor_system, ligand=ligand_system, complex=complex_system, complex_positions=complex_coordinates, output_directory=options.output_directory, verbose=options.verbose)
+    yank = Yank(receptor=receptor.system, ligand=ligand.system, complex=complex.system, complex_positions=[complex.coordinates_as_quantity], output_directory=options.output_directory, verbose=options.verbose)
 
     # Configure YANK object with command-line parameter overrides.
     if options.niterations is not None:
@@ -302,7 +167,7 @@ def driver():
    # cpuid_gpuid_mapping = { 0:0, 1:1, 2:2, 3:3 }
     #ncpus_per_node = None
 
-    # Run calculation.
+    # Run calculation.brbz
     if options.mpi:
         # Run MPI version.
         yank.run_mpi(options.mpi, options.gpus_per_node)

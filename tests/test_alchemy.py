@@ -54,6 +54,7 @@ TODO
 # GLOBAL IMPORTS
 #=============================================================================================
 
+import os
 import numpy as np
 import time
 
@@ -81,7 +82,7 @@ MAX_DELTA = 0.01 * kB * temperature # maximum allowable deviation
 # MAIN AND UNIT TESTS
 #=============================================================================================
 
-def compareSystemEnergies(positions, systems, descriptions, platform="Reference", precision=None):
+def compareSystemEnergies(positions, systems, descriptions, platform="CPU", precision=None):
     # Compare energies.
     timestep = 1.0 * units.femtosecond
 
@@ -387,13 +388,13 @@ def test_lj_fluid_without_dispersion():
 
 def test_lj_fluid_with_dispersion():
     logger.info("====================================================================")
-    logger.info("Creating Lennard-Jones fluid system with dispersion correction...")    
+    logger.info("Creating Lennard-Jones fluid system with dispersion correction...")
     system_container = testsystems.LennardJonesFluid(dispersion_correction=True)
     (reference_system, positions) = system_container.system, system_container.positions
     ligand_atoms = range(0,1) # first atom
     receptor_atoms = range(2,3) # second atom
     alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms)
-    #benchmark(reference_system, positions, receptor_atoms, ligand_atoms)    
+    #benchmark(reference_system, positions, receptor_atoms, ligand_atoms)
     logger.info("====================================================================")
     logger.info("")
 
@@ -501,42 +502,71 @@ def test_alanine_dipeptide_explicit():
 
 def test_obcgbsa_complex():
     # This test is too slow for travis-ci.
+    if 'TRAVIS' in os.environ: return
+
     logger.info("====================================================================")
     logger.info("Creating T4 lysozyme system...")
     system_container = testsystems.LysozymeImplicit()
-    (reference_system, positions) = system_container.system, system_container.positions    
+    (reference_system, positions) = system_container.system, system_container.positions
     receptor_atoms = range(0,2603) # T4 lysozyme L99A
     ligand_atoms = range(2603,2621) # p-xylene
-    alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms)    
-    #benchmark(reference_system, positions, receptor_atoms, ligand_atoms)    
+    alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms)
+    #benchmark(reference_system, positions, receptor_atoms, ligand_atoms)
+    logger.info("====================================================================")
+    logger.info("")
+
+def test_systembuilder_lysozyme_pdb_mol2():
+    logger.info("====================================================================")
+    logger.info("Creating T4 lysozyme L99A in OBC GBSA from PDB and mol2 with SystemBuilder...")
+    # Retrieve receptor and ligand file paths.
+    receptor_pdb_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/receptor.pdb")
+    ligand_mol2_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/ligand.mol2")
+    # Use systembuilder
+    import yank.systembuilder
+    from yank.systembuilder import Mol2SystemBuilder, BiomoleculePDBSystemBuilder, ComplexSystemBuilder
+    ligand = Mol2SystemBuilder(ligand_mol2_filename, "ligand")
+    receptor = BiomoleculePDBSystemBuilder(receptor_pdb_filename,"receptor")
+    complex = ComplexSystemBuilder(ligand,receptor,"complex")
+    # DEBUG
+    for name in ['ligand', 'receptor', 'complex']:
+        thing = vars()[name]
+        print "%s has %d particles" % (name, thing.system.getNumParticles())
+        print "%s openmm_positions:" % name
+        print thing.openmm_positions
+    # Test alchemically modified systems.
+    receptor_atoms = range(0,2603) # T4 lysozyme L99A
+    ligand_atoms = range(2603,2621) # p-xylene
+    alchemical_factory_check(complex.system, complex.coordinates_as_quantity, receptor_atoms, ligand_atoms)
     logger.info("====================================================================")
     logger.info("")
 
 def test_src_implicit():
     # This test is too slow for travis-ci.
+    if 'TRAVIS' in os.environ: return
     # TODO: Replace with Abl + imatinib
     logger.info("====================================================================")
     logger.info("Creating Src implicit system...")
     system_container = testsystems.SrcImplicit()
-    (reference_system, positions) = system_container.system, system_container.positions    
+    (reference_system, positions) = system_container.system, system_container.positions
     ligand_atoms = range(0,21)
     receptor_atoms = range(21, 4091)
-    alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms)    
-    #benchmark(reference_system, positions, receptor_atoms, ligand_atoms)    
+    alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms)
+    #benchmark(reference_system, positions, receptor_atoms, ligand_atoms)
     logger.info("====================================================================")
     logger.info("")
 
 def test_src_explicit():
     # This test is too slow for travis-ci.
+    if 'TRAVIS' in os.environ: return
     # TODO: Replace with Abl + imatinib
     logger.info("====================================================================")
     logger.info("Creating Src explicit system...")
     system_container = testsystems.SrcExplicit()
-    (reference_system, positions) = system_container.system, system_container.positions    
+    (reference_system, positions) = system_container.system, system_container.positions
     ligand_atoms = range(0,21)
     receptor_atoms = range(21, 4091)
-    alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms)    
-    #benchmark(reference_system, positions, receptor_atoms, ligand_atoms)    
+    alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms)
+    #benchmark(reference_system, positions, receptor_atoms, ligand_atoms)
     logger.info("====================================================================")
     logger.info("")
 
@@ -545,6 +575,9 @@ def test_src_explicit():
 #=============================================================================================
 
 if __name__ == "__main__":
+    test_lj_fluid_with_dispersion()
+    sys.exit(1) # DEBUG
+
     test_lj_cluster()
     test_lj_fluid_without_dispersion()
     test_lj_fluid_with_dispersion()
@@ -556,8 +589,5 @@ if __name__ == "__main__":
     test_alanine_dipeptide_vacuum()
     test_alanine_dipeptide_implicit()
     test_alanine_dipeptide_explicit()
-    test_obcgbsa_complex()
-    test_src_implicit()
-    test_src_explicit()
 
-
+    test_systembuilder_lysozyme_pdb_mol2()
