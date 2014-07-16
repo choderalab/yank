@@ -70,7 +70,7 @@ class SystemBuilder():
     """
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, ffxml_filenames=None, ffxmls=None, system_creation_parameters=None):
+    def __init__(self, ffxml_filenames=None, ffxmls=None, system_creation_parameters=None, molecule_name=None):
         """
         Abstract base class for SystemBuilder classes.
 
@@ -89,7 +89,7 @@ class SystemBuilder():
         # Set private class properties.
         self._ffxmls = ffxmls # Start with contents of any specified ffxml files.
         self._append_ffxmls(ffxml_filenames) # Append contents of any ffxml files to be read.
-
+        self._molecule_name = molecule_name
         self._topology = None # OpenMM Topology object
         self._positions = None # OpenMM positions as simtk.unit.Quantity with units compatible with nanometers
         self._system = None # OpenMM System object created by ForceField
@@ -116,7 +116,7 @@ class SystemBuilder():
             infile = open(ffxml_filename, 'r')
         except IOError:
             from simtk.openmm.app import forcefield
-            relative_path = os.path.dirname(simtk.openmm.app.forcefield.__file__)
+            relative_path = os.path.dirname(app.forcefield.__file__)
             infile = open(relative_path, 'r')
 
         ffxml = infile.read()
@@ -252,7 +252,7 @@ class BiopolymerSystemBuilder(SystemBuilder):
     """
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self):
+    def __init__(self,ffxml_filenames=None):
         """
         Abstract base class for classes that will read biopolymers.
 
@@ -260,7 +260,7 @@ class BiopolymerSystemBuilder(SystemBuilder):
         ----------
 
         """
-        super(BiopolymerSystemBuilder, self).__init__()
+        super(BiopolymerSystemBuilder, self).__init__(ffxml_filenames=ffxml_filenames)
         return
 
 #=============================================================================================
@@ -304,7 +304,7 @@ class BiopolymerPDBSystemBuilder(BiopolymerSystemBuilder):
 
         """
         # Call base constructor.
-        super(BiopolymerPDBMoleculeBuilder, self).__init__(ffxml_filenames=ffxml_filenames)
+        super(BiopolymerPDBSystemBuilder, self).__init__(ffxml_filenames=ffxml_filenames)
 
         # Store the desired pH used to assign protonation states.
         self._pH = pH
@@ -373,7 +373,7 @@ class SmallMoleculeBuilder(SystemBuilder):
     oeomega = None
     oequacpac = None
 
-    def __init__(self, molecule, parameterize='gaff2xml', parameterize_arguments=None, charge=None, **kwargs):
+    def __init__(self, molecule, parameterize='gaff2xml', parameterize_arguments=None, charge=None,molecule_name=None, **kwargs):
         """
         SystemBuilder capable of parameterizing small molecules given OpenMM positions and topology.
 
@@ -458,9 +458,18 @@ class SmallMoleculeBuilder(SystemBuilder):
                 parameterize_arguments['net_charge'] = formal_charge
 
         if parameterize_arguments:
-            (gaff_mol2_filename, gaff_frcmod_filename) = gaff2xml.utils.run_antechamber(molecule_name, mol2_filename, **parameterize_arguments)
+            (gaff_mol2_filename, gaff_frcmod_filename) = gaff2xml.utils.run_antechamber(self._molecule_name, mol2_filename, **parameterize_arguments)
         else:
-            (gaff_mol2_filename, gaff_frcmod_filename) = gaff2xml.utils.run_antechamber(molecule_name, mol2_filename)
+            (gaff_mol2_filename, gaff_frcmod_filename) = gaff2xml.utils.run_antechamber(self._molecule_name, mol2_filename)
+
+        #Get current directory to restore later
+        cwd = os.getcwd()
+
+        #Get a new temporary directory
+        tmpdir = tempfile.mkdtemp()
+
+        #change into the temp directory
+        os.chdir(tmpdir)
 
         # Write out the ffxml file from gaff2xml.
         ffxml_filename = tempfile.NamedTemporaryFile(delete=False)
@@ -483,7 +492,7 @@ class SmallMoleculeBuilder(SystemBuilder):
 
         return
 
-    def _write_molecule(self, molecule, filename=None, format=None):
+    def _write_molecule(self, molecule, filename=None, format=None, preserve_atomtypes=False):
         """Write the given OpenEye molecule to a file.
 
         Parameters
@@ -494,6 +503,8 @@ class SmallMoleculeBuilder(SystemBuilder):
            The name of the file to be written, or None if a temporary file is to be created.
         format : OEFormat, optional, default=None
            The format of the file to be written (
+        preserve_atomtypes : bool, optional, default=False
+           If True, atom types will not be converted before writing.
 
         Returns
         -------
@@ -518,7 +529,7 @@ class SmallMoleculeBuilder(SystemBuilder):
             # write all conformers of each molecule
             for conformer in molecule.GetConfs():
                 if preserve_atomtypes: self.oechem.OEWriteMol2File(ostream, conformer)
-                else: OEWriteConstMolecule(ostream, conformer)
+                else: self.oechem.OEWriteConstMolecule(ostream, conformer)
             return
 
         # If 'molecule' is actually a list of molecules, write them all.
@@ -601,7 +612,7 @@ class SmallMoleculeBuilder(SystemBuilder):
 
         return normalized_molecule
 
-    def _expand_conformations(molecule, maxconfs=None, threshold=None, include_original=False, torsionlib=None, verbose=False, strictTyping=None, strictStereo=True):
+    def _expand_conformations(self,molecule, maxconfs=None, threshold=None, include_original=False, torsionlib=None, verbose=False, strictTyping=None, strictStereo=True):
         """Enumerate conformations of the molecule with OpenEye's Omega after normalizing molecule.
 
         Parameters
@@ -624,13 +635,13 @@ class SmallMoleculeBuilder(SystemBuilder):
         """
 
         # Copy molecule.
-        expanded_molecule = openeye.oechem.OEMol(molecule)
+        expanded_molecule = self.openeye.oechem.OEMol(molecule)
 
         # Initialize Omega.
         omega = self.oeomega.OEOmega()
-        if strictstereo != None: omega.SetStrictStereo(strictstereo)  # Fail if stereochemistry is not specified.
-        if stricttyping != None: omega.SetStrictAtomTypes(stricttyping)  # Fail if any atom does not have a valid MMFF atom type.
-        if include_iriginal != None: omega.SetIncludeInput(include_original)  # Include input
+        if strictStereo != None: omega.SetStrictStereo(strictStereo)  # Fail if stereochemistry is not specified.
+        if strictTyping != None: omega.SetStrictAtomTypes(strictTyping)  # Fail if any atom does not have a valid MMFF atom type.
+        if include_original != None: omega.SetIncludeInput(include_original)  # Include input
         if torsionlib != None: omega.SetTorsionLibrary(torsionlib)
         if maxconfs != None: omega.SetMaxConfs(maxconfs)  # Return just one conformation.
         omega(expanded_molecule)  # Generate conformation.
@@ -893,6 +904,7 @@ class ComplexSystemBuilder(SystemBuilder):
         self._ffxmls.append(receptor.ffxmls)
         self._ffxmls.append(ligand.ffxmls)
 
+
         # Concatenate topologies and positions.
         from simtk.openmm import app
         model = app.modeller.Modeller(receptor.topology, receptor.positions)
@@ -922,31 +934,31 @@ class ComplexSystemBuilder(SystemBuilder):
         * This is not guaranteed to work for periodic systems.
 
         """
-        import mdtraj
+        import mdtraj as md
 
-        # Create an mdtraj Topology from OpenMM Topology object.
-        mdtraj_topology = mdtraj.Topology.from_openmm(self._topology)
+        # Create an mdtraj Topology of the complex from OpenMM Topology object.
+        mdtraj_complex_topology = md.Topology.from_openmm(self._topology)
 
-        # Create an mdtraj instance.
-        mdtraj = mdtraj.Trajectory(self._positions, mdtraj_topology)
+        # Create an mdtraj instance of the complex.
+        mdtraj_complex = md.Trajectory(self._positions, mdtraj_complex_topology)
 
         # Compute centers of receptor and ligand.
-        receptor_center = mdtraj.xyz[0][self._receptor_atoms,:].mean(1)
-        ligand_center = mdtraj.xyz[0][self._ligand_atoms,:].mean(1)
+        receptor_center = mdtraj_complex.xyz[0][self._receptor_atoms,:].mean(1)
+        ligand_center = mdtraj_complex.xyz[0][self._ligand_atoms,:].mean(1)
 
         # Count number of receptor and ligand atoms.
         nreceptor_atoms = len(self._receptor_atoms)
         nligand_atoms = len(self._ligand_atoms)
 
         # Compute max radii of receptor and ligand.
-        receptor_radius = (((ligand_traj.xyz[0][self._receptor_atoms,:] - numpy.tile(receptor_center, (nreceptor_atoms,1))) ** 2.).sum(1) ** 0.5).max()
-        ligand_radius = (((ligand_traj.xyz[0][self._ligand_atoms,:] - numpy.tile(ligand_center, (nligand_atoms,1))) ** 2.).sum(1) ** 0.5).max()
+        receptor_radius = (((mdtraj_complex.xyz[0][self._receptor_atoms,:] - np.tile(receptor_center, (nreceptor_atoms,1))) ** 2.).sum(1) ** 0.5).max()
+        ligand_radius = (((mdtraj_complex.xyz[0][self._ligand_atoms,:] - np.tile(ligand_center, (nligand_atoms,1))) ** 2.).sum(1) ** 0.5).max()
 
         # Translate ligand along x-axis from receptor center with 5% clearance.
-        mdtraj.xyz[0][self._ligand_atoms,:] += np.array([1.0, 0.0, 0.0]) * (receptor_radius + ligand_radius) * 1.05 - ligand_center + receptor_center
+        mdtraj_complex.xyz[0][self._ligand_atoms,:] += np.array([1.0, 0.0, 0.0]) * (receptor_radius + ligand_radius) * 1.05 - ligand_center + receptor_center
 
         # Extract updated system positions.
-        self._positions = mdtraj.openmm_positions(0)
+        self._positions = mdtraj_complex.openmm_positions(0)
 
         return
 
