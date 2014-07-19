@@ -70,7 +70,7 @@ class SystemBuilder():
     """
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, ffxml_filenames=None, ffxmls=None, system_creation_parameters=None, molecule_name="MOL"):
+    def __init__(self, ffxml_filenames=None, ffxmls=list(), system_creation_parameters=None, molecule_name="MOL"):
         """
         Abstract base class for SystemBuilder classes.
 
@@ -134,10 +134,16 @@ class SystemBuilder():
            current working directory, or a path relative to this module's data subdirectory (for built in force fields).
 
         """
+
         if ffxml_filenames:
-            for ffxml_filename in ffxml_filenames:
-                ffxml = self._read_ffxml(ffxml_filename)
+            if hasattr(ffxml_filenames, 'len'):
+                for ffxml_filename in ffxml_filenames:
+                    ffxml = self._read_ffxml(ffxml_filename)
+                    self._ffxmls.append(ffxml)
+            else:
+                ffxml = self._read_ffxml(ffxml_filenames)
                 self._ffxmls.append(ffxml)
+
         return
 
     def _create_system(self):
@@ -478,11 +484,11 @@ class SmallMoleculeBuilder(SystemBuilder):
             (gaff_mol2_filename, gaff_frcmod_filename) = gaff2xml.utils.run_antechamber(self._molecule_name, mol2_filename)
 
         # Write out the ffxml file from gaff2xml.
-        ffxml_filename = tempfile.NamedTemporaryFile(delete=False)
+        ffxml_filename = "molecule.ffxml"
         gaff2xml.utils.create_ffxml_file(gaff_mol2_filename, gaff_frcmod_filename, ffxml_filename)
 
         # Append the ffxml file to loaded parameters.
-        self._append_ffxml(ffxml_filename)
+        self._append_ffxmls(ffxml_filename)
 
         # Restore working directory.
         os.chdir(cwd)
@@ -636,11 +642,11 @@ class SmallMoleculeBuilder(SystemBuilder):
 
         """
         # Write a Tripos mol2 file to a temporary file.
-        mol2_filename = self._write_mol2_file(molecule, format=self.oechem.OEFormat_MOL2H, preserve_atomtypes=True)
+        mol2_filename = self._write_molecule(molecule, format=self.oechem.OEFormat_MOL2H, preserve_atomtypes=True)
 
         # Read the mol2 file in MDTraj.
         import mdtraj
-        mdtraj_molecule = mdtraj.load()
+        mdtraj_molecule = mdtraj.load(mol2_filename)
         positions = mdtraj_molecule.openmm_positions(0)
         topology = mdtraj_molecule.top.to_openmm()
 
@@ -975,8 +981,9 @@ class ComplexSystemBuilder(SystemBuilder):
         super(ComplexSystemBuilder, self).__init__()
 
         # Append ffxml files.
-        self._ffxmls.append(receptor.ffxmls)
-        self._ffxmls.append(ligand.ffxmls)
+        self._ffxmls = list()
+        self._ffxmls += receptor.ffxmls
+        self._ffxmls += ligand.ffxmls
 
         # Concatenate topologies and positions.
         from simtk.openmm import app
