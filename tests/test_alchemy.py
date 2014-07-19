@@ -520,13 +520,13 @@ def test_systembuilder_lysozyme_pdb_mol2():
     logger.info("Creating T4 lysozyme L99A in OBC GBSA from PDB and mol2 with SystemBuilder...")
     # Retrieve receptor and ligand file paths.
     receptor_pdb_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/receptor.pdb")
-    ligand_mol2_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/ligand.mol2")
+    ligand_mol2_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/ligand.tripos.mol2")
     # Use systembuilder
     import yank.systembuilder
-    from yank.systembuilder import Mol2SystemBuilder, BiomoleculePDBSystemBuilder, ComplexSystemBuilder
-    ligand = Mol2SystemBuilder(ligand_mol2_filename, "ligand")
-    receptor = BiomoleculePDBSystemBuilder(receptor_pdb_filename,"receptor")
-    complex = ComplexSystemBuilder(ligand,receptor,"complex")
+    from yank.systembuilder import Mol2SystemBuilder, BiopolymerPDBSystemBuilder, ComplexSystemBuilder
+    ligand = Mol2SystemBuilder(ligand_mol2_filename)
+    receptor = BiomoleculePDBSystemBuilder(receptor_pdb_filename)
+    complex = ComplexSystemBuilder(ligand, receptor, remove_ligand_overlap=True)
     # DEBUG
     for name in ['ligand', 'receptor', 'complex']:
         thing = vars()[name]
@@ -575,7 +575,7 @@ def test_src_explicit():
 #=============================================================================================
 
 if __name__ == "__main__":
-    test_lj_fluid_with_dispersion()
+    test_systembuilder_lysozyme_pdb_mol2()
     sys.exit(1) # DEBUG
 
     test_lj_cluster()

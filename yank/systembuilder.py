@@ -70,7 +70,7 @@ class SystemBuilder():
     """
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, ffxml_filenames=None, ffxmls=None, system_creation_parameters=None, molecule_name=None):
+    def __init__(self, ffxml_filenames=None, ffxmls=None, system_creation_parameters=None, molecule_name="MOL"):
         """
         Abstract base class for SystemBuilder classes.
 
@@ -89,7 +89,7 @@ class SystemBuilder():
         # Set private class properties.
         self._ffxmls = ffxmls # Start with contents of any specified ffxml files.
         self._append_ffxmls(ffxml_filenames) # Append contents of any ffxml files to be read.
-        self._molecule_name = molecule_name
+        self._molecule_name = molecule_name # Optional molecule name
         self._topology = None # OpenMM Topology object
         self._positions = None # OpenMM positions as simtk.unit.Quantity with units compatible with nanometers
         self._system = None # OpenMM System object created by ForceField
@@ -373,7 +373,7 @@ class SmallMoleculeBuilder(SystemBuilder):
     oeomega = None
     oequacpac = None
 
-    def __init__(self, molecule, parameterize='gaff2xml', parameterize_arguments=None, charge=None,molecule_name=None, **kwargs):
+    def __init__(self, molecule, parameterize='gaff2xml', parameterize_arguments=None, charge=None, molecule_name=None, **kwargs):
         """
         SystemBuilder capable of parameterizing small molecules given OpenMM positions and topology.
 
@@ -398,7 +398,7 @@ class SmallMoleculeBuilder(SystemBuilder):
         super(SmallMoleculeBuilder, self).__init__(**kwargs)
 
         # Normalize the molecule.
-        molecule = self._normalize_molecule(molecule)
+        #molecule = self._normalize_molecule(molecule) # DEBUG
 
         # Select the desired charge state, if one is specified.
         if charge is not None:
@@ -432,7 +432,7 @@ class SmallMoleculeBuilder(SystemBuilder):
 
         return
 
-    def _parameterize_with_gaff2xml(self, molecule, charge, parameterize_arguments=None):
+    def _parameterize_with_gaff2xml(self, molecule, charge, parameterize_arguments=dict()):
         """
         Parameterize the molecule using gaff2xml, appending the parameters to the set of loaded parameters.
 
@@ -442,11 +442,26 @@ class SmallMoleculeBuilder(SystemBuilder):
            Optional kwargs to be passed to gaff2xml.
 
         """
+
         # Attempt to import gaff2xml.
         import gaff2xml
 
+        # Change to a temporary working directory.
+        cwd = os.getcwd()
+        tmpdir = tempfile.mkdtemp()
+        os.chdir(tmpdir)
+        print tmpdir # DEBUG
+
         # Write Tripos mol2 file.
-        mol2_filename = self._write_molecule(molecule, 'tripos.mol2')
+        substructure_name = "MOL2" # substructure name used in mol2 file
+        print "About to parameterize. Molecule has %d atoms." % molecule.NumAtoms()
+        mol2_filename = self._write_molecule(molecule, filename='tripos.mol2')
+        self._modify_substructure_name(mol2_filename, substructure_name) # DEBUG
+
+        # DEBUG
+        infile = open(mol2_filename)
+        contents = infile.read()
+        print contents
 
         # Run antechamber via gaff2xml to generate parameters.
         # TODO: We need a way to pass the net charge.
@@ -462,15 +477,6 @@ class SmallMoleculeBuilder(SystemBuilder):
         else:
             (gaff_mol2_filename, gaff_frcmod_filename) = gaff2xml.utils.run_antechamber(self._molecule_name, mol2_filename)
 
-        #Get current directory to restore later
-        cwd = os.getcwd()
-
-        #Get a new temporary directory
-        tmpdir = tempfile.mkdtemp()
-
-        #change into the temp directory
-        os.chdir(tmpdir)
-
         # Write out the ffxml file from gaff2xml.
         ffxml_filename = tempfile.NamedTemporaryFile(delete=False)
         gaff2xml.utils.create_ffxml_file(gaff_mol2_filename, gaff_frcmod_filename, ffxml_filename)
@@ -481,7 +487,7 @@ class SmallMoleculeBuilder(SystemBuilder):
         # Restore working directory.
         os.chdir(cwd)
 
-        # Clean up working directory.
+        # Clean up temporary working directory.
         for filename in os.listdir(tmpdir):
             file_path = os.path.join(tmpdir, filename)
             try:
@@ -536,13 +542,81 @@ class SmallMoleculeBuilder(SystemBuilder):
         if type(molecule) == type(list()):
             for individual_molecule in molecule:
                 write_all_conformers(ostream, individual_molecule)
-            else:
-                write_all_conformers(ostream, molecule)
+        else:
+            write_all_conformers(ostream, molecule)
 
         # Close the stream.
         ostream.close()
 
         return filename
+
+    def _modify_substructure_name(self, mol2file, name):
+        """Replace the substructure name (subst_name) in a mol2 file.
+
+        ARGUMENTS
+        mol2file (string) - name of the mol2 file to modify
+        name (string) - new substructure name
+
+        NOTES
+        This is useful becuase the OpenEye tools leave this name set to <0>.
+        The transformation is only applied to the first molecule in the mol2 file.
+
+        TODO
+        This function is still difficult to read.  It should be rewritten to be comprehensible by humans.
+        Check again to see if there is OpenEye functionality to write the substructure name correctly.
+
+        """
+
+        # Read mol2 file.
+        file = open(mol2file, 'r')
+        text = file.readlines()
+        file.close()
+
+        # Find the atom records.
+        atomsec = []
+        ct = 0
+        while text[ct].find('<TRIPOS>ATOM')==-1:
+            ct+=1
+        ct+=1
+        atomstart = ct
+        while text[ct].find('<TRIPOS>BOND')==-1:
+            ct+=1
+        atomend = ct
+
+        atomsec = text[atomstart:atomend]
+        outtext=text[0:atomstart]
+        repltext = atomsec[0].split()[7] # mol2 file uses space delimited, not fixed-width
+
+        # Replace substructure name.
+        for line in atomsec:
+            # If we blindly search and replace, we'll tend to clobber stuff, as the subst_name might be "1" or something lame like that that will occur all over. 
+            # If it only occurs once, just replace it.
+            if line.count(repltext)==1:
+                outtext.append( line.replace(repltext, name) )
+            else:
+                # Otherwise grab the string left and right of the subst_name and sandwich the new subst_name in between. This can probably be done easier in Python 2.5 with partition, but 2.4 is still used someplaces.
+                # Loop through the line and tag locations of every non-space entry
+                blockstart=[]
+                ct=0
+                c=' '
+                for ct in range(len(line)):
+                    lastc = c
+                    c = line[ct]
+                    if lastc.isspace() and not c.isspace():
+                        blockstart.append(ct)
+                        line = line[0:blockstart[7]] + line[blockstart[7]:].replace(repltext, name, 1)
+                        outtext.append(line)
+
+        # Append rest of file.
+        for line in text[atomend:]:
+            outtext.append(line)
+
+        # Write out modified mol2 file, overwriting old one.
+        file = open(mol2file,'w')
+        file.writelines(outtext)
+        file.close()
+
+        return
 
     def _oemol_to_openmm(self, molecule):
         """Extract OpenMM positions and topologies from an OpenEye OEMol molecule.
@@ -562,7 +636,7 @@ class SmallMoleculeBuilder(SystemBuilder):
 
         """
         # Write a Tripos mol2 file to a temporary file.
-        mol2_filename = self._write_mol2_file(molecule, format=self.oechem.OEFormat_MOL2)
+        mol2_filename = self._write_mol2_file(molecule, format=self.oechem.OEFormat_MOL2H, preserve_atomtypes=True)
 
         # Read the mol2 file in MDTraj.
         import mdtraj
@@ -597,7 +671,7 @@ class SmallMoleculeBuilder(SystemBuilder):
         normalized_molecule = self.oechem.OEMol(molecule)
 
         # Find ring atoms and bonds
-        # self.oechem.OEFindRingAtomsAndBonds(molecule)
+        self.oechem.OEFindRingAtomsAndBonds(normalized_molecule)
 
         # Assign aromaticity.
         self.oechem.OEAssignAromaticFlags(normalized_molecule, self.oechem.OEAroModelOpenEye)
@@ -607,7 +681,7 @@ class SmallMoleculeBuilder(SystemBuilder):
 
         if set_name_to_iupac:
             # Set title to IUPAC name.
-            name = self.oechem.OECreateIUPACName(normalized_molecule)
+            name = self.oeiupac.OECreateIUPACName(normalized_molecule)
             normalized_molecule.SetTitle(name)
 
         return normalized_molecule
@@ -903,7 +977,6 @@ class ComplexSystemBuilder(SystemBuilder):
         # Append ffxml files.
         self._ffxmls.append(receptor.ffxmls)
         self._ffxmls.append(ligand.ffxmls)
-
 
         # Concatenate topologies and positions.
         from simtk.openmm import app
