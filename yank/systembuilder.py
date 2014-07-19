@@ -70,7 +70,7 @@ class SystemBuilder():
     """
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, ffxml_filenames=None, ffxmls=list(), system_creation_parameters=None, molecule_name="MOL"):
+    def __init__(self, ffxml_filenames=None, ffxmls=list(), system_creation_parameters=dict(), molecule_name="MOL"):
         """
         Abstract base class for SystemBuilder classes.
 
@@ -150,13 +150,16 @@ class SystemBuilder():
         Create the OpenMM System object.
 
         """
+
         # Create file-like objects from ffxml contents because ForceField cannot yet read strings.
         from StringIO import StringIO
         ffxml_streams = list()
         for ffxml in self._ffxmls:
             ffxml_streams.append(StringIO(ffxml))
+
         # Create ForceField.
-        forcefield = app.ForceField(ffxml_streams)
+        forcefield = app.ForceField(*ffxml_streams)
+
         # Create System from topology.
         self._system = forcefield.createSystem(self._topology, **self.system_creation_parameters)
         return
@@ -1032,11 +1035,13 @@ class ComplexSystemBuilder(SystemBuilder):
         mdtraj_complex_topology = md.Topology.from_openmm(self._topology)
 
         # Create an mdtraj instance of the complex.
-        mdtraj_complex = md.Trajectory(self._positions, mdtraj_complex_topology)
+        # TODO: Fix this when mdtraj can deal with OpenMM units.
+        positions_in_mdtraj_format = np.array(self._positions / units.nanometers)
+        mdtraj_complex = md.Trajectory(positions_in_mdtraj_format, mdtraj_complex_topology)
 
         # Compute centers of receptor and ligand.
-        receptor_center = mdtraj_complex.xyz[0][self._receptor_atoms,:].mean(1)
-        ligand_center = mdtraj_complex.xyz[0][self._ligand_atoms,:].mean(1)
+        receptor_center = mdtraj_complex.xyz[0][self._receptor_atoms,:].mean(0)
+        ligand_center = mdtraj_complex.xyz[0][self._ligand_atoms,:].mean(0)
 
         # Count number of receptor and ligand atoms.
         nreceptor_atoms = len(self._receptor_atoms)
