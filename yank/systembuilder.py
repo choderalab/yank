@@ -314,18 +314,6 @@ class BiopolymerPDBSystemBuilder(BiopolymerSystemBuilder):
         # Store the desired pH used to assign protonation states.
         self._pH = pH
 
-        # Change to a temporary working directory.
-        cwd = os.getcwd()
-        tmpdir = tempfile.mkdtemp()
-        os.chdir(tmpdir)
-
-        # Write coordinates to PDB file.
-        from simtk.openmm.app import PDBFile
-        pdb_filename = 'current.pdb'
-        outfile = open(pdb_filename, 'w')
-        PDBFile.writeFile(self._topology, self._positions, file=outfile)
-        outfile.close()
-
         # Use PDBFixer to add missing atoms and residues and set protonation states appropriately.
         from pdbfixer import pdbfixer
         fixer = pdbfixer.PDBFixer(pdb_filename)
@@ -336,26 +324,13 @@ class BiopolymerPDBSystemBuilder(BiopolymerSystemBuilder):
         fixer.addMissingAtoms()
         fixer.removeHeterogens(True)
         fixer.addMissingHydrogens(self._pH)
-        self._fixer = fixer
 
         # Keep only the chains the user wants
-        if self._chains_to_use is not None:
+        if chain_ids is not None:
             # TODO: Check correctness of this.
             n_chains = len(list(fixer.topology.chains()))
-            chains_to_remove = np.setdiff1d(np.arange(n_chains), self.keep_chains)
+            chains_to_remove = np.setdiff1d(np.arange(n_chains), chain_ids) # TODO: Check if this is robust to weird chain orderings.
             fixer.removeChains(chains_to_remove)
-
-        # Restore working directory.
-        os.chdir(cwd)
-
-        # Clean up temporary working directory.
-        for filename in os.listdir(tmpdir):
-            file_path = os.path.join(tmpdir, filename)
-            try:
-                if os.path.isfile(file_path):
-                    os.unlink(file_path)
-            except Exception, e:
-                print e
 
         # Store OpenMM topology.
         self._topology = fixer.topology
@@ -457,7 +432,7 @@ class SmallMoleculeBuilder(SystemBuilder):
                 self._parameterize_with_gaff2xml(molecule, parameterize_arguments)
 
         # Store OpenMM positions and topologies.
-        [self._positions, self._topologies] = self._oemol_to_openmm(molecule)
+        [self._positions, self._topology] = self._oemol_to_openmm(molecule)
 
         return
 
