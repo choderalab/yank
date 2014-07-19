@@ -86,6 +86,8 @@ class SystemBuilder():
 
         """
 
+        print ffxml_filenames
+
         # Set private class properties.
         self._ffxmls = ffxmls # Start with contents of any specified ffxml files.
         self._append_ffxmls(ffxml_filenames) # Append contents of any ffxml files to be read.
@@ -116,8 +118,9 @@ class SystemBuilder():
             infile = open(ffxml_filename, 'r')
         except IOError:
             from simtk.openmm.app import forcefield
-            relative_path = os.path.dirname(app.forcefield.__file__)
-            infile = open(relative_path, 'r')
+            forcefield_data_dir = os.path.join(os.path.dirname(app.forcefield.__file__), 'data')
+            fullpath = os.path.join(forcefield_data_dir, ffxml_filename)
+            infile = open(fullpath, 'r')
 
         ffxml = infile.read()
         infile.close()
@@ -136,12 +139,8 @@ class SystemBuilder():
         """
 
         if ffxml_filenames:
-            if hasattr(ffxml_filenames, 'len'):
-                for ffxml_filename in ffxml_filenames:
-                    ffxml = self._read_ffxml(ffxml_filename)
-                    self._ffxmls.append(ffxml)
-            else:
-                ffxml = self._read_ffxml(ffxml_filenames)
+            for ffxml_filename in ffxml_filenames:
+                ffxml = self._read_ffxml(ffxml_filename)
                 self._ffxmls.append(ffxml)
 
         return
@@ -283,7 +282,7 @@ class BiopolymerPDBSystemBuilder(BiopolymerSystemBuilder):
 
     """
 
-    def __init__(self, pdb_filename, chain_ids=None, ffxml_filenames=['amber99sb_ildn.xml', 'amber99_obc.xml'], pH=7.0):
+    def __init__(self, pdb_filename, chain_ids=None, ffxml_filenames=['amber99sbildn.xml', 'amber99_obc.xml'], pH=7.0):
         """
         Create a biopolymer from a specified PDB file.
 
@@ -315,9 +314,21 @@ class BiopolymerPDBSystemBuilder(BiopolymerSystemBuilder):
         # Store the desired pH used to assign protonation states.
         self._pH = pH
 
+        # Change to a temporary working directory.
+        cwd = os.getcwd()
+        tmpdir = tempfile.mkdtemp()
+        os.chdir(tmpdir)
+
+        # Write coordinates to PDB file.
+        from simtk.openmm.app import PDBFile
+        pdb_filename = 'current.pdb'
+        outfile = open(pdb_filename, 'w')
+        PDBFile.writeFile(self._topology, self._positions, file=outfile)
+        outfile.close()
+
         # Use PDBFixer to add missing atoms and residues and set protonation states appropriately.
-        import pdbfixer
-        fixer = pdbfixer.PDBFixer(self._coordinate_file)
+        from pdbfixer import pdbfixer
+        fixer = pdbfixer.PDBFixer(pdb_filename)
         fixer.findMissingResidues()
         fixer.findNonstandardResidues()
         fixer.replaceNonstandardResidues()
@@ -333,6 +344,18 @@ class BiopolymerPDBSystemBuilder(BiopolymerSystemBuilder):
             n_chains = len(list(fixer.topology.chains()))
             chains_to_remove = np.setdiff1d(np.arange(n_chains), self.keep_chains)
             fixer.removeChains(chains_to_remove)
+
+        # Restore working directory.
+        os.chdir(cwd)
+
+        # Clean up temporary working directory.
+        for filename in os.listdir(tmpdir):
+            file_path = os.path.join(tmpdir, filename)
+            try:
+                if os.path.isfile(file_path):
+                    os.unlink(file_path)
+            except Exception, e:
+                print e
 
         # Store OpenMM topology.
         self._topology = fixer.topology
@@ -456,7 +479,6 @@ class SmallMoleculeBuilder(SystemBuilder):
         cwd = os.getcwd()
         tmpdir = tempfile.mkdtemp()
         os.chdir(tmpdir)
-        print tmpdir # DEBUG
 
         # Write Tripos mol2 file.
         substructure_name = "MOL2" # substructure name used in mol2 file
@@ -488,7 +510,7 @@ class SmallMoleculeBuilder(SystemBuilder):
         gaff2xml.utils.create_ffxml_file(gaff_mol2_filename, gaff_frcmod_filename, ffxml_filename)
 
         # Append the ffxml file to loaded parameters.
-        self._append_ffxmls(ffxml_filename)
+        self._append_ffxmls([ffxml_filename])
 
         # Restore working directory.
         os.chdir(cwd)
@@ -641,8 +663,14 @@ class SmallMoleculeBuilder(SystemBuilder):
            OpenMM Topology object for the small molecule.
 
         """
+
+        # Change to a temporary working directory.
+        cwd = os.getcwd()
+        tmpdir = tempfile.mkdtemp()
+        os.chdir(tmpdir)
+
         # Write a Tripos mol2 file to a temporary file.
-        mol2_filename = self._write_molecule(molecule, format=self.oechem.OEFormat_MOL2H, preserve_atomtypes=True)
+        mol2_filename = self._write_molecule(molecule, filename='molecule.gaff.mol2', format=self.oechem.OEFormat_MOL2H, preserve_atomtypes=True)
 
         # Read the mol2 file in MDTraj.
         import mdtraj
@@ -650,8 +678,17 @@ class SmallMoleculeBuilder(SystemBuilder):
         positions = mdtraj_molecule.openmm_positions(0)
         topology = mdtraj_molecule.top.to_openmm()
 
-        # Unlink the file.
-        os.unlink(mol2_filename)
+        # Restore working directory.
+        os.chdir(cwd)
+
+        # Clean up temporary working directory.
+        for filename in os.listdir(tmpdir):
+            file_path = os.path.join(tmpdir, filename)
+            try:
+                if os.path.isfile(file_path):
+                    os.unlink(file_path)
+            except Exception, e:
+                print e
 
         # Return OpenMM format positions and topology.
         return [positions, topology]

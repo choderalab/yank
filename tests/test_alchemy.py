@@ -525,7 +525,7 @@ def test_systembuilder_lysozyme_pdb_mol2():
     import yank.systembuilder
     from yank.systembuilder import Mol2SystemBuilder, BiopolymerPDBSystemBuilder, ComplexSystemBuilder
     ligand = Mol2SystemBuilder(ligand_mol2_filename)
-    receptor = BiomoleculePDBSystemBuilder(receptor_pdb_filename)
+    receptor = BiopolymerPDBSystemBuilder(receptor_pdb_filename)
     complex = ComplexSystemBuilder(ligand, receptor, remove_ligand_overlap=True)
     # DEBUG
     for name in ['ligand', 'receptor', 'complex']:
