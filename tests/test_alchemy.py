@@ -527,12 +527,6 @@ def test_systembuilder_lysozyme_pdb_mol2():
     ligand = Mol2SystemBuilder(ligand_mol2_filename)
     receptor = BiopolymerPDBSystemBuilder(receptor_pdb_filename)
     complex = ComplexSystemBuilder(ligand, receptor, remove_ligand_overlap=True)
-    # DEBUG
-    for name in ['ligand', 'receptor', 'complex']:
-        thing = vars()[name]
-        print "%s has %d particles" % (name, thing.system.getNumParticles())
-        print "%s openmm_positions:" % name
-        print thing.openmm_positions
     # Test alchemically modified systems.
     receptor_atoms = range(0,2603) # T4 lysozyme L99A
     ligand_atoms = range(2603,2621) # p-xylene

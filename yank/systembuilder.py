@@ -285,7 +285,7 @@ class BiopolymerPDBSystemBuilder(BiopolymerSystemBuilder):
 
     """
 
-    def __init__(self, pdb_filename, chain_ids=None, ffxml_filenames=['amber99sbildn.xml', 'amber99_obc.xml'], pH=7.0):
+    def __init__(self, pdb_filename, chain_ids=None, ffxml_filenames=['amber99sbildn.xml'], pH=7.0):
         """
         Create a biopolymer from a specified PDB file.
 
