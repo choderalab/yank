@@ -530,7 +530,7 @@ def test_systembuilder_lysozyme_pdb_mol2():
     # Test alchemically modified systems.
     receptor_atoms = range(0,2603) # T4 lysozyme L99A
     ligand_atoms = range(2603,2621) # p-xylene
-    alchemical_factory_check(complex.system, complex.coordinates_as_quantity, receptor_atoms, ligand_atoms)
+    alchemical_factory_check(complex.system, complex.positions, receptor_atoms, ligand_atoms)
     logger.info("====================================================================")
     logger.info("")
 

@@ -70,7 +70,7 @@ class SystemBuilder():
     """
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, ffxml_filenames=None, ffxmls=list(), system_creation_parameters=dict(), molecule_name="MOL"):
+    def __init__(self, ffxml_filenames=None, ffxmls=None, system_creation_parameters=dict(), molecule_name="MOL"):
         """
         Abstract base class for SystemBuilder classes.
 
@@ -86,7 +86,7 @@ class SystemBuilder():
 
         """
 
-        print ffxml_filenames
+        if ffxmls is None: ffxmls = set() # empty set
 
         # Set private class properties.
         self._ffxmls = ffxmls # Start with contents of any specified ffxml files.
@@ -141,7 +141,7 @@ class SystemBuilder():
         if ffxml_filenames:
             for ffxml_filename in ffxml_filenames:
                 ffxml = self._read_ffxml(ffxml_filename)
-                self._ffxmls.append(ffxml)
+                self._ffxmls.add(ffxml)
 
         return
 
@@ -405,7 +405,7 @@ class SmallMoleculeBuilder(SystemBuilder):
         super(SmallMoleculeBuilder, self).__init__(**kwargs)
 
         # Normalize the molecule.
-        #molecule = self._normalize_molecule(molecule) # DEBUG
+        molecule = self._normalize_molecule(molecule) 
 
         # Select the desired charge state, if one is specified.
         if charge is not None:
@@ -460,14 +460,8 @@ class SmallMoleculeBuilder(SystemBuilder):
 
         # Write Tripos mol2 file.
         substructure_name = "MOL2" # substructure name used in mol2 file
-        print "About to parameterize. Molecule has %d atoms." % molecule.NumAtoms()
         mol2_filename = self._write_molecule(molecule, filename='tripos.mol2')
-        self._modify_substructure_name(mol2_filename, substructure_name) # DEBUG
-
-        # DEBUG
-        infile = open(mol2_filename)
-        contents = infile.read()
-        print contents
+        self._modify_substructure_name(mol2_filename, substructure_name) 
 
         # Run antechamber via gaff2xml to generate parameters.
         # TODO: We need a way to pass the net charge.
