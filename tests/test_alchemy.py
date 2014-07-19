@@ -401,7 +401,7 @@ def test_lj_fluid_with_dispersion():
 def test_tip3p_discharged():
     logger.info("====================================================================")
     logger.info("Creating discharged TIP3P explicit system...")
-    system_container = testsystems.DischargedWaterBox(dispersion_correction=False, use_pme=False, switch=False)
+    system_container = testsystems.DischargedWaterBox(dispersion_correction=False, switch=False, nonbondedMethod=app.CutoffPeriodic)
     (reference_system, positions) = system_container.system, system_container.positions
     natoms = reference_system.getNumParticles()
     ligand_atoms = range(0,3) # alanine residue
@@ -413,7 +413,7 @@ def test_tip3p_discharged():
 def test_tip3p_noswitch():
     logger.info("====================================================================")
     logger.info("Creating TIP3P explicit system using reaction field, no switch...")
-    system_container = testsystems.WaterBox(dispersion_correction=False, use_pme=False, switch=False)
+    system_container = testsystems.WaterBox(dispersion_correction=False, switch=False, nonbondedMethod=app.CutoffPeriodic)
     (reference_system, positions) = system_container.system, system_container.positions
     natoms = reference_system.getNumParticles()
     ligand_atoms = range(0,3) # alanine residue
@@ -425,7 +425,7 @@ def test_tip3p_noswitch():
 def test_tip3p_reaction_field():
     logger.info("====================================================================")
     logger.info("Creating TIP3P explicit system using reaction field...")
-    system_container = testsystems.WaterBox(dispersion_correction=False, use_pme=False, switch=True)
+    system_container = testsystems.WaterBox(dispersion_correction=False, switch=True, nonbondedMethod=app.CutoffPeriodic)
     (reference_system, positions) = system_container.system, system_container.positions
     natoms = reference_system.getNumParticles()
     ligand_atoms = range(0,3) # alanine residue
@@ -437,7 +437,7 @@ def test_tip3p_reaction_field():
 def notest_tip3p_pme(): # DISABLED because PME support is not working
     logger.info("====================================================================")
     logger.info("Creating TIP3P explicit system using PME...")
-    system_container = testsystems.WaterBox(dispersion_correction=False, use_pme=True)
+    system_container = testsystems.WaterBox(dispersion_correction=False, nonbondedMethod=app.PME)
     (reference_system, positions) = system_container.system, system_container.positions
     natoms = reference_system.getNumParticles()
     ligand_atoms = range(0,3) # alanine residue
@@ -448,8 +448,8 @@ def notest_tip3p_pme(): # DISABLED because PME support is not working
 
 def test_tip3p_with_dispersion():
     logger.info("====================================================================")
-    logger.info("Creating TIP3P explicit system with dispersion correction...")
-    system_container = testsystems.WaterBox(dispersion_correction=True)
+    logger.info("Creating TIP3P explicit system with dispersion correction using reaction field...")
+    system_container = testsystems.WaterBox(dispersion_correction=True, nonbondedMethod=app.CutoffPeriodic)
     (reference_system, positions) = system_container.system, system_container.positions
     natoms = reference_system.getNumParticles()
     ligand_atoms = range(0,3) # alanine residue
@@ -492,7 +492,7 @@ def test_alanine_dipeptide_explicit():
     """
     logger.info("====================================================================")
     logger.info("Creating alanine dipeptide explicit solvent system...")
-    system_container = testsystems.AlanineDipeptideExplicit()
+    system_container = testsystems.AlanineDipeptideExplicit(nonbondedMethod=app.CutoffPeriodic)
     (reference_system, positions) = system_container.system, system_container.positions
     ligand_atoms = range(0,22) # alanine residue
     receptor_atoms = range(22,2269) # one water
@@ -500,7 +500,7 @@ def test_alanine_dipeptide_explicit():
     logger.info("====================================================================")
     logger.info("")
 
-def test_obcgbsa_complex():
+def notest_obcgbsa_complex():
     # This test is too slow for travis-ci.
     if 'TRAVIS' in os.environ: return
 
@@ -555,7 +555,7 @@ def test_src_explicit():
     # TODO: Replace with Abl + imatinib
     logger.info("====================================================================")
     logger.info("Creating Src explicit system...")
-    system_container = testsystems.SrcExplicit()
+    system_container = testsystems.SrcExplicit(nonbondedMethod=app.CutoffPeriodic)
     (reference_system, positions) = system_container.system, system_container.positions
     ligand_atoms = range(0,21)
     receptor_atoms = range(21, 4091)
