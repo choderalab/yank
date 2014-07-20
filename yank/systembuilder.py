@@ -405,7 +405,7 @@ class SmallMoleculeBuilder(SystemBuilder):
         super(SmallMoleculeBuilder, self).__init__(**kwargs)
 
         # Normalize the molecule.
-        molecule = self._normalize_molecule(molecule) 
+        molecule = self._normalize_molecule(molecule)
 
         # Select the desired charge state, if one is specified.
         if charge is not None:
@@ -429,13 +429,13 @@ class SmallMoleculeBuilder(SystemBuilder):
         if molecule.GetDimension() < 3:
             molecule = self._expand_conformations(molecule, maxconfs=1)
 
+        # Store OpenMM positions and topologies.
+        [self._positions, self._topology] = self._oemol_to_openmm(molecule)
+
         # Parameterize if requested.
         if parameterize:
             if parameterize == 'gaff2xml':
                 self._parameterize_with_gaff2xml(molecule, parameterize_arguments)
-
-        # Store OpenMM positions and topologies.
-        [self._positions, self._topology] = self._oemol_to_openmm(molecule)
 
         return
 
@@ -459,9 +459,8 @@ class SmallMoleculeBuilder(SystemBuilder):
         os.chdir(tmpdir)
 
         # Write Tripos mol2 file.
-        substructure_name = "MOL2" # substructure name used in mol2 file
-        mol2_filename = self._write_molecule(molecule, filename='tripos.mol2')
-        self._modify_substructure_name(mol2_filename, substructure_name) 
+        substructure_name = "MOL" # substructure name used in mol2 file
+        mol2_filename = self._write_molecule(molecule, filename='tripos.mol2', substructure_name=substructure_name)
 
         # Run antechamber via gaff2xml to generate parameters.
         # TODO: We need a way to pass the net charge.
@@ -498,19 +497,21 @@ class SmallMoleculeBuilder(SystemBuilder):
 
         return
 
-    def _write_molecule(self, molecule, filename=None, format=None, preserve_atomtypes=False):
+    def _write_molecule(self, molecule, filename=None, format=None, preserve_atomtypes=False, substructure_name=None):
         """Write the given OpenEye molecule to a file.
 
         Parameters
         ----------
         molecule : openeye.oechem.OEMol
-           The molecule to be written to file.
+           The molecule to be written to file (will notbe changed).
         filename : str, optional, default=None
            The name of the file to be written, or None if a temporary file is to be created.
         format : OEFormat, optional, default=None
            The format of the file to be written (
         preserve_atomtypes : bool, optional, default=False
            If True, atom types will not be converted before writing.
+        substructure_name : str, optional, default=None
+           If specified, mol2 substructure name will be set to specified name.
 
         Returns
         -------
@@ -522,6 +523,9 @@ class SmallMoleculeBuilder(SystemBuilder):
             file = tempfile.NamedTemporaryFile(delete=False)
             filename = file.name
             file.close() # close the file so we can open it again
+
+        # Make a copy of the molecule so it will not be changed.
+        molecule = self.oechem.OEMol(molecule)
 
         # Open the output stream
         ostream = self.oechem.oemolostream(filename)
@@ -547,6 +551,10 @@ class SmallMoleculeBuilder(SystemBuilder):
 
         # Close the stream.
         ostream.close()
+
+        # Modify substructure name if requested.
+        if substructure_name:
+            self._modify_substructure_name(filename, substructure_name)
 
         return filename
 
@@ -642,7 +650,9 @@ class SmallMoleculeBuilder(SystemBuilder):
         os.chdir(tmpdir)
 
         # Write a Tripos mol2 file to a temporary file.
-        mol2_filename = self._write_molecule(molecule, filename='molecule.gaff.mol2', format=self.oechem.OEFormat_MOL2H, preserve_atomtypes=True)
+        substructure_name = "MOL" # substructure name used in mol2 file
+        mol2_filename = 'molecule.mol2'
+        self._write_molecule(molecule, filename=mol2_filename, substructure_name=substructure_name)
 
         # Read the mol2 file in MDTraj.
         import mdtraj
@@ -914,7 +924,7 @@ class Mol2SystemBuilder(SmallMoleculeBuilder):
         --------
         Create a SystemBuilder from a ligand mol2 file, using default parameterization scheme.
         >>> from repex import testsystems
-        >>> ligand_mol2_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/ligand.mol2")
+        >>> ligand_mol2_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/ligand.tripos.mol2")
         >>> ligand = Mol2SystemBuilder(ligand_mol2_filename, charge=0)
         >>> system = ligand.system
         >>> positions = ligand.positions
@@ -974,7 +984,7 @@ class ComplexSystemBuilder(SystemBuilder):
         Create a ComplexSystemBuilder from a protein PDB file and a ligand mol2 file.
         >>> from repex import testsystems
         >>> receptor_pdb_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/receptor.pdb")
-        >>> ligand_mol2_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/ligand.mol2")
+        >>> ligand_mol2_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/ligand.tripos.mol2")
         >>> receptor = BiopolymerPDBSystemBuilder(receptor_pdb_filename, pH=7.0)
         >>> ligand = Mol2SystemBuilder(ligand_mol2_filename, charge=0)
         >>> complex = ComplexSystemBuilder(ligand, receptor, remove_ligand_overlap=True)
@@ -1053,6 +1063,14 @@ class ComplexSystemBuilder(SystemBuilder):
 
         return
 
+    @property
+    def ligand_atoms(self):
+        return copy.deepcopy(self._ligand_atoms)
+
+    @property
+    def receptor_atoms(self):
+        return copy.deepcopy(self._receptor_atoms)
+
 #=============================================================================================
 # TEST CODE
 #=============================================================================================
@@ -1068,7 +1086,7 @@ def test_alchemy():
     # Create SystemBuilder objects.
     from repex import testsystems
     receptor_pdb_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/receptor.pdb")
-    ligand_mol2_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/ligand.mol2")
+    ligand_mol2_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/ligand.tripos.mol2")
     receptor = BiopolymerPDBSystemBuilder(receptor_pdb_filename, pH=7.0)
     ligand = Mol2SystemBuilder(ligand_mol2_filename, charge=0)
     complex = ComplexSystemBuilder(ligand, receptor, remove_ligand_overlap=True)

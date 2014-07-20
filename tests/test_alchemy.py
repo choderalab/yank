@@ -60,6 +60,7 @@ import time
 
 import simtk.openmm as openmm
 import simtk.unit as units
+from simtk.openmm import app
 
 import logging
 logger = logging.getLogger(__name__)
