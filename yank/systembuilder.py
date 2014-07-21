@@ -399,7 +399,7 @@ class SmallMoleculeBuilder(SystemBuilder):
 
         """
         # Load and license check for all necessary OpenEye libraries
-        self._load_verify_openeye()
+        SmallMoleculeBuilder._load_verify_openeye()
 
         # Call the constructor.
         super(SmallMoleculeBuilder, self).__init__(**kwargs)
@@ -438,6 +438,29 @@ class SmallMoleculeBuilder(SystemBuilder):
                 self._parameterize_with_gaff2xml(molecule, parameterize_arguments)
 
         return
+
+    @classmethod
+    def is_supported(cls):
+        """
+        Check whether this module is supported.
+
+        Returns
+        -------
+        is_supported : bool
+           True if all functionality is present; False otherwise.
+
+        Examples
+        --------
+        >>> is_supported = SmallMoleculeBuilder.is_supported()
+
+        """
+
+        try:
+            # Load and license check for all necessary OpenEye libraries
+            cls._load_verify_openeye()
+            return True
+        except RuntimeError:
+            return False
 
     def _parameterize_with_gaff2xml(self, molecule, charge, parameterize_arguments=dict()):
         """
@@ -842,7 +865,8 @@ class SmallMoleculeBuilder(SystemBuilder):
         # Return the list of expanded states as a Python list of OEMol() molecules.
         return states
 
-    def _load_verify_openeye(self, oechemlicensepath=None):
+    @classmethod
+    def _load_verify_openeye(cls, oechemlicensepath=None):
         """Loads required OpenEye libraries and checks licenses
 
         Parameters
@@ -863,7 +887,7 @@ class SmallMoleculeBuilder(SystemBuilder):
         """
 
         # Don't do anything if we've already imported OpenEye toolkit.
-        if self.oechem: return
+        if cls.oechem: return
 
         # Import the OpenEye toolkit components.
         from openeye import oechem     # For chemical objects
@@ -894,10 +918,10 @@ class SmallMoleculeBuilder(SystemBuilder):
             raise RuntimeError("No valid license for Quacpac TK.")
 
         #Attach libraries to the instance to only load and check them once at initialization.
-        self.oechem = oechem
-        self.oeiupac = oeiupac
-        self.oeomega = oeomega
-        self.oequacpac = oequacpac
+        cls.oechem = oechem
+        cls.oeiupac = oeiupac
+        cls.oeomega = oeomega
+        cls.oequacpac = oequacpac
         return
 
 #=============================================================================================
@@ -933,7 +957,7 @@ class Mol2SystemBuilder(SmallMoleculeBuilder):
         """
 
         # Initialize the OpenEye toolkit.
-        self._load_verify_openeye()
+        SmallMoleculeBuilder._load_verify_openeye()
 
         # Open an input stream
         istream = self.oechem.oemolistream()
