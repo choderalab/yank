@@ -70,7 +70,7 @@ class SystemBuilder():
     """
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, ffxml_filenames=None, ffxmls=None, system_creation_parameters=None, molecule_name=None):
+    def __init__(self, ffxml_filenames=None, ffxmls=None, system_creation_parameters=dict(), molecule_name="MOL"):
         """
         Abstract base class for SystemBuilder classes.
 
@@ -86,10 +86,12 @@ class SystemBuilder():
 
         """
 
+        if ffxmls is None: ffxmls = set() # empty set
+
         # Set private class properties.
         self._ffxmls = ffxmls # Start with contents of any specified ffxml files.
         self._append_ffxmls(ffxml_filenames) # Append contents of any ffxml files to be read.
-        self._molecule_name = molecule_name
+        self._molecule_name = molecule_name # Optional molecule name
         self._topology = None # OpenMM Topology object
         self._positions = None # OpenMM positions as simtk.unit.Quantity with units compatible with nanometers
         self._system = None # OpenMM System object created by ForceField
@@ -116,8 +118,9 @@ class SystemBuilder():
             infile = open(ffxml_filename, 'r')
         except IOError:
             from simtk.openmm.app import forcefield
-            relative_path = os.path.dirname(app.forcefield.__file__)
-            infile = open(relative_path, 'r')
+            forcefield_data_dir = os.path.join(os.path.dirname(app.forcefield.__file__), 'data')
+            fullpath = os.path.join(forcefield_data_dir, ffxml_filename)
+            infile = open(fullpath, 'r')
 
         ffxml = infile.read()
         infile.close()
@@ -134,10 +137,12 @@ class SystemBuilder():
            current working directory, or a path relative to this module's data subdirectory (for built in force fields).
 
         """
+
         if ffxml_filenames:
             for ffxml_filename in ffxml_filenames:
                 ffxml = self._read_ffxml(ffxml_filename)
-                self._ffxmls.append(ffxml)
+                self._ffxmls.add(ffxml)
+
         return
 
     def _create_system(self):
@@ -145,13 +150,16 @@ class SystemBuilder():
         Create the OpenMM System object.
 
         """
+
         # Create file-like objects from ffxml contents because ForceField cannot yet read strings.
         from StringIO import StringIO
         ffxml_streams = list()
         for ffxml in self._ffxmls:
             ffxml_streams.append(StringIO(ffxml))
+
         # Create ForceField.
-        forcefield = app.ForceField(ffxml_streams)
+        forcefield = app.ForceField(*ffxml_streams)
+
         # Create System from topology.
         self._system = forcefield.createSystem(self._topology, **self.system_creation_parameters)
         return
@@ -277,7 +285,7 @@ class BiopolymerPDBSystemBuilder(BiopolymerSystemBuilder):
 
     """
 
-    def __init__(self, pdb_filename, chain_ids=None, ffxml_filenames=['amber99sb_ildn.xml', 'amber99_obc.xml'], pH=7.0):
+    def __init__(self, pdb_filename, chain_ids=None, ffxml_filenames=['amber99sbildn.xml'], pH=7.0):
         """
         Create a biopolymer from a specified PDB file.
 
@@ -310,8 +318,8 @@ class BiopolymerPDBSystemBuilder(BiopolymerSystemBuilder):
         self._pH = pH
 
         # Use PDBFixer to add missing atoms and residues and set protonation states appropriately.
-        import pdbfixer
-        fixer = pdbfixer.PDBFixer(self._coordinate_file)
+        from pdbfixer import pdbfixer
+        fixer = pdbfixer.PDBFixer(pdb_filename)
         fixer.findMissingResidues()
         fixer.findNonstandardResidues()
         fixer.replaceNonstandardResidues()
@@ -319,13 +327,12 @@ class BiopolymerPDBSystemBuilder(BiopolymerSystemBuilder):
         fixer.addMissingAtoms()
         fixer.removeHeterogens(True)
         fixer.addMissingHydrogens(self._pH)
-        self._fixer = fixer
 
         # Keep only the chains the user wants
-        if self._chains_to_use is not None:
+        if chain_ids is not None:
             # TODO: Check correctness of this.
             n_chains = len(list(fixer.topology.chains()))
-            chains_to_remove = np.setdiff1d(np.arange(n_chains), self.keep_chains)
+            chains_to_remove = np.setdiff1d(np.arange(n_chains), chain_ids) # TODO: Check if this is robust to weird chain orderings.
             fixer.removeChains(chains_to_remove)
 
         # Store OpenMM topology.
@@ -373,7 +380,7 @@ class SmallMoleculeBuilder(SystemBuilder):
     oeomega = None
     oequacpac = None
 
-    def __init__(self, molecule, parameterize='gaff2xml', parameterize_arguments=None, charge=None,molecule_name=None, **kwargs):
+    def __init__(self, molecule, parameterize='gaff2xml', parameterize_arguments=None, charge=None, molecule_name=None, **kwargs):
         """
         SystemBuilder capable of parameterizing small molecules given OpenMM positions and topology.
 
@@ -422,17 +429,17 @@ class SmallMoleculeBuilder(SystemBuilder):
         if molecule.GetDimension() < 3:
             molecule = self._expand_conformations(molecule, maxconfs=1)
 
+        # Store OpenMM positions and topologies.
+        [self._positions, self._topology] = self._oemol_to_openmm(molecule)
+
         # Parameterize if requested.
         if parameterize:
             if parameterize == 'gaff2xml':
                 self._parameterize_with_gaff2xml(molecule, parameterize_arguments)
 
-        # Store OpenMM positions and topologies.
-        [self._positions, self._topologies] = self._oemol_to_openmm(molecule)
-
         return
 
-    def _parameterize_with_gaff2xml(self, molecule, charge, parameterize_arguments=None):
+    def _parameterize_with_gaff2xml(self, molecule, charge, parameterize_arguments=dict()):
         """
         Parameterize the molecule using gaff2xml, appending the parameters to the set of loaded parameters.
 
@@ -442,11 +449,18 @@ class SmallMoleculeBuilder(SystemBuilder):
            Optional kwargs to be passed to gaff2xml.
 
         """
+
         # Attempt to import gaff2xml.
         import gaff2xml
 
+        # Change to a temporary working directory.
+        cwd = os.getcwd()
+        tmpdir = tempfile.mkdtemp()
+        os.chdir(tmpdir)
+
         # Write Tripos mol2 file.
-        mol2_filename = self._write_molecule(molecule, 'tripos.mol2')
+        substructure_name = "MOL" # substructure name used in mol2 file
+        mol2_filename = self._write_molecule(molecule, filename='tripos.mol2', substructure_name=substructure_name)
 
         # Run antechamber via gaff2xml to generate parameters.
         # TODO: We need a way to pass the net charge.
@@ -462,26 +476,17 @@ class SmallMoleculeBuilder(SystemBuilder):
         else:
             (gaff_mol2_filename, gaff_frcmod_filename) = gaff2xml.utils.run_antechamber(self._molecule_name, mol2_filename)
 
-        #Get current directory to restore later
-        cwd = os.getcwd()
-
-        #Get a new temporary directory
-        tmpdir = tempfile.mkdtemp()
-
-        #change into the temp directory
-        os.chdir(tmpdir)
-
         # Write out the ffxml file from gaff2xml.
-        ffxml_filename = tempfile.NamedTemporaryFile(delete=False)
+        ffxml_filename = "molecule.ffxml"
         gaff2xml.utils.create_ffxml_file(gaff_mol2_filename, gaff_frcmod_filename, ffxml_filename)
 
         # Append the ffxml file to loaded parameters.
-        self._append_ffxml(ffxml_filename)
+        self._append_ffxmls([ffxml_filename])
 
         # Restore working directory.
         os.chdir(cwd)
 
-        # Clean up working directory.
+        # Clean up temporary working directory.
         for filename in os.listdir(tmpdir):
             file_path = os.path.join(tmpdir, filename)
             try:
@@ -492,19 +497,21 @@ class SmallMoleculeBuilder(SystemBuilder):
 
         return
 
-    def _write_molecule(self, molecule, filename=None, format=None, preserve_atomtypes=False):
+    def _write_molecule(self, molecule, filename=None, format=None, preserve_atomtypes=False, substructure_name=None):
         """Write the given OpenEye molecule to a file.
 
         Parameters
         ----------
         molecule : openeye.oechem.OEMol
-           The molecule to be written to file.
+           The molecule to be written to file (will notbe changed).
         filename : str, optional, default=None
            The name of the file to be written, or None if a temporary file is to be created.
         format : OEFormat, optional, default=None
            The format of the file to be written (
         preserve_atomtypes : bool, optional, default=False
            If True, atom types will not be converted before writing.
+        substructure_name : str, optional, default=None
+           If specified, mol2 substructure name will be set to specified name.
 
         Returns
         -------
@@ -516,6 +523,9 @@ class SmallMoleculeBuilder(SystemBuilder):
             file = tempfile.NamedTemporaryFile(delete=False)
             filename = file.name
             file.close() # close the file so we can open it again
+
+        # Make a copy of the molecule so it will not be changed.
+        molecule = self.oechem.OEMol(molecule)
 
         # Open the output stream
         ostream = self.oechem.oemolostream(filename)
@@ -536,13 +546,85 @@ class SmallMoleculeBuilder(SystemBuilder):
         if type(molecule) == type(list()):
             for individual_molecule in molecule:
                 write_all_conformers(ostream, individual_molecule)
-            else:
-                write_all_conformers(ostream, molecule)
+        else:
+            write_all_conformers(ostream, molecule)
 
         # Close the stream.
         ostream.close()
 
+        # Modify substructure name if requested.
+        if substructure_name:
+            self._modify_substructure_name(filename, substructure_name)
+
         return filename
+
+    def _modify_substructure_name(self, mol2file, name):
+        """Replace the substructure name (subst_name) in a mol2 file.
+
+        ARGUMENTS
+        mol2file (string) - name of the mol2 file to modify
+        name (string) - new substructure name
+
+        NOTES
+        This is useful becuase the OpenEye tools leave this name set to <0>.
+        The transformation is only applied to the first molecule in the mol2 file.
+
+        TODO
+        This function is still difficult to read.  It should be rewritten to be comprehensible by humans.
+        Check again to see if there is OpenEye functionality to write the substructure name correctly.
+
+        """
+
+        # Read mol2 file.
+        file = open(mol2file, 'r')
+        text = file.readlines()
+        file.close()
+
+        # Find the atom records.
+        atomsec = []
+        ct = 0
+        while text[ct].find('<TRIPOS>ATOM')==-1:
+            ct+=1
+        ct+=1
+        atomstart = ct
+        while text[ct].find('<TRIPOS>BOND')==-1:
+            ct+=1
+        atomend = ct
+
+        atomsec = text[atomstart:atomend]
+        outtext=text[0:atomstart]
+        repltext = atomsec[0].split()[7] # mol2 file uses space delimited, not fixed-width
+
+        # Replace substructure name.
+        for line in atomsec:
+            # If we blindly search and replace, we'll tend to clobber stuff, as the subst_name might be "1" or something lame like that that will occur all over. 
+            # If it only occurs once, just replace it.
+            if line.count(repltext)==1:
+                outtext.append( line.replace(repltext, name) )
+            else:
+                # Otherwise grab the string left and right of the subst_name and sandwich the new subst_name in between. This can probably be done easier in Python 2.5 with partition, but 2.4 is still used someplaces.
+                # Loop through the line and tag locations of every non-space entry
+                blockstart=[]
+                ct=0
+                c=' '
+                for ct in range(len(line)):
+                    lastc = c
+                    c = line[ct]
+                    if lastc.isspace() and not c.isspace():
+                        blockstart.append(ct)
+                        line = line[0:blockstart[7]] + line[blockstart[7]:].replace(repltext, name, 1)
+                        outtext.append(line)
+
+        # Append rest of file.
+        for line in text[atomend:]:
+            outtext.append(line)
+
+        # Write out modified mol2 file, overwriting old one.
+        file = open(mol2file,'w')
+        file.writelines(outtext)
+        file.close()
+
+        return
 
     def _oemol_to_openmm(self, molecule):
         """Extract OpenMM positions and topologies from an OpenEye OEMol molecule.
@@ -561,17 +643,34 @@ class SmallMoleculeBuilder(SystemBuilder):
            OpenMM Topology object for the small molecule.
 
         """
+
+        # Change to a temporary working directory.
+        cwd = os.getcwd()
+        tmpdir = tempfile.mkdtemp()
+        os.chdir(tmpdir)
+
         # Write a Tripos mol2 file to a temporary file.
-        mol2_filename = self._write_mol2_file(molecule, format=self.oechem.OEFormat_MOL2)
+        substructure_name = "MOL" # substructure name used in mol2 file
+        mol2_filename = 'molecule.mol2'
+        self._write_molecule(molecule, filename=mol2_filename, substructure_name=substructure_name)
 
         # Read the mol2 file in MDTraj.
         import mdtraj
-        mdtraj_molecule = mdtraj.load()
+        mdtraj_molecule = mdtraj.load(mol2_filename)
         positions = mdtraj_molecule.openmm_positions(0)
         topology = mdtraj_molecule.top.to_openmm()
 
-        # Unlink the file.
-        os.unlink(mol2_filename)
+        # Restore working directory.
+        os.chdir(cwd)
+
+        # Clean up temporary working directory.
+        for filename in os.listdir(tmpdir):
+            file_path = os.path.join(tmpdir, filename)
+            try:
+                if os.path.isfile(file_path):
+                    os.unlink(file_path)
+            except Exception, e:
+                print e
 
         # Return OpenMM format positions and topology.
         return [positions, topology]
@@ -597,7 +696,7 @@ class SmallMoleculeBuilder(SystemBuilder):
         normalized_molecule = self.oechem.OEMol(molecule)
 
         # Find ring atoms and bonds
-        # self.oechem.OEFindRingAtomsAndBonds(molecule)
+        self.oechem.OEFindRingAtomsAndBonds(normalized_molecule)
 
         # Assign aromaticity.
         self.oechem.OEAssignAromaticFlags(normalized_molecule, self.oechem.OEAroModelOpenEye)
@@ -607,7 +706,7 @@ class SmallMoleculeBuilder(SystemBuilder):
 
         if set_name_to_iupac:
             # Set title to IUPAC name.
-            name = self.oechem.OECreateIUPACName(normalized_molecule)
+            name = self.oeiupac.OECreateIUPACName(normalized_molecule)
             normalized_molecule.SetTitle(name)
 
         return normalized_molecule
@@ -825,7 +924,7 @@ class Mol2SystemBuilder(SmallMoleculeBuilder):
         --------
         Create a SystemBuilder from a ligand mol2 file, using default parameterization scheme.
         >>> from repex import testsystems
-        >>> ligand_mol2_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/ligand.mol2")
+        >>> ligand_mol2_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/ligand.tripos.mol2")
         >>> ligand = Mol2SystemBuilder(ligand_mol2_filename, charge=0)
         >>> system = ligand.system
         >>> positions = ligand.positions
@@ -885,7 +984,7 @@ class ComplexSystemBuilder(SystemBuilder):
         Create a ComplexSystemBuilder from a protein PDB file and a ligand mol2 file.
         >>> from repex import testsystems
         >>> receptor_pdb_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/receptor.pdb")
-        >>> ligand_mol2_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/ligand.mol2")
+        >>> ligand_mol2_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/ligand.tripos.mol2")
         >>> receptor = BiopolymerPDBSystemBuilder(receptor_pdb_filename, pH=7.0)
         >>> ligand = Mol2SystemBuilder(ligand_mol2_filename, charge=0)
         >>> complex = ComplexSystemBuilder(ligand, receptor, remove_ligand_overlap=True)
@@ -901,9 +1000,9 @@ class ComplexSystemBuilder(SystemBuilder):
         super(ComplexSystemBuilder, self).__init__()
 
         # Append ffxml files.
-        self._ffxmls.append(receptor.ffxmls)
-        self._ffxmls.append(ligand.ffxmls)
-
+        self._ffxmls = list()
+        self._ffxmls += receptor.ffxmls
+        self._ffxmls += ligand.ffxmls
 
         # Concatenate topologies and positions.
         from simtk.openmm import app
@@ -940,11 +1039,13 @@ class ComplexSystemBuilder(SystemBuilder):
         mdtraj_complex_topology = md.Topology.from_openmm(self._topology)
 
         # Create an mdtraj instance of the complex.
-        mdtraj_complex = md.Trajectory(self._positions, mdtraj_complex_topology)
+        # TODO: Fix this when mdtraj can deal with OpenMM units.
+        positions_in_mdtraj_format = np.array(self._positions / units.nanometers)
+        mdtraj_complex = md.Trajectory(positions_in_mdtraj_format, mdtraj_complex_topology)
 
         # Compute centers of receptor and ligand.
-        receptor_center = mdtraj_complex.xyz[0][self._receptor_atoms,:].mean(1)
-        ligand_center = mdtraj_complex.xyz[0][self._ligand_atoms,:].mean(1)
+        receptor_center = mdtraj_complex.xyz[0][self._receptor_atoms,:].mean(0)
+        ligand_center = mdtraj_complex.xyz[0][self._ligand_atoms,:].mean(0)
 
         # Count number of receptor and ligand atoms.
         nreceptor_atoms = len(self._receptor_atoms)
@@ -962,6 +1063,14 @@ class ComplexSystemBuilder(SystemBuilder):
 
         return
 
+    @property
+    def ligand_atoms(self):
+        return copy.deepcopy(self._ligand_atoms)
+
+    @property
+    def receptor_atoms(self):
+        return copy.deepcopy(self._receptor_atoms)
+
 #=============================================================================================
 # TEST CODE
 #=============================================================================================
@@ -977,7 +1086,7 @@ def test_alchemy():
     # Create SystemBuilder objects.
     from repex import testsystems
     receptor_pdb_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/receptor.pdb")
-    ligand_mol2_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/ligand.mol2")
+    ligand_mol2_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/ligand.tripos.mol2")
     receptor = BiopolymerPDBSystemBuilder(receptor_pdb_filename, pH=7.0)
     ligand = Mol2SystemBuilder(ligand_mol2_filename, charge=0)
     complex = ComplexSystemBuilder(ligand, receptor, remove_ligand_overlap=True)
