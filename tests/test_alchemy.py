@@ -54,7 +54,7 @@ TODO
 # GLOBAL IMPORTS
 #=============================================================================================
 
-import os
+import os, sys
 import numpy as np
 import time
 
@@ -517,13 +517,18 @@ def notest_obcgbsa_complex():
     logger.info("")
 
 def test_systembuilder_lysozyme_pdb_mol2():
+    import yank.systembuilder
+
+    # Skip test if the small molecule builder is not supported.
+    if not yank.systembuilder.SmallMoleculeBuilder.is_supported():
+        return
+
     logger.info("====================================================================")
     logger.info("Creating T4 lysozyme L99A in OBC GBSA from PDB and mol2 with SystemBuilder...")
     # Retrieve receptor and ligand file paths.
     receptor_pdb_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/receptor.pdb")
     ligand_mol2_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/ligand.tripos.mol2")
     # Use systembuilder
-    import yank.systembuilder
     from yank.systembuilder import Mol2SystemBuilder, BiopolymerPDBSystemBuilder, ComplexSystemBuilder
     ligand = Mol2SystemBuilder(ligand_mol2_filename)
     receptor = BiopolymerPDBSystemBuilder(receptor_pdb_filename)
