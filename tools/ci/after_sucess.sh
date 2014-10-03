@@ -19,3 +19,9 @@ if [[ "$python" != "2.7" ]]; then
     echo "No deploy on PYTHON_VERSION=${python}"; exit 0
 fi
 
+#make docs and push to s3
+sudo apt-get install -qq pandoc         # notebook -> rst
+conda install --yes matplotlib scikit-learn sphinx==1.2.3 boto ipython-notebook jinja2
+
+cd docs && make html && cd -
+python tools/ci/push-docs-to-s3.py
