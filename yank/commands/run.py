@@ -21,7 +21,7 @@ import os
 
 def dispatch(args):
     # Create YANK object associated with data storage directory.
-    from yank.yank import Yank
+    from yank.yank import Yank # TODO: Fix this awkward import syntax.
     yank = Yank(output_directory=args['--store'], verbose=args['--verbose'])
 
     # Configure YANK object with command-line parameter overrides.
@@ -55,3 +55,5 @@ def dispatch(args):
     else:
         # Run serial version.
         yank.run()
+
+    return True
