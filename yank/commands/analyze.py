@@ -19,5 +19,6 @@ Analyze YANK output file.
 #=============================================================================================
 
 def dispatch(args):
-    raise Exception("Not implemented.")
-
+    from yank import analyze
+    analyze.analyze(args['--store'], verbose=args['--verbose'])
+    return True

@@ -22,9 +22,11 @@ import sys
 #=============================================================================================
 
 def dispatch(args):
+    verbose = args['--verbose']
+
     # Remove NetCDF files in the destination directory.
     for filename in glob.glob(os.path.join(args['--store'], '*.nc')):
-        print "Removing file %s" % filename
+        if verbose: print "Removing file %s" % filename
         os.remove(filename)
 
     return True

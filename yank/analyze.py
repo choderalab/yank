@@ -963,6 +963,10 @@ def detect_equilibration(A_t):
     
     return (t, g, Neff_max)
 
+#=============================================================================================
+# SHOW STATUS OF STORE FILES
+#=============================================================================================
+
 def print_status(store_directory, verbose=False):
     """
     Print a quick summary of simulation progress.
@@ -1016,15 +1020,24 @@ def print_status(store_directory, verbose=False):
     return True
 
 #=============================================================================================
-# MAIN
+# ANALYZE STORE FILES
 #=============================================================================================
 
-def main():
-    # Turn on debug info.
-    logging.basicConfig(level=logging.DEBUG)
+def analyze(source_directory, verbose=False):
+    """
+    Analyze contents of store files to compute free energy differences.
 
-    # DEBUG: ANALYSIS PATH IS HARD-CODED FOR NOW
-    source_directory = "."
+    Parameters
+    ----------
+    source_directory : string
+       The location of the NetCDF simulation storage files.
+    verbose : bool, optional, default=False
+       If True, verbose output will be generated.
+
+    """
+    # Turn on debug info.
+    # TODO: Control verbosity of logging output using verbose optional flag.
+    logging.basicConfig(level=logging.DEBUG)
 
     # Storage for different phases.
     data = dict()
@@ -1147,5 +1160,3 @@ def main():
     dDeltaH = np.sqrt(data['solvent']['dDeltaH']**2 + data['complex']['dDeltaH']**2)
     logger.info("Binding enthalpy    : %16.3f +- %.3f kT (%16.3f +- %.3f kcal/mol)" % (DeltaH, dDeltaH, DeltaH * kT / units.kilocalories_per_mole, dDeltaH * kT / units.kilocalories_per_mole))
 
-if __name__ == '__main__':
-    main()

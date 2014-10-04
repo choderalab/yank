@@ -14,6 +14,9 @@ Run a YANK calculation.
 #=============================================================================================
 
 import os
+from simtk import openmm
+from simtk import unit
+from simtk.openmm import app
 
 #=============================================================================================
 # COMMAND DISPATCH
@@ -25,8 +28,8 @@ def dispatch(args):
     yank = Yank(output_directory=args['--store'], verbose=args['--verbose'])
 
     # Configure YANK object with command-line parameter overrides.
-    if args['--niterations']:
-        yank.niterations = int(args['--niterations'])
+    if args['--iterations']:
+        yank.niterations = int(args['--iterations'])
     if args['--verbose']:
         yank.verbose = True
     if args['--online-analysis']:
@@ -35,10 +38,8 @@ def dispatch(args):
         yank.restraint_type = args['--restraints']
     if args['--randomize-ligand']:
         yank.randomize_ligand = True
-    if args['--platform']:
-        from simtk import openmm
+    if args['--platform'] != 'None':
         yank.platform = openmm.Platform.getPlatformByName(args['--platform'])
-
 
     # Run calculation.
     if args['--mpi']:
