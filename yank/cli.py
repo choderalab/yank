@@ -28,8 +28,8 @@ Usage:
   yank selftest [-v | --verbose]
   yank setup binding amber --ligand_prmtop=PRMTOP --ligand_inpcrd=INPCRD --complex_prmtop=PRMTOP --complex_inpcrd=INPCRD [-v | --verbose] [-i=ITERATIONS | --iterations=ITERATIONS] [-m | --mpi] [--restraints <restraint_type>] [--randomize-ligand]
   yank run (-s=STORE | --store=STORE) [-i=ITERATIONS | --iterations ITERATIONS] [-o | --online-analysis]
-  yank status
-  yank analyze
+  yank status (-s=STORE | --store=STORE)
+  yank analyze (-s STORE | --store=STORE)
   yank cleanup (-s=STORE | --store=STORE)
 
 Commands:
@@ -61,23 +61,25 @@ def main():
     import version
     args = docopt(usage, version=version.version)
 
-    success = False # Flag set to True if we have correctly formed command-line arguments.
+    dispatched = False # Flag set to True if we have correctly dispatched a command.
     from . import commands # TODO: This would be clearer if we could do 'from yank import commands', but can't figure out how
 
     # Handle simple arguments.
     if args['--help']:
         print usage
-        success = True
+        dispatched = True
     if args['--cite']:
+        dispatched = True
         success = commands.cite.dispatch(args)
 
     # Handle commands.
     command_list = ['selftest', 'setup', 'run', 'status', 'analyze', 'cleanup'] # TODO: Build this list automagically by introspection of commands submodule.
     for command in command_list:
         if args[command]:
+            dispatched = True
             success = getattr(commands, command).dispatch(args)
 
     # If unsuccessful, print usage and exit with an error.
-    if not success:
+    if not dispatched:
         print usage
         sys.exit(1)

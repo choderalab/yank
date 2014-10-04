@@ -14,12 +14,12 @@ Query output files for quick status.
 #=============================================================================================
 
 import sys
-import docopt
 
 #=============================================================================================
 # COMMAND DISPATCH
 #=============================================================================================
 
 def dispatch(args):
-    raise Exception("Not implemented.")
-
+    from yank import analyze
+    success = analyze.print_status(args['--store'], verbose=args['--verbose'])
+    return success

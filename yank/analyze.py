@@ -963,6 +963,57 @@ def detect_equilibration(A_t):
     
     return (t, g, Neff_max)
 
+def print_status(store_directory, verbose=False):
+    """
+    Print a quick summary of simulation progress.
+
+    Parameters
+    ----------
+    store_directory : string
+       The location of the NetCDF simulation output files.
+    verbose : bool, optional, default=False
+
+    Returns
+    -------
+    success : bool
+       True is returned on success; False if some files could not be read.
+
+    """
+
+    # Process each netcdf file.
+    phases = ['solvent', 'complex']
+    for phase in phases:
+        # Construct full path to NetCDF file.
+        fullpath = os.path.join(store_directory, phase + '.nc')
+
+        # Check that the file exists.
+        if (not os.path.exists(fullpath)):
+            # Report failure.
+            print "File %s not found." % fullpath
+            print "Check to make sure the right directory was specified, and 'yank setup' has been run."
+            return False
+
+        # Open NetCDF file for reading.
+        if verbose: print "Opening NetCDF trajectory file '%(fullpath)s' for reading..." % vars()
+        ncfile = netcdf.Dataset(fullpath, 'r')
+
+        # Read dimensions.
+        niterations = ncfile.variables['positions'].shape[0]
+        nstates = ncfile.variables['positions'].shape[1]
+        natoms = ncfile.variables['positions'].shape[2]
+
+        # Print summary.
+        print "%s" % phase
+        print "  %8d iterations completed" % niterations
+        print "  %8d alchemical states" % nstates
+        print "  %8d atoms" % natoms
+
+        # TODO: Print average ns/day and estimated completion time.
+
+        # Close file.
+        ncfile.close()
+
+    return True
 
 #=============================================================================================
 # MAIN
