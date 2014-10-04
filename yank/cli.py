@@ -27,10 +27,10 @@ Usage:
   yank [-h | --help] [-c | --cite]
   yank selftest [-v | --verbose]
   yank setup binding amber --ligand_prmtop=PRMTOP --ligand_inpcrd=INPCRD --complex_prmtop=PRMTOP --complex_inpcrd=INPCRD [-v | --verbose] [-i=ITERATIONS | --iterations=ITERATIONS] [-m | --mpi] [--restraints <restraint_type>] [--randomize-ligand]
-  yank run [-i=ITERATIONS | --iterations ITERATIONS] [-o | --online-analysis]
+  yank run (-s=STORE | --store=STORE) [-i=ITERATIONS | --iterations ITERATIONS] [-o | --online-analysis]
   yank status
   yank analyze
-  yank cleanup
+  yank cleanup (-s=STORE | --store=STORE)
 
 Commands:
   selftest                      Run selftests.
@@ -50,6 +50,7 @@ Options:
   -i NITER, --iterations NITER  Number of iterations to run [default: 1000]
   --randomize-ligand            Randomize initial ligand positions if specified
   -v, --verbose                 Print verbose output
+  -s=STORE, --store=STORE       Storage directory for NetCDF data files.
   -o, --online-analysis         Enable on-the-fly analysis
 
 """
