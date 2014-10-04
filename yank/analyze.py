@@ -1015,9 +1015,9 @@ def main():
 
         # Read reference PDB file.
         if phase in ['vacuum', 'solvent']:
-            reference_pdb_filename = os.path.join(source_directory, "setup/ligand.pdb")
+            reference_pdb_filename = os.path.join(source_directory, "ligand.pdb")
         else:
-            reference_pdb_filename = os.path.join(source_directory, "setup/complex.pdb")
+            reference_pdb_filename = os.path.join(source_directory, "complex.pdb")
         atoms = read_pdb(reference_pdb_filename)
 
         # Write replica trajectories.

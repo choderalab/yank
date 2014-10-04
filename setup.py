@@ -42,14 +42,14 @@ def find_package_data():
 def check_dependencies():
     from distutils.version import StrictVersion
     found_openmm = True
-    found_openmm_52_or_later = True
+    found_openmm_61_or_later = True
     found_numpy = True
 
     try:
         from simtk import openmm
         openmm_version = StrictVersion(openmm.Platform.getOpenMMVersion())
-        if openmm_version < StrictVersion('5.2'):
-            found_openmm_52_or_later = False
+        if openmm_version < StrictVersion('6.1.0'):
+            found_openmm_61_or_later = False
     except ImportError as err:
         found_openmm = False
 
@@ -61,8 +61,8 @@ def check_dependencies():
     msg = None
     bar = ('-' * 70) + "\n" + ('-' * 70)
     if found_openmm:
-        if not found_openmm_52_or_later:
-            msg = [bar, '[Unmet Dependency] YANK requires OpenMM version 5.2 or later. You have version %s.' % openmm_version, bar]
+        if not found_openmm_61_or_later:
+            msg = [bar, '[Unmet Dependency] YANK requires OpenMM version 6.1 or later. You have version %s.' % openmm_version, bar]
     else:
         msg = [bar, '[Unmet Dependency] YANK requires the OpenMM python package. Refer to <http://openmm.org> for details and installation instructions.', bar]
 
@@ -117,12 +117,15 @@ version = '%(version)s'
 full_version = '%(full_version)s'
 git_revision = '%(git_revision)s'
 release = %(isrelease)s
+setup_date = '%(date)s'
 
 if not release:
     version = full_version
 """
     # Adding the git rev number needs to be done inside write_version_py(),
     # otherwise the import of numpy.version messes up the build under Python 3.
+    import datetime
+    DATE = datetime.datetime.now()
     FULLVERSION = VERSION
     if os.path.exists('.git'):
         GIT_REVISION = git_version()
@@ -134,7 +137,8 @@ if not release:
 
     a = open(filename, 'w')
     try:
-        a.write(cnt % {'version': VERSION,
+        a.write(cnt % {'date': DATE,
+                       'version': VERSION,
                        'full_version': FULLVERSION,
                        'git_revision': GIT_REVISION,
                        'isrelease': str(ISRELEASED)})
@@ -159,7 +163,9 @@ setup(
     packages=find_packages(),
     package_data={'yank': find_package_data()},
     zip_safe=False,
-    install_requires=[],
-    entry_points={'console_scripts': ['yank = yank.yank:main', 'yank-analyze = yank.analyze:main']})
+    install_requires=[
+        'docopt==0.6.1'
+        ],
+    entry_points={'console_scripts': ['yank = yank.cli:main']})
 
 check_dependencies()
