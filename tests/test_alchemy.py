@@ -516,7 +516,7 @@ def notest_obcgbsa_complex():
     logger.info("====================================================================")
     logger.info("")
 
-def test_systembuilder_lysozyme_pdb_mol2():
+def notest_systembuilder_lysozyme_pdb_mol2():
     logger.info("====================================================================")
     logger.info("Creating T4 lysozyme L99A in OBC GBSA from PDB and mol2 with SystemBuilder...")
     # Retrieve receptor and ligand file paths.
