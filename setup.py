@@ -31,9 +31,9 @@ Operating System :: MacOS
 """
 
 
-def find_package_data():
+def find_package_data(root='yank'):
     files = []
-    for root, dirnames, filenames in os.walk('yank'):
+    for root, dirnames, filenames in os.walk(root):
         for fn in filenames:
             files.append(relpath(join(root, fn), 'yank'))
     return files
@@ -153,6 +153,7 @@ write_version_py()
 setup(
     name='yank',
     author='John Chodera',
+    author_email='john.chodera@choderalab.org',
     description=DOCLINES[0],
     long_description="\n".join(DOCLINES[2:]),
     version=__version__,
@@ -160,8 +161,8 @@ setup(
     url='https://github.com/choderalab/yank',
     platforms=['Linux', 'Mac OS-X', 'Unix', 'Windows'],
     classifiers=CLASSIFIERS.splitlines(),
-    packages=find_packages(),
-    package_data={'yank': find_package_data()},
+    packages=['yank'] + ['yank.%s' % package for package in find_packages('yank')],
+    #package_data={'yank': find_package_data()},
     zip_safe=False,
     install_requires=[
         'docopt==0.6.1'
