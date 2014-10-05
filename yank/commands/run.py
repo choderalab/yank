@@ -43,7 +43,7 @@ def dispatch(args):
     # Set YANK to resume from the store file.
     phases = None # By default, resume from all phases found in store_directory
     if args['--phase']: phases=[args['--phase']]
-    yank.resume(phases=phases, options=options)
+    yank.resume(phases=phases)
 
     # Configure MPI, if requested.
     mpicomm = None
@@ -58,6 +58,6 @@ def dispatch(args):
         mpicomm = MPI
 
     # Run simulation.
-    yank.run(mpicomm)
+    yank.run(mpicomm, options=options)
 
     return True

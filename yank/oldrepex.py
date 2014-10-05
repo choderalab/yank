@@ -727,6 +727,7 @@ class ReplicaExchange(object):
         self.minimize_tolerance = 1.0 * units.kilojoules_per_mole / units.nanometers # if specified, set minimization tolerance
         self.minimize_maxIterations = 0 # if nonzero, set maximum iterations
         self.platform = None
+        self.platform_name = None
         self.replica_mixing_scheme = 'swap-all' # mix all replicas thoroughly
         self.online_analysis = False # if True, analysis will occur each iteration
         self.show_energies = True
@@ -831,13 +832,70 @@ class ReplicaExchange(object):
         
         return r
 
-    def run(self):
+    @classmethod
+    def _status_from_ncfile(cls, ncfile):
+        """
+        Return status dict of current calculation.
+
+        Returns
+        -------
+        status : dict
+           Returns a dict of useful information about current simulation progress.
+
+        """
+        status = dict()
+
+        status['niterations'] = ncfile.variables['positions'].shape[0]
+        status['nstates'] = ncfile.variables['positions'].shape[1]
+        status['natoms'] = ncfile.variables['positions'].shape[2]
+
+        return status
+
+    @classmethod
+    def status_from_store(cls, store_filename):
+        """
+        Return status dict of calculation on disk.
+
+        Parameters
+        ----------
+        store_filename : str
+           The name of the NetCDF storage filename.
+
+        Returns
+        -------
+        status : dict
+           Returns a dict of useful information about current simulation progress.
+
+        """
+        ncfile = netcdf.Dataset(store_filename, 'r')
+        status = ReplicaExchange._status_from_ncfile(ncfile)
+        ncfile.close()
+        return status
+
+    def status(self):
+        """
+        Return status dict of current calculation.
+
+        Returns
+        -------
+        status : dict
+           Returns a dict of useful information about current simulation progress.
+
+        """
+        return ReplicaExchange._status_from_ncfile(self.ncfile)
+
+    def run(self, niterations_to_run=None):
         """
         Run the replica-exchange simulation.
 
         Any parameter changes (via object attributes) that were made between object creation and calling this method become locked in
         at this point, and the object will create and bind to the store file.  If the store file already exists, the run will be resumed
         if possible; otherwise, an exception will be raised.
+
+        Parameters
+        ----------
+        niterations_to_run : int, optional, default=None
+           If specfied, only at most the specified number of iterations will be run.
 
         """
 
@@ -846,9 +904,12 @@ class ReplicaExchange(object):
             self._initialize()
 
         # Main loop
-        run_start_time = time.time()              
+        run_start_time = time.time()
         run_start_iteration = self.iteration
-        while (self.iteration < self.number_of_iterations):
+        iteration_limit = self.number_of_iterations
+        if niterations_to_run:
+            iteration_limit = min(self.iteration + niterations_to_run, iteration_limit)
+        while (self.iteration < iteration_limit):
             if self.verbose: print "\nIteration %d / %d" % (self.iteration+1, self.number_of_iterations)
             initial_time = time.time()
 
@@ -897,6 +958,26 @@ class ReplicaExchange(object):
 
         return
 
+    def _determine_fastest_platform(self, system):
+        """
+        Determine fastest OpenMM platform for given system.
+
+        Parameters
+        ----------
+        system : simtk.openmm.System
+           The system for which the fastest OpenMM Platform object is to be determined.
+
+        Returns
+        -------
+        platform : simtk.openmm.Platform
+           The fastest OpenMM Platform for the specified system.
+
+        """
+        context = openmm.Context(system, integrator)
+        platform = context.getPlatform()
+        del context, integrator
+        return platform
+
     def _initialize(self):
         """
         Initialize the simulation, and bind to a storage file.
@@ -906,12 +987,8 @@ class ReplicaExchange(object):
         if self._initialized:
             raise Error("Simulation has already been initialized.")
 
-        # If no platform is specified, use the CPU platform.
-        # TODO: If no platform is specified, instead use the fastest available platform.
-        if self.platform is None:
-            #print "No platform specified, so selecting CPU platform with one thread."
-            self.platform = self.mm.Platform.getPlatformByName("CPU")
-            self.platform.setPropertyDefaultValue('CpuThreads', '1') # only use 1 CPU thread
+        # Extract a representative system.
+        representative_system = self.states[0].system
 
         # Turn off verbosity if not master node.
         if self.mpicomm:
@@ -921,7 +998,7 @@ class ReplicaExchange(object):
             # Turn off verbosity for all nodes but root.
             if self.mpicomm.rank != 0:
                 self.verbose = False
-  
+
         # Display papers to be cited.
         if self.verbose:
             self._display_citations()
@@ -930,13 +1007,31 @@ class ReplicaExchange(object):
         self.nstates = len(self.states)
 
         # Determine number of atoms in systems.
-        self.natoms = self.states[0].system.getNumParticles()
-  
+        self.natoms = representativ_system.getNumParticles()
+
+        # If no platform is specified, instantiate a platform, or try to use the fastest platform.
+        if self.platform is None:
+            # Handle OpenMM platform selection.
+            # TODO: Can we handle this more gracefully, or push this off to ReplicaExchange?
+            if self.platform_name:
+                platform = openmm.Platform.getPlatformByName(self.platform_name)
+            else:
+                platform = self._determine_fastest_platform(representative_system)
+
+            # Use only a single CPU thread if we are using the CPU platform.
+            # TODO: Since there is an environment variable that can control this, we may want to avoid doing this.
+            if (platform.getName() == 'CPU') and self.mpicomm:
+                platform.setPropertyDefaultValue('CpuThreads', '1')
+
+            #print "No platform specified, so selecting CPU platform with one thread."
+            self.platform = self.mm.Platform.getPlatformByName("CPU")
+            self.platform.setPropertyDefaultValue('CpuThreads', '1') # only use 1 CPU thread
+
         # Allocate storage.
         self.replica_positions = list() # replica_positions[i] is the configuration currently held in replica i
-        self.replica_box_vectors = list() # replica_box_vectors[i] is the set of box vectors currently held in replica i  
+        self.replica_box_vectors = list() # replica_box_vectors[i] is the set of box vectors currently held in replica i
         self.replica_states     = numpy.zeros([self.nstates], numpy.int32) # replica_states[i] is the state that replica i is currently at
-        self.u_kl               = numpy.zeros([self.nstates, self.nstates], numpy.float32)        
+        self.u_kl               = numpy.zeros([self.nstates, self.nstates], numpy.float32)
         self.swap_Pij_accepted  = numpy.zeros([self.nstates, self.nstates], numpy.float32)
         self.Nij_proposed       = numpy.zeros([self.nstates,self.nstates], numpy.int64) # Nij_proposed[i][j] is the number of swaps proposed between states i and j, prior of 1
         self.Nij_accepted       = numpy.zeros([self.nstates,self.nstates], numpy.int64) # Nij_proposed[i][j] is the number of swaps proposed between states i and j, prior of 1
@@ -2167,7 +2262,7 @@ class ReplicaExchange(object):
         u_kln = numpy.zeros([nstates, nstates, niterations_completed], numpy.float32)
         u_n = numpy.zeros([niterations_completed], numpy.float64)
         for iteration in range(niterations_completed):
-            state_indices = replica_states[iteration,:] 
+            state_indices = replica_states[iteration,:]
             u_n[iteration] = 0.0
             for replica_index in range(nstates):
                 state_index = state_indices[replica_index]
@@ -2185,14 +2280,14 @@ class ReplicaExchange(object):
         if hasattr(self, 'f_k'):
             mbar = pymbar.MBAR(u_kln[:,:,indices], N_k, f_k_initial=self.f_k)
         else:
-            mbar = pymbar.MBAR(u_kln[:,:,indices], N_k)            
+            mbar = pymbar.MBAR(u_kln[:,:,indices], N_k)
 
         # Store free energies.
         self.f_k = mbar.f_k
 
         # Store free energy differences and uncertainties.
+        # TODO: This is replaced by entropy and enthalpy.
         #[Delta_f_ij, dDelta_f_ij] = mbar.getFreeEnergyDifferences()
-
         # Compute entropy and enthalpy.
         [Delta_f_ij, dDelta_f_ij, Delta_u_ij, dDelta_u_ij, Delta_s_ij, dDelta_s_ij] = mbar.computeEntropyAndEnthalpy()
 
@@ -2208,7 +2303,6 @@ class ReplicaExchange(object):
         analysis['dDelta_u_ij'] = dDelta_u_ij
         analysis['Delta_s_ij'] = Delta_s_ij
         analysis['dDelta_s_ij'] = dDelta_s_ij
-
 
         self.analysis = analysis
 
