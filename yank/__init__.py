@@ -10,8 +10,10 @@ import version
 __version__ = version.version
 
 # Import modules.
+import yank
 import alchemy
-import oldrepex
+import oldrepex # TODO: Rename to repex?
+import sampling
 import analyze
 import restraints
 

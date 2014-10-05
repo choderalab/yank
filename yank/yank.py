@@ -62,377 +62,17 @@ import copy
 import time
 
 import numpy
-import numpy.random 
+import numpy.random
 
 import simtk.unit as units
 import simtk.openmm as openmm
+
+from . import sampling
 
 from alchemy import AbsoluteAlchemicalFactory
 from oldrepex import ThermodynamicState
 from oldrepex import HamiltonianExchange, ReplicaExchange
 
-#=============================================================================================
-# Modified Hamiltonian exchange class.
-#=============================================================================================
-
-class ModifiedHamiltonianExchange(HamiltonianExchange):
-    """
-    A Hamiltonian exchange facility that uses a modified dynamics to introduce Monte Carlo moves to augment Langevin dynamics.
-
-    DESCRIPTION
-
-    This class provides an implementation of a Hamiltonian exchange simulation based on the HamiltonianExchange facility.
-    It modifies the way HamiltonianExchange samples each replica using dynamics by adding Monte Carlo rotation/displacement
-    trials to augment sampling by Langevin dynamics.
-    
-    EXAMPLES
-    
-    >>> # Create reference system.
-    >>> from repex import testsystems
-    >>> testsystem = testsystems.AlanineDipeptideImplicit()
-    >>> [reference_system, positions] = [testsystem.system, testsystem.positions]
-    >>> # Copy reference system.
-    >>> systems = [reference_system for index in range(10)]
-    >>> # Create temporary file for storing output.
-    >>> import tempfile
-    >>> file = tempfile.NamedTemporaryFile() # temporary file for testing
-    >>> store_filename = file.name
-    >>> # Create reference state.
-    >>> from repex.thermodynamics import ThermodynamicState
-    >>> reference_state = ThermodynamicState(reference_system, temperature=298.0*units.kelvin)
-    >>> displacement_sigma = 1.0 * units.nanometer
-    >>> mc_atoms = range(0, reference_system.getNumParticles())
-    >>> simulation = ModifiedHamiltonianExchange(reference_state, systems, positions, store_filename, displacement_sigma=displacement_sigma, mc_atoms=mc_atoms)
-    >>> simulation.number_of_iterations = 2 # set the simulation to only run 2 iterations
-    >>> simulation.timestep = 2.0 * units.femtoseconds # set the timestep for integration
-    >>> simulation.nsteps_per_iteration = 50 # run 50 timesteps per iteration
-    >>> simulation.minimize = False # don't minimize prior to production
-    >>> simulation.number_of_equilibration_iterations = 0 # don't equilibrate prior to production
-    >>> # Run simulation.
-    >>> simulation.run() # run the simulation
-    
-    """
-
-    # Options to store.
-    options_to_store = HamiltonianExchange.options_to_store + ['mc_displacement', 'mc_rotation', 'displacement_sigma'] # TODO: Add mc_atoms
-
-    def __init__(self, reference_state, systems, positions, store_filename, displacement_sigma=None, mc_atoms=None, protocol=None, mm=None, mpicomm=None, metadata=None):
-        """
-        Initialize a modified Hamiltonian exchange simulation object.
-
-        ARGUMENTS
-
-        reference_state (ThermodynamicState) - reference state containing all thermodynamic parameters except the system, which will be replaced by 'systems'
-        systems (list of simtk.openmm.System) - list of systems to simulate (one per replica)
-        positions (simtk.unit.Quantity of numpy natoms x 3 with units length) -  positions (or a list of positions objects) for initial assignment of replicas (will be used in round-robin assignment)
-        store_filename (string) - name of NetCDF file to bind to for simulation output and checkpointing
-
-        OPTIONAL ARGUMENTS
-
-        displacement_sigma (simtk.unit.Quantity with units distance) - size of displacement trial for Monte Carlo displacements, if specified (default: 1 nm)
-        ligand_atoms (list of int) - atoms to use for trial displacements for translational and orientational Monte Carlo trials, if specified (default: all atoms)
-        protocol (dict) - Optional protocol to use for specifying simulation protocol as a dict. Provided keywords will be matched to object variables to replace defaults.
-        mm (simtk.openmm implementation) - Implementation of OpenMM API to use.
-        mpicomm (mpi4py communicator) - MPI communicator, if parallel execution is desired (default: None)        
-
-        """
-
-        # Store trial displacement magnitude and atoms to rotate in MC move.
-        self.displacement_sigma = 1.0 * units.nanometer
-        if mc_atoms is not None:
-            self.mc_atoms = numpy.array(mc_atoms) 
-            self.mc_displacement = True
-            self.mc_rotation = True
-        else:
-            self.mc_atoms = None
-            self.mc_displacement = False
-            self.mc_rotation = False
-
-        self.displacement_trials_accepted = 0 # number of MC displacement trials accepted
-        self.rotation_trials_accepted = 0 # number of MC displacement trials accepted        
-
-        # Initialize replica-exchange simlulation.
-        HamiltonianExchange.__init__(self, reference_state, systems, positions, store_filename, protocol=protocol, mm=mm, mpicomm=mpicomm, metadata=metadata)
-
-        # Override title.
-        self.title = 'Modified Hamiltonian exchange simulation created using HamiltonianExchange class of repex.py on %s' % time.asctime(time.localtime())
-        
-        return
-    
-    @classmethod
-    def _rotation_matrix_from_quaternion(cls, q):
-        """
-        Compute a 3x3 rotation matrix from a given quaternion (4-vector).
-
-        ARGUMENTS
-
-        q (numpy 4-vector) - quaterion (need not be normalized, zero norm OK)
-
-        RETURNS
-
-        Rq (numpy 3x3 matrix) - orthogonal rotation matrix corresponding to quaternion q
-
-        EXAMPLES
-
-        >>> q = numpy.array([0.1, 0.2, 0.3, -0.4])
-        >>> Rq = ModifiedHamiltonianExchange._rotation_matrix_from_quaternion(q)
-
-        REFERENCES
-
-        [1] http://en.wikipedia.org/wiki/Rotation_matrix#Quaternion
-
-        """
-
-        [w,x,y,z] = q
-        Nq = (q**2).sum()
-        if (Nq > 0.0): 
-            s = 2.0/Nq
-        else:
-            s = 0.0
-        X = x*s; Y = y*s; Z = z*s
-        wX = w*X; wY = w*Y; wZ = w*Z
-        xX = x*X; xY = x*Y; xZ = x*Z
-        yY = y*Y; yZ = y*Z; zZ = z*Z
-        Rq = numpy.matrix([[ 1.0-(yY+zZ),       xY-wZ,        xZ+wY  ],
-                           [      xY+wZ,   1.0-(xX+zZ),       yZ-wX  ],
-                           [      xZ-wY,        yZ+wX,   1.0-(xX+yY) ]])
-
-        return Rq
-
-    @classmethod
-    def _generate_uniform_quaternion(cls):
-        """
-        Generate a uniform normalized quaternion 4-vector.
-
-        REFERENCES
-
-        [1] K. Shoemake. Uniform random rotations. In D. Kirk, editor, Graphics Gems III, pages 124-132. Academic, New York, 1992.
-        [2] Described briefly here: http://planning.cs.uiuc.edu/node198.html
-        
-        TODO: This package might be useful in simplifying: http://www.lfd.uci.edu/~gohlke/code/transformations.py.html
-
-        EXAMPLES
-
-        >>> q = ModifiedHamiltonianExchange._generate_uniform_quaternion()
-
-        """
-        u = numpy.random.rand(3)
-        q = numpy.array([numpy.sqrt(1-u[0])*numpy.sin(2*numpy.pi*u[1]),
-                         numpy.sqrt(1-u[0])*numpy.cos(2*numpy.pi*u[1]),
-                         numpy.sqrt(u[0])*numpy.sin(2*numpy.pi*u[2]),
-                         numpy.sqrt(u[0])*numpy.cos(2*numpy.pi*u[2])]) # uniform quaternion
-        return q
-
-    @classmethod
-    def propose_displacement(cls, displacement_sigma, original_positions, mc_atoms):
-        """
-        Make symmetric Gaussian trial displacement of ligand.
-        
-        EXAMPLES
-        
-        >>> from repex import testsystems 
-        >>> complex = testsystems.LysozymeImplicit()
-        >>> [system, positions] = [complex.system, complex.positions]
-        >>> receptor_atoms = range(0,2603) # T4 lysozyme L99A
-        >>> ligand_atoms = range(2603,2621) # p-xylene
-        >>> displacement_sigma = 5.0 * units.angstroms
-        >>> perturbed_positions = ModifiedHamiltonianExchange.propose_displacement(displacement_sigma, positions, ligand_atoms)
-
-        """
-        positions_unit = original_positions.unit
-        displacement_vector = units.Quantity(numpy.random.randn(3) * (displacement_sigma / positions_unit), positions_unit)
-        perturbed_positions = copy.deepcopy(original_positions)
-        for atom_index in mc_atoms:
-            perturbed_positions[atom_index,:] += displacement_vector
-        
-        return perturbed_positions
-
-    @classmethod
-    def propose_rotation(cls, original_positions, mc_atoms):
-        """
-        Make a uniform rotation.
-        
-        EXAMPLES
-        
-        >>> from repex import testsystems 
-        >>> complex = testsystems.LysozymeImplicit()
-        >>> [system, positions] = [complex.system, complex.positions]
-        >>> receptor_atoms = range(0,2603) # T4 lysozyme L99A
-        >>> ligand_atoms = range(2603,2621) # p-xylene
-        >>> perturbed_positions = ModifiedHamiltonianExchange.propose_rotation(positions, ligand_atoms)
-
-        """
-        positions_unit = original_positions.unit
-        xold = original_positions[mc_atoms,:] / positions_unit
-        x0 = xold.mean(0) # compute center of geometry of atoms to rotate
-        # Generate a random quaterionion (uniform element of of SO(3)) using algorithm from:
-        q = cls._generate_uniform_quaternion()
-        # Create rotation matrix based on this quaterion.
-        Rq = cls._rotation_matrix_from_quaternion(q)
-        # Apply rotation.
-        xnew = (Rq * numpy.matrix(xold - x0).T).T + x0
-        perturbed_positions = copy.deepcopy(original_positions)
-        perturbed_positions[mc_atoms,:] = units.Quantity(xnew, positions_unit)
-        
-        return perturbed_positions
-
-    @classmethod
-    def randomize_ligand_position(cls, positions, receptor_atom_indices, ligand_atom_indices, sigma, close_cutoff):
-        """
-        Draw a new ligand position with minimal overlap.
-        
-        EXAMPLES
-        
-        >>> from repex import testsystems 
-        >>> complex = testsystems.LysozymeImplicit()
-        >>> [system, positions] = [complex.system, complex.positions]
-        >>> receptor_atoms = range(0,2603) # T4 lysozyme L99A
-        >>> ligand_atoms = range(2603,2621) # p-xylene
-        >>> sigma = 30.0 * units.angstroms
-        >>> close_cutoff = 3.0 * units.angstroms
-        >>> perturbed_positions = ModifiedHamiltonianExchange.randomize_ligand_position(positions, receptor_atoms, ligand_atoms, sigma, close_cutoff)
-
-        """
-
-        # Convert to dimensionless positions.
-        unit = positions.unit
-        x = positions / unit
-        
-        # Compute ligand center of geometry.
-        x0 = x[ligand_atom_indices,:].mean(0)
-
-        import numpy.random
-
-        # Try until we have a non-overlapping ligand conformation.
-        success = False
-        nattempts = 0
-        while (not success):
-            # Choose a receptor atom to center ligand on.
-            receptor_atom_index = receptor_atom_indices[numpy.random.randint(0, len(receptor_atom_indices))]
-            
-            # Randomize orientation of ligand.
-            q = cls._generate_uniform_quaternion()
-            Rq = cls._rotation_matrix_from_quaternion(q)
-            x[ligand_atom_indices,:] = (Rq * numpy.matrix(x[ligand_atom_indices,:] - x0).T).T + x0
-
-            # Choose a random displacement vector.
-            xdisp = (sigma / unit) * numpy.random.randn(3)
-            
-            # Translate ligand center to receptor atom plus displacement vector.
-            for atom_index in ligand_atom_indices:
-                x[atom_index,:] += xdisp[:] + (x[receptor_atom_index,:] - x0[:])
-
-            # Compute min distance from ligand atoms to receptor atoms.
-            y = x[receptor_atom_indices,:]
-            mindist = 999.0
-            success = True
-            for ligand_atom_index in ligand_atom_indices:                
-                z = x[ligand_atom_index,:]
-                distances = numpy.sqrt(((y - numpy.tile(z, (y.shape[0], 1)))**2).sum(1)) # distances[i] is the distance from the centroid to particle i
-                mindist = distances.min()
-                if (mindist < (close_cutoff/unit)):
-                    success = False
-            nattempts += 1
-            
-        positions = units.Quantity(x, unit)            
-        return positions
-        
-    def _propagate_replica(self, replica_index):
-        """
-        Attempt a Monte Carlo rotation/translation move.
-        
-        """
-
-        # Attempt a Monte Carlo rotation/translation move.
-        import numpy.random
-
-        # Retrieve state.
-        state_index = self.replica_states[replica_index] # index of thermodynamic state that current replica is assigned to
-        state = self.states[state_index] # thermodynamic state
-
-        # Retrieve integrator and context from thermodynamic state.
-        integrator = state._integrator
-        context = state._context
-        
-        # Attempt gaussian trial displacement with stddev 'self.displacement_sigma'.
-        # TODO: Can combine these displacements and/or use cached potential energies to speed up this phase.
-        # TODO: Break MC displacement and rotation into member functions and write separate unit tests.
-        if self.mc_displacement and (self.mc_atoms is not None):
-            initial_time = time.time()
-            # Store original positions and energy.
-            original_positions = self.replica_positions[replica_index]
-            u_old = state.reduced_potential(original_positions)
-            # Make symmetric Gaussian trial displacement of ligand.
-            perturbed_positions = self.propose_displacement(self.displacement_sigma, original_positions, self.mc_atoms)
-            u_new = state.reduced_potential(perturbed_positions)
-            # Accept or reject with Metropolis criteria.
-            du = u_new - u_old
-            if (du <= 0.0) or (numpy.random.rand() < numpy.exp(-du)):
-                self.displacement_trials_accepted += 1
-                self.replica_positions[replica_index] = perturbed_positions
-            #print "translation du = %f (%d)" % (du, self.displacement_trials_accepted)
-            # Print timing information.
-            final_time = time.time()
-            elapsed_time = final_time - initial_time
-            self.displacement_trial_time += elapsed_time            
-            
-        # Attempt random rotation of ligand.
-        if self.mc_rotation and (self.mc_atoms is not None):
-            initial_time = time.time()
-            # Store original positions and energy.
-            original_positions = self.replica_positions[replica_index]
-            u_old = state.reduced_potential(original_positions)
-            # Compute new potential.
-            perturbed_positions = self.propose_rotation(original_positions, self.mc_atoms)
-            u_new = state.reduced_potential(perturbed_positions)
-            du = u_new - u_old
-            if (du <= 0.0) or (numpy.random.rand() < numpy.exp(-du)):
-                self.rotation_trials_accepted += 1
-                self.replica_positions[replica_index] = perturbed_positions
-            #print "rotation du = %f (%d)" % (du, self.rotation_trials_accepted)
-            # Accumulate timing information.
-            final_time = time.time()
-            elapsed_time = final_time - initial_time
-            self.rotation_trial_time += elapsed_time
-
-        # Propagate with Langevin dynamics as usual.
-        HamiltonianExchange._propagate_replica(self, replica_index)
-        
-        return
-
-    def _propagate_replicas(self):
-        # Reset statistics for MC trial times.
-        self.displacement_trial_time = 0.0
-        self.rotation_trial_time = 0.0
-        self.displacement_trials_accepted = 0
-        self.rotation_trials_accepted = 0
-
-        # Propagate replicas.
-        HamiltonianExchange._propagate_replicas(self)
-
-        # Print summary statistics.
-        if (self.mc_displacement or self.mc_rotation):
-            if self.mpicomm:
-                from mpi4py import MPI
-                self.displacement_trials_accepted = self.mpicomm.reduce(self.displacement_trials_accepted, op=MPI.SUM)
-                self.rotation_trials_accepted = self.mpicomm.reduce(self.rotation_trials_accepted, op=MPI.SUM)
-            if self.verbose:
-                total_mc_time = self.displacement_trial_time + self.rotation_trial_time
-                print "Rotation and displacement MC trial times consumed %.3f s (%d translation | %d rotation accepted)" % (total_mc_time, self.displacement_trials_accepted, self.rotation_trials_accepted)
-
-        return
-
-    def _display_citations(self):
-        HamiltonianExchange._display_citations(self)
-
-        yank_citations = """\
-        Chodera JD, Shirts MR, Wang K, Friedrichs MS, Eastman P, Pande VS, and Branson K. YANK: An extensible platform for GPU-accelerated free energy calculations. In preparation."""
-
-        print yank_citations
-        print ""
-
-        return
-        
 #=============================================================================================
 # YANK class
 #=============================================================================================
@@ -441,7 +81,7 @@ class Yank(object):
     """
     A class for computing receptor-ligand binding free energies through alchemical transformations.
 
-    Options that can be set after initializaton but before run() has been called:
+    Attributes that can be set after initializaton but before initialization by run():
 
     data_directory (string) - destination for datafiles (default: .)
     online_analysis (boolean) - if True, will analyze data as simulations proceed (default: False)
@@ -453,37 +93,16 @@ class Yank(object):
 
     """
 
-    def __init__(self, receptor=None, ligand=None, complex=None, complex_positions=None, output_directory=None, verbose=False):
+    def __init__(self, store_directory):
         """
-        Create a YANK binding free energy calculation object.
+        Initialize YANK object with default parameters.
 
-        ARGUMENTS
-        
-        receptor (simtk.openmm.System) - the receptor OpenMM system (receptor with implicit solvent forces)
-        ligand (simtk.openmm.System) - the ligand OpenMM system (ligand with implicit solvent forces)
-        complex_positions (simtk.unit.Quantity of positions, or list thereof) - positions for the complex to initialize replicas with, either a single snapshot or a list of snapshots
-        output_directory (String) - the output directory to write files (default: current directory)
-
-        OPTIONAL ARGUMENTS
-        
-        verbose (boolean) - if True, will give verbose output
-        complex (simtk.openmm.System) - specified System will be used instead of concatenating receptor + ligand (default: None)
-
-        NOTES
-
-        * Explicit solvent is not yet supported.
-        
-        TODO
-
-        * Automatically use a temporary directory, or prepend a unique string, for each set of output files?
+        Parameters
+        ----------
+        store_directory : str
+           The storage directory in which output NetCDF files are read or written.
 
         """
-
-        # Check arguments.
-        if (receptor is None) or (ligand is None):
-            raise Exception("Yank must be initialized with receptor and ligand System objects.")
-        if complex_positions is None:
-            raise Exception("Yank must be initialized with at least one set of complex positions.")
 
         # Mark as not yet initialized.
         self._initialized = False
@@ -494,11 +113,96 @@ class Yank(object):
         self.temperature = 298.0 * units.kelvin # simulation temperature
         self.pressure = 1.0 * units.atmosphere # simulation pressure (for explicit solvent)
         self.niterations = 2000 # number of production iterations
-        self.perform_sanity_checks = True # perform some sanity checks to ensure correct results
+        self.platform = None # don't specify a platform
+
+        # Set internal variables.
+        self._phases = list()
+        self._store_filenames = dict()
+
+        return
+
+    def resume(self, phases=None, options=None, verbose=False):
+        """
+        Set up YANK to resume from an existing simulation.
+
+        Parameters
+        ----------
+        phases : list of str, optional, default=None
+           The list of calculation phases (e.g. ['solvent', 'complex']) to resume.
+           If not specified, all NetCDF files ('*.nc') in the store_directory will be resumed.
+        options : dict of str, optional, defauilt=None
+           If specified, some parameters can be overridden after restoring them from NetCDF file.
+        verbose : bool, optional, default=True
+           If True, will give verbose output
+
+        """
+        # If no phases specified, construct a list of phases from the filename prefixes in the store directory.
+        if phases is None:
+            phases = list()
+            fullpaths = glob.glob(os.path.join(store_directory, '*.nc'))
+            for fullpath in fullpaths:
+                [filepath, filename] = os.path.split(fullpath)
+                [shortname, extension] = os.path.splitext(filename)
+                phases.append(shortname)
+        self._phases = phases
+
+        # Construct store filenames.
+        for phase in self._phases:
+            self._store_filenames[phase] = os.path.join(store_directory, phase + '.nc')
+
+        # Ensure we can resume from each store file, processing override options.
+        for phase in self._phases:
+            self._store_filenames[phase] = os.path.join(store_directory, phase + '.nc')
+
+        # TODO: Resume from files on disk.
+
+        # TODO: Process options overrides.
+
+
+
+        return
+
+    def create(self, phases, systems, positions, alchemical_indices, thermodynamic_state, verbose=False):
+        """
+        Create a YANK binding free energy calculation object.
+
+        Parameters
+        ----------
+        store_directory : str
+           The storage directory in which output NetCDF files are read or written.
+        phases : list of str, optional, default=None
+           The list of calculation phases (e.g. ['solvent', 'complex']) to run.
+           If resuming, will resume from all NetCDF files ('*.nc') in the store_directory unless specific phases are given.
+        systems : dict of simtk.openmm.System, optional, default=None
+           A dict of System objects for each phase, e.g. systems['solvent'] is for solvent phase.
+        positions : dict of simtk.unit.Quantity arrays (numpy or Python) with units compatible with nanometers, or dict of lists, optional, default=None
+           A dict of positions corresponding to each phase, e.g. positions['solvent'] is a single set of positions or list of positions to seed replicas.
+           Shape must be natoms x 3, with natoms matching number of particles in corresponding system.
+        alchemical_indices : dict of list of int, optional, default=None
+           A dict of atom index lists corresponding to each phase, e.g. alchemical_indices['solvent'] is list of atoms to be alchemically eliminated in 'solvent' phase.
+        thermodynamic_state : ThermodynamicState (System need not be defined), optional, default=None
+           Thermodynamic state at which calculations are to be carried out
+        verbose : bool, optional, default=True
+           If True, will give verbose output
+
+        """
+
+        # Abort if there are files there already but initialization was requested.
+        for phase in phases:
+            store_filename = os.path.join(store_directory, phase + '.nc')
+            if os.path.exists(store_filename):
+                raise Exception("Store filename %s already exists." % store_filename)
+
+        # Set defaults for free energy calculation and protocol.
+        self.verbose = False # Don't show verbose output
+        self.online_analysis = False # if True, simulation will be analyzed each iteration
+        self.temperature = 298.0 * units.kelvin # simulation temperature
+        self.pressure = 1.0 * units.atmosphere # simulation pressure (for explicit solvent)
+        self.niterations = 2000 # number of production iterations
         self.platform = None # don't specify a platform
 
         # Store deep copies of receptor and ligand.
-        self.receptor = copy.deepcopy(receptor) 
+        self.receptor = copy.deepcopy(receptor)
         self.ligand = copy.deepcopy(ligand)
 
         # Don't randomize ligand by default.
@@ -520,16 +224,16 @@ class Yank(object):
         forces = { self.complex.getForce(index).__class__.__name__ : self.complex.getForce(index) for index in range(self.complex.getNumForces()) }
         if forces['NonbondedForce'].getNonbondedMethod in [openmm.NonbondedForce.CutoffPeriodic, openmm.NonbondedForce.Ewald, openmm.NonbondedForce.PME]:
             self.is_periodic = True
-        
+
         # Select default protocols for alchemical transformation.
         self.vacuum_protocol = AbsoluteAlchemicalFactory.defaultVacuumProtocol()
         if self.is_periodic:
             self.solvent_protocol = AbsoluteAlchemicalFactory.defaultSolventProtocolExplicit()
-            self.complex_protocol = AbsoluteAlchemicalFactory.defaultComplexProtocolExplicit() 
+            self.complex_protocol = AbsoluteAlchemicalFactory.defaultComplexProtocolExplicit()
         else:
             self.solvent_protocol = AbsoluteAlchemicalFactory.defaultSolventProtocolImplicit()
-            self.complex_protocol = AbsoluteAlchemicalFactory.defaultComplexProtocolImplicit() 
-        
+            self.complex_protocol = AbsoluteAlchemicalFactory.defaultComplexProtocolImplicit()
+
         # Determine atom indices in complex.
         self.receptor_atoms = range(0, self.receptor.getNumParticles()) # list of receptor atoms
         self.ligand_atoms = range(self.receptor.getNumParticles(), self.complex.getNumParticles()) # list of ligand atoms
@@ -578,20 +282,29 @@ class Yank(object):
 
         return
 
-    def run(self):
+    def run(self, mpicomm=None):
         """
         Run a free energy calculation.
-        
-        TODO: Have CPUs run ligand in vacuum and implicit solvent, while GPUs run ligand in explicit solvent and complex.
 
-        TODO: Add support for explicit solvent.  Would ligand be solvated here?  Or would ligand already be in solvent?
-        
+        Parameters
+        ----------
+        mpicomm : MPI communicator, optional, default=None
+           If an MPI communicator is passed, an MPI simulation will be attempted.
+
         """
-
-        # Initialize if we haven't yet done so.
+        # Make sure we've been properly initialized first.
         if not self._initialized:
-            self._initialize()
-                    
+            raise Exception("Yank must first be initialized by either resume() or create().")
+
+        # Run all phases.
+        from sampling import ModifiedHamiltonianExchange # TODO: Modify to 'from yank.sampling import ModifiedHamiltonianExchange'?
+        for phase in self._phases:
+            store_filename = self._store_filenames[phase]
+            simulation = ModifiedHamiltonianExchange(store_filename=store_filename, mpicomm=mpicomm)
+            simulation.run()
+
+
+    def _run_serial(self):
         # Create reference thermodynamic state corresponding to experimental conditions.
         reference_state = ThermodynamicState(temperature=self.temperature, pressure=self.pressure)
 
@@ -618,8 +331,8 @@ class Yank(object):
         #    vacuum_simulation.platform = openmm.Platform.getPlatformByName('Reference')
         #vacuum_simulation.nsteps_per_iteration = 5000
         #vacuum_simulation.run() # DEBUG
-        
-        # 
+
+        #
         # Set up ligand in solvent simulation.
         #
 
@@ -627,32 +340,33 @@ class Yank(object):
         factory = AbsoluteAlchemicalFactory(self.ligand, ligand_atoms=range(self.ligand.getNumParticles()))
         systems = factory.createPerturbedSystems(self.solvent_protocol)
         store_filename = os.path.join(self.output_directory, 'solvent.nc')
+        from sampling import ModifiedHamiltonianExchange # TODO: Modify to 'from yank.sampling import ModifiedHamiltonianExchange'?
         solvent_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.ligand_positions, store_filename, protocol=self.protocol)
         if self.platform:
             if self.verbose: print "Using platform '%s'" % self.platform.getName()
             solvent_simulation.platform = self.platform
         solvent_simulation.nsteps_per_iteration = 5000
-        solvent_simulation.run() 
-        
+        solvent_simulation.run()
+
         #
         # Set up ligand in complex simulation.
-        # 
+        #
 
         # Create alchemically perturbed systems if not resuming run.
         try:
             # We can attempt to restore if serialized states exist.
-            # TODO: We probably don't need to check this.  
+            # TODO: We probably don't need to check this.
             import time
             initial_time = time.time()
             store_filename = os.path.join(self.output_directory, 'complex.nc')
             import netCDF4 as netcdf
-            ncfile = netcdf.Dataset(store_filename, 'r') 
+            ncfile = netcdf.Dataset(store_filename, 'r')
             ncvar_systems = ncfile.groups['thermodynamic_states'].variables['systems']
             nsystems = ncvar_systems.shape[0]
             ncfile.close()
             systems = None
             resume = True
-        except Exception as e:        
+        except Exception as e:
             # Create states using alchemical factory.
             factory = AbsoluteAlchemicalFactory(self.complex, ligand_atoms=self.ligand_atoms)
             systems = factory.createPerturbedSystems(self.complex_protocol)
@@ -679,8 +393,8 @@ class Yank(object):
             else:
                 # TODO: We need to include a standard state correction for going from simulation box volume to standard state volume.
                 # TODO: Alternatively, we need a scheme for specifying restraints with only protein molecules, not solvent.
-                self.standard_state_correction = 0.0 
-        
+                self.standard_state_correction = 0.0
+
         #if self.verbose: print "Creating alchemical intermediates..."
         #factory = AbsoluteAlchemicalFactory(self.complex, ligand_atoms=self.ligand_atoms)
         #systems = factory.createPerturbedSystems(self.complex_protocol)
@@ -697,11 +411,13 @@ class Yank(object):
             nstates = len(systems)
             for state_index in range(nstates):
                 positions = self.complex_positions[numpy.random.randint(0, len(self.complex_positions))]
+                from sampling import ModifiedHamiltonianExchange # TODO: Modify to 'from yank.sampling import ModifiedHamiltonianExchange'?
                 new_positions = ModifiedHamiltonianExchange.randomize_ligand_position(positions, self.receptor_atoms, self.ligand_atoms, sigma, close_cutoff)
                 randomized_positions.append(new_positions)
             self.complex_positions = randomized_positions
 
         if self.verbose: print "Setting up replica exchange simulation..."
+        from sampling import ModifiedHamiltonianExchange # TODO: Modify to 'from yank.sampling import ModifiedHamiltonianExchange'?
         complex_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.complex_positions, store_filename, displacement_sigma=self.displacement_sigma, mc_atoms=self.ligand_atoms, protocol=self.protocol, metadata=metadata)
         complex_simulation.nsteps_per_iteration = 5000
         if self.platform:
@@ -710,11 +426,11 @@ class Yank(object):
 
         # Run the simulation.
         if self.verbose: print "Running complex simulation..."
-        complex_simulation.run()        
-        
+        complex_simulation.run()
+
         return
 
-    def run_mpi(self, mpicomm, gpus_per_node):
+    def _run_mpi(self, mpicomm, gpus_per_node):
         """
         Run a free energy calculation using MPI.
 
@@ -728,7 +444,7 @@ class Yank(object):
         Note
         ----
         * After run() or run_mpi() is called for the first time, the simulation parameters should no longer be changed.
-        
+
         TODO
         ----
         * Add intelligent way to determine how many threads per node to use for CPUs and GPUs if left unspecified
@@ -749,7 +465,7 @@ class Yank(object):
 
         # Choose appropriate platform for each device.
         # Set GPU ID or number of threads.
-        deviceid = mpicomm.rank % gpus_per_node 
+        deviceid = mpicomm.rank % gpus_per_node
         platform_name = self.platform.getName()
         if platform_name == 'CUDA':
             self.platform.setPropertyDefaultValue('CudaDeviceIndex', '%d' % deviceid) # select Cuda device index
@@ -757,35 +473,34 @@ class Yank(object):
             self.platform.setPropertyDefaultValue('OpenCLDeviceIndex', '%d' % deviceid) # select OpenCL device index
         elif platform_name == 'CPU':
             self.platform.setPropertyDefaultValue('CpuThreads', '1') # set number of CPU threads
-            
+
         hostname = os.uname()[1]
         print "node '%s' MPI_WORLD rank %d/%d running on %s" % (hostname, mpicomm.rank, mpicomm.size, platform_name)
 
         # Initialize if we haven't yet done so.
         if not self._initialized:
             self._initialize()
-                    
+
         # Create reference thermodynamic state corresponding to experimental conditions.
         reference_state = ThermodynamicState(temperature=self.temperature, pressure=self.pressure)
 
         # SOLVENT simulation
-        
+
         factory = AbsoluteAlchemicalFactory(self.ligand, ligand_atoms=range(self.ligand.getNumParticles()))
         systems = factory.createPerturbedSystems(self.solvent_protocol)
         store_filename = os.path.join(self.output_directory, 'solvent.nc')
+        from sampling import ModifiedHamiltonianExchange # TODO: Modify to 'from yank.sampling import ModifiedHamiltonianExchange'?
         solvent_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.ligand_positions, store_filename, protocol=self.protocol, mpicomm=mpicomm)
         solvent_simulation.nsteps_per_iteration = 5000
         solvent_simulation.platform = self.platform
-        solvent_simulation.run() 
+        solvent_simulation.run()
         mpicomm.barrier()
 
-        # All processes assist in creating alchemically-modified complex.
-        
         # Run ligand in complex simulation on GPUs.
         #self.protocol['verbose'] = False # DEBUG: Suppress terminal output from ligand in solvent and vacuum simulations.
         if self.verbose: print "Creating receptor-ligand restraints..."
-        self.standard_state_correction = 0.0 
-        if not self.is_periodic: 
+        self.standard_state_correction = 0.0
+        if not self.is_periodic:
             # Impose restraints to keep the ligand from drifting too far from the protein.
             import restraints
             reference_positions = self.complex_positions[0]
@@ -804,23 +519,23 @@ class Yank(object):
             else:
                 # TODO: We need to include a standard state correction for going from simulation box volume to standard state volume.
                 # TODO: Alternatively, we need a scheme for specifying restraints with only protein molecules, not solvent.
-                self.standard_state_correction = 0.0 
+                self.standard_state_correction = 0.0
 
         # Create alchemically perturbed systems if not resuming run.
         try:
             # We can attempt to restore if serialized states exist.
-            # TODO: We probably don't need to check this.  
+            # TODO: We probably don't need to check this.
             import time
             initial_time = time.time()
             store_filename = os.path.join(self.output_directory, 'complex.nc')
             import netCDF4 as netcdf
-            ncfile = netcdf.Dataset(store_filename, 'r') 
+            ncfile = netcdf.Dataset(store_filename, 'r')
             ncvar_systems = ncfile.groups['thermodynamic_states'].variables['systems']
             nsystems = ncvar_systems.shape[0]
             ncfile.close()
             systems = None
             resume = True
-        except Exception as e:        
+        except Exception as e:
             # Create states using alchemical factory.
             if self.verbose: print "Creating alchemical states..."
             factory = AbsoluteAlchemicalFactory(self.complex, ligand_atoms=self.ligand_atoms)
@@ -842,18 +557,20 @@ class Yank(object):
             nstates = len(systems)
             for state_index in range(nstates):
                 positions = self.complex_positions[numpy.random.randint(0, len(self.complex_positions))]
+                from sampling import ModifiedHamiltonianExchange # TODO: Modify to 'from yank.sampling import ModifiedHamiltonianExchange'?
                 new_positions = ModifiedHamiltonianExchange.randomize_ligand_position(positions, self.receptor_atoms, self.ligand_atoms, sigma, close_cutoff)
                 randomized_positions.append(new_positions)
             self.complex_positions = randomized_positions
-                
+
         # Set up Hamiltonian exchange simulation.
         if self.verbose: print "Setting up complex simulation..."
+        from sampling import ModifiedHamiltonianExchange # TODO: Modify to 'from yank.sampling import ModifiedHamiltonianExchange'?
         complex_simulation = ModifiedHamiltonianExchange(reference_state, systems, self.complex_positions, store_filename, displacement_sigma=self.displacement_sigma, mc_atoms=self.ligand_atoms, protocol=self.protocol, mpicomm=mpicomm, metadata=metadata)
         complex_simulation.nsteps_per_iteration = 5000
         complex_simulation.platform = self.platform
-        complex_simulation.run()        
+        complex_simulation.run()
         mpicomm.barrier()
-        
+
         # VACUUM simulation
 
         # TODO: Create vacuum version of ligand.
@@ -863,7 +580,7 @@ class Yank(object):
         #    if type(force) in pyopenmm.IMPLICIT_SOLVATION_FORCES:
         #        vacuum_ligand.removeForce(force)
         #vacuum_ligand = vacuum_ligand.asSwig()
-        #    
+        #
         #factory = AbsoluteAlchemicalFactory(vacuum_ligand, ligand_atoms=range(self.ligand.getNumParticles()))
         #systems = factory.createPerturbedSystems(self.vacuum_protocol)
         #store_filename = os.path.join(self.output_directory, 'vacuum.nc')
@@ -871,13 +588,14 @@ class Yank(object):
         #vacuum_simulation.nsteps_per_iteration = 5000
         #vacuum_simulation.run() # DEBUG
         #mpicomm.barrier()
-       
+
         return
 
+    # TODO: Move this to analyze?
     @classmethod
     def _extract_u_n(cls, ncfile):
         """
-        Extract timeseries of u_n = - log q(x_n)               
+        Extract timeseries of u_n = - log q(x_n)
 
         """
 
@@ -955,13 +673,13 @@ class Yank(object):
 
             # Estimate free energies.
             (Deltaf_ij, dDeltaf_ij) = analyze.estimate_free_energies(ncfile, ndiscard=nequil)
-    
+
             # Estimate average enthalpies
             (DeltaH_i, dDeltaH_i) = analyze.estimate_enthalpies(ncfile, ndiscard=nequil)
-    
+
             # Accumulate free energy differences
             entry = dict()
-            entry['DeltaF'] = Deltaf_ij[0,nstates-1] 
+            entry['DeltaF'] = Deltaf_ij[0,nstates-1]
             entry['dDeltaF'] = dDeltaf_ij[0,nstates-1]
             entry['DeltaH'] = DeltaH_i[nstates-1] - DeltaH_i[0]
             entry['dDeltaH'] = numpy.sqrt(dDeltaH_i[0]**2 + dDeltaH_i[nstates-1]**2)

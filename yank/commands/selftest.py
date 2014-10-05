@@ -41,7 +41,7 @@ def dispatch(args):
     # Report results.
     if failure_count == 0:
         print "All doctests pass."
-        sys.exit(0)
+        return True
     else:
         print "WARNING: There were %d doctest failures." % failure_count
         sys.exit(1)

@@ -26,8 +26,8 @@ YANK
 Usage:
   yank [-h | --help] [-c | --cite]
   yank selftest [-v | --verbose]
-  yank setup binding amber --ligand_prmtop=PRMTOP --ligand_inpcrd=INPCRD --receptor_prmtop=PRMTOP --receptor_inpcrd=INPCRD --complex_prmtop=PRMTOP --complex_inpcrd=INPCRD (-s=STORE | --store=STORE) [-v | --verbose] [-i=ITERATIONS | --iterations=ITERATIONS] [-m | --mpi] [--restraints <restraint_type>] [--randomize-ligand] [--nbmethod=METHOD] [--gbsa=GBSA] [--constraints=CONSTRAINTS] [--platform=PLATFORM] [-v | --verbose]
-  yank run (-s=STORE | --store=STORE) [-i=ITERATIONS | --iterations ITERATIONS] [--platform=PLATFORM] [-o | --online-analysis] [-v | --verbose]
+  yank setup binding amber --ligand_prmtop=PRMTOP --ligand_inpcrd=INPCRD --receptor_prmtop=PRMTOP --receptor_inpcrd=INPCRD --complex_prmtop=PRMTOP --complex_inpcrd=INPCRD (-s=STORE | --store=STORE) [-v | --verbose] [-i=ITERATIONS | --iterations=ITERATIONS] [-m | --mpi] [--restraints <restraint_type>] [--randomize-ligand] [--nbmethod=METHOD] [--gbsa=GBSA] [--constraints=CONSTRAINTS] [--platform=PLATFORM] [--temperature=TEMPERATURE] [--pressure=PRESSURE] [--pH=PH] [-v | --verbose]
+  yank run (-s=STORE | --store=STORE) [-i=ITERATIONS | --iterations ITERATIONS] [--platform=PLATFORM] [--phase=PHASE] [-o | --online-analysis] [-v | --verbose]
   yank status (-s=STORE | --store=STORE) [-v | --verbose]
   yank analyze (-s STORE | --store=STORE) [-v | --verbose]
   yank cleanup (-s=STORE | --store=STORE) [-v | --verbose]
@@ -54,12 +54,19 @@ Simulation options:
   --gbsa=GBSA                   OpenMM GBSA model (HCT, OBC1, OBC2, GBn, GBn2) [default: OBC2]
   --nbmethod=METHOD             OpenMM nonbonded method (NoCutoff, CutoffPeriodic, PME, Ewald) [default: NoCutoff]
   --constraints=CONSTRAINTS     OpenMM constraints (None, HBonds, AllBonds, HAngles) [default: HBonds]
+  --phase=PHASE                 Resume only specified phase of calculation ('solvent', 'complex')
+  --temperature=TEMPERATURE     Temperature for simulation (in K, or simtk.unit readable string) [default: 298*kelvin]
+  --pressure=PRESSURE           Pressure for simulation (in atm, or simtk.unit readable string) [default: 1*atmospheres]
+  --pH=PH                       pH for simulation
 
 Amber options:
   --ligand_prmtop=PRMTOP        AMBER prmtop file for ligand [default: ligand.prmtop]
   --ligand_inpcrd=INPCRD        AMBER inpcrd file for ligand [default: ligand.inpcrd]
-  --complex_prmtop=PRMTOP       AMBER prmtop file for complex (ligand must appear first) [default: complex.prmtop]
-  --complex_inpcrd=INPCRD       AMBER inpcrd file for complex (ligand must appear first) [default: complex.inpcrd]
+  --receptor_prmtop=PRMTOP      AMBER prmtop file for receptor [default: receptor.prmtop]
+  --receptor_inpcrd=INPCRD      AMBER inpcrd file for receptor [default: receptor.inpcrd]
+  --complex_prmtop=PRMTOP       AMBER prmtop file for complex [default: complex.prmtop]
+  --complex_inpcrd=INPCRD       AMBER inpcrd file for complex [default: complex.inpcrd]
+  --ligand=RESNAME              Residue name of ligand [default: MOL]
 
 
 """

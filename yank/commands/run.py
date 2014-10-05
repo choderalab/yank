@@ -23,25 +23,30 @@ from simtk.openmm import app
 #=============================================================================================
 
 def dispatch(args):
-    # Create YANK object associated with data storage directory.
     from yank.yank import Yank # TODO: Fix this awkward import syntax.
-    yank = Yank(output_directory=args['--store'], verbose=args['--verbose'])
 
-    # Configure YANK object with command-line parameter overrides.
+    # Create YANK object associated with data storage directory.
+    store_directory = args['--store']
+    yank = Yank(store_directory)
+
+    # Set override options.
+    options = dict()
     if args['--iterations']:
-        yank.niterations = int(args['--iterations'])
+        options['niterations'] = int(args['--iterations'])
     if args['--verbose']:
-        yank.verbose = True
+        options['verbose'] = True
     if args['--online-analysis']:
-        yank.online_analysis = True
-    if args['--restraints']:
-        yank.restraint_type = args['--restraints']
-    if args['--randomize-ligand']:
-        yank.randomize_ligand = True
+        options['online_analysis'] = True
     if args['--platform'] != 'None':
-        yank.platform = openmm.Platform.getPlatformByName(args['--platform'])
+        options['platform'] = openmm.Platform.getPlatformByName(args['--platform'])
 
-    # Run calculation.
+    # Set YANK to resume from the store file.
+    phases = None # By default, resume from all phases found in store_directory
+    if args['--phase']: phases=[args['--phase']]
+    yank.resume(phases=phases, options=options)
+
+    # Configure MPI, if requested.
+    mpicomm = None
     if args['--mpi']:
         # Initialize MPI.
         from mpi4py import MPI
@@ -50,11 +55,9 @@ def dispatch(args):
             yank.verbose = False
         MPI.COMM_WORLD.barrier()
         if MPI.COMM_WORLD.rank == 0: print "Initialized MPI on %d processes." % (MPI.COMM_WORLD.size)
+        mpicomm = MPI
 
-        # Run MPI version.
-        yank.run_mpi(MPI)
-    else:
-        # Run serial version.
-        yank.run()
+    # Run simulation.
+    yank.run(mpicomm)
 
     return True

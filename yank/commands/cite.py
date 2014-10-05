@@ -36,5 +36,6 @@ def dispatch(args):
         print citation
         print ""
     # TODO: Also print citations for repex, pymbar, and other dependencies.
+
     return True
 

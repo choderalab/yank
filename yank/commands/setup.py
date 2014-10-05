@@ -21,69 +21,6 @@ from simtk.openmm import app
 # SUBROUTINES
 #=============================================================================================
 
-def read_openeye_crd(filename, natoms_expected, verbose=False):
-    """
-    Read one or more coordinate sets from a file that OpenEye supports.
-
-    ARGUMENTS
-
-    filename (string) - the coordinate filename to be read
-    natoms_expected (int) - number of atoms expected
-
-    RETURNS
-
-    positions_list (list of numpy array of simtk.unit.Quantity) - list of coordinate sets read
-    """
-
-    if verbose: print "Reading cooordinate sets from '%s'..." % filename
-
-    import openeye.oechem as oe
-    imolstream = oe.oemolistream()
-    imolstream.open(filename)
-    positions_list = list()
-    for molecule in imolstream.GetOEGraphMols():
-        oecoords = molecule.GetCoords() # oecoords[atom_index] is tuple of atom positions, in angstroms
-        natoms = len(oecoords) # number of atoms
-        if natoms != natoms_expected:
-            raise Exception("Read coordinate set from '%s' that had %d atoms (expected %d)." % (filename, natoms, natoms_expected))
-        positions = unit.Quantity(numpy.zeros([natoms,3], numpy.float32), unit.angstroms) # positions[atom_index,dim_index] is positions of dim_index dimension of atom atom_index
-        for atom_index in range(natoms):
-            positions[atom_index,:] = unit.Quantity(numpy.array(oecoords[atom_index]), unit.angstroms)
-        positions_list.append(positions)
-
-    if verbose: print "%d coordinate sets read." % len(positions_list)
-
-    return positions_list
-
-def read_pdb_crd(filename, natoms_expected, verbose=False):
-    """
-    Read one or more coordinate sets from a PDB file.
-    Multiple coordinate sets (in the form of multiple MODELs) can be read.
-
-    ARGUMENTS
-
-    filename (string) - name of the file to be read
-    natoms_expected (int) - number of atoms expected
-
-    RETURNS
-
-    positions_list (list of numpy array of simtk.unit.Quantity) - list of coordinate sets read
-
-    """
-    import simtk.openmm.app as app
-    pdb = app.PDBFile(filename)
-    positions_list = pdb.getPositions(asNumpy=True)
-    natoms = positions_list.shape[0]
-    if natoms != natoms_expected:
-        raise Exception("Read coordinate set from '%s' that had %d atoms (expected %d)." % (filename, natoms, natoms_expected))
-
-    # Append if we haven't dumped positions yet.
- #   if (atom_index == natoms_expected):
-  #       positions_list.append(copy.deepcopy(positions))
-
-    # Return positions.
-    return positions_list
-
 #=============================================================================================
 # COMMAND DISPATCH
 #=============================================================================================
@@ -98,7 +35,48 @@ def dispatch(args):
 # SET UP BINDING FREE ENERGY CALCULATION
 #=============================================================================================
 
+def find_components(topology, ligand_resnames=['MOL'], solvent_resnames=['WAT', 'TIP', 'HOH']):
+    """
+    Return list of receptor and ligand atoms.
+    Ligand atoms are specified by a residue name, while receptor atoms are everything else excluding water.
+
+    Parameters
+    ----------
+    topology : simtk.openmm.app.Topology
+       The topology object specifying the system.
+    ligand_resname : list of str, optional, default=['MOL']
+       List of three-letter ligand residue names used to identify the ligand(s).
+    solvent_resnames : list of str, optional, default=['WAT', 'TIP', 'HOH']
+       List of solvent residue names to exclude from receptor definition.
+
+    Returns
+    -------
+    atom_indices : dict of list of int
+       atom_indices[component] is a list of atom indices belonging to that component, where
+       component is one of 'receptor', 'ligand', 'solvent', 'complex'
+
+    """
+    components = ['receptor', 'ligand', 'solvent', 'complex']
+    atom_indices = { list() for component in components }
+
+    for atom in prmtop.topology:
+        if atom.residue.name in ligand_resname:
+            atom_indices['ligand'].append(atom.index)
+            atom_indices['complex'].append(atom.index)
+        elif atom.residue_name in solvent_resnames:
+            atom_indices['solvent'].append(atom.index)
+        else:
+            atom_indices['receptor'].append(atom.index)
+            atom_indices['complex'].append(atom.index)
+
+    return atom_indices
+
 def dispatch_binding(args):
+    """
+    Set up a binding free energy calculation.
+
+    """
+
     verbose = args['--verbose']
 
     # Specify simulation parameters.
@@ -109,9 +87,12 @@ def dispatch_binding(args):
     removeCMMotion = False
 
     # Create systems according to specified method.
-    systems = dict()
-    positions = dict()
-    phases = ['ligand', 'receptor', 'complex']
+    phases = ['ligand', 'complex'] # list of calculation phases (thermodynamic legs) to set up
+    components = ['ligand', 'receptor', 'solvent'] # components of the binding system
+    systems = dict() # systems[phase] is the System object associated with phase 'phase'
+    positions = dict() # positions[phase] is a list of coordinates associated with phase 'phase'
+    atom_indices = dict() # ligand_atoms[phase] is a list of ligand atom indices associated with phase 'phase'
+    is_periodic = False # True if calculations are in a periodic box
     if args['amber']:
         for phase in phases:
             if verbose: print "%s: " % phase
@@ -127,40 +108,58 @@ def dispatch_binding(args):
             inpcrd_natoms = positions[phase].shape[0]
             # Update box vectors (if needed).
             if inpcrd.boxVectors is not None:
+                is_periodic = True
                 systems[phase].setDefaultPeriodicBoxVectors(*inpcrd.boxVectors)
-            # Check to make sure number of atoms match expectation.
+            # Check to make sure number of atoms match between prmtop and inpcrd.
             if prmtop_natoms != inpcrd_natoms:
                 raise Exception("Atom number mismatch: prmtop %s has %d atoms; inpcrd %s has %d atoms." % (prmtop_filename, prmtop_natoms, inpcrd_filename, inpcrd_natoms))
-            # Report number of atoms.
-            if verbose: print "  %9d atoms" % prmtop_natoms
+            # Find ligand atoms and receptor atoms.
+            ligand_resname = args['--resname']
+            atom_indices[phase] = find_components(prmtop.topology, [ligand_resname])
+            # Report some useful properties.
+            if verbose:
+                print "  total atoms: %9d" % prmtop_natoms
+                print "  receptor   : %9d" % len(atom_indices[phase]['receptor'])
+                print "  ligand     : %9d" % len(atom_indices[phase]['ligand'])
+
+    # Process request to randomize ligand positions.
+    # TODO: Handle this separately for AMBER prmtop/inpcrd loader and SystemBuilder schemes.
+    if args['--randomize-ligand']:
+        if is_periodic:
+            raise Exception("Cannot randomize the ligand after explicit solvent coordinates have been loaded.")
+        if verbose:
+            print "Randomizing ligand positions and excluding overlapping configurations..."
+        randomized_positions = list()
+        sigma = 2*complex_restraints.getReceptorRadiusOfGyration()
+        close_cutoff = 1.5 * units.angstrom # TODO: Allow this to be specified by user.
+        nstates = len(systems)
+        for state_index in range(nstates):
+            positions = self.complex_positions[numpy.random.randint(0, len(self.complex_positions))]
+            from sampling import ModifiedHamiltonianExchange # TODO: Modify to 'from yank.sampling import ModifiedHamiltonianExchange'?
+            new_positions = ModifiedHamiltonianExchange.randomize_ligand_position(positions, self.receptor_atoms, self.ligand_atoms, sigma, close_cutoff)
+            randomized_positions.append(new_positions)
+        self.complex_positions = randomized_positions
 
     # Initialize YANK object.
-    # TODO: Add arguments for ligand positions and atom indices in each system.
-    # TODO: Perhaps we can use dicts for 'systems', 'positions', 'alchemical_atom_indices', etc.?
-    # TODO: Maybe even break up each alchemical leg into a separate Yank call?
+    # TODO: Maybe break up each alchemical leg into a separate Yank call?
     from yank.yank import Yank # TODO: Fix this weird import path to something more sane, like 'from yank import Yank'?
-    yank = Yank(ligand=systems['ligand'],
-                receptor=systems['receptor'],
-                complex=systems['complex'], complex_positions=positions['complex'],
-                output_directory=args['--store'],
-                verbose=verbose)
+    yank = Yank(args['--store'])
 
-    # Configure YANK object with command-line parameter overrides.
+    # Set options.
+    options = dict()
     if args['--iterations']:
-        yank.niterations = int(args['--iterations'])
-    if args['--verbose']:
-        yank.verbose = True
+        options['niterations'] = int(args['--iterations'])
     if args['--online-analysis']:
-        yank.online_analysis = True
+        options['online_analysis'] = True
     if args['--restraints']:
-        yank.restraint_type = args['--restraints']
+        options['restraint_type'] = args['--restraints']
     if args['--randomize-ligand']:
-        yank.randomize_ligand = True
+        options['randomize_ligand'] = True
     if args['--platform'] != 'None':
-        yank.platform = openmm.Platform.getPlatformByName(args['--platform'])
+        options['platform'] = openmm.Platform.getPlatformByName(args['--platform'])
 
-    # Initialize.
-    yank._initialize()
+    # Create new simulation.
+    yank.create(phases, systems, positions, alchemical_atoms, thermodynamic_state, verbose=verbose, options=options)
 
     # Report success.
     return True
