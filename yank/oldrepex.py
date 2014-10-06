@@ -213,7 +213,7 @@ class ThermodynamicState(object):
             self.pressure = pressure
 
         # If temperature and pressure are specified, make sure MonteCarloBarostat is attached.
-        if temperature and pressure:
+        if temperature and pressure and system:
             # Try to find barostat.
             barostat = False
             for force_index in range(self.system.getNumForces()):
@@ -225,11 +225,11 @@ class ThermodynamicState(object):
             if barostat:
                 # Set temperature.
                 # TODO: Set pressure too, once that option is available.
-                barostat.setTemperature(temperature)                
+                barostat.setTemperature(temperature)
             else:
                 # Create barostat.
                 barostat = self._mm.MonteCarloBarostat(pressure, temperature)
-                self.system.addForce(barostat)                    
+                self.system.addForce(barostat)
 
         return
 

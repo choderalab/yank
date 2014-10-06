@@ -26,10 +26,11 @@ import simtk.unit as units
 import simtk.openmm as openmm
 
 from . import sampling
+from . import oldrepex
+from . import alchemy
 
 from alchemy import AbsoluteAlchemicalFactory
 from oldrepex import ThermodynamicState
-from oldrepex import HamiltonianExchange, ReplicaExchange
 from sampling import ModifiedHamiltonianExchange # TODO: Modify to 'from yank.sampling import ModifiedHamiltonianExchange'?
 from restraints import HarmonicReceptorLigandRestraint, FlatBottomReceptorLigandRestraint
 
@@ -116,29 +117,6 @@ class Yank(object):
 
         return phases
 
-    # TODO: Get rid of this, or just use whether ReplicaExchange can resume?
-    def _is_valid_store(self, store_filename):
-        """
-        Check if the specified store filename is valid.
-
-        Parameters
-        ----------
-        store_filename : str
-           The name of the store file to examine.
-
-        Returns
-        -------
-        is_valid : bool
-           True is returned if the store file is valid.
-           An exception is raised if not.
-
-        """
-        ncfile = netcdf.Dataset(store_filename, 'r')
-        ncvar_systems = ncfile.groups['thermodynamic_states'].variables['systems']
-        nsystems = ncvar_systems.shape[0]
-        ncfile.close()
-        return True
-
     def resume(self, phases=None, verbose=False):
         """
         Set up YANK to resume from an existing simulation.
@@ -168,7 +146,7 @@ class Yank(object):
 
         return
 
-    def create(self, phases, systems, positions, atom_indices, thermodynamic_state, protocols=None, verbose=False):
+    def create(self, phases, systems, positions, atom_indices, thermodynamic_state, protocols=None, options=None, verbose=False):
         """
         Create a YANK binding free energy calculation object.
 
@@ -190,6 +168,8 @@ class Yank(object):
            Thermodynamic state at which calculations are to be carried out
         protocols : dict of list of AlchemicalState, optional, default=None
            If specified, the alchemical protocol protocols[phase] will be used for phase 'phase' instead of the default.
+        options : dict of str, optional, default=None
+           If specified, these options will override any other options.
         verbose : bool, optional, default=True
            If True, will give verbose output
 
@@ -202,7 +182,13 @@ class Yank(object):
                 raise Exception("Store filename %s already exists." % store_filename)
 
         for phase in phases:
-            self._initialize_phase(self, phase, systems[phase], positions[phase], atom_indices[phase], thermodynamic_states[phase], protocols=None):
+            self._initialize_phase(phase, systems[phase], positions[phase], atom_indices[phase], thermodynamic_states[phase], protocols=protocols)
+
+        for option in options:
+            if option in dir(self):
+                setattr(self, option, options[option])
+            else:
+                raise "Unknown runtime parameter '%'" % option
 
         # DEBUG
         if self.verbose: print "Yank object created."
@@ -236,12 +222,37 @@ class Yank(object):
         self.protocol['minimize'] = True
         self.protocol['show_mixing_statistics'] = True # this causes slowdown with iteration and should not be used for production
 
+    def _is_periodic(self, reference_system):
+        is_periodic = False
+        forces = { reference_system.getForce(index).__class__.__name__ : reference_system.getForce(index) for index in range(reference_system.getNumForces()) }
+        if forces['NonbondedForce'].getNonbondedMethod in [openmm.NonbondedForce.CutoffPeriodic, openmm.NonbondedForce.Ewald, openmm.NonbondedForce.PME]:
+            is_periodic = True
+        return is_periodic
+
     def _initialize_phase(self, phase, reference_system, positions, atom_indices, thermodynamic_state, protocols=None):
         """
         Initialize a specific phase.
 
+        Parameters
+        ----------
+        phase : str
+           The phase being initialized (one of ['complex', 'solvent', 'vacuum'])
+        reference_system : simtk.openmm.System
+           The reference system object from which alchemical intermediates are to be construcfted.
+        positions : list of simtk.unit.Qunatity objects (natoms x 3)
+           The list of positions to be used to seed replicas in a round-robin way.
+        atom_indices : dict
+           atom_indices[phase][component] is the set of atom indices associated with component, where component is ['ligand', 'receptor']
+        thermodynamic_state : ThermodynamicState
+           Thermodynamic state from which reference temperature and pressure are to be taken.
+        protocols : dict, optional, default=None
+           If specified, the specified alchemical protocols will be used instead of defaults.
 
         """
+
+        # TODO: Make sure all positions are lists.
+        # For now, we just assume they are not and temporarily make them lists.
+        positions = [positions]
 
         # Create metadata storage.
         metadata = dict()
@@ -250,10 +261,7 @@ class Yank(object):
         reference_system = copy.deepcopy(reference_system)
 
         # TODO: Use more general approach to determine whether system is periodic.
-        is_periodic = False
-        forces = { reference_system.getForce(index).__class__.__name__ : reference_system.getForce(index) for index in range(reference_system.getNumForces()) }
-        if forces['NonbondedForce'].getNonbondedMethod in [openmm.NonbondedForce.CutoffPeriodic, openmm.NonbondedForce.Ewald, openmm.NonbondedForce.PME]:
-            is_periodic = True
+        is_periodic = self._is_periodic(reference_system)
 
         # Compute standard state corrections for complex phase.
         metadata['standard_state_correction'] = 0.0
@@ -310,30 +318,16 @@ class Yank(object):
                 randomized_positions.append(new_positions)
             positions = randomized_positions
 
-        # Construct
+        # Set up simulation.
+        simulation = ModifiedHamiltonianExchange(store_filename=store_filename, mpicomm=mpicomm, protocol=options)
 
+        # Initialize simulation.
+        simulation.run(0)
+
+        # Clean up simulation.
+        del simulation
 
         return
-
-    def _determine_fastest_platform(self, system):
-        """
-        Determine fastest OpenMM platform for given system.
-
-        Parameters
-        ----------
-        system : simtk.openmm.System
-           The system for which the fastest OpenMM Platform object is to be determined.
-
-        Returns
-        -------
-        platform : simtk.openmm.Platform
-           The fastest OpenMM Platform for the specified system.
-
-        """
-        context = openmm.Context(system, integrator)
-        platform = context.getPlatform()
-        del context, integrator
-        return platform
 
     def run(self, niterations=None, mpicomm=None, options=None):
         """

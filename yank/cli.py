@@ -26,8 +26,9 @@ YANK
 Usage:
   yank [-h | --help] [-c | --cite]
   yank selftest [-v | --verbose]
-  yank setup binding amber --ligand_prmtop=PRMTOP --ligand_inpcrd=INPCRD --receptor_prmtop=PRMTOP --receptor_inpcrd=INPCRD --complex_prmtop=PRMTOP --complex_inpcrd=INPCRD (-s=STORE | --store=STORE) [-v | --verbose] [-i=ITERATIONS | --iterations=ITERATIONS] [-m | --mpi] [--restraints <restraint_type>] [--randomize-ligand] [--nbmethod=METHOD] [--gbsa=GBSA] [--constraints=CONSTRAINTS] [--platform=PLATFORM] [--temperature=TEMPERATURE] [--pressure=PRESSURE] [--pH=PH] [-v | --verbose]
-  yank run (-s=STORE | --store=STORE) [-i=ITERATIONS | --iterations ITERATIONS] [--platform=PLATFORM] [--phase=PHASE] [-o | --online-analysis] [-v | --verbose]
+  yank setup binding amber --ligand_prmtop=PRMTOP --ligand_inpcrd=INPCRD --receptor_prmtop=PRMTOP --receptor_inpcrd=INPCRD --complex_prmtop=PRMTOP --complex_inpcrd=INPCRD --ligname=RESNAME (-s=STORE | --store=STORE) [-i=ITERATIONS | --iterations=ITERATIONS] [--restraints <restraint_type>] [--randomize-ligand] [--nbmethod=METHOD] [--gbsa=GBSA] [--constraints=CONSTRAINTS] [--platform=PLATFORM] [--temperature=TEMPERATURE] [--pressure=PRESSURE] [-v | --verbose]
+  yank setup binding systembuilder --ligand=FILENAME --receptor=FILENAME [-i=ITERATIONS | --iterations=ITERATIONS] [--restraints <restraint_type>] [--randomize-ligand] [--nbmethod=METHOD] [--gbsa=GBSA] [--constraints=CONSTRAINTS] [--platform=PLATFORM] [--temperature=TEMPERATURE] [--pressure=PRESSURE] [-v | --verbose]
+  yank run (-s=STORE | --store=STORE) [-m | --mpi] [-i=ITERATIONS | --iterations ITERATIONS] [--platform=PLATFORM] [--phase=PHASE] [-o | --online-analysis] [-v | --verbose]
   yank status (-s=STORE | --store=STORE) [-v | --verbose]
   yank analyze (-s STORE | --store=STORE) [-v | --verbose]
   yank cleanup (-s=STORE | --store=STORE) [-v | --verbose]
@@ -66,8 +67,11 @@ Amber options:
   --receptor_inpcrd=INPCRD      AMBER inpcrd file for receptor [default: receptor.inpcrd]
   --complex_prmtop=PRMTOP       AMBER prmtop file for complex [default: complex.prmtop]
   --complex_inpcrd=INPCRD       AMBER inpcrd file for complex [default: complex.inpcrd]
-  --ligand=RESNAME              Residue name of ligand [default: MOL]
+  --ligname=RESNAME             Residue name of ligand [default: MOL]
 
+Systembuilder options:
+  --ligand=FILENAME             Ligand filename (formats: mol2, sdf, pdb, smi, iupac)
+  --receptor=FILENAME           Receptor filename (formats: mol2, sdf, pdb, smi, iupac)
 
 """
 

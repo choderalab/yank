@@ -17,6 +17,9 @@ from simtk import openmm
 from simtk import unit
 from simtk.openmm import app
 
+from yank.yank import Yank # TODO: Fix this weird import path to something more sane, like 'from yank import Yank'?
+from yank.oldrepex import ThermodynamicState
+
 #=============================================================================================
 # SUBROUTINES
 #=============================================================================================
@@ -81,13 +84,13 @@ def find_components(topology, ligand_resnames=['MOL'], solvent_resnames=_SOLVENT
 
     """
     components = ['receptor', 'ligand', 'solvent', 'complex']
-    atom_indices = { list() for component in components }
+    atom_indices = { component : list() for component in components }
 
-    for atom in prmtop.topology:
-        if atom.residue.name in ligand_resname:
+    for atom in topology.atoms():
+        if atom.residue.name in ligand_resnames:
             atom_indices['ligand'].append(atom.index)
             atom_indices['complex'].append(atom.index)
-        elif atom.residue_name in solvent_resnames:
+        elif atom.residue.name in solvent_resnames:
             atom_indices['solvent'].append(atom.index)
         else:
             atom_indices['receptor'].append(atom.index)
@@ -106,7 +109,7 @@ def process_unit_bearing_argument(args, argname, compatible_units):
     # TODO: Can we use a safer form of (or alternative to) 'eval' here?
     quantity = eval(args[argname])
     # Check to make sure units are compatible with expected units.
-    if not quantity.is_compatible_with_unit(compatible_units):
+    if not quantity.unit.is_compatible(compatible_units):
         raise Exception("Argument %s must be compatible with units %s" % (agname, str(compatible_units)))
     # Return unit-bearing quantity.
     return quantity
@@ -127,9 +130,8 @@ def dispatch_binding(args):
     removeCMMotion = False
 
     # Specify thermodynamic parameters.
-    from oldrepex import ThermodynamicState
-    temperature = process_unit_bearing_quantity(args, '--temperature', unit.kelvin)
-    pressure = process_unit_bearing_quantity(args, '--pressure', unit.atmospheres)
+    temperature = process_unit_bearing_argument(args, '--temperature', unit.kelvin)
+    pressure = process_unit_bearing_argument(args, '--pressure', unit.atmospheres)
     thermodynamic_state = ThermodynamicState(temperature=temperature, pressure=pressure)
 
     # Create systems according to specified method.
@@ -137,7 +139,7 @@ def dispatch_binding(args):
     components = ['ligand', 'receptor', 'solvent'] # components of the binding system
     systems = dict() # systems[phase] is the System object associated with phase 'phase'
     positions = dict() # positions[phase] is a list of coordinates associated with phase 'phase'
-    atom_indices = dict() # ligand_atoms[phase] is a list of ligand atom indices associated with phase 'phase'
+    atom_indices = { phase : dict() for phase in phases } # ligand_atoms[phase] is a list of ligand atom indices associated with phase 'phase'
     is_periodic = False # True if calculations are in a periodic box
     if args['amber']:
         for phase in phases:
@@ -160,7 +162,7 @@ def dispatch_binding(args):
             if prmtop_natoms != inpcrd_natoms:
                 raise Exception("Atom number mismatch: prmtop %s has %d atoms; inpcrd %s has %d atoms." % (prmtop_filename, prmtop_natoms, inpcrd_filename, inpcrd_natoms))
             # Find ligand atoms and receptor atoms.
-            ligand_resname = args['--resname']
+            ligand_resname = args['--ligname']
             atom_indices[phase] = find_components(prmtop.topology, [ligand_resname])
             # Report some useful properties.
             if verbose:
@@ -169,9 +171,29 @@ def dispatch_binding(args):
                 print "  ligand           : %9d" % len(atom_indices[phase]['ligand'])
                 print "  solvent and ions : %9d" % len(atom_indices[phase]['solvent'])
 
+    elif args['systembuilder']:
+        # TODO: This part is under construction
+
+        # Create SystemBuilder objects
+        ligand = Mol2SystemBuilder(args['--ligand'], 'ligand')
+        receptor = BiomoleculePDBSystemBuilder(args['--receptor'], 'receptor')
+        complex = ComplexSystemBuilder(ligand, receptor, 'complex')
+
+        # Create phases.
+        systems['solvent'] = ligand.system
+        positions['solvent'] = [ligand.coordinates_as_quantity]
+        atom_indices['solvent']['ligand'] = ligand.ligand_atoms
+        atom_indices['solvent']['receptor'] = list()
+
+        systems['complex'] = complex.system
+        positions['complex'] = [complex.coordinates_as_quantity]
+        atom_indices['complex']['ligand'] = complex.ligand_atoms
+        atom_indices['complex']['receptor'] = complex.receptor_atoms
+
+        # TODO: Set is_periodic flag appropriately
+
     # Initialize YANK object.
     # TODO: Maybe break up each alchemical leg into a separate Yank call?
-    from yank.yank import Yank # TODO: Fix this weird import path to something more sane, like 'from yank import Yank'?
     yank = Yank(args['--store'])
 
     # Set options.
@@ -188,7 +210,7 @@ def dispatch_binding(args):
         options['platform'] = openmm.Platform.getPlatformByName(args['--platform'])
 
     # Create new simulation.
-    yank.create(phases, systems, positions, alchemical_atoms, thermodynamic_state, verbose=verbose, options=options)
+    yank.create(phases, systems, positions, atom_indices, thermodynamic_state, verbose=verbose, options=options)
 
     # Report success.
     return True
