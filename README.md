@@ -2,6 +2,7 @@
 
 yank
 ====
+[![Gitter](https://badges.gitter.im/Join Chat.svg)](https://gitter.im/choderalab/yank?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
 YANK: GPU-accelerated calculation of ligand binding affinities in implicit and explicit solvent using alchemical free energy methodologies.
 
