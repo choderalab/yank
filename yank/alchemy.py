@@ -208,7 +208,7 @@ class AbsoluteAlchemicalFactory(object):
     """
 
     # Factory initialization.
-    def __init__(self, reference_system, ligand_atoms=[], annihilate_electrostatics=True, annihilate_sterics=False):
+    def __init__(self, reference_system, ligand_atoms=list(), receptor_atoms=list(), annihilate_electrostatics=True, annihilate_sterics=False):
         """
         Initialize absolute alchemical intermediate factory with reference system.
 

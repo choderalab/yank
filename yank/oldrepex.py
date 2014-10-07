@@ -540,7 +540,7 @@ class ThermodynamicState(object):
         EXAMPLES
 
         Create an NVT state.
-        
+
         >>> import simtk.unit as units
         >>> from repex import testsystems
         >>> testsystem = testsystems.LennardJonesCluster()
@@ -548,7 +548,7 @@ class ThermodynamicState(object):
         >>> state = ThermodynamicState(system=system, temperature=100.0*units.kelvin)
 
         Return a representation of the state.
-        
+
         >>> state_string = repr(state)
 
         """
@@ -563,9 +563,15 @@ class ThermodynamicState(object):
         return r
 
     def __str__(self):
-        # TODO: Write a human-readable representation.
-        
-        return repr(r)
+
+        r = "<ThermodynamicState object"
+        if self.temperature is not None:
+            r += ", temperature = %s" % str(self.temperature)
+        if self.pressure is not None:
+            r += ", pressure = %s" % str(self.pressure)
+        r += ">"
+
+        return r
 
     def _volume(self, box_vectors):
         """
@@ -1007,7 +1013,7 @@ class ReplicaExchange(object):
         self.nstates = len(self.states)
 
         # Determine number of atoms in systems.
-        self.natoms = representativ_system.getNumParticles()
+        self.natoms = representative_system.getNumParticles()
 
         # If no platform is specified, instantiate a platform, or try to use the fastest platform.
         if self.platform is None:

@@ -13,12 +13,14 @@ Set up YANK calculations.
 # MODULE IMPORTS
 #=============================================================================================
 
+import os, os.path
+
 from simtk import openmm
 from simtk import unit
 from simtk.openmm import app
 
-from yank.yank import Yank # TODO: Fix this weird import path to something more sane, like 'from yank import Yank'?
-from yank.oldrepex import ThermodynamicState
+from yank.yank import Yank # TODO: Fix this weird import path to something more sane, like 'from yank import Yank'
+from yank.oldrepex import ThermodynamicState # TODO: Fix this weird import path to something more sane, like 'from yank.repex import ThermodynamicState'
 
 #=============================================================================================
 # SUBROUTINES
@@ -39,7 +41,7 @@ def dispatch(args):
 #=============================================================================================
 
 # Common solvent and ions.
-_SOLVENT_TYPES = frozenset(['118', '119', '1AL', '1CU', '2FK', '2HP', '2OF', '3CO', '3MT',
+_SOLVENT_RESNAMES = frozenset(['118', '119', '1AL', '1CU', '2FK', '2HP', '2OF', '3CO', '3MT',
         '3NI', '3OF', '4MO', '543', '6MO', 'ACT', 'AG', 'AL', 'ALF', 'ATH',
         'AU', 'AU3', 'AUC', 'AZI', 'Ag', 'BA', 'BAR', 'BCT', 'BEF', 'BF4',
         'BO4', 'BR', 'BS3', 'BSY', 'Be', 'CA', 'CA+2', 'Ca+2', 'CAC', 'CAD',
@@ -62,7 +64,7 @@ _SOLVENT_TYPES = frozenset(['118', '119', '1AL', '1CU', '2FK', '2HP', '2OF', '3C
         'TRA', 'UNX', 'V', 'V2+', 'VN3', 'VO4', 'W', 'WO5', 'Y1', 'YB', 'YB2',
         'YH', 'YT3', 'ZN', 'ZN2', 'ZN3', 'ZNA', 'ZNO', 'ZO3'])
 
-def find_components(topology, ligand_resnames=['MOL'], solvent_resnames=_SOLVENT_TYPES):
+def find_components(topology, ligand_resnames=['MOL'], solvent_resnames=_SOLVENT_RESNAMES):
     """
     Return list of receptor and ligand atoms.
     Ligand atoms are specified by a residue name, while receptor atoms are everything else excluding water.
@@ -100,23 +102,137 @@ def find_components(topology, ligand_resnames=['MOL'], solvent_resnames=_SOLVENT
 
 def process_unit_bearing_argument(args, argname, compatible_units):
     """
+    Process a unit-bearing command-line argument to produce a Quantity.
+
+    Parameters
+    ----------
+    args : dict
+       Command-line arguments dict from docopt.
+    argname : str
+       Key to use to extract value from args.
+    compatible_units : simtk.unit.Unit
+       The result will be checked for compatibility with specified units, and an exception raised if not compatible.
+
+    Returns
+    -------
+    quantity : simtk.unit.Quantity
+       The specified parameter, returned as a Quantity.
+
     """
 
-    # Import all units.
-    from simtk.unit import *
     # WARNING: This is dangerous!
     # See: http://nedbatchelder.com/blog/201206/eval_really_is_dangerous.html
     # TODO: Can we use a safer form of (or alternative to) 'eval' here?
-    quantity = eval(args[argname])
+    quantity = eval(args[argname], unit.__dict__)
     # Check to make sure units are compatible with expected units.
     if not quantity.unit.is_compatible(compatible_units):
         raise Exception("Argument %s must be compatible with units %s" % (agname, str(compatible_units)))
     # Return unit-bearing quantity.
     return quantity
 
+def setup_binding_amber(args):
+    """
+    Set up ligand binding free energy calculation using AMBER prmtop/inpcrd files.
+
+    Parameters
+    ----------
+    args : dict
+       Command-line arguments dict from docopt.
+
+    Returns
+    -------
+    phases : list of str
+       Phases (thermodynamic legs) of the calculation.
+    systems : dict
+       systems[phase] is the OpenMM System reference object for phase 'phase'.
+    positions : dict
+       positions[phase] is a set of positions (or list of positions) for initializing replicas.
+    atom_indices : dict
+       atom_indices[phase][component] is list of atom indices for component 'component' in phase 'phase'.
+
+    """
+    verbose = args['--verbose']
+
+    # Extract simulation parameters.
+    nonbondedMethod = getattr(app, args['--nbmethod'])
+    implicitSolvent = getattr(app, args['--gbsa'])
+    if args['--constraints']==None: args['--constraints'] = None # Necessary because there is no 'None' in simtk.openmm.app
+    constraints = getattr(app, args['--constraints'])
+    removeCMMotion = False
+
+    # Prepare phases of calculation.
+    phase_prefixes = ['ligand', 'complex'] # list of calculation phases (thermodynamic legs) to set up
+    components = ['ligand', 'receptor', 'solvent'] # components of the binding system
+    systems = dict() # systems[phase] is the System object associated with phase 'phase'
+    positions = dict() # positions[phase] is a list of coordinates associated with phase 'phase'
+    atom_indices = dict() # ligand_atoms[phase] is a list of ligand atom indices associated with phase 'phase'
+    setup_directory = args['--setupdir'] # Directory where prmtop/inpcrd files are to be found
+    for phase_prefix in phase_prefixes:
+        if verbose: print "%s: " % phase
+        # Read Amber prmtop and create System object.
+        prmtop_filename = os.path.join(setup_directory, '%s.prmtop' % phase_prefix)
+        prmtop = app.AmberPrmtopFile(prmtop_filename)
+        # Read Amber inpcrd and load positions.
+        inpcrd_filename = os.path.join(setup_directory, '%s.inpcrd' % phase_prefix)
+        inpcrd = app.AmberInpcrdFile(inpcrd_filename)
+        # Determine if this will be an explicit or implicit solvent simulation.
+        phase_suffix = 'implicit'
+        is_periodic = False
+        if inpcrd.boxVectors is not None:
+            is_periodic = True
+            phase_suffix = 'explicit'
+        # TODO: Check to make sure both prmtop and inpcrd agree on explicit/implicit.
+        phase = '%s-%s' % (phase_prefix, phase_suffix)
+        systems[phase] = prmtop.createSystem(nonbondedMethod=nonbondedMethod, implicitSolvent=implicitSolvent, constraints=constraints, removeCMMotion=removeCMMotion)
+        positions[phase] = inpcrd.getPositions(asNumpy=True)
+        # Update box vectors (if needed).
+        if is_periodic:
+            systems[phase].setDefaultPeriodicBoxVectors(*inpcrd.boxVectors)
+        # Check to make sure number of atoms match between prmtop and inpcrd.
+        prmtop_natoms = systems[phase].getNumParticles()
+        inpcrd_natoms = positions[phase].shape[0]
+        if prmtop_natoms != inpcrd_natoms:
+            raise Exception("Atom number mismatch: prmtop %s has %d atoms; inpcrd %s has %d atoms." % (prmtop_filename, prmtop_natoms, inpcrd_filename, inpcrd_natoms))
+        # Find ligand atoms and receptor atoms.
+        ligand_resname = args['--ligname']
+        atom_indices[phase] = find_components(prmtop.topology, [ligand_resname])
+
+    phases = systems.keys()
+
+    return [phases, systems, positions, atom_indices]
+
+def setup_systembuilder(args):
+    """
+    Set up ligand binding free energy calculation using OpenMM app and gaff2xml.
+
+    Parameters
+    ----------
+    args : dict
+       Command-line arguments dict from docopt.
+
+    Returns
+    -------
+    phases : list of str
+       Phases (thermodynamic legs) of the calculation.
+    systems : dict
+       systems[phase] is the OpenMM System reference object for phase 'phase'.
+    positions : dict
+       positions[phase] is a set of positions (or list of positions) for initializing replicas.
+    atom_indices : dict
+       atom_indices[phase][component] is list of atom indices for component 'component' in phase 'phase'.
+
+    """
+    # TODO: Merge in systembuilder setup from PBG and JDC.
+    raise Exception("Not implemented.")
+
 def dispatch_binding(args):
     """
     Set up a binding free energy calculation.
+
+    Parameters
+    ----------
+    args : dict
+       Command-line arguments from docopt.
 
     """
 
@@ -134,67 +250,25 @@ def dispatch_binding(args):
     pressure = process_unit_bearing_argument(args, '--pressure', unit.atmospheres)
     thermodynamic_state = ThermodynamicState(temperature=temperature, pressure=pressure)
 
-    # Create systems according to specified method.
-    phases = ['ligand', 'complex'] # list of calculation phases (thermodynamic legs) to set up
-    components = ['ligand', 'receptor', 'solvent'] # components of the binding system
-    systems = dict() # systems[phase] is the System object associated with phase 'phase'
-    positions = dict() # positions[phase] is a list of coordinates associated with phase 'phase'
-    atom_indices = { phase : dict() for phase in phases } # ligand_atoms[phase] is a list of ligand atom indices associated with phase 'phase'
-    is_periodic = False # True if calculations are in a periodic box
+    # Create systems according to specified setup/import method.
     if args['amber']:
-        for phase in phases:
-            if verbose: print "%s: " % phase
-            # Read Amber prmtop and create System object.
-            prmtop_filename = args['--%s_prmtop' % phase]
-            prmtop = app.AmberPrmtopFile(prmtop_filename)
-            systems[phase] = prmtop.createSystem(nonbondedMethod=nonbondedMethod, implicitSolvent=implicitSolvent, constraints=constraints, removeCMMotion=removeCMMotion)
-            prmtop_natoms = systems[phase].getNumParticles()
-            # Read Amber inpcrd and load positions.
-            inpcrd_filename = args['--%s_inpcrd' % phase]
-            inpcrd = app.AmberInpcrdFile(inpcrd_filename)
-            positions[phase] = inpcrd.getPositions(asNumpy=True)
-            inpcrd_natoms = positions[phase].shape[0]
-            # Update box vectors (if needed).
-            if inpcrd.boxVectors is not None:
-                is_periodic = True
-                systems[phase].setDefaultPeriodicBoxVectors(*inpcrd.boxVectors)
-            # Check to make sure number of atoms match between prmtop and inpcrd.
-            if prmtop_natoms != inpcrd_natoms:
-                raise Exception("Atom number mismatch: prmtop %s has %d atoms; inpcrd %s has %d atoms." % (prmtop_filename, prmtop_natoms, inpcrd_filename, inpcrd_natoms))
-            # Find ligand atoms and receptor atoms.
-            ligand_resname = args['--ligname']
-            atom_indices[phase] = find_components(prmtop.topology, [ligand_resname])
-            # Report some useful properties.
-            if verbose:
-                print "  TOTAL ATOMS      : %9d" % prmtop_natoms
-                print "  receptor         : %9d" % len(atom_indices[phase]['receptor'])
-                print "  ligand           : %9d" % len(atom_indices[phase]['ligand'])
-                print "  solvent and ions : %9d" % len(atom_indices[phase]['solvent'])
-
+        [phases, systems, positions, atom_indices] = setup_binding_amber(args)
     elif args['systembuilder']:
-        # TODO: This part is under construction
+        [phases, systems, positions, atom_indices] = setup_binding_systembuilder(args)
+    else:
+        print "No valid binding free energy calculation setup command specified: Must be one of ['amber', 'systembuilder']."
+        # Trigger help argument to be returned.
+        return False
 
-        # Create SystemBuilder objects
-        ligand = Mol2SystemBuilder(args['--ligand'], 'ligand')
-        receptor = BiomoleculePDBSystemBuilder(args['--receptor'], 'receptor')
-        complex = ComplexSystemBuilder(ligand, receptor, 'complex')
-
-        # Create phases.
-        systems['solvent'] = ligand.system
-        positions['solvent'] = [ligand.coordinates_as_quantity]
-        atom_indices['solvent']['ligand'] = ligand.ligand_atoms
-        atom_indices['solvent']['receptor'] = list()
-
-        systems['complex'] = complex.system
-        positions['complex'] = [complex.coordinates_as_quantity]
-        atom_indices['complex']['ligand'] = complex.ligand_atoms
-        atom_indices['complex']['receptor'] = complex.receptor_atoms
-
-        # TODO: Set is_periodic flag appropriately
+    # Report some useful properties.
+    if verbose:
+        print "  TOTAL ATOMS      : %9d" % prmtop_natoms
+        print "  receptor         : %9d" % len(atom_indices[phase]['receptor'])
+        print "  ligand           : %9d" % len(atom_indices[phase]['ligand'])
+        print "  solvent and ions : %9d" % len(atom_indices[phase]['solvent'])
 
     # Initialize YANK object.
-    # TODO: Maybe break up each alchemical leg into a separate Yank call?
-    yank = Yank(args['--store'])
+    yank = Yank(args['--store'], verbose=verbose)
 
     # Set options.
     options = dict()
@@ -203,14 +277,14 @@ def dispatch_binding(args):
     if args['--online-analysis']:
         options['online_analysis'] = True
     if args['--restraints']:
-        options['restraint_type'] = args['--restraints']
+        yank.restraint_type = args['--restraints']
     if args['--randomize-ligand']:
         options['randomize_ligand'] = True
     if args['--platform'] != 'None':
         options['platform'] = openmm.Platform.getPlatformByName(args['--platform'])
 
     # Create new simulation.
-    yank.create(phases, systems, positions, atom_indices, thermodynamic_state, verbose=verbose, options=options)
+    yank.create(phases, systems, positions, atom_indices, thermodynamic_state, options=options)
 
     # Report success.
     return True

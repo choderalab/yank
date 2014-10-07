@@ -26,7 +26,7 @@ YANK
 Usage:
   yank [-h | --help] [-c | --cite]
   yank selftest [-v | --verbose]
-  yank setup binding amber --ligand_prmtop=PRMTOP --ligand_inpcrd=INPCRD --receptor_prmtop=PRMTOP --receptor_inpcrd=INPCRD --complex_prmtop=PRMTOP --complex_inpcrd=INPCRD --ligname=RESNAME (-s=STORE | --store=STORE) [-i=ITERATIONS | --iterations=ITERATIONS] [--restraints <restraint_type>] [--randomize-ligand] [--nbmethod=METHOD] [--gbsa=GBSA] [--constraints=CONSTRAINTS] [--platform=PLATFORM] [--temperature=TEMPERATURE] [--pressure=PRESSURE] [-v | --verbose]
+  yank setup binding amber --setupdir=DIRECTORY --ligname=RESNAME (-s=STORE | --store=STORE) [-i=ITERATIONS | --iterations=ITERATIONS] [--restraints <restraint_type>] [--randomize-ligand] [--nbmethod=METHOD] [--gbsa=GBSA] [--constraints=CONSTRAINTS] [--platform=PLATFORM] [--temperature=TEMPERATURE] [--pressure=PRESSURE] [-v | --verbose]
   yank setup binding systembuilder --ligand=FILENAME --receptor=FILENAME [-i=ITERATIONS | --iterations=ITERATIONS] [--restraints <restraint_type>] [--randomize-ligand] [--nbmethod=METHOD] [--gbsa=GBSA] [--constraints=CONSTRAINTS] [--platform=PLATFORM] [--temperature=TEMPERATURE] [--pressure=PRESSURE] [-v | --verbose]
   yank run (-s=STORE | --store=STORE) [-m | --mpi] [-i=ITERATIONS | --iterations ITERATIONS] [--platform=PLATFORM] [--phase=PHASE] [-o | --online-analysis] [-v | --verbose]
   yank status (-s=STORE | --store=STORE) [-v | --verbose]
@@ -61,12 +61,7 @@ Simulation options:
   --pressure=PRESSURE           Pressure for simulation (in atm, or simtk.unit readable string) [default: 1*atmospheres]
 
 Amber options:
-  --ligand_prmtop=PRMTOP        AMBER prmtop file for ligand [default: ligand.prmtop]
-  --ligand_inpcrd=INPCRD        AMBER inpcrd file for ligand [default: ligand.inpcrd]
-  --receptor_prmtop=PRMTOP      AMBER prmtop file for receptor [default: receptor.prmtop]
-  --receptor_inpcrd=INPCRD      AMBER inpcrd file for receptor [default: receptor.inpcrd]
-  --complex_prmtop=PRMTOP       AMBER prmtop file for complex [default: complex.prmtop]
-  --complex_inpcrd=INPCRD       AMBER inpcrd file for complex [default: complex.inpcrd]
+  --setupdir=DIRECTORY          Setup directory to look for AMBER {receptor|ligand|complex}.{prmtop|inpcrd} files.
   --ligname=RESNAME             Residue name of ligand [default: MOL]
 
 Systembuilder options:
@@ -89,15 +84,13 @@ def main():
         print usage
         dispatched = True
     if args['--cite']:
-        dispatched = True
-        success = commands.cite.dispatch(args)
+        dispatched = commands.cite.dispatch(args)
 
     # Handle commands.
     command_list = ['selftest', 'setup', 'run', 'status', 'analyze', 'cleanup'] # TODO: Build this list automagically by introspection of commands submodule.
     for command in command_list:
         if args[command]:
-            dispatched = True
-            success = getattr(commands, command).dispatch(args)
+            dispatched = getattr(commands, command).dispatch(args)
 
     # If unsuccessful, print usage and exit with an error.
     if not dispatched:

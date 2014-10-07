@@ -22,7 +22,7 @@ import time
 import numpy
 import numpy.random
 
-import simtk.unit as units
+import simtk.unit as unit
 import simtk.openmm as openmm
 
 from . import sampling
@@ -35,26 +35,16 @@ from sampling import ModifiedHamiltonianExchange # TODO: Modify to 'from yank.sa
 from restraints import HarmonicReceptorLigandRestraint, FlatBottomReceptorLigandRestraint
 
 #=============================================================================================
-# YANK class
+# YANK class to manage multiple thermodynamic transformations
 #=============================================================================================
 
 class Yank(object):
     """
-    A class for computing receptor-ligand binding free energies through alchemical transformations.
-
-    Attributes that can be set after initializaton but before initialization by run():
-
-    data_directory (string) - destination for datafiles (default: .)
-    online_analysis (boolean) - if True, will analyze data as simulations proceed (default: False)
-    temperature (simtk.unit.Quantity compatible with kelvin) - temperature of simulation (default: 298 K)
-    pressure (simtk.unit.Quantity compatible with atmosphere) - pressure of simulation if explicit solvent (default: 1 atm)
-    niterations (integer) - number of iterations to run (default: 10)
-    solvent_protocol (list of AlchemicalState) - protocol to use for turning off ligand in solvent
-    complex_protocol (list of AlchemicalState) - protocol to use for turning off ligand in complex
+    A class for managing alchemical replice-exchange free energy calculations.
 
     """
 
-    def __init__(self, store_directory):
+    def __init__(self, store_directory, verbose=False):
         """
         Initialize YANK object with default parameters.
 
@@ -62,31 +52,48 @@ class Yank(object):
         ----------
         store_directory : str
            The storage directory in which output NetCDF files are read or written.
+        verbose : bool, optional, default=False
+           If True, will turn on verbose output.
 
         """
 
-        # Mark as not yet initialized.
+        # Record that we are not yet initialized.
         self._initialized = False
-
-        # Set defaults for free energy calculation and protocol.
-        self.verbose = False # Don't show verbose output
-        self.online_analysis = False # if True, simulation will be analyzed each iteration
-        self.niterations = 1000 # number of production iterations
-        self.platform_name = None # don't specify a platform
 
         # Store output directory.
         self._store_directory = store_directory
+
+        # Public attributes.
+        self.verbose = verbose
+        self.restraint_type = 'flat-bottom' # default to a flat-bottom restraint between the ligand and receptor
+        self.randomize_ligand = True
+        self.randomize_ligand_sigma_multiplier = 2.0
+        self.randomize_ligand_close_cutoff = 1.5 * unit.angstrom # TODO: Allow this to be specified by user.
+        self.mc_displacement_sigma = 10.0 * unit.angstroms
 
         # Set internal variables.
         self._phases = list()
         self._store_filenames = dict()
 
-        # Monte Carlo displacement standard deviation for encouraging rapid decorrelation of ligand in the annihilated/decoupled state.
-        self.displacement_sigma = 1.0 * units.nanometers # attempt to displace ligand by this stddev will be made each iteration
+        # Default alchemical protocols.
+        self.default_protocols = dict()
+        self.default_protocols['vacuum'] = AbsoluteAlchemicalFactory.defaultVacuumProtocol()
+        self.default_protocols['solvent-implicit'] = AbsoluteAlchemicalFactory.defaultSolventProtocolImplicit()
+        self.default_protocols['complex-implicit'] = AbsoluteAlchemicalFactory.defaultComplexProtocolImplicit()
+        self.default_protocols['solvent-explicit'] = AbsoluteAlchemicalFactory.defaultSolventProtocolExplicit()
+        self.default_protocols['complex-implicit'] = AbsoluteAlchemicalFactory.defaultComplexProtocolExplicit()
 
-        # Type of restraints requested.
-        #self.restraint_type = 'flat-bottom' # default to a flat-bottom restraint between the ligand and receptor
-        self.restraint_type = 'harmonic' # default to a single harmonic restraint between the ligand and receptor
+        # Default options for repex.
+        self.default_options = dict()
+        self.default_options['number_of_equilibration_iterations'] = 0
+        self.default_options['number_of_iterations'] = 1000
+        self.default_options['verbose'] = self.verbose
+        self.default_options['timestep'] = 2.0 * unit.femtoseconds
+        self.default_options['collision_rate'] = 5.0 / unit.picoseconds
+        self.default_options['minimize'] = True
+        self.default_options['show_mixing_statistics'] = True # this causes slowdown with iteration and should not be used for production
+        self.default_options['platform_names'] = None
+        self.default_options['displacement_sigma'] = 1.0 * unit.nanometers # attempt to displace ligand by this stddev will be made each iteration
 
         return
 
@@ -117,15 +124,15 @@ class Yank(object):
 
         return phases
 
-    def resume(self, phases=None, verbose=False):
+    def resume(self, phases=None):
         """
-        Set up YANK to resume from an existing simulation.
+        Resume an existing set of alchemical free energy calculations found in current store directory.
 
         Parameters
         ----------
         phases : list of str, optional, default=None
            The list of calculation phases (e.g. ['solvent', 'complex']) to resume.
-           If not specified, all NetCDF files ('*.nc') in the store_directory will be resumed.
+           If not specified, all simulations in the store_directory will be resumed.
         verbose : bool, optional, default=True
            If True, will give verbose output
 
@@ -136,7 +143,7 @@ class Yank(object):
         self._phases = phases
 
         # Construct store filenames.
-        self._store_filenames = { phase : os.path.join(store_directory, phase + '.nc') for phase in self._phases }
+        self._store_filenames = { phase : os.path.join(self._store_directory, phase + '.nc') for phase in self._phases }
 
         # Ensure we can resume from each store file, processing override options.
         for phase in self._phases:
@@ -144,11 +151,14 @@ class Yank(object):
             store_filename = self._store_filenames[phase]
             pass
 
+        # Record we are now initialized.
+        self._initialized = True
+
         return
 
-    def create(self, phases, systems, positions, atom_indices, thermodynamic_state, protocols=None, options=None, verbose=False):
+    def create(self, phases, systems, positions, atom_indices, thermodynamic_state, protocols=None, options=None):
         """
-        Create a YANK binding free energy calculation object.
+        Set up a new set of alchemical free energy calculations for the specified phases.
 
         Parameters
         ----------
@@ -169,69 +179,59 @@ class Yank(object):
         protocols : dict of list of AlchemicalState, optional, default=None
            If specified, the alchemical protocol protocols[phase] will be used for phase 'phase' instead of the default.
         options : dict of str, optional, default=None
-           If specified, these options will override any other options.
+           If specified, these options will override default repex simulation options.
         verbose : bool, optional, default=True
            If True, will give verbose output
 
         """
 
+        # DEBUG
+        print "phases: %s"  % phases
+        print "systems: %s" % systems.keys()
+        print "positions: %s" % positions.keys()
+        print "atom_indices: %s" % atom_indices.keys()
+        print "thermodynamic_state: %s" % thermodynamic_state
+
         # Abort if there are files there already but initialization was requested.
         for phase in phases:
-            store_filename = os.path.join(store_directory, phase + '.nc')
+            store_filename = os.path.join(self._store_directory, phase + '.nc')
             if os.path.exists(store_filename):
                 raise Exception("Store filename %s already exists." % store_filename)
 
+        # Create new repex simulations.
         for phase in phases:
-            self._initialize_phase(phase, systems[phase], positions[phase], atom_indices[phase], thermodynamic_states[phase], protocols=protocols)
+            self._create_phase(phase, systems[phase], positions[phase], atom_indices[phase], thermodynamic_state, protocols=protocols, options=options)
 
-        for option in options:
-            if option in dir(self):
-                setattr(self, option, options[option])
-            else:
-                raise "Unknown runtime parameter '%'" % option
-
-        # DEBUG
-        if self.verbose: print "Yank object created."
+        # Record that we are now initialized.
+        self._initialized = True
 
         return
 
-    def _initialize(self):
+    def _is_periodic(self, system):
         """
-        Initialize the Yank calculation.
+        Report whether a given system is periodic or not.
 
+        Parameters
+        ----------
+        system : simtk.openmm.System
+           The system object to examine for periodic forces.
+
+        Returns
+        -------
+        is_periodic : bool
+           True is returned if a NonbondedForce object is present with getNonBondedMethod() reporting one of [CutoffPeriodic, Ewald, PME]
 
         """
-        self._initialized = True
 
-        # TODO: Run some sanity checks on arguments to see if we can initialize a valid simulation.
-
-        # Turn off pressure if we aren't simulating a periodic system.
-        if not self.is_periodic:
-            self.pressure = None
-
-        # Extract ligand positions from complex.
-        self.ligand_positions = [ positions[self.ligand_atoms,:] for positions in self.complex_positions ]
-
-        # TODO: Pack up a 'protocol' for modified Hamiltonian exchange simulations. Use this instead in setting up simulations.
-        self.protocol = dict()
-        self.protocol['number_of_equilibration_iterations'] = 1
-        self.protocol['number_of_iterations'] = self.niterations
-        self.protocol['verbose'] = self.verbose
-        self.protocol['timestep'] = 2.0 * units.femtoseconds
-        self.protocol['collision_rate'] = 5.0 / units.picoseconds
-        self.protocol['minimize'] = True
-        self.protocol['show_mixing_statistics'] = True # this causes slowdown with iteration and should not be used for production
-
-    def _is_periodic(self, reference_system):
         is_periodic = False
-        forces = { reference_system.getForce(index).__class__.__name__ : reference_system.getForce(index) for index in range(reference_system.getNumForces()) }
+        forces = { system.getForce(index).__class__.__name__ : system.getForce(index) for index in range(system.getNumForces()) }
         if forces['NonbondedForce'].getNonbondedMethod in [openmm.NonbondedForce.CutoffPeriodic, openmm.NonbondedForce.Ewald, openmm.NonbondedForce.PME]:
             is_periodic = True
         return is_periodic
 
-    def _initialize_phase(self, phase, reference_system, positions, atom_indices, thermodynamic_state, protocols=None):
+    def _create_phase(self, phase, reference_system, positions, atom_indices, thermodynamic_state, protocols=None, options=None):
         """
-        Initialize a specific phase.
+        Create a repex object for a specified phase.
 
         Parameters
         ----------
@@ -239,20 +239,32 @@ class Yank(object):
            The phase being initialized (one of ['complex', 'solvent', 'vacuum'])
         reference_system : simtk.openmm.System
            The reference system object from which alchemical intermediates are to be construcfted.
-        positions : list of simtk.unit.Qunatity objects (natoms x 3)
+        positions : list of simtk.unit.Qunatity objects containing (natoms x 3) positions (as numpy or lists)
            The list of positions to be used to seed replicas in a round-robin way.
         atom_indices : dict
            atom_indices[phase][component] is the set of atom indices associated with component, where component is ['ligand', 'receptor']
         thermodynamic_state : ThermodynamicState
            Thermodynamic state from which reference temperature and pressure are to be taken.
-        protocols : dict, optional, default=None
-           If specified, the specified alchemical protocols will be used instead of defaults.
+        protocols : dict of list of AlchemicalState, optional, default=None
+           If specified, the alchemical protocol protocols[phase] will be used for phase 'phase' instead of the default.
+        options : dict of str, optional, default=None
+           If specified, these options will override default repex simulation options.
 
         """
 
-        # TODO: Make sure all positions are lists.
-        # For now, we just assume they are not and temporarily make them lists.
-        positions = [positions]
+        # Make sure positions argument is a list of coordinate snapshots.
+        if hasattr(positions, 'unit'):
+            # Wrap in list.
+            positions = [positions]
+
+        # Check the dimensions of positions.
+        for index in range(len(positions)):
+            # Make sure it is recast as a numpy array.
+            positions[index] = unit.Quantity(numpy.array(positions[index] / positions[index].unit), positions[index].unit)
+
+            [natoms, ndim] = (positions[index] / positions[index].unit).shape
+            if natoms != reference_system.getNumParticles():
+                raise Exception("positions argument must be a list of simtk.unit.Quantity of (natoms,3) lists or numpy array with units compatible with nanometers.")
 
         # Create metadata storage.
         metadata = dict()
@@ -266,60 +278,63 @@ class Yank(object):
         # Compute standard state corrections for complex phase.
         metadata['standard_state_correction'] = 0.0
         # TODO: Do we need to include a standard state correction for other phases in periodic boxes?
-        if (phase == 'complex'):
-            if (not is_periodic):
-                # Impose restraints for complex system in implicit solvent to keep ligand from drifting too far away from receptor.
-                if self.verbose: print "Creating receptor-ligand restraints..."
-                reference_positions = positions[0]
-                if self.restraint_type == 'harmonic':
-                    restraints = HarmonicReceptorLigandRestraint(reference_state, self.complex, reference_positions, self.receptor_atoms, self.ligand_atoms)
-                elif self.restraint_type == 'flat-bottom':
-                    restraints = FlatBottomReceptorLigandRestraint(reference_state, self.complex, reference_positions, self.receptor_atoms, self.ligand_atoms)
-                else:
-                    raise Exception("restraint_type of '%s' is not supported." % self.restraint_type)
-
-                force = restraints.getRestraintForce() # Get Force object incorporating restraints
-                reference_system.addForce(force)
-                metadata['standard_state_correction'] = complex_restraints.getStandardStateCorrection() # standard state correction in kT
+        if phase == 'complex-implicit':
+            # Impose restraints for complex system in implicit solvent to keep ligand from drifting too far away from receptor.
+            if self.verbose: print "Creating receptor-ligand restraints..."
+            reference_positions = positions[0]
+            if self.restraint_type == 'harmonic':
+                restraints = HarmonicReceptorLigandRestraint(thermodynamic_state, reference_system, reference_positions, atom_indices['receptor'], atom_indices['ligand'])
+            elif self.restraint_type == 'flat-bottom':
+                restraints = FlatBottomReceptorLigandRestraint(thermodynamic_state, reference_system, reference_positions, atom_indices['receptor'], atom_indices['ligand'])
             else:
-                # For periodic systems, we do not use a restraint, but must add a standard state correction for the box volume.
-                # TODO: What if the box volume fluctuates during the simulation?
-                box_vectors = reference_system.getDefaultPeriodicBoxVectors()
-                box_volume = thermodynamic_state._volume(box_vectors)
-                STANDARD_STATE_VOLUME = 1660.53928 * angstroms**3
-                metadata['standard_state_correction'] = numpy.log(STANDARD_STATE_CORRECTION / box_volume) # TODO: Check sign.
+                raise Exception("restraint_type of '%s' is not supported." % self.restraint_type)
 
+            force = restraints.getRestraintForce() # Get Force object incorporating restraints
+            reference_system.addForce(force)
+            metadata['standard_state_correction'] = restraints.getStandardStateCorrection() # standard state correction in kT
+        elif phase == 'complex-explicit':
+            # For periodic systems, we do not use a restraint, but must add a standard state correction for the box volume.
+            # TODO: What if the box volume fluctuates during the simulation?
+            box_vectors = reference_system.getDefaultPeriodicBoxVectors()
+            box_volume = thermodynamic_state._volume(box_vectors)
+            STANDARD_STATE_VOLUME = 1660.53928 * angstroms**3
+            metadata['standard_state_correction'] = numpy.log(STANDARD_STATE_CORRECTION / box_volume) # TODO: Check sign.
+
+        # Use default alchemical protocols if not specified.
         if not protocols:
-            # Select default protocols for alchemical transformation.
-            # TODO: Allow protocols to be intelligently selected based on the system details?
-            protocols = dict()
-            protocols['vacuum'] = AbsoluteAlchemicalFactory.defaultVacuumProtocol()
-            if is_periodic:
-                protocols['solvent'] = AbsoluteAlchemicalFactory.defaultSolventProtocolExplicit()
-                protocols['complex'] = AbsoluteAlchemicalFactory.defaultComplexProtocolExplicit()
-            else:
-                protocols['solvent'] = AbsoluteAlchemicalFactory.defaultSolventProtocolImplicit()
-                protocols['complex'] = AbsoluteAlchemicalFactory.defaultComplexProtocolImplicit()
+            protocols = self.default_protocols
 
         # Create alchemically-modified states using alchemical factory.
-        factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=atom_indices['ligand'], receptor_atoms=atom_indices['receptor'])
-        systems = factory.createPerturbedSystems(self.protocols[phase])
+        factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=atom_indices['ligand'])
+        systems = factory.createPerturbedSystems(protocols[phase])
 
         # Randomize ligand position if requested, but only for implicit solvent systems.
-        if self.randomize_ligand and (not is_periodic):
+        if self.randomize_ligand and (phase == 'complex-implicit'):
             if self.verbose: print "Randomizing ligand positions and excluding overlapping configurations..."
             randomized_positions = list()
-            sigma = 2*complex_restraints.getReceptorRadiusOfGyration()
-            close_cutoff = 1.5 * units.angstrom # TODO: Allow this to be specified by user.
             nstates = len(systems)
             for state_index in range(nstates):
-                positions = positions[numpy.random.randint(0, len(positions))]
-                new_positions = ModifiedHamiltonianExchange.randomize_ligand_position(positions, atom_indices['receptor'], atom_indices['ligand'], sigma, close_cutoff)
+                positions_index = numpy.random.randint(0, len(positions))
+                current_positions = positions[positions_index]
+                new_positions = ModifiedHamiltonianExchange.randomize_ligand_position(current_positions,
+                                                                                      atom_indices['receptor'], atom_indices['ligand'],
+                                                                                      self.randomize_ligand_sigma_multiplier * restraints.getReceptorRadiusOfGyration(),
+                                                                                      self.randomize_ligand_close_cutoff)
                 randomized_positions.append(new_positions)
             positions = randomized_positions
 
+        # Identify whether any atoms will be displaced via MC.
+        mc_atoms = list()
+        if 'ligand' in atom_indices:
+            mc_atoms = atom_indices['ligand']
+
         # Set up simulation.
-        simulation = ModifiedHamiltonianExchange(store_filename=store_filename, mpicomm=mpicomm, protocol=options)
+        # TODO: Support MPI initialization?
+        store_filename = os.path.join(self._store_directory, phase + '.nc')
+        self._store_filenames[phase] = store_filename
+        simulation = ModifiedHamiltonianExchange(thermodynamic_state, systems, positions, store_filename,
+                                                 displacement_sigma=self.mc_displacement_sigma, mc_atoms=mc_atoms,
+                                                 protocol=options, mpicomm=None, metadata=metadata)
 
         # Initialize simulation.
         simulation.run(0)
@@ -353,7 +368,7 @@ class Yank(object):
         if mpicomm:
             # Turn off output from non-root nodes:
             if not (mpicomm.rank==0):
-                verbose = False
+                self.verbose = False
 
             # Make sure each thread's random number generators have unique seeds.
             # TODO: Do we need to store seed in repex object?
@@ -361,7 +376,7 @@ class Yank(object):
             numpy.random.seed(seed)
 
         # Run all phases sequentially.
-        # TODO: Divide up MPI resources among the phases?
+        # TODO: Divide up MPI resources among the phases so they can run simultaneously?
         for phase in self._phases:
             store_filename = self._store_filenames[phase]
             # Resume simulation from store file.
@@ -381,10 +396,10 @@ class Yank(object):
         -------
         status : dict
            status[phase] contains a dict with information about progress in the calculation for 'phase'
-           If Yank has not been initialized, the status is False.
+           If simulation has not been initialized by a call to resume() or create(), None is returned.
 
         """
-        if not self._initialized: return False
+        if not self._initialized: return None
 
         status = dict()
         for phase in self._phases:
@@ -392,14 +407,9 @@ class Yank(object):
 
         return status
 
-    def analyze(self, verbose=False):
+    def analyze(self):
         """
         Programmatic interface to retrieve the results of a YANK free energy calculation.
-
-        Parameters
-        ----------
-        verbose : bool, optional, default=False
-           If True, will print verbose progress information (default: False)
 
         Returns
         -------
@@ -411,8 +421,10 @@ class Yank(object):
            DeltaH is the estimated enthalpy difference
            dDeltaH is the statistical uncertainty in DeltaH (one standard error)
            all quantites are reported in units are kT
+           If simulation has not been initialized by a call to resume() or create(), None is returned.
 
         """
+        if not self._initialized: return None
 
         # TODO: Can we simplify this code by pushing more into analyze.py or repex.py?
 
@@ -423,7 +435,7 @@ class Yank(object):
         # Storage for results.
         results = dict()
 
-        if verbose: print "Analyzing simulation data..."
+        if self.verbose: print "Analyzing simulation data..."
 
         # Process each netcdf file in output directory.
         for phase in self._phases:
