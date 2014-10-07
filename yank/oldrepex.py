@@ -106,16 +106,16 @@ import datetime
 import numpy
 import numpy.linalg
 
-import simtk.openmm 
-import simtk.unit as units
+from simtk import openmm
+from simtk import unit
 
-import netCDF4 as netcdf 
+import netCDF4 as netcdf
 
 #=============================================================================================
 # MODULE CONSTANTS
 #=============================================================================================
 
-kB = units.BOLTZMANN_CONSTANT_kB * units.AVOGADRO_CONSTANT_NA # Boltzmann constant
+kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA # Boltzmann constant
 
 #=============================================================================================
 # Exceptions
@@ -147,15 +147,15 @@ class ThermodynamicState(object):
 
     Specify an NVT state for a water box at 298 K.
 
-    >>> import simtk.unit as units
+    >>> from simtk import unit
     >>> from repex import testsystems
     >>> waterbox = testsystems.WaterBox()
     >>> [system, positions] = [waterbox.system, waterbox.positions]
-    >>> state = ThermodynamicState(system=system, temperature=298.0*units.kelvin)
+    >>> state = ThermodynamicState(system=system, temperature=298.0*unit.kelvin)
 
     Specify an NPT state at 298 K and 1 atm pressure.
 
-    >>> state = ThermodynamicState(system=system, temperature=298.0*units.kelvin, pressure=1.0*units.atmospheres)
+    >>> state = ThermodynamicState(system=system, temperature=298.0*unit.kelvin, pressure=1.0*unit.atmospheres)
     
     Note that the pressure is only relevant for periodic systems.
 
@@ -200,7 +200,7 @@ class ThermodynamicState(object):
         if mm:
             self._mm = mm
         else:
-            self._mm = simtk.openmm
+            self._mm = openmm
 
         # Store provided values.
         if system is not None:
@@ -252,7 +252,7 @@ class ThermodynamicState(object):
                 return
 
         # Create an integrator.
-        timestep = 1.0 * units.femtosecond
+        timestep = 1.0 * unit.femtosecond
         self._integrator = self._mm.VerletIntegrator(timestep)        
             
         # Create a new OpenMM context.
@@ -300,18 +300,18 @@ class ThermodynamicState(object):
 
         Compute the reduced potential of a Lennard-Jones cluster at 100 K.
         
-        >>> import simtk.unit as units
+        >>> from simtk import unit
         >>> from repex import testsystems
         >>> testsystem = testsystems.LennardJonesCluster()
         >>> [system, positions] = [testsystem.system, testsystem.positions]
-        >>> state = ThermodynamicState(system=system, temperature=100.0*units.kelvin)
+        >>> state = ThermodynamicState(system=system, temperature=100.0*unit.kelvin)
         >>> potential = state.reduced_potential(positions)
     
         Compute the reduced potential of a Lennard-Jones fluid at 100 K and 1 atm.
 
         >>> testsystem = testsystems.LennardJonesFluid()
         >>> [system, positions] = [testsystem.system, testsystem.positions]
-        >>> state = ThermodynamicState(system=system, temperature=100.0*units.kelvin, pressure=1.0*units.atmosphere)
+        >>> state = ThermodynamicState(system=system, temperature=100.0*unit.kelvin, pressure=1.0*unit.atmosphere)
         >>> box_vectors = system.getDefaultPeriodicBoxVectors()
         >>> potential = state.reduced_potential(positions, box_vectors)
 
@@ -319,7 +319,7 @@ class ThermodynamicState(object):
 
         >>> testsystem = testsystems.WaterBox()
         >>> [system, positions] = [testsystem.system, testsystem.positions]
-        >>> state = ThermodynamicState(system=system, temperature=298.0*units.kelvin, pressure=1.0*units.atmosphere)
+        >>> state = ThermodynamicState(system=system, temperature=298.0*unit.kelvin, pressure=1.0*unit.atmosphere)
         >>> box_vectors = system.getDefaultPeriodicBoxVectors()
         >>> potential = state.reduced_potential(positions, box_vectors)
     
@@ -353,7 +353,7 @@ class ThermodynamicState(object):
         """
 
         # Select OpenMM implementation if not specified.
-        if mm is None: mm = simtk.openmm
+        if mm is None: mm = openmm
 
         # If pressure is specified, ensure box vectors have been provided.
         if (self.pressure is not None) and (box_vectors is None):
@@ -381,7 +381,7 @@ class ThermodynamicState(object):
         # Compute reduced potential.
         reduced_potential = beta * potential_energy
         if self.pressure is not None:
-            reduced_potential += beta * self.pressure * self._volume(box_vectors) * units.AVOGADRO_CONSTANT_NA
+            reduced_potential += beta * self.pressure * self._volume(box_vectors) * unit.AVOGADRO_CONSTANT_NA
 
         # Clean up context if requested.
         if (not self._cache_context):
@@ -410,11 +410,11 @@ class ThermodynamicState(object):
 
         Compute the reduced potential of a Lennard-Jones cluster at multiple configurations at 100 K.
         
-        >>> import simtk.unit as units
+        >>> from simtk import unit
         >>> from repex import testsystems
         >>> testsystem = testsystems.LennardJonesCluster()
         >>> [system, positions] = [testsystem.system, testsystem.positions]
-        >>> state = ThermodynamicState(system=system, temperature=100.0*units.kelvin)
+        >>> state = ThermodynamicState(system=system, temperature=100.0*unit.kelvin)
         >>> # create example list of positions
         >>> import copy
         >>> positions_list = [ copy.deepcopy(positions) for i in range(10) ]
@@ -451,7 +451,7 @@ class ThermodynamicState(object):
         """
 
         # Select OpenMM implementation if not specified.
-        if mm is None: mm = simtk.openmm
+        if mm is None: mm = openmm
 
         # If pressure is specified, ensure box vectors have been provided.
         if (self.pressure is not None) and (box_vectors_list is None):
@@ -478,7 +478,7 @@ class ThermodynamicState(object):
             # Compute reduced potential.
             u_k[k] = beta * potential_energy
             if self.pressure is not None:
-                u_k[k] += beta * self.pressure * self._volume(box_vectors_list[k]) * units.AVOGADRO_CONSTANT_NA
+                u_k[k] += beta * self.pressure * self._volume(box_vectors_list[k]) * unit.AVOGADRO_CONSTANT_NA
 
         # Clean up context if requested.
         if (not self._cache_context):
@@ -502,12 +502,12 @@ class ThermodynamicState(object):
 
         Create NVT and NPT states.
         
-        >>> import simtk.unit as units
+        >>> from simtk import unit
         >>> from repex import testsystems
         >>> testsystem = testsystems.LennardJonesCluster()
         >>> [system, positions] = [testsystem.system, testsystem.positions]
-        >>> nvt_state = ThermodynamicState(system=system, temperature=100.0*units.kelvin)
-        >>> npt_state = ThermodynamicState(system=system, temperature=100.0*units.kelvin, pressure=1.0*units.atmospheres)
+        >>> nvt_state = ThermodynamicState(system=system, temperature=100.0*unit.kelvin)
+        >>> npt_state = ThermodynamicState(system=system, temperature=100.0*unit.kelvin, pressure=1.0*unit.atmospheres)
 
         Test compatibility.
 
@@ -541,11 +541,11 @@ class ThermodynamicState(object):
 
         Create an NVT state.
 
-        >>> import simtk.unit as units
+        >>> from simtk import unit
         >>> from repex import testsystems
         >>> testsystem = testsystems.LennardJonesCluster()
         >>> [system, positions] = [testsystem.system, testsystem.positions]
-        >>> state = ThermodynamicState(system=system, temperature=100.0*units.kelvin)
+        >>> state = ThermodynamicState(system=system, temperature=100.0*unit.kelvin)
 
         Return a representation of the state.
 
@@ -588,7 +588,7 @@ class ThermodynamicState(object):
         >>> from repex import testsystems
         >>> testsystem = testsystems.LennardJonesFluid()
         >>> [system, positions] = [testsystem.system, testsystem.positions]
-        >>> state = ThermodynamicState(system=system, temperature=100.0*units.kelvin, pressure=1.0*units.atmosphere)
+        >>> state = ThermodynamicState(system=system, temperature=100.0*unit.kelvin, pressure=1.0*unit.atmosphere)
         >>> box_vectors = system.getDefaultPeriodicBoxVectors()
         >>> volume = state._volume(box_vectors)
         
@@ -656,11 +656,11 @@ class ReplicaExchange(object):
     >>> testsystem = testsystems.AlanineDipeptideImplicit()
     >>> [system, positions] = [testsystem.system, testsystem.positions]
     >>> # Create thermodynamic states for parallel tempering with exponentially-spaced schedule.
-    >>> import simtk.unit as units
+    >>> from simtk import unit
     >>> import math
     >>> nreplicas = 3 # number of temperature replicas
-    >>> T_min = 298.0 * units.kelvin # minimum temperature
-    >>> T_max = 600.0 * units.kelvin # maximum temperature
+    >>> T_min = 298.0 * unit.kelvin # minimum temperature
+    >>> T_max = 600.0 * unit.kelvin # maximum temperature
     >>> T_i = [ T_min + (T_max - T_min) * (math.exp(float(i) / float(nreplicas-1)) - 1.0) / (math.e - 1.0) for i in range(nreplicas) ]
     >>> states = [ ThermodynamicState(system=system, temperature=T_i[i]) for i in range(nreplicas) ]
     >>> import tempfile
@@ -669,7 +669,7 @@ class ReplicaExchange(object):
     >>> simulation = ReplicaExchange(states, positions, file.name) # initialize the replica-exchange simulation
     >>> simulation.minimize = False
     >>> simulation.number_of_iterations = 2 # set the simulation to only run 2 iterations
-    >>> simulation.timestep = 2.0 * units.femtoseconds # set the timestep for integration
+    >>> simulation.timestep = 2.0 * unit.femtoseconds # set the timestep for integration
     >>> simulation.nsteps_per_iteration = 50 # run 50 timesteps per iteration
     >>> simulation.run() # run the simulation
 
@@ -714,23 +714,23 @@ class ReplicaExchange(object):
 
         # Select default OpenMM implementation if not specified.
         self.mm = mm
-        if mm is None: self.mm = simtk.openmm
+        if mm is None: self.mm = openmm
 
         # Set MPI communicator (or None if not used).
         self.mpicomm = mpicomm
         
         # Set default options.
         # These can be changed externally until object is initialized.
-        self.collision_rate = 91.0 / units.picosecond 
+        self.collision_rate = 91.0 / unit.picosecond 
         self.constraint_tolerance = 1.0e-6 
-        self.timestep = 2.0 * units.femtosecond
+        self.timestep = 2.0 * unit.femtosecond
         self.nsteps_per_iteration = 500
         self.number_of_iterations = 1
-        self.equilibration_timestep = 1.0 * units.femtosecond
+        self.equilibration_timestep = 1.0 * unit.femtosecond
         self.number_of_equilibration_iterations = 1
         self.title = 'Replica-exchange simulation created using ReplicaExchange class of repex.py on %s' % time.asctime(time.localtime())        
         self.minimize = True 
-        self.minimize_tolerance = 1.0 * units.kilojoules_per_mole / units.nanometers # if specified, set minimization tolerance
+        self.minimize_tolerance = 1.0 * unit.kilojoules_per_mole / unit.nanometers # if specified, set minimization tolerance
         self.minimize_maxIterations = 0 # if nonzero, set maximum iterations
         self.platform = None
         self.platform_name = None
@@ -785,9 +785,9 @@ class ReplicaExchange(object):
             # We have to explicitly check to see if z is a list or a set here because it turns out that numpy 2D arrays are iterable as well.
             # TODO: Handle case where positions are passed in as a list of tuples, or list of lists, or list of Vec3s, etc.
             if type(positions) in [type(list()), type(set())]:
-                self.provided_positions = [ units.Quantity(numpy.array(coordinate_set / coordinate_set.unit), coordinate_set.unit) for coordinate_set in positions ] 
+                self.provided_positions = [ unit.Quantity(numpy.array(coordinate_set / coordinate_set.unit), coordinate_set.unit) for coordinate_set in positions ] 
             else:
-                self.provided_positions = [ units.Quantity(numpy.array(positions / positions.unit), positions.unit) ]            
+                self.provided_positions = [ unit.Quantity(numpy.array(positions / positions.unit), positions.unit) ]            
                     
         # Handle provided 'protocol' dict, replacing any options provided by caller in dictionary.
         # TODO: Look for 'verbose' key first.
@@ -938,7 +938,7 @@ class ReplicaExchange(object):
 
             # Write to storage file.
             self._write_iteration_netcdf()
-            
+
             # Increment iteration counter.
             self.iteration += 1
 
@@ -955,7 +955,7 @@ class ReplicaExchange(object):
             if self.verbose: 
                 print "Iteration took %.3f s." % elapsed_time
                 print "Estimated completion in %s, at %s (consuming total wall clock time %s)." % (str(datetime.timedelta(seconds=estimated_time_remaining)), time.ctime(estimated_finish_time), str(datetime.timedelta(seconds=estimated_total_time)))
-            
+
             # Perform sanity checks to see if we should terminate here.
             self._run_sanity_checks()
 
@@ -979,6 +979,8 @@ class ReplicaExchange(object):
            The fastest OpenMM Platform for the specified system.
 
         """
+        timestep = 1.0 * unit.femtoseconds
+        integrator = openmm.VerletIntegrator(timestep)
         context = openmm.Context(system, integrator)
         platform = context.getPlatform()
         del context, integrator
@@ -1050,7 +1052,7 @@ class ReplicaExchange(object):
         self.replica_box_vectors = list()
         for state in self.states:
             [a,b,c] = state.system.getDefaultPeriodicBoxVectors()
-            box_vectors = units.Quantity(numpy.zeros([3,3], numpy.float32), units.nanometers)
+            box_vectors = unit.Quantity(numpy.zeros([3,3], numpy.float32), unit.nanometers)
             box_vectors[0,:] = a
             box_vectors[1,:] = b
             box_vectors[2,:] = c
@@ -1208,7 +1210,7 @@ class ReplicaExchange(object):
         """
         
         openmm_citations = """\
-        Friedrichs MS, Eastman P, Vaidyanathan V, Houston M, LeGrand S, Beberg AL, Ensign DL, Bruns CM, and Pande VS. Accelerating molecular dynamic simulations on graphics processing units. J. Comput. Chem. 30:864, 2009. DOI: 10.1002/jcc.21209
+        Friedrichs MS, Eastman P, Vaidyanathan V, Houston M, LeGrand S, Beberg AL, Ensign DL, Bruns CM, and Pande VS. Accelerating molecular dynamic simulations on graphics processing unit. J. Comput. Chem. 30:864, 2009. DOI: 10.1002/jcc.21209
         Eastman P and Pande VS. OpenMM: A hardware-independent framework for molecular simulations. Comput. Sci. Eng. 12:34, 2010. DOI: 10.1109/MCSE.2010.27
         Eastman P and Pande VS. Efficient nonbonded interactions for molecular dynamics on a graphics processing unit. J. Comput. Chem. 31:1268, 2010. DOI: 10.1002/jcc.21413
         Eastman P and Pande VS. Constant constraint matrix approximation: A robust, parallelizable constraint method for molecular simulations. J. Chem. Theor. Comput. 6:434, 2010. DOI: 10.1021/ct900463w"""
@@ -1299,7 +1301,7 @@ class ReplicaExchange(object):
         """
 
         # Propagate all replicas.
-        if self.verbose: print "Propagating all replicas for %.3f ps..." % (self.nsteps_per_iteration * self.timestep / units.picoseconds)
+        if self.verbose: print "Propagating all replicas for %.3f ps..." % (self.nsteps_per_iteration * self.timestep / unit.picoseconds)
 
         # Run just this node's share of states.
         if self.verbose and (self.mpicomm.rank == 0): print "Running trajectories..."
@@ -1344,7 +1346,7 @@ class ReplicaExchange(object):
         """
 
         # Propagate all replicas.
-        if self.verbose: print "Propagating all replicas for %.3f ps..." % (self.nsteps_per_iteration * self.timestep / units.picoseconds)
+        if self.verbose: print "Propagating all replicas for %.3f ps..." % (self.nsteps_per_iteration * self.timestep / unit.picoseconds)
         for replica_index in range(self.nstates):
             self._propagate_replica(replica_index)
 
@@ -1369,7 +1371,7 @@ class ReplicaExchange(object):
         end_time = time.time()
         elapsed_time = end_time - start_time
         time_per_replica = elapsed_time / float(self.nstates)
-        ns_per_day = self.timestep * self.nsteps_per_iteration / time_per_replica * 24*60*60 / units.nanoseconds
+        ns_per_day = self.timestep * self.nsteps_per_iteration / time_per_replica * 24*60*60 / unit.nanoseconds
         if self.verbose: print "Time to propagate all replicas: %.3f s (%.3f per replica, %.3f ns/day)." % (elapsed_time, time_per_replica, ns_per_day)
 
         return
@@ -1906,7 +1908,7 @@ class ReplicaExchange(object):
         # Store replica positions.
         for replica_index in range(self.nstates):
             positions = self.replica_positions[replica_index]
-            x = positions / units.nanometers
+            x = positions / unit.nanometers
             self.ncfile.variables['positions'][self.iteration,replica_index,:,:] = x[:,:]
             
         # Store box vectors and volume.
@@ -1915,9 +1917,9 @@ class ReplicaExchange(object):
             state = self.states[state_index]
             box_vectors = self.replica_box_vectors[replica_index]
             for i in range(3):
-                self.ncfile.variables['box_vectors'][self.iteration,replica_index,i,:] = (box_vectors[i] / units.nanometers)
+                self.ncfile.variables['box_vectors'][self.iteration,replica_index,i,:] = (box_vectors[i] / unit.nanometers)
             volume = state._volume(box_vectors)
-            self.ncfile.variables['volumes'][self.iteration,replica_index] = volume / (units.nanometers**3)
+            self.ncfile.variables['volumes'][self.iteration,replica_index] = volume / (unit.nanometers**3)
 
         # Store state information.
         self.ncfile.variables['states'][self.iteration,:] = self.replica_states[:]
@@ -1956,7 +1958,7 @@ class ReplicaExchange(object):
         # Check positions.
         for replica_index in range(self.nreplicas):
             positions = self.replica_positions[replica_index]
-            x = positions / units.nanometers
+            x = positions / unit.nanometers
             if numpy.any(numpy.isnan(x)):
                 print "nan encountered in replica %d positions." % replica_index
                 abort = True
@@ -1995,7 +1997,7 @@ class ReplicaExchange(object):
         setattr(ncvar_temperatures, 'units', 'K')
         setattr(ncvar_temperatures, 'long_name', "temperatures[state] is the temperature of thermodynamic state 'state'")
         for state_index in range(self.nstates):
-            ncvar_temperatures[state_index] = self.states[state_index].temperature / units.kelvin
+            ncvar_temperatures[state_index] = self.states[state_index].temperature / unit.kelvin
 
         # Pressures.
         if self.states[0].pressure is not None:
@@ -2003,7 +2005,7 @@ class ReplicaExchange(object):
             setattr(ncvar_temperatures, 'units', 'atm')
             setattr(ncvar_temperatures, 'long_name', "pressures[state] is the external pressure of thermodynamic state 'state'")
             for state_index in range(self.nstates):
-                ncvar_temperatures[state_index] = self.states[state_index].pressure / units.atmospheres                
+                ncvar_temperatures[state_index] = self.states[state_index].pressure / unit.atmospheres                
 
         # TODO: Store other thermodynamic variables store in ThermodynamicState?  Generalize?
                 
@@ -2047,10 +2049,10 @@ class ReplicaExchange(object):
             # Populate a new ThermodynamicState object.
             state = ThermodynamicState()
             # Read temperature.
-            state.temperature = ncgrp_stateinfo.variables['temperatures'][state_index] * units.kelvin
+            state.temperature = ncgrp_stateinfo.variables['temperatures'][state_index] * unit.kelvin
             # Read pressure, if present.
             if 'pressures' in ncgrp_stateinfo.variables:
-                state.pressure = ncgrp_stateinfo.variables['pressures'][state_index] * units.atmospheres
+                state.pressure = ncgrp_stateinfo.variables['pressures'][state_index] * unit.atmospheres
             # Reconstitute System object.
             state.system = self.mm.System() 
             state.system.__setstate__(str(ncgrp_stateinfo.variables['systems'][state_index]))
@@ -2084,7 +2086,7 @@ class ReplicaExchange(object):
             option_value = getattr(self, option_name)
             # If Quantity, strip off units first.
             option_unit = None
-            if type(option_value) == units.Quantity:
+            if type(option_value) == unit.Quantity:
                 option_unit = option_value.unit
                 option_value = option_value / option_unit
             # Store the Python type.
@@ -2131,12 +2133,12 @@ class ReplicaExchange(object):
             # Cast to Python type.
             type_name = getattr(option_ncvar, 'type') 
             option_value = eval(type_name + '(' + repr(option_value) + ')')
-            # If Quantity, assign units.
+            # If Quantity, assign unit.
             if hasattr(option_ncvar, 'units'):
                 option_unit_name = getattr(option_ncvar, 'units')
                 if option_unit_name[0] == '/': option_unit_name = '1' + option_unit_name
                 option_unit = eval(option_unit_name, vars(units))
-                option_value = units.Quantity(option_value, option_unit)
+                option_value = unit.Quantity(option_value, option_unit)
             # Store option.
             if self.verbose_root: print "Restoring option: %s -> %s (type: %s)" % (option_name, str(option_value), type(option_value))
             setattr(self, option_name, option_value)
@@ -2184,14 +2186,14 @@ class ReplicaExchange(object):
         self.replica_positions = list()
         for replica_index in range(self.nstates):
             x = ncfile.variables['positions'][self.iteration,replica_index,:,:].astype(numpy.float64).copy()
-            positions = units.Quantity(x, units.nanometers)
+            positions = unit.Quantity(x, unit.nanometers)
             self.replica_positions.append(positions)
         
         # Restore box vectors.
         self.replica_box_vectors = list()
         for replica_index in range(self.nstates):
             x = ncfile.variables['box_vectors'][self.iteration,replica_index,:,:].astype(numpy.float64).copy()
-            box_vectors = units.Quantity(x, units.nanometers)
+            box_vectors = unit.Quantity(x, unit.nanometers)
             self.replica_box_vectors.append(box_vectors)
 
         # Restore state information.
@@ -2372,12 +2374,12 @@ class ParallelTempering(ReplicaExchange):
     >>> file = tempfile.NamedTemporaryFile() # temporary file for testing
     >>> store_filename = file.name
     >>> # Initialize parallel tempering on an exponentially-spaced scale
-    >>> Tmin = 298.0 * units.kelvin
-    >>> Tmax = 600.0 * units.kelvin
+    >>> Tmin = 298.0 * unit.kelvin
+    >>> Tmax = 600.0 * unit.kelvin
     >>> nreplicas = 3
     >>> simulation = ParallelTempering(system, positions, store_filename, Tmin=Tmin, Tmax=Tmax, ntemps=nreplicas)
     >>> simulation.number_of_iterations = 2 # set the simulation to only run 10 iterations
-    >>> simulation.timestep = 2.0 * units.femtoseconds # set the timestep for integration
+    >>> simulation.timestep = 2.0 * unit.femtoseconds # set the timestep for integration
     >>> simulation.minimize = False
     >>> simulation.nsteps_per_iteration = 50 # run 50 timesteps per iteration
     >>> # Run simulation.
@@ -2391,18 +2393,18 @@ class ParallelTempering(ReplicaExchange):
     >>> [system, positions] = [testsystem.system, testsystem.positions]
     >>> # Add Monte Carlo barsostat to system (must be same pressure as simulation).
     >>> import simtk.openmm as openmm
-    >>> pressure = 1.0 * units.atmosphere
+    >>> pressure = 1.0 * unit.atmosphere
     >>> # Create temporary file for storing output.
     >>> import tempfile
     >>> file = tempfile.NamedTemporaryFile() # temporary file for testing
     >>> store_filename = file.name
     >>> # Initialize parallel tempering on an exponentially-spaced scale
-    >>> Tmin = 298.0 * units.kelvin
-    >>> Tmax = 600.0 * units.kelvin    
+    >>> Tmin = 298.0 * unit.kelvin
+    >>> Tmax = 600.0 * unit.kelvin    
     >>> nreplicas = 3
     >>> simulation = ParallelTempering(system, positions, store_filename, Tmin=Tmin, Tmax=Tmax, pressure=pressure, ntemps=nreplicas)
     >>> simulation.number_of_iterations = 2 # set the simulation to only run 10 iterations
-    >>> simulation.timestep = 2.0 * units.femtoseconds # set the timestep for integration
+    >>> simulation.timestep = 2.0 * unit.femtoseconds # set the timestep for integration
     >>> simulation.nsteps_per_iteration = 50 # run 50 timesteps per iteration
     >>> simulation.minimize = False # don't minimize first
     >>> # Run simulation.
@@ -2558,11 +2560,11 @@ class HamiltonianExchange(ReplicaExchange):
     >>> file = tempfile.NamedTemporaryFile() # temporary file for testing
     >>> store_filename = file.name
     >>> # Create reference state.
-    >>> reference_state = ThermodynamicState(reference_system, temperature=298.0*units.kelvin)
+    >>> reference_state = ThermodynamicState(reference_system, temperature=298.0*unit.kelvin)
     >>> # Create simulation.
     >>> simulation = HamiltonianExchange(reference_state, systems, positions, store_filename)
     >>> simulation.number_of_iterations = 2 # set the simulation to only run 2 iterations
-    >>> simulation.timestep = 2.0 * units.femtoseconds # set the timestep for integration
+    >>> simulation.timestep = 2.0 * unit.femtoseconds # set the timestep for integration
     >>> simulation.nsteps_per_iteration = 50 # run 50 timesteps per iteration
     >>> simulation.minimize = False
     >>> # Run simulation.

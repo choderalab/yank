@@ -147,7 +147,7 @@ class Yank(object):
 
         # Ensure we can resume from each store file, processing override options.
         for phase in self._phases:
-            # TODO: Check the store file is OK.
+            # TODO: Use resume capabaility of oldrepex to resume and modify any parameters we can change.
             store_filename = self._store_filenames[phase]
             pass
 
@@ -335,8 +335,11 @@ class Yank(object):
         simulation = ModifiedHamiltonianExchange(thermodynamic_state, systems, positions, store_filename,
                                                  displacement_sigma=self.mc_displacement_sigma, mc_atoms=mc_atoms,
                                                  protocol=options, mpicomm=None, metadata=metadata)
+        simulation.verbose = self.verbose
 
         # Initialize simulation.
+        # TODO: Use the right scheme for initializing the simulation without running.
+        if self.verbose: print "Initializing simulation..."
         simulation.run(0)
 
         # Clean up simulation.
