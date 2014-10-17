@@ -90,7 +90,7 @@ class Yank(object):
         self.default_options['verbose'] = self.verbose
         self.default_options['timestep'] = 2.0 * unit.femtoseconds
         self.default_options['collision_rate'] = 5.0 / unit.picoseconds
-        self.default_options['minimize'] = True
+        self.default_options['minimize'] = False
         self.default_options['show_mixing_statistics'] = True # this causes slowdown with iteration and should not be used for production
         self.default_options['platform_names'] = None
         self.default_options['displacement_sigma'] = 1.0 * unit.nanometers # attempt to displace ligand by this stddev will be made each iteration
@@ -328,6 +328,9 @@ class Yank(object):
         mc_atoms = list()
         if 'ligand' in atom_indices:
             mc_atoms = atom_indices['ligand']
+
+        # Combine simulation options with defaults.
+        options = dict(self.default_options.items() + options.items())
 
         # Set up simulation.
         # TODO: Support MPI initialization?

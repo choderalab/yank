@@ -26,7 +26,7 @@ YANK
 Usage:
   yank [-h | --help] [-c | --cite]
   yank selftest [-v | --verbose]
-  yank setup binding amber --setupdir=DIRECTORY --ligname=RESNAME (-s=STORE | --store=STORE) [-i=ITERATIONS | --iterations=ITERATIONS] [--restraints <restraint_type>] [--randomize-ligand] [--nbmethod=METHOD] [--gbsa=GBSA] [--constraints=CONSTRAINTS] [--platform=PLATFORM] [--temperature=TEMPERATURE] [--pressure=PRESSURE] [-v | --verbose]
+  yank setup binding amber --setupdir=DIRECTORY --ligname=RESNAME (-s=STORE | --store=STORE) [-i=ITERATIONS | --iterations=ITERATIONS] [--restraints <restraint_type>] [--randomize-ligand] [--nbmethod=METHOD] [--gbsa=GBSA] [--constraints=CONSTRAINTS] [--platform=PLATFORM] [--temperature=TEMPERATURE] [--pressure=PRESSURE] [--minimize] [-v | --verbose]
   yank setup binding systembuilder --ligand=FILENAME --receptor=FILENAME [-i=ITERATIONS | --iterations=ITERATIONS] [--restraints <restraint_type>] [--randomize-ligand] [--nbmethod=METHOD] [--gbsa=GBSA] [--constraints=CONSTRAINTS] [--platform=PLATFORM] [--temperature=TEMPERATURE] [--pressure=PRESSURE] [-v | --verbose]
   yank run (-s=STORE | --store=STORE) [-m | --mpi] [-i=ITERATIONS | --iterations ITERATIONS] [--platform=PLATFORM] [--phase=PHASE] [-o | --online-analysis] [-v | --verbose]
   yank status (-s=STORE | --store=STORE) [-v | --verbose]
@@ -50,6 +50,7 @@ General options:
   -s=STORE, --store=STORE       Storage directory for NetCDF data files.
   -o, --online-analysis         Enable on-the-fly analysis
   --platform=PLATFORM           OpenMM Platform to use (Reference, CPU, OpenCL, CUDA) [default: None]
+  --minimize                    Minimize configurations before running simulation.
 
 Simulation options:
   --restraints=TYPE             Restraint type to add between protein and ligand in implicit solvent ('harmonic', 'flat-bottom') [default: flat-bottom]

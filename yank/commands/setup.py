@@ -289,6 +289,8 @@ def dispatch_binding(args):
         options['randomize_ligand'] = True
     if args['--platform'] != 'None':
         options['platform'] = openmm.Platform.getPlatformByName(args['--platform'])
+    if args['--minimize']:
+        options['minimize'] = True
 
     # Create new simulation.
     yank.create(phases, systems, positions, atom_indices, thermodynamic_state, options=options)
