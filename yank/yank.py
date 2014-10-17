@@ -305,6 +305,7 @@ class Yank(object):
             protocols = self.default_protocols
 
         # Create alchemically-modified states using alchemical factory.
+        if self.verbose: print "Creating alchemically-modified states..."
         factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=atom_indices['ligand'])
         systems = factory.createPerturbedSystems(protocols[phase])
 
@@ -330,6 +331,7 @@ class Yank(object):
 
         # Set up simulation.
         # TODO: Support MPI initialization?
+        if self.verbose: print "Creating replica exchange object..."
         store_filename = os.path.join(self._store_directory, phase + '.nc')
         self._store_filenames[phase] = store_filename
         simulation = ModifiedHamiltonianExchange(thermodynamic_state, systems, positions, store_filename,

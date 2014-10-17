@@ -65,11 +65,12 @@ Amber options:
   --ligname=RESNAME             Residue name of ligand [default: MOL]
 
 Systembuilder options:
-  --ligand=FILENAME             Ligand filename (formats: mol2, sdf, pdb, smi, iupac)
-  --receptor=FILENAME           Receptor filename (formats: mol2, sdf, pdb, smi, iupac)
+  --ligand=FILENAME             Ligand filename (formats: mol2, sdf, pdb, smi, iupac, cdx)
+  --receptor=FILENAME           Receptor filename (formats: mol2, sdf, pdb, smi, iupac, cdx)
 
 """
 
+# TODO: Add optional arguments that we can use to override sys.argv for testing purposes.
 def main():
     # Parse command-line arguments.
     from docopt import docopt
@@ -95,4 +96,7 @@ def main():
     # If unsuccessful, print usage and exit with an error.
     if not dispatched:
         print usage
-        sys.exit(1)
+        return True
+
+    # Indicate success.
+    return False

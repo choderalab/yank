@@ -542,7 +542,7 @@ class AbsoluteAlchemicalFactory(object):
         if method in [openmm.NonbondedForce.NoCutoff]:
             # soft-core Lennard-Jones
             sterics_energy_expression += "U_sterics = lambda_sterics*4*epsilon*x*(x-1.0); x = (sigma/reff_sterics)^6;"
-            sterics_energy_expression += "U_sterics = lambda_sterics*4*epsilon*x*(x-1.0); x = (sigma/r)^6;" # DEBUG
+            #sterics_energy_expression += "U_sterics = lambda_sterics*4*epsilon*x*(x-1.0); x = (sigma/r)^6;" # DEBUG
             # soft-core Coulomb
             electrostatics_energy_expression += "U_electrostatics = ONE_4PI_EPS0*lambda_electrostatics*chargeprod/reff_electrostatics;"
         elif method in [openmm.NonbondedForce.CutoffPeriodic, openmm.NonbondedForce.CutoffNonPeriodic]:

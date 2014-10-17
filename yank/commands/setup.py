@@ -168,12 +168,14 @@ def setup_binding_amber(args):
     atom_indices = dict() # ligand_atoms[phase] is a list of ligand atom indices associated with phase 'phase'
     setup_directory = args['--setupdir'] # Directory where prmtop/inpcrd files are to be found
     for phase_prefix in phase_prefixes:
-        if verbose: print "%s: " % phase
+        if verbose: print "reading phase %s: " % phase_prefix
         # Read Amber prmtop and create System object.
         prmtop_filename = os.path.join(setup_directory, '%s.prmtop' % phase_prefix)
+        if verbose: print "  prmtop: %s" % prmtop_filename
         prmtop = app.AmberPrmtopFile(prmtop_filename)
         # Read Amber inpcrd and load positions.
         inpcrd_filename = os.path.join(setup_directory, '%s.inpcrd' % phase_prefix)
+        if verbose: print "  inpcrd: %s" % inpcrd_filename
         inpcrd = app.AmberInpcrdFile(inpcrd_filename)
         # Determine if this will be an explicit or implicit solvent simulation.
         phase_suffix = 'implicit'
@@ -262,10 +264,15 @@ def dispatch_binding(args):
 
     # Report some useful properties.
     if verbose:
-        print "  TOTAL ATOMS      : %9d" % prmtop_natoms
+        if 'complex-explicit' in atom_indices:
+            phase = 'complex-explicit'
+        else:
+            phase = 'complex-implicit'
+        print "  TOTAL ATOMS      : %9d" % len(atom_indices[phase]['complex'])
         print "  receptor         : %9d" % len(atom_indices[phase]['receptor'])
         print "  ligand           : %9d" % len(atom_indices[phase]['ligand'])
-        print "  solvent and ions : %9d" % len(atom_indices[phase]['solvent'])
+        if phase == 'complex-explicit':
+            print "  solvent and ions : %9d" % len(atom_indices[phase]['solvent'])
 
     # Initialize YANK object.
     yank = Yank(args['--store'], verbose=verbose)
