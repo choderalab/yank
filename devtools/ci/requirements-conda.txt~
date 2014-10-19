@@ -7,7 +7,10 @@ pyyaml
 pip
 nose
 mdtraj-dev
-openmm
+openmm-dev
 ambermini
 jinja2
-#rdkit # rdkit conda packages are only available on python 2.7, so this will cause travis to screw up.  
+gaff2xml-dev
+netcdf4
+repex-dev
+pymbar-dev

@@ -8,7 +8,7 @@ script:
   - export CC="gcc -std=c89"
   - source deactivate
   - conda install --yes conda-build jinja2
-  - conda build tools/conda-recipe
+  - conda build devtools/conda-recipe
   - source activate $python
   - conda install $HOME/miniconda/conda-bld/linux-64/yank-dev-*
   - conda list -e
@@ -26,6 +26,6 @@ env:
 
 after_success:
   - echo "after_success"
-  - source tools/ci/after_sucess.sh
+  - source devtools/ci/after_sucess.sh
 
 

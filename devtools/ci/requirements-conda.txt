@@ -6,8 +6,11 @@ pandas
 pyyaml
 pip
 nose
+mdtraj
 openmm
 openmm-testsystems
 ambermini
 jinja2
-
+gaff2xml
+netcdf4
+pymbar

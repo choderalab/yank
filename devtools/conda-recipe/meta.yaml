@@ -8,20 +8,27 @@ requirements:
     - python
     - cython
     - numpy
-    - nose
     - scipy
     - setuptools
+    - mdtraj
+    - gaff2xml
+    - repex
     - openmm
     - openmm-testsystems
     - pymbar
+    - ambermini
 
   run:
     - python
+    - pandas
     - scipy
+    - mdtraj
+    - gaff2xml
+    - repex
     - openmm
     - openmm-testsystems
-    - pymabr
-    - nose
+    - pymbar
+    - ambermini
 
 about:
   home: https://github.com/choderalab/yank

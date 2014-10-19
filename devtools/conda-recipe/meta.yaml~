@@ -1,5 +1,5 @@
 package:
-  name: openmm-testsystems
+  name: yank
   version: !!str dev
 
 
@@ -8,18 +8,27 @@ requirements:
     - python
     - cython
     - numpy
-    - nose
     - scipy
     - setuptools
-    - openmm
+    - mdtraj-dev
+    - gaff2xml-dev
+    - repex-dev
+    - openmm-dev
+    - pymbar-dev
+    - ambermini
 
   run:
     - python
+    - pandas
     - scipy
-    - openmm
-    - nose
+    - mdtraj-dev
+    - gaff2xml-dev
+    - repex-dev
+    - openmm-dev
+    - pymbar-dev
+    - ambermini
 
 about:
-  home: https://github.com/choderalab/openmm-testsystems
+  home: https://github.com/choderalab/yank
   license: GNU Lesser General Public License v2 or later (LGPLv2+)
 
