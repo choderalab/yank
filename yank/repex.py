@@ -19,45 +19,6 @@ Provided classes include:
 * ParallelTempering - Convenience subclass of ReplicaExchange for parallel tempering simulations (one System object, many temperatures/pressures)
 * HamiltonianExchange - Convenience subclass of ReplicaExchange for Hamiltonian exchange simulations (many System objects, same temperature/pressure)
 
-DEPENDENCIES
-
-Use of this module requires the following
-
-* Python 2.6 or later
-
-  http://www.python.org
-
-* OpenMM with Python wrappers
-
-  http://simtk.org/home/openmm
-
-* PyOpenMM Python tools for OpenMM
-
-  http://simtk.org/home/openmm
-
-* NetCDF (compiled with netcdf4 support) and HDF5 (on which 
-
-  http://www.unidata.ucar.edu/software/netcdf/
-  http://www.hdfgroup.org/HDF5/
-
-* netcdf4-python (a Python interface for netcdf4)
-
-  http://code.google.com/p/netcdf4-python/
-
-* numpy and scipy
-
-  http://www.scipy.org/
-
-* mpi4py (if MPI support is desired)
-
-http://mpi4py.scipy.org/
-
-Note that this must be compiled against the appropriate MPI implementation.
-
-NOTES
-
-* MPI is now supported through mpi4py.
-
 TODO
 
 * Add analysis facility accessible by user.
@@ -76,9 +37,6 @@ TODO
 * Add control over number of times swaps are attempted when mixing replicas, or compute best guess automatically
 * Add support for online analysis (potentially by separate threads or while GPU is running?)
 * Add another layer of abstraction so that the base class uses generic log probabilities, rather than reduced potentials?
-* Add support for HDF5 storage models.
-* Support for other NetCDF interfaces via autodetection/fallback:
-  * scipy.io.netcdf 
 * Use interface-based checking of arguments so that different implementations of the OpenMM API (such as pyopenmm) can be used.
 * Eliminate file closures in favor of syncs to avoid closing temporary files in the middle of a run.
 
@@ -134,7 +92,7 @@ class ParameterException(Exception):
 
     """
     pass
-        
+
 #=============================================================================================
 # Thermodynamic state description
 #=============================================================================================
@@ -156,7 +114,7 @@ class ThermodynamicState(object):
     Specify an NPT state at 298 K and 1 atm pressure.
 
     >>> state = ThermodynamicState(system=system, temperature=298.0*unit.kelvin, pressure=1.0*unit.atmospheres)
-    
+
     Note that the pressure is only relevant for periodic systems.
 
     NOTES
@@ -169,7 +127,7 @@ class ThermodynamicState(object):
     * Implement pH.
 
     """
-    
+
     def __init__(self, system=None, temperature=None, pressure=None, mm=None):
         """
         Initialize the thermodynamic state.
@@ -236,7 +194,7 @@ class ThermodynamicState(object):
     def _create_context(self, platform=None):
         """
         Create Integrator and Context objects if they do not already exist.
-        
+
         """
 
         # Check if we already have a Context defined.
@@ -253,14 +211,14 @@ class ThermodynamicState(object):
 
         # Create an integrator.
         timestep = 1.0 * unit.femtosecond
-        self._integrator = self._mm.VerletIntegrator(timestep)        
-            
+        self._integrator = self._mm.VerletIntegrator(timestep)
+
         # Create a new OpenMM context.
-        if platform:                
+        if platform:
             self._context = self._mm.Context(self.system, self._integrator, platform)
         else:
             self._context = self._mm.Context(self.system, self._integrator)
-            
+
         return
 
     def _cleanup_context(self):
@@ -270,10 +228,10 @@ class ThermodynamicState(object):
 
     def _compute_potential(self, positions, box_vectors):
         # Must set box vectors first.
-        if box_vectors is not None: self._context.setPeriodicBoxVectors(*box_vectors)                
+        if box_vectors is not None: self._context.setPeriodicBoxVectors(*box_vectors)
         # Set positions.
         self._context.setPositions(positions)
-        
+
         # Retrieve potential energy.
         openmm_state = self._context.getState(getEnergy=True)
         potential_energy = openmm_state.getPotentialEnergy()

@@ -1015,91 +1015,78 @@ def analyze(source_directory, verbose=False):
     # Storage for different phases.
     data = dict()
 
-    phases = ['solvent', 'complex']
+    phase_prefixes = ['solvent', 'complex']
+    suffixes = ['explicit', 'implicit']
 
     # Process each netcdf file.
-    for phase in phases:
-        # Construct full path to NetCDF file.
-        fullpath = os.path.join(source_directory, phase + '.nc')
+    for phase in phase_prefixes:
+        for suffix in suffixes:
+            # Construct full path to NetCDF file.
+            fullpath = os.path.join(source_directory, '%s-%s.nc' % (phase, suffix))
+            if verbose: print "Attempting to open %s..." % fullpath
 
-        # Skip if the file doesn't exist.
-        if (not os.path.exists(fullpath)): continue
+            # Skip if the file doesn't exist.
+            if (not os.path.exists(fullpath)): continue
 
-        # Open NetCDF file for reading.
-        logger.info("Opening NetCDF trajectory file '%(fullpath)s' for reading..." % vars())
-        ncfile = netcdf.Dataset(fullpath, 'r')
+            # Open NetCDF file for reading.
+            logger.info("Opening NetCDF trajectory file '%(fullpath)s' for reading..." % vars())
+            ncfile = netcdf.Dataset(fullpath, 'r')
 
-        # DEBUG
-        logger.info("dimensions:")
-        for dimension_name in ncfile.dimensions.keys():
-            logger.info("%16s %8d" % (dimension_name, len(ncfile.dimensions[dimension_name])))
+            # DEBUG
+            logger.info("dimensions:")
+            for dimension_name in ncfile.dimensions.keys():
+                logger.info("%16s %8d" % (dimension_name, len(ncfile.dimensions[dimension_name])))
 
-        # Read dimensions.
-        niterations = ncfile.variables['positions'].shape[0]
-        nstates = ncfile.variables['positions'].shape[1]
-        natoms = ncfile.variables['positions'].shape[2]
-        logger.info("Read %(niterations)d iterations, %(nstates)d states" % vars())
+            # Read dimensions.
+            niterations = ncfile.variables['positions'].shape[0]
+            nstates = ncfile.variables['positions'].shape[1]
+            natoms = ncfile.variables['positions'].shape[2]
+            logger.info("Read %(niterations)d iterations, %(nstates)d states" % vars())
 
-        # TODO: Recompute standard state correction from average volume for periodic calculations.
+            # Read reference PDB file.
+            #if phase in ['vacuum', 'solvent']:
+            #    reference_pdb_filename = os.path.join(source_directory, "ligand.pdb")
+            #else:
+            #    reference_pdb_filename = os.path.join(source_directory, "complex.pdb")
+            #atoms = read_pdb(reference_pdb_filename)
 
-#        # Compute torsion trajectories
-#        if phase in ['complex', 'receptor']:
-#            print "Computing torsions..."
-#            torsion_atoms = [1735, 1737, 1739, 1741] # N-CA-CB-CG1 of Val 111
-#            compute_torsion_trajectories(ncfile, os.path.join(source_directory, phase + ".val111", torsion_atoms))
+            # Check to make sure no self-energies go nan.
+            #check_energies(ncfile, atoms)
 
-#        # Write out replica trajectories
-#        print "Writing replica trajectories...\n"
-#        title = 'Source %(source_directory)s phase %(phase)s' % vars()
-#        write_netcdf_replica_trajectories(source_directory, phase, title, ncfile)
+            # Check to make sure no positions are nan
+            #check_positions(ncfile)
 
-        # Read reference PDB file.
-        if phase in ['vacuum', 'solvent']:
-            reference_pdb_filename = os.path.join(source_directory, "ligand.pdb")
-        else:
-            reference_pdb_filename = os.path.join(source_directory, "complex.pdb")
-        atoms = read_pdb(reference_pdb_filename)
+            # Choose number of samples to discard to equilibration
+            # TODO: Switch to pymbar.timeseries module.
+            from pymbar import timeseries
+            u_n = extract_u_n(ncfile)
+            [nequil, g_t, Neff_max] = timeseries.detectEquilibration(u_n)
+            logger.info([nequil, Neff_max])
 
-        # Write replica trajectories.
-        #title = 'title'
-        #write_pdb_replica_trajectories(reference_pdb_filename, source_directory, phase, title, ncfile, trajectory_by_state=False)
+            # Examine acceptance probabilities.
+            show_mixing_statistics(ncfile, cutoff=0.05, nequil=nequil)
 
-        # Check to make sure no self-energies go nan.
-        check_energies(ncfile, atoms)
+            # Estimate free energies.
+            (Deltaf_ij, dDeltaf_ij) = estimate_free_energies(ncfile, ndiscard = nequil)
 
-        # Check to make sure no positions are nan
-        #check_positions(ncfile)
+            # Estimate average enthalpies
+            (DeltaH_i, dDeltaH_i) = estimate_enthalpies(ncfile, ndiscard = nequil)
 
-        # Choose number of samples to discard to equilibration
-        # TODO: Switch to pymbar.timeseries module.
-        u_n = extract_u_n(ncfile)
-        [nequil, g_t, Neff_max] = detect_equilibration(u_n)
-        logger.info([nequil, Neff_max])
+            # Accumulate free energy differences
+            entry = dict()
+            entry['DeltaF'] = Deltaf_ij[0,nstates-1]
+            entry['dDeltaF'] = dDeltaf_ij[0,nstates-1]
+            entry['DeltaH'] = DeltaH_i[nstates-1] - DeltaH_i[0]
+            entry['dDeltaH'] = np.sqrt(dDeltaH_i[0]**2 + dDeltaH_i[nstates-1]**2)
+            data[phase] = entry
 
-        # Examine acceptance probabilities.
-        show_mixing_statistics(ncfile, cutoff=0.05, nequil=nequil)
+            # Get temperatures.
+            ncvar = ncfile.groups['thermodynamic_states'].variables['temperatures']
+            temperature = ncvar[0] * units.kelvin
+            kT = kB * temperature
 
-        # Estimate free energies.
-        (Deltaf_ij, dDeltaf_ij) = estimate_free_energies(ncfile, ndiscard = nequil)
-
-        # Estimate average enthalpies
-        (DeltaH_i, dDeltaH_i) = estimate_enthalpies(ncfile, ndiscard = nequil)
-
-        # Accumulate free energy differences
-        entry = dict()
-        entry['DeltaF'] = Deltaf_ij[0,nstates-1]
-        entry['dDeltaF'] = dDeltaf_ij[0,nstates-1]
-        entry['DeltaH'] = DeltaH_i[nstates-1] - DeltaH_i[0]
-        entry['dDeltaH'] = np.sqrt(dDeltaH_i[0]**2 + dDeltaH_i[nstates-1]**2)
-        data[phase] = entry
-
-        # Get temperatures.
-        ncvar = ncfile.groups['thermodynamic_states'].variables['temperatures']
-        temperature = ncvar[0] * units.kelvin
-        kT = kB * temperature
-
-        # Close input NetCDF file.
-        ncfile.close()
+            # Close input NetCDF file.
+            ncfile.close()
 
     # Compute hydration free energy (free energy of transfer from vacuum to water)
     #DeltaF = data['vacuum']['DeltaF'] - data['solvent']['DeltaF']

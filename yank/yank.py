@@ -17,6 +17,7 @@ import os
 import os.path
 import sys
 import copy
+import glob
 import time
 
 import numpy
@@ -274,6 +275,9 @@ class Yank(object):
 
         # TODO: Use more general approach to determine whether system is periodic.
         is_periodic = self._is_periodic(reference_system)
+
+        # Make sure pressure is None if not periodic.
+        if not is_periodic: thermodynamic_state.pressure = None
 
         # Compute standard state corrections for complex phase.
         metadata['standard_state_correction'] = 0.0
