@@ -386,7 +386,7 @@ class HarmonicReceptorLigandRestraint(ReceptorLigandRestraint):
     >>> receptor_atoms = range(0,2603)
     >>> ligand_atoms = range(2603,2621)
     >>> # Construct a reference thermodynamic state.
-    >>> from oldrepex import ThermodynamicState
+    >>> from repex import ThermodynamicState
     >>> temperature = 298.0 * units.kelvin
     >>> state = ThermodynamicState(temperature=temperature)
     >>> # Create restraints.
@@ -458,7 +458,7 @@ class FlatBottomReceptorLigandRestraint(ReceptorLigandRestraint):
     >>> receptor_atoms = range(0,2603)
     >>> ligand_atoms = range(2603,2621)
     >>> # Construct a reference thermodynamic state.
-    >>> from oldrepex import ThermodynamicState
+    >>> from repex import ThermodynamicState
     >>> temperature = 298.0 * units.kelvin
     >>> state = ThermodynamicState(temperature=temperature)
     >>> # Create restraints.

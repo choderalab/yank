@@ -25,8 +25,8 @@ import numpy.random
 import simtk.unit as units
 import simtk.openmm as openmm
 
-from oldrepex import ThermodynamicState
-from oldrepex import HamiltonianExchange, ReplicaExchange
+from repex import ThermodynamicState
+from repex import HamiltonianExchange, ReplicaExchange
 
 #=============================================================================================
 # Modified Hamiltonian exchange class.

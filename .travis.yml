@@ -7,7 +7,7 @@ install:
 script:
   - export CC="gcc -std=c89"
   - source deactivate
-  - conda install --yes conda-build
+  - conda install --yes conda-build jinja2
   - conda build tools/conda-recipe
   - source activate $python
   - conda install $HOME/miniconda/conda-bld/linux-64/yank-dev-*

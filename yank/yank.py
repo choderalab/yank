@@ -27,11 +27,11 @@ import simtk.unit as unit
 import simtk.openmm as openmm
 
 from . import sampling
-from . import oldrepex
+from . import repex
 from . import alchemy
 
 from alchemy import AbsoluteAlchemicalFactory
-from oldrepex import ThermodynamicState
+from repex import ThermodynamicState
 from sampling import ModifiedHamiltonianExchange # TODO: Modify to 'from yank.sampling import ModifiedHamiltonianExchange'?
 from restraints import HarmonicReceptorLigandRestraint, FlatBottomReceptorLigandRestraint
 
@@ -148,7 +148,7 @@ class Yank(object):
 
         # Ensure we can resume from each store file, processing override options.
         for phase in self._phases:
-            # TODO: Use resume capabaility of oldrepex to resume and modify any parameters we can change.
+            # TODO: Use resume capabaility of repex to resume and modify any parameters we can change.
             store_filename = self._store_filenames[phase]
             pass
 
