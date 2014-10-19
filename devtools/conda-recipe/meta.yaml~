@@ -1,0 +1,25 @@
+package:
+  name: openmm-testsystems
+  version: !!str dev
+
+
+requirements:
+  build:
+    - python
+    - cython
+    - numpy
+    - nose
+    - scipy
+    - setuptools
+    - openmm
+
+  run:
+    - python
+    - scipy
+    - openmm
+    - nose
+
+about:
+  home: https://github.com/choderalab/openmm-testsystems
+  license: GNU Lesser General Public License v2 or later (LGPLv2+)
+

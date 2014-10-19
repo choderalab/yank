@@ -1,0 +1,29 @@
+package:
+  name: yank
+  version: !!str dev
+
+
+requirements:
+  build:
+    - python
+    - cython
+    - numpy
+    - nose
+    - scipy
+    - setuptools
+    - openmm
+    - openmm-testsystems
+    - pymbar
+
+  run:
+    - python
+    - scipy
+    - openmm
+    - openmm-testsystems
+    - pymabr
+    - nose
+
+about:
+  home: https://github.com/choderalab/yank
+  license: GNU Lesser General Public License v2 or later (LGPLv2+)
+

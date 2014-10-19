@@ -1,0 +1,13 @@
+numpy
+scipy
+pytables
+cython
+pandas
+pyyaml
+pip
+nose
+openmm
+openmm-testsystems
+ambermini
+jinja2
+
