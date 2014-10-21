@@ -10,6 +10,7 @@ requirements:
     - numpy
     - scipy
     - setuptools
+    - netCDF4
     - mdtraj
     - gaff2xml
     - repex
@@ -22,6 +23,7 @@ requirements:
     - python
     - pandas
     - scipy
+    - netCDF4
     - mdtraj
     - gaff2xml
     - repex

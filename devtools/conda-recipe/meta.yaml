@@ -1,6 +1,6 @@
 package:
   name: yank
-  version: !!str dev
+  version: !!str 0.0.0
 
 
 requirements:
