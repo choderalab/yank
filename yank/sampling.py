@@ -59,7 +59,8 @@ class ModifiedHamiltonianExchange(HamiltonianExchange):
     >>> reference_state = ThermodynamicState(reference_system, temperature=298.0*units.kelvin)
     >>> displacement_sigma = 1.0 * units.nanometer
     >>> mc_atoms = range(0, reference_system.getNumParticles())
-    >>> simulation = ModifiedHamiltonianExchange(reference_state, systems, positions, store_filename, displacement_sigma=displacement_sigma, mc_atoms=mc_atoms)
+    >>> simulation = ModifiedHamiltonianExchange(store_filename)
+    >>> simulation.create(reference_state, systems, positions, displacement_sigma=displacement_sigma, mc_atoms=mc_atoms)
     >>> simulation.number_of_iterations = 2 # set the simulation to only run 2 iterations
     >>> simulation.timestep = 2.0 * units.femtoseconds # set the timestep for integration
     >>> simulation.nsteps_per_iteration = 50 # run 50 timesteps per iteration
