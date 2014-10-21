@@ -303,7 +303,7 @@ class BiopolymerPDBSystemBuilder(BiopolymerSystemBuilder):
         Examples
         --------
         Create a SystemBuilder for a PDB file.
-        >>> from repex import testsystems
+        >>> from openmmtools import testsystems
         >>> receptor_pdb_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/receptor.pdb")
         >>> receptor = BiopolymerPDBSystemBuilder(receptor_pdb_filename, pH=7.0)
         >>> system = receptor.system
@@ -478,6 +478,10 @@ class SmallMoleculeBuilder(SystemBuilder):
 
         # Write out the ffxml file from gaff2xml.
         ffxml_filename = "molecule.ffxml"
+        print "tripos mol2 filename: %s" % mol2_filename # DEBUG
+        print "gaff mol2 filename: %s" % gaff_mol2_filename # DEBUG
+        print "gaff frcmod filename: %s" % gaff_frcmod_filename # DEBUG
+
         gaff2xml.utils.create_ffxml_file(gaff_mol2_filename, gaff_frcmod_filename, ffxml_filename)
 
         # Append the ffxml file to loaded parameters.
@@ -923,7 +927,7 @@ class Mol2SystemBuilder(SmallMoleculeBuilder):
         Examples
         --------
         Create a SystemBuilder from a ligand mol2 file, using default parameterization scheme.
-        >>> from repex import testsystems
+        >>> from openmmtools import testsystems
         >>> ligand_mol2_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/ligand.tripos.mol2")
         >>> ligand = Mol2SystemBuilder(ligand_mol2_filename, charge=0)
         >>> system = ligand.system
@@ -982,7 +986,7 @@ class ComplexSystemBuilder(SystemBuilder):
         Examples
         --------
         Create a ComplexSystemBuilder from a protein PDB file and a ligand mol2 file.
-        >>> from repex import testsystems
+        >>> from openmmtools import testsystems
         >>> receptor_pdb_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/receptor.pdb")
         >>> ligand_mol2_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/ligand.tripos.mol2")
         >>> receptor = BiopolymerPDBSystemBuilder(receptor_pdb_filename, pH=7.0)
@@ -1084,7 +1088,7 @@ def test_alchemy():
     import alchemy
 
     # Create SystemBuilder objects.
-    from repex import testsystems
+    from openmmtools import testsystems
     receptor_pdb_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/receptor.pdb")
     ligand_mol2_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/ligand.tripos.mol2")
     receptor = BiopolymerPDBSystemBuilder(receptor_pdb_filename, pH=7.0)

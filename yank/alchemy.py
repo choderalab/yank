@@ -66,7 +66,7 @@ def _is_periodic(system):
     Examples
     --------
 
-    >>> from repex import testsystems
+    >>> from openmmtools import testsystems
 
     Periodic water box.
 
@@ -180,7 +180,7 @@ class AbsoluteAlchemicalFactory(object):
     Create alchemical intermediates for default alchemical protocol for p-xylene in T4 lysozyme L99A in GBSA.
 
     >>> # Create a reference system.
-    >>> from repex import testsystems
+    >>> from openmmtools import testsystems
     >>> complex = testsystems.LysozymeImplicit()
     >>> [reference_system, positions] = [complex.system, complex.positions]
     >>> # Create a factory to produce alchemical intermediates.
@@ -195,7 +195,7 @@ class AbsoluteAlchemicalFactory(object):
     Create alchemical intermediates for default alchemical protocol for one water in a water box.
 
     >>> # Create a reference system.
-    >>> from repex import testsystems
+    >>> from openmmtools import testsystems
     >>> waterbox = testsystems.WaterBox()
     >>> [reference_system, positions] = [waterbox.system, waterbox.positions]
     >>> # Create a factory to produce alchemical intermediates.
@@ -208,7 +208,7 @@ class AbsoluteAlchemicalFactory(object):
     """
 
     # Factory initialization.
-    def __init__(self, reference_system, ligand_atoms=[], annihilate_electrostatics=True, annihilate_sterics=False):
+    def __init__(self, reference_system, ligand_atoms=list(), receptor_atoms=list(), annihilate_electrostatics=True, annihilate_sterics=False):
         """
         Initialize absolute alchemical intermediate factory with reference system.
 
@@ -262,7 +262,7 @@ class AbsoluteAlchemicalFactory(object):
         Examples
         --------
 
-        >>> from repex import testsystems
+        >>> from openmmtools import testsystems
         >>> alanine_dipeptide = testsystems.AlanineDipeptideImplicit()
         >>> [reference_system, positions] = [alanine_dipeptide.system, alanine_dipeptide.positions]
         >>> factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=[0, 1, 2])
@@ -312,7 +312,7 @@ class AbsoluteAlchemicalFactory(object):
         Examples
         --------
 
-        >>> from repex import testsystems
+        >>> from openmmtools import testsystems
         >>> waterbox = testsystems.WaterBox()
         >>> [reference_system, positions] = [waterbox.system, waterbox.positions]
         >>> factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=[0, 1, 2])
@@ -358,7 +358,7 @@ class AbsoluteAlchemicalFactory(object):
 
         Examples
         --------
-        >>> from repex import testsystems
+        >>> from openmmtools import testsystems
         >>> alanine_dipeptide = testsystems.AlanineDipeptideImplicit()
         >>> [reference_system, positions] = [alanine_dipeptide.system, alanine_dipeptide.positions]
         >>> factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=[0, 1, 2])
@@ -397,7 +397,7 @@ class AbsoluteAlchemicalFactory(object):
         Examples
         --------
 
-        >>> from repex import testsystems
+        >>> from openmmtools import testsystems
         >>> alanine_dipeptide = testsystems.AlanineDipeptideVacuum()
         >>> [reference_system, positions] = [alanine_dipeptide.system, alanine_dipeptide.positions]
         >>> factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=[0, 1, 2])
@@ -434,7 +434,7 @@ class AbsoluteAlchemicalFactory(object):
         Examples
         --------
 
-        >>> from repex import testsystems
+        >>> from openmmtools import testsystems
         >>> waterbox = testsystems.WaterBox()
         >>> [reference_system, positions] = [waterbox.system, waterbox.positions]
         >>> factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=[0, 1, 2])
@@ -534,7 +534,7 @@ class AbsoluteAlchemicalFactory(object):
         atomset2 = set(range(system.getNumParticles())) # all atoms, including alchemical region
 
         # CustomNonbondedForce energy expression.
-        sterics_energy_expression = ""        
+        sterics_energy_expression = ""
         electrostatics_energy_expression = ""
 
         # Select functional form based on nonbonded method.
@@ -542,7 +542,7 @@ class AbsoluteAlchemicalFactory(object):
         if method in [openmm.NonbondedForce.NoCutoff]:
             # soft-core Lennard-Jones
             sterics_energy_expression += "U_sterics = lambda_sterics*4*epsilon*x*(x-1.0); x = (sigma/reff_sterics)^6;"
-            sterics_energy_expression += "U_sterics = lambda_sterics*4*epsilon*x*(x-1.0); x = (sigma/r)^6;" # DEBUG
+            #sterics_energy_expression += "U_sterics = lambda_sterics*4*epsilon*x*(x-1.0); x = (sigma/r)^6;" # DEBUG
             # soft-core Coulomb
             electrostatics_energy_expression += "U_electrostatics = ONE_4PI_EPS0*lambda_electrostatics*chargeprod/reff_electrostatics;"
         elif method in [openmm.NonbondedForce.CutoffPeriodic, openmm.NonbondedForce.CutoffNonPeriodic]:
@@ -679,6 +679,64 @@ class AbsoluteAlchemicalFactory(object):
 
         return
 
+    def _alchemicallyModifyAmoebaMultipoleForce(self, system, reference_force):
+        raise Exception("Not implemented; needs CustomMultipleForce")
+        alchemical_atom_indices = self.ligand_atoms
+
+
+    def _alchemicallyModifyAmoebaVdwForce(self, system, reference_force):
+        raise Exception("Not implemented")
+
+        # Softcore Halgren potential from Eq. 3 of
+        # Shi, Y., Jiao, D., Schnieders, M.J., and Ren, P. (2009). Trypsin-ligand binding free energy calculation with AMOEBA. Conf Proc IEEE Eng Med Biol Soc 2009, 2328-2331.
+        energy_expression = 'lambda^5 * epsilon * (1.07^7 / (0.7*(1-lambda)^2+(rho+0.07)^7)) * (1.12 / (0.7*(1-lambda)^2 + rho^7 + 0.12) - 2);'
+        energy_expression += 'epsilon = 4*epsilon1*epsilon2 / (sqrt(epsilon1) + sqrt(epsilon2))^2;'
+        energy_expression += 'rho = r / R0;'
+        energy_expression += 'R0 = (R01^3 + R02^3) / (R01^2 + R02^2);'
+        energy_expression += 'lambda = vdw_lambda * (ligand1*(1-ligand2) + ligand2*(1-ligand1)) + ligand1*ligand2;'
+        energy_expression += 'vdw_lambda = %f;' % vdw_lambda
+
+        softcore_force = openmm.CustomNonbondedForce(energy_expression)
+        softcore_force.addPerParticleParameter('epsilon')
+        softcore_force.addPerParticleParameter('R0')
+        softcore_force.addPerParticleParameter('ligand')
+
+        for particle_index in range(system.getNumParticles()):
+            # Retrieve parameters from vdW force.
+            [parentIndex, sigma, epsilon, reductionFactor] = force.getParticleParameters(particle_index)
+            # Add parameters to CustomNonbondedForce.
+            if particle_index in ligand_atoms:
+                softcore_force.addParticle([epsilon, sigma, 1])
+            else:
+                softcore_force.addParticle([epsilon, sigma, 0])
+
+            # Deal with exclusions.
+            excluded_atoms = force.getParticleExclusions(particle_index)
+            #print str(particle_index) + ' : ' + str(excluded_atoms)
+            for jatom in excluded_atoms:
+                if (particle_index < jatom):
+                    softcore_force.addExclusion(particle_index, jatom)
+
+        # Make sure periodic boundary conditions are treated the same way.
+        # TODO: Handle PBC correctly.
+        softcore_force.setNonbondedMethod( openmm.CustomNonbondedForce.CutoffPeriodic )
+        softcore_force.setCutoffDistance( force.getCutoff() )
+
+        # Add the softcore force.
+        system.addForce( softcore_force )
+
+        # Turn off vdW interactions for alchemically-modified atoms.
+        for particle_index in ligand_atoms:
+            # Retrieve parameters.
+            [parentIndex, sigma, epsilon, reductionFactor] = force.getParticleParameters(particle_index)
+            epsilon = 1.0e-6 * epsilon # TODO: For some reason, we cannot set epsilon to 0.
+            force.setParticleParameters(particle_index, parentIndex, sigma, epsilon, reductionFactor)
+
+        # Deal with exceptions here.
+        # TODO
+
+        return system
+
     def _alchemicallyModifyGBSAOBCForce(self, system, reference_force, sasa_model='ACE'):
         """
         Create alchemically-modified version of GBSAOBCForce.
@@ -759,7 +817,7 @@ class AbsoluteAlchemicalFactory(object):
         Create alchemical intermediates for 'denihilating' one water in a water box.
 
         >>> # Create a reference system.
-        >>> from repex import testsystems
+        >>> from openmmtools import testsystems
         >>> waterbox = testsystems.WaterBox()
         >>> [reference_system, positions] = [waterbox.system, waterbox.positions]
         >>> # Create a factory to produce alchemical intermediates.
@@ -768,7 +826,7 @@ class AbsoluteAlchemicalFactory(object):
         Create alchemical intermediates for 'denihilating' p-xylene in T4 lysozyme L99A in GBSA.
 
         >>> # Create a reference system.
-        >>> from repex import testsystems
+        >>> from openmmtools import testsystems
         >>> complex = testsystems.LysozymeImplicit()
         >>> [reference_system, positions] = [complex.system, complex.positions]
         >>> # Create a factory to produce alchemical intermediates.
@@ -802,6 +860,7 @@ class AbsoluteAlchemicalFactory(object):
             system.addConstraint(iatom, jatom, r0)
 
         # Modify forces as appropriate, copying other forces without modification.
+        # TODO: Use introspection to automatically dispatch registered modifiers?
         nforces = reference_system.getNumForces()
         for force_index in range(nforces):
             reference_force = reference_system.getForce(force_index)
@@ -811,6 +870,10 @@ class AbsoluteAlchemicalFactory(object):
                 self._alchemicallyModifyNonbondedForce(system, reference_force)
             elif isinstance(reference_force, openmm.GBSAOBCForce):
                 self._alchemicallyModifyGBSAOBCForce(system, reference_force)
+            elif isinstance(reference_force, openmm.AmoebaMultipoleForce):
+                self._alchemicallyModifyAmoebaMultipoleForce(system, reference_force)
+            elif isinstance(reference_force, openmm.AmoebaVdwForce):
+                self._alchemicallyModifyAmoebaVdwForce(system, reference_force)
             else:
                 # Copy force without modification.
                 force = copy.deepcopy(reference_force)
@@ -840,7 +903,7 @@ class AbsoluteAlchemicalFactory(object):
         Create alchemical intermediates for 'denihilating' one water in a water box.
 
         >>> # Create a reference system.
-        >>> from repex import testsystems
+        >>> from openmmtools import testsystems
         >>> waterbox = testsystems.WaterBox()
         >>> [reference_system, positions] = [waterbox.system, waterbox.positions]
         >>> # Create a factory to produce alchemical intermediates.
@@ -891,7 +954,7 @@ class AbsoluteAlchemicalFactory(object):
         Create an alchemically-modified water box and set alchemical parameters appropriately.
 
         >>> # Create a reference system.
-        >>> from repex import testsystems
+        >>> from openmmtools import testsystems
         >>> waterbox = testsystems.WaterBox()
         >>> [reference_system, positions] = [waterbox.system, waterbox.positions]
         >>> # Create a factory to produce alchemical intermediates.
@@ -948,7 +1011,7 @@ class AbsoluteAlchemicalFactory(object):
         Create alchemical intermediates for 'denihilating' one water in a water box.
 
         >>> # Create a reference system.
-        >>> from repex import testsystems
+        >>> from openmmtools import testsystems
         >>> waterbox = testsystems.WaterBox()
         >>> [reference_system, positions] = [waterbox.system, waterbox.positions]
         >>> # Create a factory to produce alchemical intermediates.
@@ -961,7 +1024,7 @@ class AbsoluteAlchemicalFactory(object):
         Create alchemical intermediates for 'denihilating' p-xylene in T4 lysozyme L99A in GBSA.
 
         >>> # Create a reference system.
-        >>> from repex import testsystems
+        >>> from openmmtools import testsystems
         >>> complex = testsystems.LysozymeImplicit()
         >>> [reference_system, positions] = [complex.system, complex.positions]
         >>> # Create a factory to produce alchemical intermediates.
@@ -1020,7 +1083,7 @@ class AbsoluteAlchemicalFactory(object):
         Create alchemical intermediates for 'denihilating' p-xylene in T4 lysozyme L99A in GBSA.
 
         >>> # Create a reference system.
-        >>> from repex import testsystems
+        >>> from openmmtools import testsystems
         >>> complex = testsystems.LysozymeImplicit()
         >>> [reference_system, positions] = [complex.system, complex.positions]
         >>> # Create a factory to produce alchemical intermediates.
@@ -1069,7 +1132,7 @@ class AbsoluteAlchemicalFactory(object):
         Various tests for a simple system.
 
         >>> # Create a reference system.
-        >>> from repex import testsystems
+        >>> from openmmtools import testsystems
         >>> alanine_dipeptide = testsystems.AlanineDipeptideImplicit()
         >>> [reference_system, positions] = [alanine_dipeptide.system, alanine_dipeptide.positions]
         >>> # Create a factory.

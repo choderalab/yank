@@ -6,11 +6,11 @@ pandas
 pyyaml
 pip
 nose
-mdtraj-dev
-openmm-dev
+mdtraj
+openmm
+openmmtools
 ambermini
 jinja2
-gaff2xml-dev
+gaff2xml
 netcdf4
-repex-dev
-pymbar-dev
+pymbar

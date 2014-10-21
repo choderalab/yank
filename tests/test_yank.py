@@ -30,7 +30,7 @@ import datetime
 
 import numpy
 
-import simtk.openmm 
+import simtk.openmm
 import simtk.unit as units
 
 import netCDF4 as netcdf # netcdf4-python is used in place of scipy.io.netcdf for now

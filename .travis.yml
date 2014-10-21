@@ -1,24 +1,26 @@
 language: c
 
 install:
-  - source tools/ci/install.sh
+  - source devtools/ci/install.sh
   - export PYTHONUNBUFFERED=true
 
 script:
   - export CC="gcc -std=c89"
   - source deactivate
-  - conda install --yes conda-build
-  - conda build tools/conda-recipe
+  - conda install --yes conda-build jinja2
+  - conda build devtools/conda-recipe
   - source activate $python
-  - conda install $HOME/miniconda/conda-bld/linux-64/yank-dev-*
+  - conda install $HOME/miniconda/conda-bld/linux-64/yank-*
   - conda list -e
   - # Run tests
-  - nosetests -v
+  - cd tests
+  - nosetests --nocapture -vv
+  - cd ..
 
 env:
   matrix:
     - python=2.7  CONDA_PY=27
-    - python=3.3  CONDA_PY=33
+    # - python=3.3  CONDA_PY=33
 
   global:
     # encrypted BINSTAR_TOKEN for push of dev package to binstar
@@ -26,6 +28,6 @@ env:
 
 after_success:
   - echo "after_success"
-  - source tools/ci/after_sucess.sh
+  - source devtools/ci/after_sucess.sh
 
 

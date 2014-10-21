@@ -92,7 +92,7 @@ class ReceptorLigandRestraint(object):
         Initialize a receptor-ligand restraint class.
 
         ARGUMENTS
-        
+
         state (thermodynamics.ThermodynamicState) - the thermodynamic state specifying tempearture, pressure, etc. to which restraints are to be added
         coordinates (simtk.unit.Quantity of natoms x 3 with units compatible with nanometers) - reference coordinates to use for imposing restraints
         receptor_atoms (list of int) - a complete list of receptor atoms
@@ -114,8 +114,8 @@ class ReceptorLigandRestraint(object):
 
         # Determine atoms closet to centroids on ligand and receptor.
         self.restrained_receptor_atom = self._closestAtomToCentroid(self.coordinates, self.receptor_atoms)
-        self.restrained_ligand_atom = self._closestAtomToCentroid(self.coordinates, self.ligand_atoms) 
-        
+        self.restrained_ligand_atom = self._closestAtomToCentroid(self.coordinates, self.ligand_atoms)
+
         logger.debug("restrained receptor atom: %d" % self.restrained_receptor_atom)
         logger.debug("restrained ligand atom: %d" % self.restrained_ligand_atom)
 
@@ -379,14 +379,14 @@ class HarmonicReceptorLigandRestraint(ReceptorLigandRestraint):
     EXAMPLE
         
     >>> # Create a test system.
-    >>> from repex import testsystems
+    >>> from openmmtools import testsystems
     >>> system_container = testsystems.LysozymeImplicit()
     >>> (system, positions) = system_container.system, system_container.positions
     >>> # Identify receptor and ligand atoms.
     >>> receptor_atoms = range(0,2603)
     >>> ligand_atoms = range(2603,2621)
     >>> # Construct a reference thermodynamic state.
-    >>> from oldrepex import ThermodynamicState
+    >>> from repex import ThermodynamicState
     >>> temperature = 298.0 * units.kelvin
     >>> state = ThermodynamicState(temperature=temperature)
     >>> # Create restraints.
@@ -449,16 +449,16 @@ class FlatBottomReceptorLigandRestraint(ReceptorLigandRestraint):
     with harmonic restraining walls outside of this.
 
     EXAMPLE
-        
+
     >>> # Create a test system.
-    >>> from repex import testsystems
+    >>> from openmmtools import testsystems
     >>> system_container = testsystems.LysozymeImplicit()
     >>> (system, positions) = system_container.system, system_container.positions
     >>> # Identify receptor and ligand atoms.
     >>> receptor_atoms = range(0,2603)
     >>> ligand_atoms = range(2603,2621)
     >>> # Construct a reference thermodynamic state.
-    >>> from oldrepex import ThermodynamicState
+    >>> from repex import ThermodynamicState
     >>> temperature = 298.0 * units.kelvin
     >>> state = ThermodynamicState(temperature=temperature)
     >>> # Create restraints.
@@ -485,26 +485,26 @@ class FlatBottomReceptorLigandRestraint(ReceptorLigandRestraint):
 
         r0, the distance at which the harmonic restraint is imposed, is set at twice the robust estimate of the standard deviation (from mean absolute deviation) plus 5 A
         K, the spring constant, is set to 5.92 kcal/mol/A**2
-        
+
         """
 
         x_unit = self.coordinates.unit
-        
+
         # Get dimensionless receptor coordinates.
-        x = self.coordinates[self.receptor_atoms,:] / x_unit        
+        x = self.coordinates[self.receptor_atoms,:] / x_unit
 
         # Determine number of atoms.
         natoms = x.shape[0]
 
         # Compute median absolute distance to central atom.
         # (Working in non-unit-bearing floats for speed.)
-        xref = numpy.reshape(x[self.restrained_receptor_atom,:], (1,3)) # (1,3) array            
+        xref = numpy.reshape(x[self.restrained_receptor_atom,:], (1,3)) # (1,3) array
         distances = numpy.sqrt(((x - numpy.tile(xref, (natoms, 1)))**2).sum(1)) # distances[i] is the distance from the centroid to particle i
         median_absolute_distance = numpy.median(abs(distances))
 
         # Convert back to unit-bearing quantity.
-        median_absolute_distance *= x_unit     
-           
+        median_absolute_distance *= x_unit
+
         # Convert to estimator of standard deviation for normal distribution.
         sigma = 1.4826 * median_absolute_distance
 
