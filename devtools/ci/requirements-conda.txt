@@ -8,7 +8,7 @@ pip
 nose
 mdtraj
 openmm
-openmm-testsystems
+openmmtools
 ambermini
 jinja2
 gaff2xml
