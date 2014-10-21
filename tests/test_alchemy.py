@@ -30,7 +30,7 @@ version.
 This program is distributed in the hope that it will be useful, but WITHOUT ANY
 WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
 PARTICULAR PURPOSE.  See the GNU General Public License for more details.
- 
+
 You should have received a copy of the GNU General Public License along with
 this program.  If not, see <http://www.gnu.org/licenses/>.
 
@@ -38,12 +38,12 @@ TODO
 
 * Can we store serialized form of Force objects so that we can save time in reconstituting
   Force objects when we make copies?  We can even manipulate the XML representation directly.
-* Allow protocols to automatically be resized to arbitrary number of states, to 
+* Allow protocols to automatically be resized to arbitrary number of states, to
   allow number of states to be enlarged to be an integral multiple of number of GPUs.
 * Add GBVI support to AlchemicalFactory.
 * Add analytical dispersion correction to softcore Lennard-Jones, or find some other
   way to deal with it (such as simply omitting it from lambda < 1 states).
-* Deep copy Force objects that don't need to be modified instead of using explicit 
+* Deep copy Force objects that don't need to be modified instead of using explicit
   handling routines to copy data.  Eventually replace with removeForce once implemented?
 * Can alchemically-modified System objects share unmodified Force objects to avoid overhead
   of duplicating Forces that are not modified?
@@ -65,11 +65,13 @@ from simtk.openmm import app
 import logging
 logger = logging.getLogger(__name__)
 
-from repex import testsystems
+from openmmtools import testsystems
 
 from yank import alchemy
 import yank.alchemy
 from yank.alchemy import AlchemicalState, AbsoluteAlchemicalFactory
+
+from nose.plugins.skip import Skip, SkipTest
 
 #=============================================================================================
 # CONSTANTS
@@ -83,7 +85,7 @@ MAX_DELTA = 0.01 * kB * temperature # maximum allowable deviation
 # MAIN AND UNIT TESTS
 #=============================================================================================
 
-def compareSystemEnergies(positions, systems, descriptions, platform="CPU", precision=None):
+def compareSystemEnergies(positions, systems, descriptions, platform=None, precision=None):
     # Compare energies.
     timestep = 1.0 * units.femtosecond
 
@@ -105,7 +107,7 @@ def compareSystemEnergies(positions, systems, descriptions, platform="CPU", prec
             context = openmm.Context(system, integrator)
         context.setPositions(positions)
         state = context.getState(getEnergy=True, getPositions=True)
-        potential = state.getPotentialEnergy()    
+        potential = state.getPotentialEnergy()
         potentials.append(potential)
         states.append(state)
         del context, integrator
@@ -118,17 +120,17 @@ def compareSystemEnergies(positions, systems, descriptions, platform="CPU", prec
         if platform:
             context = openmm.Context(systems[i], integrator, platform)
         else:
-            context = openmm.Context(systems[i], integrator)                  
+            context = openmm.Context(systems[i], integrator)
         context.setPositions(positions)
         state = context.getState(getEnergy=True, getPositions=True)
-        potential = state.getPotentialEnergy()    
+        potential = state.getPotentialEnergy()
         del context, integrator
 
         if (i > 0):
             delta = potentials[i] - potentials[0]
             logger.info("%32s : %24.8f kcal/mol" % ('ERROR', delta / units.kilocalories_per_mole))
             if (abs(delta) > MAX_DELTA):
-                raise Exception("Maximum allowable deviation (%24.8f kcal/mol) exceeded; test failed." % (MAX_DELTA / units.kilocalories_per_mole))            
+                raise Exception("Maximum allowable deviation (%24.8f kcal/mol) exceeded; test failed." % (MAX_DELTA / units.kilocalories_per_mole))
 
     return potentials
 
@@ -137,10 +139,10 @@ def alchemical_factory_check(reference_system, positions, receptor_atoms, ligand
     Compare energies of reference system and fully-interacting alchemically modified system.
 
     ARGUMENTS
-    
+
     reference_system (simtk.openmm.System) - the reference System object to compare with
     positions - the positions to assess energetics for
-    receptor_atoms (list of int) - the list of receptor atoms 
+    receptor_atoms (list of int) - the list of receptor atoms
     ligand_atoms (list of int) - the list of ligand atoms to alchemically modify
 
     """
@@ -167,17 +169,16 @@ def alchemical_factory_check(reference_system, positions, receptor_atoms, ligand
     compareSystemEnergies(positions, [factory.createPerturbedSystem(AlchemicalState(0, 0, delta, 1)), factory.createPerturbedSystem(AlchemicalState(0, 0, 0, 1))], ['partially coupled', 'decoupled'], platform=platform)
 
     return
-    
 
 def benchmark(reference_system, positions, receptor_atoms, ligand_atoms, platform_name=None, annihilate_electrostatics=True, annihilate_sterics=False, nsteps=500):
     """
     Benchmark performance relative to unmodified system.
 
     ARGUMENTS
-    
+
     reference_system (simtk.openmm.System) - the reference System object to compare with
     positions - the positions to assess energetics for
-    receptor_atoms (list of int) - the list of receptor atoms 
+    receptor_atoms (list of int) - the list of receptor atoms
     ligand_atoms (list of int) - the list of ligand atoms to alchemically modify
 
     """
@@ -198,11 +199,11 @@ def benchmark(reference_system, positions, receptor_atoms, ligand_atoms, platfor
     platform = None
     if platform_name:
         platform = openmm.Platform.getPlatformByName(platform_name)
-    
+
     # Create the perturbed system.
     logger.info("Creating alchemically-modified state...")
     initial_time = time.time()
-    alchemical_system = factory.createPerturbedSystem(alchemical_state)    
+    alchemical_system = factory.createPerturbedSystem(alchemical_state)
     final_time = time.time()
     elapsed_time = final_time - initial_time
     # Compare energies.
@@ -215,7 +216,7 @@ def benchmark(reference_system, positions, receptor_atoms, ligand_atoms, platfor
         reference_context = openmm.Context(reference_system, reference_integrator)
     reference_context.setPositions(positions)
     reference_state = reference_context.getState(getEnergy=True)
-    reference_potential = reference_state.getPotentialEnergy()    
+    reference_potential = reference_state.getPotentialEnergy()
     logger.info("Computing alchemical energies...")
     alchemical_integrator = openmm.VerletIntegrator(timestep)
     if platform:
@@ -225,7 +226,7 @@ def benchmark(reference_system, positions, receptor_atoms, ligand_atoms, platfor
     alchemical_context.setPositions(positions)
     alchemical_state = alchemical_context.getState(getEnergy=True)
     alchemical_potential = alchemical_state.getPotentialEnergy()
-    delta = alchemical_potential - reference_potential 
+    delta = alchemical_potential - reference_potential
 
     # Make sure all kernels are compiled.
     reference_integrator.step(1)
@@ -236,14 +237,14 @@ def benchmark(reference_system, positions, receptor_atoms, ligand_atoms, platfor
     initial_time = time.time()
     reference_integrator.step(nsteps)
     reference_state = reference_context.getState(getEnergy=True)
-    reference_potential = reference_state.getPotentialEnergy()    
+    reference_potential = reference_state.getPotentialEnergy()
     final_time = time.time()
     reference_time = final_time - initial_time
     logger.info("Simulating alchemical system...")
     initial_time = time.time()
     alchemical_integrator.step(nsteps)
     alchemical_state = alchemical_context.getState(getEnergy=True)
-    alchemical_potential = alchemical_state.getPotentialEnergy()    
+    alchemical_potential = alchemical_state.getPotentialEnergy()
     final_time = time.time()
     alchemical_time = final_time - initial_time
 
@@ -261,7 +262,7 @@ def overlap_check():
     * Periodicity in 'nan' if dr = 0.1 even in nonperiodic system
     """
 
-    # Create a reference system.    
+    # Create a reference system.
 
     logger.info("Creating Lennard-Jones cluster system...")
     #[reference_system, positions] = testsystems.LennardJonesFluid()
@@ -281,7 +282,7 @@ def overlap_check():
 
     # Create the perturbed system.
     logger.info("Creating alchemically-modified state...")
-    alchemical_system = factory.createPerturbedSystem(alchemical_state)    
+    alchemical_system = factory.createPerturbedSystem(alchemical_state)
     # Compare energies.
     timestep = 1.0 * units.femtosecond
     logger.info("Computing reference energies...")
@@ -289,7 +290,7 @@ def overlap_check():
     context = openmm.Context(reference_system, integrator)
     context.setPositions(positions)
     state = context.getState(getEnergy=True)
-    reference_potential = state.getPotentialEnergy()    
+    reference_potential = state.getPotentialEnergy()
     del state, context, integrator
     logger.info(reference_potential)
     logger.info("Computing alchemical energies...")
@@ -304,10 +305,10 @@ def overlap_check():
     for i in range(30):
         r = dr * i
         positions[ligand_atoms,0] += dr
-          
+
         context.setPositions(positions)
         state = context.getState(getEnergy=True)
-        alchemical_potential = state.getPotentialEnergy()    
+        alchemical_potential = state.getPotentialEnergy()
         logger.info("%8.3f A : %f " % (r / units.angstroms, alchemical_potential / units.kilocalories_per_mole))
     del state, context, integrator
 
@@ -325,7 +326,7 @@ def lambda_trace(reference_system, positions, receptor_atoms, ligand_atoms, plat
     if platform_name:
         # Get platform.
         platform = openmm.Platform.getPlatformByName(platform_name)
-    
+
     delta = 1.0 / nsteps
 
     def compute_potential(system, positions, platform=None):
@@ -337,10 +338,10 @@ def lambda_trace(reference_system, positions, receptor_atoms, ligand_atoms, plat
             context = openmm.Context(system, integrator)
         context.setPositions(positions)
         state = context.getState(getEnergy=True)
-        potential = state.getPotentialEnergy()    
+        potential = state.getPotentialEnergy()
         del integrator, context
         return potential
-        
+
     # discharging
     outfile = open('discharging-trace.out', 'w')
     for i in range(nsteps+1):
@@ -435,7 +436,7 @@ def test_tip3p_reaction_field():
     logger.info("====================================================================")
     logger.info("")
 
-def notest_tip3p_pme(): # DISABLED because PME support is not working
+def test_tip3p_pme(): # DISABLED because PME support is not working
     logger.info("====================================================================")
     logger.info("Creating TIP3P explicit system using PME...")
     system_container = testsystems.WaterBox(dispersion_correction=False, nonbondedMethod=app.PME)
@@ -501,7 +502,7 @@ def test_alanine_dipeptide_explicit():
     logger.info("====================================================================")
     logger.info("")
 
-def notest_obcgbsa_complex():
+def test_obcgbsa_complex():
     # This test is too slow for travis-ci.
     if 'TRAVIS' in os.environ: return
 
@@ -516,14 +517,16 @@ def notest_obcgbsa_complex():
     logger.info("====================================================================")
     logger.info("")
 
-def notest_systembuilder_lysozyme_pdb_mol2():
+def test_systembuilder_lysozyme_pdb_mol2():
+    # TODO: Ensure we have some way to skip these when OpenEye tools are not installed.
+    raise SkipTest
+
     logger.info("====================================================================")
     logger.info("Creating T4 lysozyme L99A in OBC GBSA from PDB and mol2 with SystemBuilder...")
     # Retrieve receptor and ligand file paths.
     receptor_pdb_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/receptor.pdb")
     ligand_mol2_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/ligand.tripos.mol2")
     # Use systembuilder
-    import yank.systembuilder
     from yank.systembuilder import Mol2SystemBuilder, BiopolymerPDBSystemBuilder, ComplexSystemBuilder
     ligand = Mol2SystemBuilder(ligand_mol2_filename)
     receptor = BiopolymerPDBSystemBuilder(receptor_pdb_filename)

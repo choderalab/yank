@@ -379,7 +379,7 @@ class HarmonicReceptorLigandRestraint(ReceptorLigandRestraint):
     EXAMPLE
         
     >>> # Create a test system.
-    >>> from repex import testsystems
+    >>> from openmmtools import testsystems
     >>> system_container = testsystems.LysozymeImplicit()
     >>> (system, positions) = system_container.system, system_container.positions
     >>> # Identify receptor and ligand atoms.
@@ -451,7 +451,7 @@ class FlatBottomReceptorLigandRestraint(ReceptorLigandRestraint):
     EXAMPLE
 
     >>> # Create a test system.
-    >>> from repex import testsystems
+    >>> from openmmtools import testsystems
     >>> system_container = testsystems.LysozymeImplicit()
     >>> (system, positions) = system_container.system, system_container.positions
     >>> # Identify receptor and ligand atoms.

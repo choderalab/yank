@@ -106,7 +106,7 @@ class ThermodynamicState(object):
     Specify an NVT state for a water box at 298 K.
 
     >>> from simtk import unit
-    >>> from repex import testsystems
+    >>> from openmmtools import testsystems
     >>> waterbox = testsystems.WaterBox()
     >>> [system, positions] = [waterbox.system, waterbox.positions]
     >>> state = ThermodynamicState(system=system, temperature=298.0*unit.kelvin)
@@ -237,7 +237,7 @@ class ThermodynamicState(object):
         potential_energy = openmm_state.getPotentialEnergy()
 
         return potential_energy
-    
+
     def reduced_potential(self, positions, box_vectors=None, mm=None, platform=None):
         """
         Compute the reduced potential for the given positions in this thermodynamic state.
@@ -247,24 +247,24 @@ class ThermodynamicState(object):
         positions (simtk.unit.Quantity of Nx3 numpy.array) - positions[n,k] is kth coordinate of particle n
 
         OPTIONAL ARGUMENTS
-        
+
         box_vectors - periodic box vectors
 
         RETURNS
 
         u (float) - the unitless reduced potential (which can be considered to have units of kT)
-        
+
         EXAMPLES
 
         Compute the reduced potential of a Lennard-Jones cluster at 100 K.
-        
+
         >>> from simtk import unit
-        >>> from repex import testsystems
+        >>> from openmmtools import testsystems
         >>> testsystem = testsystems.LennardJonesCluster()
         >>> [system, positions] = [testsystem.system, testsystem.positions]
         >>> state = ThermodynamicState(system=system, temperature=100.0*unit.kelvin)
         >>> potential = state.reduced_potential(positions)
-    
+
         Compute the reduced potential of a Lennard-Jones fluid at 100 K and 1 atm.
 
         >>> testsystem = testsystems.LennardJonesFluid()
@@ -280,7 +280,7 @@ class ThermodynamicState(object):
         >>> state = ThermodynamicState(system=system, temperature=298.0*unit.kelvin, pressure=1.0*unit.atmosphere)
         >>> box_vectors = system.getDefaultPeriodicBoxVectors()
         >>> potential = state.reduced_potential(positions, box_vectors)
-    
+
         NOTES
 
         The reduced potential is defined as in Ref. [1]
@@ -299,7 +299,7 @@ class ThermodynamicState(object):
         x the atomic positions
         V(x) is the instantaneous box volume
         N(x) the numbers of various particle species (e.g. protons of titratible groups)
-        
+
         REFERENCES
 
         [1] Shirts MR and Chodera JD. Statistically optimal analysis of equilibrium states. J Chem Phys 129:124105, 2008.
@@ -307,7 +307,7 @@ class ThermodynamicState(object):
         TODO
 
         * Instead of requiring configuration and box_vectors be passed separately, develop a Configuration or Snapshot class.
-        
+
         """
 
         # Select OpenMM implementation if not specified.
@@ -331,8 +331,8 @@ class ThermodynamicState(object):
             self._create_context()
 
             # Compute energy
-            potential_energy = self._compute_potential(positions, box_vectors)            
-        
+            potential_energy = self._compute_potential(positions, box_vectors)
+
         # Compute inverse temperature.
         beta = 1.0 / (kB * self.temperature)
 
@@ -357,19 +357,19 @@ class ThermodynamicState(object):
         positions_list (list of simtk.unit.Quantity of Nx3 numpy.array) - positions[n,k] is kth coordinate of particle n
 
         OPTIONAL ARGUMENTS
-        
+
         box_vectors - periodic box vectors
 
         RETURNS
 
         u_k (K numpy array of float) - the unitless reduced potentials (which can be considered to have units of kT)
-        
+
         EXAMPLES
 
         Compute the reduced potential of a Lennard-Jones cluster at multiple configurations at 100 K.
-        
+
         >>> from simtk import unit
-        >>> from repex import testsystems
+        >>> from openmmtools import testsystems
         >>> testsystem = testsystems.LennardJonesCluster()
         >>> [system, positions] = [testsystem.system, testsystem.positions]
         >>> state = ThermodynamicState(system=system, temperature=100.0*unit.kelvin)
@@ -397,7 +397,7 @@ class ThermodynamicState(object):
         x the atomic positions
         V(x) is the instantaneous box volume
         N(x) the numbers of various particle species (e.g. protons of titratible groups)
-        
+
         REFERENCES
 
         [1] Shirts MR and Chodera JD. Statistically optimal analysis of equilibrium states. J Chem Phys 129:124105, 2008.
@@ -405,7 +405,7 @@ class ThermodynamicState(object):
         TODO
 
         * Instead of requiring configuration and box_vectors be passed separately, develop a Configuration or Snapshot class.
-        
+
         """
 
         # Select OpenMM implementation if not specified.
@@ -429,7 +429,7 @@ class ThermodynamicState(object):
                 potential_energy = self._compute_potential(positions_list[k], box_vectors_list[k])
             else:
                 potential_energy = self._compute_potential(positions_list[k], None)
-        
+
             # Compute inverse temperature.
             beta = 1.0 / (kB * self.temperature)
 
@@ -453,15 +453,15 @@ class ThermodynamicState(object):
         state (ThermodynamicState) - thermodynamic state whose compatibility is to be determined
 
         RETURNS
-        
+
         is_compatible (boolean) - True if 'state' is of the same ensemble (e.g. both NVT, both NPT), False otherwise
 
         EXAMPLES
 
         Create NVT and NPT states.
-        
+
         >>> from simtk import unit
-        >>> from repex import testsystems
+        >>> from openmmtools import testsystems
         >>> testsystem = testsystems.LennardJonesCluster()
         >>> [system, positions] = [testsystem.system, testsystem.positions]
         >>> nvt_state = ThermodynamicState(system=system, temperature=100.0*unit.kelvin)
@@ -471,8 +471,8 @@ class ThermodynamicState(object):
 
         >>> test1 = nvt_state.is_compatible_with(nvt_state)
         >>> test2 = nvt_state.is_compatible_with(npt_state)
-        >>> test3 = npt_state.is_compatible_with(nvt_state)        
-        >>> test4 = npt_state.is_compatible_with(npt_state)        
+        >>> test3 = npt_state.is_compatible_with(nvt_state)
+        >>> test4 = npt_state.is_compatible_with(npt_state)
 
         """
 
@@ -500,7 +500,7 @@ class ThermodynamicState(object):
         Create an NVT state.
 
         >>> from simtk import unit
-        >>> from repex import testsystems
+        >>> from openmmtools import testsystems
         >>> testsystem = testsystems.LennardJonesCluster()
         >>> [system, positions] = [testsystem.system, testsystem.positions]
         >>> state = ThermodynamicState(system=system, temperature=100.0*unit.kelvin)
@@ -540,16 +540,16 @@ class ThermodynamicState(object):
         volume (simtk.unit.Quantity) - the volume of the system (in units of length^3), or None if no box positions are defined
 
         EXAMPLES
-        
+
         Compute the volume of a Lennard-Jones fluid at 100 K and 1 atm.
 
-        >>> from repex import testsystems
+        >>> from openmmtools import testsystems
         >>> testsystem = testsystems.LennardJonesFluid()
         >>> [system, positions] = [testsystem.system, testsystem.positions]
         >>> state = ThermodynamicState(system=system, temperature=100.0*unit.kelvin, pressure=1.0*unit.atmosphere)
         >>> box_vectors = system.getDefaultPeriodicBoxVectors()
         >>> volume = state._volume(box_vectors)
-        
+
         """
 
         # Compute volume of parallelepiped.
@@ -579,8 +579,8 @@ class ReplicaExchange(object):
     the simulation classes.
 
     Stored configurations, energies, swaps, and restart information are all written to a single output file using
-    the platform portable, robust, and efficient NetCDF4 library.  Plans for future HDF5 support are pending.    
-    
+    the platform portable, robust, and efficient NetCDF4 library.  Plans for future HDF5 support are pending.
+
     ATTRIBUTES
 
     The following parameters (attributes) can be set after the object has been created, but before it has been
@@ -596,7 +596,7 @@ class ReplicaExchange(object):
     * verbose (boolean) - show information on run progress (default: False)
     * replica_mixing_scheme (string) - scheme used to swap replicas: 'swap-all' or 'swap-neighbors' (default: 'swap-all')
     * online_analysis (boolean) - if True, analysis will occur each iteration (default: False)
-    
+
     TODO
 
     * Replace hard-coded Langevin dynamics with general MCMC moves.
@@ -608,9 +608,9 @@ class ReplicaExchange(object):
 
     Parallel tempering simulation of alanine dipeptide in implicit solvent (replica exchange among temperatures)
     (This is just an illustrative example; use ParallelTempering class for actual production parallel tempering simulations.)
-    
+
     >>> # Create test system.
-    >>> from repex import testsystems
+    >>> from openmmtools import testsystems
     >>> testsystem = testsystems.AlanineDipeptideImplicit()
     >>> [system, positions] = [testsystem.system, testsystem.positions]
     >>> # Create thermodynamic states for parallel tempering with exponentially-spaced schedule.
@@ -622,51 +622,42 @@ class ReplicaExchange(object):
     >>> T_i = [ T_min + (T_max - T_min) * (math.exp(float(i) / float(nreplicas-1)) - 1.0) / (math.e - 1.0) for i in range(nreplicas) ]
     >>> states = [ ThermodynamicState(system=system, temperature=T_i[i]) for i in range(nreplicas) ]
     >>> import tempfile
-    >>> file = tempfile.NamedTemporaryFile() # use a temporary file for testing -- you will want to keep this file, since it stores output and checkpoint data
+    >>> store_filename = tempfile.NamedTemporaryFile().name + '.nc'
     >>> # Create simulation.
-    >>> simulation = ReplicaExchange(states, positions, file.name) # initialize the replica-exchange simulation
+    >>> simulation = ReplicaExchange(store_filename)
+    >>> simulation.create(states, positions) # initialize the replica-exchange simulation
     >>> simulation.minimize = False
     >>> simulation.number_of_iterations = 2 # set the simulation to only run 2 iterations
     >>> simulation.timestep = 2.0 * unit.femtoseconds # set the timestep for integration
     >>> simulation.nsteps_per_iteration = 50 # run 50 timesteps per iteration
     >>> simulation.run() # run the simulation
+    >>> del simulation # clean up
 
-    """    
+    Extend the simulation
+    >>> simulation = ReplicaExchange(store_filename)
+    >>> simulation.resume()
+    >>> simulation.number_of_iterations = 4 # extend
+    >>> simulation.run()
+
+    """
 
     # Options to store.
     options_to_store = ['collision_rate', 'constraint_tolerance', 'timestep', 'nsteps_per_iteration', 'number_of_iterations', 'equilibration_timestep', 'number_of_equilibration_iterations', 'title', 'minimize', 'replica_mixing_scheme', 'online_analysis', 'verbose', 'show_mixing_statistics']
 
-    def __init__(self, states=None, positions=None, store_filename=None, protocol=None, mm=None, mpicomm=None, metadata=None):
+    def __init__(self, store_filename, mpicomm=None, mm=None):
         """
         Initialize replica-exchange simulation facility.
 
-        ARGUMENTS
-        
-        states (list of ThermodynamicState) - Thermodynamic states to simulate, where one replica is allocated per state.
-           Each state must have a system with the same number of atoms, and the same
-           thermodynamic ensemble (combination of temperature, pressure, pH, etc.) must
-           be defined for each.
-        positions (Coordinate object or iterable container of Coordinate objects) - One or more sets of initial positions
-           to be initially assigned to replicas in a round-robin fashion, provided simulation is not resumed from store file.
-           Currently, positions must be specified as a list of simtk.unit.Quantity-wrapped numpy arrays.
-        store_filename (string) - Name of file to bind simulation to use as storage for checkpointing and storage of results.
-
-        OPTIONAL ARGUMENTS
-        
-        protocol (dict) - Optional protocol to use for specifying simulation protocol as a dict. Provided keywords will be matched to object variables to replace defaults.
-        mm (implementation of simtk.openmm) - OpenMM API implementation to use (default: simtk.openmm)
-        mpicomm (mpi4py communicator) - MPI communicator, if parallel execution is desired (default: None)
-        metadata (dict) - metadata to store in a 'metadata' group in store file
-
-        NOTES
-        
-        If store_filename exists, the simulation will try to resume from this file.
-        If thermodynamic state information can be found in the store file, this will be read, and 'states' will be ignored.
-        If the store file exists, positions will be read from this file, and 'positions' will be ignored.        
-        The provided 'protocol' will override any options restored from the store file.
+        Parameters
+        ----------
+        store_filename : string
+           Name of file to bind simulation to use as storage for checkpointing and storage of results.
+        mm : implementation of simtk.openmm, optional, default=simtk.openmm
+           OpenMM API implementation to use
+        mpicomm : mpi4py communicator, optional, default=None
+           MPI communicator, if parallel execution is desired
 
         """
-
         # To allow for parameters to be modified after object creation, class is not initialized until a call to self._initialize().
         self._initialized = False
 
@@ -676,18 +667,18 @@ class ReplicaExchange(object):
 
         # Set MPI communicator (or None if not used).
         self.mpicomm = mpicomm
-        
+
         # Set default options.
         # These can be changed externally until object is initialized.
-        self.collision_rate = 91.0 / unit.picosecond 
-        self.constraint_tolerance = 1.0e-6 
+        self.collision_rate = 91.0 / unit.picosecond
+        self.constraint_tolerance = 1.0e-6
         self.timestep = 2.0 * unit.femtosecond
         self.nsteps_per_iteration = 500
         self.number_of_iterations = 1
         self.equilibration_timestep = 1.0 * unit.femtosecond
         self.number_of_equilibration_iterations = 1
-        self.title = 'Replica-exchange simulation created using ReplicaExchange class of repex.py on %s' % time.asctime(time.localtime())        
-        self.minimize = True 
+        self.title = 'Replica-exchange simulation created using ReplicaExchange class of repex.py on %s' % time.asctime(time.localtime())
+        self.minimize = True
         self.minimize_tolerance = 1.0 * unit.kilojoules_per_mole / unit.nanometers # if specified, set minimization tolerance
         self.minimize_maxIterations = 0 # if nonzero, set maximum iterations
         self.platform = None
@@ -699,36 +690,52 @@ class ReplicaExchange(object):
 
         # Set verbosity.
         self.verbose = False
-        if protocol and ('verbose' in protocol): self.verbose = protocol['verbose']
-        # TODO: Find a better solution to setting verbosity.
         self.verbose_root = self.verbose # True only if self.verbose is True and we are root node (if MPI)
         if self.mpicomm and self.mpicomm.rank != 0: self.verbose_root = False
-        
+
         # Record store file filename
         self.store_filename = store_filename
 
+        # Check if netcdf file exists, assuming we want to resume if one exists.
+        self._resume = os.path.exists(self.store_filename) and (os.path.getsize(self.store_filename) > 0)
+        if self.mpicomm: self._resume = self.mpicomm.bcast(self._resume, root=0) # use whatever root node decides
+
+        return
+
+    def create(self, states, positions, protocol=None, metadata=None):
+        """
+        Create new replica-exchange simulation.
+
+        Parameters
+        ----------
+        states : list of ThermodynamicState
+           Thermodynamic states to simulate, where one replica is allocated per state.
+           Each state must have a system with the same number of atoms, and the same
+           thermodynamic ensemble (combination of temperature, pressure, pH, etc.) must
+           be defined for each.
+        positions : Coordinate object or iterable container of Coordinate objects)
+           One or more sets of initial positions
+           to be initially assigned to replicas in a round-robin fashion, provided simulation is not resumed from store file.
+           Currently, positions must be specified as a list of simtk.unit.Quantity-wrapped numpy arrays.
+        protocol : dict, optional, default=None
+           Optional protocol to use for specifying simulation protocol as a dict. Provided keywords will be matched to object variables to replace defaults.
+        metadata : dict, optional, default=None
+           metadata to store in a 'metadata' group in store file
+
+        """
+        if protocol and ('verbose' in protocol): self.verbose = protocol['verbose']
+        # TODO: Find a better solution to setting verbosity.
+
         # Check if netcdf file exists.
-        self.resume = os.path.exists(self.store_filename) and (os.path.getsize(self.store_filename) > 0)
-        if self.mpicomm: self.resume = self.mpicomm.bcast(self.resume, root=0) # use whatever root node decides
+        file_exists = os.path.exists(self.store_filename) and (os.path.getsize(self.store_filename) > 0)
+        if self.mpicomm: file_exists= self.mpicomm.bcast(file_exists, root=0) # use whatever root node decides
+        if file_exists:
+            raise Exception("NetCDF file %s already exists; cowardly refusing to overwrite." % self.store_filename)
+        self._resume = False
 
-        # Try to restore thermodynamic states and run options from the NetCDF file.
-        states_restored = False 
-        options_restored = False
-        if self.resume: 
-            print "Attempting to resume by reading thermodynamic states and options..." 
-            ncfile = netcdf.Dataset(self.store_filename, 'r')            
-            states_restored = self._restore_thermodynamic_states(ncfile)
-            options_restored = self._restore_options(ncfile)
-            ncfile.close()
-
-        # Make a deep copy of specified states if we cannot restore them from file.
-        if (not states_restored) and (states is not None):            
-            # TODO: Debug why deepcopy isn't working.
-            #self.states = copy.deepcopy(states)
-            self.states = states
-            
-        if (not states_restored) and (states is None):
-            raise ParameterError("Could not restore thermodynamic states from store file, and no states specified.")
+        # TODO: Make a deep copy of specified states once this is fixed in OpenMM.
+        # self.states = copy.deepcopy(states)
+        self.states = states
 
         # Determine number of replicas from the number of specified thermodynamic states.
         self.nreplicas = len(self.states)
@@ -738,26 +745,66 @@ class ReplicaExchange(object):
             if not state.is_compatible_with(self.states[0]):
                 raise ParameterError("Provided ThermodynamicState states must all be from the same thermodynamic ensemble.")
 
-        if not self.resume:
-            # Distribute coordinate information to replicas in a round-robin fashion.
-            # We have to explicitly check to see if z is a list or a set here because it turns out that numpy 2D arrays are iterable as well.
-            # TODO: Handle case where positions are passed in as a list of tuples, or list of lists, or list of Vec3s, etc.
-            if type(positions) in [type(list()), type(set())]:
-                self.provided_positions = [ unit.Quantity(numpy.array(coordinate_set / coordinate_set.unit), coordinate_set.unit) for coordinate_set in positions ] 
-            else:
-                self.provided_positions = [ unit.Quantity(numpy.array(positions / positions.unit), positions.unit) ]            
-                    
+        # Distribute coordinate information to replicas in a round-robin fashion.
+        # We have to explicitly check to see if z is a list or a set here because it turns out that numpy 2D arrays are iterable as well.
+        # TODO: Handle case where positions are passed in as a list of tuples, or list of lists, or list of Vec3s, etc.
+        if type(positions) in [type(list()), type(set())]:
+            self.provided_positions = [ unit.Quantity(numpy.array(coordinate_set / coordinate_set.unit), coordinate_set.unit) for coordinate_set in positions ]
+        else:
+            self.provided_positions = [ unit.Quantity(numpy.array(positions / positions.unit), positions.unit) ]
+
         # Handle provided 'protocol' dict, replacing any options provided by caller in dictionary.
         # TODO: Look for 'verbose' key first.
         if protocol is not None:
             for key in protocol.keys(): # for each provided key
-                if key in vars(self).keys(): # if this is also a simulation parameter                    
+                if key in vars(self).keys(): # if this is also a simulation parameter
                     value = protocol[key]
                     if self.verbose: print "from protocol: %s -> %s" % (key, str(value))
                     vars(self)[key] = value # replace default simulation parameter with provided parameter
 
         # Store metadata to store in store file.
         self.metadata = metadata
+
+        return
+
+    def resume(self, protocol=None):
+        """
+        Parameters
+        ----------
+        protocol : dict, optional, default=None
+           will override any options restored from the store file.
+
+        """
+        self._resume = True
+
+        # Check if netcdf file exists.
+        file_exists = os.path.exists(self.store_filename) and (os.path.getsize(self.store_filename) > 0)
+        if self.mpicomm: file_exists= self.mpicomm.bcast(file_exists, root=0) # use whatever root node decides
+        if not file_exists:
+            raise Exception("NetCDF file %s does not exist; cannot resume." % self.store_filename)
+
+        # Try to restore thermodynamic states and run options from the NetCDF file.
+        ncfile = netcdf.Dataset(self.store_filename, 'r')
+        self._restore_thermodynamic_states(ncfile)
+        self._restore_options(ncfile)
+        ncfile.close()
+
+        # Determine number of replicas from the number of specified thermodynamic states.
+        self.nreplicas = len(self.states)
+
+        # Check to make sure all states have the same number of atoms and are in the same thermodynamic ensemble.
+        for state in self.states:
+            if not state.is_compatible_with(self.states[0]):
+                raise ParameterError("Provided ThermodynamicState states must all be from the same thermodynamic ensemble.")
+
+        # Handle provided 'protocol' dict, replacing any options provided by caller in dictionary.
+        # TODO: Check to make sure that only allowed overrides are specified.
+        if protocol:
+            for key in protocol.keys(): # for each provided key
+                if key in vars(self).keys(): # if this is also a simulation parameter
+                    value = protocol[key]
+                    if self.verbose: print "from protocol: %s -> %s" % (key, str(value))
+                    vars(self)[key] = value # replace default simulation parameter with provided parameter
 
         return
 
@@ -775,7 +822,7 @@ class ReplicaExchange(object):
         Show an 'informal' human-readable representation of the replica-exchange simulation.
 
         """
-        
+
         r =  ""
         r += "Replica-exchange simulation\n"
         r += "\n"
@@ -793,7 +840,7 @@ class ReplicaExchange(object):
         r += "equilibration timestep: %s\n" % str(self.equilibration_timestep)
         r += "number of equilibration iterations: %s\n" % str(self.number_of_equilibration_iterations)
         r += "\n"
-        
+
         return r
 
     @classmethod
@@ -846,7 +893,11 @@ class ReplicaExchange(object):
            Returns a dict of useful information about current simulation progress.
 
         """
-        return ReplicaExchange._status_from_ncfile(self.ncfile)
+        ncfile = netcdf.Dataset(self.store_filename, 'r')
+        status = ReplicaExchange._status_from_ncfile(self.ncfile)
+        ncfile.close()
+
+        return status
 
     def run(self, niterations_to_run=None):
         """
@@ -862,8 +913,6 @@ class ReplicaExchange(object):
            If specfied, only at most the specified number of iterations will be run.
 
         """
-
-        # Make sure we've initialized everything and bound to a storage file before we begin execution.
         if not self._initialized:
             self._initialize()
 
@@ -910,7 +959,7 @@ class ReplicaExchange(object):
             estimated_time_remaining = (final_time - run_start_time) / (self.iteration - run_start_iteration) * (self.number_of_iterations - self.iteration)
             estimated_total_time = (final_time - run_start_time) / (self.iteration - run_start_iteration) * (self.number_of_iterations)
             estimated_finish_time = final_time + estimated_time_remaining
-            if self.verbose: 
+            if self.verbose:
                 print "Iteration took %.3f s." % elapsed_time
                 print "Estimated completion in %s, at %s (consuming total wall clock time %s)." % (str(datetime.timedelta(seconds=estimated_time_remaining)), time.ctime(estimated_finish_time), str(datetime.timedelta(seconds=estimated_total_time)))
 
@@ -1003,7 +1052,7 @@ class ReplicaExchange(object):
         self.Nij_accepted       = numpy.zeros([self.nstates,self.nstates], numpy.int64) # Nij_proposed[i][j] is the number of swaps proposed between states i and j, prior of 1
 
         # Distribute coordinate information to replicas in a round-robin fashion, making a deep copy.
-        if not self.resume:
+        if not self._resume:
             self.replica_positions = [ copy.deepcopy(self.provided_positions[replica_index % len(self.provided_positions)]) for replica_index in range(self.nstates) ]
 
         # Assign default box vectors.
@@ -1015,11 +1064,11 @@ class ReplicaExchange(object):
             box_vectors[1,:] = b
             box_vectors[2,:] = c
             self.replica_box_vectors.append(box_vectors)
-        
+
         # Assign initial replica states.
         for replica_index in range(self.nstates):
             self.replica_states[replica_index] = replica_index
-            
+
         # Create cached Context objects.
         if self.verbose: print "Creating and caching Context objects..."
         MAX_SEED = (1<<31) - 1 # maximum seed value (max size of signed C long)
@@ -1034,7 +1083,7 @@ class ReplicaExchange(object):
                     for state_index in range(self.nstates):
                         print "Master node compiling kernels for state %d / %d for platform %s..." % (state_index, self.nstates, self.platform.getName())
                         state = self.states[state_index]
-                        integrator = self.mm.LangevinIntegrator(state.temperature, self.collision_rate, self.timestep)                    
+                        integrator = self.mm.LangevinIntegrator(state.temperature, self.collision_rate, self.timestep)
                         context = self.mm.Context(state.system, integrator, self.platform)
                         box_vectors = self.replica_box_vectors[0]
                         context.setPeriodicBoxVectors(box_vectors[0,:], box_vectors[1,:], box_vectors[2,:])
@@ -1052,8 +1101,8 @@ class ReplicaExchange(object):
                 print "Node %d / %d creating Context for state %d..." % (self.mpicomm.rank, self.mpicomm.size, state_index) # DEBUG
                 state = self.states[state_index]
                 try:
-                    state._integrator = self.mm.LangevinIntegrator(state.temperature, self.collision_rate, self.timestep)                    
-                    state._integrator.setRandomNumberSeed(seed + self.mpicomm.rank) 
+                    state._integrator = self.mm.LangevinIntegrator(state.temperature, self.collision_rate, self.timestep)
+                    state._integrator.setRandomNumberSeed(seed + self.mpicomm.rank)
                     # TODO: Also set barostat seeds, etc.
                     initial_context_time = time.time() # DEBUG
                     if self.platform:
@@ -1061,7 +1110,7 @@ class ReplicaExchange(object):
                         state._context = self.mm.Context(state.system, state._integrator, self.platform)
                     else:
                         print "Node %d / %d: No platform specified." % (self.mpicomm.rank, self.mpicomm.size)
-                        state._context = self.mm.Context(state.system, state._integrator)                    
+                        state._context = self.mm.Context(state.system, state._integrator)
                     print "Node %d / %d: Context creation took %.3f s" % (self.mpicomm.rank, self.mpicomm.size, time.time() - initial_context_time) # DEBUG
                 except Exception as e:
                     print e
@@ -1073,7 +1122,7 @@ class ReplicaExchange(object):
         else:
             # Serial version.
             initial_time = time.time()
-            for (state_index, state) in enumerate(self.states):  
+            for (state_index, state) in enumerate(self.states):
                 if self.verbose: print "Creating Context for state %d..." % state_index
                 state._integrator = self.mm.LangevinIntegrator(state.temperature, self.collision_rate, self.timestep)
                 state._integrator.setRandomNumberSeed(seed)
@@ -1082,30 +1131,30 @@ class ReplicaExchange(object):
                     state._context = self.mm.Context(state.system, state._integrator, self.platform)
                 else:
                     state._context = self.mm.Context(state.system, state._integrator)
-                if self.verbose: print "Context creation took %.3f s" % (time.time() - initial_context_time) # DEBUG            
+                if self.verbose: print "Context creation took %.3f s" % (time.time() - initial_context_time) # DEBUG
         final_time = time.time()
         elapsed_time = final_time - initial_time
         if self.verbose: print "%.3f s elapsed." % elapsed_time
 
-        if self.resume:
+        if self._resume:
             # Resume from NetCDF file.
             self._resume_from_netcdf()
 
             # Show energies.
             if self.verbose and self.show_energies:
-                self._show_energies()            
+                self._show_energies()
         else:
             # Minimize and equilibrate all replicas.
             self._minimize_and_equilibrate()
-            
+
             # Initialize current iteration counter.
             self.iteration = 0
-            
+
             # TODO: Perform any GPU sanity checks here.
-            
+
             # Compute energies of all alchemical replicas
             self._compute_energies()
-            
+
             # Show energies.
             if self.verbose and self.show_energies:
                 self._show_energies()
@@ -1134,7 +1183,7 @@ class ReplicaExchange(object):
         if self.mpicomm:
             # Only the root node needs to clean up.
             if self.mpicomm.rank != 0: return
-        
+
         if hasattr(self, 'ncfile') and self.ncfile:
             self.ncfile.sync()
 
@@ -1166,13 +1215,13 @@ class ReplicaExchange(object):
         * Show subset of OpenMM citations based on what features are being used.
 
         """
-        
+
         openmm_citations = """\
         Friedrichs MS, Eastman P, Vaidyanathan V, Houston M, LeGrand S, Beberg AL, Ensign DL, Bruns CM, and Pande VS. Accelerating molecular dynamic simulations on graphics processing unit. J. Comput. Chem. 30:864, 2009. DOI: 10.1002/jcc.21209
         Eastman P and Pande VS. OpenMM: A hardware-independent framework for molecular simulations. Comput. Sci. Eng. 12:34, 2010. DOI: 10.1109/MCSE.2010.27
         Eastman P and Pande VS. Efficient nonbonded interactions for molecular dynamics on a graphics processing unit. J. Comput. Chem. 31:1268, 2010. DOI: 10.1002/jcc.21413
         Eastman P and Pande VS. Constant constraint matrix approximation: A robust, parallelizable constraint method for molecular simulations. J. Chem. Theor. Comput. 6:434, 2010. DOI: 10.1021/ct900463w"""
-        
+
         gibbs_citations = """\
         Chodera JD and Shirts MR. Replica exchange and expanded ensemble simulations as Gibbs sampling: Simple improvements for enhanced mixing. J. Chem. Phys., in press. arXiv: 1105.5749"""
 
@@ -1218,7 +1267,7 @@ class ReplicaExchange(object):
         box_vectors = self.replica_box_vectors[replica_index]
         context.setPeriodicBoxVectors(box_vectors[0,:], box_vectors[1,:], box_vectors[2,:])
         # Set positions.
-        positions = self.replica_positions[replica_index]            
+        positions = self.replica_positions[replica_index]
         context.setPositions(positions)
         setpositions_end_time = time.time()
         # Assign Maxwell-Boltzmann velocities.
@@ -1226,7 +1275,7 @@ class ReplicaExchange(object):
         setvelocities_end_time = time.time()
         # Run dynamics.
         integrator.step(self.nsteps_per_iteration)
-        integrator_end_time = time.time() 
+        integrator_end_time = time.time()
         # Store final positions
         getstate_start_time = time.time()
         openmm_state = context.getState(getPositions=True)
@@ -1270,13 +1319,13 @@ class ReplicaExchange(object):
         for replica_index in replica_indices:
             if self.verbose: print "Node %3d/%3d propagating replica %3d state %3d..." % (self.mpicomm.rank, self.mpicomm.size, replica_index, self.replica_states[replica_index]) # DEBUG
             self._propagate_replica(replica_index)
-        end_time = time.time()        
+        end_time = time.time()
         elapsed_time = end_time - start_time
         # Collect elapsed time.
         node_elapsed_times = self.mpicomm.gather(elapsed_time, root=0) # barrier
         if self.verbose and (self.mpicomm.rank == 0):
             node_elapsed_times = numpy.array(node_elapsed_times)
-            end_time = time.time()        
+            end_time = time.time()
             elapsed_time = end_time - start_time
             barrier_wait_times = elapsed_time - node_elapsed_times
             print "Running trajectories: elapsed time %.3f s (barrier time min %.3f s | max %.3f s | avg %.3f s)" % (elapsed_time, barrier_wait_times.min(), barrier_wait_times.max(), barrier_wait_times.mean())
@@ -1296,8 +1345,8 @@ class ReplicaExchange(object):
         if self.verbose and (self.mpicomm.rank == 0): print "Synchronizing configurations and box vectors: elapsed time %.3f s" % (end_time - start_time)
 
         return
-        
-    def _propagate_replicas_serial(self):        
+
+    def _propagate_replicas_serial(self):
         """
         Propagate all replicas using serial execution.
 
@@ -1736,7 +1785,7 @@ class ReplicaExchange(object):
         Tij = numpy.zeros([self.nstates, self.nstates], numpy.float64)
         for istate in range(self.nstates):
             Tij[istate] = self._Nij[istate] / self._Nij[istate].sum()
-        
+
         return Tij
 
     def _show_mixing_statistics(self):
@@ -1941,7 +1990,7 @@ class ReplicaExchange(object):
         """
         if self.verbose: print "Storing thermodynamic states in NetCDF file..."
         initial_time = time.time()
-            
+
         # Create a group to store state information.
         ncgrp_stateinfo = ncfile.createGroup('thermodynamic_states')
 
@@ -1963,10 +2012,10 @@ class ReplicaExchange(object):
             setattr(ncvar_temperatures, 'units', 'atm')
             setattr(ncvar_temperatures, 'long_name', "pressures[state] is the external pressure of thermodynamic state 'state'")
             for state_index in range(self.nstates):
-                ncvar_temperatures[state_index] = self.states[state_index].pressure / unit.atmospheres                
+                ncvar_temperatures[state_index] = self.states[state_index].pressure / unit.atmospheres
 
         # TODO: Store other thermodynamic variables store in ThermodynamicState?  Generalize?
-                
+
         # Systems.
         ncvar_serialized_states = ncgrp_stateinfo.createVariable('systems', str, ('replica',), zlib=True)
         setattr(ncvar_serialized_states, 'long_name', "systems[state] is the serialized OpenMM System corresponding to the thermodynamic state 'state'")
@@ -1975,11 +2024,11 @@ class ReplicaExchange(object):
             serialized = self.states[state_index].system.__getstate__()
             if self.verbose: print "Serialized state is %d B | %.3f KB | %.3f MB" % (len(serialized), len(serialized) / 1024.0, len(serialized) / 1024.0 / 1024.0)
             ncvar_serialized_states[state_index] = serialized
-        final_time = time.time() 
+        final_time = time.time()
         elapsed_time = final_time - initial_time
 
         if self.verbose: print "Serializing thermodynamic states took %.3f s." % elapsed_time
-        
+
         return
 
     def _restore_thermodynamic_states(self, ncfile):
@@ -1989,17 +2038,16 @@ class ReplicaExchange(object):
         """
         if self.verbose_root: print "Restoring thermodynamic states from NetCDF file..."
         initial_time = time.time()
-            
+
         # Make sure this NetCDF file contains thermodynamic state information.
         if not 'thermodynamic_states' in ncfile.groups:
-            # Not found, signal failure.
-            return False
+            raise Exception("Could not restore thermodynamic states from %s" % self.store_filename)
 
         # Create a group to store state information.
         ncgrp_stateinfo = ncfile.groups['thermodynamic_states']
 
         # Get number of states.
-        self.nstates = int(ncgrp_stateinfo.variables['nstates'][0])
+        self.nstates = ncgrp_stateinfo.variables['nstates'].getValue()
 
         # Read state information.
         self.states = list()
@@ -2012,12 +2060,12 @@ class ReplicaExchange(object):
             if 'pressures' in ncgrp_stateinfo.variables:
                 state.pressure = ncgrp_stateinfo.variables['pressures'][state_index] * unit.atmospheres
             # Reconstitute System object.
-            state.system = self.mm.System() 
+            state.system = self.mm.System()
             state.system.__setstate__(str(ncgrp_stateinfo.variables['systems'][state_index]))
             # Store state.
             self.states.append(state)
 
-        final_time = time.time() 
+        final_time = time.time()
         elapsed_time = final_time - initial_time
         if self.verbose_root: print "Restoring thermodynamic states from NetCDF file took %.3f s." % elapsed_time
 
@@ -2034,7 +2082,7 @@ class ReplicaExchange(object):
         # Create scalar dimension if not already present.
         if 'scalar' not in ncfile.dimensions:
             ncfile.createDimension('scalar', 1) # scalar dimension
-        
+
         # Create a group to store state information.
         ncgrp_options = ncfile.createGroup('options')
 
@@ -2063,7 +2111,7 @@ class ReplicaExchange(object):
                 ncvar = ncgrp_options.createVariable(option_name, type(option_value))
                 ncvar.assignValue(option_value)
             if option_unit: setattr(ncvar, 'units', str(option_unit))
-            setattr(ncvar, 'type', option_type.__name__) 
+            setattr(ncvar, 'type', option_type.__name__)
 
         return
 
@@ -2076,8 +2124,7 @@ class ReplicaExchange(object):
 
         # Make sure this NetCDF file contains option information
         if not 'options' in ncfile.groups:
-            # Not found, signal failure.
-            return False
+            raise Exception("options not found in NetCDF file.")
 
         # Find the group.
         ncgrp_options = ncfile.groups['options']
@@ -2087,27 +2134,30 @@ class ReplicaExchange(object):
             # Get NetCDF variable.
             option_ncvar = ncgrp_options.variables[option_name]
             # Get option value.
-            option_value = option_ncvar[0]
+            if option_ncvar.shape == ():
+                option_value = option_ncvar.getValue()
+            else:
+                option_value = option_ncvar[0]
             # Cast to Python type.
-            type_name = getattr(option_ncvar, 'type') 
+            type_name = getattr(option_ncvar, 'type')
             option_value = eval(type_name + '(' + repr(option_value) + ')')
             # If Quantity, assign unit.
             if hasattr(option_ncvar, 'units'):
                 option_unit_name = getattr(option_ncvar, 'units')
                 if option_unit_name[0] == '/': option_unit_name = '1' + option_unit_name
-                option_unit = eval(option_unit_name, vars(units))
+                option_unit = eval(option_unit_name, vars(unit))
                 option_value = unit.Quantity(option_value, option_unit)
             # Store option.
             if self.verbose_root: print "Restoring option: %s -> %s (type: %s)" % (option_name, str(option_value), type(option_value))
             setattr(self, option_name, option_value)
-            
+
         # Signal success.
         return True
 
     def _store_metadata(self, ncfile, groupname, metadata):
         """
         Store metadata in NetCDF file.
-        
+
         """
 
         # Create group.
@@ -2159,9 +2209,9 @@ class ReplicaExchange(object):
 
         # Restore energies.
         self.u_kl = ncfile.variables['energies'][self.iteration,:,:].copy()
-        
+
         # Close NetCDF file.
-        ncfile.close()        
+        ncfile.close()
 
         # We will work on the next iteration.
         self.iteration += 1
@@ -2171,7 +2221,7 @@ class ReplicaExchange(object):
             self.ncfile = netcdf.Dataset(self.store_filename, 'a')
         else:
             self.ncfile = None
-        
+
         return
 
     def _show_energies(self):
@@ -2299,7 +2349,7 @@ class ReplicaExchange(object):
         self._analysis()
 
         if self.mpicomm: self.analysis = self.mpicomm.bcast(self.analysis, root=0) # broadcast analysis from root node
-        
+
         # Return analysis object
         return self.analysis
 
@@ -2318,13 +2368,13 @@ class ParallelTempering(ReplicaExchange):
     this type of simulation.  In particular, the System only need be specified once, while the temperatures (or a temperature
     range) is used to automatically build a set of ThermodynamicState objects for replica-exchange.  Efficiency improvements
     make use of the fact that the reduced potentials are linear in inverse temperature.
-    
+
     EXAMPLES
 
     Parallel tempering of alanine dipeptide in implicit solvent.
-    
+
     >>> # Create alanine dipeptide test system.
-    >>> from repex import testsystems
+    >>> from openmmtools import testsystems
     >>> testsystem = testsystems.AlanineDipeptideImplicit()
     >>> [system, positions] = [testsystem.system, testsystem.positions]
     >>> # Create temporary file for storing output.
@@ -2335,7 +2385,8 @@ class ParallelTempering(ReplicaExchange):
     >>> Tmin = 298.0 * unit.kelvin
     >>> Tmax = 600.0 * unit.kelvin
     >>> nreplicas = 3
-    >>> simulation = ParallelTempering(system, positions, store_filename, Tmin=Tmin, Tmax=Tmax, ntemps=nreplicas)
+    >>> simulation = ParallelTempering(store_filename)
+    >>> simulation.create(system, positions, Tmin=Tmin, Tmax=Tmax, ntemps=nreplicas)
     >>> simulation.number_of_iterations = 2 # set the simulation to only run 10 iterations
     >>> simulation.timestep = 2.0 * unit.femtoseconds # set the timestep for integration
     >>> simulation.minimize = False
@@ -2344,9 +2395,9 @@ class ParallelTempering(ReplicaExchange):
     >>> simulation.run() # run the simulation
 
     Parallel tempering of alanine dipeptide in explicit solvent at 1 atm.
-    
+
     >>> # Create alanine dipeptide system
-    >>> from repex import testsystems
+    >>> from openmmtools import testsystems
     >>> testsystem = testsystems.AlanineDipeptideExplicit()
     >>> [system, positions] = [testsystem.system, testsystem.positions]
     >>> # Add Monte Carlo barsostat to system (must be same pressure as simulation).
@@ -2358,9 +2409,10 @@ class ParallelTempering(ReplicaExchange):
     >>> store_filename = file.name
     >>> # Initialize parallel tempering on an exponentially-spaced scale
     >>> Tmin = 298.0 * unit.kelvin
-    >>> Tmax = 600.0 * unit.kelvin    
+    >>> Tmax = 600.0 * unit.kelvin
     >>> nreplicas = 3
-    >>> simulation = ParallelTempering(system, positions, store_filename, Tmin=Tmin, Tmax=Tmax, pressure=pressure, ntemps=nreplicas)
+    >>> simulation = ParallelTempering(store_filename)
+    >>> simulation.create(system, positions, Tmin=Tmin, Tmax=Tmax, pressure=pressure, ntemps=nreplicas)
     >>> simulation.number_of_iterations = 2 # set the simulation to only run 10 iterations
     >>> simulation.timestep = 2.0 * unit.femtoseconds # set the timestep for integration
     >>> simulation.nsteps_per_iteration = 50 # run 50 timesteps per iteration
@@ -2370,26 +2422,31 @@ class ParallelTempering(ReplicaExchange):
 
     """
 
-    def __init__(self, system, positions, store_filename, protocol=None, Tmin=None, Tmax=None, ntemps=None, temperatures=None, pressure=None, mm=None, mpicomm=None, metadata=None):
+    def create(self, system, positions, protocol=None, Tmin=None, Tmax=None, ntemps=None, temperatures=None, pressure=None, metadata=None):
         """
         Initialize a parallel tempering simulation object.
 
-        ARGUMENTS
-        
-        system (simtk.openmm.System) - the system to simulate
-        positions (simtk.unit.Quantity of numpy natoms x 3 array of units length, or list) - coordinate set(s) for one or more replicas, assigned in a round-robin fashion
-        store_filename (string) -  name of NetCDF file to bind to for simulation output and checkpointing
+        Parameters
+        ----------
+        system : simtk.openmm.System
+           the system to simulate
+        positions : simtk.unit.Quantity of numpy natoms x 3 array of units length, or list
+           coordinate set(s) for one or more replicas, assigned in a round-robin fashion
+        Tmin : simtk.unit.Quantity with units compatible with kelvin, optional, default=None
+           min temperature
+        Tmax : simtk.unit.Quantity with units compatible with kelvin, optional, default=None
+           max temperature
+        ntemps : int, optional, default=None
+           number of exponentially-spaced temperatures between Tmin and Tmax
+        temperatures : list of simtk.unit.Quantity with units compatible with kelvin, optional, default=None
+           if specified, this list of temperatures will be used instead of (Tmin, Tmax, ntemps)
+        pressure : simtk.unit.Quantity with units compatible with atmospheres, optional, default=None
+           if specified, a MonteCarloBarostat will be added (or modified) to perform NPT simulations
+        protocol : dict, optional, default=None
+           Optional protocol to use for specifying simulation protocol as a dict.  Provided keywords will be matched to object variables to replace defaults.
 
-        OPTIONAL ARGUMENTS
-
-        Tmin, Tmax, ntemps - min and max temperatures, and number of temperatures for exponentially-spaced temperature selection (default: None)
-        temperatures (list of simtk.unit.Quantity with units of temperature) - if specified, this list of temperatures will be used instead of (Tmin, Tmax, ntemps) (default: None)
-        pressure (simtk.unit.Quantity with units of pressure) - if specified, a MonteCarloBarostat will be added (or modified) to perform NPT simulations
-        protocol (dict) - Optional protocol to use for specifying simulation protocol as a dict.  Provided keywords will be matched to object variables to replace defaults. (default: None)
-        mpicomm (mpi4py communicator) - MPI communicator, if parallel execution is desired (default: None)
-
-        NOTES
-
+        Notes
+        -----
         Either (Tmin, Tmax, ntempts) must all be specified or the list of 'temperatures' must be specified.
 
         """
@@ -2401,15 +2458,15 @@ class ParallelTempering(ReplicaExchange):
             self.temperatures = [ Tmin + (Tmax - Tmin) * (math.exp(float(i) / float(ntemps-1)) - 1.0) / (math.e - 1.0) for i in range(ntemps) ]
         else:
             raise ValueError("Either 'temperatures' or 'Tmin', 'Tmax', and 'ntemps' must be provided.")
-        
+
         states = [ ThermodynamicState(system=system, temperature=self.temperatures[i], pressure=pressure) for i in range(ntemps) ]
 
         # Initialize replica-exchange simlulation.
-        ReplicaExchange.__init__(self, states, positions, store_filename, protocol=protocol, mm=mm, mpicomm=mpicomm, metadata=metadata)
+        ReplicaExchange.create(self, states, positions, protocol=protocol, metadata=metadata)
 
         # Override title.
         self.title = 'Parallel tempering simulation created using ParallelTempering class of repex.py on %s' % time.asctime(time.localtime())
-        
+
         return
 
     def _compute_energies(self):
@@ -2419,7 +2476,7 @@ class ParallelTempering(ReplicaExchange):
         NOTES
 
         Because only the temperatures differ among replicas, we replace the generic O(N^2) replica-exchange implementation with an O(N) implementation.
-        
+
         """
 
         start_time = time.time()
@@ -2430,7 +2487,7 @@ class ParallelTempering(ReplicaExchange):
 
             # NOTE: This version incurs the overhead of context creation/deletion.
             # TODO: Use cached contexts instead.
-            
+
             # Create an integrator and context.
             state = self.states[0]
             integrator = self.mm.VerletIntegrator(self.timestep)
@@ -2440,8 +2497,8 @@ class ParallelTempering(ReplicaExchange):
                 # Set positions.
                 context.setPositions(self.replica_positions[replica_index])
                 # Compute potential energy.
-                openmm_state = context.getState(getEnergy=True)            
-                potential_energy = openmm_state.getPotentialEnergy()           
+                openmm_state = context.getState(getEnergy=True)
+                potential_energy = openmm_state.getPotentialEnergy()
                 # Compute energies at this state for all replicas.
                 for state_index in range(self.nstates):
                     # Compute reduced potential
@@ -2457,7 +2514,7 @@ class ParallelTempering(ReplicaExchange):
 
             # Clean up.
             del context, integrator
-                
+
         else:
             # Serial implementation.
             # NOTE: This version incurs the overhead of context creation/deletion.
@@ -2467,14 +2524,14 @@ class ParallelTempering(ReplicaExchange):
             state = self.states[0]
             integrator = self.mm.VerletIntegrator(self.timestep)
             context = self.mm.Context(state.system, integrator, self.platform)
-        
+
             # Compute reduced potentials for all configurations in all states.
             for replica_index in range(self.nstates):
                 # Set positions.
                 context.setPositions(self.replica_positions[replica_index])
                 # Compute potential energy.
-                openmm_state = context.getState(getEnergy=True)            
-                potential_energy = openmm_state.getPotentialEnergy()           
+                openmm_state = context.getState(getEnergy=True)
+                potential_energy = openmm_state.getPotentialEnergy()
                 # Compute energies at this state for all replicas.
                 for state_index in range(self.nstates):
                     # Compute reduced potential
@@ -2504,11 +2561,11 @@ class HamiltonianExchange(ReplicaExchange):
     This class provides an implementation of a Hamiltonian exchange simulation based on the ReplicaExchange facility.
     It provides several convenience classes and efficiency improvements, and should be preferentially used for Hamiltonian
     exchange simulations over ReplicaExchange when possible.
-    
+
     EXAMPLES
-    
+
     >>> # Create reference system
-    >>> from repex import testsystems
+    >>> from openmmtools import testsystems
     >>> testsystem = testsystems.AlanineDipeptideImplicit()
     >>> [reference_system, positions] = [testsystem.system, testsystem.positions]
     >>> # Copy reference system.
@@ -2520,49 +2577,49 @@ class HamiltonianExchange(ReplicaExchange):
     >>> # Create reference state.
     >>> reference_state = ThermodynamicState(reference_system, temperature=298.0*unit.kelvin)
     >>> # Create simulation.
-    >>> simulation = HamiltonianExchange(reference_state, systems, positions, store_filename)
+    >>> simulation = HamiltonianExchange(store_filename)
+    >>> simulation.create(reference_state, systems, positions)
     >>> simulation.number_of_iterations = 2 # set the simulation to only run 2 iterations
     >>> simulation.timestep = 2.0 * unit.femtoseconds # set the timestep for integration
     >>> simulation.nsteps_per_iteration = 50 # run 50 timesteps per iteration
     >>> simulation.minimize = False
     >>> # Run simulation.
     >>> simulation.run() # run the simulation
-    
+
     """
 
-    def __init__(self, reference_state, systems, positions, store_filename, protocol=None, mm=None, mpicomm=None, metadata=None):
+    def create(self, reference_state, systems, positions, protocol=None, metadata=None):
         """
         Initialize a Hamiltonian exchange simulation object.
 
-        ARGUMENTS
-
-        reference_state (ThermodynamicState) - reference state containing all thermodynamic parameters except the system, which will be replaced by 'systems'
-        systems (list of simtk.openmm.System) - list of systems to simulate (one per replica)
-        positions (simtk.unit.Quantity of numpy natoms x 3 with units length) -  positions (or a list of positions objects) for initial assignment of replicas (will be used in round-robin assignment)
-        store_filename (string) - name of NetCDF file to bind to for simulation output and checkpointing
-
-        OPTIONAL ARGUMENTS
-
-        protocol (dict) - Optional protocol to use for specifying simulation protocol as a dict. Provided keywords will be matched to object variables to replace defaults.
-        mpicomm (mpi4py communicator) - MPI communicator, if parallel execution is desired (default: None)        
+        Parameters
+        ----------
+        reference_state : ThermodynamicState
+           reference state containing all thermodynamic parameters except the system, which will be replaced by 'systems'
+        systems : list of simtk.openmm.System
+           list of systems to simulate (one per replica)
+        positions : simtk.unit.Quantity of numpy natoms x 3 with units compatible with nanometers
+           positions (or a list of positions objects) for initial assignment of replicas (will be used in round-robin assignment)
+        protocol : dict, optional, default=None
+           Optional protocol to use for specifying simulation protocol as a dict. Provided keywords will be matched to object variables to replace defaults.
+        metadata : dict, optional, default=None
+           metadata to store in a 'metadata' group in store file
 
         """
 
         if systems is None:
             states = None
         else:
-            # Create thermodynamic states from systems.        
-            states = [ ThermodynamicState(system=system, temperature=reference_state.temperature, pressure=reference_state.pressure, mm=mm) for system in systems ]
+            # Create thermodynamic states from systems.
+            states = [ ThermodynamicState(system=system, temperature=reference_state.temperature, pressure=reference_state.pressure) for system in systems ]
 
         # Initialize replica-exchange simlulation.
-        ReplicaExchange.__init__(self, states, positions, store_filename, protocol=protocol, mm=mm, mpicomm=mpicomm, metadata=metadata)
+        ReplicaExchange.create(self, states, positions, protocol=protocol, metadata=metadata)
 
         # Override title.
         self.title = 'Hamiltonian exchange simulation created using HamiltonianExchange class of repex.py on %s' % time.asctime(time.localtime())
-        
-        return
 
-    
+        return
 
 #=============================================================================================
 # MAIN AND TESTS

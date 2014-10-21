@@ -45,7 +45,7 @@ class ModifiedHamiltonianExchange(HamiltonianExchange):
     EXAMPLES
 
     >>> # Create reference system.
-    >>> from repex import testsystems
+    >>> from openmmtools import testsystems
     >>> testsystem = testsystems.AlanineDipeptideImplicit()
     >>> [reference_system, positions] = [testsystem.system, testsystem.positions]
     >>> # Copy reference system.
@@ -55,7 +55,7 @@ class ModifiedHamiltonianExchange(HamiltonianExchange):
     >>> file = tempfile.NamedTemporaryFile() # temporary file for testing
     >>> store_filename = file.name
     >>> # Create reference state.
-    >>> from repex.thermodynamics import ThermodynamicState
+    >>> from repex import ThermodynamicState
     >>> reference_state = ThermodynamicState(reference_system, temperature=298.0*units.kelvin)
     >>> displacement_sigma = 1.0 * units.nanometer
     >>> mc_atoms = range(0, reference_system.getNumParticles())
@@ -73,24 +73,24 @@ class ModifiedHamiltonianExchange(HamiltonianExchange):
     # Options to store.
     options_to_store = HamiltonianExchange.options_to_store + ['mc_displacement', 'mc_rotation', 'displacement_sigma'] # TODO: Add mc_atoms
 
-    def __init__(self, reference_state, systems, positions, store_filename, displacement_sigma=None, mc_atoms=None, protocol=None, mm=None, mpicomm=None, metadata=None):
+    def create(self, reference_state, systems, positions, displacement_sigma=None, mc_atoms=None, protocol=None, mm=None, mpicomm=None, metadata=None):
         """
         Initialize a modified Hamiltonian exchange simulation object.
 
-        ARGUMENTS
-
-        reference_state (ThermodynamicState) - reference state containing all thermodynamic parameters except the system, which will be replaced by 'systems'
-        systems (list of simtk.openmm.System) - list of systems to simulate (one per replica)
-        positions (simtk.unit.Quantity of numpy natoms x 3 with units length) -  positions (or a list of positions objects) for initial assignment of replicas (will be used in round-robin assignment)
-        store_filename (string) - name of NetCDF file to bind to for simulation output and checkpointing
-
-        OPTIONAL ARGUMENTS
-
-        displacement_sigma (simtk.unit.Quantity with units distance) - size of displacement trial for Monte Carlo displacements, if specified (default: 1 nm)
-        ligand_atoms (list of int) - atoms to use for trial displacements for translational and orientational Monte Carlo trials, if specified (default: all atoms)
-        protocol (dict) - Optional protocol to use for specifying simulation protocol as a dict. Provided keywords will be matched to object variables to replace defaults.
-        mm (simtk.openmm implementation) - Implementation of OpenMM API to use.
-        mpicomm (mpi4py communicator) - MPI communicator, if parallel execution is desired (default: None)
+        Parameters
+        ----------
+        reference_state : ThermodynamicState
+           reference state containing all thermodynamic parameters except the system, which will be replaced by 'systems'
+        systems : list of simtk.openmm.System
+           list of systems to simulate (one per replica)
+        positions : simtk.unit.Quantity of numpy natoms x 3 with units length
+           positions (or a list of positions objects) for initial assignment of replicas (will be used in round-robin assignment)
+        displacement_sigma : simtk.unit.Quantity with units distance
+           size of displacement trial for Monte Carlo displacements, if specified (default: 1 nm)
+        ligand_atoms : list of int, optional, default=None
+           atoms to use for trial displacements for translational and orientational Monte Carlo trials, if specified (all atoms if None)
+        protocol : dict
+           Optional protocol to use for specifying simulation protocol as a dict. Provided keywords will be matched to object variables to replace defaults.
 
         """
 
@@ -109,7 +109,7 @@ class ModifiedHamiltonianExchange(HamiltonianExchange):
         self.rotation_trials_accepted = 0 # number of MC displacement trials accepted
 
         # Initialize replica-exchange simlulation.
-        HamiltonianExchange.__init__(self, reference_state, systems, positions, store_filename, protocol=protocol, mm=mm, mpicomm=mpicomm, metadata=metadata)
+        HamiltonianExchange.create(self, reference_state, systems, positions, protocol=protocol, metadata=metadata)
 
         # Override title.
         self.title = 'Modified Hamiltonian exchange simulation created using HamiltonianExchange class of repex.py on %s' % time.asctime(time.localtime())
@@ -142,7 +142,7 @@ class ModifiedHamiltonianExchange(HamiltonianExchange):
 
         [w,x,y,z] = q
         Nq = (q**2).sum()
-        if (Nq > 0.0): 
+        if (Nq > 0.0):
             s = 2.0/Nq
         else:
             s = 0.0
@@ -187,7 +187,7 @@ class ModifiedHamiltonianExchange(HamiltonianExchange):
 
         EXAMPLES
 
-        >>> from repex import testsystems
+        >>> from openmmtools import testsystems
         >>> complex = testsystems.LysozymeImplicit()
         >>> [system, positions] = [complex.system, complex.positions]
         >>> receptor_atoms = range(0,2603) # T4 lysozyme L99A
@@ -211,7 +211,7 @@ class ModifiedHamiltonianExchange(HamiltonianExchange):
 
         EXAMPLES
 
-        >>> from repex import testsystems
+        >>> from openmmtools import testsystems
         >>> complex = testsystems.LysozymeImplicit()
         >>> [system, positions] = [complex.system, complex.positions]
         >>> receptor_atoms = range(0,2603) # T4 lysozyme L99A
@@ -240,7 +240,7 @@ class ModifiedHamiltonianExchange(HamiltonianExchange):
 
         EXAMPLES
 
-        >>> from repex import testsystems
+        >>> from openmmtools import testsystems
         >>> complex = testsystems.LysozymeImplicit()
         >>> [system, positions] = [complex.system, complex.positions]
         >>> receptor_atoms = range(0,2603) # T4 lysozyme L99A

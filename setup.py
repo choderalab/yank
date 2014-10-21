@@ -101,13 +101,12 @@ if not release:
 # USEFUL SUBROUTINES
 ################################################################################
 
-def find_package_data(root='yank'):
+def find_package_data(data_root, package_root):
     files = []
-    for root, dirnames, filenames in os.walk(root):
+    for root, dirnames, filenames in os.walk(data_root):
         for fn in filenames:
-            files.append(relpath(join(root, fn), 'yank'))
+            files.append(relpath(join(root, fn), package_root))
     return files
-
 
 def check_dependencies():
     from distutils.version import StrictVersion
@@ -162,10 +161,13 @@ setup(
     platforms=['Linux', 'Mac OS-X', 'Unix', 'Windows'],
     classifiers=CLASSIFIERS.splitlines(),
     packages=['yank'] + ['yank.%s' % package for package in find_packages('yank')],
-    #package_data={'yank': find_package_data()},
+    #package_data={'yank': find_package_data('yank/data', 'yank')},
     zip_safe=False,
     install_requires=[
-        'docopt==0.6.1'
+        'openmm', # conda
+        'pymbar', # conda
+        'openmmtools', # conda
+        'docopt==0.6.1',
         ],
     entry_points={'console_scripts': ['yank = yank.cli:main']})
 

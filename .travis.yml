@@ -13,7 +13,9 @@ script:
   - conda install $HOME/miniconda/conda-bld/linux-64/yank-*
   - conda list -e
   - # Run tests
-  - nosetests -v
+  - cd tests
+  - nosetests --nocapture -vv
+  - cd ..
 
 env:
   matrix:

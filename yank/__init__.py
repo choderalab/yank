@@ -10,10 +10,10 @@ import version
 __version__ = version.version
 
 # Import modules.
-import yank
-import alchemy
-import oldrepex
-import sampling
-import analyze
-import restraints
+#import yank
+#import alchemy
+#import repex
+#import sampling
+#import analyze
+#import restraints
 

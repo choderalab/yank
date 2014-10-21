@@ -20,7 +20,7 @@ from simtk import unit
 from simtk.openmm import app
 
 from yank.yank import Yank # TODO: Fix this weird import path to something more sane, like 'from yank import Yank'
-from yank.oldrepex import ThermodynamicState # TODO: Fix this weird import path to something more sane, like 'from yank.repex import ThermodynamicState'
+from yank.repex import ThermodynamicState # TODO: Fix this weird import path to something more sane, like 'from yank.repex import ThermodynamicState'
 
 #=============================================================================================
 # SUBROUTINES

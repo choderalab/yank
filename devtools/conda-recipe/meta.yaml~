@@ -10,22 +10,24 @@ requirements:
     - numpy
     - scipy
     - setuptools
-    - mdtraj-dev
-    - gaff2xml-dev
-    - repex-dev
-    - openmm-dev
-    - pymbar-dev
+    - mdtraj
+    - gaff2xml
+    - repex
+    - openmm
+    - openmmtools
+    - pymbar
     - ambermini
 
   run:
     - python
     - pandas
     - scipy
-    - mdtraj-dev
-    - gaff2xml-dev
-    - repex-dev
-    - openmm-dev
-    - pymbar-dev
+    - mdtraj
+    - gaff2xml
+    - repex
+    - openmm
+    - openmmtools
+    - pymbar
     - ambermini
 
 about:
