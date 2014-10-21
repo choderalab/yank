@@ -1497,7 +1497,7 @@ class ReplicaExchange(object):
 
         end_time = time.time()
         elapsed_time = end_time - start_time
-        time_per_energy= elapsed_time / float(self.nstates)**2 
+        time_per_energy= elapsed_time / float(self.nstates)**2
         if self.verbose: print "Time to compute all energies %.3f s (%.3f per energy calculation)." % (elapsed_time, time_per_energy)
 
         return

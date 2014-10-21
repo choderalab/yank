@@ -157,7 +157,7 @@ class Yank(object):
 
         return
 
-    def create(self, phases, systems, positions, atom_indices, thermodynamic_state, protocols=None, options=None):
+    def create(self, phases, systems, positions, atom_indices, thermodynamic_state, protocols=None, options=None, mpicomm=None):
         """
         Set up a new set of alchemical free energy calculations for the specified phases.
 
@@ -201,7 +201,7 @@ class Yank(object):
 
         # Create new repex simulations.
         for phase in phases:
-            self._create_phase(phase, systems[phase], positions[phase], atom_indices[phase], thermodynamic_state, protocols=protocols, options=options)
+            self._create_phase(phase, systems[phase], positions[phase], atom_indices[phase], thermodynamic_state, protocols=protocols, options=options, mpicomm=mpicomm)
 
         # Record that we are now initialized.
         self._initialized = True
@@ -230,7 +230,7 @@ class Yank(object):
             is_periodic = True
         return is_periodic
 
-    def _create_phase(self, phase, reference_system, positions, atom_indices, thermodynamic_state, protocols=None, options=None):
+    def _create_phase(self, phase, reference_system, positions, atom_indices, thermodynamic_state, protocols=None, options=None, mpicomm=None):
         """
         Create a repex object for a specified phase.
 
@@ -341,9 +341,10 @@ class Yank(object):
         if self.verbose: print "Creating replica exchange object..."
         store_filename = os.path.join(self._store_directory, phase + '.nc')
         self._store_filenames[phase] = store_filename
-        simulation = ModifiedHamiltonianExchange(thermodynamic_state, systems, positions, store_filename,
-                                                 displacement_sigma=self.mc_displacement_sigma, mc_atoms=mc_atoms,
-                                                 protocol=options, mpicomm=None, metadata=metadata)
+        simulation = ModifiedHamiltonianExchange(store_filename, mpicomm=mpicomm)
+        simulation.create(thermodynamic_state, systems, positions,
+                          displacement_sigma=self.mc_displacement_sigma, mc_atoms=mc_atoms,
+                          protocol=options, metadata=metadata)
         simulation.verbose = self.verbose
 
         # Initialize simulation.
@@ -392,7 +393,8 @@ class Yank(object):
         for phase in self._phases:
             store_filename = self._store_filenames[phase]
             # Resume simulation from store file.
-            simulation = ModifiedHamiltonianExchange(store_filename=store_filename, mpicomm=mpicomm, protocol=options)
+            simulation = ModifiedHamiltonianExchange(store_filename=store_filename, mpicomm=mpicomm)
+            simulation.resume(protocol=options)
             # TODO: We may need to manually update run options here if protocol=options above does not behave as expected.
             simulation.run(niterations=niterations)
             # Clean up to ensure we close files, contexts, etc.

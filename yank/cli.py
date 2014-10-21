@@ -72,11 +72,11 @@ Systembuilder options:
 """
 
 # TODO: Add optional arguments that we can use to override sys.argv for testing purposes.
-def main():
+def main(argv=None):
     # Parse command-line arguments.
     from docopt import docopt
     import version
-    args = docopt(usage, version=version.version)
+    args = docopt(usage, version=version.version, argv=argv)
 
     dispatched = False # Flag set to True if we have correctly dispatched a command.
     from . import commands # TODO: This would be clearer if we could do 'from yank import commands', but can't figure out how
