@@ -23,10 +23,3 @@ parmchk -i ligand.gaff.mol2 -o ligand.gaff.frcmod -f mol2
 echo "Creating AMBER prmtop/inpcrd files..."
 rm -f leap.log receptor.{inpcrd,prmtop,pdb} ligand.{inpcrd,prmtop,pdb} complex.{inpcrd,prmtop,pdb}
 tleap -f setup.leap.in > setup.leap.out
-
-# Create PDB files.
-echo "Creating PDB files from initial configurations..."
-cat receptor.inpcrd | ambpdb -p receptor.prmtop > receptor.pdb
-cat ligand.inpcrd | ambpdb -p ligand.prmtop > ligand.pdb
-cat complex.inpcrd | ambpdb -p complex.prmtop > complex.pdb
-

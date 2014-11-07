@@ -7,7 +7,7 @@ source leaprc.ff99sbildn
 source leaprc.gaff
 
 # Set GB radii to recommended values for OBC.
-set default PBRadii mbondi2 
+set default PBRadii mbondi2
 
 # Load in protein.
 receptor = loadPdb receptor.pdbfixer.pdb
@@ -34,6 +34,11 @@ charge complex
 saveAmberParm ligand ligand.prmtop ligand.inpcrd
 saveAmberParm receptor receptor.prmtop receptor.inpcrd
 saveAmberParm complex complex.prmtop complex.inpcrd
+
+# Write PDB files
+savepdb ligand ligand.pdb
+savepdb receptor receptor.pdb
+savepdb complex complex.pdb
 
 # Exit
 quit
