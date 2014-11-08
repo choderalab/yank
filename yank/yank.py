@@ -301,8 +301,8 @@ class Yank(object):
             # TODO: What if the box volume fluctuates during the simulation?
             box_vectors = reference_system.getDefaultPeriodicBoxVectors()
             box_volume = thermodynamic_state._volume(box_vectors)
-            STANDARD_STATE_VOLUME = 1660.53928 * angstroms**3
-            metadata['standard_state_correction'] = numpy.log(STANDARD_STATE_CORRECTION / box_volume) # TODO: Check sign.
+            STANDARD_STATE_VOLUME = 1660.53928 * unit.angstrom**3
+            metadata['standard_state_correction'] = numpy.log(STANDARD_STATE_VOLUME / box_volume) # TODO: Check sign.
 
         # Use default alchemical protocols if not specified.
         if not protocols:
