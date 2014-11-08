@@ -82,7 +82,7 @@ class Yank(object):
         self.default_protocols['solvent-implicit'] = AbsoluteAlchemicalFactory.defaultSolventProtocolImplicit()
         self.default_protocols['complex-implicit'] = AbsoluteAlchemicalFactory.defaultComplexProtocolImplicit()
         self.default_protocols['solvent-explicit'] = AbsoluteAlchemicalFactory.defaultSolventProtocolExplicit()
-        self.default_protocols['complex-implicit'] = AbsoluteAlchemicalFactory.defaultComplexProtocolExplicit()
+        self.default_protocols['complex-explicit'] = AbsoluteAlchemicalFactory.defaultComplexProtocolExplicit()
 
         # Default options for repex.
         self.default_options = dict()
