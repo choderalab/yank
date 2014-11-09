@@ -2292,11 +2292,11 @@ class ReplicaExchange(object):
         N_k = indices.size * numpy.ones([nstates], numpy.int32)
 
         # Next, analyze with pymbar, initializing with last estimate of free energies.
-        from pymbar import pymbar
+        from pymbar import MBAR
         if hasattr(self, 'f_k'):
-            mbar = pymbar.MBAR(u_kln[:,:,indices], N_k, f_k_initial=self.f_k)
+            mbar = MBAR(u_kln[:,:,indices], N_k, f_k_initial=self.f_k)
         else:
-            mbar = pymbar.MBAR(u_kln[:,:,indices], N_k)
+            mbar = MBAR(u_kln[:,:,indices], N_k)
 
         # Store free energies.
         self.f_k = mbar.f_k

@@ -21,20 +21,15 @@ import time
 import datetime
 
 import numpy
-import numpy.linalg
 import scipy.integrate
 
 import simtk.openmm as openmm
 import simtk.unit as units
 
-#import scipy.io.netcdf as netcdf # scipy pure Python netCDF interface - GIVES US TROUBLE FOR NOW
-import netCDF4 as netcdf # netcdf4-python is used in place of scipy.io.netcdf for now
-#import tables as hdf5 # HDF5 will be supported in the future
+from openmmtools import testsystems
 
 import yank
-from yank.oldrepex import ThermodynamicState, ReplicaExchange, HamiltonianExchange, ParallelTempering
-
-from repex import testsystems
+from yank.repex import ThermodynamicState, ReplicaExchange, HamiltonianExchange, ParallelTempering
 
 #=============================================================================================
 # MODULE CONSTANTS
@@ -49,24 +44,24 @@ kB = units.BOLTZMANN_CONSTANT_kB * units.AVOGADRO_CONSTANT_NA # Boltzmann consta
 def computeHarmonicOscillatorExpectations(K, mass, temperature):
     """
     Compute mean and variance of potential and kinetic energies for a 3D harmonic oscillator.
-    
+
     NOTES
 
     Numerical quadrature is used to compute the mean and standard deviation of the potential energy.
     Mean and standard deviation of the kinetic energy, as well as the absolute free energy, is computed analytically.
-    
+
     ARGUMENTS
-    
+
     K (simtk.unit.Quantity) - spring constant
     mass (simtk.unit.Quantity) - mass of particle
     temperature (simtk.unit.Quantity) - temperature
-    
+
     RETURNS
-    
+
     values (dict)
-    
+
     TODO
-    
+
     Replace this with built-in analytical expectations for new repex.testsystems classes.
 
     """
@@ -77,9 +72,9 @@ def computeHarmonicOscillatorExpectations(K, mass, temperature):
     kB = units.BOLTZMANN_CONSTANT_kB * units.AVOGADRO_CONSTANT_NA
     kT = kB * temperature # thermal energy
     beta = 1.0 / kT # inverse temperature
-   
+
     # Compute standard deviation along one dimension.
-    sigma = 1.0 / units.sqrt(beta * K) 
+    sigma = 1.0 / units.sqrt(beta * K)
 
     # Define limits of integration along r.
     r_min = 0.0 * units.nanometers # initial value for integration
@@ -93,20 +88,20 @@ def computeHarmonicOscillatorExpectations(K, mass, temperature):
     (Iq, dIq)     = scipy.integrate.quad(lambda r : q(r), r_min / units.nanometers, r_max / units.nanometers)
     values['potential'] = dict()
     values['potential']['mean'] = (IqV / Iq) * units.kilojoules_per_mole
-    values['potential']['stddev'] = (IqV2 / Iq) * units.kilojoules_per_mole   
-    
+    values['potential']['stddev'] = (IqV2 / Iq) * units.kilojoules_per_mole
+
     # Compute mean and std dev of kinetic energy.
     values['kinetic'] = dict()
     values['kinetic']['mean'] = (3./2.) * kT
     values['kinetic']['stddev'] = math.sqrt(3./2.) * kT
 
     # Compute dimensionless free energy.
-    # f = - \ln \int_{-\infty}^{+\infty} \exp[-\beta K x^2 / 2] 
-    #   = - \ln \int_{-\infty}^{+\infty} \exp[-x^2 / 2 \sigma^2] 
+    # f = - \ln \int_{-\infty}^{+\infty} \exp[-\beta K x^2 / 2]
+    #   = - \ln \int_{-\infty}^{+\infty} \exp[-x^2 / 2 \sigma^2]
     #   = - \ln [\sqrt{2 \pi} \sigma]
     values['f'] = - numpy.log(2 * numpy.pi * (sigma / units.angstroms)**2) * (3.0/2.0)
 
-    return values   
+    return values
 
 def test_replica_exchange(mpicomm=None, verbose=True):
     """
@@ -116,8 +111,8 @@ def test_replica_exchange(mpicomm=None, verbose=True):
 
     * Test ParallelTempering and HamiltonianExchange subclasses as well.
     * Test with different combinations of input parameters.
-    
-    """    
+
+    """
 
     if verbose and ((not mpicomm) or (mpicomm.rank==0)): print "Testing replica exchange facility with harmonic oscillators: ",
 
@@ -140,15 +135,15 @@ def test_replica_exchange(mpicomm=None, verbose=True):
         state = ThermodynamicState(system=system, temperature=temperature)
         # Append thermodynamic state and positions.
         states.append(state)
-        seed_positions.append(positions) 
+        seed_positions.append(positions)
         # Store analytical results.
-        results = computeHarmonicOscillatorExpectations(K, mass, temperature) 
+        results = computeHarmonicOscillatorExpectations(K, mass, temperature)
         analytical_results.append(results)
         f_i_analytical.append(results['f'])
         kT = kB * temperature # thermal energy
         reduced_potential = results['potential']['mean'] / kT
         u_i_analytical.append(reduced_potential)
-        
+
     # Compute analytical Delta_f_ij
     nstates = len(f_i_analytical)
     f_i_analytical = numpy.array(f_i_analytical)
@@ -165,23 +160,24 @@ def test_replica_exchange(mpicomm=None, verbose=True):
 
     # Define file for temporary storage.
     import tempfile # use a temporary file
-    file = tempfile.NamedTemporaryFile(delete=False)    
+    file = tempfile.NamedTemporaryFile(delete=False)
     store_filename = file.name
     #print "node %d : Storing data in temporary file: %s" % (mpicomm.rank, str(store_filename)) # DEBUG
-    
+
     # Create and configure simulation object.
-    simulation = ReplicaExchange(states, seed_positions, store_filename, mpicomm=mpicomm) # initialize the replica-exchange simulation
-    simulation.number_of_iterations = 1000 # set the simulation to only run 2 iterations
-    simulation.timestep = 2.0 * units.femtoseconds # set the timestep for integration
-    simulation.nsteps_per_iteration = 500 # run 500 timesteps per iteration
-    simulation.collision_rate = 20.0 / units.picosecond 
-    simulation.platform = openmm.Platform.getPlatformByName('Reference') # use reference platform
-    simulation.verbose = False 
+    simulation = ReplicaExchange(store_filename, mpicomm=mpicomm)
+    simulation.create(states, seed_positions)
+    simulation.minimize = False
+    simulation.number_of_iterations = 200
+    simulation.nsteps_per_iteration = 500
+    simulation.timestep = 2.0 * units.femtoseconds
+    simulation.collision_rate = 20.0 / units.picosecond
+    simulation.verbose = False
     simulation.show_mixing_statistics = False
 
     # Run simulation.
     simulation.run() # run the simulation
-    
+
     # Stop here if not root node.
     if mpicomm and (mpicomm.rank != 0): return
 
@@ -223,20 +219,23 @@ def test_replica_exchange(mpicomm=None, verbose=True):
         print nsigma
         raise Exception("Dimensionless potential energy difference exceeds MAX_SIGMA of %.1f" % MAX_SIGMA)
 
+    # Clean up.
+    del simulation
+
     if verbose: print "PASSED."
-    return 
+    return
 
 def test_hamiltonian_exchange(mpicomm=None, verbose=True):
     """
-    Test that free energies and avergae potential energies of a 3D harmonic oscillator are correctly computed
+    Test that free energies and average potential energies of a 3D harmonic oscillator are correctly computed
     when running HamiltonianExchange.
 
     TODO
 
     * Integrate with test_replica_exchange.
     * Test with different combinations of input parameters.
-    
-    """    
+
+    """
 
     if verbose and ((not mpicomm) or (mpicomm.rank==0)): print "Testing Hamiltonian exchange facility with harmonic oscillators: ",
 
@@ -257,7 +256,7 @@ def test_hamiltonian_exchange(mpicomm=None, verbose=True):
     systems = list() # Systems list for HamiltonianExchange
     for sigma in sigmas:
         # Compute corresponding spring constant.
-        kB = units.BOLTZMANN_CONSTANT_kB * units.AVOGADRO_CONSTANT_NA    
+        kB = units.BOLTZMANN_CONSTANT_kB * units.AVOGADRO_CONSTANT_NA
         kT = kB * temperature # thermal energy
         beta = 1.0 / kT # inverse temperature
         K = 1.0 / (beta * sigma**2)
@@ -267,14 +266,14 @@ def test_hamiltonian_exchange(mpicomm=None, verbose=True):
         # Append to systems list.
         systems.append(system)
         # Append positions.
-        seed_positions.append(positions) 
+        seed_positions.append(positions)
         # Store analytical results.
-        results = computeHarmonicOscillatorExpectations(K, mass, temperature) 
+        results = computeHarmonicOscillatorExpectations(K, mass, temperature)
         analytical_results.append(results)
         f_i_analytical.append(results['f'])
         reduced_potential = results['potential']['mean'] / kT
         u_i_analytical.append(reduced_potential)
-        
+
     # Compute analytical Delta_f_ij
     nstates = len(f_i_analytical)
     f_i_analytical = numpy.array(f_i_analytical)
@@ -291,21 +290,21 @@ def test_hamiltonian_exchange(mpicomm=None, verbose=True):
 
     # Define file for temporary storage.
     import tempfile # use a temporary file
-    file = tempfile.NamedTemporaryFile(delete=False)    
+    file = tempfile.NamedTemporaryFile(delete=False)
     store_filename = file.name
     #print "Storing data in temporary file: %s" % str(store_filename)
 
     # Create reference thermodynamic state.
     reference_state = ThermodynamicState(systems[0], temperature=temperature)
-    
+
     # Create and configure simulation object.
-    simulation = HamiltonianExchange(reference_state, systems, seed_positions, store_filename, mpicomm=mpicomm) # initialize the replica-exchange simulation
-    simulation.number_of_iterations = 1000 # set the simulation to only run 2 iterations
-    simulation.timestep = 2.0 * units.femtoseconds # set the timestep for integration
-    simulation.nsteps_per_iteration = 500 # run 500 timesteps per iteration
-    simulation.collision_rate = 9.2 / units.picosecond 
-    simulation.platform = openmm.Platform.getPlatformByName('Reference') # use reference platform
-    simulation.verbose = False 
+    simulation = HamiltonianExchange(store_filename, mpicomm=mpicomm)
+    simulation.create(reference_state, systems, seed_positions)
+    simulation.number_of_iterations = 200
+    simulation.timestep = 2.0 * units.femtoseconds
+    simulation.nsteps_per_iteration = 500
+    simulation.collision_rate = 9.2 / units.picosecond
+    simulation.verbose = False
     simulation.show_mixing_statistics = False
 
     # Run simulation.
@@ -313,7 +312,7 @@ def test_hamiltonian_exchange(mpicomm=None, verbose=True):
 
     # Stop here if not root node.
     if mpicomm and (mpicomm.rank != 0): return
-    
+
     # Analyze simulation to compute free energies.
     analysis = simulation.analyze()
 
@@ -353,7 +352,7 @@ def test_hamiltonian_exchange(mpicomm=None, verbose=True):
         raise Exception("Dimensionless potential energy difference exceeds MAX_SIGMA of %.1f" % MAX_SIGMA)
 
     if verbose: print "PASSED."
-    return 
+    return
 
 #=============================================================================================
 # MAIN AND TESTS
@@ -365,15 +364,14 @@ if __name__ == "__main__":
         from mpi4py import MPI # MPI wrapper
         hostname = os.uname()[1]
         mpicomm = MPI.COMM_WORLD
-        if mpicomm.rank == 0: 
+        if mpicomm.rank == 0:
             print "MPI initialized successfully."
     except Exception as e:
         print e
         print "Could not start MPI. Using serial code instead."
         mpicomm = None
-    
+
     # Test simple system of harmonic oscillators.
     test_hamiltonian_exchange(mpicomm)
     test_replica_exchange(mpicomm)
 
-    
