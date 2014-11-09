@@ -1,7 +1,7 @@
 language: c
 
 install:
-  - bash -x devtools/ci/install.sh
+  - source devtools/ci/install.sh
   - export PYTHONUNBUFFERED=true
 
 script:
