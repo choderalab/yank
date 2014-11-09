@@ -11,7 +11,12 @@ script:
   - conda build devtools/conda-recipe
   - source activate $python
   - conda install --yes $HOME/miniconda/conda-bld/linux-64/yank-*
+  # push dev package to binstar
+  - conda install --yes binstar jinja2
+  - binstar -t $BINSTAR_TOKEN upload --force -u omnia -p yank $HOME/miniconda/conda-bld/*/*.tar.bz2
+  # see what else is installed
   - conda list -e
+  # check if command line version was installed correctly
   - which yank
   - yank --help
   - # Run tests
