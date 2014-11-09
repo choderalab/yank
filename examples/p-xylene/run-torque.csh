@@ -38,13 +38,7 @@
 
 cd $PBS_O_WORKDIR
 
-source /cbio/jclab/projects/musashi/musashi.tcsh
-
-echo | grep PYTHONPATH
-
-rm *.nc
-
 date
-mpirun -rmk pbs python ../../yank/yank.py --receptor_prmtop receptor.prmtop --ligand_prmtop ligand.prmtop --complex_prmtop complex.prmtop --complex_crd complex.inpcrd --restraints harmonic --randomize_ligand --iterations 500 --verbose --mpi --platform OpenCL --gpus_per_node 4 >& output
+mpirun -rmk pbs yank --mpi --verbose
 date
 
