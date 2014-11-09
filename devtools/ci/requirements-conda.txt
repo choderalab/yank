@@ -10,3 +10,4 @@ ambermini
 netcdf4
 pymbar
 docopt
+gaff2xml

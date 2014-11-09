@@ -15,6 +15,7 @@ requirements:
     - pymbar
     - ambermini
     - docopt
+    - gaff2xml
 
   run:
     - python
@@ -26,6 +27,7 @@ requirements:
     - pymbar
     - ambermini
     - docopt
+    - gaff2xml
 
 about:
   home: https://github.com/choderalab/yank
