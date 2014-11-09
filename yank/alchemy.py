@@ -262,10 +262,6 @@ class AbsoluteAlchemicalFactory(object):
         Examples
         --------
 
-        >>> from openmmtools import testsystems
-        >>> alanine_dipeptide = testsystems.AlanineDipeptideImplicit()
-        >>> [reference_system, positions] = [alanine_dipeptide.system, alanine_dipeptide.positions]
-        >>> factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=[0, 1, 2])
         >>> protocol = factory.defaultComplexProtocolImplicit()
 
         """
@@ -312,10 +308,6 @@ class AbsoluteAlchemicalFactory(object):
         Examples
         --------
 
-        >>> from openmmtools import testsystems
-        >>> waterbox = testsystems.WaterBox()
-        >>> [reference_system, positions] = [waterbox.system, waterbox.positions]
-        >>> factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=[0, 1, 2])
         >>> protocol = factory.defaultComplexProtocolExplicit()
 
         """
@@ -358,10 +350,7 @@ class AbsoluteAlchemicalFactory(object):
 
         Examples
         --------
-        >>> from openmmtools import testsystems
-        >>> alanine_dipeptide = testsystems.AlanineDipeptideImplicit()
-        >>> [reference_system, positions] = [alanine_dipeptide.system, alanine_dipeptide.positions]
-        >>> factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=[0, 1, 2])
+
         >>> protocol = factory.defaultSolventProtocolImplicit()
 
         """
@@ -397,10 +386,6 @@ class AbsoluteAlchemicalFactory(object):
         Examples
         --------
 
-        >>> from openmmtools import testsystems
-        >>> alanine_dipeptide = testsystems.AlanineDipeptideVacuum()
-        >>> [reference_system, positions] = [alanine_dipeptide.system, alanine_dipeptide.positions]
-        >>> factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=[0, 1, 2])
         >>> protocol = factory.defaultVacuumProtocol()
 
         """
@@ -434,10 +419,6 @@ class AbsoluteAlchemicalFactory(object):
         Examples
         --------
 
-        >>> from openmmtools import testsystems
-        >>> waterbox = testsystems.WaterBox()
-        >>> [reference_system, positions] = [waterbox.system, waterbox.positions]
-        >>> factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=[0, 1, 2])
         >>> protocol = factory.defaultSolventProtocolExplicit()
 
         """
@@ -810,29 +791,6 @@ class AbsoluteAlchemicalFactory(object):
         * This could be streamlined if it was possible to modify System or Force objects.
         * isinstance(mm.NonbondedForce) and related expressions won't work if reference system was created with a different OpenMM implementation. 
           Use class names instead.
-
-        Examples
-        --------
-
-        Create alchemical intermediates for 'denihilating' one water in a water box.
-
-        >>> # Create a reference system.
-        >>> from openmmtools import testsystems
-        >>> waterbox = testsystems.WaterBox()
-        >>> [reference_system, positions] = [waterbox.system, waterbox.positions]
-        >>> # Create a factory to produce alchemical intermediates.
-        >>> factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=[0, 1, 2])
-
-        Create alchemical intermediates for 'denihilating' p-xylene in T4 lysozyme L99A in GBSA.
-
-        >>> # Create a reference system.
-        >>> from openmmtools import testsystems
-        >>> complex = testsystems.LysozymeImplicit()
-        >>> [reference_system, positions] = [complex.system, complex.positions]
-        >>> # Create a factory to produce alchemical intermediates.
-        >>> receptor_atoms = range(0,2603) # T4 lysozyme L99A
-        >>> ligand_atoms = range(2603,2621) # p-xylene
-        >>> factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=ligand_atoms)
 
         """
 
