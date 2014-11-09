@@ -11,10 +11,6 @@ script:
   - conda build devtools/conda-recipe
   - source activate $python
   - conda install --yes $HOME/miniconda/conda-bld/linux-64/yank-*
-  # push dev package to binstar
-  - conda install --yes binstar jinja2
-  - binstar -t $BINSTAR_TOKEN upload --force -u omnia -p yank $HOME/miniconda/conda-bld/*/*.tar.bz2
-  # see what else is installed
   - conda list -e
   # check if command line version was installed correctly
   - which yank
@@ -23,6 +19,8 @@ script:
   - cd tests
   - nosetests --nocapture -vv
   - cd ..
+  # Push to binstar anyway.
+  - bash -x devtools/ci/after_sucess.sh
 
 env:
   matrix:
