@@ -12,6 +12,8 @@ script:
   - source activate $python
   - conda install --yes $HOME/miniconda/conda-bld/linux-64/yank-*
   - conda list -e
+  - which yank
+  - yank --help
   - # Run tests
   - cd tests
   - nosetests --nocapture -vv

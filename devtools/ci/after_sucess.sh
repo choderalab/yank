@@ -14,7 +14,6 @@ fi
 
 if [[ "2.7 3.3" =~ "$python" ]]; then
     conda install --yes binstar jinja2
-    pip install -i https://pypi.binstar.org/pypi/simple docopt
     binstar -t $BINSTAR_TOKEN  upload --force -u omnia -p yank $HOME/miniconda/conda-bld/*/*.tar.bz2
 fi
 
