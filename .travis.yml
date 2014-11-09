@@ -1,7 +1,7 @@
 language: c
 
 install:
-  - source devtools/ci/install.sh
+  - bash -x devtools/ci/install.sh
   - export PYTHONUNBUFFERED=true
 
 script:
@@ -28,6 +28,6 @@ env:
 
 after_success:
   - echo "after_success"
-  - source devtools/ci/after_sucess.sh
+  - bash -x devtools/ci/after_sucess.sh
 
 
