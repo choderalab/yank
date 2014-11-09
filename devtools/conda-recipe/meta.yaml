@@ -11,7 +11,6 @@ requirements:
     - scipy
     - setuptools
     - netcdf4
-    - repex
     - openmm
     - openmmtools
     - pymbar
@@ -22,7 +21,6 @@ requirements:
     - pandas
     - scipy
     - netcdf4
-    - repex
     - openmm
     - openmmtools
     - pymbar
