@@ -259,11 +259,6 @@ class AbsoluteAlchemicalFactory(object):
         -----
         The unrestrained, fully interacting system is always listed first.
 
-        Examples
-        --------
-
-        >>> protocol = factory.defaultComplexProtocolImplicit()
-
         """
 
         alchemical_states = list()
@@ -305,11 +300,6 @@ class AbsoluteAlchemicalFactory(object):
         ----
         * Update this with optimized set of alchemical states.
 
-        Examples
-        --------
-
-        >>> protocol = factory.defaultComplexProtocolExplicit()
-
         """
 
         alchemical_states = list()
@@ -348,11 +338,6 @@ class AbsoluteAlchemicalFactory(object):
         ----
         * Update this with optimized set of alchemical states.
 
-        Examples
-        --------
-
-        >>> protocol = factory.defaultSolventProtocolImplicit()
-
         """
 
         alchemical_states = list()
@@ -383,11 +368,6 @@ class AbsoluteAlchemicalFactory(object):
         -----
         The unrestrained, fully interacting system is always listed first.
 
-        Examples
-        --------
-
-        >>> protocol = factory.defaultVacuumProtocol()
-
         """
 
         alchemical_states = list()
@@ -415,11 +395,6 @@ class AbsoluteAlchemicalFactory(object):
         TODO
         ----
         * Update this with optimized set of alchemical states.
-
-        Examples
-        --------
-
-        >>> protocol = factory.defaultSolventProtocolExplicit()
 
         """
 
@@ -555,7 +530,7 @@ class AbsoluteAlchemicalFactory(object):
 
         # Handle Lennard-Jones switch.
         if (method not in [openmm.NonbondedForce.NoCutoff]) and reference_force.getUseSwitchingFunction():
-            # TODO: Factor S
+            # TODO: Factor S to make it more readable.
             sterics_energy_expression += "S = step(r_switch - r) + step(r - r_switch) * step(r_cutoff - r) * (1-6*xs^5+15*xs^4-10*xs^3);"
             sterics_energy_expression += "xs = (r - r_switch) / (r_cutoff - r_switch);"
             r_switch= reference_force.getSwitchingDistance()
