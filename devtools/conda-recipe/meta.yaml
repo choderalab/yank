@@ -11,8 +11,6 @@ requirements:
     - scipy
     - setuptools
     - netcdf4
-    - mdtraj
-    - gaff2xml
     - repex
     - openmm
     - openmmtools
@@ -24,8 +22,6 @@ requirements:
     - pandas
     - scipy
     - netcdf4
-    - mdtraj
-    - gaff2xml
     - repex
     - openmm
     - openmmtools

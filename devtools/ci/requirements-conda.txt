@@ -1,16 +1,11 @@
 numpy
 scipy
-pytables
 cython
-pandas
 pyyaml
 pip
 nose
-mdtraj
 openmm
 openmmtools
 ambermini
-jinja2
-gaff2xml
 netcdf4
 pymbar
