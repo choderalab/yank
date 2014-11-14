@@ -10,12 +10,17 @@ script:
   - conda install --yes conda-build jinja2
   - conda build devtools/conda-recipe
   - source activate $python
-  - conda install $HOME/miniconda/conda-bld/linux-64/yank-*
+  - conda install --yes $HOME/miniconda/conda-bld/linux-64/yank-*
   - conda list -e
+  # check if command line version was installed correctly
+  - which yank
+  - yank --help
   - # Run tests
   - cd tests
   - nosetests --nocapture -vv
   - cd ..
+  # Push to binstar anyway.
+  - bash -x devtools/ci/after_sucess.sh
 
 env:
   matrix:
@@ -28,6 +33,6 @@ env:
 
 after_success:
   - echo "after_success"
-  - source devtools/ci/after_sucess.sh
+  - bash -x devtools/ci/after_sucess.sh
 
 

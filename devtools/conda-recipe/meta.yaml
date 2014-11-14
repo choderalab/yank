@@ -2,7 +2,6 @@ package:
   name: yank
   version: !!str 0.0.0
 
-
 requirements:
   build:
     - python
@@ -10,27 +9,25 @@ requirements:
     - numpy
     - scipy
     - setuptools
-    - netCDF4
-    - mdtraj
-    - gaff2xml
-    - repex
+    - netcdf4
     - openmm
     - openmmtools
     - pymbar
     - ambermini
+    - docopt
+    - gaff2xml
 
   run:
     - python
     - pandas
     - scipy
-    - netCDF4
-    - mdtraj
-    - gaff2xml
-    - repex
+    - netcdf4
     - openmm
     - openmmtools
     - pymbar
     - ambermini
+    - docopt
+    - gaff2xml
 
 about:
   home: https://github.com/choderalab/yank

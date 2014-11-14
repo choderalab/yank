@@ -14,6 +14,7 @@ Test command-line interface.
 #=============================================================================================
 
 import tempfile
+import commands
 
 from openmmtools import testsystems
 
@@ -25,8 +26,28 @@ from nose.plugins.skip import Skip, SkipTest
 # UNIT TESTS
 #=============================================================================================
 
-def run_cli(command):
-    cli.main(argv=command.split())
+def run_cli(arguments, expected_output=None):
+    #cli.main(argv=arguments.split())
+    [status, output] = commands.getstatusoutput('yank ' + arguments)
+
+    if status:
+        message  = "An error return value (%s) was obtained:\n" % str(status)
+        message += "\n"
+        message += output
+        message += "\n"
+        raise Exception(message)
+
+    if expected_output:
+        if output != expected_output:
+            message  = "Output differs from expected output.\n"
+            message += "\n"
+            message += "Expected output:\n"
+            message += expected_output
+            message += "\n"
+            message += "Actual output:\n"
+            message += output
+            message += "\n"
+            raise Exception(message)
 
 def test_help():
     run_cli('--help')

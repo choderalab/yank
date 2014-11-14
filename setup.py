@@ -167,7 +167,7 @@ setup(
         'openmm', # conda
         'pymbar', # conda
         'openmmtools', # conda
-        'docopt==0.6.1',
+        'docopt>=0.6.1',
         ],
     entry_points={'console_scripts': ['yank = yank.cli:main']})
 

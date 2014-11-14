@@ -158,11 +158,6 @@ if __name__ == "__main__":
     import doctest
     doctest.testmod()
 
-    import oldrepex as repex
-    import simtk.pyopenmm.extras.testsystems as testsystems
-    import timeseries
-    import pymbar
-
     # Use reference platform.
     platform = simtk.openmm.Platform.getPlatformByName("Reference")
 
@@ -180,7 +175,7 @@ if __name__ == "__main__":
     temperature   = 300.0 * units.kelvin
     kT = kB * temperature
     beta = 1.0 / kT
-    
+
     import simtk.openmm as openmm
 
     # Create receptor.
