@@ -576,7 +576,8 @@ class AbsoluteAlchemicalFactory(object):
         sterics_custom_nonbonded_force.setCutoffDistance(nonbonded_force.getCutoffDistance())
         electrostatics_custom_nonbonded_force.setCutoffDistance(nonbonded_force.getCutoffDistance())
         sterics_custom_nonbonded_force.setSwitchingDistance(nonbonded_force.getSwitchingDistance())
-        sterics_custom_nonbonded_force.setUseLongRangeCorrection(nonbonded_force.getUseDispersionCorrection())
+        #sterics_custom_nonbonded_force.setUseLongRangeCorrection(nonbonded_force.getUseDispersionCorrection()) # TODO: This incorrectly includes attractive and switching contributions
+        sterics_custom_nonbonded_force.setUseLongRangeCorrection(False)
         electrostatics_custom_nonbonded_force.setUseLongRangeCorrection(False)
 
         # Set periodicity and cutoff parameters corresponding to reference Force.

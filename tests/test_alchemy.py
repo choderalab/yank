@@ -134,7 +134,7 @@ def compareSystemEnergies(positions, systems, descriptions, platform=None, preci
 
     return potentials
 
-def alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms, platform_name=None, annihilate_electrostatics=True, annihilate_sterics=False):
+def alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms, platform_name=None, annihilate_electrostatics=True, annihilate_sterics=False, precision='double'):
     """
     Compare energies of reference system and fully-interacting alchemically modified system.
 
@@ -144,6 +144,8 @@ def alchemical_factory_check(reference_system, positions, receptor_atoms, ligand
     positions - the positions to assess energetics for
     receptor_atoms (list of int) - the list of receptor atoms
     ligand_atoms (list of int) - the list of ligand atoms to alchemically modify
+    precision : str, optional, default=None
+       Precision model, or default if not specified. ('single', 'double', 'mixed')
 
     """
 
@@ -159,14 +161,14 @@ def alchemical_factory_check(reference_system, positions, receptor_atoms, ligand
     if platform_name:
         platform = openmm.Platform.getPlatformByName(platform_name)
 
-    delta = 1.0e-5
+    delta = 1.0e-10
 
     # Create systems.
-    compareSystemEnergies(positions, [reference_system, factory.createPerturbedSystem(AlchemicalState(0, 1, 1, 1))], ['reference', 'alchemical'], platform=platform)
-    compareSystemEnergies(positions, [factory.createPerturbedSystem(AlchemicalState(0, 1, 1, 1)), factory.createPerturbedSystem(AlchemicalState(0, 1-delta, 1, 1))], ['alchemical', 'partially discharged'], platform=platform)
-    compareSystemEnergies(positions, [factory.createPerturbedSystem(AlchemicalState(0, delta, 1, 1)), factory.createPerturbedSystem(AlchemicalState(0, 0.0, 1, 1))], ['partially charged', 'discharged'], platform=platform)
-    compareSystemEnergies(positions, [factory.createPerturbedSystem(AlchemicalState(0, 0, 1, 1)), factory.createPerturbedSystem(AlchemicalState(0, 0, 1-delta, 1))], ['discharged', 'partially decoupled'], platform=platform)
-    compareSystemEnergies(positions, [factory.createPerturbedSystem(AlchemicalState(0, 0, delta, 1)), factory.createPerturbedSystem(AlchemicalState(0, 0, 0, 1))], ['partially coupled', 'decoupled'], platform=platform)
+    compareSystemEnergies(positions, [reference_system, factory.createPerturbedSystem(AlchemicalState(0, 1, 1, 1))], ['reference', 'alchemical'], platform=platform, precision=precision)
+    compareSystemEnergies(positions, [factory.createPerturbedSystem(AlchemicalState(0, 1, 1, 1)), factory.createPerturbedSystem(AlchemicalState(0, 1-delta, 1, 1))], ['alchemical', 'partially discharged'], platform=platform, precision=precision)
+    compareSystemEnergies(positions, [factory.createPerturbedSystem(AlchemicalState(0, delta, 1, 1)), factory.createPerturbedSystem(AlchemicalState(0, 0.0, 1, 1))], ['partially charged', 'discharged'], platform=platform, precision=precision)
+    compareSystemEnergies(positions, [factory.createPerturbedSystem(AlchemicalState(0, 0, 1, 1)), factory.createPerturbedSystem(AlchemicalState(0, 0, 1-delta, 1))], ['discharged', 'partially decoupled'], platform=platform, precision=precision)
+    compareSystemEnergies(positions, [factory.createPerturbedSystem(AlchemicalState(0, 0, delta, 1)), factory.createPerturbedSystem(AlchemicalState(0, 0, 0, 1))], ['partially coupled', 'decoupled'], platform=platform, precision=precision)
 
     return
 
@@ -573,19 +575,15 @@ def test_src_explicit():
 #=============================================================================================
 
 if __name__ == "__main__":
-    test_systembuilder_lysozyme_pdb_mol2()
-    sys.exit(1) # DEBUG
-
-    test_lj_cluster()
-    test_lj_fluid_without_dispersion()
-    test_lj_fluid_with_dispersion()
-    test_tip3p_discharged()
-    test_tip3p_noswitch()
+    #test_lj_cluster()
+    #test_lj_fluid_without_dispersion()
+    #test_lj_fluid_with_dispersion()
+    #test_tip3p_discharged()
+    #test_tip3p_noswitch()
     test_tip3p_reaction_field()
-    test_tip3p_pme()
-    test_tip3p_with_dispersion()
-    test_alanine_dipeptide_vacuum()
-    test_alanine_dipeptide_implicit()
-    test_alanine_dipeptide_explicit()
-
-    test_systembuilder_lysozyme_pdb_mol2()
+    #test_tip3p_pme()
+    #test_tip3p_with_dispersion()
+    #test_alanine_dipeptide_vacuum()
+    #test_alanine_dipeptide_implicit()
+    #test_alanine_dipeptide_explicit()
+    #test_systembuilder_lysozyme_pdb_mol2()

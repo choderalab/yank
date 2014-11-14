@@ -164,10 +164,11 @@ setup(
     #package_data={'yank': find_package_data('yank/data', 'yank')},
     zip_safe=False,
     install_requires=[
-        'openmm', # conda
-        'pymbar', # conda
-        'openmmtools', # conda
+        'openmm',
+        'pymbar',
+        'openmmtools',
         'docopt>=0.6.1',
+        'netcdf4',
         ],
     entry_points={'console_scripts': ['yank = yank.cli:main']})
 
