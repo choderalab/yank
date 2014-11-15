@@ -26,6 +26,7 @@ YANK
 Usage:
   yank [-h | --help] [-c | --cite]
   yank selftest [-v | --verbose]
+  yank platforms
   yank setup binding amber --setupdir=DIRECTORY --ligname=RESNAME (-s=STORE | --store=STORE) [-i=ITERATIONS | --iterations=ITERATIONS] [--restraints <restraint_type>] [--randomize-ligand] [--nbmethod=METHOD] [--gbsa=GBSA] [--constraints=CONSTRAINTS] [--platform=PLATFORM] [--temperature=TEMPERATURE] [--pressure=PRESSURE] [--minimize] [-v | --verbose]
   yank setup binding systembuilder --ligand=FILENAME --receptor=FILENAME [-i=ITERATIONS | --iterations=ITERATIONS] [--restraints <restraint_type>] [--randomize-ligand] [--nbmethod=METHOD] [--gbsa=GBSA] [--constraints=CONSTRAINTS] [--platform=PLATFORM] [--temperature=TEMPERATURE] [--pressure=PRESSURE] [-v | --verbose]
   yank run (-s=STORE | --store=STORE) [-m | --mpi] [-i=ITERATIONS | --iterations ITERATIONS] [--platform=PLATFORM] [--phase=PHASE] [-o | --online-analysis] [-v | --verbose]
@@ -35,6 +36,7 @@ Usage:
 
 Commands:
   selftest                      Run selftests.
+  platforms                     List available OpenMM platforms.
   setup binding amber           Set up binding free energy calculation using AMBER.
   run                           Run the calculation that has been set up
   status                        Get the current status
@@ -89,7 +91,7 @@ def main(argv=None):
         dispatched = commands.cite.dispatch(args)
 
     # Handle commands.
-    command_list = ['selftest', 'setup', 'run', 'status', 'analyze', 'cleanup'] # TODO: Build this list automagically by introspection of commands submodule.
+    command_list = ['selftest', 'platforms', 'setup', 'run', 'status', 'analyze', 'cleanup'] # TODO: Build this list automagically by introspection of commands submodule.
     for command in command_list:
         if args[command]:
             dispatched = getattr(commands, command).dispatch(args)
