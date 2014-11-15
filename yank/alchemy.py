@@ -46,6 +46,12 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG)
 
 #=============================================================================================
+# PARAMETERS
+#=============================================================================================
+
+ONE_4PI_EPS0 = 138.935456 # OpenMM constant for Coulomb interactions (openmm/platforms/reference/include/SimTKOpenMMRealType.h) in OpenMM units
+
+#=============================================================================================
 # MODULE UTILITIES
 #=============================================================================================
 
@@ -498,7 +504,6 @@ class AbsoluteAlchemicalFactory(object):
         if method in [openmm.NonbondedForce.NoCutoff]:
             # soft-core Lennard-Jones
             sterics_energy_expression += "U_sterics = lambda_sterics*4*epsilon*x*(x-1.0); x = (sigma/reff_sterics)^6;"
-            #sterics_energy_expression += "U_sterics = lambda_sterics*4*epsilon*x*(x-1.0); x = (sigma/r)^6;" # DEBUG
             # soft-core Coulomb
             electrostatics_energy_expression += "U_electrostatics = ONE_4PI_EPS0*lambda_electrostatics*chargeprod/reff_electrostatics;"
         elif method in [openmm.NonbondedForce.CutoffPeriodic, openmm.NonbondedForce.CutoffNonPeriodic]:
@@ -528,29 +533,11 @@ class AbsoluteAlchemicalFactory(object):
         else:
             raise Exception("Nonbonded method %s not supported yet." % str(method))
 
-        # Handle Lennard-Jones switch.
-        if (method not in [openmm.NonbondedForce.NoCutoff]) and reference_force.getUseSwitchingFunction():
-            # TODO: Factor S to make it more readable.
-            sterics_energy_expression += "S = step(r_switch - r) + step(r - r_switch) * step(r_cutoff - r) * (1-6*xs^5+15*xs^4-10*xs^3);"
-            sterics_energy_expression += "xs = (r - r_switch) / (r_cutoff - r_switch);"
-            r_switch= reference_force.getSwitchingDistance()
-            r_cutoff = reference_force.getCutoffDistance()
-            sterics_energy_expression += "r_switch = %f;" % (r_switch / r_switch.in_unit_system(unit.md_unit_system).unit)
-            sterics_energy_expression += "r_cutoff = %f;" % (r_cutoff / r_cutoff.in_unit_system(unit.md_unit_system).unit)
-        else:
-            sterics_energy_expression += "S = 1;"
-
         # Add additional definitions common to all methods.
-        #sterics_energy_expression += "reff6_sterics = (softcore_alpha*(1-lambda_sterics) + (r/sigma)^6);" # effective softcore distance for sterics
-        #sterics_energy_expression += "reff_sterics = (softcore_alpha*(1.-lambda_sterics) + (r/sigma)^6.)^(1./6.);" # effective softcore distance for sterics # DEBUG
-        #sterics_energy_expression += "reff_sterics = (softcore_alpha*(1.-lambda_sterics) + (r/sigma)^6.)^(1./6.);" # effective softcore distance for sterics # DEBUG
-        #sterics_energy_expression += "reff_sterics = sigma*((softcore_alpha*(1.-lambda_sterics) + (r/sigma)^6))^(1/6);" # effective softcore distance for sterics
         sterics_energy_expression += "reff_sterics = sigma*((softcore_alpha*(1.-lambda_sterics) + (r/sigma)^6))^(1/6);" # effective softcore distance for sterics
-        #sterics_energy_expression += "reff_sterics = (softcore_alpha*(1-lambda_sterics)*sigma + r);" # effective softcore distance for sterics # DEBUG
         sterics_energy_expression += "softcore_alpha = %f;" % softcore_alpha
         electrostatics_energy_expression += "reff_electrostatics = sqrt(softcore_beta*(1.-lambda_electrostatics) + r^2);" # effective softcore distance for electrostatics
         electrostatics_energy_expression += "softcore_beta = %f;" % (softcore_beta / softcore_beta.in_unit_system(unit.md_unit_system).unit)
-        ONE_4PI_EPS0 = 138.935456 # OpenMM constant for Coulomb interactions (openmm/platforms/reference/include/SimTKOpenMMRealType.h) in OpenMM units
         electrostatics_energy_expression += "ONE_4PI_EPS0 = %f;" % ONE_4PI_EPS0 # already in OpenMM units
 
         # Define mixing rules.
@@ -561,11 +548,10 @@ class AbsoluteAlchemicalFactory(object):
         electrostatics_mixing_rules += "chargeprod = charge1*charge2;" # mixing rule for charges
 
         # Create CustomNonbondedForce to handle interactions between alchemically-modified atoms and rest of system.
-        #exceptions_energy_expression = "lambda_sterics*4*epsilon*x*(x-1.0) + lambda_electrostatics*ONE_4PI_ESP0*chargeprod/r; x = (sigma/r)^6;" # combined energy expression for exceptions
         electrostatics_custom_nonbonded_force = openmm.CustomNonbondedForce("U_electrostatics;" + electrostatics_energy_expression + electrostatics_mixing_rules)
         electrostatics_custom_nonbonded_force.addGlobalParameter("lambda_electrostatics", 1.0);
         electrostatics_custom_nonbonded_force.addPerParticleParameter("charge") # partial charge
-        sterics_custom_nonbonded_force = openmm.CustomNonbondedForce("S*U_sterics;" + sterics_energy_expression + sterics_mixing_rules)
+        sterics_custom_nonbonded_force = openmm.CustomNonbondedForce("U_sterics;" + sterics_energy_expression + sterics_mixing_rules)
         sterics_custom_nonbonded_force.addGlobalParameter("lambda_sterics", 1.0);
         sterics_custom_nonbonded_force.addPerParticleParameter("sigma") # Lennard-Jones sigma
         sterics_custom_nonbonded_force.addPerParticleParameter("epsilon") # Lennard-Jones epsilon
@@ -576,8 +562,8 @@ class AbsoluteAlchemicalFactory(object):
         sterics_custom_nonbonded_force.setCutoffDistance(nonbonded_force.getCutoffDistance())
         electrostatics_custom_nonbonded_force.setCutoffDistance(nonbonded_force.getCutoffDistance())
         sterics_custom_nonbonded_force.setSwitchingDistance(nonbonded_force.getSwitchingDistance())
-        #sterics_custom_nonbonded_force.setUseLongRangeCorrection(nonbonded_force.getUseDispersionCorrection()) # TODO: This incorrectly includes attractive and switching contributions
-        sterics_custom_nonbonded_force.setUseLongRangeCorrection(False)
+        sterics_custom_nonbonded_force.setUseLongRangeCorrection(nonbonded_force.getUseDispersionCorrection()) # TODO: This should be enabled once we fix convergence issues with OpenMM numerical integration scheme [CustomNonbondedForceImpl::integrateInteraction]
+        #sterics_custom_nonbonded_force.setUseLongRangeCorrection(False) # TODO: Temporary workaround
         electrostatics_custom_nonbonded_force.setUseLongRangeCorrection(False)
 
         # Set periodicity and cutoff parameters corresponding to reference Force.
@@ -598,7 +584,7 @@ class AbsoluteAlchemicalFactory(object):
         system.addForce(electrostatics_custom_nonbonded_force)
 
         # Create CustomBondForce to handle exceptions for both kinds of interactions.
-        custom_bond_force = openmm.CustomBondForce("S*U_sterics + U_electrostatics;" + sterics_energy_expression + electrostatics_energy_expression)
+        custom_bond_force = openmm.CustomBondForce("U_sterics + U_electrostatics;" + sterics_energy_expression + electrostatics_energy_expression)
         custom_bond_force.addGlobalParameter("lambda_electrostatics", 1.0);
         custom_bond_force.addGlobalParameter("lambda_sterics", 1.0);
         custom_bond_force.addPerBondParameter("chargeprod") # charge product
@@ -642,6 +628,7 @@ class AbsoluteAlchemicalFactory(object):
 
 
     def _alchemicallyModifyAmoebaVdwForce(self, system, reference_force):
+        # This feature is incompletely implemented, so raise an exception.
         raise Exception("Not implemented")
 
         # Softcore Halgren potential from Eq. 3 of
@@ -970,22 +957,14 @@ class AbsoluteAlchemicalFactory(object):
         >>> # Create the perturbed systems using this protocol.
         >>> alchemical_system = factory.createPerturbedSystem(alchemical_state)
 
-        NOTES
-
-        If lambda = 1.0 is specified for some force terms, they will not be replaced with modified forms.
-
         """
 
         # Record timing statistics.
         initial_time = time.time()
         logger.debug("Creating alchemically modified intermediate...")
 
-        if (alchemical_state.ligandElectrostatics == 1.0) and (alchemical_state.ligandSterics == 1.0) and (alchemical_state.ligandTorsions == 1.0):
-            # Make copy of unperturbed reference system.
-            system = copy.deepcopy(self.reference_system)
-        else:
-            # Return an alchemically modified copy.
-            system = copy.deepcopy(self.alchemically_modified_system)
+        # Return an alchemically modified copy.
+        system = copy.deepcopy(self.alchemically_modified_system)
 
         # Perturb the default global parameters for this system according to the alchemical parameters.
         self.perturbSystem(system, alchemical_state)
