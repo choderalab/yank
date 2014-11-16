@@ -5,6 +5,9 @@
 #=============================================================================================
 
 """
+repex
+=====
+
 Replica-exchange simulation algorithms and specific variants.
 
 DESCRIPTION
@@ -702,7 +705,7 @@ class ReplicaExchange(object):
 
         return
 
-    def create(self, states, positions, protocol=None, metadata=None):
+    def create(self, states, positions, options=None, metadata=None):
         """
         Create new replica-exchange simulation.
 
@@ -717,13 +720,13 @@ class ReplicaExchange(object):
            One or more sets of initial positions
            to be initially assigned to replicas in a round-robin fashion, provided simulation is not resumed from store file.
            Currently, positions must be specified as a list of simtk.unit.Quantity-wrapped numpy arrays.
-        protocol : dict, optional, default=None
-           Optional protocol to use for specifying simulation protocol as a dict. Provided keywords will be matched to object variables to replace defaults.
+        options : dict, optional, default=None
+           Optional dict to use for specifying simulation options. Provided keywords will be matched to object variables to replace defaults.
         metadata : dict, optional, default=None
            metadata to store in a 'metadata' group in store file
 
         """
-        if protocol and ('verbose' in protocol): self.verbose = protocol['verbose']
+        if options and ('verbose' in options): self.verbose = options['verbose']
         # TODO: Find a better solution to setting verbosity.
 
         # Check if netcdf file exists.
@@ -753,13 +756,13 @@ class ReplicaExchange(object):
         else:
             self.provided_positions = [ unit.Quantity(numpy.array(positions / positions.unit), positions.unit) ]
 
-        # Handle provided 'protocol' dict, replacing any options provided by caller in dictionary.
+        # Handle provided 'options' dict, replacing any options provided by caller in dictionary.
         # TODO: Look for 'verbose' key first.
-        if protocol is not None:
-            for key in protocol.keys(): # for each provided key
+        if options is not None:
+            for key in options.keys(): # for each provided key
                 if key in vars(self).keys(): # if this is also a simulation parameter
-                    value = protocol[key]
-                    if self.verbose: print "from protocol: %s -> %s" % (key, str(value))
+                    value = options[key]
+                    if self.verbose: print "from options: %s -> %s" % (key, str(value))
                     vars(self)[key] = value # replace default simulation parameter with provided parameter
 
         # Store metadata to store in store file.
@@ -767,11 +770,11 @@ class ReplicaExchange(object):
 
         return
 
-    def resume(self, protocol=None):
+    def resume(self, options=None):
         """
         Parameters
         ----------
-        protocol : dict, optional, default=None
+        options : dict, optional, default=None
            will override any options restored from the store file.
 
         """
@@ -797,13 +800,13 @@ class ReplicaExchange(object):
             if not state.is_compatible_with(self.states[0]):
                 raise ParameterError("Provided ThermodynamicState states must all be from the same thermodynamic ensemble.")
 
-        # Handle provided 'protocol' dict, replacing any options provided by caller in dictionary.
+        # Handle provided 'options' dict, replacing any options provided by caller in dictionary.
         # TODO: Check to make sure that only allowed overrides are specified.
-        if protocol:
-            for key in protocol.keys(): # for each provided key
+        if options:
+            for key in options.keys(): # for each provided key
                 if key in vars(self).keys(): # if this is also a simulation parameter
-                    value = protocol[key]
-                    if self.verbose: print "from protocol: %s -> %s" % (key, str(value))
+                    value = options[key]
+                    if self.verbose: print "from options: %s -> %s" % (key, str(value))
                     vars(self)[key] = value # replace default simulation parameter with provided parameter
 
         return
@@ -2422,7 +2425,7 @@ class ParallelTempering(ReplicaExchange):
 
     """
 
-    def create(self, system, positions, protocol=None, Tmin=None, Tmax=None, ntemps=None, temperatures=None, pressure=None, metadata=None):
+    def create(self, system, positions, options=None, Tmin=None, Tmax=None, ntemps=None, temperatures=None, pressure=None, metadata=None):
         """
         Initialize a parallel tempering simulation object.
 
@@ -2442,8 +2445,8 @@ class ParallelTempering(ReplicaExchange):
            if specified, this list of temperatures will be used instead of (Tmin, Tmax, ntemps)
         pressure : simtk.unit.Quantity with units compatible with atmospheres, optional, default=None
            if specified, a MonteCarloBarostat will be added (or modified) to perform NPT simulations
-        protocol : dict, optional, default=None
-           Optional protocol to use for specifying simulation protocol as a dict.  Provided keywords will be matched to object variables to replace defaults.
+        options : dict, optional, default=None
+           Options to use for specifying simulation protocol.  Provided keywords will be matched to object variables to replace defaults.
 
         Notes
         -----
@@ -2462,7 +2465,7 @@ class ParallelTempering(ReplicaExchange):
         states = [ ThermodynamicState(system=system, temperature=self.temperatures[i], pressure=pressure) for i in range(ntemps) ]
 
         # Initialize replica-exchange simlulation.
-        ReplicaExchange.create(self, states, positions, protocol=protocol, metadata=metadata)
+        ReplicaExchange.create(self, states, positions, options=options, metadata=metadata)
 
         # Override title.
         self.title = 'Parallel tempering simulation created using ParallelTempering class of repex.py on %s' % time.asctime(time.localtime())
@@ -2588,7 +2591,7 @@ class HamiltonianExchange(ReplicaExchange):
 
     """
 
-    def create(self, reference_state, systems, positions, protocol=None, metadata=None):
+    def create(self, reference_state, systems, positions, options=None, metadata=None):
         """
         Initialize a Hamiltonian exchange simulation object.
 
@@ -2600,8 +2603,8 @@ class HamiltonianExchange(ReplicaExchange):
            list of systems to simulate (one per replica)
         positions : simtk.unit.Quantity of numpy natoms x 3 with units compatible with nanometers
            positions (or a list of positions objects) for initial assignment of replicas (will be used in round-robin assignment)
-        protocol : dict, optional, default=None
-           Optional protocol to use for specifying simulation protocol as a dict. Provided keywords will be matched to object variables to replace defaults.
+        options : dict, optional, default=None
+           Optional dict to use for specifying simulation protocol. Provided keywords will be matched to object variables to replace defaults.
         metadata : dict, optional, default=None
            metadata to store in a 'metadata' group in store file
 
@@ -2614,7 +2617,7 @@ class HamiltonianExchange(ReplicaExchange):
             states = [ ThermodynamicState(system=system, temperature=reference_state.temperature, pressure=reference_state.pressure) for system in systems ]
 
         # Initialize replica-exchange simlulation.
-        ReplicaExchange.create(self, states, positions, protocol=protocol, metadata=metadata)
+        ReplicaExchange.create(self, states, positions, options=options, metadata=metadata)
 
         # Override title.
         self.title = 'Hamiltonian exchange simulation created using HamiltonianExchange class of repex.py on %s' % time.asctime(time.localtime())

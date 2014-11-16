@@ -288,7 +288,7 @@ def dispatch_binding(args):
     # Set options.
     options = dict()
     if args['--iterations']:
-        options['niterations'] = int(args['--iterations'])
+        options['number_of_iterations'] = int(args['--iterations'])
     if args['--online-analysis']:
         options['online_analysis'] = True
     if args['--restraints']:
