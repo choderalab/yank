@@ -1,0 +1,26 @@
+# Create a TIP3P water box.
+
+# Load AMBER forcefield for protein.
+source leaprc.ff99SBildn
+
+complex = combine { TIP3PBOX }
+solvatebox complex TIP3PBOX 3.45 0.5 iso
+
+# Rename ligand.
+set complex.1 name LIG
+ligand = sequence { WAT }
+receptor = sequence { WAT }
+
+# Create complex.
+saveamberparm complex complex.prmtop complex.inpcrd
+savepdb complex complex.pdb
+
+# Ligand
+saveamberparm ligand ligand.prmtop ligand.inpcrd
+savepdb ligand ligand.pdb
+
+# Receptor.
+saveamberparm receptor receptor.prmtop receptor.inpcrd
+savepdb receptor receptor.pdb
+
+#quit
