@@ -60,8 +60,8 @@ Simulation options:
   --nbmethod=METHOD             OpenMM nonbonded method (NoCutoff, CutoffPeriodic, PME, Ewald) [default: NoCutoff]
   --constraints=CONSTRAINTS     OpenMM constraints (None, HBonds, AllBonds, HAngles) [default: HBonds]
   --phase=PHASE                 Resume only specified phase of calculation ('solvent', 'complex')
-  --temperature=TEMPERATURE     Temperature for simulation (in K, or simtk.unit readable string) [default: 298*kelvin]
-  --pressure=PRESSURE           Pressure for simulation (in atm, or simtk.unit readable string) [default: 1*atmospheres]
+  --temperature=TEMPERATURE     Temperature for simulation (in K, or simtk.unit readable string) [default: "298*kelvin"]
+  --pressure=PRESSURE           Pressure for simulation (in atm, or simtk.unit readable string) [default: "1*atmospheres"]
 
 Amber options:
   --setupdir=DIRECTORY          Setup directory to look for AMBER {receptor|ligand|complex}.{prmtop|inpcrd} files.

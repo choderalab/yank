@@ -57,10 +57,13 @@ TODO
 import os
 import numpy as np
 import time
+from functools import partial
 
 import simtk.openmm as openmm
 import simtk.unit as units
 from simtk.openmm import app
+
+import pymbar
 
 import logging
 logger = logging.getLogger(__name__)
@@ -115,17 +118,6 @@ def compareSystemEnergies(positions, systems, descriptions, platform=None, preci
     logger.info("========")
     for i in range(len(systems)):
         logger.info("%32s : %24.8f kcal/mol" % (descriptions[i], potentials[i] / units.kilocalories_per_mole))
-
-        integrator = openmm.VerletIntegrator(timestep)
-        if platform:
-            context = openmm.Context(systems[i], integrator, platform)
-        else:
-            context = openmm.Context(systems[i], integrator)
-        context.setPositions(positions)
-        state = context.getState(getEnergy=True, getPositions=True)
-        potential = state.getPotentialEnergy()
-        del context, integrator
-
         if (i > 0):
             delta = potentials[i] - potentials[0]
             logger.info("%32s : %24.8f kcal/mol" % ('ERROR', delta / units.kilocalories_per_mole))
@@ -168,16 +160,30 @@ def alchemical_factory_check(reference_system, positions, receptor_atoms, ligand
 
     return
 
-def benchmark(reference_system, positions, receptor_atoms, ligand_atoms, platform_name=None, annihilate_electrostatics=True, annihilate_sterics=False, nsteps=500):
+def benchmark(reference_system, positions, receptor_atoms, ligand_atoms, platform_name=None, annihilate_electrostatics=True, annihilate_sterics=False, nsteps=500, timestep=1.0*units.femtoseconds):
     """
-    Benchmark performance relative to unmodified system.
+    Benchmark performance of alchemically modified system relative to original system.
 
-    ARGUMENTS
-
-    reference_system (simtk.openmm.System) - the reference System object to compare with
-    positions - the positions to assess energetics for
-    receptor_atoms (list of int) - the list of receptor atoms
-    ligand_atoms (list of int) - the list of ligand atoms to alchemically modify
+    Parameters
+    ----------
+    reference_system : simtk.openmm.System
+       The reference System object to compare with
+    positions : simtk.unit.Quantity with units compatible with nanometers
+       The positions to assess energetics for.
+    receptor_atoms : list of int
+       The list of receptor atoms.
+    ligand_atoms : list of int
+       The list of ligand atoms to alchemically modify.
+    platform_name : str, optional, default=None
+       The name of the platform to use for benchmarking.
+    annihilate_electrostatics : bool, optional, default=True
+       If True, electrostatics will be annihilated; if False, decoupled.
+    annihilate_sterics : bool, optional, default=False
+       If True, sterics will be annihilated; if False, decoupled.
+    nsteps : int, optional, default=500
+       Number of molecular dynamics steps to use for benchmarking.
+    timestep : simtk.unit.Quantity with units compatible with femtoseconds, optional, default=1*femtoseconds
+       Timestep to use for benchmarking.
 
     """
 
@@ -205,7 +211,6 @@ def benchmark(reference_system, positions, receptor_atoms, ligand_atoms, platfor
     final_time = time.time()
     elapsed_time = final_time - initial_time
     # Compare energies.
-    timestep = 1.0 * units.femtosecond
     logger.info("Computing reference energies...")
     reference_integrator = openmm.VerletIntegrator(timestep)
     if platform:
@@ -253,62 +258,96 @@ def benchmark(reference_system, positions, receptor_atoms, ligand_atoms, platfor
 
     return delta
 
-def overlap_check():
+def overlap_check(reference_system, positions, receptor_atoms, ligand_atoms, platform_name=None, annihilate_electrostatics=True, annihilate_sterics=False, precision=None, nsteps=50, nsamples=200):
     """
-    BUGS TO REPORT:
-    * Even if epsilon = 0, energy of two overlapping atoms is 'nan'.
-    * Periodicity in 'nan' if dr = 0.1 even in nonperiodic system
+    Test overlap between reference system and alchemical system by running a short simulation.
+
+    Parameters
+    ----------
+    reference_system : simtk.openmm.System
+       The reference System object to compare with
+    positions : simtk.unit.Quantity with units compatible with nanometers
+       The positions to assess energetics for.
+    receptor_atoms : list of int
+       The list of receptor atoms.
+    ligand_atoms : list of int
+       The list of ligand atoms to alchemically modify.
+    platform_name : str, optional, default=None
+       The name of the platform to use for benchmarking.
+    annihilate_electrostatics : bool, optional, default=True
+       If True, electrostatics will be annihilated; if False, decoupled.
+    annihilate_sterics : bool, optional, default=False
+       If True, sterics will be annihilated; if False, decoupled.
+    nsteps : int, optional, default=50
+       Number of molecular dynamics steps between samples.
+    nsamples : int, optional, default=100
+       Number of samples to collect.
+
     """
 
-    # Create a reference system.
-
-    logger.info("Creating Lennard-Jones cluster system...")
-    #[reference_system, positions] = testsystems.LennardJonesFluid()
-    #receptor_atoms = [0]
-    #ligand_atoms = [1]
-
-    system_container = testsystems.LysozymeImplicit()
-    (reference_system, positions) = system_container.system, system_container.positions
-    receptor_atoms = range(0,2603) # T4 lysozyme L99A
-    ligand_atoms = range(2603,2621) # p-xylene
-
-    unit = positions.unit
-    positions = units.Quantity(np.array(positions / unit), unit)
-
+    # Create a fully-interacting alchemical state.
     factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=ligand_atoms)
-    alchemical_state = AlchemicalState(0.00, 0.00, 0.00, 1.0)
-
-    # Create the perturbed system.
-    logger.info("Creating alchemically-modified state...")
+    alchemical_state = AlchemicalState(0.00, 1.00, 1.00, 1.0)
     alchemical_system = factory.createPerturbedSystem(alchemical_state)
-    # Compare energies.
-    timestep = 1.0 * units.femtosecond
-    logger.info("Computing reference energies...")
-    integrator = openmm.VerletIntegrator(timestep)
-    context = openmm.Context(reference_system, integrator)
-    context.setPositions(positions)
-    state = context.getState(getEnergy=True)
-    reference_potential = state.getPotentialEnergy()
-    del state, context, integrator
-    logger.info(reference_potential)
-    logger.info("Computing alchemical energies...")
-    integrator = openmm.VerletIntegrator(timestep)
-    context = openmm.Context(alchemical_system, integrator)
-    dr = 0.1 * units.angstroms # TODO: Why does 0.1 cause periodic 'nan's?
-    a = receptor_atoms[-1]
-    b = ligand_atoms[-1]
-    delta = positions[a,:] - positions[b,:]
-    for k in range(3):
-        positions[ligand_atoms,k] += delta[k]
-    for i in range(30):
-        r = dr * i
-        positions[ligand_atoms,0] += dr
 
-        context.setPositions(positions)
-        state = context.getState(getEnergy=True)
-        alchemical_potential = state.getPotentialEnergy()
-        logger.info("%8.3f A : %f " % (r / units.angstroms, alchemical_potential / units.kilocalories_per_mole))
-    del state, context, integrator
+    temperature = 300.0 * units.kelvin
+    collision_rate = 5.0 / units.picoseconds
+    timestep = 2.0 * units.femtoseconds
+    kT = (kB * temperature)
+
+    # Select platform.
+    platform = None
+    if platform_name:
+        platform = openmm.Platform.getPlatformByName(platform_name)
+
+    # Create integrators.
+    reference_integrator = openmm.LangevinIntegrator(temperature, collision_rate, timestep)
+    alchemical_integrator = openmm.VerletIntegrator(timestep)
+
+    # Create contexts.
+    if platform:
+        reference_context = openmm.Context(reference_system, reference_integrator, platform)
+        alchemical_context = openmm.Context(alchemical_system, alchemical_integrator, platform)
+    else:
+        reference_context = openmm.Context(reference_system, reference_integrator)
+        alchemical_context = openmm.Context(alchemical_system, alchemical_integrator)
+
+    # Collect simulation data.
+    reference_context.setPositions(positions)
+    du_n = np.zeros([nsamples], np.float64) # du_n[n] is the
+    for sample in range(nsamples):
+        # Run dynamics.
+        reference_integrator.step(nsteps)
+
+        # Get reference energies.
+        reference_state = reference_context.getState(getEnergy=True, getPositions=True)
+        reference_potential = reference_state.getPotentialEnergy()
+
+        # Get alchemical energies.
+        alchemical_context.setPositions(reference_state.getPositions())
+        alchemical_state = alchemical_context.getState(getEnergy=True)
+        alchemical_potential = alchemical_state.getPotentialEnergy()
+
+        du_n[sample] = (alchemical_potential - reference_potential) / kT
+
+    # Clean up.
+    del reference_context, alchemical_context
+
+    # Discard data to equilibration and subsample.
+    from pymbar import timeseries
+    [t0, g, Neff] = timeseries.detectEquilibration(du_n)
+    indices = timeseries.subsampleCorrelatedData(du_n, g=g)
+    du_n = du_n[indices]
+
+    # Compute statistics.
+    from pymbar import EXP
+    [DeltaF, dDeltaF] = EXP(du_n)
+
+    # Raise an exception if the error is larger than 3kT.
+    MAX_DEVIATION = 3.0 # kT
+    if (dDeltaF > MAX_DEVIATION):
+        report = "DeltaF = %12.3f +- %12.3f kT (%5d samples, g = %6.1f)" % (DeltaF, dDeltaF, Neff, g)
+        raise Exception(report)
 
     return
 
@@ -320,6 +359,10 @@ def rstyle(ax):
     From:
     http://nbviewer.ipython.org/github/wrobstory/climatic/blob/master/examples/ggplot_styling_for_matplotlib.ipynb
     '''
+    import pylab
+    import matplotlib
+    import matplotlib.pyplot as plt
+
     #Set the style of the major and minor grid lines, filled blocks
     ax.grid(True, 'major', color='w', linestyle='-', linewidth=1.4)
     ax.grid(True, 'minor', color='0.99', linestyle='-', linewidth=0.7)
@@ -421,6 +464,10 @@ def lambda_trace(reference_system, positions, receptor_atoms, ligand_atoms, plat
 
     return
 
+def generate_trace(test_system):
+    lambda_trace(test_system['test'].system, test_system['test'].positions, test_system['receptor_atoms'], test_system['ligand_atoms'])
+    return
+
 #=============================================================================================
 # TEST SYSTEM DEFINITIONS
 #=============================================================================================
@@ -440,6 +487,9 @@ test_systems['TIP3P with reaction field, no charges, no switch, no dispersion co
     'ligand_atoms' : range(0,3), 'receptor_atoms' : range(3,6) }
 test_systems['TIP3P with reaction field, switch, no dispersion correction'] = {
     'test' : testsystems.WaterBox(dispersion_correction=False, switch=True, nonbondedMethod=app.CutoffPeriodic),
+    'ligand_atoms' : range(0,3), 'receptor_atoms' : range(3,6) }
+test_systems['TIP3P with reaction field, no switch, dispersion correction'] = {
+    'test' : testsystems.WaterBox(dispersion_correction=True, switch=False, nonbondedMethod=app.CutoffPeriodic),
     'ligand_atoms' : range(0,3), 'receptor_atoms' : range(3,6) }
 test_systems['TIP3P with reaction field, switch, dispersion correction'] = {
     'test' : testsystems.WaterBox(dispersion_correction=True, switch=True, nonbondedMethod=app.CutoffPeriodic),
@@ -466,21 +516,53 @@ test_systems['Src in TIP3P with reaction field'] = {
     'test' : testsystems.SrcExplicit(nonbondedMethod=app.CutoffPeriodic),
     'ligand_atoms' : range(0,21), 'receptor_atoms' : range(21,4091) }
 
+fast_testsystem_names = [
+    'Lennard-Jones cluster',
+    'Lennard-Jones fluid without dispersion correction',
+    'Lennard-Jones fluid with dispersion correction',
+    'TIP3P with reaction field, no charges, no switch, no dispersion correction',
+    'TIP3P with reaction field, switch, no dispersion correction',
+    'TIP3P with reaction field, switch, dispersion correction',
+    'TIP3P with PME, no switch, no dispersion correction'
+    ]
+
+# DEBUG
+#key = 'TIP3P with reaction field, switch, dispersion correction'
+#test_systems = { key : test_systems[key] }
+
 #=============================================================================================
 # NOSETEST GENERATORS
 #=============================================================================================
 
-def test_alchemical_accuracy():
+def test_overlap():
     """
-    Generate nose tests for all alchemical test systems.
+    Generate nose tests for overlap for all alchemical test systems.
     """
-    for (name, test_system) in test_systems.iteritems():
+    for name in fast_testsystem_names:
+        test_system = test_systems[name]
         reference_system = test_system['test'].system
         positions = test_system['test'].positions
         ligand_atoms = test_system['ligand_atoms']
         receptor_atoms = test_system['receptor_atoms']
-        alchemical_factory_check.description = "Testing alchemical fidelity of %s..." % name
-        yield alchemical_factory_check, reference_system, positions, receptor_atoms, ligand_atoms
+        f = partial(overlap_check, reference_system, positions, receptor_atoms, ligand_atoms)
+        f.description = "Testing reference/alchemical overlap for %s..." % name
+        yield f
+
+    return
+
+def test_alchemical_accuracy():
+    """
+    Generate nose tests for overlap for all alchemical test systems.
+    """
+    for name in test_systems.keys():
+        test_system = test_systems[name]
+        reference_system = test_system['test'].system
+        positions = test_system['test'].positions
+        ligand_atoms = test_system['ligand_atoms']
+        receptor_atoms = test_system['receptor_atoms']
+        f = partial(alchemical_factory_check, reference_system, positions, receptor_atoms, ligand_atoms)
+        f.description = "Testing alchemical fidelity of %s..." % name
+        yield f
 
     return
 
@@ -489,7 +571,8 @@ def test_alchemical_accuracy():
 #=============================================================================================
 
 if __name__ == "__main__":
-    trace_obcgbsa_complex()
+    generate_trace(test_systems['TIP3P with reaction field, switch, dispersion correction'])
+
     #test_lj_cluster()
     #test_lj_fluid_without_dispersion()
     #test_lj_fluid_with_dispersion()

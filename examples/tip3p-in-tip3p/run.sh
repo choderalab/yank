@@ -13,7 +13,7 @@ yank cleanup --store=output
 
 # Set up calculation.
 echo "Setting up binding free energy calculation..."
-yank setup binding amber --setupdir=setup --ligname=LIG --store=output --iterations=1000 --nbmethod=CutoffPeriodic --temperature="300*kelvin" --pressure="1*atmosphere" --minimize --verbose
+yank setup binding amber --setupdir=setup --ligname=LIG --store=output --iterations=1000 --nbmethod=CutoffPeriodic --temperature="300*kelvin" --pressure="1*atmosphere" --verbose
 
 # Run the simulation with verbose output:
 echo "Running simulation..."

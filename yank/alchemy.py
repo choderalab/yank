@@ -562,8 +562,7 @@ class AbsoluteAlchemicalFactory(object):
         sterics_custom_nonbonded_force.setCutoffDistance(nonbonded_force.getCutoffDistance())
         electrostatics_custom_nonbonded_force.setCutoffDistance(nonbonded_force.getCutoffDistance())
         sterics_custom_nonbonded_force.setSwitchingDistance(nonbonded_force.getSwitchingDistance())
-        sterics_custom_nonbonded_force.setUseLongRangeCorrection(nonbonded_force.getUseDispersionCorrection()) # TODO: This should be enabled once we fix convergence issues with OpenMM numerical integration scheme [CustomNonbondedForceImpl::integrateInteraction]
-        #sterics_custom_nonbonded_force.setUseLongRangeCorrection(False) # TODO: Temporary workaround
+        sterics_custom_nonbonded_force.setUseLongRangeCorrection(nonbonded_force.getUseDispersionCorrection())
         electrostatics_custom_nonbonded_force.setUseLongRangeCorrection(False)
 
         # Set periodicity and cutoff parameters corresponding to reference Force.
