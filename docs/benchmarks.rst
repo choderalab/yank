@@ -1,0 +1,6 @@
+.. _benchmarks:
+
+**********
+Benchmarks
+**********
+
