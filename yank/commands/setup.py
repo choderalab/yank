@@ -124,7 +124,15 @@ def process_unit_bearing_argument(args, argname, compatible_units):
     # See: http://nedbatchelder.com/blog/201206/eval_really_is_dangerous.html
     # TODO: Can we use a safer form of (or alternative to) 'eval' here?
     quantity = eval(args[argname], unit.__dict__)
+    # Unpack quantity if it was surrounded by quotes.
+    if isinstance(quantity, str):
+        quantity = eval(quantity, unit.__dict__)
     # Check to make sure units are compatible with expected units.
+    try:
+        quantity.unit.is_compatible(compatible_units)
+    except:
+        raise Exception("Argument %s does not have units attached." % args[argname])
+    # Check that units are compatible with what we expect.
     if not quantity.unit.is_compatible(compatible_units):
         raise Exception("Argument %s must be compatible with units %s" % (agname, str(compatible_units)))
     # Return unit-bearing quantity.
