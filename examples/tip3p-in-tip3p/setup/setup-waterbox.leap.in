@@ -1,0 +1,6 @@
+source leaprc.ff99SB
+system = combine { TIP3PBOX }
+solvatebox system TIP3PBOX 3.45 0.5 iso 
+saveamberparm system waterbox.prmtop waterbox.crd
+quit
+
