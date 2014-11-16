@@ -347,7 +347,7 @@ class Yank(object):
         simulation = ModifiedHamiltonianExchange(store_filename, mpicomm=mpicomm)
         simulation.create(thermodynamic_state, systems, positions,
                           displacement_sigma=self.mc_displacement_sigma, mc_atoms=mc_atoms,
-                          protocol=options, metadata=metadata)
+                          options=options, metadata=metadata)
         simulation.verbose = self.verbose
 
         # Initialize simulation.

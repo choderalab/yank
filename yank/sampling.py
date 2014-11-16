@@ -74,7 +74,7 @@ class ModifiedHamiltonianExchange(HamiltonianExchange):
     # Options to store.
     options_to_store = HamiltonianExchange.options_to_store + ['mc_displacement', 'mc_rotation', 'displacement_sigma'] # TODO: Add mc_atoms
 
-    def create(self, reference_state, systems, positions, displacement_sigma=None, mc_atoms=None, protocol=None, mm=None, mpicomm=None, metadata=None):
+    def create(self, reference_state, systems, positions, displacement_sigma=None, mc_atoms=None, options=None, mm=None, mpicomm=None, metadata=None):
         """
         Initialize a modified Hamiltonian exchange simulation object.
 
@@ -90,10 +90,15 @@ class ModifiedHamiltonianExchange(HamiltonianExchange):
            size of displacement trial for Monte Carlo displacements, if specified (default: 1 nm)
         ligand_atoms : list of int, optional, default=None
            atoms to use for trial displacements for translational and orientational Monte Carlo trials, if specified (all atoms if None)
-        protocol : dict
-           Optional protocol to use for specifying simulation protocol as a dict. Provided keywords will be matched to object variables to replace defaults.
+        options : dict, optional, default=None
+           Optional dict to use for specifying simulation options. Provided keywords will be matched to object variables to replace defaults.
 
         """
+
+        # If an empty set is specified for mc_atoms, set this to None.
+        if mc_atoms is not None:
+            if len(mc_atoms) == 0:
+                mc_atoms = None
 
         # Store trial displacement magnitude and atoms to rotate in MC move.
         self.displacement_sigma = 1.0 * units.nanometer
@@ -110,7 +115,7 @@ class ModifiedHamiltonianExchange(HamiltonianExchange):
         self.rotation_trials_accepted = 0 # number of MC displacement trials accepted
 
         # Initialize replica-exchange simlulation.
-        HamiltonianExchange.create(self, reference_state, systems, positions, protocol=protocol, metadata=metadata)
+        HamiltonianExchange.create(self, reference_state, systems, positions, options=options, metadata=metadata)
 
         # Override title.
         self.title = 'Modified Hamiltonian exchange simulation created using HamiltonianExchange class of repex.py on %s' % time.asctime(time.localtime())
