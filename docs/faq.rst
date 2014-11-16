@@ -1,30 +1,9 @@
 .. _faq:
 
-Frequently Asked Questions
-==========================
+Frequently Asked Questions (FAQ)
+================================
 
-1. Why am I seeing an error message about my CPU and SSE 4.1?::
+1. This is a question
 
-     RuntimeError: This CPU does not support the required instruction set (SSE4.1)
+   This is an answer.
 
-   Some functions in MDTraj require specific CPU features (and compiler support
-   for them) to enable faster performance.
-
-   Let me guess -- you're using a Linux cluster running CentOS 5? Your system
-   compiler is gcc 4.1?
-
-   It's likely your machine actually DOES support SSE4.1 instructions, but your
-   compiler is too old (e.g. gcc 4.1, released over 8 years ago) to emit them.
-   Try installing MDTraj from the prebuilt :ref:`conda <install-with-conda>`
-   packages, or getting a more modern compiler. (When building MDTraj from
-   source, you can set the ``CC`` environment variable to point to a different
-   compiler.)
-
-   .. note::
-
-   For Pande lab members on ``vsp-compute``, set the environment variable
-   ``CC`` to ``gcc44``, and then recompile from source ::
-
-       $ cd path-to-mdtraj/
-       $ export CC=gcc44
-       $ python setup.py install

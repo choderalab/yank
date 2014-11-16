@@ -45,7 +45,20 @@ import sphinx_rtd_theme
 
 # Pared-down set (for now) for Yank
 extensions = ['sphinx.ext.mathjax', 'sphinx.ext.ifconfig', 'sphinx.ext.autosummary',
-              'sphinx.ext.viewcode', 'sphinx.ext.autodoc', 'sphinx.ext.viewcode']
+              'sphinx.ext.viewcode', 'sphinx.ext.autodoc', 'sphinx.ext.viewcode',
+              'numpydoc']
+
+# Napoleon settings
+napoleon_google_docstring = False
+napoleon_numpy_docstring = True
+napoleon_include_private_with_doc = False
+napoleon_include_special_with_doc = True
+napoleon_use_admonition_for_examples = False
+napoleon_use_admonition_for_notes = False
+napoleon_use_admonition_for_references = False
+napoleon_use_ivar = False
+napoleon_use_param = True
+napoleon_use_rtype = True
 
 autosummary_generate = True
 autodoc_default_flags = ['members', 'inherited-members']
@@ -250,8 +263,8 @@ latex_documents = [
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 man_pages = [
-    ('index', 'mdtraj', u'MDTraj Documentation',
-     [u'Robert McGibbon'], 1)
+    ('index', 'yank', u'Yank Documentation',
+     [u'John Chodera'], 1)
 ]
 
 # If true, show URL addresses after external links.

@@ -5,6 +5,9 @@
 #=============================================================================================
 
 """
+repex
+=====
+
 Replica-exchange simulation algorithms and specific variants.
 
 DESCRIPTION

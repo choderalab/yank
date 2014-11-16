@@ -5,7 +5,10 @@
 #=============================================================================================
 
 """
-Main interface for automated free energy calculations using OpenMM.
+Yank
+====
+
+Interface for automated free energy calculations.
 
 """
 
