@@ -161,7 +161,7 @@ def setup_binding_amber(args):
     removeCMMotion = False
 
     # Prepare phases of calculation.
-    phase_prefixes = ['ligand', 'complex'] # list of calculation phases (thermodynamic legs) to set up
+    phase_prefixes = ['solvent', 'complex'] # list of calculation phases (thermodynamic legs) to set up
     components = ['ligand', 'receptor', 'solvent'] # components of the binding system
     systems = dict() # systems[phase] is the System object associated with phase 'phase'
     positions = dict() # positions[phase] is a list of coordinates associated with phase 'phase'
