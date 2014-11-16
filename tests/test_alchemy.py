@@ -494,9 +494,9 @@ test_systems['TIP3P with reaction field, no switch, dispersion correction'] = {
 test_systems['TIP3P with reaction field, switch, dispersion correction'] = {
     'test' : testsystems.WaterBox(dispersion_correction=True, switch=True, nonbondedMethod=app.CutoffPeriodic),
     'ligand_atoms' : range(0,3), 'receptor_atoms' : range(3,6) }
-test_systems['TIP3P with PME, no switch, no dispersion correction'] = {
-    'test' : testsystems.WaterBox(dispersion_correction=False, switch=False, nonbondedMethod=app.PME),
-    'ligand_atoms' : range(0,3), 'receptor_atoms' : range(3,6) }
+#test_systems['TIP3P with PME, no switch, no dispersion correction'] = {
+#    'test' : testsystems.WaterBox(dispersion_correction=False, switch=False, nonbondedMethod=app.PME),
+#    'ligand_atoms' : range(0,3), 'receptor_atoms' : range(3,6) }
 test_systems['alanine dipeptide in vacuum'] = {
     'test' : testsystems.AlanineDipeptideVacuum(),
     'ligand_atoms' : range(0,22), 'receptor_atoms' : range(22,22) }
@@ -509,12 +509,12 @@ test_systems['alanine dipeptide in TIP3P with reaction field'] = {
 test_systems['T4 lysozyme L99A with p-xylene in OBC GBSA'] = {
     'test' : testsystems.LysozymeImplicit(),
     'ligand_atoms' : range(2603,2621), 'receptor_atoms' : range(0,2603) }
-test_systems['Src in OBC GBSA'] = {
-    'test' : testsystems.SrcImplicit(),
-    'ligand_atoms' : range(0,21), 'receptor_atoms' : range(21,4091) }
-test_systems['Src in TIP3P with reaction field'] = {
-    'test' : testsystems.SrcExplicit(nonbondedMethod=app.CutoffPeriodic),
-    'ligand_atoms' : range(0,21), 'receptor_atoms' : range(21,4091) }
+#test_systems['Src in OBC GBSA'] = {
+#    'test' : testsystems.SrcImplicit(),
+#    'ligand_atoms' : range(0,21), 'receptor_atoms' : range(21,4091) }
+#test_systems['Src in TIP3P with reaction field'] = {
+#    'test' : testsystems.SrcExplicit(nonbondedMethod=app.CutoffPeriodic),
+#    'ligand_atoms' : range(0,21), 'receptor_atoms' : range(21,4091) }
 
 fast_testsystem_names = [
     'Lennard-Jones cluster',
@@ -523,7 +523,7 @@ fast_testsystem_names = [
     'TIP3P with reaction field, no charges, no switch, no dispersion correction',
     'TIP3P with reaction field, switch, no dispersion correction',
     'TIP3P with reaction field, switch, dispersion correction',
-    'TIP3P with PME, no switch, no dispersion correction'
+#    'TIP3P with PME, no switch, no dispersion correction'
     ]
 
 # DEBUG
