@@ -8,8 +8,8 @@ solvatebox complex TIP3PBOX 3.45 0.5 iso
 
 # Rename ligand.
 set complex.1 name LIG
-ligand = sequence { WAT }
-receptor = sequence { WAT }
+ligand = complex
+receptor = complex
 
 # Create complex.
 saveamberparm complex complex.prmtop complex.inpcrd
