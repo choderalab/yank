@@ -705,7 +705,7 @@ class ReplicaExchange(object):
 
         return
 
-    def create(self, states, positions, protocol=None, metadata=None):
+    def create(self, states, positions, options=None, metadata=None):
         """
         Create new replica-exchange simulation.
 
@@ -720,13 +720,13 @@ class ReplicaExchange(object):
            One or more sets of initial positions
            to be initially assigned to replicas in a round-robin fashion, provided simulation is not resumed from store file.
            Currently, positions must be specified as a list of simtk.unit.Quantity-wrapped numpy arrays.
-        protocol : dict, optional, default=None
-           Optional protocol to use for specifying simulation protocol as a dict. Provided keywords will be matched to object variables to replace defaults.
+        options : dict, optional, default=None
+           Optional dict to use for specifying simulation options. Provided keywords will be matched to object variables to replace defaults.
         metadata : dict, optional, default=None
            metadata to store in a 'metadata' group in store file
 
         """
-        if protocol and ('verbose' in protocol): self.verbose = protocol['verbose']
+        if options and ('verbose' in options): self.verbose = options['verbose']
         # TODO: Find a better solution to setting verbosity.
 
         # Check if netcdf file exists.
@@ -756,25 +756,28 @@ class ReplicaExchange(object):
         else:
             self.provided_positions = [ unit.Quantity(numpy.array(positions / positions.unit), positions.unit) ]
 
-        # Handle provided 'protocol' dict, replacing any options provided by caller in dictionary.
+        # Handle provided 'options' dict, replacing any options provided by caller in dictionary.
         # TODO: Look for 'verbose' key first.
-        if protocol is not None:
-            for key in protocol.keys(): # for each provided key
+        if options is not None:
+            for key in options.keys(): # for each provided key
                 if key in vars(self).keys(): # if this is also a simulation parameter
-                    value = protocol[key]
-                    if self.verbose: print "from protocol: %s -> %s" % (key, str(value))
+                    value = options[key]
+                    if self.verbose: print "from options: %s -> %s" % (key, str(value))
                     vars(self)[key] = value # replace default simulation parameter with provided parameter
 
         # Store metadata to store in store file.
         self.metadata = metadata
 
+        # Initialize NetCDF file.
+        self._initialize_create()
+
         return
 
-    def resume(self, protocol=None):
+    def resume(self, options=None):
         """
         Parameters
         ----------
-        protocol : dict, optional, default=None
+        options : dict, optional, default=None
            will override any options restored from the store file.
 
         """
@@ -800,13 +803,13 @@ class ReplicaExchange(object):
             if not state.is_compatible_with(self.states[0]):
                 raise ParameterError("Provided ThermodynamicState states must all be from the same thermodynamic ensemble.")
 
-        # Handle provided 'protocol' dict, replacing any options provided by caller in dictionary.
+        # Handle provided 'options' dict, replacing any options provided by caller in dictionary.
         # TODO: Check to make sure that only allowed overrides are specified.
-        if protocol:
-            for key in protocol.keys(): # for each provided key
+        if options:
+            for key in options.keys(): # for each provided key
                 if key in vars(self).keys(): # if this is also a simulation parameter
-                    value = protocol[key]
-                    if self.verbose: print "from protocol: %s -> %s" % (key, str(value))
+                    value = options[key]
+                    if self.verbose: print "from options: %s -> %s" % (key, str(value))
                     vars(self)[key] = value # replace default simulation parameter with provided parameter
 
         return
@@ -917,7 +920,7 @@ class ReplicaExchange(object):
 
         """
         if not self._initialized:
-            self._initialize()
+            self._initialize_resume()
 
         # Main loop
         run_start_time = time.time()
@@ -996,7 +999,80 @@ class ReplicaExchange(object):
         del context, integrator
         return platform
 
-    def _initialize(self):
+    def _initialize_create(self):
+        """
+        Initialize the simulation and create a storage file, closing it after completion.
+
+        """
+
+        if self._initialized:
+            raise Error("Simulation has already been initialized.")
+
+        # Extract a representative system.
+        representative_system = self.states[0].system
+
+        # Turn off verbosity if not master node.
+        if self.mpicomm:
+            # Have each node report that it is initialized.
+            if self.verbose:
+                print "Initialized node %d / %d" % (self.mpicomm.rank, self.mpicomm.size)
+            # Turn off verbosity for all nodes but root.
+            if self.mpicomm.rank != 0:
+                self.verbose = False
+
+        # Display papers to be cited.
+        if self.verbose:
+            self._display_citations()
+
+        # Determine number of alchemical states.
+        self.nstates = len(self.states)
+
+        # Determine number of atoms in systems.
+        self.natoms = representative_system.getNumParticles()
+
+        # Allocate storage.
+        self.replica_positions = list() # replica_positions[i] is the configuration currently held in replica i
+        self.replica_box_vectors = list() # replica_box_vectors[i] is the set of box vectors currently held in replica i
+        self.replica_states     = numpy.zeros([self.nstates], numpy.int32) # replica_states[i] is the state that replica i is currently at
+        self.u_kl               = numpy.zeros([self.nstates, self.nstates], numpy.float32)
+        self.swap_Pij_accepted  = numpy.zeros([self.nstates, self.nstates], numpy.float32)
+        self.Nij_proposed       = numpy.zeros([self.nstates,self.nstates], numpy.int64) # Nij_proposed[i][j] is the number of swaps proposed between states i and j, prior of 1
+        self.Nij_accepted       = numpy.zeros([self.nstates,self.nstates], numpy.int64) # Nij_proposed[i][j] is the number of swaps proposed between states i and j, prior of 1
+
+        # Distribute coordinate information to replicas in a round-robin fashion, making a deep copy.
+        if not self._resume:
+            self.replica_positions = [ copy.deepcopy(self.provided_positions[replica_index % len(self.provided_positions)]) for replica_index in range(self.nstates) ]
+
+        # Assign default box vectors.
+        self.replica_box_vectors = list()
+        for state in self.states:
+            [a,b,c] = state.system.getDefaultPeriodicBoxVectors()
+            box_vectors = unit.Quantity(numpy.zeros([3,3], numpy.float32), unit.nanometers)
+            box_vectors[0,:] = a
+            box_vectors[1,:] = b
+            box_vectors[2,:] = c
+            self.replica_box_vectors.append(box_vectors)
+
+        # Assign initial replica states.
+        for replica_index in range(self.nstates):
+            self.replica_states[replica_index] = replica_index
+
+        # Initialize current iteration counter.
+        self.iteration = 0
+
+        # Initialize NetCDF file.
+        self._initialize_netcdf()
+
+        # Store initial state.
+        self._write_iteration_netcdf()
+
+        # Close NetCDF file.
+        self.ncfile.close()
+        self.ncfile = None
+
+        return
+
+    def _initialize_resume(self):
         """
         Initialize the simulation, and bind to a storage file.
 
@@ -1139,34 +1215,12 @@ class ReplicaExchange(object):
         elapsed_time = final_time - initial_time
         if self.verbose: print "%.3f s elapsed." % elapsed_time
 
-        if self._resume:
-            # Resume from NetCDF file.
-            self._resume_from_netcdf()
+        # Resume from NetCDF file.
+        self._resume_from_netcdf()
 
-            # Show energies.
-            if self.verbose and self.show_energies:
-                self._show_energies()
-        else:
-            # Minimize and equilibrate all replicas.
-            self._minimize_and_equilibrate()
-
-            # Initialize current iteration counter.
-            self.iteration = 0
-
-            # TODO: Perform any GPU sanity checks here.
-
-            # Compute energies of all alchemical replicas
-            self._compute_energies()
-
-            # Show energies.
-            if self.verbose and self.show_energies:
-                self._show_energies()
-
-            # Initialize NetCDF file.
-            self._initialize_netcdf()
-
-            # Store initial state.
-            self._write_iteration_netcdf()
+        # Show energies.
+        if self.verbose and self.show_energies:
+            self._show_energies()
 
         # Analysis objet starts off empty.
         # TODO: Use an empty dict instead?
@@ -1203,8 +1257,10 @@ class ReplicaExchange(object):
             # Only the root node needs to clean up.
             if self.mpicomm.rank != 0: return
 
-        if hasattr(self, 'ncfile') and self.ncfile:
-            self.ncfile.close()
+        if hasattr(self, 'ncfile'):
+            if self.ncfile is not None:
+                self.ncfile.close()
+                self.ncfile = None
 
         return
 
@@ -1825,16 +1881,16 @@ class ReplicaExchange(object):
     def _initialize_netcdf(self):
         """
         Initialize NetCDF file for storage.
-        
-        """    
-        
+
+        """
+
         # Only root node should set up NetCDF file.
         if self.mpicomm:
             if self.mpicomm.rank != 0: return
 
         # Open NetCDF 4 file for writing.
         ncfile = netcdf.Dataset(self.store_filename, 'w', version='NETCDF4')
-        
+
         # Create dimensions.
         ncfile.createDimension('iteration', 0) # unlimited number of iterations
         ncfile.createDimension('replica', self.nreplicas) # number of replicas
@@ -1848,22 +1904,22 @@ class ReplicaExchange(object):
         setattr(ncfile, 'programVersion', 'unknown') # TODO: Include actual version.
         setattr(ncfile, 'Conventions', 'YANK')
         setattr(ncfile, 'ConventionVersion', '0.1')
-        
+
         # Create variables.
         ncvar_positions = ncfile.createVariable('positions', 'f', ('iteration','replica','atom','spatial'))
         ncvar_states    = ncfile.createVariable('states', 'i', ('iteration','replica'))
-        ncvar_energies  = ncfile.createVariable('energies', 'f', ('iteration','replica','replica'))        
+        ncvar_energies  = ncfile.createVariable('energies', 'f', ('iteration','replica','replica'))
         ncvar_proposed  = ncfile.createVariable('proposed', 'l', ('iteration','replica','replica'))
-        ncvar_accepted  = ncfile.createVariable('accepted', 'l', ('iteration','replica','replica'))                
-        ncvar_box_vectors = ncfile.createVariable('box_vectors', 'f', ('iteration','replica','spatial','spatial'))        
+        ncvar_accepted  = ncfile.createVariable('accepted', 'l', ('iteration','replica','replica'))
+        ncvar_box_vectors = ncfile.createVariable('box_vectors', 'f', ('iteration','replica','spatial','spatial'))
         ncvar_volumes  = ncfile.createVariable('volumes', 'f', ('iteration','replica'))
-        
+
         # Define units for variables.
         setattr(ncvar_positions, 'units', 'nm')
         setattr(ncvar_states,    'units', 'none')
         setattr(ncvar_energies,  'units', 'kT')
         setattr(ncvar_proposed,  'units', 'none')
-        setattr(ncvar_accepted,  'units', 'none')                
+        setattr(ncvar_accepted,  'units', 'none')
         setattr(ncvar_box_vectors, 'units', 'nm')
         setattr(ncvar_volumes, 'units', 'nm**3')
 
@@ -1884,7 +1940,7 @@ class ReplicaExchange(object):
         ncvar_iteration_time = ncgrp_timings.createVariable('iteration', 'f', ('iteration',)) # total iteration time (seconds)
         ncvar_iteration_time = ncgrp_timings.createVariable('mixing', 'f', ('iteration',)) # time for mixing
         ncvar_iteration_time = ncgrp_timings.createVariable('propagate', 'f', ('iteration','replica')) # total time to propagate each replica
-        
+
         # Store thermodynamic states.
         self._store_thermodynamic_states(ncfile)
 
@@ -1900,13 +1956,13 @@ class ReplicaExchange(object):
 
         # Store netcdf file handle.
         self.ncfile = ncfile
-        
+
         return
-    
+
     def _write_iteration_netcdf(self):
         """
         Write positions, states, and energies of current iteration to NetCDF file.
-        
+
         """
 
         if self.mpicomm:
@@ -1920,7 +1976,7 @@ class ReplicaExchange(object):
             positions = self.replica_positions[replica_index]
             x = positions / unit.nanometers
             self.ncfile.variables['positions'][self.iteration,replica_index,:,:] = x[:,:]
-            
+
         # Store box vectors and volume.
         for replica_index in range(self.nstates):
             state_index = self.replica_states[replica_index]
@@ -1940,7 +1996,7 @@ class ReplicaExchange(object):
         # Store mixing statistics.
         # TODO: Write mixing statistics for this iteration?
         self.ncfile.variables['proposed'][self.iteration,:,:] = self.Nij_proposed[:,:]
-        self.ncfile.variables['accepted'][self.iteration,:,:] = self.Nij_accepted[:,:]        
+        self.ncfile.variables['accepted'][self.iteration,:,:] = self.Nij_accepted[:,:]
 
         # Store timestamp this iteration was written.
         self.ncfile.variables['timestamp'][self.iteration] = time.ctime()
@@ -2110,11 +2166,24 @@ class ReplicaExchange(object):
                 packed_data = numpy.empty(1, 'O')
                 packed_data[0] = option_value
                 ncvar[:] = packed_data
+                setattr(ncvar, 'type', option_type.__name__)
+            elif hasattr(option_value, '__getitem__'):
+                nelements = len(option_value)
+                ncgrp_options.createDimension(option_name, nelements) # unlimited number of iterations
+                ncvar = ncgrp_options.createVariable(option_name, type(option_value[0]), (option_name,))
+                for (i, element) in enumerate(option_value):
+                    ncvar[i] = element
+                option_type = type(option_value[0])
+                setattr(ncvar, 'type', option_type.__name__)
+            elif option_value is None:
+                ncvar = ncgrp_options.createVariable(option_name, int)
+                ncvar.assignValue(0)
+                setattr(ncvar, 'type', option_type.__name__)
             else:
                 ncvar = ncgrp_options.createVariable(option_name, type(option_value))
                 ncvar.assignValue(option_value)
+                setattr(ncvar, 'type', option_type.__name__)
             if option_unit: setattr(ncvar, 'units', str(option_unit))
-            setattr(ncvar, 'type', option_type.__name__)
 
         return
 
@@ -2136,22 +2205,27 @@ class ReplicaExchange(object):
         for option_name in ncgrp_options.variables.keys():
             # Get NetCDF variable.
             option_ncvar = ncgrp_options.variables[option_name]
+            type_name = getattr(option_ncvar, 'type')
             # Get option value.
-            if option_ncvar.shape == ():
+            if type_name == 'NoneType':
+                option_value = None
+            elif option_ncvar.shape == ():
                 option_value = option_ncvar.getValue()
+            elif (option_ncvar.shape[0] > 1):
+                option_value = numpy.array(option_ncvar[:], type_name)
             else:
                 option_value = option_ncvar[0]
-            # Cast to Python type.
-            type_name = getattr(option_ncvar, 'type')
-            option_value = eval(type_name + '(' + repr(option_value) + ')')
+                option_value = eval(type_name + '(' + repr(option_value) + ')')
             # If Quantity, assign unit.
             if hasattr(option_ncvar, 'units'):
                 option_unit_name = getattr(option_ncvar, 'units')
-                if option_unit_name[0] == '/': option_unit_name = '1' + option_unit_name
-                option_unit = eval(option_unit_name, vars(unit))
-                option_value = unit.Quantity(option_value, option_unit)
+                if option_unit_name[0] == '/':
+                    option_value = eval(str(option_value) + option_unit_name, unit.__dict__)
+                else:
+                    option_value = eval(str(option_value) + '*' + option_unit_name, unit.__dict__)
             # Store option.
             if self.verbose_root: print "Restoring option: %s -> %s (type: %s)" % (option_name, str(option_value), type(option_value))
+            print "Restoring option: %s -> %s (type: %s)" % (option_name, str(option_value), type(option_value))
             setattr(self, option_name, option_value)
 
         # Signal success.
@@ -2177,18 +2251,18 @@ class ReplicaExchange(object):
     def _resume_from_netcdf(self):
         """
         Resume execution by reading current positions and energies from a NetCDF file.
-        
+
         """
 
         # Open NetCDF file for reading
         if self.verbose: print "Reading NetCDF file '%s'..." % self.store_filename
         #ncfile = netcdf.NetCDFFile(self.store_filename, 'r') # Scientific.IO.NetCDF
         ncfile = netcdf.Dataset(self.store_filename, 'r') # netCDF4
-        
+
         # TODO: Perform sanity check on file before resuming
 
         # Get current dimensions.
-        self.iteration = ncfile.variables['positions'].shape[0] - 1 
+        self.iteration = ncfile.variables['positions'].shape[0] - 1
         self.nstates = ncfile.variables['positions'].shape[1]
         self.natoms = ncfile.variables['positions'].shape[2]
         if self.verbose: print "iteration = %d, nstates = %d, natoms = %d" % (self.iteration, self.nstates, self.natoms)
@@ -2199,7 +2273,7 @@ class ReplicaExchange(object):
             x = ncfile.variables['positions'][self.iteration,replica_index,:,:].astype(numpy.float64).copy()
             positions = unit.Quantity(x, unit.nanometers)
             self.replica_positions.append(positions)
-        
+
         # Restore box vectors.
         self.replica_box_vectors = list()
         for replica_index in range(self.nstates):
@@ -2212,6 +2286,23 @@ class ReplicaExchange(object):
 
         # Restore energies.
         self.u_kl = ncfile.variables['energies'][self.iteration,:,:].copy()
+
+        # On first iteration, we need to do some initialization.
+        if self.iteration == 0:
+            # Minimize and equilibrate all replicas.
+            self._minimize_and_equilibrate()
+
+            # Compute energies of all alchemical replicas
+            self._compute_energies()
+
+            # Show energies.
+            if self.verbose and self.show_energies:
+                self._show_energies()
+
+            # Re-store initial state.
+            #self.ncfile = ncfile
+            #self._write_iteration_netcdf()
+            #self.ncfile = None
 
         # Close NetCDF file.
         ncfile.close()
@@ -2425,7 +2516,7 @@ class ParallelTempering(ReplicaExchange):
 
     """
 
-    def create(self, system, positions, protocol=None, Tmin=None, Tmax=None, ntemps=None, temperatures=None, pressure=None, metadata=None):
+    def create(self, system, positions, options=None, Tmin=None, Tmax=None, ntemps=None, temperatures=None, pressure=None, metadata=None):
         """
         Initialize a parallel tempering simulation object.
 
@@ -2445,8 +2536,8 @@ class ParallelTempering(ReplicaExchange):
            if specified, this list of temperatures will be used instead of (Tmin, Tmax, ntemps)
         pressure : simtk.unit.Quantity with units compatible with atmospheres, optional, default=None
            if specified, a MonteCarloBarostat will be added (or modified) to perform NPT simulations
-        protocol : dict, optional, default=None
-           Optional protocol to use for specifying simulation protocol as a dict.  Provided keywords will be matched to object variables to replace defaults.
+        options : dict, optional, default=None
+           Options to use for specifying simulation protocol.  Provided keywords will be matched to object variables to replace defaults.
 
         Notes
         -----
@@ -2465,7 +2556,7 @@ class ParallelTempering(ReplicaExchange):
         states = [ ThermodynamicState(system=system, temperature=self.temperatures[i], pressure=pressure) for i in range(ntemps) ]
 
         # Initialize replica-exchange simlulation.
-        ReplicaExchange.create(self, states, positions, protocol=protocol, metadata=metadata)
+        ReplicaExchange.create(self, states, positions, options=options, metadata=metadata)
 
         # Override title.
         self.title = 'Parallel tempering simulation created using ParallelTempering class of repex.py on %s' % time.asctime(time.localtime())
@@ -2591,7 +2682,7 @@ class HamiltonianExchange(ReplicaExchange):
 
     """
 
-    def create(self, reference_state, systems, positions, protocol=None, metadata=None):
+    def create(self, reference_state, systems, positions, options=None, metadata=None):
         """
         Initialize a Hamiltonian exchange simulation object.
 
@@ -2603,8 +2694,8 @@ class HamiltonianExchange(ReplicaExchange):
            list of systems to simulate (one per replica)
         positions : simtk.unit.Quantity of numpy natoms x 3 with units compatible with nanometers
            positions (or a list of positions objects) for initial assignment of replicas (will be used in round-robin assignment)
-        protocol : dict, optional, default=None
-           Optional protocol to use for specifying simulation protocol as a dict. Provided keywords will be matched to object variables to replace defaults.
+        options : dict, optional, default=None
+           Optional dict to use for specifying simulation protocol. Provided keywords will be matched to object variables to replace defaults.
         metadata : dict, optional, default=None
            metadata to store in a 'metadata' group in store file
 
@@ -2617,7 +2708,7 @@ class HamiltonianExchange(ReplicaExchange):
             states = [ ThermodynamicState(system=system, temperature=reference_state.temperature, pressure=reference_state.pressure) for system in systems ]
 
         # Initialize replica-exchange simlulation.
-        ReplicaExchange.create(self, states, positions, protocol=protocol, metadata=metadata)
+        ReplicaExchange.create(self, states, positions, options=options, metadata=metadata)
 
         # Override title.
         self.title = 'Hamiltonian exchange simulation created using HamiltonianExchange class of repex.py on %s' % time.asctime(time.localtime())

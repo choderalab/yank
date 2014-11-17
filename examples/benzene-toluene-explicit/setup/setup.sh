@@ -9,5 +9,5 @@ antechamber -fi mol2 -i toluene.tripos.mol2 -fo mol2 -o toluene.gaff.mol2
 parmchk -i toluene.gaff.mol2 -o toluene.frcmod -f mol2
 
 # Create benzene-toluene system.
-rm -f leap.log receptor.{crd,prmtop,pdb} ligand.{crd,prmtop,pdb}
+rm -f leap.log {complex,solvent}.{crd,prmtop,pdb}
 tleap -f setup.leap.in
