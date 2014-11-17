@@ -768,6 +768,9 @@ class ReplicaExchange(object):
         # Store metadata to store in store file.
         self.metadata = metadata
 
+        # Initialize NetCDF file.
+        self._initialize_create()
+
         return
 
     def resume(self, options=None):
@@ -996,6 +999,79 @@ class ReplicaExchange(object):
         del context, integrator
         return platform
 
+    def _initialize_create(self):
+        """
+        Initialize the simulation and create a storage file, closing it after completion.
+
+        """
+
+        if self._initialized:
+            raise Error("Simulation has already been initialized.")
+
+        # Extract a representative system.
+        representative_system = self.states[0].system
+
+        # Turn off verbosity if not master node.
+        if self.mpicomm:
+            # Have each node report that it is initialized.
+            if self.verbose:
+                print "Initialized node %d / %d" % (self.mpicomm.rank, self.mpicomm.size)
+            # Turn off verbosity for all nodes but root.
+            if self.mpicomm.rank != 0:
+                self.verbose = False
+
+        # Display papers to be cited.
+        if self.verbose:
+            self._display_citations()
+
+        # Determine number of alchemical states.
+        self.nstates = len(self.states)
+
+        # Determine number of atoms in systems.
+        self.natoms = representative_system.getNumParticles()
+
+        # Allocate storage.
+        self.replica_positions = list() # replica_positions[i] is the configuration currently held in replica i
+        self.replica_box_vectors = list() # replica_box_vectors[i] is the set of box vectors currently held in replica i
+        self.replica_states     = numpy.zeros([self.nstates], numpy.int32) # replica_states[i] is the state that replica i is currently at
+        self.u_kl               = numpy.zeros([self.nstates, self.nstates], numpy.float32)
+        self.swap_Pij_accepted  = numpy.zeros([self.nstates, self.nstates], numpy.float32)
+        self.Nij_proposed       = numpy.zeros([self.nstates,self.nstates], numpy.int64) # Nij_proposed[i][j] is the number of swaps proposed between states i and j, prior of 1
+        self.Nij_accepted       = numpy.zeros([self.nstates,self.nstates], numpy.int64) # Nij_proposed[i][j] is the number of swaps proposed between states i and j, prior of 1
+
+        # Distribute coordinate information to replicas in a round-robin fashion, making a deep copy.
+        if not self._resume:
+            self.replica_positions = [ copy.deepcopy(self.provided_positions[replica_index % len(self.provided_positions)]) for replica_index in range(self.nstates) ]
+
+        # Assign default box vectors.
+        self.replica_box_vectors = list()
+        for state in self.states:
+            [a,b,c] = state.system.getDefaultPeriodicBoxVectors()
+            box_vectors = unit.Quantity(numpy.zeros([3,3], numpy.float32), unit.nanometers)
+            box_vectors[0,:] = a
+            box_vectors[1,:] = b
+            box_vectors[2,:] = c
+            self.replica_box_vectors.append(box_vectors)
+
+        # Assign initial replica states.
+        for replica_index in range(self.nstates):
+            self.replica_states[replica_index] = replica_index
+
+        # Initialize current iteration counter.
+        self.iteration = 0
+
+        # Initialize NetCDF file.
+        self._initialize_netcdf()
+
+        # Store initial state.
+        self._write_iteration_netcdf()
+
+        # Close NetCDF file.
+        self.ncfile.close()
+        self.ncfile = None
+
+        return
+
     def _initialize(self):
         """
         Initialize the simulation, and bind to a storage file.
@@ -1203,8 +1279,10 @@ class ReplicaExchange(object):
             # Only the root node needs to clean up.
             if self.mpicomm.rank != 0: return
 
-        if hasattr(self, 'ncfile') and self.ncfile:
-            self.ncfile.close()
+        if hasattr(self, 'ncfile'):
+            if self.ncfile is not None:
+                self.ncfile.close()
+                self.ncfile = None
 
         return
 
@@ -1825,16 +1903,16 @@ class ReplicaExchange(object):
     def _initialize_netcdf(self):
         """
         Initialize NetCDF file for storage.
-        
-        """    
-        
+
+        """
+
         # Only root node should set up NetCDF file.
         if self.mpicomm:
             if self.mpicomm.rank != 0: return
 
         # Open NetCDF 4 file for writing.
         ncfile = netcdf.Dataset(self.store_filename, 'w', version='NETCDF4')
-        
+
         # Create dimensions.
         ncfile.createDimension('iteration', 0) # unlimited number of iterations
         ncfile.createDimension('replica', self.nreplicas) # number of replicas
@@ -1848,22 +1926,22 @@ class ReplicaExchange(object):
         setattr(ncfile, 'programVersion', 'unknown') # TODO: Include actual version.
         setattr(ncfile, 'Conventions', 'YANK')
         setattr(ncfile, 'ConventionVersion', '0.1')
-        
+
         # Create variables.
         ncvar_positions = ncfile.createVariable('positions', 'f', ('iteration','replica','atom','spatial'))
         ncvar_states    = ncfile.createVariable('states', 'i', ('iteration','replica'))
-        ncvar_energies  = ncfile.createVariable('energies', 'f', ('iteration','replica','replica'))        
+        ncvar_energies  = ncfile.createVariable('energies', 'f', ('iteration','replica','replica'))
         ncvar_proposed  = ncfile.createVariable('proposed', 'l', ('iteration','replica','replica'))
-        ncvar_accepted  = ncfile.createVariable('accepted', 'l', ('iteration','replica','replica'))                
-        ncvar_box_vectors = ncfile.createVariable('box_vectors', 'f', ('iteration','replica','spatial','spatial'))        
+        ncvar_accepted  = ncfile.createVariable('accepted', 'l', ('iteration','replica','replica'))
+        ncvar_box_vectors = ncfile.createVariable('box_vectors', 'f', ('iteration','replica','spatial','spatial'))
         ncvar_volumes  = ncfile.createVariable('volumes', 'f', ('iteration','replica'))
-        
+
         # Define units for variables.
         setattr(ncvar_positions, 'units', 'nm')
         setattr(ncvar_states,    'units', 'none')
         setattr(ncvar_energies,  'units', 'kT')
         setattr(ncvar_proposed,  'units', 'none')
-        setattr(ncvar_accepted,  'units', 'none')                
+        setattr(ncvar_accepted,  'units', 'none')
         setattr(ncvar_box_vectors, 'units', 'nm')
         setattr(ncvar_volumes, 'units', 'nm**3')
 
@@ -1884,7 +1962,7 @@ class ReplicaExchange(object):
         ncvar_iteration_time = ncgrp_timings.createVariable('iteration', 'f', ('iteration',)) # total iteration time (seconds)
         ncvar_iteration_time = ncgrp_timings.createVariable('mixing', 'f', ('iteration',)) # time for mixing
         ncvar_iteration_time = ncgrp_timings.createVariable('propagate', 'f', ('iteration','replica')) # total time to propagate each replica
-        
+
         # Store thermodynamic states.
         self._store_thermodynamic_states(ncfile)
 
@@ -1900,13 +1978,13 @@ class ReplicaExchange(object):
 
         # Store netcdf file handle.
         self.ncfile = ncfile
-        
+
         return
-    
+
     def _write_iteration_netcdf(self):
         """
         Write positions, states, and energies of current iteration to NetCDF file.
-        
+
         """
 
         if self.mpicomm:
@@ -1920,7 +1998,7 @@ class ReplicaExchange(object):
             positions = self.replica_positions[replica_index]
             x = positions / unit.nanometers
             self.ncfile.variables['positions'][self.iteration,replica_index,:,:] = x[:,:]
-            
+
         # Store box vectors and volume.
         for replica_index in range(self.nstates):
             state_index = self.replica_states[replica_index]
@@ -1940,7 +2018,7 @@ class ReplicaExchange(object):
         # Store mixing statistics.
         # TODO: Write mixing statistics for this iteration?
         self.ncfile.variables['proposed'][self.iteration,:,:] = self.Nij_proposed[:,:]
-        self.ncfile.variables['accepted'][self.iteration,:,:] = self.Nij_accepted[:,:]        
+        self.ncfile.variables['accepted'][self.iteration,:,:] = self.Nij_accepted[:,:]
 
         # Store timestamp this iteration was written.
         self.ncfile.variables['timestamp'][self.iteration] = time.ctime()
@@ -2177,18 +2255,18 @@ class ReplicaExchange(object):
     def _resume_from_netcdf(self):
         """
         Resume execution by reading current positions and energies from a NetCDF file.
-        
+
         """
 
         # Open NetCDF file for reading
         if self.verbose: print "Reading NetCDF file '%s'..." % self.store_filename
         #ncfile = netcdf.NetCDFFile(self.store_filename, 'r') # Scientific.IO.NetCDF
         ncfile = netcdf.Dataset(self.store_filename, 'r') # netCDF4
-        
+
         # TODO: Perform sanity check on file before resuming
 
         # Get current dimensions.
-        self.iteration = ncfile.variables['positions'].shape[0] - 1 
+        self.iteration = ncfile.variables['positions'].shape[0] - 1
         self.nstates = ncfile.variables['positions'].shape[1]
         self.natoms = ncfile.variables['positions'].shape[2]
         if self.verbose: print "iteration = %d, nstates = %d, natoms = %d" % (self.iteration, self.nstates, self.natoms)
@@ -2199,7 +2277,7 @@ class ReplicaExchange(object):
             x = ncfile.variables['positions'][self.iteration,replica_index,:,:].astype(numpy.float64).copy()
             positions = unit.Quantity(x, unit.nanometers)
             self.replica_positions.append(positions)
-        
+
         # Restore box vectors.
         self.replica_box_vectors = list()
         for replica_index in range(self.nstates):
@@ -2212,6 +2290,21 @@ class ReplicaExchange(object):
 
         # Restore energies.
         self.u_kl = ncfile.variables['energies'][self.iteration,:,:].copy()
+
+        # On first iteration, we need to do some initialization.
+        if self.iteration == 0:
+            # Minimize and equilibrate all replicas.
+            self._minimize_and_equilibrate()
+
+            # Compute energies of all alchemical replicas
+            self._compute_energies()
+
+            # Show energies.
+            if self.verbose and self.show_energies:
+                self._show_energies()
+
+            # Re-store initial state.
+            self._write_iteration_netcdf()
 
         # Close NetCDF file.
         ncfile.close()

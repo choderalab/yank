@@ -352,8 +352,8 @@ class Yank(object):
 
         # Initialize simulation.
         # TODO: Use the right scheme for initializing the simulation without running.
-        if self.verbose: print "Initializing simulation..."
-        simulation.run(0)
+        #if self.verbose: print "Initializing simulation..."
+        #simulation.run(0)
 
         # Clean up simulation.
         del simulation

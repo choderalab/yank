@@ -39,7 +39,7 @@ import simtk.unit as units
 # ABSTRACT BASE CLASS
 #=============================================================================================
 
-class SystemBuilder():
+class SystemBuilder(object):
     """
     Abstract base class for SystemBuilder classes.
 
