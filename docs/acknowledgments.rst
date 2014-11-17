@@ -15,3 +15,4 @@ A great many people have contributed to the development of YANK.
 * Robert McGibbon (Stanford University)
 
 Many, many thanks to Robert McGibbon (Stanford University) for trailblazing a number of practices, templates, standards, and idioms that we have adopted for YANK.
+

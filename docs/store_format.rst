@@ -16,3 +16,6 @@ All your questions answered here.
 Format specification
 --------------------
 
+.. literalinclude:: ncfile-header.txt
+    :linenos:
+

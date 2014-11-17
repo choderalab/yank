@@ -1,0 +1,107 @@
+netcdf complex-explicit {
+dimensions:
+	iteration = UNLIMITED ; // (1 currently)
+	replica = 13 ;
+	atom = 48104 ;
+	spatial = 3 ;
+	scalar = 1 ;
+variables:
+	float positions(iteration, replica, atom, spatial) ;
+		positions:units = "nm" ;
+		positions:long_name = "positions[iteration][replica][atom][spatial] is position of coordinate \'spatial\' of atom \'atom\' from replica \'replica\' for iteration \'iteration\'." ;
+	int states(iteration, replica) ;
+		states:units = "none" ;
+		states:long_name = "states[iteration][replica] is the state index (0..nstates-1) of replica \'replica\' of iteration \'iteration\'." ;
+	float energies(iteration, replica, replica) ;
+		energies:units = "kT" ;
+		energies:long_name = "energies[iteration][replica][state] is the reduced (unitless) energy of replica \'replica\' from iteration \'iteration\' evaluated at state \'state\'." ;
+	int64 proposed(iteration, replica, replica) ;
+		proposed:units = "none" ;
+		proposed:long_name = "proposed[iteration][i][j] is the number of proposed transitions between states i and j from iteration \'iteration-1\'." ;
+	int64 accepted(iteration, replica, replica) ;
+		accepted:units = "none" ;
+		accepted:long_name = "accepted[iteration][i][j] is the number of proposed transitions between states i and j from iteration \'iteration-1\'." ;
+	float box_vectors(iteration, replica, spatial, spatial) ;
+		box_vectors:units = "nm" ;
+		box_vectors:long_name = "box_vectors[iteration][replica][i][j] is dimension j of box vector i for replica \'replica\' from iteration \'iteration-1\'." ;
+	float volumes(iteration, replica) ;
+		volumes:units = "nm**3" ;
+		volumes:long_name = "volume[iteration][replica] is the box volume for replica \'replica\' from iteration \'iteration-1\'." ;
+	string timestamp(iteration) ;
+
+// global attributes:
+		:title = "Replica-exchange simulation created using ReplicaExchange class of repex.py on Sun Nov 16 22:18:46 2014" ;
+		:application = "YANK" ;
+		:program = "yank.py" ;
+		:programVersion = "unknown" ;
+		:Conventions = "YANK" ;
+		:ConventionVersion = "0.1" ;
+
+group: timings {
+  variables:
+  	float iteration(iteration) ;
+  	float mixing(iteration) ;
+  	float propagate(iteration, replica) ;
+  } // group timings
+
+group: thermodynamic_states {
+  variables:
+  	int64 nstates ;
+  	float temperatures(replica) ;
+  		temperatures:units = "K" ;
+  		temperatures:long_name = "temperatures[state] is the temperature of thermodynamic state \'state\'" ;
+  	string systems(replica) ;
+  		systems:long_name = "systems[state] is the serialized OpenMM System corresponding to the thermodynamic state \'state\'" ;
+  } // group thermodynamic_states
+
+group: options {
+  variables:
+  	double collision_rate ;
+  		collision_rate:type = "float" ;
+  		collision_rate:units = "/picosecond" ;
+  	double constraint_tolerance ;
+  		constraint_tolerance:type = "float" ;
+  	double timestep ;
+  		timestep:type = "float" ;
+  		timestep:units = "femtosecond" ;
+  	int64 nsteps_per_iteration ;
+  		nsteps_per_iteration:type = "int" ;
+  	int64 number_of_iterations ;
+  		number_of_iterations:type = "int" ;
+  	double equilibration_timestep ;
+  		equilibration_timestep:type = "float" ;
+  		equilibration_timestep:units = "femtosecond" ;
+  	int64 number_of_equilibration_iterations ;
+  		number_of_equilibration_iterations:type = "int" ;
+  	string title(scalar) ;
+  		title:type = "str" ;
+  	int64 minimize ;
+  		minimize:type = "bool" ;
+  	string replica_mixing_scheme(scalar) ;
+  		replica_mixing_scheme:type = "str" ;
+  	int64 online_analysis ;
+  		online_analysis:type = "bool" ;
+  	int64 verbose ;
+  		verbose:type = "bool" ;
+  	int64 show_mixing_statistics ;
+  		show_mixing_statistics:type = "bool" ;
+  	int64 mc_atoms ;
+  		mc_atoms:type = "NoneType" ;
+  	int64 mc_displacement ;
+  		mc_displacement:type = "bool" ;
+  	int64 mc_rotation ;
+  		mc_rotation:type = "bool" ;
+  	double displacement_sigma ;
+  		displacement_sigma:type = "float" ;
+  		displacement_sigma:units = "nanometer" ;
+  	int64 displacement_trials_accepted ;
+  		displacement_trials_accepted:type = "int" ;
+  	int64 rotation_trials_accepted ;
+  		rotation_trials_accepted:type = "int" ;
+  } // group options
+
+group: metadata {
+  variables:
+  	double standard_state_correction ;
+  } // group metadata
+}
