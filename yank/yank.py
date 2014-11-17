@@ -5,7 +5,10 @@
 #=============================================================================================
 
 """
-Main interface for automated free energy calculations using OpenMM.
+Yank
+====
+
+Interface for automated free energy calculations.
 
 """
 
@@ -344,13 +347,13 @@ class Yank(object):
         simulation = ModifiedHamiltonianExchange(store_filename, mpicomm=mpicomm)
         simulation.create(thermodynamic_state, systems, positions,
                           displacement_sigma=self.mc_displacement_sigma, mc_atoms=mc_atoms,
-                          protocol=options, metadata=metadata)
+                          options=options, metadata=metadata)
         simulation.verbose = self.verbose
 
         # Initialize simulation.
         # TODO: Use the right scheme for initializing the simulation without running.
-        if self.verbose: print "Initializing simulation..."
-        simulation.run(0)
+        #if self.verbose: print "Initializing simulation..."
+        #simulation.run(0)
 
         # Clean up simulation.
         del simulation
@@ -394,9 +397,9 @@ class Yank(object):
             store_filename = self._store_filenames[phase]
             # Resume simulation from store file.
             simulation = ModifiedHamiltonianExchange(store_filename=store_filename, mpicomm=mpicomm)
-            simulation.resume(protocol=options)
-            # TODO: We may need to manually update run options here if protocol=options above does not behave as expected.
-            simulation.run(niterations=niterations)
+            simulation.resume(options=options)
+            # TODO: We may need to manually update run options here if options=options above does not behave as expected.
+            simulation.run(niterations_to_run=niterations)
             # Clean up to ensure we close files, contexts, etc.
             del simulation
 
@@ -459,7 +462,7 @@ class Yank(object):
             if (not os.path.exists(fullpath)): continue
 
             # Analyze this leg.
-            simulation = ModifiedHamiltonianExchange(store_filename=store_filename, mpicomm=mpicomm, protocol=options)
+            simulation = ModifiedHamiltonianExchange(store_filename=store_filename, mpicomm=mpicomm, options=options)
             analysis = simulation.analyze()
             del simulation
 

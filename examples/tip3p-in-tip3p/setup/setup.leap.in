@@ -1,7 +1,7 @@
 # Create a TIP3P water box.
 
 # Load AMBER forcefield for protein.
-source leaprc.ff99SBildn
+source oldff/leaprc.ff99SBildn
 
 complex = combine { TIP3PBOX }
 solvatebox complex TIP3PBOX 3.45 0.5 iso
@@ -15,12 +15,12 @@ receptor = complex
 saveamberparm complex complex.prmtop complex.inpcrd
 savepdb complex complex.pdb
 
-# Ligand
-saveamberparm ligand ligand.prmtop ligand.inpcrd
-savepdb ligand ligand.pdb
+# Solvent
+saveamberparm ligand solvent.prmtop solvent.inpcrd
+savepdb ligand solvent.pdb
 
-# Receptor.
-saveamberparm receptor receptor.prmtop receptor.inpcrd
-savepdb receptor receptor.pdb
+# Vacuum
+saveamberparm ligand vacuum.prmtop vacuum.inpcrd
+savepdb ligand vacuum.pdb
 
-#quit
+quit
