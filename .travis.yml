@@ -12,13 +12,13 @@ script:
   - source activate $python
   - conda install --yes $HOME/miniconda/conda-bld/linux-64/yank-*
   - conda list -e
+  - # add to path
+  - export PATH=$HOME/miniconda/bin/:$PATH
   # check if command line version was installed correctly
   - which yank
   - yank --help
   - # Run tests
-  - cd tests
-  - nosetests --nocapture -vv
-  - cd ..
+  - nosetests --nocapture -vv tests
   # Push to binstar anyway.
   - bash -x devtools/ci/after_sucess.sh
 
