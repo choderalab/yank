@@ -1,4 +1,4 @@
-.. _api
+.. _yank
 
 #############
 API Reference
@@ -6,7 +6,7 @@ API Reference
 
 .. currentmodule:: yank
 
-.. autosummary::
+.. autosummary:
     :toctree: api/generated/
 
     yank

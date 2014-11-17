@@ -14,12 +14,12 @@
 import sys
 import os
 
-import yank
-import yank.version
-
 sys.path.insert(0, os.path.abspath('sphinxext'))
 sys.path.insert(0, os.path.abspath('themes/sphinx_rtd_theme-0.1.5'))
 import sphinx_rtd_theme
+
+import yank
+import yank.version
 
 
 # If extensions (or modules to document with autodoc) are in another directory,

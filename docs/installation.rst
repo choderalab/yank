@@ -12,31 +12,36 @@ The simplest way to install YANK is via the `conda <http://www.continuum.io/blog
 Packages are provided on the `omnia binstar channel <http://binstar.org/omnia>`_ for Linux, OS X, and Win platforms.
 The `yank binstar page <https://binstar.org/omnia/yank>`_ has useful instructions and download statistics.
 
-If you are using a version of the `anaconda <https://store.continuum.io/cshop/anaconda/>` scientific Python distribution, you already have the `conda` package manager installed.
-If not, but you have the `pip` package manager installed (to access packages from PyPI), you can easily install `conda` with
+If you are using a version of the `anaconda <https://store.continuum.io/cshop/anaconda/>`_ scientific Python distribution, you already have the ``conda`` package manager installed.
+If not, but you have the ``pip`` package manager installed (to access packages from PyPI), you can easily install ``conda`` with
 
-  $ pip install conda
+.. code-block:: none
+
+   $ pip install conda
 
 Release build
 =============
 
-You can easily install the stable release build of YANK via the `conda` package with
+You can easily install the stable release build of YANK via the ``conda`` package with
 
-  $ conda config --add channels http://conda.binstar.org/omnia
-  $ conda install yank
+.. code-block:: none
+
+   $ conda config --add channels http://conda.binstar.org/omnia
+   $ conda install yank
 
 This version is recommended for all users not actively developing new algorithms for alchemical free energy calculations.
 
-.. note:: ``conda`` will automatically dependencies from binary packages automatically, including difficult-to-install packages such as numpy and scipy.
-This is really the easiest way to get started.
+.. note:: ``conda`` will automatically dependencies from binary packages automatically, including difficult-to-install packages such as numpy and scipy. This is really the easiest way to get started.
 
 Development build
 =================
 
 The bleeding-edge, absolute latest, very likely unstable development build of YANK is pushed to `binstar <https://binstar.org/omnia/yank>`_ with each GitHub commit, and can be obtained by
 
-  $ conda config --add channels http://conda.binstar.org/omnia
-  $ conda install yank-dev
+.. code-block:: none
+
+   $ conda config --add channels http://conda.binstar.org/omnia
+   $ conda install yank-dev
 
 Again, this build may very likely be unstable, so use at your own risk!
 
@@ -45,7 +50,9 @@ Testing the installation
 
 Test your YANK installation to make sure everything is behaving properly on your machine:
 
-  $ yank selftest
+.. code-block:: none
+
+   $ yank selftest
 
 This will not only check that installation paths are correct, but also run a battery of tests that ensure any automatically detected GPU hardware is behaving as expected.
 
@@ -127,29 +134,33 @@ Installing from the GitHub source repository
 Installing from source is only recommended for developers that wish to modify YANK or the algorithms it uses.
 Installation via `conda` is preferred for all other users.
 
-The source code for YANK resides on `GitHub <http://github.com/choderalab/yank>`_.
+Clone the source code repository from `GitHub <http://github.com/choderalab/yank>`_.
 
-Clone the source code repository from github::
+.. code-block:: none
 
-  $ git clone git://github.com/choderalab/yank.git
-  $ cd yank/
-  $ python setup.py install
+   $ git clone git://github.com/choderalab/yank.git
+   $ cd yank/
+   $ python setup.py install
 
 If you wish to install into a different path (often preferred for development), use
 
-  $ python setup.py install --prefix=$PREFIX
+.. code-block:: none
 
-where `$PREFIX` is the desired installation path.
-Note that `$PREFIX/lib/python2.7/site-packages/` must be on your `$PYTHONPATH`.
+   $ python setup.py install --prefix=$PREFIX
 
-`setup.py` will try to install some of the dependencies, or at least check that you have them installed and throw an error.
+where ``$PREFIX`` is the desired installation path.
+Note that ``$PREFIX/lib/python2.7/site-packages/`` must be on your ``$PYTHONPATH``.
+
+``setup.py`` will try to install some of the dependencies, or at least check that you have them installed and throw an error.
 
 Testing your installation
 =========================
 
 Test your YANK installation to make sure everything is behaving properly on your machine:
 
-  $ yank selftest
+.. code-block:: none
+
+   $ yank selftest
 
 This will not only check that installation paths are correct, but also run a battery of tests that ensure any automatically detected GPU hardware is behaving as expected.
 

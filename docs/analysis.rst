@@ -7,7 +7,7 @@ Analysis
 
 Analysis tools
 --------------
-.. autosummary::
+.. autosummary:
     :toctree: api/generated/
 
     analyze

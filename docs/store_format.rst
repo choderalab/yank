@@ -12,3 +12,7 @@ Why NetCDF4?
 ------------
 
 All your questions answered here.
+
+Format specification
+--------------------
+

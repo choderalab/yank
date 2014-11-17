@@ -3,6 +3,7 @@ YANK
 ####
 
 .. TODO: Standardize this tagline
+
 **A GPU-accelerated Python framework for exploring algorithms for alchemical free energy calculations**
 
 .. TODO: Refine this description
@@ -24,7 +25,6 @@ Get involved
 * `Download the code <https://github.com/choderalab/yank>`_
 * `See YANK in action <examples/index.html>`_
 * `Report a bug or request a feature <https://github.com/choderalab/yank/issues>`_
-.. TODO: * `Get help with YANK <http://discourse.choderalab.org>`_
 
 --------------------------------------------------------------------------------
 
@@ -36,19 +36,15 @@ Documentation
 
    quickstart
    installation
-   getting_started
+   running
    theory
    algorithms
    analysis
-   examples
    benchmarks
    acknowledgments
-   <!---
    examples/index
    whatsnew
    faq
-   Discussion Forums <http://discourse.choderalab.org>
-   -->
 
 API Reference
 -------------
@@ -64,7 +60,7 @@ Developing
 .. toctree::
    :maxdepth: 1
 
-   <!--- store_format -->
+   store_format
    building_docs
    style
 

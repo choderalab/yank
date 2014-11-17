@@ -53,6 +53,7 @@ General options:
   -o, --online-analysis         Enable on-the-fly analysis
   --platform=PLATFORM           OpenMM Platform to use (Reference, CPU, OpenCL, CUDA) [default: None]
   --minimize                    Minimize configurations before running simulation.
+  -m, --mpi                     Use MPI to parallelize the calculation
 
 Simulation options:
   --restraints=TYPE             Restraint type to add between protein and ligand in implicit solvent ('harmonic', 'flat-bottom') [default: flat-bottom]
