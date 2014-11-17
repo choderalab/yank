@@ -1,0 +1,108 @@
+-I: Adding /Users/choderaj/anaconda/bin/../dat/leap/prep to search path.
+-I: Adding /Users/choderaj/anaconda/bin/../dat/leap/lib to search path.
+-I: Adding /Users/choderaj/anaconda/bin/../dat/leap/parm to search path.
+-I: Adding /Users/choderaj/anaconda/bin/../dat/leap/cmd to search path.
+-f: Source setup.leap.in.
+
+Welcome to LEaP!
+(no leaprc in search path)
+Sourcing: ./setup.leap.in
+----- Source: /Users/choderaj/anaconda/bin/../dat/leap/cmd/leaprc.gaff
+----- Source of /Users/choderaj/anaconda/bin/../dat/leap/cmd/leaprc.gaff done
+Log file: ./leap.log
+Loading parameters: /Users/choderaj/anaconda/bin/../dat/leap/parm/gaff.dat
+Reading title:
+AMBER General Force Field for organic molecules (Version 1.7, Nov 2013)
+Using H(N)-modified Bondi radii
+Loading parameters: ./receptor.gaff.frcmod
+Reading force field modification type file (frcmod)
+Reading title:
+remark goes here
+Loading parameters: ./receptor.gaff.frcmod
+Reading force field modification type file (frcmod)
+Reading title:
+remark goes here
+Loading Mol2 file: ./receptor.gaff.mol2
+Reading MOLECULE named *****
+Loading parameters: ./ligand.gaff.frcmod
+Reading force field modification type file (frcmod)
+Reading title:
+remark goes here
+Loading parameters: ./ligand.gaff.frcmod
+Reading force field modification type file (frcmod)
+Reading title:
+remark goes here
+Loading Mol2 file: ./ligand.gaff.mol2
+Reading MOLECULE named p-xylene
+Checking 'complex'....
+Checking parameters for unit 'complex'.
+Checking for bond parameters.
+Checking for angle parameters.
+Unit is OK.
+Total unperturbed charge:  -0.000002
+Total perturbed charge:    -0.000002
+Checking Unit.
+Building topology.
+Building atom parameters.
+Building bond parameters.
+Building angle parameters.
+Building proper torsion parameters.
+Building improper torsion parameters.
+ total 6 improper torsions applied
+Building H-Bond parameters.
+Incorporating Non-Bonded adjustments.
+Not Marking per-residue atom chain types.
+Marking per-residue atom chain types.
+  (Residues lacking connect0/connect1 - 
+   these don't have chain types marked:
+
+	res	total affected
+
+	MOL	1
+  )
+ (no restraints)
+Checking Unit.
+Building topology.
+Building atom parameters.
+Building bond parameters.
+Building angle parameters.
+Building proper torsion parameters.
+Building improper torsion parameters.
+ total 6 improper torsions applied
+Building H-Bond parameters.
+Incorporating Non-Bonded adjustments.
+Not Marking per-residue atom chain types.
+Marking per-residue atom chain types.
+  (Residues lacking connect0/connect1 - 
+   these don't have chain types marked:
+
+	res	total affected
+
+	MOL	1
+  )
+ (no restraints)
+Checking Unit.
+Building topology.
+Building atom parameters.
+Building bond parameters.
+Building angle parameters.
+Building proper torsion parameters.
+Building improper torsion parameters.
+ total 48 improper torsions applied
+Building H-Bond parameters.
+Incorporating Non-Bonded adjustments.
+Not Marking per-residue atom chain types.
+Marking per-residue atom chain types.
+  (Residues lacking connect0/connect1 - 
+   these don't have chain types marked:
+
+	res	total affected
+
+	LIG	1
+	MOL	1
+  )
+ (no restraints)
+Writing pdb file: vacuum.pdb
+Writing pdb file: solvent.pdb
+Writing pdb file: complex.pdb
+	Quit
