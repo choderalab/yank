@@ -72,7 +72,7 @@ class ModifiedHamiltonianExchange(HamiltonianExchange):
     """
 
     # Options to store.
-    options_to_store = HamiltonianExchange.options_to_store + ['mc_displacement', 'mc_rotation', 'displacement_sigma'] # TODO: Add mc_atoms
+    options_to_store = HamiltonianExchange.options_to_store + ['mc_atoms', 'mc_displacement', 'mc_rotation', 'displacement_sigma', 'displacement_trials_accepted', 'rotation_trials_accepted']
 
     def create(self, reference_state, systems, positions, displacement_sigma=None, mc_atoms=None, options=None, mm=None, mpicomm=None, metadata=None):
         """
@@ -113,6 +113,8 @@ class ModifiedHamiltonianExchange(HamiltonianExchange):
 
         self.displacement_trials_accepted = 0 # number of MC displacement trials accepted
         self.rotation_trials_accepted = 0 # number of MC displacement trials accepted
+
+        # Form metadata dict.
 
         # Initialize replica-exchange simlulation.
         HamiltonianExchange.create(self, reference_state, systems, positions, options=options, metadata=metadata)

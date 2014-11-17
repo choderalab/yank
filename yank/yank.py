@@ -397,9 +397,9 @@ class Yank(object):
             store_filename = self._store_filenames[phase]
             # Resume simulation from store file.
             simulation = ModifiedHamiltonianExchange(store_filename=store_filename, mpicomm=mpicomm)
-            simulation.resume(protocol=options)
-            # TODO: We may need to manually update run options here if protocol=options above does not behave as expected.
-            simulation.run(niterations=niterations)
+            simulation.resume(options=options)
+            # TODO: We may need to manually update run options here if options=options above does not behave as expected.
+            simulation.run(niterations_to_run=niterations)
             # Clean up to ensure we close files, contexts, etc.
             del simulation
 
@@ -462,7 +462,7 @@ class Yank(object):
             if (not os.path.exists(fullpath)): continue
 
             # Analyze this leg.
-            simulation = ModifiedHamiltonianExchange(store_filename=store_filename, mpicomm=mpicomm, protocol=options)
+            simulation = ModifiedHamiltonianExchange(store_filename=store_filename, mpicomm=mpicomm, options=options)
             analysis = simulation.analyze()
             del simulation
 

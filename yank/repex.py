@@ -920,7 +920,7 @@ class ReplicaExchange(object):
 
         """
         if not self._initialized:
-            self._initialize()
+            self._initialize_resume()
 
         # Main loop
         run_start_time = time.time()
@@ -1072,7 +1072,7 @@ class ReplicaExchange(object):
 
         return
 
-    def _initialize(self):
+    def _initialize_resume(self):
         """
         Initialize the simulation, and bind to a storage file.
 
@@ -1215,34 +1215,12 @@ class ReplicaExchange(object):
         elapsed_time = final_time - initial_time
         if self.verbose: print "%.3f s elapsed." % elapsed_time
 
-        if self._resume:
-            # Resume from NetCDF file.
-            self._resume_from_netcdf()
+        # Resume from NetCDF file.
+        self._resume_from_netcdf()
 
-            # Show energies.
-            if self.verbose and self.show_energies:
-                self._show_energies()
-        else:
-            # Minimize and equilibrate all replicas.
-            self._minimize_and_equilibrate()
-
-            # Initialize current iteration counter.
-            self.iteration = 0
-
-            # TODO: Perform any GPU sanity checks here.
-
-            # Compute energies of all alchemical replicas
-            self._compute_energies()
-
-            # Show energies.
-            if self.verbose and self.show_energies:
-                self._show_energies()
-
-            # Initialize NetCDF file.
-            self._initialize_netcdf()
-
-            # Store initial state.
-            self._write_iteration_netcdf()
+        # Show energies.
+        if self.verbose and self.show_energies:
+            self._show_energies()
 
         # Analysis objet starts off empty.
         # TODO: Use an empty dict instead?
@@ -2188,11 +2166,24 @@ class ReplicaExchange(object):
                 packed_data = numpy.empty(1, 'O')
                 packed_data[0] = option_value
                 ncvar[:] = packed_data
+                setattr(ncvar, 'type', option_type.__name__)
+            elif hasattr(option_value, '__getitem__'):
+                nelements = len(option_value)
+                ncgrp_options.createDimension(option_name, nelements) # unlimited number of iterations
+                ncvar = ncgrp_options.createVariable(option_name, type(option_value[0]), (option_name,))
+                for (i, element) in enumerate(option_value):
+                    ncvar[i] = element
+                option_type = type(option_value[0])
+                setattr(ncvar, 'type', option_type.__name__)
+            elif option_value is None:
+                ncvar = ncgrp_options.createVariable(option_name, int)
+                ncvar.assignValue(0)
+                setattr(ncvar, 'type', option_type.__name__)
             else:
                 ncvar = ncgrp_options.createVariable(option_name, type(option_value))
                 ncvar.assignValue(option_value)
+                setattr(ncvar, 'type', option_type.__name__)
             if option_unit: setattr(ncvar, 'units', str(option_unit))
-            setattr(ncvar, 'type', option_type.__name__)
 
         return
 
@@ -2214,22 +2205,27 @@ class ReplicaExchange(object):
         for option_name in ncgrp_options.variables.keys():
             # Get NetCDF variable.
             option_ncvar = ncgrp_options.variables[option_name]
+            type_name = getattr(option_ncvar, 'type')
             # Get option value.
-            if option_ncvar.shape == ():
+            if type_name == 'NoneType':
+                option_value = None
+            elif option_ncvar.shape == ():
                 option_value = option_ncvar.getValue()
+            elif (option_ncvar.shape[0] > 1):
+                option_value = numpy.array(option_ncvar[:], type_name)
             else:
                 option_value = option_ncvar[0]
-            # Cast to Python type.
-            type_name = getattr(option_ncvar, 'type')
-            option_value = eval(type_name + '(' + repr(option_value) + ')')
+                option_value = eval(type_name + '(' + repr(option_value) + ')')
             # If Quantity, assign unit.
             if hasattr(option_ncvar, 'units'):
                 option_unit_name = getattr(option_ncvar, 'units')
-                if option_unit_name[0] == '/': option_unit_name = '1' + option_unit_name
-                option_unit = eval(option_unit_name, vars(unit))
-                option_value = unit.Quantity(option_value, option_unit)
+                if option_unit_name[0] == '/':
+                    option_value = eval(str(option_value) + option_unit_name, unit.__dict__)
+                else:
+                    option_value = eval(str(option_value) + '*' + option_unit_name, unit.__dict__)
             # Store option.
             if self.verbose_root: print "Restoring option: %s -> %s (type: %s)" % (option_name, str(option_value), type(option_value))
+            print "Restoring option: %s -> %s (type: %s)" % (option_name, str(option_value), type(option_value))
             setattr(self, option_name, option_value)
 
         # Signal success.
@@ -2304,7 +2300,9 @@ class ReplicaExchange(object):
                 self._show_energies()
 
             # Re-store initial state.
-            self._write_iteration_netcdf()
+            #self.ncfile = ncfile
+            #self._write_iteration_netcdf()
+            #self.ncfile = None
 
         # Close NetCDF file.
         ncfile.close()
