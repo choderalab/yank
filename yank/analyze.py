@@ -448,69 +448,6 @@ def write_crd(filename, iteration, replica, title, ncfile):
     # Close file.
     outfile.close()
 
-def _accumulate_mixing_statistics(self):
-    """Return the mixing transition matrix Tij."""
-    try:
-        return self._accumulate_mixing_statistics_update()
-    except AttributeError:
-        pass
-    except ValueError:
-        logger.info("Inconsistent transition count matrix detected, recalculating from scratch.")
-
-    return self._accumulate_mixing_statistics_full()
-
-def _accumulate_mixing_statistics_full(self):
-    """Compute statistics of transitions iterating over all iterations of repex."""
-    self._Nij = np.zeros([self.n_states, self.n_states], np.float64)
-    for iteration in range(self.states.shape[0] - 1):
-        for ireplica in range(self.n_states):
-            istate = self.states[iteration, ireplica]
-            jstate = self.states[iteration + 1, ireplica]
-            self._Nij[istate, jstate] += 0.5
-            self._Nij[jstate, istate] += 0.5
-
-    Tij = np.zeros([self.n_states, self.n_states], np.float64)
-    for istate in range(self.n_states):
-        Tij[istate] = self._Nij[istate] / self._Nij[istate].sum()
-
-    return Tij
-
-    def _accumulate_mixing_statistics_update(self):
-        """Compute statistics of transitions updating Nij of last iteration of repex."""
-
-        if self._Nij.sum() != (self.states.shape[0] - 2) * self.n_states:  # n_iter - 2 = (n_iter - 1) - 1.  Meaning that you have exactly one new iteration to process.
-            raise(ValueError("Inconsistent transition count matrix detected.  Perhaps you tried updating twice in a row?"))
-
-        for ireplica in range(self.n_states):
-            istate = self.states[-2, ireplica]
-            jstate = self.states[-1, ireplica]
-            self._Nij[istate, jstate] += 0.5
-            self._Nij[jstate, istate] += 0.5
-
-        Tij = np.zeros([self.n_states, self.n_states], np.float64)
-        for istate in range(self.n_states):
-            Tij[istate] = self._Nij[istate] / self._Nij[istate].sum()
-
-        return Tij
-
-
-    def _show_mixing_statistics(self):
-        Tij = self._accumulate_mixing_statistics()
-
-        P = pd.DataFrame(Tij)
-        logger.info("\nCumulative symmetrized state mixing transition matrix:\n%s" % P.to_string())
-
-        # Estimate second eigenvalue and equilibration time.
-        mu = np.linalg.eigvals(Tij)
-        mu = -np.sort(-mu) # sort in descending order
-        if (mu[1] >= 1):
-            logger.info("\nPerron eigenvalue is unity; Markov chain is decomposable.")
-        else:
-            logger.info("\nPerron eigenvalue is %9.5f; state equilibration timescale is ~ %.1f iterations" % (mu[1], 1.0 / (1.0 - mu[1])))
-
-
-
-
 def show_mixing_statistics(ncfile, cutoff=0.05, nequil=0):
     """
     Print summary of mixing statistics.
