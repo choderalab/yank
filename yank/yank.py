@@ -355,6 +355,8 @@ class Yank(object):
         #if self.verbose: print "Initializing simulation..."
         #simulation.run(0)
 
+        # TODO: Process user-supplied options.
+
         # Clean up simulation.
         del simulation
 
@@ -446,7 +448,7 @@ class Yank(object):
         # TODO: Can we simplify this code by pushing more into analyze.py or repex.py?
 
         import analyze
-        from pymbar import pymbar, timeseries
+        from pymbar import MBAR, timeseries
         import netCDF4 as netcdf
 
         # Storage for results.
@@ -473,14 +475,14 @@ class Yank(object):
         # TODO: Include effects of analytical contributions.
         phases_available = results.keys()
 
-        if set('solvent', 'vacuum').issubset(phases_available):
+        if set(['solvent', 'vacuum']).issubset(phases_available):
             # SOLVATION FREE ENERGY
             results['solvation'] = dict()
 
             results['solvation']['Delta_f'] = results['solvent']['Delta_f'] + results['vacuum']['Delta_f']
             results['solvation']['dDelta_f'] = numpy.sqrt(results['solvent']['dDelta_f']**2 + results['vacuum']['Delta_f']**2)
 
-        if set('ligand', 'complex').issubset(phases_available):
+        if set(['ligand', 'complex']).issubset(phases_available):
             # BINDING FREE ENERGY
             results['binding'] = dict()
 

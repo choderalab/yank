@@ -153,10 +153,13 @@ def alchemical_factory_check(reference_system, positions, receptor_atoms, ligand
     if platform_name:
         platform = openmm.Platform.getPlatformByName(platform_name)
 
-    delta = 1.0e-10
+    alchemical_system = factory.createPerturbedSystem(AlchemicalState(0, 1, 1, 1))
 
-    # Create systems.
-    compareSystemEnergies(positions, [reference_system, factory.createPerturbedSystem(AlchemicalState(0, 1, 1, 1))], ['reference', 'alchemical'], platform=platform, precision=precision)
+    # Serialize for debugging.
+    with open('system.xml', 'w') as outfile:
+        outfile.write(alchemical_system.__getstate__())
+
+    compareSystemEnergies(positions, [reference_system, alchemical_system], ['reference', 'alchemical'], platform=platform, precision=precision)
 
     return
 
@@ -571,7 +574,20 @@ def test_alchemical_accuracy():
 #=============================================================================================
 
 if __name__ == "__main__":
-    generate_trace(test_systems['TIP3P with reaction field, switch, dispersion correction'])
+    #generate_trace(test_systems['TIP3P with reaction field, switch, dispersion correction'])
+
+
+    test_systems = dict()
+    test_systems['Src in TIP3P with reaction field'] = {
+        'test' : testsystems.SrcExplicit(nonbondedMethod=app.CutoffPeriodic),
+        'ligand_atoms' : range(0,21), 'receptor_atoms' : range(21,4091) }
+    name = 'Src in TIP3P with reaction field'
+    test_system = test_systems[name]
+    reference_system = test_system['test'].system
+    positions = test_system['test'].positions
+    ligand_atoms = test_system['ligand_atoms']
+    receptor_atoms = test_system['receptor_atoms']
+    alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms)
 
     #test_lj_cluster()
     #test_lj_fluid_without_dispersion()
