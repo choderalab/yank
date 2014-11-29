@@ -1,4 +1,4 @@
-log started: Fri Nov 28 22:24:42 2014
+log started: Fri Nov 28 23:00:55 2014
 
 Log file: ./leap.log
 >> #
@@ -130,21 +130,76 @@ remark goes here
 (UNKNOWN ATOM TYPE: DU)
 > 
 >     # Load ligand.
->     ligand = loadMol2 ligand.gaff.mol2 
+>     ligand = loadMol2 ligand.gaff.mol2
 Loading Mol2 file: ./ligand.gaff.mol2
 Reading MOLECULE named 48
 > 
+>     complex = combine { receptor ligand }
+  Sequence: *****
+  Sequence: 48
+>     
+> 
 >     # Check complex.
 >     check complex
-check: Argument #1 is type String must be of type: [unit molecule residue atom]
-usage:  check <unit> [parmset]
+Checking 'complex'....
+WARNING: The unperturbed charge of the unit: 3.999990 is not zero.
+Warning: Close contact of 1.437655 angstroms between .R<LIG 1>.A<O8 9> and .R<non 2>.A<H13 31>
+Warning: Close contact of 1.022607 angstroms between .R<non 2>.A<H30 48> and .R<non 2>.A<N4 18>
+Warning: Close contact of 1.023481 angstroms between .R<non 2>.A<H29 47> and .R<non 2>.A<N4 18>
+Warning: Close contact of 1.023886 angstroms between .R<non 2>.A<H28 46> and .R<non 2>.A<N4 18>
+Warning: Close contact of 1.092026 angstroms between .R<non 2>.A<H27 45> and .R<non 2>.A<C14 17>
+Warning: Close contact of 1.092702 angstroms between .R<non 2>.A<H26 44> and .R<non 2>.A<C14 17>
+Warning: Close contact of 1.093013 angstroms between .R<non 2>.A<H25 43> and .R<non 2>.A<C13 16>
+Warning: Close contact of 1.092679 angstroms between .R<non 2>.A<H24 42> and .R<non 2>.A<C13 16>
+Warning: Close contact of 1.094742 angstroms between .R<non 2>.A<H23 41> and .R<non 2>.A<C12 15>
+Warning: Close contact of 1.094482 angstroms between .R<non 2>.A<H22 40> and .R<non 2>.A<C12 15>
+Warning: Close contact of 1.023331 angstroms between .R<non 2>.A<H21 39> and .R<non 2>.A<N3 14>
+Warning: Close contact of 1.023493 angstroms between .R<non 2>.A<H20 38> and .R<non 2>.A<N3 14>
+Warning: Close contact of 1.094573 angstroms between .R<non 2>.A<H19 37> and .R<non 2>.A<C11 13>
+Warning: Close contact of 1.094281 angstroms between .R<non 2>.A<H18 36> and .R<non 2>.A<C11 13>
+Warning: Close contact of 1.023221 angstroms between .R<non 2>.A<H17 35> and .R<non 2>.A<N2 12>
+Warning: Close contact of 1.022554 angstroms between .R<non 2>.A<H16 34> and .R<non 2>.A<N2 12>
+Warning: Close contact of 1.023183 angstroms between .R<non 2>.A<H15 33> and .R<non 2>.A<N2 12>
+Warning: Close contact of 1.092819 angstroms between .R<non 2>.A<H14 32> and .R<non 2>.A<C10 11>
+Warning: Close contact of 1.091165 angstroms between .R<non 2>.A<H13 31> and .R<non 2>.A<C10 11>
+Warning: Close contact of 1.093465 angstroms between .R<non 2>.A<H12 30> and .R<non 2>.A<C9 10>
+Warning: Close contact of 1.092873 angstroms between .R<non 2>.A<H11 29> and .R<non 2>.A<C9 10>
+Warning: Close contact of 1.094031 angstroms between .R<non 2>.A<H10 28> and .R<non 2>.A<C8 9>
+Warning: Close contact of 1.093692 angstroms between .R<non 2>.A<H9 27> and .R<non 2>.A<C8 9>
+Warning: Close contact of 1.023189 angstroms between .R<non 2>.A<H8 26> and .R<non 2>.A<N1 8>
+Warning: Close contact of 1.023749 angstroms between .R<non 2>.A<H7 25> and .R<non 2>.A<N1 8>
+Warning: Close contact of 1.093530 angstroms between .R<non 2>.A<H6 24> and .R<non 2>.A<C7 7>
+Warning: Close contact of 1.094205 angstroms between .R<non 2>.A<H5 23> and .R<non 2>.A<C7 7>
+Warning: Close contact of 1.021838 angstroms between .R<non 2>.A<H4 22> and .R<non 2>.A<C6 6>
+Warning: Close contact of 1.021647 angstroms between .R<non 2>.A<H3 21> and .R<non 2>.A<C5 5>
+Warning: Close contact of 1.021513 angstroms between .R<non 2>.A<H2 20> and .R<non 2>.A<C3 3>
+Warning: Close contact of 1.021237 angstroms between .R<non 2>.A<H1 19> and .R<non 2>.A<C2 2>
+Warning: Close contact of 1.468494 angstroms between .R<non 2>.A<N4 18> and .R<non 2>.A<C14 17>
+Warning: Close contact of 1.479204 angstroms between .R<non 2>.A<C12 15> and .R<non 2>.A<N3 14>
+Warning: Close contact of 1.480180 angstroms between .R<non 2>.A<N3 14> and .R<non 2>.A<C11 13>
+Warning: Close contact of 1.482939 angstroms between .R<non 2>.A<C11 13> and .R<non 2>.A<C4 4>
+Warning: Close contact of 1.469557 angstroms between .R<non 2>.A<N2 12> and .R<non 2>.A<C10 11>
+Warning: Close contact of 1.479204 angstroms between .R<non 2>.A<C8 9> and .R<non 2>.A<N1 8>
+Warning: Close contact of 1.480661 angstroms between .R<non 2>.A<N1 8> and .R<non 2>.A<C7 7>
+Warning: Close contact of 1.482535 angstroms between .R<non 2>.A<C7 7> and .R<non 2>.A<C1 1>
+Warning: Close contact of 1.405095 angstroms between .R<non 2>.A<C6 6> and .R<non 2>.A<C5 5>
+Warning: Close contact of 1.413572 angstroms between .R<non 2>.A<C6 6> and .R<non 2>.A<C1 1>
+Warning: Close contact of 1.412852 angstroms between .R<non 2>.A<C5 5> and .R<non 2>.A<C4 4>
+Warning: Close contact of 1.413572 angstroms between .R<non 2>.A<C4 4> and .R<non 2>.A<C3 3>
+Warning: Close contact of 1.404714 angstroms between .R<non 2>.A<C3 3> and .R<non 2>.A<C2 2>
+Warning: Close contact of 1.413465 angstroms between .R<non 2>.A<C2 2> and .R<non 2>.A<C1 1>
+Checking parameters for unit 'complex'.
+Checking for bond parameters.
+Checking for angle parameters.
+check:  Warnings: 46
+Unit is OK.
 > 
 >     # Report on net charge.
 >     charge complex
-charge: Argument #1 is type String must be of type: [unit molecule residue atom list]
-usage:  charge <object>
+Total unperturbed charge:   3.999990
+Total perturbed charge:     3.999990
 > 
->     # Write parameters.
+>     # Write parameters for vacuum
 >     saveAmberParm ligand vacuum.prmtop vacuum.inpcrd
 Checking Unit.
 WARNING: The unperturbed charge of the unit: 3.999990 is not zero.
@@ -170,6 +225,9 @@ Marking per-residue atom chain types.
 	non	1
   )
  (no restraints)
+>     savepdb ligand vacuum.pdb
+Writing pdb file: vacuum.pdb
+>     
 >     saveAmberParm ligand solvent.prmtop solvent.inpcrd
 Checking Unit.
 WARNING: The unperturbed charge of the unit: 3.999990 is not zero.
@@ -196,17 +254,38 @@ Marking per-residue atom chain types.
   )
  (no restraints)
 >     saveAmberParm complex complex.prmtop complex.inpcrd
-saveAmberParm: Argument #1 is type String must be of type: [unit]
-usage:  saveAmberParm <unit> <topologyfile> <coordfile> 
+Checking Unit.
+WARNING: The unperturbed charge of the unit: 3.999990 is not zero.
+
+ -- ignoring the warning.
+
+Building topology.
+Building atom parameters.
+Building bond parameters.
+Building angle parameters.
+Building proper torsion parameters.
+Building improper torsion parameters.
+ total 42 improper torsions applied
+Building H-Bond parameters.
+Incorporating Non-Bonded adjustments.
+Not Marking per-residue atom chain types.
+Marking per-residue atom chain types.
+  (Residues lacking connect0/connect1 - 
+   these don't have chain types marked:
+
+	res	total affected
+
+	LIG	1
+	non	1
+  )
+ (no restraints)
 > 
 >     # Write PDB files
->     savepdb ligand vacuum.pdb
-Writing pdb file: vacuum.pdb
+> 
 >     savepdb ligand solvent.pdb
 Writing pdb file: solvent.pdb
 >     savepdb complex complex.pdb
-savePdb: Argument #1 is type String must be of type: [unit]
-usage:  savePdb <object> <filename>
+Writing pdb file: complex.pdb
 > 
 >     # Exit
      quit 

@@ -34,10 +34,34 @@ Reading title:
 remark goes here
 Loading Mol2 file: ./ligand.gaff.mol2
 Reading MOLECULE named 27
-check: Argument #1 is type String must be of type: [unit molecule residue atom]
-usage:  check <unit> [parmset]
-charge: Argument #1 is type String must be of type: [unit molecule residue atom list]
-usage:  charge <object>
+Checking 'complex'....
+WARNING: The unperturbed charge of the unit: 1.000004 is not zero.
+Warning: Close contact of 1.022705 angstroms between .R<non 2>.A<H18 27> and .R<non 2>.A<N1 9>
+Warning: Close contact of 1.022315 angstroms between .R<non 2>.A<H17 26> and .R<non 2>.A<N1 9>
+Warning: Close contact of 1.021703 angstroms between .R<non 2>.A<H16 25> and .R<non 2>.A<N1 9>
+Warning: Close contact of 1.094325 angstroms between .R<non 2>.A<H15 24> and .R<non 2>.A<C8 8>
+Warning: Close contact of 1.094027 angstroms between .R<non 2>.A<H14 23> and .R<non 2>.A<C8 8>
+Warning: Close contact of 1.095542 angstroms between .R<non 2>.A<H13 22> and .R<non 2>.A<C7 7>
+Warning: Close contact of 1.091970 angstroms between .R<non 2>.A<H12 21> and .R<non 2>.A<C7 7>
+Warning: Close contact of 1.092741 angstroms between .R<non 2>.A<H11 20> and .R<non 2>.A<C6 6>
+Warning: Close contact of 1.092287 angstroms between .R<non 2>.A<H10 19> and .R<non 2>.A<C6 6>
+Warning: Close contact of 1.095188 angstroms between .R<non 2>.A<H9 18> and .R<non 2>.A<C5 5>
+Warning: Close contact of 1.090282 angstroms between .R<non 2>.A<H8 17> and .R<non 2>.A<C5 5>
+Warning: Close contact of 1.095349 angstroms between .R<non 2>.A<H7 16> and .R<non 2>.A<C4 4>
+Warning: Close contact of 1.090912 angstroms between .R<non 2>.A<H6 15> and .R<non 2>.A<C4 4>
+Warning: Close contact of 1.091955 angstroms between .R<non 2>.A<H5 14> and .R<non 2>.A<C3 3>
+Warning: Close contact of 1.093873 angstroms between .R<non 2>.A<H4 13> and .R<non 2>.A<C2 2>
+Warning: Close contact of 1.092281 angstroms between .R<non 2>.A<H3 12> and .R<non 2>.A<C2 2>
+Warning: Close contact of 1.094178 angstroms between .R<non 2>.A<H2 11> and .R<non 2>.A<C1 1>
+Warning: Close contact of 1.093370 angstroms between .R<non 2>.A<H1 10> and .R<non 2>.A<C1 1>
+Warning: Close contact of 1.480187 angstroms between .R<non 2>.A<N1 9> and .R<non 2>.A<C3 3>
+Checking parameters for unit 'complex'.
+Checking for bond parameters.
+Checking for angle parameters.
+check:  Warnings: 20
+Unit is OK.
+Total unperturbed charge:   1.000004
+Total perturbed charge:     1.000004
 Checking Unit.
 WARNING: The unperturbed charge of the unit: 1.000004 is not zero.
 
@@ -62,34 +86,56 @@ Marking per-residue atom chain types.
 	non	1
   )
  (no restraints)
-Checking Unit.
-WARNING: The unperturbed charge of the unit: 1.000004 is not zero.
-
- -- ignoring the warning.
-
-Building topology.
-Building atom parameters.
-Building bond parameters.
-Building angle parameters.
-Building proper torsion parameters.
-Building improper torsion parameters.
- total 0 improper torsions applied
-Building H-Bond parameters.
-Incorporating Non-Bonded adjustments.
-Not Marking per-residue atom chain types.
-Marking per-residue atom chain types.
-  (Residues lacking connect0/connect1 - 
-   these don't have chain types marked:
-
-	res	total affected
-
-	non	1
-  )
- (no restraints)
-saveAmberParm: Argument #1 is type String must be of type: [unit]
-usage:  saveAmberParm <unit> <topologyfile> <coordfile> 
 Writing pdb file: vacuum.pdb
+Checking Unit.
+WARNING: The unperturbed charge of the unit: 1.000004 is not zero.
+
+ -- ignoring the warning.
+
+Building topology.
+Building atom parameters.
+Building bond parameters.
+Building angle parameters.
+Building proper torsion parameters.
+Building improper torsion parameters.
+ total 0 improper torsions applied
+Building H-Bond parameters.
+Incorporating Non-Bonded adjustments.
+Not Marking per-residue atom chain types.
+Marking per-residue atom chain types.
+  (Residues lacking connect0/connect1 - 
+   these don't have chain types marked:
+
+	res	total affected
+
+	non	1
+  )
+ (no restraints)
+Checking Unit.
+WARNING: The unperturbed charge of the unit: 1.000004 is not zero.
+
+ -- ignoring the warning.
+
+Building topology.
+Building atom parameters.
+Building bond parameters.
+Building angle parameters.
+Building proper torsion parameters.
+Building improper torsion parameters.
+ total 42 improper torsions applied
+Building H-Bond parameters.
+Incorporating Non-Bonded adjustments.
+Not Marking per-residue atom chain types.
+Marking per-residue atom chain types.
+  (Residues lacking connect0/connect1 - 
+   these don't have chain types marked:
+
+	res	total affected
+
+	LIG	1
+	non	1
+  )
+ (no restraints)
 Writing pdb file: solvent.pdb
-savePdb: Argument #1 is type String must be of type: [unit]
-usage:  savePdb <object> <filename>
+Writing pdb file: complex.pdb
 	Quit

@@ -25,7 +25,10 @@
     loadAmberParams ligand.gaff.frcmod
 
     # Load ligand.
-    ligand = loadMol2 ligand.gaff.mol2 
+    ligand = loadMol2 ligand.gaff.mol2
+
+    complex = combine { receptor ligand }
+    
 
     # Check complex.
     check complex
@@ -33,13 +36,15 @@
     # Report on net charge.
     charge complex
 
-    # Write parameters.
+    # Write parameters for vacuum
     saveAmberParm ligand vacuum.prmtop vacuum.inpcrd
+    savepdb ligand vacuum.pdb
+    
     saveAmberParm ligand solvent.prmtop solvent.inpcrd
     saveAmberParm complex complex.prmtop complex.inpcrd
 
     # Write PDB files
-    savepdb ligand vacuum.pdb
+
     savepdb ligand solvent.pdb
     savepdb complex complex.pdb
 

@@ -1,4 +1,4 @@
-log started: Fri Nov 28 22:25:13 2014
+log started: Fri Nov 28 23:01:29 2014
 
 Log file: ./leap.log
 >> #
@@ -130,21 +130,50 @@ remark goes here
 (UNKNOWN ATOM TYPE: DU)
 > 
 >     # Load ligand.
->     ligand = loadMol2 ligand.gaff.mol2 
+>     ligand = loadMol2 ligand.gaff.mol2
 Loading Mol2 file: ./ligand.gaff.mol2
 Reading MOLECULE named 27
 > 
+>     complex = combine { receptor ligand }
+  Sequence: *****
+  Sequence: 27
+>     
+> 
 >     # Check complex.
 >     check complex
-check: Argument #1 is type String must be of type: [unit molecule residue atom]
-usage:  check <unit> [parmset]
+Checking 'complex'....
+WARNING: The unperturbed charge of the unit: 1.000004 is not zero.
+Warning: Close contact of 1.022705 angstroms between .R<non 2>.A<H18 27> and .R<non 2>.A<N1 9>
+Warning: Close contact of 1.022315 angstroms between .R<non 2>.A<H17 26> and .R<non 2>.A<N1 9>
+Warning: Close contact of 1.021703 angstroms between .R<non 2>.A<H16 25> and .R<non 2>.A<N1 9>
+Warning: Close contact of 1.094325 angstroms between .R<non 2>.A<H15 24> and .R<non 2>.A<C8 8>
+Warning: Close contact of 1.094027 angstroms between .R<non 2>.A<H14 23> and .R<non 2>.A<C8 8>
+Warning: Close contact of 1.095542 angstroms between .R<non 2>.A<H13 22> and .R<non 2>.A<C7 7>
+Warning: Close contact of 1.091970 angstroms between .R<non 2>.A<H12 21> and .R<non 2>.A<C7 7>
+Warning: Close contact of 1.092741 angstroms between .R<non 2>.A<H11 20> and .R<non 2>.A<C6 6>
+Warning: Close contact of 1.092287 angstroms between .R<non 2>.A<H10 19> and .R<non 2>.A<C6 6>
+Warning: Close contact of 1.095188 angstroms between .R<non 2>.A<H9 18> and .R<non 2>.A<C5 5>
+Warning: Close contact of 1.090282 angstroms between .R<non 2>.A<H8 17> and .R<non 2>.A<C5 5>
+Warning: Close contact of 1.095349 angstroms between .R<non 2>.A<H7 16> and .R<non 2>.A<C4 4>
+Warning: Close contact of 1.090912 angstroms between .R<non 2>.A<H6 15> and .R<non 2>.A<C4 4>
+Warning: Close contact of 1.091955 angstroms between .R<non 2>.A<H5 14> and .R<non 2>.A<C3 3>
+Warning: Close contact of 1.093873 angstroms between .R<non 2>.A<H4 13> and .R<non 2>.A<C2 2>
+Warning: Close contact of 1.092281 angstroms between .R<non 2>.A<H3 12> and .R<non 2>.A<C2 2>
+Warning: Close contact of 1.094178 angstroms between .R<non 2>.A<H2 11> and .R<non 2>.A<C1 1>
+Warning: Close contact of 1.093370 angstroms between .R<non 2>.A<H1 10> and .R<non 2>.A<C1 1>
+Warning: Close contact of 1.480187 angstroms between .R<non 2>.A<N1 9> and .R<non 2>.A<C3 3>
+Checking parameters for unit 'complex'.
+Checking for bond parameters.
+Checking for angle parameters.
+check:  Warnings: 20
+Unit is OK.
 > 
 >     # Report on net charge.
 >     charge complex
-charge: Argument #1 is type String must be of type: [unit molecule residue atom list]
-usage:  charge <object>
+Total unperturbed charge:   1.000004
+Total perturbed charge:     1.000004
 > 
->     # Write parameters.
+>     # Write parameters for vacuum
 >     saveAmberParm ligand vacuum.prmtop vacuum.inpcrd
 Checking Unit.
 WARNING: The unperturbed charge of the unit: 1.000004 is not zero.
@@ -170,6 +199,9 @@ Marking per-residue atom chain types.
 	non	1
   )
  (no restraints)
+>     savepdb ligand vacuum.pdb
+Writing pdb file: vacuum.pdb
+>     
 >     saveAmberParm ligand solvent.prmtop solvent.inpcrd
 Checking Unit.
 WARNING: The unperturbed charge of the unit: 1.000004 is not zero.
@@ -196,17 +228,38 @@ Marking per-residue atom chain types.
   )
  (no restraints)
 >     saveAmberParm complex complex.prmtop complex.inpcrd
-saveAmberParm: Argument #1 is type String must be of type: [unit]
-usage:  saveAmberParm <unit> <topologyfile> <coordfile> 
+Checking Unit.
+WARNING: The unperturbed charge of the unit: 1.000004 is not zero.
+
+ -- ignoring the warning.
+
+Building topology.
+Building atom parameters.
+Building bond parameters.
+Building angle parameters.
+Building proper torsion parameters.
+Building improper torsion parameters.
+ total 42 improper torsions applied
+Building H-Bond parameters.
+Incorporating Non-Bonded adjustments.
+Not Marking per-residue atom chain types.
+Marking per-residue atom chain types.
+  (Residues lacking connect0/connect1 - 
+   these don't have chain types marked:
+
+	res	total affected
+
+	LIG	1
+	non	1
+  )
+ (no restraints)
 > 
 >     # Write PDB files
->     savepdb ligand vacuum.pdb
-Writing pdb file: vacuum.pdb
+> 
 >     savepdb ligand solvent.pdb
 Writing pdb file: solvent.pdb
 >     savepdb complex complex.pdb
-savePdb: Argument #1 is type String must be of type: [unit]
-usage:  savePdb <object> <filename>
+Writing pdb file: complex.pdb
 > 
 >     # Exit
      quit 

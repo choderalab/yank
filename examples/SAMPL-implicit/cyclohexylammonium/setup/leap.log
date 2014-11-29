@@ -1,4 +1,4 @@
-log started: Fri Nov 28 22:25:10 2014
+log started: Fri Nov 28 23:01:25 2014
 
 Log file: ./leap.log
 >> #
@@ -130,21 +130,46 @@ remark goes here
 (UNKNOWN ATOM TYPE: DU)
 > 
 >     # Load ligand.
->     ligand = loadMol2 ligand.gaff.mol2 
+>     ligand = loadMol2 ligand.gaff.mol2
 Loading Mol2 file: ./ligand.gaff.mol2
 Reading MOLECULE named 21
 > 
+>     complex = combine { receptor ligand }
+  Sequence: *****
+  Sequence: 21
+>     
+> 
 >     # Check complex.
 >     check complex
-check: Argument #1 is type String must be of type: [unit molecule residue atom]
-usage:  check <unit> [parmset]
+Checking 'complex'....
+WARNING: The unperturbed charge of the unit: 1.000996 is not zero.
+Warning: Close contact of 1.023414 angstroms between .R<non 2>.A<H14 21> and .R<non 2>.A<N1 7>
+Warning: Close contact of 1.020060 angstroms between .R<non 2>.A<H13 20> and .R<non 2>.A<N1 7>
+Warning: Close contact of 1.022609 angstroms between .R<non 2>.A<H12 19> and .R<non 2>.A<N1 7>
+Warning: Close contact of 1.095066 angstroms between .R<non 2>.A<H11 18> and .R<non 2>.A<C6 6>
+Warning: Close contact of 1.093901 angstroms between .R<non 2>.A<H10 17> and .R<non 2>.A<C6 6>
+Warning: Close contact of 1.094657 angstroms between .R<non 2>.A<H9 16> and .R<non 2>.A<C5 5>
+Warning: Close contact of 1.092171 angstroms between .R<non 2>.A<H8 15> and .R<non 2>.A<C5 5>
+Warning: Close contact of 1.093118 angstroms between .R<non 2>.A<H7 14> and .R<non 2>.A<C4 4>
+Warning: Close contact of 1.092298 angstroms between .R<non 2>.A<H6 13> and .R<non 2>.A<C4 4>
+Warning: Close contact of 1.091687 angstroms between .R<non 2>.A<H5 12> and .R<non 2>.A<C3 3>
+Warning: Close contact of 1.095030 angstroms between .R<non 2>.A<H4 11> and .R<non 2>.A<C3 3>
+Warning: Close contact of 1.093342 angstroms between .R<non 2>.A<H3 10> and .R<non 2>.A<C2 2>
+Warning: Close contact of 1.095548 angstroms between .R<non 2>.A<H2 9> and .R<non 2>.A<C2 2>
+Warning: Close contact of 1.096012 angstroms between .R<non 2>.A<H1 8> and .R<non 2>.A<C1 1>
+Warning: Close contact of 1.470602 angstroms between .R<non 2>.A<N1 7> and .R<non 2>.A<C1 1>
+Checking parameters for unit 'complex'.
+Checking for bond parameters.
+Checking for angle parameters.
+check:  Warnings: 16
+Unit is OK.
 > 
 >     # Report on net charge.
 >     charge complex
-charge: Argument #1 is type String must be of type: [unit molecule residue atom list]
-usage:  charge <object>
+Total unperturbed charge:   1.000996
+Total perturbed charge:     1.000996
 > 
->     # Write parameters.
+>     # Write parameters for vacuum
 >     saveAmberParm ligand vacuum.prmtop vacuum.inpcrd
 Checking Unit.
 WARNING: The unperturbed charge of the unit: 1.000996 is not zero.
@@ -170,6 +195,9 @@ Marking per-residue atom chain types.
 	non	1
   )
  (no restraints)
+>     savepdb ligand vacuum.pdb
+Writing pdb file: vacuum.pdb
+>     
 >     saveAmberParm ligand solvent.prmtop solvent.inpcrd
 Checking Unit.
 WARNING: The unperturbed charge of the unit: 1.000996 is not zero.
@@ -196,17 +224,38 @@ Marking per-residue atom chain types.
   )
  (no restraints)
 >     saveAmberParm complex complex.prmtop complex.inpcrd
-saveAmberParm: Argument #1 is type String must be of type: [unit]
-usage:  saveAmberParm <unit> <topologyfile> <coordfile> 
+Checking Unit.
+WARNING: The unperturbed charge of the unit: 1.000996 is not zero.
+
+ -- ignoring the warning.
+
+Building topology.
+Building atom parameters.
+Building bond parameters.
+Building angle parameters.
+Building proper torsion parameters.
+Building improper torsion parameters.
+ total 42 improper torsions applied
+Building H-Bond parameters.
+Incorporating Non-Bonded adjustments.
+Not Marking per-residue atom chain types.
+Marking per-residue atom chain types.
+  (Residues lacking connect0/connect1 - 
+   these don't have chain types marked:
+
+	res	total affected
+
+	LIG	1
+	non	1
+  )
+ (no restraints)
 > 
 >     # Write PDB files
->     savepdb ligand vacuum.pdb
-Writing pdb file: vacuum.pdb
+> 
 >     savepdb ligand solvent.pdb
 Writing pdb file: solvent.pdb
 >     savepdb complex complex.pdb
-savePdb: Argument #1 is type String must be of type: [unit]
-usage:  savePdb <object> <filename>
+Writing pdb file: complex.pdb
 > 
 >     # Exit
      quit 
