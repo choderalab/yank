@@ -1,0 +1,95 @@
+-I: Adding /Users/grinawap/anaconda/bin/../dat/leap/prep to search path.
+-I: Adding /Users/grinawap/anaconda/bin/../dat/leap/lib to search path.
+-I: Adding /Users/grinawap/anaconda/bin/../dat/leap/parm to search path.
+-I: Adding /Users/grinawap/anaconda/bin/../dat/leap/cmd to search path.
+-f: Source setup.leap.in.
+
+Welcome to LEaP!
+(no leaprc in search path)
+Sourcing: ./setup.leap.in
+----- Source: /Users/grinawap/anaconda/bin/../dat/leap/cmd/leaprc.gaff
+----- Source of /Users/grinawap/anaconda/bin/../dat/leap/cmd/leaprc.gaff done
+Log file: ./leap.log
+Loading parameters: /Users/grinawap/anaconda/bin/../dat/leap/parm/gaff.dat
+Reading title:
+AMBER General Force Field for organic molecules (Version 1.7, Nov 2013)
+Using H(N)-modified Bondi radii
+Loading parameters: ./receptor.gaff.frcmod
+Reading force field modification type file (frcmod)
+Reading title:
+remark goes here
+Loading parameters: ./receptor.gaff.frcmod
+Reading force field modification type file (frcmod)
+Reading title:
+remark goes here
+Loading Mol2 file: ./receptor.gaff.mol2
+Reading MOLECULE named *****
+Loading parameters: ./ligand.gaff.frcmod
+Reading force field modification type file (frcmod)
+Reading title:
+remark goes here
+Loading parameters: ./ligand.gaff.frcmod
+Reading force field modification type file (frcmod)
+Reading title:
+remark goes here
+Loading Mol2 file: ./ligand.gaff.mol2
+Reading MOLECULE named 48
+check: Argument #1 is type String must be of type: [unit molecule residue atom]
+usage:  check <unit> [parmset]
+charge: Argument #1 is type String must be of type: [unit molecule residue atom list]
+usage:  charge <object>
+Checking Unit.
+WARNING: The unperturbed charge of the unit: 3.999990 is not zero.
+
+ -- ignoring the warning.
+
+Building topology.
+Building atom parameters.
+Building bond parameters.
+Building angle parameters.
+Building proper torsion parameters.
+Building improper torsion parameters.
+ total 0 improper torsions applied
+Building H-Bond parameters.
+Incorporating Non-Bonded adjustments.
+Not Marking per-residue atom chain types.
+Marking per-residue atom chain types.
+  (Residues lacking connect0/connect1 - 
+   these don't have chain types marked:
+
+	res	total affected
+
+	non	1
+  )
+ (no restraints)
+Checking Unit.
+WARNING: The unperturbed charge of the unit: 3.999990 is not zero.
+
+ -- ignoring the warning.
+
+Building topology.
+Building atom parameters.
+Building bond parameters.
+Building angle parameters.
+Building proper torsion parameters.
+Building improper torsion parameters.
+ total 0 improper torsions applied
+Building H-Bond parameters.
+Incorporating Non-Bonded adjustments.
+Not Marking per-residue atom chain types.
+Marking per-residue atom chain types.
+  (Residues lacking connect0/connect1 - 
+   these don't have chain types marked:
+
+	res	total affected
+
+	non	1
+  )
+ (no restraints)
+saveAmberParm: Argument #1 is type String must be of type: [unit]
+usage:  saveAmberParm <unit> <topologyfile> <coordfile> 
+Writing pdb file: vacuum.pdb
+Writing pdb file: solvent.pdb
+savePdb: Argument #1 is type String must be of type: [unit]
+usage:  savePdb <object> <filename>
+	Quit
