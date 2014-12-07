@@ -164,6 +164,8 @@ setup(
     #package_data={'yank': find_package_data('yank/data', 'yank')},
     zip_safe=False,
     install_requires=[
+        'numpy',
+        'scipy',
         'openmm',
         'pymbar',
         'openmmtools',

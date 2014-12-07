@@ -41,8 +41,9 @@ this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import copy
 import math
-import numpy
+import time
 
+import numpy
 import scipy.integrate
 
 import simtk.unit as units
@@ -62,6 +63,7 @@ kB = units.BOLTZMANN_CONSTANT_kB * units.AVOGADRO_CONSTANT_NA # Boltzmann consta
 #=============================================================================================
 # Base class for receptor-ligand restraints.
 #=============================================================================================
+
 
 class ReceptorLigandRestraint(object):
     """
@@ -84,21 +86,23 @@ class ReceptorLigandRestraint(object):
 
     __metaclass__ = ABCMeta
 
-    energy_function = '' # energy function to use in computation of restraint
-    bond_parameter_names = [] # list of bond parameters that appear in energy function above
+    energy_function = ''  # energy function to use in computation of restraint
+    bond_parameter_names = []  # list of bond parameters that appear in energy function above
 
     def __init__(self, state, system, coordinates, receptor_atoms, ligand_atoms):
         """
         Initialize a receptor-ligand restraint class.
 
-        ARGUMENTS
-
-        state (thermodynamics.ThermodynamicState) - the thermodynamic state specifying tempearture, pressure, etc. to which restraints are to be added
-        coordinates (simtk.unit.Quantity of natoms x 3 with units compatible with nanometers) - reference coordinates to use for imposing restraints
-        receptor_atoms (list of int) - a complete list of receptor atoms
-        ligand_atoms (list of int) - a complete list of ligand atoms
-
-        OPTIONAL ARGUMENTS
+        Parameters
+        ----------
+        state : thermodynamics.ThermodynamicState
+           The thermodynamic state specifying temperature, pressure, etc. to which restraints are to be added
+        coordinates : simtk.unit.Quantity of natoms x 3 with units compatible with nanometers
+           Reference coordinates to use for imposing restraints
+        receptor_atoms : list of int
+            A complete list of receptor atoms
+        ligand_atoms : list of int
+            A complete list of ligand atoms
 
         """
 
@@ -135,14 +139,15 @@ class ReceptorLigandRestraint(object):
         """
         Determine bond parameters for CustomBondForce between protein and ligand.
 
-        RETURNS
+        Returns
+        -------
+        parameters : list
+           List of parameters for CustomBondForce
 
-        parameters (list) - list of parameters for CustomBondForce
-
-        NOTE
-
-        The spring constant is selected to give 1 kT at one standard deviation of
-        receptor atoms about the receptor restrained atom.
+        Notes
+        -----
+        The spring constant is selected to give 1 kT at one standard deviation of receptor atoms about the receptor
+        restrained atom.
         
         """
         pass
@@ -151,8 +156,19 @@ class ReceptorLigandRestraint(object):
     def _computeRadiusOfGyration(self, coordinates):
         """
         Compute the radius of gyration of the specified coordinate set.
-        
+
+        Parameters
+        ----------
+        coordinates : simtk.unit.Quantity with units compatible with angstrom
+           The coordinate set (natoms x 3) for which the radius of gyration is to be computed.
+
+        Returns
+        -------
+        radius_of_gyration : simtk.unit.Quantity with units compatible with angstrom
+           The radius of gyration
+
         """
+
         unit = coordinates.unit
         
         # Get dimensionless receptor coordinates.
@@ -175,9 +191,20 @@ class ReceptorLigandRestraint(object):
         """
         Create a new copy of the receptor-ligand restraint force.
 
-        RETURNS
+        Parameters
+        ----------
+        particle1 : int
+           Index of first particle for which restraint is to be applied.
+        particle2 : int
+           Index of second particle for which restraint is to be applied
+        mm : simtk.openmm compliant interface, optional, default=None
+           If specified, use an alternative OpenMM API implementation.
+           Otherwise, use simtk.openmm.
 
-        force (simtk.openmm.CustomBondForce) - a restraint force object
+        Returns
+        -------
+        force : simtk.openmm.CustomBondForce
+           A restraint force object
 
         """
 
@@ -195,17 +222,17 @@ class ReceptorLigandRestraint(object):
         """
         Compute the standard state correction for the arbitrary restraint energy function.
         
-        RETURN VALUES
+        Returns
+        -------
+        DeltaG : float
+           Computed standard-state correction in dimensionless units (kT)
 
-        DeltaG (float) - computed standard-state correction in dimensionless units (kT);
-
-        NOTE
-
+        Notes
+        -----
         Equivalent to the free energy of releasing restraints and confining into a box of standard state size.
                 
         """
 
-        import time
         initial_time = time.time()
 
         r_min = 0 * units.nanometers
@@ -229,17 +256,21 @@ class ReceptorLigandRestraint(object):
 
         # Create a function to compute integrand as a function of interparticle separation.
         beta = self.beta
+
         def integrand(r):
             """
-            ARGUMENTS
-            
-            r (float) - interparticle separation in nanometers
-            
-            RETURNS
+            Parameters
+            ----------
+            r : float
+                Inter-particle separation in nanometers
 
-            dI (float) - contribution to integrand (in nm^2)
+            Returns
+            -------
+            dI : float
+               Contribution to integrand (in nm^2).
+
             """
-            positions[1,0] = r * units.nanometers
+            positions[1, 0] = r * units.nanometers
             context.setPositions(positions)
             state = context.getState(getEnergy=True)
             potential = state.getPotentialEnergy()
@@ -250,7 +281,7 @@ class ReceptorLigandRestraint(object):
         logger.debug("shell_volume = %f nm^3" % (shell_volume / units.nanometers**3))
         
         # Compute standard-state volume for a single molecule in a box of size (1 L) / (avogadros number)
-        liter = 1000.0 * units.centimeters**3 # one liter        
+        liter = 1000.0 * units.centimeters**3  # one liter
         box_volume = liter / (units.AVOGADRO_CONSTANT_NA*units.mole) # standard state volume
         logger.debug("box_volume = %f nm^3" % (box_volume / units.nanometers**3))
         
@@ -269,9 +300,16 @@ class ReceptorLigandRestraint(object):
         """
         Returns a new Force object that imposes the receptor-ligand restraint.
         
-        OPTIONAL ARGUMENTS
+        Parameters
+        ----------
+        mm : simtk.openmm compliant interface, optional, default=None
+           If specified, use an alternative OpenMM API implementation.
+           Otherwise, use simtk.openmm.
 
-        mm (simtk.openmm interface) - OpenMM implementation to use
+        Returns
+        -------
+        force : simtk.openmm.HarmonicBondForce
+           The created restraint force.
 
         """
 
@@ -281,9 +319,10 @@ class ReceptorLigandRestraint(object):
         """
         Returns a copy of the restrained system.
         
-        RETURNS
-
-        system (simtk.openmm.System) - a copy of the restrained system
+        Returns
+        -------
+        system : simtk.openmm.System
+           A copy of the restrained system
         
         """
         system = copy.deepcopy(self.system)
@@ -296,9 +335,10 @@ class ReceptorLigandRestraint(object):
         """
         Return the standard state correction.
 
-        RETURNS
-
-        correction (float) - the standard-state correction, in kT
+        Returns
+        -------
+        correction : float
+           The standard-state correction, in kT
 
         """
         return self.standard_state_correction
@@ -307,9 +347,10 @@ class ReceptorLigandRestraint(object):
         """
         Returns the radius of gyration of the receptor.
 
-        RETURNS
-        
-        radius_of_gyration (simtk.unit.Quantity with units compatible with simtk.unit.angstroms) - radius of gyration of the receptor
+        Returns
+        -------
+        radius_of_gyration : simtk.unit.Quantity with units compatible with angstrom
+            Radius of gyration of the receptor
 
         """
         return self.radius_of_gyration
@@ -318,13 +359,19 @@ class ReceptorLigandRestraint(object):
         """
         Identify the closest atom to the centroid of the given coordinate set.
 
-        ARGUMENTS
-        
-        coordinates (units.Quantity of natoms x 3 with units compatible with nanometers) - coordinates of object to identify atom closes to centroid
+        Parameters
+        ----------
+        coordinates : units.Quantity of natoms x 3 with units compatible with nanometers
+           Coordinates of object to identify atom closes to centroid
+        indices : list of int, optional, default=None
+           List of atoms indices for which closest atom to centroid is to be computed.
+        masses : simtk.unit.Quantity of natoms with units compatible with amu
+           Masses of particles used to weight distance calculation, if not None (default: None)
 
-        OPTIONAL ARGUMENTS
-
-        masses (units.Quantity of natoms with units compatible with amu) - masses of particles used to weight distance calculation, if not None (default: None)
+        Returns
+        -------
+        closest_atom : int
+           Index of atom closest to centroid of specified atoms.
 
         """
 
@@ -339,17 +386,17 @@ class ReceptorLigandRestraint(object):
         natoms = x.shape[0]
 
         # Compute (natoms,1) array of normalized weights.
-        w = numpy.ones([natoms,1])
+        w = numpy.ones([natoms, 1])
         if masses:            
             w = masses / masses.unit # (natoms,) array
-            w = numpy.reshape(w, (natoms,1)) # (natoms,1) array            
+            w = numpy.reshape(w, (natoms, 1))  # (natoms,1) array
         w /= w.sum()
 
         # Compute centroid (still in dimensionless units).
-        centroid = (numpy.tile(w, (1,3)) * x).sum(0) # (3,) array
+        centroid = (numpy.tile(w, (1, 3)) * x).sum(0)  # (3,) array
         
         # Compute distances from centroid.
-        distances = numpy.sqrt(((x - numpy.tile(centroid, (natoms, 1)))**2).sum(1)) # distances[i] is the distance from the centroid to particle i
+        distances = numpy.sqrt(((x - numpy.tile(centroid, (natoms, 1)))**2).sum(1))  # distances[i] is the distance from the centroid to particle i
         
         # Determine closest atom.
         closest_atom = int(numpy.argmin(distances))
@@ -362,6 +409,7 @@ class ReceptorLigandRestraint(object):
 #=============================================================================================
 # Harmonic protein-ligand restraint.
 #=============================================================================================
+
 
 class HarmonicReceptorLigandRestraint(ReceptorLigandRestraint):
     """
@@ -398,8 +446,8 @@ class HarmonicReceptorLigandRestraint(ReceptorLigandRestraint):
 
     """
 
-    energy_function = 'lambda_restraints * (K/2)*r^2' # harmonic restraint
-    bond_parameter_names = ['K'] # list of bond parameters that appear in energy function above
+    energy_function = 'lambda_restraints * (K/2)*r^2'  # harmonic restraint
+    bond_parameter_names = ['K']  # list of bond parameters that appear in energy function above
 
     def _determineBondParameters(self):
         """
@@ -426,7 +474,8 @@ class HarmonicReceptorLigandRestraint(ReceptorLigandRestraint):
         
         # Compute distances from restrained atom.
         natoms = x.shape[0]
-        distances = numpy.sqrt(((x - numpy.tile(xref, (natoms, 1)))**2).sum(1)) # distances[i] is the distance from the centroid to particle i
+        # distances[i] is the distance from the centroid to particle i
+        distances = numpy.sqrt(((x - numpy.tile(xref, (natoms, 1)))**2).sum(1))
 
         # Compute std dev of distances from restrained atom.
         sigma = distances.std() * unit 
@@ -442,6 +491,7 @@ class HarmonicReceptorLigandRestraint(ReceptorLigandRestraint):
 #=============================================================================================
 # Flat-bottom protein-ligand restraint.
 #=============================================================================================
+
 
 class FlatBottomReceptorLigandRestraint(ReceptorLigandRestraint):
     """
@@ -470,8 +520,8 @@ class FlatBottomReceptorLigandRestraint(ReceptorLigandRestraint):
 
     """
 
-    energy_function = 'lambda_restraints * step(r-r0) * (K/2)*(r-r0)^2' # flat-bottom restraint
-    bond_parameter_names = ['K', 'r0'] # list of bond parameters that appear in energy function above
+    energy_function = 'lambda_restraints * step(r-r0) * (K/2)*(r-r0)^2'  # flat-bottom restraint
+    bond_parameter_names = ['K', 'r0']  # list of bond parameters that appear in energy function above
 
     def _determineBondParameters(self):
         """
@@ -491,15 +541,16 @@ class FlatBottomReceptorLigandRestraint(ReceptorLigandRestraint):
         x_unit = self.coordinates.unit
 
         # Get dimensionless receptor coordinates.
-        x = self.coordinates[self.receptor_atoms,:] / x_unit
+        x = self.coordinates[self.receptor_atoms, :] / x_unit
 
         # Determine number of atoms.
         natoms = x.shape[0]
 
         # Compute median absolute distance to central atom.
         # (Working in non-unit-bearing floats for speed.)
-        xref = numpy.reshape(x[self.restrained_receptor_atom,:], (1,3)) # (1,3) array
-        distances = numpy.sqrt(((x - numpy.tile(xref, (natoms, 1)))**2).sum(1)) # distances[i] is the distance from the centroid to particle i
+        xref = numpy.reshape(x[self.restrained_receptor_atom, :], (1, 3))  # (1,3) array
+        # distances[i] is the distance from the centroid to particle i
+        distances = numpy.sqrt(((x - numpy.tile(xref, (natoms, 1)))**2).sum(1))
         median_absolute_distance = numpy.median(abs(distances))
 
         # Convert back to unit-bearing quantity.
@@ -521,11 +572,3 @@ class FlatBottomReceptorLigandRestraint(ReceptorLigandRestraint):
         bond_parameters = [K, r0]
 
         return bond_parameters
-
-#=============================================================================================
-# DOCTEST HARNESS
-#=============================================================================================
-
-if __name__ == '__main__':
-    import doctest
-    doctest.testmod()
