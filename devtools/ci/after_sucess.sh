@@ -35,4 +35,5 @@ conda install --yes openmm
 conda list -e
 
 cd docs && make html && cd -
+conda install --yes boto
 python devtools/ci/push-docs-to-s3.py
