@@ -1,0 +1,17 @@
+remark goes here
+MASS
+DU 0.000         0.000               ATTN, need revision
+
+BOND
+
+ANGLE
+
+DIHE
+
+IMPROPER
+
+NONBON
+  DU          0.0000  0.0000             ATTN, need revision
+
+
+
