@@ -1,5 +1,5 @@
 # Examples for YANK
-
+* `SAMPL-implicit/` - Host-guest systems in implicit solvent from SAMPL
 * `p-xylene/` - p-xylene binding to T4 lysozyme L99A in implicit solvent
 * `benzene-toluene/` - benzene and toluene in implicit solvent
 * `benzene-toluene-explicit/` - benzene and toluene in explicit solvent
