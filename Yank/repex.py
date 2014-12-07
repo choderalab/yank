@@ -2225,7 +2225,6 @@ class ReplicaExchange(object):
                     option_value = eval(str(option_value) + '*' + option_unit_name, unit.__dict__)
             # Store option.
             if self.verbose_root: print "Restoring option: %s -> %s (type: %s)" % (option_name, str(option_value), type(option_value))
-            print "Restoring option: %s -> %s (type: %s)" % (option_name, str(option_value), type(option_value))
             setattr(self, option_name, option_value)
 
         # Signal success.

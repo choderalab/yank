@@ -303,12 +303,12 @@ class BiopolymerPDBSystemBuilder(BiopolymerSystemBuilder):
         Examples
         --------
         Create a SystemBuilder for a PDB file.
-        >>> from openmmtools import testsystems
-        >>> receptor_pdb_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/receptor.pdb")
-        >>> receptor = BiopolymerPDBSystemBuilder(receptor_pdb_filename, pH=7.0)
-        >>> system = receptor.system
-        >>> positions = receptor.positions
-        >>> natoms = receptor.natoms
+        >> from openmmtools import testsystems
+        >> receptor_pdb_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/receptor.pdb")
+        >> receptor = BiopolymerPDBSystemBuilder(receptor_pdb_filename, pH=7.0)
+        >> system = receptor.system
+        >> positions = receptor.positions
+        >> natoms = receptor.natoms
 
         """
         # Call base constructor.
@@ -869,11 +869,14 @@ class SmallMoleculeBuilder(SystemBuilder):
         # Don't do anything if we've already imported OpenEye toolkit.
         if self.oechem: return
 
-        # Import the OpenEye toolkit components.
-        from openeye import oechem     # For chemical objects
-        from openeye import oeiupac    # For IUPAC conversion
-        from openeye import oeomega    # For conformer generation
-        from openeye import oequacpac  # For pKa estimations
+        try:
+            # Import the OpenEye toolkit components.
+            from openeye import oechem     # For chemical objects
+            from openeye import oeiupac    # For IUPAC conversion
+            from openeye import oeomega    # For conformer generation
+            from openeye import oequacpac  # For pKa estimations
+        except Exception as e:
+            raise Exception("Could not import `openeye` library.  Make sure OpenEye Python Toolkit is installed and on PYTHONPATH.")
 
         import os
 
@@ -927,12 +930,12 @@ class Mol2SystemBuilder(SmallMoleculeBuilder):
         Examples
         --------
         Create a SystemBuilder from a ligand mol2 file, using default parameterization scheme.
-        >>> from openmmtools import testsystems
-        >>> ligand_mol2_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/ligand.tripos.mol2")
-        >>> ligand = Mol2SystemBuilder(ligand_mol2_filename, charge=0)
-        >>> system = ligand.system
-        >>> positions = ligand.positions
-        >>> natoms = ligand.natoms
+        >> from openmmtools import testsystems
+        >> ligand_mol2_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/ligand.tripos.mol2")
+        >> ligand = Mol2SystemBuilder(ligand_mol2_filename, charge=0)
+        >> system = ligand.system
+        >> positions = ligand.positions
+        >> natoms = ligand.natoms
 
         """
 
@@ -986,17 +989,17 @@ class ComplexSystemBuilder(SystemBuilder):
         Examples
         --------
         Create a ComplexSystemBuilder from a protein PDB file and a ligand mol2 file.
-        >>> from openmmtools import testsystems
-        >>> receptor_pdb_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/receptor.pdb")
-        >>> ligand_mol2_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/ligand.tripos.mol2")
-        >>> receptor = BiopolymerPDBSystemBuilder(receptor_pdb_filename, pH=7.0)
-        >>> ligand = Mol2SystemBuilder(ligand_mol2_filename, charge=0)
-        >>> complex = ComplexSystemBuilder(ligand, receptor, remove_ligand_overlap=True)
-        >>> system = complex.system
-        >>> positions = complex.positions
-        >>> ligand_atoms = complex.ligand_atoms
-        >>> receptor_atoms = complex.receptor_atoms
-        >>> natoms = complex.natoms
+        >> from openmmtools import testsystems
+        >> receptor_pdb_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/receptor.pdb")
+        >> ligand_mol2_filename = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit/ligand.tripos.mol2")
+        >> receptor = BiopolymerPDBSystemBuilder(receptor_pdb_filename, pH=7.0)
+        >> ligand = Mol2SystemBuilder(ligand_mol2_filename, charge=0)
+        >> complex = ComplexSystemBuilder(ligand, receptor, remove_ligand_overlap=True)
+        >> system = complex.system
+        >> positions = complex.positions
+        >> ligand_atoms = complex.ligand_atoms
+        >> receptor_atoms = complex.receptor_atoms
+        >> natoms = complex.natoms
 
         """
 

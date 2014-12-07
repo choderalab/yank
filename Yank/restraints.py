@@ -496,20 +496,26 @@ class FlatBottomReceptorLigandRestraint(ReceptorLigandRestraint):
         # Determine number of atoms.
         natoms = x.shape[0]
 
-        # Compute median absolute distance to central atom.
-        # (Working in non-unit-bearing floats for speed.)
-        xref = numpy.reshape(x[self.restrained_receptor_atom,:], (1,3)) # (1,3) array
-        distances = numpy.sqrt(((x - numpy.tile(xref, (natoms, 1)))**2).sum(1)) # distances[i] is the distance from the centroid to particle i
-        median_absolute_distance = numpy.median(abs(distances))
+        if (natoms > 3):
+            # Compute median absolute distance to central atom.
+            # (Working in non-unit-bearing floats for speed.)
+            xref = numpy.reshape(x[self.restrained_receptor_atom,:], (1,3)) # (1,3) array
+            distances = numpy.sqrt(((x - numpy.tile(xref, (natoms, 1)))**2).sum(1)) # distances[i] is the distance from the centroid to particle i
+            median_absolute_distance = numpy.median(abs(distances))
 
-        # Convert back to unit-bearing quantity.
-        median_absolute_distance *= x_unit
+            # Convert back to unit-bearing quantity.
+            median_absolute_distance *= x_unit
 
-        # Convert to estimator of standard deviation for normal distribution.
-        sigma = 1.4826 * median_absolute_distance
+            # Convert to estimator of standard deviation for normal distribution.
+            sigma = 1.4826 * median_absolute_distance
 
-        # Calculate r0, which is a multiple of sigma plus 5 A.
-        r0 = 2*sigma + 5.0 * units.angstroms
+            # Calculate r0, which is a multiple of sigma plus 5 A.
+            r0 = 2*sigma + 5.0 * units.angstroms
+        else:
+            DEFAULT_DISTANCE = 15.0 * units.angstroms
+            print "WARNING: receptor only contains %d atoms; using default distance of %s" % (natoms, str(DEFAULT_DISTANCE))
+            r0 = DEFAULT_DISTANCE
+
         logger.debug("restraint distance r0 = %.1f A" % (r0 / units.angstroms))
 
         # Set spring constant/

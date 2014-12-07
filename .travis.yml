@@ -18,7 +18,7 @@ script:
   - which yank
   - yank --help
   - # Run tests
-  - nosetests --nocapture -vv tests
+  - nosetests --nocapture --verbosity=2 tests
   # Push to binstar anyway.
   - bash -x devtools/ci/after_sucess.sh
 
