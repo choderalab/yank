@@ -7,31 +7,7 @@
 """
 
 Automated selection and imposition of receptor-ligand restraints for absolute alchemical binding
-free energy calculations.
-
-DESCRIPTION
-
-The restraints are chosen in such a way as to be able to provide a standard state binding free
-energy.
-
-@author John D. Chodera <jchodera@gmail.com>
-
-Portions of this code copyright (c) 2009 University of California, Berkeley, Vertex
-Pharmaceuticals, Stanford University, and the Authors.
-
-All code in this repository is released under the GNU General Public License.
-
-This program is free software: you can redistribute it and/or modify it under
-the terms of the GNU General Public License as published by the Free Software
-Foundation, either version 3 of the License, or (at your option) any later
-version.
-
-This program is distributed in the hope that it will be useful, but WITHOUT ANY
-WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
-PARTICULAR PURPOSE.  See the GNU General Public License for more details.
- 
-You should have received a copy of the GNU General Public License along with
-this program.  If not, see <http://www.gnu.org/licenses/>.
+free energy calculations, along with computation of the standard state correction.
 
 """
 
@@ -148,11 +124,10 @@ class ReceptorLigandRestraint(object):
         -----
         The spring constant is selected to give 1 kT at one standard deviation of receptor atoms about the receptor
         restrained atom.
-        
+
         """
         pass
 
-    
     def _computeRadiusOfGyration(self, coordinates):
         """
         Compute the radius of gyration of the specified coordinate set.
@@ -170,20 +145,20 @@ class ReceptorLigandRestraint(object):
         """
 
         unit = coordinates.unit
-        
+
         # Get dimensionless receptor coordinates.
         x = coordinates / unit
-        
+
         # Get dimensionless restrained atom coordinate.
         xref = x.mean(0)
         xref = numpy.reshape(xref, (1,3)) # (1,3) array
-        
+
         # Compute distances from restrained atom.
         natoms = x.shape[0]
         distances = numpy.sqrt(((x - numpy.tile(xref, (natoms, 1)))**2).sum(1)) # distances[i] is the distance from the centroid to particle i
 
         # Compute std dev of distances from restrained atom.
-        radius_of_gyration = distances.std() * unit 
+        radius_of_gyration = distances.std() * unit
 
         return radius_of_gyration
 
@@ -209,19 +184,19 @@ class ReceptorLigandRestraint(object):
         """
 
         if mm is None: mm = openmm
-        
+
         force = openmm.CustomBondForce(self.energy_function)
         force.addGlobalParameter('lambda_restraints', 1.0)
         for parameter in self.bond_parameter_names:
             force.addPerBondParameter(parameter)
         force.addBond(particle1, particle2, self.bond_parameters)
-        
+
         return force
 
     def _computeStandardStateCorrection(self):
         """
         Compute the standard state correction for the arbitrary restraint energy function.
-        
+
         Returns
         -------
         DeltaG : float
@@ -230,7 +205,7 @@ class ReceptorLigandRestraint(object):
         Notes
         -----
         Equivalent to the free energy of releasing restraints and confining into a box of standard state size.
-                
+
         """
 
         initial_time = time.time()
@@ -249,7 +224,7 @@ class ReceptorLigandRestraint(object):
         integrator = openmm.VerletIntegrator(1.0 * units.femtoseconds)
         platform = openmm.Platform.getPlatformByName('Reference')
         context = openmm.Context(system, integrator, platform)
-        
+
         # Set default positions.
         positions = units.Quantity(numpy.zeros([2,3]), units.nanometers)
         context.setPositions(positions)
@@ -279,15 +254,15 @@ class ReceptorLigandRestraint(object):
 
         (shell_volume, shell_volume_error) = scipy.integrate.quad(lambda r : integrand(r), r_min / units.nanometers, r_max / units.nanometers) * units.nanometers**3 # integrate shell volume
         logger.debug("shell_volume = %f nm^3" % (shell_volume / units.nanometers**3))
-        
+
         # Compute standard-state volume for a single molecule in a box of size (1 L) / (avogadros number)
         liter = 1000.0 * units.centimeters**3  # one liter
         box_volume = liter / (units.AVOGADRO_CONSTANT_NA*units.mole) # standard state volume
         logger.debug("box_volume = %f nm^3" % (box_volume / units.nanometers**3))
-        
+
         # Compute standard state correction for releasing shell restraints into standard-state box (in units of kT).
         DeltaG = - math.log(box_volume / shell_volume)
-        logger.debug("Standard state correction: %.3f kT" % DeltaG)        
+        logger.debug("Standard state correction: %.3f kT" % DeltaG)
         
         final_time = time.time()
         elapsed_time = final_time - initial_time
@@ -425,7 +400,7 @@ class HarmonicReceptorLigandRestraint(ReceptorLigandRestraint):
     truncation due to a finite simulation box.
 
     EXAMPLE
-        
+
     >>> # Create a test system.
     >>> from openmmtools import testsystems
     >>> system_container = testsystems.LysozymeImplicit()
@@ -546,21 +521,26 @@ class FlatBottomReceptorLigandRestraint(ReceptorLigandRestraint):
         # Determine number of atoms.
         natoms = x.shape[0]
 
-        # Compute median absolute distance to central atom.
-        # (Working in non-unit-bearing floats for speed.)
-        xref = numpy.reshape(x[self.restrained_receptor_atom, :], (1, 3))  # (1,3) array
-        # distances[i] is the distance from the centroid to particle i
-        distances = numpy.sqrt(((x - numpy.tile(xref, (natoms, 1)))**2).sum(1))
-        median_absolute_distance = numpy.median(abs(distances))
+        if (natoms > 3):
+            # Compute median absolute distance to central atom.
+            # (Working in non-unit-bearing floats for speed.)
+            xref = numpy.reshape(x[self.restrained_receptor_atom,:], (1,3)) # (1,3) array
+            distances = numpy.sqrt(((x - numpy.tile(xref, (natoms, 1)))**2).sum(1)) # distances[i] is the distance from the centroid to particle i
+            median_absolute_distance = numpy.median(abs(distances))
 
-        # Convert back to unit-bearing quantity.
-        median_absolute_distance *= x_unit
+            # Convert back to unit-bearing quantity.
+            median_absolute_distance *= x_unit
 
-        # Convert to estimator of standard deviation for normal distribution.
-        sigma = 1.4826 * median_absolute_distance
+            # Convert to estimator of standard deviation for normal distribution.
+            sigma = 1.4826 * median_absolute_distance
 
-        # Calculate r0, which is a multiple of sigma plus 5 A.
-        r0 = 2*sigma + 5.0 * units.angstroms
+            # Calculate r0, which is a multiple of sigma plus 5 A.
+            r0 = 2*sigma + 5.0 * units.angstroms
+        else:
+            DEFAULT_DISTANCE = 15.0 * units.angstroms
+            print "WARNING: receptor only contains %d atoms; using default distance of %s" % (natoms, str(DEFAULT_DISTANCE))
+            r0 = DEFAULT_DISTANCE
+
         logger.debug("restraint distance r0 = %.1f A" % (r0 / units.angstroms))
 
         # Set spring constant/
