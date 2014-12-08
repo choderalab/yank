@@ -1,6 +1,7 @@
 #!/bin/bash
 
-export PATH=$HOME/miniconda/bin:$PATH
+source deactivate
+source activate $python
 
 echo $TRAVIS_PULL_REQUEST $TRAVIS_BRANCH
 
@@ -33,7 +34,7 @@ fi
 # Install stuff for running the example IPython notebooks
 sudo apt-get install -qq pandoc         # notebook -> rst
 conda install --yes matplotlib scikit-learn sphinx==1.2.3 boto ipython-notebook jinja2
-pip install numpydoc runipy==0.0.4                      # example notebooks
+$HOME/miniconda/envs/${python}/bin/pip install numpydoc runipy==0.0.4                      # example notebooks
 
 # Install OpenMM for a couple of the the examples
 conda config --add channels http://conda.binstar.org/omnia
@@ -41,4 +42,8 @@ conda install --yes openmm
 conda list -e
 
 cd docs && make html && cd -
-python devtools/ci/push-docs-to-s3.py
+
+# Push docs to S3
+echo "Pushing docs to S3..."
+conda list -e
+$HOME/miniconda/envs/${python}/bin/python devtools/ci/push-docs-to-s3.py
