@@ -1,5 +1,7 @@
 #!/bin/bash
 
+export PATH=$HOME/miniconda/bin:$PATH
+
 echo $TRAVIS_PULL_REQUEST $TRAVIS_BRANCH
 
 if [[ "$TRAVIS_PULL_REQUEST" == "true" ]]; then
@@ -25,7 +27,8 @@ fi
 # -----------------------------------
 
 # Deactivate 2.7 environment.
-source deactivate
+#source deactivate
+#source activate $python
 
 # Install stuff for running the example IPython notebooks
 sudo apt-get install -qq pandoc         # notebook -> rst
