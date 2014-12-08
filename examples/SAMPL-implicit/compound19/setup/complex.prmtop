@@ -1,4 +1,4 @@
-%VERSION  VERSION_STAMP = V0001.000  DATE = 11/28/14  23:01:19                  
+%VERSION  VERSION_STAMP = V0001.000  DATE = 12/07/14  21:28:15                  
 %FLAG TITLE                                                                     
 %FORMAT(20a4)                                                                   
 *****                                                                           
@@ -146,7 +146,7 @@ H5  H6  H7  H8  H9  H10 H11 H12 H13 H14 H15 H16
       16      17      18      19      20      21
 %FLAG RESIDUE_LABEL                                                             
 %FORMAT(20a4)                                                                   
-LIG non 
+CB7 LIG 
 %FLAG RESIDUE_POINTER                                                           
 %FORMAT(10I8)                                                                   
        1     127
