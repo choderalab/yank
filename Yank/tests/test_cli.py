@@ -18,7 +18,7 @@ import commands
 
 from openmmtools import testsystems
 
-from yank import cli
+from yank import cli, utils
 
 from nose.plugins.skip import Skip, SkipTest
 
@@ -56,7 +56,9 @@ def test_selftest():
     run_cli('selftest')
 
 def test_setup_binding():
-    dirname = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit")
+    # NOTE: switched to yank p-xylene from openmmtools T4-lysozyme because of yank bugs.
+    #dirname = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit")
+    dirname = utils.get_data_filename("../examples/p-xylene-implicit/setup/")  # Could only figure out how to install things like yank.egg/examples/, rather than yank.egg/yank/examples/
     storedir = tempfile.mkdtemp()
     run_cli('setup binding amber --setupdir=%(dirname)s --ligname MOL --store %(storedir)s' % vars())
     # TODO: Clean up directory.
