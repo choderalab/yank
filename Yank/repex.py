@@ -2678,6 +2678,7 @@ class HamiltonianExchange(ReplicaExchange):
     >>> simulation.minimize = False
     >>> # Run simulation.
     >>> simulation.run() #doctest: +ELLIPSIS
+    ...
 
     """
 
