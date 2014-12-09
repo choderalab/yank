@@ -161,8 +161,9 @@ setup(
     platforms=['Linux', 'Mac OS-X', 'Unix', 'Windows'],
     classifiers=CLASSIFIERS.splitlines(),
     package_dir={'yank': 'Yank'},
-    packages=['yank'] + ['yank.%s' % package for package in find_packages('yank')],
-    #package_data={'yank': find_package_data('yank/data', 'yank')},
+    packages=['yank', "yank.tests", "yank.commands"] + ['yank.%s' % package for package in find_packages('yank')],
+    package_data={'yank': find_package_data('examples', 'yank')},
+    #package_data={'openmmtools': find_package_data('openmmtools/data', 'openmmtools')},
     zip_safe=False,
     install_requires=[
         'numpy',
