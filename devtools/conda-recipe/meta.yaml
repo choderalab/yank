@@ -31,7 +31,7 @@ requirements:
     - ambermini
     - docopt
     - gaff2xml
-    - pyaml
+#    - pyaml
     - jinja2    
 
 test:
