@@ -1,10 +1,9 @@
 #!/bin/bash
 
 cp -r $RECIPE_DIR/../.. $SRC_DIR
+$PYTHON setup.py clean
 $PYTHON setup.py install
 
-# Add more build steps here, if they are necessary.
-
-# See
-# http://docs.continuum.io/conda/build.html
-# for a list of environment variables that are set during the build process.
+# Eventually we want to push examples to some place like ~/anaconda/share/yank/examples/
+#mkdir $PREFIX/share/yank/
+#cp -r $RECIPE_DIR/../../examples/ $PREFIX/share/yank/

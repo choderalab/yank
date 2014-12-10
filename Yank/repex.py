@@ -2677,7 +2677,8 @@ class HamiltonianExchange(ReplicaExchange):
     >>> simulation.nsteps_per_iteration = 50 # run 50 timesteps per iteration
     >>> simulation.minimize = False
     >>> # Run simulation.
-    >>> simulation.run() # run the simulation
+    >>> simulation.run() #doctest: +ELLIPSIS
+    ...
 
     """
 

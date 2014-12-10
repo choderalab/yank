@@ -36,6 +36,7 @@ nosetests.xml
 .pydevproject
 
 yank/version.py
+Yank/version.py
 
 # emacs
 *~

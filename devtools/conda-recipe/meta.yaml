@@ -2,6 +2,10 @@ package:
   name: yank
   version: !!str 0.0.0
 
+build:
+  preserve_egg_dir: True
+  number: 0
+
 requirements:
   build:
     - python
@@ -16,11 +20,14 @@ requirements:
     - ambermini
     - docopt
     - gaff2xml
+    - jinja2
 
   run:
     - python
     - pandas
+    - numpy
     - scipy
+    - cython
     - netcdf4
     - openmm
     - openmmtools
@@ -28,8 +35,23 @@ requirements:
     - ambermini
     - docopt
     - gaff2xml
+#    - pyaml
+    - jinja2    
+
+test:
+  requires:
+    - nose
+  imports:
+    - yank
+  commands:
+    - nosetests yank --nocapture --verbosity=2
+    - which yank
+    - yank --help    
 
 about:
   home: https://github.com/choderalab/yank
   license: GNU Lesser General Public License v2 or later (LGPLv2+)
+
+
+
 
