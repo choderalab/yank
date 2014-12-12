@@ -73,13 +73,6 @@ from simtk import unit
 import netCDF4 as netcdf
 
 #=============================================================================================
-# DISABLE DEPRECATION WARNINGS FOR WEAVE
-#=============================================================================================
-
-import warnings
-warnings.filterwarnings('ignore', category=DeprecationWarning)
-
-#=============================================================================================
 # MODULE CONSTANTS
 #=============================================================================================
 
@@ -1622,7 +1615,7 @@ class ReplicaExchange(object):
         """
         Attempt exchanges between all replicas to enhance mixing.
         Acceleration by 'weave' from scipy is used to speed up mixing by ~ 400x.
-        
+
         """
 
         # TODO: Replace this with a different acceleration scheme to achieve better performance?
@@ -1633,7 +1626,7 @@ class ReplicaExchange(object):
         # nswap_attempts = self.nstates**5 # number of swaps to attempt (ideal, but too slow!)
         nswap_attempts = self.nstates**4 # number of swaps to attempt
         # Handled in C code below.
-        
+
         if self.verbose: print "Will attempt to swap all pairs of replicas using weave-accelerated code, using a total of %d attempts." % nswap_attempts
 
         from scipy import weave
@@ -1649,10 +1642,10 @@ class ReplicaExchange(object):
         // Attempt swaps.
         for(long swap_attempt = 0; swap_attempt < nswap_attempts; swap_attempt++) {
             // Choose replicas to attempt to swap.
-            int i = (long)(drand48() * nstates); 
+            int i = (long)(drand48() * nstates);
             int j = (long)(drand48() * nstates);
 
-            // Determine which states these resplicas correspond to.            
+            // Determine which states these resplicas correspond to.
             int istate = REPLICA_STATES1(i); // state in replica slot i
             int jstate = REPLICA_STATES1(j); // state in replica slot j
 
@@ -1689,7 +1682,9 @@ class ReplicaExchange(object):
         Nij_accepted = self.Nij_accepted
 
         # Execute inline C code with weave.
-        info = weave.inline(code, ['nstates', 'replica_states', 'u_kl', 'Nij_proposed', 'Nij_accepted'], headers=['<math.h>', '<stdlib.h>'], verbose=0);
+        info = weave.inline(code, ['nstates', 'replica_states', 'u_kl', 'Nij_proposed', 'Nij_accepted'], headers=['<math.h>', '<stdlib.h>'], verbose=0,
+                            extra_compile_args='-w' # inhibit compiler warnings
+                            )
 
         # Store results.
         self.replica_states = replica_states
