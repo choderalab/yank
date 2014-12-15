@@ -69,7 +69,7 @@ import numpy.linalg
 
 from simtk import openmm
 from simtk import unit
-from _mix_replicas import _mix_replicas_cython
+from yank.mixing import _mix_replicas
 import netCDF4 as netcdf
 
 #=============================================================================================

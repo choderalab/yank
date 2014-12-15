@@ -174,7 +174,7 @@ setup(
         'docopt>=0.6.1',
         'netcdf4',
         ],
-    ext_modules=cythonize("./Yank/_mix_replicas.pyx"),
+    ext_modules=cythonize("./Yank/mixing/_mix_replicas.pyx"),
     entry_points={'console_scripts': ['yank = yank.cli:main']})
 
 check_dependencies()
