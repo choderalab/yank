@@ -5,7 +5,7 @@ YANK is built on OpenMM, the API for molecular simulation, and uses its GPU-acce
 from __future__ import print_function
 import os
 import sys
-from distutils.core import setup, Extension
+import distutils.extension
 from setuptools import setup, Extension, find_packages
 import numpy
 import glob
@@ -149,6 +149,8 @@ def check_dependencies():
 # SETUP
 ################################################################################
 
+mixing_ext = distutils.extension.Extension("_mix_replicas", ['./Yank/mixing/_mix_replicas.pyx'])
+
 write_version_py()
 setup(
     name='yank',
@@ -174,7 +176,7 @@ setup(
         'docopt>=0.6.1',
         'netcdf4',
         ],
-    ext_modules=cythonize("./Yank/mixing/_mix_replicas.pyx"),
+    ext_modules=cythonize(mixing_ext),
     entry_points={'console_scripts': ['yank = yank.cli:main']})
 
 check_dependencies()
