@@ -27,7 +27,7 @@ cpdef long _mix_replicas_cython(long nstates, long[:] replica_states, double[:,:
             tmp_state = replica_states[i]
             replica_states[i] = replica_states[j]
             replica_states[j] = tmp_state
-            Nij_accepted[i,j]+=1
-            Nij_accepted[j,i]+=1
+            Nij_accepted[i,j] += 1
+            Nij_accepted[j,i] += 1
     return 0
         
