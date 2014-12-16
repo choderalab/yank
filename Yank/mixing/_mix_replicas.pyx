@@ -1,5 +1,6 @@
 cimport cython
 from libc.math cimport exp, isnan
+from libc.stdio cimport printf
 cdef extern from 'stdlib.h' nogil:
     double drand48()
 
@@ -10,6 +11,7 @@ cpdef long _mix_replicas_cython(long nstates, long[:] replica_states, double[:,:
     cdef long swap_attempt, nswap_attempts = nstates*nstates*nstates*nstates
     cdef long i, j, istate, jstate, tmp_state
     cdef double log_P_accept
+    printf("Attempting to swap all replicas using Cython-accelerated code")
     for swap_attempt in range(nswap_attempts):
         i = <long>(drand48()*nstates)
         j = <long>(drand48()*nstates)

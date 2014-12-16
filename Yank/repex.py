@@ -63,10 +63,10 @@ import math
 import copy
 import time
 import datetime
-
+import mixing._mix_replicas as _mix_replicas
 import numpy
 import numpy.linalg
-
+import mdtraj as md
 from simtk import openmm
 from simtk import unit
 import netCDF4 as netcdf
@@ -646,7 +646,7 @@ class ReplicaExchange(object):
     # Options to store.
     options_to_store = ['collision_rate', 'constraint_tolerance', 'timestep', 'nsteps_per_iteration', 'number_of_iterations', 'equilibration_timestep', 'number_of_equilibration_iterations', 'title', 'minimize', 'replica_mixing_scheme', 'online_analysis', 'verbose', 'show_mixing_statistics']
 
-    def __init__(self, store_filename, mpicomm=None, mm=None):
+    def __init__(self, store_filename, mpicomm=None, mm=None, use_cython=True):
         """
         Initialize replica-exchange simulation facility.
 
@@ -672,6 +672,7 @@ class ReplicaExchange(object):
 
         # Set default options.
         # These can be changed externally until object is initialized.
+        self.use_cython = use_cython
         self.collision_rate = 91.0 / unit.picosecond
         self.constraint_tolerance = 1.0e-6
         self.timestep = 2.0 * unit.femtosecond
@@ -1032,9 +1033,9 @@ class ReplicaExchange(object):
         # Allocate storage.
         self.replica_positions = list() # replica_positions[i] is the configuration currently held in replica i
         self.replica_box_vectors = list() # replica_box_vectors[i] is the set of box vectors currently held in replica i
-        self.replica_states     = numpy.zeros([self.nstates], numpy.int32) # replica_states[i] is the state that replica i is currently at
-        self.u_kl               = numpy.zeros([self.nstates, self.nstates], numpy.float32)
-        self.swap_Pij_accepted  = numpy.zeros([self.nstates, self.nstates], numpy.float32)
+        self.replica_states     = numpy.zeros([self.nstates], numpy.int64) # replica_states[i] is the state that replica i is currently at
+        self.u_kl               = numpy.zeros([self.nstates, self.nstates], numpy.float64)
+        self.swap_Pij_accepted  = numpy.zeros([self.nstates, self.nstates], numpy.float64)
         self.Nij_proposed       = numpy.zeros([self.nstates,self.nstates], numpy.int64) # Nij_proposed[i][j] is the number of swaps proposed between states i and j, prior of 1
         self.Nij_accepted       = numpy.zeros([self.nstates,self.nstates], numpy.int64) # Nij_proposed[i][j] is the number of swaps proposed between states i and j, prior of 1
 
@@ -1124,8 +1125,8 @@ class ReplicaExchange(object):
         self.replica_positions = list() # replica_positions[i] is the configuration currently held in replica i
         self.replica_box_vectors = list() # replica_box_vectors[i] is the set of box vectors currently held in replica i
         self.replica_states     = numpy.zeros([self.nstates], numpy.int32) # replica_states[i] is the state that replica i is currently at
-        self.u_kl               = numpy.zeros([self.nstates, self.nstates], numpy.float32)
-        self.swap_Pij_accepted  = numpy.zeros([self.nstates, self.nstates], numpy.float32)
+        self.u_kl               = numpy.zeros([self.nstates, self.nstates], numpy.float64)
+        self.swap_Pij_accepted  = numpy.zeros([self.nstates, self.nstates], numpy.float64)
         self.Nij_proposed       = numpy.zeros([self.nstates,self.nstates], numpy.int64) # Nij_proposed[i][j] is the number of swaps proposed between states i and j, prior of 1
         self.Nij_accepted       = numpy.zeros([self.nstates,self.nstates], numpy.int64) # Nij_proposed[i][j] is the number of swaps proposed between states i and j, prior of 1
 
@@ -1610,6 +1611,21 @@ class ReplicaExchange(object):
 
         return
 
+    def _mix_all_replicas_cython(self):
+        """
+        Attempt to exchange all replicas to enhance mixing, calling code written in Cython.
+        """
+
+        replica_states = md.utils.ensure_type(self.replica_states, numpy.int64, 1, "Replica States")
+        u_kl = md.utils.ensure_type(self.u_kl, numpy.float64, 2, "Reduced Potentials")
+        Nij_proposed = md.utils.ensure_type(self.Nij_proposed, numpy.int64, 2, "Nij Proposed")
+        Nij_accepted = md.utils.ensure_type(self.Nij_accepted, numpy.int64, 2, "Nij accepted")
+        _mix_replicas._mix_replicas_cython(self.nstates, replica_states, u_kl, Nij_proposed, Nij_accepted)
+        self.replica_states = replica_states
+        self.Nij_proposed = Nij_proposed
+        self.Nij_accepted = Nij_accepted
+
+
     def _mix_all_replicas_weave(self):
         """
         Attempt exchanges between all replicas to enhance mixing.
@@ -1759,8 +1775,12 @@ class ReplicaExchange(object):
         elif self.replica_mixing_scheme == 'swap-all':
             # Try to use weave-accelerated mixing code if possible, otherwise fall back to Python-accelerated code.            
             try:
-                self._mix_all_replicas_weave()            
-            except:
+                if self.use_cython is True:
+                    self._mix_all_replicas_cython()
+                else:
+                    self._mix_all_replicas_weave()
+            except ValueError as e:
+                print e.message
                 self._mix_all_replicas()
         elif self.replica_mixing_scheme == 'none':
             # Don't mix replicas.
@@ -2187,6 +2207,8 @@ class ReplicaExchange(object):
             if option_unit: setattr(ncvar, 'units', str(option_unit))
 
         return
+
+
 
     def _restore_options(self, ncfile):
         """
