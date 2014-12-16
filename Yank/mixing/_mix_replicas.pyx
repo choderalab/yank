@@ -20,7 +20,7 @@ cpdef long _mix_replicas_cython(long nstates, long[:] replica_states, double[:,:
         jstate = replica_states[j]
         if (isnan(u_kl[i, istate]) or isnan(u_kl[i, jstate]) or isnan(u_kl[j, istate]) or isnan(u_kl[j, jstate])):
             continue
-        log_P_accept = - (u_kl[i, jstate] + u_kl[i, istate]) + (u_kl[j, jstate] + u_kl[j, istate])
+        log_P_accept = - (u_kl[i, jstate] + u_kl[j, istate]) + (u_kl[j, jstate] + u_kl[i, istate])
         Nij_proposed[istate, jstate] +=1
         Nij_proposed[jstate, istate] +=1
         if(log_P_accept>=0 or drand48()<exp(log_P_accept)):            
