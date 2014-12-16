@@ -76,7 +76,7 @@ def _mix_all_replicas_weave(nstates, replica_states, u_kl, Nij_proposed, Nij_acc
 
     # Execute inline C code with weave.
     info = weave.inline(code, ['nstates', 'replica_states', 'u_kl', 'Nij_proposed', 'Nij_accepted'], headers=['<math.h>', '<stdlib.h>'], verbose=0,
-                        extra_compile_args='-w' # inhibit compiler warnings
+                        extra_compile_args=['-w'] # inhibit compiler warnings
                         )
 
     # Store results.
