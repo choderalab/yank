@@ -8,7 +8,8 @@ cdef extern from 'stdlib.h' nogil:
 @cython.cdivision(True)
 @cython.boundscheck(False)
 cpdef long _mix_replicas_cython(long nstates, long[:] replica_states, double[:,:] u_kl, long[:,:] Nij_proposed, long[:,:] Nij_accepted) nogil:
-    cdef long swap_attempt, nswap_attempts = nstates*nstates*nstates*nstates
+    cdef long swap_attempt
+    cdef long nswap_attempts = nstates*nstates*nstates*nstates
     cdef long i, j, istate, jstate, tmp_state
     cdef double log_P_accept
     printf("Attempting to swap all replicas using Cython-accelerated code\n")
