@@ -149,7 +149,7 @@ def check_dependencies():
 # SETUP
 ################################################################################
 
-mixing_ext = distutils.extension.Extension("Yank.mixing._mix_replicas", ['./Yank/mixing/_mix_replicas.pyx'])
+mixing_ext = distutils.extension.Extension("yank.mixing._mix_replicas", ['./Yank/mixing/_mix_replicas.pyx'])
 
 write_version_py()
 setup(
