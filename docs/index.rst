@@ -10,21 +10,21 @@ YANK
 
 Features
 --------
-* modular Python framework for easily exploring new algorithms
+* Modular Python framework for easily exploring new algorithms
 * GPU-accelerated via the `OpenMM toolkit <http://openmm.org>`_
-* `alchemical free energy calculations <http://alchemistry.org>`_ in both **explicit** and **implicit** solvent
+* `Alchemical free energy calculations <http://alchemistry.org>`_ in both **explicit** and **implicit** solvent
 * Hamiltonian exchange among alchemical intermediates with Gibbs sampling framework
-* general `Markov chain Monte Carlo <http://en.wikipedia.org/wiki/Markov_chain_Monte_Carlo>`_ framework for exploring enhanced sampling methods
-* built-in equilibration detection and convergence diagnostics
-* support for AMBER prmtop/inpcrd files
-* support for absolute binding free energy calculations
-* support for transfer free energies (such as hydration free energies)
+* General `Markov chain Monte Carlo <http://en.wikipedia.org/wiki/Markov_chain_Monte_Carlo>`_ framework for exploring enhanced sampling methods
+* Built-in equilibration detection and convergence diagnostics
+* Support for AMBER prmtop/inpcrd files
+* Support for absolute binding free energy calculations
+* Support for transfer free energies (such as hydration free energies)
 
 Get involved
 ------------
-* `Download the code <https://github.com/choderalab/yank>`_
-* `See YANK in action <examples/index.html>`_
-* `Report a bug or request a feature <https://github.com/choderalab/yank/issues>`_
+* Download the code or fork the repo on `GitHub <https://github.com/choderalab/yank>`_
+* See YANK `action <examples/index.html>`_
+* Report a bug or request a feature on the `GitHub issue tracker <https://github.com/choderalab/yank/issues>`_
 
 --------------------------------------------------------------------------------
 
