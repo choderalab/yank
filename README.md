@@ -158,7 +158,6 @@ Known Issues
 TODO
 ----
 
-- [ ] Remove dependence on deprecated pyopenmm pure-Python wrapper; require System objects for complex, ligand, and protein instead.
 - [ ] Add support for asynchronous execution of Yank.run() 
 - [ ] Add support for on-the-fly analysis thread(s)
 - [ ] Speed up initialization and resuming runs
