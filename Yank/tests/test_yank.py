@@ -120,34 +120,6 @@ def computeHarmonicOscillatorExpectations(K, mass, temperature):
     
     return values
 
-def detect_equilibration(A_t):
-    """
-    Automatically detect equilibrated region.
-
-    ARGUMENTS
-
-    A_t (numpy.array) - timeseries
-
-    RETURNS
-
-    t (int) - start of equilibrated data
-    g (float) - statistical inefficiency of equilibrated data
-    Neff_max (float) - number of uncorrelated samples   
-    
-    """
-    T = A_t.size
-
-    g_t = numpy.ones([T-1], numpy.float32)
-    Neff_t = numpy.ones([T-1], numpy.float32)
-    for t in range(T-1):
-        g_t[t] = timeseries.statisticalInefficiency(A_t[t:T])
-        Neff_t[t] = (T-t+1) / g_t[t]
-    
-    Neff_max = Neff_t.max()
-    t = Neff_t.argmax()
-    g = g_t[t]
-    
-    return (t, g, Neff_max)
 
 #=============================================================================================
 # MAIN AND TESTS
