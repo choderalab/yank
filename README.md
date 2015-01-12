@@ -23,23 +23,19 @@ Authors
 * Imran Haque | ihaque@gmail.com
 * Kim Branson | kim.branson@gmail.com
 
-Copyright
----------
-
-Portions of this code copyright (c) 2009-2011 University of California, Berkeley, Vertex Pharmaceuticals, Stanford University, University of Virginia, Memorial Sloan-Kettering Cancer Center, and the Authors.
 
 Prerequisites
 -------------
 
-Use of this module requires the following
+Yank requires the following
 
-* AmberTools (for setting up protein-ligand systems):
+* AmberTools for setting up protein-ligand systems:
   http://ambermd.org/#AmberTools
 
-* OpenMM with Python wrappers: 
+* OpenMM 6.2 or greater: 
   http://simtk.org/home/openmm
 
-* Python 2.6 or later: 
+* Python 2.7 or later: 
   http://www.python.org
 
 * NetCDF (compiled with netcdf4 support):
@@ -73,7 +69,7 @@ pip install conda
 
 Install the development version of YANK and its prerequisites using this conda:
 ```bash
-conda install -c https://conda.binstar.org/omnia yank-dev
+conda install -c https://conda.binstar.org/omnia yank
 ```
 
 To use the optional [OpenEye toolkits](http://www.eyesopen.com/toolkits) to add more small-molecule manipulation capability to YANK
@@ -182,22 +178,17 @@ Support for the following is planned:
 * Generative factories, to allow searching over combinatorially large chemical spaces (both for ligand substituents and protein mutations)
 * Constant-pH and ligand tautomer sampling
 
+Copyright
+---------
+
+Portions of this code copyright (c) 2009-2011 University of California, Berkeley, Vertex Pharmaceuticals, Stanford University, University of Virginia, Memorial Sloan-Kettering Cancer Center, and the Authors.
+
+
 License
 -------
 
-All code in this repository is released under the GNU General Public License.
+All code in this repository is released under the GNU Lesser General Public License.  See LICENSE for details.
 
-This program is free software: you can redistribute it and/or modify it under
-the terms of the GNU General Public License as published by the Free Software
-Foundation, either version 3 of the License, or (at your option) any later
-version.
-
-This program is distributed in the hope that it will be useful, but WITHOUT ANY
-WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
-PARTICULAR PURPOSE.  See the GNU General Public License for more details.
- 
-You should have received a copy of the GNU General Public License along with
-this program.  If not, see <http://www.gnu.org/licenses/>.
 
 Acknowledgents and Contributions
 --------------------------------
