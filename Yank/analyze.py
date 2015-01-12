@@ -13,22 +13,6 @@
 # This requires NetCDF with version 4 and multithreading support, as well as HDF5.
 #=============================================================================================
 
-#=============================================================================================
-# TODO
-#=============================================================================================
-
-#=============================================================================================
-# CHAGELOG
-#=============================================================================================
-
-#=============================================================================================
-# VERSION CONTROL INFORMATION
-#=============================================================================================
-
-#=============================================================================================
-# IMPORTS
-#=============================================================================================
-
 import os
 import os.path
 import sys
@@ -189,46 +173,7 @@ def write_netcdf_frame(netcdf_file, frame_index, time = None, coordinates = None
 
   return
 
-def read_amber_energy_frame(infile):
-    """Read a frame of energy components from the AMBER energy file.
 
-    ARGUMENTS
-      infile (Python file handle) - the file to read from
-
-    RETURNS
-      energies (Python dict) -- energies[keyword] contains the energy for the corresponding keyword
-    """
-
-    # number of lines per .ene block
-    ene_lines_per_block = 10
-
-    # energy keys
-    energy_keys = [
-        'Nsteps', 'time', 'Etot', 'EKinetic', # L0
-        'Temp', 'T_solute', 'T_solv', 'Pres_scal_solu', # L1
-        'Pres_scal_solv', 'BoxX', 'BoxY', 'BoxZ', # L2
-        'volume', 'pres_X', 'pres_Y', 'pres_Z',
-        'Pressure', 'EKCoM_x', 'EKCoM_y', 'EKCoM_z',
-        'EKComTot', 'VIRIAL_x', 'VIRIAL_y', 'VIRIAL_z',
-        'VIRIAL_tot', 'E_pot', 'E_vdw', 'E_el',
-        'E_hbon', 'E_bon', 'E_angle', 'E_dih',
-        'E_14vdw', 'E_14el', 'E_const', 'E_pol',
-        'AV_permMoment', 'AV_indMoment', 'AV_totMoment', 'Density', 'dV/dlambda'
-        ]
-
-    # Read energy block.
-    energies = dict()
-    key_index = 0
-    for line_counter in range(ene_lines_per_block):
-        line = infile.readline() # read the line
-        elements = line.split() # split into elements
-        elements.pop(0) # drop the 'L#' initial element
-        for element in elements:
-            key = energy_keys[key_index] # get the key
-            energies[key] = float(element) # store the energy
-            key_index += 1 # increment index
-
-    return energies
 
 def write_netcdf_replica_trajectories(directory, prefix, title, ncfile):
     """Write out replica trajectories in AMBER NetCDF format.
@@ -258,46 +203,6 @@ def write_netcdf_replica_trajectories(directory, prefix, title, ncfile):
 
     return
 
-def compute_torsion_trajectories(ncfile, filename, atoms):
-    """Write out torsion trajectories for Val 111.
-
-    ARGUMENTS
-       ncfile (NetCDF) - NetCDF file object for input file
-       filename (string) - name of file to be written
-    """
-
-    # Get current dimensions.
-    niterations = ncfile.variables['positions'].shape[0]
-    nstates = ncfile.variables['positions'].shape[1]
-    natoms = ncfile.variables['positions'].shape[2]
-
-    # Compute torsion angle
-    def compute_torsion(positions, atoms):
-        # Compute vectors from cross products
-        vBA = positions[atoms[0],:] - positions[atoms[1],:]
-        vBC = positions[atoms[2],:] - positions[atoms[1],:]
-        vCB = positions[atoms[1],:] - positions[atoms[2],:]
-        vCD = positions[atoms[3],:] - positions[atoms[2],:]
-        v1 = np.cross(vBA,vBC)
-        v2 = np.cross(vCB,vCD)
-        cos_theta = np.dot(v1,v2) / np.sqrt(np.dot(v1,v1) * np.dot(v2,v2))
-        theta = np.arccos(cos_theta) * 180.0 / math.pi
-        return theta
-                
-    # Compute torsion angles for each replica
-    contents = ""
-    for iteration in range(niterations):
-        for replica in range(nstates):
-            # Compute torsion
-            torsion = compute_torsion(np.array(ncfile.variables['positions'][iteration,replica,:,:]), atoms)
-            # Write torsion
-            contents += "%8.1f" % torsion
-        contents += "\n"
-
-    # Write contents.
-    write_file(filename, contents)
-
-    return
 
 def write_pdb_replica_trajectories(basepdb, directory, prefix, title, ncfile, trajectory_by_state=True):
     """Write out replica trajectories as multi-model PDB files.
@@ -421,32 +326,6 @@ def write_pdb(atoms, filename, iteration, replica, title, ncfile,trajectory_by_s
 
     return
 
-def write_crd(filename, iteration, replica, title, ncfile):
-    """
-    Write out AMBER format CRD file.
-
-    """
-    # Extract coordinates to be written.
-    coordinates = np.array(ncfile.variables['positions'][iteration,replica,:,:])
-    coordinates *= 10.0 # convert nm to angstroms
-
-    # Create file.
-    outfile = open(filename, 'w')
-
-    # Write title.
-    outfile.write(title + '\n')
-
-    # Write number of atoms.
-    natoms = ncfile.variables['positions'].shape[2]
-    outfile.write('%6d\n' % natoms)
-
-    # Write coordinates.
-    for index in range(natoms):
-        outfile.write('%12.7f%12.7f%12.7f' % (coordinates[index,0], coordinates[index,1], coordinates[index,2]))
-        if ((index+1) % 2 == 0): outfile.write('\n')
-
-    # Close file.
-    outfile.close()
 
 def show_mixing_statistics(ncfile, cutoff=0.05, nequil=0):
     """
@@ -547,83 +426,6 @@ def analyze_acceptance_probabilities(ncfile, cutoff = 0.4):
 
     return
 
-def check_energies(ncfile, atoms):
-    """
-    Examine energy history for signs of instability (nans).
-
-    ARGUMENTS
-       ncfile (NetCDF) - input YANK netcdf file
-    """
-
-    # Get current dimensions.
-    niterations = ncfile.variables['energies'].shape[0]
-    nstates = ncfile.variables['energies'].shape[1]
-
-    # Extract energies.
-    logger.info("Reading energies...")
-    energies = ncfile.variables['energies']
-    u_kln_replica = np.zeros([nstates, nstates, niterations], np.float64)
-    for n in range(niterations):
-        u_kln_replica[:,:,n] = energies[n,:,:]
-    logger.info("Done.")
-
-    # Deconvolute replicas
-    logger.info("Deconvoluting replicas...")
-    u_kln = np.zeros([nstates, nstates, niterations], np.float64)
-    for iteration in range(niterations):
-        state_indices = ncfile.variables['states'][iteration,:]
-        u_kln[state_indices,:,iteration] = energies[iteration,:,:]
-    logger.info("Done.")
-
-    # Show all self-energies
-    show_self_energies = False
-    if (show_self_energies):
-        logger.info('all self-energies for all replicas')
-        for iteration in range(niterations):
-            for replica in range(nstates):
-                state = int(ncfile.variables['states'][iteration,replica])
-                print '%12.1f' % energies[iteration, replica, state],
-            print ''
-
-    # If no energies are 'nan', we're clean.
-    if not np.any(np.isnan(energies[:,:,:])):
-        return
-
-    # There are some energies that are 'nan', so check if the first iteration has nans in their *own* energies:
-    u_k = np.diag(energies[0,:,:])
-    if np.any(np.isnan(u_k)):
-        logger.info("First iteration has exploded replicas.  Check to make sure structures are minimized before dynamics")
-        logger.info("Energies for all replicas after equilibration:")
-        logger.info(u_k)
-        sys.exit(1)
-
-    # There are some energies that are 'nan' past the first iteration.  Find the first instances for each replica and write PDB files.
-    first_nan_k = np.zeros([nstates], np.int32)
-    for iteration in range(niterations):
-        for k in range(nstates):
-            if np.isnan(energies[iteration,k,k]) and first_nan_k[k]==0:
-                first_nan_k[k] = iteration
-    if not all(first_nan_k == 0):
-        logger.info("Some replicas exploded during the simulation.")
-        logger.info("Iterations where explosions were detected for each replica:")
-        logger.info(first_nan_k)
-        logger.info("Writing PDB files immediately before explosions were detected...")
-        for replica in range(nstates):
-            if (first_nan_k[replica] > 0):
-                state = ncfile.variables['states'][iteration,replica]
-                iteration = first_nan_k[replica] - 1
-                filename = 'replica-%d-before-explosion.pdb' % replica
-                title = 'replica %d state %d iteration %d' % (replica, state, iteration)
-                write_pdb(atoms, filename, iteration, replica, title, ncfile)
-                filename = 'replica-%d-before-explosion.crd' % replica
-                write_crd(filename, iteration, replica, title, ncfile)
-        sys.exit(1)
-
-    # There are some energies that are 'nan', but these are energies at foreign lambdas.  We'll just have to be careful with MBAR.
-    # Raise a warning.
-    logger.info("WARNING: Some energies at foreign lambdas are 'nan'.  This is recoverable.")
-
-    return
 
 def check_positions(ncfile):
     """Make sure no positions have gone 'nan'.
