@@ -5,13 +5,14 @@ YANK is built on OpenMM, the API for molecular simulation, and uses its GPU-acce
 from __future__ import print_function
 import os
 import sys
-from distutils.core import setup, Extension
+import distutils.extension
 from setuptools import setup, Extension, find_packages
 import numpy
 import glob
 import os
 from os.path import relpath, join
 import subprocess
+from Cython.Build import cythonize
 DOCLINES = __doc__.split("\n")
 
 ########################
@@ -148,6 +149,8 @@ def check_dependencies():
 # SETUP
 ################################################################################
 
+mixing_ext = distutils.extension.Extension("yank.mixing._mix_replicas", ['./Yank/mixing/_mix_replicas.pyx'])
+
 write_version_py()
 setup(
     name='yank',
@@ -161,7 +164,7 @@ setup(
     platforms=['Linux', 'Mac OS-X', 'Unix', 'Windows'],
     classifiers=CLASSIFIERS.splitlines(),
     package_dir={'yank': 'Yank'},
-    packages=['yank', "yank.tests", "yank.commands"] + ['yank.%s' % package for package in find_packages('yank')],
+    packages=['yank', "yank.tests", "yank.commands", "yank.mixing"] + ['yank.%s' % package for package in find_packages('yank')],
     package_data={'yank': find_package_data('examples', 'yank')},  # NOTE: examples installs to yank.egg/examples/, NOT yank.egg/yank/examples/.  You need to do utils.get_data_filename("../examples/*/setup/").
     zip_safe=False,
     install_requires=[
@@ -173,6 +176,7 @@ setup(
         'docopt>=0.6.1',
         'netcdf4',
         ],
+    ext_modules=cythonize(mixing_ext),
     entry_points={'console_scripts': ['yank = yank.cli:main']})
 
 check_dependencies()

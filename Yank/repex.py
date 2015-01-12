@@ -63,13 +63,13 @@ import math
 import copy
 import time
 import datetime
-
+import mixing._mix_replicas as _mix_replicas
 import numpy
 import numpy.linalg
-
+import mdtraj as md
+import mixing._mix_replicas_old as _mix_replicas_old
 from simtk import openmm
 from simtk import unit
-
 import netCDF4 as netcdf
 
 #=============================================================================================
@@ -647,7 +647,7 @@ class ReplicaExchange(object):
     # Options to store.
     options_to_store = ['collision_rate', 'constraint_tolerance', 'timestep', 'nsteps_per_iteration', 'number_of_iterations', 'equilibration_timestep', 'number_of_equilibration_iterations', 'title', 'minimize', 'replica_mixing_scheme', 'online_analysis', 'verbose', 'show_mixing_statistics']
 
-    def __init__(self, store_filename, mpicomm=None, mm=None):
+    def __init__(self, store_filename, mpicomm=None, mm=None, use_cython=True):
         """
         Initialize replica-exchange simulation facility.
 
@@ -673,6 +673,7 @@ class ReplicaExchange(object):
 
         # Set default options.
         # These can be changed externally until object is initialized.
+        self.use_cython = use_cython
         self.collision_rate = 91.0 / unit.picosecond
         self.constraint_tolerance = 1.0e-6
         self.timestep = 2.0 * unit.femtosecond
@@ -1033,9 +1034,9 @@ class ReplicaExchange(object):
         # Allocate storage.
         self.replica_positions = list() # replica_positions[i] is the configuration currently held in replica i
         self.replica_box_vectors = list() # replica_box_vectors[i] is the set of box vectors currently held in replica i
-        self.replica_states     = numpy.zeros([self.nstates], numpy.int32) # replica_states[i] is the state that replica i is currently at
-        self.u_kl               = numpy.zeros([self.nstates, self.nstates], numpy.float32)
-        self.swap_Pij_accepted  = numpy.zeros([self.nstates, self.nstates], numpy.float32)
+        self.replica_states     = numpy.zeros([self.nstates], numpy.int64) # replica_states[i] is the state that replica i is currently at
+        self.u_kl               = numpy.zeros([self.nstates, self.nstates], numpy.float64)
+        self.swap_Pij_accepted  = numpy.zeros([self.nstates, self.nstates], numpy.float64)
         self.Nij_proposed       = numpy.zeros([self.nstates,self.nstates], numpy.int64) # Nij_proposed[i][j] is the number of swaps proposed between states i and j, prior of 1
         self.Nij_accepted       = numpy.zeros([self.nstates,self.nstates], numpy.int64) # Nij_proposed[i][j] is the number of swaps proposed between states i and j, prior of 1
 
@@ -1125,8 +1126,8 @@ class ReplicaExchange(object):
         self.replica_positions = list() # replica_positions[i] is the configuration currently held in replica i
         self.replica_box_vectors = list() # replica_box_vectors[i] is the set of box vectors currently held in replica i
         self.replica_states     = numpy.zeros([self.nstates], numpy.int32) # replica_states[i] is the state that replica i is currently at
-        self.u_kl               = numpy.zeros([self.nstates, self.nstates], numpy.float32)
-        self.swap_Pij_accepted  = numpy.zeros([self.nstates, self.nstates], numpy.float32)
+        self.u_kl               = numpy.zeros([self.nstates, self.nstates], numpy.float64)
+        self.swap_Pij_accepted  = numpy.zeros([self.nstates, self.nstates], numpy.float64)
         self.Nij_proposed       = numpy.zeros([self.nstates,self.nstates], numpy.int64) # Nij_proposed[i][j] is the number of swaps proposed between states i and j, prior of 1
         self.Nij_accepted       = numpy.zeros([self.nstates,self.nstates], numpy.int64) # Nij_proposed[i][j] is the number of swaps proposed between states i and j, prior of 1
 
@@ -1611,87 +1612,25 @@ class ReplicaExchange(object):
 
         return
 
-    def _mix_all_replicas_weave(self):
+    def _mix_all_replicas_cython(self):
         """
-        Attempt exchanges between all replicas to enhance mixing.
-        Acceleration by 'weave' from scipy is used to speed up mixing by ~ 400x.
-
+        Attempt to exchange all replicas to enhance mixing, calling code written in Cython.
         """
 
-        # TODO: Replace this with a different acceleration scheme to achieve better performance?
-
-        # Determine number of swaps to attempt to ensure thorough mixing.
-        # TODO: Replace this with analytical result computed to guarantee sufficient mixing.
-        # TODO: Alternatively, use timing to figure out how many swaps we can do and still keep overhead to ~ 1% of iteration time?
-        # nswap_attempts = self.nstates**5 # number of swaps to attempt (ideal, but too slow!)
-        nswap_attempts = self.nstates**4 # number of swaps to attempt
-        # Handled in C code below.
-
-        if self.verbose: print "Will attempt to swap all pairs of replicas using weave-accelerated code, using a total of %d attempts." % nswap_attempts
-
-        from scipy import weave
-
-        # TODO: Replace drand48 with numpy random generator.
-        code = """
-        // Determine number of swap attempts.
-        // TODO: Replace this with analytical result computed to guarantee sufficient mixing.        
-        //long nswap_attempts = nstates*nstates*nstates*nstates*nstates; // K**5
-        //long nswap_attempts = nstates*nstates*nstates; // K**3
-        long nswap_attempts = nstates*nstates*nstates*nstates; // K**4
-
-        // Attempt swaps.
-        for(long swap_attempt = 0; swap_attempt < nswap_attempts; swap_attempt++) {
-            // Choose replicas to attempt to swap.
-            int i = (long)(drand48() * nstates);
-            int j = (long)(drand48() * nstates);
-
-            // Determine which states these resplicas correspond to.
-            int istate = REPLICA_STATES1(i); // state in replica slot i
-            int jstate = REPLICA_STATES1(j); // state in replica slot j
-
-            // Reject swap attempt if any energies are nan.
-            if ((std::isnan(U_KL2(i,jstate)) || std::isnan(U_KL2(j,istate)) || std::isnan(U_KL2(i,istate)) || std::isnan(U_KL2(j,jstate))))
-               continue;
-
-            // Compute log probability of swap.
-            double log_P_accept = - (U_KL2(i,jstate) + U_KL2(j,istate)) + (U_KL2(i,istate) + U_KL2(j,jstate));
-
-            // Record that this move has been proposed.
-            NIJ_PROPOSED2(istate,jstate) += 1;
-            NIJ_PROPOSED2(jstate,istate) += 1;
-
-            // Accept or reject.
-            if (log_P_accept >= 0.0 || (drand48() < exp(log_P_accept))) {
-                // Swap states in replica slots i and j.
-                int tmp = REPLICA_STATES1(i);
-                REPLICA_STATES1(i) = REPLICA_STATES1(j);
-                REPLICA_STATES1(j) = tmp;
-                // Accumulate statistics
-                NIJ_ACCEPTED2(istate,jstate) += 1;
-                NIJ_ACCEPTED2(jstate,istate) += 1;
-            }
-
-        }
-        """
-
-        # Stage input temporarily.
-        nstates = self.nstates
-        replica_states = self.replica_states
-        u_kl = self.u_kl
-        Nij_proposed = self.Nij_proposed
-        Nij_accepted = self.Nij_accepted
-
-        # Execute inline C code with weave.
-        info = weave.inline(code, ['nstates', 'replica_states', 'u_kl', 'Nij_proposed', 'Nij_accepted'], headers=['<math.h>', '<stdlib.h>'], verbose=0,
-                            extra_compile_args='-w' # inhibit compiler warnings
-                            )
-
-        # Store results.
+        replica_states = md.utils.ensure_type(self.replica_states, numpy.int64, 1, "Replica States")
+        u_kl = md.utils.ensure_type(self.u_kl, numpy.float64, 2, "Reduced Potentials")
+        Nij_proposed = md.utils.ensure_type(self.Nij_proposed, numpy.int64, 2, "Nij Proposed")
+        Nij_accepted = md.utils.ensure_type(self.Nij_accepted, numpy.int64, 2, "Nij accepted")
+        _mix_replicas._mix_replicas_cython(self.nstates, replica_states, u_kl, Nij_proposed, Nij_accepted)
         self.replica_states = replica_states
         self.Nij_proposed = Nij_proposed
         self.Nij_accepted = Nij_accepted
 
-        return
+
+
+    def _mix_all_replicas_weave(self):
+        _mix_replicas_old._mix_all_replicas_weave(self.nstates, self.replica_states, self.u_kl, self.Nij_proposed, self.Nij_accepted)
+
 
     def _mix_neighboring_replicas(self):
         """
@@ -1760,8 +1699,12 @@ class ReplicaExchange(object):
         elif self.replica_mixing_scheme == 'swap-all':
             # Try to use weave-accelerated mixing code if possible, otherwise fall back to Python-accelerated code.            
             try:
-                self._mix_all_replicas_weave()            
-            except:
+                if self.use_cython is True:
+                    self._mix_all_replicas_cython()
+                else:
+                    self._mix_all_replicas_weave()
+            except ValueError as e:
+                print e.message
                 self._mix_all_replicas()
         elif self.replica_mixing_scheme == 'none':
             # Don't mix replicas.
@@ -2188,6 +2131,8 @@ class ReplicaExchange(object):
             if option_unit: setattr(ncvar, 'units', str(option_unit))
 
         return
+
+
 
     def _restore_options(self, ncfile):
         """
