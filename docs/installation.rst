@@ -12,8 +12,8 @@ The simplest way to install YANK is via the `conda <http://www.continuum.io/blog
 Packages are provided on the `omnia binstar channel <http://binstar.org/omnia>`_ for Linux, OS X, and Win platforms.
 The `yank binstar page <https://binstar.org/omnia/yank>`_ has useful instructions and download statistics.
 
-If you are using a version of the `anaconda <https://store.continuum.io/cshop/anaconda/>`_ scientific Python distribution, you already have the ``conda`` package manager installed.
-If not, but you have the ``pip`` package manager installed (to access packages from PyPI), you can easily install ``conda`` with
+If you are using the `anaconda <https://store.continuum.io/cshop/anaconda/>`_ scientific Python distribution, you already have the ``conda`` package manager installed.
+If not, but you have the ``pip`` package manager installed (to access packages from `PyPI <http://pypi.org>`_), you can easily install ``conda`` with
 
 .. code-block:: none
 
@@ -22,7 +22,7 @@ If not, but you have the ``pip`` package manager installed (to access packages f
 Release build
 =============
 
-You can easily install the stable release build of YANK via the ``conda`` package with
+You can install the latest stable release build of YANK via the ``conda`` package with
 
 .. code-block:: none
 
@@ -32,6 +32,15 @@ You can easily install the stable release build of YANK via the ``conda`` packag
 This version is recommended for all users not actively developing new algorithms for alchemical free energy calculations.
 
 .. note:: ``conda`` will automatically dependencies from binary packages automatically, including difficult-to-install packages such as numpy and scipy. This is really the easiest way to get started.
+
+Upgrading your instalation
+==========================
+
+To update an earlier ``conda`` installation of YANK to the latest release version, you can use ``conda update``:
+
+.. code-block:: none
+
+   $ conda update yank
 
 Development build
 =================
@@ -63,14 +72,14 @@ Supported platforms and environments
 Software
 ========
 
-YANK runs on Python 2.7.
+YANK runs on Python 2.7 and Python 3.3 or 3.4.
 The developers generally use Python 2.7, on both Mac and Linux platforms.
-Automated tests on Linux are performed on every incremental update to the code, and release tests are performed on Mac and Linux platforms.
+Automated tests on Linux are performed on every GitHub commit using `Travis CI <http://travis-ci.org>`_, and release tests are performed on Mac and Linux platforms using `Jenkins <http://jenkins.choderalab.org>`_..
 
 Dependencies
 ------------
 
-YANK uses a number of tools in order to allow the developers to focus on the algorithms involved in alchemical free energy calculations.
+YANK uses a number of tools in order to allow the developers to focus on developing efficient algorithms involved in alchemical free energy calculations, rather than reinventing basic software, numerical, and molecular simulation infrastructure.
 Installation of these prerequisites by hand is not recommended---all required dependencies can be installed via the `conda <http://www.continuum.io/blog/conda>`_  package manager.
 
 Required
@@ -94,20 +103,20 @@ Required
 * numpy and scipy:
   http://www.scipy.org/
 
-  Some components of YANK can exploit `scipy.weave <http://docs.scipy.org/doc/scipy-0.14.0/reference/tutorial/weave.html>`_ to accelerate stages of the calculation, though this functionality will be deprecated in future versions.
-
 Optional
 ^^^^^^^^
 
-* AmberTools (for setting up protein-ligand systems):
-  http://ambermd.org/#AmberTools
-
-* OpenEye toolkit and Python wrappers (if mol2 and PDB reading features are used ;requires academic or commercial license):
-  http://www.eyesopen.com
-
-* mpi4py (if MPI support is desired):
+* mpi4py is needed if  MPI support is desired:
   http://mpi4py.scipy.org/
   (Note that the mpi4py installation must be compiled against the appropriate MPI implementation.)
+
+* The OpenEye toolkit and Python wrappers can be used to enable free energy calculations to be set up directly from any supported OpenEye format, including mol2, PDB, ChemDraw, and many more (requires academic or commercial license):
+  http://www.eyesopen.com
+
+* `scipy.weave <http://docs.scipy.org/doc/scipy-0.14.0/reference/tutorial/weave.html>`_ is an optional dependency for the replica-exchange code, though this functionality will be migrated to `cython <http://cython.org>`_ in future revisions
+
+* AmberTools can be used for setting up protein-ligand systems using LEaP:
+  http://ambermd.org/#AmberTools
 
 Hardware
 ========
@@ -116,7 +125,7 @@ Supported hardware
 ------------------
 
 YANK makes use of `openmm <http://www.openmm.org>`_, a GPU-accelerated framework for molecular simulation.
-This allows the calculations to take advantage of hardware that supports CUDA (such as NVIDIA GPUs) and OpenCL (NVIDIA and ATI GPUs, as well as some processors).
+This allows the calculations to take advantage of hardware that supports CUDA (such as NVIDIA GPUs) or OpenCL (NVIDIA and ATI GPUs, as well as some processors).
 OpenMM also supports a multithreaded CPU platform which can be used if no CUDA or OpenCL resources are available.
 
 Recommended hardware

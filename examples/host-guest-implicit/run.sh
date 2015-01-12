@@ -17,3 +17,6 @@ yank setup binding amber --setupdir=setup --ligname=MOL --store=output --iterati
 echo "Running simulation..."
 yank run --store=output --verbose
 
+# Analyze the simulation
+echo "Analyzing simulation..."
+yank analyze --store=output --verbose
