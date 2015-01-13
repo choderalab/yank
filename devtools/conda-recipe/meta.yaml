@@ -44,7 +44,7 @@ test:
   imports:
     - yank
   commands:
-    - nosetests yank --nocapture --verbosity=2
+    - nosetests yank --nocapture --verbosity=2 --with-doctest
     - which yank
     - yank --help    
 
