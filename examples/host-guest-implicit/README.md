@@ -8,7 +8,7 @@ A harmonic restraint is used to keep the two molecules from drifting far away fr
 
 Set up the simulation to alchemically decouple benzene, putting all the output files in `output/`:
 ```tcsh
-yank setup binding amber --setupdir=setup --ligname=MOL --store=output --iterations=1000 --restraints=harmonic --gbsa=OBCs --temperature=300*kelvin --minimize --verbose
+yank setup binding amber --setupdir=setup --ligname=MOL --store=output --iterations=1000 --restraints=harmonic --gbsa=OBC2 --temperature=300*kelvin --minimize --verbose
 ```
 
 Run the simulation with verbose output:
