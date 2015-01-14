@@ -64,8 +64,7 @@ import copy
 import time
 import datetime
 import mixing._mix_replicas as _mix_replicas
-import numpy
-import numpy.linalg
+import numpy as np
 import mdtraj as md
 import mixing._mix_replicas_old as _mix_replicas_old
 from simtk import openmm
@@ -247,7 +246,7 @@ class ThermodynamicState(object):
 
         ARGUMENTS
 
-        positions (simtk.unit.Quantity of Nx3 numpy.array) - positions[n,k] is kth coordinate of particle n
+        positions (simtk.unit.Quantity of Nx3 np.array) - positions[n,k] is kth coordinate of particle n
 
         OPTIONAL ARGUMENTS
 
@@ -357,7 +356,7 @@ class ThermodynamicState(object):
 
         ARGUMENTS
 
-        positions_list (list of simtk.unit.Quantity of Nx3 numpy.array) - positions[n,k] is kth coordinate of particle n
+        positions_list (list of simtk.unit.Quantity of Nx3 np.array) - positions[n,k] is kth coordinate of particle n
 
         OPTIONAL ARGUMENTS
 
@@ -365,7 +364,7 @@ class ThermodynamicState(object):
 
         RETURNS
 
-        u_k (K numpy array of float) - the unitless reduced potentials (which can be considered to have units of kT)
+        u_k (K np array of float) - the unitless reduced potentials (which can be considered to have units of kT)
 
         EXAMPLES
 
@@ -423,7 +422,7 @@ class ThermodynamicState(object):
 
         # Allocate storage.
         K = len(positions_list)
-        u_k = numpy.zeros([K], numpy.float64)
+        u_k = np.zeros([K], np.float64)
 
         # Compute energies.
         for k in range(K):
@@ -557,8 +556,8 @@ class ThermodynamicState(object):
 
         # Compute volume of parallelepiped.
         [a,b,c] = box_vectors
-        A = numpy.array([a/a.unit, b/a.unit, c/a.unit])
-        volume = numpy.linalg.det(A) * a.unit**3
+        A = np.array([a/a.unit, b/a.unit, c/a.unit])
+        volume = np.linalg.det(A) * a.unit**3
         return volume
 
 #=============================================================================================
@@ -720,7 +719,7 @@ class ReplicaExchange(object):
         positions : Coordinate object or iterable container of Coordinate objects)
            One or more sets of initial positions
            to be initially assigned to replicas in a round-robin fashion, provided simulation is not resumed from store file.
-           Currently, positions must be specified as a list of simtk.unit.Quantity-wrapped numpy arrays.
+           Currently, positions must be specified as a list of simtk.unit.Quantity-wrapped np arrays.
         options : dict, optional, default=None
            Optional dict to use for specifying simulation options. Provided keywords will be matched to object variables to replace defaults.
         metadata : dict, optional, default=None
@@ -750,12 +749,12 @@ class ReplicaExchange(object):
                 raise ParameterError("Provided ThermodynamicState states must all be from the same thermodynamic ensemble.")
 
         # Distribute coordinate information to replicas in a round-robin fashion.
-        # We have to explicitly check to see if z is a list or a set here because it turns out that numpy 2D arrays are iterable as well.
+        # We have to explicitly check to see if z is a list or a set here because it turns out that np 2D arrays are iterable as well.
         # TODO: Handle case where positions are passed in as a list of tuples, or list of lists, or list of Vec3s, etc.
         if type(positions) in [type(list()), type(set())]:
-            self.provided_positions = [ unit.Quantity(numpy.array(coordinate_set / coordinate_set.unit), coordinate_set.unit) for coordinate_set in positions ]
+            self.provided_positions = [ unit.Quantity(np.array(coordinate_set / coordinate_set.unit), coordinate_set.unit) for coordinate_set in positions ]
         else:
-            self.provided_positions = [ unit.Quantity(numpy.array(positions / positions.unit), positions.unit) ]
+            self.provided_positions = [ unit.Quantity(np.array(positions / positions.unit), positions.unit) ]
 
         # Handle provided 'options' dict, replacing any options provided by caller in dictionary.
         # TODO: Look for 'verbose' key first.
@@ -1034,11 +1033,11 @@ class ReplicaExchange(object):
         # Allocate storage.
         self.replica_positions = list() # replica_positions[i] is the configuration currently held in replica i
         self.replica_box_vectors = list() # replica_box_vectors[i] is the set of box vectors currently held in replica i
-        self.replica_states     = numpy.zeros([self.nstates], numpy.int64) # replica_states[i] is the state that replica i is currently at
-        self.u_kl               = numpy.zeros([self.nstates, self.nstates], numpy.float64)
-        self.swap_Pij_accepted  = numpy.zeros([self.nstates, self.nstates], numpy.float64)
-        self.Nij_proposed       = numpy.zeros([self.nstates,self.nstates], numpy.int64) # Nij_proposed[i][j] is the number of swaps proposed between states i and j, prior of 1
-        self.Nij_accepted       = numpy.zeros([self.nstates,self.nstates], numpy.int64) # Nij_proposed[i][j] is the number of swaps proposed between states i and j, prior of 1
+        self.replica_states     = np.zeros([self.nstates], np.int64) # replica_states[i] is the state that replica i is currently at
+        self.u_kl               = np.zeros([self.nstates, self.nstates], np.float64)
+        self.swap_Pij_accepted  = np.zeros([self.nstates, self.nstates], np.float64)
+        self.Nij_proposed       = np.zeros([self.nstates,self.nstates], np.int64) # Nij_proposed[i][j] is the number of swaps proposed between states i and j, prior of 1
+        self.Nij_accepted       = np.zeros([self.nstates,self.nstates], np.int64) # Nij_proposed[i][j] is the number of swaps proposed between states i and j, prior of 1
 
         # Distribute coordinate information to replicas in a round-robin fashion, making a deep copy.
         if not self._resume:
@@ -1048,7 +1047,7 @@ class ReplicaExchange(object):
         self.replica_box_vectors = list()
         for state in self.states:
             [a,b,c] = state.system.getDefaultPeriodicBoxVectors()
-            box_vectors = unit.Quantity(numpy.zeros([3,3], numpy.float32), unit.nanometers)
+            box_vectors = unit.Quantity(np.zeros([3,3], np.float32), unit.nanometers)
             box_vectors[0,:] = a
             box_vectors[1,:] = b
             box_vectors[2,:] = c
@@ -1125,11 +1124,11 @@ class ReplicaExchange(object):
         # Allocate storage.
         self.replica_positions = list() # replica_positions[i] is the configuration currently held in replica i
         self.replica_box_vectors = list() # replica_box_vectors[i] is the set of box vectors currently held in replica i
-        self.replica_states     = numpy.zeros([self.nstates], numpy.int32) # replica_states[i] is the state that replica i is currently at
-        self.u_kl               = numpy.zeros([self.nstates, self.nstates], numpy.float64)
-        self.swap_Pij_accepted  = numpy.zeros([self.nstates, self.nstates], numpy.float64)
-        self.Nij_proposed       = numpy.zeros([self.nstates,self.nstates], numpy.int64) # Nij_proposed[i][j] is the number of swaps proposed between states i and j, prior of 1
-        self.Nij_accepted       = numpy.zeros([self.nstates,self.nstates], numpy.int64) # Nij_proposed[i][j] is the number of swaps proposed between states i and j, prior of 1
+        self.replica_states     = np.zeros([self.nstates], np.int32) # replica_states[i] is the state that replica i is currently at
+        self.u_kl               = np.zeros([self.nstates, self.nstates], np.float64)
+        self.swap_Pij_accepted  = np.zeros([self.nstates, self.nstates], np.float64)
+        self.Nij_proposed       = np.zeros([self.nstates,self.nstates], np.int64) # Nij_proposed[i][j] is the number of swaps proposed between states i and j, prior of 1
+        self.Nij_accepted       = np.zeros([self.nstates,self.nstates], np.int64) # Nij_proposed[i][j] is the number of swaps proposed between states i and j, prior of 1
 
         # Distribute coordinate information to replicas in a round-robin fashion, making a deep copy.
         if not self._resume:
@@ -1139,7 +1138,7 @@ class ReplicaExchange(object):
         self.replica_box_vectors = list()
         for state in self.states:
             [a,b,c] = state.system.getDefaultPeriodicBoxVectors()
-            box_vectors = unit.Quantity(numpy.zeros([3,3], numpy.float32), unit.nanometers)
+            box_vectors = unit.Quantity(np.zeros([3,3], np.float32), unit.nanometers)
             box_vectors[0,:] = a
             box_vectors[1,:] = b
             box_vectors[2,:] = c
@@ -1152,7 +1151,7 @@ class ReplicaExchange(object):
         # Create cached Context objects.
         if self.verbose: print "Creating and caching Context objects..."
         MAX_SEED = (1<<31) - 1 # maximum seed value (max size of signed C long)
-        seed = int(numpy.random.randint(MAX_SEED)) # TODO: Is this the right maximum value to use?
+        seed = int(np.random.randint(MAX_SEED)) # TODO: Is this the right maximum value to use?
         if self.mpicomm:
 
             if self.platform.getName() == 'CUDA':
@@ -1384,7 +1383,7 @@ class ReplicaExchange(object):
         # Collect elapsed time.
         node_elapsed_times = self.mpicomm.gather(elapsed_time, root=0) # barrier
         if self.verbose and (self.mpicomm.rank == 0):
-            node_elapsed_times = numpy.array(node_elapsed_times)
+            node_elapsed_times = np.array(node_elapsed_times)
             end_time = time.time()
             elapsed_time = end_time - start_time
             barrier_wait_times = elapsed_time - node_elapsed_times
@@ -1582,15 +1581,15 @@ class ReplicaExchange(object):
         # Attempt swaps to mix replicas.
         for swap_attempt in range(nswap_attempts):
             # Choose replicas to attempt to swap.
-            i = numpy.random.randint(self.nstates) # Choose replica i uniformly from set of replicas.
-            j = numpy.random.randint(self.nstates) # Choose replica j uniformly from set of replicas.
+            i = np.random.randint(self.nstates) # Choose replica i uniformly from set of replicas.
+            j = np.random.randint(self.nstates) # Choose replica j uniformly from set of replicas.
 
             # Determine which states these resplicas correspond to.
             istate = self.replica_states[i] # state in replica slot i
             jstate = self.replica_states[j] # state in replica slot j
 
             # Reject swap attempt if any energies are nan.
-            if (numpy.isnan(self.u_kl[i,jstate]) or numpy.isnan(self.u_kl[j,istate]) or numpy.isnan(self.u_kl[i,istate]) or numpy.isnan(self.u_kl[j,jstate])):
+            if (np.isnan(self.u_kl[i,jstate]) or np.isnan(self.u_kl[j,istate]) or np.isnan(self.u_kl[i,istate]) or np.isnan(self.u_kl[j,jstate])):
                 continue
 
             # Compute log probability of swap.
@@ -1603,7 +1602,7 @@ class ReplicaExchange(object):
             self.Nij_proposed[jstate,istate] += 1
 
             # Accept or reject.
-            if (log_P_accept >= 0.0 or (numpy.random.rand() < math.exp(log_P_accept))):
+            if (log_P_accept >= 0.0 or (np.random.rand() < math.exp(log_P_accept))):
                 # Swap states in replica slots i and j.
                 (self.replica_states[i], self.replica_states[j]) = (self.replica_states[j], self.replica_states[i])
                 # Accumulate statistics
@@ -1617,10 +1616,10 @@ class ReplicaExchange(object):
         Attempt to exchange all replicas to enhance mixing, calling code written in Cython.
         """
 
-        replica_states = md.utils.ensure_type(self.replica_states, numpy.int64, 1, "Replica States")
-        u_kl = md.utils.ensure_type(self.u_kl, numpy.float64, 2, "Reduced Potentials")
-        Nij_proposed = md.utils.ensure_type(self.Nij_proposed, numpy.int64, 2, "Nij Proposed")
-        Nij_accepted = md.utils.ensure_type(self.Nij_accepted, numpy.int64, 2, "Nij accepted")
+        replica_states = md.utils.ensure_type(self.replica_states, np.int64, 1, "Replica States")
+        u_kl = md.utils.ensure_type(self.u_kl, np.float64, 2, "Reduced Potentials")
+        Nij_proposed = md.utils.ensure_type(self.Nij_proposed, np.int64, 2, "Nij Proposed")
+        Nij_accepted = md.utils.ensure_type(self.Nij_accepted, np.int64, 2, "Nij accepted")
         _mix_replicas._mix_replicas_cython(self.nstates, replica_states, u_kl, Nij_proposed, Nij_accepted)
         self.replica_states = replica_states
         self.Nij_proposed = Nij_proposed
@@ -1641,7 +1640,7 @@ class ReplicaExchange(object):
         if self.verbose: print "Will attempt to swap only neighboring replicas."
 
         # Attempt swaps of pairs of replicas using traditional scheme (e.g. [0,1], [2,3], ...)
-        offset = numpy.random.randint(2) # offset is 0 or 1
+        offset = np.random.randint(2) # offset is 0 or 1
         for istate in range(offset, self.nstates-1, 2):
             jstate = istate + 1 # second state to attempt to swap with i
 
@@ -1653,7 +1652,7 @@ class ReplicaExchange(object):
                 if self.replica_states[index] == jstate: j = index                
 
             # Reject swap attempt if any energies are nan.
-            if (numpy.isnan(self.u_kl[i,jstate]) or numpy.isnan(self.u_kl[j,istate]) or numpy.isnan(self.u_kl[i,istate]) or numpy.isnan(self.u_kl[j,jstate])):
+            if (np.isnan(self.u_kl[i,jstate]) or np.isnan(self.u_kl[j,istate]) or np.isnan(self.u_kl[i,istate]) or np.isnan(self.u_kl[j,jstate])):
                 continue
 
             # Compute log probability of swap.
@@ -1666,7 +1665,7 @@ class ReplicaExchange(object):
             self.Nij_proposed[jstate,istate] += 1
 
             # Accept or reject.
-            if (log_P_accept >= 0.0 or (numpy.random.rand() < math.exp(log_P_accept))):
+            if (log_P_accept >= 0.0 or (np.random.rand() < math.exp(log_P_accept))):
                 # Swap states in replica slots i and j.
                 (self.replica_states[i], self.replica_states[j]) = (self.replica_states[j], self.replica_states[i])
                 # Accumulate statistics
@@ -1723,7 +1722,7 @@ class ReplicaExchange(object):
         # Estimate cumulative transition probabilities between all states.
         Nij_accepted = self.ncfile.variables['accepted'][:,:,:].sum(0) + self.Nij_accepted
         Nij_proposed = self.ncfile.variables['proposed'][:,:,:].sum(0) + self.Nij_proposed
-        swap_Pij_accepted = numpy.zeros([self.nstates,self.nstates], numpy.float64)
+        swap_Pij_accepted = np.zeros([self.nstates,self.nstates], np.float64)
         for istate in range(self.nstates):
             Ni = Nij_proposed[istate,:].sum()
             if (Ni == 0):
@@ -1759,7 +1758,7 @@ class ReplicaExchange(object):
     def _accumulate_mixing_statistics_full(self):
         """Compute statistics of transitions iterating over all iterations of repex."""
         states = self.ncfile.variables['states']
-        self._Nij = numpy.zeros([self.nstates, self.nstates], numpy.float64)
+        self._Nij = np.zeros([self.nstates, self.nstates], np.float64)
         for iteration in range(states.shape[0]-1):
             for ireplica in range(self.nstates):
                 istate = states[iteration, ireplica]
@@ -1767,7 +1766,7 @@ class ReplicaExchange(object):
                 self._Nij[istate, jstate] += 0.5
                 self._Nij[jstate, istate] += 0.5
         
-        Tij = numpy.zeros([self.nstates, self.nstates], numpy.float64)
+        Tij = np.zeros([self.nstates, self.nstates], np.float64)
         for istate in range(self.nstates):
             Tij[istate] = self._Nij[istate] / self._Nij[istate].sum()
         
@@ -1786,7 +1785,7 @@ class ReplicaExchange(object):
             self._Nij[istate, jstate] += 0.5
             self._Nij[jstate, istate] += 0.5
 
-        Tij = numpy.zeros([self.nstates, self.nstates], numpy.float64)
+        Tij = np.zeros([self.nstates, self.nstates], np.float64)
         for istate in range(self.nstates):
             Tij[istate] = self._Nij[istate] / self._Nij[istate].sum()
 
@@ -1816,8 +1815,8 @@ class ReplicaExchange(object):
                 print ""
 
         # Estimate second eigenvalue and equilibration time.
-        mu = numpy.linalg.eigvals(Tij)
-        mu = -numpy.sort(-mu) # sort in descending order
+        mu = np.linalg.eigvals(Tij)
+        mu = -np.sort(-mu) # sort in descending order
         if (mu[1] >= 1):
             print "\nPerron eigenvalue is unity; Markov chain is decomposable."
         else:
@@ -1970,12 +1969,12 @@ class ReplicaExchange(object):
         for replica_index in range(self.nreplicas):
             positions = self.replica_positions[replica_index]
             x = positions / unit.nanometers
-            if numpy.any(numpy.isnan(x)):
+            if np.any(np.isnan(x)):
                 print "nan encountered in replica %d positions." % replica_index
                 abort = True
 
         # Check energies.
-        if numpy.any(numpy.isnan(self.u_kl)):
+        if np.any(np.isnan(self.u_kl)):
             print "nan encountered in u_kl state energies"
             abort = True
 
@@ -2108,7 +2107,7 @@ class ReplicaExchange(object):
             if self.verbose_root: print "Storing option: %s -> %s (type: %s)" % (option_name, option_value, str(option_type))
             if type(option_value) == str:
                 ncvar = ncgrp_options.createVariable(option_name, type(option_value), 'scalar')
-                packed_data = numpy.empty(1, 'O')
+                packed_data = np.empty(1, 'O')
                 packed_data[0] = option_value
                 ncvar[:] = packed_data
                 setattr(ncvar, 'type', option_type.__name__)
@@ -2159,7 +2158,7 @@ class ReplicaExchange(object):
             elif option_ncvar.shape == ():
                 option_value = option_ncvar.getValue()
             elif (option_ncvar.shape[0] > 1):
-                option_value = numpy.array(option_ncvar[:], type_name)
+                option_value = np.array(option_ncvar[:], type_name)
             else:
                 option_value = option_ncvar[0]
                 option_value = eval(type_name + '(' + repr(option_value) + ')')
@@ -2216,14 +2215,14 @@ class ReplicaExchange(object):
         # Restore positions.
         self.replica_positions = list()
         for replica_index in range(self.nstates):
-            x = ncfile.variables['positions'][self.iteration,replica_index,:,:].astype(numpy.float64).copy()
+            x = ncfile.variables['positions'][self.iteration,replica_index,:,:].astype(np.float64).copy()
             positions = unit.Quantity(x, unit.nanometers)
             self.replica_positions.append(positions)
 
         # Restore box vectors.
         self.replica_box_vectors = list()
         for replica_index in range(self.nstates):
-            x = ncfile.variables['box_vectors'][self.iteration,replica_index,:,:].astype(numpy.float64).copy()
+            x = ncfile.variables['box_vectors'][self.iteration,replica_index,:,:].astype(np.float64).copy()
             box_vectors = unit.Quantity(x, unit.nanometers)
             self.replica_box_vectors.append(box_vectors)
 
@@ -2315,8 +2314,8 @@ class ReplicaExchange(object):
         nstates = replica_states.shape[1]
 
         # Deconvolute replicas and compute total simulation effective self-energy timeseries.
-        u_kln = numpy.zeros([nstates, nstates, niterations_completed], numpy.float32)
-        u_n = numpy.zeros([niterations_completed], numpy.float64)
+        u_kln = np.zeros([nstates, nstates, niterations_completed], np.float32)
+        u_n = np.zeros([niterations_completed], np.float64)
         for iteration in range(niterations_completed):
             state_indices = replica_states[iteration,:]
             u_n[iteration] = 0.0
@@ -2329,7 +2328,7 @@ class ReplicaExchange(object):
         from pymbar import timeseries
         [t0, g, Neff_max] = timeseries.detectEquilibration(u_n)
         indices = t0 + timeseries.subsampleCorrelatedData(u_n[t0:], g=g) # TODO: This could be computed as part of 'timeseries.detectEquilibration()'
-        N_k = indices.size * numpy.ones([nstates], numpy.int32)
+        N_k = indices.size * np.ones([nstates], np.int32)
 
         # Next, analyze with pymbar, initializing with last estimate of free energies.
         from pymbar import MBAR
@@ -2377,8 +2376,8 @@ class ReplicaExchange(object):
         equilibration_end (int) - the last iteration in the discarded equilibrated region
         g (float) - estimated statistical inefficiency of production region
         indices (list of int) - equilibrated, effectively uncorrelated iteration indices used in analysis
-        Delta_f_ij (numpy array of nstates x nstates) - Delta_f_ij[i,j] is the free energy difference f_j - f_i in units of kT
-        dDelta_f_ij (numpy array of nstates x nstates) - dDelta_f_ij[i,j] is estimated standard error of Delta_f_ij[i,j]
+        Delta_f_ij (np array of nstates x nstates) - Delta_f_ij[i,j] is the free energy difference f_j - f_i in units of kT
+        dDelta_f_ij (np array of nstates x nstates) - dDelta_f_ij[i,j] is estimated standard error of Delta_f_ij[i,j]
         Delta_u_ij
         dDelta_u_ij
         Delta_s_ij
@@ -2470,7 +2469,7 @@ class ParallelTempering(ReplicaExchange):
         ----------
         system : simtk.openmm.System
            the system to simulate
-        positions : simtk.unit.Quantity of numpy natoms x 3 array of units length, or list
+        positions : simtk.unit.Quantity of np natoms x 3 array of units length, or list
            coordinate set(s) for one or more replicas, assigned in a round-robin fashion
         Tmin : simtk.unit.Quantity with units compatible with kelvin, optional, default=None
            min temperature
@@ -2639,7 +2638,7 @@ class HamiltonianExchange(ReplicaExchange):
            reference state containing all thermodynamic parameters except the system, which will be replaced by 'systems'
         systems : list of simtk.openmm.System
            list of systems to simulate (one per replica)
-        positions : simtk.unit.Quantity of numpy natoms x 3 with units compatible with nanometers
+        positions : simtk.unit.Quantity of np natoms x 3 with units compatible with nanometers
            positions (or a list of positions objects) for initial assignment of replicas (will be used in round-robin assignment)
         options : dict, optional, default=None
            Optional dict to use for specifying simulation protocol. Provided keywords will be matched to object variables to replace defaults.

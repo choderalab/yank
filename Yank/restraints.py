@@ -19,7 +19,7 @@ import copy
 import math
 import time
 
-import numpy
+import numpy as np
 import scipy.integrate
 
 import simtk.unit as units
@@ -84,7 +84,7 @@ class ReceptorLigandRestraint(object):
 
         self.state = state
         self.system = system
-        self.coordinates = units.Quantity(numpy.array(coordinates / coordinates.unit), coordinates.unit)
+        self.coordinates = units.Quantity(np.array(coordinates / coordinates.unit), coordinates.unit)
         self.receptor_atoms = list(receptor_atoms)
         self.ligand_atoms = list(ligand_atoms)
 
@@ -151,11 +151,11 @@ class ReceptorLigandRestraint(object):
 
         # Get dimensionless restrained atom coordinate.
         xref = x.mean(0)
-        xref = numpy.reshape(xref, (1,3)) # (1,3) array
+        xref = np.reshape(xref, (1,3)) # (1,3) array
 
         # Compute distances from restrained atom.
         natoms = x.shape[0]
-        distances = numpy.sqrt(((x - numpy.tile(xref, (natoms, 1)))**2).sum(1)) # distances[i] is the distance from the centroid to particle i
+        distances = np.sqrt(((x - np.tile(xref, (natoms, 1)))**2).sum(1)) # distances[i] is the distance from the centroid to particle i
 
         # Compute std dev of distances from restrained atom.
         radius_of_gyration = distances.std() * unit
@@ -226,7 +226,7 @@ class ReceptorLigandRestraint(object):
         context = openmm.Context(system, integrator, platform)
 
         # Set default positions.
-        positions = units.Quantity(numpy.zeros([2,3]), units.nanometers)
+        positions = units.Quantity(np.zeros([2,3]), units.nanometers)
         context.setPositions(positions)
 
         # Create a function to compute integrand as a function of interparticle separation.
@@ -361,20 +361,20 @@ class ReceptorLigandRestraint(object):
         natoms = x.shape[0]
 
         # Compute (natoms,1) array of normalized weights.
-        w = numpy.ones([natoms, 1])
+        w = np.ones([natoms, 1])
         if masses:            
             w = masses / masses.unit # (natoms,) array
-            w = numpy.reshape(w, (natoms, 1))  # (natoms,1) array
+            w = np.reshape(w, (natoms, 1))  # (natoms,1) array
         w /= w.sum()
 
         # Compute centroid (still in dimensionless units).
-        centroid = (numpy.tile(w, (1, 3)) * x).sum(0)  # (3,) array
+        centroid = (np.tile(w, (1, 3)) * x).sum(0)  # (3,) array
         
         # Compute distances from centroid.
-        distances = numpy.sqrt(((x - numpy.tile(centroid, (natoms, 1)))**2).sum(1))  # distances[i] is the distance from the centroid to particle i
+        distances = np.sqrt(((x - np.tile(centroid, (natoms, 1)))**2).sum(1))  # distances[i] is the distance from the centroid to particle i
         
         # Determine closest atom.
-        closest_atom = int(numpy.argmin(distances))
+        closest_atom = int(np.argmin(distances))
         
         if indices is not None:
             closest_atom = indices[closest_atom]
@@ -445,12 +445,12 @@ class HarmonicReceptorLigandRestraint(ReceptorLigandRestraint):
         
         # Get dimensionless restrained atom coordinate.
         xref = self.coordinates[self.restrained_receptor_atom,:] / unit # (3,) array
-        xref = numpy.reshape(xref, (1,3)) # (1,3) array
+        xref = np.reshape(xref, (1,3)) # (1,3) array
         
         # Compute distances from restrained atom.
         natoms = x.shape[0]
         # distances[i] is the distance from the centroid to particle i
-        distances = numpy.sqrt(((x - numpy.tile(xref, (natoms, 1)))**2).sum(1))
+        distances = np.sqrt(((x - np.tile(xref, (natoms, 1)))**2).sum(1))
 
         # Compute std dev of distances from restrained atom.
         sigma = distances.std() * unit 
@@ -524,9 +524,9 @@ class FlatBottomReceptorLigandRestraint(ReceptorLigandRestraint):
         if (natoms > 3):
             # Compute median absolute distance to central atom.
             # (Working in non-unit-bearing floats for speed.)
-            xref = numpy.reshape(x[self.restrained_receptor_atom,:], (1,3)) # (1,3) array
-            distances = numpy.sqrt(((x - numpy.tile(xref, (natoms, 1)))**2).sum(1)) # distances[i] is the distance from the centroid to particle i
-            median_absolute_distance = numpy.median(abs(distances))
+            xref = np.reshape(x[self.restrained_receptor_atom,:], (1,3)) # (1,3) array
+            distances = np.sqrt(((x - np.tile(xref, (natoms, 1)))**2).sum(1)) # distances[i] is the distance from the centroid to particle i
+            median_absolute_distance = np.median(abs(distances))
 
             # Convert back to unit-bearing quantity.
             median_absolute_distance *= x_unit
