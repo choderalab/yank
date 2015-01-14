@@ -23,8 +23,8 @@ import copy
 import glob
 import time
 
-import numpy
-import numpy.random
+import numpy as np
+
 
 import simtk.unit as unit
 import simtk.openmm as openmm
@@ -173,7 +173,7 @@ class Yank(object):
            If resuming, will resume from all NetCDF files ('*.nc') in the store_directory unless specific phases are given.
         systems : dict of simtk.openmm.System, optional, default=None
            A dict of System objects for each phase, e.g. systems['solvent'] is for solvent phase.
-        positions : dict of simtk.unit.Quantity arrays (numpy or Python) with units compatible with nanometers, or dict of lists, optional, default=None
+        positions : dict of simtk.unit.Quantity arrays (np or Python) with units compatible with nanometers, or dict of lists, optional, default=None
            A dict of positions corresponding to each phase, e.g. positions['solvent'] is a single set of positions or list of positions to seed replicas.
            Shape must be natoms x 3, with natoms matching number of particles in corresponding system.
         atom_indices : dict of dict list of int, optional, default=None
@@ -243,7 +243,7 @@ class Yank(object):
            The phase being initialized (one of ['complex', 'solvent', 'vacuum'])
         reference_system : simtk.openmm.System
            The reference system object from which alchemical intermediates are to be construcfted.
-        positions : list of simtk.unit.Qunatity objects containing (natoms x 3) positions (as numpy or lists)
+        positions : list of simtk.unit.Qunatity objects containing (natoms x 3) positions (as np or lists)
            The list of positions to be used to seed replicas in a round-robin way.
         atom_indices : dict
            atom_indices[phase][component] is the set of atom indices associated with component, where component is ['ligand', 'receptor']
@@ -263,12 +263,12 @@ class Yank(object):
 
         # Check the dimensions of positions.
         for index in range(len(positions)):
-            # Make sure it is recast as a numpy array.
-            positions[index] = unit.Quantity(numpy.array(positions[index] / positions[index].unit), positions[index].unit)
+            # Make sure it is recast as a np array.
+            positions[index] = unit.Quantity(np.array(positions[index] / positions[index].unit), positions[index].unit)
 
             [natoms, ndim] = (positions[index] / positions[index].unit).shape
             if natoms != reference_system.getNumParticles():
-                raise Exception("positions argument must be a list of simtk.unit.Quantity of (natoms,3) lists or numpy array with units compatible with nanometers.")
+                raise Exception("positions argument must be a list of simtk.unit.Quantity of (natoms,3) lists or np array with units compatible with nanometers.")
 
         # Create metadata storage.
         metadata = dict()
@@ -305,7 +305,7 @@ class Yank(object):
             box_vectors = reference_system.getDefaultPeriodicBoxVectors()
             box_volume = thermodynamic_state._volume(box_vectors)
             STANDARD_STATE_VOLUME = 1660.53928 * unit.angstrom**3
-            metadata['standard_state_correction'] = numpy.log(STANDARD_STATE_VOLUME / box_volume) # TODO: Check sign.
+            metadata['standard_state_correction'] = np.log(STANDARD_STATE_VOLUME / box_volume) # TODO: Check sign.
 
         # Use default alchemical protocols if not specified.
         if not protocols:
@@ -322,7 +322,7 @@ class Yank(object):
             randomized_positions = list()
             nstates = len(systems)
             for state_index in range(nstates):
-                positions_index = numpy.random.randint(0, len(positions))
+                positions_index = np.random.randint(0, len(positions))
                 current_positions = positions[positions_index]
                 new_positions = ModifiedHamiltonianExchange.randomize_ligand_position(current_positions,
                                                                                       atom_indices['receptor'], atom_indices['ligand'],
@@ -390,8 +390,8 @@ class Yank(object):
 
             # Make sure each thread's random number generators have unique seeds.
             # TODO: Do we need to store seed in repex object?
-            seed = numpy.random.randint(sys.maxint - mpicomm.size) + mpicomm.rank
-            numpy.random.seed(seed)
+            seed = np.random.randint(sys.maxint - mpicomm.size) + mpicomm.rank
+            np.random.seed(seed)
 
         # Run all phases sequentially.
         # TODO: Divide up MPI resources among the phases so they can run simultaneously?
@@ -480,7 +480,7 @@ class Yank(object):
             results['solvation'] = dict()
 
             results['solvation']['Delta_f'] = results['solvent']['Delta_f'] + results['vacuum']['Delta_f']
-            results['solvation']['dDelta_f'] = numpy.sqrt(results['solvent']['dDelta_f']**2 + results['vacuum']['Delta_f']**2)
+            results['solvation']['dDelta_f'] = np.sqrt(results['solvent']['dDelta_f']**2 + results['vacuum']['Delta_f']**2)
 
         if set(['ligand', 'complex']).issubset(phases_available):
             # BINDING FREE ENERGY
@@ -497,7 +497,7 @@ class Yank(object):
 
             # Compute binding free energy.
             results['binding']['Delta_f'] = results['solvent']['Delta_f'] - Delta_f_restraints - results['complex']['Delta_f']
-            results['binding']['dDelta_f'] = numpy.sqrt(results['solvent']['dDelta_f']**2 + results['complex']['dDelta_f']**2)
+            results['binding']['dDelta_f'] = np.sqrt(results['solvent']['dDelta_f']**2 + results['complex']['dDelta_f']**2)
 
         return results
 

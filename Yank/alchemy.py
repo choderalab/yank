@@ -32,7 +32,7 @@ TODO
 # GLOBAL IMPORTS
 #=============================================================================================
 
-import numpy
+import numpy as np
 import copy
 import time
 
@@ -526,7 +526,7 @@ class AbsoluteAlchemicalFactory(object):
                 # If alpha is 0.0, alpha_ewald is computed by OpenMM from from the error tolerance.
                 delta = reference_force.getEwaldErrorTolerance()
                 r_cutoff = reference_force.getCutoffDistance()
-                alpha_ewald = numpy.sqrt(-numpy.log(2*delta)) / r_cutoff
+                alpha_ewald = np.sqrt(-np.log(2*delta)) / r_cutoff
             electrostatics_energy_expression += "U_electrostatics = lambda_electrostatics*ONE_4PI_EPS0*chargeprod*erfc(alpha_ewald*reff_electrostatics)/reff_electrostatics;"
             electrostatics_energy_expression += "alpha_ewald = %f;" % (alpha_ewald / alpha_ewald.in_unit_system(unit.md_unit_system).unit)
             # TODO: Handle reciprocal-space electrostatics
