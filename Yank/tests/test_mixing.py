@@ -43,6 +43,19 @@ def mix_replicas(n_swaps=100, n_states=16, u_kl=None):
 
 
 def test_even_mixing():
-    pass
+    n_swaps = 100
+    n_states = 16
+    Nij_proposed, Nij_accepted = mix_replicas(n_swaps=n_swaps, n_states=n_states)
+    for state in range(n_states):
+        chi_sq, p_val = stats.chisquare(Nij_accepted[state,:])
+        if p_val > 0.05:
+            return 1
+    return 0
+
+
+
+
+
+
 
 def test_general_mixing():
