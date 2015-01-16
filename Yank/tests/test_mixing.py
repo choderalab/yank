@@ -25,10 +25,6 @@ def mix_replicas(n_swaps=100, n_states=16, u_kl=None):
 
     Returns
     -------
-    Nij_proposed : n_states x n_states ndarray of np.int64
-        Contains the number of times a given swap was proposed
-    Nij_accepted : n_states x n_states ndarray of np.int64
-        Contains the number of times a given swap was accepted
     permutation_list : n_states x n_swaps ndarray of np.int64
         Contains the result of each swap
     """
@@ -43,7 +39,7 @@ def mix_replicas(n_swaps=100, n_states=16, u_kl=None):
         mixing._mix_replicas_cython(n_states, replica_states, u_kl, Nij_proposed, Nij_accepted)
         permutation_list.append(copy.deepcopy(replica_states))
     permutation_list_np = np.array(permutation_list, dtype=np.int64)
-    return Nij_proposed, Nij_accepted, permutation_list_np
+    return permutation_list_np
 
 
 def calculate_state_counts(permutation_list, n_swaps, n_states):
@@ -75,17 +71,32 @@ def calculate_state_counts(permutation_list, n_swaps, n_states):
 
 
 def test_even_mixing():
+    """
+    Using 1000 swap attempts, this code sets all energies to 0 and tests to see if the observed
+    mixing is uniform (as would be expected) using a chi-square test and a cutoff of 0.001
+    for Bonferroni-corrected p-values
+    """
     n_swaps = 1000
     n_states = 16
-    _, _, permutation_list = mix_replicas(n_swaps=n_swaps, n_states=n_states)
-
-
+    permutation_list = mix_replicas(n_swaps=n_swaps, n_states=n_states)
+    state_counts = calculate_state_counts(permutation_list, n_swaps, n_states)
+    for replica in range(n_states):
+        _, p_val = stats.chisquare(state_counts[replica,:]) / n_states
+        if p_val < 0.001:
+            print("Detected a significant difference between expected even mixing\n")
+            print("and observed mixing, p=%f" % p_val)
+            raise Exception("Replica %d failed the even mixing test" % replica)
     return 0
 
 
-
-
-
-
-
 def test_general_mixing():
+    """
+    Using 1000 swap attempts, this code generates a random matrix of energies from a multivariate
+    normal distribution, and tests to see if the distribution of states follows the correct
+    """
+    n_swaps = 1000
+    n_states = 16
+    u_kl = np.random.randn(size=(n_states, n_states))
+    permutation_list = mix_replicas(n_swaps=n_swaps, n_states=n_states, u_kl=u_kl)
+    state_counts = calculate_state_counts(permutation_list, n_swaps, n_states)
+
