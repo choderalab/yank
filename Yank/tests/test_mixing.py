@@ -41,7 +41,6 @@ def mix_replicas(n_swaps=100, n_states=16, u_kl=None, nswap_attempts=None):
     for i in range(n_swaps):
         mixing._mix_replicas_cython(nswap_attempts, n_states, replica_states, u_kl, Nij_proposed, Nij_accepted)
         permutation_list.append(copy.deepcopy(replica_states))
-        print("Completed swap set %d" % i)
     permutation_list_np = np.array(permutation_list, dtype=np.int64)
     return permutation_list_np
 
