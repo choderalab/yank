@@ -11,7 +11,7 @@ import yank.mixing._mix_replicas_old as mix_old
 import numpy as np
 import copy
 
-def mix_replicas(n_swaps=100, n_states=16, u_kl=None):
+def mix_replicas(n_swaps=100, n_states=16, u_kl=None, nswap_attempts=None):
     """
     Utility function to generate replicas and call the mixing function a certain number of times
 
@@ -33,13 +33,16 @@ def mix_replicas(n_swaps=100, n_states=16, u_kl=None):
     if u_kl is None:
         u_kl = np.zeros([n_states, n_states], dtype=np.float64)
     replica_states = np.array(range(n_states), np.int64)
+    if nswap_attempts is None:
+        nswap_attempts = n_states**4
     Nij_proposed =  np.zeros([n_states,n_states], dtype=np.int64)
     Nij_accepted = np.zeros([n_states,n_states], dtype=np.int64)
     permutation_list = []
     for i in range(n_swaps):
-        mixing._mix_replicas_cython(n_states, replica_states, u_kl, Nij_proposed, Nij_accepted)
+        mixing._mix_replicas_cython(nswap_attempts, n_states, replica_states, u_kl, Nij_proposed, Nij_accepted)
         #mix_old._mix_all_replicas_weave(n_states, replica_states, u_kl, Nij_proposed, Nij_accepted)
         permutation_list.append(copy.deepcopy(replica_states))
+        print("Completed swap set %d" % i)
     permutation_list_np = np.array(permutation_list, dtype=np.int64)
     return permutation_list_np
 
@@ -189,13 +192,14 @@ def test_general_mixing(verbose=True):
     Testing Cython mixing code with 1000 swap attempts and random energies
     """
     if verbose: print("Testing Cython mixing code with random energies")
-    n_swaps = 1000
-    n_states = 8
+    n_swaps = 100
+    n_states = 4
     corrected_threshold = 0.001 / n_states
-    u_kl = np.random.randn(n_states, n_states)
-    permutation_list = mix_replicas(n_swaps=n_swaps, n_states=n_states, u_kl=u_kl)
+    u_kl = np.array(np.random.randn(n_states, n_states), dtype=np.float64)
+    print(u_kl)
+    permutation_list = mix_replicas(n_swaps=n_swaps, n_states=n_states, u_kl=u_kl, nswap_attempts=2097152)
     state_counts = np.array(calculate_state_counts(permutation_list, n_swaps, n_states), dtype=np.int64)
-    expected_state_probabilities = np.array(calculate_expected_state_probabilities(u_kl))
+    expected_state_probabilities = calculate_expected_state_probabilities(u_kl)
     expected_state_counts = np.array(n_swaps*expected_state_probabilities, dtype=np.int64)
     for replica in range(n_states):
         print replica
