@@ -197,7 +197,7 @@ def test_general_mixing(verbose=True):
     corrected_threshold = 0.001 / n_states
     u_kl = np.array(np.random.randn(n_states, n_states), dtype=np.float64)
     print(u_kl)
-    permutation_list = mix_replicas(n_swaps=n_swaps, n_states=n_states, u_kl=u_kl, nswap_attempts=2097152)
+    permutation_list = mix_replicas(n_swaps=n_swaps, n_states=n_states, u_kl=u_kl, nswap_attempts=4194304)
     state_counts = np.array(calculate_state_counts(permutation_list, n_swaps, n_states), dtype=np.int64)
     expected_state_probabilities = calculate_expected_state_probabilities(u_kl)
     expected_state_counts = np.array(n_swaps*expected_state_probabilities, dtype=np.int64)
