@@ -70,12 +70,13 @@ def calculate_state_counts(permutation_list, n_swaps, n_states):
 
 
 
-def test_even_mixing():
+def test_even_mixing(verbose=True):
     """
     Using 1000 swap attempts, this code sets all energies to 0 and tests to see if the observed
     mixing is uniform (as would be expected) using a chi-square test and a cutoff of 0.001
     for Bonferroni-corrected p-values
     """
+    if verbose: print("Testing Cython mixing code with uniform zero energies")
     n_swaps = 1000
     n_states = 16
     permutation_list = mix_replicas(n_swaps=n_swaps, n_states=n_states)
@@ -89,11 +90,12 @@ def test_even_mixing():
     return 0
 
 
-def test_general_mixing():
+def test_general_mixing(verbose=True):
     """
     Using 1000 swap attempts, this code generates a random matrix of energies from a multivariate
     normal distribution, and tests to see if the distribution of states follows the correct
     """
+    if verbose: print("Testing Cython mixing code with random energies")
     n_swaps = 1000
     n_states = 16
     u_kl = np.random.randn(size=(n_states, n_states))
