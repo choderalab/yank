@@ -12,7 +12,7 @@ import copy
 
 def mix_replicas(n_swaps=100, n_states=16, u_kl=None):
     """
-    Utility function to generate "replicas" and call the mixing function a certain number of times
+    Utility function to generate replicas and call the mixing function a certain number of times
 
     Arguments
     ---------
@@ -41,6 +41,29 @@ def mix_replicas(n_swaps=100, n_states=16, u_kl=None):
     permutation_list_np = np.array(permutation_list, dtype=np.int64)
     return permutation_list_np
 
+def calculate_expected_state_probabilities(u_kl):
+    """
+    This function calculates the expected proportion of counts for each state j of replica i with k states
+    as exp(-u_{ij}) / \sum_{n=1}^{k} exp(-u_{in})
+
+    Arguments
+    ---------
+    u_kl : n_states x n_states np.array of floats
+        The reduced potential for each replica state
+
+    Returns
+    -------
+    expected_state_probabilities : n_states x n_states np.array of floats
+        For each replica (row), a set of columns reflecting the expected
+        probability of visiting that state
+    """
+    expected_state_probabilities = np.zeros_like(u_kl)
+    n_replicas, n_states  = u_kl.shape
+    for replica in range(n_replicas):
+        sum_energies = np.sum(np.exp(-u_kl[replica,:]))
+        for state in range(n_states):
+            expected_state_probabilities[replica, state] = np.exp(-u_kl[replica, state]) / sum_energies
+    return expected_state_probabilities
 
 def calculate_state_counts(permutation_list, n_swaps, n_states):
     """
@@ -96,9 +119,17 @@ def test_general_mixing(verbose=True):
     if verbose: print("Testing Cython mixing code with random energies")
     n_swaps = 1000
     n_states = 16
+    corrected_threshold = 0.001 / n_states
     u_kl = np.random.randn(n_states, n_states)
     permutation_list = mix_replicas(n_swaps=n_swaps, n_states=n_states, u_kl=u_kl)
     state_counts = calculate_state_counts(permutation_list, n_swaps, n_states)
+    expected_state_counts = n_swaps*calculate_expected_state_probabilities(u_kl)
+    for replica in range(n_states):
+        _, p_val = stats.chisquare(state_counts[replica,:], expected_state_counts[replica, :])
+        if p_val < corrected_threshold:
+            print("Detected a significant difference between expected even mixing\n")
+            print("and observed mixing, p=%f" % p_val)
+            raise Exception("Replica %d failed the even mixing test" % replica)
 
 if __name__ == "__main__":
    test_even_mixing()
