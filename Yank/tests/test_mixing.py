@@ -6,7 +6,7 @@ Test Cython and weave mixing code.
 
 
 import scipy.stats as stats
-import mixing._mix_replicas as _mix_replicas
+import yank.mixing._mix_replicas as mixing
 import numpy as np
 import copy
 
@@ -31,12 +31,12 @@ def mix_replicas(n_swaps=100, n_states=16, u_kl=None):
 
     if u_kl is None:
         u_kl = np.zeros([n_states, n_states], dtype=np.float64)
-    replica_states = range(n_states)
+    replica_states = np.array(range(n_states), np.int64)
     Nij_proposed =  np.zeros([n_states,n_states], dtype=np.int64)
     Nij_accepted = np.zeros([n_states,n_states], dtype=np.int64)
-    permutation_list = copy.deepcopy(replica_states)
+    permutation_list = []
     for i in range(n_swaps):
-        _mix_replicas._mix_replicas_cython(n_states, replica_states, u_kl, Nij_proposed, Nij_accepted)
+        mixing._mix_replicas_cython(n_states, replica_states, u_kl, Nij_proposed, Nij_accepted)
         permutation_list.append(copy.deepcopy(replica_states))
     permutation_list_np = np.array(permutation_list, dtype=np.int64)
     return permutation_list_np
@@ -79,11 +79,12 @@ def test_even_mixing(verbose=True):
     if verbose: print("Testing Cython mixing code with uniform zero energies")
     n_swaps = 1000
     n_states = 16
+    corrected_threshold = 0.001 / n_states
     permutation_list = mix_replicas(n_swaps=n_swaps, n_states=n_states)
     state_counts = calculate_state_counts(permutation_list, n_swaps, n_states)
     for replica in range(n_states):
-        _, p_val = stats.chisquare(state_counts[replica,:]) / n_states
-        if p_val < 0.001:
+        _, p_val = stats.chisquare(state_counts[replica,:])
+        if p_val < corrected_threshold:
             print("Detected a significant difference between expected even mixing\n")
             print("and observed mixing, p=%f" % p_val)
             raise Exception("Replica %d failed the even mixing test" % replica)
@@ -102,3 +103,5 @@ def test_general_mixing(verbose=True):
     permutation_list = mix_replicas(n_swaps=n_swaps, n_states=n_states, u_kl=u_kl)
     state_counts = calculate_state_counts(permutation_list, n_swaps, n_states)
 
+if __name__ == "__main__":
+   test_even_mixing()
