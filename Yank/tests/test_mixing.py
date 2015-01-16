@@ -8,6 +8,7 @@ Test Cython and weave mixing code.
 import scipy.stats as stats
 import Yank.mixing as mixing
 import numpy as np
+import copy
 
 def mix_replicas(n_swaps=100, n_states=16, u_kl=None):
     """
@@ -28,6 +29,8 @@ def mix_replicas(n_swaps=100, n_states=16, u_kl=None):
         Contains the number of times a given swap was proposed
     Nij_accepted : n_states x n_states ndarray of np.int64
         Contains the number of times a given swap was accepted
+    permutation_list : n_states x n_swaps ndarray of np.int64
+        Contains the result of each swap
     """
 
     if u_kl is None:
@@ -35,21 +38,48 @@ def mix_replicas(n_swaps=100, n_states=16, u_kl=None):
     replica_states = range(n_states)
     Nij_proposed =  np.zeros([n_states,n_states], dtype=np.int64)
     Nij_accepted = np.zeros([n_states,n_states], dtype=np.int64)
+    permutation_list = copy.deepcopy(replica_states)
     for i in range(n_swaps):
         mixing._mix_replicas_cython(n_states, replica_states, u_kl, Nij_proposed, Nij_accepted)
-    return Nij_proposed, Nij_accepted
+        permutation_list.append(copy.deepcopy(replica_states))
+    permutation_list_np = np.array(permutation_list, dtype=np.int64)
+    return Nij_proposed, Nij_accepted, permutation_list_np
 
+
+def calculate_state_counts(permutation_list, n_swaps, n_states):
+    """
+    This function accepts a list of permutation vectors, and for each replica,
+    produces a list of the number of occurrences of each state.
+
+    Arguments
+    ---------
+    permutation_list : n_states x n_swaps ndarray of np.int64
+        For each swap attempt, a permutation vector n_states long
+    n_swaps : int
+        The number of swap attempts
+    n_states : int
+        The number of replica states
+
+    Returns
+    -------
+    state_counts : n_states x n_states numpy array of ints
+        For each replica, contains the number of occurrences of each state (replica_index x state)
+    """
+    state_counts = np.zeros([n_states, n_states])
+    for swap in range(n_swaps):
+        for replica in range(n_states):
+            current_state = permutation_list[swap, replica]
+            state_counts[replica, current_state] += 1
+    return state_counts
 
 
 
 def test_even_mixing():
-    n_swaps = 100
+    n_swaps = 1000
     n_states = 16
-    Nij_proposed, Nij_accepted = mix_replicas(n_swaps=n_swaps, n_states=n_states)
-    for state in range(n_states):
-        chi_sq, p_val = stats.chisquare(Nij_accepted[state,:])
-        if p_val > 0.05:
-            return 1
+    _, _, permutation_list = mix_replicas(n_swaps=n_swaps, n_states=n_states)
+
+
     return 0
 
 
