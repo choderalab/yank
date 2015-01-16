@@ -127,9 +127,9 @@ def test_general_mixing(verbose=True):
     for replica in range(n_states):
         _, p_val = stats.chisquare(state_counts[replica,:], expected_state_counts[replica, :])
         if p_val < corrected_threshold:
-            print("Detected a significant difference between expected even mixing\n")
+            print("Detected a significant difference between expected mixing\n")
             print("and observed mixing, p=%f" % p_val)
-            raise Exception("Replica %d failed the even mixing test" % replica)
+            raise Exception("Replica %d failed the mixing test" % replica)
 
 if __name__ == "__main__":
    test_even_mixing()
