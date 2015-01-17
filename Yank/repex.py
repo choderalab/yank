@@ -1620,7 +1620,7 @@ class ReplicaExchange(object):
         u_kl = md.utils.ensure_type(self.u_kl, np.float64, 2, "Reduced Potentials")
         Nij_proposed = md.utils.ensure_type(self.Nij_proposed, np.int64, 2, "Nij Proposed")
         Nij_accepted = md.utils.ensure_type(self.Nij_accepted, np.int64, 2, "Nij accepted")
-        _mix_replicas._mix_replicas_cython(self.nstates, replica_states, u_kl, Nij_proposed, Nij_accepted)
+        _mix_replicas._mix_replicas_cython(self.nstates**4, self.nstates, replica_states, u_kl, Nij_proposed, Nij_accepted)
         self.replica_states = replica_states
         self.Nij_proposed = Nij_proposed
         self.Nij_accepted = Nij_accepted
