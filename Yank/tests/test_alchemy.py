@@ -63,6 +63,7 @@ import simtk.openmm as openmm
 import simtk.unit as units
 from simtk.openmm import app
 
+from nose.plugins.attrib import attr
 import pymbar
 
 import logging
@@ -537,6 +538,7 @@ fast_testsystem_names = [
 # NOSETEST GENERATORS
 #=============================================================================================
 
+@attr('slow')
 def test_overlap():
     """
     Generate nose tests for overlap for all alchemical test systems.
