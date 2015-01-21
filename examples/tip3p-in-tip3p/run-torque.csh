@@ -39,6 +39,6 @@
 cd $PBS_O_WORKDIR
 
 date
-yank setup binding amber --setupdir=setup --ligname=BEN --store=output --iterations=1000 --nbmethod=CutoffPeriodic --temperature="300*kelvin" --pressure="1*atmosphere" --minimize --verbose
+yank prepare binding amber --setupdir=setup --ligname=BEN --store=output --iterations=1000 --nbmethod=CutoffPeriodic --temperature="300*kelvin" --pressure="1*atmosphere" --minimize --verbose
 date
 
