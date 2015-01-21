@@ -11,13 +11,16 @@ install:
 script:
   # this builds the binary, unpacks it, and runs the tests
   - conda build devtools/conda-recipe
-  # Push to binstar anyway.
-  #- bash -x devtools/ci/after_sucess.sh  # Temporarily holding off on forced binstar push
+  # Install and test.
+  - conda install --yes $HOME/miniconda/conda-bld/linux-64/yank-dev-*
+  - nosetests yank --nocapture --verbosity=2 --with-doctest -a '!slow'
+  # Push to binstar.
+  - bash -x devtools/ci/after_sucess.sh
 
 env:
   matrix:
     - python=2.7  CONDA_PY=27
-#    - python=3.3  CONDA_PY=33
+    - python=3.3  CONDA_PY=33
 
   global:
     # encrypted BINSTAR_TOKEN for push of dev package to binstar

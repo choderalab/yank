@@ -1,5 +1,5 @@
 package:
-  name: yank
+  name: yank-dev
   version: !!str 0.0.0
 
 build:
@@ -46,7 +46,6 @@ test:
   imports:
     - yank
   commands:
-    - nosetests yank --nocapture --verbosity=2 --with-doctest -a '!slow'
     - which yank
     - yank --help
 
