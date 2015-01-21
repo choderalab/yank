@@ -5,7 +5,7 @@
 #=============================================================================================
 
 """
-Test 'yank setup'.
+Test 'yank prepare'.
 
 """
 
@@ -29,11 +29,11 @@ from yank import version, utils
 
 def test_setup_amber_implicit(verbose=False):
     """
-    Test 'yank setup binding amber' for implicit solvent system.
+    Test 'yank prepare binding amber' for implicit solvent system.
     """
     store_directory = tempfile.mkdtemp()
     examples_path = utils.get_data_filename("../examples/benzene-toluene-implicit/setup/")  # Could only figure out how to install things like yank.egg/examples/, rather than yank.egg/yank/examples/
-    command = 'yank setup binding amber --setupdir=%(examples_path)s --ligname=BEN --store=%(store_directory)s --iterations=1 --restraints=harmonic --gbsa=OBC2 --temperature=300*kelvin' % vars()
+    command = 'yank prepare binding amber --setupdir=%(examples_path)s --ligname=BEN --store=%(store_directory)s --iterations=1 --restraints=harmonic --gbsa=OBC2 --temperature=300*kelvin' % vars()
     if verbose: command += ' --verbose'
     argv = command.split()
     args = docopt(usage, version=version.version, argv=argv[1:])
@@ -42,11 +42,11 @@ def test_setup_amber_implicit(verbose=False):
 
 def test_setup_amber_explicit(verbose=False):
     """
-    Test 'yank setup binding amber' for explicit solvent system.
+    Test 'yank prepare binding amber' for explicit solvent system.
     """
     store_directory = tempfile.mkdtemp()
     examples_path = utils.get_data_filename("../examples/benzene-toluene-explicit/setup/")  # Could only figure out how to install things like yank.egg/examples/, rather than yank.egg/yank/examples/
-    command = 'yank setup binding amber --setupdir=%(examples_path)s --ligname=BEN --store=%(store_directory)s --iterations=1 --nbmethod=CutoffPeriodic --temperature=300*kelvin --pressure=1*atmospheres' % vars()
+    command = 'yank prepare binding amber --setupdir=%(examples_path)s --ligname=BEN --store=%(store_directory)s --iterations=1 --nbmethod=CutoffPeriodic --temperature=300*kelvin --pressure=1*atmospheres' % vars()
     if verbose: command += ' --verbose'
     argv = command.split()
     args = docopt(usage, version=version.version, argv=argv[1:])
