@@ -29,4 +29,6 @@ secret_key = {AWS_SECRET_ACCESS_KEY}
             config=f.name,
             bucket=BUCKET_NAME,
             prefix=PREFIX)
-    subprocess.call(cmd.split())
+    return_val = subprocess.call(cmd.split())
+    if return_val != 0:
+        print("s3cmd failed")
