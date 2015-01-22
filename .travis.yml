@@ -12,7 +12,6 @@ script:
   # this builds the binary, unpacks it, and runs the tests
   - conda build devtools/conda-recipe
   # Push to binstar.
-  - bash -x devtools/ci/after_sucess.sh  # Temporarily holding off on forced binstar push
 
 env:
   matrix:
