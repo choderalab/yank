@@ -1,0 +1,9 @@
+matplotlib
+sphinx
+boto
+ipython-notebook
+jinja2
+runipy
+openmm
+pytables
+scikit-learn
