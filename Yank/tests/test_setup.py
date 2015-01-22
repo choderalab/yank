@@ -27,7 +27,7 @@ from yank import version, utils
 # UNIT TESTS
 #=============================================================================================
 
-def test_setup_amber_implicit(verbose=False):
+def test_prepare_amber_implicit(verbose=False):
     """
     Test 'yank prepare binding amber' for implicit solvent system.
     """
@@ -38,9 +38,9 @@ def test_setup_amber_implicit(verbose=False):
     argv = command.split()
     args = docopt(usage, version=version.version, argv=argv[1:])
     from yank.commands import prepare
-    setup.dispatch(args)
+    prepare.dispatch(args)
 
-def test_setup_amber_explicit(verbose=False):
+def test_prepare_amber_explicit(verbose=False):
     """
     Test 'yank prepare binding amber' for explicit solvent system.
     """
@@ -51,12 +51,12 @@ def test_setup_amber_explicit(verbose=False):
     argv = command.split()
     args = docopt(usage, version=version.version, argv=argv[1:])
     from yank.commands import prepare
-    setup.dispatch(args)
+    prepare.dispatch(args)
 
 #=============================================================================================
 # MAIN
 #=============================================================================================
 
 if __name__ == '__main__':
-    test_setup_amber_implicit(verbose=True)
-    test_setup_amber_explicit(verbose=True)
+    test_prepare_amber_implicit(verbose=True)
+    test_prepare_amber_explicit(verbose=True)
