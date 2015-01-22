@@ -1218,6 +1218,7 @@ class ReplicaExchange(object):
                     state._context = self.mm.Context(state.system, state._integrator, self.platform)
                 else:
                     state._context = self.mm.Context(state.system, state._integrator)
+                if self.verbose: print "Using platform '%s'." % (state._context.getPlatform().getName())
                 if self.verbose: print "Context creation took %.3f s" % (time.time() - initial_context_time) # DEBUG
         final_time = time.time()
         elapsed_time = final_time - initial_time
