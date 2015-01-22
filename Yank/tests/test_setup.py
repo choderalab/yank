@@ -37,7 +37,7 @@ def test_setup_amber_implicit(verbose=False):
     if verbose: command += ' --verbose'
     argv = command.split()
     args = docopt(usage, version=version.version, argv=argv[1:])
-    from yank.commands import setup
+    from yank.commands import prepare
     setup.dispatch(args)
 
 def test_setup_amber_explicit(verbose=False):
@@ -50,7 +50,7 @@ def test_setup_amber_explicit(verbose=False):
     if verbose: command += ' --verbose'
     argv = command.split()
     args = docopt(usage, version=version.version, argv=argv[1:])
-    from yank.commands import setup
+    from yank.commands import prepare
     setup.dispatch(args)
 
 #=============================================================================================
