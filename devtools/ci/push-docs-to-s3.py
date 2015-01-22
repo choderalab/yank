@@ -13,7 +13,7 @@ else:
 
 if not any(d.project_name == 's3cmd' for d in pip.get_installed_distributions()):
     raise ImportError('The s3cmd pacakge is required. try $ pip install s3cmd')
-
+ls -lt doc/_build/
 # The secret key is available as a secure environment variable
 # on travis-ci to push the build documentation to Amazon S3.
 with tempfile.NamedTemporaryFile('w') as f:
@@ -30,5 +30,3 @@ secret_key = {AWS_SECRET_ACCESS_KEY}
             bucket=BUCKET_NAME,
             prefix=PREFIX)
     return_val = subprocess.call(cmd.split())
-    if return_val != 0:
-        print("s3cmd failed")
