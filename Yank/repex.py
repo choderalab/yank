@@ -33,7 +33,7 @@ TODO
 * Sampling support:
   * Short-term: Add support for user to specify a callback to create the Integrator to use ('integrator_factory' or 'integrator_callback').
   * Longer-term: Allow a more complex MCMC sampling scheme consisting of one or more moves to be specified through mcmc.py facility.
-* Allow different choices of temperature handling during exchange attempts: 
+* Allow different choices of temperature handling during exchange attempts:
   * scale velocities (exchanging only on potential energies) - make this the default?
   * randomize velocities (exchanging only on potential energies)
   * exchange on total energies, preserving velocities (requires more replicas)
@@ -862,7 +862,7 @@ class ReplicaExchange(object):
         """
         status = dict()
 
-        status['niterations'] = ncfile.variables['positions'].shape[0]
+        status['number_of_iterations'] = ncfile.variables['positions'].shape[0]
         status['nstates'] = ncfile.variables['positions'].shape[1]
         status['natoms'] = ncfile.variables['positions'].shape[2]
 
@@ -2310,13 +2310,13 @@ class ReplicaExchange(object):
         replica_states = self.ncfile.variables['states'][:,:]
         u_nkl_replica = self.ncfile.variables['energies'][:,:,:]
 
-        niterations_completed = replica_states.shape[0]
+        number_of_iterations_completed = replica_states.shape[0]
         nstates = replica_states.shape[1]
 
         # Deconvolute replicas and compute total simulation effective self-energy timeseries.
-        u_kln = np.zeros([nstates, nstates, niterations_completed], np.float32)
-        u_n = np.zeros([niterations_completed], np.float64)
-        for iteration in range(niterations_completed):
+        u_kln = np.zeros([nstates, nstates, number_of_iterations_completed], np.float32)
+        u_n = np.zeros([number_of_iterations_completed], np.float64)
+        for iteration in range(number_of_iterations_completed):
             state_indices = replica_states[iteration,:]
             u_n[iteration] = 0.0
             for replica_index in range(nstates):
