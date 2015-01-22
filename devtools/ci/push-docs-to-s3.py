@@ -29,4 +29,5 @@ secret_key = {AWS_SECRET_ACCESS_KEY}
             config=f.name,
             bucket=BUCKET_NAME,
             prefix=PREFIX)
+    print cmd
     return_val = subprocess.call(cmd.split())
