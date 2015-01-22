@@ -22,7 +22,7 @@ Set up the free energy calculation using the ``OBC2`` implicit solvent model, sp
 
 .. code-block:: none
 
-   $ yank setup binding amber --setupdir=setup --ligname=BEN --store=output --iterations=1000 \
+   $ yank prepare binding amber --setupdir=setup --ligname=BEN --store=output --iterations=1000 \
      --restraints=harmonic --gbsa=OBC2 --temperature=300*kelvin --verbose
 
 To run the simulation in serial mode, use:
