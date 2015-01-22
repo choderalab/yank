@@ -13,7 +13,7 @@ yank cleanup --store=output
 
 # Set up calculation.
 echo "Setting up binding free energy calculation..."
-yank setup binding amber --setupdir=setup --ligname=MOL --store=output --iterations=1 --platform=Reference --restraints=harmonic --gbsa=OBC2 --temperature="300*kelvin" --verbose
+yank prepare binding amber --setupdir=setup --ligname=MOL --store=output --iterations=1 --platform=Reference --restraints=harmonic --gbsa=OBC2 --temperature="300*kelvin" --verbose
 
 # Run the simulation with verbose output:
 echo "Running simulation..."

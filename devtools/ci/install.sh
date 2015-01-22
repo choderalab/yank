@@ -1,3 +1,4 @@
+
 MINICONDA=Miniconda-latest-Linux-x86_64.sh
 MINICONDA_MD5=$(curl -s http://repo.continuum.io/miniconda/ | grep -A3 $MINICONDA | sed -n '4p' | sed -n 's/ *<td>\(.*\)<\/td> */\1/p')
 wget http://repo.continuum.io/miniconda/$MINICONDA
@@ -14,7 +15,6 @@ sudo apt-get update
 sudo apt-get install -qq -y g++ gfortran csh g++-multilib gcc-multilib openbabel
 
 conda update --yes conda
-conda config --add channels http://conda.binstar.org/omnia
-conda config --add channels https://conda.binstar.org/rdkit
+conda create --yes -n ${python} --file devtools/ci/requirements-conda-${python}.txt
 source activate $python
-conda install --yes conda-build
+$HOME/miniconda/envs/${python}/bin/pip install $PIP_ARGS -r devtools/ci/requirements-${python}.txt

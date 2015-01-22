@@ -14,7 +14,7 @@ fi
 
 if [[ "2.7 3.3" =~ "$python" ]]; then
     conda install --yes binstar jinja2
-    binstar -t $BINSTAR_TOKEN  upload --force -u omnia -p yank $HOME/miniconda/conda-bld/*/*.tar.bz2
+    binstar -t $BINSTAR_TOKEN upload --force -u omnia -p yank-dev $HOME/miniconda/conda-bld/*/yank-dev-*.tar.bz2
 fi
 
 if [[ "$python" != "2.7" ]]; then
@@ -23,16 +23,13 @@ fi
 
 # Create the docs and push them to S3
 # -----------------------------------
-
-# Install stuff for running the example IPython notebooks
-sudo apt-get install -qq pandoc         # notebook -> rst
-conda install --yes matplotlib scikit-learn sphinx==1.2.3 boto ipython-notebook jinja2
-pip install numpydoc runipy==0.0.4                      # example notebooks
-
-# Install OpenMM for a couple of the the examples
+conda install --yes pip
 conda config --add channels http://conda.binstar.org/omnia
-conda install --yes openmm
+conda install --yes `conda build devtools/conda-recipe --output`
+pip install numpydoc s3cmd msmb_theme
+conda install --yes `cat docs/requirements.txt | xargs`
+
 conda list -e
 
-cd docs && make html && cd -
+(cd docs && make html)
 python devtools/ci/push-docs-to-s3.py

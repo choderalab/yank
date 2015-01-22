@@ -14,7 +14,7 @@
 
 Set up the simulation to alchemically decouple water, putting all the output files in `output/`:
 ```tcsh
-yank setup binding amber --setupdir=setup --ligname=LIG --store=output --iterations=1000 --nbmethod=CutoffPeriodic --temperature="300*kelvin" --pressure="1*atmosphere" --minimize --verbose
+yank prepare binding amber --setupdir=setup --ligname=LIG --store=output --iterations=1000 --nbmethod=CutoffPeriodic --temperature="300*kelvin" --pressure="1*atmosphere" --minimize --verbose
 ```
 
 Run the simulation with verbose output:

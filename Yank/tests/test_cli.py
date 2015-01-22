@@ -60,5 +60,5 @@ def test_setup_binding():
     #dirname = testsystems.get_data_filename("data/T4-lysozyme-L99A-implicit")
     dirname = utils.get_data_filename("../examples/p-xylene-implicit/setup/")  # Could only figure out how to install things like yank.egg/examples/, rather than yank.egg/yank/examples/
     storedir = tempfile.mkdtemp()
-    run_cli('setup binding amber --setupdir=%(dirname)s --ligname MOL --store %(storedir)s' % vars())
+    run_cli('prepare binding amber --setupdir=%(dirname)s --ligname MOL --store %(storedir)s' % vars())
     # TODO: Clean up directory.

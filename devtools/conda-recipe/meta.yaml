@@ -1,5 +1,5 @@
 package:
-  name: yank
+  name: yank-dev
   version: !!str 0.0.0
 
 build:
@@ -38,7 +38,7 @@ requirements:
     - mpi4py
     - pyyaml
     - jinja2
-    - cluster_utils    
+    - cluster_utils
 
 test:
   requires:

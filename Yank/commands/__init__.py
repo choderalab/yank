@@ -9,7 +9,7 @@ import help
 import cite
 import selftest
 import platforms
-import setup
+import prepare
 import run
 import status
 import analyze
