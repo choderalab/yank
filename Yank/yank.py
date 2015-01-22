@@ -44,7 +44,7 @@ from restraints import HarmonicReceptorLigandRestraint, FlatBottomReceptorLigand
 
 class Yank(object):
     """
-    A class for managing alchemical replice-exchange free energy calculations.
+    A class for managing alchemical replica-exchange free energy calculations.
 
     """
 
@@ -362,13 +362,13 @@ class Yank(object):
 
         return
 
-    def run(self, niterations=None, mpicomm=None, options=None):
+    def run(self, niterations_to_run=None, mpicomm=None, options=None):
         """
         Run a free energy calculation.
 
         Parameters
         ----------
-        niterations : int, optional, default=None
+        niterations_to_run : int, optional, default=None
            If specified, only this many iterations will be run for each phase.
            This is useful for running simulation incrementally, but may incur a good deal of overhead.
         mpicomm : MPI communicator, optional, default=None
@@ -401,7 +401,7 @@ class Yank(object):
             simulation = ModifiedHamiltonianExchange(store_filename=store_filename, mpicomm=mpicomm)
             simulation.resume(options=options)
             # TODO: We may need to manually update run options here if options=options above does not behave as expected.
-            simulation.run(niterations_to_run=niterations)
+            simulation.run(niterations_to_run=niterations_to_run)
             # Clean up to ensure we close files, contexts, etc.
             del simulation
 

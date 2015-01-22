@@ -905,7 +905,7 @@ class ReplicaExchange(object):
 
         return status
 
-    def run(self, number_of_iterations_to_run=None):
+    def run(self, niterations_to_run=None):
         """
         Run the replica-exchange simulation.
 
@@ -915,7 +915,7 @@ class ReplicaExchange(object):
 
         Parameters
         ----------
-        number_of_iterations_to_run : int, optional, default=None
+        niterations_to_run : int, optional, default=None
            If specfied, only at most the specified number of iterations will be run.
 
         """
@@ -926,8 +926,8 @@ class ReplicaExchange(object):
         run_start_time = time.time()
         run_start_iteration = self.iteration
         iteration_limit = self.number_of_iterations
-        if number_of_iterations_to_run:
-            iteration_limit = min(self.iteration + number_of_iterations_to_run, iteration_limit)
+        if niterations_to_run:
+            iteration_limit = min(self.iteration + niterations_to_run, iteration_limit)
         while (self.iteration < iteration_limit):
             if self.verbose: print "\nIteration %d / %d" % (self.iteration+1, self.number_of_iterations)
             initial_time = time.time()
