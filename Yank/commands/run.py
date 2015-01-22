@@ -32,7 +32,7 @@ def dispatch(args):
     # Set override options.
     options = dict()
     if args['--iterations']:
-        options['niterations'] = int(args['--iterations'])
+        options['number_of_iterations'] = int(args['--iterations'])
     if args['--verbose']:
         options['verbose'] = True
     if args['--online-analysis']:

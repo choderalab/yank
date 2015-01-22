@@ -33,7 +33,7 @@ TODO
 * Sampling support:
   * Short-term: Add support for user to specify a callback to create the Integrator to use ('integrator_factory' or 'integrator_callback').
   * Longer-term: Allow a more complex MCMC sampling scheme consisting of one or more moves to be specified through mcmc.py facility.
-* Allow different choices of temperature handling during exchange attempts: 
+* Allow different choices of temperature handling during exchange attempts:
   * scale velocities (exchanging only on potential energies) - make this the default?
   * randomize velocities (exchanging only on potential energies)
   * exchange on total energies, preserving velocities (requires more replicas)
@@ -862,7 +862,7 @@ class ReplicaExchange(object):
         """
         status = dict()
 
-        status['niterations'] = ncfile.variables['positions'].shape[0]
+        status['number_of_iterations'] = ncfile.variables['positions'].shape[0]
         status['nstates'] = ncfile.variables['positions'].shape[1]
         status['natoms'] = ncfile.variables['positions'].shape[2]
 
@@ -905,7 +905,7 @@ class ReplicaExchange(object):
 
         return status
 
-    def run(self, niterations_to_run=None):
+    def run(self, number_of_iterations_to_run=None):
         """
         Run the replica-exchange simulation.
 
@@ -915,7 +915,7 @@ class ReplicaExchange(object):
 
         Parameters
         ----------
-        niterations_to_run : int, optional, default=None
+        number_of_iterations_to_run : int, optional, default=None
            If specfied, only at most the specified number of iterations will be run.
 
         """
@@ -926,8 +926,8 @@ class ReplicaExchange(object):
         run_start_time = time.time()
         run_start_iteration = self.iteration
         iteration_limit = self.number_of_iterations
-        if niterations_to_run:
-            iteration_limit = min(self.iteration + niterations_to_run, iteration_limit)
+        if number_of_iterations_to_run:
+            iteration_limit = min(self.iteration + number_of_iterations_to_run, iteration_limit)
         while (self.iteration < iteration_limit):
             if self.verbose: print "\nIteration %d / %d" % (self.iteration+1, self.number_of_iterations)
             initial_time = time.time()
@@ -2310,13 +2310,13 @@ class ReplicaExchange(object):
         replica_states = self.ncfile.variables['states'][:,:]
         u_nkl_replica = self.ncfile.variables['energies'][:,:,:]
 
-        niterations_completed = replica_states.shape[0]
+        number_of_iterations_completed = replica_states.shape[0]
         nstates = replica_states.shape[1]
 
         # Deconvolute replicas and compute total simulation effective self-energy timeseries.
-        u_kln = np.zeros([nstates, nstates, niterations_completed], np.float32)
-        u_n = np.zeros([niterations_completed], np.float64)
-        for iteration in range(niterations_completed):
+        u_kln = np.zeros([nstates, nstates, number_of_iterations_completed], np.float32)
+        u_n = np.zeros([number_of_iterations_completed], np.float64)
+        for iteration in range(number_of_iterations_completed):
             state_indices = replica_states[iteration,:]
             u_n[iteration] = 0.0
             for replica_index in range(nstates):
