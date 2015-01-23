@@ -167,6 +167,7 @@ def test_replica_exchange(mpicomm=None, verbose=True):
     # Create and configure simulation object.
     simulation = ReplicaExchange(store_filename, mpicomm=mpicomm)
     simulation.create(states, seed_positions)
+    simulation.platform_name = 'Reference'
     simulation.minimize = False
     simulation.number_of_iterations = 200
     simulation.nsteps_per_iteration = 500
@@ -324,6 +325,7 @@ def test_hamiltonian_exchange(mpicomm=None, verbose=True):
     # Create and configure simulation object.
     simulation = HamiltonianExchange(store_filename, mpicomm=mpicomm)
     simulation.create(reference_state, systems, seed_positions)
+    simulation.platform_name = 'Reference'
     simulation.number_of_iterations = 200
     simulation.timestep = 2.0 * units.femtoseconds
     simulation.nsteps_per_iteration = 500
