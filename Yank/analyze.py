@@ -292,12 +292,23 @@ def estimate_enthalpies(ncfile, ndiscard=0, nuse=None):
 
 def extract_u_n(ncfile):
     """
-    Extract timeseries of u_n = - log q(X_n) from store file.
+    Extract timeseries of u_n = - log q(X_n) from store file
+
+    where q(X_n) = \pi_{k=1}^K u_{s_{nk}}(x_{nk})
+
+    with X_n = [x_{n1}, ..., x_{nK}] is the current collection of replica configurations
+    s_{nk} is the current state of replica k at iteration n
+    u_k(x) is the kth reduced potential
 
     Parameters
     ----------
     ncfile : str
        The filename of the repex NetCDF file.
+
+    Returns
+    -------
+    u_n : numpy array of numpy.float64
+       u_n[n] is -log q(X_n)
 
     TODO
     ----

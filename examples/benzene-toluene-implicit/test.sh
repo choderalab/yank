@@ -15,5 +15,5 @@ yank prepare binding amber --setupdir=setup --ligname=BEN --store=output --itera
 
 # Run the simulation with verbose output:
 echo "Running simulation..."
-yank run --store=output --verbose
+yank run --store=output --verbose --online-analysis
 
