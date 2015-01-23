@@ -38,7 +38,6 @@ TODO
   * randomize velocities (exchanging only on potential energies)
   * exchange on total energies, preserving velocities (requires more replicas)
 * Add control over number of times swaps are attempted when mixing replicas, or compute best guess automatically
-* Add support for online analysis (potentially by separate threads or while GPU is running?)
 * Add another layer of abstraction so that the base class uses generic log probabilities, rather than reduced potentials?
 * Use interface-based checking of arguments so that different implementations of the OpenMM API (such as pyopenmm) can be used.
 * Eliminate file closures in favor of syncs to avoid closing temporary files in the middle of a run.
@@ -590,31 +589,41 @@ class ReplicaExchange(object):
     Stored configurations, energies, swaps, and restart information are all written to a single output file using
     the platform portable, robust, and efficient NetCDF4 library.  Plans for future HDF5 support are pending.
 
-    ATTRIBUTES
-
+    Attributes
+    ----------
     The following parameters (attributes) can be set after the object has been created, but before it has been
     initialized by a call to run():
 
-    * collision_rate (units: 1/time) - the collision rate used for Langevin dynamics (default: 90 ps^-1)
-    * constraint_tolerance (dimensionless) - relative constraint tolerance (default: 1e-6)
-    * timestep (units: time) - timestep for Langevin dyanmics (default: 2 fs)
-    * nsteps_per_iteration (dimensionless) - number of timesteps per iteration (default: 500)
-    * number_of_iterations (dimensionless) - number of replica-exchange iterations to simulate (default: 100)
-    * number_of_equilibration_iterations (dimensionless) - number of equilibration iterations before beginning exchanges (default: 0)
-    * equilibration_timestep (units: time) - timestep for use in equilibration (default: 2 fs)
-    * verbose (boolean) - show information on run progress (default: False)
-    * replica_mixing_scheme (string) - scheme used to swap replicas: 'swap-all' or 'swap-neighbors' (default: 'swap-all')
-    * online_analysis (boolean) - if True, analysis will occur each iteration (default: False)
+    collision_rate : simtk.unit.Quantity (units: 1/time)
+       The collision rate used for Langevin dynamics (default: 90 ps^-1)
+    constraint_tolerance : float
+       Relative constraint tolerance (default: 1e-6)
+    timestep : simtk.unit.Quantity (units: time)
+       Timestep for Langevin dyanmics (default: 2 fs)
+    nsteps_per_iteration : int
+       Number of timesteps per iteration (default: 500)
+    number_of_iterations : int 
+       Number of replica-exchange iterations to simulate (default: 100)
+    number_of_equilibration_iterations : int 
+       Number of equilibration iterations before beginning exchanges (default: 0)
+    equilibration_timestep : simtk.unit.Quantity (units: time)
+       Timestep for use in equilibration (default: 2 fs)
+    verbose : bool 
+       Show information on run progress (default: False)
+    replica_mixing_scheme : str
+       Scheme used to swap replicas: 'swap-all' or 'swap-neighbors' (default: 'swap-all')
+    online_analysis : bool
+       If True, analysis will occur each iteration (default: False)
 
     TODO
-
+    ----
     * Replace hard-coded Langevin dynamics with general MCMC moves.
     * Allow parallel resource to be used, if available (likely via Parallel Python).
     * Add support for and autodetection of other NetCDF4 interfaces.
     * Add HDF5 support.
 
-    EXAMPLES
-
+    Examples
+    --------
     Parallel tempering simulation of alanine dipeptide in implicit solvent (replica exchange among temperatures)
     (This is just an illustrative example; use ParallelTempering class for actual production parallel tempering simulations.)
 
@@ -643,6 +652,7 @@ class ReplicaExchange(object):
     >>> del simulation # clean up
 
     Extend the simulation
+
     >>> simulation = ReplicaExchange(store_filename)
     >>> simulation.resume()
     >>> simulation.number_of_iterations = 4 # extend
