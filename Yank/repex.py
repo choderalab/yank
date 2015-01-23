@@ -1115,18 +1115,14 @@ class ReplicaExchange(object):
             # Handle OpenMM platform selection.
             # TODO: Can we handle this more gracefully, or push this off to ReplicaExchange?
             if self.platform_name:
-                platform = openmm.Platform.getPlatformByName(self.platform_name)
+                self.platform = openmm.Platform.getPlatformByName(self.platform_name)
             else:
-                platform = self._determine_fastest_platform(representative_system)
+                self.platform = self._determine_fastest_platform(representative_system)
 
             # Use only a single CPU thread if we are using the CPU platform.
             # TODO: Since there is an environment variable that can control this, we may want to avoid doing this.
-            if (platform.getName() == 'CPU') and self.mpicomm:
-                platform.setPropertyDefaultValue('CpuThreads', '1')
-
-            #print "No platform specified, so selecting CPU platform with one thread."
-            self.platform = self.mm.Platform.getPlatformByName("CPU")
-            self.platform.setPropertyDefaultValue('CpuThreads', '1') # only use 1 CPU thread
+            if (self.platform.getName() == 'CPU') and self.mpicomm:
+                self.platform.setPropertyDefaultValue('CpuThreads', '1')
 
         # Allocate storage.
         self.replica_positions = list() # replica_positions[i] is the configuration currently held in replica i
