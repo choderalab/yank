@@ -167,6 +167,7 @@ def test_replica_exchange(mpicomm=None, verbose=True):
     # Create and configure simulation object.
     simulation = ReplicaExchange(store_filename, mpicomm=mpicomm)
     simulation.create(states, seed_positions)
+    simulation.platform_name = 'Reference'
     simulation.minimize = False
     simulation.number_of_iterations = 200
     simulation.nsteps_per_iteration = 500
@@ -174,6 +175,7 @@ def test_replica_exchange(mpicomm=None, verbose=True):
     simulation.collision_rate = 20.0 / units.picosecond
     simulation.verbose = False
     simulation.show_mixing_statistics = False
+    simulation.online_analysis = True
 
     # Run simulation.
     simulation.run() # run the simulation
@@ -181,13 +183,36 @@ def test_replica_exchange(mpicomm=None, verbose=True):
     # Stop here if not root node.
     if mpicomm and (mpicomm.rank != 0): return
 
+    # Retrieve extant analysis object.
+    online_analysis = simulation.analysis
+
     # Analyze simulation to compute free energies.
     analysis = simulation.analyze()
 
+    # Check if online analysis is close to final analysis.
+    error = numpy.abs(online_analysis['Delta_f_ij'] - analysis['Delta_f_ij'])
+    derror = (online_analysis['dDelta_f_ij']**2 + analysis['dDelta_f_ij']**2)
+    indices = numpy.where(derror > 0.0)
+    nsigma = numpy.zeros([nstates,nstates], numpy.float32)
+    nsigma[indices] = error[indices] / derror[indices]
+    MAX_SIGMA = 6.0 # maximum allowed number of standard errors
+    if numpy.any(nsigma > MAX_SIGMA):
+        print "Delta_f_ij from online analysis"
+        print online_analysis['Delta_f_ij']
+        print "Delta_f_ij from final analysis"
+        print analysis['Delta_f_ij']
+        print "error"
+        print error
+        print "derror"
+        print derror
+        print "nsigma"
+        print nsigma
+        raise Exception("Dimensionless free energy differences between online and final analysis exceeds MAX_SIGMA of %.1f" % MAX_SIGMA)
+    
     # TODO: Check if deviations exceed tolerance.
     Delta_f_ij = analysis['Delta_f_ij']
     dDelta_f_ij = analysis['dDelta_f_ij']
-    error = Delta_f_ij - Delta_f_ij_analytical
+    error = numpy.abs(Delta_f_ij - Delta_f_ij_analytical)
     indices = numpy.where(dDelta_f_ij > 0.0)
     nsigma = numpy.zeros([nstates,nstates], numpy.float32)
     nsigma[indices] = error[indices] / dDelta_f_ij[indices]
@@ -300,6 +325,7 @@ def test_hamiltonian_exchange(mpicomm=None, verbose=True):
     # Create and configure simulation object.
     simulation = HamiltonianExchange(store_filename, mpicomm=mpicomm)
     simulation.create(reference_state, systems, seed_positions)
+    simulation.platform_name = 'Reference'
     simulation.number_of_iterations = 200
     simulation.timestep = 2.0 * units.femtoseconds
     simulation.nsteps_per_iteration = 500

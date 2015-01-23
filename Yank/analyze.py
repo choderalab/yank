@@ -45,14 +45,15 @@ def show_mixing_statistics(ncfile, cutoff=0.05, nequil=0):
     """
     Print summary of mixing statistics.
 
-    ARGUMENTS
+    Parameters
+    ----------
 
-    ncfile (netCDF4.Dataset) - NetCDF file
-
-    OPTIONAL ARGUMENTS
-
-    cutoff (float) - only transition probabilities above 'cutoff' will be printed (default: 0.05)
-    nequil (int) - if specified, only samples nequil:end will be used in analysis (default: 0)
+    ncfile : netCDF4.Dataset
+       NetCDF file
+    cutoff : float, optional, default=0.05
+       Only transition probabilities above 'cutoff' will be printed    
+    nequil : int, optional, default=0
+       If specified, only samples nequil:end will be used in analysis
 
     """
 
@@ -99,17 +100,23 @@ def show_mixing_statistics(ncfile, cutoff=0.05, nequil=0):
     return
 
 
-def estimate_free_energies(ncfile, ndiscard = 0, nuse = None):
-    """Estimate free energies of all alchemical states.
+def estimate_free_energies(ncfile, ndiscard=0, nuse=None):
+    """
+    Estimate free energies of all alchemical states.
 
-    ARGUMENTS
-       ncfile (NetCDF) - input YANK netcdf file
+    Parameters
+    ----------
+    ncfile : NetCDF
+       Input YANK netcdf file
+    ndiscard : int, optional, default=0
+       Number of iterations to discard to equilibration
+    nuse : int, optional, default=None
+       Maximum number of iterations to use (after discarding)
 
-    OPTIONAL ARGUMENTS
-       ndiscard (int) - number of iterations to discard to equilibration
-       nuse (int) - maximum number of iterations to use (after discarding)
+    TODO
+    ----
+    * Automatically determine 'ndiscard'.
 
-    TODO: Automatically determine 'ndiscard'.
     """
 
     # Get current dimensions.
@@ -198,18 +205,24 @@ def estimate_free_energies(ncfile, ndiscard = 0, nuse = None):
     # Return free energy differences and an estimate of the covariance.
     return (Deltaf_ij, dDeltaf_ij)
 
-def estimate_enthalpies(ncfile, ndiscard = 0, nuse = None):
-    """Estimate enthalpies of all alchemical states.
+def estimate_enthalpies(ncfile, ndiscard=0, nuse=None):
+    """
+    Estimate enthalpies of all alchemical states.
 
-    ARGUMENTS
-       ncfile (NetCDF) - input YANK netcdf file
+    Parameters
+    ----------
+    ncfile : NetCDF
+       Input YANK netcdf file
+    ndiscard : int, optional, default=0
+       Number of iterations to discard to equilibration
+    nuse : int, optional, default=None
+       Number of iterations to use (after discarding)
 
-    OPTIONAL ARGUMENTS
-       ndiscard (int) - number of iterations to discard to equilibration
-       nuse (int) - number of iterations to use (after discarding)
+    TODO
+    ----
+    * Automatically determine 'ndiscard'.
+    * Combine some functions with estimate_free_energies.
 
-    TODO: Automatically determine 'ndiscard'.
-    TODO: Combine some functions with estimate_free_energies.
     """
 
     # Get current dimensions.
@@ -279,14 +292,27 @@ def estimate_enthalpies(ncfile, ndiscard = 0, nuse = None):
 
 def extract_u_n(ncfile):
     """
-    Extract timeseries of u_n = - log q(X_n) from store file.
+    Extract timeseries of u_n = - log q(X_n) from store file
 
-    # TODO: Move this to repex.
+    where q(X_n) = \pi_{k=1}^K u_{s_{nk}}(x_{nk})
+
+    with X_n = [x_{n1}, ..., x_{nK}] is the current collection of replica configurations
+    s_{nk} is the current state of replica k at iteration n
+    u_k(x) is the kth reduced potential
 
     Parameters
     ----------
     ncfile : str
        The filename of the repex NetCDF file.
+
+    Returns
+    -------
+    u_n : numpy array of numpy.float64
+       u_n[n] is -log q(X_n)
+
+    TODO
+    ----
+    Move this to repex.
 
     """
 

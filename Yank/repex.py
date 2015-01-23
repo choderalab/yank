@@ -38,7 +38,6 @@ TODO
   * randomize velocities (exchanging only on potential energies)
   * exchange on total energies, preserving velocities (requires more replicas)
 * Add control over number of times swaps are attempted when mixing replicas, or compute best guess automatically
-* Add support for online analysis (potentially by separate threads or while GPU is running?)
 * Add another layer of abstraction so that the base class uses generic log probabilities, rather than reduced potentials?
 * Use interface-based checking of arguments so that different implementations of the OpenMM API (such as pyopenmm) can be used.
 * Eliminate file closures in favor of syncs to avoid closing temporary files in the middle of a run.
@@ -103,8 +102,8 @@ class ThermodynamicState(object):
     """
     Data specifying a thermodynamic state obeying Boltzmann statistics.
 
-    EXAMPLES
-
+    Examples
+    --------
     Specify an NVT state for a water box at 298 K.
 
     >>> from simtk import unit
@@ -119,12 +118,12 @@ class ThermodynamicState(object):
 
     Note that the pressure is only relevant for periodic systems.
 
-    NOTES
-
+    Notes
+    -----
     This state object cannot describe states obeying non-Boltzamnn statistics, such as Tsallis statistics.
 
     TODO
-
+    ----
     * Implement a more fundamental ProbabilityState as a base class?
     * Implement pH.
 
@@ -251,20 +250,20 @@ class ThermodynamicState(object):
         """
         Compute the reduced potential for the given positions in this thermodynamic state.
 
-        ARGUMENTS
+        Parameters
+        ----------
+        positions : simtk.unit.Quantity of Nx3 numpy.array
+           Positions[n,k] is kth coordinate of particle n
+        box_vectors : tuple of Vec3 or ???
+           Periodic box vectors
 
-        positions (simtk.unit.Quantity of Nx3 np.array) - positions[n,k] is kth coordinate of particle n
+        Returns
+        -------
+        u : float
+           The unitless reduced potential (which can be considered to have units of kT)
 
-        OPTIONAL ARGUMENTS
-
-        box_vectors - periodic box vectors
-
-        RETURNS
-
-        u (float) - the unitless reduced potential (which can be considered to have units of kT)
-
-        EXAMPLES
-
+        Examples
+        --------
         Compute the reduced potential of a Lennard-Jones cluster at 100 K.
 
         >>> from simtk import unit
@@ -290,8 +289,8 @@ class ThermodynamicState(object):
         >>> box_vectors = system.getDefaultPeriodicBoxVectors()
         >>> potential = state.reduced_potential(positions, box_vectors)
 
-        NOTES
-
+        Notes
+        -----
         The reduced potential is defined as in Ref. [1]
 
         u = \beta [U(x) + p V(x) + \mu N(x)]
@@ -309,12 +308,12 @@ class ThermodynamicState(object):
         V(x) is the instantaneous box volume
         N(x) the numbers of various particle species (e.g. protons of titratible groups)
 
-        REFERENCES
-
+        References
+        ----------
         [1] Shirts MR and Chodera JD. Statistically optimal analysis of equilibrium states. J Chem Phys 129:124105, 2008.
 
         TODO
-
+        ----
         * Instead of requiring configuration and box_vectors be passed separately, develop a Configuration or Snapshot class.
 
         """
@@ -361,20 +360,20 @@ class ThermodynamicState(object):
         Compute the reduced potential for the given sets of positions in this thermodynamic state.
         This can pontentially be more efficient than repeated calls to reduced_potential.
 
-        ARGUMENTS
+        Parameters
+        ----------
+        positions_list : list of simtk.unit.Quantity of Nx3 numpy.array
+           Positions[n,k] is kth coordinate of particle n
+        box_vectors : tuple of Vec3 or ???
+           Periodic box vectors
 
-        positions_list (list of simtk.unit.Quantity of Nx3 np.array) - positions[n,k] is kth coordinate of particle n
+        Returns
+        -------
+        u_k : K numpy array of numpy.float64
+           The unitless reduced potentials (which can be considered to have units of kT)
 
-        OPTIONAL ARGUMENTS
-
-        box_vectors - periodic box vectors
-
-        RETURNS
-
-        u_k (K np array of float) - the unitless reduced potentials (which can be considered to have units of kT)
-
-        EXAMPLES
-
+        Examples
+        --------
         Compute the reduced potential of a Lennard-Jones cluster at multiple configurations at 100 K.
 
         >>> from simtk import unit
@@ -388,8 +387,8 @@ class ThermodynamicState(object):
         >>> # compute potential for all sets of positions
         >>> potentials = state.reduced_potential_multiple(positions_list)
 
-        NOTES
-
+        Notes
+        -----
         The reduced potential is defined as in Ref. [1]
 
         u = \beta [U(x) + p V(x) + \mu N(x)]
@@ -407,12 +406,12 @@ class ThermodynamicState(object):
         V(x) is the instantaneous box volume
         N(x) the numbers of various particle species (e.g. protons of titratible groups)
 
-        REFERENCES
-
+        References
+        ----------
         [1] Shirts MR and Chodera JD. Statistically optimal analysis of equilibrium states. J Chem Phys 129:124105, 2008.
 
         TODO
-
+        ----
         * Instead of requiring configuration and box_vectors be passed separately, develop a Configuration or Snapshot class.
 
         """
@@ -504,8 +503,8 @@ class ThermodynamicState(object):
         """
         Returns a string representation of a state.
 
-        EXAMPLES
-
+        Examples
+        --------
         Create an NVT state.
 
         >>> from simtk import unit
@@ -544,12 +543,13 @@ class ThermodynamicState(object):
         """
         Return the volume of the current configuration.
 
-        RETURNS
+        Returns
+        -------
+        volume : simtk.unit.Quantity
+           The volume of the system (in units of length^3), or None if no box positions are defined
 
-        volume (simtk.unit.Quantity) - the volume of the system (in units of length^3), or None if no box positions are defined
-
-        EXAMPLES
-
+        Examples
+        --------
         Compute the volume of a Lennard-Jones fluid at 100 K and 1 atm.
 
         >>> from openmmtools import testsystems
@@ -590,31 +590,41 @@ class ReplicaExchange(object):
     Stored configurations, energies, swaps, and restart information are all written to a single output file using
     the platform portable, robust, and efficient NetCDF4 library.  Plans for future HDF5 support are pending.
 
-    ATTRIBUTES
-
+    Attributes
+    ----------
     The following parameters (attributes) can be set after the object has been created, but before it has been
     initialized by a call to run():
 
-    * collision_rate (units: 1/time) - the collision rate used for Langevin dynamics (default: 90 ps^-1)
-    * constraint_tolerance (dimensionless) - relative constraint tolerance (default: 1e-6)
-    * timestep (units: time) - timestep for Langevin dyanmics (default: 2 fs)
-    * nsteps_per_iteration (dimensionless) - number of timesteps per iteration (default: 500)
-    * number_of_iterations (dimensionless) - number of replica-exchange iterations to simulate (default: 100)
-    * number_of_equilibration_iterations (dimensionless) - number of equilibration iterations before beginning exchanges (default: 0)
-    * equilibration_timestep (units: time) - timestep for use in equilibration (default: 2 fs)
-    * verbose (boolean) - show information on run progress (default: False)
-    * replica_mixing_scheme (string) - scheme used to swap replicas: 'swap-all' or 'swap-neighbors' (default: 'swap-all')
-    * online_analysis (boolean) - if True, analysis will occur each iteration (default: False)
+    collision_rate : simtk.unit.Quantity (units: 1/time)
+       The collision rate used for Langevin dynamics (default: 90 ps^-1)
+    constraint_tolerance : float
+       Relative constraint tolerance (default: 1e-6)
+    timestep : simtk.unit.Quantity (units: time)
+       Timestep for Langevin dyanmics (default: 2 fs)
+    nsteps_per_iteration : int
+       Number of timesteps per iteration (default: 500)
+    number_of_iterations : int 
+       Number of replica-exchange iterations to simulate (default: 100)
+    number_of_equilibration_iterations : int 
+       Number of equilibration iterations before beginning exchanges (default: 0)
+    equilibration_timestep : simtk.unit.Quantity (units: time)
+       Timestep for use in equilibration (default: 2 fs)
+    verbose : bool 
+       Show information on run progress (default: False)
+    replica_mixing_scheme : str
+       Scheme used to swap replicas: 'swap-all' or 'swap-neighbors' (default: 'swap-all')
+    online_analysis : bool
+       If True, analysis will occur each iteration (default: False)
 
     TODO
-
+    ----
     * Replace hard-coded Langevin dynamics with general MCMC moves.
     * Allow parallel resource to be used, if available (likely via Parallel Python).
     * Add support for and autodetection of other NetCDF4 interfaces.
     * Add HDF5 support.
 
-    EXAMPLES
-
+    Examples
+    --------
     Parallel tempering simulation of alanine dipeptide in implicit solvent (replica exchange among temperatures)
     (This is just an illustrative example; use ParallelTempering class for actual production parallel tempering simulations.)
 
@@ -643,6 +653,7 @@ class ReplicaExchange(object):
     >>> del simulation # clean up
 
     Extend the simulation
+
     >>> simulation = ReplicaExchange(store_filename)
     >>> simulation.resume()
     >>> simulation.number_of_iterations = 4 # extend
@@ -695,6 +706,7 @@ class ReplicaExchange(object):
         self.platform_name = None
         self.replica_mixing_scheme = 'swap-all' # mix all replicas thoroughly
         self.online_analysis = False # if True, analysis will occur each iteration
+        self.online_analysis_min_iterations = 20 # minimum number of iterations needed to begin online analysis, if requested
         self.show_energies = True
         self.show_mixing_statistics = True
 
@@ -952,11 +964,7 @@ class ReplicaExchange(object):
             if self.verbose and self.show_energies:
                 self._show_energies()
 
-            # Analysis.
-            if self.online_analysis:
-                self._analysis()
-
-            # Write to storage file.
+            # Write iteration to storage file.
             self._write_iteration_netcdf()
 
             # Increment iteration counter.
@@ -965,6 +973,10 @@ class ReplicaExchange(object):
             # Show mixing statistics.
             if self.verbose and self.show_mixing_statistics:
                 self._show_mixing_statistics()
+
+            # Perform online analysis.
+            if self.online_analysis:
+                self._analysis()
 
             # Show timing statistics.
             final_time = time.time()
@@ -2298,11 +2310,57 @@ class ReplicaExchange(object):
 
         return
 
+    def _compute_trace(self):
+        """
+        Compute trace for replica ensemble minus log probability.
+
+        Extract timeseries of u_n = - log q(X_n) from store file
+
+        where q(X_n) = \pi_{k=1}^K u_{s_{nk}}(x_{nk})
+        
+        with X_n = [x_{n1}, ..., x_{nK}] is the current collection of replica configurations
+        s_{nk} is the current state of replica k at iteration n
+        u_k(x) is the kth reduced potential
+
+        Returns
+        -------
+        u_n : numpy array of numpy.float64
+        u   _n[n] is -log q(X_n)
+        
+        TODO
+        ----
+        * Later, we should have this quantity computed and stored on the fly in the store file.
+        But we may want to do this without breaking backward compatibility.
+
+        """
+
+        # Get current dimensions.
+        niterations = self.ncfile.variables['energies'].shape[0]
+        nstates = self.ncfile.variables['energies'].shape[1]
+        natoms = self.ncfile.variables['energies'].shape[2]
+
+        # Extract energies.
+        energies = ncfile.variables['energies']
+        u_kln_replica = np.zeros([nstates, nstates, niterations], np.float64)
+        for n in range(niterations):
+            u_kln_replica[:,:,n] = energies[n,:,:]
+
+        # Deconvolute replicas
+        u_kln = np.zeros([nstates, nstates, niterations], np.float64)
+        for iteration in range(niterations):
+            state_indices = ncfile.variables['states'][iteration,:]
+            u_kln[state_indices,:,iteration] = energies[iteration,:,:]
+
+        # Compute total negative log probability over all iterations.
+        u_n = np.zeros([niterations], np.float64)
+        for iteration in range(niterations):
+            u_n[iteration] = np.sum(np.diagonal(u_kln[:,:,iteration]))
+
+        return u_n
+
     def _analysis(self):
         """
-        Perform online analysis each iteration.
-
-        UNDER CONSTRUCTION
+        Perform online analysis each iteration.        
 
         Every iteration, this will update the estimate of the state relative free energy differences and statistical uncertainties.
         We can additionally request further analysis.
@@ -2316,8 +2374,15 @@ class ReplicaExchange(object):
         replica_states = self.ncfile.variables['states'][:,:]
         u_nkl_replica = self.ncfile.variables['energies'][:,:,:]
 
+        # Determine number of iterations completed.
         number_of_iterations_completed = replica_states.shape[0]
         nstates = replica_states.shape[1]
+
+        # Online analysis can only be performed after a sufficient quantity of data has been collected.
+        if (number_of_iterations_completed < self.online_analysis_min_iterations):
+            if self.verbose: print "Online analysis will be performed after %d iterations have elapsed." % self.online_analysis_min_iterations
+            self.analysis = None
+            return
 
         # Deconvolute replicas and compute total simulation effective self-energy timeseries.
         u_kln = np.zeros([nstates, nstates, number_of_iterations_completed], np.float32)
@@ -2333,22 +2398,19 @@ class ReplicaExchange(object):
         # Determine optimal equilibration time, statistical inefficiency, and effectively uncorrelated sample indices.
         from pymbar import timeseries
         [t0, g, Neff_max] = timeseries.detectEquilibration(u_n)
-        indices = t0 + timeseries.subsampleCorrelatedData(u_n[t0:], g=g) # TODO: This could be computed as part of 'timeseries.detectEquilibration()'
+        indices = t0 + timeseries.subsampleCorrelatedData(u_n[t0:], g=g)
         N_k = indices.size * np.ones([nstates], np.int32)
 
         # Next, analyze with pymbar, initializing with last estimate of free energies.
         from pymbar import MBAR
         if hasattr(self, 'f_k'):
-            mbar = MBAR(u_kln[:,:,indices], N_k, f_k_initial=self.f_k)
+            mbar = MBAR(u_kln[:,:,indices], N_k, initial_f_k=self.f_k)
         else:
             mbar = MBAR(u_kln[:,:,indices], N_k)
 
-        # Store free energies.
+        # Cache current free energy estimate to save time in future MBAR solutions.
         self.f_k = mbar.f_k
 
-        # Store free energy differences and uncertainties.
-        # TODO: This is replaced by entropy and enthalpy.
-        #[Delta_f_ij, dDelta_f_ij] = mbar.getFreeEnergyDifferences()
         # Compute entropy and enthalpy.
         [Delta_f_ij, dDelta_f_ij, Delta_u_ij, dDelta_u_ij, Delta_s_ij, dDelta_s_ij] = mbar.computeEntropyAndEnthalpy()
 
@@ -2365,6 +2427,50 @@ class ReplicaExchange(object):
         analysis['Delta_s_ij'] = Delta_s_ij
         analysis['dDelta_s_ij'] = dDelta_s_ij
 
+        def pretty_print(x):
+            """
+            Print a matrix of numbers.
+            
+            Parameters
+            ----------
+            x : numpy.array of nrows x ncols matrix
+               Matrix of numbers to print.
+
+            TODO
+            ----
+            * Automatically determine optimal spacing
+
+            """
+            [nrows, ncols] = x.shape
+            for i in range(nrows):
+                for j in range(ncols):
+                    print "%8.3f" % x[i,j],
+                print ""
+            return
+
+        # Print estimate if verbosity is set.
+        if self.verbose:
+            print "================================================================================"
+            print "Online analysis estimate of free energies:"
+            print "  equilibration end: %d iterations" % t0
+            print "  statistical inefficiency: %.1f iterations" % g
+            print "  effective number of uncorrelated samples: %.1f" % Neff_max
+            print "Reduced free energy (f), enthalpy (u), and entropy (s) differences among thermodynamic states:"
+            print "Delta_f_ij"
+            pretty_print(Delta_f_ij)
+            print "dDelta_f_ij"
+            pretty_print(dDelta_f_ij)
+            print "Delta_u_ij"
+            pretty_print(Delta_u_ij)
+            print "dDelta_u_ij"
+            pretty_print(dDelta_u_ij)
+            print "Delta_s_ij"
+            pretty_print(Delta_s_ij)
+            print "dDelta_s_ij"
+            pretty_print(dDelta_s_ij)
+            print "================================================================================"
+
+
         self.analysis = analysis
 
         return
@@ -2373,21 +2479,31 @@ class ReplicaExchange(object):
         """
         Analyze the current simulation and return estimated free energies.
         
-        RETURNS
+        Returns
+        -------        
+        analysis : dict
+           Analysis object containing end of equilibrated region, statistical inefficiency, and free energy differences:
         
-        analysis (dict) - analysis object containing end of equilibrated region, statistical inefficiency, and free energy differences:
-        
-        KEYS
-        
-        equilibration_end (int) - the last iteration in the discarded equilibrated region
-        g (float) - estimated statistical inefficiency of production region
-        indices (list of int) - equilibrated, effectively uncorrelated iteration indices used in analysis
-        Delta_f_ij (np array of nstates x nstates) - Delta_f_ij[i,j] is the free energy difference f_j - f_i in units of kT
-        dDelta_f_ij (np array of nstates x nstates) - dDelta_f_ij[i,j] is estimated standard error of Delta_f_ij[i,j]
+        Keys
+        ----
+        equilibration_end : int
+           The last iteration in the discarded equilibrated region
+        g : float
+           Estimated statistical inefficiency of production region
+        indices : list of int
+           Equilibrated, effectively uncorrelated iteration indices used in analysis
+        Delta_f_ij : numpy array of nstates x nstates
+           Delta_f_ij[i,j] is the free energy difference f_j - f_i in units of kT
+        dDelta_f_ij : numpy array of nstates x nstates
+           dDelta_f_ij[i,j] is estimated standard error of Delta_f_ij[i,j]
         Delta_u_ij
+           Delta_u_ij[i,j] is the reduced enthalpy difference u_j - u_i in units of kT
         dDelta_u_ij
+           dDelta_u_ij[i,j] is estimated standard error of Delta_u_ij[i,j]
         Delta_s_ij
+           Delta_s_ij[i,j] is the reduced entropic contribution to the free energy difference s_j - s_i in units of kT
         dDelta_s_ij
+           dDelta_s_ij[i,j] is estimated standard error of Delta_s_ij[i,j]
         
         """
         # Update analysis on root node.
