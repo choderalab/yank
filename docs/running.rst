@@ -46,6 +46,30 @@ This assumes you are using the `MPICH2 hydra mpirun <https://wiki.mpich.org/mpic
   $ python build-mpirun-configfile.py yank run --store=output --mpi --verbose
   $ mpirun -configfile configfile
 
+Selecting a platform
+====================
+
+OpenMM supports running simulations on a number of platforms, though not all platforms are available on all hardware.
+To see which platforms your current installation supports, you can query the list of available platforms with
+
+.. code-block:: none
+
+  $ yank platforms
+  Available OpenMM platforms:
+      0 Reference
+      1 CUDA
+      2 CPU
+      3 OpenCL
+
+You can either leave the choice of platform up to YANK---in which case it will choose the fastest available platform---or specify
+which platform you would like to use via the ``--platform`` argument to ``yank run``.  For example, to use the ``OpenCL`` platform:
+
+.. code-block:: none
+
+   $ yank run --store=output --platform=OpenCL
+
+.. note:: Note that the ``CPU`` platform will automatically use all available cores/hyperthreads in serial mode, but in MPI mode, will use a single thread to avoid causing problems in queue-regulated parallel systems.
+
 **************
 Analyzing data
 **************
