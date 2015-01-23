@@ -1122,6 +1122,7 @@ class ReplicaExchange(object):
             # Use only a single CPU thread if we are using the CPU platform.
             # TODO: Since there is an environment variable that can control this, we may want to avoid doing this.
             if (self.platform.getName() == 'CPU') and self.mpicomm:
+                if self.verbose: print "Setting 'CpuThreads' to 1 because MPI is active."
                 self.platform.setPropertyDefaultValue('CpuThreads', '1')
 
         # Allocate storage.
