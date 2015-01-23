@@ -130,18 +130,23 @@ class ThermodynamicState(object):
 
     """
 
-    def __init__(self, system=None, temperature=None, pressure=None, mm=None):
+    def __init__(self, system=None, temperature=None, pressure=None, mm=None, verbose=False):
         """
         Initialize the thermodynamic state.
 
-        OPTIONAL ARGUMENTS
+        Parameters
+        ----------
 
-        system (simtk.openmm.System) - a System object describing the potential energy function for the system (default: None)
-        temperature (simtk.unit.Quantity compatible with 'kelvin') - the temperature for a system with constant temperature (default: None)
-        pressure (simtk.unit.Quantity compatible with 'atmospheres') - the pressure for constant-pressure systems (default: None)
-
-        mm (simtk.openmm API) - OpenMM API implementation to use
-        cache_context (boolean) - if True, will try to cache Context objects
+        system : simtk.openmm.System, optional, default=None
+           A System object describing the potential energy function for the system
+        temperature : simtk.unit.Quantity compatible with 'kelvin', optional, default=None
+           The temperature for a system with constant temperature
+        pressure : simtk.unit.Quantity compatible with 'atmospheres', optional, default=None
+           The pressure for constant-pressure systems (default: None)
+        mm : simtk.openmm API, optional, default=None
+           OpenMM API implementation to use. If None, will use simtk.openmm. 
+        verbose : bool, optional, False
+           If True, will be verbose.
 
         """
 
@@ -155,6 +160,8 @@ class ThermodynamicState(object):
         self._cache_context = True  # if True, try to cache Context object
         self._context = None        # cached Context
         self._integrator = None     # cached Integrator
+
+        self._verbose = verbose     # Cached verbosity.
 
         # Store OpenMM implementation.
         if mm:
@@ -205,7 +212,7 @@ class ThermodynamicState(object):
             if platform and (platform.getName() != self._context.getPlatform().getName()): # DEBUG: Only compare Platform names for now; change this later to incorporate GPU IDs.
                 # Platform differs from the one requested; destroy it.
                 print (platform.getName(), self._context.getPlatform().getName())
-                print "Platform differs from the one requested; destroying and recreating..." # DEBUG
+                if self._verbose: print "Platform differs from the one requested; destroying and recreating..." # DEBUG
                 del self._context, self._integrator
             else:
                 # Cached context is what we expect; do nothing.
@@ -1190,6 +1197,7 @@ class ReplicaExchange(object):
                     else:
                         print "Node %d / %d: No platform specified." % (self.mpicomm.rank, self.mpicomm.size)
                         state._context = self.mm.Context(state.system, state._integrator)
+                        print "Node %d / %d: Using platform '%s'." % (state._context.getPlatform().getName())
                     print "Node %d / %d: Context creation took %.3f s" % (self.mpicomm.rank, self.mpicomm.size, time.time() - initial_context_time) # DEBUG
                 except Exception as e:
                     print e
@@ -1210,6 +1218,7 @@ class ReplicaExchange(object):
                     state._context = self.mm.Context(state.system, state._integrator, self.platform)
                 else:
                     state._context = self.mm.Context(state.system, state._integrator)
+                if self.verbose: print "Using platform '%s'." % (state._context.getPlatform().getName())
                 if self.verbose: print "Context creation took %.3f s" % (time.time() - initial_context_time) # DEBUG
         final_time = time.time()
         elapsed_time = final_time - initial_time
