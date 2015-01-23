@@ -330,6 +330,8 @@ class Yank(object):
                                                                                       self.randomize_ligand_close_cutoff)
                 randomized_positions.append(new_positions)
             positions = randomized_positions
+        if self.randomize_ligand and (phase == 'complex-explicit'):
+            print "WARNING: Ligand randomization requested, but will not be performed for explicit solvent simulations."
 
         # Identify whether any atoms will be displaced via MC.
         mc_atoms = list()
