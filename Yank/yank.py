@@ -90,7 +90,7 @@ class Yank(object):
         # Default options for repex.
         self.default_options = dict()
         self.default_options['number_of_equilibration_iterations'] = 0
-        self.default_options['number_of_iterations'] = 1000
+        self.default_options['number_of_iterations'] = 100
         self.default_options['verbose'] = self.verbose
         self.default_options['timestep'] = 2.0 * unit.femtoseconds
         self.default_options['collision_rate'] = 5.0 / unit.picoseconds
