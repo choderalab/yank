@@ -19,3 +19,4 @@ yank prepare binding amber --setupdir=setup --ligname=MOL --store=output --itera
 echo "Running simulation..."
 yank run --store=output --verbose
 
+
