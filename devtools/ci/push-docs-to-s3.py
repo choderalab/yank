@@ -11,9 +11,6 @@ if not yank.version.release:
 else:
     PREFIX = yank.version.short_version
 
-# DEBUG
-print "PREFIX = %s" % PREFIX
-
 if not any(d.project_name == 's3cmd' for d in pip.get_installed_distributions()):
     raise ImportError('The s3cmd pacakge is required. try $ pip install s3cmd')
 # The secret key is available as a secure environment variable
@@ -26,7 +23,7 @@ secret_key = {AWS_SECRET_ACCESS_KEY}
     f.flush()
 
     template = ('s3cmd --config {config} '
-                'sync docs/_build/html/ s3://{bucket}/{prefix}/')
+                'sync docs/_build/ s3://{bucket}/{prefix}/')
     cmd = template.format(
             config=f.name,
             bucket=BUCKET_NAME,
