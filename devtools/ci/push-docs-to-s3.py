@@ -11,6 +11,9 @@ if not yank.version.release:
 else:
     PREFIX = yank.version.short_version
 
+# DEBUG
+print "PREFIX = %s" % PREFIX
+
 if not any(d.project_name == 's3cmd' for d in pip.get_installed_distributions()):
     raise ImportError('The s3cmd pacakge is required. try $ pip install s3cmd')
 # The secret key is available as a secure environment variable
