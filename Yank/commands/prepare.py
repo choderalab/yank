@@ -248,11 +248,32 @@ def dispatch_binding(args):
 
     verbose = args['--verbose']
 
-    # Specify simulation parameters.
-    nonbondedMethod = getattr(app, args['--nbmethod'])
-    implicitSolvent = getattr(app, args['--gbsa'])
-    if args['--constraints']==None: args['--constraints'] = None # Necessary because there is no 'None' in simtk.openmm.app
+    #
+    # Determine simulation options.
+    #
+
+    # Implicit solvent
+    if '--gbsa' in args:
+        implicitSolvent = getattr(app, args['--gbsa'])
+    else:
+        implciitSolvent = False
+
+    # Nonbonded treatment
+    if '--nbmethod' in args:
+        nonbondedMethod = getattr(app, args['--nbmethod'])
+    else:
+        if implicitSolvent:
+            nonbondedMethod = 'NoCutoff'
+        else:
+            nonbondedMethod = 'CutoffPeriodic' # reaction field for explicit solvent
+            # TODO: Make sure system is periodic?
+
+    # Constraints
+    if args['--constraints'] == 'None':
+        args['--constraints'] = None # Necessary because there is no 'None' in simtk.openmm.app
     constraints = getattr(app, args['--constraints'])
+
+    # COM removal
     removeCMMotion = False
 
     # Specify thermodynamic parameters.
