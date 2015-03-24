@@ -22,7 +22,7 @@ secret_key = {AWS_SECRET_ACCESS_KEY}
 '''.format(**os.environ))
     f.flush()
 
-    template = ('s3cmd --config {config} '
+    template = ('s3cmd --guess-mime-type --config {config} '
                 'sync docs/_build/ s3://{bucket}/{prefix}/')
     cmd = template.format(
             config=f.name,
@@ -31,7 +31,7 @@ secret_key = {AWS_SECRET_ACCESS_KEY}
     return_val = subprocess.call(cmd.split())
 
     # Sync index file.
-    template = ('s3cmd --config {config} '
+    template = ('s3cmd --guess-mime-type --config {config} '
                 'sync devtools/ci/index.html s3://{bucket}/')
     cmd = template.format(
             config=f.name,
