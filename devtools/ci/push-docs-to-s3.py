@@ -5,7 +5,7 @@ import subprocess
 import yank.version
 
 
-BUCKET_NAME = 'yank'
+BUCKET_NAME = 'getyank.org'
 if not yank.version.release:
     PREFIX = 'latest'
 else:
