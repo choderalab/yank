@@ -37,7 +37,7 @@ def dispatch(args):
         options['verbose'] = True
     if args['--online-analysis']:
         options['online_analysis'] = True
-    if args['--platform'] != 'None':
+    if args['--platform'] not in [None, 'None']:
         options['platform'] = openmm.Platform.getPlatformByName(args['--platform'])
 
     # Set YANK to resume from the store file.

@@ -20,16 +20,16 @@ import docopt
 # COMMAND-LINE INTERFACE
 #=============================================================================================
 
-usage = """\
+usage = """
 YANK
 
 Usage:
   yank [-h | --help] [-c | --cite]
   yank selftest [-v | --verbose]
   yank platforms
-  yank prepare binding amber --setupdir=DIRECTORY --ligname=RESNAME (-s=STORE | --store=STORE) [-i=ITERATIONS | --iterations=ITERATIONS] [--restraints <restraint_type>] [--randomize-ligand] [--nbmethod=METHOD] [--gbsa=GBSA] [--constraints=CONSTRAINTS] [--platform=PLATFORM] [--temperature=TEMPERATURE] [--pressure=PRESSURE] [--minimize] [-v | --verbose]
-  yank prepare binding systembuilder --ligand=FILENAME --receptor=FILENAME [-i=ITERATIONS | --iterations=ITERATIONS] [--restraints <restraint_type>] [--randomize-ligand] [--nbmethod=METHOD] [--gbsa=GBSA] [--constraints=CONSTRAINTS] [--platform=PLATFORM] [--temperature=TEMPERATURE] [--pressure=PRESSURE] [-v | --verbose]
-  yank run (-s=STORE | --store=STORE) [-m | --mpi] [-i=ITERATIONS | --iterations ITERATIONS] [--platform=PLATFORM] [--phase=PHASE] [-o | --online-analysis] [-v | --verbose]
+  yank prepare binding amber --setupdir=DIRECTORY --ligname=RESNAME (-s=STORE | --store=STORE) [-i=NITER | --iterations=NITER] [--restraints <restraint_type>] [--randomize-ligand] [--nbmethod=METHOD] [--gbsa=GBSA] [--constraints=CONSTRAINTS] [--temperature=TEMPERATURE] [--pressure=PRESSURE] [--minimize] [-v | --verbose]
+  yank prepare binding systembuilder --ligand=FILENAME --receptor=FILENAME [-i=NITER | --iterations=NITER] [--restraints <restraint_type>] [--randomize-ligand] [--nbmethod=METHOD] [--gbsa=GBSA] [--constraints=CONSTRAINTS] [--temperature=TEMPERATURE] [--pressure=PRESSURE] [-v | --verbose]
+  yank run (-s=STORE | --store=STORE) [-m | --mpi] [-i=NITER | --iterations=NITER] [--platform=PLATFORM] [--phase=PHASE] [-o | --online-analysis] [-v | --verbose]
   yank status (-s=STORE | --store=STORE) [-v | --verbose]
   yank analyze (-s STORE | --store=STORE) [-v | --verbose]
   yank cleanup (-s=STORE | --store=STORE) [-v | --verbose]
@@ -37,7 +37,7 @@ Usage:
 Commands:
   selftest                      Run selftests.
   platforms                     List available OpenMM platforms.
-  prepare binding amber           Set up binding free energy calculation using AMBER.
+  prepare binding amber         Set up binding free energy calculation using AMBER.
   run                           Run the calculation that has been set up
   status                        Get the current status
   analyze                       Analyze data
@@ -46,19 +46,19 @@ Commands:
 General options:
   -h, --help                    Print command line help
   -c, --cite                    Print relevant citations
-  -i NITER, --iterations NITER  Number of iterations to run [default: 1000]
+  -i=NITER, --iterations=NITER  Number of iterations to run
   --randomize-ligand            Randomize initial ligand positions if specified
   -v, --verbose                 Print verbose output
   -s=STORE, --store=STORE       Storage directory for NetCDF data files.
   -o, --online-analysis         Enable on-the-fly analysis
-  --platform=PLATFORM           OpenMM Platform to use (Reference, CPU, OpenCL, CUDA) [default: None]
+  --platform=PLATFORM           OpenMM Platform to use (Reference, CPU, OpenCL, CUDA)
   --minimize                    Minimize configurations before running simulation.
   -m, --mpi                     Use MPI to parallelize the calculation
 
 Simulation options:
   --restraints=TYPE             Restraint type to add between protein and ligand in implicit solvent ('harmonic', 'flat-bottom') [default: flat-bottom]
-  --gbsa=GBSA                   OpenMM GBSA model (HCT, OBC1, OBC2, GBn, GBn2) [default: OBC2]
-  --nbmethod=METHOD             OpenMM nonbonded method (NoCutoff, CutoffPeriodic, PME, Ewald) [default: NoCutoff]
+  --gbsa=GBSA                   OpenMM GBSA model (HCT, OBC1, OBC2, GBn, GBn2)
+  --nbmethod=METHOD             OpenMM nonbonded method (NoCutoff, CutoffPeriodic, PME, Ewald)
   --constraints=CONSTRAINTS     OpenMM constraints (None, HBonds, AllBonds, HAngles) [default: HBonds]
   --phase=PHASE                 Resume only specified phase of calculation ('solvent', 'complex')
   --temperature=TEMPERATURE     Temperature for simulation (in K, or simtk.unit readable string) [default: "298*kelvin"]
