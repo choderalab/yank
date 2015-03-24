@@ -28,9 +28,6 @@ from yank import version, utils
 #=============================================================================================
 
 def test_prepare_amber_implicit(verbose=False):
-    """
-    Test 'yank prepare binding amber' for implicit solvent system.
-    """
     store_directory = tempfile.mkdtemp()
     examples_path = utils.get_data_filename("../examples/benzene-toluene-implicit/setup/")  # Could only figure out how to install things like yank.egg/examples/, rather than yank.egg/yank/examples/
     command = 'yank prepare binding amber --setupdir=%(examples_path)s --ligname=BEN --store=%(store_directory)s --iterations=1 --restraints=harmonic --gbsa=OBC2 --temperature=300*kelvin' % vars()
@@ -41,9 +38,6 @@ def test_prepare_amber_implicit(verbose=False):
     prepare.dispatch(args)
 
 def test_prepare_amber_explicit(verbose=False):
-    """
-    Test 'yank prepare binding amber' for explicit solvent system.
-    """
     store_directory = tempfile.mkdtemp()
     examples_path = utils.get_data_filename("../examples/benzene-toluene-explicit/setup/")  # Could only figure out how to install things like yank.egg/examples/, rather than yank.egg/yank/examples/
     command = 'yank prepare binding amber --setupdir=%(examples_path)s --ligname=BEN --store=%(store_directory)s --iterations=1 --nbmethod=CutoffPeriodic --temperature=300*kelvin --pressure=1*atmospheres' % vars()
