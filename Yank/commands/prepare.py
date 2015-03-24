@@ -161,11 +161,26 @@ def setup_binding_amber(args):
     """
     verbose = args['--verbose']
 
-    # Extract simulation parameters.
-    nonbondedMethod = getattr(app, args['--nbmethod'])
-    implicitSolvent = getattr(app, args['--gbsa'])
-    if args['--constraints']==None: args['--constraints'] = None # Necessary because there is no 'None' in simtk.openmm.app
-    constraints = getattr(app, args['--constraints'])
+    # Implicit solvent
+    if args['--gbsa']:
+        implicitSolvent = getattr(app, args['--gbsa'])
+    else:
+        implicitSolvent = None
+
+    # Select nonbonded treatment
+    # TODO: Carefully check whether input file is periodic or not.
+    if args['--nbmethod']:
+        nonbondedMethod = getattr(app, args['--nbmethod'])
+    else:
+        nonbondedMethod = None
+
+    # Constraints
+    if args['--constraints']:
+        constraints = getattr(app, args['--constraints'])
+    else:
+        constraints = None
+
+    # COM removal
     removeCMMotion = False
 
     # Prepare phases of calculation.
@@ -191,6 +206,13 @@ def setup_binding_amber(args):
         if inpcrd.boxVectors is not None:
             is_periodic = True
             phase_suffix = 'explicit'
+        # Adjust nonbondedMethod.
+        # TODO: Ensure that selected method is appropriate.
+        if nonbondedMethod == None:
+            if is_periodic:
+                nonbondedMethod = app.CutoffPeriodic
+            else:
+                nonbondedMethod = app.NoCutoff
         # TODO: Check to make sure both prmtop and inpcrd agree on explicit/implicit.
         phase = '%s-%s' % (phase_prefix, phase_suffix)
         systems[phase] = prmtop.createSystem(nonbondedMethod=nonbondedMethod, implicitSolvent=implicitSolvent, constraints=constraints, removeCMMotion=removeCMMotion)
@@ -252,30 +274,6 @@ def dispatch_binding(args):
     # Determine simulation options.
     #
 
-    # Implicit solvent
-    if '--gbsa' in args:
-        implicitSolvent = getattr(app, args['--gbsa'])
-    else:
-        implciitSolvent = False
-
-    # Nonbonded treatment
-    if '--nbmethod' in args:
-        nonbondedMethod = getattr(app, args['--nbmethod'])
-    else:
-        if implicitSolvent:
-            nonbondedMethod = 'NoCutoff'
-        else:
-            nonbondedMethod = 'CutoffPeriodic' # reaction field for explicit solvent
-            # TODO: Make sure system is periodic?
-
-    # Constraints
-    if args['--constraints'] == 'None':
-        args['--constraints'] = None # Necessary because there is no 'None' in simtk.openmm.app
-    constraints = getattr(app, args['--constraints'])
-
-    # COM removal
-    removeCMMotion = False
-
     # Specify thermodynamic parameters.
     temperature = process_unit_bearing_argument(args, '--temperature', unit.kelvin)
     pressure = process_unit_bearing_argument(args, '--pressure', unit.atmospheres)
@@ -316,8 +314,6 @@ def dispatch_binding(args):
         yank.restraint_type = args['--restraints']
     if args['--randomize-ligand']:
         options['randomize_ligand'] = True
-    if args['--platform'] != 'None':
-        options['platform'] = openmm.Platform.getPlatformByName(args['--platform'])
     if args['--minimize']:
         options['minimize'] = True
 
