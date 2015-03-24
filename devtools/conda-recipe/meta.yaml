@@ -46,7 +46,7 @@ test:
   imports:
     - yank
   commands:
-    - nosetests yank --nocapture --verbosity=2 --with-doctest --immediate -a '!slow'
+    - nosetests yank --nocapture --verbosity=2 --with-doctest -a '!slow'
     - which yank
     - yank --help
 
