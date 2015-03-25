@@ -45,6 +45,7 @@ Documentation
    algorithms
    analysis
    benchmarks
+   references
    acknowledgments
    examples/index
    whatsnew
