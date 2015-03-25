@@ -20,5 +20,5 @@ Authors
 Documentation
 -------------
 
-Go to [getyank.org](http://getyank.org)
+Documentation and examples can be found at [getyank.org](http://getyank.org)
 
