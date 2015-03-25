@@ -20,10 +20,14 @@ Features
 * Support for absolute binding free energy calculations
 * Support for transfer free energies (such as hydration free energies)
 
+Get going
+---------
+* `Get YANK now <quickstart.html>`_
+
 Get involved
 ------------
 * Download the code or fork the repo on `GitHub <https://github.com/choderalab/yank>`_
-* See YANK `action <examples/index.html>`_
+* See YANK in `action <examples/index.html>`_
 * Report a bug or request a feature on the `GitHub issue tracker <https://github.com/choderalab/yank/issues>`_
 
 --------------------------------------------------------------------------------
