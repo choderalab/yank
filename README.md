@@ -6,8 +6,6 @@ yank
 
 YANK: GPU-accelerated calculation of ligand binding affinities in implicit and explicit solvent using alchemical free energy methodologies.
 
-[GET YANK NOW](http://getyank.org)
-
 Authors
 -------
 
@@ -19,4 +17,8 @@ Authors
 * Imran Haque | ihaque@gmail.com
 * Kim Branson | kim.branson@gmail.com
 
+Documentation
+-------------
+
+Go to [getyank.org](http://getyank.org)
 
