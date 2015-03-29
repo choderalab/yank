@@ -21,6 +21,8 @@ import sphinx_rtd_theme
 import yank
 import yank.version
 
+# DEBUG: Include TODO lists for now.
+todo_include_todos = True
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
@@ -46,7 +48,7 @@ import yank.version
 # Pared-down set (for now) for Yank
 extensions = ['sphinx.ext.mathjax', 'sphinx.ext.ifconfig', 'sphinx.ext.autosummary',
               'sphinx.ext.viewcode', 'sphinx.ext.autodoc', 'sphinx.ext.viewcode',
-              'numpydoc']
+              'numpydoc', 'sphinx.ext.todo']
 
 # Napoleon settings
 napoleon_google_docstring = False

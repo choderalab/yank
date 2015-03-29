@@ -4,14 +4,18 @@
 Referenences
 ************
 
-Please cite the following papers if you use YANK or some of its features for a publication:
+Here are a list of references for the various components and algorithms used in YANK.
 
-* YANK
+.. todo:: Turn this into a hyperlinked bibliography.
+
+YANK
+""""
 
   Parton DL, Shirts MR, Wang K, Eastman P, Friedrichs M, Pande VS, Branson K, Mobley DL, Chodera JD. YANK: A GPU-accelerated platform for alchemical free energy calculations.
   In preparation.
 
-* OpenMM GPU-accelerated molecular mechanics library
+OpenMM GPU-accelerated molecular mechanics library
+""""""""""""""""""""""""""""""""""""""""""""""""""
 
   Friedrichs MS, Eastman P, Vaidyanathan V, Houston M, LeGrand S, Beberg AL, Ensign DL, Bruns CM, and Pande VS. Accelerating molecular dynamic simulations on graphics processing units.
   J. Comput. Chem. 30:864, 2009.
@@ -33,19 +37,22 @@ Please cite the following papers if you use YANK or some of its features for a p
   Hardware Independent Library for High Performance Molecular Simulation. J. Chem. Theor. Comput. 2012.
   http://dx.doi.org/10.1021/ct300857j
 
-* Replica-exchange with Gibbs sampling
+Replica-exchange with Gibbs sampling
+""""""""""""""""""""""""""""""""""""
 
   Chodera JD and Shirts MR. Replica exchange and expanded ensemble simulations as Gibbs sampling: Simple improvements for enhanced mixing.
   J. Chem. Phys. 135:19410, 2011.
   http://dx.doi.org/10.1063/1.3660669
 
-* MBAR for estimation of free energies from simulation data
+MBAR for estimation of free energies from simulation data
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
   Shirts MR and Chodera JD. Statistically optimal analysis of samples from multiple equilibrium states.
   J. Chem. Phys. 129:124105, 2008.
   http://dx.doi.org/10.1063/1.2978177
 
-* Long-range dispsersion corrections for explicit solvent free energy calculations
+Long-range dispersion corrections for explicit solvent free energy calculations
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
   Shirts MR, Mobley DL, Chodera JD, and Pande VS. Accurate and efficient corrections or missing dispersion interactions in molecular simulations.
   J. Phys. Chem. 111:13052, 2007.
