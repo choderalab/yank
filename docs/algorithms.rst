@@ -4,10 +4,17 @@
 Algorithms
 **********
 
-**Anatomy of a free energy calculation**
+We describe the various components of modern alchemical free energy calculations with YANK.
+
+Solvent treatment
+=================
+
+YANK provides the capability for performing alchemical free energy calculations in both explicit solvent (where a water model such as TIP3P :cite:`Jorgensen1983` or TIP4P-Ew :cite:`Horn2004` is used to fill the simulation box with solvent).
 
 Restraint potential and standard state correction
 =================================================
+
+For **implicit solvent** calculations
 
 Alchemical intermediates
 ========================
@@ -41,6 +48,5 @@ Will extract information from `here <http://nbviewer.ipython.org/github/choderal
 Simulation health report
 ========================
 
-Autotuning alchemical protocol
-==============================
-
+Autotuning the alchemical protocol
+==================================

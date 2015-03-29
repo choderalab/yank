@@ -48,7 +48,7 @@ todo_include_todos = True
 # Pared-down set (for now) for Yank
 extensions = ['sphinx.ext.mathjax', 'sphinx.ext.ifconfig', 'sphinx.ext.autosummary',
               'sphinx.ext.viewcode', 'sphinx.ext.autodoc', 'sphinx.ext.viewcode',
-              'numpydoc', 'sphinx.ext.todo']
+              'numpydoc', 'sphinx.ext.todo', 'sphinxcontrib.bibtex']
 
 # Napoleon settings
 napoleon_google_docstring = False

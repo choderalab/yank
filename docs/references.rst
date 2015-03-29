@@ -59,3 +59,10 @@ Long-range dispersion corrections for explicit solvent free energy calculations
   http://dx.doi.org/10.1021/jp0735987
 
 
+   Bibliography
+   ############
+
+.. bibliography:: references.bib
+   :style: unsrt
+
+

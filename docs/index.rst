@@ -50,6 +50,7 @@ Documentation
    examples/index
    whatsnew
    faq
+   zbibliography
 
 API Reference
 -------------
