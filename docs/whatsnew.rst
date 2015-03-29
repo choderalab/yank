@@ -1,8 +1,10 @@
-***********
-What's New?
-***********
+***************
+Release history
+***************
 
-These are new features and improvements of note in each release.
+This section features and improvements of note in each release.
+
+The full release history can be viewed `at the github yank releases page <https://github.com/choderalab/yank/releases>`_.
 
 v0.6.1 (development)
 ------------------
