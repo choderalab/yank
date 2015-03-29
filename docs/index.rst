@@ -22,7 +22,7 @@ Features
 
 Get going
 ---------
-* `Get YANK now <quickstart.html>`_
+* `Get YANK up and running now <quickstart.html>`_
 
 Get involved
 ------------
