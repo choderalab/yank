@@ -52,10 +52,14 @@ The modified Generalized Born contribution to the potential energy is given by :
 
 where the indices *i* and *j* run over all particles, :math:`\epsilon_\mathit{solute}` and :math:`\epsilon_\mathit{solvent}` are the dielectric constants of the solute and solvent respectively, :math:`q_i` is the charge of particle *i*\ , and :math:`||x_i - x_j||_2` is the distance between particles *i* and *j*.
 The electrostatic constant :math:`C` is equal to 138.935485 nm kJ/mol/e\ :sup:`2`\ .
+
+.. warning:: Add alchemical self-energy terms.
+
 The alchemical attenuation function :math:`s_{ij}(\lambda, \eta)` attenuates interactions involving softcore atoms, and is given by
 
 .. math::
-   s_{ij}(\lambda,\eta) = [ \lambda \eta_i + (1-\eta_i) ] \cdot [ \lambda \eta_j + (1-\eta_j) ]
+   s_i(\lambda,\eta) &= \lambda \eta_i + (1-\eta_i) \\
+   s_{ij}(\lambda,\eta) &= s_i(\lambda,\eta) \cdot s_j(\lambda,\eta)
 
 The alchemically-modified GB effective interaction distance function :math:`f_\text{GB}(d_{ij}, R_i, R_j; \lambda, \eta)`, which has units of distance, is defined as
 
@@ -84,10 +88,12 @@ where :math:`\theta`\ (\ *r*\ ) is a step function that excludes the interior of
 The alchemically-modified surface area potential term is a modified form of the term given by :cite:`Schaefer1998`\ :cite:`Ponder`
 
 .. math::
-   U_{SA}(x;\lambda) = \epsilon_{SA} \cdot 4\pi \sum_{i} \left[\lambda \eta_i + (1-\eta_i)\right] {\left({r}_{i}+{r}_{\mathit{solvent}}\right)}^{2}{\left(\frac{{r}_{i}}{{R}_{i}}\right)}^{6}
+   U_{SA}(x;\lambda) = \epsilon_{SA} \cdot 4\pi \sum_{i} s_i(\lambda,\eta) {\left({r}_{i}+{r}_{\mathit{solvent}}\right)}^{2}{\left(\frac{{r}_{i}}{{R}_{i}}\right)}^{6}
 
 where :math:`\epsilon_{SA}` is the surface area energy penalty, :math:`r_i` is the atomic radius of particle *i*\ , :math:`r_i` is its atomic radius, and :math:`r_\mathit{solvent}` is the solvent radius, which is taken to be 0.14 nm.
 The default value for the surface area penalty :math:`\epsilon_{SA}` is 2.25936 kJ/mol/nm\ :sup:`2`\ .
+
+.. warning:: Add description of other GBSA forms.
 
 Explicit solvent
 ----------------
@@ -173,6 +179,8 @@ Generalized hybrid Monte Carlo
 
 Automated equilibration detection
 =================================
+
+Will extract information from `here <http://nbviewer.ipython.org/github/choderalab/simulation-health-reports/blob/master/examples/yank/YANK%20analysis%20example.ipynb>`_.
 
 Analysis with MBAR
 ==================
