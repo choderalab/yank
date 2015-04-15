@@ -1,12 +1,10 @@
 .. _installation:
 
-############
 Installation
-############
+************
 
-***********************
 Installing via `conda`
-***********************
+======================
 
 The simplest way to install YANK is via the `conda <http://www.continuum.io/blog/conda>`_  package manager.
 Packages are provided on the `omnia binstar channel <http://binstar.org/omnia>`_ for Linux, OS X, and Win platforms.
@@ -24,7 +22,7 @@ If not, but you have the ``pip`` package manager installed (to access packages f
 |
 
 Release build
-=============
+-------------
 
 You can install the latest stable release build of YANK via the ``conda`` package with
 
@@ -39,8 +37,21 @@ This version is recommended for all users not actively developing new algorithms
 
 |
 
-Upgrading your instalation
-==========================
+Development build
+-----------------
+
+The bleeding-edge, absolute latest, very likely unstable development build of YANK is pushed to `binstar <https://binstar.org/omnia/yank>`_ with each GitHub commit, and can be obtained by
+
+.. code-block:: none
+
+   $ conda config --add channels http://conda.binstar.org/omnia
+   $ conda install yank-dev
+
+.. warning:: Development builds may be unstable and are generally subjected to less testing than releases.  Use at your own risk!
+
+
+Upgrading your installation
+---------------------------
 
 To update an earlier ``conda`` installation of YANK to the latest release version, you can use ``conda update``:
 
@@ -52,20 +63,8 @@ To update an earlier ``conda`` installation of YANK to the latest release versio
 
 .. _yank-dev-conda-package:
 
-Development build
-=================
-
-The bleeding-edge, absolute latest, very likely unstable development build of YANK is pushed to `binstar <https://binstar.org/omnia/yank>`_ with each GitHub commit, and can be obtained by
-
-.. code-block:: none
-
-   $ conda config --add channels http://conda.binstar.org/omnia
-   $ conda install yank-dev
-
-.. warning:: Development builds may be unstable and are generally subjected to less testing than releases.  Use at your own risk!
-
-Testing the installation
-========================
+Testing your installation
+-------------------------
 
 Test your YANK installation to make sure everything is behaving properly on your machine:
 
@@ -75,19 +74,18 @@ Test your YANK installation to make sure everything is behaving properly on your
 
 This will not only check that installation paths are correct, but also run a battery of tests that ensure any automatically detected GPU hardware is behaving as expected.
 
-************************************
 Supported platforms and environments
-************************************
+====================================
 
 Software
-========
+--------
 
-YANK runs on Python 2.7 and Python 3.3 or 3.4.
-The developers generally use Python 2.7, on both Mac and Linux platforms.
+YANK runs on Python 2.7.
+The developers generally use Python 2.7 on both Mac and Linux platforms.
 Automated tests on Linux are performed on every GitHub commit using `Travis CI <http://travis-ci.org>`_, and release tests are performed on Mac and Linux platforms using `Jenkins <http://jenkins.choderalab.org>`_..
 
 Dependencies
-------------
+++++++++++++
 
 YANK uses a number of tools in order to allow the developers to focus on developing efficient algorithms involved in alchemical free energy calculations, rather than reinventing basic software, numerical, and molecular simulation infrastructure.
 Installation of these prerequisites by hand is not recommended---all required dependencies can be installed via the `conda <http://www.continuum.io/blog/conda>`_  package manager.
@@ -127,17 +125,17 @@ Optional
 * `scipy.weave <http://docs.scipy.org/doc/scipy-0.14.0/reference/tutorial/weave.html>`_ is an optional dependency for the replica-exchange code, though this functionality will be migrated to `cython <http://cython.org>`_ in future revisions.
 
 Hardware
-========
+--------
 
 Supported hardware
-------------------
+++++++++++++++++++
 
 YANK makes use of `openmm <http://www.openmm.org>`_, a GPU-accelerated framework for molecular simulation.
 This allows the calculations to take advantage of hardware that supports CUDA (such as NVIDIA GPUs) or OpenCL (NVIDIA and ATI GPUs, as well as some processors).
 OpenMM also supports a multithreaded CPU platform which can be used if no CUDA or OpenCL resources are available.
 
 Recommended hardware
---------------------
+++++++++++++++++++++
 
 We have found the best price/performance results are currently obtained with NVIDIA GTX-class consumer-grade cards, such as the GTX-680, GTX-780, and GTX-Titan cards.
 
@@ -145,14 +143,13 @@ Ross Walker and the Amber GPU developers maintain a set of `excellent pages with
 
 Amazon EC2 now provides `Linux GPU instances <http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/using_cluster_computing.html>`_ with high-performance GPUs and inexpensive on-demand and `spot pricing <http://aws.amazon.com/ec2/purchasing-options/spot-instances/>`_ (g2.2xlarge).  We will soon provide ready-to-use images to let you quickly get started on EC2.
 
-**********************
 Installing from source
-**********************
+======================
 
 .. note:: We recommend only developers wanting to modify the YANK code should install from source. Users who want to use the latest development version are advised to install the :ref:`Development build conda package <yank-dev-conda-package>` instead.
 
 Installing from the GitHub source repository
-============================================
+--------------------------------------------
 
 Installing from source is only recommended for developers that wish to modify YANK or the algorithms it uses.
 Installation via `conda` is preferred for all other users.
@@ -175,7 +172,7 @@ If you wish to install into a different path (often preferred for development), 
 Note that not all dependencies can be installed via ``pip``, so you will have to install dependencies if installation fails due to unmet dependencies.
 
 Testing your installation
-=========================
+-------------------------
 
 Test your YANK installation to make sure everything is behaving properly on your machine:
 

@@ -1,14 +1,19 @@
 .. _running:
 
-************
 Running YANK
 ************
 
-YANK can operate in a number of different parallelization modes:
+YANK can operate in two different parallelization modes:
 
- * In :ref:`serial mode <serial-mode>`, a single simulation is run at a time, either on the GPU or CPU.  YANK uses `OpenMM <http://openmm.org>`_ as its simulation engine, which runs fastest on modern GPUs using either the ``CUDA` or ``OpenCL`` platforms, but if you don't have a GPU, the OpenMM ``CPU`` platform will run in multithreaded mode by default.  While not as fast as `gromacs <http://www.gromacs.org>`_, this can still let you explore the features of YANK without needing a GPU.
+Serial mode
+-----------
 
- * In :ref:`mpi mode <mpi-mode>`, multiple simulations can be run at once, either on multiple GPUs or multiple CPUs using `MPI <http://www.mcs.anl.gov/research/projects/mpi/standard.html>`_. All simulations are run using the same OpenMM ``Platform`` choice (one of ``CUDA``, ``OpenCL``, ``CPU``, or ``Reference``); running simulations on a mixture of platforms is not supported at this time.
+In :ref:`serial mode <serial-mode>`, a single simulation is run at a time, either on the GPU or CPU.  YANK uses `OpenMM <http://openmm.org>`_ as its simulation engine, which runs fastest on modern GPUs using either the ``CUDA` or ``OpenCL`` platforms, but if you don't have a GPU, the OpenMM ``CPU`` platform will run in multithreaded mode by default.  While not as fast as `gromacs <http://www.gromacs.org>`_, this can still let you explore the features of YANK without needing a GPU.
+
+MPI mode
+--------
+
+In :ref:`mpi mode <mpi-mode>`, multiple simulations can be run at once, either on multiple GPUs or multiple CPUs using `MPI <http://www.mcs.anl.gov/research/projects/mpi/standard.html>`_. All simulations are run using the same OpenMM ``Platform`` choice (one of ``CUDA``, ``OpenCL``, ``CPU``, or ``Reference``); running simulations on a mixture of platforms is not supported at this time.
 
 Simulations may be started in one mode and then can be resumed using another parallelization mode or OpenMM platform.
 The NetCDF files in each ``store`` directory are platform-portable and hardware agnostic, so they can be moved from system to system if you want to start a simulation on one system and resume it elsewhere.
@@ -29,7 +34,7 @@ To get a list of all command-like options, simply use the ``--help`` flag:
 .. _serial-mode:
 
 Running in serial mode
-===========
+======================
 
 To run the simulation in serial mode, simply use ``yank run``, specifying a store directory by ``--store=dirname``:
 
