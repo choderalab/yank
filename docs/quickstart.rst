@@ -1,8 +1,7 @@
 .. _quickstart:
 
-##############################
 Quickstart (for the impatient)
-##############################
+******************************
 
 First, install the `anaconda <https://store.continuum.io/cshop/anaconda/>`_ scientific Python distribution.
 
@@ -18,20 +17,20 @@ Go to the ``examples/p-xylene-implicit`` directory to find an example of computi
 
    $ cd ~/anaconda/share/yank/examples/p-xylene-implicit
 
-Set up the free energy calculation using the ``OBC2`` implicit solvent model, specifying the residue named ``BEN`` as the ligand, selecting the temperature of 300 Kelvin, and using the diretory ``output/`` to write data to, using:
+Use the `yank prepare` command to set up an alchemical free energy calculation using the ``OBC2`` implicit solvent model, specifying the residue named ``BEN`` as the ligand, selecting the temperature of 300 Kelvin, and using the diretory ``output/`` to write out data:
 
 .. code-block:: none
 
    $ yank prepare binding amber --setupdir=setup --ligname=BEN --store=output --iterations=1000 \
      --restraints=harmonic --gbsa=OBC2 --temperature=300*kelvin --verbose
 
-To run the simulation in serial mode, use:
+Run the simulation in serial mode with:
 
 .. code-block:: none
 
    $ yank run --store=output --verbose
 
-Alternatively, to run the simulation in MPI mode, use:
+Alternatively, run the simulation in MPI mode:
 
 .. code-block:: none
 

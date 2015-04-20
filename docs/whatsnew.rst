@@ -1,11 +1,21 @@
-***********
-What's New?
-***********
+***************
+Release history
+***************
 
-These are new features and improvements of note in each release.
+This section features and improvements of note in each release.
 
-v0.9 (development)
+The full release history can be viewed `at the github yank releases page <https://github.com/choderalab/yank/releases>`_.
+
+v0.6.1 (development)
 ------------------
-- New command-line interface.
+- mpi4py automatically installed via conda
+
+v0.6.0 (development)
+------------------
+- New command-line interface
 - Sphinx-based documentation
+
+v0.5.0 (development)
+------------------
+- Release for deployment to collaborators
 
