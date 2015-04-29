@@ -19,7 +19,7 @@ requirements:
     - pymbar
     - ambermini
     - docopt
-    - gaff2xml
+    - openmoltools
     - jinja2
     - sphinxcontrib-bibtex
 
@@ -35,7 +35,7 @@ requirements:
     - pymbar
     - ambermini
     - docopt
-    - gaff2xml
+    - openmoltools
     - mpi4py
     - pyyaml
     - jinja2
