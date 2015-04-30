@@ -235,7 +235,7 @@ def setup_binding_amber(args):
 
 def setup_systembuilder(args):
     """
-    Set up ligand binding free energy calculation using OpenMM app and gaff2xml.
+    Set up ligand binding free energy calculation using OpenMM app and openmoltools.
 
     Parameters
     ----------

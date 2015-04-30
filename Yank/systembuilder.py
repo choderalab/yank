@@ -380,15 +380,15 @@ class SmallMoleculeBuilder(SystemBuilder):
     oeomega = None
     oequacpac = None
 
-    def __init__(self, molecule, parameterize='gaff2xml', parameterize_arguments=None, charge=None, molecule_name=None, **kwargs):
+    def __init__(self, molecule, parameterize='openmoltools', parameterize_arguments=None, charge=None, molecule_name=None, **kwargs):
         """
         SystemBuilder capable of parameterizing small molecules given OpenMM positions and topology.
 
         Parameters
         ----------
         molecule : openeye.oechem.OEMol
-        parameterize : str, optional, default='gaff2xml'
-           External tool used to parameterize the molecule. One of [False, 'gaff2xml'].
+        parameterize : str, optional, default='openmoltools'
+           External tool used to parameterize the molecule. One of [False, 'openmoltools'].
            If False, tool will not be called.
         parameterize_arguments : dict, optional, default=None
            Dictionary to be passed to parameterization tool.
@@ -434,24 +434,24 @@ class SmallMoleculeBuilder(SystemBuilder):
 
         # Parameterize if requested.
         if parameterize:
-            if parameterize == 'gaff2xml':
-                self._parameterize_with_gaff2xml(molecule, parameterize_arguments)
+            if parameterize == 'openmoltools':
+                self._parameterize_with_openmoltools(molecule, parameterize_arguments)
 
         return
 
-    def _parameterize_with_gaff2xml(self, molecule, charge, parameterize_arguments=dict()):
+    def _parameterize_with_openmoltools(self, molecule, charge, parameterize_arguments=dict()):
         """
-        Parameterize the molecule using gaff2xml, appending the parameters to the set of loaded parameters.
+        Parameterize the molecule using openmoltools, appending the parameters to the set of loaded parameters.
 
         Parameters
         ----------
         parameterize_arguments : dict, optional, default=None
-           Optional kwargs to be passed to gaff2xml.
+           Optional kwargs to be passed to openmoltools.
 
         """
 
-        # Attempt to import gaff2xml.
-        import gaff2xml
+        # Attempt to import openmoltools.
+        import openmoltools
 
         # Change to a temporary working directory.
         cwd = os.getcwd()
@@ -462,7 +462,7 @@ class SmallMoleculeBuilder(SystemBuilder):
         substructure_name = "MOL" # substructure name used in mol2 file
         mol2_filename = self._write_molecule(molecule, filename='tripos.mol2', substructure_name=substructure_name)
 
-        # Run antechamber via gaff2xml to generate parameters.
+        # Run antechamber via openmoltools to generate parameters.
         # TODO: We need a way to pass the net charge.
         # TODO: Can this structure be simplified?
         if 'charge_method' in parameterize_arguments:
@@ -472,17 +472,17 @@ class SmallMoleculeBuilder(SystemBuilder):
                 parameterize_arguments['net_charge'] = formal_charge
 
         if parameterize_arguments:
-            (gaff_mol2_filename, gaff_frcmod_filename) = gaff2xml.utils.run_antechamber(self._molecule_name, mol2_filename, **parameterize_arguments)
+            (gaff_mol2_filename, gaff_frcmod_filename) = openmoltools.utils.run_antechamber(self._molecule_name, mol2_filename, **parameterize_arguments)
         else:
-            (gaff_mol2_filename, gaff_frcmod_filename) = gaff2xml.utils.run_antechamber(self._molecule_name, mol2_filename)
+            (gaff_mol2_filename, gaff_frcmod_filename) = openmoltools.utils.run_antechamber(self._molecule_name, mol2_filename)
 
-        # Write out the ffxml file from gaff2xml.
+        # Write out the ffxml file from openmoltools.
         ffxml_filename = "molecule.ffxml"
         print "tripos mol2 filename: %s" % mol2_filename # DEBUG
         print "gaff mol2 filename: %s" % gaff_mol2_filename # DEBUG
         print "gaff frcmod filename: %s" % gaff_frcmod_filename # DEBUG
 
-        gaff2xml.utils.create_ffxml_file(gaff_mol2_filename, gaff_frcmod_filename, ffxml_filename)
+        openmoltools.utils.create_ffxml_file(gaff_mol2_filename, gaff_frcmod_filename, ffxml_filename)
 
         # Append the ffxml file to loaded parameters.
         self._append_ffxmls([ffxml_filename])
