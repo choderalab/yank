@@ -21,10 +21,10 @@ env:
 
   global:
     # encrypted BINSTAR_TOKEN for push of dev package to binstar
-    - secure: "JL1AOSHA0GKQi7O4MM26oJ4tTnByAM14N4Joynq/05D57tzo71nf6g+XN/4spckesckGTQhOq7LTXyNI9iPhzBARqx7eWJ//WRCQcoyZU2jKbyBMrA0Aeu8tzG/vO9dmhXT4XHSiAGG+TZ327bTfPzY9VFveNndoEgD5IA+1u1g="
+    - secure: "JJLc73pllLW3FwDxmIWxizKItLOCbYHfqIQjkRQ6Z59x5ZP2KiDh37QdsHbQ7Rbq+6g+P10odFiZ2ynnqAhs/SOVo6TNkKb0kdcNzfrlTjZLDba7Pf5y8HWAXGqwy8sQWpS8n/wdXRzG6eQ+3td2P+EaQNa1AfsoHnMFhvzrhKU="
     # encrypted AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
     - secure: "SrSd1JoI8dBXQxDAX0xBTYBinTusRBQoPETnxHrBAgKdoty1pkzaghTKNMsrGsk78iwkkj1hAyttIY9trdFQkmx+OTx0fLKFmDHsMkgko4RzTtrgLgoxuRIs/gruID2cN1XKEbxlhRmQF14+q8/X1q6iGGdYMrxo51JcYPuEOSo="
     - secure: "br6QRMYXhHltYTEh/d+zejxcunT3GsqwQvxxLmqnLxi+LIxX4j7eymR6p4fPBd5mCRxyvkQEjnSZxF6e7JlEKxWVcMG28I/dBWzVIRW3EKQQNRmyI+JL1dfNaqj68kHJD+FknBwHK9LD238JPcyqXPdVrm9iPkDijPczvPBxvDs="
 after_success:
   - echo "after_success"
-  - bash -x devtools/ci/after_sucess.sh
+  - bash devtools/ci/after_sucess.sh
