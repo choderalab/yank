@@ -46,14 +46,14 @@ yank cleanup --store=output
 
 # Set up calculation.
 echo "Setting up binding free energy calculation..."
-yank prepare binding amber --setupdir=setup --ligname=MOL --store=output --iterations=100 --restraints=harmonic --gbsa=OBC2 --temperature=300*kelvin --verbose
+yank prepare binding amber --setupdir=setup --ligname=MOL --store=output --iterations=100 --restraints=harmonic --gbsa=OBC2 --temperature=300*kelvin --minimize --verbose
 
 # Run the simulation with verbose output:
 echo "Running simulation..."
-#yank run --store=output --verbose
+yank run --store=output --verbose
 #mpirun -rmk pbs yank run --store=output --verbose --mpi
-python build_mpirun_configfile yank run --store=output --verbose --mpi
-mpirun -configfile configfile
+#build_mpirun_configfile yank run --store=output --verbose --mpi
+#mpirun -configfile configfile
 date
 
 
