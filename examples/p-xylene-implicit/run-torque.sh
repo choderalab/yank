@@ -52,8 +52,9 @@ echo "Setting up binding free energy calculation..."
 yank prepare binding amber --setupdir=setup --ligname=MOL --store=output --iterations=1 --restraints=harmonic --gbsa=OBC2 --temperature="300*kelvin" --verbose
 
 date
+yank run --store=output --verbose
 #mpirun -rmk pbs yank --mpi --verbose
-build_mpirun_configfile 'yank run --store=output --verbose --mpi'
-mpirun -configfile configfile
+#build_mpirun_configfile 'yank run --store=output --verbose --mpi'
+#mpirun -configfile configfile
 date
 
