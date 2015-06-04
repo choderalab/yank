@@ -426,6 +426,8 @@ def analyze(source_directory, verbose=False):
     phase_prefixes = ['solvent', 'complex']
     suffixes = ['explicit', 'implicit']
 
+    DeltaF_restraints = None
+    
     # Process each netcdf file.
     for phase in phase_prefixes:
         for suffix in suffixes:
@@ -438,7 +440,11 @@ def analyze(source_directory, verbose=False):
 
             # Open NetCDF file for reading.
             logger.info("Opening NetCDF trajectory file '%(fullpath)s' for reading..." % vars())
-            ncfile = netcdf.Dataset(fullpath, 'r')
+            try:
+                ncfile = netcdf.Dataset(fullpath, 'r')
+            except Exception as e:
+                print str(e)
+                raise Exception("Error opening NetCDF trajectory file '%(fullpath)s' for reading..." % vars())
 
             # DEBUG
             logger.info("dimensions:")
@@ -450,6 +456,10 @@ def analyze(source_directory, verbose=False):
             nstates = ncfile.variables['positions'].shape[1]
             natoms = ncfile.variables['positions'].shape[2]
             logger.info("Read %(niterations)d iterations, %(nstates)d states" % vars())
+
+            # Read standard state correction free energy.
+            if phase == 'complex':
+                DeltaF_restraints = ncfile.groups['metadata'].variables['standard_state_correction'][0]
 
             # Read reference PDB file.
             #if phase in ['vacuum', 'solvent']:
@@ -506,13 +516,8 @@ def analyze(source_directory, verbose=False):
     #dDeltaH = numpy.sqrt(data['vacuum']['dDeltaH']**2 + data['solvent']['dDeltaH']**2)
     #print "Enthalpy of hydration: %.3f +- %.3f kT (%.3f +- %.3f kcal/mol)" % (DeltaH, dDeltaH, DeltaH * kT / units.kilocalories_per_mole, dDeltaH * kT / units.kilocalories_per_mole)
 
-    # Read standard state correction free energy.
-    DeltaF_restraints = 0.0
-    phase = 'complex'
-    fullpath = os.path.join(source_directory, phase + '.nc')
-    ncfile = netcdf.Dataset(fullpath, 'r')
-    DeltaF_restraints = ncfile.groups['metadata'].variables['standard_state_correction'][0]
-    ncfile.close()
+    if DeltaF_restraints is None:
+        raise Exception("DeltaF_restraints not found.")
 
     # Compute binding free energy.
     DeltaF = data['solvent']['DeltaF'] - DeltaF_restraints - data['complex']['DeltaF']

@@ -5,7 +5,7 @@
 #
 
 # Set defaults
-export NITERATIONS=${NITERATIONS:=1000}
+export NITERATIONS=${NITERATIONS:=100}
 
 # Create output directory.
 if [ ! -e output ]; then
@@ -19,9 +19,12 @@ yank cleanup --store=output
 
 # Set up calculation.
 echo "Setting up binding free energy calculation..."
-yank prepare binding amber --setupdir=setup --ligname=BEN --store=output --iterations=$NITERATIONS --nbmethod=CutoffPeriodic --temperature="300*kelvin" --pressure="1*atmospheres" --equilibrate=5 --verbose
+yank prepare binding amber --setupdir=setup --ligname=BEN --store=output --iterations=$NITERATIONS --nbmethod=CutoffPeriodic --temperature="300*kelvin" --pressure="1*atmospheres" --minimize --verbose
 
 # Run the simulation with verbose output:
 echo "Running simulation..."
 yank run --store=output --verbose
 
+# Analyze the data
+echo "Analyzing data..."
+yank analyze --store=output
