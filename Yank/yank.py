@@ -341,6 +341,10 @@ class Yank(object):
         # Combine simulation options with defaults.
         options = dict(self.default_options.items() + options.items())
 
+        # DEBUG
+        print "options: "
+        print options
+
         # Set up simulation.
         # TODO: Support MPI initialization?
         if self.verbose: print "Creating replica exchange object..."

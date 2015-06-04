@@ -308,6 +308,8 @@ def dispatch_binding(args):
     options = dict()
     if args['--iterations']:
         options['number_of_iterations'] = int(args['--iterations'])
+    if args['--equilibrate']:
+        options['number_of_equilibration_iterations'] = int(args['--equilibrate'])
     if args['--online-analysis']:
         options['online_analysis'] = True
     if args['--restraints']:
