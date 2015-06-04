@@ -61,17 +61,24 @@ def show_mixing_statistics(ncfile, cutoff=0.05, nequil=0):
     niterations = ncfile.variables['states'].shape[0]
     nstates = ncfile.variables['states'].shape[1]
 
-    # Compute statistics of transitions.
+    # Compute empirical transition count matrix.
     Nij = np.zeros([nstates,nstates], np.float64)
     for iteration in range(nequil, niterations-1):
         for ireplica in range(nstates):
             istate = ncfile.variables['states'][iteration,ireplica]
             jstate = ncfile.variables['states'][iteration+1,ireplica]
-            Nij[istate,jstate] += 0.5
-            Nij[jstate,istate] += 0.5
+            Nij[istate,jstate] += 1
+
+    # Compute transition matrix estimate.
+    # TODO: Replace with maximum likelihood reversible count estimator from msmbuilder or pyemma.
     Tij = np.zeros([nstates,nstates], np.float64)
     for istate in range(nstates):
-        Tij[istate,:] = Nij[istate,:] / Nij[istate,:].sum()
+        denom = (Nij[istate,:].sum() + Nij[:,istate].sum())
+        if (denom > 0):
+            for jstate in range(nstates):
+                Tij[istate,jstate] = (Nij[istate,jstate] + Nij[jstate,istate]) / denom
+        else:
+            Tij[istate,istate] = 1.0
 
     # Print observed transition probabilities.
     print "Cumulative symmetrized state mixing transition matrix:"
@@ -100,7 +107,7 @@ def show_mixing_statistics(ncfile, cutoff=0.05, nequil=0):
     return
 
 
-def estimate_free_energies(ncfile, ndiscard=0, nuse=None):
+def estimate_free_energies(ncfile, ndiscard=0, nuse=None, g=None):
     """
     Estimate free energies of all alchemical states.
 
@@ -112,6 +119,8 @@ def estimate_free_energies(ncfile, ndiscard=0, nuse=None):
        Number of iterations to discard to equilibration
     nuse : int, optional, default=None
        Maximum number of iterations to use (after discarding)
+    g : int, optional, default=None
+       Statistical inefficiency to use if desired; if None, will be computed.
 
     TODO
     ----
@@ -165,7 +174,7 @@ def estimate_free_energies(ncfile, ndiscard=0, nuse=None):
 
     # Subsample data to obtain uncorrelated samples
     N_k = np.zeros(nstates, np.int32)
-    indices = timeseries.subsampleCorrelatedData(u_n) # indices of uncorrelated samples
+    indices = timeseries.subsampleCorrelatedData(u_n, g=g) # indices of uncorrelated samples
     #print u_n # DEBUG
     #indices = range(0,u_n.size) # DEBUG - assume samples are uncorrelated
     N = len(indices) # number of uncorrelated samples
@@ -205,7 +214,7 @@ def estimate_free_energies(ncfile, ndiscard=0, nuse=None):
     # Return free energy differences and an estimate of the covariance.
     return (Deltaf_ij, dDeltaf_ij)
 
-def estimate_enthalpies(ncfile, ndiscard=0, nuse=None):
+def estimate_enthalpies(ncfile, ndiscard=0, nuse=None, g=None):
     """
     Estimate enthalpies of all alchemical states.
 
@@ -217,6 +226,8 @@ def estimate_enthalpies(ncfile, ndiscard=0, nuse=None):
        Number of iterations to discard to equilibration
     nuse : int, optional, default=None
        Number of iterations to use (after discarding)
+    g : int, optional, default=None
+       Statistical inefficiency to use if desired; if None, will be computed.
 
     TODO
     ----
@@ -271,7 +282,7 @@ def estimate_enthalpies(ncfile, ndiscard=0, nuse=None):
 
     # Subsample data to obtain uncorrelated samples
     N_k = np.zeros(nstates, np.int32)
-    indices = timeseries.subsampleCorrelatedData(u_n) # indices of uncorrelated samples
+    indices = timeseries.subsampleCorrelatedData(u_n, g=g) # indices of uncorrelated samples
     #print u_n # DEBUG
     #indices = range(0,u_n.size) # DEBUG - assume samples are uncorrelated
     N = len(indices) # number of uncorrelated samples
@@ -429,6 +440,7 @@ def analyze(source_directory, verbose=False):
     DeltaF_restraints = None
     
     # Process each netcdf file.
+    netcdf_files_found = 0
     for phase in phase_prefixes:
         for suffix in suffixes:
             # Construct full path to NetCDF file.
@@ -457,6 +469,9 @@ def analyze(source_directory, verbose=False):
             natoms = ncfile.variables['positions'].shape[2]
             logger.info("Read %(niterations)d iterations, %(nstates)d states" % vars())
 
+            # Increment number of netcdf files found.
+            netcdf_files_found += 1
+
             # Read standard state correction free energy.
             if phase == 'complex':
                 DeltaF_restraints = ncfile.groups['metadata'].variables['standard_state_correction'][0]
@@ -475,20 +490,25 @@ def analyze(source_directory, verbose=False):
             #check_positions(ncfile)
 
             # Choose number of samples to discard to equilibration
-            # TODO: Switch to pymbar.timeseries module.
-            from pymbar import timeseries
-            u_n = extract_u_n(ncfile)
-            [nequil, g_t, Neff_max] = timeseries.detectEquilibration(u_n)
-            logger.info([nequil, Neff_max])
+            MIN_ITERATIONS = 10 # minimum number of iterations to use automatic detection
+            if niterations > MIN_ITERATIONS:
+                from pymbar import timeseries
+                u_n = extract_u_n(ncfile)
+                [nequil, g_t, Neff_max] = timeseries.detectEquilibration(u_n)
+                logger.info([nequil, Neff_max])
+            else:
+                nequil = 0
+                g_t = 1
+                Neff_max = niterations
 
             # Examine acceptance probabilities.
             show_mixing_statistics(ncfile, cutoff=0.05, nequil=nequil)
 
             # Estimate free energies.
-            (Deltaf_ij, dDeltaf_ij) = estimate_free_energies(ncfile, ndiscard = nequil)
+            (Deltaf_ij, dDeltaf_ij) = estimate_free_energies(ncfile, ndiscard = nequil, g=g_t)
 
             # Estimate average enthalpies
-            (DeltaH_i, dDeltaH_i) = estimate_enthalpies(ncfile, ndiscard = nequil)
+            (DeltaH_i, dDeltaH_i) = estimate_enthalpies(ncfile, ndiscard = nequil, g=g_t)
 
             # Accumulate free energy differences
             entry = dict()
@@ -505,6 +525,10 @@ def analyze(source_directory, verbose=False):
 
             # Close input NetCDF file.
             ncfile.close()
+
+    # Give the user a useful warning if no NetCDF files found.
+    if netcdf_files_found == 0:
+        raise Exception("No YANK output files were found in the specified store directory (%s)" % source_directory)
 
     # Compute hydration free energy (free energy of transfer from vacuum to water)
     #DeltaF = data['vacuum']['DeltaF'] - data['solvent']['DeltaF']

@@ -31,7 +31,7 @@ def run_example(path, example):
 
     # Execute one iteration of the example.
     import subprocess
-    returncode = subprocess.call('NITERATIONS=1 ./run.sh', shell=True, executable='/bin/bash')
+    returncode = subprocess.call('NITERATIONS=5 ./run.sh', shell=True, executable='/bin/bash')
 
     # Restore working directory.
     os.chdir(cwd)
