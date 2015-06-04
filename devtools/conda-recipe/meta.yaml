@@ -16,7 +16,7 @@ requirements:
     - netcdf4
     - openmm >=6.2
     - openmmtools
-    - pymbar
+    - pymbar ==2.1.0b0
     - ambermini
     - docopt
     - openmoltools
@@ -32,7 +32,7 @@ requirements:
     - netcdf4
     - openmm >=6.2
     - openmmtools
-    - pymbar
+    - pymbar ==2.1.0b0
     - ambermini
     - docopt
     - openmoltools
