@@ -27,8 +27,8 @@ Usage:
   yank [-h | --help] [-c | --cite]
   yank selftest [-v | --verbose]
   yank platforms
-  yank prepare binding amber --setupdir=DIRECTORY --ligname=RESNAME (-s=STORE | --store=STORE) [-i=NITER | --iterations=NITER] [--restraints <restraint_type>] [--randomize-ligand] [--nbmethod=METHOD] [--gbsa=GBSA] [--constraints=CONSTRAINTS] [--temperature=TEMPERATURE] [--pressure=PRESSURE] [--minimize] [-v | --verbose]
-  yank prepare binding systembuilder --ligand=FILENAME --receptor=FILENAME [-i=NITER | --iterations=NITER] [--restraints <restraint_type>] [--randomize-ligand] [--nbmethod=METHOD] [--gbsa=GBSA] [--constraints=CONSTRAINTS] [--temperature=TEMPERATURE] [--pressure=PRESSURE] [-v | --verbose]
+  yank prepare binding amber --setupdir=DIRECTORY --ligname=RESNAME (-s=STORE | --store=STORE) [-i=NITER | --iterations=NITER] [--equilibrate=NEQUIL] [--restraints <restraint_type>] [--randomize-ligand] [--nbmethod=METHOD] [--gbsa=GBSA] [--constraints=CONSTRAINTS] [--temperature=TEMPERATURE] [--pressure=PRESSURE] [--minimize] [-v | --verbose]
+  yank prepare binding systembuilder --ligand=FILENAME --receptor=FILENAME [-i=NITER | --iterations=NITER] [--equilibrate=NEQUIL] [--restraints <restraint_type>] [--randomize-ligand] [--nbmethod=METHOD] [--gbsa=GBSA] [--constraints=CONSTRAINTS] [--temperature=TEMPERATURE] [--pressure=PRESSURE] [-v | --verbose]
   yank run (-s=STORE | --store=STORE) [-m | --mpi] [-i=NITER | --iterations=NITER] [--platform=PLATFORM] [--phase=PHASE] [-o | --online-analysis] [-v | --verbose]
   yank status (-s=STORE | --store=STORE) [-v | --verbose]
   yank analyze (-s STORE | --store=STORE) [-v | --verbose]
@@ -52,6 +52,7 @@ General options:
   -s=STORE, --store=STORE       Storage directory for NetCDF data files.
   -o, --online-analysis         Enable on-the-fly analysis
   --platform=PLATFORM           OpenMM Platform to use (Reference, CPU, OpenCL, CUDA)
+  --equilibrate=NEQUIL          Number of equilibration iterations
   --minimize                    Minimize configurations before running simulation.
   -m, --mpi                     Use MPI to parallelize the calculation
 

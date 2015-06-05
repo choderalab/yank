@@ -28,3 +28,7 @@ yank run --store=output --verbose
 # Analyze the simulation
 echo "Analyzing simulation..."
 yank analyze --store=output --verbose
+
+# Analyze the data
+echo "Analyzing data..."
+yank analyze --store=output
