@@ -55,15 +55,17 @@ def config_root_logger(verbose, log_file_path=None, overwrite=False):
             raise OverwriteLogException('Attempted to overwrite logging configuration.')
 
     # Configure verbosity of stdout and stderr messages
+    log_format = '%(name)s - %(levelname)s - %(message)s'
     if verbose:
-        logging.basicConfig(level=logging.DEBUG)
+        logging.basicConfig(level=logging.DEBUG, format=log_format)
     else:
-        logging.basicConfig(level=logging.INFO)
+        logging.basicConfig(level=logging.INFO, format=log_format)
 
     # Add file handler to root logger
     if log_file_path is not None:
         file_handler = logging.FileHandler(log_file_path)
         file_handler.setLevel(logging.DEBUG)
+        file_handler.setFormatter(logging.Formatter('%(asctime)s - ' + log_format))
         logging.getLogger().addHandler(file_handler)
 
 def get_data_filename(relative_path):
