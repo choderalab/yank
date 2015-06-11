@@ -1,5 +1,4 @@
 import os
-import sys
 import logging
 
 from pkg_resources import resource_filename
