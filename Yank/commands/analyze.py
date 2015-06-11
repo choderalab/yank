@@ -13,6 +13,7 @@ Analyze YANK output file.
 # MODULE IMPORTS
 #=============================================================================================
 
+from yank import utils
 
 #=============================================================================================
 # COMMAND DISPATCH
@@ -20,5 +21,7 @@ Analyze YANK output file.
 
 def dispatch(args):
     from yank import analyze
-    analyze.analyze(args['--store'], verbose=args['--verbose'])
+    verbose = args['--verbose']
+    utils.config_root_logger(verbose)
+    analyze.analyze(args['--store'], verbose=verbose)
     return True

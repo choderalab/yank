@@ -19,6 +19,7 @@ from simtk import openmm
 from simtk import unit
 from simtk.openmm import app
 
+from yank import utils
 from yank.yank import Yank # TODO: Fix this weird import path to something more sane, like 'from yank import Yank'
 from yank.repex import ThermodynamicState # TODO: Fix this weird import path to something more sane, like 'from yank.repex import ThermodynamicState'
 
@@ -269,6 +270,8 @@ def dispatch_binding(args):
     """
 
     verbose = args['--verbose']
+    store_dir = args['--store']
+    utils.config_root_logger(verbose, log_file_path=os.path.join(store_dir, 'prepare.log'))
 
     #
     # Determine simulation options.
@@ -302,7 +305,7 @@ def dispatch_binding(args):
             print "  solvent and ions : %9d" % len(atom_indices[phase]['solvent'])
 
     # Initialize YANK object.
-    yank = Yank(args['--store'], verbose=verbose)
+    yank = Yank(store_dir, verbose=verbose)
 
     # Set options.
     options = dict()

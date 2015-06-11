@@ -427,9 +427,6 @@ def analyze(source_directory, verbose=False):
        If True, verbose output will be generated.
 
     """
-    # Turn on debug info.
-    # TODO: Control verbosity of logging output using verbose optional flag.
-    logging.basicConfig(level=logging.DEBUG)
 
     # Storage for different phases.
     data = dict()
