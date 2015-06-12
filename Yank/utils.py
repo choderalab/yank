@@ -21,14 +21,14 @@ class OverwriteLogException(Exception):
 def config_root_logger(verbose, log_file_path=None, overwrite=False):
     """Setup the the root logger's configuration.
 
-     The log messages are saved in the file specified by log_file_path (if not
-     None) and printed. Note that logging use sys.stdout to print logging.INFO
-     messages, and stderr for the others. The root logger's configuration is
-     inherited by the others module loggers created by logging.getLogger(name).
+     The log messages are printed in the terminal and saved in the file specified
+     by log_file_path (if not None) and printed. Note that logging use sys.stdout
+     to print logging.INFO messages, and stderr for the others. The root logger's
+     configuration is inherited by the loggers created by logging.getLogger(name).
 
-     In order to overwrite the root logger's configuration one must set
-     overwrite=True or an Exception will be raised. This helps to control if
-     parts of the code attempt to modify the user's configuration.
+     In order to overwrite the root logger's configuration overwrite must be True
+     or an Exception will be raised. This helps to control if parts of the code
+     attempt to modify the user's configuration.
 
     Parameters
     ----------
@@ -77,10 +77,22 @@ def config_root_logger(verbose, log_file_path=None, overwrite=False):
         else:
             raise OverwriteLogException('Attempted to overwrite logging configuration.')
 
+    # If this is a worker node, don't save any log file
+    try:
+        from mpi4py import MPI
+        rank = MPI.COMM_WORLD.rank
+    except ImportError:
+        rank = 0
+
+    if rank != 0:
+        log_file_path = None
+
     # Add handler for stdout and stderr messages
     terminal_handler = logging.StreamHandler()
     terminal_handler.setFormatter(TerminalFormatter())
-    if verbose:
+    if rank != 0:
+        terminal_handler.setLevel(logging.WARNING)
+    elif verbose:
         terminal_handler.setLevel(logging.DEBUG)
     else:
         terminal_handler.setLevel(logging.INFO)
@@ -95,10 +107,10 @@ def config_root_logger(verbose, log_file_path=None, overwrite=False):
         logging.root.addHandler(file_handler)
 
     # Do not handle logging.DEBUG at all if unnecessary
-    if verbose or log_file_path is not None:
+    if log_file_path is not None:
         logging.root.setLevel(logging.DEBUG)
     else:
-        logging.root.setLevel(logging.INFO)
+        logging.root.setLevel(terminal_handler.level)
 
 def get_data_filename(relative_path):
     """Get the full path to one of the reference files shipped for testing
