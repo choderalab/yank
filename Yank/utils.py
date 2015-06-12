@@ -41,32 +41,64 @@ def config_root_logger(verbose, log_file_path=None, overwrite=False):
         logging.DEBUG or higher are saved.
     overwrite : bool, optional, default = False
         Set to True to force overwriting an eventual existing configuration. An
-        attempt to do so when overwrite=False raises an Exception.
+        attempt to do so when overwrite=False raises an OverwriteLogException.
 
+    Raises
+    ------
+    OverwriteLogException
+        If the function is called with overwrite=False and logging.root has at
+        least one handler.
     """
+
+    class TerminalFormatter(logging.Formatter):
+        """
+        Simplified format for INFO level log messages.
+
+        """
+
+        # This is the cleanest way I found to make the code compatible with both
+        # Python 2 and Python 3
+        info_fmt = logging.Formatter('%(message)s')
+        default_fmt = logging.Formatter('%(name)s - %(levelname)s - %(message)s')
+
+        def format(self, record):
+            if record.levelno == logging.INFO:
+                return self.info_fmt.format(record)
+            else:
+                return self.default_fmt.format(record)
+
     # Check if root logger is already configured
-    n_handlers = len(logging.getLogger().handlers)
+    n_handlers = len(logging.root.handlers)
     if n_handlers > 0:
         if overwrite:
-            root_logger = logging.getLogger()
+            root_logger = logging.root
             for i in xrange(n_handlers):
                 root_logger.removeHandler(root_logger.handlers[0])
         else:
             raise OverwriteLogException('Attempted to overwrite logging configuration.')
 
-    # Configure verbosity of stdout and stderr messages
-    log_format = '%(name)s - %(levelname)s - %(message)s'
+    # Add handler for stdout and stderr messages
+    terminal_handler = logging.StreamHandler()
+    terminal_handler.setFormatter(TerminalFormatter())
     if verbose:
-        logging.basicConfig(level=logging.DEBUG, format=log_format)
+        terminal_handler.setLevel(logging.DEBUG)
     else:
-        logging.basicConfig(level=logging.INFO, format=log_format)
+        terminal_handler.setLevel(logging.INFO)
+    logging.root.addHandler(terminal_handler)
 
     # Add file handler to root logger
     if log_file_path is not None:
+        file_format = '%(asctime)s - %(levelname)s: %(name)s: %(message)s'
         file_handler = logging.FileHandler(log_file_path)
         file_handler.setLevel(logging.DEBUG)
-        file_handler.setFormatter(logging.Formatter('%(asctime)s - ' + log_format))
-        logging.getLogger().addHandler(file_handler)
+        file_handler.setFormatter(logging.Formatter(file_format))
+        logging.root.addHandler(file_handler)
+
+    # Do not handle logging.DEBUG at all if unnecessary
+    if verbose or log_file_path is not None:
+        logging.root.setLevel(logging.DEBUG)
+    else:
+        logging.root.setLevel(logging.INFO)
 
 def get_data_filename(relative_path):
     """Get the full path to one of the reference files shipped for testing
