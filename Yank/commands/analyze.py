@@ -21,7 +21,6 @@ from yank import utils
 
 def dispatch(args):
     from yank import analyze
-    verbose = args['--verbose']
-    utils.config_root_logger(verbose)
-    analyze.analyze(args['--store'], verbose=verbose)
+    utils.config_root_logger(args['--verbose'])
+    analyze.analyze(args['--store'])
     return True

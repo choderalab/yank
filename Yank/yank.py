@@ -21,7 +21,8 @@ import os.path
 import sys
 import copy
 import glob
-import time
+import logging
+logger = logging.getLogger(__name__)
 
 import numpy as np
 
@@ -189,12 +190,11 @@ class Yank(object):
 
         """
 
-        # DEBUG
-        print "phases: %s"  % phases
-        print "systems: %s" % systems.keys()
-        print "positions: %s" % positions.keys()
-        print "atom_indices: %s" % atom_indices.keys()
-        print "thermodynamic_state: %s" % thermodynamic_state
+        logger.debug("phases: %s"  % phases)
+        logger.debug("systems: %s" % systems.keys())
+        logger.debug("positions: %s" % positions.keys())
+        logger.debug("atom_indices: %s" % atom_indices.keys())
+        logger.debug("thermodynamic_state: %s" % thermodynamic_state)
 
         # Abort if there are files there already but initialization was requested.
         for phase in phases:
@@ -287,7 +287,7 @@ class Yank(object):
         # TODO: Do we need to include a standard state correction for other phases in periodic boxes?
         if phase == 'complex-implicit':
             # Impose restraints for complex system in implicit solvent to keep ligand from drifting too far away from receptor.
-            if self.verbose: print "Creating receptor-ligand restraints..."
+            logger.debug("Creating receptor-ligand restraints...")
             reference_positions = positions[0]
             if self.restraint_type == 'harmonic':
                 restraints = HarmonicReceptorLigandRestraint(thermodynamic_state, reference_system, reference_positions, atom_indices['receptor'], atom_indices['ligand'])
@@ -312,13 +312,13 @@ class Yank(object):
             protocols = self.default_protocols
 
         # Create alchemically-modified states using alchemical factory.
-        if self.verbose: print "Creating alchemically-modified states..."
+        logger.debug("Creating alchemically-modified states...")
         factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=atom_indices['ligand'])
         systems = factory.createPerturbedSystems(protocols[phase])
 
         # Randomize ligand position if requested, but only for implicit solvent systems.
         if self.randomize_ligand and (phase == 'complex-implicit'):
-            if self.verbose: print "Randomizing ligand positions and excluding overlapping configurations..."
+            logger.debug("Randomizing ligand positions and excluding overlapping configurations...")
             randomized_positions = list()
             nstates = len(systems)
             for state_index in range(nstates):
@@ -331,7 +331,7 @@ class Yank(object):
                 randomized_positions.append(new_positions)
             positions = randomized_positions
         if self.randomize_ligand and (phase == 'complex-explicit'):
-            print "WARNING: Ligand randomization requested, but will not be performed for explicit solvent simulations."
+            logger.warning("Ligand randomization requested, but will not be performed for explicit solvent simulations.")
 
         # Identify whether any atoms will be displaced via MC.
         mc_atoms = list()
@@ -343,7 +343,7 @@ class Yank(object):
 
         # Set up simulation.
         # TODO: Support MPI initialization?
-        if self.verbose: print "Creating replica exchange object..."
+        logger.debug("Creating replica exchange object...")
         store_filename = os.path.join(self._store_directory, phase + '.nc')
         self._store_filenames[phase] = store_filename
         simulation = ModifiedHamiltonianExchange(store_filename, mpicomm=mpicomm)
@@ -354,7 +354,7 @@ class Yank(object):
 
         # Initialize simulation.
         # TODO: Use the right scheme for initializing the simulation without running.
-        #if self.verbose: print "Initializing simulation..."
+        #logger.debug("Initializing simulation...")
         #simulation.run(0)
 
         # TODO: Process user-supplied options.
@@ -456,7 +456,7 @@ class Yank(object):
         # Storage for results.
         results = dict()
 
-        if self.verbose: print "Analyzing simulation data..."
+        logger.debug("Analyzing simulation data...")
 
         # Process each netcdf file in output directory.
         for phase in self._phases:

@@ -447,7 +447,7 @@ def lambda_trace(reference_system, positions, receptor_atoms, ligand_atoms, plat
         alchemical_system = factory.createPerturbedSystem(AlchemicalState(0, lambda_value, lambda_value, lambda_value))
         lambda_i[i] = lambda_value
         u_i[i] = compute_potential(alchemical_system, positions, platform)
-        print "%12.9f %24.8f kcal/mol" % (lambda_i[i], u_i[i] / units.kilocalories_per_mole)
+        logger.info("%12.9f %24.8f kcal/mol" % (lambda_i[i], u_i[i] / units.kilocalories_per_mole))
 
     # Write figure as PDF.
     import pylab

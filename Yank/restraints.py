@@ -538,7 +538,7 @@ class FlatBottomReceptorLigandRestraint(ReceptorLigandRestraint):
             r0 = 2*sigma + 5.0 * units.angstroms
         else:
             DEFAULT_DISTANCE = 15.0 * units.angstroms
-            print "WARNING: receptor only contains %d atoms; using default distance of %s" % (natoms, str(DEFAULT_DISTANCE))
+            logger.warning("Receptor only contains %d atoms; using default distance of %s" % (natoms, str(DEFAULT_DISTANCE)))
             r0 = DEFAULT_DISTANCE
 
         logger.debug("restraint distance r0 = %.1f A" % (r0 / units.angstroms))

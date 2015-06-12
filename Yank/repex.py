@@ -62,6 +62,9 @@ import math
 import copy
 import time
 import datetime
+import logging
+logger = logging.getLogger(__name__)
+
 import mixing._mix_replicas as _mix_replicas
 import numpy as np
 import mdtraj as md
@@ -210,8 +213,8 @@ class ThermodynamicState(object):
             #if platform and (platform != self._context.getPlatform()): # TODO: Figure out why requested and cached platforms differed in tests.
             if platform and (platform.getName() != self._context.getPlatform().getName()): # DEBUG: Only compare Platform names for now; change this later to incorporate GPU IDs.
                 # Platform differs from the one requested; destroy it.
-                print (platform.getName(), self._context.getPlatform().getName())
-                if self._verbose: print "Platform differs from the one requested; destroying and recreating..." # DEBUG
+                logger.info(platform.getName(), self._context.getPlatform().getName())
+                logger.debug("Platform differs from the one requested; destroying and recreating...")
                 del self._context, self._integrator
             else:
                 # Cached context is what we expect; do nothing.
@@ -332,7 +335,7 @@ class ThermodynamicState(object):
         try:
             potential_energy = self._compute_potential(positions, box_vectors)
         except Exception as e:
-            print e # DEBUG
+            logger.debug(e.message)
 
             # Our cached context failed, so try deleting it and creating it anew.
             self._cleanup_context()
@@ -781,7 +784,7 @@ class ReplicaExchange(object):
             for key in options.keys(): # for each provided key
                 if key in vars(self).keys(): # if this is also a simulation parameter
                     value = options[key]
-                    if self.verbose: print "from options: %s -> %s" % (key, str(value))
+                    logger.debug("from options: %s -> %s" % (key, str(value)))
                     vars(self)[key] = value # replace default simulation parameter with provided parameter
 
         # Store metadata to store in store file.
@@ -828,7 +831,7 @@ class ReplicaExchange(object):
             for key in options.keys(): # for each provided key
                 if key in vars(self).keys(): # if this is also a simulation parameter
                     value = options[key]
-                    if self.verbose: print "from options: %s -> %s" % (key, str(value))
+                    logger.debug("from options: %s -> %s" % (key, str(value)))
                     vars(self)[key] = value # replace default simulation parameter with provided parameter
 
         return
@@ -948,7 +951,7 @@ class ReplicaExchange(object):
         if niterations_to_run:
             iteration_limit = min(self.iteration + niterations_to_run, iteration_limit)
         while (self.iteration < iteration_limit):
-            if self.verbose: print "\nIteration %d / %d" % (self.iteration+1, self.number_of_iterations)
+            logger.debug("\nIteration %d / %d" % (self.iteration+1, self.number_of_iterations))
             initial_time = time.time()
 
             # Attempt replica swaps to sample from equilibrium permuation of states associated with replicas.
@@ -984,9 +987,8 @@ class ReplicaExchange(object):
             estimated_time_remaining = (final_time - run_start_time) / (self.iteration - run_start_iteration) * (self.number_of_iterations - self.iteration)
             estimated_total_time = (final_time - run_start_time) / (self.iteration - run_start_iteration) * (self.number_of_iterations)
             estimated_finish_time = final_time + estimated_time_remaining
-            if self.verbose:
-                print "Iteration took %.3f s." % elapsed_time
-                print "Estimated completion in %s, at %s (consuming total wall clock time %s)." % (str(datetime.timedelta(seconds=estimated_time_remaining)), time.ctime(estimated_finish_time), str(datetime.timedelta(seconds=estimated_total_time)))
+            logger.debug("Iteration took %.3f s." % elapsed_time)
+            logger.debug("Estimated completion in %s, at %s (consuming total wall clock time %s)." % (str(datetime.timedelta(seconds=estimated_time_remaining)), time.ctime(estimated_finish_time), str(datetime.timedelta(seconds=estimated_total_time))))
 
             # Perform sanity checks to see if we should terminate here.
             self._run_sanity_checks()
@@ -1033,8 +1035,7 @@ class ReplicaExchange(object):
         # Turn off verbosity if not master node.
         if self.mpicomm:
             # Have each node report that it is initialized.
-            if self.verbose:
-                print "Initialized node %d / %d" % (self.mpicomm.rank, self.mpicomm.size)
+            logger.debug("Initialized node %d / %d" % (self.mpicomm.rank, self.mpicomm.size))
             # Turn off verbosity for all nodes but root.
             if self.mpicomm.rank != 0:
                 self.verbose = False
@@ -1106,8 +1107,7 @@ class ReplicaExchange(object):
         # Turn off verbosity if not master node.
         if self.mpicomm:
             # Have each node report that it is initialized.
-            if self.verbose:
-                print "Initialized node %d / %d" % (self.mpicomm.rank, self.mpicomm.size)
+            logger.debug("Initialized node %d / %d" % (self.mpicomm.rank, self.mpicomm.size))
             # Turn off verbosity for all nodes but root.
             if self.mpicomm.rank != 0:
                 self.verbose = False
@@ -1134,7 +1134,7 @@ class ReplicaExchange(object):
             # Use only a single CPU thread if we are using the CPU platform.
             # TODO: Since there is an environment variable that can control this, we may want to avoid doing this.
             if (self.platform.getName() == 'CPU') and self.mpicomm:
-                if self.verbose: print "Setting 'CpuThreads' to 1 because MPI is active."
+                logger.debug("Setting 'CpuThreads' to 1 because MPI is active.")
                 self.platform.setPropertyDefaultValue('CpuThreads', '1')
 
         # Allocate storage.
@@ -1165,14 +1165,14 @@ class ReplicaExchange(object):
             self.replica_states[replica_index] = replica_index
 
         # Create cached Context objects.
-        if self.verbose: print "Creating and caching Context objects..."
+        logger.debug("Creating and caching Context objects...")
         MAX_SEED = (1<<31) - 1 # maximum seed value (max size of signed C long)
         seed = int(np.random.randint(MAX_SEED)) # TODO: Is this the right maximum value to use?
         if self.mpicomm:
             # Create cached contexts for only the states this process will handle.
             initial_time = time.time()
             for state_index in range(self.mpicomm.rank, self.nstates, self.mpicomm.size):
-                print "Node %d / %d creating Context for state %d..." % (self.mpicomm.rank, self.mpicomm.size, state_index) # DEBUG
+                logger.debug("Node %d / %d creating Context for state %d..." % (self.mpicomm.rank, self.mpicomm.size, state_index))
                 state = self.states[state_index]
                 try:
                     state._integrator = self.mm.LangevinIntegrator(state.temperature, self.collision_rate, self.timestep)
@@ -1180,25 +1180,25 @@ class ReplicaExchange(object):
                     # TODO: Also set barostat seeds, etc.
                     initial_context_time = time.time() # DEBUG
                     if self.platform:
-                        print "Node %d / %d: Using platform %s" % (self.mpicomm.rank, self.mpicomm.size, self.platform.getName())
+                        logger.debug("Node %d / %d: Using platform %s" % (self.mpicomm.rank, self.mpicomm.size, self.platform.getName()))
                         state._context = self.mm.Context(state.system, state._integrator, self.platform)
                     else:
-                        print "Node %d / %d: No platform specified." % (self.mpicomm.rank, self.mpicomm.size)
+                        logger.debug("Node %d / %d: No platform specified." % (self.mpicomm.rank, self.mpicomm.size))
                         state._context = self.mm.Context(state.system, state._integrator)
-                        print "Node %d / %d: Using platform '%s'." % (state._context.getPlatform().getName())
-                    print "Node %d / %d: Context creation took %.3f s" % (self.mpicomm.rank, self.mpicomm.size, time.time() - initial_context_time) # DEBUG
+                        logger.debug( "Node %d / %d: Using platform '%s'." % (state._context.getPlatform().getName()))
+                    logger.debug("Node %d / %d: Context creation took %.3f s" % (self.mpicomm.rank, self.mpicomm.size, time.time() - initial_context_time))
                 except Exception as e:
-                    print e
-            print "Note %d / %d: Context creation done.  Waiting for MPI barrier..." % (self.mpicomm.rank, self.mpicomm.size) # DEBUG
+                    logger.warning(e.message)
+            logger.debug("Note %d / %d: Context creation done.  Waiting for MPI barrier..." % (self.mpicomm.rank, self.mpicomm.size))
             self.mpicomm.barrier()
             final_time = time.time()
             elapsed_time = final_time - initial_time
-            print "Barrier complete. Caching all context objects took %.3f s." % elapsed_time # DEBUG
+            logger.debug("Barrier complete. Caching all context objects took %.3f s." % elapsed_time)
         else:
             # Serial version.
             initial_time = time.time()
             for (state_index, state) in enumerate(self.states):
-                if self.verbose: print "Creating Context for state %d..." % state_index
+                logger.debug("Creating Context for state %d..." % state_index)
                 state._integrator = self.mm.LangevinIntegrator(state.temperature, self.collision_rate, self.timestep)
                 state._integrator.setRandomNumberSeed(seed)
                 initial_context_time = time.time() # DEBUG
@@ -1206,11 +1206,11 @@ class ReplicaExchange(object):
                     state._context = self.mm.Context(state.system, state._integrator, self.platform)
                 else:
                     state._context = self.mm.Context(state.system, state._integrator)
-                if self.verbose: print "Using platform '%s'." % (state._context.getPlatform().getName())
-                if self.verbose: print "Context creation took %.3f s" % (time.time() - initial_context_time) # DEBUG
+                logger.debug("Using platform '%s'." % (state._context.getPlatform().getName()))
+                logger.debug("Context creation took %.3f s" % (time.time() - initial_context_time))
         final_time = time.time()
         elapsed_time = final_time - initial_time
-        if self.verbose: print "%.3f s elapsed." % elapsed_time
+        logger.debug("%.3f s elapsed." % elapsed_time)
 
         # Resume from NetCDF file.
         self._resume_from_netcdf()
@@ -1346,7 +1346,7 @@ class ReplicaExchange(object):
         velocities_elapsed_time = setvelocities_end_time - setpositions_end_time
         integrator_elapsed_time = integrator_end_time - setvelocities_end_time
         getstate_elapsed_time = getstate_end_time - integrator_end_time
-        if self.verbose: print "Replica %d/%d: integrator elapsed time %.3f s (positions %.3f s | velocities %.3f s | integrate+getstate %.3f s)." % (replica_index, self.nreplicas, elapsed_time, positions_elapsed_time, velocities_elapsed_time, integrator_elapsed_time+getstate_elapsed_time)
+        logger.debug("Replica %d/%d: integrator elapsed time %.3f s (positions %.3f s | velocities %.3f s | integrate+getstate %.3f s)." % (replica_index, self.nreplicas, elapsed_time, positions_elapsed_time, velocities_elapsed_time, integrator_elapsed_time+getstate_elapsed_time))
 
         return elapsed_time
 
@@ -1364,16 +1364,16 @@ class ReplicaExchange(object):
         """
 
         # Propagate all replicas.
-        if self.verbose: print "Propagating all replicas for %.3f ps..." % (self.nsteps_per_iteration * self.timestep / unit.picoseconds)
+        logger.debug("Propagating all replicas for %.3f ps..." % (self.nsteps_per_iteration * self.timestep / unit.picoseconds))
 
         # Run just this node's share of states.
-        if self.verbose and (self.mpicomm.rank == 0): print "Running trajectories..."
+        logger.debug("Running trajectories...")
         start_time = time.time()
         # replica_lookup = { self.replica_states[replica_index] : replica_index for replica_index in range(self.nstates) } # replica_lookup[state_index] is the replica index currently at state 'state_index' # requires Python 2.7 features
         replica_lookup = dict( (self.replica_states[replica_index], replica_index) for replica_index in range(self.nstates) ) # replica_lookup[state_index] is the replica index currently at state 'state_index' # Python 2.6 compatible
         replica_indices = [ replica_lookup[state_index] for state_index in range(self.mpicomm.rank, self.nstates, self.mpicomm.size) ] # list of replica indices for this node to propagate
         for replica_index in replica_indices:
-            if self.verbose: print "Node %3d/%3d propagating replica %3d state %3d..." % (self.mpicomm.rank, self.mpicomm.size, replica_index, self.replica_states[replica_index]) # DEBUG
+            logger.debug("Node %3d/%3d propagating replica %3d state %3d..." % (self.mpicomm.rank, self.mpicomm.size, replica_index, self.replica_states[replica_index]))
             self._propagate_replica(replica_index)
         end_time = time.time()
         elapsed_time = end_time - start_time
@@ -1384,11 +1384,11 @@ class ReplicaExchange(object):
             end_time = time.time()
             elapsed_time = end_time - start_time
             barrier_wait_times = elapsed_time - node_elapsed_times
-            print "Running trajectories: elapsed time %.3f s (barrier time min %.3f s | max %.3f s | avg %.3f s)" % (elapsed_time, barrier_wait_times.min(), barrier_wait_times.max(), barrier_wait_times.mean())
-            print "Total time spent waiting for GPU: %.3f s" % (node_elapsed_times.sum())
+            logger.debug("Running trajectories: elapsed time %.3f s (barrier time min %.3f s | max %.3f s | avg %.3f s)" % (elapsed_time, barrier_wait_times.min(), barrier_wait_times.max(), barrier_wait_times.mean()))
+            logger.debug("Total time spent waiting for GPU: %.3f s" % (node_elapsed_times.sum()))
 
         # Send final configurations and box vectors back to all nodes.
-        if self.verbose and (self.mpicomm.rank == 0): print "Synchronizing trajectories..."
+        logger.debug("Synchronizing trajectories...")
         start_time = time.time()
         replica_indices_gather = self.mpicomm.allgather(replica_indices)
         replica_positions_gather = self.mpicomm.allgather([ self.replica_positions[replica_index] for replica_index in replica_indices ])
@@ -1398,7 +1398,7 @@ class ReplicaExchange(object):
                 self.replica_positions[replica_index] = replica_positions_gather[source][index]
                 self.replica_box_vectors[replica_index] = replica_box_vectors_gather[source][index]
         end_time = time.time()
-        if self.verbose and (self.mpicomm.rank == 0): print "Synchronizing configurations and box vectors: elapsed time %.3f s" % (end_time - start_time)
+        logger.debug("Synchronizing configurations and box vectors: elapsed time %.3f s" % (end_time - start_time))
 
         return
 
@@ -1409,7 +1409,7 @@ class ReplicaExchange(object):
         """
 
         # Propagate all replicas.
-        if self.verbose: print "Propagating all replicas for %.3f ps..." % (self.nsteps_per_iteration * self.timestep / unit.picoseconds)
+        logger.debug("Propagating all replicas for %.3f ps..." % (self.nsteps_per_iteration * self.timestep / unit.picoseconds))
         for replica_index in range(self.nstates):
             self._propagate_replica(replica_index)
 
@@ -1435,7 +1435,7 @@ class ReplicaExchange(object):
         elapsed_time = end_time - start_time
         time_per_replica = elapsed_time / float(self.nstates)
         ns_per_day = self.timestep * self.nsteps_per_iteration / time_per_replica * 24*60*60 / unit.nanoseconds
-        if self.verbose: print "Time to propagate all replicas: %.3f s (%.3f per replica, %.3f ns/day)." % (elapsed_time, time_per_replica, ns_per_day)
+        logger.debug("Time to propagate all replicas: %.3f s (%.3f per replica, %.3f ns/day)." % (elapsed_time, time_per_replica, ns_per_day))
 
         return
 
@@ -1475,7 +1475,7 @@ class ReplicaExchange(object):
 
         # Minimize
         if self.minimize:
-            if self.verbose: print "Minimizing all replicas..."
+            logger.debug("Minimizing all replicas...")
 
             if self.mpicomm:
                 # MPI implementation.
@@ -1483,14 +1483,14 @@ class ReplicaExchange(object):
                 # Minimize this node's share of replicas.
                 start_time = time.time()
                 for replica_index in range(self.mpicomm.rank, self.nstates, self.mpicomm.size):
-                    if self.verbose and (self.mpicomm.rank == 0): print "node %d / %d : minimizing replica %d / %d" % (self.mpicomm.rank, self.mpicomm.size, replica_index, self.nstates)
+                    logger.debug("node %d / %d : minimizing replica %d / %d" % (self.mpicomm.rank, self.mpicomm.size, replica_index, self.nstates))
                     self._minimize_replica(replica_index)
                 end_time = time.time()
                 self.mpicomm.barrier()
-                if self.verbose and (self.mpicomm.rank == 0): print "Running trajectories: elapsed time %.3f s" % (end_time - start_time)
+                logger.debug("Running trajectories: elapsed time %.3f s" % (end_time - start_time))
 
                 # Send final configurations and box vectors back to all nodes.
-                if self.verbose and (self.mpicomm.rank == 0): print "Synchronizing trajectories..."
+                logger.debug("Synchronizing trajectories...")
                 replica_positions_gather = self.mpicomm.allgather(self.replica_positions[self.mpicomm.rank:self.nstates:self.mpicomm.size])
                 replica_box_vectors_gather = self.mpicomm.allgather(self.replica_box_vectors[self.mpicomm.rank:self.nstates:self.mpicomm.size])        
                 for replica_index in range(self.nstates):
@@ -1498,18 +1498,18 @@ class ReplicaExchange(object):
                     index = replica_index // self.mpicomm.size # index within trajectory batch
                     self.replica_positions[replica_index] = replica_positions_gather[source][index]
                     self.replica_box_vectors[replica_index] = replica_box_vectors_gather[source][index]
-                if self.verbose and (self.mpicomm.rank == 0): print "Synchronizing configurations and box vectors: elapsed time %.3f s" % (end_time - start_time)
+                logger.debug("Synchronizing configurations and box vectors: elapsed time %.3f s" % (end_time - start_time))
 
             else:
                 # Serial implementation.
                 for replica_index in range(self.nstates):
-                    if self.verbose: print "minimizing replica %d / %d" % (replica_index, self.nstates)
+                    logger.debug("minimizing replica %d / %d" % (replica_index, self.nstates))
                     self._minimize_replica(replica_index)
 
         # Equilibrate
         production_timestep = self.timestep
         for iteration in range(self.number_of_equilibration_iterations):
-            if self.verbose: print "equilibration iteration %d / %d" % (iteration, self.number_of_equilibration_iterations)
+            logger.debug("equilibration iteration %d / %d" % (iteration, self.number_of_equilibration_iterations))
             self._propagate_replicas()
         self.timestep = production_timestep
             
@@ -1528,7 +1528,7 @@ class ReplicaExchange(object):
 
         start_time = time.time()
         
-        if self.verbose: print "Computing energies..."
+        logger.debug("Computing energies...")
 
         if self.mpicomm:
             # MPI version.
@@ -1554,7 +1554,7 @@ class ReplicaExchange(object):
         end_time = time.time()
         elapsed_time = end_time - start_time
         time_per_energy= elapsed_time / float(self.nstates)**2
-        if self.verbose: print "Time to compute all energies %.3f s (%.3f per energy calculation)." % (elapsed_time, time_per_energy)
+        logger.debug("Time to compute all energies %.3f s (%.3f per energy calculation)." % (elapsed_time, time_per_energy))
 
         return
 
@@ -1573,7 +1573,7 @@ class ReplicaExchange(object):
         nswap_attempts = self.nstates**5 # number of swaps to attempt (ideal, but too slow!)
         nswap_attempts = self.nstates**3 # best compromise for pure Python?
         
-        if self.verbose: print "Will attempt to swap all pairs of replicas, using a total of %d attempts." % nswap_attempts
+        logger.debug("Will attempt to swap all pairs of replicas, using a total of %d attempts." % nswap_attempts)
 
         # Attempt swaps to mix replicas.
         for swap_attempt in range(nswap_attempts):
@@ -1634,7 +1634,7 @@ class ReplicaExchange(object):
 
         """
 
-        if self.verbose: print "Will attempt to swap only neighboring replicas."
+        logger.debug("Will attempt to swap only neighboring replicas.")
 
         # Attempt swaps of pairs of replicas using traditional scheme (e.g. [0,1], [2,3], ...)
         offset = np.random.randint(2) # offset is 0 or 1
@@ -1682,7 +1682,7 @@ class ReplicaExchange(object):
             self.replica_states = self.mpicomm.bcast(self.replica_states, root=0)
             return
 
-        if self.verbose: print "Mixing replicas..."        
+        logger.debug("Mixing replicas...")
 
         # Reset storage to keep track of swap attempts this iteration.
         self.Nij_proposed[:,:] = 0
@@ -1700,7 +1700,7 @@ class ReplicaExchange(object):
                 else:
                     self._mix_all_replicas_weave()
             except ValueError as e:
-                print e.message
+                logger.warning(e.message)
                 self._mix_all_replicas()
         elif self.replica_mixing_scheme == 'none':
             # Don't mix replicas.
@@ -1714,7 +1714,7 @@ class ReplicaExchange(object):
         nswaps_accepted = self.Nij_accepted.sum()
         swap_fraction_accepted = 0.0
         if (nswaps_attempted > 0): swap_fraction_accepted = float(nswaps_accepted) / float(nswaps_attempted);            
-        if self.verbose: print "Accepted %d / %d attempted swaps (%.1f %%)" % (nswaps_accepted, nswaps_attempted, swap_fraction_accepted * 100.0)
+        logger.debug("Accepted %d / %d attempted swaps (%.1f %%)" % (nswaps_accepted, nswaps_attempted, swap_fraction_accepted * 100.0))
 
         # Estimate cumulative transition probabilities between all states.
         Nij_accepted = self.ncfile.variables['accepted'][:,:,:].sum(0) + self.Nij_accepted
@@ -1732,12 +1732,11 @@ class ReplicaExchange(object):
 
         if self.mpicomm:
             # Root node will share state information with all replicas.
-            if self.verbose: print "Sharing state information..."
+            logger.debug("Sharing state information...")
             self.replica_states = self.mpicomm.bcast(self.replica_states, root=0)
 
         # Report on mixing.
-        if self.verbose:
-            print "Mixing of replicas took %.3f s" % (end_time - start_time)
+        logger.debug("Mixing of replicas took %.3f s" % (end_time - start_time))
                 
         return
 
@@ -1796,28 +1795,28 @@ class ReplicaExchange(object):
         if self.show_mixing_statistics:
             # Print observed transition probabilities.
             PRINT_CUTOFF = 0.001 # Cutoff for displaying fraction of accepted swaps.
-            print "Cumulative symmetrized state mixing transition matrix:"
-            print "%6s" % "",
+            logger.info("Cumulative symmetrized state mixing transition matrix:")
+            str_row = "%6s" % ""
             for jstate in range(self.nstates):
-                print "%6d" % jstate,
-            print ""
+                str_row += "%6d" % jstate
+            logger.info(str_row)
             for istate in range(self.nstates):
-                print "%-6d" % istate,
+                str_row = "%-6d" % istate
                 for jstate in range(self.nstates):
                     P = Tij[istate,jstate]
                     if (P >= PRINT_CUTOFF):
-                        print "%6.3f" % P,
+                        str_row += "%6.3f" % P
                     else:
-                        print "%6s" % "",
-                print ""
+                        str_row += "%6s" % ""
+                logger.info(str_row)
 
         # Estimate second eigenvalue and equilibration time.
         mu = np.linalg.eigvals(Tij)
         mu = -np.sort(-mu) # sort in descending order
         if (mu[1] >= 1):
-            print "\nPerron eigenvalue is unity; Markov chain is decomposable."
+            logger.info("Perron eigenvalue is unity; Markov chain is decomposable.")
         else:
-            print "\nPerron eigenvalue is %9.5f; state equilibration timescale is ~ %.1f iterations" % (mu[1], 1.0 / (1.0 - mu[1]))
+            logger.info("Perron eigenvalue is %9.5f; state equilibration timescale is ~ %.1f iterations" % (mu[1], 1.0 / (1.0 - mu[1])))
 
     def _initialize_netcdf(self):
         """
@@ -1950,7 +1949,7 @@ class ReplicaExchange(object):
         final_time = time.time()
         sync_time = final_time - presync_time
         elapsed_time = final_time - initial_time
-        if self.verbose: print "Writing data to NetCDF file took %.3f s (%.3f s for sync)" % (elapsed_time, sync_time)
+        logger.debug("Writing data to NetCDF file took %.3f s (%.3f s for sync)" % (elapsed_time, sync_time))
 
         return
 
@@ -1967,12 +1966,12 @@ class ReplicaExchange(object):
             positions = self.replica_positions[replica_index]
             x = positions / unit.nanometers
             if np.any(np.isnan(x)):
-                print "nan encountered in replica %d positions." % replica_index
+                logger.warning("nan encountered in replica %d positions." % replica_index)
                 abort = True
 
         # Check energies.
         if np.any(np.isnan(self.u_kl)):
-            print "nan encountered in u_kl state energies"
+            logger.warning("nan encountered in u_kl state energies")
             abort = True
 
         if abort:
@@ -1988,7 +1987,7 @@ class ReplicaExchange(object):
         Store the thermodynamic states in a NetCDF file.
 
         """
-        if self.verbose: print "Storing thermodynamic states in NetCDF file..."
+        logger.debug("Storing thermodynamic states in NetCDF file...")
         initial_time = time.time()
 
         # Create a group to store state information.
@@ -2020,14 +2019,14 @@ class ReplicaExchange(object):
         ncvar_serialized_states = ncgrp_stateinfo.createVariable('systems', str, ('replica',), zlib=True)
         setattr(ncvar_serialized_states, 'long_name', "systems[state] is the serialized OpenMM System corresponding to the thermodynamic state 'state'")
         for state_index in range(self.nstates):
-            if self.verbose: print "Serializing state %d..." % state_index
+            logger.debug("Serializing state %d..." % state_index)
             serialized = self.states[state_index].system.__getstate__()
-            if self.verbose: print "Serialized state is %d B | %.3f KB | %.3f MB" % (len(serialized), len(serialized) / 1024.0, len(serialized) / 1024.0 / 1024.0)
+            logger.debug("Serialized state is %d B | %.3f KB | %.3f MB" % (len(serialized), len(serialized) / 1024.0, len(serialized) / 1024.0 / 1024.0))
             ncvar_serialized_states[state_index] = serialized
         final_time = time.time()
         elapsed_time = final_time - initial_time
 
-        if self.verbose: print "Serializing thermodynamic states took %.3f s." % elapsed_time
+        logger.debug("Serializing thermodynamic states took %.3f s." % elapsed_time)
 
         return
 
@@ -2036,7 +2035,7 @@ class ReplicaExchange(object):
         Restore the thermodynamic states from a NetCDF file.
 
         """
-        if self.verbose_root: print "Restoring thermodynamic states from NetCDF file..."
+        logger.debug("Restoring thermodynamic states from NetCDF file...")
         initial_time = time.time()
 
         # Make sure this NetCDF file contains thermodynamic state information.
@@ -2067,7 +2066,7 @@ class ReplicaExchange(object):
 
         final_time = time.time()
         elapsed_time = final_time - initial_time
-        if self.verbose_root: print "Restoring thermodynamic states from NetCDF file took %.3f s." % elapsed_time
+        logger.debug("Restoring thermodynamic states from NetCDF file took %.3f s." % elapsed_time)
 
         return True
 
@@ -2077,7 +2076,7 @@ class ReplicaExchange(object):
 
         """
 
-        if self.verbose_root: print "Storing run parameters in NetCDF file..."
+        logger.debug("Storing run parameters in NetCDF file...")
 
         # Create scalar dimension if not already present.
         if 'scalar' not in ncfile.dimensions:
@@ -2101,7 +2100,7 @@ class ReplicaExchange(object):
             if type(option_value) == bool:
                 option_value = int(option_value)
             # Store the variable.
-            if self.verbose_root: print "Storing option: %s -> %s (type: %s)" % (option_name, option_value, str(option_type))
+            logger.debug("Storing option: %s -> %s (type: %s)" % (option_name, option_value, str(option_type)))
             if type(option_value) == str:
                 ncvar = ncgrp_options.createVariable(option_name, type(option_value), 'scalar')
                 packed_data = np.empty(1, 'O')
@@ -2135,7 +2134,7 @@ class ReplicaExchange(object):
         Restore run parameters from NetCDF file.
         """
 
-        if self.verbose_root: print "Attempting to restore options from NetCDF file..."
+        logger.debug("Attempting to restore options from NetCDF file...")
 
         # Make sure this NetCDF file contains option information
         if not 'options' in ncfile.groups:
@@ -2167,7 +2166,7 @@ class ReplicaExchange(object):
                 else:
                     option_value = eval(str(option_value) + '*' + option_unit_name, unit.__dict__)
             # Store option.
-            if self.verbose_root: print "Restoring option: %s -> %s (type: %s)" % (option_name, str(option_value), type(option_value))
+            logger.debug("Restoring option: %s -> %s (type: %s)" % (option_name, str(option_value), type(option_value)))
             setattr(self, option_name, option_value)
 
         # Signal success.
@@ -2197,7 +2196,7 @@ class ReplicaExchange(object):
         """
 
         # Open NetCDF file for reading
-        if self.verbose: print "Reading NetCDF file '%s'..." % self.store_filename
+        logger.debug("Reading NetCDF file '%s'..." % self.store_filename)
         #ncfile = netcdf.NetCDFFile(self.store_filename, 'r') # Scientific.IO.NetCDF
         ncfile = netcdf.Dataset(self.store_filename, 'r') # netCDF4
 
@@ -2207,7 +2206,7 @@ class ReplicaExchange(object):
         self.iteration = ncfile.variables['positions'].shape[0] - 1
         self.nstates = ncfile.variables['positions'].shape[1]
         self.natoms = ncfile.variables['positions'].shape[2]
-        if self.verbose: print "iteration = %d, nstates = %d, natoms = %d" % (self.iteration, self.nstates, self.natoms)
+        logger.debug("iteration = %d, nstates = %d, natoms = %d" % (self.iteration, self.nstates, self.natoms))
 
         # Restore positions.
         self.replica_positions = list()
@@ -2271,21 +2270,21 @@ class ReplicaExchange(object):
             return
 
         # print header
-        print "%-24s %16s" % ("reduced potential (kT)", "current state"),
+        str_row = "%-24s %16s" % ("reduced potential (kT)", "current state")
         for state_index in range(self.nstates):
-            print " state %3d" % state_index,
-        print ""
+            str_row += " state %3d" % state_index
+        logger.info(str_row)
 
         # print energies in kT
         for replica_index in range(self.nstates):
-            print "replica %-16d %16d" % (replica_index, self.replica_states[replica_index]),
+            str_row = "replica %-16d %16d" % (replica_index, self.replica_states[replica_index])
             for state_index in range(self.nstates):
                 u = self.u_kl[replica_index,state_index]
                 if (u > 1e6):
-                    print "%10.3e" % u,
+                    str_row += "%10.3e" % u
                 else:
-                    print "%10.1f" % u,
-            print ""
+                    str_row += "%10.1f" % u
+            logger.info(str_row)
 
         return
 
@@ -2359,7 +2358,7 @@ class ReplicaExchange(object):
 
         # Online analysis can only be performed after a sufficient quantity of data has been collected.
         if (number_of_iterations_completed < self.online_analysis_min_iterations):
-            if self.verbose: print "Online analysis will be performed after %d iterations have elapsed." % self.online_analysis_min_iterations
+            logger.debug("Online analysis will be performed after %d iterations have elapsed." % self.online_analysis_min_iterations)
             self.analysis = None
             return
 
@@ -2406,9 +2405,9 @@ class ReplicaExchange(object):
         analysis['Delta_s_ij'] = Delta_s_ij
         analysis['dDelta_s_ij'] = dDelta_s_ij
 
-        def pretty_print(x):
+        def matrix2str(x):
             """
-            Print a matrix of numbers.
+            Return a print-ready string version of a matrix of numbers.
             
             Parameters
             ----------
@@ -2421,33 +2420,33 @@ class ReplicaExchange(object):
 
             """
             [nrows, ncols] = x.shape
+            str_row = ""
             for i in range(nrows):
                 for j in range(ncols):
-                    print "%8.3f" % x[i,j],
-                print ""
-            return
+                    str_row += "%8.3f" % x[i, j]
+                str_row += "\n"
+            return str_row
 
-        # Print estimate if verbosity is set.
-        if self.verbose:
-            print "================================================================================"
-            print "Online analysis estimate of free energies:"
-            print "  equilibration end: %d iterations" % t0
-            print "  statistical inefficiency: %.1f iterations" % g
-            print "  effective number of uncorrelated samples: %.1f" % Neff_max
-            print "Reduced free energy (f), enthalpy (u), and entropy (s) differences among thermodynamic states:"
-            print "Delta_f_ij"
-            pretty_print(Delta_f_ij)
-            print "dDelta_f_ij"
-            pretty_print(dDelta_f_ij)
-            print "Delta_u_ij"
-            pretty_print(Delta_u_ij)
-            print "dDelta_u_ij"
-            pretty_print(dDelta_u_ij)
-            print "Delta_s_ij"
-            pretty_print(Delta_s_ij)
-            print "dDelta_s_ij"
-            pretty_print(dDelta_s_ij)
-            print "================================================================================"
+        # Print estimate
+        logger.debug("================================================================================")
+        logger.debug("Online analysis estimate of free energies:")
+        logger.debug("  equilibration end: %d iterations" % t0)
+        logger.debug("  statistical inefficiency: %.1f iterations" % g)
+        logger.debug("  effective number of uncorrelated samples: %.1f" % Neff_max)
+        logger.debug("Reduced free energy (f), enthalpy (u), and entropy (s) differences among thermodynamic states:")
+        logger.debug("Delta_f_ij")
+        logger.debug(matrix2str(Delta_f_ij))
+        logger.debug("dDelta_f_ij")
+        logger.debug(matrix2str(dDelta_f_ij))
+        logger.debug("Delta_u_ij")
+        logger.debug(matrix2str(Delta_u_ij))
+        logger.debug("dDelta_u_ij")
+        logger.debug(matrix2str(dDelta_u_ij))
+        logger.debug("Delta_s_ij")
+        logger.debug(matrix2str(Delta_s_ij))
+        logger.debug("dDelta_s_ij")
+        logger.debug(matrix2str(dDelta_s_ij))
+        logger.debug("================================================================================")
 
 
         self.analysis = analysis
@@ -2592,7 +2591,7 @@ class ParallelTempering(ReplicaExchange):
         """
         # Create thermodynamic states from temperatures.
         if temperatures is not None:
-            print "Using provided temperatures"
+            logger.info("Using provided temperatures")
             self.temperatures = temperatures
         elif (Tmin is not None) and (Tmax is not None) and (ntemps is not None):
             self.temperatures = [ Tmin + (Tmax - Tmin) * (math.exp(float(i) / float(ntemps-1)) - 1.0) / (math.e - 1.0) for i in range(ntemps) ]
@@ -2620,7 +2619,7 @@ class ParallelTempering(ReplicaExchange):
         """
 
         start_time = time.time()
-        if self.verbose: print "Computing energies..."
+        logger.debug("Computing energies...")
 
         if self.mpicomm:
             # MPI implementation
@@ -2684,7 +2683,7 @@ class ParallelTempering(ReplicaExchange):
         end_time = time.time()
         elapsed_time = end_time - start_time
         time_per_energy = elapsed_time / float(self.nstates)
-        if self.verbose: print "Time to compute all energies %.3f s (%.3f per energy calculation).\n" % (elapsed_time, time_per_energy)
+        logger.debug("Time to compute all energies %.3f s (%.3f per energy calculation).\n" % (elapsed_time, time_per_energy))
 
         return
 
