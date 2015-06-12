@@ -307,7 +307,7 @@ def dispatch_binding(args):
             logger.info("solvent and ions : %9d" % len(atom_indices[phase]['solvent']))
 
     # Initialize YANK object.
-    yank = Yank(store_dir, verbose=verbose)
+    yank = Yank(store_dir)
 
     # Set options.
     options = dict()

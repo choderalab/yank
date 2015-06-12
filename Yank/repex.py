@@ -132,7 +132,7 @@ class ThermodynamicState(object):
 
     """
 
-    def __init__(self, system=None, temperature=None, pressure=None, mm=None, verbose=False):
+    def __init__(self, system=None, temperature=None, pressure=None, mm=None):
         """
         Initialize the thermodynamic state.
 
@@ -146,9 +146,7 @@ class ThermodynamicState(object):
         pressure : simtk.unit.Quantity compatible with 'atmospheres', optional, default=None
            The pressure for constant-pressure systems (default: None)
         mm : simtk.openmm API, optional, default=None
-           OpenMM API implementation to use. If None, will use simtk.openmm. 
-        verbose : bool, optional, False
-           If True, will be verbose.
+           OpenMM API implementation to use. If None, will use simtk.openmm.
 
         """
 
@@ -162,8 +160,6 @@ class ThermodynamicState(object):
         self._cache_context = True  # if True, try to cache Context object
         self._context = None        # cached Context
         self._integrator = None     # cached Integrator
-
-        self._verbose = verbose     # Cached verbosity.
 
         # Store OpenMM implementation.
         if mm:
@@ -612,8 +608,6 @@ class ReplicaExchange(object):
        Number of equilibration iterations before beginning exchanges (default: 0)
     equilibration_timestep : simtk.unit.Quantity (units: time)
        Timestep for use in equilibration (default: 2 fs)
-    verbose : bool 
-       Show information on run progress (default: False)
     replica_mixing_scheme : str
        Scheme used to swap replicas: 'swap-all' or 'swap-neighbors' (default: 'swap-all')
     online_analysis : bool
@@ -665,7 +659,7 @@ class ReplicaExchange(object):
     """
 
     # Options to store.
-    options_to_store = ['collision_rate', 'constraint_tolerance', 'timestep', 'nsteps_per_iteration', 'number_of_iterations', 'equilibration_timestep', 'number_of_equilibration_iterations', 'title', 'minimize', 'replica_mixing_scheme', 'online_analysis', 'verbose', 'show_mixing_statistics']
+    options_to_store = ['collision_rate', 'constraint_tolerance', 'timestep', 'nsteps_per_iteration', 'number_of_iterations', 'equilibration_timestep', 'number_of_equilibration_iterations', 'title', 'minimize', 'replica_mixing_scheme', 'online_analysis', 'show_mixing_statistics']
 
     def __init__(self, store_filename, mpicomm=None, mm=None, use_cython=True):
         """
@@ -713,11 +707,6 @@ class ReplicaExchange(object):
         self.show_energies = True
         self.show_mixing_statistics = True
 
-        # Set verbosity.
-        self.verbose = False
-        self.verbose_root = self.verbose # True only if self.verbose is True and we are root node (if MPI)
-        if self.mpicomm and self.mpicomm.rank != 0: self.verbose_root = False
-
         # Record store file filename
         self.store_filename = store_filename
 
@@ -748,8 +737,6 @@ class ReplicaExchange(object):
            metadata to store in a 'metadata' group in store file
 
         """
-        if options and ('verbose' in options): self.verbose = options['verbose']
-        # TODO: Find a better solution to setting verbosity.
 
         # Check if netcdf file exists.
         file_exists = os.path.exists(self.store_filename) and (os.path.getsize(self.store_filename) > 0)
@@ -779,7 +766,6 @@ class ReplicaExchange(object):
             self.provided_positions = [ unit.Quantity(np.array(positions / positions.unit), positions.unit) ]
 
         # Handle provided 'options' dict, replacing any options provided by caller in dictionary.
-        # TODO: Look for 'verbose' key first.
         if options is not None:
             for key in options.keys(): # for each provided key
                 if key in vars(self).keys(): # if this is also a simulation parameter
@@ -964,7 +950,7 @@ class ReplicaExchange(object):
             self._compute_energies()
 
             # Show energies.
-            if self.verbose and self.show_energies:
+            if self.show_energies:
                 self._show_energies()
 
             # Write iteration to storage file.
@@ -974,21 +960,22 @@ class ReplicaExchange(object):
             self.iteration += 1
 
             # Show mixing statistics.
-            if self.verbose and self.show_mixing_statistics:
+            if self.show_mixing_statistics:
                 self._show_mixing_statistics()
 
             # Perform online analysis.
             if self.online_analysis:
                 self._analysis()
 
-            # Show timing statistics.
-            final_time = time.time()
-            elapsed_time = final_time - initial_time
-            estimated_time_remaining = (final_time - run_start_time) / (self.iteration - run_start_iteration) * (self.number_of_iterations - self.iteration)
-            estimated_total_time = (final_time - run_start_time) / (self.iteration - run_start_iteration) * (self.number_of_iterations)
-            estimated_finish_time = final_time + estimated_time_remaining
-            logger.debug("Iteration took %.3f s." % elapsed_time)
-            logger.debug("Estimated completion in %s, at %s (consuming total wall clock time %s)." % (str(datetime.timedelta(seconds=estimated_time_remaining)), time.ctime(estimated_finish_time), str(datetime.timedelta(seconds=estimated_total_time))))
+            # Show timing statistics if debug level is activated
+            if logger.level <= logging.DEBUG:
+                final_time = time.time()
+                elapsed_time = final_time - initial_time
+                estimated_time_remaining = (final_time - run_start_time) / (self.iteration - run_start_iteration) * (self.number_of_iterations - self.iteration)
+                estimated_total_time = (final_time - run_start_time) / (self.iteration - run_start_iteration) * (self.number_of_iterations)
+                estimated_finish_time = final_time + estimated_time_remaining
+                logger.debug("Iteration took %.3f s." % elapsed_time)
+                logger.debug("Estimated completion in %s, at %s (consuming total wall clock time %s)." % (str(datetime.timedelta(seconds=estimated_time_remaining)), time.ctime(estimated_finish_time), str(datetime.timedelta(seconds=estimated_total_time))))
 
             # Perform sanity checks to see if we should terminate here.
             self._run_sanity_checks()
@@ -1035,13 +1022,11 @@ class ReplicaExchange(object):
         # Turn off verbosity if not master node.
         if self.mpicomm:
             # Have each node report that it is initialized.
+            # TODO this doesn't work on worker nodes since they report only warning entries and higher
             logger.debug("Initialized node %d / %d" % (self.mpicomm.rank, self.mpicomm.size))
-            # Turn off verbosity for all nodes but root.
-            if self.mpicomm.rank != 0:
-                self.verbose = False
 
         # Display papers to be cited.
-        if self.verbose:
+        if logger.level <= logging.DEBUG:
             self._display_citations()
 
         # Determine number of alchemical states.
@@ -1107,13 +1092,11 @@ class ReplicaExchange(object):
         # Turn off verbosity if not master node.
         if self.mpicomm:
             # Have each node report that it is initialized.
+            # TODO this doesn't work on worker nodes since they report only warning entries and higher
             logger.debug("Initialized node %d / %d" % (self.mpicomm.rank, self.mpicomm.size))
-            # Turn off verbosity for all nodes but root.
-            if self.mpicomm.rank != 0:
-                self.verbose = False
 
         # Display papers to be cited.
-        if self.verbose:
+        if logger.level <= logging.DEBUG:
             self._display_citations()
 
         # Determine number of alchemical states.
@@ -1172,6 +1155,7 @@ class ReplicaExchange(object):
             # Create cached contexts for only the states this process will handle.
             initial_time = time.time()
             for state_index in range(self.mpicomm.rank, self.nstates, self.mpicomm.size):
+                # TODO this doesn't work on worker nodes since they report only warning entries and higher
                 logger.debug("Node %d / %d creating Context for state %d..." % (self.mpicomm.rank, self.mpicomm.size, state_index))
                 state = self.states[state_index]
                 try:
@@ -1216,7 +1200,7 @@ class ReplicaExchange(object):
         self._resume_from_netcdf()
 
         # Show energies.
-        if self.verbose and self.show_energies:
+        if self.show_energies:
             self._show_energies()
 
         # Analysis objet starts off empty.
@@ -1379,7 +1363,7 @@ class ReplicaExchange(object):
         elapsed_time = end_time - start_time
         # Collect elapsed time.
         node_elapsed_times = self.mpicomm.gather(elapsed_time, root=0) # barrier
-        if self.verbose and (self.mpicomm.rank == 0):
+        if logger.level <= logging.DEBUG:
             node_elapsed_times = np.array(node_elapsed_times)
             end_time = time.time()
             elapsed_time = end_time - start_time
@@ -1788,35 +1772,38 @@ class ReplicaExchange(object):
         return Tij
 
     def _show_mixing_statistics(self):
-        if (self.iteration < 2): return
+
+        if self.iteration < 2:
+            return
+        if logger.level > logging.DEBUG:
+            return
 
         Tij = self._accumulate_mixing_statistics()
 
-        if self.show_mixing_statistics:
-            # Print observed transition probabilities.
-            PRINT_CUTOFF = 0.001 # Cutoff for displaying fraction of accepted swaps.
-            logger.info("Cumulative symmetrized state mixing transition matrix:")
-            str_row = "%6s" % ""
+        # Print observed transition probabilities.
+        PRINT_CUTOFF = 0.001 # Cutoff for displaying fraction of accepted swaps.
+        logger.debug("Cumulative symmetrized state mixing transition matrix:")
+        str_row = "%6s" % ""
+        for jstate in range(self.nstates):
+            str_row += "%6d" % jstate
+        logger.debug(str_row)
+        for istate in range(self.nstates):
+            str_row = "%-6d" % istate
             for jstate in range(self.nstates):
-                str_row += "%6d" % jstate
-            logger.info(str_row)
-            for istate in range(self.nstates):
-                str_row = "%-6d" % istate
-                for jstate in range(self.nstates):
-                    P = Tij[istate,jstate]
-                    if (P >= PRINT_CUTOFF):
-                        str_row += "%6.3f" % P
-                    else:
-                        str_row += "%6s" % ""
-                logger.info(str_row)
+                P = Tij[istate,jstate]
+                if (P >= PRINT_CUTOFF):
+                    str_row += "%6.3f" % P
+                else:
+                    str_row += "%6s" % ""
+            logger.debug(str_row)
 
         # Estimate second eigenvalue and equilibration time.
         mu = np.linalg.eigvals(Tij)
         mu = -np.sort(-mu) # sort in descending order
         if (mu[1] >= 1):
-            logger.info("Perron eigenvalue is unity; Markov chain is decomposable.")
+            logger.debug("Perron eigenvalue is unity; Markov chain is decomposable.")
         else:
-            logger.info("Perron eigenvalue is %9.5f; state equilibration timescale is ~ %.1f iterations" % (mu[1], 1.0 / (1.0 - mu[1])))
+            logger.debug("Perron eigenvalue is %9.5f; state equilibration timescale is ~ %.1f iterations" % (mu[1], 1.0 / (1.0 - mu[1])))
 
     def _initialize_netcdf(self):
         """
@@ -2237,7 +2224,7 @@ class ReplicaExchange(object):
             self._compute_energies()
 
             # Show energies.
-            if self.verbose and self.show_energies:
+            if self.show_energies:
                 self._show_energies()
 
             # Re-store initial state.
@@ -2265,15 +2252,14 @@ class ReplicaExchange(object):
 
         """
 
-        # Only root node can print.
-        if self.mpicomm and (self.mpicomm.rank != 0):
+        if logger.level > logging.DEBUG:
             return
 
         # print header
         str_row = "%-24s %16s" % ("reduced potential (kT)", "current state")
         for state_index in range(self.nstates):
             str_row += " state %3d" % state_index
-        logger.info(str_row)
+        logger.debug(str_row)
 
         # print energies in kT
         for replica_index in range(self.nstates):
@@ -2284,7 +2270,7 @@ class ReplicaExchange(object):
                     str_row += "%10.3e" % u
                 else:
                     str_row += "%10.1f" % u
-            logger.info(str_row)
+            logger.debug(str_row)
 
         return
 
@@ -2428,25 +2414,26 @@ class ReplicaExchange(object):
             return str_row
 
         # Print estimate
-        logger.debug("================================================================================")
-        logger.debug("Online analysis estimate of free energies:")
-        logger.debug("  equilibration end: %d iterations" % t0)
-        logger.debug("  statistical inefficiency: %.1f iterations" % g)
-        logger.debug("  effective number of uncorrelated samples: %.1f" % Neff_max)
-        logger.debug("Reduced free energy (f), enthalpy (u), and entropy (s) differences among thermodynamic states:")
-        logger.debug("Delta_f_ij")
-        logger.debug(matrix2str(Delta_f_ij))
-        logger.debug("dDelta_f_ij")
-        logger.debug(matrix2str(dDelta_f_ij))
-        logger.debug("Delta_u_ij")
-        logger.debug(matrix2str(Delta_u_ij))
-        logger.debug("dDelta_u_ij")
-        logger.debug(matrix2str(dDelta_u_ij))
-        logger.debug("Delta_s_ij")
-        logger.debug(matrix2str(Delta_s_ij))
-        logger.debug("dDelta_s_ij")
-        logger.debug(matrix2str(dDelta_s_ij))
-        logger.debug("================================================================================")
+        if logger.level <= logging.DEBUG:
+            logger.debug("================================================================================")
+            logger.debug("Online analysis estimate of free energies:")
+            logger.debug("  equilibration end: %d iterations" % t0)
+            logger.debug("  statistical inefficiency: %.1f iterations" % g)
+            logger.debug("  effective number of uncorrelated samples: %.1f" % Neff_max)
+            logger.debug("Reduced free energy (f), enthalpy (u), and entropy (s) differences among thermodynamic states:")
+            logger.debug("Delta_f_ij")
+            logger.debug(matrix2str(Delta_f_ij))
+            logger.debug("dDelta_f_ij")
+            logger.debug(matrix2str(dDelta_f_ij))
+            logger.debug("Delta_u_ij")
+            logger.debug(matrix2str(Delta_u_ij))
+            logger.debug("dDelta_u_ij")
+            logger.debug(matrix2str(dDelta_u_ij))
+            logger.debug("Delta_s_ij")
+            logger.debug(matrix2str(Delta_s_ij))
+            logger.debug("dDelta_s_ij")
+            logger.debug(matrix2str(dDelta_s_ij))
+            logger.debug("================================================================================")
 
 
         self.analysis = analysis

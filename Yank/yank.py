@@ -49,7 +49,7 @@ class Yank(object):
 
     """
 
-    def __init__(self, store_directory, verbose=False):
+    def __init__(self, store_directory):
         """
         Initialize YANK object with default parameters.
 
@@ -57,8 +57,6 @@ class Yank(object):
         ----------
         store_directory : str
            The storage directory in which output NetCDF files are read or written.
-        verbose : bool, optional, default=False
-           If True, will turn on verbose output.
 
         """
 
@@ -69,7 +67,6 @@ class Yank(object):
         self._store_directory = store_directory
 
         # Public attributes.
-        self.verbose = verbose
         self.restraint_type = 'flat-bottom' # default to a flat-bottom restraint between the ligand and receptor
         self.randomize_ligand = True
         self.randomize_ligand_sigma_multiplier = 2.0
@@ -92,7 +89,7 @@ class Yank(object):
         self.default_options = dict()
         self.default_options['number_of_equilibration_iterations'] = 0
         self.default_options['number_of_iterations'] = 100
-        self.default_options['verbose'] = self.verbose
+        self.default_options['number_of_iterations'] = 100
         self.default_options['timestep'] = 2.0 * unit.femtoseconds
         self.default_options['collision_rate'] = 5.0 / unit.picoseconds
         self.default_options['minimize'] = False
@@ -138,8 +135,6 @@ class Yank(object):
         phases : list of str, optional, default=None
            The list of calculation phases (e.g. ['solvent', 'complex']) to resume.
            If not specified, all simulations in the store_directory will be resumed.
-        verbose : bool, optional, default=True
-           If True, will give verbose output
 
         """
         # If no phases specified, construct a list of phases from the filename prefixes in the store directory.
@@ -185,8 +180,6 @@ class Yank(object):
            If specified, the alchemical protocol protocols[phase] will be used for phase 'phase' instead of the default.
         options : dict of str, optional, default=None
            If specified, these options will override default repex simulation options.
-        verbose : bool, optional, default=True
-           If True, will give verbose output
 
         """
 
@@ -350,7 +343,6 @@ class Yank(object):
         simulation.create(thermodynamic_state, systems, positions,
                           displacement_sigma=self.mc_displacement_sigma, mc_atoms=mc_atoms,
                           options=options, metadata=metadata)
-        simulation.verbose = self.verbose
 
         # Initialize simulation.
         # TODO: Use the right scheme for initializing the simulation without running.
@@ -386,10 +378,6 @@ class Yank(object):
 
         # Handle some logistics necessary for MPI.
         if mpicomm:
-            # Turn off output from non-root nodes:
-            if not (mpicomm.rank==0):
-                self.verbose = False
-
             # Make sure each thread's random number generators have unique seeds.
             # TODO: Do we need to store seed in repex object?
             seed = np.random.randint(sys.maxint - mpicomm.size) + mpicomm.rank
