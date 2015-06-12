@@ -26,6 +26,12 @@ def config_root_logger(verbose, log_file_path=None, overwrite=False):
      to print logging.INFO messages, and stderr for the others. The root logger's
      configuration is inherited by the loggers created by logging.getLogger(name).
 
+     Different formats are used to display messages on the terminal and on the log
+     file. For example, in the log file every entry has a timestamp which does not
+     appear in the terminal. Moreover, the log file always shows the module that
+     generate the message, while in the terminal this happens only for messages
+     of level WARNING and higher.
+
      In order to overwrite the root logger's configuration overwrite must be True
      or an Exception will be raised. This helps to control if parts of the code
      attempt to modify the user's configuration.
@@ -33,7 +39,7 @@ def config_root_logger(verbose, log_file_path=None, overwrite=False):
     Parameters
     ----------
     verbose : bool
-        Control the verbosity of the messages printed on stdout. The logger
+        Control the verbosity of the messages printed in the terminal. The logger
         displays messages of level logging.INFO and higher when verbose=False.
         Otherwise those of level logging.DEBUG and higher are printed.
     log_file_path : str, optional, default = None
@@ -52,18 +58,22 @@ def config_root_logger(verbose, log_file_path=None, overwrite=False):
 
     class TerminalFormatter(logging.Formatter):
         """
-        Simplified format for INFO level log messages.
+        Simplified format for INFO and DEBUG level log messages.
 
+        This allows to keep the logging.info() and debug() format separated from
+        the other levels where more information may be needed. For example, for
+        warning and error messages it is convenient to know also the module that
+        generates them.
         """
 
         # This is the cleanest way I found to make the code compatible with both
         # Python 2 and Python 3
-        info_fmt = logging.Formatter('%(message)s')
+        simple_fmt = logging.Formatter('%(message)s')
         default_fmt = logging.Formatter('%(name)s - %(levelname)s - %(message)s')
 
         def format(self, record):
-            if record.levelno == logging.INFO:
-                return self.info_fmt.format(record)
+            if record.levelno <= logging.INFO:
+                return self.simple_fmt.format(record)
             else:
                 return self.default_fmt.format(record)
 
