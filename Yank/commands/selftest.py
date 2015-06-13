@@ -28,7 +28,6 @@ def dispatch(args):
 
     print "Running doctests for all modules..."
     verbose = args['--verbose']
-    utils.config_root_logger(verbose)
     # Run tests on main module.
     import yank
     (failure_count, test_count) = doctest.testmod(yank, verbose=verbose)

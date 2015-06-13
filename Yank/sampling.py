@@ -18,6 +18,8 @@ import os.path
 import sys
 import copy
 import time
+import logging
+logger = logging.getLogger(__name__)
 
 import numpy
 import numpy.random
@@ -381,9 +383,8 @@ class ModifiedHamiltonianExchange(HamiltonianExchange):
                 from mpi4py import MPI
                 self.displacement_trials_accepted = self.mpicomm.reduce(self.displacement_trials_accepted, op=MPI.SUM)
                 self.rotation_trials_accepted = self.mpicomm.reduce(self.rotation_trials_accepted, op=MPI.SUM)
-            if self.verbose:
-                total_mc_time = self.displacement_trial_time + self.rotation_trial_time
-                print "Rotation and displacement MC trial times consumed %.3f s (%d translation | %d rotation accepted)" % (total_mc_time, self.displacement_trials_accepted, self.rotation_trials_accepted)
+            total_mc_time = self.displacement_trial_time + self.rotation_trial_time
+            logger.debug("Rotation and displacement MC trial times consumed %.3f s (%d translation | %d rotation accepted)" % (total_mc_time, self.displacement_trials_accepted, self.rotation_trials_accepted))
 
         return
 

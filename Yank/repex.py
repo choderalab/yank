@@ -968,7 +968,7 @@ class ReplicaExchange(object):
                 self._analysis()
 
             # Show timing statistics if debug level is activated
-            if logger.level <= logging.DEBUG:
+            if logger.isEnabledFor(logging.DEBUG):
                 final_time = time.time()
                 elapsed_time = final_time - initial_time
                 estimated_time_remaining = (final_time - run_start_time) / (self.iteration - run_start_iteration) * (self.number_of_iterations - self.iteration)
@@ -1026,7 +1026,7 @@ class ReplicaExchange(object):
             logger.debug("Initialized node %d / %d" % (self.mpicomm.rank, self.mpicomm.size))
 
         # Display papers to be cited.
-        if logger.level <= logging.DEBUG:
+        if logger.isEnabledFor(logging.DEBUG):
             self._display_citations()
 
         # Determine number of alchemical states.
@@ -1096,7 +1096,7 @@ class ReplicaExchange(object):
             logger.debug("Initialized node %d / %d" % (self.mpicomm.rank, self.mpicomm.size))
 
         # Display papers to be cited.
-        if logger.level <= logging.DEBUG:
+        if logger.isEnabledFor(logging.DEBUG):
             self._display_citations()
 
         # Determine number of alchemical states.
@@ -1363,7 +1363,7 @@ class ReplicaExchange(object):
         elapsed_time = end_time - start_time
         # Collect elapsed time.
         node_elapsed_times = self.mpicomm.gather(elapsed_time, root=0) # barrier
-        if logger.level <= logging.DEBUG:
+        if logger.isEnabledFor(logging.DEBUG):
             node_elapsed_times = np.array(node_elapsed_times)
             end_time = time.time()
             elapsed_time = end_time - start_time
@@ -1775,7 +1775,7 @@ class ReplicaExchange(object):
 
         if self.iteration < 2:
             return
-        if logger.level > logging.DEBUG:
+        if not logger.isEnabledFor(logging.DEBUG):
             return
 
         Tij = self._accumulate_mixing_statistics()
@@ -2252,7 +2252,7 @@ class ReplicaExchange(object):
 
         """
 
-        if logger.level > logging.DEBUG:
+        if not logger.isEnabledFor(logging.DEBUG):
             return
 
         # print header
@@ -2414,7 +2414,7 @@ class ReplicaExchange(object):
             return str_row
 
         # Print estimate
-        if logger.level <= logging.DEBUG:
+        if logger.isEnabledFor(logging.DEBUG):
             logger.debug("================================================================================")
             logger.debug("Online analysis estimate of free energies:")
             logger.debug("  equilibration end: %d iterations" % t0)
@@ -2434,7 +2434,6 @@ class ReplicaExchange(object):
             logger.debug("dDelta_s_ij")
             logger.debug(matrix2str(dDelta_s_ij))
             logger.debug("================================================================================")
-
 
         self.analysis = analysis
 
