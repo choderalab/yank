@@ -33,7 +33,9 @@ def is_terminal_verbose():
     is_verbose = False
 
     for handler in logging.root.handlers:
-        if issubclass(handler, logging.StreamHandler):
+        # logging.FileHandler is a subclass of logging.StreamHandler so
+        # isinstance and issubclass do not work in this case
+        if type(handler) is logging.StreamHandler and handler.level <= logging.DEBUG:
             is_verbose = True
             break
 
