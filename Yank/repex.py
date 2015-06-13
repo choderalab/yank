@@ -73,6 +73,8 @@ from simtk import openmm
 from simtk import unit
 import netCDF4 as netcdf
 
+from utils import is_terminal_verbose
+
 #=============================================================================================
 # MODULE CONSTANTS
 #=============================================================================================
@@ -1026,7 +1028,7 @@ class ReplicaExchange(object):
             logger.debug("Initialized node %d / %d" % (self.mpicomm.rank, self.mpicomm.size))
 
         # Display papers to be cited.
-        if logger.isEnabledFor(logging.DEBUG):
+        if is_terminal_verbose():
             self._display_citations()
 
         # Determine number of alchemical states.
@@ -1096,7 +1098,7 @@ class ReplicaExchange(object):
             logger.debug("Initialized node %d / %d" % (self.mpicomm.rank, self.mpicomm.size))
 
         # Display papers to be cited.
-        if logger.isEnabledFor(logging.DEBUG):
+        if is_terminal_verbose():
             self._display_citations()
 
         # Determine number of alchemical states.

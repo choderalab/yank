@@ -18,6 +18,27 @@ class OverwriteLogException(Exception):
 # Utility functions
 #========================================================================================
 
+def is_terminal_verbose():
+    """Check whether the logging on the terminal is configured to be verbose.
+
+    This is useful in case one wants to occasionally print something that is not really
+    relevant to yank's log (e.g. external library verbose, citations, etc.).
+
+    Returns
+    is_verbose : bool
+        True if the terminal is configured to be verbose, False otherwise.
+    """
+
+    # If logging.root has no handlers this will ensure that False is returned
+    is_verbose = False
+
+    for handler in logging.root.handlers:
+        if issubclass(handler, logging.StreamHandler):
+            is_verbose = True
+            break
+
+    return is_verbose
+
 def config_root_logger(verbose, log_file_path=None, overwrite=False):
     """Setup the the root logger's configuration.
 
