@@ -29,6 +29,8 @@ import abc
 import copy
 import os, os.path
 import tempfile
+import logging
+logger = logging.getLogger(__name__)
 
 import numpy as np
 
@@ -419,10 +421,10 @@ class SmallMoleculeBuilder(SystemBuilder):
 
             # Throw exception if we are unable to find desired charge.
             if self._formal_charge(molecule) != charge:
-                print "enumerateStates did not enumerate a molecule with desired formal charge."
-                print "Options are:"
+                logger.info("enumerateStates did not enumerate a molecule with desired formal charge.")
+                logger.info("Options are:")
                 for molecule in protonation_states:
-                    print "%s, formal charge %d" % (molecule.GetTitle(), self._formal_charge(molecule))
+                    logger.info("%s, formal charge %d" % (molecule.GetTitle(), self._formal_charge(molecule)))
                 raise RuntimeError("Could not find desired formal charge.")
 
         # Generate a 3D conformation if we don't have a 3-dimensional molecule.
@@ -478,9 +480,9 @@ class SmallMoleculeBuilder(SystemBuilder):
 
         # Write out the ffxml file from openmoltools.
         ffxml_filename = "molecule.ffxml"
-        print "tripos mol2 filename: %s" % mol2_filename # DEBUG
-        print "gaff mol2 filename: %s" % gaff_mol2_filename # DEBUG
-        print "gaff frcmod filename: %s" % gaff_frcmod_filename # DEBUG
+        logger.debug("tripos mol2 filename: %s" % mol2_filename)
+        logger.debug("gaff mol2 filename: %s" % gaff_mol2_filename)
+        logger.debug("gaff frcmod filename: %s" % gaff_frcmod_filename)
 
         openmoltools.utils.create_ffxml_file(gaff_mol2_filename, gaff_frcmod_filename, ffxml_filename)
 
@@ -497,7 +499,7 @@ class SmallMoleculeBuilder(SystemBuilder):
                 if os.path.isfile(file_path):
                     os.unlink(file_path)
             except Exception, e:
-                print e
+                logger.warning(e.message)
 
         return
 
@@ -674,7 +676,7 @@ class SmallMoleculeBuilder(SystemBuilder):
                 if os.path.isfile(file_path):
                     os.unlink(file_path)
             except Exception, e:
-                print e
+                logger.warning(e.message)
 
         # Return OpenMM format positions and topology.
         return [positions, topology]
@@ -809,8 +811,7 @@ class SmallMoleculeBuilder(SystemBuilder):
         # Enumerate states for each molecule in the input list.
         states_enumerated = 0
         for molecule in molecules:
-            if verbose:
-                print "Enumerating states for molecule %s." % molecule.GetTitle()
+            logger.debug("Enumerating states for molecule %s." % molecule.GetTitle())
 
             # Dump enumerated states to output stream (ostream).
             if type_of_states == "protonation":
@@ -818,20 +819,17 @@ class SmallMoleculeBuilder(SystemBuilder):
                 functor = self.oequacpac.OETyperMolFunction(ostream, consider_aromaticity, False, maxstates)
 
                 # Enumerate protonation states.
-                if verbose:
-                    print "Enumerating protonation states..."
+                logger.debug("Enumerating protonation states...")
                 states_enumerated += self.oequacpac.OEEnumerateFormalCharges(molecule, functor, verbose)
             elif type_of_states == "tautomer":
                 # Create a functor associated with the output stream.
                 functor = self.oequacpac.OETautomerMolFunction(ostream, consider_aromaticity, False, maxstates)  # TODO: deprecated
 
                 # Enumerate tautomeric states.
-                if verbose:
-                    print "Enumerating tautomer states..."
+                logger.debug("Enumerating tautomer states...")
                 states_enumerated += self.oequacpac.OEEnumerateTautomers(molecule, functor, verbose)
 
-        if verbose:
-            print "Enumerated a total of %d states." % states_enumerated
+        logger.debug("Enumerated a total of %d states." % states_enumerated)
 
         # Collect molecules from output stream into a list.
         states = list()
@@ -1120,20 +1118,20 @@ def test_alchemy():
     fully_interacting.minimizeEnergy(tolerance=10*unit.kilojoule_per_mole)
     fully_interacting.reporters.append(app.PDBReporter('fully_interacting.pdb', 10))
     for j in range(10):
-        print str(j)
+        logger.info(str(j))
         fully_interacting.step(100)
     del fully_interacting
 
 
     for p in range(1, len(systems)):
-        print "now simulating " + str(p)
+        logger.info("now simulating " + str(p))
         integrator_partialinteracting = openmm.LangevinIntegrator(temperature, collision_rate, timestep)
         partially_interacting = app.Simulation(systembuilders[i].topology, systems[p], integrator_partialinteracting, platform=plat)
         partially_interacting.context.setPositions(systembuilders[i].positions)
         partially_interacting.minimizeEnergy(tolerance=10*unit.kilojoule_per_mole)
         partially_interacting.reporters.append(app.PDBReporter('partial_interacting'+str(p)+'.pdb', 10))
         for k in range(10):
-            print str(k)
+            logger.info(str(k))
             partially_interacting.step(100)
         del partially_interacting
 
