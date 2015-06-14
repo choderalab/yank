@@ -81,20 +81,22 @@ def show_mixing_statistics(ncfile, cutoff=0.05, nequil=0):
             Tij[istate,istate] = 1.0
 
     # Print observed transition probabilities.
-    print "Cumulative symmetrized state mixing transition matrix:"
-    print "%6s" % "",
+    logger.info("Cumulative symmetrized state mixing transition matrix:")
+    str_row = "%6s" % ""
     for jstate in range(nstates):
-        print "%6d" % jstate,
-    print ""
+        str_row += "%6d" % jstate
+    logger.info(str_row)
+
+    str_row = ""
     for istate in range(nstates):
-        print "%-6d" % istate,
+        str_row += "%-6d" % istate
         for jstate in range(nstates):
             P = Tij[istate,jstate]
             if (P >= cutoff):
-                print "%6.3f" % P,
+                str_row += "%6.3f" % P
             else:
-                print "%6s" % "",
-        print ""
+                str_row += "%6s" % ""
+        logger.info(str_row)
 
     # Estimate second eigenvalue and equilibration time.
     mu = np.linalg.eigvals(Tij)
@@ -199,17 +201,19 @@ def estimate_free_energies(ncfile, ndiscard=0, nuse=None, g=None):
 #    # Matrix of free energy differences
     logger.info("Deltaf_ij:")
     for i in range(nstates):
+        str_row = ""
         for j in range(nstates):
-            print "%8.3f" % Deltaf_ij[i,j],
-        print ""
+            str_row += "%8.3f" % Deltaf_ij[i, j]
+        logger.info(str_row)
 
 #    print Deltaf_ij
 #    # Matrix of uncertainties in free energy difference (expectations standard deviations of the estimator about the true free energy)
     logger.info("dDeltaf_ij:")
     for i in range(nstates):
+        str_row = ""
         for j in range(nstates):
-            print "%8.3f" % dDeltaf_ij[i,j],
-        print ""
+            str_row += "%8.3f" % dDeltaf_ij[i, j]
+        logger.info(str_row)
 
     # Return free energy differences and an estimate of the covariance.
     return (Deltaf_ij, dDeltaf_ij)
@@ -359,7 +363,7 @@ def extract_u_n(ncfile):
 # SHOW STATUS OF STORE FILES
 #=============================================================================================
 
-def print_status(store_directory, verbose=False):
+def print_status(store_directory):
     """
     Print a quick summary of simulation progress.
 
@@ -367,7 +371,6 @@ def print_status(store_directory, verbose=False):
     ----------
     store_directory : string
        The location of the NetCDF simulation output files.
-    verbose : bool, optional, default=False
 
     Returns
     -------
@@ -385,12 +388,12 @@ def print_status(store_directory, verbose=False):
         # Check that the file exists.
         if (not os.path.exists(fullpath)):
             # Report failure.
-            print "File %s not found." % fullpath
-            print "Check to make sure the right directory was specified, and 'yank setup' has been run."
+            logger.info("File %s not found." % fullpath)
+            logger.info("Check to make sure the right directory was specified, and 'yank setup' has been run.")
             return False
 
         # Open NetCDF file for reading.
-        if verbose: print "Opening NetCDF trajectory file '%(fullpath)s' for reading..." % vars()
+        logger.debug("Opening NetCDF trajectory file '%(fullpath)s' for reading..." % vars())
         ncfile = netcdf.Dataset(fullpath, 'r')
 
         # Read dimensions.
@@ -399,10 +402,10 @@ def print_status(store_directory, verbose=False):
         natoms = ncfile.variables['positions'].shape[2]
 
         # Print summary.
-        print "%s" % phase
-        print "  %8d iterations completed" % niterations
-        print "  %8d alchemical states" % nstates
-        print "  %8d atoms" % natoms
+        logger.info("%s" % phase)
+        logger.info("  %8d iterations completed" % niterations)
+        logger.info("  %8d alchemical states" % nstates)
+        logger.info("  %8d atoms" % natoms)
 
         # TODO: Print average ns/day and estimated completion time.
 
@@ -415,7 +418,7 @@ def print_status(store_directory, verbose=False):
 # ANALYZE STORE FILES
 #=============================================================================================
 
-def analyze(source_directory, verbose=False):
+def analyze(source_directory):
     """
     Analyze contents of store files to compute free energy differences.
 
@@ -423,13 +426,8 @@ def analyze(source_directory, verbose=False):
     ----------
     source_directory : string
        The location of the NetCDF simulation storage files.
-    verbose : bool, optional, default=False
-       If True, verbose output will be generated.
 
     """
-    # Turn on debug info.
-    # TODO: Control verbosity of logging output using verbose optional flag.
-    logging.basicConfig(level=logging.DEBUG)
 
     # Storage for different phases.
     data = dict()
@@ -445,7 +443,7 @@ def analyze(source_directory, verbose=False):
         for suffix in suffixes:
             # Construct full path to NetCDF file.
             fullpath = os.path.join(source_directory, '%s-%s.nc' % (phase, suffix))
-            if verbose: print "Attempting to open %s..." % fullpath
+            logger.debug("Attempting to open %s..." % fullpath)
 
             # Skip if the file doesn't exist.
             if (not os.path.exists(fullpath)): continue
@@ -455,7 +453,7 @@ def analyze(source_directory, verbose=False):
             try:
                 ncfile = netcdf.Dataset(fullpath, 'r')
             except Exception as e:
-                print str(e)
+                logger.error(e.message)
                 raise Exception("Error opening NetCDF trajectory file '%(fullpath)s' for reading..." % vars())
 
             # DEBUG

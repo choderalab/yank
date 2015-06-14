@@ -13,11 +13,14 @@ Query output files for quick status.
 # MODULE IMPORTS
 #=============================================================================================
 
+from yank import utils
+
 #=============================================================================================
 # COMMAND DISPATCH
 #=============================================================================================
 
 def dispatch(args):
     from yank import analyze
-    success = analyze.print_status(args['--store'], verbose=args['--verbose'])
+    utils.config_root_logger(args['--verbose'])
+    success = analyze.print_status(args['--store'])
     return success

@@ -10,15 +10,18 @@ Set up YANK calculations.
 """
 
 #=============================================================================================
-# MODULE IMPORTS
+# GLOBAL IMPORTS
 #=============================================================================================
 
 import os, os.path
+import logging
+logger = logging.getLogger(__name__)
 
 from simtk import openmm
 from simtk import unit
 from simtk.openmm import app
 
+from yank import utils
 from yank.yank import Yank # TODO: Fix this weird import path to something more sane, like 'from yank import Yank'
 from yank.repex import ThermodynamicState # TODO: Fix this weird import path to something more sane, like 'from yank.repex import ThermodynamicState'
 
@@ -191,14 +194,14 @@ def setup_binding_amber(args):
     atom_indices = dict() # ligand_atoms[phase] is a list of ligand atom indices associated with phase 'phase'
     setup_directory = args['--setupdir'] # Directory where prmtop/inpcrd files are to be found
     for phase_prefix in phase_prefixes:
-        if verbose: print "reading phase %s: " % phase_prefix
+        if verbose: logger.info("reading phase %s: " % phase_prefix)
         # Read Amber prmtop and create System object.
         prmtop_filename = os.path.join(setup_directory, '%s.prmtop' % phase_prefix)
-        if verbose: print "  prmtop: %s" % prmtop_filename
+        if verbose: logger.info("prmtop: %s" % prmtop_filename)
         prmtop = app.AmberPrmtopFile(prmtop_filename)
         # Read Amber inpcrd and load positions.
         inpcrd_filename = os.path.join(setup_directory, '%s.inpcrd' % phase_prefix)
-        if verbose: print "  inpcrd: %s" % inpcrd_filename
+        if verbose: logger.info("inpcrd: %s" % inpcrd_filename)
         inpcrd = app.AmberInpcrdFile(inpcrd_filename)
         # Determine if this will be an explicit or implicit solvent simulation.
         phase_suffix = 'implicit'
@@ -269,6 +272,8 @@ def dispatch_binding(args):
     """
 
     verbose = args['--verbose']
+    store_dir = args['--store']
+    utils.config_root_logger(verbose, log_file_path=os.path.join(store_dir, 'prepare.log'))
 
     #
     # Determine simulation options.
@@ -285,7 +290,7 @@ def dispatch_binding(args):
     elif args['systembuilder']:
         [phases, systems, positions, atom_indices] = setup_binding_systembuilder(args)
     else:
-        print "No valid binding free energy calculation setup command specified: Must be one of ['amber', 'systembuilder']."
+        logger.error("No valid binding free energy calculation setup command specified: Must be one of ['amber', 'systembuilder'].")
         # Trigger help argument to be returned.
         return False
 
@@ -295,14 +300,14 @@ def dispatch_binding(args):
             phase = 'complex-explicit'
         else:
             phase = 'complex-implicit'
-        print "  TOTAL ATOMS      : %9d" % len(atom_indices[phase]['complex'])
-        print "  receptor         : %9d" % len(atom_indices[phase]['receptor'])
-        print "  ligand           : %9d" % len(atom_indices[phase]['ligand'])
+        logger.info("TOTAL ATOMS      : %9d" % len(atom_indices[phase]['complex']))
+        logger.info("receptor         : %9d" % len(atom_indices[phase]['receptor']))
+        logger.info("ligand           : %9d" % len(atom_indices[phase]['ligand']))
         if phase == 'complex-explicit':
-            print "  solvent and ions : %9d" % len(atom_indices[phase]['solvent'])
+            logger.info("solvent and ions : %9d" % len(atom_indices[phase]['solvent']))
 
     # Initialize YANK object.
-    yank = Yank(args['--store'], verbose=verbose)
+    yank = Yank(store_dir)
 
     # Set options.
     options = dict()

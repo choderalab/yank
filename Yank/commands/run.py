@@ -14,9 +14,14 @@ Run a YANK calculation.
 #=============================================================================================
 
 import os
+import logging
+logger = logging.getLogger(__name__)
+
 from simtk import openmm
 from simtk import unit
 from simtk.openmm import app
+
+from yank import utils
 
 #=============================================================================================
 # COMMAND DISPATCH
@@ -40,6 +45,10 @@ def dispatch(args):
     if args['--platform'] not in [None, 'None']:
         options['platform'] = openmm.Platform.getPlatformByName(args['--platform'])
 
+    # Configure logger
+    utils.config_root_logger(options['verbose'],
+                             log_file_path=os.path.join(store_directory, 'run.log'))
+
     # Set YANK to resume from the store file.
     phases = None # By default, resume from all phases found in store_directory
     if args['--phase']: phases=[args['--phase']]
@@ -51,10 +60,8 @@ def dispatch(args):
         # Initialize MPI.
         from mpi4py import MPI
         hostname = os.uname()[1]
-        if not MPI.COMM_WORLD.rank == 0:
-            yank.verbose = False
         MPI.COMM_WORLD.barrier()
-        if MPI.COMM_WORLD.rank == 0: print "Initialized MPI on %d processes." % (MPI.COMM_WORLD.size)
+        logger.info("Initialized MPI on %d processes." % (MPI.COMM_WORLD.size))
         mpicomm = MPI
 
     # Run simulation.

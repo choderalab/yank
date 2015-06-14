@@ -42,9 +42,6 @@ import simtk.unit as unit
 import logging
 logger = logging.getLogger(__name__)
 
-# DEBUG
-logging.basicConfig(level=logging.DEBUG)
-
 #=============================================================================================
 # PARAMETERS
 #=============================================================================================

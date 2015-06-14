@@ -21,7 +21,8 @@ import os.path
 import sys
 import copy
 import glob
-import time
+import logging
+logger = logging.getLogger(__name__)
 
 import numpy as np
 
@@ -48,7 +49,7 @@ class Yank(object):
 
     """
 
-    def __init__(self, store_directory, verbose=False):
+    def __init__(self, store_directory):
         """
         Initialize YANK object with default parameters.
 
@@ -56,8 +57,6 @@ class Yank(object):
         ----------
         store_directory : str
            The storage directory in which output NetCDF files are read or written.
-        verbose : bool, optional, default=False
-           If True, will turn on verbose output.
 
         """
 
@@ -68,7 +67,6 @@ class Yank(object):
         self._store_directory = store_directory
 
         # Public attributes.
-        self.verbose = verbose
         self.restraint_type = 'flat-bottom' # default to a flat-bottom restraint between the ligand and receptor
         self.randomize_ligand = True
         self.randomize_ligand_sigma_multiplier = 2.0
@@ -91,7 +89,7 @@ class Yank(object):
         self.default_options = dict()
         self.default_options['number_of_equilibration_iterations'] = 0
         self.default_options['number_of_iterations'] = 100
-        self.default_options['verbose'] = self.verbose
+        self.default_options['number_of_iterations'] = 100
         self.default_options['timestep'] = 2.0 * unit.femtoseconds
         self.default_options['collision_rate'] = 5.0 / unit.picoseconds
         self.default_options['minimize'] = False
@@ -137,8 +135,6 @@ class Yank(object):
         phases : list of str, optional, default=None
            The list of calculation phases (e.g. ['solvent', 'complex']) to resume.
            If not specified, all simulations in the store_directory will be resumed.
-        verbose : bool, optional, default=True
-           If True, will give verbose output
 
         """
         # If no phases specified, construct a list of phases from the filename prefixes in the store directory.
@@ -184,17 +180,14 @@ class Yank(object):
            If specified, the alchemical protocol protocols[phase] will be used for phase 'phase' instead of the default.
         options : dict of str, optional, default=None
            If specified, these options will override default repex simulation options.
-        verbose : bool, optional, default=True
-           If True, will give verbose output
 
         """
 
-        # DEBUG
-        print "phases: %s"  % phases
-        print "systems: %s" % systems.keys()
-        print "positions: %s" % positions.keys()
-        print "atom_indices: %s" % atom_indices.keys()
-        print "thermodynamic_state: %s" % thermodynamic_state
+        logger.debug("phases: %s"  % phases)
+        logger.debug("systems: %s" % systems.keys())
+        logger.debug("positions: %s" % positions.keys())
+        logger.debug("atom_indices: %s" % atom_indices.keys())
+        logger.debug("thermodynamic_state: %s" % thermodynamic_state)
 
         # Abort if there are files there already but initialization was requested.
         for phase in phases:
@@ -287,7 +280,7 @@ class Yank(object):
         # TODO: Do we need to include a standard state correction for other phases in periodic boxes?
         if phase == 'complex-implicit':
             # Impose restraints for complex system in implicit solvent to keep ligand from drifting too far away from receptor.
-            if self.verbose: print "Creating receptor-ligand restraints..."
+            logger.debug("Creating receptor-ligand restraints...")
             reference_positions = positions[0]
             if self.restraint_type == 'harmonic':
                 restraints = HarmonicReceptorLigandRestraint(thermodynamic_state, reference_system, reference_positions, atom_indices['receptor'], atom_indices['ligand'])
@@ -312,13 +305,13 @@ class Yank(object):
             protocols = self.default_protocols
 
         # Create alchemically-modified states using alchemical factory.
-        if self.verbose: print "Creating alchemically-modified states..."
+        logger.debug("Creating alchemically-modified states...")
         factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=atom_indices['ligand'])
         systems = factory.createPerturbedSystems(protocols[phase])
 
         # Randomize ligand position if requested, but only for implicit solvent systems.
         if self.randomize_ligand and (phase == 'complex-implicit'):
-            if self.verbose: print "Randomizing ligand positions and excluding overlapping configurations..."
+            logger.debug("Randomizing ligand positions and excluding overlapping configurations...")
             randomized_positions = list()
             nstates = len(systems)
             for state_index in range(nstates):
@@ -331,7 +324,7 @@ class Yank(object):
                 randomized_positions.append(new_positions)
             positions = randomized_positions
         if self.randomize_ligand and (phase == 'complex-explicit'):
-            print "WARNING: Ligand randomization requested, but will not be performed for explicit solvent simulations."
+            logger.warning("Ligand randomization requested, but will not be performed for explicit solvent simulations.")
 
         # Identify whether any atoms will be displaced via MC.
         mc_atoms = list()
@@ -343,18 +336,17 @@ class Yank(object):
 
         # Set up simulation.
         # TODO: Support MPI initialization?
-        if self.verbose: print "Creating replica exchange object..."
+        logger.debug("Creating replica exchange object...")
         store_filename = os.path.join(self._store_directory, phase + '.nc')
         self._store_filenames[phase] = store_filename
         simulation = ModifiedHamiltonianExchange(store_filename, mpicomm=mpicomm)
         simulation.create(thermodynamic_state, systems, positions,
                           displacement_sigma=self.mc_displacement_sigma, mc_atoms=mc_atoms,
                           options=options, metadata=metadata)
-        simulation.verbose = self.verbose
 
         # Initialize simulation.
         # TODO: Use the right scheme for initializing the simulation without running.
-        #if self.verbose: print "Initializing simulation..."
+        #logger.debug("Initializing simulation...")
         #simulation.run(0)
 
         # TODO: Process user-supplied options.
@@ -386,10 +378,6 @@ class Yank(object):
 
         # Handle some logistics necessary for MPI.
         if mpicomm:
-            # Turn off output from non-root nodes:
-            if not (mpicomm.rank==0):
-                self.verbose = False
-
             # Make sure each thread's random number generators have unique seeds.
             # TODO: Do we need to store seed in repex object?
             seed = np.random.randint(sys.maxint - mpicomm.size) + mpicomm.rank
@@ -456,7 +444,7 @@ class Yank(object):
         # Storage for results.
         results = dict()
 
-        if self.verbose: print "Analyzing simulation data..."
+        logger.debug("Analyzing simulation data...")
 
         # Process each netcdf file in output directory.
         for phase in self._phases:
