@@ -4,17 +4,6 @@ import logging
 from pkg_resources import resource_filename
 
 #========================================================================================
-# Exceptions
-#========================================================================================
-
-class OverwriteLogException(Exception):
-    """
-    Exception denoting an attempt to overwrite logging's configuration.
-
-    """
-    pass
-
-#========================================================================================
 # Utility functions
 #========================================================================================
 
@@ -41,7 +30,7 @@ def is_terminal_verbose():
 
     return is_verbose
 
-def config_root_logger(verbose, log_file_path=None, overwrite=False):
+def config_root_logger(verbose, log_file_path=None):
     """Setup the the root logger's configuration.
 
      The log messages are printed in the terminal and saved in the file specified
@@ -55,10 +44,6 @@ def config_root_logger(verbose, log_file_path=None, overwrite=False):
      generate the message, while in the terminal this happens only for messages
      of level WARNING and higher.
 
-     In order to overwrite the root logger's configuration overwrite must be True
-     or an Exception will be raised. This helps to control if parts of the code
-     attempt to modify the user's configuration.
-
     Parameters
     ----------
     verbose : bool
@@ -68,15 +53,6 @@ def config_root_logger(verbose, log_file_path=None, overwrite=False):
     log_file_path : str, optional, default = None
         If not None, this is the path where all the logger's messages of level
         logging.DEBUG or higher are saved.
-    overwrite : bool, optional, default = False
-        Set to True to force overwriting an eventual existing configuration. An
-        attempt to do so when overwrite=False raises an OverwriteLogException.
-
-    Raises
-    ------
-    OverwriteLogException
-        If the function is called with overwrite=False and logging.root has at
-        least one handler.
     """
 
     class TerminalFormatter(logging.Formatter):
@@ -92,7 +68,7 @@ def config_root_logger(verbose, log_file_path=None, overwrite=False):
         # This is the cleanest way I found to make the code compatible with both
         # Python 2 and Python 3
         simple_fmt = logging.Formatter('%(message)s')
-        default_fmt = logging.Formatter('%(name)s - %(levelname)s - %(message)s')
+        default_fmt = logging.Formatter('%(levelname)s - %(name)s - %(message)s')
 
         def format(self, record):
             if record.levelno <= logging.INFO:
@@ -103,12 +79,9 @@ def config_root_logger(verbose, log_file_path=None, overwrite=False):
     # Check if root logger is already configured
     n_handlers = len(logging.root.handlers)
     if n_handlers > 0:
-        if overwrite:
-            root_logger = logging.root
-            for i in xrange(n_handlers):
-                root_logger.removeHandler(root_logger.handlers[0])
-        else:
-            raise OverwriteLogException('Attempted to overwrite logging configuration.')
+        root_logger = logging.root
+        for i in xrange(n_handlers):
+            root_logger.removeHandler(root_logger.handlers[0])
 
     # If this is a worker node, don't save any log file
     try:
@@ -133,7 +106,7 @@ def config_root_logger(verbose, log_file_path=None, overwrite=False):
 
     # Add file handler to root logger
     if log_file_path is not None:
-        file_format = '%(asctime)s - %(levelname)s: %(name)s: %(message)s'
+        file_format = '%(asctime)s - %(levelname)s - %(name)s - %(message)s'
         file_handler = logging.FileHandler(log_file_path)
         file_handler.setLevel(logging.DEBUG)
         file_handler.setFormatter(logging.Formatter(file_format))
