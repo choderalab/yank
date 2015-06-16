@@ -308,6 +308,11 @@ class AbsoluteAlchemicalFactory(object):
         alchemical_states = list()
 
         alchemical_states.append(AlchemicalState(1.00, 1.00, 1.00, 1.)) # fully interacting
+        alchemical_states.append(AlchemicalState(1.00, 0.80, 1.00, 1.))
+        alchemical_states.append(AlchemicalState(1.00, 0.60, 1.00, 1.))
+        alchemical_states.append(AlchemicalState(1.00, 0.40, 1.00, 1.))
+        alchemical_states.append(AlchemicalState(1.00, 0.20, 1.00, 1.))
+        alchemical_states.append(AlchemicalState(1.00, 0.10, 1.00, 1.))
         alchemical_states.append(AlchemicalState(1.00, 0.00, 1.00, 1.)) # discharged
         alchemical_states.append(AlchemicalState(1.00, 0.00, 0.95, 1.))
         alchemical_states.append(AlchemicalState(1.00, 0.00, 0.90, 1.))
