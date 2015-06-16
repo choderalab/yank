@@ -87,8 +87,8 @@ def show_mixing_statistics(ncfile, cutoff=0.05, nequil=0):
         str_row += "%6d" % jstate
     logger.info(str_row)
 
-    str_row = ""
     for istate in range(nstates):
+        str_row = ""
         str_row += "%-6d" % istate
         for jstate in range(nstates):
             P = Tij[istate,jstate]
