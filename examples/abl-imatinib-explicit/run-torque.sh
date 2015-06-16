@@ -31,7 +31,9 @@
 #PBS -m n
 #
 
-cd $PBS_O_WORKDIR
+if [ -n "$PBS_O_WORKDIR" ]; then 
+    cd $PBS_O_WORKDIR
+fi
 
 # Set up and run simulation in serial mode.
 
