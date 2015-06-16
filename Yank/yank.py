@@ -378,9 +378,10 @@ class Yank(object):
 
         # Handle some logistics necessary for MPI.
         if mpicomm:
+            logger.debug("yank.run starting for MPI...")         
             # Make sure each thread's random number generators have unique seeds.
             # TODO: Do we need to store seed in repex object?
-            seed = np.random.randint(sys.maxint - mpicomm.size) + mpicomm.rank
+            seed = np.random.randint(4294967295 - mpicomm.size) + mpicomm.rank
             np.random.seed(seed)
 
         # Run all phases sequentially.

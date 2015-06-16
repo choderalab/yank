@@ -378,13 +378,27 @@ class ModifiedHamiltonianExchange(HamiltonianExchange):
         HamiltonianExchange._propagate_replicas(self)
 
         # Print summary statistics.
-        if (self.mc_displacement or self.mc_rotation):
-            if self.mpicomm:
-                from mpi4py import MPI
+        # TODO: Streamline this idiom.
+        if self.mpicomm:
+            # MPI
+            from mpi4py import MPI
+            if self.mc_displacement and (self.mc_atoms is not None):
                 self.displacement_trials_accepted = self.mpicomm.reduce(self.displacement_trials_accepted, op=MPI.SUM)
+                self.displacement_trial_time = self.mpicomm.reduce(self.displacement_trial_time, op=MPI.SUM)
+                if self.mpicomm.rank == 0:
+                    logger.debug("Displacement MC trial times consumed %.3f s aggregate (%d accepted)" % (self.displacement_trial_time, self.displacement_trials_accepted))
+
+            if self.mc_rotation and (self.mc_atoms is not None):
                 self.rotation_trials_accepted = self.mpicomm.reduce(self.rotation_trials_accepted, op=MPI.SUM)
-            total_mc_time = self.displacement_trial_time + self.rotation_trial_time
-            logger.debug("Rotation and displacement MC trial times consumed %.3f s (%d translation | %d rotation accepted)" % (total_mc_time, self.displacement_trials_accepted, self.rotation_trials_accepted))
+                self.rotation_trial_time = self.mpicomm.reduce(self.rotation_trial_time, op=MPI.SUM)
+                if self.mpicomm.rank == 0:
+                    logger.debug("Rotation MC trial times consumed %.3f s aggregate (%d accepted)" % (self.rotation_trial_time, self.rotation_trials_accepted))
+        else:
+            # SERIAL
+            if self.mc_displacement and (self.mc_atoms is not None):
+                logger.debug("Displacement MC trial times consumed %.3f s aggregate (%d accepted)" % (self.displacement_trial_time, self.displacement_trials_accepted))
+            if self.mc_rotation and (self.mc_atoms is not None):
+                logger.debug("Rotation MC trial times consumed %.3f s aggregate (%d accepted)" % (self.rotation_trial_time, self.rotation_trials_accepted))
 
         return
 
