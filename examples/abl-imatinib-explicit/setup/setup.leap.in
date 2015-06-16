@@ -1,13 +1,10 @@
-# Set up complex for GBSA simulation with OBC model.
+# Set up abl-imatinib complex in explicit solvent.
 
 # Load AMBER '96 forcefield for protein.
 source leaprc.ff14SB
 
 # Load GAFF parameters.
 source leaprc.gaff
-
-# Set GB radii to recommended values for OBC.
-set default PBRadii mbondi2
 
 # Load in protein.
 receptor = loadPdb receptor.pdb
