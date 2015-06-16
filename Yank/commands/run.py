@@ -65,6 +65,6 @@ def dispatch(args):
         mpicomm = MPI
 
     # Run simulation.
-    yank.run(mpicomm, options=options)
+    yank.run(mpicomm=mpicomm, options=options)
 
     return True
