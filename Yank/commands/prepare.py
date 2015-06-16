@@ -209,6 +209,9 @@ def setup_binding_amber(args):
         if inpcrd.boxVectors is not None:
             is_periodic = True
             phase_suffix = 'explicit'
+        # Check if both periodic box and implicit solvent are defined
+        if is_periodic and implicitSolvent is not None:
+            logger.warning('Detected both a periodic box and an implicit solvent.')
         # Adjust nonbondedMethod.
         # TODO: Ensure that selected method is appropriate.
         if nonbondedMethod == None:
