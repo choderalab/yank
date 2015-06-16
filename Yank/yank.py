@@ -68,7 +68,7 @@ class Yank(object):
 
         # Public attributes.
         self.restraint_type = 'flat-bottom' # default to a flat-bottom restraint between the ligand and receptor
-        self.randomize_ligand = True
+        self.randomize_ligand = False
         self.randomize_ligand_sigma_multiplier = 2.0
         self.randomize_ligand_close_cutoff = 1.5 * unit.angstrom # TODO: Allow this to be specified by user.
         self.mc_displacement_sigma = 10.0 * unit.angstroms
