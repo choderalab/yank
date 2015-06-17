@@ -48,7 +48,7 @@ test:
   imports:
     - yank
   commands:
-    - nosetests yank --nocapture --verbosity=2 --with-doctest -a '!slow'
+    - nosetests yank --nocapture --verbosity=2 --with-doctest -a '!slow' --processes=2
     - which yank
     - yank --help
 
