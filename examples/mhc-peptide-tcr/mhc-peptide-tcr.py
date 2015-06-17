@@ -32,9 +32,14 @@ store_dir = 'output' # directory to put output files in
 
 pdbid = '1AO7'
 chain_ids_to_keep = None # list of chains to retain, or None to keep all
-ligand_dsl = "chainid == 2" # mdtraj DSL selection for ligand (after filtering to retain only desired chains)
-receptor_dsl = "chainid ~= 2" # mdtraj DSL selection for receptor (after filtering to retain only desired chains)
 
+# mdtraj DSL selection for components (after filtering to retain only desired chains) 
+component_dsl = {
+    'ligand' : "chainid == 2",
+    'receptor' : "chainid != 2",
+    'complex' : "all"
+}
+ 
 pH = 7.0 # pH to use in setting protein protonation states
 keep_crystallographic_water = False # True if crystal waters are to be retained
 
@@ -244,21 +249,31 @@ for phase_prefix in phase_prefixes:
     # TODO: This part isn't working yet.
     mdtraj_top = mdtraj.Topology.from_openmm(fixer.topology)
     #mdtraj_traj = mdtraj.Trajectory(xyz=[fixer.positions], topology=mdtraj_top)
-    atom_indices = mdtraj_top.select(ligand_dsl)
-    subset_topology = mdtraj_top.subset(atom_indices).to_openmm()
+    if phase_prefix == 'solvent':
+        dsl = component_dsl['ligand']
+    elif phase_prefix == 'complex':
+        dsl = component_dsl['complex']
+    else:
+        raise Exception("unknown phase_prefix '%s'" % phase_prefix)
+    subset_atom_indices = mdtraj_top.select(dsl)
+    subset_topology = mdtraj_top.subset(subset_atom_indices).to_openmm()
     #subset_positions = mdtraj_traj.atom_slice(atom_indices).openmm_positions(0)
-    subset_positions = unit.Quantity(np.array(fixer.positions / unit.angstrom)[atom_indices,:], unit.angstrom)
+    x = np.array(fixer.positions / unit.angstrom)
+    print x.shape
+    subset_positions = unit.Quantity(x[subset_atom_indices,:], unit.angstrom)
 
     # Solvate (if needed), create System, and minimize (if requested).
-    [topology, system, positions] = solvate_and_minimize(subset_topology, subset_positions, phase=phase + '-')
+    [solvated_topology, solvated_system, solvated_positions] = solvate_and_minimize(subset_topology, subset_positions, phase=phase + '-')
 
     # Record components.
-    systems[phase] = system
-    positions[phase] = positions
+    systems[phase] = solvated_system
+    positions[phase] = solvated_positions
 
-    # Identify alchemical atoms.
-    mdtraj_top = mdtraj.Topology.from_openmm(topology)
-    atom_indices[phase]['ligand'] = mdtraj_top.select(ligand_dsl).tolist()
+    # Identify various components.
+    mdtraj_top = mdtraj.Topology.from_openmm(solvated_topology)
+    for component in components:
+        atom_indices[phase] = dict()
+        atom_indices[phase][component] = mdtraj_top.select(component_dsl[component]).tolist()
 
 # Create list of phase names.
 phases = systems.keys()
