@@ -62,9 +62,9 @@ def dispatch(args):
         hostname = os.uname()[1]
         MPI.COMM_WORLD.barrier()
         logger.info("Initialized MPI on %d processes." % (MPI.COMM_WORLD.size))
-        mpicomm = MPI
+        mpicomm = MPI.COMM_WORLD
 
     # Run simulation.
-    yank.run(mpicomm, options=options)
+    yank.run(mpicomm=mpicomm, options=options)
 
     return True

@@ -68,7 +68,7 @@ class Yank(object):
 
         # Public attributes.
         self.restraint_type = 'flat-bottom' # default to a flat-bottom restraint between the ligand and receptor
-        self.randomize_ligand = True
+        self.randomize_ligand = False
         self.randomize_ligand_sigma_multiplier = 2.0
         self.randomize_ligand_close_cutoff = 1.5 * unit.angstrom # TODO: Allow this to be specified by user.
         self.mc_displacement_sigma = 10.0 * unit.angstroms
@@ -378,9 +378,10 @@ class Yank(object):
 
         # Handle some logistics necessary for MPI.
         if mpicomm:
+            logger.debug("yank.run starting for MPI...")         
             # Make sure each thread's random number generators have unique seeds.
             # TODO: Do we need to store seed in repex object?
-            seed = np.random.randint(sys.maxint - mpicomm.size) + mpicomm.rank
+            seed = np.random.randint(4294967295 - mpicomm.size) + mpicomm.rank
             np.random.seed(seed)
 
         # Run all phases sequentially.

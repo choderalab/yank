@@ -1465,7 +1465,7 @@ class ReplicaExchange(object):
 
             if self.mpicomm:
                 # MPI implementation.
-                
+                logger.debug("MPI implementation.")
                 # Minimize this node's share of replicas.
                 start_time = time.time()
                 for replica_index in range(self.mpicomm.rank, self.nstates, self.mpicomm.size):
@@ -1488,6 +1488,7 @@ class ReplicaExchange(object):
 
             else:
                 # Serial implementation.
+                logger.debug("Serial implementation.")
                 for replica_index in range(self.nstates):
                     logger.debug("minimizing replica %d / %d" % (replica_index, self.nstates))
                     self._minimize_replica(replica_index)
