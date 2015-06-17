@@ -1836,13 +1836,13 @@ class ReplicaExchange(object):
         setattr(ncfile, 'ConventionVersion', '0.1')
 
         # Create variables.
-        ncvar_positions = ncfile.createVariable('positions', 'f', ('iteration','replica','atom','spatial'))
-        ncvar_states    = ncfile.createVariable('states', 'i', ('iteration','replica'))
-        ncvar_energies  = ncfile.createVariable('energies', 'f', ('iteration','replica','replica'))
-        ncvar_proposed  = ncfile.createVariable('proposed', 'l', ('iteration','replica','replica'))
-        ncvar_accepted  = ncfile.createVariable('accepted', 'l', ('iteration','replica','replica'))
-        ncvar_box_vectors = ncfile.createVariable('box_vectors', 'f', ('iteration','replica','spatial','spatial'))
-        ncvar_volumes  = ncfile.createVariable('volumes', 'f', ('iteration','replica'))
+        ncvar_positions = ncfile.createVariable('positions', 'f', ('iteration','replica','atom','spatial'), zlib=True, chunksizes=(1,self.nreplicas,self.natoms,3))
+        ncvar_states    = ncfile.createVariable('states', 'i', ('iteration','replica'), zlib=False, chunksizes=(1,self.nreplicas))
+        ncvar_energies  = ncfile.createVariable('energies', 'f', ('iteration','replica','replica'), zlib=False, chunksizes=(1,self.nreplicas,self.nreplicas))
+        ncvar_proposed  = ncfile.createVariable('proposed', 'l', ('iteration','replica','replica'), zlib=False, chunksizes=(1,self.nreplicas,self.nreplicas))
+        ncvar_accepted  = ncfile.createVariable('accepted', 'l', ('iteration','replica','replica'), zlib=False, chunksizes=(1,self.nreplicas,self.nreplicas))
+        ncvar_box_vectors = ncfile.createVariable('box_vectors', 'f', ('iteration','replica','spatial','spatial'), zlib=False, chunksizes=(1,self.nreplicas,3,3))
+        ncvar_volumes  = ncfile.createVariable('volumes', 'f', ('iteration','replica'), zlib=False, chunksizes=(1,self.nreplicas))
 
         # Define units for variables.
         setattr(ncvar_positions, 'units', 'nm')
@@ -1863,13 +1863,13 @@ class ReplicaExchange(object):
         setattr(ncvar_volumes, "long_name", "volume[iteration][replica] is the box volume for replica 'replica' from iteration 'iteration-1'.")
 
         # Create timestamp variable.
-        ncvar_timestamp = ncfile.createVariable('timestamp', str, ('iteration',))
+        ncvar_timestamp = ncfile.createVariable('timestamp', str, ('iteration',), zlib=False, chunksizes=(1,))
 
         # Create group for performance statistics.
         ncgrp_timings = ncfile.createGroup('timings')
-        ncvar_iteration_time = ncgrp_timings.createVariable('iteration', 'f', ('iteration',)) # total iteration time (seconds)
-        ncvar_iteration_time = ncgrp_timings.createVariable('mixing', 'f', ('iteration',)) # time for mixing
-        ncvar_iteration_time = ncgrp_timings.createVariable('propagate', 'f', ('iteration','replica')) # total time to propagate each replica
+        ncvar_iteration_time = ncgrp_timings.createVariable('iteration', 'f', ('iteration',), zlib=False, chunksizes=(1,)) # total iteration time (seconds)
+        ncvar_iteration_time = ncgrp_timings.createVariable('mixing', 'f', ('iteration',), zlib=False, chunksizes=(1,)) # time for mixing
+        ncvar_iteration_time = ncgrp_timings.createVariable('propagate', 'f', ('iteration','replica'), zlib=False, chunksizes=(1,self.nreplicas)) # total time to propagate each replica
 
         # Store thermodynamic states.
         self._store_thermodynamic_states(ncfile)
