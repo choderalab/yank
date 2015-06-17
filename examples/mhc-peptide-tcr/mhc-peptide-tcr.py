@@ -15,6 +15,7 @@ import os, os.path
 import yank
 import mdtraj
 import pdbfixer
+import numpy as np
 from simtk import openmm, unit
 from simtk.openmm import app
 import logging
@@ -24,10 +25,10 @@ logger = logging.getLogger(__name__)
 # PARAMETERS
 # ==============================================================================
 
-verbose = True
+verbose = True # if True, use logger
 
-setupdir = 'setup' # directory to put setup files in
-storedir = 'output' # directory to put output files in
+setup_dir = 'setup' # directory to put setup files in
+store_dir = 'output' # directory to put output files in
 
 pdbid = '1AO7'
 chain_ids_to_keep = None # list of chains to retain, or None to keep all
@@ -38,7 +39,8 @@ pH = 7.0 # pH to use in setting protein protonation states
 keep_crystallographic_water = False # True if crystal waters are to be retained
 
 # Forcefield and simulation parameters.
-ffxmls = ['amber99sbildn.xml', 'tip3p.xml'] # list of ffxml files to use
+water_name = 'tip4pew'
+ffxmls = ['amber99sbildn.xml', 'tip4pew.xml'] # list of ffxml files to use
 padding = 11.0 * unit.angstroms
 nonbonded_cutoff = 10.0 * unit.angstroms
 nonbonded_method = app.CutoffPeriodic
@@ -56,6 +58,24 @@ nsteps_per_iteration = 500
 niterations = 100
 nequiliterations = 10
 
+minimize = False
+
+# ==============================================================================
+# SET UP STORAGE
+# ==============================================================================
+
+# Create directory to store files in.
+workdir = os.path.join(os.getcwd(), setup_dir)
+if not os.path.exists(workdir):
+    os.makedirs(workdir)
+    logger.info("Creating path %s" % workdir)
+
+# ==============================================================================
+# CONFIGURE LOGGER
+# ==============================================================================
+
+from yank import utils
+utils.config_root_logger(verbose, log_file_path=os.path.join(setup_dir, 'prepare.log'))
 
 # ==============================================================================
 # PREPARE STRUCTURE
@@ -67,21 +87,15 @@ from pdbfixer import PDBFixer
 # Retrieve the PDB file
 # ==============================================================================
 
-if verbose: print "Retrieving PDB '%s'..." % pdbid
+logger.info("Retrieving PDB '%s'..." % pdbid)
 fixer = PDBFixer(pdbid=pdbid)
 
 # ==============================================================================
 # Prepare the structure
 # ==============================================================================
 
-# Create directory to store files in.
-workdir = os.path.join(os.getcwd(), setupdir)
-if not os.path.exists(workdir):
-    os.makedirs(workdir)
-    print "Creating path %s" % workdir
-
 # Write PDB file for solute only.
-if verbose: print "Writing source PDB..."
+logger.info("Writing source PDB...")
 pdb_filename = os.path.join(workdir, pdbid + '.pdb')
 outfile = open(pdb_filename, 'w')
 app.PDBFile.writeFile(fixer.topology, fixer.positions, outfile)
@@ -98,11 +112,11 @@ if chain_ids_to_keep is not None:
             chain_numbers_to_remove.append(chain_number)
 
     # Remove all but desired chains.
-    if verbose: print "Removing chains..."
+    logger.info("Removing chains...")
     fixer.removeChains(chain_numbers_to_remove)
     
 # Add missing atoms and residues.
-if verbose: print "Adding missing atoms and residues..."
+logger.info("Adding missing atoms and residues...")
 fixer.findMissingResidues()
 fixer.findMissingAtoms()
 fixer.addMissingAtoms()
@@ -110,7 +124,7 @@ fixer.addMissingHydrogens(pH)
 fixer.removeHeterogens(keepWater=keep_crystallographic_water)
 
 # Write PDB file for completed output.
-if verbose: print "Writing pdbfixer output..."
+logger.info("Writing pdbfixer output...")
 pdb_filename = os.path.join(workdir, 'pdbfixer.pdb')
 outfile = open(pdb_filename, 'w')
 app.PDBFile.writeFile(fixer.topology, fixer.positions, outfile)
@@ -141,7 +155,7 @@ def solvate_and_minimize(topology, positions, phase=''):
     """
 
     # Solvate (if desired) and create system.
-    if verbose: print "Solvating..."
+    logger.info("Solvating...")
     forcefield = app.ForceField(*ffxmls)
     modeller = app.Modeller(topology, positions)    
     if nonbonded_method not in [app.NoCutoff, app.CutoffNonPeriodic]:
@@ -152,24 +166,24 @@ def solvate_and_minimize(topology, positions, phase=''):
 
     if minimize:
         # Create simulation.
-        if verbose: print "Creating simulation..."
+        logger.info("Creating simulation...")
         integrator = openmm.LangevinIntegrator(temperature, collision_rate, timestep)
         simulation = app.Simulation(modeller.topology, system, integrator)
         simulation.context.setPositions(modeller.positions)
 
         # Write modeller positions.
-        if verbose: print "Writing modeller output..."
+        logger.info("Writing modeller output...")
         filename = os.path.join(workdir, phase + 'modeller.pdb')
         app.PDBFile.writeFile(simulation.topology, modeller.positions, open(filename, 'w'))
 
         # Minimize energy.
-        if verbose: print "Minimizing energy..."
+        logger.info("Minimizing energy...")
         simulation.minimizeEnergy(maxIterations=max_minimization_iterations)
         state = simulation.context.getState(getEnergy=True)
         potential_energy = state.getPotentialEnergy()
         if numpy.isnan(potential_energy / unit.kilocalories_per_mole):
             raise Exception("Potential energy is NaN after minimization.")
-        if verbose: print "Potential energy after minimiziation: %.3f kcal/mol" % (potential_energy / unit.kilocalories_per_mole)
+        logger.info("Potential energy after minimiziation: %.3f kcal/mol" % (potential_energy / unit.kilocalories_per_mole))
         modeller.positions = simulation.context.getState(getPositions=True).getPositions()
 
         # Write minimized positions.
@@ -177,7 +191,7 @@ def solvate_and_minimize(topology, positions, phase=''):
         app.PDBFile.writeFile(simulation.topology, modeller.positions, open(filename, 'w'))
 
         # Serialize to XML files.
-        if verbose: print "Serializing to XML..."
+        logger.info("Serializing to XML...")
         system_filename = os.path.join(workdir, phase + 'system.xml')
         integrator_filename = os.path.join(workdir, phase + 'integrator.xml')
         write_file(system_filename, openmm.XmlSerializer.serialize(system))
@@ -216,24 +230,24 @@ systems = dict() # systems[phase] is the System object associated with phase 'ph
 positions = dict() # positions[phase] is a list of coordinates associated with phase 'phase'
 atom_indices = dict() # ligand_atoms[phase] is a list of ligand atom indices associated with phase 'phase'
 for phase_prefix in phase_prefixes:
-    # Determine type of phase.
-    if phase_prefix == 'complex':
-        # Retain the whole system
-        if nonbonded_method in [app.NoCutoff, app.CutoffNonPeriodic]:
-            phase_suffix = 'implicit'
-        else:
-            phase_suffix = 'explicit'
+    # Retain the whole system
+    if nonbonded_method in [app.NoCutoff, app.CutoffNonPeriodic]:
+        phase_suffix = 'implicit'
+    else:
+        phase_suffix = 'explicit'
+
+    # Form phase name.
     phase = '%s-%s' % (phase_prefix, phase_suffix)
-    if verbose: logger.info("phase %s: " % phase)
+    logger.info("phase %s: " % phase)
 
-    # Extract the desired subset of the system.
+    # Use mdtraj to extract the desired subset of the system.
     # TODO: This part isn't working yet.
-    mdtraj_top = mdtraj.Topology.from_openmm(pdbfixer.topology)
-    mdtraj_traj = mdtraj.Trajectory(xyz=pdbfixer.positions, topology=pdbfixer.topology)
-
-    atom_indices = mdtraj_top.select(ligand_dsl).tolist()
-    subset_topology = mdtraj_top.select(atom_indices).to_openmm()
-    subset_positions = mdtraj_traj.atom_slice(atom_indices).openmm_positions(0)
+    mdtraj_top = mdtraj.Topology.from_openmm(fixer.topology)
+    #mdtraj_traj = mdtraj.Trajectory(xyz=[fixer.positions], topology=mdtraj_top)
+    atom_indices = mdtraj_top.select(ligand_dsl)
+    subset_topology = mdtraj_top.subset(atom_indices).to_openmm()
+    #subset_positions = mdtraj_traj.atom_slice(atom_indices).openmm_positions(0)
+    subset_positions = unit.Quantity(np.array(fixer.positions / unit.angstrom)[atom_indices,:], unit.angstrom)
 
     # Solvate (if needed), create System, and minimize (if requested).
     [topology, system, positions] = solvate_and_minimize(subset_topology, subset_positions, phase=phase + '-')
