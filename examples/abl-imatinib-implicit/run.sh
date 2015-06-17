@@ -1,5 +1,12 @@
 #!/bin/bash
 
+#
+# Abl binding to imatinib in implicit solvent.
+#
+
+# Set defaults
+export NITERATIONS=${NITERATIONS:=1000}
+
 # Set up and run simulation in serial mode.
 
 if [ ! -e output ]; then
@@ -13,7 +20,7 @@ yank cleanup --store=output
 
 # Set up calculation.
 echo "Setting up binding free energy calculation..."
-yank prepare binding amber --setupdir=setup --ligname=MOL --store=output --iterations=1 --restraints=harmonic --gbsa=OBC2 --temperature=300*kelvin --minimize --verbose
+yank prepare binding amber --setupdir=setup --ligname=MOL --store=output --iterations=$NITERATIONS --restraints=harmonic --gbsa=OBC2 --temperature=300*kelvin --minimize --verbose
 
 # Run the simulation with verbose output:
 echo "Running simulation..."

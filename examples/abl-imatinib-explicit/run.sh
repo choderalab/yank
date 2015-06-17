@@ -1,6 +1,11 @@
 #!/bin/bash
 
-# Set up simulation in serial mode.
+#
+# Abl binding to imatinib in explicit solvent.
+#
+
+# Set defaults
+export NITERATIONS=${NITERATIONS:=1000}
 
 if [ ! -e output ]; then
     echo "Making output directory..."
