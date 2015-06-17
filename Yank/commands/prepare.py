@@ -106,11 +106,11 @@ def find_components(topology, ligand_dsl, solvent_resnames=_SOLVENT_RESNAMES):
 
     # Determine solvent and receptor atoms
     # I did some benchmarking and this is still faster than a single for loop
-    # through all the atoms in topology.atoms
-    atom_indices['solvent'] = [atom.index for atom in topology.atoms
+    # through all the atoms in mdtraj_top.atoms
+    atom_indices['solvent'] = [atom.index for atom in mdtraj_top.atoms
                                if atom.residue.name in solvent_resnames]
     not_receptor_set = frozenset(atom_indices['ligand'] + atom_indices['solvent'])
-    atom_indices['receptor'] = [atom.index for atom in topology.atoms
+    atom_indices['receptor'] = [atom.index for atom in mdtraj_top.atoms
                                 if atom.index not in not_receptor_set]
     atom_indices['complex'] = atom_indices['receptor'] + atom_indices['ligand']
 
