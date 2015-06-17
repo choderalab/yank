@@ -52,8 +52,6 @@ yank prepare binding amber --setupdir=setup --ligname=MOL --store=output --itera
 
 # Run the simulation with verbose output:
 echo "Running simulation via MPI..."
-#yank run --store=output --verbose
-#mpirun -rmk pbs yank run --store=output --verbose --mpi
 build_mpirun_configfile "yank run --store=output --verbose --mpi"
 mpirun -configfile configfile
 date
