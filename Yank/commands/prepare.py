@@ -17,7 +17,8 @@ import os, os.path
 import logging
 logger = logging.getLogger(__name__)
 
-from simtk import openmm
+import mdtraj
+
 from simtk import unit
 from simtk.openmm import app
 
@@ -67,17 +68,19 @@ _SOLVENT_RESNAMES = frozenset(['118', '119', '1AL', '1CU', '2FK', '2HP', '2OF', 
         'TRA', 'UNX', 'V', 'V2+', 'VN3', 'VO4', 'W', 'WO5', 'Y1', 'YB', 'YB2',
         'YH', 'YT3', 'ZN', 'ZN2', 'ZN3', 'ZNA', 'ZNO', 'ZO3'])
 
-def find_components(topology, ligand_resnames=['MOL'], solvent_resnames=_SOLVENT_RESNAMES):
+def find_components(topology, ligand_dsl, solvent_resnames=_SOLVENT_RESNAMES):
     """
     Return list of receptor and ligand atoms.
-    Ligand atoms are specified by a residue name, while receptor atoms are everything else excluding water.
+    Ligand atoms are specified through MDTraj domain-specific language (DSL),
+    while receptor atoms are everything else excluding water.
 
     Parameters
     ----------
-    topology : simtk.openmm.app.Topology
-       The topology object specifying the system.
-    ligand_resname : list of str, optional, default=['MOL']
-       List of three-letter ligand residue names used to identify the ligand(s).
+    topology : mdtraj.Topology, simtk.openmm.app.Topology
+       The topology object specifying the system. If simtk.openmm.app.Topology
+       is passed instead this will be converted.
+    ligand_dsl : str
+       DSL specification of the ligand atoms.
     solvent_resnames : list of str, optional, default=['WAT', 'TIP', 'HOH']
        List of solvent residue names to exclude from receptor definition.
 
@@ -88,18 +91,28 @@ def find_components(topology, ligand_resnames=['MOL'], solvent_resnames=_SOLVENT
        component is one of 'receptor', 'ligand', 'solvent', 'complex'
 
     """
-    components = ['receptor', 'ligand', 'solvent', 'complex']
-    atom_indices = { component : list() for component in components }
+    atom_indices = {}
 
-    for atom in topology.atoms():
-        if atom.residue.name in ligand_resnames:
-            atom_indices['ligand'].append(atom.index)
-            atom_indices['complex'].append(atom.index)
-        elif atom.residue.name in solvent_resnames:
-            atom_indices['solvent'].append(atom.index)
-        else:
-            atom_indices['receptor'].append(atom.index)
-            atom_indices['complex'].append(atom.index)
+    # Determine if we need to convert the topology to mdtraj
+    # I'm using isinstance() to check this and not duck typing with hasattr() in
+    # case openmm Topology will implement a select() method in the future
+    if isinstance(topology, mdtraj.Topology):
+        mdtraj_top = topology
+    else:
+        mdtraj_top = mdtraj.Topology.from_openmm(topology)
+
+    # Determine ligand atoms
+    atom_indices['ligand'] = mdtraj_top.select(ligand_dsl).tolist()
+
+    # Determine solvent and receptor atoms
+    # I did some benchmarking and this is still faster than a single for loop
+    # through all the atoms in topology.atoms
+    atom_indices['solvent'] = [atom.index for atom in topology.atoms
+                               if atom.residue.name in solvent_resnames]
+    not_receptor_set = frozenset(atom_indices['ligand'] + atom_indices['solvent'])
+    atom_indices['receptor'] = [atom.index for atom in topology.atoms
+                                if atom.index not in not_receptor_set]
+    atom_indices['complex'] = atom_indices['receptor'] + atom_indices['ligand']
 
     return atom_indices
 
@@ -231,9 +244,10 @@ def setup_binding_amber(args):
         inpcrd_natoms = positions[phase].shape[0]
         if prmtop_natoms != inpcrd_natoms:
             raise Exception("Atom number mismatch: prmtop %s has %d atoms; inpcrd %s has %d atoms." % (prmtop_filename, prmtop_natoms, inpcrd_filename, inpcrd_natoms))
+
         # Find ligand atoms and receptor atoms.
-        ligand_resname = args['--ligname']
-        atom_indices[phase] = find_components(prmtop.topology, [ligand_resname])
+        ligand_dsl = args['--ligdsl'] # MDTraj DSL that specifies ligand atoms
+        atom_indices[phase] = find_components(prmtop.topology, ligand_dsl)
 
     phases = systems.keys()
 
