@@ -326,10 +326,12 @@ class Yank(object):
         if self.randomize_ligand and (phase == 'complex-explicit'):
             logger.warning("Ligand randomization requested, but will not be performed for explicit solvent simulations.")
 
-        # Identify whether any atoms will be displaced via MC.
-        mc_atoms = list()
-        if 'ligand' in atom_indices:
-            mc_atoms = atom_indices['ligand']
+        # Identify whether any atoms will be displaced via MC, unless option is turned off.
+        mc_atoms = None
+        if mc_displacement_sigma:
+            mc_atoms = list()
+            if 'ligand' in atom_indices:
+                mc_atoms = atom_indices['ligand']
 
         # Combine simulation options with defaults.
         options = dict(self.default_options.items() + options.items())

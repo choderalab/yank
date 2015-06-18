@@ -274,7 +274,8 @@ for phase_prefix in phase_prefixes:
     else:
         raise Exception("unknown phase_prefix '%s'" % phase_prefix)
     subset_atom_indices = mdtraj_top.select(dsl)
-    subset_topology = mdtraj_top.subset(subset_atom_indices).to_openmm()
+    subset_topology_mdtraj = mdtraj_top.subset(subset_atom_indices)
+    subset_topology_openmm = subset_topology_mdtraj.to_openmm()
     #subset_positions = mdtraj_traj.atom_slice(atom_indices).openmm_positions(0)
     x = np.array(fixer.positions / unit.angstrom)
     subset_positions = unit.Quantity(x[subset_atom_indices,:], unit.angstrom)
@@ -290,7 +291,7 @@ for phase_prefix in phase_prefixes:
     mdtraj_top = mdtraj.Topology.from_openmm(solvated_topology)
     atom_indices[phase] = dict()
     for component in components:
-        atom_indices[phase][component] = mdtraj_top.select(component_dsl[component]).tolist()
+        atom_indices[phase][component] = subset_topology_mdtraj.select(component_dsl[component]).tolist()
 
 # Create list of phase names.
 phases = systems.keys()
