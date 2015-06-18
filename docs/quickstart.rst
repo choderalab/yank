@@ -21,7 +21,7 @@ Use the `yank prepare` command to set up an alchemical free energy calculation u
 
 .. code-block:: none
 
-   $ yank prepare binding amber --setupdir=setup --ligname=BEN --store=output --iterations=1000 \
+   $ yank prepare binding amber --setupdir=setup --ligand="resname BEN" --store=output --iterations=1000 \
      --restraints=harmonic --gbsa=OBC2 --temperature=300*kelvin --verbose
 
 Run the simulation in serial mode with:

@@ -246,7 +246,7 @@ def setup_binding_amber(args):
             raise Exception("Atom number mismatch: prmtop %s has %d atoms; inpcrd %s has %d atoms." % (prmtop_filename, prmtop_natoms, inpcrd_filename, inpcrd_natoms))
 
         # Find ligand atoms and receptor atoms.
-        ligand_dsl = args['--ligdsl'] # MDTraj DSL that specifies ligand atoms
+        ligand_dsl = args['--ligand'] # MDTraj DSL that specifies ligand atoms
         atom_indices[phase] = find_components(prmtop.topology, ligand_dsl)
 
     phases = systems.keys()

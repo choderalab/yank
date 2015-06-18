@@ -19,7 +19,7 @@ The mbondi2 radii are used, with OBC GBSA in YANK.
 
 Set up the simulation to alchemically decouple benzene, putting all the output files in `output/`:
 ```tcsh
-yank prepare binding amber --setupdir=setup --ligname=BEN --store=output --iterations=1000 --restraints=harmonic --gbsa=OBC2 --temperature="300*kelvin" --minimize --verbose
+yank prepare binding amber --setupdir=setup --ligand="resname MOL" --store=output --iterations=1000 --restraints=harmonic --gbsa=OBC2 --temperature="300*kelvin" --minimize --verbose
 ```
 
 Run the simulation with verbose output:

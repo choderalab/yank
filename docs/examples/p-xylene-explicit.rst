@@ -15,7 +15,7 @@ Reaction field electrostatics (`--nbmethod=CutoffPeriodic`) is used, and the tem
 
 .. code-block:: none
 
-   $ yank prepare binding amber --setupdir=setup --ligname=MOL --store=output --iterations=1000 --nbmethod=CutoffPeriodic --temperature=300*kelvin --pressure=1*atmospheres --verbose
+   $ yank prepare binding amber --setupdir=setup --ligand="resname MOL" --store=output --iterations=1000 --nbmethod=CutoffPeriodic --temperature=300*kelvin --pressure=1*atmospheres --verbose
 
 Run the simulation in serial mode with verbose output:
 
