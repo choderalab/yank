@@ -45,11 +45,13 @@ pH = 7.0 # pH to use in setting protein protonation states
 keep_crystallographic_water = False # True if crystal waters are to be retained
 
 # Forcefield and simulation parameters.
-water_name = 'tip4pew'
-ffxmls = ['amber99sbildn.xml', 'tip4pew.xml'] # list of ffxml files to use
-padding = 11.0 * unit.angstroms
+water_name = 'tip4pew' # water to use for explicit solvent
+ffxmls = ['amber99sbildn.xml', water_name + '.xml'] # list of ffxml files to use
+ffxmls += ['amber99_obc.xml'] # Add GBSA if desired
+padding = 10.0 * unit.angstroms
 nonbonded_cutoff = 10.0 * unit.angstroms
-nonbonded_method = app.CutoffPeriodic
+#nonbonded_method = app.CutoffPeriodic # for explicit solvent
+nonbonded_method = app.NoCutoff # for implicit solvent
 constraints = app.HBonds
 
 max_minimization_iterations = 250
@@ -94,6 +96,8 @@ utils.config_root_logger(verbose, log_file_path=os.path.join(setup_dir, 'prepare
 # ==============================================================================
 
 from pdbfixer import PDBFixer
+
+is_periodic = (nonbonded_method not in [app.NoCutoff, app.CutoffNonPeriodic])
 
 # ==============================================================================
 # Retrieve the PDB file
@@ -170,10 +174,11 @@ def solvate_and_minimize(topology, positions, phase=''):
     logger.info("Solvating...")
     forcefield = app.ForceField(*ffxmls)
     modeller = app.Modeller(topology, positions)    
-    if nonbonded_method not in [app.NoCutoff, app.CutoffNonPeriodic]:
+    if is_periodic:
+        # Add solvent if in a periodic box.
         modeller.addSolvent(forcefield, padding=padding, model=water_name)
     system = forcefield.createSystem(modeller.topology, nonbondedMethod=nonbonded_method, nonbondedCutoff=nonbonded_cutoff, constraints=constraints)
-    if pressure:
+    if is_periodic:
         system.addForce(openmm.MonteCarloBarostat(pressure, temperature, barostat_frequency))
 
     if minimize:
@@ -235,6 +240,9 @@ options['minimize'] = True
 options['timestep'] = timestep
 options['collision_rate'] = collision_rate
 
+if not is_periodic:
+    yank.restraint_type = 'harmonic'
+
 # Prepare phases of calculation.
 phase_prefixes = ['solvent', 'complex'] # list of calculation phases (thermodynamic legs) to set up
 components = ['ligand', 'receptor', 'solvent'] # components of the binding system
@@ -243,10 +251,10 @@ positions = dict() # positions[phase] is a list of coordinates associated with p
 atom_indices = dict() # ligand_atoms[phase] is a list of ligand atom indices associated with phase 'phase'
 for phase_prefix in phase_prefixes:
     # Retain the whole system
-    if nonbonded_method in [app.NoCutoff, app.CutoffNonPeriodic]:
-        phase_suffix = 'implicit'
-    else:
+    if is_periodic:
         phase_suffix = 'explicit'
+    else:
+        phase_suffix = 'implicit'
 
     # Form phase name.
     phase = '%s-%s' % (phase_prefix, phase_suffix)
@@ -266,7 +274,6 @@ for phase_prefix in phase_prefixes:
     subset_topology = mdtraj_top.subset(subset_atom_indices).to_openmm()
     #subset_positions = mdtraj_traj.atom_slice(atom_indices).openmm_positions(0)
     x = np.array(fixer.positions / unit.angstrom)
-    print x.shape
     subset_positions = unit.Quantity(x[subset_atom_indices,:], unit.angstrom)
 
     # Solvate (if needed), create System, and minimize (if requested).
@@ -287,9 +294,10 @@ phases = systems.keys()
 
 # Create reference thermodynamic state.
 from yank.repex import ThermodynamicState # TODO: Fix this weird import path to something more sane, like 'from yank.repex import ThermodynamicState'
-thermodynamic_state = ThermodynamicState(temperature=temperature, pressure=pressure)
-
-print atom_indices
+if is_periodic:
+    thermodynamic_state = ThermodynamicState(temperature=temperature, pressure=pressure)
+else:
+    thermodynamic_state = ThermodynamicState(temperature=temperature)
 
 # Create new simulation.
 yank.create(phases, systems, positions, atom_indices, thermodynamic_state, options=options)
