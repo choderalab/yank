@@ -1,4 +1,4 @@
-#!/bin/tcsh
+#!/bin/bash
 #  Batch script for mpirun job on cbio cluster.
 #
 #
@@ -24,18 +24,23 @@
 #
 # job name (default = name of script file)
 #PBS -N p-xylene
-#
-# mail settings
-#PBS -m n
-#
-# filename for standard output (default = <job_name>.o<job_id>)
-# at end of job, it is in directory from which qsub was executed
-# remove extra ## from the line below if you want to name your own file
-#PBS -o /cbio/jclab/projects/musashi/yank.jchodera/examples/p-xylene/torque.out
 
 cd $PBS_O_WORKDIR
 
-date
+# Set defaults
+export NITERATIONS=${NITERATIONS:=1000}
+
+if [ ! -e output ]; then
+    echo "Making output directory..."
+    mkdir output
+fi
+
+# Clean up any leftover files
+echo "Cleaning up previous simulation..."
+yank cleanup --store=output
+
+# Set up calculation.
+echo "Setting up binding free energy calculation..."
 yank prepare binding amber --setupdir=setup --ligname=BEN --store=output --iterations=1000 --nbmethod=CutoffPeriodic --temperature="300*kelvin" --pressure="1*atmosphere" --minimize --verbose
 date
 

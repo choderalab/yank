@@ -23,10 +23,6 @@
 #
 # job name (default = name of script file)
 #PBS -N mhc-peptide-tcr
-#
-# mail settings
-#PBS -m n
-#
 
 if [ -n "$PBS_O_WORKDIR" ]; then 
     cd $PBS_O_WORKDIR

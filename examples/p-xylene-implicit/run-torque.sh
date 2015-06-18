@@ -3,7 +3,7 @@
 #
 #
 # walltime : maximum wall clock time (hh:mm:ss)
-#PBS -l walltime=8:00:00
+#PBS -l walltime=24:00:00
 #
 # join stdout and stderr
 #PBS -j oe
@@ -24,19 +24,11 @@
 #
 # job name (default = name of script file)
 #PBS -N p-xylene
-#
-# specify email
-#PBS -M jchodera@gmail.com
-#
-# mail settings
-#PBS -m n
-#
-# filename for standard output (default = <job_name>.o<job_id>)
-# at end of job, it is in directory from which qsub was executed
-# remove extra ## from the line below if you want to name your own file
-#PBS -o /cbio/jclab/projects/musashi/yank.jchodera/examples/p-xylene/torque.out
 
 cd $PBS_O_WORKDIR
+
+# Set defaults
+export NITERATIONS=${NITERATIONS:=1000}
 
 if [ ! -e output ]; then
     echo "Making output directory..."
@@ -49,12 +41,13 @@ yank cleanup --store=output
 
 # Set up calculation.
 echo "Setting up binding free energy calculation..."
-yank prepare binding amber --setupdir=setup --ligname=MOL --store=output --iterations=1 --restraints=harmonic --gbsa=OBC2 --temperature="300*kelvin" --verbose
+yank prepare binding amber --setupdir=setup --ligname=MOL --store=output --iterations=$NITERATIONS --restraints=harmonic --gbsa=OBC2 --temperature="300*kelvin" --verbose
 
-date
-yank run --store=output --verbose
-#mpirun -rmk pbs yank --mpi --verbose
-#build_mpirun_configfile 'yank run --store=output --verbose --mpi'
-#mpirun -configfile configfile
-date
+# Run the simulation with verbose output:
+echo "Running simulation via MPI..."
+build_mpirun_configfile "yank run --store=output --verbose --mpi"
+mpirun -configfile configfile
 
+# Analyze the data
+echo "Analyzing data..."
+yank analyze --store=output

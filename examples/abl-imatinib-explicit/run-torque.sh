@@ -3,7 +3,7 @@
 #
 #
 # walltime : maximum wall clock time (hh:mm:ss)
-#PBS -l walltime=8:00:00
+#PBS -l walltime=24:00:00
 #
 # join stdout and stderr
 #PBS -j oe
@@ -23,13 +23,6 @@
 #
 # job name (default = name of script file)
 #PBS -N abl-imatinib-explicit
-#
-# specify email
-#PBS -M jchodera@gmail.com
-#
-# mail settings
-#PBS -m n
-#
 
 if [ -n "$PBS_O_WORKDIR" ]; then 
     cd $PBS_O_WORKDIR
@@ -48,7 +41,7 @@ yank cleanup --store=output
 
 # Set up calculation.
 echo "Setting up binding free energy calculation..."
-yank prepare binding amber --setupdir=setup --ligname=MOL --store=output --iterations=100 --restraints=harmonic --temperature="300*kelvin" --pressure="1*atmosphere" --minimize --verbose
+yank prepare binding amber --setupdir=setup --ligname=MOL --store=output --iterations=1000 --restraints=harmonic --temperature="300*kelvin" --pressure="1*atmosphere" --minimize --verbose
 
 # Run the simulation with verbose output:
 echo "Running simulation via MPI..."
