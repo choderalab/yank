@@ -37,7 +37,8 @@ chain_ids_to_keep = None # list of chains to retain, or None to keep all
 component_dsl = {
     'ligand' : "chainid == 2",
     'receptor' : "chainid != 2",
-    'complex' : "all"
+    'complex' : "all",
+    'solvent' : "water"
 }
  
 pH = 7.0 # pH to use in setting protein protonation states
@@ -74,6 +75,12 @@ workdir = os.path.join(os.getcwd(), setup_dir)
 if not os.path.exists(workdir):
     os.makedirs(workdir)
     logger.info("Creating path %s" % workdir)
+
+# Create directory to store files in.
+outdir = os.path.join(os.getcwd(), store_dir)
+if not os.path.exists(outdir):
+    os.makedirs(outdir)
+    logger.info("Creating path %s" % outdir)
 
 # ==============================================================================
 # CONFIGURE LOGGER
@@ -271,12 +278,18 @@ for phase_prefix in phase_prefixes:
 
     # Identify various components.
     mdtraj_top = mdtraj.Topology.from_openmm(solvated_topology)
+    atom_indices[phase] = dict()
     for component in components:
-        atom_indices[phase] = dict()
         atom_indices[phase][component] = mdtraj_top.select(component_dsl[component]).tolist()
 
 # Create list of phase names.
 phases = systems.keys()
+
+# Create reference thermodynamic state.
+from yank.repex import ThermodynamicState # TODO: Fix this weird import path to something more sane, like 'from yank.repex import ThermodynamicState'
+thermodynamic_state = ThermodynamicState(temperature=temperature, pressure=pressure)
+
+print atom_indices
 
 # Create new simulation.
 yank.create(phases, systems, positions, atom_indices, thermodynamic_state, options=options)
