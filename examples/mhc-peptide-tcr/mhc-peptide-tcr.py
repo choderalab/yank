@@ -63,10 +63,10 @@ barostat_frequency = 50
 
 timestep = 2.0 * unit.femtoseconds
 nsteps_per_iteration = 500
-niterations = 100
-nequiliterations = 10
+niterations = 1000
+nequiliterations = 0
 
-minimize = False
+minimize = True # Minimize structures
 
 # ==============================================================================
 # SET UP STORAGE
@@ -184,9 +184,14 @@ def solvate_and_minimize(topology, positions, phase=''):
     if minimize:
         # Create simulation.
         logger.info("Creating simulation...")
-        integrator = openmm.LangevinIntegrator(temperature, collision_rate, timestep)
+        errorTol = 0.001
+        integrator = openmm.VariableLangevinIntegrator(temperature, collision_rate, errorTol)
         simulation = app.Simulation(modeller.topology, system, integrator)
         simulation.context.setPositions(modeller.positions)
+
+        # Print potential energy.
+        potential = simulation.context.getState(getEnergy=True).getPotentialEnergy()
+        logger.info("Potential energy is %12.3f kcal/mol" % (potential / unit.kilocalories_per_mole))
 
         # Write modeller positions.
         logger.info("Writing modeller output...")
@@ -196,24 +201,22 @@ def solvate_and_minimize(topology, positions, phase=''):
         # Minimize energy.
         logger.info("Minimizing energy...")
         simulation.minimizeEnergy(maxIterations=max_minimization_iterations)
+        #integrator.step(max_minimization_iterations)
         state = simulation.context.getState(getEnergy=True)
         potential_energy = state.getPotentialEnergy()
-        if numpy.isnan(potential_energy / unit.kilocalories_per_mole):
+        if np.isnan(potential_energy / unit.kilocalories_per_mole):
             raise Exception("Potential energy is NaN after minimization.")
         logger.info("Potential energy after minimiziation: %.3f kcal/mol" % (potential_energy / unit.kilocalories_per_mole))
         modeller.positions = simulation.context.getState(getPositions=True).getPositions()
+
+        # Print potential energy.
+        potential = simulation.context.getState(getEnergy=True).getPotentialEnergy()
+        logger.info("Potential energy is %12.3f kcal/mol" % (potential / unit.kilocalories_per_mole))
 
         # Write minimized positions.
         filename = os.path.join(workdir, phase + 'minimized.pdb')
         app.PDBFile.writeFile(simulation.topology, modeller.positions, open(filename, 'w'))
 
-        # Serialize to XML files.
-        logger.info("Serializing to XML...")
-        system_filename = os.path.join(workdir, phase + 'system.xml')
-        integrator_filename = os.path.join(workdir, phase + 'integrator.xml')
-        write_file(system_filename, openmm.XmlSerializer.serialize(system))
-        write_file(integrator_filename, openmm.XmlSerializer.serialize(integrator))
-    
         # Clean up
         del simulation
 
@@ -298,6 +301,11 @@ if is_periodic:
     thermodynamic_state = ThermodynamicState(temperature=temperature, pressure=pressure)
 else:
     thermodynamic_state = ThermodynamicState(temperature=temperature)
+
+# TODO: Select protocols.
+
+# Turn off MC ligand displacement.
+yank.mc_displacement_sigma = None
 
 # Create new simulation.
 yank.create(phases, systems, positions, atom_indices, thermodynamic_state, options=options)
