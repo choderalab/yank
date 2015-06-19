@@ -30,7 +30,8 @@ verbose = True # if True, use logger
 setup_dir = 'setup' # directory to put setup files in
 store_dir = 'output' # directory to put output files in
 
-pdbid = '1AO7'
+pdbid = '1AO7' # HTLV1 LLFGYPVYV Tax Garboczi 1996 (1AO7), Ding 1999 - peptide agonist
+#pdbid = '1QSE' # HTLV1 Tax LLFGYPRYV V7R Ding 1999 (1QSE) - peptide agonist
 chain_ids_to_keep = None # list of chains to retain, or None to keep all
 
 # mdtraj DSL selection for components (after filtering to retain only desired chains) 
@@ -281,7 +282,7 @@ for phase_prefix in phase_prefixes:
     subset_positions = unit.Quantity(x[subset_atom_indices,:], unit.angstrom)
 
     # Solvate (if needed), create System, and minimize (if requested).
-    [solvated_topology, solvated_system, solvated_positions] = solvate_and_minimize(subset_topology, subset_positions, phase=phase + '-')
+    [solvated_topology, solvated_system, solvated_positions] = solvate_and_minimize(subset_topology_openmm, subset_positions, phase=phase + '-')
 
     # Record components.
     systems[phase] = solvated_system

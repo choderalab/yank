@@ -328,7 +328,7 @@ class Yank(object):
 
         # Identify whether any atoms will be displaced via MC, unless option is turned off.
         mc_atoms = None
-        if mc_displacement_sigma:
+        if self.mc_displacement_sigma:
             mc_atoms = list()
             if 'ligand' in atom_indices:
                 mc_atoms = atom_indices['ligand']

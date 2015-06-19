@@ -1960,9 +1960,10 @@ class ReplicaExchange(object):
                 abort = True
 
         # Check energies.
-        if np.any(np.isnan(self.u_kl)):
-            logger.warning("nan encountered in u_kl state energies")
-            abort = True
+        for replica_index in range(self.nreplicas):
+            if np.any(np.isnan(self.u_kl[replica_index,:])):
+                logger.warning("nan encountered in u_kl state energies for replica %d" % replica_index)
+                abort = True
 
         if abort:
             if self.mpicomm:
@@ -2217,6 +2218,12 @@ class ReplicaExchange(object):
 
         # Restore energies.
         self.u_kl = ncfile.variables['energies'][self.iteration,:,:].copy()
+
+        # Perform sanity check on energies.
+        # TODO: Refine this.
+        self._run_sanity_checks()
+        self._compute_energies()
+        self._run_sanity_checks()
 
         # On first iteration, we need to do some initialization.
         if self.iteration == 0:
