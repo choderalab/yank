@@ -59,5 +59,5 @@ def test_prepare_binding():
     # NOTE: switched to yank p-xylene from openmmtools T4-lysozyme because of yank bugs.
     dirname = utils.get_data_filename("../examples/p-xylene-implicit/setup/")  # Could only figure out how to install things like yank.egg/examples/, rather than yank.egg/yank/examples/
     storedir = tempfile.mkdtemp()
-    run_cli('prepare binding amber --setupdir=%(dirname)s --ligname MOL --store %(storedir)s --gbsa OBC1' % vars())
+    run_cli('prepare binding amber --setupdir=%(dirname)s --ligand="resname MOL" --store %(storedir)s --gbsa OBC1' % vars())
     # TODO: Clean up directory.

@@ -15,7 +15,7 @@ The `OBC2` implicit solvent model is used, and the temperature is set to 300 Kel
 
 .. code-block:: none
 
-   $ yank prepare binding amber --setupdir=setup --ligname=BEN --store=output --iterations=1000 --restraints=harmonic --gbsa=OBC2 --temperature=300*kelvin --verbose
+   $ yank prepare binding amber --setupdir=setup --ligand="resname BEN" --store=output --iterations=1000 --restraints=harmonic --gbsa=OBC2 --temperature=300*kelvin --verbose
 
 Run the simulation in serial mode with verbose output:
 
