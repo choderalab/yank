@@ -211,7 +211,7 @@ class AbsoluteAlchemicalFactory(object):
     """
 
     # Factory initialization.
-    def __init__(self, reference_system, ligand_atoms=list(), receptor_atoms=list(), annihilate_electrostatics=True, annihilate_sterics=False):
+    def __init__(self, reference_system, ligand_atoms=list(), receptor_atoms=list(), annihilate_electrostatics=True, annihilate_sterics=False, test_positions=None):
         """
         Initialize absolute alchemical intermediate factory with reference system.
 
@@ -227,6 +227,9 @@ class AbsoluteAlchemicalFactory(object):
             If True, electrostatics should be annihilated, rather than decoupled.
         annihilateSterics : bool
             If True, sterics (Lennard-Jones or Halgren potential) will be annihilated, rather than decoupled.
+        test_positions : simtk.unit.Quantity of dimension (natoms,3) with units compatible with nanometers, optional, default=None
+            If provided, these coordinates will be used to test alchemically-modified system to ensure the potential energy is finite.
+            If the potential energy is NaN, the energy for each force component will be computed for the Reference platform to aid in debugging.
 
         """
 
@@ -246,7 +249,72 @@ class AbsoluteAlchemicalFactory(object):
         # Create an alchemically-modified system to cache.
         self.alchemically_modified_system = self._createAlchemicallyModifiedSystem(self.reference_system)
 
+        if test_positions is not None:
+            self._checkEnergyIsFinite(test_positions)
+
         return
+
+    def _checkEnergyIsFinite(self, positions, platform=None):
+        """
+        Test that the potential energy is finite for the provided positions.
+        If energy is NaN, compute energy from each force component on Reference platform to aid in debugging.
+
+        Parameters
+        ----------
+        positions : simtk.unit.Quantity of dimension (natoms,3) with units compatible with nanometers
+            Coordinates to use for energy test.
+        platform : simtk.openmm.Platform, optional, default=None
+            If specified, this platform will be used to compute test energy (but not by force component).
+
+        """
+        logger.debug("Checking alchemical system produces finite energies.")
+
+        def compute_potential_energy(system, positions, platform=None, groups=-1):
+            # Compute potential energy of reference system.
+            integrator = openmm.VerletIntegrator(1.0 * unit.femtosecond)
+            if platform is not None:
+                # Compute potential energy with requested platform.
+                context = openmm.Context(system, integrator, platform)
+            else:
+                # Use fastest available platform.
+                context = openmm.Context(self.reference_system, integrator)
+            context.setPositions(positions)
+            potential = context.getState(getEnergy=True,groups=groups).getPotentialEnergy()
+            del context, integrator
+            return potential
+
+        # Compute potential energy error between reference and alchemical system.
+        reference_potential = compute_potential_energy(self.reference_system, positions, platform)
+        alchemical_potential = compute_potential_energy(self.alchemically_modified_system, positions, platform)
+        energy_error = alchemical_potential - reference_potential
+
+        # If alchemical potential energy is NaN, compute energy by component on Reference platform.
+        if np.isnan(alchemical_potential / unit.kilocalories_per_mole):
+            logger.debug("Energy for alchemically modified system is NaN.")
+            logger.debug("Decomposing energy by platform:")
+
+            # Assign all forces to separate components.
+            system = self.alchemically_modified_system
+            for force_index in range(system.getNumForces()):
+                system.getForce(force_index).setForceGroup(force_index)
+
+            # Compute potential energy for each force using Reference platform.
+            reference_platform = openmm.Platform.getPlatformByName('Reference')
+            for force_index in range(system.getNumForces()):
+                groups = 1 << force_index # group index bitwise selector
+                potential = compute_potential_energy(system, positions, reference_platform, groups)
+                force_classname = system.getForce(force_index).__class__.__name__
+                logger.debug("Force %5d [%s] %12.3f kcal/mol" % (force_index, force_classname, potential))
+                pass
+
+            # Clean up
+            del context, integrator
+
+            raise Exception("Energy for alchemically modified system is NaN.")
+
+        # Return the energy error.
+        logger.debug("Difference between alchemical and reference potential energy is %8.3f kcal/mol" % (energy_error / unit.kilocalories_per_mole))
+        return energy_error
 
     @classmethod
     def defaultComplexProtocolImplicit(cls):
@@ -270,6 +338,9 @@ class AbsoluteAlchemicalFactory(object):
         alchemical_states.append(AlchemicalState(1.00, 0.97, 0.97, 1.))
         alchemical_states.append(AlchemicalState(1.00, 0.95, 0.95, 1.))
         alchemical_states.append(AlchemicalState(1.00, 0.90, 0.90, 1.))
+
+        return alchemical_states # DEBUG
+
         alchemical_states.append(AlchemicalState(1.00, 0.80, 0.80, 1.))
         alchemical_states.append(AlchemicalState(1.00, 0.70, 0.70, 1.))
         alchemical_states.append(AlchemicalState(1.00, 0.60, 0.60, 1.))
@@ -349,13 +420,20 @@ class AbsoluteAlchemicalFactory(object):
         alchemical_states = list()
 
         alchemical_states.append(AlchemicalState(1.00, 1.00, 1.00, 1.)) # fully interacting
-        alchemical_states.append(AlchemicalState(1.00, 0.75, 1.00, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.50, 1.00, 1.))
-        #alchemical_states.append(AlchemicalState(1.00, 0.25, 1.00, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.00, 1.00, 1.)) # discharged
-        alchemical_states.append(AlchemicalState(1.00, 0.00, 0.75, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.00, 0.50, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.00, 0.25, 1.))
+        alchemical_states.append(AlchemicalState(1.00, 0.97, 0.97, 1.))
+        alchemical_states.append(AlchemicalState(1.00, 0.95, 0.95, 1.))
+        alchemical_states.append(AlchemicalState(1.00, 0.90, 0.90, 1.))
+        alchemical_states.append(AlchemicalState(1.00, 0.80, 0.80, 1.))
+        alchemical_states.append(AlchemicalState(1.00, 0.70, 0.70, 1.))
+        alchemical_states.append(AlchemicalState(1.00, 0.60, 0.60, 1.))
+        alchemical_states.append(AlchemicalState(1.00, 0.50, 0.50, 1.))
+        alchemical_states.append(AlchemicalState(1.00, 0.40, 0.40, 1.))
+        alchemical_states.append(AlchemicalState(1.00, 0.30, 0.30, 1.))
+        alchemical_states.append(AlchemicalState(1.00, 0.20, 0.20, 1.))
+        alchemical_states.append(AlchemicalState(1.00, 0.10, 0.10, 1.))
+        alchemical_states.append(AlchemicalState(1.00, 0.05, 0.05, 1.))
+        alchemical_states.append(AlchemicalState(1.00, 0.025, 0.025, 1.))
+        alchemical_states.append(AlchemicalState(1.00, 0.01, 0.01, 1.))
         alchemical_states.append(AlchemicalState(1.00, 0.00, 0.00, 1.)) # discharged, LJ annihilated
 
         return alchemical_states
@@ -540,6 +618,7 @@ class AbsoluteAlchemicalFactory(object):
         sterics_energy_expression += "reff_sterics = sigma*((softcore_alpha*(1.-lambda_sterics) + (r/sigma)^6))^(1/6);" # effective softcore distance for sterics
         sterics_energy_expression += "softcore_alpha = %f;" % softcore_alpha
         electrostatics_energy_expression += "reff_electrostatics = sqrt(softcore_beta*(1.-lambda_electrostatics) + r^2);" # effective softcore distance for electrostatics
+        #electrostatics_energy_expression += "reff_electrostatics = r;" # effective softcore distance for electrostatics # DEBUG
         electrostatics_energy_expression += "softcore_beta = %f;" % (softcore_beta / softcore_beta.in_unit_system(unit.md_unit_system).unit)
         electrostatics_energy_expression += "ONE_4PI_EPS0 = %f;" % ONE_4PI_EPS0 # already in OpenMM units
 
@@ -582,8 +661,8 @@ class AbsoluteAlchemicalFactory(object):
         electrostatics_custom_nonbonded_force.addInteractionGroup(atomset1, atomset2)
 
         # Add custom forces.
-        system.addForce(sterics_custom_nonbonded_force)
-        system.addForce(electrostatics_custom_nonbonded_force)
+        system.addForce(sterics_custom_nonbonded_force) 
+        system.addForce(electrostatics_custom_nonbonded_force) 
 
         # Create CustomBondForce to handle exceptions for both kinds of interactions.
         custom_bond_force = openmm.CustomBondForce("U_sterics + U_electrostatics;" + sterics_energy_expression + electrostatics_energy_expression)

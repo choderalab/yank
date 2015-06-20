@@ -700,7 +700,7 @@ class ReplicaExchange(object):
         self.title = 'Replica-exchange simulation created using ReplicaExchange class of repex.py on %s' % time.asctime(time.localtime())
         self.minimize = True
         self.minimize_tolerance = 1.0 * unit.kilojoules_per_mole / unit.nanometers # if specified, set minimization tolerance
-        self.minimize_maxIterations = 0 # if nonzero, set maximum iterations
+        self.minimize_maxIterations = 100 # if nonzero, set maximum iterations
         self.platform = None
         self.platform_name = None
         self.replica_mixing_scheme = 'swap-all' # mix all replicas thoroughly
@@ -1433,10 +1433,13 @@ class ReplicaExchange(object):
         # Retrieve thermodynamic state.
         state_index = self.replica_states[replica_index] # index of thermodynamic state that current replica is assigned to
         state = self.states[state_index] # thermodynamic state
-        # Retrieve integrator and context.
+        # Create integrator and context.
+        errorTol = 0.001 # DEBUG: Experimental
+        integrator = self.mm.VariableLangevinIntegrator(state.temperature * 0.1, self.collision_rate, errorTol)
+        context = self.mm.Context(state.system, integrator, self.platform)
         # TODO: This needs to be adapted in case Integrator and Context objects are not cached.
-        integrator = state._integrator
-        context = state._context
+        #integrator = state._integrator
+        #context = state._context
         # Set box vectors.
         box_vectors = self.replica_box_vectors[replica_index]
         context.setPeriodicBoxVectors(box_vectors[0,:], box_vectors[1,:], box_vectors[2,:])
@@ -1444,10 +1447,10 @@ class ReplicaExchange(object):
         positions = self.replica_positions[replica_index]            
         context.setPositions(positions)
         # Minimize energy.
-        minimized_positions = self.mm.LocalEnergyMinimizer.minimize(context, self.minimize_tolerance, self.minimize_maxIterations)
+        #minimized_positions = self.mm.LocalEnergyMinimizer.minimize(context, self.minimize_tolerance, self.minimize_maxIterations)
+        integrator.step(self.minimize_maxIterations)
         # Store final positions
-        openmm_state = context.getState(getPositions=True)
-        self.replica_positions[replica_index] = openmm_state.getPositions(asNumpy=True)
+        self.replica_positions[replica_index] = context.getState(getPositions=True).getPositions(asNumpy=True)
         # Clean up.
         del integrator, context
 
@@ -2219,14 +2222,11 @@ class ReplicaExchange(object):
         # Restore energies.
         self.u_kl = ncfile.variables['energies'][self.iteration,:,:].copy()
 
-        # Perform sanity check on energies.
-        # TODO: Refine this.
-        self._run_sanity_checks()
-        self._compute_energies()
-        self._run_sanity_checks()
-
         # On first iteration, we need to do some initialization.
         if self.iteration == 0:
+            # Perform sanity checks to see if we should terminate here.
+            self._run_sanity_checks()
+
             # Minimize and equilibrate all replicas.
             self._minimize_and_equilibrate()
 
@@ -2241,6 +2241,12 @@ class ReplicaExchange(object):
             #self.ncfile = ncfile
             #self._write_iteration_netcdf()
             #self.ncfile = None
+
+        # Run sanity checks.
+        # TODO: Refine this.
+        self._run_sanity_checks()
+        #self._compute_energies() # recompute energies?
+        #self._run_sanity_checks()
 
         # Close NetCDF file.
         ncfile.close()

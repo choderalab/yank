@@ -306,9 +306,20 @@ class Yank(object):
 
         # Create alchemically-modified states using alchemical factory.
         logger.debug("Creating alchemically-modified states...")
-        factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=atom_indices['ligand'])
+        factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=atom_indices['ligand'], test_positions=positions[0])
         systems = factory.createPerturbedSystems(protocols[phase])
 
+        # Check systems for finite energies.
+        logger.debug("Checking energies are finite for all alchemical systems.")
+        for (index, system) in enumerate(systems):
+            integrator = openmm.VerletIntegrator(1.0 * unit.femtosecond)
+            context = openmm.Context(system, integrator)
+            context.setPositions(positions[0])
+            potential = context.getState(getEnergy=True).getPotentialEnergy()
+            if np.isnan(potential / unit.kilocalories_per_mole):
+                raise Exception("Energy for system %d is NaN." % index)
+            del context, integrator
+            
         # Randomize ligand position if requested, but only for implicit solvent systems.
         if self.randomize_ligand and (phase == 'complex-implicit'):
             logger.debug("Randomizing ligand positions and excluding overlapping configurations...")
