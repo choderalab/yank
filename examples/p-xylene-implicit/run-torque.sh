@@ -41,7 +41,7 @@ yank cleanup --store=output
 
 # Set up calculation.
 echo "Setting up binding free energy calculation..."
-yank prepare binding amber --setupdir=setup --ligname=MOL --store=output --iterations=$NITERATIONS --restraints=harmonic --gbsa=OBC2 --temperature="300*kelvin" --verbose
+yank prepare binding amber --setupdir=setup --ligand="resname MOL" --store=output --iterations=1 --restraints=harmonic --gbsa=OBC2 --temperature="300*kelvin" --verbose
 
 # Run the simulation with verbose output:
 echo "Running simulation via MPI..."
