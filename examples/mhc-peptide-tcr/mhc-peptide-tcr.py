@@ -30,8 +30,10 @@ verbose = True # if True, use logger
 setup_dir = 'setup' # directory to put setup files in
 store_dir = 'output' # directory to put output files in
 
-pdbid = '1AO7' # HTLV1 LLFGYPVYV Tax Garboczi 1996 (1AO7), Ding 1999 - peptide agonist
+#pdbid = '1AO7' # HTLV1 LLFGYPVYV Tax Garboczi 1996 (1AO7), Ding 1999 - peptide agonist
 #pdbid = '1QSE' # HTLV1 Tax LLFGYPRYV V7R Ding 1999 (1QSE) - peptide agonist
+pdbid = 'esk1'
+pdb_filename = 'CONFIDENTIAL-esk1_hla0201_pep_refmac1.pdb'
 chain_ids_to_keep = None # list of chains to retain, or None to keep all
 
 # mdtraj DSL selection for components (after filtering to retain only desired chains) 
@@ -104,8 +106,12 @@ is_periodic = (nonbonded_method not in [app.NoCutoff, app.CutoffNonPeriodic])
 # Retrieve the PDB file
 # ==============================================================================
 
-logger.info("Retrieving PDB '%s'..." % pdbid)
-fixer = PDBFixer(pdbid=pdbid)
+if pdb_filename:
+    logger.info("Retrieving PDB '%s'..." % pdb_filename)
+    fixer = PDBFixer(filename=pdb_filename)
+else:
+    logger.info("Retrieving PDB '%s'..." % pdbid)
+    fixer = PDBFixer(pdbid=pdbid)
 
 # ==============================================================================
 # Prepare the structure
@@ -137,7 +143,7 @@ logger.info("Adding missing atoms and residues...")
 fixer.findMissingResidues()
 fixer.findMissingAtoms()
 fixer.addMissingAtoms()
-fixer.addMissingHydrogens(pH)
+#fixer.addMissingHydrogens(pH) # DEBUG
 fixer.removeHeterogens(keepWater=keep_crystallographic_water)
 
 # Write PDB file for completed output.
@@ -175,6 +181,7 @@ def solvate_and_minimize(topology, positions, phase=''):
     logger.info("Solvating...")
     forcefield = app.ForceField(*ffxmls)
     modeller = app.Modeller(topology, positions)    
+    modeller.addHydrogens(forcefield=forcefield, pH=pH) # DEBUG
     if is_periodic:
         # Add solvent if in a periodic box.
         modeller.addSolvent(forcefield, padding=padding, model=water_name)
@@ -237,7 +244,7 @@ yank = Yank(store_dir)
 options = dict()
 options['number_of_iterations'] = niterations
 options['number_of_equilibration_iterations'] = nequiliterations
-options['online_analysis'] = True
+options['online_analysis'] = False
 yank.restraint_type = None
 options['randomize_ligand'] = False
 options['minimize'] = True
@@ -249,6 +256,8 @@ if not is_periodic:
 
 # Prepare phases of calculation.
 phase_prefixes = ['solvent', 'complex'] # list of calculation phases (thermodynamic legs) to set up
+phase_prefixes = ['solvent'] # list of calculation phases (thermodynamic legs) to set up # DEBUG
+phase_prefixes = ['complex'] # list of calculation phases (thermodynamic legs) to set up # DEBUG
 components = ['ligand', 'receptor', 'solvent'] # components of the binding system
 systems = dict() # systems[phase] is the System object associated with phase 'phase'
 positions = dict() # positions[phase] is a list of coordinates associated with phase 'phase'
@@ -264,35 +273,40 @@ for phase_prefix in phase_prefixes:
     phase = '%s-%s' % (phase_prefix, phase_suffix)
     logger.info("phase %s: " % phase)
 
-    # Use mdtraj to extract the desired subset of the system.
-    # TODO: This part isn't working yet.
-    mdtraj_top = mdtraj.Topology.from_openmm(fixer.topology)
-    #mdtraj_traj = mdtraj.Trajectory(xyz=[fixer.positions], topology=mdtraj_top)
+    # Determine selection phrase for atom subset to be used in this phase.
     if phase_prefix == 'solvent':
-        dsl = component_dsl['ligand']
+        dsl_to_retain = component_dsl['ligand']
     elif phase_prefix == 'complex':
-        dsl = component_dsl['complex']
+        dsl_to_retain = component_dsl['complex']
     else:
         raise Exception("unknown phase_prefix '%s'" % phase_prefix)
-    subset_atom_indices = mdtraj_top.select(dsl)
-    subset_topology_mdtraj = mdtraj_top.subset(subset_atom_indices)
-    subset_topology_openmm = subset_topology_mdtraj.to_openmm()
-    #subset_positions = mdtraj_traj.atom_slice(atom_indices).openmm_positions(0)
-    x = np.array(fixer.positions / unit.angstrom)
-    subset_positions = unit.Quantity(x[subset_atom_indices,:], unit.angstrom)
 
-    # Solvate (if needed), create System, and minimize (if requested).
-    [solvated_topology, solvated_system, solvated_positions] = solvate_and_minimize(subset_topology_openmm, subset_positions, phase=phase + '-')
+    # Use mdtraj to create a topology for the desired subset of the system.
+    mdtraj_top = mdtraj.Topology.from_openmm(fixer.topology)
+    #mdtraj_traj = mdtraj.Trajectory(xyz=[fixer.positions], topology=mdtraj_top)
+    atom_indices_to_retain = mdtraj_top.select(dsl_to_retain)
+    subset_topology_openmm = mdtraj_top.subset(atom_indices_to_retain).to_openmm()
+
+    # Extract the positions of the corresponding atoms.
+    x = np.array(fixer.positions / unit.angstrom)
+    subset_positions = unit.Quantity(x[atom_indices_to_retain,:], unit.angstrom)
+
+    # Solvate subset (if needed), create System, and minimize (if requested).
+    [solvated_topology_openmm, solvated_system, solvated_positions] = solvate_and_minimize(subset_topology_openmm, subset_positions, phase=phase + '-')
 
     # Record components.
     systems[phase] = solvated_system
     positions[phase] = solvated_positions
 
     # Identify various components.
-    mdtraj_top = mdtraj.Topology.from_openmm(solvated_topology)
+    solvated_topology_mdtraj = mdtraj.Topology.from_openmm(solvated_topology_openmm)
     atom_indices[phase] = dict()
     for component in components:
-        atom_indices[phase][component] = subset_topology_mdtraj.select(component_dsl[component]).tolist()
+        atom_indices[phase][component] = solvated_topology_mdtraj.select(component_dsl[component])
+
+    # DEBUG
+    print "Atom indices of ligand:"
+    print atom_indices[phase]['ligand']
 
 # Create list of phase names.
 phases = systems.keys()
