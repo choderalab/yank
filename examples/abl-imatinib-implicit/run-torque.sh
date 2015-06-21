@@ -3,7 +3,7 @@
 #
 #
 # walltime : maximum wall clock time (hh:mm:ss)
-#PBS -l walltime=8:00:00
+#PBS -l walltime=24:00:00
 #
 # join stdout and stderr
 #PBS -j oe
@@ -23,13 +23,6 @@
 #
 # job name (default = name of script file)
 #PBS -N abl-imatinib-implicit
-#
-# specify email
-#PBS -M jchodera@gmail.com
-#
-# mail settings
-#PBS -m n
-#
 
 cd $PBS_O_WORKDIR
 

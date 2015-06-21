@@ -56,6 +56,9 @@ This code is licensed under the latest available version of the GNU General Publ
 # GLOBAL IMPORTS
 #=============================================================================================
 
+from simtk import openmm
+from simtk import unit
+
 import os
 import sys
 import math
@@ -69,8 +72,6 @@ import mixing._mix_replicas as _mix_replicas
 import numpy as np
 import mdtraj as md
 import mixing._mix_replicas_old as _mix_replicas_old
-from simtk import openmm
-from simtk import unit
 import netCDF4 as netcdf
 
 from utils import is_terminal_verbose
@@ -326,7 +327,7 @@ class ThermodynamicState(object):
         if (self.pressure is not None) and (box_vectors is None):
             raise ParameterException("box_vectors must be specified if constant-pressure ensemble.")
 
-        # Make sure we have Context and Integrator objects.
+        # Make sure we have Context and Integrator objects for the specified platform.
         self._create_context(platform)
 
         # Compute energy.
@@ -700,7 +701,7 @@ class ReplicaExchange(object):
         self.title = 'Replica-exchange simulation created using ReplicaExchange class of repex.py on %s' % time.asctime(time.localtime())
         self.minimize = True
         self.minimize_tolerance = 1.0 * unit.kilojoules_per_mole / unit.nanometers # if specified, set minimization tolerance
-        self.minimize_maxIterations = 0 # if nonzero, set maximum iterations
+        self.minimize_maxIterations = 100 # if nonzero, set maximum iterations
         self.platform = None
         self.platform_name = None
         self.replica_mixing_scheme = 'swap-all' # mix all replicas thoroughly
@@ -1433,10 +1434,9 @@ class ReplicaExchange(object):
         # Retrieve thermodynamic state.
         state_index = self.replica_states[replica_index] # index of thermodynamic state that current replica is assigned to
         state = self.states[state_index] # thermodynamic state
-        # Retrieve integrator and context.
-        # TODO: This needs to be adapted in case Integrator and Context objects are not cached.
-        integrator = state._integrator
-        context = state._context
+        # Create integrator and context.
+        integrator = self.mm.VerletIntegrator(1.0 * unit.femtoseconds)
+        context = self.mm.Context(state.system, integrator, self.platform)
         # Set box vectors.
         box_vectors = self.replica_box_vectors[replica_index]
         context.setPeriodicBoxVectors(box_vectors[0,:], box_vectors[1,:], box_vectors[2,:])
@@ -1446,8 +1446,7 @@ class ReplicaExchange(object):
         # Minimize energy.
         minimized_positions = self.mm.LocalEnergyMinimizer.minimize(context, self.minimize_tolerance, self.minimize_maxIterations)
         # Store final positions
-        openmm_state = context.getState(getPositions=True)
-        self.replica_positions[replica_index] = openmm_state.getPositions(asNumpy=True)
+        self.replica_positions[replica_index] = context.getState(getPositions=True).getPositions(asNumpy=True)
         # Clean up.
         del integrator, context
 
@@ -1605,6 +1604,13 @@ class ReplicaExchange(object):
         Nij_proposed = md.utils.ensure_type(self.Nij_proposed, np.int64, 2, "Nij Proposed")
         Nij_accepted = md.utils.ensure_type(self.Nij_accepted, np.int64, 2, "Nij accepted")
         _mix_replicas._mix_replicas_cython(self.nstates**4, self.nstates, replica_states, u_kl, Nij_proposed, Nij_accepted)
+
+        #replica_states = np.array(self.replica_states, np.int64)
+        #u_kl = np.array(self.u_kl, np.float64)
+        #Nij_proposed = np.array(self.Nij_proposed, np.int64)
+        #Nij_accepted = np.array(self.Nij_accepted, np.int64)
+        #_mix_replicas._mix_replicas_cython(self.nstates**4, self.nstates, replica_states, u_kl, Nij_proposed, Nij_accepted)
+
         self.replica_states = replica_states
         self.Nij_proposed = Nij_proposed
         self.Nij_accepted = Nij_accepted
@@ -1836,13 +1842,13 @@ class ReplicaExchange(object):
         setattr(ncfile, 'ConventionVersion', '0.1')
 
         # Create variables.
-        ncvar_positions = ncfile.createVariable('positions', 'f', ('iteration','replica','atom','spatial'), zlib=True, chunksizes=(1,self.nreplicas,self.natoms,3))
-        ncvar_states    = ncfile.createVariable('states', 'i', ('iteration','replica'), zlib=False, chunksizes=(1,self.nreplicas))
-        ncvar_energies  = ncfile.createVariable('energies', 'f', ('iteration','replica','replica'), zlib=False, chunksizes=(1,self.nreplicas,self.nreplicas))
-        ncvar_proposed  = ncfile.createVariable('proposed', 'l', ('iteration','replica','replica'), zlib=False, chunksizes=(1,self.nreplicas,self.nreplicas))
-        ncvar_accepted  = ncfile.createVariable('accepted', 'l', ('iteration','replica','replica'), zlib=False, chunksizes=(1,self.nreplicas,self.nreplicas))
-        ncvar_box_vectors = ncfile.createVariable('box_vectors', 'f', ('iteration','replica','spatial','spatial'), zlib=False, chunksizes=(1,self.nreplicas,3,3))
-        ncvar_volumes  = ncfile.createVariable('volumes', 'f', ('iteration','replica'), zlib=False, chunksizes=(1,self.nreplicas))
+        ncvar_positions = ncfile.createVariable('positions', 'f4', ('iteration','replica','atom','spatial'), zlib=True, chunksizes=(1,self.nreplicas,self.natoms,3))
+        ncvar_states    = ncfile.createVariable('states', 'i4', ('iteration','replica'), zlib=False, chunksizes=(1,self.nreplicas))
+        ncvar_energies  = ncfile.createVariable('energies', 'f8', ('iteration','replica','replica'), zlib=False, chunksizes=(1,self.nreplicas,self.nreplicas))
+        ncvar_proposed  = ncfile.createVariable('proposed', 'i4', ('iteration','replica','replica'), zlib=False, chunksizes=(1,self.nreplicas,self.nreplicas))
+        ncvar_accepted  = ncfile.createVariable('accepted', 'i4', ('iteration','replica','replica'), zlib=False, chunksizes=(1,self.nreplicas,self.nreplicas))
+        ncvar_box_vectors = ncfile.createVariable('box_vectors', 'f4', ('iteration','replica','spatial','spatial'), zlib=False, chunksizes=(1,self.nreplicas,3,3))
+        ncvar_volumes  = ncfile.createVariable('volumes', 'f8', ('iteration','replica'), zlib=False, chunksizes=(1,self.nreplicas))
 
         # Define units for variables.
         setattr(ncvar_positions, 'units', 'nm')
@@ -1960,9 +1966,10 @@ class ReplicaExchange(object):
                 abort = True
 
         # Check energies.
-        if np.any(np.isnan(self.u_kl)):
-            logger.warning("nan encountered in u_kl state energies")
-            abort = True
+        for replica_index in range(self.nreplicas):
+            if np.any(np.isnan(self.u_kl[replica_index,:])):
+                logger.warning("nan encountered in u_kl state energies for replica %d" % replica_index)
+                abort = True
 
         if abort:
             if self.mpicomm:
@@ -1986,7 +1993,6 @@ class ReplicaExchange(object):
         # Get number of states.
         ncvar_nstates = ncgrp_stateinfo.createVariable('nstates', int)
         ncvar_nstates.assignValue(self.nstates)
-
 
         # Temperatures.
         ncvar_temperatures = ncgrp_stateinfo.createVariable('temperatures', 'f', ('replica',))
@@ -2044,10 +2050,10 @@ class ReplicaExchange(object):
             # Populate a new ThermodynamicState object.
             state = ThermodynamicState()
             # Read temperature.
-            state.temperature = ncgrp_stateinfo.variables['temperatures'][state_index] * unit.kelvin
+            state.temperature = float(ncgrp_stateinfo.variables['temperatures'][state_index]) * unit.kelvin
             # Read pressure, if present.
             if 'pressures' in ncgrp_stateinfo.variables:
-                state.pressure = ncgrp_stateinfo.variables['pressures'][state_index] * unit.atmospheres
+                state.pressure = float(ncgrp_stateinfo.variables['pressures'][state_index]) * unit.atmospheres
             # Reconstitute System object.
             state.system = self.mm.System()
             state.system.__setstate__(str(ncgrp_stateinfo.variables['systems'][state_index]))
@@ -2143,6 +2149,11 @@ class ReplicaExchange(object):
                 option_value = None
             elif option_ncvar.shape == ():
                 option_value = option_ncvar.getValue()
+                # Cast to python types.
+                if type(option_value) in [np.int32, np.int64]:
+                    option_value = int(option_value)
+                if type(option_value) in [np.float32, np.float64]:
+                    option_value = float(option_value)
             elif (option_ncvar.shape[0] > 1):
                 option_value = np.array(option_ncvar[:], type_name)
             else:
@@ -2220,6 +2231,9 @@ class ReplicaExchange(object):
 
         # On first iteration, we need to do some initialization.
         if self.iteration == 0:
+            # Perform sanity checks to see if we should terminate here.
+            self._run_sanity_checks()
+
             # Minimize and equilibrate all replicas.
             self._minimize_and_equilibrate()
 
@@ -2231,9 +2245,16 @@ class ReplicaExchange(object):
                 self._show_energies()
 
             # Re-store initial state.
+            # TODO: Sort this logic out.
             #self.ncfile = ncfile
             #self._write_iteration_netcdf()
             #self.ncfile = None
+
+        # Run sanity checks.
+        # TODO: Refine this.
+        self._run_sanity_checks()
+        #self._compute_energies() # recompute energies?
+        #self._run_sanity_checks()
 
         # Close NetCDF file.
         ncfile.close()

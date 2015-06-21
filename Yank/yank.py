@@ -94,7 +94,7 @@ class Yank(object):
         self.default_options['collision_rate'] = 5.0 / unit.picoseconds
         self.default_options['minimize'] = False
         self.default_options['show_mixing_statistics'] = True # this causes slowdown with iteration and should not be used for production
-        self.default_options['platform_names'] = None
+        self.default_options['platform'] = None
         self.default_options['displacement_sigma'] = 1.0 * unit.nanometers # attempt to displace ligand by this stddev will be made each iteration
 
         return
@@ -249,6 +249,10 @@ class Yank(object):
 
         """
 
+
+        # Combine simulation options with defaults to create repex options.
+        repex_options = dict(self.default_options.items() + options.items())
+
         # Make sure positions argument is a list of coordinate snapshots.
         if hasattr(positions, 'unit'):
             # Wrap in list.
@@ -306,9 +310,20 @@ class Yank(object):
 
         # Create alchemically-modified states using alchemical factory.
         logger.debug("Creating alchemically-modified states...")
-        factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=atom_indices['ligand'])
+        factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=atom_indices['ligand'], test_positions=positions[0], platform=repex_options['platform'])
         systems = factory.createPerturbedSystems(protocols[phase])
 
+        # Check systems for finite energies.
+        logger.debug("Checking energies are finite for all alchemical systems.")
+        for (index, system) in enumerate(systems):
+            integrator = openmm.VerletIntegrator(1.0 * unit.femtosecond)
+            context = openmm.Context(system, integrator)
+            context.setPositions(positions[0])
+            potential = context.getState(getEnergy=True).getPotentialEnergy()
+            if np.isnan(potential / unit.kilocalories_per_mole):
+                raise Exception("Energy for system %d is NaN." % index)
+            del context, integrator
+            
         # Randomize ligand position if requested, but only for implicit solvent systems.
         if self.randomize_ligand and (phase == 'complex-implicit'):
             logger.debug("Randomizing ligand positions and excluding overlapping configurations...")
@@ -326,13 +341,12 @@ class Yank(object):
         if self.randomize_ligand and (phase == 'complex-explicit'):
             logger.warning("Ligand randomization requested, but will not be performed for explicit solvent simulations.")
 
-        # Identify whether any atoms will be displaced via MC.
-        mc_atoms = list()
-        if 'ligand' in atom_indices:
-            mc_atoms = atom_indices['ligand']
-
-        # Combine simulation options with defaults.
-        options = dict(self.default_options.items() + options.items())
+        # Identify whether any atoms will be displaced via MC, unless option is turned off.
+        mc_atoms = None
+        if self.mc_displacement_sigma:
+            mc_atoms = list()
+            if 'ligand' in atom_indices:
+                mc_atoms = atom_indices['ligand']
 
         # Set up simulation.
         # TODO: Support MPI initialization?
@@ -342,7 +356,7 @@ class Yank(object):
         simulation = ModifiedHamiltonianExchange(store_filename, mpicomm=mpicomm)
         simulation.create(thermodynamic_state, systems, positions,
                           displacement_sigma=self.mc_displacement_sigma, mc_atoms=mc_atoms,
-                          options=options, metadata=metadata)
+                          options=repex_options, metadata=metadata)
 
         # Initialize simulation.
         # TODO: Use the right scheme for initializing the simulation without running.

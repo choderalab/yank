@@ -36,18 +36,41 @@ def dispatch(args):
 
     # Set override options.
     options = dict()
-    if args['--iterations']:
-        options['number_of_iterations'] = int(args['--iterations'])
+
+    # Configure logger
     if args['--verbose']:
         options['verbose'] = True
+    utils.config_root_logger(options['verbose'],
+                             log_file_path=os.path.join(store_directory, 'run.log'))
+
+    if args['--iterations']:
+        options['number_of_iterations'] = int(args['--iterations'])
     if args['--online-analysis']:
         options['online_analysis'] = True
     if args['--platform'] not in [None, 'None']:
         options['platform'] = openmm.Platform.getPlatformByName(args['--platform'])
+    if args['--precision']:
+        # We need to modify the Platform object.
+        if args['--platform'] is None:
+            raise Exception("The --platform argument must be specified in order to specify platform precision.")
 
-    # Configure logger
-    utils.config_root_logger(options['verbose'],
-                             log_file_path=os.path.join(store_directory, 'run.log'))
+        # Set platform precision.
+        precision = args['--precision']
+        platform_name = args['--platform']
+        logger.info("Setting %s platform to use precision model '%s'." % (platform_name, precision))
+        if precision is not None:
+            if platform_name == 'CUDA':
+                options['platform'].setPropertyDefaultValue('CudaPrecision', precision)
+            elif platform_name == 'OpenCL':
+                options['platform'].setPropertyDefaultValue('OpenCLPrecision', precision)
+            elif platform_name == 'CPU':
+                if precision != 'mixed':
+                    raise Exception("CPU platform does not support precision model '%s'; only 'mixed' is supported." % precision)
+            elif platform_name == 'Reference':
+                if precision != 'double':
+                    raise Exception("Reference platform does not support precision model '%s'; only 'double' is supported." % precision)
+            else:
+                raise Exception("Platform selection logic is outdated and needs to be updated to add platform '%s'." % platform_name)
 
     # Set YANK to resume from the store file.
     phases = None # By default, resume from all phases found in store_directory
