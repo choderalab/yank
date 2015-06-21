@@ -56,6 +56,9 @@ This code is licensed under the latest available version of the GNU General Publ
 # GLOBAL IMPORTS
 #=============================================================================================
 
+from simtk import openmm
+from simtk import unit
+
 import os
 import sys
 import math
@@ -67,10 +70,8 @@ logger = logging.getLogger(__name__)
 
 import mixing._mix_replicas as _mix_replicas
 import numpy as np
-#import mdtraj as md
+import mdtraj as md
 import mixing._mix_replicas_old as _mix_replicas_old
-from simtk import openmm
-from simtk import unit
 import netCDF4 as netcdf
 
 from utils import is_terminal_verbose
@@ -326,7 +327,7 @@ class ThermodynamicState(object):
         if (self.pressure is not None) and (box_vectors is None):
             raise ParameterException("box_vectors must be specified if constant-pressure ensemble.")
 
-        # Make sure we have Context and Integrator objects.
+        # Make sure we have Context and Integrator objects for the specified platform.
         self._create_context(platform)
 
         # Compute energy.
@@ -1161,6 +1162,9 @@ class ReplicaExchange(object):
                 logger.debug("Node %d / %d creating Context for state %d..." % (self.mpicomm.rank, self.mpicomm.size, state_index))
                 state = self.states[state_index]
                 try:
+                    logger.debug(" temperature: %s" % str(state.temperature))
+                    logger.debug(" collision_rate: %s" % str(self.collision_rate))
+                    logger.debug(" timestep: %s" % str(self.timestep))
                     state._integrator = self.mm.LangevinIntegrator(state.temperature, self.collision_rate, self.timestep)
                     state._integrator.setRandomNumberSeed(seed + self.mpicomm.rank)
                     # TODO: Also set barostat seeds, etc.
@@ -1606,12 +1610,18 @@ class ReplicaExchange(object):
         Attempt to exchange all replicas to enhance mixing, calling code written in Cython.
         """
 
-        #replica_states = md.utils.ensure_type(self.replica_states, np.int64, 1, "Replica States")
-        #u_kl = md.utils.ensure_type(self.u_kl, np.float64, 2, "Reduced Potentials")
-        #Nij_proposed = md.utils.ensure_type(self.Nij_proposed, np.int64, 2, "Nij Proposed")
-        #Nij_accepted = md.utils.ensure_type(self.Nij_accepted, np.int64, 2, "Nij accepted")
+        replica_states = md.utils.ensure_type(self.replica_states, np.int64, 1, "Replica States")
+        u_kl = md.utils.ensure_type(self.u_kl, np.float64, 2, "Reduced Potentials")
+        Nij_proposed = md.utils.ensure_type(self.Nij_proposed, np.int64, 2, "Nij Proposed")
+        Nij_accepted = md.utils.ensure_type(self.Nij_accepted, np.int64, 2, "Nij accepted")
+        _mix_replicas._mix_replicas_cython(self.nstates**4, self.nstates, replica_states, u_kl, Nij_proposed, Nij_accepted)
+
+        #replica_states = np.array(self.replica_states, np.int64)
+        #u_kl = np.array(self.u_kl, np.float64)
+        #Nij_proposed = np.array(self.Nij_proposed, np.int64)
+        #Nij_accepted = np.array(self.Nij_accepted, np.int64)
         #_mix_replicas._mix_replicas_cython(self.nstates**4, self.nstates, replica_states, u_kl, Nij_proposed, Nij_accepted)
-        _mix_replicas._mix_replicas_cython(self.nstates**4, self.nstates, self.replica_states, self.u_kl, self.Nij_proposed, self.Nij_accepted)
+
         self.replica_states = replica_states
         self.Nij_proposed = Nij_proposed
         self.Nij_accepted = Nij_accepted
@@ -1995,7 +2005,6 @@ class ReplicaExchange(object):
         ncvar_nstates = ncgrp_stateinfo.createVariable('nstates', int)
         ncvar_nstates.assignValue(self.nstates)
 
-
         # Temperatures.
         ncvar_temperatures = ncgrp_stateinfo.createVariable('temperatures', 'f', ('replica',))
         setattr(ncvar_temperatures, 'units', 'K')
@@ -2242,6 +2251,7 @@ class ReplicaExchange(object):
                 self._show_energies()
 
             # Re-store initial state.
+            # TODO: Sort this logic out.
             #self.ncfile = ncfile
             #self._write_iteration_netcdf()
             #self.ncfile = None

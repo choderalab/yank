@@ -623,8 +623,8 @@ class AbsoluteAlchemicalFactory(object):
         # Add additional definitions common to all methods.
         #sterics_energy_expression += "reff_sterics = sigma*((softcore_alpha*(1.-lambda_sterics) + (r/sigma)^6))^(1/6);" # effective softcore distance for sterics # Causes NaN for large systems
         #sterics_energy_expression += "reff_sterics = sigma*((softcore_alpha*(1.-lambda_sterics) + r_over_sigma2^3))^(1/6); r_over_sigma2 = (r/sigma)^2;" # effective softcore distance for sterics
-        #sterics_energy_expression += "reff_sterics = r*(1 + softcore_alpha*(1-lambda_sterics)*(sigma/r)^6)^(1/6);" # effective softcore distance for sterics - seems to work!
-        sterics_energy_expression += "reff_sterics = select(step(r-sigma), r*(1 + softcore_alpha*(1-lambda_sterics)*(sigma/r)^6)^(1/6), sigma*((softcore_alpha*(1.-lambda_sterics) + (r/sigma)^6))^(1/6));" # effective softcore distance for sterics - added 'select' for numerical stability
+        sterics_energy_expression += "reff_sterics = r*(1 + softcore_alpha*(1-lambda_sterics)*(sigma/r)^6)^(1/6);" # effective softcore distance for sterics - seems to work!
+        #sterics_energy_expression += "reff_sterics = select(step(r-sigma), r*(1 + softcore_alpha*(1-lambda_sterics)*(sigma/r)^6)^(1/6), sigma*((softcore_alpha*(1.-lambda_sterics) + (r/sigma)^6))^(1/6));" # effective softcore distance for sterics - added 'select' for numerical stability
         #sterics_energy_expression += "reff_sterics = r;" # effective softcore distance for sterics # DEBUG
         sterics_energy_expression += "softcore_alpha = %f;" % softcore_alpha
         electrostatics_energy_expression += "reff_electrostatics = sqrt(softcore_beta*(1.-lambda_electrostatics) + r^2);" # effective softcore distance for electrostatics

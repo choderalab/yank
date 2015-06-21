@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 # PARAMETERS
 # ==============================================================================
 
+solvent = 'explicit' # one of ['explicit', 'implicit']
 verbose = True # if True, use logger
 
 setup_dir = 'setup' # directory to put setup files in
@@ -50,11 +51,14 @@ keep_crystallographic_water = False # True if crystal waters are to be retained
 # Forcefield and simulation parameters.
 water_name = 'tip4pew' # water to use for explicit solvent
 ffxmls = ['amber99sbildn.xml', water_name + '.xml'] # list of ffxml files to use
-ffxmls += ['amber99_obc.xml'] # Add GBSA if desired
+if solvent == 'implicit':
+    ffxmls += ['amber99_obc.xml'] # Add GBSA if desired
 padding = 10.0 * unit.angstroms
 nonbonded_cutoff = 10.0 * unit.angstroms
-#nonbonded_method = app.CutoffPeriodic # for explicit solvent
-nonbonded_method = app.NoCutoff # for implicit solvent
+if solvent == 'explicit':
+    nonbonded_method = app.CutoffPeriodic # for explicit solvent
+else:
+    nonbonded_method = app.NoCutoff # for implicit solvent
 constraints = app.HBonds
 
 max_minimization_iterations = 250
@@ -71,9 +75,13 @@ nequiliterations = 0
 
 minimize = True # Minimize structures
 
+platform_name = 'OpenCL'
 precision_model = 'mixed'
-platform = openmm.Platform.getPlatformByName('CUDA')
-platform.setPropertyDefaultValue('CudaPrecision', precision_model)
+platform = openmm.Platform.getPlatformByName(platform_name)
+if platform_name == 'CUDA':
+    platform.setPropertyDefaultValue('CudaPrecision', precision_model)
+elif platform_name == 'OpenCL':
+    platform.setPropertyDefaultValue('OpenCLPrecision', precision_model)
 
 # ==============================================================================
 # SET UP STORAGE
@@ -330,9 +338,3 @@ yank.mc_displacement_sigma = None
 
 # Create new simulation.
 yank.create(phases, systems, positions, atom_indices, thermodynamic_state, options=options)
-
-# DEBUG: Run
-print "Running simulation in serial mode..."
-yank.run(options=options)
-print "Done."
-
