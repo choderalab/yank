@@ -14,7 +14,7 @@ requirements:
     - scipy
     - setuptools
     - netcdf4
-    - openmm >=6.2
+    - openmm-dev
     - openmmtools
     - pymbar ==2.1.0b0
     - ambermini
@@ -30,7 +30,7 @@ requirements:
     - scipy
     - cython
     - netcdf4
-    - openmm >=6.2
+    - openmm-dev
     - openmmtools
     - pymbar ==2.1.0b0
     - ambermini
