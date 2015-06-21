@@ -67,7 +67,7 @@ logger = logging.getLogger(__name__)
 
 import mixing._mix_replicas as _mix_replicas
 import numpy as np
-import mdtraj as md
+#import mdtraj as md
 import mixing._mix_replicas_old as _mix_replicas_old
 from simtk import openmm
 from simtk import unit
@@ -1606,11 +1606,12 @@ class ReplicaExchange(object):
         Attempt to exchange all replicas to enhance mixing, calling code written in Cython.
         """
 
-        replica_states = md.utils.ensure_type(self.replica_states, np.int64, 1, "Replica States")
-        u_kl = md.utils.ensure_type(self.u_kl, np.float64, 2, "Reduced Potentials")
-        Nij_proposed = md.utils.ensure_type(self.Nij_proposed, np.int64, 2, "Nij Proposed")
-        Nij_accepted = md.utils.ensure_type(self.Nij_accepted, np.int64, 2, "Nij accepted")
-        _mix_replicas._mix_replicas_cython(self.nstates**4, self.nstates, replica_states, u_kl, Nij_proposed, Nij_accepted)
+        #replica_states = md.utils.ensure_type(self.replica_states, np.int64, 1, "Replica States")
+        #u_kl = md.utils.ensure_type(self.u_kl, np.float64, 2, "Reduced Potentials")
+        #Nij_proposed = md.utils.ensure_type(self.Nij_proposed, np.int64, 2, "Nij Proposed")
+        #Nij_accepted = md.utils.ensure_type(self.Nij_accepted, np.int64, 2, "Nij accepted")
+        #_mix_replicas._mix_replicas_cython(self.nstates**4, self.nstates, replica_states, u_kl, Nij_proposed, Nij_accepted)
+        _mix_replicas._mix_replicas_cython(self.nstates**4, self.nstates, self.replica_states, self.u_kl, self.Nij_proposed, self.Nij_accepted)
         self.replica_states = replica_states
         self.Nij_proposed = Nij_proposed
         self.Nij_accepted = Nij_accepted

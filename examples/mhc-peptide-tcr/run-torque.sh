@@ -44,9 +44,10 @@ echo "Setting up binding free energy calculation..."
 python mhc-peptide-tcr.py
 
 # Run the simulation with verbose output:
-#echo "Running simulation via MPI..."
-#build_mpirun_configfile "yank run --store=output --verbose --mpi"
-#mpirun -configfile configfile
-#date
+echo "Running simulation via MPI..."
+#build_mpirun_configfile "yank run --store=output --verbose --mpi --platform CUDA --precision=double"
+build_mpirun_configfile "yank run --store=output --verbose --mpi"
+mpirun -configfile configfile
+date
 
 

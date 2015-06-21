@@ -255,17 +255,19 @@ class AbsoluteAlchemicalFactory(object):
         self.test_positions = test_positions
         self.platform = platform
         if self.test_positions is not None:
-            self._checkEnergyIsFinite(test_positions, platform=platform)
+            self._checkEnergyIsFinite(self.alchemically_modified_system, test_positions, platform=platform)
 
         return
 
-    def _checkEnergyIsFinite(self, positions, platform=None):
+    def _checkEnergyIsFinite(self, system, positions, platform=None):
         """
         Test that the potential energy is finite for the provided positions.
         If energy is NaN, compute energy from each force component on Reference platform to aid in debugging.
 
         Parameters
         ----------
+        system : simtk.openmm.System
+             The alchemical system to check.
         positions : simtk.unit.Quantity of dimension (natoms,3) with units compatible with nanometers
             Coordinates to use for energy test.
         platform : simtk.openmm.Platform, optional, default=None
@@ -290,13 +292,13 @@ class AbsoluteAlchemicalFactory(object):
 
         # Compute potential energy error between reference and alchemical system.
         reference_potential = compute_potential_energy(self.reference_system, positions, platform)
-        alchemical_potential = compute_potential_energy(self.alchemically_modified_system, positions, platform)
+        alchemical_potential = compute_potential_energy(system, positions, platform)
         energy_error = alchemical_potential - reference_potential
 
         # If alchemical potential energy is NaN, compute energy by component on Reference platform.
         if np.isnan(alchemical_potential / unit.kilocalories_per_mole):
             logger.debug("Energy for alchemically modified system is NaN.")
-            logger.debug("Decomposing energy by platform:")
+            logger.debug("Decomposing energy by force component on Reference platform:")
 
             # Assign all forces to separate components.
             system = self.alchemically_modified_system
@@ -309,20 +311,12 @@ class AbsoluteAlchemicalFactory(object):
                 groups = 1 << force_index # group index bitwise selector
                 potential = compute_potential_energy(system, positions, reference_platform, groups)
                 force_classname = system.getForce(force_index).__class__.__name__
-                logger.debug("Force %5d [%s] %12.3f kcal/mol" % (force_index, force_classname, potential))
-                pass
+                logger.debug("Force %5d / %5d [%24s] %12.3f kcal/mol" % (force_index, system.getNumForces(), force_classname, potential / unit.kilocalories_per_mole))
 
             # Clean up
             del context, integrator
 
             raise Exception("Energy for alchemically modified system is NaN.")
-
-        # DEBUG: Check deepcopy.
-        import copy
-        alchemical_system_copy = copy.deepcopy(self.alchemically_modified_system)
-        alchemical_copy_potential = compute_potential_energy(alchemical_system_copy, positions, platform)
-        copy_energy_error = alchemical_copy_potential - alchemical_potential
-        logger.debug("alchemical copy error = %s" % str(copy_energy_error))
 
         # Return the energy error.
         logger.debug("Difference between alchemical and reference potential energy is %8.3f kcal/mol" % (energy_error / unit.kilocalories_per_mole))
@@ -627,7 +621,11 @@ class AbsoluteAlchemicalFactory(object):
             raise Exception("Nonbonded method %s not supported yet." % str(method))
 
         # Add additional definitions common to all methods.
-        sterics_energy_expression += "reff_sterics = sigma*((softcore_alpha*(1.-lambda_sterics) + (r/sigma)^6))^(1/6);" # effective softcore distance for sterics
+        #sterics_energy_expression += "reff_sterics = sigma*((softcore_alpha*(1.-lambda_sterics) + (r/sigma)^6))^(1/6);" # effective softcore distance for sterics # Causes NaN for large systems
+        #sterics_energy_expression += "reff_sterics = sigma*((softcore_alpha*(1.-lambda_sterics) + r_over_sigma2^3))^(1/6); r_over_sigma2 = (r/sigma)^2;" # effective softcore distance for sterics
+        #sterics_energy_expression += "reff_sterics = r*(1 + softcore_alpha*(1-lambda_sterics)*(sigma/r)^6)^(1/6);" # effective softcore distance for sterics - seems to work!
+        sterics_energy_expression += "reff_sterics = select(step(r-sigma), r*(1 + softcore_alpha*(1-lambda_sterics)*(sigma/r)^6)^(1/6), sigma*((softcore_alpha*(1.-lambda_sterics) + (r/sigma)^6))^(1/6));" # effective softcore distance for sterics - added 'select' for numerical stability
+        #sterics_energy_expression += "reff_sterics = r;" # effective softcore distance for sterics # DEBUG
         sterics_energy_expression += "softcore_alpha = %f;" % softcore_alpha
         electrostatics_energy_expression += "reff_electrostatics = sqrt(softcore_beta*(1.-lambda_electrostatics) + r^2);" # effective softcore distance for electrostatics
         #electrostatics_energy_expression += "reff_electrostatics = r;" # effective softcore distance for electrostatics # DEBUG
@@ -1064,7 +1062,7 @@ class AbsoluteAlchemicalFactory(object):
 
         # Test the system energy if requested.
         if self.test_positions is not None:
-            self._checkEnergyIsFinite(self.test_positions, self.platform)
+            self._checkEnergyIsFinite(system, self.test_positions, self.platform)
 
         # Record timing statistics.
         final_time = time.time()

@@ -71,6 +71,10 @@ nequiliterations = 0
 
 minimize = True # Minimize structures
 
+precision_model = 'mixed'
+platform = openmm.Platform.getPlatformByName('CUDA')
+platform.setPropertyDefaultValue('CudaPrecision', precision_model)
+
 # ==============================================================================
 # SET UP STORAGE
 # ==============================================================================
@@ -208,8 +212,8 @@ def solvate_and_minimize(topology, positions, phase=''):
 
         # Minimize energy.
         logger.info("Minimizing energy...")
-        simulation.minimizeEnergy(maxIterations=max_minimization_iterations)
-        #integrator.step(max_minimization_iterations)
+        #simulation.minimizeEnergy(maxIterations=max_minimization_iterations)
+        integrator.step(max_minimization_iterations)
         state = simulation.context.getState(getEnergy=True)
         potential_energy = state.getPotentialEnergy()
         if np.isnan(potential_energy / unit.kilocalories_per_mole):
@@ -250,6 +254,7 @@ options['randomize_ligand'] = False
 options['minimize'] = True
 options['timestep'] = timestep
 options['collision_rate'] = collision_rate
+options['platform'] = platform
 
 if not is_periodic:
     yank.restraint_type = 'harmonic'
@@ -328,5 +333,6 @@ yank.create(phases, systems, positions, atom_indices, thermodynamic_state, optio
 
 # DEBUG: Run
 print "Running simulation in serial mode..."
-yank.run()
+yank.run(options=options)
+print "Done."
 

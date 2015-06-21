@@ -342,6 +342,32 @@ def dispatch_binding(args):
     if args['--minimize']:
         options['minimize'] = True
 
+    # Allow platform to be optionally specified in order for alchemical tests to be carried out.
+    if args['--platform'] not in [None, 'None']:
+        options['platform'] = openmm.Platform.getPlatformByName(args['--platform'])
+    if args['--precision']:
+        # We need to modify the Platform object.
+        if args['--platform'] is None:
+            raise Exception("The --platform argument must be specified in order to specify platform precision.")
+
+        # Set platform precision.
+        precision = args['--precision']
+        platform_name = args['--platform']
+        logger.info("Setting %s platform to use precision model '%s'." % platform_name, precision)
+        if precision is not None:
+            if platform_name == 'CUDA':
+                options['platform'].setPropertyDefaultValue('CudaPrecision', precision)
+            elif platform_name == 'OpenCL':
+                options['platform'].setPropertyDefaultValue('OpenCLPrecision', precision)
+            elif platform_name == 'CPU':
+                if precision != 'mixed':
+                    raise Exception("CPU platform does not support precision model '%s'; only 'mixed' is supported." % precision)
+            elif platform_name == 'Reference':
+                if precision != 'double':
+                    raise Exception("Reference platform does not support precision model '%s'; only 'double' is supported." % precision)
+            else:
+                raise Exception("Platform selection logic is outdated and needs to be updated to add platform '%s'." % platform_name)
+
     # Create new simulation.
     yank.create(phases, systems, positions, atom_indices, thermodynamic_state, options=options)
 
