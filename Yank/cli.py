@@ -57,17 +57,17 @@ General options:
   -m, --mpi                     Use MPI to parallelize the calculation
 
 Simulation options:
-  --restraints=TYPE             Restraint type to add between protein and ligand in implicit solvent ('harmonic', 'flat-bottom') [default: 'flat-bottom']
+  --restraints=TYPE             Restraint type to add between protein and ligand in implicit solvent (harmonic, flat-bottom) [default: flat-bottom]
   --gbsa=GBSA                   OpenMM GBSA model (HCT, OBC1, OBC2, GBn, GBn2)
   --nbmethod=METHOD             OpenMM nonbonded method (NoCutoff, CutoffPeriodic, PME, Ewald)
   --constraints=CONSTRAINTS     OpenMM constraints (None, HBonds, AllBonds, HAngles) [default: HBonds]
-  --phase=PHASE                 Resume only specified phase of calculation ('solvent', 'complex')
-  --temperature=TEMPERATURE     Temperature for simulation (in K, or simtk.unit readable string) [default: '298*kelvin']
-  --pressure=PRESSURE           Pressure for simulation (in atm, or simtk.unit readable string) [default: '1*atmospheres']
+  --phase=PHASE                 Resume only specified phase of calculation (solvent, complex)
+  --temperature=TEMPERATURE     Temperature for simulation (in K, or simtk.unit readable string) [default: 298*kelvin]
+  --pressure=PRESSURE           Pressure for simulation (in atm, or simtk.unit readable string) [default: 1*atmospheres]
 
 Amber options:
   --setupdir=DIRECTORY          Setup directory to look for AMBER {receptor|ligand|complex}.{prmtop|inpcrd} files.
-  --ligand=DSLSTRING            Specification of the ligand atoms according to MDTraj DSL syntax [default: 'resname MOL']
+  --ligand=DSLSTRING            Specification of the ligand atoms according to MDTraj DSL syntax [default: resname MOL]
 
 """
 
