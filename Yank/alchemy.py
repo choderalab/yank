@@ -211,7 +211,7 @@ class AbsoluteAlchemicalFactory(object):
     """
 
     # Factory initialization.
-    def __init__(self, reference_system, ligand_atoms=list(), receptor_atoms=list(), annihilate_electrostatics=True, annihilate_sterics=False, test_positions=None):
+    def __init__(self, reference_system, ligand_atoms=list(), receptor_atoms=list(), annihilate_electrostatics=True, annihilate_sterics=False, test_positions=None, platform=None):
         """
         Initialize absolute alchemical intermediate factory with reference system.
 
@@ -230,6 +230,8 @@ class AbsoluteAlchemicalFactory(object):
         test_positions : simtk.unit.Quantity of dimension (natoms,3) with units compatible with nanometers, optional, default=None
             If provided, these coordinates will be used to test alchemically-modified system to ensure the potential energy is finite.
             If the potential energy is NaN, the energy for each force component will be computed for the Reference platform to aid in debugging.
+        platform : simtk.openmm.Platform, optionl default=None
+            If provided, this Platform will be used to check energies are finite.
 
         """
 
@@ -249,8 +251,11 @@ class AbsoluteAlchemicalFactory(object):
         # Create an alchemically-modified system to cache.
         self.alchemically_modified_system = self._createAlchemicallyModifiedSystem(self.reference_system)
 
-        if test_positions is not None:
-            self._checkEnergyIsFinite(test_positions)
+        # Store information for use in aiding debugging of alchemical factory.
+        self.test_positions = test_positions
+        self.platform = platform
+        if self.test_positions is not None:
+            self._checkEnergyIsFinite(test_positions, platform=platform)
 
         return
 
@@ -311,6 +316,14 @@ class AbsoluteAlchemicalFactory(object):
             del context, integrator
 
             raise Exception("Energy for alchemically modified system is NaN.")
+
+        # DEBUG: Check deepcopy.
+        import copy
+        alchemical_system_copy = copy.deepcopy(self.alchemically_modified_system)
+        alchemical_copy_potential = compute_potential_energy(alchemical_system_copy, positions, platform)
+        copy_energy_error = alchemical_copy_potential - alchemical_potential
+        logger.debug("alchemical copy error = %s" % str(copy_energy_error))
+
 
         # Return the energy error.
         logger.debug("Difference between alchemical and reference potential energy is %8.3f kcal/mol" % (energy_error / unit.kilocalories_per_mole))

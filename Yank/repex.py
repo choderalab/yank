@@ -1185,6 +1185,9 @@ class ReplicaExchange(object):
             initial_time = time.time()
             for (state_index, state) in enumerate(self.states):
                 logger.debug("Creating Context for state %d..." % state_index)
+                logger.debug(" temperature: %s" % str(state.temperature))
+                logger.debug(" collision_rate: %s" % str(self.collision_rate))
+                logger.debug(" timestep: %s" % str(self.timestep))
                 state._integrator = self.mm.LangevinIntegrator(state.temperature, self.collision_rate, self.timestep)
                 state._integrator.setRandomNumberSeed(seed)
                 initial_context_time = time.time() # DEBUG

@@ -94,7 +94,7 @@ class Yank(object):
         self.default_options['collision_rate'] = 5.0 / unit.picoseconds
         self.default_options['minimize'] = False
         self.default_options['show_mixing_statistics'] = True # this causes slowdown with iteration and should not be used for production
-        self.default_options['platform_names'] = None
+        self.default_options['platform'] = None
         self.default_options['displacement_sigma'] = 1.0 * unit.nanometers # attempt to displace ligand by this stddev will be made each iteration
 
         return
@@ -249,6 +249,10 @@ class Yank(object):
 
         """
 
+
+        # Combine simulation options with defaults to create repex options.
+        repex_options = dict(self.default_options.items() + options.items())
+
         # Make sure positions argument is a list of coordinate snapshots.
         if hasattr(positions, 'unit'):
             # Wrap in list.
@@ -306,7 +310,7 @@ class Yank(object):
 
         # Create alchemically-modified states using alchemical factory.
         logger.debug("Creating alchemically-modified states...")
-        factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=atom_indices['ligand'], test_positions=positions[0])
+        factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=atom_indices['ligand'], test_positions=positions[0], platform=repex_options['platform'])
         systems = factory.createPerturbedSystems(protocols[phase])
 
         # Check systems for finite energies.
@@ -344,9 +348,6 @@ class Yank(object):
             if 'ligand' in atom_indices:
                 mc_atoms = atom_indices['ligand']
 
-        # Combine simulation options with defaults.
-        options = dict(self.default_options.items() + options.items())
-
         # Set up simulation.
         # TODO: Support MPI initialization?
         logger.debug("Creating replica exchange object...")
@@ -355,7 +356,7 @@ class Yank(object):
         simulation = ModifiedHamiltonianExchange(store_filename, mpicomm=mpicomm)
         simulation.create(thermodynamic_state, systems, positions,
                           displacement_sigma=self.mc_displacement_sigma, mc_atoms=mc_atoms,
-                          options=options, metadata=metadata)
+                          options=repex_options, metadata=metadata)
 
         # Initialize simulation.
         # TODO: Use the right scheme for initializing the simulation without running.
