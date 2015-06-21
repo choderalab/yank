@@ -1435,12 +1435,8 @@ class ReplicaExchange(object):
         state_index = self.replica_states[replica_index] # index of thermodynamic state that current replica is assigned to
         state = self.states[state_index] # thermodynamic state
         # Create integrator and context.
-        errorTol = 0.001 # DEBUG: Experimental
-        integrator = self.mm.VariableLangevinIntegrator(state.temperature * 0.1, self.collision_rate, errorTol)
+        integrator = self.mm.VerletIntegrator(1.0 * unit.femtoseconds)
         context = self.mm.Context(state.system, integrator, self.platform)
-        # TODO: This needs to be adapted in case Integrator and Context objects are not cached.
-        #integrator = state._integrator
-        #context = state._context
         # Set box vectors.
         box_vectors = self.replica_box_vectors[replica_index]
         context.setPeriodicBoxVectors(box_vectors[0,:], box_vectors[1,:], box_vectors[2,:])
@@ -1448,8 +1444,7 @@ class ReplicaExchange(object):
         positions = self.replica_positions[replica_index]            
         context.setPositions(positions)
         # Minimize energy.
-        #minimized_positions = self.mm.LocalEnergyMinimizer.minimize(context, self.minimize_tolerance, self.minimize_maxIterations)
-        integrator.step(self.minimize_maxIterations)
+        minimized_positions = self.mm.LocalEnergyMinimizer.minimize(context, self.minimize_tolerance, self.minimize_maxIterations)
         # Store final positions
         self.replica_positions[replica_index] = context.getState(getPositions=True).getPositions(asNumpy=True)
         # Clean up.

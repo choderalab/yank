@@ -105,7 +105,7 @@ def computeHarmonicOscillatorExpectations(K, mass, temperature):
 
 def test_replica_exchange(mpicomm=None, verbose=True):
     """
-    Test that free energies and avergae potential energies of a 3D harmonic oscillator are correctly computed.
+    Test that free energies and average potential energies of a 3D harmonic oscillator are correctly computed.
 
     TODO
 
@@ -299,6 +299,14 @@ def test_hamiltonian_exchange(mpicomm=None, verbose=True):
         reduced_potential = results['potential']['mean'] / kT
         u_i_analytical.append(reduced_potential)
 
+    # DEBUG
+    print ""
+    print seed_positions
+    print analytical_results
+    print u_i_analytical
+    print f_i_analytical    
+    print ""
+
     # Compute analytical Delta_f_ij
     nstates = len(f_i_analytical)
     f_i_analytical = numpy.array(f_i_analytical)
@@ -385,6 +393,10 @@ def test_hamiltonian_exchange(mpicomm=None, verbose=True):
 #=============================================================================================
 
 if __name__ == "__main__":
+    # Configure logger.
+    from yank import utils
+    utils.config_root_logger(True, log_file_path='debug.log')
+
     # Try MPI, if possible.
     try:
         from mpi4py import MPI # MPI wrapper
