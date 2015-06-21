@@ -33,10 +33,10 @@ setup_dir = 'setup' # directory to put setup files in
 store_dir = 'output' # directory to put output files in
 
 pdb_filename = None
-pdbid = '1AO7' # HTLV1 LLFGYPVYV Tax Garboczi 1996 (1AO7), Ding 1999 - peptide agonist
+#pdbid = '1AO7' # HTLV1 LLFGYPVYV Tax Garboczi 1996 (1AO7), Ding 1999 - peptide agonist
 #pdbid = '1QSE' # HTLV1 Tax LLFGYPRYV V7R Ding 1999 (1QSE) - peptide agonist
-#pdbid = 'esk1'
-#pdb_filename = 'CONFIDENTIAL-esk1_hla0201_pep_refmac1.pdb'
+pdbid = 'esk1'
+pdb_filename = 'CONFIDENTIAL-esk1_hla0201_pep_refmac1.pdb'
 chain_ids_to_keep = None # list of chains to retain, or None to keep all
 
 # mdtraj DSL selection for components (after filtering to retain only desired chains) 
@@ -71,7 +71,7 @@ collision_rate = 5.0 / unit.picoseconds
 barostat_frequency = 50
 
 timestep = 2.0 * unit.femtoseconds
-nsteps_per_iteration = 500
+nsteps_per_iteration = 2500
 niterations = 1000
 nequiliterations = 0
 
@@ -131,6 +131,9 @@ else:
 # Prepare the structure
 # ==============================================================================
 
+# DEBUG
+print "fixer.topology.chains(): %s" % str([ chain.id for chain in fixer.topology.chains() ])
+
 # Write PDB file for solute only.
 logger.info("Writing source PDB...")
 pdb_filename = os.path.join(workdir, pdbid + '.pdb')
@@ -151,6 +154,9 @@ if chain_ids_to_keep is not None:
     # Remove all but desired chains.
     logger.info("Removing chains...")
     fixer.removeChains(chain_numbers_to_remove)
+
+# DEBUG
+print "fixer.topology.chains(): %s" % str([ chain.id for chain in fixer.topology.chains() ])
     
 # Add missing atoms and residues.
 logger.info("Adding missing atoms and residues...")
@@ -206,6 +212,9 @@ def solvate_and_minimize(topology, positions, phase=''):
     system = forcefield.createSystem(modeller.topology, nonbondedMethod=nonbonded_method, nonbondedCutoff=nonbonded_cutoff, constraints=constraints)
     if is_periodic:
         system.addForce(openmm.MonteCarloBarostat(pressure, temperature, barostat_frequency))
+
+    # DEBUG
+    print "modeller.topology.chains(): %s" % str([ chain.id for chain in modeller.topology.chains() ])
 
     # Serialize to XML files.
     logger.info("Serializing to XML...")
@@ -281,6 +290,7 @@ if not is_periodic:
 # Prepare phases of calculation.
 phase_prefixes = ['solvent', 'complex'] # list of calculation phases (thermodynamic legs) to set up
 components = ['ligand', 'receptor', 'solvent'] # components of the binding system
+phase_prefixes = ['complex'] # DEBUG, since 'solvent' doesn't work yet
 systems = dict() # systems[phase] is the System object associated with phase 'phase'
 positions = dict() # positions[phase] is a list of coordinates associated with phase 'phase'
 atom_indices = dict() # ligand_atoms[phase] is a list of ligand atom indices associated with phase 'phase'
@@ -309,12 +319,18 @@ for phase_prefix in phase_prefixes:
     atom_indices_to_retain = mdtraj_top.select(dsl_to_retain)
     subset_topology_openmm = mdtraj_top.subset(atom_indices_to_retain).to_openmm()
 
+    # DEBUG
+    print "subset_topology_openmm.chains(): %s" % str([ chain.id for chain in subset_topology_openmm.chains() ])
+
     # Extract the positions of the corresponding atoms.
     x = np.array(fixer.positions / unit.angstrom)
     subset_positions = unit.Quantity(x[atom_indices_to_retain,:], unit.angstrom)
 
     # Solvate subset (if needed), create System, and minimize (if requested).
     [solvated_topology_openmm, solvated_system, solvated_positions] = solvate_and_minimize(subset_topology_openmm, subset_positions, phase=phase + '-')
+
+    # DEBUG
+    print "solvated_topology_openmm.chains(): %s" % str([ chain.id for chain in solvated_topology_openmm.chains() ])
 
     # Record components.
     systems[phase] = solvated_system
