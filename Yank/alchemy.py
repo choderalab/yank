@@ -637,7 +637,6 @@ class AbsoluteAlchemicalFactory(object):
         #sterics_energy_expression += "reff_sterics = r;" # effective softcore distance for sterics # DEBUG
         sterics_energy_expression += "softcore_alpha = %f;" % softcore_alpha
         electrostatics_energy_expression += "reff_electrostatics = sqrt(softcore_beta*(1.-lambda_electrostatics) + r^2);" # effective softcore distance for electrostatics
-        #electrostatics_energy_expression += "reff_electrostatics = r;" # effective softcore distance for electrostatics # DEBUG
         electrostatics_energy_expression += "softcore_beta = %f;" % (softcore_beta / softcore_beta.in_unit_system(unit.md_unit_system).unit)
         electrostatics_energy_expression += "ONE_4PI_EPS0 = %f;" % ONE_4PI_EPS0 # already in OpenMM units
 
@@ -1070,8 +1069,8 @@ class AbsoluteAlchemicalFactory(object):
         self.perturbSystem(system, alchemical_state)
 
         # Test the system energy if requested.
-        #if self.test_positions is not None:
-        #    self._checkEnergyIsFinite(system, self.test_positions, self.platform)
+        if self.test_positions is not None:
+            self._checkEnergyIsFinite(system, self.test_positions, self.platform)
 
         # Record timing statistics.
         final_time = time.time()
