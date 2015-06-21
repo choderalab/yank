@@ -282,7 +282,7 @@ class AbsoluteAlchemicalFactory(object):
                 context = openmm.Context(system, integrator, platform)
             else:
                 # Use fastest available platform.
-                context = openmm.Context(self.reference_system, integrator)
+                context = openmm.Context(system, integrator)
             context.setPositions(positions)
             potential = context.getState(getEnergy=True,groups=groups).getPotentialEnergy()
             del context, integrator
@@ -323,7 +323,6 @@ class AbsoluteAlchemicalFactory(object):
         alchemical_copy_potential = compute_potential_energy(alchemical_system_copy, positions, platform)
         copy_energy_error = alchemical_copy_potential - alchemical_potential
         logger.debug("alchemical copy error = %s" % str(copy_energy_error))
-
 
         # Return the energy error.
         logger.debug("Difference between alchemical and reference potential energy is %8.3f kcal/mol" % (energy_error / unit.kilocalories_per_mole))
@@ -1062,6 +1061,10 @@ class AbsoluteAlchemicalFactory(object):
 
         # Perturb the default global parameters for this system according to the alchemical parameters.
         self.perturbSystem(system, alchemical_state)
+
+        # Test the system energy if requested.
+        if self.test_positions is not None:
+            self._checkEnergyIsFinite(self.test_positions, self.platform)
 
         # Record timing statistics.
         final_time = time.time()

@@ -326,3 +326,7 @@ yank.mc_displacement_sigma = None
 # Create new simulation.
 yank.create(phases, systems, positions, atom_indices, thermodynamic_state, options=options)
 
+# DEBUG: Run
+print "Running simulation in serial mode..."
+yank.run()
+
