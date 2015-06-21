@@ -26,15 +26,17 @@ logger = logging.getLogger(__name__)
 # ==============================================================================
 
 solvent = 'explicit' # one of ['explicit', 'implicit']
+solvent = 'implicit' # one of ['explicit', 'implicit']
 verbose = True # if True, use logger
 
 setup_dir = 'setup' # directory to put setup files in
 store_dir = 'output' # directory to put output files in
 
-#pdbid = '1AO7' # HTLV1 LLFGYPVYV Tax Garboczi 1996 (1AO7), Ding 1999 - peptide agonist
+pdb_filename = None
+pdbid = '1AO7' # HTLV1 LLFGYPVYV Tax Garboczi 1996 (1AO7), Ding 1999 - peptide agonist
 #pdbid = '1QSE' # HTLV1 Tax LLFGYPRYV V7R Ding 1999 (1QSE) - peptide agonist
-pdbid = 'esk1'
-pdb_filename = 'CONFIDENTIAL-esk1_hla0201_pep_refmac1.pdb'
+#pdbid = 'esk1'
+#pdb_filename = 'CONFIDENTIAL-esk1_hla0201_pep_refmac1.pdb'
 chain_ids_to_keep = None # list of chains to retain, or None to keep all
 
 # mdtraj DSL selection for components (after filtering to retain only desired chains) 
@@ -169,6 +171,10 @@ outfile.close()
 # UTILITIES
 # ==============================================================================
 
+def write_file(filename, contents):
+    with open(filename, 'w') as outfile:
+        outfile.write(contents)
+
 def solvate_and_minimize(topology, positions, phase=''):
     """
     Solvate the given system and minimize.
@@ -201,6 +207,11 @@ def solvate_and_minimize(topology, positions, phase=''):
     if is_periodic:
         system.addForce(openmm.MonteCarloBarostat(pressure, temperature, barostat_frequency))
 
+    # Serialize to XML files.
+    logger.info("Serializing to XML...")
+    system_filename = os.path.join(workdir, 'system.xml')
+    write_file(system_filename, openmm.XmlSerializer.serialize(system))
+
     if minimize:
         # Create simulation.
         logger.info("Creating simulation...")
@@ -220,8 +231,8 @@ def solvate_and_minimize(topology, positions, phase=''):
 
         # Minimize energy.
         logger.info("Minimizing energy...")
-        #simulation.minimizeEnergy(maxIterations=max_minimization_iterations)
-        integrator.step(max_minimization_iterations)
+        simulation.minimizeEnergy(maxIterations=max_minimization_iterations)
+        #integrator.step(max_minimization_iterations)
         state = simulation.context.getState(getEnergy=True)
         potential_energy = state.getPotentialEnergy()
         if np.isnan(potential_energy / unit.kilocalories_per_mole):
@@ -269,8 +280,6 @@ if not is_periodic:
 
 # Prepare phases of calculation.
 phase_prefixes = ['solvent', 'complex'] # list of calculation phases (thermodynamic legs) to set up
-phase_prefixes = ['solvent'] # list of calculation phases (thermodynamic legs) to set up # DEBUG
-phase_prefixes = ['complex'] # list of calculation phases (thermodynamic legs) to set up # DEBUG
 components = ['ligand', 'receptor', 'solvent'] # components of the binding system
 systems = dict() # systems[phase] is the System object associated with phase 'phase'
 positions = dict() # positions[phase] is a list of coordinates associated with phase 'phase'

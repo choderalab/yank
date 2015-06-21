@@ -257,6 +257,18 @@ class AbsoluteAlchemicalFactory(object):
         if self.test_positions is not None:
             self._checkEnergyIsFinite(self.alchemically_modified_system, test_positions, platform=platform)
 
+        # DEBUG: Write XML
+        debug_write_xml = False
+        if debug_write_xml:
+            import os, os.path
+            def write_file(filename, contents):
+                with open(filename, 'w') as outfile:
+                    outfile.write(contents)
+
+            logger.info("Serializing to XML...")
+            system_filename = os.path.join('setup', 'alchemical-system.xml')
+            write_file(system_filename, openmm.XmlSerializer.serialize(self.alchemically_modified_system))
+
         return
 
     def _checkEnergyIsFinite(self, system, positions, platform=None):
@@ -344,9 +356,6 @@ class AbsoluteAlchemicalFactory(object):
         alchemical_states.append(AlchemicalState(1.00, 0.97, 0.97, 1.))
         alchemical_states.append(AlchemicalState(1.00, 0.95, 0.95, 1.))
         alchemical_states.append(AlchemicalState(1.00, 0.90, 0.90, 1.))
-
-        return alchemical_states # DEBUG
-
         alchemical_states.append(AlchemicalState(1.00, 0.80, 0.80, 1.))
         alchemical_states.append(AlchemicalState(1.00, 0.70, 0.70, 1.))
         alchemical_states.append(AlchemicalState(1.00, 0.60, 0.60, 1.))
@@ -1061,8 +1070,8 @@ class AbsoluteAlchemicalFactory(object):
         self.perturbSystem(system, alchemical_state)
 
         # Test the system energy if requested.
-        if self.test_positions is not None:
-            self._checkEnergyIsFinite(system, self.test_positions, self.platform)
+        #if self.test_positions is not None:
+        #    self._checkEnergyIsFinite(system, self.test_positions, self.platform)
 
         # Record timing statistics.
         final_time = time.time()

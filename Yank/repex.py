@@ -2061,10 +2061,10 @@ class ReplicaExchange(object):
             # Populate a new ThermodynamicState object.
             state = ThermodynamicState()
             # Read temperature.
-            state.temperature = ncgrp_stateinfo.variables['temperatures'][state_index] * unit.kelvin
+            state.temperature = float(ncgrp_stateinfo.variables['temperatures'][state_index]) * unit.kelvin
             # Read pressure, if present.
             if 'pressures' in ncgrp_stateinfo.variables:
-                state.pressure = ncgrp_stateinfo.variables['pressures'][state_index] * unit.atmospheres
+                state.pressure = float(ncgrp_stateinfo.variables['pressures'][state_index]) * unit.atmospheres
             # Reconstitute System object.
             state.system = self.mm.System()
             state.system.__setstate__(str(ncgrp_stateinfo.variables['systems'][state_index]))
@@ -2160,6 +2160,12 @@ class ReplicaExchange(object):
                 option_value = None
             elif option_ncvar.shape == ():
                 option_value = option_ncvar.getValue()
+                print type(option_value) # DEBUG
+                # Cast to python types.
+                if type(option_value) in [np.int32, np.int64]:
+                    option_value = int(option_value)
+                if type(option_value) in [np.float32, np.float64]:
+                    option_value = float(option_value)
             elif (option_ncvar.shape[0] > 1):
                 option_value = np.array(option_ncvar[:], type_name)
             else:
