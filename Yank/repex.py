@@ -1162,9 +1162,6 @@ class ReplicaExchange(object):
                 logger.debug("Node %d / %d creating Context for state %d..." % (self.mpicomm.rank, self.mpicomm.size, state_index))
                 state = self.states[state_index]
                 try:
-                    logger.debug(" temperature: %s" % str(state.temperature))
-                    logger.debug(" collision_rate: %s" % str(self.collision_rate))
-                    logger.debug(" timestep: %s" % str(self.timestep))
                     state._integrator = self.mm.LangevinIntegrator(state.temperature, self.collision_rate, self.timestep)
                     state._integrator.setRandomNumberSeed(seed + self.mpicomm.rank)
                     # TODO: Also set barostat seeds, etc.
@@ -1189,9 +1186,6 @@ class ReplicaExchange(object):
             initial_time = time.time()
             for (state_index, state) in enumerate(self.states):
                 logger.debug("Creating Context for state %d..." % state_index)
-                logger.debug(" temperature: %s" % str(state.temperature))
-                logger.debug(" collision_rate: %s" % str(self.collision_rate))
-                logger.debug(" timestep: %s" % str(self.timestep))
                 state._integrator = self.mm.LangevinIntegrator(state.temperature, self.collision_rate, self.timestep)
                 state._integrator.setRandomNumberSeed(seed)
                 initial_context_time = time.time() # DEBUG
@@ -1853,13 +1847,13 @@ class ReplicaExchange(object):
         setattr(ncfile, 'ConventionVersion', '0.1')
 
         # Create variables.
-        ncvar_positions = ncfile.createVariable('positions', 'f', ('iteration','replica','atom','spatial'), zlib=True, chunksizes=(1,self.nreplicas,self.natoms,3))
-        ncvar_states    = ncfile.createVariable('states', 'i', ('iteration','replica'), zlib=False, chunksizes=(1,self.nreplicas))
-        ncvar_energies  = ncfile.createVariable('energies', 'f', ('iteration','replica','replica'), zlib=False, chunksizes=(1,self.nreplicas,self.nreplicas))
-        ncvar_proposed  = ncfile.createVariable('proposed', 'l', ('iteration','replica','replica'), zlib=False, chunksizes=(1,self.nreplicas,self.nreplicas))
-        ncvar_accepted  = ncfile.createVariable('accepted', 'l', ('iteration','replica','replica'), zlib=False, chunksizes=(1,self.nreplicas,self.nreplicas))
-        ncvar_box_vectors = ncfile.createVariable('box_vectors', 'f', ('iteration','replica','spatial','spatial'), zlib=False, chunksizes=(1,self.nreplicas,3,3))
-        ncvar_volumes  = ncfile.createVariable('volumes', 'f', ('iteration','replica'), zlib=False, chunksizes=(1,self.nreplicas))
+        ncvar_positions = ncfile.createVariable('positions', 'f4', ('iteration','replica','atom','spatial'), zlib=True, chunksizes=(1,self.nreplicas,self.natoms,3))
+        ncvar_states    = ncfile.createVariable('states', 'i4', ('iteration','replica'), zlib=False, chunksizes=(1,self.nreplicas))
+        ncvar_energies  = ncfile.createVariable('energies', 'f8', ('iteration','replica','replica'), zlib=False, chunksizes=(1,self.nreplicas,self.nreplicas))
+        ncvar_proposed  = ncfile.createVariable('proposed', 'i4', ('iteration','replica','replica'), zlib=False, chunksizes=(1,self.nreplicas,self.nreplicas))
+        ncvar_accepted  = ncfile.createVariable('accepted', 'i4', ('iteration','replica','replica'), zlib=False, chunksizes=(1,self.nreplicas,self.nreplicas))
+        ncvar_box_vectors = ncfile.createVariable('box_vectors', 'f4', ('iteration','replica','spatial','spatial'), zlib=False, chunksizes=(1,self.nreplicas,3,3))
+        ncvar_volumes  = ncfile.createVariable('volumes', 'f8', ('iteration','replica'), zlib=False, chunksizes=(1,self.nreplicas))
 
         # Define units for variables.
         setattr(ncvar_positions, 'units', 'nm')
@@ -2160,7 +2154,6 @@ class ReplicaExchange(object):
                 option_value = None
             elif option_ncvar.shape == ():
                 option_value = option_ncvar.getValue()
-                print type(option_value) # DEBUG
                 # Cast to python types.
                 if type(option_value) in [np.int32, np.int64]:
                     option_value = int(option_value)
