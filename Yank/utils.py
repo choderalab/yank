@@ -53,6 +53,9 @@ def config_root_logger(verbose, log_file_path=None, mpicomm=None):
     log_file_path : str, optional, default = None
         If not None, this is the path where all the logger's messages of level
         logging.DEBUG or higher are saved.
+    mpicomm : mpi4py.MPI.COMM communicator, optional, default=None
+        If specified, this communicator will be used to determine node rank.
+
     """
 
     class TerminalFormatter(logging.Formatter):
