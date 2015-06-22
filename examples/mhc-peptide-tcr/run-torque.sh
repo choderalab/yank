@@ -29,7 +29,7 @@
 # job name (default = name of script file)
 #PBS -N mhc-peptide-tcr
 
-if [ -n "$PBS_O_WORKDIR" ]; then 
+if [ -n "$PBS_O_WORKDIR" ]; then
     cd $PBS_O_WORKDIR
 fi
 
@@ -44,12 +44,12 @@ if [ ! -e output ]; then
 fi
 
 # Clean up any leftover files
-#echo "Cleaning up previous simulation..."
-#yank cleanup --store=output
+echo "Cleaning up previous simulation..."
+yank cleanup --store=output
 
 # Set up calculation.
-#echo "Setting up binding free energy calculation..."
-#python mhc-peptide-tcr.py
+echo "Setting up binding free energy calculation..."
+python mhc-peptide-tcr.py
 
 # Make sure files are synced.
 sync

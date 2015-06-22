@@ -77,7 +77,7 @@ nequiliterations = 0
 
 minimize = True # Minimize structures
 
-platform_name = 'OpenCL'
+platform_name = 'CPU'
 precision_model = 'mixed'
 platform = openmm.Platform.getPlatformByName(platform_name)
 if platform_name == 'CUDA':
