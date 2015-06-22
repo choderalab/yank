@@ -30,7 +30,7 @@ def is_terminal_verbose():
 
     return is_verbose
 
-def config_root_logger(verbose, log_file_path=None):
+def config_root_logger(verbose, log_file_path=None, mpicomm=None):
     """Setup the the root logger's configuration.
 
      The log messages are printed in the terminal and saved in the file specified
@@ -53,6 +53,9 @@ def config_root_logger(verbose, log_file_path=None):
     log_file_path : str, optional, default = None
         If not None, this is the path where all the logger's messages of level
         logging.DEBUG or higher are saved.
+    mpicomm : mpi4py.MPI.COMM communicator, optional, default=None
+        If specified, this communicator will be used to determine node rank.
+
     """
 
     class TerminalFormatter(logging.Formatter):
@@ -84,10 +87,9 @@ def config_root_logger(verbose, log_file_path=None):
             root_logger.removeHandler(root_logger.handlers[0])
 
     # If this is a worker node, don't save any log file
-    try:
-        from mpi4py import MPI
-        rank = MPI.COMM_WORLD.rank
-    except ImportError:
+    if mpicomm:
+        rank = mpicomm.rank
+    else:
         rank = 0
 
     if rank != 0:

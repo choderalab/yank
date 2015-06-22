@@ -37,11 +37,21 @@ def dispatch(args):
     # Set override options.
     options = dict()
 
+    # Configure MPI, if requested.
+    mpicomm = None
+    if args['--mpi']:
+        # Initialize MPI.
+        from mpi4py import MPI
+        hostname = os.uname()[1]
+        MPI.COMM_WORLD.barrier()
+        logger.info("Initialized MPI on %d processes." % (MPI.COMM_WORLD.size))
+        mpicomm = MPI.COMM_WORLD
+
     # Configure logger
     if args['--verbose']:
         options['verbose'] = True
     utils.config_root_logger(options['verbose'],
-                             log_file_path=os.path.join(store_directory, 'run.log'))
+                             log_file_path=os.path.join(store_directory, 'run.log'), mpicomm=mpicomm)
 
     if args['--iterations']:
         options['number_of_iterations'] = int(args['--iterations'])
@@ -76,16 +86,6 @@ def dispatch(args):
     phases = None # By default, resume from all phases found in store_directory
     if args['--phase']: phases=[args['--phase']]
     yank.resume(phases=phases)
-
-    # Configure MPI, if requested.
-    mpicomm = None
-    if args['--mpi']:
-        # Initialize MPI.
-        from mpi4py import MPI
-        hostname = os.uname()[1]
-        MPI.COMM_WORLD.barrier()
-        logger.info("Initialized MPI on %d processes." % (MPI.COMM_WORLD.size))
-        mpicomm = MPI.COMM_WORLD
 
     # Run simulation.
     yank.run(mpicomm=mpicomm, options=options)
