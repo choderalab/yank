@@ -630,9 +630,9 @@ class AbsoluteAlchemicalFactory(object):
             raise Exception("Nonbonded method %s not supported yet." % str(method))
 
         # Add additional definitions common to all methods.
-        #sterics_energy_expression += "reff_sterics = sigma*((softcore_alpha*(1.-lambda_sterics) + (r/sigma)^6))^(1/6);" # effective softcore distance for sterics # Causes NaN for large systems
+        sterics_energy_expression += "reff_sterics = sigma*((softcore_alpha*(1.-lambda_sterics) + (r/sigma)^6))^(1/6);" # effective softcore distance for sterics
         #sterics_energy_expression += "reff_sterics = sigma*((softcore_alpha*(1.-lambda_sterics) + r_over_sigma2^3))^(1/6); r_over_sigma2 = (r/sigma)^2;" # effective softcore distance for sterics
-        sterics_energy_expression += "reff_sterics = r*(1 + softcore_alpha*(1-lambda_sterics)*(sigma/r)^6)^(1/6);" # effective softcore distance for sterics - seems to work!
+        #sterics_energy_expression += "reff_sterics = r*(1 + softcore_alpha*(1-lambda_sterics)*(sigma/r)^6)^(1/6);" # effective softcore distance for sterics - seems to work!
         #sterics_energy_expression += "reff_sterics = select(step(r-sigma), r*(1 + softcore_alpha*(1-lambda_sterics)*(sigma/r)^6)^(1/6), sigma*((softcore_alpha*(1.-lambda_sterics) + (r/sigma)^6))^(1/6));" # effective softcore distance for sterics - added 'select' for numerical stability
         #sterics_energy_expression += "reff_sterics = r;" # effective softcore distance for sterics # DEBUG
         sterics_energy_expression += "softcore_alpha = %f;" % softcore_alpha
@@ -692,27 +692,28 @@ class AbsoluteAlchemicalFactory(object):
         system.addForce(custom_bond_force)
 
         # Move NonbondedForce particle terms for alchemically-modified particles to CustomNonbondedForce.
-        min_sigma = 1.0e6 * unit.angstroms
         for particle_index in range(nonbonded_force.getNumParticles()):
             # Retrieve parameters.
             [charge, sigma, epsilon] = nonbonded_force.getParticleParameters(particle_index)
             # Add parameters to custom force handling interactions between alchemically-modified atoms and rest of system.
             sterics_custom_nonbonded_force.addParticle([sigma, epsilon])
             electrostatics_custom_nonbonded_force.addParticle([charge])
-            if (sigma < min_sigma): min_sigma = sigma
+            # Check particle sigma is not zero.
+            if (sigma == 0.0 * unit.angstrom):
+                logger.warning("particle %d has Lennard-Jones sigma = 0 (charge=%s, sigma=%s, epsilon=%s); setting sigma=1A" % (particle_index, str(charge), str(sigma), str(epsilon)))
+                sigma = 1.0 * unit.angstrom
             # Turn off Lennard-Jones contribution from alchemically-modified particles.
             if particle_index in alchemical_atom_indices:
                 nonbonded_force.setParticleParameters(particle_index, 0*charge, sigma, 0*epsilon)
-        print "MIN_SIGMA (particle) = %s" % min_sigma # DEBUG
-        if (min_sigma < 0.001 * unit.angstrom):
-            raise Exception("minimum particle sigma may be zero (%s)" % str(MIN_SIGMA))
 
         # Move NonbondedForce exception terms for alchemically-modified particles to CustomNonbondedForce/CustomBondForce.
-        min_sigma = 1.0e6 * unit.angstroms
         for exception_index in range(nonbonded_force.getNumExceptions()):
             # Retrieve parameters.
             [iatom, jatom, chargeprod, sigma, epsilon] = nonbonded_force.getExceptionParameters(exception_index)
-            if (sigma < min_sigma): min_sigma = sigma # DEBUG
+            # Check particle sigma is not zero.
+            if (sigma == 0.0 * unit.angstrom):
+                logger.warning("exception %d has Lennard-Jones sigma = 0 (iatom=%d, jatom=%d, chargeprod=%s, sigma=%s, epsilon=%s); setting sigma=1A" % (exception_index, iatom, jatom, str(chargeprod), str(sigma), str(epsilon)))
+                sigma = 1.0 * unit.angstrom
             # Exclude this atom pair in CustomNonbondedForce.
             sterics_custom_nonbonded_force.addExclusion(iatom, jatom)
             electrostatics_custom_nonbonded_force.addExclusion(iatom, jatom)
@@ -722,9 +723,6 @@ class AbsoluteAlchemicalFactory(object):
                 custom_bond_force.addBond(iatom, jatom, [chargeprod, sigma, epsilon])
                 # Zero terms in NonbondedForce.
                 nonbonded_force.setExceptionParameters(exception_index, iatom, jatom, 0*chargeprod, sigma, 0*epsilon)
-        print "MIN_SIGMA (pair) = %s" % min_sigma # DEBUG
-        if (min_sigma < 0.001 * unit.angstrom):
-            raise Exception("minimum pair sigma may be zero (%s)" % str(MIN_SIGMA))
 
         # TODO: Add back NonbondedForce terms for alchemical system needed in case of decoupling electrostatics or sterics via second CustomBondForce.
         # TODO: Also need to change current CustomBondForce to not alchemically disappear system.
