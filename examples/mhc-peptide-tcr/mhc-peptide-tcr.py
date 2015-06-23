@@ -196,9 +196,13 @@ def solvate_and_minimize(topology, positions, phase=''):
     
     Returns
     -------
-    modeller : simtk.openmm.app.Modeller
-        The Modeller instance.
-
+    topology : simtk.openmm.app.Topology
+        The new Topology object
+    system : simtk.openm.System
+        The solvated system.
+    positions : simtk.unit.Quantity of dimension natoms x 3 with units compatible with angstroms
+        The minimized positions.
+    
     """
 
     # Solvate (if desired) and create system.
@@ -332,6 +336,10 @@ for phase_prefix in phase_prefixes:
     # DEBUG
     print "solvated_topology_openmm.chains(): %s" % str([ chain.id for chain in solvated_topology_openmm.chains() ])
 
+    # Write minimized positions.
+    filename = os.path.join(workdir, phase + '-initial.pdb')
+    app.PDBFile.writeFile(solvated_topology_openmm, solvated_positions, open(filename, 'w'))
+
     # Record components.
     systems[phase] = solvated_system
     positions[phase] = solvated_positions
@@ -363,3 +371,5 @@ yank.mc_displacement_sigma = None
 
 # Create new simulation.
 yank.create(phases, systems, positions, atom_indices, thermodynamic_state, options=options)
+
+# TODO: Write PDB files
