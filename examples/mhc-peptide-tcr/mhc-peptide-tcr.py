@@ -71,13 +71,13 @@ collision_rate = 5.0 / unit.picoseconds
 barostat_frequency = 50
 
 timestep = 2.0 * unit.femtoseconds
-nsteps_per_iteration = 2500
+nsteps_per_iteration = 1250
 niterations = 1000
 nequiliterations = 0
 
 minimize = True # Minimize structures
 
-platform_name = 'OpenCL'
+platform_name = 'CUDA'
 precision_model = 'mixed'
 platform = openmm.Platform.getPlatformByName(platform_name)
 if platform_name == 'CUDA':
@@ -196,9 +196,13 @@ def solvate_and_minimize(topology, positions, phase=''):
     
     Returns
     -------
-    modeller : simtk.openmm.app.Modeller
-        The Modeller instance.
-
+    topology : simtk.openmm.app.Topology
+        The new Topology object
+    system : simtk.openm.System
+        The solvated system.
+    positions : simtk.unit.Quantity of dimension natoms x 3 with units compatible with angstroms
+        The minimized positions.
+    
     """
 
     # Solvate (if desired) and create system.
@@ -212,6 +216,7 @@ def solvate_and_minimize(topology, positions, phase=''):
     system = forcefield.createSystem(modeller.topology, nonbondedMethod=nonbonded_method, nonbondedCutoff=nonbonded_cutoff, constraints=constraints)
     if is_periodic:
         system.addForce(openmm.MonteCarloBarostat(pressure, temperature, barostat_frequency))
+    logger.info("System has %d atoms." % system.getNumParticles())
 
     # DEBUG
     print "modeller.topology.chains(): %s" % str([ chain.id for chain in modeller.topology.chains() ])
@@ -276,6 +281,7 @@ yank = Yank(store_dir)
 options = dict()
 options['number_of_iterations'] = niterations
 options['number_of_equilibration_iterations'] = nequiliterations
+options['nsteps_per_iteration'] = nsteps_per_iteration
 options['online_analysis'] = False
 yank.restraint_type = None
 options['randomize_ligand'] = False
@@ -332,6 +338,10 @@ for phase_prefix in phase_prefixes:
     # DEBUG
     print "solvated_topology_openmm.chains(): %s" % str([ chain.id for chain in solvated_topology_openmm.chains() ])
 
+    # Write minimized positions.
+    filename = os.path.join(workdir, phase + '-initial.pdb')
+    app.PDBFile.writeFile(solvated_topology_openmm, solvated_positions, open(filename, 'w'))
+
     # Record components.
     systems[phase] = solvated_system
     positions[phase] = solvated_positions
@@ -363,3 +373,5 @@ yank.mc_displacement_sigma = None
 
 # Create new simulation.
 yank.create(phases, systems, positions, atom_indices, thermodynamic_state, options=options)
+
+# TODO: Write PDB files

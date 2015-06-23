@@ -356,7 +356,11 @@ class AbsoluteAlchemicalFactory(object):
         alchemical_states.append(AlchemicalState(1.00, 0.97, 0.97, 1.))
         alchemical_states.append(AlchemicalState(1.00, 0.95, 0.95, 1.))
         alchemical_states.append(AlchemicalState(1.00, 0.90, 0.90, 1.))
+        alchemical_states.append(AlchemicalState(1.00, 0.87, 0.87, 1.))
+        alchemical_states.append(AlchemicalState(1.00, 0.84, 0.84, 1.))
         alchemical_states.append(AlchemicalState(1.00, 0.80, 0.80, 1.))
+        alchemical_states.append(AlchemicalState(1.00, 0.77, 0.77, 1.))
+        alchemical_states.append(AlchemicalState(1.00, 0.74, 0.74, 1.))
         alchemical_states.append(AlchemicalState(1.00, 0.70, 0.70, 1.))
         alchemical_states.append(AlchemicalState(1.00, 0.60, 0.60, 1.))
         alchemical_states.append(AlchemicalState(1.00, 0.50, 0.50, 1.))
@@ -630,9 +634,9 @@ class AbsoluteAlchemicalFactory(object):
             raise Exception("Nonbonded method %s not supported yet." % str(method))
 
         # Add additional definitions common to all methods.
-        #sterics_energy_expression += "reff_sterics = sigma*((softcore_alpha*(1.-lambda_sterics) + (r/sigma)^6))^(1/6);" # effective softcore distance for sterics # Causes NaN for large systems
+        sterics_energy_expression += "reff_sterics = sigma*((softcore_alpha*(1.-lambda_sterics) + (r/sigma)^6))^(1/6);" # effective softcore distance for sterics
         #sterics_energy_expression += "reff_sterics = sigma*((softcore_alpha*(1.-lambda_sterics) + r_over_sigma2^3))^(1/6); r_over_sigma2 = (r/sigma)^2;" # effective softcore distance for sterics
-        sterics_energy_expression += "reff_sterics = r*(1 + softcore_alpha*(1-lambda_sterics)*(sigma/r)^6)^(1/6);" # effective softcore distance for sterics - seems to work!
+        #sterics_energy_expression += "reff_sterics = r*(1 + softcore_alpha*(1-lambda_sterics)*(sigma/r)^6)^(1/6);" # effective softcore distance for sterics - seems to work!
         #sterics_energy_expression += "reff_sterics = select(step(r-sigma), r*(1 + softcore_alpha*(1-lambda_sterics)*(sigma/r)^6)^(1/6), sigma*((softcore_alpha*(1.-lambda_sterics) + (r/sigma)^6))^(1/6));" # effective softcore distance for sterics - added 'select' for numerical stability
         #sterics_energy_expression += "reff_sterics = r;" # effective softcore distance for sterics # DEBUG
         sterics_energy_expression += "softcore_alpha = %f;" % softcore_alpha
@@ -695,6 +699,10 @@ class AbsoluteAlchemicalFactory(object):
         for particle_index in range(nonbonded_force.getNumParticles()):
             # Retrieve parameters.
             [charge, sigma, epsilon] = nonbonded_force.getParticleParameters(particle_index)
+            # Check particle sigma is not zero.
+            if (sigma == 0.0 * unit.angstrom):
+                logger.warning("particle %d has Lennard-Jones sigma = 0 (charge=%s, sigma=%s, epsilon=%s); setting sigma=1A" % (particle_index, str(charge), str(sigma), str(epsilon)))
+                sigma = 1.0 * unit.angstrom
             # Add parameters to custom force handling interactions between alchemically-modified atoms and rest of system.
             sterics_custom_nonbonded_force.addParticle([sigma, epsilon])
             electrostatics_custom_nonbonded_force.addParticle([charge])
@@ -706,6 +714,10 @@ class AbsoluteAlchemicalFactory(object):
         for exception_index in range(nonbonded_force.getNumExceptions()):
             # Retrieve parameters.
             [iatom, jatom, chargeprod, sigma, epsilon] = nonbonded_force.getExceptionParameters(exception_index)
+            # Check particle sigma is not zero.
+            if (sigma == 0.0 * unit.angstrom):
+                logger.warning("exception %d has Lennard-Jones sigma = 0 (iatom=%d, jatom=%d, chargeprod=%s, sigma=%s, epsilon=%s); setting sigma=1A" % (exception_index, iatom, jatom, str(chargeprod), str(sigma), str(epsilon)))
+                sigma = 1.0 * unit.angstrom
             # Exclude this atom pair in CustomNonbondedForce.
             sterics_custom_nonbonded_force.addExclusion(iatom, jatom)
             electrostatics_custom_nonbonded_force.addExclusion(iatom, jatom)
