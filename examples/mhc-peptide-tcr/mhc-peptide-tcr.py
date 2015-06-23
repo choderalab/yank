@@ -216,6 +216,7 @@ def solvate_and_minimize(topology, positions, phase=''):
     system = forcefield.createSystem(modeller.topology, nonbondedMethod=nonbonded_method, nonbondedCutoff=nonbonded_cutoff, constraints=constraints)
     if is_periodic:
         system.addForce(openmm.MonteCarloBarostat(pressure, temperature, barostat_frequency))
+    logger.info("System has %d atoms." % system.getNumParticles())
 
     # DEBUG
     print "modeller.topology.chains(): %s" % str([ chain.id for chain in modeller.topology.chains() ])
