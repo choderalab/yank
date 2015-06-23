@@ -4,6 +4,7 @@
 setenv PYTHONPATH /opt/local/Library/Frameworks/Python.framework/Versions/2.7/lib/python2.7/site-packages/
 
 # Render the movie
+rm -rf frames
 python render_trajectory.py
 
 # Compile into a movie

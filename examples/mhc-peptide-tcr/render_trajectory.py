@@ -252,9 +252,6 @@ print ncfile.dimensions
 [niterations,nstates,natoms,ndim] = ncfile.variables['positions'].shape
 print "Read %(niterations)d iterations, %(nstates)d states" % vars()
 
-# DEBUG
-niterations = 200
-
 # Load frames
 cmd.set('all_states', 0)
 print "Loading frames..."
