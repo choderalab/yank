@@ -71,7 +71,7 @@ collision_rate = 5.0 / unit.picoseconds
 barostat_frequency = 50
 
 timestep = 2.0 * unit.femtoseconds
-nsteps_per_iteration = 2500
+nsteps_per_iteration = 1250
 niterations = 1000
 nequiliterations = 0
 
