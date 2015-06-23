@@ -695,13 +695,13 @@ class AbsoluteAlchemicalFactory(object):
         for particle_index in range(nonbonded_force.getNumParticles()):
             # Retrieve parameters.
             [charge, sigma, epsilon] = nonbonded_force.getParticleParameters(particle_index)
-            # Add parameters to custom force handling interactions between alchemically-modified atoms and rest of system.
-            sterics_custom_nonbonded_force.addParticle([sigma, epsilon])
-            electrostatics_custom_nonbonded_force.addParticle([charge])
             # Check particle sigma is not zero.
             if (sigma == 0.0 * unit.angstrom):
                 logger.warning("particle %d has Lennard-Jones sigma = 0 (charge=%s, sigma=%s, epsilon=%s); setting sigma=1A" % (particle_index, str(charge), str(sigma), str(epsilon)))
                 sigma = 1.0 * unit.angstrom
+            # Add parameters to custom force handling interactions between alchemically-modified atoms and rest of system.
+            sterics_custom_nonbonded_force.addParticle([sigma, epsilon])
+            electrostatics_custom_nonbonded_force.addParticle([charge])
             # Turn off Lennard-Jones contribution from alchemically-modified particles.
             if particle_index in alchemical_atom_indices:
                 nonbonded_force.setParticleParameters(particle_index, 0*charge, sigma, 0*epsilon)
