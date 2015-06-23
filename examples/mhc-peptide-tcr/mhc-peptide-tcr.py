@@ -281,6 +281,7 @@ yank = Yank(store_dir)
 options = dict()
 options['number_of_iterations'] = niterations
 options['number_of_equilibration_iterations'] = nequiliterations
+options['nsteps_per_iteration'] = nsteps_per_iteration
 options['online_analysis'] = False
 yank.restraint_type = None
 options['randomize_ligand'] = False
