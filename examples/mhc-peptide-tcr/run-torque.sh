@@ -3,7 +3,7 @@
 #
 #
 # walltime : maximum wall clock time (hh:mm:ss)
-#PBS -l walltime=24:00:00
+#PBS -l walltime=10:00:00
 #
 # join stdout and stderr
 #PBS -j oe
@@ -44,12 +44,12 @@ if [ ! -e output ]; then
 fi
 
 # Clean up any leftover files
-#echo "Cleaning up previous simulation..."
-#yank cleanup --store=output
+echo "Cleaning up previous simulation..."
+yank cleanup --store=output
 
 # Set up calculation.
-#echo "Setting up binding free energy calculation..."
-#python mhc-peptide-tcr.py
+echo "Setting up binding free energy calculation..."
+python mhc-peptide-tcr.py
 
 # Make sure files are synced.
 sync
@@ -58,8 +58,8 @@ sync
 
 # Run the simulation with verbose output:
 echo "Running simulation via MPI..."
-#build_mpirun_configfile "yank run --store=output --verbose --mpi --platform CUDA --precision=double"
-#build_mpirun_configfile "yank run --store=output --verbose --mpi"
+#build_mpirun_configfile --mpitype=conda "yank run --store=output --verbose --mpi --platform CUDA --precision=double"
+build_mpirun_configfile --mpitype=conda "yank run --store=output --verbose --mpi"
 
 # Make sure files are synced.
 sync
