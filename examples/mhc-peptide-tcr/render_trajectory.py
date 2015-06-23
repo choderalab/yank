@@ -188,7 +188,7 @@ pymol.finish_launching()
 # DEBUG: ANALYSIS PATH IS HARD-CODED FOR NOW
 source_directory = 'output'
 
-reference_pdbfile = 'setup/complex-implicit-minimized.pdb'
+reference_pdbfile = 'setup/complex-implicit-initial.pdb'
 phase = 'complex-implicit'
 replica = 0 # replica index to render
 
@@ -211,8 +211,8 @@ cmd.set('defer_builds_mode', 3)
 cmd.set('cache_frames', 0)
 
 model = cmd.get_model('complex')
-for atom in model.atom:
-    print "%8d %4s %3s %5d %8.3f %8.3f %8.3f" % (atom.index, atom.name, atom.resn, int(atom.resi), atom.coord[0], atom.coord[1], atom.coord[2])
+#for atom in model.atom:
+#    print "%8d %4s %3s %5d %8.3f %8.3f %8.3f" % (atom.index, atom.name, atom.resn, int(atom.resi), atom.coord[0], atom.coord[1], atom.coord[2])
 
 # Read atoms from PDB
 pdbatoms = readAtomsFromPDB(reference_pdbfile)
@@ -220,21 +220,28 @@ pdbatoms = readAtomsFromPDB(reference_pdbfile)
 # Build mappings.
 pdb_indices = dict()
 for (index, atom) in enumerate(pdbatoms):
-    key = (int(atom['resSeq']), atom['name'].strip())
+    key = (atom['chainID'], int(atom['resSeq']), atom['name'].strip())
     value = index
     pdb_indices[key] = value
+print "pdb_indices has %d entries" % len(pdb_indices.keys())
 
 model_indices = dict()
 for (index, atom) in enumerate(model.atom):
-    key = (int(atom.resi), atom.name)
+    key = (atom.chain, int(atom.resi), atom.name)
     value = index
     model_indices[key] = value
+print "model_indices has %d entries" % len(model_indices.keys())
 
 model_mapping = list()
 for (pdb_index, atom) in enumerate(pdbatoms):
-    key = (int(atom['resSeq']), atom['name'].strip())
-    model_index = model_indices[key]
-    model_mapping.append(model_index)
+    key = (atom['chainID'], int(atom['resSeq']), atom['name'].strip())
+    model_mapping.append(model_indices[key])
+
+pdb_mapping = list()
+for (index, atom) in enumerate(model.atom):
+    key = (atom.chain, int(atom.resi), atom.name)
+    pdb_mapping.append(pdb_indices[key])
+print pdb_mapping
 
 # Construct full path to NetCDF file.
 fullpath = os.path.join(source_directory, phase + '.nc')
@@ -259,7 +266,7 @@ for iteration in range(niterations):
     # Set coordinates
     print "iteration %8d / %8d" % (iteration, niterations)
     positions = (10.0 * ncfile.variables['positions'][iteration, replica, :, :]).squeeze()
-    #positions = positions[model_mapping,:]
+    positions[:,:] = positions[pdb_mapping,:]
     xyz = positions.tolist()
     xyz_iter = iter(xyz)
     #cmd.load_model(model, 'complex', state=iteration+1)
