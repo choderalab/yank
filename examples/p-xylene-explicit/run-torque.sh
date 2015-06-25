@@ -46,7 +46,7 @@ yank prepare binding amber --setupdir=setup --ligand="resname MOL" --store=outpu
 
 # Run the simulation with verbose output:
 echo "Running simulation via MPI..."
-build_mpirun_configfile "yank run --store=output --verbose --mpi"
+build_mpirun_configfile --mpitype=conda "yank run --store=output --verbose --mpi"
 mpirun -configfile configfile
 
 # Analyze the data
