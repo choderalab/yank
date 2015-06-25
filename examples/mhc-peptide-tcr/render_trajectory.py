@@ -191,6 +191,7 @@ source_directory = 'output'
 reference_pdbfile = 'setup/complex-implicit-initial.pdb'
 phase = 'complex-implicit'
 replica = 0 # replica index to render
+replica = 15 # replica index to render
 
 # Load PDB file.
 cmd.rewind()
@@ -258,6 +259,8 @@ print ncfile.dimensions
 # Read dimensions.
 [niterations,nstates,natoms,ndim] = ncfile.variables['positions'].shape
 print "Read %(niterations)d iterations, %(nstates)d states" % vars()
+
+#niterations = 10 # DEBUG
 
 # Load frames
 cmd.set('all_states', 0)
@@ -327,11 +330,11 @@ frame_prefix = 'frames/frame'
 cmd.set('ray_trace_frames', 1)
 cmd.set('ray_trace_frames', 0) # DEBUG
 for iteration in range(niterations):
-    print iteration
-    #cmd.frame(iteration+1)
+    print "rendering frame %04d / %04d" % (iteration+1, niterations)
+    cmd.frame(iteration+1)
     cmd.set('stick_transparency', float(ncfile.variables['states'][iteration, replica]) / float(nstates-1))
-    #cmd.png(frame_prefix)
-    cmd.mpng(frame_prefix, iteration+1, iteration+1)
+    cmd.png(frame_prefix + '%04d.png' % (iteration), ray=True)
+    #cmd.mpng(frame_prefix, iteration+1, iteration+1)
     #cmd.load_model(model, 'complex')
 
 cmd.set('ray_trace_frames', 0)
