@@ -71,7 +71,7 @@ collision_rate = 5.0 / unit.picoseconds
 barostat_frequency = 50
 
 timestep = 2.0 * unit.femtoseconds
-nsteps_per_iteration = 2500
+nsteps_per_iteration = 1250
 niterations = 1000
 nequiliterations = 0
 
@@ -281,6 +281,7 @@ yank = Yank(store_dir)
 options = dict()
 options['number_of_iterations'] = niterations
 options['number_of_equilibration_iterations'] = nequiliterations
+options['nsteps_per_iteration'] = nsteps_per_iteration
 options['online_analysis'] = False
 yank.restraint_type = None
 options['randomize_ligand'] = False
