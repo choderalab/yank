@@ -329,6 +329,8 @@ def dispatch_binding(args):
 
     # Set options.
     options = dict()
+    if args['--nsteps']:
+        options['nsteps_per_iteration'] = int(args['--nsteps'])
     if args['--iterations']:
         options['number_of_iterations'] = int(args['--iterations'])
     if args['--equilibrate']:
