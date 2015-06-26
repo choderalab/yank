@@ -442,7 +442,7 @@ def analyze(source_directory):
     suffixes = ['explicit', 'implicit']
 
     DeltaF_restraints = None
-    
+
     # Process each netcdf file.
     netcdf_files_found = 0
     for phase in phase_prefixes:
@@ -498,10 +498,12 @@ def analyze(source_directory):
             if niterations > MIN_ITERATIONS:
                 from pymbar import timeseries
                 u_n = extract_u_n(ncfile)
+                u_n = u_n[1:] # discard initial frame of zero energies TODO: Get rid of initial frame of zero energies
                 [nequil, g_t, Neff_max] = timeseries.detectEquilibration(u_n)
+                nequil += 1 # account for initial frame of zero energies
                 logger.info([nequil, Neff_max])
             else:
-                nequil = 0
+                nequil = 1 # discard first frame
                 g_t = 1
                 Neff_max = niterations
 
