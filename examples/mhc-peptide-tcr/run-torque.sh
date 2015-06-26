@@ -16,7 +16,7 @@
 #
 # nodes: number of nodes
 #   ppn: how many cores per node to use
-#PBS -l nodes=5:ppn=4:gpus=4:shared
+#PBS -l nodes=7:ppn=4:gpus=4:shared
 ##PBS -l procs=16,gpus=1:shared
 ##PBS -l procs=8,gpus=1:shared
 #
