@@ -1,0 +1,93 @@
+!!index array str
+ "CYP"
+!entry.CYP.unit.atoms table  str name  str type  int typex  int resx  int flags  int seq  int elmnt  dbl chg
+ "N" "N" 0 1 131072 1 7 -0.415700
+ "H" "H" 0 1 131072 2 1 0.271900
+ "CA" "CT" 0 1 131072 3 6 0.046900
+ "HA" "H1" 0 1 131072 4 1 0.030400
+ "CB" "CT" 0 1 131072 5 6 -0.038100
+ "HB2" "H1" 0 1 131072 6 1 0.066500
+ "HB3" "H1" 0 1 131072 7 1 0.066500
+ "SG" "SH" 0 1 131072 8 16 -0.460200
+ "C" "C" 0 1 131072 9 6 0.597300
+ "O" "O" 0 1 131072 10 8 -0.567900
+!entry.CYP.unit.atomspertinfo table  str pname  str ptype  int ptypex  int pelmnt  dbl pchg
+ "N" "N" 0 -1 0.0
+ "H" "H" 0 -1 0.0
+ "CA" "CT" 0 -1 0.0
+ "HA" "H1" 0 -1 0.0
+ "CB" "CT" 0 -1 0.0
+ "HB2" "H1" 0 -1 0.0
+ "HB3" "H1" 0 -1 0.0
+ "SG" "SH" 0 -1 0.0
+ "C" "C" 0 -1 0.0
+ "O" "O" 0 -1 0.0
+!entry.CYP.unit.boundbox array dbl
+ -1.000000
+ 0.0
+ 0.0
+ 0.0
+ 0.0
+!entry.CYP.unit.childsequence single int
+ 2
+!entry.CYP.unit.connect array int
+ 1
+ 9
+!entry.CYP.unit.connectivity table  int atom1x  int atom2x  int flags
+ 1 3 1
+ 1 2 1
+ 3 4 1
+ 3 5 1
+ 3 9 1
+ 5 6 1
+ 5 7 1
+ 5 8 1
+ 9 10 2
+!entry.CYP.unit.hierarchy table  str abovetype  int abovex  str belowtype  int belowx
+ "U" 0 "R" 1
+ "R" 1 "A" 1
+ "R" 1 "A" 2
+ "R" 1 "A" 3
+ "R" 1 "A" 4
+ "R" 1 "A" 5
+ "R" 1 "A" 6
+ "R" 1 "A" 7
+ "R" 1 "A" 8
+ "R" 1 "A" 9
+ "R" 1 "A" 10
+!entry.CYP.unit.name single str
+ "CYP-IC6"
+!entry.CYP.unit.positions table  dbl x  dbl y  dbl z
+ -2.690000 -1.457000 2.883000
+ -2.954000 -2.257000 3.451000
+ -1.300000 -1.504000 2.444000
+ -1.264000 -1.538000 1.349000
+ -0.520000 -0.236000 2.893000
+ -0.514000 -0.197000 3.988000
+ -1.096000 0.616000 2.527000
+ 1.231000 -0.084000 2.308000
+ -0.739000 -2.831000 3.001000
+ -1.427000 -3.580000 3.709000
+!entry.CYP.unit.residueconnect table  int c1x  int c2x  int c3x  int c4x  int c5x  int c6x
+ 0 0 0 0 0 0
+!entry.CYP.unit.residues table  str name  int seq  int childseq  int startatomx  str restype  int imagingx
+ "CYP" 1 11 1 "?" 0
+!entry.CYP.unit.residuesPdbSequenceNumber array int
+ 0
+!entry.CYP.unit.solventcap array dbl
+ -1.000000
+ 0.0
+ 0.0
+ 0.0
+ 0.0
+!entry.CYP.unit.velocities table  dbl x  dbl y  dbl z
+ 0.0 0.0 0.0
+ 0.0 0.0 0.0
+ 0.0 0.0 0.0
+ 0.0 0.0 0.0
+ 0.0 0.0 0.0
+ 0.0 0.0 0.0
+ 0.0 0.0 0.0
+ 0.0 0.0 0.0
+ 0.0 0.0 0.0
+ 0.0 0.0 0.0

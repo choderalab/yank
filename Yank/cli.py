@@ -27,7 +27,7 @@ Usage:
   yank [-h | --help] [-c | --cite]
   yank selftest [-v | --verbose]
   yank platforms
-  yank prepare binding amber --setupdir=DIRECTORY --ligand=DSLSTRING (-s=STORE | --store=STORE) [-i=NITER | --iterations=NITER] [--equilibrate=NEQUIL] [--restraints <restraint_type>] [--randomize-ligand] [--nbmethod=METHOD] [--gbsa=GBSA] [--constraints=CONSTRAINTS] [--temperature=TEMPERATURE] [--pressure=PRESSURE] [--minimize] [-v | --verbose]
+  yank prepare binding amber --setupdir=DIRECTORY --ligand=DSLSTRING (-s=STORE | --store=STORE) [-n=NSTEPS | --nsteps=NSTEPS] [-i=NITER | --iterations=NITER] [--equilibrate=NEQUIL] [--restraints <restraint_type>] [--randomize-ligand] [--nbmethod=METHOD] [--gbsa=GBSA] [--constraints=CONSTRAINTS] [--temperature=TEMPERATURE] [--pressure=PRESSURE] [--minimize] [-v | --verbose]
   yank run (-s=STORE | --store=STORE) [-m | --mpi] [-i=NITER | --iterations=NITER] [--platform=PLATFORM] [--precision=PRECISION] [--phase=PHASE] [-o | --online-analysis] [-v | --verbose]
   yank status (-s=STORE | --store=STORE) [-v | --verbose]
   yank analyze (-s STORE | --store=STORE) [-v | --verbose]
@@ -45,6 +45,7 @@ Commands:
 General options:
   -h, --help                    Print command line help
   -c, --cite                    Print relevant citations
+  -n=NSTEPS, --nsteps=NSTEPS    Number of steps per iteration
   -i=NITER, --iterations=NITER  Number of iterations to run
   --randomize-ligand            Randomize initial ligand positions if specified
   -v, --verbose                 Print verbose output
