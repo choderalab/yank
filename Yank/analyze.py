@@ -196,7 +196,13 @@ def estimate_free_energies(ncfile, ndiscard=0, nuse=None, g=None):
 
     # Get matrix of dimensionless free energy differences and uncertainty estimate.
     logger.info("Computing covariance matrix...")
-    (Deltaf_ij, dDeltaf_ij) = mbar.getFreeEnergyDifferences()
+
+    try:
+        # pymbar 2
+        (Deltaf_ij, dDeltaf_ij) = mbar.getFreeEnergyDifferences()
+    except ValueError:
+        # pymbar 3
+        (Deltaf_ij, dDeltaf_ij, theta_ij) = mbar.getFreeEnergyDifferences()
 
 #    # Matrix of free energy differences
     logger.info("Deltaf_ij:")
