@@ -21,8 +21,7 @@ env:
 
   global:
     # encrypted BINSTAR_TOKEN for push of dev package to binstar
-    - secure: "gwRNoq+57VA6kYmbUCEKTmLdEujF/enYAocOSP94GPuEVyVGe2wqBP4xDQrpJmmzqo9UcW/8pL+aJfN6s9FShczd4z/SKD9R48vvFmJEE2L30j1OCfHk5Jjoo6PTY7ll3seS0v4384PcAircfh6IoZmBJ1FsOaoom1sVn0HDyw4="
-    - secure: "JJLc73pllLW3FwDxmIWxizKItLOCbYHfqIQjkRQ6Z59x5ZP2KiDh37QdsHbQ7Rbq+6g+P10odFiZ2ynnqAhs/SOVo6TNkKb0kdcNzfrlTjZLDba7Pf5y8HWAXGqwy8sQWpS8n/wdXRzG6eQ+3td2P+EaQNa1AfsoHnMFhvzrhKU="
+    - secure: "Q1Y0QOwtfQqHEhbqCPi3FBYFh8jNu16/fQr5d8Q1aTYcayf18nyxNwLbhOs/94pVyQt68G53bPw2J30w/Q0PULnDVRBpnS5hcu2IsnV1sjrSHyEJjjiyDQJGwcNRt7wBbLefyGV0v5Siia5VvjBYDEgDZ1/p9A6HaZRPx/3nuLQ="
     # encrypted AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
     - secure: "SrSd1JoI8dBXQxDAX0xBTYBinTusRBQoPETnxHrBAgKdoty1pkzaghTKNMsrGsk78iwkkj1hAyttIY9trdFQkmx+OTx0fLKFmDHsMkgko4RzTtrgLgoxuRIs/gruID2cN1XKEbxlhRmQF14+q8/X1q6iGGdYMrxo51JcYPuEOSo="
     - secure: "br6QRMYXhHltYTEh/d+zejxcunT3GsqwQvxxLmqnLxi+LIxX4j7eymR6p4fPBd5mCRxyvkQEjnSZxF6e7JlEKxWVcMG28I/dBWzVIRW3EKQQNRmyI+JL1dfNaqj68kHJD+FknBwHK9LD238JPcyqXPdVrm9iPkDijPczvPBxvDs="
