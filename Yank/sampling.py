@@ -36,7 +36,8 @@ from repex import HamiltonianExchange, ReplicaExchange
 
 class ModifiedHamiltonianExchange(HamiltonianExchange):
     """
-    A Hamiltonian exchange facility that uses a modified dynamics to introduce Monte Carlo moves to augment Langevin dynamics.
+    A Hamiltonian exchange facility that uses a modified dynamics to introduce Monte Carlo moves to augment Langevin dynamics
+    and manages a single System where alchemical states differ only by Context parameters for efficiency.
 
     DESCRIPTION
 
