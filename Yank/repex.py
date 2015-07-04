@@ -605,9 +605,9 @@ class ReplicaExchange(object):
        Timestep for Langevin dyanmics (default: 2 fs)
     nsteps_per_iteration : int
        Number of timesteps per iteration (default: 500)
-    number_of_iterations : int 
+    number_of_iterations : int
        Number of replica-exchange iterations to simulate (default: 100)
-    number_of_equilibration_iterations : int 
+    number_of_equilibration_iterations : int
        Number of equilibration iterations before beginning exchanges (default: 0)
     equilibration_timestep : simtk.unit.Quantity (units: time)
        Timestep for use in equilibration (default: 2 fs)
@@ -1441,7 +1441,7 @@ class ReplicaExchange(object):
         box_vectors = self.replica_box_vectors[replica_index]
         context.setPeriodicBoxVectors(box_vectors[0,:], box_vectors[1,:], box_vectors[2,:])
         # Set positions.
-        positions = self.replica_positions[replica_index]            
+        positions = self.replica_positions[replica_index]
         context.setPositions(positions)
         # Minimize energy.
         minimized_positions = self.mm.LocalEnergyMinimizer.minimize(context, self.minimize_tolerance, self.minimize_maxIterations)
@@ -1451,7 +1451,7 @@ class ReplicaExchange(object):
         del integrator, context
 
         return
-            
+
     def _minimize_and_equilibrate(self):
         """
         Minimize and equilibrate all replicas.
@@ -1477,7 +1477,7 @@ class ReplicaExchange(object):
                 # Send final configurations and box vectors back to all nodes.
                 logger.debug("Synchronizing trajectories...")
                 replica_positions_gather = self.mpicomm.allgather(self.replica_positions[self.mpicomm.rank:self.nstates:self.mpicomm.size])
-                replica_box_vectors_gather = self.mpicomm.allgather(self.replica_box_vectors[self.mpicomm.rank:self.nstates:self.mpicomm.size])        
+                replica_box_vectors_gather = self.mpicomm.allgather(self.replica_box_vectors[self.mpicomm.rank:self.nstates:self.mpicomm.size])
                 for replica_index in range(self.nstates):
                     source = replica_index % self.mpicomm.size # node with trajectory data
                     index = replica_index // self.mpicomm.size # index within trajectory batch
@@ -1498,7 +1498,7 @@ class ReplicaExchange(object):
             logger.debug("equilibration iteration %d / %d" % (iteration, self.number_of_equilibration_iterations))
             self._propagate_replicas()
         self.timestep = production_timestep
-            
+
         return
 
     def _compute_energies(self):
@@ -1509,11 +1509,11 @@ class ReplicaExchange(object):
 
         * We have to re-order Context initialization if we have variable box volume
         * Parallel implementation
-        
+
         """
 
         start_time = time.time()
-        
+
         logger.debug("Computing energies...")
 
         if self.mpicomm:
@@ -1551,14 +1551,14 @@ class ReplicaExchange(object):
         TODO
 
         * Adjust nswap_attempts based on how many we can afford to do and not have mixing take a substantial fraction of iteration time.
-        
+
         """
 
         # Determine number of swaps to attempt to ensure thorough mixing.
         # TODO: Replace this with analytical result computed to guarantee sufficient mixing.
         nswap_attempts = self.nstates**5 # number of swaps to attempt (ideal, but too slow!)
         nswap_attempts = self.nstates**3 # best compromise for pure Python?
-        
+
         logger.debug("Will attempt to swap all pairs of replicas, using a total of %d attempts." % nswap_attempts)
 
         # Attempt swaps to mix replicas.
@@ -1639,7 +1639,7 @@ class ReplicaExchange(object):
             j = None
             for index in range(self.nstates):
                 if self.replica_states[index] == istate: i = index
-                if self.replica_states[index] == jstate: j = index                
+                if self.replica_states[index] == jstate: j = index
 
             # Reject swap attempt if any energies are nan.
             if (np.isnan(self.u_kl[i,jstate]) or np.isnan(self.u_kl[j,istate]) or np.isnan(self.u_kl[i,istate]) or np.isnan(self.u_kl[j,jstate])):
@@ -1667,7 +1667,7 @@ class ReplicaExchange(object):
     def _mix_replicas(self):
         """
         Attempt to swap replicas according to user-specified scheme.
-        
+
         """
 
         if (self.mpicomm) and (self.mpicomm.rank != 0):
@@ -1682,11 +1682,11 @@ class ReplicaExchange(object):
         self.Nij_accepted[:,:] = 0
 
         # Perform swap attempts according to requested scheme.
-        start_time = time.time()                    
+        start_time = time.time()
         if self.replica_mixing_scheme == 'swap-neighbors':
-            self._mix_neighboring_replicas()        
+            self._mix_neighboring_replicas()
         elif self.replica_mixing_scheme == 'swap-all':
-            # Try to use weave-accelerated mixing code if possible, otherwise fall back to Python-accelerated code.            
+            # Try to use weave-accelerated mixing code if possible, otherwise fall back to Python-accelerated code.
             try:
                 if self.use_cython is True:
                     self._mix_all_replicas_cython()
@@ -1702,11 +1702,11 @@ class ReplicaExchange(object):
             raise ParameterException("Replica mixing scheme '%s' unknown.  Choose valid 'replica_mixing_scheme' parameter." % self.replica_mixing_scheme)
         end_time = time.time()
 
-        # Determine fraction of swaps accepted this iteration.        
+        # Determine fraction of swaps accepted this iteration.
         nswaps_attempted = self.Nij_proposed.sum()
         nswaps_accepted = self.Nij_accepted.sum()
         swap_fraction_accepted = 0.0
-        if (nswaps_attempted > 0): swap_fraction_accepted = float(nswaps_accepted) / float(nswaps_attempted);            
+        if (nswaps_attempted > 0): swap_fraction_accepted = float(nswaps_accepted) / float(nswaps_attempted);
         logger.debug("Accepted %d / %d attempted swaps (%.1f %%)" % (nswaps_accepted, nswaps_attempted, swap_fraction_accepted * 100.0))
 
         # Estimate cumulative transition probabilities between all states.
@@ -1730,7 +1730,7 @@ class ReplicaExchange(object):
 
         # Report on mixing.
         logger.debug("Mixing of replicas took %.3f s" % (end_time - start_time))
-                
+
         return
 
     def _accumulate_mixing_statistics(self):
@@ -1754,13 +1754,13 @@ class ReplicaExchange(object):
                 jstate = states[iteration + 1, ireplica]
                 self._Nij[istate, jstate] += 0.5
                 self._Nij[jstate, istate] += 0.5
-        
+
         Tij = np.zeros([self.nstates, self.nstates], np.float64)
         for istate in range(self.nstates):
             Tij[istate] = self._Nij[istate] / self._Nij[istate].sum()
-        
+
         return Tij
-    
+
     def _accumulate_mixing_statistics_update(self):
         """Compute statistics of transitions updating Nij of last iteration of repex."""
 
@@ -2305,7 +2305,7 @@ class ReplicaExchange(object):
         Extract timeseries of u_n = - log q(X_n) from store file
 
         where q(X_n) = \pi_{k=1}^K u_{s_{nk}}(x_{nk})
-        
+
         with X_n = [x_{n1}, ..., x_{nK}] is the current collection of replica configurations
         s_{nk} is the current state of replica k at iteration n
         u_k(x) is the kth reduced potential
@@ -2314,7 +2314,7 @@ class ReplicaExchange(object):
         -------
         u_n : numpy array of numpy.float64
         u   _n[n] is -log q(X_n)
-        
+
         TODO
         ----
         * Later, we should have this quantity computed and stored on the fly in the store file.
@@ -2348,7 +2348,7 @@ class ReplicaExchange(object):
 
     def _analysis(self):
         """
-        Perform online analysis each iteration.        
+        Perform online analysis each iteration.
 
         Every iteration, this will update the estimate of the state relative free energy differences and statistical uncertainties.
         We can additionally request further analysis.
@@ -2418,7 +2418,7 @@ class ReplicaExchange(object):
         def matrix2str(x):
             """
             Return a print-ready string version of a matrix of numbers.
-            
+
             Parameters
             ----------
             x : numpy.array of nrows x ncols matrix
@@ -2466,12 +2466,12 @@ class ReplicaExchange(object):
     def analyze(self):
         """
         Analyze the current simulation and return estimated free energies.
-        
+
         Returns
-        -------        
+        -------
         analysis : dict
            Analysis object containing end of equilibrated region, statistical inefficiency, and free energy differences:
-        
+
         Keys
         ----
         equilibration_end : int
@@ -2492,7 +2492,7 @@ class ReplicaExchange(object):
            Delta_s_ij[i,j] is the reduced entropic contribution to the free energy difference s_j - s_i in units of kT
         dDelta_s_ij
            dDelta_s_ij[i,j] is estimated standard error of Delta_s_ij[i,j]
-        
+
         """
         # Update analysis on root node.
         self._analysis()
