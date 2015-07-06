@@ -50,10 +50,9 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
 
     >>> # Create reference system.
     >>> from openmmtools import testsystems
-    >>> testsystem = testsystems.LysozymeImplicit()
+    >>> testsystem = testsystems.AlanineDipeptideImplicit()
     >>> [reference_system, positions] = [testsystem.system, testsystem.positions]
-    >>> receptor_atoms = range(0,2603) # T4 lysozyme L99A
-    >>> ligand_atoms = range(2603,2621) # p-xylene
+    >>> ligand_atoms = range(reference_system.getNumParticles())
     >>> # Alchemically modify system.
     >>> factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=ligand_atoms)
     >>> # Create temporary file for storing output.
