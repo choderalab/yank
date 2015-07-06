@@ -344,8 +344,9 @@ class ThermodynamicState(object):
         is_compatible = True
 
         # Make sure systems have the same number of atoms.
-        if (self.system.getNumParticles() != state.system.getNumParticles()):
-            is_compatible = False
+        if ((self.system != None) and (state.system != None)):
+            if (self.system.getNumParticles() != state.system.getNumParticles()):
+                is_compatible = False
 
         # Make sure other terms are defined for both states.
         # TODO: Use introspection to get list of parameters?
@@ -1110,7 +1111,7 @@ class ReplicaExchange(object):
 
         # If temperature and pressure are specified, make sure MonteCarloBarostat is attached.
         if state.temperature and state.pressure:
-            forces = { state.system.getForce(index).__class__.__name__ : state.system.getForce(index) for index in range(state.system.getNumForces) }
+            forces = { state.system.getForce(index).__class__.__name__ : state.system.getForce(index) for index in range(state.system.getNumForces()) }
 
             if 'MonteCarloAnisotropicBarostat' in forces:
                 raise Exception('MonteCarloAnisotropicBarostat is unsupported.')
@@ -2025,7 +2026,6 @@ class ReplicaExchange(object):
 
         # Open NetCDF file for reading
         logger.debug("Reading NetCDF file '%s'..." % self.store_filename)
-        #ncfile = netcdf.NetCDFFile(self.store_filename, 'r') # Scientific.IO.NetCDF
         ncfile = netcdf.Dataset(self.store_filename, 'r') # netCDF4
 
         # TODO: Perform sanity check on file before resuming

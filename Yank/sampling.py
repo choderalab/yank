@@ -23,14 +23,13 @@ logger = logging.getLogger(__name__)
 
 import numpy as np
 
-import simtk.unit as units
-import simtk.openmm as openmm
+from simtk import openmm, unit
 
 from repex import ThermodynamicState
-from repex import HamiltonianExchange, ReplicaExchange
+from repex import ReplicaExchange
 from repex import MAX_SEED
 
-from alchemy import AbsoluteAlchemicalFactory
+from alchemy import AbsoluteAlchemicalFactory, AlchemicalState
 
 #=============================================================================================
 # Alchemical Modified Hamiltonian exchange class.
@@ -61,13 +60,13 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
     >>> store_filename = file.name
     >>> # Create reference state.
     >>> from repex import ThermodynamicState
-    >>> reference_state = ThermodynamicState(reference_system, temperature=298.0*units.kelvin)
-    >>> displacement_sigma = 1.0 * units.nanometer
+    >>> reference_state = ThermodynamicState(reference_system, temperature=298.0*unit.kelvin)
+    >>> displacement_sigma = 1.0 * unit.nanometer
     >>> mc_atoms = range(0, reference_system.getNumParticles())
     >>> simulation = ModifiedHamiltonianExchange(store_filename)
     >>> simulation.create(reference_state, systems, positions, displacement_sigma=displacement_sigma, mc_atoms=mc_atoms)
     >>> simulation.number_of_iterations = 2 # set the simulation to only run 2 iterations
-    >>> simulation.timestep = 2.0 * units.femtoseconds # set the timestep for integration
+    >>> simulation.timestep = 2.0 * unit.femtoseconds # set the timestep for integration
     >>> simulation.nsteps_per_iteration = 50 # run 50 timesteps per iteration
     >>> simulation.minimize = False # don't minimize prior to production
     >>> simulation.number_of_equilibration_iterations = 0 # don't equilibrate prior to production
@@ -77,7 +76,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
     """
 
     # Options to store.
-    options_to_store = ReplicaExchange.options_to_store + ['alchemical_states', 'reference_system', 'mc_atoms', 'mc_displacement', 'mc_rotation', 'displacement_sigma', 'displacement_trials_accepted', 'rotation_trials_accepted']
+    options_to_store = ReplicaExchange.options_to_store + ['mc_atoms', 'mc_displacement', 'mc_rotation', 'displacement_sigma', 'displacement_trials_accepted', 'rotation_trials_accepted']
 
     def create(self, reference_state, alchemical_states, positions, displacement_sigma=None, mc_atoms=None, options=None, metadata=None):
         """
@@ -108,7 +107,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
                 mc_atoms = None
 
         # Store trial displacement magnitude and atoms to rotate in MC move.
-        self.displacement_sigma = 1.0 * units.nanometer
+        self.displacement_sigma = 1.0 * unit.nanometer
         if mc_atoms is not None:
             self.mc_atoms = np.array(mc_atoms)
             self.mc_displacement = True
@@ -155,7 +154,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
 
         # If temperature and pressure are specified, make sure MonteCarloBarostat is attached.
         if state.temperature and state.pressure:
-            forces = { state.system.getForce(index).__class__.__name__ : state.system.getForce(index) for index in range(state.system.getNumForces) }
+            forces = { state.system.getForce(index).__class__.__name__ : state.system.getForce(index) for index in range(state.system.getNumForces()) }
 
             if 'MonteCarloAnisotropicBarostat' in forces:
                 raise Exception('MonteCarloAnisotropicBarostat is unsupported.')
@@ -173,16 +172,12 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
                 state.system.addForce(barostat)
 
         # Create Context and integrator.
-        self.integrator = openmm.LangevinIntegrator(state.temperature, self.collision_rate, self.timestep)
-        integrator.setRandomNumberSeed(int(np.random.randint(0, MAX_SEED)))
+        self._integrator = openmm.LangevinIntegrator(state.temperature, self.collision_rate, self.timestep)
+        self._integrator.setRandomNumberSeed(int(np.random.randint(0, MAX_SEED)))
         if self.platform:
-            context = openmm.Context(state.system, integrator, self.platform)
+            self._context = openmm.Context(state.system, self._integrator, self.platform)
         else:
-            context = openmm.Context(state.system, integrator)
-
-        # Cache
-        self.context = context
-        self.integrator = integrator
+            self._context = openmm.Context(state.system, self._integrator)
 
     def _store_thermodynamic_states(self, ncfile):
         """
@@ -227,7 +222,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         if 'scalar' not in ncfile.dimensions:
             ncfile.createDimension('scalar', 1) # scalar dimension
         ncvar_serialized_reference_system = ncgrp_stateinfo.createVariable('reference_system', str, ('scalar',), zlib=True)
-        setattr(ncvar_serialized_states, 'long_name', "reference is the serialized OpenMM System corresponding to the reference System object")
+        setattr(ncvar_serialized_reference_system, 'long_name', "reference is the serialized OpenMM System corresponding to the reference System object")
         ncvar_serialized_reference_system[0] = self.reference_system.__getstate__() # serialize reference system.
 
         # Report timing information.
@@ -290,11 +285,11 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         Do anything necessary to finish run except close files.
 
         """
-        ReplicaExchange._finalize()
+        ReplicaExchange._finalize(self)
 
         # Clean up cached context and integrator.
         if hasattr(self, 'context'):
-            del self.context, self.integrator
+            del self._context, self._integrator
 
         return
 
@@ -374,12 +369,12 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         >>> [system, positions] = [complex.system, complex.positions]
         >>> receptor_atoms = range(0,2603) # T4 lysozyme L99A
         >>> ligand_atoms = range(2603,2621) # p-xylene
-        >>> displacement_sigma = 5.0 * units.angstroms
+        >>> displacement_sigma = 5.0 * unit.angstroms
         >>> perturbed_positions = ModifiedHamiltonianExchange.propose_displacement(displacement_sigma, positions, ligand_atoms)
 
         """
         positions_unit = original_positions.unit
-        displacement_vector = units.Quantity(np.random.randn(3) * (displacement_sigma / positions_unit), positions_unit)
+        displacement_vector = unit.Quantity(np.random.randn(3) * (displacement_sigma / positions_unit), positions_unit)
         perturbed_positions = copy.deepcopy(original_positions)
         for atom_index in mc_atoms:
             perturbed_positions[atom_index,:] += displacement_vector
@@ -411,7 +406,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         # Apply rotation.
         xnew = (Rq * np.matrix(xold - x0).T).T + x0
         perturbed_positions = copy.deepcopy(original_positions)
-        perturbed_positions[mc_atoms,:] = units.Quantity(xnew, positions_unit)
+        perturbed_positions[mc_atoms,:] = unit.Quantity(xnew, positions_unit)
 
         return perturbed_positions
 
@@ -427,8 +422,8 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         >>> [system, positions] = [complex.system, complex.positions]
         >>> receptor_atoms = range(0,2603) # T4 lysozyme L99A
         >>> ligand_atoms = range(2603,2621) # p-xylene
-        >>> sigma = 30.0 * units.angstroms
-        >>> close_cutoff = 3.0 * units.angstroms
+        >>> sigma = 30.0 * unit.angstroms
+        >>> close_cutoff = 3.0 * unit.angstroms
         >>> perturbed_positions = ModifiedHamiltonianExchange.randomize_ligand_position(positions, receptor_atoms, ligand_atoms, sigma, close_cutoff)
 
         """
@@ -471,7 +466,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
                     success = False
             nattempts += 1
 
-        positions = units.Quantity(x, unit)
+        positions = unit.Quantity(x, unit)
         return positions
 
     def _propagate_replica(self, replica_index):
@@ -492,7 +487,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         integrator.setTemperature(state.temperature)
         integrator.setRandomNumberSeed(int(np.random.randint(0, MAX_SEED)))
         if state.temperature and state.pressure:
-            forces = { state.system.getForce(index).__class__.__name__ : state.system.getForce(index) for index in range(state.system.getNumForces) }
+            forces = { state.system.getForce(index).__class__.__name__ : state.system.getForce(index) for index in range(state.system.getNumForces()) }
 
             if 'MonteCarloAnisotropicBarostat' in forces:
                 raise Exception('MonteCarloAnisotropicBarostat is unsupported.')
@@ -506,7 +501,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
                 barostat.setRandomNumberSeed(int(np.random.randint(0, MAX_SEED)))
 
         # Set alchemical state.
-        AbsoluteAlchemicalFactory.perturbContext(state.alchemical_state, context)
+        AbsoluteAlchemicalFactory.perturbContext(context, state.alchemical_state)
 
         #
         # Attempt a Monte Carlo rotation/translation move.
@@ -599,7 +594,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         self.rotation_trials_accepted = 0
 
         # Propagate replicas.
-        HamiltonianExchange._propagate_replicas(self)
+        ReplicaExchange._propagate_replicas(self)
 
         # Print summary statistics.
         # TODO: Streamline this idiom.
@@ -650,7 +645,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
             # Compute energies for this node's share of states.
             for state_index in range(self.mpicomm.rank, self.nstates, self.mpicomm.size):
                 # Set alchemical state.
-                AbsoluteAlchemicalFactory.perturbContext(self.states[state_index].alchemical_state, context)
+                AbsoluteAlchemicalFactory.perturbContext(context, self.states[state_index].alchemical_state)
                 for replica_index in range(self.nstates):
                     self.u_kl[replica_index,state_index] = self.states[state_index].reduced_potential(self.replica_positions[replica_index], box_vectors=self.replica_box_vectors[replica_index], platform=self.platform)
 
@@ -665,7 +660,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
             # Serial version.
             for state_index in range(self.nstates):
                 # Set alchemical state.
-                AbsoluteAlchemicalFactory.perturbContext(self.states[state_index].alchemical_state, context)
+                AbsoluteAlchemicalFactory.perturbContext(context, self.states[state_index].alchemical_state)
                 for replica_index in range(self.nstates):
                     self.u_kl[replica_index,state_index] = self.states[state_index].reduced_potential(self.replica_positions[replica_index], box_vectors=self.replica_box_vectors[replica_index], platform=self.platform)
 
@@ -677,7 +672,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         return
 
     def _display_citations(self):
-        HamiltonianExchange._display_citations(self)
+        ReplicaExchange._display_citations(self)
 
         yank_citations = """\
         Chodera JD, Shirts MR, Wang K, Friedrichs MS, Eastman P, Pande VS, and Branson K. YANK: An extensible platform for GPU-accelerated free energy calculations. In preparation."""
