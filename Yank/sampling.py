@@ -647,7 +647,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
                 # Set alchemical state.
                 AbsoluteAlchemicalFactory.perturbContext(context, self.states[state_index].alchemical_state)
                 for replica_index in range(self.nstates):
-                    self.u_kl[replica_index,state_index] = self.states[state_index].reduced_potential(self.replica_positions[replica_index], box_vectors=self.replica_box_vectors[replica_index], platform=self.platform)
+                    self.u_kl[replica_index,state_index] = self.states[state_index].reduced_potential(self.replica_positions[replica_index], box_vectors=self.replica_box_vectors[replica_index], context=context)
 
             # Send final energies to all nodes.
             energies_gather = self.mpicomm.allgather(self.u_kl[:,self.mpicomm.rank:self.nstates:self.mpicomm.size])
@@ -659,10 +659,12 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         else:
             # Serial version.
             for state_index in range(self.nstates):
+                logger.debug('state %d / %d' % (state_index, self.nstates))
                 # Set alchemical state.
                 AbsoluteAlchemicalFactory.perturbContext(context, self.states[state_index].alchemical_state)
                 for replica_index in range(self.nstates):
-                    self.u_kl[replica_index,state_index] = self.states[state_index].reduced_potential(self.replica_positions[replica_index], box_vectors=self.replica_box_vectors[replica_index], platform=self.platform)
+                    logger.debug('replica %d / %d' % (replica_index, self.nstates))
+                    self.u_kl[replica_index,state_index] = self.states[state_index].reduced_potential(self.replica_positions[replica_index], box_vectors=self.replica_box_vectors[replica_index], context=context)
 
         end_time = time.time()
         elapsed_time = end_time - start_time
