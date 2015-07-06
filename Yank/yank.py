@@ -310,7 +310,7 @@ class Yank(object):
         #factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=atom_indices['ligand'], test_positions=positions[0], platform=repex_options['platform'])
         factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=atom_indices['ligand'])
         alchemical_states = protocols[phase]
-        alchemical_system = factory.createPerturbedSystem(alchemical_states[0])
+        alchemical_system = factory.alchemically_modified_system
         thermodynamic_state.system = alchemical_system
 
         # Check systems for finite energies.
