@@ -429,8 +429,8 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         """
 
         # Convert to dimensionless positions.
-        unit = positions.unit
-        x = positions / unit
+        positions_unit = positions.unit
+        x = positions / positions_unit
 
         # Compute ligand center of geometry.
         x0 = x[ligand_atom_indices,:].mean(0)
@@ -448,7 +448,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
             x[ligand_atom_indices,:] = (Rq * np.matrix(x[ligand_atom_indices,:] - x0).T).T + x0
 
             # Choose a random displacement vector.
-            xdisp = (sigma / unit) * np.random.randn(3)
+            xdisp = (sigma / positions_unit) * np.random.randn(3)
 
             # Translate ligand center to receptor atom plus displacement vector.
             for atom_index in ligand_atom_indices:
@@ -462,11 +462,11 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
                 z = x[ligand_atom_index,:]
                 distances = np.sqrt(((y - np.tile(z, (y.shape[0], 1)))**2).sum(1)) # distances[i] is the distance from the centroid to particle i
                 mindist = distances.min()
-                if (mindist < (close_cutoff/unit)):
+                if (mindist < (close_cutoff/positions_unit)):
                     success = False
             nattempts += 1
 
-        positions = unit.Quantity(x, unit)
+        positions = unit.Quantity(x, positions_unit)
         return positions
 
     def _propagate_replica(self, replica_index):
