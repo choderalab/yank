@@ -30,6 +30,9 @@ cd $PBS_O_WORKDIR
 # Set defaults
 export NITERATIONS=${NITERATIONS:=1000}
 
+# Write out nodefile describing allocated GPUs.
+cat $PBS_GPUFILE
+
 # Create output directory.
 if [ ! -e output ]; then
     echo "Making output directory..."
