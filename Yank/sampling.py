@@ -53,7 +53,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
     >>> testsystem = testsystems.LysozymeImplicit()
     >>> [reference_system, positions] = [testsystem.system, testsystem.positions]
     >>> receptor_atoms = range(0,2603) # T4 lysozyme L99A
-    >>> ligand_atoms = range(2603,2621) # p-xylene    
+    >>> ligand_atoms = range(2603,2621) # p-xylene
     >>> # Alchemically modify system.
     >>> factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=ligand_atoms)
     >>> # Create temporary file for storing output.
@@ -63,7 +63,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
     >>> # Create reference state.
     >>> from repex import ThermodynamicState
     >>> reference_state = ThermodynamicState(reference_system, temperature=298.0*unit.kelvin)
-    >>> thermodynamic_state.system = factory.alchemically_modified_system
+    >>> reference_state.system = factory.alchemically_modified_system
     >>> displacement_sigma = 1.0 * unit.nanometer
     >>> mc_atoms = range(0, reference_system.getNumParticles())
     >>> simulation = ModifiedHamiltonianExchange(store_filename)
@@ -175,14 +175,6 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
                 barostat.setRandomNumberSeed(int(np.random.randint(0, MAX_SEED)))
                 state.system.addForce(barostat)
 
-        # Create Context and integrator.
-        self._integrator = openmm.LangevinIntegrator(state.temperature, self.collision_rate, self.timestep)
-        self._integrator.setRandomNumberSeed(int(np.random.randint(0, MAX_SEED)))
-        if self.platform:
-            self._context = openmm.Context(state.system, self._integrator, self.platform)
-        else:
-            self._context = openmm.Context(state.system, self._integrator)
-
     def _store_thermodynamic_states(self, ncfile):
         """
         Store the thermodynamic states in a NetCDF file.
@@ -283,6 +275,28 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         logger.debug("Restoring thermodynamic states from NetCDF file took %.3f s." % elapsed_time)
 
         return True
+
+    def _cache_context(self):
+        """
+        Create and cache OpenMM Context and Integrator.
+
+        """
+
+        # Create Context and integrator.
+        initial_time = time.time()
+        logger.debug("Creating and caching Context and Integrator.")
+        state = self.states[0]
+        self._integrator = openmm.LangevinIntegrator(state.temperature, self.collision_rate, self.timestep)
+        self._integrator.setRandomNumberSeed(int(np.random.randint(0, MAX_SEED)))
+        if self.platform:
+            self._context = openmm.Context(state.system, self._integrator, self.platform)
+        else:
+            self._context = openmm.Context(state.system, self._integrator)
+        final_time = time.time()
+        elapsed_time = final_time - initial_time
+        logger.debug("Context creation took %.3f s." % elapsed_time)
+
+        return
 
     def _finalize(self):
         """
@@ -479,6 +493,10 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
 
         """
 
+        # Create and cache Integrator and Context if needed.
+        if not hasattr(self, '_context'):
+            self._cache_context()
+
         # Retrieve state.
         state_index = self.replica_states[replica_index] # index of thermodynamic state that current replica is assigned to
         state = self.states[state_index] # thermodynamic state
@@ -636,9 +654,12 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
 
         """
 
-        start_time = time.time()
+        # Create and cache Integrator and Context if needed.
+        if not hasattr(self, '_context'):
+            self._cache_context()
 
         logger.debug("Computing energies...")
+        start_time = time.time()
 
         # Retrieve context.
         context = self._context
