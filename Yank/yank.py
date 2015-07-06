@@ -26,13 +26,10 @@ logger = logging.getLogger(__name__)
 
 import numpy as np
 
-
 import simtk.unit as unit
 import simtk.openmm as openmm
 
-from . import sampling
-from . import repex
-from . import alchemy
+from . import sampling, repex, alchemy
 
 from alchemy import AbsoluteAlchemicalFactory
 from repex import ThermodynamicState

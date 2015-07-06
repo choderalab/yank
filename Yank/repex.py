@@ -68,10 +68,8 @@ import datetime
 import logging
 logger = logging.getLogger(__name__)
 
-import mixing._mix_replicas as _mix_replicas
 import numpy as np
 import mdtraj as md
-import mixing._mix_replicas_old as _mix_replicas_old
 import netCDF4 as netcdf
 
 from utils import is_terminal_verbose
@@ -81,6 +79,10 @@ from utils import is_terminal_verbose
 #=============================================================================================
 
 kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA # Boltzmann constant
+
+# TODO: Fix MAX_SEED when we determine what maximum allowed seed is.
+#MAX_SEED = 4294967 # maximum seed for OpenMM setRandomNumberSeed
+MAX_SEED = 2**31 - 1 # maximum seed for OpenMM setRandomNumberSeed
 
 #=============================================================================================
 # Exceptions
@@ -135,7 +137,7 @@ class ThermodynamicState(object):
 
     """
 
-    def __init__(self, system=None, temperature=None, pressure=None, mm=None):
+    def __init__(self, system=None, temperature=None, pressure=None):
         """
         Initialize the thermodynamic state.
 
@@ -144,12 +146,11 @@ class ThermodynamicState(object):
 
         system : simtk.openmm.System, optional, default=None
            A System object describing the potential energy function for the system
+           Note: Only a shallow copy is made.
         temperature : simtk.unit.Quantity compatible with 'kelvin', optional, default=None
            The temperature for a system with constant temperature
         pressure : simtk.unit.Quantity compatible with 'atmospheres', optional, default=None
            The pressure for constant-pressure systems (default: None)
-        mm : simtk.openmm API, optional, default=None
-           OpenMM API implementation to use. If None, will use simtk.openmm.
 
         """
 
@@ -158,97 +159,17 @@ class ThermodynamicState(object):
         self.temperature = None     # the temperature
         self.pressure = None        # the pressure, or None if not isobaric
 
-        self._mm = None             # Cached OpenMM implementation
-
-        self._cache_context = True  # if True, try to cache Context object
-        self._context = None        # cached Context
-        self._integrator = None     # cached Integrator
-
-        # Store OpenMM implementation.
-        if mm:
-            self._mm = mm
-        else:
-            self._mm = openmm
-
         # Store provided values.
         if system is not None:
-            # TODO: Check to make sure system object implements OpenMM System API.
-            self.system = copy.deepcopy(system) # TODO: Do this when deep copy works.
-            # self.system = system # we make a shallow copy for now, which can cause trouble later
+            self.system = system
         if temperature is not None:
             self.temperature = temperature
         if pressure is not None:
             self.pressure = pressure
 
-        # If temperature and pressure are specified, make sure MonteCarloBarostat is attached.
-        if temperature and pressure and system:
-            # Try to find barostat.
-            barostat = False
-            for force_index in range(self.system.getNumForces()):
-                force = self.system.getForce(force_index)
-                # Dispatch forces
-                if isinstance(force, self._mm.MonteCarloBarostat):
-                    barostat = force
-                    break
-            if barostat:
-                # Set temperature.
-                # TODO: Set pressure too, once that option is available.
-                barostat.setTemperature(temperature)
-            else:
-                # Create barostat.
-                barostat = self._mm.MonteCarloBarostat(pressure, temperature)
-                self.system.addForce(barostat)
-
         return
 
-    def _create_context(self, platform=None):
-        """
-        Create Integrator and Context objects if they do not already exist.
-
-        """
-
-        # Check if we already have a Context defined.
-        if self._context:
-            #if platform and (platform != self._context.getPlatform()): # TODO: Figure out why requested and cached platforms differed in tests.
-            if platform and (platform.getName() != self._context.getPlatform().getName()): # DEBUG: Only compare Platform names for now; change this later to incorporate GPU IDs.
-                # Platform differs from the one requested; destroy it.
-                logger.info(platform.getName(), self._context.getPlatform().getName())
-                logger.debug("Platform differs from the one requested; destroying and recreating...")
-                del self._context, self._integrator
-            else:
-                # Cached context is what we expect; do nothing.
-                return
-
-        # Create an integrator.
-        timestep = 1.0 * unit.femtosecond
-        self._integrator = self._mm.VerletIntegrator(timestep)
-
-        # Create a new OpenMM context.
-        if platform:
-            self._context = self._mm.Context(self.system, self._integrator, platform)
-        else:
-            self._context = self._mm.Context(self.system, self._integrator)
-
-        return
-
-    def _cleanup_context(self):
-        del self._context, self._integrator
-        self._context = None
-        self._integrator = None
-
-    def _compute_potential(self, positions, box_vectors):
-        # Must set box vectors first.
-        if box_vectors is not None: self._context.setPeriodicBoxVectors(*box_vectors)
-        # Set positions.
-        self._context.setPositions(positions)
-
-        # Retrieve potential energy.
-        openmm_state = self._context.getState(getEnergy=True)
-        potential_energy = openmm_state.getPotentialEnergy()
-
-        return potential_energy
-
-    def reduced_potential(self, positions, box_vectors=None, mm=None, platform=None):
+    def reduced_potential(self, positions, box_vectors=None, platform=None, context=None):
         """
         Compute the reduced potential for the given positions in this thermodynamic state.
 
@@ -256,8 +177,12 @@ class ThermodynamicState(object):
         ----------
         positions : simtk.unit.Quantity of Nx3 numpy.array
            Positions[n,k] is kth coordinate of particle n
-        box_vectors : tuple of Vec3 or ???
-           Periodic box vectors
+        box_vectors : tuple of Vec3 or ???, optional, default=None
+           Periodic box vectors, if present.
+        platform : simtk.openmm.Platform, optional, default=None
+           Platform to use, or None if default.
+        context : simtk.openmm.Context, optional, default=none
+           If specified, use this Context.
 
         Returns
         -------
@@ -320,28 +245,12 @@ class ThermodynamicState(object):
 
         """
 
-        # Select OpenMM implementation if not specified.
-        if mm is None: mm = openmm
-
         # If pressure is specified, ensure box vectors have been provided.
         if (self.pressure is not None) and (box_vectors is None):
             raise ParameterException("box_vectors must be specified if constant-pressure ensemble.")
 
-        # Make sure we have Context and Integrator objects for the specified platform.
-        self._create_context(platform)
-
-        # Compute energy.
-        try:
-            potential_energy = self._compute_potential(positions, box_vectors)
-        except Exception as e:
-            logger.debug(e.message)
-
-            # Our cached context failed, so try deleting it and creating it anew.
-            self._cleanup_context()
-            self._create_context()
-
-            # Compute energy
-            potential_energy = self._compute_potential(positions, box_vectors)
+        # Compute potential energy.
+        potential_energy = self._compute_potential_energy(positions, box_vectors=box_vectors, platform=platform, context=context)
 
         # Compute inverse temperature.
         beta = 1.0 / (kB * self.temperature)
@@ -351,108 +260,54 @@ class ThermodynamicState(object):
         if self.pressure is not None:
             reduced_potential += beta * self.pressure * self._volume(box_vectors) * unit.AVOGADRO_CONSTANT_NA
 
-        # Clean up context if requested.
-        if (not self._cache_context):
-            self._cleanup_context()
-
         return reduced_potential
 
-    def reduced_potential_multiple(self, positions_list, box_vectors_list=None, mm=None, platform=None):
+    def _compute_potential_energy(self, positions, box_vectors=None, platform=None, context=None):
         """
-        Compute the reduced potential for the given sets of positions in this thermodynamic state.
-        This can pontentially be more efficient than repeated calls to reduced_potential.
+        Compute the potential energy for the given positions in this thermodynamic state.
 
         Parameters
         ----------
-        positions_list : list of simtk.unit.Quantity of Nx3 numpy.array
+        positions : simtk.unit.Quantity of Nx3 numpy.array
            Positions[n,k] is kth coordinate of particle n
-        box_vectors : tuple of Vec3 or ???
-           Periodic box vectors
+        box_vectors : tuple of Vec3 or ???, optional, default=None
+           Periodic box vectors, if present.
+        platform : simtk.openmm.Platform, optional, default=None
+           Platform to use, or None if default.
+        context : simtk.openmm.Context, optional, default=none
+           If specified, use this Context.
 
         Returns
         -------
-        u_k : K numpy array of numpy.float64
-           The unitless reduced potentials (which can be considered to have units of kT)
-
-        Examples
-        --------
-        Compute the reduced potential of a Lennard-Jones cluster at multiple configurations at 100 K.
-
-        >>> from simtk import unit
-        >>> from openmmtools import testsystems
-        >>> testsystem = testsystems.LennardJonesCluster()
-        >>> [system, positions] = [testsystem.system, testsystem.positions]
-        >>> state = ThermodynamicState(system=system, temperature=100.0*unit.kelvin)
-        >>> # create example list of positions
-        >>> import copy
-        >>> positions_list = [ copy.deepcopy(positions) for i in range(10) ]
-        >>> # compute potential for all sets of positions
-        >>> potentials = state.reduced_potential_multiple(positions_list)
-
-        Notes
-        -----
-        The reduced potential is defined as in Ref. [1]
-
-        u = \beta [U(x) + p V(x) + \mu N(x)]
-
-        where the thermodynamic parameters are
-
-        \beta = 1/(kB T) is he inverse temperature
-        U(x) is the potential energy
-        p is the pressure
-        \mu is the chemical potential
-
-        and the configurational properties are
-
-        x the atomic positions
-        V(x) is the instantaneous box volume
-        N(x) the numbers of various particle species (e.g. protons of titratible groups)
-
-        References
-        ----------
-        [1] Shirts MR and Chodera JD. Statistically optimal analysis of equilibrium states. J Chem Phys 129:124105, 2008.
-
-        TODO
-        ----
-        * Instead of requiring configuration and box_vectors be passed separately, develop a Configuration or Snapshot class.
+        potential_energy : simtk.unit.Quantity with units compatible with kilojoules_per_mole
+           The unit-bearing potential energy.
 
         """
 
-        # Select OpenMM implementation if not specified.
-        if mm is None: mm = openmm
-
-        # If pressure is specified, ensure box vectors have been provided.
-        if (self.pressure is not None) and (box_vectors_list is None):
-            raise ParameterException("box_vectors must be specified if constant-pressure ensemble.")
-
-        # Make sure we have Context and Integrator objects.
-        self._create_context(platform)
-
-        # Allocate storage.
-        K = len(positions_list)
-        u_k = np.zeros([K], np.float64)
-
-        # Compute energies.
-        for k in range(K):
-            # Compute energy
-            if box_vectors_list:
-                potential_energy = self._compute_potential(positions_list[k], box_vectors_list[k])
+        # Create OpenMM context to compute potential energy.
+        cleanup_context = False
+        if context == None:
+            integrator = openmm.VerletIntegrator(1.0*unit.femtosecond)
+            if platform:
+                context = openmm.Context(self.system, integrator, platform)
             else:
-                potential_energy = self._compute_potential(positions_list[k], None)
+                context = openmm.Context(self.system, integrator)
+            cleanup_context = True
 
-            # Compute inverse temperature.
-            beta = 1.0 / (kB * self.temperature)
+        # Must set box vectors first.
+        if box_vectors is not None: context.setPeriodicBoxVectors(*box_vectors)
 
-            # Compute reduced potential.
-            u_k[k] = beta * potential_energy
-            if self.pressure is not None:
-                u_k[k] += beta * self.pressure * self._volume(box_vectors_list[k]) * unit.AVOGADRO_CONSTANT_NA
+        # Set positions.
+        context.setPositions(positions)
 
-        # Clean up context if requested.
-        if (not self._cache_context):
-            self._cleanup_context()
+        # Retrieve potential energy.
+        potential_energy = context.getState(getEnergy=True).getPotentialEnergy()
 
-        return u_k
+        # Clean up if we created a Context and Integrator.
+        if cleanup_context:
+            del context, integrator
+
+        return potential_energy
 
     def is_compatible_with(self, state):
         """
@@ -664,7 +519,7 @@ class ReplicaExchange(object):
     # Options to store.
     options_to_store = ['collision_rate', 'constraint_tolerance', 'timestep', 'nsteps_per_iteration', 'number_of_iterations', 'equilibration_timestep', 'number_of_equilibration_iterations', 'title', 'minimize', 'replica_mixing_scheme', 'online_analysis', 'show_mixing_statistics']
 
-    def __init__(self, store_filename, mpicomm=None, mm=None, use_cython=True):
+    def __init__(self, store_filename, mpicomm=None, mm=None):
         """
         Initialize replica-exchange simulation facility.
 
@@ -690,8 +545,7 @@ class ReplicaExchange(object):
 
         # Set default options.
         # These can be changed externally until object is initialized.
-        self.use_cython = use_cython
-        self.collision_rate = 91.0 / unit.picosecond
+        self.collision_rate = 5.0 / unit.picosecond
         self.constraint_tolerance = 1.0e-6
         self.timestep = 2.0 * unit.femtosecond
         self.nsteps_per_iteration = 500
@@ -704,6 +558,7 @@ class ReplicaExchange(object):
         self.minimize_maxIterations = 100 # if nonzero, set maximum iterations
         self.platform = None
         self.platform_name = None
+        self.integrator = None # OpenMM integrator to use for propagating dynamics
         self.replica_mixing_scheme = 'swap-all' # mix all replicas thoroughly
         self.online_analysis = False # if True, analysis will occur each iteration
         self.online_analysis_min_iterations = 20 # minimum number of iterations needed to begin online analysis, if requested
@@ -1150,55 +1005,6 @@ class ReplicaExchange(object):
         for replica_index in range(self.nstates):
             self.replica_states[replica_index] = replica_index
 
-        # Create cached Context objects.
-        logger.debug("Creating and caching Context objects...")
-        MAX_SEED = (1<<31) - 1 # maximum seed value (max size of signed C long)
-        seed = int(np.random.randint(MAX_SEED)) # TODO: Is this the right maximum value to use?
-        if self.mpicomm:
-            # Create cached contexts for only the states this process will handle.
-            initial_time = time.time()
-            for state_index in range(self.mpicomm.rank, self.nstates, self.mpicomm.size):
-                # TODO this doesn't work on worker nodes since they report only warning entries and higher
-                logger.debug("Node %d / %d creating Context for state %d..." % (self.mpicomm.rank, self.mpicomm.size, state_index))
-                state = self.states[state_index]
-                try:
-                    state._integrator = self.mm.LangevinIntegrator(state.temperature, self.collision_rate, self.timestep)
-                    state._integrator.setRandomNumberSeed(seed + self.mpicomm.rank)
-                    # TODO: Also set barostat seeds, etc.
-                    initial_context_time = time.time() # DEBUG
-                    if self.platform:
-                        logger.debug("Node %d / %d: Using platform %s" % (self.mpicomm.rank, self.mpicomm.size, self.platform.getName()))
-                        state._context = self.mm.Context(state.system, state._integrator, self.platform)
-                    else:
-                        logger.debug("Node %d / %d: No platform specified." % (self.mpicomm.rank, self.mpicomm.size))
-                        state._context = self.mm.Context(state.system, state._integrator)
-                        logger.debug( "Node %d / %d: Using platform '%s'." % (state._context.getPlatform().getName()))
-                    logger.debug("Node %d / %d: Context creation took %.3f s" % (self.mpicomm.rank, self.mpicomm.size, time.time() - initial_context_time))
-                except Exception as e:
-                    logger.warning(e.message)
-            logger.debug("Note %d / %d: Context creation done.  Waiting for MPI barrier..." % (self.mpicomm.rank, self.mpicomm.size))
-            self.mpicomm.barrier()
-            final_time = time.time()
-            elapsed_time = final_time - initial_time
-            logger.debug("Barrier complete. Caching all context objects took %.3f s." % elapsed_time)
-        else:
-            # Serial version.
-            initial_time = time.time()
-            for (state_index, state) in enumerate(self.states):
-                logger.debug("Creating Context for state %d..." % state_index)
-                state._integrator = self.mm.LangevinIntegrator(state.temperature, self.collision_rate, self.timestep)
-                state._integrator.setRandomNumberSeed(seed)
-                initial_context_time = time.time() # DEBUG
-                if self.platform:
-                    state._context = self.mm.Context(state.system, state._integrator, self.platform)
-                else:
-                    state._context = self.mm.Context(state.system, state._integrator)
-                logger.debug("Using platform '%s'." % (state._context.getPlatform().getName()))
-                logger.debug("Context creation took %.3f s" % (time.time() - initial_context_time))
-        final_time = time.time()
-        elapsed_time = final_time - initial_time
-        logger.debug("%.3f s elapsed." % elapsed_time)
-
         # Resume from NetCDF file.
         self._resume_from_netcdf()
 
@@ -1302,9 +1108,32 @@ class ReplicaExchange(object):
         state_index = self.replica_states[replica_index] # index of thermodynamic state that current replica is assigned to
         state = self.states[state_index] # thermodynamic state
 
-        # Retrieve integrator and context from thermodynamic state.
-        integrator = state._integrator
-        context = state._context
+        # If temperature and pressure are specified, make sure MonteCarloBarostat is attached.
+        if state.temperature and state.pressure:
+            forces = { state.system.getForce(index).__class__.__name__ : state.system.getForce(index) for index in range(state.system.getNumForces) }
+
+            if 'MonteCarloAnisotropicBarostat' in forces:
+                raise Exception('MonteCarloAnisotropicBarostat is unsupported.')
+
+            if 'MonteCarloBarostat' in forces:
+                barostat = forces['MonteCarloBarostat']
+                # Set temperature and pressure.
+                barostat.setTemperature(state.temperature)
+                barostat.setDefaultPressure(state.pressure)
+                barostat.setRandomNumberSeed(int(np.random.randint(0, MAX_SEED)))
+            else:
+                # Create barostat and add it to the system if it doesn't have one already.
+                barostat = openmm.MonteCarloBarostat(state.pressure, state.temperature)
+                barostat.setRandomNumberSeed(int(np.random.randint(0, MAX_SEED)))
+                state.system.addForce(barostat)
+
+        # Create Context and integrator.
+        integrator = openmm.LangevinIntegrator(state.temperature, self.collision_rate, self.timestep)
+        integrator.setRandomNumberSeed(int(np.random.randint(0, MAX_SEED)))
+        if self.platform:
+            context = openmm.Context(state.system, integrator, self.platform)
+        else:
+            context = openmm.Context(state.system, integrator)
 
         # Set box vectors.
         box_vectors = self.replica_box_vectors[replica_index]
@@ -1314,7 +1143,7 @@ class ReplicaExchange(object):
         context.setPositions(positions)
         setpositions_end_time = time.time()
         # Assign Maxwell-Boltzmann velocities.
-        context.setVelocitiesToTemperature(state.temperature) # TODO: May need to worry about seed for this.
+        context.setVelocitiesToTemperature(state.temperature, int(np.random.randint(0, MAX_SEED)))
         setvelocities_end_time = time.time()
         # Run dynamics.
         integrator.step(self.nsteps_per_iteration)
@@ -1327,6 +1156,10 @@ class ReplicaExchange(object):
         # Store box vectors.
         self.replica_box_vectors[replica_index] = openmm_state.getPeriodicBoxVectors(asNumpy=True)
 
+        # Clean up.
+        del context, integrator
+
+        # Compute timing.
         end_time = time.time()
         elapsed_time = end_time - start_time
         positions_elapsed_time = setpositions_end_time - start_time
@@ -1599,11 +1432,14 @@ class ReplicaExchange(object):
         Attempt to exchange all replicas to enhance mixing, calling code written in Cython.
         """
 
+        from . import mixing
+        from mixing._mix_replicas import _mix_replicas_cython
+
         replica_states = md.utils.ensure_type(self.replica_states, np.int64, 1, "Replica States")
         u_kl = md.utils.ensure_type(self.u_kl, np.float64, 2, "Reduced Potentials")
         Nij_proposed = md.utils.ensure_type(self.Nij_proposed, np.int64, 2, "Nij Proposed")
         Nij_accepted = md.utils.ensure_type(self.Nij_accepted, np.int64, 2, "Nij accepted")
-        _mix_replicas._mix_replicas_cython(self.nstates**4, self.nstates, replica_states, u_kl, Nij_proposed, Nij_accepted)
+        _mix_replicas_cython(self.nstates**4, self.nstates, replica_states, u_kl, Nij_proposed, Nij_accepted)
 
         #replica_states = np.array(self.replica_states, np.int64)
         #u_kl = np.array(self.u_kl, np.float64)
@@ -1614,12 +1450,6 @@ class ReplicaExchange(object):
         self.replica_states = replica_states
         self.Nij_proposed = Nij_proposed
         self.Nij_accepted = Nij_accepted
-
-
-
-    def _mix_all_replicas_weave(self):
-        _mix_replicas_old._mix_all_replicas_weave(self.nstates, self.replica_states, self.u_kl, self.Nij_proposed, self.Nij_accepted)
-
 
     def _mix_neighboring_replicas(self):
         """
@@ -1688,10 +1518,7 @@ class ReplicaExchange(object):
         elif self.replica_mixing_scheme == 'swap-all':
             # Try to use weave-accelerated mixing code if possible, otherwise fall back to Python-accelerated code.
             try:
-                if self.use_cython is True:
-                    self._mix_all_replicas_cython()
-                else:
-                    self._mix_all_replicas_weave()
+                self._mix_all_replicas_cython()
             except ValueError as e:
                 logger.warning(e.message)
                 self._mix_all_replicas()
@@ -2634,9 +2461,6 @@ class ParallelTempering(ReplicaExchange):
         if self.mpicomm:
             # MPI implementation
 
-            # NOTE: This version incurs the overhead of context creation/deletion.
-            # TODO: Use cached contexts instead.
-
             # Create an integrator and context.
             state = self.states[0]
             integrator = self.mm.VerletIntegrator(self.timestep)
@@ -2666,8 +2490,6 @@ class ParallelTempering(ReplicaExchange):
 
         else:
             # Serial implementation.
-            # NOTE: This version incurs the overhead of context creation/deletion.
-            # TODO: Use cached contexts instead.
 
             # Create an integrator and context.
             state = self.states[0]

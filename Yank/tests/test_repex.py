@@ -28,7 +28,6 @@ import simtk.unit as units
 
 from openmmtools import testsystems
 
-import yank
 from yank.repex import ThermodynamicState, ReplicaExchange, HamiltonianExchange, ParallelTempering
 
 #=============================================================================================

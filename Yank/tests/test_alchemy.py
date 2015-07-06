@@ -154,7 +154,7 @@ def alchemical_factory_check(reference_system, positions, receptor_atoms, ligand
     if platform_name:
         platform = openmm.Platform.getPlatformByName(platform_name)
 
-    alchemical_system = factory.createPerturbedSystem(AlchemicalState(0, 1, 1, 1))
+    alchemical_system = factory.createPerturbedSystem(AlchemicalState())
 
     # Serialize for debugging.
     with open('system.xml', 'w') as outfile:
@@ -202,7 +202,7 @@ def benchmark(reference_system, positions, receptor_atoms, ligand_atoms, platfor
     # Create an alchemically-perturbed state corresponding to nearly fully-interacting.
     # NOTE: We use a lambda slightly smaller than 1.0 because the AlchemicalFactory does not use Custom*Force softcore versions if lambda = 1.0 identically.
     lambda_value = 1.0 - 1.0e-6
-    alchemical_state = AlchemicalState(0.00, lambda_value, lambda_value, lambda_value)
+    alchemical_state = AlchemicalState(lambda_coulomb=lambda_value, lambda_sterics=lambda_value, lambda_torsions=lambda_value)
 
     platform = None
     if platform_name:
@@ -291,7 +291,7 @@ def overlap_check(reference_system, positions, receptor_atoms, ligand_atoms, pla
 
     # Create a fully-interacting alchemical state.
     factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=ligand_atoms)
-    alchemical_state = AlchemicalState(0.00, 1.00, 1.00, 1.0)
+    alchemical_state = AlchemicalState()
     alchemical_system = factory.createPerturbedSystem(alchemical_state)
 
     temperature = 300.0 * units.kelvin
@@ -444,7 +444,7 @@ def lambda_trace(reference_system, positions, receptor_atoms, ligand_atoms, plat
     u_i = units.Quantity(np.zeros([nsteps+1], np.float64), units.kilocalories_per_mole) # u_i[i] is the potential energy for lambda_i[i]
     for i in range(nsteps+1):
         lambda_value = 1.0-i*delta # compute lambda value for this step
-        alchemical_system = factory.createPerturbedSystem(AlchemicalState(0, lambda_value, lambda_value, lambda_value))
+        alchemical_system = factory.createPerturbedSystem(AlchemicalState(lambda_coulomb=lambda_value, lambda_sterics=lambda_value, lambda_torsions=lambda_value))
         lambda_i[i] = lambda_value
         u_i[i] = compute_potential(alchemical_system, positions, platform)
         logger.info("%12.9f %24.8f kcal/mol" % (lambda_i[i], u_i[i] / units.kilocalories_per_mole))
