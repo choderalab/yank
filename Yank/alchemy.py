@@ -113,7 +113,7 @@ def _is_periodic(system):
 # AlchemicalState
 #=============================================================================================
 
-class AlchemicalState(object):
+class AlchemicalState(dict):
     """
     Alchemical state description.
 
@@ -121,53 +121,24 @@ class AlchemicalState(object):
 
     Attributes
     ----------
-    relativeRestraints : float
+    lambda_restraints : float
         Scaling factor for remaining receptor-ligand relative restraint terms (to help keep ligand near protein).
-    ligandElectrostatics : float
+    lambda_electrostatics : float
         Scaling factor for ligand charges, intrinsic Born radii, and surface area term.
-    ligandSterics : float
+    lambda_sterics : float
         Scaling factor for ligand sterics (Lennard-Jones and Halgren) interactions.
-    ligandTorsions : float
+    labmda_torsions : float
         Scaling factor for ligand non-ring torsions.
 
-    TODO
-    ----
-    * Rework these structure members into something more general and flexible?
-    * Add receptor modulation back in?
     """
+    def __init__(self, **kwargs):
+        self['lambda_restraints'] = 0.0
+        self['lambda_electrostatics'] = 1.0
+        self['lambda_sterics'] = 1.0
+        self['lambda_torsions'] = 1.0
 
-    def __init__(self, relativeRestraints=1.0, ligandElectrostatics=1.0, ligandSterics=1.0, ligandTorsions=1.0):
-        """
-        Create an Alchemical state.
-
-        Parameters
-        ----------
-        relativeRestraints : float, optional, default = 1.0
-            Scaling factor for remaining receptor-ligand relative restraint terms (to help keep ligand near protein).
-        ligandElectrostatics : float, optional, default = 1.0
-            Scaling factor for ligand charges, intrinsic Born radii, and surface area term.
-        ligandSterics : float, optional, default = 1.0
-            Scaling factor for ligand sterics (Lennard-Jones or Halgren) interactions.
-        ligandTorsions : float, optional, default = 1.0
-            Scaling factor for ligand non-ring torsions.
-
-        Examples
-        --------
-
-        Create a fully-interacting, unrestrained alchemical state.
-
-        >>> alchemical_state = AlchemicalState(relativeRestraints=0.0, ligandElectrostatics=1.0, ligandSterics=1.0, ligandTorsions=1.0)
-        >>> # This is equivalent to
-        >>> alchemical_state = AlchemicalState()
-
-        """
-
-        self.relativeRestraints = relativeRestraints
-        self.ligandElectrostatics = ligandElectrostatics
-        self.ligandSterics = ligandSterics
-        self.ligandTorsions = ligandTorsions
-
-        return
+        for key in kwargs.keys():
+            self[key] = kwargs[key]
 
 #=============================================================================================
 # AbsoluteAlchemicalFactory
@@ -351,35 +322,14 @@ class AbsoluteAlchemicalFactory(object):
         """
 
         alchemical_states = list()
+        lambda_values = [1.0, 0.99, 0.98, 0.97, 0.96, 0.95, 0.94, 0.93, 0.92, 0.91, 0.90, 0.88, 0.86, 0.84, 0.81,
+                         0.78, 0.74, 0.70, 0.60, 0.50, 0.40, 0.30, 0.20, 0.10, 0.05, 0.025, 0.01, 0.00]
 
-        alchemical_states.append(AlchemicalState(1.00, 1.00, 1.00, 1.)) # fully interacting
-        alchemical_states.append(AlchemicalState(1.00, 0.99, 0.99, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.98, 0.98, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.97, 0.97, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.96, 0.96, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.95, 0.95, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.94, 0.94, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.93, 0.93, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.92, 0.92, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.91, 0.91, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.90, 0.90, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.88, 0.88, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.86, 0.86, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.84, 0.84, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.81, 0.81, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.78, 0.78, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.74, 0.74, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.70, 0.70, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.60, 0.60, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.50, 0.50, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.40, 0.40, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.30, 0.30, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.20, 0.20, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.10, 0.10, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.05, 0.05, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.025, 0.025, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.01, 0.01, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.00, 0.00, 1.)) # discharged, LJ annihilated
+        for lambda_value in lambda_values:
+            alchemical_state = AlchemicalState()
+            alchemical_state['lambda_electrostatics'] = lambda_value
+            alchemical_state['lambda_sterics'] = lambda_value
+            alchemical_states.append(alchemical_state)
 
         return alchemical_states
 
@@ -405,22 +355,13 @@ class AbsoluteAlchemicalFactory(object):
 
         alchemical_states = list()
 
-        alchemical_states.append(AlchemicalState(1.00, 1.00, 1.00, 1.)) # fully interacting
-        alchemical_states.append(AlchemicalState(1.00, 0.97, 0.97, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.95, 0.95, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.90, 0.90, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.80, 0.80, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.70, 0.70, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.60, 0.60, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.50, 0.50, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.40, 0.40, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.30, 0.30, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.20, 0.20, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.10, 0.10, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.05, 0.05, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.025, 0.025, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.01, 0.01, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.00, 0.00, 1.)) # discharged, LJ annihilated
+        lambda_values = [1.0, 0.97, 0.95, 0.90, 0.80, 0.70, 0.60, 0.50, 0.40, 0.30, 0.20, 0.10, 0.05, 0.025, 0.01, 0.0]
+
+        for lambda_value in lambda_values:
+            alchemical_state = AlchemicalState()
+            alchemical_state['lambda_electrostatics'] = lambda_value
+            alchemical_state['lambda_sterics'] = lambda_value
+            alchemical_states.append(alchemical_state)
 
         return alchemical_states
 
@@ -446,22 +387,13 @@ class AbsoluteAlchemicalFactory(object):
 
         alchemical_states = list()
 
-        alchemical_states.append(AlchemicalState(1.00, 1.00, 1.00, 1.)) # fully interacting
-        alchemical_states.append(AlchemicalState(1.00, 0.97, 0.97, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.95, 0.95, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.90, 0.90, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.80, 0.80, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.70, 0.70, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.60, 0.60, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.50, 0.50, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.40, 0.40, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.30, 0.30, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.20, 0.20, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.10, 0.10, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.05, 0.05, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.025, 0.025, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.01, 0.01, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.00, 0.00, 1.)) # discharged, LJ annihilated
+        lambda_values = [1.0, 0.97, 0.95, 0.90, 0.80, 0.70, 0.60, 0.50, 0.40, 0.30, 0.20, 0.10, 0.05, 0.025, 0.01, 0.0]
+
+        for lambda_value in lambda_values:
+            alchemical_state = AlchemicalState()
+            alchemical_state['lambda_electrostatics'] = lambda_value
+            alchemical_state['lambda_sterics'] = lambda_value
+            alchemical_states.append(alchemical_state)
 
         return alchemical_states
 
@@ -483,9 +415,13 @@ class AbsoluteAlchemicalFactory(object):
 
         alchemical_states = list()
 
-        alchemical_states.append(AlchemicalState(1.00, 1.00, 1.00, 1.)) # fully interacting
-        alchemical_states.append(AlchemicalState(1.00, 0.00, 1.00, 1.)) # discharged
-        alchemical_states.append(AlchemicalState(1.00, 0.00, 0.00, 1.)) # discharged, LJ annihilated
+        lambda_values = [1.0, 0.0]
+
+        for lambda_value in lambda_values:
+            alchemical_state = AlchemicalState()
+            alchemical_state['lambda_electrostatics'] = lambda_value
+            alchemical_state['lambda_sterics'] = lambda_value
+            alchemical_states.append(alchemical_state)
 
         return alchemical_states
 
@@ -511,22 +447,13 @@ class AbsoluteAlchemicalFactory(object):
 
         alchemical_states = list()
 
-        alchemical_states.append(AlchemicalState(1.00, 1.00, 1.00, 1.)) # fully interacting
-        alchemical_states.append(AlchemicalState(1.00, 0.97, 0.97, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.95, 0.95, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.90, 0.90, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.80, 0.80, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.70, 0.70, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.60, 0.60, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.50, 0.50, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.40, 0.40, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.30, 0.30, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.20, 0.20, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.10, 0.10, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.05, 0.05, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.025, 0.025, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.01, 0.01, 1.))
-        alchemical_states.append(AlchemicalState(1.00, 0.00, 0.00, 1.)) # discharged, LJ annihilated
+        lambda_values = [1.0, 0.97, 0.95, 0.90, 0.80, 0.70, 0.60, 0.50, 0.40, 0.30, 0.20, 0.10, 0.05, 0.025, 0.01, 0.00]
+
+        for lambda_value in lambda_values:
+            alchemical_state = AlchemicalState()
+            alchemical_state['lambda_electrostatics'] = lambda_value
+            alchemical_state['lambda_sterics'] = lambda_value
+            alchemical_states.append(alchemical_state)
 
         return alchemical_states
 
@@ -926,7 +853,8 @@ class AbsoluteAlchemicalFactory(object):
 
         return system
 
-    def perturbSystem(self, system, alchemical_state):
+    @classmethod
+    def perturbSystem(cls, system, alchemical_state):
         """
         Perturb the specified system (previously generated by this alchemical factory) by setting default global parameters.
 
@@ -949,35 +877,27 @@ class AbsoluteAlchemicalFactory(object):
         >>> # Create a factory to produce alchemical intermediates.
         >>> factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=[0, 1, 2])
         >>> # Create an alchemically-perturbed state corresponding to fully-interacting.
-        >>> alchemical_state = AlchemicalState(1.00, 1.00, 1.00, 1.00)
+        >>> alchemical_state = AlchemicalState(lambda_sterics=1.00, lambda_electrostatics=1.00)
         >>> # Create the perturbed system.
         >>> alchemical_system = factory.createPerturbedSystem(alchemical_state)
         >>> # Perturb this system.
-        >>> alchemical_state = AlchemicalState(1.00, 0.50, 1.00, 1.00)
+        >>> alchemical_state = AlchemicalState(lambda_sterics=0.90, lambda_electrostatics=0.90)
         >>> factory.perturbSystem(alchemical_system, alchemical_state)
 
         """
 
-        # Create a dict of alchemical parameters.
-        alchemical_parameters = {
-            'lambda_restraints' : alchemical_state.relativeRestraints,
-            'lambda_electrostatics' : alchemical_state.ligandElectrostatics,
-            'lambda_sterics' : alchemical_state.ligandSterics,
-            'lambda_torsions' : alchemical_state.ligandTorsions
-            }
-
-        # Set default values of global parameters of Custom*Force objects for this alchemical state.
         for force_index in range(system.getNumForces()):
             force = system.getForce(force_index)
             if hasattr(force, 'getNumGlobalParameters'):
                 for parameter_index in range(force.getNumGlobalParameters()):
                     parameter_name = force.getGlobalParameterName(parameter_index)
-                    if parameter_name in alchemical_parameters:
-                        force.setGlobalParameterDefaultValue(parameter_index, alchemical_parameters[parameter_name])
+                    if parameter_name in alchemical_state:
+                        force.setGlobalParameterDefaultValue(parameter_index, alchemical_state[parameter_name])
 
         return
 
-    def perturbContext(self, context, alchemical_state):
+    @classmethod
+    def perturbContext(cls, context, alchemical_state, use_all_parameters=False):
         """
         Perturb the specified context (using a system previously generated by this alchemical factory) by setting context parameters.
 
@@ -987,6 +907,8 @@ class AbsoluteAlchemicalFactory(object):
             The Context object associated with a System that has been alchemically modified.
         alchemical_state : AlchemicalState
             The alchemical state to est the Context to.
+        use_all_parameters : bool, optional, default=False
+            If True, will ensure that all parameters are used or raise an Exception if not.
 
         Examples
         --------
@@ -1000,34 +922,30 @@ class AbsoluteAlchemicalFactory(object):
         >>> # Create a factory to produce alchemical intermediates.
         >>> factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=[0, 1, 2])
         >>> # Create an alchemically-perturbed state corresponding to fully-interacting.
-        >>> alchemical_state = AlchemicalState(1.00, 1.00, 1.00, 1.00)
+        >>> alchemical_state = AlchemicalState()
         >>> # Create the perturbed system.
         >>> alchemical_system = factory.createPerturbedSystem(alchemical_state)
         >>> # Create a Context.
         >>> integrator = openmm.VerletIntegrator(1.0 * unit.femtoseconds)
         >>> context = openmm.Context(alchemical_system, integrator)
         >>> # Set alchemical state.
-        >>> alchemical_state = AlchemicalState(1.00, 0.50, 1.00, 1.00)
+        >>> alchemical_state = AlchemicalState(lambda_electrostatics=0.5, lambda_sterics=0.5)
         >>> factory.perturbContext(context, alchemical_state)
 
         """
 
-        # Create a dict of alchemical parameters.
-        alchemical_parameters = {
-            'lambda_restraints' : alchemical_state.relativeRestraints,
-            'lambda_electrostatics' : alchemical_state.ligandElectrostatics,
-            'lambda_sterics' : alchemical_state.ligandSterics,
-            'lambda_torsions' : alchemical_state.ligandTorsions
-            }
-
         # Set parameters in Context.
-        for parameter in alchemical_parameters:
-            # Not all parameters may be defined.
+        for parameter in alchemical_state.keys():
             try:
-                context.setParameter(parameter, alchemical_parameters[parameter])
-            except Exception as e:
-                pass
-
+                context.setParameter(parameter, alchemical_state[parameter])
+            except:
+                if use_all_parameters:
+                    # Print some useful output about what parameters were available.
+                    available_parameters = context.getState(getParameters=True).getParameters().keys()
+                    raise Exception("Parameter '%s' not available in Context; available parameters are: %s" % (parameter, str(available_parameters)))
+                else:
+                    # It's OK if some parameters are not found.
+                    pass
         return
 
     def createPerturbedSystem(self, alchemical_state, mm=None):
@@ -1042,7 +960,7 @@ class AbsoluteAlchemicalFactory(object):
         TODO
         ----
         * This could be streamlined if it was possible to modify System or Force objects.
-        * isinstance(mm.NonbondedForce) and related expressions won't work if reference system was created with a different OpenMM implementation. 
+        * isinstance(mm.NonbondedForce) and related expressions won't work if reference system was created with a different OpenMM implementation.
           Use class names instead.
 
         Examples
@@ -1057,7 +975,7 @@ class AbsoluteAlchemicalFactory(object):
         >>> # Create a factory to produce alchemical intermediates.
         >>> factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=[0, 1, 2])
         >>> # Create an alchemically-perturbed state corresponding to fully-interacting.
-        >>> alchemical_state = AlchemicalState(1.00, 1.00, 1.00, 1.00)
+        >>> alchemical_state = AlchemicalState()
         >>> # Create the perturbed system.
         >>> alchemical_system = factory.createPerturbedSystem(alchemical_state)
 
@@ -1072,7 +990,7 @@ class AbsoluteAlchemicalFactory(object):
         >>> ligand_atoms = range(2603,2621) # p-xylene
         >>> factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=ligand_atoms)
         >>> # Create an alchemically-perturbed state corresponding to fully-interacting.
-        >>> alchemical_state = AlchemicalState(1.00, 1.00, 1.00, 1.)
+        >>> alchemical_state = AlchemicalState()
         >>> # Create the perturbed systems using this protocol.
         >>> alchemical_system = factory.createPerturbedSystem(alchemical_state)
 

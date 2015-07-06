@@ -26,13 +26,10 @@ logger = logging.getLogger(__name__)
 
 import numpy as np
 
-
 import simtk.unit as unit
 import simtk.openmm as openmm
 
-from . import sampling
-from . import repex
-from . import alchemy
+from . import sampling, repex, alchemy
 
 from alchemy import AbsoluteAlchemicalFactory
 from repex import ThermodynamicState
@@ -310,20 +307,27 @@ class Yank(object):
 
         # Create alchemically-modified states using alchemical factory.
         logger.debug("Creating alchemically-modified states...")
-        factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=atom_indices['ligand'], test_positions=positions[0], platform=repex_options['platform'])
-        systems = factory.createPerturbedSystems(protocols[phase])
+        #factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=atom_indices['ligand'], test_positions=positions[0], platform=repex_options['platform'])
+        factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=atom_indices['ligand'])
+        alchemical_states = protocols[phase]
+        alchemical_system = factory.alchemically_modified_system
+        thermodynamic_state.system = alchemical_system
 
         # Check systems for finite energies.
-        logger.debug("Checking energies are finite for all alchemical systems.")
-        for (index, system) in enumerate(systems):
+        finite_energy_check = False
+        if finite_energy_check:
+            logger.debug("Checking energies are finite for all alchemical systems.")
             integrator = openmm.VerletIntegrator(1.0 * unit.femtosecond)
-            context = openmm.Context(system, integrator)
+            context = openmm.Context(alchemical_system, integrator)
             context.setPositions(positions[0])
-            potential = context.getState(getEnergy=True).getPotentialEnergy()
-            if np.isnan(potential / unit.kilocalories_per_mole):
-                raise Exception("Energy for system %d is NaN." % index)
+            for alchemical_state in alchemical_states:
+                AbsoluteAlchemicalFactory.perturbContext(context, alchemical_state)
+                potential = context.getState(getEnergy=True).getPotentialEnergy()
+                if np.isnan(potential / unit.kilocalories_per_mole):
+                    raise Exception("Energy for system %d is NaN." % index)
             del context, integrator
-            
+            logger.debug("All energies are finite.")
+
         # Randomize ligand position if requested, but only for implicit solvent systems.
         if self.randomize_ligand and (phase == 'complex-implicit'):
             logger.debug("Randomizing ligand positions and excluding overlapping configurations...")
@@ -354,7 +358,7 @@ class Yank(object):
         store_filename = os.path.join(self._store_directory, phase + '.nc')
         self._store_filenames[phase] = store_filename
         simulation = ModifiedHamiltonianExchange(store_filename, mpicomm=mpicomm)
-        simulation.create(thermodynamic_state, systems, positions,
+        simulation.create(thermodynamic_state, alchemical_states, positions,
                           displacement_sigma=self.mc_displacement_sigma, mc_atoms=mc_atoms,
                           options=repex_options, metadata=metadata)
 
@@ -392,7 +396,7 @@ class Yank(object):
 
         # Handle some logistics necessary for MPI.
         if mpicomm:
-            logger.debug("yank.run starting for MPI...")         
+            logger.debug("yank.run starting for MPI...")
             # Make sure each thread's random number generators have unique seeds.
             # TODO: Do we need to store seed in repex object?
             seed = np.random.randint(4294967295 - mpicomm.size) + mpicomm.rank
