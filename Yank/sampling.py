@@ -50,10 +50,12 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
 
     >>> # Create reference system.
     >>> from openmmtools import testsystems
-    >>> testsystem = testsystems.AlanineDipeptideImplicit()
+    >>> testsystem = testsystems.LysozymeImplicit()
     >>> [reference_system, positions] = [testsystem.system, testsystem.positions]
-    >>> # Copy reference system.
-    >>> systems = [reference_system for index in range(10)]
+    >>> receptor_atoms = range(0,2603) # T4 lysozyme L99A
+    >>> ligand_atoms = range(2603,2621) # p-xylene    
+    >>> # Alchemically modify system.
+    >>> factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=ligand_atoms)
     >>> # Create temporary file for storing output.
     >>> import tempfile
     >>> file = tempfile.NamedTemporaryFile() # temporary file for testing
@@ -61,10 +63,12 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
     >>> # Create reference state.
     >>> from repex import ThermodynamicState
     >>> reference_state = ThermodynamicState(reference_system, temperature=298.0*unit.kelvin)
+    >>> thermodynamic_state.system = factory.alchemically_modified_system
     >>> displacement_sigma = 1.0 * unit.nanometer
     >>> mc_atoms = range(0, reference_system.getNumParticles())
     >>> simulation = ModifiedHamiltonianExchange(store_filename)
-    >>> simulation.create(reference_state, systems, positions, displacement_sigma=displacement_sigma, mc_atoms=mc_atoms)
+    >>> alchemical_states = AbsoluteAlchemicalFactory.defaultSolventProtocolImplicit()
+    >>> simulation.create(reference_state, alchemical_states, positions, displacement_sigma=displacement_sigma, mc_atoms=mc_atoms)
     >>> simulation.number_of_iterations = 2 # set the simulation to only run 2 iterations
     >>> simulation.timestep = 2.0 * unit.femtoseconds # set the timestep for integration
     >>> simulation.nsteps_per_iteration = 50 # run 50 timesteps per iteration
