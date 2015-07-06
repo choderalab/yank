@@ -16,6 +16,6 @@ __version__ = version.version
 #import analyze
 #import restraints
 
-#from yank import Yank
+from yank import Yank
 
 

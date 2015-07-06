@@ -36,7 +36,7 @@ from alchemy import AbsoluteAlchemicalFactory
 # Alchemical Modified Hamiltonian exchange class.
 #=============================================================================================
 
-class AlchemicalModifiedHamiltonianExchange(ReplicaExchange):
+class ModifiedHamiltonianExchange(ReplicaExchange):
     """
     A Hamiltonian exchange facility that uses a modified dynamics to introduce Monte Carlo moves to augment Langevin dynamics
     and manages a single System where alchemical states differ only by Context parameters for efficiency.
@@ -121,9 +121,6 @@ class AlchemicalModifiedHamiltonianExchange(ReplicaExchange):
         self.displacement_trials_accepted = 0 # number of MC displacement trials accepted
         self.rotation_trials_accepted = 0 # number of MC displacement trials accepted
 
-        # Store alchemical states
-        self.alchemical_states = copy.deepcopy(alchemical_states)
-
         # Store reference system.
         self.reference_system = copy.deepcopy(reference_state.system)
 
@@ -132,8 +129,8 @@ class AlchemicalModifiedHamiltonianExchange(ReplicaExchange):
         # Initialize replica-exchange simlulation.
         states = list()
         for alchemical_state in alchemical_states:
-            state = ThermodynamicState(system=system, temperature=reference_state.temperature, pressure=reference_state.pressure)
-            setattr(state, 'alchemical_state') = alchemical_state # attach alchemical state
+            state = ThermodynamicState(system=self.reference_system, temperature=reference_state.temperature, pressure=reference_state.pressure)
+            setattr(state, 'alchemical_state', copy.deepcopy(alchemical_state)) # attach alchemical state
             states.append(state)
 
         # Initialize replica-exchange simlulation.
