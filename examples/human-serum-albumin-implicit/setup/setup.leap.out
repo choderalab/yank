@@ -31,28 +31,21 @@ Reading title:
 AMBER General Force Field for organic molecules (Version 1.7, Nov 2013)
 Using H(N)-modified Bondi radii
 Loading PDB file: ./receptor.pdbfixer.CYX.pdb
-  total atoms in file: 4652
-  Leap added 4574 missing atoms according to residue templates:
-       4574 H / lone pairs
+  total atoms in file: 4631
+  Leap added 4554 missing atoms according to residue templates:
+       4554 H / lone pairs
 Loading parameters: ./ligand.gaff.frcmod
 Reading force field modification type file (frcmod)
 Reading title:
-remark goes here
+Remark line goes here
 Loading parameters: ./ligand.gaff.frcmod
 Reading force field modification type file (frcmod)
 Reading title:
-remark goes here
+Remark line goes here
 Loading Mol2 file: ./ligand.gaff.mol2
 Reading MOLECULE named aspirin
 Checking 'complex'....
-WARNING: The unperturbed charge of the unit: -15.000000 is not zero.
-Warning: Close contact of 0.795675 angstroms between .R<CLEU 585>.A<CA 3> and .R<CLEU 585>.A<HB2 6>
-Warning: Close contact of 1.111433 angstroms between .R<CLEU 585>.A<HA 4> and .R<CLEU 585>.A<HB2 6>
-Warning: Close contact of 1.390177 angstroms between .R<CLEU 585>.A<HA 4> and .R<CLEU 585>.A<C 18>
-Warning: Close contact of 0.456515 angstroms between .R<CLEU 585>.A<HG 9> and .R<CLEU 585>.A<CD2 14>
-Warning: Close contact of 1.245926 angstroms between .R<CLEU 585>.A<HG 9> and .R<CLEU 585>.A<HD21 15>
-Warning: Close contact of 1.428912 angstroms between .R<CLEU 585>.A<HG 9> and .R<CLEU 585>.A<HD22 16>
-Warning: Close contact of 1.235376 angstroms between .R<CLEU 585>.A<HG 9> and .R<CLEU 585>.A<HD23 17>
+WARNING: The unperturbed charge of the unit: -14.000000 is not zero.
 Warning: Close contact of 1.178811 angstroms between .R<LYS 573>.A<HB2 6> and .R<LYS 573>.A<HZ3 20>
 Warning: Close contact of 1.485129 angstroms between .R<GLU 571>.A<H 2> and .R<CYX 567>.A<HA 4>
 Warning: Close contact of 1.462025 angstroms between .R<PHE 568>.A<HA 4> and .R<PHE 554>.A<HZ 14>
@@ -81,19 +74,13 @@ Warning: Close contact of 1.316299 angstroms between .R<LEU 66>.A<HD12 12> and .
 Warning: Close contact of 1.395250 angstroms between .R<CYX 53>.A<HB3 7> and .R<SER 5>.A<HG 9>
 Warning: Close contact of 0.915381 angstroms between .R<LYS 41>.A<HA 4> and .R<LYS 41>.A<HZ3 20>
 Warning: Close contact of 1.214884 angstroms between .R<LEU 31>.A<H 2> and .R<LEU 31>.A<HD23 17>
-Warning: Close contact of 1.078253 angstroms between .R<HIE 3>.A<CB 5> and .R<ALA 2>.A<HB2 7>
-Warning: Close contact of 1.069383 angstroms between .R<HIE 3>.A<HB2 6> and .R<ALA 2>.A<CB 5>
-Warning: Close contact of 0.964192 angstroms between .R<HIE 3>.A<HB2 6> and .R<ALA 2>.A<HB2 7>
-Warning: Close contact of 1.128558 angstroms between .R<HIE 3>.A<HB3 7> and .R<ALA 2>.A<HB2 7>
-Warning: Close contact of 1.376656 angstroms between .R<ALA 2>.A<N 1> and .R<ALA 2>.A<HA 4>
-Warning: Close contact of 1.421589 angstroms between .R<NASP 1>.A<CA 5> and .R<NASP 1>.A<HB3 9>
 Checking parameters for unit 'complex'.
 Checking for bond parameters.
 Checking for angle parameters.
-check:  Warnings: 42
+check:  Warnings: 29
 Unit is OK.
-Total unperturbed charge: -15.000000
-Total perturbed charge:   -15.000000
+Total unperturbed charge: -14.000000
+Total perturbed charge:   -14.000000
 Checking Unit.
 Building topology.
 Building atom parameters.
@@ -135,7 +122,7 @@ Marking per-residue atom chain types.
   )
  (no restraints)
 Checking Unit.
-WARNING: The unperturbed charge of the unit: -15.000000 is not zero.
+WARNING: The unperturbed charge of the unit: -14.000000 is not zero.
 
  -- ignoring the warning.
 
@@ -145,7 +132,7 @@ Building bond parameters.
 Building angle parameters.
 Building proper torsion parameters.
 Building improper torsion parameters.
- total 1810 improper torsions applied
+ total 1803 improper torsions applied
 Building H-Bond parameters.
 Incorporating Non-Bonded adjustments.
 Not Marking per-residue atom chain types.
@@ -155,14 +142,14 @@ Marking per-residue atom chain types.
 
 	res	total affected
 
-	CLEU	1
+	CGLY	1
 	MOL	1
-	NASP	1
+	NHIE	1
   )
  (no restraints)
 Writing pdb file: vacuum.pdb
 Writing pdb file: solvent.pdb
 Writing pdb file: complex.pdb
- Converting N-terminal residue name to PDB format: NASP -> ASP
- Converting C-terminal residue name to PDB format: CLEU -> LEU
+ Converting N-terminal residue name to PDB format: NHIE -> HIE
+ Converting C-terminal residue name to PDB format: CGLY -> GLY
 	Quit

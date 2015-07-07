@@ -30,17 +30,17 @@ Loading parameters: /Users/choderaj/anaconda/bin/../dat/leap/parm/gaff.dat
 Reading title:
 AMBER General Force Field for organic molecules (Version 1.7, Nov 2013)
 Loading PDB file: ./receptor.pdbfixer.CYX.pdb
-  total atoms in file: 4652
-  Leap added 4574 missing atoms according to residue templates:
-       4574 H / lone pairs
+  total atoms in file: 4631
+  Leap added 4554 missing atoms according to residue templates:
+       4554 H / lone pairs
 Loading parameters: ./ligand.gaff.frcmod
 Reading force field modification type file (frcmod)
 Reading title:
-remark goes here
+Remark line goes here
 Loading parameters: ./ligand.gaff.frcmod
 Reading force field modification type file (frcmod)
 Reading title:
-remark goes here
+Remark line goes here
 Loading Mol2 file: ./ligand.gaff.mol2
 Reading MOLECULE named aspirin
 Checking Unit.
@@ -64,15 +64,15 @@ Marking per-residue atom chain types.
   )
  (no restraints)
 Writing pdb file: vacuum.pdb
-  Solute vdw bounding box:              95.156 55.127 83.664
-  Total bounding box for atom centers:  115.156 115.156 115.156
-      (box expansion for 'iso' is  70.3%)
+  Solute vdw bounding box:              95.153 55.015 83.646
+  Total bounding box for atom centers:  115.153 115.153 115.153
+      (box expansion for 'iso' is  70.5%)
   Solvent unit box:                     18.774 18.774 18.774
   Volume: 1663246.238 A^3 
-  Total mass 863774.394 amu,  Density 0.862 g/cc
-  Added 44248 residues.
+  Total mass 864088.618 amu,  Density 0.863 g/cc
+  Added 44282 residues.
 Checking Unit.
-WARNING: The unperturbed charge of the unit: -15.000000 is not zero.
+WARNING: The unperturbed charge of the unit: -14.000000 is not zero.
 
  -- ignoring the warning.
 
@@ -82,7 +82,7 @@ Building bond parameters.
 Building angle parameters.
 Building proper torsion parameters.
 Building improper torsion parameters.
- total 1810 improper torsions applied
+ total 1803 improper torsions applied
 Building H-Bond parameters.
 Incorporating Non-Bonded adjustments.
 Not Marking per-residue atom chain types.
@@ -92,15 +92,15 @@ Marking per-residue atom chain types.
 
 	res	total affected
 
-	CLEU	1
+	CGLY	1
 	MOL	1
-	NASP	1
-	WAT	44248
+	NHIE	1
+	WAT	44282
   )
  (no restraints)
 Writing pdb file: complex.pdb
- Converting N-terminal residue name to PDB format: NASP -> ASP
- Converting C-terminal residue name to PDB format: CLEU -> LEU
+ Converting N-terminal residue name to PDB format: NHIE -> HIE
+ Converting C-terminal residue name to PDB format: CGLY -> GLY
   Solute vdw bounding box:              9.018 6.022 10.917
   Total bounding box for atom centers:  30.917 30.917 30.917
       (box expansion for 'iso' is  26.6%)
