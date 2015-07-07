@@ -23,7 +23,7 @@
 ##PBS -V
 #
 # job name (default = name of script file)
-#PBS -N p-xylene
+#PBS -N hsa-aspirin-explicit
 
 cd $PBS_O_WORKDIR
 
