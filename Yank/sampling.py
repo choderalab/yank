@@ -486,6 +486,44 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         positions = unit.Quantity(x, positions_unit)
         return positions
 
+    def _minimize_replica(self, replica_index):
+        """
+        Minimize the specified replica.
+
+        """
+        # Create and cache Integrator and Context if needed.
+        if not hasattr(self, '_context'):
+            self._cache_context()
+
+        context = self._context
+
+        # Retrieve thermodynamic state.
+        state_index = self.replica_states[replica_index] # index of thermodynamic state that current replica is assigned to
+        state = self.states[state_index] # thermodynamic state
+
+        # Set alchemical state.
+        AbsoluteAlchemicalFactory.perturbContext(context, state.alchemical_state)
+
+        # Set box vectors.
+        box_vectors = self.replica_box_vectors[replica_index]
+        context.setPeriodicBoxVectors(box_vectors[0,:], box_vectors[1,:], box_vectors[2,:])
+        # Set positions.
+        positions = self.replica_positions[replica_index]
+        context.setPositions(positions)
+
+        logger.debug("Replica %5d/%5d: initial energy %8.3f kT", replica_index, self.nstates, state.reduced_potential(positions, box_vectors=box_vectors, context=context))
+
+        # Minimize energy.
+        self.mm.LocalEnergyMinimizer.minimize(context, self.minimize_tolerance, self.minimize_maxIterations)
+
+        # Store final positions
+        positions = context.getState(getPositions=True).getPositions(asNumpy=True)
+        self.replica_positions[replica_index] = positions
+
+        logger.debug("Replica %5d/%5d: final   energy %8.3f kT", replica_index, self.nstates, state.reduced_potential(positions, box_vectors=box_vectors, context=context))
+
+        return
+
     def _propagate_replica(self, replica_index):
         """
         Attempt a Monte Carlo rotation/translation move followed by dynamics.
