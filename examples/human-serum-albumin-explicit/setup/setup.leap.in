@@ -18,6 +18,9 @@ loadAmberParams ligand.gaff.frcmod
 # Load ligand.
 ligand = loadMol2 ligand.gaff.mol2
 
+# Translate the ligand
+translate ligand { 0 20.0 10.0 }
+
 # Write ligand in vacuum.
 saveamberparm ligand vacuum.prmtop vacuum.inpcrd
 savepdb ligand vacuum.pdb

@@ -1,4 +1,4 @@
-log started: Mon Jul  6 23:21:01 2015
+log started: Tue Jul  7 00:19:05 2015
 
 Log file: ./leap.log
 >> #
@@ -361,7 +361,7 @@ Loading: TPF
 ----- Source: /Users/choderaj/anaconda/bin/../dat/leap/cmd/leaprc.gaff
 ----- Source of /Users/choderaj/anaconda/bin/../dat/leap/cmd/leaprc.gaff done
 >> logFile leap.log
-log started: Mon Jul  6 23:21:01 2015
+log started: Tue Jul  7 00:19:05 2015
 
 Log file: ./leap.log
 >> #
@@ -1652,6 +1652,9 @@ remark goes here
 Loading Mol2 file: ./ligand.gaff.mol2
 Reading MOLECULE named aspirin
 > 
+> # Translate the ligand
+> translate ligand { 0 20.0 10.0 }
+> 
 > # Write ligand in vacuum.
 > saveamberparm ligand vacuum.prmtop vacuum.inpcrd
 Checking Unit.
@@ -1682,9 +1685,9 @@ Writing pdb file: vacuum.pdb
   Sequence: default_name
   Sequence: aspirin
 > solvatebox complex TIP3PBOX 10.0 iso
-  Solute vdw bounding box:              95.122 55.196 83.701
-  Total bounding box for atom centers:  115.122 115.122 115.122
-      (box expansion for 'iso' is  70.0%)
+  Solute vdw bounding box:              95.156 55.127 83.664
+  Total bounding box for atom centers:  115.156 115.156 115.156
+      (box expansion for 'iso' is  70.3%)
   Solvent unit box:                     18.774 18.774 18.774
 The number of boxes:  x= 7  y= 7  z= 7
 Adding box at: x=0  y=0  z=0
@@ -2374,8 +2377,8 @@ Center of solvent box is: -56.323047, -56.323047, -37.548698
 Adding box at: x=6  y=6  z=6
 Center of solvent box is: -56.323047, -56.323047, -56.323047
   Volume: 1663246.238 A^3 
-  Total mass 860999.930 amu,  Density 0.860 g/cc
-  Added 44094 residues.
+  Total mass 863774.394 amu,  Density 0.862 g/cc
+  Added 44248 residues.
 > saveamberparm complex complex.prmtop complex.inpcrd
 Checking Unit.
 WARNING: The unperturbed charge of the unit: -15.000000 is not zero.
@@ -2405,7 +2408,7 @@ Marking per-residue atom chain types.
 	CLEU	1
 	MOL	1
 	NASP	1
-	WAT	44094
+	WAT	44248
   )
  (no restraints)
 > savepdb complex complex.pdb
