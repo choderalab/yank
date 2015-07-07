@@ -1,0 +1,187 @@
+-I: Adding /Users/choderaj/anaconda/bin/../dat/leap/prep to search path.
+-I: Adding /Users/choderaj/anaconda/bin/../dat/leap/lib to search path.
+-I: Adding /Users/choderaj/anaconda/bin/../dat/leap/parm to search path.
+-I: Adding /Users/choderaj/anaconda/bin/../dat/leap/cmd to search path.
+-f: Source setup.leap.in.
+
+Welcome to LEaP!
+(no leaprc in search path)
+Sourcing: ./setup.leap.in
+----- Source: /Users/choderaj/anaconda/bin/../dat/leap/cmd/oldff/leaprc.ff99SBildn
+----- Source of /Users/choderaj/anaconda/bin/../dat/leap/cmd/oldff/leaprc.ff99SBildn done
+Log file: ./leap.log
+Loading parameters: /Users/choderaj/anaconda/bin/../dat/leap/parm/parm99.dat
+Reading title:
+PARM99 for DNA,RNA,AA, organic molecules, TIP3P wat. Polariz.& LP incl.02/04/99
+Loading parameters: /Users/choderaj/anaconda/bin/../dat/leap/parm/frcmod.ff99SBildn
+Reading force field modification type file (frcmod)
+Reading title:
+Modification/update of parm99.dat (Hornak & Simmerling) + ILDN corrections
+Loading library: /Users/choderaj/anaconda/bin/../dat/leap/lib/all_nucleic94.lib
+Loading library: /Users/choderaj/anaconda/bin/../dat/leap/lib/all_amino94ildn.lib
+Loading library: /Users/choderaj/anaconda/bin/../dat/leap/lib/all_aminoct94ildn.lib
+Loading library: /Users/choderaj/anaconda/bin/../dat/leap/lib/all_aminont94ildn.lib
+Loading library: /Users/choderaj/anaconda/bin/../dat/leap/lib/ions94.lib
+Loading library: /Users/choderaj/anaconda/bin/../dat/leap/lib/solvents.lib
+----- Source: /Users/choderaj/anaconda/bin/../dat/leap/cmd/leaprc.gaff
+----- Source of /Users/choderaj/anaconda/bin/../dat/leap/cmd/leaprc.gaff done
+Log file: ./leap.log
+Loading parameters: /Users/choderaj/anaconda/bin/../dat/leap/parm/gaff.dat
+Reading title:
+AMBER General Force Field for organic molecules (Version 1.7, Nov 2013)
+Using H(N)-modified Bondi radii
+Loading PDB file: ./receptor.pdbfixer.CYX.pdb
+  total atoms in file: 4652
+  Leap added 4574 missing atoms according to residue templates:
+       4574 H / lone pairs
+Loading parameters: ./ligand.gaff.frcmod
+Reading force field modification type file (frcmod)
+Reading title:
+remark goes here
+Loading parameters: ./ligand.gaff.frcmod
+Reading force field modification type file (frcmod)
+Reading title:
+remark goes here
+Loading Mol2 file: ./ligand.gaff.mol2
+Reading MOLECULE named aspirin
+Checking 'complex'....
+WARNING: The unperturbed charge of the unit: -15.000000 is not zero.
+Warning: Close contact of 0.995987 angstroms between .R<CLEU 585>.A<CA 3> and .R<CLEU 585>.A<HB2 6>
+Warning: Close contact of 1.259650 angstroms between .R<CLEU 585>.A<HA 4> and .R<CLEU 585>.A<HB2 6>
+Warning: Close contact of 0.925588 angstroms between .R<CLEU 585>.A<HB3 7> and .R<GLY 584>.A<HA3 5>
+Warning: Close contact of 0.874935 angstroms between .R<CLEU 585>.A<HG 9> and .R<CLEU 585>.A<CD2 14>
+Warning: Close contact of 1.154858 angstroms between .R<CLEU 585>.A<HG 9> and .R<CLEU 585>.A<HD23 17>
+Warning: Close contact of 1.178811 angstroms between .R<LYS 573>.A<HB2 6> and .R<LYS 573>.A<HZ3 20>
+Warning: Close contact of 1.485129 angstroms between .R<GLU 571>.A<H 2> and .R<CYX 567>.A<HA 4>
+Warning: Close contact of 1.462025 angstroms between .R<PHE 568>.A<HA 4> and .R<PHE 554>.A<HZ 14>
+Warning: Close contact of 1.369446 angstroms between .R<LYS 564>.A<HE2 15> and .R<ALA 511>.A<HB2 7>
+Warning: Close contact of 1.434052 angstroms between .R<LYS 557>.A<H 2> and .R<GLU 556>.A<HG2 9>
+Warning: Close contact of 1.415672 angstroms between .R<GLU 531>.A<OE2 13> and .R<THR 420>.A<HG1 12>
+Warning: Close contact of 1.483080 angstroms between .R<GLN 522>.A<HB3 7> and .R<TYR 401>.A<HE1 12>
+Warning: Close contact of 1.340087 angstroms between .R<ARG 521>.A<H 2> and .R<GLU 520>.A<H 2>
+Warning: Close contact of 1.282954 angstroms between .R<ASP 512>.A<H 2> and .R<ALA 511>.A<H 2>
+Warning: Close contact of 1.275498 angstroms between .R<SER 489>.A<HG 9> and .R<ARG 485>.A<HH11 18>
+Warning: Close contact of 1.216243 angstroms between .R<SER 470>.A<H 2> and .R<HIE 464>.A<HE2 13>
+Warning: Close contact of 1.302448 angstroms between .R<SER 427>.A<HG 9> and .R<LEU 408>.A<HB3 7>
+Warning: Close contact of 0.884780 angstroms between .R<PRO 379>.A<CG 5> and .R<MOL 586>.A<H3 16>
+Warning: Close contact of 1.432272 angstroms between .R<PRO 379>.A<CG 5> and .R<MOL 586>.A<C3 3>
+Warning: Close contact of 1.320337 angstroms between .R<PRO 379>.A<HG2 6> and .R<MOL 586>.A<H3 16>
+Warning: Close contact of 0.961140 angstroms between .R<PRO 379>.A<HG3 7> and .R<MOL 586>.A<H3 16>
+Warning: Close contact of 1.268004 angstroms between .R<PRO 379>.A<CB 8> and .R<MOL 586>.A<C5 5>
+Warning: Close contact of 0.957251 angstroms between .R<PRO 379>.A<CB 8> and .R<MOL 586>.A<C3 3>
+Warning: Close contact of 1.126608 angstroms between .R<PRO 379>.A<HB2 9> and .R<MOL 586>.A<C7 7>
+Warning: Close contact of 0.742264 angstroms between .R<PRO 379>.A<HB2 9> and .R<MOL 586>.A<C5 5>
+Warning: Close contact of 1.388797 angstroms between .R<PRO 379>.A<HB2 9> and .R<MOL 586>.A<C3 3>
+Warning: Close contact of 1.429585 angstroms between .R<PRO 379>.A<HB3 10> and .R<MOL 586>.A<C5 5>
+Warning: Close contact of 1.133352 angstroms between .R<PRO 379>.A<HB3 10> and .R<MOL 586>.A<C3 3>
+Warning: Close contact of 1.260797 angstroms between .R<PRO 379>.A<HB3 10> and .R<MOL 586>.A<C1 1>
+Warning: Close contact of 1.178889 angstroms between .R<HIE 367>.A<H 2> and .R<LYS 313>.A<HZ1 18>
+Warning: Close contact of 1.459523 angstroms between .R<HIE 367>.A<HB2 6> and .R<LYS 313>.A<HE2 15>
+Warning: Close contact of 1.464383 angstroms between .R<ARG 337>.A<HE 15> and .R<LEU 305>.A<HD22 16>
+Warning: Close contact of 1.493811 angstroms between .R<ALA 335>.A<H 2> and .R<LEU 331>.A<O 19>
+Warning: Close contact of 1.184930 angstroms between .R<SER 312>.A<H 2> and .R<GLU 311>.A<HB3 7>
+Warning: Close contact of 1.403278 angstroms between .R<GLU 294>.A<H 2> and .R<GLU 294>.A<OE1 12>
+Warning: Close contact of 1.334933 angstroms between .R<ARG 222>.A<HG2 9> and .R<ARG 222>.A<HH11 18>
+Warning: Close contact of 1.487628 angstroms between .R<SER 193>.A<HG 9> and .R<HIE 146>.A<HD2 15>
+Warning: Close contact of 1.496709 angstroms between .R<GLU 188>.A<OE2 13> and .R<ARG 160>.A<HH12 19>
+Warning: Close contact of 1.462961 angstroms between .R<LEU 182>.A<HB3 7> and .R<ARG 117>.A<HH12 19>
+Warning: Close contact of 1.270544 angstroms between .R<GLU 97>.A<H 2> and .R<PRO 96>.A<HD2 3>
+Warning: Close contact of 1.293110 angstroms between .R<LEU 74>.A<HD12 12> and .R<LEU 31>.A<HD22 16>
+Warning: Close contact of 1.316299 angstroms between .R<LEU 66>.A<HD12 12> and .R<ARG 10>.A<HG3 10>
+Warning: Close contact of 1.395250 angstroms between .R<CYX 53>.A<HB3 7> and .R<SER 5>.A<HG 9>
+Warning: Close contact of 0.915381 angstroms between .R<LYS 41>.A<HA 4> and .R<LYS 41>.A<HZ3 20>
+Warning: Close contact of 1.214884 angstroms between .R<LEU 31>.A<H 2> and .R<LEU 31>.A<HD23 17>
+Warning: Close contact of 1.342762 angstroms between .R<HIE 3>.A<HA 4> and .R<ALA 2>.A<O 10>
+Warning: Close contact of 0.841757 angstroms between .R<ALA 2>.A<N 1> and .R<ALA 2>.A<HA 4>
+Warning: Close contact of 1.473453 angstroms between .R<ALA 2>.A<N 1> and .R<NASP 1>.A<HA 6>
+Warning: Close contact of 1.436157 angstroms between .R<ALA 2>.A<H 2> and .R<NASP 1>.A<HA 6>
+Warning: Close contact of 1.499895 angstroms between .R<ALA 2>.A<H 2> and .R<NASP 1>.A<CB 7>
+Warning: Close contact of 0.991305 angstroms between .R<ALA 2>.A<H 2> and .R<NASP 1>.A<HB3 9>
+Warning: Close contact of 1.470009 angstroms between .R<ALA 2>.A<H 2> and .R<NASP 1>.A<C 13>
+Warning: Close contact of 1.318832 angstroms between .R<ALA 2>.A<HA 4> and .R<NASP 1>.A<C 13>
+Warning: Close contact of 1.001140 angstroms between .R<NASP 1>.A<H3 4> and .R<NASP 1>.A<CG 10>
+Warning: Close contact of 1.118615 angstroms between .R<NASP 1>.A<H3 4> and .R<NASP 1>.A<OD1 11>
+Warning: Close contact of 1.235993 angstroms between .R<NASP 1>.A<H3 4> and .R<NASP 1>.A<OD2 12>
+Warning: Close contact of 1.045783 angstroms between .R<NASP 1>.A<CA 5> and .R<NASP 1>.A<HB3 9>
+Warning: Close contact of 1.187121 angstroms between .R<NASP 1>.A<HA 6> and .R<NASP 1>.A<HB3 9>
+Warning: Close contact of 0.456794 angstroms between .R<NASP 1>.A<HA 6> and .R<NASP 1>.A<C 13>
+Warning: Close contact of 1.440865 angstroms between .R<NASP 1>.A<HB3 9> and .R<NASP 1>.A<C 13>
+Checking parameters for unit 'complex'.
+Checking for bond parameters.
+Checking for angle parameters.
+check:  Warnings: 61
+Unit is OK.
+Total unperturbed charge: -15.000000
+Total perturbed charge:   -15.000000
+Checking Unit.
+Building topology.
+Building atom parameters.
+Building bond parameters.
+Building angle parameters.
+Building proper torsion parameters.
+Building improper torsion parameters.
+ total 8 improper torsions applied
+Building H-Bond parameters.
+Incorporating Non-Bonded adjustments.
+Not Marking per-residue atom chain types.
+Marking per-residue atom chain types.
+  (Residues lacking connect0/connect1 - 
+   these don't have chain types marked:
+
+	res	total affected
+
+	MOL	1
+  )
+ (no restraints)
+Checking Unit.
+Building topology.
+Building atom parameters.
+Building bond parameters.
+Building angle parameters.
+Building proper torsion parameters.
+Building improper torsion parameters.
+ total 8 improper torsions applied
+Building H-Bond parameters.
+Incorporating Non-Bonded adjustments.
+Not Marking per-residue atom chain types.
+Marking per-residue atom chain types.
+  (Residues lacking connect0/connect1 - 
+   these don't have chain types marked:
+
+	res	total affected
+
+	MOL	1
+  )
+ (no restraints)
+Checking Unit.
+WARNING: The unperturbed charge of the unit: -15.000000 is not zero.
+
+ -- ignoring the warning.
+
+Building topology.
+Building atom parameters.
+Building bond parameters.
+Building angle parameters.
+Building proper torsion parameters.
+Building improper torsion parameters.
+ total 1810 improper torsions applied
+Building H-Bond parameters.
+Incorporating Non-Bonded adjustments.
+Not Marking per-residue atom chain types.
+Marking per-residue atom chain types.
+  (Residues lacking connect0/connect1 - 
+   these don't have chain types marked:
+
+	res	total affected
+
+	CLEU	1
+	MOL	1
+	NASP	1
+  )
+ (no restraints)
+Writing pdb file: vacuum.pdb
+Writing pdb file: solvent.pdb
+Writing pdb file: complex.pdb
+ Converting N-terminal residue name to PDB format: NASP -> ASP
+ Converting C-terminal residue name to PDB format: CLEU -> LEU
+	Quit
