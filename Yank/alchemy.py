@@ -19,7 +19,7 @@ TODO
 * Add functions for the automatic optimization of alchemical states?
 * Can we store serialized form of Force objects so that we can save time in reconstituting
   Force objects when we make copies?  We can even manipulate the XML representation directly.
-* Allow protocols to automatically be resized to arbitrary number of states, to 
+* Allow protocols to automatically be resized to arbitrary number of states, to
   allow number of states to be enlarged to be an integral multiple of number of GPUs.
 * Add GBVI support to AlchemicalFactory.
 * Test AMOEBA support.
@@ -327,6 +327,7 @@ class AbsoluteAlchemicalFactory(object):
 
         for lambda_value in lambda_values:
             alchemical_state = AlchemicalState()
+            alchemical_state['lambda_restraints'] = 1.0
             alchemical_state['lambda_electrostatics'] = lambda_value
             alchemical_state['lambda_sterics'] = lambda_value
             alchemical_states.append(alchemical_state)

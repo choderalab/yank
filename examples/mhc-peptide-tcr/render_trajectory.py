@@ -191,7 +191,7 @@ source_directory = 'output'
 reference_pdbfile = 'setup/complex-implicit-initial.pdb'
 phase = 'complex-implicit'
 replica = 0 # replica index to render
-replica = 15 # replica index to render
+#replica = 15 # replica index to render
 
 # Load PDB file.
 cmd.rewind()

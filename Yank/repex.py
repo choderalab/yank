@@ -556,7 +556,7 @@ class ReplicaExchange(object):
         self.title = 'Replica-exchange simulation created using ReplicaExchange class of repex.py on %s' % time.asctime(time.localtime())
         self.minimize = True
         self.minimize_tolerance = 1.0 * unit.kilojoules_per_mole / unit.nanometers # if specified, set minimization tolerance
-        self.minimize_maxIterations = 100 # if nonzero, set maximum iterations
+        self.minimize_maxIterations = 0 # if nonzero, set maximum iterations
         self.platform = None
         self.platform_name = None
         self.integrator = None # OpenMM integrator to use for propagating dynamics
