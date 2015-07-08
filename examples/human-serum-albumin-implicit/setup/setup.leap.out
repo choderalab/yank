@@ -53,22 +53,7 @@ Warning: Close contact of 1.371843 angstroms between .R<SER 489>.A<HG 9> and .R<
 Warning: Close contact of 1.275706 angstroms between .R<SER 480>.A<H 2> and .R<GLU 479>.A<HG3 10>
 Warning: Close contact of 1.167206 angstroms between .R<SER 470>.A<H 2> and .R<HIE 464>.A<HE2 13>
 Warning: Close contact of 1.453087 angstroms between .R<LYS 444>.A<HB3 7> and .R<LYS 444>.A<HZ1 18>
-Warning: Close contact of 1.120809 angstroms between .R<GLU 393>.A<HB3 7> and .R<MOL 585>.A<H5 18>
-Warning: Close contact of 1.337301 angstroms between .R<GLN 390>.A<H 2> and .R<MOL 585>.A<O1 10>
-Warning: Close contact of 1.358495 angstroms between .R<LYS 389>.A<N 1> and .R<MOL 585>.A<H8 21>
 Warning: Close contact of 1.477097 angstroms between .R<LYS 389>.A<H 2> and .R<LYS 389>.A<HE3 16>
-Warning: Close contact of 0.355164 angstroms between .R<LYS 389>.A<H 2> and .R<MOL 585>.A<H8 21>
-Warning: Close contact of 1.161727 angstroms between .R<LYS 389>.A<H 2> and .R<MOL 585>.A<O3 12>
-Warning: Close contact of 1.440618 angstroms between .R<LYS 389>.A<CA 3> and .R<MOL 585>.A<O1 10>
-Warning: Close contact of 1.444730 angstroms between .R<LYS 389>.A<CB 5> and .R<MOL 585>.A<C7 7>
-Warning: Close contact of 1.367259 angstroms between .R<LYS 389>.A<HB2 6> and .R<MOL 585>.A<O3 12>
-Warning: Close contact of 0.842401 angstroms between .R<LYS 389>.A<HB2 6> and .R<MOL 585>.A<C7 7>
-Warning: Close contact of 1.122577 angstroms between .R<LYS 389>.A<HB2 6> and .R<MOL 585>.A<C5 5>
-Warning: Close contact of 1.456457 angstroms between .R<LYS 389>.A<HB3 7> and .R<MOL 585>.A<O4 13>
-Warning: Close contact of 1.450685 angstroms between .R<LYS 389>.A<HB3 7> and .R<MOL 585>.A<C6 6>
-Warning: Close contact of 1.226434 angstroms between .R<LYS 389>.A<HE3 16> and .R<MOL 585>.A<H8 21>
-Warning: Close contact of 1.191495 angstroms between .R<LYS 389>.A<HE3 16> and .R<MOL 585>.A<O3 12>
-Warning: Close contact of 0.910012 angstroms between .R<LYS 389>.A<O 22> and .R<MOL 585>.A<H7 20>
 Warning: Close contact of 1.426998 angstroms between .R<ALA 371>.A<HB3 8> and .R<GLU 368>.A<HA 4>
 Warning: Close contact of 1.110000 angstroms between .R<HIE 367>.A<HA 4> and .R<SER 312>.A<HG 9>
 Warning: Close contact of 1.400262 angstroms between .R<ARG 337>.A<HH12 19> and .R<LEU 302>.A<HB3 7>
@@ -80,7 +65,7 @@ Warning: Close contact of 1.309369 angstroms between .R<TYR 84>.A<HH 15> and .R<
 Checking parameters for unit 'complex'.
 Checking for bond parameters.
 Checking for angle parameters.
-check:  Warnings: 32
+check:  Warnings: 17
 Unit is OK.
 Total unperturbed charge: -14.000000
 Total perturbed charge:   -14.000000

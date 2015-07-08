@@ -1,4 +1,4 @@
-log started: Tue Jul  7 23:29:15 2015
+log started: Tue Jul  7 23:33:23 2015
 
 Log file: ./leap.log
 >> #
@@ -361,7 +361,7 @@ Loading: TPF
 ----- Source: /Users/choderaj/anaconda/bin/../dat/leap/cmd/leaprc.gaff
 ----- Source of /Users/choderaj/anaconda/bin/../dat/leap/cmd/leaprc.gaff done
 >> logFile leap.log
-log started: Tue Jul  7 23:29:16 2015
+log started: Tue Jul  7 23:33:23 2015
 
 Log file: ./leap.log
 >> #

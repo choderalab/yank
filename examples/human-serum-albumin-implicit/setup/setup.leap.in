@@ -22,7 +22,7 @@ loadAmberParams ligand.gaff.frcmod
 ligand = loadMol2 ligand.gaff.mol2
 
 # Translate the ligand
-translate ligand { 0 20.0 10.0 }
+translate ligand { 0 30.0 10.0 }
 
 # Create complex.
 complex = combine { receptor ligand }
