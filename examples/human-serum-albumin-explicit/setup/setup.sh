@@ -10,8 +10,8 @@ python generate-mol2-from-name.py --name aspirin --outfile ligand.tripos.mol2
 # NOTE: Requires pdbfixer tool be installed and PDBFIXER_HOME environment variable set.
 echo "Preparing receptor by adding missing atoms..."
 rm -f receptor.pdbfixer.pdb
-#pdbfixer 2I30.pdb --add-residues --keep-heterogens=none --add-atoms=heavy --ph=7.0 --replace-nonstandard --output=receptor.pdbfixer.pdb # something is wrong
-pdbfixer 2I30.pdb --keep-heterogens=none --add-atoms=heavy --ph=7.0 --replace-nonstandard --output=receptor.pdbfixer.pdb
+#pdbfixer 2I30.pdb --add-residues --keep-heterogens=none --add-atoms=heavy --ph=7.4 --replace-nonstandard --output=receptor.pdbfixer.pdb # something is wrong
+pdbfixer 2I2Z.pdb --keep-heterogens=none --add-atoms=heavy --ph=7.4 --replace-nonstandard --output=receptor.pdbfixer.pdb
 
 # Change all CYS to CYX
 sed 's/CYS/CYX/' < receptor.pdbfixer.pdb > receptor.pdbfixer.CYX.pdb
