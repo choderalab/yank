@@ -29,6 +29,7 @@ cd $PBS_O_WORKDIR
 
 # Set defaults
 export NITERATIONS=${NITERATIONS:=1000}
+export NEQUILITERATIONS=${NEQUILITERATIONS:=0}
 
 if [ ! -e output ]; then
     echo "Making output directory..."
@@ -41,7 +42,7 @@ yank cleanup --store=output
 
 # Set up calculation.
 echo "Setting up binding free energy calculation..."
-yank prepare binding amber --setupdir=setup --ligand="resname MOL" --store=output --iterations=$NITERATIONS --restraints=harmonic --gbsa=OBC2 --temperature="300*kelvin" --verbose
+yank prepare binding amber --setupdir=setup --ligand="resname MOL" --store=output --iterations=$NITERATIONS --restraints=harmonic --gbsa=OBC2 --temperature="300*kelvin" --minimize --equilibrate=$NEQUILITERATIONS --verbose
 
 # Run the simulation with verbose output:
 echo "Running simulation via MPI..."
