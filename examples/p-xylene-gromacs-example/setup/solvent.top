@@ -1,0 +1,23 @@
+#include "./top/charmm36.ff//forcefield.itp"
+
+#include "./top/p-xyle.itp"
+
+#include "./top/charmm36.ff//tip3p.itp"
+#ifdef POSRES_WATER
+; Position restraint for each water oxygen
+[ position_restraints ]
+;  i funct       fcx        fcy        fcz
+   1    1       1000       1000       1000
+#endif
+
+; Include topology for ions
+#include "./top/charmm36.ff//ions.itp"
+
+[ system ]
+; Name
+mol in water
+
+[ molecules ]
+; Compound        #mols
+p-xylene          1
+SOL               703

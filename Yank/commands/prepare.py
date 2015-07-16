@@ -196,6 +196,12 @@ def setup_binding_amber(args):
     else:
         constraints = None
 
+    # Cutoff
+    if args['--cutoff']:
+        nonbondedCutoff = process_unit_bearing_argument(args, '--cutoff', unit.nanometers)
+    else:
+        nonbondedCutoff = None
+
     # COM removal
     removeCMMotion = False
 
@@ -235,7 +241,7 @@ def setup_binding_amber(args):
                 nonbondedMethod = app.NoCutoff
         # TODO: Check to make sure both prmtop and inpcrd agree on explicit/implicit.
         phase = '%s-%s' % (phase_prefix, phase_suffix)
-        systems[phase] = prmtop.createSystem(nonbondedMethod=nonbondedMethod, implicitSolvent=implicitSolvent, constraints=constraints, removeCMMotion=removeCMMotion)
+        systems[phase] = prmtop.createSystem(nonbondedMethod=nonbondedMethod, nonbondedCutoff=nonbondedCutoff, implicitSolvent=implicitSolvent, constraints=constraints, removeCMMotion=removeCMMotion)
         positions[phase] = inpcrd.getPositions(asNumpy=True)
         # Update box vectors (if needed).
         if is_periodic:
@@ -249,6 +255,102 @@ def setup_binding_amber(args):
         # Find ligand atoms and receptor atoms.
         ligand_dsl = args['--ligand'] # MDTraj DSL that specifies ligand atoms
         atom_indices[phase] = find_components(prmtop.topology, ligand_dsl)
+
+    phases = systems.keys()
+
+    return [phases, systems, positions, atom_indices]
+
+def setup_binding_gromacs(args):
+    """
+    Set up ligand binding free energy calculation using gromacs prmtop/inpcrd files.
+
+    Parameters
+    ----------
+    args : dict
+       Command-line arguments dict from docopt.
+
+    Returns
+    -------
+    phases : list of str
+       Phases (thermodynamic legs) of the calculation.
+    systems : dict
+       systems[phase] is the OpenMM System reference object for phase 'phase'.
+    positions : dict
+       positions[phase] is a set of positions (or list of positions) for initializing replicas.
+    atom_indices : dict
+       atom_indices[phase][component] is list of atom indices for component 'component' in phase 'phase'.
+
+    """
+    verbose = args['--verbose']
+
+    # Implicit solvent
+    if args['--gbsa']:
+        implicitSolvent = getattr(app, args['--gbsa'])
+    else:
+        implicitSolvent = None
+
+    # Select nonbonded treatment
+    # TODO: Carefully check whether input file is periodic or not.
+    if args['--nbmethod']:
+        nonbondedMethod = getattr(app, args['--nbmethod'])
+    else:
+        nonbondedMethod = None
+
+    # Constraints
+    if args['--constraints']:
+        constraints = getattr(app, args['--constraints'])
+    else:
+        constraints = None
+
+    # Cutoff
+    if args['--cutoff']:
+        nonbondedCutoff = process_unit_bearing_argument(args, '--cutoff', unit.nanometers)
+    else:
+        nonbondedCutoff = None
+
+    # COM removal
+    removeCMMotion = False
+
+    # Prepare phases of calculation.
+    phase_prefixes = ['solvent', 'complex'] # list of calculation phases (thermodynamic legs) to set up
+    components = ['ligand', 'receptor', 'solvent'] # components of the binding system
+    systems = dict() # systems[phase] is the System object associated with phase 'phase'
+    positions = dict() # positions[phase] is a list of coordinates associated with phase 'phase'
+    atom_indices = dict() # ligand_atoms[phase] is a list of ligand atom indices associated with phase 'phase'
+    setup_directory = args['--setupdir'] # Directory where prmtop/inpcrd files are to be found
+    for phase_prefix in phase_prefixes:
+        if verbose: logger.info("reading phase %s: " % phase_prefix)
+        # Read gromacs input files.
+        gro_filename = os.path.join(setup_directory, '%s.gro' % phase_prefix)
+        top_filename = os.path.join(setup_directory, '%s.top' % phase_prefix)
+        if verbose: logger.info('reading gromacs .gro file: %s' % gro_filename)
+        gro = app.GromacsGroFile(gro_filename)
+        if verbose: logger.info('reading gromacs .top file "%s" using gromacs include directory "%s"' % (top_filename, args['--gromacsinclude']))
+        top = app.GromacsTopFile(top_filename, unitCellDimensions=gro.getUnitCellDimensions(), includeDir=args['--gromacsinclude'])
+        # Assume explicit solvent.
+        # TODO: Modify this if we can have implicit solvent.
+        is_periodic = True
+        phase_suffix = 'explicit'
+        # Adjust nonbondedMethod.
+        # TODO: Ensure that selected method is appropriate.
+        if nonbondedMethod == None:
+            if is_periodic:
+                nonbondedMethod = app.CutoffPeriodic
+            else:
+                nonbondedMethod = app.NoCutoff
+        # TODO: Check to make sure both prmtop and inpcrd agree on explicit/implicit.
+        phase = '%s-%s' % (phase_prefix, phase_suffix)
+        systems[phase] = top.createSystem(nonbondedMethod=nonbondedMethod, nonbondedCutoff=nonbondedCutoff, constraints=constraints, removeCMMotion=removeCMMotion)
+        positions[phase] = gro.getPositions(asNumpy=True)
+        # Check to make sure number of atoms match between prmtop and inpcrd.
+        prmtop_natoms = systems[phase].getNumParticles()
+        inpcrd_natoms = positions[phase].shape[0]
+        if prmtop_natoms != inpcrd_natoms:
+            raise Exception("Atom number mismatch: prmtop %s has %d atoms; inpcrd %s has %d atoms." % (prmtop_filename, prmtop_natoms, inpcrd_filename, inpcrd_natoms))
+
+        # Find ligand atoms and receptor atoms.
+        ligand_dsl = args['--ligand'] # MDTraj DSL that specifies ligand atoms
+        atom_indices[phase] = find_components(top.topology, ligand_dsl)
 
     phases = systems.keys()
 
@@ -305,8 +407,8 @@ def dispatch_binding(args):
     # Create systems according to specified setup/import method.
     if args['amber']:
         [phases, systems, positions, atom_indices] = setup_binding_amber(args)
-    elif args['systembuilder']:
-        [phases, systems, positions, atom_indices] = setup_binding_systembuilder(args)
+    elif args['gromacs']:
+        [phases, systems, positions, atom_indices] = setup_binding_gromacs(args)
     else:
         logger.error("No valid binding free energy calculation setup command specified: Must be one of ['amber', 'systembuilder'].")
         # Trigger help argument to be returned.
