@@ -19,7 +19,7 @@ yank cleanup --store=output
 
 # Set up calculation.
 echo "Setting up binding free energy calculation..."
-yank prepare binding gromacs --setupdir=setup --ligand="resname p-xylene" --store=output --iterations=$NITERATIONS --nbmethod=CutoffPeriodic --temperature="300*kelvin" --pressure="1*atmosphere" --minimize --verbose
+yank prepare binding gromacs --setupdir=setup --ligand="resname 'p-xylene'" --store=output --iterations=$NITERATIONS --nbmethod=CutoffPeriodic --temperature="300*kelvin" --pressure="1*atmosphere" --minimize --verbose
 
 # Run the simulation with verbose output:
 echo "Running simulation..."
