@@ -6,19 +6,33 @@ yank
 
 YANK: GPU-accelerated calculation of ligand binding affinities in implicit and explicit solvent using alchemical free energy methodologies.
 
-Authors
--------
-
-* John D. Chodera | jchodera@gmail.com
-* Kyle A. Beauchamp | kyleabeauchamp@gmail.com
-* Danny L. Parton | danny.parton@gmail.com
-* Patrick B. Grinaway | pgrinaway@gmail.com
-* Michael Shirts | mrshirts@gmail.com
-* Imran Haque | ihaque@gmail.com
-* Kim Branson | kim.branson@gmail.com
-
 Documentation
 -------------
 
 Documentation and examples can be found at [getyank.org](http://getyank.org)
+
+Maintainers
+-----------
+
+* John D. Chodera (MSKCC)
+* Patrick B. Grinaway (MSKCC)
+* Arien Sebastian Rustenburg (MSKCC)
+
+Contributors
+------------
+* Kim Branson (Stanford)
+* Kyle A. Beauchamp (MSKCC)
+* Peter M. Eastman (Stanford)
+* Mark Friedrichs (Stanford)
+* Imran Haque (Stanford)
+* Christoph Klein (University of Virginia)
+* Rosa Luirink (VU Amsterdam)
+* Levi Naden (University of Virginia)
+* Daniel L. Parton (MSKCC)
+* Randy Radmer (Stanford)
+* Andrea Rizzi (WCMC)
+* Michael Shirts (University of Virginia)
+* Kai Wang (University of Virginia)
+
+
 
