@@ -34,19 +34,17 @@ store_dir = 'output' # directory to put output files in
 
 pdb_filename = None
 #pdbid = '1AO7' # HTLV1 LLFGYPVYV Tax Garboczi 1996 (1AO7), Ding 1999 - peptide agonist
-#pdbid = '1QSE' # HTLV1 Tax LLFGYPRYV V7R Ding 1999 (1QSE) - peptide agonist
-pdbid = 'esk1'
-pdb_filename = 'CONFIDENTIAL-esk1_hla0201_pep_refmac1.pdb'
+pdbid = '1QSE' # HTLV1 Tax LLFGYPRYV V7R Ding 1999 (1QSE) - peptide agonist
 chain_ids_to_keep = None # list of chains to retain, or None to keep all
 
-# mdtraj DSL selection for components (after filtering to retain only desired chains) 
+# mdtraj DSL selection for components (after filtering to retain only desired chains)
 component_dsl = {
     'ligand' : "chainid == 2",
     'receptor' : "chainid != 2",
     'complex' : "all",
     'solvent' : "water"
 }
- 
+
 pH = 7.0 # pH to use in setting protein protonation states
 keep_crystallographic_water = False # True if crystal waters are to be retained
 
@@ -157,7 +155,7 @@ if chain_ids_to_keep is not None:
 
 # DEBUG
 print "fixer.topology.chains(): %s" % str([ chain.id for chain in fixer.topology.chains() ])
-    
+
 # Add missing atoms and residues.
 logger.info("Adding missing atoms and residues...")
 fixer.findMissingResidues()
@@ -193,7 +191,7 @@ def solvate_and_minimize(topology, positions, phase=''):
         The positions
     phase : string, optional, default=''
         The phase prefix to prepend to written files.
-    
+
     Returns
     -------
     topology : simtk.openmm.app.Topology
@@ -202,13 +200,13 @@ def solvate_and_minimize(topology, positions, phase=''):
         The solvated system.
     positions : simtk.unit.Quantity of dimension natoms x 3 with units compatible with angstroms
         The minimized positions.
-    
+
     """
 
     # Solvate (if desired) and create system.
     logger.info("Solvating...")
     forcefield = app.ForceField(*ffxmls)
-    modeller = app.Modeller(topology, positions)    
+    modeller = app.Modeller(topology, positions)
     modeller.addHydrogens(forcefield=forcefield, pH=pH) # DEBUG
     if is_periodic:
         # Add solvent if in a periodic box.

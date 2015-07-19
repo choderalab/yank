@@ -17,5 +17,5 @@ parmchk -i ligand.gaff.mol2 -o ligand.gaff.frcmod -f mol2
 
 #create AMBER inputs with tleap
 echo "Creating AMBER inputs with tleap"
-rm -f leap.log receptor.{inpcrd,prmtop,pdb} ligand.{inpcrd,prmtop,pdb} complex.{inpcrd,prmtop,pdb}
+rm -f leap.log solvent.{inpcrd,prmtop,pdb} complex.{inpcrd,prmtop,pdb} vacuum.{inpcrd,prmtop,pdb}
 tleap -f setup.leap.in > setup.leap.out
