@@ -1,7 +1,9 @@
+#!/bin/bash
+
 #set up the ligand molecule:
 echo "Generating Tripos mol2 file of ligand from IUPAC or common name..."
 rm -f ligand.tripos.mol2
-python generate-mol2-from-name.py --name $1 --outfile ligand.tripos.mol2
+python generate-mol2-from-name.py --name p-xylene --outfile ligand.tripos.mol2
 
 #prepare the receptor for simulation
 echo "Parameterizing receptor molecule using antechamber"
