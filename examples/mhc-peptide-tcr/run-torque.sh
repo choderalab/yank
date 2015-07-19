@@ -58,7 +58,6 @@ sync
 
 # Run the simulation with verbose output:
 echo "Running simulation via MPI..."
-#build_mpirun_configfile --mpitype=conda "yank run --store=output --verbose --mpi --platform CUDA --precision=double"
 build_mpirun_configfile --mpitype=conda "yank run --store=output --verbose --mpi"
 
 # Make sure files are synced.
