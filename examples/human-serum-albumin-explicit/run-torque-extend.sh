@@ -17,35 +17,19 @@
 # nodes: number of 8-core nodes
 #   ppn: how many cores per node to use (1 through 8)
 #       (you are always charged for the entire node)
-#PBS -l nodes=1:ppn=4:gpus=4:shared
+#PBS -l nodes=2:ppn=4:gpus=4:shared
 #
 # export all my environment variables to the job
 ##PBS -V
 #
 # job name (default = name of script file)
-#PBS -N p-xylene-implicit
+#PBS -N hsa-aspirin-explicit
 
 cd $PBS_O_WORKDIR
 
-# Set defaults
-export NITERATIONS=${NITERATIONS:=1000}
-
-if [ ! -e output ]; then
-    echo "Making output directory..."
-    mkdir output
-fi
-
-# Clean up any leftover files
-echo "Cleaning up previous simulation..."
-yank cleanup --store=output
-
-# Set up calculation.
-echo "Setting up binding free energy calculation..."
-yank prepare binding amber --setupdir=setup --ligand="resname MOL" --store=output --iterations=$NITERATIONS --restraints=harmonic --gbsa=OBC2 --temperature="300*kelvin" --verbose
-
 # Run the simulation with verbose output:
 echo "Running simulation via MPI..."
-build_mpirun_configfile  --mpitype=conda "yank run --store=output --verbose --mpi"
+build_mpirun_configfile  --mpitype=conda "yank run --store=output --verbose --mpi --iterations=4000 --phase=complex-explicit"
 mpirun -configfile configfile
 
 # Analyze the data

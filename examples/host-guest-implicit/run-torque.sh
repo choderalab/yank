@@ -23,13 +23,14 @@
 ##PBS -V
 #
 # job name (default = name of script file)
-#PBS -N p-xylene-implicit
+#PBS -N host-guest-implicit
 
 cd $PBS_O_WORKDIR
 
 # Set defaults
 export NITERATIONS=${NITERATIONS:=1000}
 
+# Create output directory if it does not exist.
 if [ ! -e output ]; then
     echo "Making output directory..."
     mkdir output
@@ -45,7 +46,7 @@ yank prepare binding amber --setupdir=setup --ligand="resname MOL" --store=outpu
 
 # Run the simulation with verbose output:
 echo "Running simulation via MPI..."
-build_mpirun_configfile  --mpitype=conda "yank run --store=output --verbose --mpi"
+build_mpirun_configfile --mpitype=conda "yank run --store=output --verbose --mpi"
 mpirun -configfile configfile
 
 # Analyze the data
