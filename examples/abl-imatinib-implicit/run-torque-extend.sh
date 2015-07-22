@@ -26,26 +26,9 @@
 
 cd $PBS_O_WORKDIR
 
-# Set up and run simulation in serial mode.
-
-if [ ! -e output ]; then
-    echo "Making output directory..."
-    mkdir output
-fi
-
-# Clean up any leftover files
-echo "Cleaning up previous simulation..."
-yank cleanup --store=output
-
-# Set up calculation.
-echo "Setting up binding free energy calculation..."
-yank prepare binding amber --setupdir=setup --ligand="resname MOL" --store=output --iterations=100 --restraints=harmonic --gbsa=OBC2 --temperature="300*kelvin" --minimize --verbose
-
 # Run the simulation with verbose output:
 echo "Running simulation..."
-mpirun -rmk pbs yank run --store=output --verbose --mpi
-build_mpirun_configfile "yank run --store=output --verbose --mpi"
+build_mpirun_configfile "yank run --store=output --verbose --mpi --phase=complex-implicit"
 mpirun -configfile configfile
 date
-
 
