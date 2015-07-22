@@ -28,7 +28,7 @@ cd $PBS_O_WORKDIR
 
 # Run the simulation with verbose output:
 echo "Running simulation..."
-build_mpirun_configfile "yank run --store=output --verbose --mpi --phase=complex-implicit"
+build_mpirun_configfile "yank run --store=output --verbose --mpi --phase=complex-implicit --iterations=2000"
 mpirun -configfile configfile
 date
 

@@ -24,15 +24,11 @@
 # job name (default = name of script file)
 #PBS -N abl-imatinib-explicit
 
-if [ -n "$PBS_O_WORKDIR" ]; then 
-    cd $PBS_O_WORKDIR
-fi
-
-# Set up and run simulation in serial mode.
+cd $PBS_O_WORKDIR
 
 # Run the simulation with verbose output:
 echo "Running simulation via MPI..."
-build_mpirun_configfile "yank run --store=output --verbose --mpi --phase=complex-explicit --niterations=2000"
+build_mpirun_configfile "yank run --store=output --verbose --mpi --phase=complex-explicit --iterations=2000"
 mpirun -configfile configfile
 date
 
