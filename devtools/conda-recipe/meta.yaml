@@ -20,7 +20,6 @@ requirements:
     - ambermini
     - docopt
     - openmoltools
-    - jinja2
     - sphinxcontrib-bibtex
 
   run:
@@ -38,7 +37,6 @@ requirements:
     - openmoltools
     - mpi4py
     - pyyaml
-    - jinja2
     - clusterutils
     - sphinxcontrib-bibtex
 
