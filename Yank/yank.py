@@ -299,7 +299,7 @@ class Yank(object):
             box_vectors = reference_system.getDefaultPeriodicBoxVectors()
             box_volume = thermodynamic_state._volume(box_vectors)
             STANDARD_STATE_VOLUME = 1660.53928 * unit.angstrom**3
-            metadata['standard_state_correction'] = np.log(STANDARD_STATE_VOLUME / box_volume) # TODO: Check sign.
+            metadata['standard_state_correction'] = - np.log(STANDARD_STATE_VOLUME / box_volume)
 
         # Use default alchemical protocols if not specified.
         if not protocols:
