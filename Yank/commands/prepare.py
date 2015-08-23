@@ -440,7 +440,7 @@ def dispatch_binding(args):
     if args['--online-analysis']:
         options['online_analysis'] = True
     if args['--restraints']:
-        yank.restraint_type = args['--restraints']
+        options['restraint_type'] = args['--restraints']
     if args['--randomize-ligand']:
         options['randomize_ligand'] = True
     if args['--minimize']:
