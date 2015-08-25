@@ -15,7 +15,7 @@ requirements:
     - setuptools
     - netcdf4
     - openmm-dev
-    - openmmtools
+    - openmmtools >=0.7.2
     - pymbar ==2.1.0b0
     - ambermini
     - docopt
@@ -31,7 +31,7 @@ requirements:
     - cython
     - netcdf4
     - openmm-dev
-    - openmmtools
+    - openmmtools >=0.7.2
     - pymbar ==2.1.0b0
     - ambermini
     - docopt

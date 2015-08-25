@@ -56,7 +56,7 @@ def test_LennardJonesPair():
 
     # Create Lennard-Jones pair.
 
-    test = LennardJonesPair()
+    test = testsystems.LennardJonesPair()
     system, positions = test.system, test.positions
     thermodynamic_state = ThermodynamicState(temperature=300.0*unit.kelvin)
     binding_free_energy = test.get_binding_free_energy(thermodynamic_state)
