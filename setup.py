@@ -135,6 +135,7 @@ setup(
     install_requires=[
         'numpy',
         'scipy',
+        'cython',
         'openmm',
         'pymbar',
         'openmmtools',

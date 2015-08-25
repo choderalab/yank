@@ -34,6 +34,7 @@ import numpy
 from openmmtools import testsystems
 
 from yank import Yank
+from yank.repex import ThermodynamicState
 
 import logging
 logger = logging.getLogger(__name__)
@@ -42,7 +43,8 @@ logger = logging.getLogger(__name__)
 # MODULE CONSTANTS
 #=============================================================================================
 
-kB = units.BOLTZMANN_CONSTANT_kB * units.AVOGADRO_CONSTANT_NA # Boltzmann constant
+from simtk import unit
+kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA # Boltzmann constant
 
 #=============================================================================================
 # MAIN AND TESTS
