@@ -2333,6 +2333,9 @@ class ReplicaExchange(object):
            dDelta_s_ij[i,j] is estimated standard error of Delta_s_ij[i,j]
 
         """
+        if not self._initialized:
+            self._initialize_resume()
+
         # Update analysis on root node.
         self._analysis()
 

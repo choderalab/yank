@@ -7,6 +7,36 @@ from pkg_resources import resource_filename
 # Utility functions
 #========================================================================================
 
+def typename(type):
+    """Convert a type object into a fully qualified typename.
+
+    Parameters
+    ----------
+    type : type
+        The type to convert
+    
+    Returns
+    -------
+    typename : str
+        The string typename.
+    
+    For example,
+
+    >>> typename(1)
+    int
+
+    >>> import numpy
+    >>> typename(numpy.array([1,2,3], numpy.float32)
+
+    """
+    modulename = type.__module__
+    typename = type.__name__
+
+    if modulename != '__builtin__':
+        typename = modulename + '.' + typename
+
+    return typename
+
 def is_terminal_verbose():
     """Check whether the logging on the terminal is configured to be verbose.
 

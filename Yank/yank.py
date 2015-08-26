@@ -85,7 +85,7 @@ class Yank(object):
         # Default options for repex.
         self.default_options = dict()
         self.default_options['number_of_equilibration_iterations'] = 0
-        self.default_options['number_of_iterations'] = 100
+        self.default_options['nsteps_per_iteration'] = 500
         self.default_options['number_of_iterations'] = 100
         self.default_options['timestep'] = 2.0 * unit.femtoseconds
         self.default_options['collision_rate'] = 5.0 / unit.picoseconds
@@ -246,7 +246,6 @@ class Yank(object):
 
         """
 
-
         # Combine simulation options with defaults to create repex options.
         repex_options = dict(self.default_options.items() + options.items())
 
@@ -307,7 +306,7 @@ class Yank(object):
 
         # Create alchemically-modified states using alchemical factory.
         logger.debug("Creating alchemically-modified states...")
-        #factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=atom_indices['ligand'], test_positions=positions[0], platform=repex_options['platform'])
+        #factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=atom_indices['ligand'], test_positions=positions[0], platform=repex_options['platform']) # DEBUG code for testing
         factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=atom_indices['ligand'])
         alchemical_states = protocols[phase]
         alchemical_system = factory.alchemically_modified_system
@@ -371,6 +370,9 @@ class Yank(object):
 
         # Clean up simulation.
         del simulation
+
+        # Add to list of phases that have been set up.
+        self._phases.append(phase)
 
         return
 
@@ -472,8 +474,9 @@ class Yank(object):
             # Skip if the file doesn't exist.
             if (not os.path.exists(fullpath)): continue
 
-            # Analyze this leg.
-            simulation = ModifiedHamiltonianExchange(store_filename=store_filename, mpicomm=mpicomm, options=options)
+            # Analyze this phase.
+            simulation = ModifiedHamiltonianExchange(fullpath)
+            simulation.resume()
             analysis = simulation.analyze()
             del simulation
 
