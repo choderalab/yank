@@ -1910,6 +1910,7 @@ class ReplicaExchange(object):
         ncgrp_options = ncfile.createGroup('options')
 
         # Store run parameters.
+        from utils import typename
         for option_name in self.options_to_store:
             # Get option value.
             option_value = getattr(self, option_name)
@@ -1918,35 +1919,40 @@ class ReplicaExchange(object):
             if type(option_value) == unit.Quantity:
                 option_unit = option_value.unit
                 option_value = option_value / option_unit
-            # Store the Python type.
+            # Store the Python type.            
             option_type = type(option_value)
+            option_type_name = typename(option_type)
             # Handle booleans
             if type(option_value) == bool:
                 option_value = int(option_value)
             # Store the variable.
-            logger.debug("Storing option: %s -> %s (type: %s)" % (option_name, option_value, str(option_type)))
             if type(option_value) == str:
+                logger.debug("Storing option: %s -> %s (type: %s)" % (option_name, option_value, option_type_name))
                 ncvar = ncgrp_options.createVariable(option_name, type(option_value), 'scalar')
                 packed_data = np.empty(1, 'O')
                 packed_data[0] = option_value
                 ncvar[:] = packed_data
-                setattr(ncvar, 'type', option_type.__name__)
+                setattr(ncvar, 'type', option_type_name)
             elif hasattr(option_value, '__getitem__'):
                 nelements = len(option_value)
+                logger.debug("Storing option: %s -> %s (type: %s, array of length %d)" % (option_name, option_value, option_type_name, nelements))
+                element_type = type(option_value[0])
+                element_type_name = typename(element_type)
                 ncgrp_options.createDimension(option_name, nelements) # unlimited number of iterations
-                ncvar = ncgrp_options.createVariable(option_name, type(option_value[0]), (option_name,))
+                ncvar = ncgrp_options.createVariable(option_name, element_type, (option_name,))
                 for (i, element) in enumerate(option_value):
                     ncvar[i] = element
-                option_type = type(option_value[0])
-                setattr(ncvar, 'type', option_type.__name__)
+                setattr(ncvar, 'type', element_type_name)
             elif option_value is None:
+                logger.debug("Storing option: %s -> %s (None)" % (option_name, option_value))
                 ncvar = ncgrp_options.createVariable(option_name, int)
                 ncvar.assignValue(0)
-                setattr(ncvar, 'type', option_type.__name__)
+                setattr(ncvar, 'type', option_type_name)
             else:
+                logger.debug("Storing option: %s -> %s (type: %s, other)" % (option_name, option_value, option_type_name))
                 ncvar = ncgrp_options.createVariable(option_name, type(option_value))
                 ncvar.assignValue(option_value)
-                setattr(ncvar, 'type', option_type.__name__)
+                setattr(ncvar, 'type', option_type_name)
             if option_unit: setattr(ncvar, 'units', str(option_unit))
 
         return
@@ -1968,6 +1974,7 @@ class ReplicaExchange(object):
         ncgrp_options = ncfile.groups['options']
 
         # Load run parameters.
+        import numpy
         for option_name in ncgrp_options.variables.keys():
             # Get NetCDF variable.
             option_ncvar = ncgrp_options.variables[option_name]
@@ -1975,6 +1982,7 @@ class ReplicaExchange(object):
             # Get option value.
             if type_name == 'NoneType':
                 option_value = None
+                logger.debug("Restoring option: %s -> %s (None)" % (option_name, str(option_value)))
             elif option_ncvar.shape == ():
                 option_value = option_ncvar.getValue()
                 # Cast to python types.
@@ -1982,11 +1990,16 @@ class ReplicaExchange(object):
                     option_value = int(option_value)
                 if type(option_value) in [np.float32, np.float64]:
                     option_value = float(option_value)
-            elif (option_ncvar.shape[0] > 1):
-                option_value = np.array(option_ncvar[:], type_name)
+                logger.debug("Restoring option: %s -> %s (type: %s)" % (option_name, str(option_value), type(option_value)))                    
+            elif (option_ncvar.shape[0] >= 0):
+                option_value = np.array(option_ncvar[:], eval(type_name))
+                # TODO: Cast to appropriate type
+                logger.debug("Restoring option: %s -> %s (type: %s)" % (option_name, str(option_value), type(option_value)))
             else:
                 option_value = option_ncvar[0]
                 option_value = eval(type_name + '(' + repr(option_value) + ')')
+                logger.debug("Restoring option: %s -> %s (type: %s)" % (option_name, str(option_value), type(option_value)))
+
             # If Quantity, assign unit.
             if hasattr(option_ncvar, 'units'):
                 option_unit_name = getattr(option_ncvar, 'units')
@@ -1995,7 +2008,6 @@ class ReplicaExchange(object):
                 else:
                     option_value = eval(str(option_value) + '*' + option_unit_name, unit.__dict__)
             # Store option.
-            logger.debug("Restoring option: %s -> %s (type: %s)" % (option_name, str(option_value), type(option_value)))
             setattr(self, option_name, option_value)
 
         # Signal success.
