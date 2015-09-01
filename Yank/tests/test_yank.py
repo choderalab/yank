@@ -118,7 +118,7 @@ def test_LennardJonesPair():
     # Analyze the data.
     results = yank.analyze()
     standard_state_correction = results[phase]['standard_state_correction']
-    Delta_f = results[phase]['Delta_f_ij'][0,-1] + standard_state_correction
+    Delta_f = results[phase]['Delta_f_ij'][0,-1] - standard_state_correction
     dDelta_f = results[phase]['dDelta_f_ij'][0,-1]
     nsigma = abs(binding_free_energy/kT - Delta_f) / dDelta_f
 
