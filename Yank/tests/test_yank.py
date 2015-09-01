@@ -73,7 +73,7 @@ def test_LennardJonesPair():
     # Initialize YANK object.
     options = dict()
     options['restraint_type'] = 'flat-bottom'
-    options['number_of_iterations'] = 500
+    options['number_of_iterations'] = 50
     options['platform'] = openmm.Platform.getPlatformByName("Reference") # use Reference platform for speed
     options['mc_rotation'] = False
     options['mc_displacement'] = True
@@ -117,15 +117,17 @@ def test_LennardJonesPair():
 
     # Analyze the data.
     results = yank.analyze()
-    Delta_f = results[phase]['Delta_f_ij'][0,-1]
+    standard_state_correction = results[phase]['standard_state_correction']
+    Delta_f = results[phase]['Delta_f_ij'][0,-1] + standard_state_correction
     dDelta_f = results[phase]['dDelta_f_ij'][0,-1]
     nsigma = abs(binding_free_energy/kT - Delta_f) / dDelta_f
 
     # Check results against analytical results.
     # TODO: Incorporate standard state correction
     output = ""
-    output += "Analytical binding free energy: %10.5f +- %10.5f kT\n" % (binding_free_energy / kT, 0)
-    output += "Computed binding free energy:   %10.5f +- %10.5f kT (nsigma = %3.1f)\n" % (Delta_f, dDelta_f, nsigma)
+    output += "Analytical binding free energy                               : %10.5f +- %10.5f kT\n" % (binding_free_energy / kT, 0)
+    output += "Computed binding free energy (with standard state correction): %10.5f +- %10.5f kT (nsigma = %3.1f)\n" % (Delta_f, dDelta_f, nsigma)
+    output += "Standard state correction alone                              : %10.5f           kT\n" % (standard_state_correction)
     print output
 
     if (nsigma > NSIGMA_MAX):

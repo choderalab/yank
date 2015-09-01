@@ -660,6 +660,7 @@ class ReplicaExchange(object):
         ncfile = netcdf.Dataset(self.store_filename, 'r')
         self._restore_thermodynamic_states(ncfile)
         self._restore_options(ncfile)
+        self._restore_metadata(ncfile)
         ncfile.close()
 
         # Determine number of replicas from the number of specified thermodynamic states.
@@ -1713,7 +1714,7 @@ class ReplicaExchange(object):
 
         # Store metadata.
         if self.metadata:
-            self._store_metadata(ncfile, 'metadata', self.metadata)
+            self._store_metadata(ncfile)
 
         # Force sync to disk to avoid data loss.
         ncfile.sync()
@@ -1894,26 +1895,23 @@ class ReplicaExchange(object):
 
         return True
 
-    def _store_options(self, ncfile):
+    def _store_dict_in_netcdf(self, ncgrp, options):
         """
-        Store run parameters in NetCDF file.
+        Store the contents of a dict in a NetCDF file.
+
+        Parameters
+        ----------
+        ncgrp : ncfile.Dataset group
+            The group in which to store options.
+        options : dict
+            The dict to store.
 
         """
-
-        logger.debug("Storing run parameters in NetCDF file...")
-
-        # Create scalar dimension if not already present.
-        if 'scalar' not in ncfile.dimensions:
-            ncfile.createDimension('scalar', 1) # scalar dimension
-
-        # Create a group to store state information.
-        ncgrp_options = ncfile.createGroup('options')
-
-        # Store run parameters.
         from utils import typename
-        for option_name in self.options_to_store:
+        import collections
+        for option_name in options.keys():
             # Get option value.
-            option_value = getattr(self, option_name)
+            option_value = options[option_name]
             # If Quantity, strip off units first.
             option_unit = None
             if type(option_value) == unit.Quantity:
@@ -1928,56 +1926,56 @@ class ReplicaExchange(object):
             # Store the variable.
             if type(option_value) == str:
                 logger.debug("Storing option: %s -> %s (type: %s)" % (option_name, option_value, option_type_name))
-                ncvar = ncgrp_options.createVariable(option_name, type(option_value), 'scalar')
+                ncvar = ncgrp.createVariable(option_name, type(option_value), 'scalar')
                 packed_data = np.empty(1, 'O')
                 packed_data[0] = option_value
                 ncvar[:] = packed_data
                 setattr(ncvar, 'type', option_type_name)
-            elif hasattr(option_value, '__getitem__'):
+            elif isinstance(option_value, collections.Iterable):
                 nelements = len(option_value)
                 logger.debug("Storing option: %s -> %s (type: %s, array of length %d)" % (option_name, option_value, option_type_name, nelements))
                 element_type = type(option_value[0])
                 element_type_name = typename(element_type)
-                ncgrp_options.createDimension(option_name, nelements) # unlimited number of iterations
-                ncvar = ncgrp_options.createVariable(option_name, element_type, (option_name,))
+                ncgrp.createDimension(option_name, nelements) # unlimited number of iterations
+                ncvar = ncgrp.createVariable(option_name, element_type, (option_name,))
                 for (i, element) in enumerate(option_value):
                     ncvar[i] = element
                 setattr(ncvar, 'type', element_type_name)
             elif option_value is None:
                 logger.debug("Storing option: %s -> %s (None)" % (option_name, option_value))
-                ncvar = ncgrp_options.createVariable(option_name, int)
+                ncvar = ncgrp.createVariable(option_name, int)
                 ncvar.assignValue(0)
                 setattr(ncvar, 'type', option_type_name)
             else:
                 logger.debug("Storing option: %s -> %s (type: %s, other)" % (option_name, option_value, option_type_name))
-                ncvar = ncgrp_options.createVariable(option_name, type(option_value))
+                ncvar = ncgrp.createVariable(option_name, type(option_value))
                 ncvar.assignValue(option_value)
                 setattr(ncvar, 'type', option_type_name)
             if option_unit: setattr(ncvar, 'units', str(option_unit))
 
         return
 
-
-
-    def _restore_options(self, ncfile):
+    def _restore_dict_from_netcdf(self, ncgrp):
         """
-        Restore run parameters from NetCDF file.
+        Restore dict from NetCDF.
+        
+        Parameters
+        ----------
+        ncgrp : netcdf.Dataset group
+            The NetCDF group to restore from.
+
+        Returns
+        -------
+        options : dict
+            The restored options as a dict.
+
         """
+        options = dict()
 
-        logger.debug("Attempting to restore options from NetCDF file...")
-
-        # Make sure this NetCDF file contains option information
-        if not 'options' in ncfile.groups:
-            raise Exception("options not found in NetCDF file.")
-
-        # Find the group.
-        ncgrp_options = ncfile.groups['options']
-
-        # Load run parameters.
         import numpy
-        for option_name in ncgrp_options.variables.keys():
+        for option_name in ncgrp.variables.keys():
             # Get NetCDF variable.
-            option_ncvar = ncgrp_options.variables[option_name]
+            option_ncvar = ncgrp.variables[option_name]
             type_name = getattr(option_ncvar, 'type')
             # Get option value.
             if type_name == 'NoneType':
@@ -2008,27 +2006,87 @@ class ReplicaExchange(object):
                 else:
                     option_value = eval(str(option_value) + '*' + option_unit_name, unit.__dict__)
             # Store option.
-            setattr(self, option_name, option_value)
+            options[option_name] = option_value
 
+        return options
+
+    def _store_options(self, ncfile):
+        """
+        Store run parameters in NetCDF file.
+
+        """
+
+        logger.debug("Storing run parameters in NetCDF file...")
+
+        # Create scalar dimension if not already present.
+        if 'scalar' not in ncfile.dimensions:
+            ncfile.createDimension('scalar', 1) # scalar dimension
+
+        # Create a group to store state information.
+        ncgrp_options = ncfile.createGroup('options')
+
+        # Build dict of options to store.
+        options = dict()
+        for option_name in self.options_to_store:
+            option_value = getattr(self, option_name)
+            options[option_name] = option_value
+
+        # Store options.
+        self._store_dict_in_netcdf(ncgrp_options, options)
+
+        return
+
+    def _restore_options(self, ncfile):
+        """
+        Restore run parameters from NetCDF file.
+
+        """
+
+        logger.debug("Attempting to restore options from NetCDF file...")
+
+        # Make sure this NetCDF file contains option information
+        if not 'options' in ncfile.groups:
+            raise Exception("options not found in NetCDF file.")
+
+        # Find the group.
+        ncgrp_options = ncfile.groups['options']
+        
+        # Restore options as dict.
+        options = self._restore_dict_from_netcdf(ncgrp_options)
+
+        # Set these as attributes.
+        for option_name in options.keys():
+            setattr(self, option_name, options[option_name])
+        
         # Signal success.
         return True
 
-    def _store_metadata(self, ncfile, groupname, metadata):
+    def _store_metadata(self, ncfile):
         """
         Store metadata in NetCDF file.
 
+        Parameters
+        ----------
+        ncfile : netcdf.Dataset
+            The NetCDF file in which metadata is to be stored.
+
         """
-
-        # Create group.
-        ncgrp = ncfile.createGroup(groupname)
-
-        # Store metadata.
-        for (key, value) in metadata.iteritems():
-            # TODO: Handle more sophisticated types.
-            ncvar = ncgrp.createVariable(key, type(value))
-            ncvar.assignValue(value)
-
+        ncgrp = ncfile.createGroup('metadata')
+        self._store_dict_in_netcdf(ncgrp, self.metadata)
         return
+
+    def _restore_metadata(self, ncfile):
+        """
+        Restore metadata from NetCDF file.
+
+        Parameters
+        ----------
+        ncfile : netcdf.Dataset
+            The NetCDF file in which metadata is to be stored.
+
+        """
+        ncgrp = ncfile.groups['metadata']
+        self.metadata = self._restore_dict_from_netcdf(ncgrp)
 
     def _resume_from_netcdf(self):
         """
