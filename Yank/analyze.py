@@ -446,6 +446,16 @@ def analyze(source_directory):
     # Process each netcdf file.
     netcdf_files_found = 0
     for phase in phase_prefixes:
+        # Read reference PDB file.
+        #from simtk.openmm import app
+        #reference_pdb_filename = os.path.join(source_directory, phase + '.pdb')
+        #reference_pdb = app.PDBFile(reference_pdb_filename)
+            #if phase in ['vacuum', 'solvent']:
+            #    reference_pdb_filename = os.path.join(source_directory, "ligand.pdb")
+            #else:
+            #    reference_pdb_filename = os.path.join(source_directory, "complex.pdb")
+            #atoms = read_pdb(reference_pdb_filename)
+
         for suffix in suffixes:
             # Construct full path to NetCDF file.
             fullpath = os.path.join(source_directory, '%s-%s.nc' % (phase, suffix))

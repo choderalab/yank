@@ -60,34 +60,47 @@ def test_LennardJonesPair():
     NSIGMA_MAX = 6.0 # number of standard errors tolerated for success
 
     # Create Lennard-Jones pair.
-    test = testsystems.LennardJonesPair()
-    system, positions = test.system, test.positions
     thermodynamic_state = ThermodynamicState(temperature=300.0*unit.kelvin)
-    binding_free_energy = test.get_binding_free_energy(thermodynamic_state)
     kT = kB * thermodynamic_state.temperature
+    sigma = 3.5 * unit.angstroms
+    epsilon = 6.0 * kT
+    test = testsystems.LennardJonesPair(sigma=sigma, epsilon=epsilon)
+    system, positions = test.system, test.positions
+    binding_free_energy = test.get_binding_free_energy(thermodynamic_state)
 
     # Create temporary directory for testing.
     import tempfile
     store_dir = tempfile.mkdtemp()
-    
+
+    # DEBUG
+    store_dir = 'output'
+
     # Initialize YANK object.
     options = dict()
-    options['restraint_type'] = 'flat-bottom'
-    options['number_of_iterations'] = 50
+    options['restraint_type'] = None
+    options['number_of_iterations'] = 100
     options['platform'] = openmm.Platform.getPlatformByName("Reference") # use Reference platform for speed
     options['mc_rotation'] = False
     options['mc_displacement'] = True
     options['mc_displacement_sigma'] = 1.0 * unit.nanometer
-    options['verbose'] = False
-    options['timestep'] = 5 * unit.femtoseconds
-    options['nsteps_per_iteration'] = 20
+    options['timestep'] = 2 * unit.femtoseconds
+    options['nsteps_per_iteration'] = 50
+
+    # Override receptor mass to keep it stationary.
+    #system.setParticleMass(0, 0)
 
     # Override box vectors.
-    box_edge = 30.0 * unit.angstrom
-    a = unit.Quantity((box_edge,        0 * unit.angstrom, 0 * unit.angstrom))
-    b = unit.Quantity((0 * unit.angstrom, box_edge,        0 * unit.angstrom))
+    box_edge = 6*sigma
+    a = unit.Quantity((box_edge, 0 * unit.angstrom, 0 * unit.angstrom))
+    b = unit.Quantity((0 * unit.angstrom, box_edge, 0 * unit.angstrom))
     c = unit.Quantity((0 * unit.angstrom, 0 * unit.angstrom, box_edge))
     system.setDefaultPeriodicBoxVectors(a, b, c)
+
+    # Override positions
+    positions[0,:] = box_edge/2
+    positions[1,:] = box_edge/4
+
+    phase = 'complex-explicit'
 
     # Alchemical protocol.
     from yank.alchemy import AlchemicalState
@@ -99,14 +112,13 @@ def test_LennardJonesPair():
         alchemical_state['lambda_sterics'] = lambda_value
         alchemical_states.append(alchemical_state)
     protocols = dict()
-    protocols['complex-explicit'] = alchemical_states
+    protocols[phase] = alchemical_states
 
     # Create phases.
-    phase = 'complex-explicit'
     systems = { phase : system }
     positions = { phase : positions }
     phases = [phase]
-    atom_indices = { 'complex-explicit' : { 'ligand' : [0] } } # first particle is ligand
+    atom_indices = { 'complex-explicit' : { 'ligand' : [1] } }
 
     # Create new simulation.
     yank = Yank(store_dir)
@@ -118,19 +130,25 @@ def test_LennardJonesPair():
     # Analyze the data.
     results = yank.analyze()
     standard_state_correction = results[phase]['standard_state_correction']
-    Delta_f = results[phase]['Delta_f_ij'][0,-1] - standard_state_correction
-    dDelta_f = results[phase]['dDelta_f_ij'][0,-1]
+    Delta_f = results[phase]['Delta_f_ij'][0,1] - standard_state_correction
+    dDelta_f = results[phase]['dDelta_f_ij'][0,1]
     nsigma = abs(binding_free_energy/kT - Delta_f) / dDelta_f
 
     # Check results against analytical results.
     # TODO: Incorporate standard state correction
-    output = ""
-    output += "Analytical binding free energy                               : %10.5f +- %10.5f kT\n" % (binding_free_energy / kT, 0)
-    output += "Computed binding free energy (with standard state correction): %10.5f +- %10.5f kT (nsigma = %3.1f)\n" % (Delta_f, dDelta_f, nsigma)
-    output += "Standard state correction alone                              : %10.5f           kT\n" % (standard_state_correction)
+    output = "\n"
+    output += "Analytical binding free energy                                  : %10.5f +- %10.5f kT\n" % (binding_free_energy / kT, 0)
+    output += "Computed binding free energy (with standard state correction)   : %10.5f +- %10.5f kT (nsigma = %3.1f)\n" % (Delta_f, dDelta_f, nsigma)
+    output += "Computed binding free energy (without standard state correction): %10.5f +- %10.5f kT (nsigma = %3.1f)\n" % (Delta_f + standard_state_correction, dDelta_f, nsigma)
+    output += "Standard state correction alone                                 : %10.5f           kT\n" % (standard_state_correction)
     print output
 
     if (nsigma > NSIGMA_MAX):
         output += "\n"
         output += "Computed binding free energy differs from true binding free energy.\n"
         raise Exception(output)
+
+if __name__ == '__main__':
+    from yank import utils
+    utils.config_root_logger(True, log_file_path='test_yank.log')
+    test_LennardJonesPair()

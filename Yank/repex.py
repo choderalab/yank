@@ -1152,7 +1152,7 @@ class ReplicaExchange(object):
         integrator_end_time = time.time()
         # Store final positions
         getstate_start_time = time.time()
-        openmm_state = context.getState(getPositions=True)
+        openmm_state = context.getState(getPositions=True,enforcePeriodicBox=True)
         getstate_end_time = time.time()
         self.replica_positions[replica_index] = openmm_state.getPositions(asNumpy=True)
         # Store box vectors.
@@ -1281,7 +1281,7 @@ class ReplicaExchange(object):
         # Minimize energy.
         minimized_positions = self.mm.LocalEnergyMinimizer.minimize(context, self.minimize_tolerance, self.minimize_maxIterations)
         # Store final positions
-        self.replica_positions[replica_index] = context.getState(getPositions=True).getPositions(asNumpy=True)
+        self.replica_positions[replica_index] = context.getState(getPositions=True,enforcePeriodicBox=True).getPositions(asNumpy=True)
         # Clean up.
         del integrator, context
 
