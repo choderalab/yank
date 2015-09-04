@@ -51,7 +51,7 @@ kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA # Boltzmann constant
 # MAIN AND TESTS
 #=============================================================================================
 
-def test_LennardJonesPair():
+def notest_LennardJonesPair():
     """
     Compute binding free energy of two Lennard-Jones particles and compare to numerical result.
 
@@ -150,5 +150,5 @@ def test_LennardJonesPair():
 
 if __name__ == '__main__':
     from yank import utils
-    utils.config_root_logger(True, log_file_path='test_yank.log')
-    test_LennardJonesPair()
+    utils.config_root_logger(True, log_file_path='test_LennardJones_pair.log')
+    notest_LennardJonesPair()
