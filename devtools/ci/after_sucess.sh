@@ -13,7 +13,7 @@ fi
 
 
 if [[ "2.7 3.3" =~ "$python" ]]; then
-    conda install --yes binstar jinja2
+    conda install --yes binstar conda-server anaconda-client jinja2
     binstar -t $BINSTAR_TOKEN upload --force -u omnia -p yank-dev $HOME/miniconda/conda-bld/*/yank-dev-*.tar.bz2
 fi
 

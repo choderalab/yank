@@ -14,13 +14,12 @@ requirements:
     - scipy
     - setuptools
     - netcdf4
-    - openmm-dev
+    - openmm >=6.3.0
     - openmmtools
     - pymbar ==2.1.0b0
     - ambermini
     - docopt
     - openmoltools
-    - jinja2
     - sphinxcontrib-bibtex
 
   run:
@@ -30,7 +29,7 @@ requirements:
     - scipy
     - cython
     - netcdf4
-    - openmm-dev
+    - openmm >=6.3.0
     - openmmtools
     - pymbar ==2.1.0b0
     - ambermini
@@ -38,7 +37,6 @@ requirements:
     - openmoltools
     - mpi4py
     - pyyaml
-    - jinja2
     - clusterutils
     - sphinxcontrib-bibtex
 
