@@ -1,10 +1,11 @@
 import os
 import logging
+import collections
 
 from pkg_resources import resource_filename
 
 #========================================================================================
-# Utility functions
+# Logging functions
 #========================================================================================
 
 def is_terminal_verbose():
@@ -120,6 +121,88 @@ def config_root_logger(verbose, log_file_path=None, mpicomm=None):
     else:
         logging.root.setLevel(terminal_handler.level)
 
+#========================================================================================
+# Yank configuration
+#========================================================================================
+
+class YankOptions(collections.MutableMapping):
+    """Helper class to manage Yank configuration.
+
+    This class provide a single point of entry to read Yank options specified by command
+    line, YAML or determined at runtime (i.e. the ones hardcoded). When the same option
+    is specified multiple times the priority is runtime > command line > YAML.
+
+    Examples
+    --------
+    Command line options have priority over YAML
+
+    >>> cl_opt = {'option1': 1}
+    >>> yaml_opt = {'option1': 2}
+    >>> options = YankOptions(cl_opt=cl_opt, yaml_opt=yaml_opt)
+    >>> options['option1']
+    1
+
+    Modify options at runtime and restore them
+
+    >>> options['option1'] = 0
+    >>> options['option1']
+    0
+    >>> del options['option1']
+    >>> options['option1']
+    1
+    >>> options['hardcoded'] = 'test'
+    >>> options['hardcoded']
+    'test'
+
+    """
+
+    def __init__(self, cl_opt={}, yaml_opt={}):
+        """Constructor.
+
+        Parameters
+        ----------
+        cl_opt : dict, optional, default {}
+            The options from the command line.
+        yaml_opt : dict, optional, default {}
+            The options from the YAML configuration file.
+
+        """
+        self._runtime_opt = {}
+        self._cl_opt = cl_opt
+        self._yaml_opt = yaml_opt
+
+    def __getitem__(self, option):
+        try:
+            return self._runtime_opt[option]
+        except KeyError:
+            try:
+                return self._cl_opt[option]
+            except KeyError:
+                return self._yaml_opt[option]
+
+    def __setitem__(self, option, value):
+        self._runtime_opt[option] = value
+
+    def __delitem__(self, option):
+        del self._runtime_opt[option]
+
+    def __iter__(self):
+        """Iterate over options keeping into account priorities."""
+
+        found_options = set()
+        for opt_set in (self._runtime_opt, self._cl_opt, self._yaml_opt):
+            for opt in opt_set:
+                if opt not in found_options:
+                    found_options.add(opt)
+                    yield opt
+
+    def __len__(self):
+        return sum(1 for _ in self)
+
+#========================================================================================
+# Miscellaneous functions
+#========================================================================================
+
 def get_data_filename(relative_path):
     """Get the full path to one of the reference files shipped for testing
 
@@ -141,3 +224,11 @@ def get_data_filename(relative_path):
         raise ValueError("Sorry! %s does not exist. If you just added it, you'll have to re-install" % fn)
 
     return fn
+
+#=============================================================================================
+# Main and tests
+#=============================================================================================
+
+if __name__ == "__main__":
+    import doctest
+    doctest.testmod()
