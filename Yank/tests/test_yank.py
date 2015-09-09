@@ -29,7 +29,7 @@ import time
 import datetime
 from functools import partial
 
-import numpy
+import numpy as np
 
 from simtk import openmm
 from openmmtools import testsystems
@@ -51,9 +51,14 @@ kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA # Boltzmann constant
 # MAIN AND TESTS
 #=============================================================================================
 
-def notest_LennardJonesPair():
+def notest_LennardJonesPair(box_width_nsigma=6.0):
     """
     Compute binding free energy of two Lennard-Jones particles and compare to numerical result.
+
+    Parameters
+    ----------
+    box_width_nsigma : float, optional, default=6.0
+        Box width is set to this multiple of Lennard-Jones sigma.
 
     """
 
@@ -72,13 +77,10 @@ def notest_LennardJonesPair():
     import tempfile
     store_dir = tempfile.mkdtemp()
 
-    # DEBUG
-    store_dir = 'output'
-
     # Initialize YANK object.
     options = dict()
     options['restraint_type'] = None
-    options['number_of_iterations'] = 100
+    options['number_of_iterations'] = 10
     options['platform'] = openmm.Platform.getPlatformByName("Reference") # use Reference platform for speed
     options['mc_rotation'] = False
     options['mc_displacement'] = True
@@ -143,12 +145,26 @@ def notest_LennardJonesPair():
     output += "Standard state correction alone                                 : %10.5f           kT\n" % (standard_state_correction)
     print output
 
-    if (nsigma > NSIGMA_MAX):
-        output += "\n"
-        output += "Computed binding free energy differs from true binding free energy.\n"
-        raise Exception(output)
+    #if (nsigma > NSIGMA_MAX):
+    #    output += "\n"
+    #    output += "Computed binding free energy differs from true binding free energy.\n"
+    #    raise Exception(output)
+
+    return [Delta_f, dDelta_f]
 
 if __name__ == '__main__':
     from yank import utils
     utils.config_root_logger(True, log_file_path='test_LennardJones_pair.log')
-    notest_LennardJonesPair()
+
+    box_width_nsigma_values = np.array([3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0])
+    Delta_f_n = list()
+    dDelta_f_n = list()
+    for (n, box_width_nsigma) in enumerate(box_width_nsigma_values):
+        [Delta_f, dDelta_f] = notest_LennardJonesPair(box_width_nsigma=box_width_nsigma)
+        Delta_f_n.append(Delta_f)
+        dDelta_f_n.append(dDelta_f)
+    Delta_f_n = np.array(Delta_f_n)
+    dDelta_f_n = np.array(dDelta_f_n)
+
+    for (box_width_nsigma, Delta_f, dDelta_f) in zip(box_width_nsigma_values, Delta_f_n, dDelta_f_n):
+        print "%8.3f %12.6f %12.6f" % (box_width_nsigma, Delta_f, dDelta_f)

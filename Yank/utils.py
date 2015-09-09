@@ -7,12 +7,12 @@ from pkg_resources import resource_filename
 # Utility functions
 #========================================================================================
 
-def typename(type):
+def typename(atype):
     """Convert a type object into a fully qualified typename.
 
     Parameters
     ----------
-    type : type
+    atype : type
         The type to convert
     
     Returns
@@ -22,15 +22,20 @@ def typename(type):
     
     For example,
 
-    >>> typename(1)
-    int
+    >>> typename(type(1))
+    'int'
 
     >>> import numpy
-    >>> typename(numpy.array([1,2,3], numpy.float32)
+    >>> x = numpy.array([1,2,3], numpy.float32)
+    >>> typename(type(x))
+    'numpy.ndarray'
 
     """
-    modulename = type.__module__
-    typename = type.__name__
+    if not isinstance(atype, type):
+        raise Exception('Argument is not a type')
+
+    modulename = atype.__module__
+    typename = atype.__name__
 
     if modulename != '__builtin__':
         typename = modulename + '.' + typename

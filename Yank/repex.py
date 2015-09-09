@@ -1988,9 +1988,10 @@ class ReplicaExchange(object):
                     option_value = int(option_value)
                 if type(option_value) in [np.float32, np.float64]:
                     option_value = float(option_value)
-                logger.debug("Restoring option: %s -> %s (type: %s)" % (option_name, str(option_value), type(option_value)))                    
+                logger.debug("Restoring option: %s -> %s (type: %s)" % (option_name, str(option_value), type(option_value)))
             elif (option_ncvar.shape[0] >= 0):
                 option_value = np.array(option_ncvar[:], eval(type_name))
+                # TODO: Deal with values that are actually scalar constants.
                 # TODO: Cast to appropriate type
                 logger.debug("Restoring option: %s -> %s (type: %s)" % (option_name, str(option_value), type(option_value)))
             else:
