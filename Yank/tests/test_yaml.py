@@ -20,36 +20,46 @@ import textwrap
 from yank.yamlbuild import YamlBuilder
 
 #=============================================================================================
+# SUBROUTINES FOR TESTING
+#=============================================================================================
+
+def parse_yaml_str(yaml_content):
+    """Parse the YAML string and return the YamlBuilder object used."""
+    yaml_file = tempfile.NamedTemporaryFile(delete=False)
+    try:
+        # Check that handles no options
+        yaml_file.write(textwrap.dedent(yaml_content))
+        yaml_file.close()
+        yaml_builder = YamlBuilder(yaml_file.name)
+    finally:
+        os.remove(yaml_file.name)
+    return yaml_builder
+
+#=============================================================================================
 # UNIT TESTS
 #=============================================================================================
 
-def test_yaml_parse():
+def test_yaml_parsing():
     """Check that YAML file is parsed correctly."""
 
-    yaml_text = """
+    # Parser handles no options
+    yaml_content = """
+    ---
+    test: 2
+    """
+    yaml_builder = parse_yaml_str(yaml_content)
+    assert len(yaml_builder.options) == 0
+
+    # Parser handles unknown options
+    yaml_content = """
     ---
     options:
         wrong_option: 3
         timestep: 1.0 * femtoseconds
         nsteps_per_iteration: 2500
     """
-
-    yaml_file = tempfile.NamedTemporaryFile(delete=False)
-    try:
-        # Check that handles no options
-        yaml_file.write('---\ntest: 2')
-        yaml_file.close()
-        yaml_builder = YamlBuilder(yaml_file.name)
-        assert len(yaml_builder.options) == 0
-
-        # Check that handle unknown options
-        with open(yaml_file.name, 'w') as f:
-            f.write(textwrap.dedent(yaml_text))
-            f.close()
-        yaml_builder = YamlBuilder(yaml_file.name)
-        assert len(yaml_builder.options) == 2
-        assert 'timestep' in yaml_builder.options
-        assert yaml_builder.options['nsteps_per_iteration'] == 2500
-    finally:
-        os.remove(yaml_file.name)
+    yaml_builder = parse_yaml_str(yaml_content)
+    assert len(yaml_builder.options) == 2
+    assert 'timestep' in yaml_builder.options
+    assert yaml_builder.options['nsteps_per_iteration'] == 2500
 
