@@ -17,6 +17,7 @@ import os
 import tempfile
 import textwrap
 
+from simtk import unit
 from nose.tools import raises
 
 from yank.yamlbuild import YamlBuilder, YamlParseError
@@ -61,7 +62,7 @@ def test_yaml_parsing():
     """
     yaml_builder = parse_yaml_str(yaml_content)
     assert len(yaml_builder.options) == 2
-    assert 'timestep' in yaml_builder.options
+    assert yaml_builder.options['timestep'] == 1.0 * unit.femtoseconds
     assert yaml_builder.options['nsteps_per_iteration'] == 2500
 
 @raises(YamlParseError)
@@ -73,4 +74,4 @@ def test_yaml_unknown_options():
     options:
         wrong_option: 3
     """
-    yaml_builder = parse_yaml_str(yaml_content)
+    parse_yaml_str(yaml_content)
