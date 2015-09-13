@@ -116,44 +116,6 @@ def find_components(topology, ligand_dsl, solvent_resnames=_SOLVENT_RESNAMES):
 
     return atom_indices
 
-def process_unit_bearing_argument(args, argname, compatible_units):
-    """
-    Process a unit-bearing command-line argument to produce a Quantity.
-
-    Parameters
-    ----------
-    args : dict
-       Command-line arguments dict from docopt.
-    argname : str
-       Key to use to extract value from args.
-    compatible_units : simtk.unit.Unit
-       The result will be checked for compatibility with specified units, and an exception raised if not compatible.
-
-    Returns
-    -------
-    quantity : simtk.unit.Quantity
-       The specified parameter, returned as a Quantity.
-
-    """
-
-    # WARNING: This is dangerous!
-    # See: http://nedbatchelder.com/blog/201206/eval_really_is_dangerous.html
-    # TODO: Can we use a safer form of (or alternative to) 'eval' here?
-    quantity = eval(args[argname], unit.__dict__)
-    # Unpack quantity if it was surrounded by quotes.
-    if isinstance(quantity, str):
-        quantity = eval(quantity, unit.__dict__)
-    # Check to make sure units are compatible with expected units.
-    try:
-        quantity.unit.is_compatible(compatible_units)
-    except:
-        raise Exception("Argument %s does not have units attached." % args[argname])
-    # Check that units are compatible with what we expect.
-    if not quantity.unit.is_compatible(compatible_units):
-        raise Exception("Argument %s must be compatible with units %s" % (agname, str(compatible_units)))
-    # Return unit-bearing quantity.
-    return quantity
-
 def setup_binding_amber(args):
     """
     Set up ligand binding free energy calculation using AMBER prmtop/inpcrd files.
@@ -198,7 +160,7 @@ def setup_binding_amber(args):
 
     # Cutoff
     if args['--cutoff']:
-        nonbondedCutoff = process_unit_bearing_argument(args, '--cutoff', unit.nanometers)
+        nonbondedCutoff = utils.process_unit_bearing_argument(args, '--cutoff', unit.nanometers)
     else:
         nonbondedCutoff = None
 
@@ -304,7 +266,7 @@ def setup_binding_gromacs(args):
 
     # Cutoff
     if args['--cutoff']:
-        nonbondedCutoff = process_unit_bearing_argument(args, '--cutoff', unit.nanometers)
+        nonbondedCutoff = utils.process_unit_bearing_argument(args, '--cutoff', unit.nanometers)
     else:
         nonbondedCutoff = None
 
@@ -400,8 +362,8 @@ def dispatch_binding(args):
     #
 
     # Specify thermodynamic parameters.
-    temperature = process_unit_bearing_argument(args, '--temperature', unit.kelvin)
-    pressure = process_unit_bearing_argument(args, '--pressure', unit.atmospheres)
+    temperature = utils.process_unit_bearing_argument(args, '--temperature', unit.kelvin)
+    pressure = utils.process_unit_bearing_argument(args, '--pressure', unit.atmospheres)
     thermodynamic_state = ThermodynamicState(temperature=temperature, pressure=pressure)
 
     # Create systems according to specified setup/import method.
