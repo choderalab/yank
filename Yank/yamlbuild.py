@@ -22,6 +22,10 @@ logger = logging.getLogger(__name__)
 # BUILDER CLASS
 #=============================================================================================
 
+class YamlParseError(Exception):
+    """Represent errors occurring during parsing of Yank YAML file."""
+    pass
+
 class YamlBuilder:
     """Parse YAML configuration file and build the experiment.
 
@@ -59,14 +63,18 @@ class YamlBuilder:
         if yaml_config is None:
             error_msg = 'The YAML file is empty!'
             logger.error(error_msg)
-            raise ValueError(error_msg)
+            raise YamlParseError(error_msg)
 
         # Set options only accepted options
         try:
             opts = yaml_config['options']
             self._options = {x: opts[x] for x in opts if x in YamlBuilder._accepted_options}
             if len(self._options) != len(yaml_config['options']):
-                logger.warning('YAML configuration contains unidentifiable options.')
+                unknown_opts = {x for x in opts if x not in YamlBuilder._accepted_options}
+                error_msg = 'YAML configuration contains unidentifiable options: '
+                error_msg += ', '.join(unknown_opts)
+                logger.error(error_msg)
+                raise YamlParseError(error_msg)
         except KeyError:
             self._options = {}
             logger.warning('No YAML options found.')

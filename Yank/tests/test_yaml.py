@@ -17,7 +17,9 @@ import os
 import tempfile
 import textwrap
 
-from yank.yamlbuild import YamlBuilder
+from nose.tools import raises
+
+from yank.yamlbuild import YamlBuilder, YamlParseError
 
 #=============================================================================================
 # SUBROUTINES FOR TESTING
@@ -50,11 +52,10 @@ def test_yaml_parsing():
     yaml_builder = parse_yaml_str(yaml_content)
     assert len(yaml_builder.options) == 0
 
-    # Parser handles unknown options
+    # Correct parsing
     yaml_content = """
     ---
     options:
-        wrong_option: 3
         timestep: 1.0 * femtoseconds
         nsteps_per_iteration: 2500
     """
@@ -63,3 +64,13 @@ def test_yaml_parsing():
     assert 'timestep' in yaml_builder.options
     assert yaml_builder.options['nsteps_per_iteration'] == 2500
 
+@raises(YamlParseError)
+def test_yaml_unknown_options():
+    """Check that YamlBuilder raises an exception when an unknown option is found."""
+    # Raise exception on unknown options
+    yaml_content = """
+    ---
+    options:
+        wrong_option: 3
+    """
+    yaml_builder = parse_yaml_str(yaml_content)
