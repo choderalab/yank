@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 from simtk import unit
 
-from yank.utils import process_unit_bearing_argument
+import utils
 
 #=============================================================================================
 # BUILDER CLASS
@@ -40,6 +40,7 @@ class YamlBuilder:
     """
 
     _accepted_options = frozenset(['timestep', 'nsteps_per_iteration'])
+    _special_options_types = (('timestep', utils.process_second_compatible_quantity),)
 
     @property
     def options(self):
@@ -83,9 +84,9 @@ class YamlBuilder:
             logger.warning('No YAML options found.')
 
         # Enforce types that are not automatically recognized by yaml
-        if 'timestep' in self._options:
-            self._options['timestep'] = process_unit_bearing_argument(
-                self._options, 'timestep', unit.femtoseconds)
+        for special_opt, casting_func in YamlBuilder._special_options_types:
+            if special_opt in self._options:
+                self._options[special_opt] = casting_func(self._options[special_opt])
 
     def build_experiment(self):
         """Build the Yank experiment (TO BE IMPLEMENTED)."""

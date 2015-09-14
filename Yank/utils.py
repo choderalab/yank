@@ -227,30 +227,41 @@ def get_data_filename(relative_path):
 
     return fn
 
-def process_unit_bearing_argument(args, argname, compatible_units):
+def process_unit_bearing_str(quantity_str, compatible_units):
     """
-    Process a unit-bearing command-line argument to produce a Quantity.
+    Process a unit-bearing string to produce a Quantity.
 
     Parameters
     ----------
-    args : dict
-       Command-line arguments dict from docopt.
-    argname : str
-       Key to use to extract value from args.
+    quantity_str : str
+        A string containing a value with a unit of measure.
     compatible_units : simtk.unit.Unit
-       The result will be checked for compatibility with specified units, and an exception raised if not compatible.
+       The result will be checked for compatibility with specified units, and an
+       exception raised if not compatible.
 
     Returns
     -------
     quantity : simtk.unit.Quantity
-       The specified parameter, returned as a Quantity.
+       The specified string, returned as a Quantity.
+
+    Raises
+    ------
+    TypeError
+        If quantity_str does not contains units.
+    ValueError
+        If the units attached to quantity_str are incompatible with compatible_units
+
+    Examples
+    --------
+    >>> process_unit_bearing_str('1.0*micrometers', unit.nanometers)
+    Quantity(value=1.0, unit=micrometer)
 
     """
 
     # WARNING: This is dangerous!
     # See: http://nedbatchelder.com/blog/201206/eval_really_is_dangerous.html
     # TODO: Can we use a safer form of (or alternative to) 'eval' here?
-    quantity = eval(args[argname], unit.__dict__)
+    quantity = eval(quantity_str, unit.__dict__)
     # Unpack quantity if it was surrounded by quotes.
     if isinstance(quantity, str):
         quantity = eval(quantity, unit.__dict__)
@@ -258,12 +269,34 @@ def process_unit_bearing_argument(args, argname, compatible_units):
     try:
         quantity.unit.is_compatible(compatible_units)
     except:
-        raise Exception("Argument %s does not have units attached." % args[argname])
+        raise TypeError("String %s does not have units attached." % quantity_str)
     # Check that units are compatible with what we expect.
     if not quantity.unit.is_compatible(compatible_units):
-        raise Exception("Argument %s must be compatible with units %s" % (argname, str(compatible_units)))
+        raise ValueError("Units of %s must be compatible with %s" % (quantity_str,
+                                                                     str(compatible_units)))
     # Return unit-bearing quantity.
     return quantity
+
+def process_second_compatible_quantity(quantity_str):
+    """
+    Shortcut to process a string containing a quantity compatible with seconds.
+
+    Parameters
+    ----------
+    quantity_str : str
+         A string containing a value with a unit of measure for time.
+
+    Returns
+    -------
+    quantity : simtk.unit.Quantity
+       The specified string, returned as a Quantity.
+
+    See Also
+    --------
+    process_unit_bearing_str : the function used for the actual conversion.
+
+    """
+    return process_unit_bearing_str(quantity_str, unit.seconds)
 
 #=============================================================================================
 # Main and tests

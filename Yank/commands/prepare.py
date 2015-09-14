@@ -116,6 +116,35 @@ def find_components(topology, ligand_dsl, solvent_resnames=_SOLVENT_RESNAMES):
 
     return atom_indices
 
+def process_unit_bearing_arg(args, argname, compatible_units):
+    """
+    Process a unit-bearing command-line argument and handle eventual errors.
+
+    Parameters
+    ----------
+    args : dict
+       Command-line arguments dict from docopt.
+    argname : str
+       Key to use to extract value from args.
+    compatible_units : simtk.unit.Unit
+       The result will be checked for compatibility with specified units, and an exception raised if not compatible.
+
+    Returns
+    -------
+    quantity : simtk.unit.Quantity
+       The specified parameter, returned as a Quantity.
+
+    See also
+    --------
+    yank.utils.process_unit_bearing_str : function used for the actual conversion.
+
+    """
+    try:
+        return utils.process_unit_bearing_str(args[argname], compatible_units)
+    except (TypeError, ValueError) as e:
+        logger.error('Error while processing argument %s: %s' % (argname, str(e)))
+        raise e
+
 def setup_binding_amber(args):
     """
     Set up ligand binding free energy calculation using AMBER prmtop/inpcrd files.
@@ -160,7 +189,7 @@ def setup_binding_amber(args):
 
     # Cutoff
     if args['--cutoff']:
-        nonbondedCutoff = utils.process_unit_bearing_argument(args, '--cutoff', unit.nanometers)
+        nonbondedCutoff = process_unit_bearing_arg(args, '--cutoff', unit.nanometers)
     else:
         nonbondedCutoff = None
 
@@ -266,7 +295,7 @@ def setup_binding_gromacs(args):
 
     # Cutoff
     if args['--cutoff']:
-        nonbondedCutoff = utils.process_unit_bearing_argument(args, '--cutoff', unit.nanometers)
+        nonbondedCutoff = process_unit_bearing_arg(args, '--cutoff', unit.nanometers)
     else:
         nonbondedCutoff = None
 
@@ -362,8 +391,8 @@ def dispatch_binding(args):
     #
 
     # Specify thermodynamic parameters.
-    temperature = utils.process_unit_bearing_argument(args, '--temperature', unit.kelvin)
-    pressure = utils.process_unit_bearing_argument(args, '--pressure', unit.atmospheres)
+    temperature = process_unit_bearing_arg(args, '--temperature', unit.kelvin)
+    pressure = process_unit_bearing_arg(args, '--pressure', unit.atmospheres)
     thermodynamic_state = ThermodynamicState(temperature=temperature, pressure=pressure)
 
     # Create systems according to specified setup/import method.
