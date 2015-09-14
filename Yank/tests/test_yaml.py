@@ -57,13 +57,24 @@ def test_yaml_parsing():
     yaml_content = """
     ---
     options:
-        timestep: 1.0 * femtoseconds
+        timestep: 2.0 * femtoseconds
         nsteps_per_iteration: 2500
+        number_of_iterations: 10
+        minimize: false
+        equilibrate: true
+        equilibration_timestep: 1.0 * femtoseconds
+        number_of_equilibration_iterations: 1000
     """
+
     yaml_builder = parse_yaml_str(yaml_content)
-    assert len(yaml_builder.options) == 2
-    assert yaml_builder.options['timestep'] == 1.0 * unit.femtoseconds
+    assert len(yaml_builder.options) == 7
+    assert yaml_builder.options['timestep'] == 2.0 * unit.femtoseconds
     assert yaml_builder.options['nsteps_per_iteration'] == 2500
+    assert yaml_builder.options['number_of_iterations'] == 10
+    assert yaml_builder.options['minimize'] is False
+    assert yaml_builder.options['equilibrate'] is True
+    assert yaml_builder.options['equilibration_timestep'] == 1.0 * unit.femtoseconds
+    assert yaml_builder.options['number_of_equilibration_iterations'] == 1000
 
 @raises(YamlParseError)
 def test_yaml_unknown_options():

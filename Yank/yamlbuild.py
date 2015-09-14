@@ -39,8 +39,11 @@ class YamlBuilder:
 
     """
 
-    _accepted_options = frozenset(['timestep', 'nsteps_per_iteration'])
-    _special_options_types = (('timestep', utils.process_second_compatible_quantity),)
+    _accepted_options = frozenset(['timestep', 'nsteps_per_iteration', 'number_of_iterations',
+                                   'minimize', 'equilibrate', 'equilibration_timestep',
+                                   'number_of_equilibration_iterations'])
+    _special_options_types = (('timestep', utils.process_second_compatible_quantity),
+                              ('equilibration_timestep', utils.process_second_compatible_quantity))
 
     @property
     def options(self):
