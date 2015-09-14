@@ -132,7 +132,16 @@ class YankOptions(collections.MutableMapping):
 
     This class provide a single point of entry to read Yank options specified by command
     line, YAML or determined at runtime (i.e. the ones hardcoded). When the same option
-    is specified multiple times the priority is runtime > command line > YAML.
+    is specified multiple times the priority is runtime > command line > YAML > default.
+
+    Attributes
+    ----------
+    cli : dict
+        The options from the command line interface.
+    yaml : dict
+        The options from the YAML configuration file.
+    default : dict
+        The default options.
 
     Examples
     --------
@@ -143,6 +152,12 @@ class YankOptions(collections.MutableMapping):
     >>> options = YankOptions(cl_opt=cl_opt, yaml_opt=yaml_opt)
     >>> options['option1']
     1
+
+    Modify specific priority level
+
+    >>> options.default = {'option2': -1}
+    >>> options['option2']
+    -1
 
     Modify options at runtime and restore them
 
@@ -158,7 +173,7 @@ class YankOptions(collections.MutableMapping):
 
     """
 
-    def __init__(self, cl_opt={}, yaml_opt={}):
+    def __init__(self, cl_opt={}, yaml_opt={}, default_opt={}):
         """Constructor.
 
         Parameters
@@ -167,20 +182,26 @@ class YankOptions(collections.MutableMapping):
             The options from the command line.
         yaml_opt : dict, optional, default {}
             The options from the YAML configuration file.
+        default_opt : dict, optional, default {}
+            Default options. They have the lowest priority.
 
         """
         self._runtime_opt = {}
-        self._cl_opt = cl_opt
-        self._yaml_opt = yaml_opt
+        self.cli = cl_opt
+        self.yaml = yaml_opt
+        self.default = default_opt
 
     def __getitem__(self, option):
         try:
             return self._runtime_opt[option]
         except KeyError:
             try:
-                return self._cl_opt[option]
+                return self.cli[option]
             except KeyError:
-                return self._yaml_opt[option]
+                try:
+                    return self.yaml[option]
+                except KeyError:
+                    return self.default[option]
 
     def __setitem__(self, option, value):
         self._runtime_opt[option] = value
@@ -192,7 +213,7 @@ class YankOptions(collections.MutableMapping):
         """Iterate over options keeping into account priorities."""
 
         found_options = set()
-        for opt_set in (self._runtime_opt, self._cl_opt, self._yaml_opt):
+        for opt_set in (self._runtime_opt, self.cli, self.yaml, self.default):
             for opt in opt_set:
                 if opt not in found_options:
                     found_options.add(opt)

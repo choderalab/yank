@@ -34,7 +34,12 @@ def test_yank_options():
     del yank_opt['option1']
     assert yank_opt['option1'] == 1
 
+    # modify specific priority level
+    yank_opt.default = {'option3': -2}
+    assert len(yank_opt) == 3
+    assert yank_opt['option3'] == -2
+
     # test iteration interface
-    assert yank_opt.items() == [('option1', 1), ('option2', 'test')]
-    assert yank_opt.keys() == ['option1', 'option2']
+    assert yank_opt.items() == [('option1', 1), ('option2', 'test'), ('option3', -2)]
+    assert yank_opt.keys() == ['option1', 'option2', 'option3']
 
