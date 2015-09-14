@@ -25,6 +25,7 @@ from simtk.openmm import app
 from yank import utils
 from yank.yank import Yank # TODO: Fix this weird import path to something more sane, like 'from yank import Yank'
 from yank.repex import ThermodynamicState # TODO: Fix this weird import path to something more sane, like 'from yank.repex import ThermodynamicState'
+from yank.yamlbuild import YamlBuilder
 
 #=============================================================================================
 # SUBROUTINES
@@ -463,8 +464,14 @@ def dispatch_binding(args):
             else:
                 raise Exception("Platform selection logic is outdated and needs to be updated to add platform '%s'." % platform_name)
 
+    yank.options.cli = options
+
+    # Parse YAML configuration file and create YankOptions object
+    if args['--yaml']:
+        yank.options.yaml = YamlBuilder(args['--yaml']).options
+
     # Create new simulation.
-    yank.create(phases, systems, positions, atom_indices, thermodynamic_state, options=options)
+    yank.create(phases, systems, positions, atom_indices, thermodynamic_state)
 
     # Report success.
     return True
