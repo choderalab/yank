@@ -56,6 +56,8 @@ def test_yaml_parsing():
     # Correct parsing
     yaml_content = """
     ---
+    metadata:
+        title: Test YANK YAML YAY!
     options:
         timestep: 2.0 * femtoseconds
         nsteps_per_iteration: 2500
@@ -67,7 +69,8 @@ def test_yaml_parsing():
     """
 
     yaml_builder = parse_yaml_str(yaml_content)
-    assert len(yaml_builder.options) == 7
+    assert len(yaml_builder.options) == 8
+    assert yaml_builder.options['title'] == 'Test YANK YAML YAY!'
     assert yaml_builder.options['timestep'] == 2.0 * unit.femtoseconds
     assert yaml_builder.options['nsteps_per_iteration'] == 2500
     assert yaml_builder.options['number_of_iterations'] == 10

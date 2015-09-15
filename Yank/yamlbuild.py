@@ -39,8 +39,9 @@ class YamlBuilder:
 
     """
 
-    _accepted_options = frozenset(['timestep', 'nsteps_per_iteration', 'number_of_iterations',
-                                   'minimize', 'equilibrate', 'equilibration_timestep',
+    _accepted_options = frozenset(['title',
+                                   'timestep', 'nsteps_per_iteration', 'number_of_iterations',
+                                   'minimize','equilibrate', 'equilibration_timestep',
                                    'number_of_equilibration_iterations'])
     _special_options_types = (('timestep', utils.process_second_compatible_quantity),
                               ('equilibration_timestep', utils.process_second_compatible_quantity))
@@ -72,19 +73,25 @@ class YamlBuilder:
             logger.error(error_msg)
             raise YamlParseError(error_msg)
 
-        # Set options only accepted options
+        # Find and merge options and metadata
         try:
             opts = yaml_config['options']
-            self._options = {x: opts[x] for x in opts if x in YamlBuilder._accepted_options}
-            if len(self._options) != len(yaml_config['options']):
-                unknown_opts = {x for x in opts if x not in YamlBuilder._accepted_options}
-                error_msg = 'YAML configuration contains unidentifiable options: '
-                error_msg += ', '.join(unknown_opts)
-                logger.error(error_msg)
-                raise YamlParseError(error_msg)
         except KeyError:
-            self._options = {}
+            opts = {}
             logger.warning('No YAML options found.')
+        try:
+            opts.update(yaml_config['metadata'])
+        except KeyError:
+            pass
+
+        # Set only accepted options
+        self._options = {x: opts[x] for x in opts if x in YamlBuilder._accepted_options}
+        if len(self._options) != len(opts):
+            unknown_opts = {x for x in opts if x not in YamlBuilder._accepted_options}
+            error_msg = 'YAML configuration contains unidentifiable options: '
+            error_msg += ', '.join(unknown_opts)
+            logger.error(error_msg)
+            raise YamlParseError(error_msg)
 
         # Enforce types that are not automatically recognized by yaml
         for special_opt, casting_func in YamlBuilder._special_options_types:
