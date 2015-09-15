@@ -298,27 +298,6 @@ def process_unit_bearing_str(quantity_str, compatible_units):
     # Return unit-bearing quantity.
     return quantity
 
-def process_second_compatible_quantity(quantity_str):
-    """
-    Shortcut to process a string containing a quantity compatible with seconds.
-
-    Parameters
-    ----------
-    quantity_str : str
-         A string containing a value with a unit of measure for time.
-
-    Returns
-    -------
-    quantity : simtk.unit.Quantity
-       The specified string, returned as a Quantity.
-
-    See Also
-    --------
-    process_unit_bearing_str : the function used for the actual conversion.
-
-    """
-    return process_unit_bearing_str(quantity_str, unit.seconds)
-
 #=============================================================================================
 # Main and tests
 #=============================================================================================

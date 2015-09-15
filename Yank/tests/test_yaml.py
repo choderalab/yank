@@ -63,7 +63,7 @@ def test_yaml_parsing():
         nsteps_per_iteration: 2500
         number_of_iterations: 10
         minimize: false
-        equilibrate: true
+        equilibrate: yes
         equilibration_timestep: 1.0 * femtoseconds
         number_of_equilibration_iterations: 1000
     """
@@ -87,5 +87,15 @@ def test_yaml_unknown_options():
     ---
     options:
         wrong_option: 3
+    """
+    parse_yaml_str(yaml_content)
+
+@raises(YamlParseError)
+def test_yaml_wrong_option_value():
+    """Check that YamlBuilder raises an exception when option type is wrong."""
+    yaml_content = """
+    ---
+    options:
+        equilibrate: 1000
     """
     parse_yaml_str(yaml_content)
