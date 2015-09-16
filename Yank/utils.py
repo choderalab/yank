@@ -1,10 +1,13 @@
 import os
 import logging
+import collections
 
 from pkg_resources import resource_filename
 
+from simtk import unit
+
 #========================================================================================
-# Utility functions
+# Logging functions
 #========================================================================================
 
 def is_terminal_verbose():
@@ -120,6 +123,109 @@ def config_root_logger(verbose, log_file_path=None, mpicomm=None):
     else:
         logging.root.setLevel(terminal_handler.level)
 
+#========================================================================================
+# Yank configuration
+#========================================================================================
+
+class YankOptions(collections.MutableMapping):
+    """Helper class to manage Yank configuration.
+
+    This class provide a single point of entry to read Yank options specified by command
+    line, YAML or determined at runtime (i.e. the ones hardcoded). When the same option
+    is specified multiple times the priority is runtime > command line > YAML > default.
+
+    Attributes
+    ----------
+    cli : dict
+        The options from the command line interface.
+    yaml : dict
+        The options from the YAML configuration file.
+    default : dict
+        The default options.
+
+    Examples
+    --------
+    Command line options have priority over YAML
+
+    >>> cl_opt = {'option1': 1}
+    >>> yaml_opt = {'option1': 2}
+    >>> options = YankOptions(cl_opt=cl_opt, yaml_opt=yaml_opt)
+    >>> options['option1']
+    1
+
+    Modify specific priority level
+
+    >>> options.default = {'option2': -1}
+    >>> options['option2']
+    -1
+
+    Modify options at runtime and restore them
+
+    >>> options['option1'] = 0
+    >>> options['option1']
+    0
+    >>> del options['option1']
+    >>> options['option1']
+    1
+    >>> options['hardcoded'] = 'test'
+    >>> options['hardcoded']
+    'test'
+
+    """
+
+    def __init__(self, cl_opt={}, yaml_opt={}, default_opt={}):
+        """Constructor.
+
+        Parameters
+        ----------
+        cl_opt : dict, optional, default {}
+            The options from the command line.
+        yaml_opt : dict, optional, default {}
+            The options from the YAML configuration file.
+        default_opt : dict, optional, default {}
+            Default options. They have the lowest priority.
+
+        """
+        self._runtime_opt = {}
+        self.cli = cl_opt
+        self.yaml = yaml_opt
+        self.default = default_opt
+
+    def __getitem__(self, option):
+        try:
+            return self._runtime_opt[option]
+        except KeyError:
+            try:
+                return self.cli[option]
+            except KeyError:
+                try:
+                    return self.yaml[option]
+                except KeyError:
+                    return self.default[option]
+
+    def __setitem__(self, option, value):
+        self._runtime_opt[option] = value
+
+    def __delitem__(self, option):
+        del self._runtime_opt[option]
+
+    def __iter__(self):
+        """Iterate over options keeping into account priorities."""
+
+        found_options = set()
+        for opt_set in (self._runtime_opt, self.cli, self.yaml, self.default):
+            for opt in opt_set:
+                if opt not in found_options:
+                    found_options.add(opt)
+                    yield opt
+
+    def __len__(self):
+        return sum(1 for _ in self)
+
+#========================================================================================
+# Miscellaneous functions
+#========================================================================================
+
 def get_data_filename(relative_path):
     """Get the full path to one of the reference files shipped for testing
 
@@ -141,3 +247,61 @@ def get_data_filename(relative_path):
         raise ValueError("Sorry! %s does not exist. If you just added it, you'll have to re-install" % fn)
 
     return fn
+
+def process_unit_bearing_str(quantity_str, compatible_units):
+    """
+    Process a unit-bearing string to produce a Quantity.
+
+    Parameters
+    ----------
+    quantity_str : str
+        A string containing a value with a unit of measure.
+    compatible_units : simtk.unit.Unit
+       The result will be checked for compatibility with specified units, and an
+       exception raised if not compatible.
+
+    Returns
+    -------
+    quantity : simtk.unit.Quantity
+       The specified string, returned as a Quantity.
+
+    Raises
+    ------
+    TypeError
+        If quantity_str does not contains units.
+    ValueError
+        If the units attached to quantity_str are incompatible with compatible_units
+
+    Examples
+    --------
+    >>> process_unit_bearing_str('1.0*micrometers', unit.nanometers)
+    Quantity(value=1.0, unit=micrometer)
+
+    """
+
+    # WARNING: This is dangerous!
+    # See: http://nedbatchelder.com/blog/201206/eval_really_is_dangerous.html
+    # TODO: Can we use a safer form of (or alternative to) 'eval' here?
+    quantity = eval(quantity_str, unit.__dict__)
+    # Unpack quantity if it was surrounded by quotes.
+    if isinstance(quantity, str):
+        quantity = eval(quantity, unit.__dict__)
+    # Check to make sure units are compatible with expected units.
+    try:
+        quantity.unit.is_compatible(compatible_units)
+    except:
+        raise TypeError("String %s does not have units attached." % quantity_str)
+    # Check that units are compatible with what we expect.
+    if not quantity.unit.is_compatible(compatible_units):
+        raise ValueError("Units of %s must be compatible with %s" % (quantity_str,
+                                                                     str(compatible_units)))
+    # Return unit-bearing quantity.
+    return quantity
+
+#=============================================================================================
+# Main and tests
+#=============================================================================================
+
+if __name__ == "__main__":
+    import doctest
+    doctest.testmod()

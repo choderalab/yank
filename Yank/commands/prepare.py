@@ -25,6 +25,7 @@ from simtk.openmm import app
 from yank import utils
 from yank.yank import Yank # TODO: Fix this weird import path to something more sane, like 'from yank import Yank'
 from yank.repex import ThermodynamicState # TODO: Fix this weird import path to something more sane, like 'from yank.repex import ThermodynamicState'
+from yank.yamlbuild import YamlBuilder
 
 #=============================================================================================
 # SUBROUTINES
@@ -116,9 +117,9 @@ def find_components(topology, ligand_dsl, solvent_resnames=_SOLVENT_RESNAMES):
 
     return atom_indices
 
-def process_unit_bearing_argument(args, argname, compatible_units):
+def process_unit_bearing_arg(args, argname, compatible_units):
     """
-    Process a unit-bearing command-line argument to produce a Quantity.
+    Process a unit-bearing command-line argument and handle eventual errors.
 
     Parameters
     ----------
@@ -134,25 +135,16 @@ def process_unit_bearing_argument(args, argname, compatible_units):
     quantity : simtk.unit.Quantity
        The specified parameter, returned as a Quantity.
 
-    """
+    See also
+    --------
+    yank.utils.process_unit_bearing_str : function used for the actual conversion.
 
-    # WARNING: This is dangerous!
-    # See: http://nedbatchelder.com/blog/201206/eval_really_is_dangerous.html
-    # TODO: Can we use a safer form of (or alternative to) 'eval' here?
-    quantity = eval(args[argname], unit.__dict__)
-    # Unpack quantity if it was surrounded by quotes.
-    if isinstance(quantity, str):
-        quantity = eval(quantity, unit.__dict__)
-    # Check to make sure units are compatible with expected units.
+    """
     try:
-        quantity.unit.is_compatible(compatible_units)
-    except:
-        raise Exception("Argument %s does not have units attached." % args[argname])
-    # Check that units are compatible with what we expect.
-    if not quantity.unit.is_compatible(compatible_units):
-        raise Exception("Argument %s must be compatible with units %s" % (agname, str(compatible_units)))
-    # Return unit-bearing quantity.
-    return quantity
+        return utils.process_unit_bearing_str(args[argname], compatible_units)
+    except (TypeError, ValueError) as e:
+        logger.error('Error while processing argument %s: %s' % (argname, str(e)))
+        raise e
 
 def setup_binding_amber(args):
     """
@@ -198,7 +190,7 @@ def setup_binding_amber(args):
 
     # Cutoff
     if args['--cutoff']:
-        nonbondedCutoff = process_unit_bearing_argument(args, '--cutoff', unit.nanometers)
+        nonbondedCutoff = process_unit_bearing_arg(args, '--cutoff', unit.nanometers)
     else:
         nonbondedCutoff = None
 
@@ -304,7 +296,7 @@ def setup_binding_gromacs(args):
 
     # Cutoff
     if args['--cutoff']:
-        nonbondedCutoff = process_unit_bearing_argument(args, '--cutoff', unit.nanometers)
+        nonbondedCutoff = process_unit_bearing_arg(args, '--cutoff', unit.nanometers)
     else:
         nonbondedCutoff = None
 
@@ -400,8 +392,8 @@ def dispatch_binding(args):
     #
 
     # Specify thermodynamic parameters.
-    temperature = process_unit_bearing_argument(args, '--temperature', unit.kelvin)
-    pressure = process_unit_bearing_argument(args, '--pressure', unit.atmospheres)
+    temperature = process_unit_bearing_arg(args, '--temperature', unit.kelvin)
+    pressure = process_unit_bearing_arg(args, '--pressure', unit.atmospheres)
     thermodynamic_state = ThermodynamicState(temperature=temperature, pressure=pressure)
 
     # Create systems according to specified setup/import method.
@@ -472,8 +464,14 @@ def dispatch_binding(args):
             else:
                 raise Exception("Platform selection logic is outdated and needs to be updated to add platform '%s'." % platform_name)
 
+    yank.options.cli = options
+
+    # Parse YAML configuration file and create YankOptions object
+    if args['--yaml']:
+        yank.options.yaml = YamlBuilder(args['--yaml']).options
+
     # Create new simulation.
-    yank.create(phases, systems, positions, atom_indices, thermodynamic_state, options=options)
+    yank.create(phases, systems, positions, atom_indices, thermodynamic_state)
 
     # Report success.
     return True
