@@ -108,8 +108,8 @@ def config_root_logger(verbose, log_file_path=None, mpicomm=None):
 
         # This is the cleanest way I found to make the code compatible with both
         # Python 2 and Python 3
-        simple_fmt = logging.Formatter('%(message)s')
-        default_fmt = logging.Formatter('%(levelname)s - %(name)s - %(message)s')
+        simple_fmt = logging.Formatter('%(asctime)-15s: %(message)s')
+        default_fmt = logging.Formatter('%(asctime)-15s: %(levelname)s - %(name)s - %(message)s')
 
         def format(self, record):
             if record.levelno <= logging.INFO:
