@@ -534,6 +534,10 @@ class FlatBottomReceptorLigandRestraint(ReceptorLigandRestraint):
         natoms = x.shape[0]
 
         if (natoms > 3):
+            # Check that restrained receptor atom is in expected range.
+            if (self.restrained_receptor_atom > natoms):
+                raise Exception('Receptor atom %d was selected for restraint, but system only has %d atoms.' % (self.restrained_receptor_atom, natoms))
+
             # Compute median absolute distance to central atom.
             # (Working in non-unit-bearing floats for speed.)
             xref = np.reshape(x[self.restrained_receptor_atom,:], (1,3)) # (1,3) array
