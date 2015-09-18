@@ -2105,6 +2105,7 @@ class ReplicaExchange(object):
         self.iteration = ncfile.variables['positions'].shape[0] - 1
         self.nstates = ncfile.variables['positions'].shape[1]
         self.natoms = ncfile.variables['positions'].shape[2]
+        self.nreplicas = self.nstates
         logger.debug("iteration = %d, nstates = %d, natoms = %d" % (self.iteration, self.nstates, self.natoms))
 
         # Restore positions.

@@ -84,16 +84,15 @@ class Yank(object):
         self.default_protocols['complex-explicit'] = AbsoluteAlchemicalFactory.defaultComplexProtocolExplicit()
 
         # Default options for repex.
-        self.default_options = dict()
-        self.default_options['number_of_equilibration_iterations'] = 0
-        self.default_options['nsteps_per_iteration'] = 500
-        self.default_options['number_of_iterations'] = 100
-        self.default_options['timestep'] = 2.0 * unit.femtoseconds
-        self.default_options['collision_rate'] = 5.0 / unit.picoseconds
-        self.default_options['minimize'] = False
-        self.default_options['show_mixing_statistics'] = True # this causes slowdown with iteration and should not be used for production
-        self.default_options['platform'] = None
-        self.default_options['displacement_sigma'] = 1.0 * unit.nanometers # attempt to displace ligand by this stddev will be made each iteration
+        self.options = YankOptions()
+        self.options.default['number_of_equilibration_iterations'] = 0
+        self.options.default['number_of_iterations'] = 100
+        self.options.default['timestep'] = 2.0 * unit.femtoseconds
+        self.options.default['collision_rate'] = 5.0 / unit.picoseconds
+        self.options.default['minimize'] = False
+        self.options.default['show_mixing_statistics'] = True # this causes slowdown with iteration and should not be used for production
+        self.options.default['platform'] = None
+        self.options.default['displacement_sigma'] = 1.0 * unit.nanometers # attempt to displace ligand by this stddev will be made each iteration
 
         return
 
