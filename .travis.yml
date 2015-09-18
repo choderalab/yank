@@ -21,9 +21,14 @@ install:
   - export PYTHONUNBUFFERED=true
 
 script:
-  # this builds the binary, unpacks it, and runs the tests
+  # Add omnia channel
+  - conda config --add channels http://conda.anaconda.org/omnia
+  # build the recipe
   - conda build devtools/conda-recipe
-  # Push to binstar.
+  # Install the package and test it
+  - conda install --yes --quiet yank-dev
+  - conda install --yes --quiet nose
+  - nosetests yank --nocapture --verbosity=2 --with-doctest -a '!slow' --processes=2 --process-timeout=500
 
 env:
   matrix:
@@ -40,4 +45,4 @@ env:
 
 after_success:
   - echo "after_success"
-  - PACKAGENAME="thermopyl" ./devtools/travis-ci/after_success.sh
+  - PACKAGENAME="yank" ./devtools/travis-ci/after_success.sh
