@@ -2,6 +2,9 @@ package:
   name: yank-dev
   version: !!str 0.0.0
 
+source:
+  path: ../..
+
 build:
   preserve_egg_dir: True
   number: 0
@@ -43,12 +46,9 @@ requirements:
     - sphinxcontrib-bibtex
 
 test:
-  requires:
-    - nose
   imports:
     - yank
   commands:
-    - which yank
     - yank --help
 
 about:

@@ -28,7 +28,8 @@ script:
   # Install the package and test it
   - conda install --yes --quiet yank-dev
   - conda install --yes --quiet nose
-  - nosetests yank --nocapture --verbosity=2 --with-doctest -a '!slow' --processes=2 --process-timeout=500
+  - pip install --quiet nose-timer
+  - nosetests yank --nocapture --verbosity=2 --with-doctest --with-timer -a '!slow'
 
 env:
   matrix:
