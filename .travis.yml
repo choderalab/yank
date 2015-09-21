@@ -19,16 +19,17 @@ branches:
 install:
   - source devtools/travis-ci/install.sh
   - export PYTHONUNBUFFERED=true
+  - export ORGNAME="omnia"
+  - export PACKAGENAME="yank"
 
 script:
   # Add omnia channel
-  - conda config --add channels http://conda.anaconda.org/omnia
+  - conda config --add channels http://conda.anaconda.org/${ORGNAME}
   # build the recipe
   - conda build devtools/conda-recipe
   # Install the package and test it
-  - conda install --yes --quiet yank-dev
-  - conda install --yes --quiet nose
-  - pip install --quiet nose-timer
+  - conda install --yes --quiet ${PACKAGENAME}-dev
+  - conda install --yes --quiet nose nose-timer
   - nosetests yank --nocapture --verbosity=2 --with-doctest --with-timer -a '!slow'
 
 env:
