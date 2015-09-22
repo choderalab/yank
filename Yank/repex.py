@@ -59,7 +59,7 @@ This code is licensed under the latest available version of the GNU General Publ
 from simtk import openmm
 from simtk import unit
 
-import os
+import os, os.path
 import sys
 import math
 import copy
@@ -497,7 +497,7 @@ class ReplicaExchange(object):
     >>> T_i = [ T_min + (T_max - T_min) * (math.exp(float(i) / float(nreplicas-1)) - 1.0) / (math.e - 1.0) for i in range(nreplicas) ]
     >>> states = [ ThermodynamicState(system=system, temperature=T_i[i]) for i in range(nreplicas) ]
     >>> import tempfile
-    >>> store_filename = tempfile.NamedTemporaryFile().name + '.nc'
+    >>> store_filename = tempfile.NamedTemporaryFile(delete=False).name + '.nc'
     >>> # Create simulation.
     >>> simulation = ReplicaExchange(store_filename)
     >>> simulation.create(states, positions) # initialize the replica-exchange simulation
@@ -514,6 +514,10 @@ class ReplicaExchange(object):
     >>> simulation.resume()
     >>> simulation.number_of_iterations = 4 # extend
     >>> simulation.run()
+
+    Clean up.
+
+    >>> os.remove(store_filename)
 
     """
 
@@ -2094,6 +2098,10 @@ class ReplicaExchange(object):
         Resume execution by reading current positions and energies from a NetCDF file.
 
         """
+
+        # Check to make sure file exists.
+        if not os.path.exists(self.store_filename):
+            raise Exception("Store file %s does not exist." % self.store_filename)
 
         # Open NetCDF file for reading
         logger.debug("Reading NetCDF file '%s'..." % self.store_filename)
