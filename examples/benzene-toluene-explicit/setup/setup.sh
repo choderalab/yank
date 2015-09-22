@@ -1,10 +1,16 @@
 #!/bin/bash
 
+# Regenerate molecules (requires OpenEye toolkit)
+rm -f *.mol2
+python generate-molecules.py
+
 # Parameterize benzene from Tripos mol2.
+rm -f benzene.gaff.mol2
 antechamber -fi mol2 -i benzene.tripos.mol2 -fo mol2 -o benzene.gaff.mol2
 parmchk -i benzene.gaff.mol2 -o benzene.frcmod -f mol2
 
 # Parameterize toluene from Tripos mol2.
+rm -f toluene.gaff.mol2
 antechamber -fi mol2 -i toluene.tripos.mol2 -fo mol2 -o toluene.gaff.mol2
 parmchk -i toluene.gaff.mol2 -o toluene.frcmod -f mol2
 

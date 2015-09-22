@@ -1,7 +1,6 @@
 # Create a benzene-toluene system.
 
-# Load AMBER '96 forcefield for protein.
-source leaprc.ff99SBildn
+source leaprc.ff12SB
 
 # Load GAFF parameters.
 source leaprc.gaff
