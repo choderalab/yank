@@ -2090,8 +2090,10 @@ class ReplicaExchange(object):
             The NetCDF file in which metadata is to be stored.
 
         """
-        ncgrp = ncfile.groups['metadata']
-        self.metadata = self._restore_dict_from_netcdf(ncgrp)
+        self.metadata = None
+        if 'metadata' in ncfile.groups:
+            ncgrp = ncfile.groups['metadata']
+            self.metadata = self._restore_dict_from_netcdf(ncgrp)
 
     def _resume_from_netcdf(self):
         """

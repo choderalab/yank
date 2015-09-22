@@ -29,7 +29,8 @@ import numpy as np
 import simtk.unit as unit
 import simtk.openmm as openmm
 
-from . import sampling, repex, alchemy
+from . import sampling, repex
+import alchemy
 
 from utils import YankOptions
 from alchemy import AbsoluteAlchemicalFactory

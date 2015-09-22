@@ -23,8 +23,8 @@ requirements:
     - ambermini
     - docopt
     - openmoltools
-    - jinja2
     - sphinxcontrib-bibtex
+    - alchemy
 
   run:
     - python
@@ -44,6 +44,7 @@ requirements:
     - jinja2
     - clusterutils
     - sphinxcontrib-bibtex
+    - alchemy
 
 test:
   imports:

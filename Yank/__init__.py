@@ -18,4 +18,5 @@ __version__ = version.version
 
 from yank import Yank
 
+import alchemy
 
