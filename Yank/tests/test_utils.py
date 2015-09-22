@@ -25,7 +25,7 @@ def test_yank_options():
 
     assert yank_opt['option2'] == 'test'
     assert yank_opt['option1'] == 1  # command line > yaml
-    assert len(yank_opt) == len(defaul_yank_opt) + 2, "Excepted two additional options beyond default, found: %s" % str([x for x in yank_opt])
+    assert len(yank_opt) == len(default_yank_opt) + 2, "Excepted two additional options beyond default, found: %s" % str([x for x in yank_opt])
 
     # runtime > command line
     yank_opt['option1'] = 0
