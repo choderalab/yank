@@ -37,8 +37,8 @@ env:
 #    - python=3.4  CONDA_PY=34
 
   global:
-    - export ORGNAME="omnia"
-    - export PACKAGENAME="yank"
+    - ORGNAME="omnia"
+    - PACKAGENAME="yank"
     # encrypted BINSTAR_TOKEN for push of dev package to binstar
     - secure: "Q1Y0QOwtfQqHEhbqCPi3FBYFh8jNu16/fQr5d8Q1aTYcayf18nyxNwLbhOs/94pVyQt68G53bPw2J30w/Q0PULnDVRBpnS5hcu2IsnV1sjrSHyEJjjiyDQJGwcNRt7wBbLefyGV0v5Siia5VvjBYDEgDZ1/p9A6HaZRPx/3nuLQ="
     # encrypted AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
