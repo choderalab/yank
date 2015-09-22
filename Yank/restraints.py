@@ -88,6 +88,13 @@ class ReceptorLigandRestraint(object):
         self.receptor_atoms = list(receptor_atoms)
         self.ligand_atoms = list(ligand_atoms)
 
+        # Perform some sanity checks.
+        natoms = system.getNumParticles()
+        if np.any(np.array(receptor_atoms) >= natoms):
+            raise Exception("Receptor atom indices fall outside [0,natoms), where natoms = %d.  receptor_atoms = %s" % (natoms, str(receptor_atoms)))
+        if np.any(np.array(ligand_atoms) >= natoms):
+            raise Exception("Ligand atom indices fall outside [0,natoms), where natoms = %d.  ligand_atoms = %s" % (natoms, str(ligand_atoms)))
+
         self.temperature = state.temperature
         self.kT = kB * self.temperature # thermal energy
         self.beta = 1.0 / self.kT # inverse temperature
@@ -95,6 +102,11 @@ class ReceptorLigandRestraint(object):
         # Determine atoms closet to centroids on ligand and receptor.
         self.restrained_receptor_atom = self._closestAtomToCentroid(self.coordinates, self.receptor_atoms)
         self.restrained_ligand_atom = self._closestAtomToCentroid(self.coordinates, self.ligand_atoms)
+
+        if not (self.restrained_receptor_atom in set(receptor_atoms)):
+            raise Exception("Restrained receptor atom (%d) not in set of receptor atoms (%s)" % (self.restrained_receptor_atom, str(receptor_atoms)))
+        if not (self.restrained_ligand_atom in set(ligand_atoms)):
+            raise Exception("Restrained ligand atom (%d) not in set of ligand atoms (%s)" % (self.restrained_ligand_atom, str(ligand_atoms)))
 
         logger.debug("restrained receptor atom: %d" % self.restrained_receptor_atom)
         logger.debug("restrained ligand atom: %d" % self.restrained_ligand_atom)
@@ -522,6 +534,10 @@ class FlatBottomReceptorLigandRestraint(ReceptorLigandRestraint):
         natoms = x.shape[0]
 
         if (natoms > 3):
+            # Check that restrained receptor atom is in expected range.
+            if (self.restrained_receptor_atom > natoms):
+                raise Exception('Receptor atom %d was selected for restraint, but system only has %d atoms.' % (self.restrained_receptor_atom, natoms))
+
             # Compute median absolute distance to central atom.
             # (Working in non-unit-bearing floats for speed.)
             xref = np.reshape(x[self.restrained_receptor_atom,:], (1,3)) # (1,3) array

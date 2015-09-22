@@ -619,8 +619,8 @@ class AbsoluteAlchemicalFactory(object):
         electrostatics_custom_nonbonded_force.addInteractionGroup(atomset1, atomset2)
 
         # Add custom forces.
-        system.addForce(sterics_custom_nonbonded_force) 
-        system.addForce(electrostatics_custom_nonbonded_force) 
+        system.addForce(sterics_custom_nonbonded_force)
+        system.addForce(electrostatics_custom_nonbonded_force)
 
         # Create CustomBondForce to handle exceptions for both kinds of interactions.
         custom_bond_force = openmm.CustomBondForce("U_sterics + U_electrostatics;" + sterics_energy_expression + electrostatics_energy_expression)
@@ -799,7 +799,7 @@ class AbsoluteAlchemicalFactory(object):
         TODO
         ----
         * This could be streamlined if it was possible to modify System or Force objects.
-        * isinstance(mm.NonbondedForce) and related expressions won't work if reference system was created with a different OpenMM implementation. 
+        * isinstance(mm.NonbondedForce) and related expressions won't work if reference system was created with a different OpenMM implementation.
           Use class names instead.
 
         """

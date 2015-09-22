@@ -5,48 +5,7 @@
 #=============================================================================================
 
 """
-Alchemical factory for free energy calculations that operates directly on OpenMM swig System objects.
-
-DESCRIPTION
-
-This module contains enumerative factories for generating alchemically-modified System objects
-usable for the calculation of free energy differences of hydration or ligand binding.
-
-The code in this module operates directly on OpenMM Swig-wrapped System objects for efficiency.
-
-EXAMPLES
-
-COPYRIGHT
-
-@author John D. Chodera <jchodera@gmail.com>
-
-All code in this repository is released under the GNU General Public License.
-
-This program is free software: you can redistribute it and/or modify it under
-the terms of the GNU General Public License as published by the Free Software
-Foundation, either version 3 of the License, or (at your option) any later
-version.
-
-This program is distributed in the hope that it will be useful, but WITHOUT ANY
-WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
-PARTICULAR PURPOSE.  See the GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License along with
-this program.  If not, see <http://www.gnu.org/licenses/>.
-
-TODO
-
-* Can we store serialized form of Force objects so that we can save time in reconstituting
-  Force objects when we make copies?  We can even manipulate the XML representation directly.
-* Allow protocols to automatically be resized to arbitrary number of states, to
-  allow number of states to be enlarged to be an integral multiple of number of GPUs.
-* Add GBVI support to AlchemicalFactory.
-* Add analytical dispersion correction to softcore Lennard-Jones, or find some other
-  way to deal with it (such as simply omitting it from lambda < 1 states).
-* Deep copy Force objects that don't need to be modified instead of using explicit
-  handling routines to copy data.  Eventually replace with removeForce once implemented?
-* Can alchemically-modified System objects share unmodified Force objects to avoid overhead
-  of duplicating Forces that are not modified?
+Tests for alchemical factory in `alchemy.py`.
 
 """
 
@@ -498,9 +457,6 @@ test_systems['TIP3P with reaction field, no switch, dispersion correction'] = {
 test_systems['TIP3P with reaction field, switch, dispersion correction'] = {
     'test' : testsystems.WaterBox(dispersion_correction=True, switch=True, nonbondedMethod=app.CutoffPeriodic),
     'ligand_atoms' : range(0,3), 'receptor_atoms' : range(3,6) }
-#test_systems['TIP3P with PME, no switch, no dispersion correction'] = {
-#    'test' : testsystems.WaterBox(dispersion_correction=False, switch=False, nonbondedMethod=app.PME),
-#    'ligand_atoms' : range(0,3), 'receptor_atoms' : range(3,6) }
 test_systems['alanine dipeptide in vacuum'] = {
     'test' : testsystems.AlanineDipeptideVacuum(),
     'ligand_atoms' : range(0,22), 'receptor_atoms' : range(22,22) }
@@ -513,6 +469,13 @@ test_systems['alanine dipeptide in TIP3P with reaction field'] = {
 test_systems['T4 lysozyme L99A with p-xylene in OBC GBSA'] = {
     'test' : testsystems.LysozymeImplicit(),
     'ligand_atoms' : range(2603,2621), 'receptor_atoms' : range(0,2603) }
+
+# Problematic tests: PME is not fully implemented yet
+#test_systems['TIP3P with PME, no switch, no dispersion correction'] = {
+#    'test' : testsystems.WaterBox(dispersion_correction=False, switch=False, nonbondedMethod=app.PME),
+#    'ligand_atoms' : range(0,3), 'receptor_atoms' : range(3,6) }
+
+# Slow tests
 #test_systems['Src in OBC GBSA'] = {
 #    'test' : testsystems.SrcImplicit(),
 #    'ligand_atoms' : range(0,21), 'receptor_atoms' : range(21,4091) }
@@ -527,12 +490,9 @@ fast_testsystem_names = [
     'TIP3P with reaction field, no charges, no switch, no dispersion correction',
     'TIP3P with reaction field, switch, no dispersion correction',
     'TIP3P with reaction field, switch, dispersion correction',
-#    'TIP3P with PME, no switch, no dispersion correction'
+#    'TIP3P with PME, no switch, no dispersion correction' # PME still problematic
     ]
 
-# DEBUG
-#key = 'TIP3P with reaction field, switch, dispersion correction'
-#test_systems = { key : test_systems[key] }
 
 #=============================================================================================
 # NOSETEST GENERATORS
@@ -578,7 +538,6 @@ def test_alchemical_accuracy():
 if __name__ == "__main__":
     #generate_trace(test_systems['TIP3P with reaction field, switch, dispersion correction'])
 
-
     test_systems = dict()
     test_systems['Src in TIP3P with reaction field'] = {
         'test' : testsystems.SrcExplicit(nonbondedMethod=app.CutoffPeriodic),
@@ -591,15 +550,3 @@ if __name__ == "__main__":
     receptor_atoms = test_system['receptor_atoms']
     alchemical_factory_check(reference_system, positions, receptor_atoms, ligand_atoms)
 
-    #test_lj_cluster()
-    #test_lj_fluid_without_dispersion()
-    #test_lj_fluid_with_dispersion()
-    #test_tip3p_discharged()
-    #test_tip3p_noswitch()
-    #test_tip3p_reaction_field()
-    #test_tip3p_pme()
-    #test_tip3p_with_dispersion()
-    #test_alanine_dipeptide_vacuum()
-    #test_alanine_dipeptide_implicit()
-    #test_alanine_dipeptide_explicit()
-    #test_systembuilder_lysozyme_pdb_mol2()

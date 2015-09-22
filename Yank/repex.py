@@ -59,7 +59,7 @@ This code is licensed under the latest available version of the GNU General Publ
 from simtk import openmm
 from simtk import unit
 
-import os
+import os, os.path
 import sys
 import math
 import copy
@@ -497,7 +497,7 @@ class ReplicaExchange(object):
     >>> T_i = [ T_min + (T_max - T_min) * (math.exp(float(i) / float(nreplicas-1)) - 1.0) / (math.e - 1.0) for i in range(nreplicas) ]
     >>> states = [ ThermodynamicState(system=system, temperature=T_i[i]) for i in range(nreplicas) ]
     >>> import tempfile
-    >>> store_filename = tempfile.NamedTemporaryFile().name + '.nc'
+    >>> store_filename = tempfile.NamedTemporaryFile(delete=False).name + '.nc'
     >>> # Create simulation.
     >>> simulation = ReplicaExchange(store_filename)
     >>> simulation.create(states, positions) # initialize the replica-exchange simulation
@@ -514,6 +514,10 @@ class ReplicaExchange(object):
     >>> simulation.resume()
     >>> simulation.number_of_iterations = 4 # extend
     >>> simulation.run()
+
+    Clean up.
+
+    >>> os.remove(store_filename)
 
     """
 
@@ -660,6 +664,7 @@ class ReplicaExchange(object):
         ncfile = netcdf.Dataset(self.store_filename, 'r')
         self._restore_thermodynamic_states(ncfile)
         self._restore_options(ncfile)
+        self._restore_metadata(ncfile)
         ncfile.close()
 
         # Determine number of replicas from the number of specified thermodynamic states.
@@ -1151,7 +1156,7 @@ class ReplicaExchange(object):
         integrator_end_time = time.time()
         # Store final positions
         getstate_start_time = time.time()
-        openmm_state = context.getState(getPositions=True)
+        openmm_state = context.getState(getPositions=True,enforcePeriodicBox=True)
         getstate_end_time = time.time()
         self.replica_positions[replica_index] = openmm_state.getPositions(asNumpy=True)
         # Store box vectors.
@@ -1280,7 +1285,7 @@ class ReplicaExchange(object):
         # Minimize energy.
         minimized_positions = self.mm.LocalEnergyMinimizer.minimize(context, self.minimize_tolerance, self.minimize_maxIterations)
         # Store final positions
-        self.replica_positions[replica_index] = context.getState(getPositions=True).getPositions(asNumpy=True)
+        self.replica_positions[replica_index] = context.getState(getPositions=True,enforcePeriodicBox=True).getPositions(asNumpy=True)
         # Clean up.
         del integrator, context
 
@@ -1713,7 +1718,7 @@ class ReplicaExchange(object):
 
         # Store metadata.
         if self.metadata:
-            self._store_metadata(ncfile, 'metadata', self.metadata)
+            self._store_metadata(ncfile)
 
         # Force sync to disk to avoid data loss.
         ncfile.sync()
@@ -1894,6 +1899,122 @@ class ReplicaExchange(object):
 
         return True
 
+    def _store_dict_in_netcdf(self, ncgrp, options):
+        """
+        Store the contents of a dict in a NetCDF file.
+
+        Parameters
+        ----------
+        ncgrp : ncfile.Dataset group
+            The group in which to store options.
+        options : dict
+            The dict to store.
+
+        """
+        from utils import typename
+        import collections
+        for option_name in options.keys():
+            # Get option value.
+            option_value = options[option_name]
+            # If Quantity, strip off units first.
+            option_unit = None
+            if type(option_value) == unit.Quantity:
+                option_unit = option_value.unit
+                option_value = option_value / option_unit
+            # Store the Python type.            
+            option_type = type(option_value)
+            option_type_name = typename(option_type)
+            # Handle booleans
+            if type(option_value) == bool:
+                option_value = int(option_value)
+            # Store the variable.
+            if type(option_value) == str:
+                logger.debug("Storing option: %s -> %s (type: %s)" % (option_name, option_value, option_type_name))
+                ncvar = ncgrp.createVariable(option_name, type(option_value), 'scalar')
+                packed_data = np.empty(1, 'O')
+                packed_data[0] = option_value
+                ncvar[:] = packed_data
+                setattr(ncvar, 'type', option_type_name)
+            elif isinstance(option_value, collections.Iterable):
+                nelements = len(option_value)
+                logger.debug("Storing option: %s -> %s (type: %s, array of length %d)" % (option_name, option_value, option_type_name, nelements))
+                element_type = type(option_value[0])
+                element_type_name = typename(element_type)
+                ncgrp.createDimension(option_name, nelements) # unlimited number of iterations
+                ncvar = ncgrp.createVariable(option_name, element_type, (option_name,))
+                for (i, element) in enumerate(option_value):
+                    ncvar[i] = element
+                setattr(ncvar, 'type', element_type_name)
+            elif option_value is None:
+                logger.debug("Storing option: %s -> %s (None)" % (option_name, option_value))
+                ncvar = ncgrp.createVariable(option_name, int)
+                ncvar.assignValue(0)
+                setattr(ncvar, 'type', option_type_name)
+            else:
+                logger.debug("Storing option: %s -> %s (type: %s, other)" % (option_name, option_value, option_type_name))
+                ncvar = ncgrp.createVariable(option_name, type(option_value))
+                ncvar.assignValue(option_value)
+                setattr(ncvar, 'type', option_type_name)
+            if option_unit: setattr(ncvar, 'units', str(option_unit))
+
+        return
+
+    def _restore_dict_from_netcdf(self, ncgrp):
+        """
+        Restore dict from NetCDF.
+        
+        Parameters
+        ----------
+        ncgrp : netcdf.Dataset group
+            The NetCDF group to restore from.
+
+        Returns
+        -------
+        options : dict
+            The restored options as a dict.
+
+        """
+        options = dict()
+
+        import numpy
+        for option_name in ncgrp.variables.keys():
+            # Get NetCDF variable.
+            option_ncvar = ncgrp.variables[option_name]
+            type_name = getattr(option_ncvar, 'type')
+            # Get option value.
+            if type_name == 'NoneType':
+                option_value = None
+                logger.debug("Restoring option: %s -> %s (None)" % (option_name, str(option_value)))
+            elif option_ncvar.shape == ():
+                option_value = option_ncvar.getValue()
+                # Cast to python types.
+                if type(option_value) in [np.int32, np.int64]:
+                    option_value = int(option_value)
+                if type(option_value) in [np.float32, np.float64]:
+                    option_value = float(option_value)
+                logger.debug("Restoring option: %s -> %s (type: %s)" % (option_name, str(option_value), type(option_value)))
+            elif (option_ncvar.shape[0] >= 0):
+                option_value = np.array(option_ncvar[:], eval(type_name))
+                # TODO: Deal with values that are actually scalar constants.
+                # TODO: Cast to appropriate type
+                logger.debug("Restoring option: %s -> %s (type: %s)" % (option_name, str(option_value), type(option_value)))
+            else:
+                option_value = option_ncvar[0]
+                option_value = eval(type_name + '(' + repr(option_value) + ')')
+                logger.debug("Restoring option: %s -> %s (type: %s)" % (option_name, str(option_value), type(option_value)))
+
+            # If Quantity, assign unit.
+            if hasattr(option_ncvar, 'units'):
+                option_unit_name = getattr(option_ncvar, 'units')
+                if option_unit_name[0] == '/':
+                    option_value = eval(str(option_value) + option_unit_name, unit.__dict__)
+                else:
+                    option_value = eval(str(option_value) + '*' + option_unit_name, unit.__dict__)
+            # Store option.
+            options[option_name] = option_value
+
+        return options
+
     def _store_options(self, ncfile):
         """
         Store run parameters in NetCDF file.
@@ -1909,53 +2030,21 @@ class ReplicaExchange(object):
         # Create a group to store state information.
         ncgrp_options = ncfile.createGroup('options')
 
-        # Store run parameters.
+        # Build dict of options to store.
+        options = dict()
         for option_name in self.options_to_store:
-            # Get option value.
             option_value = getattr(self, option_name)
-            # If Quantity, strip off units first.
-            option_unit = None
-            if type(option_value) == unit.Quantity:
-                option_unit = option_value.unit
-                option_value = option_value / option_unit
-            # Store the Python type.
-            option_type = type(option_value)
-            # Handle booleans
-            if type(option_value) == bool:
-                option_value = int(option_value)
-            # Store the variable.
-            logger.debug("Storing option: %s -> %s (type: %s)" % (option_name, option_value, str(option_type)))
-            if type(option_value) == str:
-                ncvar = ncgrp_options.createVariable(option_name, type(option_value), 'scalar')
-                packed_data = np.empty(1, 'O')
-                packed_data[0] = option_value
-                ncvar[:] = packed_data
-                setattr(ncvar, 'type', option_type.__name__)
-            elif hasattr(option_value, '__getitem__'):
-                nelements = len(option_value)
-                ncgrp_options.createDimension(option_name, nelements) # unlimited number of iterations
-                ncvar = ncgrp_options.createVariable(option_name, type(option_value[0]), (option_name,))
-                for (i, element) in enumerate(option_value):
-                    ncvar[i] = element
-                option_type = type(option_value[0])
-                setattr(ncvar, 'type', option_type.__name__)
-            elif option_value is None:
-                ncvar = ncgrp_options.createVariable(option_name, int)
-                ncvar.assignValue(0)
-                setattr(ncvar, 'type', option_type.__name__)
-            else:
-                ncvar = ncgrp_options.createVariable(option_name, type(option_value))
-                ncvar.assignValue(option_value)
-                setattr(ncvar, 'type', option_type.__name__)
-            if option_unit: setattr(ncvar, 'units', str(option_unit))
+            options[option_name] = option_value
+
+        # Store options.
+        self._store_dict_in_netcdf(ncgrp_options, options)
 
         return
-
-
 
     def _restore_options(self, ncfile):
         """
         Restore run parameters from NetCDF file.
+
         """
 
         logger.debug("Attempting to restore options from NetCDF file...")
@@ -1966,63 +2055,53 @@ class ReplicaExchange(object):
 
         # Find the group.
         ncgrp_options = ncfile.groups['options']
+        
+        # Restore options as dict.
+        options = self._restore_dict_from_netcdf(ncgrp_options)
 
-        # Load run parameters.
-        for option_name in ncgrp_options.variables.keys():
-            # Get NetCDF variable.
-            option_ncvar = ncgrp_options.variables[option_name]
-            type_name = getattr(option_ncvar, 'type')
-            # Get option value.
-            if type_name == 'NoneType':
-                option_value = None
-            elif option_ncvar.shape == ():
-                option_value = option_ncvar.getValue()
-                # Cast to python types.
-                if type(option_value) in [np.int32, np.int64]:
-                    option_value = int(option_value)
-                if type(option_value) in [np.float32, np.float64]:
-                    option_value = float(option_value)
-            elif (option_ncvar.shape[0] > 1):
-                option_value = np.array(option_ncvar[:], type_name)
-            else:
-                option_value = option_ncvar[0]
-                option_value = eval(type_name + '(' + repr(option_value) + ')')
-            # If Quantity, assign unit.
-            if hasattr(option_ncvar, 'units'):
-                option_unit_name = getattr(option_ncvar, 'units')
-                if option_unit_name[0] == '/':
-                    option_value = eval(str(option_value) + option_unit_name, unit.__dict__)
-                else:
-                    option_value = eval(str(option_value) + '*' + option_unit_name, unit.__dict__)
-            # Store option.
-            logger.debug("Restoring option: %s -> %s (type: %s)" % (option_name, str(option_value), type(option_value)))
-            setattr(self, option_name, option_value)
-
+        # Set these as attributes.
+        for option_name in options.keys():
+            setattr(self, option_name, options[option_name])
+        
         # Signal success.
         return True
 
-    def _store_metadata(self, ncfile, groupname, metadata):
+    def _store_metadata(self, ncfile):
         """
         Store metadata in NetCDF file.
 
+        Parameters
+        ----------
+        ncfile : netcdf.Dataset
+            The NetCDF file in which metadata is to be stored.
+
         """
-
-        # Create group.
-        ncgrp = ncfile.createGroup(groupname)
-
-        # Store metadata.
-        for (key, value) in metadata.iteritems():
-            # TODO: Handle more sophisticated types.
-            ncvar = ncgrp.createVariable(key, type(value))
-            ncvar.assignValue(value)
-
+        ncgrp = ncfile.createGroup('metadata')
+        self._store_dict_in_netcdf(ncgrp, self.metadata)
         return
+
+    def _restore_metadata(self, ncfile):
+        """
+        Restore metadata from NetCDF file.
+
+        Parameters
+        ----------
+        ncfile : netcdf.Dataset
+            The NetCDF file in which metadata is to be stored.
+
+        """
+        ncgrp = ncfile.groups['metadata']
+        self.metadata = self._restore_dict_from_netcdf(ncgrp)
 
     def _resume_from_netcdf(self):
         """
         Resume execution by reading current positions and energies from a NetCDF file.
 
         """
+
+        # Check to make sure file exists.
+        if not os.path.exists(self.store_filename):
+            raise Exception("Store file %s does not exist." % self.store_filename)
 
         # Open NetCDF file for reading
         logger.debug("Reading NetCDF file '%s'..." % self.store_filename)
@@ -2034,6 +2113,7 @@ class ReplicaExchange(object):
         self.iteration = ncfile.variables['positions'].shape[0] - 1
         self.nstates = ncfile.variables['positions'].shape[1]
         self.natoms = ncfile.variables['positions'].shape[2]
+        self.nreplicas = self.nstates
         logger.debug("iteration = %d, nstates = %d, natoms = %d" % (self.iteration, self.nstates, self.natoms))
 
         # Restore positions.
@@ -2321,6 +2401,9 @@ class ReplicaExchange(object):
            dDelta_s_ij[i,j] is estimated standard error of Delta_s_ij[i,j]
 
         """
+        if not self._initialized:
+            self._initialize_resume()
+
         # Update analysis on root node.
         self._analysis()
 

@@ -10,6 +10,41 @@ from simtk import unit
 # Logging functions
 #========================================================================================
 
+def typename(atype):
+    """Convert a type object into a fully qualified typename.
+
+    Parameters
+    ----------
+    atype : type
+        The type to convert
+    
+    Returns
+    -------
+    typename : str
+        The string typename.
+    
+    For example,
+
+    >>> typename(type(1))
+    'int'
+
+    >>> import numpy
+    >>> x = numpy.array([1,2,3], numpy.float32)
+    >>> typename(type(x))
+    'numpy.ndarray'
+
+    """
+    if not isinstance(atype, type):
+        raise Exception('Argument is not a type')
+
+    modulename = atype.__module__
+    typename = atype.__name__
+
+    if modulename != '__builtin__':
+        typename = modulename + '.' + typename
+
+    return typename
+
 def is_terminal_verbose():
     """Check whether the logging on the terminal is configured to be verbose.
 
@@ -73,8 +108,8 @@ def config_root_logger(verbose, log_file_path=None, mpicomm=None):
 
         # This is the cleanest way I found to make the code compatible with both
         # Python 2 and Python 3
-        simple_fmt = logging.Formatter('%(message)s')
-        default_fmt = logging.Formatter('%(levelname)s - %(name)s - %(message)s')
+        simple_fmt = logging.Formatter('%(asctime)-15s: %(message)s')
+        default_fmt = logging.Formatter('%(asctime)-15s: %(levelname)s - %(name)s - %(message)s')
 
         def format(self, record):
             if record.levelno <= logging.INFO:

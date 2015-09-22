@@ -1,17 +1,36 @@
 language: c
+sudo: false
+addons:
+  apt:
+    sources:
+    - ubuntu-toolchain-r-test
+    packages:
+      - g++
+      - gfortran
+      - valgrind
+      - csh
+      - g++-multilib
+      - gcc-multilib
 
 branches:
   only:
     - master
 
 install:
-  - source devtools/ci/install.sh
+  - source devtools/travis-ci/install.sh
   - export PYTHONUNBUFFERED=true
+  - export ORGNAME="omnia"
+  - export PACKAGENAME="yank"
 
 script:
-  # this builds the binary, unpacks it, and runs the tests
+  # Add omnia channel
+  - conda config --add channels http://conda.anaconda.org/${ORGNAME}
+  # build the recipe
   - conda build devtools/conda-recipe
-  # Push to binstar.
+  # Install the package and test it
+  - conda install --yes --quiet ${PACKAGENAME}-dev
+  - conda install --yes --quiet nose nose-timer
+  - nosetests yank --nocapture --verbosity=2 --with-doctest --with-timer -a '!slow'
 
 env:
   matrix:
@@ -25,6 +44,7 @@ env:
     # encrypted AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
     - secure: "SrSd1JoI8dBXQxDAX0xBTYBinTusRBQoPETnxHrBAgKdoty1pkzaghTKNMsrGsk78iwkkj1hAyttIY9trdFQkmx+OTx0fLKFmDHsMkgko4RzTtrgLgoxuRIs/gruID2cN1XKEbxlhRmQF14+q8/X1q6iGGdYMrxo51JcYPuEOSo="
     - secure: "br6QRMYXhHltYTEh/d+zejxcunT3GsqwQvxxLmqnLxi+LIxX4j7eymR6p4fPBd5mCRxyvkQEjnSZxF6e7JlEKxWVcMG28I/dBWzVIRW3EKQQNRmyI+JL1dfNaqj68kHJD+FknBwHK9LD238JPcyqXPdVrm9iPkDijPczvPBxvDs="
+
 after_success:
   - echo "after_success"
-  - bash devtools/ci/after_sucess.sh
+  - PACKAGENAME="yank" ./devtools/travis-ci/after_success.sh

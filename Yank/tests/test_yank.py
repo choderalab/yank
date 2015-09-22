@@ -27,13 +27,15 @@ import math
 import copy
 import time
 import datetime
+from functools import partial
 
-import numpy
+import numpy as np
 
-import simtk.openmm
-import simtk.unit as units
+from simtk import openmm
+from openmmtools import testsystems
 
-import netCDF4 as netcdf # netcdf4-python is used in place of scipy.io.netcdf for now
+from yank import Yank
+from yank.repex import ThermodynamicState
 
 import logging
 logger = logging.getLogger(__name__)
@@ -42,167 +44,127 @@ logger = logging.getLogger(__name__)
 # MODULE CONSTANTS
 #=============================================================================================
 
-kB = units.BOLTZMANN_CONSTANT_kB * units.AVOGADRO_CONSTANT_NA # Boltzmann constant
-
-#=============================================================================================
-# SUBROUTINES
-#=============================================================================================
-
-def computeHarmonicOscillatorExpectations(K, mass, temperature):
-    """
-    Compute moments of potential and kinetic energy distributions and free energies for harmonic oscillator.
-        
-    ARGUMENTS
-    
-    K - spring constant
-    mass - mass of particle
-    temperature - temperature
-    
-    RETURNS
-    
-    values (dict) - values['potential'] is a dict with 'mean' and 'stddev' of potential energy distribution;
-                    values['kinetic'] is a dict with 'mean' and 'stddev' of kinetic energy distribution;
-                    values['free energies'] is the free energy due to the 'potential', 'kinetic', or 'total' part of the partition function
-    
-    NOTES
-
-    Numerical quadrature is used to evaluate the moments of the potential energy distribution.
-
-    EXAMPLES
-    
-    >>> import simtk.unit as units
-    >>> temperature = 298.0 * units.kelvin
-    >>> sigma = 0.5 * units.angstroms # define standard deviation for harmonic oscillator
-    >>> mass = 12.0 * units.amu # mass of harmonic oscillator
-    >>> kT = kB * temperature # thermal energy
-    >>> beta = 1.0 / kT # inverse temperature
-    >>> K = kT / sigma**2 # spring constant consistent with variance sigma**2
-    >>> values = computeHarmonicOscillatorExpectations(K, mass, temperature)
-
-    """
-
-    values = dict()
-    
-    # Compute thermal energy and inverse temperature from specified temperature.
-    kB = units.BOLTZMANN_CONSTANT_kB * units.AVOGADRO_CONSTANT_NA
-    kT = kB * temperature # thermal energy
-    beta = 1.0 / kT # inverse temperature
-   
-    # Compute standard deviation along one dimension.
-    sigma = 1.0 / units.sqrt(beta * K) 
-
-    # Define limits of integration along r.
-    r_min = 0.0 * units.nanometers # initial value for integration
-    r_max = 10.0 * sigma      # maximum radius to integrate to
-
-    # Compute mean and std dev of potential energy.
-    import scipy.integrate
-    V = lambda r : (K/2.0) * (r*units.nanometers)**2 / units.kilojoules_per_mole # potential in kJ/mol, where r in nm
-    q = lambda r : 4.0 * math.pi * r**2 * math.exp(-beta * (K/2.0) * (r*units.nanometers)**2) # q(r), where r in nm
-    (IqV2, dIqV2) = scipy.integrate.quad(lambda r : q(r) * V(r)**2, r_min / units.nanometers, r_max / units.nanometers)
-    (IqV, dIqV)   = scipy.integrate.quad(lambda r : q(r) * V(r), r_min / units.nanometers, r_max / units.nanometers)
-    (Iq, dIq)     = scipy.integrate.quad(lambda r : q(r), r_min / units.nanometers, r_max / units.nanometers)
-    values['potential'] = dict()
-    values['potential']['mean'] = (IqV / Iq) * units.kilojoules_per_mole
-    values['potential']['stddev'] = (IqV2 / Iq) * units.kilojoules_per_mole   
-   
-    # Compute mean and std dev of kinetic energy.
-    values['kinetic'] = dict()
-    values['kinetic']['mean'] = (3./2.) * kT
-    values['kinetic']['stddev'] = math.sqrt(3./2.) * kT
-
-    # Compute free energies.
-    V0 = (units.liter / units.AVOGADRO_CONSTANT_NA / units.mole).in_units_of(units.angstroms**3) # standard state reference volume (1M)
-    values['free energies'] = dict()
-    values['free energies']['potential'] = - numpy.log((numpy.sqrt(2.0 * math.pi) * sigma)**3 / V0)
-    values['free energies']['kinetic'] = (3./2.) 
-    values['free energies']['total'] = values['free energies']['potential'] + values['free energies']['kinetic']
-    
-    return values
-
+from simtk import unit
+kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA # Boltzmann constant
 
 #=============================================================================================
 # MAIN AND TESTS
 #=============================================================================================
 
-if __name__ == "__main__":
-    # Test subroutines.
-    import doctest
-    doctest.testmod()
+def notest_LennardJonesPair(box_width_nsigma=6.0):
+    """
+    Compute binding free energy of two Lennard-Jones particles and compare to numerical result.
 
-    # Use reference platform.
-    platform = simtk.openmm.Platform.getPlatformByName("Reference")
+    Parameters
+    ----------
+    box_width_nsigma : float, optional, default=6.0
+        Box width is set to this multiple of Lennard-Jones sigma.
 
-    #
-    # Test Lennard-Jones particle association.
-    #
+    """
 
-    # Default parameters for argon.
-    mass          = 39.9 * units.amu
-    charge        = 0.05 * units.elementary_charge
-    sigma         = 3.350 * units.angstrom
-    epsilon       = 100 * 0.001603 * units.kilojoule_per_mole
+    NSIGMA_MAX = 6.0 # number of standard errors tolerated for success
 
-    # Simulation parameters.
-    temperature   = 300.0 * units.kelvin
-    kT = kB * temperature
-    beta = 1.0 / kT
-
-    import simtk.openmm as openmm
-
-    # Create receptor.
-    receptor_system = openmm.System()
-    receptor_system.addParticle(10 * mass)
-    force = openmm.NonbondedForce()
-    force.setNonbondedMethod(openmm.NonbondedForce.NoCutoff)
-    charge = +charge * units.elementary_charge # DEBUG
-    force.addParticle(charge, sigma, epsilon)
-    receptor_system.addForce(force)
-    
-    # Create ligand.
-    ligand_system = openmm.System()
-    ligand_system.addParticle(mass)
-    force = openmm.NonbondedForce()
-    force.setNonbondedMethod(openmm.NonbondedForce.NoCutoff)
-    charge = -charge * units.elementary_charge # DEBUG
-    force.addParticle(charge, sigma, epsilon)
-    ligand_system.addForce(force)
-
-    # Prevent receptor from diffusing away by imposing a spring.
-    #sigma = 0.5 * units.angstroms
-    #force = openmm.CustomExternalForce('(Kext/2) * (x^2 + y^2 + z^2)')
-    #force.addGlobalParameter('Kext', kT / sigma**2)
-    #force.addParticle(0, [])
-    #receptor_system.addForce(force)
-
-    # Create complex coordinates.
-    import simtk.unit as units
-    complex_coordinates = units.Quantity(numpy.zeros([2,3], numpy.float64), units.angstroms)
-    complex_coordinates[1,0] = 10.0 * units.angstroms
+    # Create Lennard-Jones pair.
+    thermodynamic_state = ThermodynamicState(temperature=300.0*unit.kelvin)
+    kT = kB * thermodynamic_state.temperature
+    sigma = 3.5 * unit.angstroms
+    epsilon = 6.0 * kT
+    test = testsystems.LennardJonesPair(sigma=sigma, epsilon=epsilon)
+    system, positions = test.system, test.positions
+    binding_free_energy = test.get_binding_free_energy(thermodynamic_state)
 
     # Create temporary directory for testing.
     import tempfile
-    output_directory = tempfile.mkdtemp()
+    store_dir = tempfile.mkdtemp()
 
     # Initialize YANK object.
-    from yank import Yank
-    yank = Yank(receptor=receptor_system, ligand=ligand_system, complex_coordinates=[complex_coordinates], output_directory=output_directory)
-    yank.solvent_protocol = yank.vacuum_protocol
-    yank.complex_protocol = yank.vacuum_protocol
-    yank.restraint_type = 'flat-bottom'
-    yank.temperature = temperature
-    yank.niterations = 100
-    yank.platform = openmm.Platform.getPlatformByName("Reference")
+    options = dict()
+    options['restraint_type'] = None
+    options['number_of_iterations'] = 10
+    options['platform'] = openmm.Platform.getPlatformByName("Reference") # use Reference platform for speed
+    options['mc_rotation'] = False
+    options['mc_displacement'] = True
+    options['mc_displacement_sigma'] = 1.0 * unit.nanometer
+    options['timestep'] = 2 * unit.femtoseconds
+    options['nsteps_per_iteration'] = 50
+
+    # Override receptor mass to keep it stationary.
+    #system.setParticleMass(0, 0)
+
+    # Override box vectors.
+    box_edge = 6*sigma
+    a = unit.Quantity((box_edge, 0 * unit.angstrom, 0 * unit.angstrom))
+    b = unit.Quantity((0 * unit.angstrom, box_edge, 0 * unit.angstrom))
+    c = unit.Quantity((0 * unit.angstrom, 0 * unit.angstrom, box_edge))
+    system.setDefaultPeriodicBoxVectors(a, b, c)
+
+    # Override positions
+    positions[0,:] = box_edge/2
+    positions[1,:] = box_edge/4
+
+    phase = 'complex-explicit'
+
+    # Alchemical protocol.
+    from yank.alchemy import AlchemicalState
+    alchemical_states = list()
+    lambda_values = [0.0, 0.25, 0.50, 0.75, 1.0]
+    for lambda_value in lambda_values:
+        alchemical_state = AlchemicalState()
+        alchemical_state['lambda_electrostatics'] = lambda_value
+        alchemical_state['lambda_sterics'] = lambda_value
+        alchemical_states.append(alchemical_state)
+    protocols = dict()
+    protocols[phase] = alchemical_states
+
+    # Create phases.
+    systems = { phase : system }
+    positions = { phase : positions }
+    phases = [phase]
+    atom_indices = { 'complex-explicit' : { 'ligand' : [1] } }
+
+    # Create new simulation.
+    yank = Yank(store_dir)
+    yank.create(phases, systems, positions, atom_indices, thermodynamic_state, options=options, protocols=protocols)
 
     # Run the simulation.
     yank.run()
-    
-    #
+
     # Analyze the data.
-    #
-    
     results = yank.analyze()
+    standard_state_correction = results[phase]['standard_state_correction']
+    Delta_f = results[phase]['Delta_f_ij'][0,1] - standard_state_correction
+    dDelta_f = results[phase]['dDelta_f_ij'][0,1]
+    nsigma = abs(binding_free_energy/kT - Delta_f) / dDelta_f
 
-    # TODO: Check results against analytical results.
+    # Check results against analytical results.
+    # TODO: Incorporate standard state correction
+    output = "\n"
+    output += "Analytical binding free energy                                  : %10.5f +- %10.5f kT\n" % (binding_free_energy / kT, 0)
+    output += "Computed binding free energy (with standard state correction)   : %10.5f +- %10.5f kT (nsigma = %3.1f)\n" % (Delta_f, dDelta_f, nsigma)
+    output += "Computed binding free energy (without standard state correction): %10.5f +- %10.5f kT (nsigma = %3.1f)\n" % (Delta_f + standard_state_correction, dDelta_f, nsigma)
+    output += "Standard state correction alone                                 : %10.5f           kT\n" % (standard_state_correction)
+    print output
 
-    
+    #if (nsigma > NSIGMA_MAX):
+    #    output += "\n"
+    #    output += "Computed binding free energy differs from true binding free energy.\n"
+    #    raise Exception(output)
+
+    return [Delta_f, dDelta_f]
+
+if __name__ == '__main__':
+    from yank import utils
+    utils.config_root_logger(True, log_file_path='test_LennardJones_pair.log')
+
+    box_width_nsigma_values = np.array([3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0])
+    Delta_f_n = list()
+    dDelta_f_n = list()
+    for (n, box_width_nsigma) in enumerate(box_width_nsigma_values):
+        [Delta_f, dDelta_f] = notest_LennardJonesPair(box_width_nsigma=box_width_nsigma)
+        Delta_f_n.append(Delta_f)
+        dDelta_f_n.append(dDelta_f)
+    Delta_f_n = np.array(Delta_f_n)
+    dDelta_f_n = np.array(dDelta_f_n)
+
+    for (box_width_nsigma, Delta_f, dDelta_f) in zip(box_width_nsigma_values, Delta_f_n, dDelta_f_n):
+        print "%8.3f %12.6f %12.6f" % (box_width_nsigma, Delta_f, dDelta_f)

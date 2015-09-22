@@ -246,7 +246,6 @@ class Yank(object):
 
         """
 
-
         # Combine simulation options with defaults to create repex options.
         if options is None:
             repex_options = dict(self.options.items())
@@ -310,13 +309,14 @@ class Yank(object):
 
         # Create alchemically-modified states using alchemical factory.
         logger.debug("Creating alchemically-modified states...")
-        #factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=atom_indices['ligand'], test_positions=positions[0], platform=repex_options['platform'])
+        #factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=atom_indices['ligand'], test_positions=positions[0], platform=repex_options['platform']) # DEBUG code for testing
         factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=atom_indices['ligand'])
         alchemical_states = protocols[phase]
         alchemical_system = factory.alchemically_modified_system
         thermodynamic_state.system = alchemical_system
 
         # Check systems for finite energies.
+        # TODO: Refactor this into another function.
         finite_energy_check = False
         if finite_energy_check:
             logger.debug("Checking energies are finite for all alchemical systems.")
@@ -374,6 +374,9 @@ class Yank(object):
 
         # Clean up simulation.
         del simulation
+
+        # Add to list of phases that have been set up.
+        self._phases.append(phase)
 
         return
 
@@ -475,13 +478,21 @@ class Yank(object):
             # Skip if the file doesn't exist.
             if (not os.path.exists(fullpath)): continue
 
-            # Analyze this leg.
-            simulation = ModifiedHamiltonianExchange(store_filename=store_filename, mpicomm=mpicomm, options=options)
+            # Read this phase.
+            simulation = ModifiedHamiltonianExchange(fullpath)
+            simulation.resume()
+
+            # Analyze this phase.
             analysis = simulation.analyze()
-            del simulation
+
+            # Retrieve standard state correction.
+            analysis['standard_state_correction'] = simulation.metadata['standard_state_correction']
 
             # Store results.
             results[phase] = analysis
+
+            # Clean up.
+            del simulation
 
         # TODO: Analyze binding or hydration, depending on what phases are present.
         # TODO: Include effects of analytical contributions.
@@ -492,23 +503,17 @@ class Yank(object):
             results['solvation'] = dict()
 
             results['solvation']['Delta_f'] = results['solvent']['Delta_f'] + results['vacuum']['Delta_f']
+            # TODO: Correct in different ways depending on what reference conditions are desired.
+            results['solvation']['Delta_f'] += results['solvent']['standard_state_correction'] + results['vacuum']['standard_state_correction']
+
             results['solvation']['dDelta_f'] = np.sqrt(results['solvent']['dDelta_f']**2 + results['vacuum']['Delta_f']**2)
 
         if set(['ligand', 'complex']).issubset(phases_available):
             # BINDING FREE ENERGY
             results['binding'] = dict()
 
-            # Read standard state correction free energy.
-            Delta_f_restraints = 0.0
-            phase = 'complex'
-            fullpath = os.path.join(source_directory, phase + '.nc')
-            ncfile = netcdf.Dataset(fullpath, 'r')
-            Delta_f_restraints = ncfile.groups['metadata'].variables['standard_state_correction'][0]
-            ncfile.close()
-            results['binding']['standard_state_correction'] = Delta_f_restraints
-
             # Compute binding free energy.
-            results['binding']['Delta_f'] = results['solvent']['Delta_f'] - Delta_f_restraints - results['complex']['Delta_f']
+            results['binding']['Delta_f'] = (results['solvent']['Delta_f'] + results['solvent']['standard_state_correction']) - (results['complex']['Delta_f'] + results['complex']['standard_state_correction'])
             results['binding']['dDelta_f'] = np.sqrt(results['solvent']['dDelta_f']**2 + results['complex']['dDelta_f']**2)
 
         return results
