@@ -28,7 +28,7 @@ script:
   # build the recipe
   - conda build devtools/conda-recipe
   # Install the package and test it
-  - conda install --yes --quiet ${PACKAGENAME}-dev
+  - conda install --yes --quiet --use-local ${PACKAGENAME}-dev
   - conda install --yes --quiet nose nose-timer
   - nosetests yank --nocapture --verbosity=2 --with-doctest --with-timer -a '!slow'
 
