@@ -394,7 +394,8 @@ def test_hamiltonian_exchange(mpicomm=None, verbose=True):
 if __name__ == "__main__":
     # Configure logger.
     from yank import utils
-    utils.config_root_logger(True, log_file_path='debug.log')
+    verbose = False # Don't show tons of debug output
+    utils.config_root_logger(verbose, log_file_path='debug.log')
 
     # Try MPI, if possible.
     try:
