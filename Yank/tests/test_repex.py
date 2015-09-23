@@ -115,6 +115,9 @@ def test_replica_exchange(mpicomm=None, verbose=True):
 
     if verbose and ((not mpicomm) or (mpicomm.rank==0)): print "Testing replica exchange facility with harmonic oscillators: ",
 
+    from yank import utils
+    utils.config_root_logger(False)
+
     # Define mass of carbon atom.
     mass = 12.0 * units.amu
 
@@ -263,6 +266,9 @@ def test_hamiltonian_exchange(mpicomm=None, verbose=True):
 
     if verbose and ((not mpicomm) or (mpicomm.rank==0)): print "Testing Hamiltonian exchange facility with harmonic oscillators: ",
 
+    from yank import utils
+    utils.config_root_logger(False)
+
     # Create test system of harmonic oscillators
     testsystem = testsystems.HarmonicOscillatorArray()
     [system, coordinates] = [testsystem.system, testsystem.positions]
@@ -394,8 +400,7 @@ def test_hamiltonian_exchange(mpicomm=None, verbose=True):
 if __name__ == "__main__":
     # Configure logger.
     from yank import utils
-    verbose = False # Don't show tons of debug output
-    utils.config_root_logger(verbose, log_file_path='debug.log')
+    utils.config_root_logger(False)
 
     # Try MPI, if possible.
     try:
