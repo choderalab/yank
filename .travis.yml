@@ -27,7 +27,7 @@ script:
   - conda build devtools/conda-recipe
   # Install the package and test it
   - source activate _test
-  - nosetests yank --nocapture --verbosity=2 --with-doctest --with-timer -a '!slow'
+  - mkdir test && cd test && nosetests $PACKAGENAME --nocapture --verbosity=2 --with-doctest --with-timer -a '!slow'
 
 env:
   matrix:
