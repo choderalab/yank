@@ -115,9 +115,6 @@ def test_replica_exchange(mpicomm=None, verbose=True):
 
     if verbose and ((not mpicomm) or (mpicomm.rank==0)): print "Testing replica exchange facility with harmonic oscillators: ",
 
-    from yank import utils
-    utils.config_root_logger(False)
-
     # Define mass of carbon atom.
     mass = 12.0 * units.amu
 
@@ -180,7 +177,10 @@ def test_replica_exchange(mpicomm=None, verbose=True):
     simulation.online_analysis = True
 
     # Run simulation.
+    from yank import utils
+    utils.config_root_logger(False)
     simulation.run() # run the simulation
+    utils.config_root_logger(True)
 
     # Stop here if not root node.
     if mpicomm and (mpicomm.rank != 0): return
@@ -210,7 +210,7 @@ def test_replica_exchange(mpicomm=None, verbose=True):
         print "nsigma"
         print nsigma
         raise Exception("Dimensionless free energy differences between online and final analysis exceeds MAX_SIGMA of %.1f" % MAX_SIGMA)
-    
+
     # TODO: Check if deviations exceed tolerance.
     Delta_f_ij = analysis['Delta_f_ij']
     dDelta_f_ij = analysis['dDelta_f_ij']
@@ -265,9 +265,6 @@ def test_hamiltonian_exchange(mpicomm=None, verbose=True):
     """
 
     if verbose and ((not mpicomm) or (mpicomm.rank==0)): print "Testing Hamiltonian exchange facility with harmonic oscillators: ",
-
-    from yank import utils
-    utils.config_root_logger(False)
 
     # Create test system of harmonic oscillators
     testsystem = testsystems.HarmonicOscillatorArray()
@@ -347,7 +344,10 @@ def test_hamiltonian_exchange(mpicomm=None, verbose=True):
     simulation.show_mixing_statistics = False
 
     # Run simulation.
+    from yank import utils
+    utils.config_root_logger(True)
     simulation.run() # run the simulation
+    utils.config_root_logger(False)
 
     # Stop here if not root node.
     if mpicomm and (mpicomm.rank != 0): return
