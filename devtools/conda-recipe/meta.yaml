@@ -50,6 +50,10 @@ requirements:
     #- libgcc
 
 test:
+  requires:
+    - nose
+    - nose-timer
+    - openmmtools
   imports:
     - yank
   commands:
