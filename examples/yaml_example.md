@@ -7,7 +7,7 @@ Supported combinatorics
 * options (per phase)
 
 Things that can't be done with this format:
-* sequences of experiments that are not combinatorial, for example abl+imatinib and then p38+p38a_2n
+* sequences of experiments that are not combinatorial, for example gbsa + 2000 iterations and then pme + 1000 iterations, or abl+imatinib and then p38+p38a_2n.
 
 Random observations
 * a general combinatorial syntax like the one we discussed in the meeting (the ```matrix```) is very cool but
