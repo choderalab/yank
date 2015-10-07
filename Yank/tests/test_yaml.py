@@ -17,10 +17,9 @@ import os
 import tempfile
 import textwrap
 
-from simtk import unit
 from nose.tools import raises
 
-from yank.yamlbuild import YamlBuilder, YamlParseError
+from yank.yamlbuild import *
 
 #=============================================================================================
 # SUBROUTINES FOR TESTING
@@ -41,6 +40,49 @@ def parse_yaml_str(yaml_content):
 #=============================================================================================
 # UNIT TESTS
 #=============================================================================================
+
+def test_set_dict_path():
+    """Test utility function set_dict_path()."""
+    test = {'a': 2}
+    test_nested = {'a': {'b': 2}}
+    set_dict_path(test, ('a',), 3)
+    assert test == {'a': 3}
+    set_dict_path(test_nested, ('a','b'), 3)
+    assert test_nested == {'a': {'b': 3}}
+    set_dict_path(test_nested, ('a',), 5)
+    assert test_nested == {'a': 5}
+
+def test_not_iterable_container():
+    """Test utility function not_iterable_container()."""
+    assert not_iterable_container(3) == True
+    assert not_iterable_container('ciao') == True
+    assert not_iterable_container([1, 2, 3]) == False
+
+def test_find_leaves():
+    """Test utility function find_leaves()."""
+    simple_tree = {'simple': {'scalar': 1,
+                              'vector': [2, 3, 4],
+                              'nested': {'leaf': ['a', 'b', 'c']}}}
+    leaf_paths, leaf_vals = find_leaves(simple_tree)
+    assert leaf_paths == [('simple', 'scalar'), ('simple', 'vector'),
+                          ('simple', 'nested', 'leaf')]
+    assert leaf_vals == [1, [2, 3, 4], ['a', 'b', 'c']]
+
+def test_expand_tree():
+    """Test utility function expand_tree()."""
+    simple_tree = {'simple': {'scalar': 1,
+                              'vector': [2, 3, 4],
+                              'nested': {'leaf': ['a', 'b', 'c']}}}
+    result = [{'simple': {'scalar': 1, 'vector': 2, 'nested': {'leaf': 'a'}}},
+              {'simple': {'scalar': 1, 'vector': 2, 'nested': {'leaf': 'b'}}},
+              {'simple': {'scalar': 1, 'vector': 2, 'nested': {'leaf': 'c'}}},
+              {'simple': {'scalar': 1, 'vector': 3, 'nested': {'leaf': 'a'}}},
+              {'simple': {'scalar': 1, 'vector': 3, 'nested': {'leaf': 'b'}}},
+              {'simple': {'scalar': 1, 'vector': 3, 'nested': {'leaf': 'c'}}},
+              {'simple': {'scalar': 1, 'vector': 4, 'nested': {'leaf': 'a'}}},
+              {'simple': {'scalar': 1, 'vector': 4, 'nested': {'leaf': 'b'}}},
+              {'simple': {'scalar': 1, 'vector': 4, 'nested': {'leaf': 'c'}}}]
+    assert result == [exp for exp in expand_tree(simple_tree)]
 
 def test_yaml_parsing():
     """Check that YAML file is parsed correctly."""
