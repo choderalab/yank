@@ -70,12 +70,6 @@ solvents:
     nonbondedMethod: NoCutoff
     gbsamodel: obc2
 
-phases:
-  vacuum: [ligand]
-  solvent: [ligand, water]
-  complex: [receptor, ligand, water]
-  octanol: [ligand, octanol]
-
 # we can have pre-set alchemical protocols similarly to phases
 alchemical_protocols:
   standard_protocol:
