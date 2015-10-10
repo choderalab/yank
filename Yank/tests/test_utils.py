@@ -9,11 +9,56 @@ Test various utility functions.
 # GLOBAL IMPORTS
 #=============================================================================================
 
-from yank.utils import YankOptions
+from yank.utils import YankOptions, CombinatorialTree, is_iterable_container
 
 #=============================================================================================
 # TESTING FUNCTIONS
 #=============================================================================================
+
+def test_is_iterable_container():
+    """Test utility function not_iterable_container()."""
+    assert is_iterable_container(3) == False
+    assert is_iterable_container('ciao') == False
+    assert is_iterable_container([1, 2, 3]) == True
+
+def test_set_tree_path():
+    """Test getting and setting of CombinatorialTree paths."""
+    test = CombinatorialTree({'a': 2})
+    test_nested = CombinatorialTree({'a': {'b': 2}})
+    test['a'] = 3
+    assert test == {'a': 3}
+    test_nested[('a','b')] = 3
+    assert test_nested == {'a': {'b': 3}}
+    test_nested[('a',)] = 5
+    assert test_nested == {'a': 5}
+
+def test_find_leaves():
+    """Test CombinatorialTree private function _find_leaves()."""
+    simple_tree = CombinatorialTree({'simple': {'scalar': 1,
+                                                'vector': [2, 3, 4],
+                                                'nested': {
+                                                    'leaf': ['a', 'b', 'c']}}})
+    leaf_paths, leaf_vals = simple_tree._find_leaves()
+    assert leaf_paths == [('simple', 'scalar'), ('simple', 'vector'),
+                          ('simple', 'nested', 'leaf')]
+    assert leaf_vals == [1, [2, 3, 4], ['a', 'b', 'c']]
+
+def test_expand_tree():
+    """Test CombinatorialTree expansion."""
+    simple_tree = CombinatorialTree({'simple': {'scalar': 1,
+                                                'vector': [2, 3, 4],
+                                                'nested': {
+                                                    'leaf': ['a', 'b', 'c']}}})
+    result = [{'simple': {'scalar': 1, 'vector': 2, 'nested': {'leaf': 'a'}}},
+              {'simple': {'scalar': 1, 'vector': 2, 'nested': {'leaf': 'b'}}},
+              {'simple': {'scalar': 1, 'vector': 2, 'nested': {'leaf': 'c'}}},
+              {'simple': {'scalar': 1, 'vector': 3, 'nested': {'leaf': 'a'}}},
+              {'simple': {'scalar': 1, 'vector': 3, 'nested': {'leaf': 'b'}}},
+              {'simple': {'scalar': 1, 'vector': 3, 'nested': {'leaf': 'c'}}},
+              {'simple': {'scalar': 1, 'vector': 4, 'nested': {'leaf': 'a'}}},
+              {'simple': {'scalar': 1, 'vector': 4, 'nested': {'leaf': 'b'}}},
+              {'simple': {'scalar': 1, 'vector': 4, 'nested': {'leaf': 'c'}}}]
+    assert result == [exp for exp in simple_tree]
 
 def test_yank_options():
     """Test option priorities and handling."""

@@ -160,3 +160,7 @@ class YamlBuilder:
     def build_experiment(self):
         """Build the Yank experiment (TO BE IMPLEMENTED)."""
         raise NotImplemented
+
+if __name__ == "__main__":
+    import doctest
+    doctest.testmod()
