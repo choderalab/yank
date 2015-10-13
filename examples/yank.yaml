@@ -1,8 +1,12 @@
+# This file tries to sum up all the various things
+# that will be possible to do with yank-yaml
+
 #yank-yaml0.1
 ---
 metadata:
   title:
   email:
+
 
 # Separate options / yank block, or put all yank/repex/alchemy at base level?
 options:
@@ -16,6 +20,7 @@ options:
   alchemy:
     annihilate_sterics: False
     annihilate_electrostatics: True
+
 
 molecules:
   abl-2hyy:
@@ -38,6 +43,7 @@ molecules:
   p38-ligands:
     filename: p32_ligands.sdf
     select: [p38a_2n, p38a_3flz, p38a_2h]  # how do we handle multi-molecules files?
+
 
 solvents:
   vacuum:
@@ -70,95 +76,125 @@ solvents:
     nonbondedMethod: NoCutoff
     gbsamodel: obc2
 
-# we can have pre-set alchemical protocols similarly to phases
+
 alchemical_protocols:
-  standard_protocol:
+  10states_protocol:
     lambda_electrostatics: [1.0, 0.9, 0.8, ...]
     lambda_sterics: [1.0, 0.9, 0.8, ...]
   20states_protocol:
     lambda_electrostatics: [1.0, 0.95, 0.9, ...]
     lambda_sterics: [1.0, 0.95, 0.9, ...]
 
+
 # The names in components, alchemical_transformation and alchemical_atoms
 # are searched both in molecules and in experiment.components. Pre-set
 # phases don't have to be explicitly defined and can be overwritten by
 # the user. For pre-set phases alchemical_atoms and alchemical_protocol
-# assume their default values.
+# assume the value 'auto'.
 phases:
-  # Pre-set phases equivalents, these don't actually have to be defined
-  # -------------------------------------------------------------------
-  absolute_binding: &default_absolute_binding_phase
+  # Pre-set phases equivalents examples, these don't actually have to be defined
+  # ----------------------------------------------------------------------------
+  default_absolute_complex: &default_absolute_complex_phase
     components: [solvent, receptor, molecule]
     alchemical_transformation: molecule->null
-  absolute_solvation: &default_absolute_solvation_phase
+  default_absolute_solvent: &default_absolute_solvent_phase
     components: [solvent, molecule]
     alchemical_transformation: molecule->null
-  relative_binding: &default_relative_binding_phase
+  default_relative_complex: &default_relative_complex_phase
     components: [solvent, static, molecule1]
     alchemical_transformation: molecule1->molecule2
-  relative_solvation: &default_relative_solvation_phase
+  default_relative_solvent: &default_relative_solvent_phase
     components: [solvent, molecule1]
     alchemical_transformation: molecule1->molecule2
-  phase_change: &default_phase_change_phase
-    components: [solvent1, molecule]
-    alchemical_transformation: solvent1->solvent2
 
   # User-defined phases examples
   # ----------------------------
-  bosutinib-afatinib:
-    components: [vacuum, abl-2hyy, bosutinib]
-    alchemical_transformation: bosutinib->afatinib
-    alchemical_atoms: auto
-  imatinib-bosutinib:
-    components: [vacuum, abl-2hyy, imatinib]
+  imatinib_bosutinib: &imatinib_bosutinib_phase
     alchemical_transformation: imatinib->bosutinib
     alchemical_atoms:
       dummy_atoms: [imatinib12, imatinib13, bosutinb14]
       transform_atoms: [imatinib15->bosutinib16, imatinib17->bosutinib18]
     alchemical_protocol: 20states_protocol
 
-  # User-defined that "extend" pre-set phases using anchors
-  # -------------------------------------------------------
-  relative_complex1000:
-    <<: *default_relative_binding_phase
-    alchemical_protocol: 20states_protocol
-    phase_options:
-      repex.niterations: 1000
-  relative_complex2000:
-    <<: *default_relative_binding_phase
-    alchemical_protocol: 20states_protocol
-    phase_options:
-      repex.niterations: 2000
-  relative_solvent:
-    <<: *default_relative_solvation_phase
-    phase_options:
-      repex.niterations: 200
 
-# An example of experiment that uses only pre-set phases. The default alchemical
-# factory can be easily inferred from the phase and appropriate default protocol
-# can be used. In the future the user should be able to set its own alchemy class
-# alchemical_factory: mymodule.MyAbsoluteAlchemicalFactory
-basic_experiment:
+# Can we automatically infer the type of energy calculation from "components"
+# and "alchemical_transformation"?
+protocols:
+  # Pre-set phases equivalents examples, these don't actually have to be defined
+  # ----------------------------------------------------------------------------
+  default_absolute_binding:
+    type: absolute-binding
+    phases:
+      complex: *default_absolute_complex_phase
+      solvent: *default_absolute_solvent_phase
+  default_absolute_solvation:
+    type: absolute-solvation
+    phases:
+      solvent: *default_absolute_solvent_phase
+      vacuum:
+        <<: *default_absolute_solvent_phase
+        components: [vacuum, molecule]
+  default_relative_solvation:
+    type: relative-solvation
+    phases:
+      solvent: *default_relative_solvent_phase
+      vacuum:
+        <<: *default_relative_solvent_phase
+        components: [vacuum, molecule1, molecule2]
+  default_phase_change:
+    type: phase-change
+    phases:
+      solvent1:
+        <<: *default_absolute_solvent_phase
+        components: [solvent1, molecule]
+      solvent2:
+        <<: *default_absolute_solvent_phase
+        components: [solvent2, molecule]
+
+  # User-defined protocols
+  # ----------------------
+  my_absolute_binding:
+    type: absolute-binding
+    phases:
+      my_complex:
+        components: [solvent, receptor, ligand]
+        alchemical_transformation: ligand->null
+        alchemical_protocol: 20states_protocol
+      my_solvent:
+        components: [solvent, ligand]
+        alchemical_transformation: ligand->null
+        alchemical_protocol: 10states_protocol
+        phase_options:
+          repex.niterations: 200
+  my_relative_binding
+    type: relative-binding
+    phases:
+      relative_complex:
+        components: [GBSAobc2, abl-2hyy, imatinib]
+        <<: *imatinib_bosutinib_phase
+      relative_solvent:
+        components: [GBSAobc2, imatinib]
+        <<: *imatinib_bosutinib_phase
+
+
+# The default alchemical factory could be easily inferred from the protocol.
+absolute_experiment:
   components:
     receptor: [abl-2hyy, src]
     ligand: [imatinib, afatinib, bosutinib]
     solvent: [PMEtip3p, RFtip3p, PMEtip4p, GBSAobc1, GBSAobc2]
-  phases: [absolute_binding, absolute_solvation]
+  protocols: my_absolute_binding
 
-# An example of experiment with user-defined phases. The section "components" is not
-# needed here since the user-defined phases use directly molecules
+# An example of relative binding that uses a pre-set protocol. This will be
+# possible only after implementing automatic tuning of alchemical protocol
+# and automatic determination of the alchemical atoms.
 relative_experiment:
-  hmr: [yes, no]
-  phases: [imatinib-bosutinib, bosutinib-afatinib]
-
-# A similar example that uses the section "components"
-customized_experiment:
   components:
     static: abl-2hyy
     molecule1: imatinib
     molecule2: [bosutinib, afatinib]
-    solvent: [PMEtip3p, RFtip3p, PMEtip4p, GBSAobc1, GBSAobc2]
-  phases: [relative_complex1000, relative_complex2000, relative_solvent]
+    solvent: [GBSAobc1, GBSAobc2]
+  protocols: default_relative_binding
 
 # An example of experiment with protein mutations using pre-set phases.
 mutations_experiment:
@@ -167,7 +203,13 @@ mutations_experiment:
     molecule1: abl-2hyy
     molecule2: [abl-2hyy:VAL31ALA, abl-2hyy:ASP137ASH]
     solvent: vacuum
-  phases: [relative_binding, relative_solvation]
+  phases: default_relative_binding
 
-experiments: [basic_experiment, relative_experiment, customized_experiment]
+# In this example the section "components" is not needed here since the
+# user-defined phases here use precise solvents and molecules
+custom_experiment:
+  alchemical_factory: mymodule.MyAlchemicalFactory
+  hmr: [yes, no]
+  protocols: my_relative_binding
 
+experiments: [absolute_experiment, relative_experiment, mutations_experiment, custom_experiment]
