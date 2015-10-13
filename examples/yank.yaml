@@ -10,13 +10,23 @@ metadata:
 
 # Separate options / yank block, or put all yank/repex/alchemy at base level?
 options:
+  yamlbuilder:
+    verbose: true
+    mpi: yes
+    platform: CUDA
+    precision: mixed
   yank:
+    restraint_type: harmonic
+    randomize_ligand: yes
     minimize: yes
     output_directory: /path/to/output/
   repex:
     timestep: 1.0 * femtoseconds
     nsteps_per_iteration: 2500
-    niterations: 1000
+    number_of_iterations: 1000
+    equilibration_timestep = 1.0*femtoseconds
+    number_of_equilibration_iterations: 100
+    online_analysis: no
   alchemy:
     annihilate_sterics: False
     annihilate_electrostatics: True
@@ -50,7 +60,7 @@ solvents:
     nonbondedMethod: NoCutoff
   PMEtip3p:
     nonbondedMethod: PME
-    solvate: PME
+    nonbondedCutoff: 1*nanometer
     solventmodel: tip3p
     salt:
       NaCl: 150*millimolar
@@ -65,6 +75,7 @@ solvents:
     clearance: 10*angstroms
   PMEtip4p:
     nonbondedMethod: PME
+    nonbondedCutoff: 1.2*nanometer
     solventmodel: tip4p
     salt:
       KCl: 150*millimolar
