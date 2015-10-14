@@ -1,0 +1,120 @@
+# This example shows how to setup an absolute binding free energy calculation with
+# Yank in case you already prepared AMBER prmtop and inpcrd files describing the
+# systems for the complex and solvent phases. In particular, here we setup a
+# simulation for Abl and imatinib in implicit solvent. The necessary 4 input files
+# are
+#     * complex.prmtop
+#     * complex.inpcrd
+#     * solvent.prmtop
+#     * solvent.inpcrd
+#
+# A similar structure of the YAML file could be used to setup calculations from
+# GROMACS input files.
+#----------------------------------------------------------------------------------
+
+
+#yank-yaml0.1
+---
+metadata:
+  title: Abl and imatinib in GBSA solvent
+
+
+# General options
+#----------------------------------------------------------------------------------
+options:
+  yamlbuilder:
+    verbose: yes
+    mpi: yes
+    platform: CUDA
+    precision: mixed
+  yank:
+    restraint_type: harmonic
+    randomize_ligand: no
+    minimize: no
+    output_directory: $HOME/yank/absolute-amber-output/
+  repex:
+    timestep: 1.0 * femtoseconds
+    nsteps_per_iteration: 2500
+    number_of_iterations: 1000
+    equilibration_timestep = 1.0*femtoseconds
+    number_of_equilibration_iterations: 100
+    online_analysis: no
+  alchemy:
+    annihilate_sterics: False
+    annihilate_electrostatics: True
+
+
+# In "molecules" you specify the components of your systems. You need to specify
+# only how to select the atoms of the molecule given the prmtop and inpcrd files.
+# The actual name of the files for each phase (i.e. complex.prmtop, solvent.inpcrd,
+# etc.) will be given in the description of the phases in the section below.
+#----------------------------------------------------------------------------------
+molecules:
+  abl:
+    select: "chain A"
+  imatinib:
+    select: "resname MOL"
+
+
+# Here you setup the implicit solvent used during the calculation.
+#----------------------------------------------------------------------------------
+solvents:
+  GBSAobc2:
+    nonbondedMethod: NoCutoff
+    gbsamodel: obc2
+
+
+# Define the alchemical protocols that you will need. You can use anchors and
+# aliases in YAML to avoid redundance.
+#----------------------------------------------------------------------------------
+alchemical_protocols:
+  10states_protocol: &10states_protocol
+    lambda_electrostatics: [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0]
+    lambda_sterics: [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0]
+
+
+# Define the phases for the alchemical calculation. Here we specify the file name
+# of the systems for each phase. The atoms of the components will be identified
+# according to the molecule section.
+#----------------------------------------------------------------------------------
+phases:
+  complex: &complex_phase
+    system: [complex.prmtop, complex.inpcrd]
+    components: [GBSAobc2, abl, imatinib]
+    alchemical_transformation: imatinib->null
+    alchemical_protocol: *10states_protocol
+  solvent: &solvent_phase
+    system: [solvent.prmtop, solvent.inpcrd]
+    components: [GBSAobc2, imatinib]
+    alchemical_transformation: imatinib->null
+    alchemical_protocol: *10states_protocol
+    phase_options:
+      repex:
+        niterations: 200
+
+
+# Protocol for the alchemical calculation.
+#----------------------------------------------------------------------------------
+protocols:
+  absolute_binding:
+    type: absolute-binding
+    phases:
+      complex: *complex_phase
+      solvent: *solvent_phase
+
+
+# Here we define the actual experiment along with the thermodynamic state and the
+# algorithms to be used. You don't need to define the section "components" here
+# because the phases use exact molecule names instead of general ligands, solvents,
+# and receptors. Also you don't need to define the section "setup" since you have
+# already files describing the whole system for each phase.
+#----------------------------------------------------------------------------------
+experiment:
+  alchemical_factory: alchemy.AbsoluteAlchemicalFactory
+  hydrogenMass: 4*amu
+  constraints: AllBonds
+  thermodynamics:
+    temperature: 300*kelvin
+    pressure: 1*atmosphere
+  protocols: absolute_binding
+
