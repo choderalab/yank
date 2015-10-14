@@ -221,6 +221,10 @@ mutations_experiment:
 custom_experiment:
   alchemical_factory: mymodule.MyAlchemicalFactory
   hmr: [yes, no]
+  constraints: [HBonds, AllBonds]
+  thermodynamics:
+    temperature: 300*kelvin
+    pressure: 1*atmosphere
   protocols: my_relative_binding
 
 experiments: [absolute_experiment, relative_experiment, mutations_experiment, custom_experiment]
