@@ -1,0 +1,120 @@
+# This example shows how to setup multiple absolute solvation free energy calculations
+# with Yank.
+#----------------------------------------------------------------------------------
+
+
+#yank-yaml0.1
+---
+metadata:
+  title: Solvation free energy of imatinib, bosutinib and afatinib
+
+
+# General options
+#----------------------------------------------------------------------------------
+options:
+  yamlbuilder:
+    verbose: yes
+    mpi: yes
+    platform: CUDA
+    precision: mixed
+  yank:
+    restraint_type: none
+    randomize_ligand: no
+    minimize: no
+    output_directory: $HOME/yank/solvation/
+  repex:
+    timestep: 1.0 * femtoseconds
+    nsteps_per_iteration: 2500
+    number_of_iterations: 1000
+    equilibration_timestep = 1.0*femtoseconds
+    number_of_equilibration_iterations: 100
+    online_analysis: no
+  alchemy:
+    annihilate_sterics: False
+    annihilate_electrostatics: True
+
+
+# In "molecules" you specify the components of your systems. If you have a single
+# file specifying multiple molecules you can select which one to load and rename
+# them. The parameters and various options that you specify here will guide the
+# setup of the systems for each phase.
+#----------------------------------------------------------------------------------
+molecules:
+  FDA_approved:
+    filename: FDA-approved.smiles  # Generate molecule from name with OpenEye library
+    epik: 0  # Take 0th state proposed by Schodinger's Epik
+    parameters: antechamber  # parametrize and charge with GAFF and Antechamber
+    select:
+      imatinib: mol01
+      bosutinib: mol04
+      afatinib: mol08
+
+
+# Here you setup the solvents used during the calculation. We define an implicit
+# solvent with Particle-Mesh Ewald (PME) and TIP3P model for the solvent phase and
+# a vacuum.
+#----------------------------------------------------------------------------------
+solvents:
+  vacuum:
+    nonbondedMethod: NoCutoff
+  PMEtip3p:
+    nonbondedMethod: PME
+    nonbondedCutoff: 1*nanometer
+    solventmodel: tip3p
+    clearance: 10*angstroms
+
+
+# Define the alchemical protocols that you will need. You can use anchors and
+# aliases in YAML to avoid redundance.
+#----------------------------------------------------------------------------------
+alchemical_protocols:
+  10states_protocol: &10states_protocol
+    lambda_electrostatics: [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0]
+    lambda_sterics: [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0]
+
+
+# Define the phases for the alchemical calculation. The general "ligand" name will
+# be matched to a specific molecule according to the "components" defined in the
+# "experiment" section. This way you can use the same protocol for multiple
+# calculations.
+#----------------------------------------------------------------------------------
+phases:
+  solvent: &solvent_phase
+    components: [PMEtip3p, ligand]
+    alchemical_transformation: ligand->null
+    alchemical_protocol: *10states_protocol
+  vacuum: &vacuum_phase
+    components: [vacuum, ligand]
+    alchemical_transformation: p-ligand->null
+    alchemical_protocol: *10states_protocol
+    phase_options:
+      repex:
+        niterations: 200
+
+
+# Protocol for the alchemical calculation.
+#----------------------------------------------------------------------------------
+protocols:
+  absolute_solvation:
+    type: absolute-solvation
+    phases:
+      solvent: *solvent_phase
+      vacuum: *vacuum_phase
+
+
+# Here we define the actual experiment along with the thermodynamic state and the
+# algorithms to be used. In the section "components" we define the general name
+# "ligand" that will be matched to the components defined in the phases. Everything
+# in list is combinatorial here, so this will effectively generate three calculations
+# with respectively imatinib, bosutinib and afatinib.
+#----------------------------------------------------------------------------------
+experiment:
+  alchemical_factory: alchemy.AbsoluteAlchemicalFactory
+  components:
+    ligand: [imatinib, bosutinib, afatinib]
+  thermodynamics:
+    temperature: 300*kelvin
+    pressure: 1*atmosphere
+  setup: leap
+  protocols: absolute_solvation
+
