@@ -220,7 +220,7 @@ mutations_experiment:
 # user-defined phases here use precise solvents and molecules
 custom_experiment:
   alchemical_factory: mymodule.MyAlchemicalFactory
-  hmr: [yes, no]
+  hydrogenMass: [3*amu, 5*amu]
   constraints: [HBonds, AllBonds]
   thermodynamics:
     temperature: 300*kelvin
