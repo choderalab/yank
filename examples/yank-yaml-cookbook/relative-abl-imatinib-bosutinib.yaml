@@ -1,0 +1,122 @@
+# This example shows how to setup an relative binding free energy calculation with
+# Yank. The input files of this example are:
+#     * 2HYY.pdbfixer.pdb: abl protein from 2hyy.pdb that went through pdbfixer
+#     * imatinib.mol2
+#     * bosutinib.mol2
+#
+# Yank will take care of parametrizing the molecules and creating a system for each
+# phase.
+#----------------------------------------------------------------------------------
+
+
+#yank-yaml0.1
+---
+metadata:
+  title: Relative binding energy of imatinib and bosutinib
+
+
+# General options
+#----------------------------------------------------------------------------------
+options:
+  yamlbuilder:
+    verbose: yes
+    mpi: yes
+    platform: CUDA
+    precision: mixed
+  yank:
+    restraint_type: none
+    randomize_ligand: no
+    minimize: no
+    output_directory: $HOME/yank/relative/
+  repex:
+    timestep: 1.0 * femtoseconds
+    nsteps_per_iteration: 2500
+    number_of_iterations: 1000
+    equilibration_timestep = 1.0*femtoseconds
+    number_of_equilibration_iterations: 100
+    online_analysis: no
+  alchemy:
+    annihilate_sterics: False
+    annihilate_electrostatics: True
+
+
+# In "molecules" you specify the components of your systems. The parameters and
+# various options that you specify here will guide the setup of the systems for
+# each phase.
+#----------------------------------------------------------------------------------
+molecules:
+  abl:
+    filename: 2HYY.pdbfixer.pdb
+    parameters: amber99sbildn.xml
+  imatinib:
+    name: imatinib.mol2
+    parameters: antechamber
+  bosutinib:
+    name: bosutinib.mol2
+    parameters: antechamber
+
+
+# Here you setup the explicit solvent used during the calculation. We use the
+# Reaction Field (RF) and TIP3P model.
+#----------------------------------------------------------------------------------
+solvents:
+  RFtip3p:
+    nonbondedMethod: RF
+    solventmodel: tip3p
+    clearance: 10*angstroms
+
+
+# Define the alchemical protocols that you will need. You can use anchors and
+# aliases in YAML to avoid redundance.
+#----------------------------------------------------------------------------------
+alchemical_protocols:
+  10states_protocol: &10states_protocol
+    lambda_electrostatics: [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0]
+    lambda_sterics: [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0]
+  imatinib_bosutinib_atoms: &imatinib_bosutinib_atoms
+    dummy_atoms: [imatinib12, imatinib13, bosutinb14]
+    transform_atoms: [imatinib15->bosutinib16, imatinib17->bosutinib18]
+
+
+# Define the phases for the alchemical calculation.
+#----------------------------------------------------------------------------------
+phases:
+  complex: &complex_phase
+    components: [RFtip3p, abl, imatinib]
+    alchemical_transformation: imatinib->bosutinib
+    alchemical_atoms: *imatinib_bosutinib_atoms
+    alchemical_protocol: *10states_protocol
+  solvent: &solvent_phase
+    components: [RFtip3p, imatinib]
+    alchemical_transformation: imatinib->bosutinib
+    alchemical_atoms: *imatinib_bosutinib_atoms
+    alchemical_protocol: *10states_protocol
+    phase_options:
+      repex:
+        niterations: 500
+
+
+# Protocol for the alchemical calculation.
+#----------------------------------------------------------------------------------
+protocols:
+  relative_binding:
+    type: relative-binding
+    phases:
+      complex: *complex_phase
+      solvent: *solvent_phase
+
+
+# Here we define the actual experiment along with the thermodynamic state and the
+# algorithms to be used. You don't need to define the section "components" here
+# because the phases use exact molecule names instead of general ligands, solvents,
+# and receptors.
+#----------------------------------------------------------------------------------
+experiment:
+  alchemical_factory: alchemy.AbsoluteAlchemicalFactory
+  constraints: HBonds
+  thermodynamics:
+    temperature: 300*kelvin
+    pressure: 1*atmosphere
+  setup: systembuilder
+  protocols: relative_binding
+
