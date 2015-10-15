@@ -22,6 +22,7 @@ options:
     mpi: yes
     platform: CUDA
     precision: mixed
+    resume: yes
   yank:
     restraint_type: none
     randomize_ligand: no
@@ -31,7 +32,7 @@ options:
     timestep: 1.0 * femtoseconds
     nsteps_per_iteration: 2500
     number_of_iterations: 1000
-    equilibration_timestep = 1.0*femtoseconds
+    equilibration_timestep: 1.0*femtoseconds
     number_of_equilibration_iterations: 100
     online_analysis: no
   alchemy:
