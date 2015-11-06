@@ -250,7 +250,7 @@ class Yank(object):
         if options is None:
             repex_options = copy.deepcopy(self._default_options)
         else:
-            repex_options = copy.deepcopy(self._default_options, **options)
+            repex_options = copy.deepcopy(dict(self._default_options, **options))
 
         # Make sure positions argument is a list of coordinate snapshots.
         if hasattr(positions, 'unit'):
