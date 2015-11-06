@@ -31,7 +31,6 @@ import simtk.openmm as openmm
 
 from . import sampling, repex, alchemy
 
-from utils import YankOptions
 from alchemy import AbsoluteAlchemicalFactory
 from repex import ThermodynamicState
 from sampling import ModifiedHamiltonianExchange # TODO: Modify to 'from yank.sampling import ModifiedHamiltonianExchange'?
@@ -84,15 +83,16 @@ class Yank(object):
         self.default_protocols['complex-explicit'] = AbsoluteAlchemicalFactory.defaultComplexProtocolExplicit()
 
         # Default options for repex.
-        self.options = YankOptions()
-        self.options.default['number_of_equilibration_iterations'] = 0
-        self.options.default['number_of_iterations'] = 100
-        self.options.default['timestep'] = 2.0 * unit.femtoseconds
-        self.options.default['collision_rate'] = 5.0 / unit.picoseconds
-        self.options.default['minimize'] = False
-        self.options.default['show_mixing_statistics'] = True # this causes slowdown with iteration and should not be used for production
-        self.options.default['platform'] = None
-        self.options.default['displacement_sigma'] = 1.0 * unit.nanometers # attempt to displace ligand by this stddev will be made each iteration
+        self._default_options = {
+            'number_of_equilibration_iterations': 0,
+            'number_of_iterations': 100,
+            'timestep': 2.0 * unit.femtoseconds,
+            'collision_rate': 5.0 / unit.picoseconds,
+            'minimize': False,
+            'show_mixing_statistics': True,  # this causes slowdown with iteration and should not be used for production
+            'platform': None,
+            'displacement_sigma': 1.0 * unit.nanometers  # attempt to displace ligand by this stddev will be made each iteration
+        }
 
         return
 
@@ -248,9 +248,9 @@ class Yank(object):
 
         # Combine simulation options with defaults to create repex options.
         if options is None:
-            repex_options = dict(self.options.items())
+            repex_options = copy.deepcopy(self._default_options)
         else:
-            repex_options = dict(self.options.items() + options.items())
+            repex_options = copy.deepcopy(self._default_options, **options)
 
         # Make sure positions argument is a list of coordinate snapshots.
         if hasattr(positions, 'unit'):
