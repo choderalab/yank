@@ -5,46 +5,43 @@ addons:
     sources:
     - ubuntu-toolchain-r-test
     packages:
-      - g++
-      - gfortran
-      - valgrind
-      - csh
-      - g++-multilib
-      - gcc-multilib
-
+    - g++
+    - gfortran
+    - valgrind
+    - csh
+    - g++-multilib
+    - gcc-multilib
 branches:
   only:
-    - master
-
+  - master
 install:
-  - source devtools/travis-ci/install.sh
-  - export PYTHONUNBUFFERED=true
-  - export ORGNAME="omnia"
-  - export PACKAGENAME="yank"
-
+- source devtools/travis-ci/install.sh
+- export PYTHONUNBUFFERED=true
+- export ORGNAME="omnia"
+- export PACKAGENAME="yank"
 script:
   # Add omnia channel
-  - conda config --add channels http://conda.anaconda.org/${ORGNAME}
+- conda config --add channels http://conda.anaconda.org/${ORGNAME}
   # build the recipe
-  - conda build devtools/conda-recipe
+- conda build devtools/conda-recipe
   # Install the package and test it
-  - conda install --yes --quiet ${PACKAGENAME}-dev
-  - conda install --yes --quiet nose nose-timer
-  - nosetests yank --nocapture --verbosity=2 --with-doctest --with-timer -a '!slow'
-
+- conda install --yes --quiet ${PACKAGENAME}-dev
+- conda install --yes --quiet nose nose-timer
+- nosetests yank --nocapture --verbosity=2 --with-doctest --with-timer -a '!slow'
 env:
   matrix:
-    - python=2.7  CONDA_PY=27
-#    - python=3.3  CONDA_PY=33
-#    - python=3.4  CONDA_PY=34
-
+  - python=2.7  CONDA_PY=27
+#  - python=3.3  CONDA_PY=33
+#  - python=3.4  CONDA_PY=34
   global:
-    # encrypted BINSTAR_TOKEN for push of dev package to binstar
-    - secure: "Q1Y0QOwtfQqHEhbqCPi3FBYFh8jNu16/fQr5d8Q1aTYcayf18nyxNwLbhOs/94pVyQt68G53bPw2J30w/Q0PULnDVRBpnS5hcu2IsnV1sjrSHyEJjjiyDQJGwcNRt7wBbLefyGV0v5Siia5VvjBYDEgDZ1/p9A6HaZRPx/3nuLQ="
-    # encrypted AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
-    - secure: "SrSd1JoI8dBXQxDAX0xBTYBinTusRBQoPETnxHrBAgKdoty1pkzaghTKNMsrGsk78iwkkj1hAyttIY9trdFQkmx+OTx0fLKFmDHsMkgko4RzTtrgLgoxuRIs/gruID2cN1XKEbxlhRmQF14+q8/X1q6iGGdYMrxo51JcYPuEOSo="
-    - secure: "br6QRMYXhHltYTEh/d+zejxcunT3GsqwQvxxLmqnLxi+LIxX4j7eymR6p4fPBd5mCRxyvkQEjnSZxF6e7JlEKxWVcMG28I/dBWzVIRW3EKQQNRmyI+JL1dfNaqj68kHJD+FknBwHK9LD238JPcyqXPdVrm9iPkDijPczvPBxvDs="
-
+  # encrypted BINSTAR_TOKEN for push of dev package to binstar
+  - secure: Q1Y0QOwtfQqHEhbqCPi3FBYFh8jNu16/fQr5d8Q1aTYcayf18nyxNwLbhOs/94pVyQt68G53bPw2J30w/Q0PULnDVRBpnS5hcu2IsnV1sjrSHyEJjjiyDQJGwcNRt7wBbLefyGV0v5Siia5VvjBYDEgDZ1/p9A6HaZRPx/3nuLQ=
+  # encrypted AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
+  - secure: SrSd1JoI8dBXQxDAX0xBTYBinTusRBQoPETnxHrBAgKdoty1pkzaghTKNMsrGsk78iwkkj1hAyttIY9trdFQkmx+OTx0fLKFmDHsMkgko4RzTtrgLgoxuRIs/gruID2cN1XKEbxlhRmQF14+q8/X1q6iGGdYMrxo51JcYPuEOSo=
+  - secure: br6QRMYXhHltYTEh/d+zejxcunT3GsqwQvxxLmqnLxi+LIxX4j7eymR6p4fPBd5mCRxyvkQEjnSZxF6e7JlEKxWVcMG28I/dBWzVIRW3EKQQNRmyI+JL1dfNaqj68kHJD+FknBwHK9LD238JPcyqXPdVrm9iPkDijPczvPBxvDs=
 after_success:
-  - echo "after_success"
-  - PACKAGENAME="yank" ./devtools/travis-ci/after_success.sh
+- echo "after_success"
+- PACKAGENAME="yank" ./devtools/travis-ci/after_success.sh
+notifications:
+  slack:
+    secure: IlAqPcVcWjYyKrADmh3vaWYZqfIySbch2z3Ij4xY1OVoSLqEg/ITKdsRM59+Kzx/9xR24AkiWjp2u4EM/7zZbXpvXHwBS5nMhAUJazbvTWBY2686utqVY/BBeDA/j5PA+wcpBz4FvPqhrjKaWUohwfQAfxMMiqqkpuTbQ+SXUd4=
