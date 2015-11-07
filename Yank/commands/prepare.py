@@ -464,14 +464,12 @@ def dispatch_binding(args):
             else:
                 raise Exception("Platform selection logic is outdated and needs to be updated to add platform '%s'." % platform_name)
 
-    yank.options.cli = options
-
-    # Parse YAML configuration file and create YankOptions object
+    # Parse YAML options, CLI options have priority
     if args['--yaml']:
-        yank.options.yaml = YamlBuilder(args['--yaml']).options
+        options.update(YamlBuilder(args['--yaml']).options)
 
     # Create new simulation.
-    yank.create(phases, systems, positions, atom_indices, thermodynamic_state)
+    yank.create(phases, systems, positions, atom_indices, thermodynamic_state, options=options)
 
     # Report success.
     return True

@@ -1,0 +1,117 @@
+# This example shows how to setup an absolute binding free energy calculation with
+# Yank. In particular, here we setup a simulation for p-xylene and T4 L99A lysozyme
+# in explicit solvent.
+#
+# The only required input file here is the pdb structure of the protein (181L.pdb
+# that went through pdbfixer). Yank will generate the ligand from its name and it
+# will take care of parametrizing the molecules and creating a system for each phase.
+#----------------------------------------------------------------------------------
+
+
+#yank-yaml0.1
+---
+metadata:
+  title: T4 L99A lysozyme and p-xylene in explicit solvent
+
+
+# General options
+#----------------------------------------------------------------------------------
+options:
+  yamlbuilder:
+    verbose: yes
+    mpi: yes
+    platform: CUDA
+    precision: mixed
+    resume: yes
+  yank:
+    restraint_type: none
+    randomize_ligand: no
+    minimize: no
+    output_directory: $HOME/yank/p-xylene-output/
+  repex:
+    timestep: 1.0 * femtoseconds
+    nsteps_per_iteration: 2500
+    number_of_iterations: 1000
+    equilibration_timestep: 1.0*femtoseconds
+    number_of_equilibration_iterations: 100
+    online_analysis: no
+  alchemy:
+    annihilate_sterics: False
+    annihilate_electrostatics: True
+
+
+# In "molecules" you specify the components of your systems. The parameters and
+# various options that you specify here will guide the setup of the systems for
+# each phase.
+#----------------------------------------------------------------------------------
+molecules:
+  t4-l99a:
+    filename: 181L.pdbfixer.pdb
+    parameters: oldff/leaprc.ff99SBildn  # we will use LEaP for parametrization
+  p-xylene:
+    name: p-xylene  # Generate molecule from name with OpenEye library
+    epik: 0  # Take 0th state proposed by Schodinger's Epik
+    parameters: antechamber  # parametrize and charge with GAFF and Antechamber
+
+
+# Here you setup the explicit solvent used during the calculation. We use the
+# Particle-Mesh Ewald (PME) and TIP3P model.
+#----------------------------------------------------------------------------------
+solvents:
+  PMEtip3p:
+    nonbondedMethod: PME
+    nonbondedCutoff: 1*nanometer
+    solventmodel: tip3p
+    clearance: 10*angstroms
+
+
+# Define the alchemical protocols that you will need. You can use anchors and
+# aliases in YAML to avoid redundance.
+#----------------------------------------------------------------------------------
+alchemical_protocols:
+  10states_protocol: &10states_protocol
+    lambda_electrostatics: [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0]
+    lambda_sterics: [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0]
+
+
+# Define the phases for the alchemical calculation.
+#----------------------------------------------------------------------------------
+phases:
+  complex: &complex_phase
+    components: [PMEtip3p, t4-l99a, p-xylene]
+    alchemical_transformation: p-xylene->null
+    alchemical_protocol: *10states_protocol
+  solvent: &solvent_phase
+    components: [PMEtip3p, p-xylene]
+    alchemical_transformation: p-xylene->null
+    alchemical_protocol: *10states_protocol
+    phase_options:
+      repex:
+        niterations: 200
+
+
+# Protocol for the alchemical calculation.
+#----------------------------------------------------------------------------------
+protocols:
+  absolute_binding:
+    type: absolute-binding
+    phases:
+      complex: *complex_phase
+      solvent: *solvent_phase
+
+
+# Here we define the actual experiment along with the thermodynamic state and the
+# algorithms to be used. You don't need to define the section "components" here
+# because the phases use exact molecule names instead of general ligands, solvents,
+# and receptors.
+#----------------------------------------------------------------------------------
+experiment:
+  alchemical_factory: alchemy.AbsoluteAlchemicalFactory
+  hydrogenMass: 4*amu
+  constraints: AllBonds
+  thermodynamics:
+    temperature: 300*kelvin
+    pressure: 1*atmosphere
+  setup: leap
+  protocols: absolute_binding
+
