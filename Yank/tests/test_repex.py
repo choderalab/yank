@@ -26,6 +26,8 @@ import scipy.integrate
 import simtk.openmm as openmm
 import simtk.unit as units
 
+from nose import tools
+
 from openmmtools import testsystems
 
 from yank.repex import ThermodynamicState, ReplicaExchange, HamiltonianExchange, ParallelTempering
@@ -386,6 +388,16 @@ def test_hamiltonian_exchange(mpicomm=None, verbose=True):
 
     if verbose: print "PASSED."
     return
+
+@tools.raises(TypeError)
+def test_parameters():
+    # Check that default parameters initialization
+    repex = ReplicaExchange(store_filename='test', nsteps_per_iteration=1e6)
+    assert repex.nsteps_per_iteration == 1000000
+    assert repex.collision_rate == repex.default_parameters['collision_rate']
+
+    # Check that unknown parameters throw exception
+    ReplicaExchange(store_filename='test', wrong_parameter=False)
 
 #=============================================================================================
 # MAIN AND TESTS
