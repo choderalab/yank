@@ -134,8 +134,8 @@ def notest_LennardJonesPair(box_width_nsigma=6.0):
     atom_indices = { 'complex-explicit' : { 'ligand' : [1] } }
 
     # Create new simulation.
-    yank = Yank(store_dir)
-    yank.create(phases, systems, positions, atom_indices, thermodynamic_state, options=options, protocols=protocols)
+    yank = Yank(store_dir, **options)
+    yank.create(phases, systems, positions, atom_indices, thermodynamic_state, protocols=protocols)
 
     # Run the simulation.
     yank.run()

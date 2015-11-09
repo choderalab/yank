@@ -50,7 +50,7 @@ class Yank(object):
         'mc_displacement_sigma': 10.0 * unit.angstroms
     }
 
-    def __init__(self, store_directory, **kwargs):
+    def __init__(self, store_directory, mpicomm=None, **kwargs):
         """
         Initialize YANK object with default parameters.
 
@@ -58,6 +58,8 @@ class Yank(object):
         ----------
         store_directory : str
            The storage directory in which output NetCDF files are read or written.
+        mpicomm : MPI communicator, optional, default=None
+           If an MPI communicator is passed, an MPI simulation will be attempted.
 
         """
 
@@ -66,6 +68,9 @@ class Yank(object):
 
         # Store output directory.
         self._store_directory = store_directory
+
+        # Save MPI communicator
+        self._mpicomm = mpicomm
 
         # Set internal variables.
         self._phases = list()
@@ -160,7 +165,7 @@ class Yank(object):
 
         return
 
-    def create(self, phases, systems, positions, atom_indices, thermodynamic_state, protocols=None, options=None, mpicomm=None):
+    def create(self, phases, systems, positions, atom_indices, thermodynamic_state, protocols=None):
         """
         Set up a new set of alchemical free energy calculations for the specified phases.
 
@@ -182,8 +187,6 @@ class Yank(object):
            Thermodynamic state at which calculations are to be carried out
         protocols : dict of list of AlchemicalState, optional, default=None
            If specified, the alchemical protocol protocols[phase] will be used for phase 'phase' instead of the default.
-        options : dict of str, optional, default=None
-           If specified, these options will override default repex simulation options.
 
         """
 
@@ -201,7 +204,7 @@ class Yank(object):
 
         # Create new repex simulations.
         for phase in phases:
-            self._create_phase(phase, systems[phase], positions[phase], atom_indices[phase], thermodynamic_state, protocols=protocols, options=options, mpicomm=mpicomm)
+            self._create_phase(phase, systems[phase], positions[phase], atom_indices[phase], thermodynamic_state, protocols=protocols)
 
         # Record that we are now initialized.
         self._initialized = True
@@ -230,7 +233,7 @@ class Yank(object):
             is_periodic = True
         return is_periodic
 
-    def _create_phase(self, phase, reference_system, positions, atom_indices, thermodynamic_state, protocols=None, options=None, mpicomm=None):
+    def _create_phase(self, phase, reference_system, positions, atom_indices, thermodynamic_state, protocols=None):
         """
         Create a repex object for a specified phase.
 
@@ -248,16 +251,8 @@ class Yank(object):
            Thermodynamic state from which reference temperature and pressure are to be taken.
         protocols : dict of list of AlchemicalState, optional, default=None
            If specified, the alchemical protocol protocols[phase] will be used for phase 'phase' instead of the default.
-        options : dict of str, optional, default=None
-           If specified, these options will override default repex simulation options.
 
         """
-
-        # Combine simulation options with defaults to create repex options.
-        if options is None:
-            repex_options = copy.deepcopy(self._repex_parameters)
-        else:
-            repex_options = copy.deepcopy(dict(self._repex_parameters, **options))
 
         # Make sure positions argument is a list of coordinate snapshots.
         if hasattr(positions, 'unit'):
@@ -367,17 +362,15 @@ class Yank(object):
         logger.debug("Creating replica exchange object...")
         store_filename = os.path.join(self._store_directory, phase + '.nc')
         self._store_filenames[phase] = store_filename
-        simulation = ModifiedHamiltonianExchange(store_filename, mpicomm=mpicomm)
+        simulation = ModifiedHamiltonianExchange(store_filename, mpicomm=self._mpicomm)
         simulation.create(thermodynamic_state, alchemical_states, positions,
                           displacement_sigma=self._mc_displacement_sigma, mc_atoms=mc_atoms,
-                          options=repex_options, metadata=metadata)
+                          options=self._repex_options, metadata=metadata)
 
         # Initialize simulation.
         # TODO: Use the right scheme for initializing the simulation without running.
         #logger.debug("Initializing simulation...")
         #simulation.run(0)
-
-        # TODO: Process user-supplied options.
 
         # Clean up simulation.
         del simulation
@@ -387,7 +380,7 @@ class Yank(object):
 
         return
 
-    def run(self, niterations_to_run=None, mpicomm=None, options=None):
+    def run(self, niterations_to_run=None):
         """
         Run a free energy calculation.
 
@@ -396,10 +389,6 @@ class Yank(object):
         niterations_to_run : int, optional, default=None
            If specified, only this many iterations will be run for each phase.
            This is useful for running simulation incrementally, but may incur a good deal of overhead.
-        mpicomm : MPI communicator, optional, default=None
-           If an MPI communicator is passed, an MPI simulation will be attempted.
-        options : dict of str, optional, default=None
-           If specified, these options will override any other options.
 
         """
 
@@ -408,11 +397,11 @@ class Yank(object):
             raise Exception("Yank must first be initialized by either resume() or create().")
 
         # Handle some logistics necessary for MPI.
-        if mpicomm:
+        if self._mpicomm is not None:
             logger.debug("yank.run starting for MPI...")
             # Make sure each thread's random number generators have unique seeds.
             # TODO: Do we need to store seed in repex object?
-            seed = np.random.randint(4294967295 - mpicomm.size) + mpicomm.rank
+            seed = np.random.randint(4294967295 - self._mpicomm.size) + self._mpicomm.rank
             np.random.seed(seed)
 
         # Run all phases sequentially.
@@ -420,8 +409,8 @@ class Yank(object):
         for phase in self._phases:
             store_filename = self._store_filenames[phase]
             # Resume simulation from store file.
-            simulation = ModifiedHamiltonianExchange(store_filename=store_filename, mpicomm=mpicomm)
-            simulation.resume(options=options)
+            simulation = ModifiedHamiltonianExchange(store_filename=store_filename, mpicomm=self._mpicomm)
+            simulation.resume(options=self._repex_parameters)
             # TODO: We may need to manually update run options here if options=options above does not behave as expected.
             simulation.run(niterations_to_run=niterations_to_run)
             # Clean up to ensure we close files, contexts, etc.

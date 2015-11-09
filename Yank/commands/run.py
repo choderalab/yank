@@ -30,10 +30,6 @@ from yank import utils
 def dispatch(args):
     from yank.yank import Yank # TODO: Fix this awkward import syntax.
 
-    # Create YANK object associated with data storage directory.
-    store_directory = args['--store']
-    yank = Yank(store_directory)
-
     # Set override options.
     options = dict()
 
@@ -82,12 +78,16 @@ def dispatch(args):
             else:
                 raise Exception("Platform selection logic is outdated and needs to be updated to add platform '%s'." % platform_name)
 
+    # Create YANK object associated with data storage directory.
+    store_directory = args['--store']
+    yank = Yank(store_directory, mpicomm=mpicomm, **options)
+
     # Set YANK to resume from the store file.
     phases = None # By default, resume from all phases found in store_directory
     if args['--phase']: phases=[args['--phase']]
     yank.resume(phases=phases)
 
     # Run simulation.
-    yank.run(mpicomm=mpicomm, options=options)
+    yank.run()
 
     return True
