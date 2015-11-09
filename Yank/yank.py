@@ -18,7 +18,6 @@ Interface for automated free energy calculations.
 
 import os
 import os.path
-import sys
 import copy
 import glob
 import logging
@@ -29,10 +28,7 @@ import numpy as np
 import simtk.unit as unit
 import simtk.openmm as openmm
 
-from . import sampling, repex, alchemy
-
 from alchemy import AbsoluteAlchemicalFactory
-from repex import ThermodynamicState
 from sampling import ModifiedHamiltonianExchange # TODO: Modify to 'from yank.sampling import ModifiedHamiltonianExchange'?
 from restraints import HarmonicReceptorLigandRestraint, FlatBottomReceptorLigandRestraint
 

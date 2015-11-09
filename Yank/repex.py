@@ -60,7 +60,6 @@ from simtk import openmm
 from simtk import unit
 
 import os, os.path
-import sys
 import math
 import copy
 import time
