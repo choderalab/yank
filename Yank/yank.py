@@ -46,7 +46,15 @@ class Yank(object):
 
     """
 
-    def __init__(self, store_directory):
+    default_parameters = {
+        'restraint_type': 'flat-bottom',
+        'randomize_ligand': False,
+        'randomize_ligand_sigma_multiplier': 2.0,
+        'randomize_ligand_close_cutoff': 1.5 * unit.angstrom,
+        'mc_displacement_sigma': 10.0 * unit.angstroms
+    }
+
+    def __init__(self, store_directory, **kwargs):
         """
         Initialize YANK object with default parameters.
 
@@ -63,13 +71,6 @@ class Yank(object):
         # Store output directory.
         self._store_directory = store_directory
 
-        # Public attributes.
-        self.restraint_type = 'flat-bottom' # default to a flat-bottom restraint between the ligand and receptor
-        self.randomize_ligand = False
-        self.randomize_ligand_sigma_multiplier = 2.0
-        self.randomize_ligand_close_cutoff = 1.5 * unit.angstrom # TODO: Allow this to be specified by user.
-        self.mc_displacement_sigma = 10.0 * unit.angstroms
-
         # Set internal variables.
         self._phases = list()
         self._store_filenames = dict()
@@ -82,8 +83,17 @@ class Yank(object):
         self.default_protocols['solvent-explicit'] = AbsoluteAlchemicalFactory.defaultSolventProtocolExplicit()
         self.default_protocols['complex-explicit'] = AbsoluteAlchemicalFactory.defaultComplexProtocolExplicit()
 
-        # Default options for repex.
-        self._default_options = {
+        # Store Yank parameters
+        for opt, default in self.default_parameters.items():
+            setattr(self, '_' + opt, kwargs.pop(opt, default))
+
+        # Check for unknown parameters
+        if not set(kwargs) <= set(ModifiedHamiltonianExchange.default_parameters):
+            raise TypeError('got an unexpected keyword arguments {}'.format(
+                ', '.join(kwargs.keys())))
+
+        # Store repex parameters
+        self._repex_parameters = {
             'number_of_equilibration_iterations': 0,
             'number_of_iterations': 100,
             'timestep': 2.0 * unit.femtoseconds,
@@ -93,6 +103,7 @@ class Yank(object):
             'platform': None,
             'displacement_sigma': 1.0 * unit.nanometers  # attempt to displace ligand by this stddev will be made each iteration
         }
+        self._repex_parameters.update(kwargs)
 
         return
 
@@ -248,9 +259,9 @@ class Yank(object):
 
         # Combine simulation options with defaults to create repex options.
         if options is None:
-            repex_options = copy.deepcopy(self._default_options)
+            repex_options = copy.deepcopy(self._repex_parameters)
         else:
-            repex_options = copy.deepcopy(dict(self._default_options, **options))
+            repex_options = copy.deepcopy(dict(self._repex_parameters, **options))
 
         # Make sure positions argument is a list of coordinate snapshots.
         if hasattr(positions, 'unit'):
@@ -285,12 +296,12 @@ class Yank(object):
             # Impose restraints for complex system in implicit solvent to keep ligand from drifting too far away from receptor.
             logger.debug("Creating receptor-ligand restraints...")
             reference_positions = positions[0]
-            if self.restraint_type == 'harmonic':
+            if self._restraint_type == 'harmonic':
                 restraints = HarmonicReceptorLigandRestraint(thermodynamic_state, reference_system, reference_positions, atom_indices['receptor'], atom_indices['ligand'])
-            elif self.restraint_type == 'flat-bottom':
+            elif self._restraint_type == 'flat-bottom':
                 restraints = FlatBottomReceptorLigandRestraint(thermodynamic_state, reference_system, reference_positions, atom_indices['receptor'], atom_indices['ligand'])
             else:
-                raise Exception("restraint_type of '%s' is not supported." % self.restraint_type)
+                raise Exception("restraint_type of '%s' is not supported." % self._restraint_type)
 
             force = restraints.getRestraintForce() # Get Force object incorporating restraints
             reference_system.addForce(force)
@@ -332,7 +343,7 @@ class Yank(object):
             logger.debug("All energies are finite.")
 
         # Randomize ligand position if requested, but only for implicit solvent systems.
-        if self.randomize_ligand and (phase == 'complex-implicit'):
+        if self._randomize_ligand and (phase == 'complex-implicit'):
             logger.debug("Randomizing ligand positions and excluding overlapping configurations...")
             randomized_positions = list()
             nstates = len(systems)
@@ -341,16 +352,16 @@ class Yank(object):
                 current_positions = positions[positions_index]
                 new_positions = ModifiedHamiltonianExchange.randomize_ligand_position(current_positions,
                                                                                       atom_indices['receptor'], atom_indices['ligand'],
-                                                                                      self.randomize_ligand_sigma_multiplier * restraints.getReceptorRadiusOfGyration(),
-                                                                                      self.randomize_ligand_close_cutoff)
+                                                                                      self._randomize_ligand_sigma_multiplier * restraints.getReceptorRadiusOfGyration(),
+                                                                                      self._randomize_ligand_close_cutoff)
                 randomized_positions.append(new_positions)
             positions = randomized_positions
-        if self.randomize_ligand and (phase == 'complex-explicit'):
+        if self._randomize_ligand and (phase == 'complex-explicit'):
             logger.warning("Ligand randomization requested, but will not be performed for explicit solvent simulations.")
 
         # Identify whether any atoms will be displaced via MC, unless option is turned off.
         mc_atoms = None
-        if self.mc_displacement_sigma:
+        if self._mc_displacement_sigma:
             mc_atoms = list()
             if 'ligand' in atom_indices:
                 mc_atoms = atom_indices['ligand']
@@ -362,7 +373,7 @@ class Yank(object):
         self._store_filenames[phase] = store_filename
         simulation = ModifiedHamiltonianExchange(store_filename, mpicomm=mpicomm)
         simulation.create(thermodynamic_state, alchemical_states, positions,
-                          displacement_sigma=self.mc_displacement_sigma, mc_atoms=mc_atoms,
+                          displacement_sigma=self._mc_displacement_sigma, mc_atoms=mc_atoms,
                           options=repex_options, metadata=metadata)
 
         # Initialize simulation.

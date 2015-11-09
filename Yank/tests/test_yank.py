@@ -34,6 +34,8 @@ import numpy as np
 from simtk import openmm
 from openmmtools import testsystems
 
+from nose import tools
+
 from yank import Yank
 from yank.repex import ThermodynamicState
 
@@ -50,6 +52,15 @@ kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA # Boltzmann constant
 #=============================================================================================
 # MAIN AND TESTS
 #=============================================================================================
+
+@tools.raises(TypeError)
+def test_parameters():
+    # Check that both Yank and Repex parameters are accepted
+    Yank(store_directory='test', restraint_type='harmonic', nsteps_per_iteration=1)
+
+    # Check that unknown parameters raise exception
+    Yank(store_directory='test', wrong_parameter=False)
+
 
 def notest_LennardJonesPair(box_width_nsigma=6.0):
     """
