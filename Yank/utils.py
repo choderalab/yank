@@ -499,16 +499,14 @@ def validate_parameters(parameters, template_parameters, check_unknown=False,
         templ_value = template_parameters[par]
 
         # Convert requested types
-        if float_to_int and isinstance(templ_value, int):
+        # bool inherits from int in Python so we can't simply use isinstance
+        if float_to_int and type(templ_value) is int:
             validated_par[par] = int(value)
         elif process_units_str and isinstance(templ_value, unit.Quantity):
-            if templ_value.unit.is_compatible(unit.seconds):
-                validated_par[par] = process_unit_bearing_str(value, unit.seconds)
-            elif templ_value.unit.is_compatible(unit.meters):
-                validated_par[par] = process_unit_bearing_str(value, unit.meters)
+            validated_par[par] = process_unit_bearing_str(value, templ_value.unit)
 
         # Check for incompatible types
-        if type(validated_par[par]) != type(templ_value):
+        if type(validated_par[par]) != type(templ_value) and templ_value is not None:
             raise ValueError("parameter {}={} is incompatible with {}".format(
                 par, validated_par[par], template_parameters[par]))
 

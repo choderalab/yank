@@ -86,13 +86,15 @@ def test_validate_parameters():
 
     # Convert float, length and time
     convert_pars = {
+        'bool': True,
         'int': 3.0,
         'length': '1.0*nanometers',
         'time': '1.0*femtoseconds'
     }
     convert_pars = validate_parameters(convert_pars, template_pars,
                                        process_units_str=True, float_to_int=True)
-    assert isinstance(convert_pars['int'], int)
+    assert type(convert_pars['bool']) is bool
+    assert type(convert_pars['int']) is int
     assert convert_pars['length'] == 1.0 * unit.nanometers
     assert convert_pars['time'] == 1.0 * unit.femtoseconds
 
