@@ -1,7 +1,10 @@
 import os
 import copy
+import shutil
 import logging
+import tempfile
 import itertools
+import contextlib
 import collections
 
 from pkg_resources import resource_filename
@@ -393,6 +396,14 @@ def is_iterable_container(value):
     # strings are iterable too so we have to treat them as a special case
     return not isinstance(value, str) and isinstance(value, collections.Iterable)
 
+@contextlib.contextmanager
+def temporary_directory():
+    """Context for safe creation of temporary directories."""
+    tmp_dir = tempfile.mkdtemp()
+    try:
+        yield tmp_dir
+    finally:
+        shutil.rmtree(tmp_dir)
 
 #========================================================================================
 # Conversion utilities

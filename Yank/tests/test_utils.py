@@ -115,7 +115,11 @@ def test_unknown_parameters():
     wrong_pars = {'unknown_par': 3}
     validate_parameters(wrong_pars, template_pars, check_unknown=True)
 
-
+def test_temp_dir_context():
+    """Test the context temporary_directory()."""
+    with temporary_directory() as tmp_dir:
+        assert os.path.isdir(tmp_dir)
+    assert not os.path.exists(tmp_dir)
 
 def test_yank_options():
     """Test option priorities and handling."""
