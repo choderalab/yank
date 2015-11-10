@@ -53,14 +53,15 @@ kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA # Boltzmann constant
 # MAIN AND TESTS
 #=============================================================================================
 
-@tools.raises(TypeError)
 def test_parameters():
     """Test Yank parameters initialization."""
 
     # Check that both Yank and Repex parameters are accepted
     Yank(store_directory='test', restraint_type='harmonic', nsteps_per_iteration=1)
 
-    # Check that unknown parameters raise exception
+@tools.raises(TypeError)
+def test_unknown_parameters():
+    """Test whether Yank raises exception on wrong initialization."""
     Yank(store_directory='test', wrong_parameter=False)
 
 
