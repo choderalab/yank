@@ -58,8 +58,31 @@ class Yank(object):
         ----------
         store_directory : str
            The storage directory in which output NetCDF files are read or written.
-        mpicomm : MPI communicator, optional, default=None
+        mpicomm : MPI communicator, optional
            If an MPI communicator is passed, an MPI simulation will be attempted.
+        restraint_type : str, optional
+           Restraint type to add between protein and ligand. Supported types are
+           'flat-bottom' and 'harmonic'. The second one is available only in
+           implicit solvent (default: 'flat-bottom').
+        randomize_ligand : bool, optional
+           Randomize ligand position when True. Not available in explicit solvent
+           (default: False).
+        randomize_ligand_close_cutoff : simtk.unit.Quantity (units: length), optional
+           Cutoff for ligand position randomization (default: 1.5*unit.angstrom).
+        randomize_ligand_sigma_multiplier : float, optional
+           Multiplier for ligand position randomization displacement (default: 2.0).
+        mc_displacement_sigma : simtk.unit.Quantity (units: length), optional
+           Maximum displacement for Monte Carlo moves that augment Langevin dynamics
+           (default: 10.0*unit.angstrom).
+
+        Other Parameters
+        ----------------
+        **kwargs
+           More options to pass to the ReplicaExchange class on initialization.
+
+        See Also
+        --------
+        ReplicaExchange.default_parameters : extra parameters accepted.
 
         """
 
