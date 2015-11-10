@@ -60,7 +60,6 @@ from simtk import openmm
 from simtk import unit
 
 import os, os.path
-import sys
 import math
 import copy
 import time
@@ -471,6 +470,25 @@ class ReplicaExchange(object):
        Scheme used to swap replicas: 'swap-all' or 'swap-neighbors' (default: 'swap-all')
     online_analysis : bool
        If True, analysis will occur each iteration (default: False)
+    title : str
+       Title for the simulation.
+    minimize : bool
+       Minimize configurations before running the simulation (default: True)
+    minimize_tolerance : simtk.unit.Quantity (units: energy/mole/length)
+       Set minimization tolerance (default: 1.0 * unit.kilojoules_per_mole / unit.nanometers).
+    minimize_maxIterations : int
+       Maximum number of iterations for minimization.
+    replica_mixing_scheme : str
+       Specify how to mix replicas. Supported schemes are 'swap-neighbors' and
+       'swap-all' (default: 'swap-all').
+    online_analysis : bool
+       If True, analysis will occur each iteration (default: False).
+    online_analysis_min_iterations : int
+       Minimum number of iterations needed to begin online analysis (default: 20).
+    show_energies : bool
+       If True, will print energies at each iteration (default: True).
+    show_mixing_statistics : bool
+       If True, will show mixing statistics at each iteration (default: True).
 
     TODO
     ----
@@ -521,10 +539,28 @@ class ReplicaExchange(object):
 
     """
 
+    default_parameters = {'collision_rate': 5.0 / unit.picosecond,
+                          'constraint_tolerance': 1.0e-6,
+                          'timestep': 2.0 * unit.femtosecond,
+                          'nsteps_per_iteration': 500,
+                          'number_of_iterations': 1,
+                          'equilibration_timestep': 1.0 * unit.femtosecond,
+                          'number_of_equilibration_iterations': 1,
+                          'title': 'Replica-exchange simulation created using ReplicaExchange class of repex.py on %s' % time.asctime(time.localtime()),
+                          'minimize': True,
+                          'minimize_tolerance': 1.0 * unit.kilojoules_per_mole / unit.nanometers,
+                          'minimize_maxIterations': 0,
+                          'replica_mixing_scheme': 'swap-all',
+                          'online_analysis': False,
+                          'online_analysis_min_iterations': 20,
+                          'show_energies': True,
+                          'show_mixing_statistics': True
+                          }
+
     # Options to store.
     options_to_store = ['collision_rate', 'constraint_tolerance', 'timestep', 'nsteps_per_iteration', 'number_of_iterations', 'equilibration_timestep', 'number_of_equilibration_iterations', 'title', 'minimize', 'replica_mixing_scheme', 'online_analysis', 'show_mixing_statistics']
 
-    def __init__(self, store_filename, mpicomm=None, mm=None):
+    def __init__(self, store_filename, mpicomm=None, mm=None, **kwargs):
         """
         Initialize replica-exchange simulation facility.
 
@@ -536,6 +572,11 @@ class ReplicaExchange(object):
            OpenMM API implementation to use
         mpicomm : mpi4py communicator, optional, default=None
            MPI communicator, if parallel execution is desired
+
+        Other Parameters
+        ----------------
+        **kwargs
+            Parameters in ReplicaExchange.default_parameters corresponding public attributes.
 
         """
         # To allow for parameters to be modified after object creation, class is not initialized until a call to self._initialize().
@@ -550,25 +591,16 @@ class ReplicaExchange(object):
 
         # Set default options.
         # These can be changed externally until object is initialized.
-        self.collision_rate = 5.0 / unit.picosecond
-        self.constraint_tolerance = 1.0e-6
-        self.timestep = 2.0 * unit.femtosecond
-        self.nsteps_per_iteration = 500
-        self.number_of_iterations = 1
-        self.equilibration_timestep = 1.0 * unit.femtosecond
-        self.number_of_equilibration_iterations = 1
-        self.title = 'Replica-exchange simulation created using ReplicaExchange class of repex.py on %s' % time.asctime(time.localtime())
-        self.minimize = True
-        self.minimize_tolerance = 1.0 * unit.kilojoules_per_mole / unit.nanometers # if specified, set minimization tolerance
-        self.minimize_maxIterations = 0 # if nonzero, set maximum iterations
         self.platform = None
         self.platform_name = None
         self.integrator = None # OpenMM integrator to use for propagating dynamics
-        self.replica_mixing_scheme = 'swap-all' # mix all replicas thoroughly
-        self.online_analysis = False # if True, analysis will occur each iteration
-        self.online_analysis_min_iterations = 20 # minimum number of iterations needed to begin online analysis, if requested
-        self.show_energies = True
-        self.show_mixing_statistics = True
+
+        # Initialize keywords parameters and check for unknown keywords parameters
+        for par, default in self.default_parameters.items():
+            setattr(self, par, kwargs.pop(par, default))
+        if kwargs:
+            raise TypeError('got an unexpected keyword arguments {}'.format(
+                ', '.join(kwargs.keys())))
 
         # Record store file filename
         self.store_filename = store_filename

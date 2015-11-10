@@ -418,9 +418,6 @@ def dispatch_binding(args):
         if phase == 'complex-explicit':
             logger.info("solvent and ions : %9d" % len(atom_indices[phase]['solvent']))
 
-    # Initialize YANK object.
-    yank = Yank(store_dir)
-
     # Set options.
     options = dict()
     if args['--nsteps']:
@@ -469,7 +466,8 @@ def dispatch_binding(args):
         options.update(YamlBuilder(args['--yaml']).options)
 
     # Create new simulation.
-    yank.create(phases, systems, positions, atom_indices, thermodynamic_state, options=options)
+    yank = Yank(store_dir, **options)
+    yank.create(phases, systems, positions, atom_indices, thermodynamic_state)
 
     # Report success.
     return True

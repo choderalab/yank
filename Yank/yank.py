@@ -18,7 +18,6 @@ Interface for automated free energy calculations.
 
 import os
 import os.path
-import sys
 import copy
 import glob
 import logging
@@ -29,10 +28,7 @@ import numpy as np
 import simtk.unit as unit
 import simtk.openmm as openmm
 
-from . import sampling, repex, alchemy
-
 from alchemy import AbsoluteAlchemicalFactory
-from repex import ThermodynamicState
 from sampling import ModifiedHamiltonianExchange # TODO: Modify to 'from yank.sampling import ModifiedHamiltonianExchange'?
 from restraints import HarmonicReceptorLigandRestraint, FlatBottomReceptorLigandRestraint
 
@@ -46,7 +42,15 @@ class Yank(object):
 
     """
 
-    def __init__(self, store_directory):
+    default_parameters = {
+        'restraint_type': 'flat-bottom',
+        'randomize_ligand': False,
+        'randomize_ligand_sigma_multiplier': 2.0,
+        'randomize_ligand_close_cutoff': 1.5 * unit.angstrom,
+        'mc_displacement_sigma': 10.0 * unit.angstroms
+    }
+
+    def __init__(self, store_directory, mpicomm=None, **kwargs):
         """
         Initialize YANK object with default parameters.
 
@@ -54,6 +58,31 @@ class Yank(object):
         ----------
         store_directory : str
            The storage directory in which output NetCDF files are read or written.
+        mpicomm : MPI communicator, optional
+           If an MPI communicator is passed, an MPI simulation will be attempted.
+        restraint_type : str, optional
+           Restraint type to add between protein and ligand. Supported types are
+           'flat-bottom' and 'harmonic'. The second one is available only in
+           implicit solvent (default: 'flat-bottom').
+        randomize_ligand : bool, optional
+           Randomize ligand position when True. Not available in explicit solvent
+           (default: False).
+        randomize_ligand_close_cutoff : simtk.unit.Quantity (units: length), optional
+           Cutoff for ligand position randomization (default: 1.5*unit.angstrom).
+        randomize_ligand_sigma_multiplier : float, optional
+           Multiplier for ligand position randomization displacement (default: 2.0).
+        mc_displacement_sigma : simtk.unit.Quantity (units: length), optional
+           Maximum displacement for Monte Carlo moves that augment Langevin dynamics
+           (default: 10.0*unit.angstrom).
+
+        Other Parameters
+        ----------------
+        **kwargs
+           More options to pass to the ReplicaExchange class on initialization.
+
+        See Also
+        --------
+        ReplicaExchange.default_parameters : extra parameters accepted.
 
         """
 
@@ -63,12 +92,8 @@ class Yank(object):
         # Store output directory.
         self._store_directory = store_directory
 
-        # Public attributes.
-        self.restraint_type = 'flat-bottom' # default to a flat-bottom restraint between the ligand and receptor
-        self.randomize_ligand = False
-        self.randomize_ligand_sigma_multiplier = 2.0
-        self.randomize_ligand_close_cutoff = 1.5 * unit.angstrom # TODO: Allow this to be specified by user.
-        self.mc_displacement_sigma = 10.0 * unit.angstroms
+        # Save MPI communicator
+        self._mpicomm = mpicomm
 
         # Set internal variables.
         self._phases = list()
@@ -82,8 +107,17 @@ class Yank(object):
         self.default_protocols['solvent-explicit'] = AbsoluteAlchemicalFactory.defaultSolventProtocolExplicit()
         self.default_protocols['complex-explicit'] = AbsoluteAlchemicalFactory.defaultComplexProtocolExplicit()
 
-        # Default options for repex.
-        self._default_options = {
+        # Store Yank parameters
+        for opt, default in self.default_parameters.items():
+            setattr(self, '_' + opt, kwargs.pop(opt, default))
+
+        # Check for unknown parameters
+        if not set(kwargs) <= set(ModifiedHamiltonianExchange.default_parameters):
+            raise TypeError('got an unexpected keyword arguments {}'.format(
+                ', '.join(kwargs.keys())))
+
+        # Store repex parameters
+        self._repex_parameters = {
             'number_of_equilibration_iterations': 0,
             'number_of_iterations': 100,
             'timestep': 2.0 * unit.femtoseconds,
@@ -93,6 +127,7 @@ class Yank(object):
             'platform': None,
             'displacement_sigma': 1.0 * unit.nanometers  # attempt to displace ligand by this stddev will be made each iteration
         }
+        self._repex_parameters.update(kwargs)
 
         return
 
@@ -153,7 +188,7 @@ class Yank(object):
 
         return
 
-    def create(self, phases, systems, positions, atom_indices, thermodynamic_state, protocols=None, options=None, mpicomm=None):
+    def create(self, phases, systems, positions, atom_indices, thermodynamic_state, protocols=None):
         """
         Set up a new set of alchemical free energy calculations for the specified phases.
 
@@ -175,8 +210,6 @@ class Yank(object):
            Thermodynamic state at which calculations are to be carried out
         protocols : dict of list of AlchemicalState, optional, default=None
            If specified, the alchemical protocol protocols[phase] will be used for phase 'phase' instead of the default.
-        options : dict of str, optional, default=None
-           If specified, these options will override default repex simulation options.
 
         """
 
@@ -194,7 +227,7 @@ class Yank(object):
 
         # Create new repex simulations.
         for phase in phases:
-            self._create_phase(phase, systems[phase], positions[phase], atom_indices[phase], thermodynamic_state, protocols=protocols, options=options, mpicomm=mpicomm)
+            self._create_phase(phase, systems[phase], positions[phase], atom_indices[phase], thermodynamic_state, protocols=protocols)
 
         # Record that we are now initialized.
         self._initialized = True
@@ -223,7 +256,7 @@ class Yank(object):
             is_periodic = True
         return is_periodic
 
-    def _create_phase(self, phase, reference_system, positions, atom_indices, thermodynamic_state, protocols=None, options=None, mpicomm=None):
+    def _create_phase(self, phase, reference_system, positions, atom_indices, thermodynamic_state, protocols=None):
         """
         Create a repex object for a specified phase.
 
@@ -241,16 +274,8 @@ class Yank(object):
            Thermodynamic state from which reference temperature and pressure are to be taken.
         protocols : dict of list of AlchemicalState, optional, default=None
            If specified, the alchemical protocol protocols[phase] will be used for phase 'phase' instead of the default.
-        options : dict of str, optional, default=None
-           If specified, these options will override default repex simulation options.
 
         """
-
-        # Combine simulation options with defaults to create repex options.
-        if options is None:
-            repex_options = copy.deepcopy(self._default_options)
-        else:
-            repex_options = copy.deepcopy(dict(self._default_options, **options))
 
         # Make sure positions argument is a list of coordinate snapshots.
         if hasattr(positions, 'unit'):
@@ -285,12 +310,12 @@ class Yank(object):
             # Impose restraints for complex system in implicit solvent to keep ligand from drifting too far away from receptor.
             logger.debug("Creating receptor-ligand restraints...")
             reference_positions = positions[0]
-            if self.restraint_type == 'harmonic':
+            if self._restraint_type == 'harmonic':
                 restraints = HarmonicReceptorLigandRestraint(thermodynamic_state, reference_system, reference_positions, atom_indices['receptor'], atom_indices['ligand'])
-            elif self.restraint_type == 'flat-bottom':
+            elif self._restraint_type == 'flat-bottom':
                 restraints = FlatBottomReceptorLigandRestraint(thermodynamic_state, reference_system, reference_positions, atom_indices['receptor'], atom_indices['ligand'])
             else:
-                raise Exception("restraint_type of '%s' is not supported." % self.restraint_type)
+                raise Exception("restraint_type of '%s' is not supported." % self._restraint_type)
 
             force = restraints.getRestraintForce() # Get Force object incorporating restraints
             reference_system.addForce(force)
@@ -332,7 +357,7 @@ class Yank(object):
             logger.debug("All energies are finite.")
 
         # Randomize ligand position if requested, but only for implicit solvent systems.
-        if self.randomize_ligand and (phase == 'complex-implicit'):
+        if self._randomize_ligand and (phase == 'complex-implicit'):
             logger.debug("Randomizing ligand positions and excluding overlapping configurations...")
             randomized_positions = list()
             nstates = len(systems)
@@ -341,16 +366,16 @@ class Yank(object):
                 current_positions = positions[positions_index]
                 new_positions = ModifiedHamiltonianExchange.randomize_ligand_position(current_positions,
                                                                                       atom_indices['receptor'], atom_indices['ligand'],
-                                                                                      self.randomize_ligand_sigma_multiplier * restraints.getReceptorRadiusOfGyration(),
-                                                                                      self.randomize_ligand_close_cutoff)
+                                                                                      self._randomize_ligand_sigma_multiplier * restraints.getReceptorRadiusOfGyration(),
+                                                                                      self._randomize_ligand_close_cutoff)
                 randomized_positions.append(new_positions)
             positions = randomized_positions
-        if self.randomize_ligand and (phase == 'complex-explicit'):
+        if self._randomize_ligand and (phase == 'complex-explicit'):
             logger.warning("Ligand randomization requested, but will not be performed for explicit solvent simulations.")
 
         # Identify whether any atoms will be displaced via MC, unless option is turned off.
         mc_atoms = None
-        if self.mc_displacement_sigma:
+        if self._mc_displacement_sigma:
             mc_atoms = list()
             if 'ligand' in atom_indices:
                 mc_atoms = atom_indices['ligand']
@@ -360,17 +385,15 @@ class Yank(object):
         logger.debug("Creating replica exchange object...")
         store_filename = os.path.join(self._store_directory, phase + '.nc')
         self._store_filenames[phase] = store_filename
-        simulation = ModifiedHamiltonianExchange(store_filename, mpicomm=mpicomm)
+        simulation = ModifiedHamiltonianExchange(store_filename, mpicomm=self._mpicomm)
         simulation.create(thermodynamic_state, alchemical_states, positions,
-                          displacement_sigma=self.mc_displacement_sigma, mc_atoms=mc_atoms,
-                          options=repex_options, metadata=metadata)
+                          displacement_sigma=self._mc_displacement_sigma, mc_atoms=mc_atoms,
+                          options=self._repex_parameters, metadata=metadata)
 
         # Initialize simulation.
         # TODO: Use the right scheme for initializing the simulation without running.
         #logger.debug("Initializing simulation...")
         #simulation.run(0)
-
-        # TODO: Process user-supplied options.
 
         # Clean up simulation.
         del simulation
@@ -380,7 +403,7 @@ class Yank(object):
 
         return
 
-    def run(self, niterations_to_run=None, mpicomm=None, options=None):
+    def run(self, niterations_to_run=None):
         """
         Run a free energy calculation.
 
@@ -389,10 +412,6 @@ class Yank(object):
         niterations_to_run : int, optional, default=None
            If specified, only this many iterations will be run for each phase.
            This is useful for running simulation incrementally, but may incur a good deal of overhead.
-        mpicomm : MPI communicator, optional, default=None
-           If an MPI communicator is passed, an MPI simulation will be attempted.
-        options : dict of str, optional, default=None
-           If specified, these options will override any other options.
 
         """
 
@@ -401,11 +420,11 @@ class Yank(object):
             raise Exception("Yank must first be initialized by either resume() or create().")
 
         # Handle some logistics necessary for MPI.
-        if mpicomm:
+        if self._mpicomm is not None:
             logger.debug("yank.run starting for MPI...")
             # Make sure each thread's random number generators have unique seeds.
             # TODO: Do we need to store seed in repex object?
-            seed = np.random.randint(4294967295 - mpicomm.size) + mpicomm.rank
+            seed = np.random.randint(4294967295 - self._mpicomm.size) + self._mpicomm.rank
             np.random.seed(seed)
 
         # Run all phases sequentially.
@@ -413,8 +432,8 @@ class Yank(object):
         for phase in self._phases:
             store_filename = self._store_filenames[phase]
             # Resume simulation from store file.
-            simulation = ModifiedHamiltonianExchange(store_filename=store_filename, mpicomm=mpicomm)
-            simulation.resume(options=options)
+            simulation = ModifiedHamiltonianExchange(store_filename=store_filename, mpicomm=self._mpicomm)
+            simulation.resume(options=self._repex_parameters)
             # TODO: We may need to manually update run options here if options=options above does not behave as expected.
             simulation.run(niterations_to_run=niterations_to_run)
             # Clean up to ensure we close files, contexts, etc.

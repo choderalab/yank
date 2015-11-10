@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 from simtk import unit
 
 import utils
+from yank import Yank
+from repex import ReplicaExchange
 
 
 #=============================================================================================
@@ -88,17 +90,14 @@ class YamlBuilder:
 
     """
 
-    _accepted_options = frozenset(['title',
-                                   'timestep', 'nsteps_per_iteration', 'number_of_iterations',
-                                   'minimize','equilibrate', 'equilibration_timestep',
-                                   'number_of_equilibration_iterations'])
-    _expected_options_types = (('timestep', process_second_compatible_quantity),
-                               ('nsteps_per_iteration', int),
-                               ('number_of_iterations', int),
-                               ('minimize', process_bool),
-                               ('equilibrate', process_bool),
-                               ('equilibration_timestep', process_second_compatible_quantity),
-                               ('number_of_equilibration_iterations', int))
+    default_options = {
+        'verbose': False,
+        'mpi': False,
+        'platform': None,
+        'precision': None,
+        'resume': False,
+        'output_directory': 'output/'
+    }
 
     @property
     def options(self):
@@ -138,24 +137,20 @@ class YamlBuilder:
         except KeyError:
             pass
 
-        # Set only accepted options
-        self._options = {x: opts[x] for x in opts if x in YamlBuilder._accepted_options}
-        if len(self._options) != len(opts):
-            unknown_opts = {x for x in opts if x not in YamlBuilder._accepted_options}
-            error_msg = 'YAML configuration contains unidentifiable options: '
-            error_msg += ', '.join(unknown_opts)
-            logger.error(error_msg)
-            raise YamlParseError(error_msg)
+        # Store YAML builder options
+        self._options = {par: opts.pop(par, default)
+                         for par, default in self.default_options.items()}
 
-        # Enforce types that are not automatically recognized by yaml
-        for special_opt, casting_func in YamlBuilder._expected_options_types:
-            if special_opt in self._options:
-                try:
-                    self._options[special_opt] = casting_func(self._options[special_opt])
-                except (TypeError, ValueError) as e:
-                    error_msg = 'YAML option %s: %s' % (special_opt, str(e))
-                    logger.error(error_msg)
-                    raise YamlParseError(error_msg)
+        # Store yank and repex options
+        template_options = Yank.default_parameters.copy()
+        template_options.update(ReplicaExchange.default_parameters)
+        try:
+            opts = utils.validate_parameters(opts, template_options, check_unknown=True,
+                                             process_units_str=True, float_to_int=True)
+        except (TypeError, ValueError) as e:
+            logger.error(str(e))
+            raise YamlParseError(str(e))
+        self._options.update(opts)
 
     def build_experiment(self):
         """Build the Yank experiment (TO BE IMPLEMENTED)."""
