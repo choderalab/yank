@@ -30,6 +30,8 @@ from yank import utils
 def dispatch(args):
     from yank.yank import Yank # TODO: Fix this awkward import syntax.
 
+    store_directory = args['--store']
+
     # Set override options.
     options = dict()
 
@@ -79,7 +81,6 @@ def dispatch(args):
                 raise Exception("Platform selection logic is outdated and needs to be updated to add platform '%s'." % platform_name)
 
     # Create YANK object associated with data storage directory.
-    store_directory = args['--store']
     yank = Yank(store_directory, mpicomm=mpicomm, **options)
 
     # Set YANK to resume from the store file.

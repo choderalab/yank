@@ -365,7 +365,7 @@ class Yank(object):
         simulation = ModifiedHamiltonianExchange(store_filename, mpicomm=self._mpicomm)
         simulation.create(thermodynamic_state, alchemical_states, positions,
                           displacement_sigma=self._mc_displacement_sigma, mc_atoms=mc_atoms,
-                          options=self._repex_options, metadata=metadata)
+                          options=self._repex_parameters, metadata=metadata)
 
         # Initialize simulation.
         # TODO: Use the right scheme for initializing the simulation without running.
