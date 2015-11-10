@@ -46,10 +46,8 @@ def dispatch(args):
         mpicomm = MPI.COMM_WORLD
 
     # Configure logger
-    if args['--verbose']:
-        options['verbose'] = True
-    utils.config_root_logger(options['verbose'],
-                             log_file_path=os.path.join(store_directory, 'run.log'), mpicomm=mpicomm)
+    utils.config_root_logger(args['--verbose'], mpicomm=mpicomm,
+                             log_file_path=os.path.join(store_directory, 'run.log'))
 
     if args['--iterations']:
         options['number_of_iterations'] = int(args['--iterations'])
