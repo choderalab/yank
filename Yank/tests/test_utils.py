@@ -96,6 +96,9 @@ def test_validate_parameters():
     assert convert_pars['length'] == 1.0 * unit.nanometers
     assert convert_pars['time'] == 1.0 * unit.femtoseconds
 
+    # If check_unknown flag is not True it should not raise an error
+    validate_parameters({'unkown': 0}, template_pars)
+
 @tools.raises(ValueError)
 def test_incompatible_parameters():
     """Check that validate_parameters raises exception with unknown parameter."""

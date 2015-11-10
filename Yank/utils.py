@@ -491,7 +491,7 @@ def validate_parameters(parameters, template_parameters, check_unknown=False,
                      if par in template_parameters}
 
     # Check for unknown parameters
-    if len(validated_par) < len(parameters):
+    if check_unknown and len(validated_par) < len(parameters):
         diff = set(parameters) - set(template_parameters)
         raise TypeError("found unknown parameter {}".format(', '.join(diff)))
 
