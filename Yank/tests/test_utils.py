@@ -9,7 +9,8 @@ Test various utility functions.
 # GLOBAL IMPORTS
 #=============================================================================================
 
-from yank.utils import YankOptions, CombinatorialTree, is_iterable_container
+from nose import tools
+from yank.utils import *
 
 #=============================================================================================
 # TESTING FUNCTIONS
@@ -59,6 +60,57 @@ def test_expand_tree():
               {'simple': {'scalar': 1, 'vector': 4, 'nested': {'leaf': 'b'}}},
               {'simple': {'scalar': 1, 'vector': 4, 'nested': {'leaf': 'c'}}}]
     assert result == [exp for exp in simple_tree]
+
+def test_validate_parameters():
+    """Test validate_parameters function."""
+
+    template_pars = {
+        'bool': True,
+        'int': 2,
+        'float': 1e4,
+        'str': 'default',
+        'length': 2.0 * unit.nanometers,
+        'time': 2.0 * unit.femtoseconds
+    }
+    input_pars = {
+        'bool': False,
+        'int': 4,
+        'float': 3.0,
+        'str': 'input',
+        'length': 1.0 * unit.nanometers,
+        'time': 1.0 * unit.femtoseconds
+    }
+
+    # Accept correct parameters
+    assert input_pars == validate_parameters(input_pars, template_pars)
+
+    # Convert float, length and time
+    convert_pars = {
+        'int': 3.0,
+        'length': '1.0*nanometers',
+        'time': '1.0*femtoseconds'
+    }
+    convert_pars = validate_parameters(convert_pars, template_pars,
+                                       process_units_str=True, float_to_int=True)
+    assert isinstance(convert_pars['int'], int)
+    assert convert_pars['length'] == 1.0 * unit.nanometers
+    assert convert_pars['time'] == 1.0 * unit.femtoseconds
+
+@tools.raises(ValueError)
+def test_incompatible_parameters():
+    """Check that validate_parameters raises exception with unknown parameter."""
+    template_pars = {'int': 3}
+    wrong_pars = {'int': 3.0}
+    validate_parameters(wrong_pars, template_pars)
+
+@tools.raises(TypeError)
+def test_unknown_parameters():
+    """Test that validate_parameters() raises exception with unknown parameter."""
+    template_pars = {'known_par': 3}
+    wrong_pars = {'unknown_par': 3}
+    validate_parameters(wrong_pars, template_pars, check_unknown=True)
+
+
 
 def test_yank_options():
     """Test option priorities and handling."""

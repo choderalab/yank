@@ -12,41 +12,6 @@ from simtk import unit
 # Logging functions
 #========================================================================================
 
-def typename(atype):
-    """Convert a type object into a fully qualified typename.
-
-    Parameters
-    ----------
-    atype : type
-        The type to convert
-    
-    Returns
-    -------
-    typename : str
-        The string typename.
-    
-    For example,
-
-    >>> typename(type(1))
-    'int'
-
-    >>> import numpy
-    >>> x = numpy.array([1,2,3], numpy.float32)
-    >>> typename(type(x))
-    'numpy.ndarray'
-
-    """
-    if not isinstance(atype, type):
-        raise Exception('Argument is not a type')
-
-    modulename = atype.__module__
-    typename = atype.__name__
-
-    if modulename != '__builtin__':
-        typename = modulename + '.' + typename
-
-    return typename
-
 def is_terminal_verbose():
     """Check whether the logging on the terminal is configured to be verbose.
 
@@ -390,6 +355,7 @@ class YankOptions(collections.MutableMapping):
     def __len__(self):
         return sum(1 for _ in self)
 
+
 #========================================================================================
 # Miscellaneous functions
 #========================================================================================
@@ -426,6 +392,46 @@ def is_iterable_container(value):
     """
     # strings are iterable too so we have to treat them as a special case
     return not isinstance(value, str) and isinstance(value, collections.Iterable)
+
+
+#========================================================================================
+# Conversion utilities
+#========================================================================================
+
+def typename(atype):
+    """Convert a type object into a fully qualified typename.
+
+    Parameters
+    ----------
+    atype : type
+        The type to convert
+
+    Returns
+    -------
+    typename : str
+        The string typename.
+
+    For example,
+
+    >>> typename(type(1))
+    'int'
+
+    >>> import numpy
+    >>> x = numpy.array([1,2,3], numpy.float32)
+    >>> typename(type(x))
+    'numpy.ndarray'
+
+    """
+    if not isinstance(atype, type):
+        raise Exception('Argument is not a type')
+
+    modulename = atype.__module__
+    typename = atype.__name__
+
+    if modulename != '__builtin__':
+        typename = modulename + '.' + typename
+
+    return typename
 
 def process_unit_bearing_str(quantity_str, compatible_units):
     """
@@ -476,6 +482,38 @@ def process_unit_bearing_str(quantity_str, compatible_units):
                                                                      str(compatible_units)))
     # Return unit-bearing quantity.
     return quantity
+
+def validate_parameters(parameters, template_parameters, check_unknown=False,
+                        process_units_str=False, float_to_int=False):
+
+    # Create validated parameters
+    validated_par = {par: parameters[par] for par in parameters
+                     if par in template_parameters}
+
+    # Check for unknown parameters
+    if len(validated_par) < len(parameters):
+        diff = set(parameters) - set(template_parameters)
+        raise TypeError("found unknown parameter {}".format(', '.join(diff)))
+
+    for par, value in validated_par.items():
+        templ_value = template_parameters[par]
+
+        # Convert requested types
+        if float_to_int and isinstance(templ_value, int):
+            validated_par[par] = int(value)
+        elif process_units_str and isinstance(templ_value, unit.Quantity):
+            if templ_value.unit.is_compatible(unit.seconds):
+                validated_par[par] = process_unit_bearing_str(value, unit.seconds)
+            elif templ_value.unit.is_compatible(unit.meters):
+                validated_par[par] = process_unit_bearing_str(value, unit.meters)
+
+        # Check for incompatible types
+        if type(validated_par[par]) != type(templ_value):
+            raise ValueError("parameter {}={} is incompatible with {}".format(
+                par, validated_par[par], template_parameters[par]))
+
+    return validated_par
+
 
 #=============================================================================================
 # Main and tests
