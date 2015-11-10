@@ -391,6 +391,8 @@ def test_hamiltonian_exchange(mpicomm=None, verbose=True):
 
 @tools.raises(TypeError)
 def test_parameters():
+    """Test ReplicaExchange parameters initialization."""
+
     # Check that default parameters initialization
     repex = ReplicaExchange(store_filename='test', nsteps_per_iteration=1e6)
     assert repex.nsteps_per_iteration == 1000000
