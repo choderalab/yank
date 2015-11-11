@@ -146,31 +146,6 @@ def test_yaml_wrong_option_value():
     """
     parse_yaml_str(yaml_content)
 
-@unittest.skipIf(not is_openeye_installed(), 'This test requires OpenEye installed.')
-def test_setup_name_antechamber():
-    """Setup molecule from name."""
-    with temporary_directory() as tmp_dir:
-        yaml_content = """
-        ---
-        options:
-            output_dir: {}
-        molecules:
-            p-xylene:
-                name: p-xylene
-                parameters: antechamber
-        """.format(tmp_dir)
-
-        yaml_builder = parse_yaml_str(yaml_content)
-        yaml_builder._setup_molecule('p-xylene')
-
-        output_dir = os.path.join(tmp_dir, YamlBuilder.SETUP_MOLECULES_DIR, 'p-xylene')
-        assert os.path.exists(os.path.join(output_dir, 'p-xylene.mol2'))
-        assert os.path.exists(os.path.join(output_dir, 'p-xylene.gaff.mol2'))
-        assert os.path.exists(os.path.join(output_dir, 'p-xylene.frcmod'))
-        assert os.path.getsize(os.path.join(output_dir, 'p-xylene.mol2')) > 0
-        assert os.path.getsize(os.path.join(output_dir, 'p-xylene.gaff.mol2')) > 0
-        assert os.path.getsize(os.path.join(output_dir, 'p-xylene.frcmod')) > 0
-
 def test_yaml_mol2_antechamber():
     """Test antechamber setup of molecule files."""
     benzene_path = os.path.join(example_dir(), 'benzene-toluene-explicit',
@@ -194,3 +169,53 @@ def test_yaml_mol2_antechamber():
         assert os.path.exists(os.path.join(output_dir, 'benzene.frcmod'))
         assert os.path.getsize(os.path.join(output_dir, 'benzene.gaff.mol2')) > 0
         assert os.path.getsize(os.path.join(output_dir, 'benzene.frcmod')) > 0
+
+@unittest.skipIf(not is_openeye_installed(), 'This test requires OpenEye installed.')
+def test_setup_name_antechamber():
+    """Setup molecule from name with antechamber parametrization."""
+    with temporary_directory() as tmp_dir:
+        yaml_content = """
+        ---
+        options:
+            output_dir: {}
+        molecules:
+            p-xylene:
+                name: p-xylene
+                parameters: antechamber
+        """.format(tmp_dir)
+
+        yaml_builder = parse_yaml_str(yaml_content)
+        yaml_builder._setup_molecule('p-xylene')
+
+        output_dir = os.path.join(tmp_dir, YamlBuilder.SETUP_MOLECULES_DIR, 'p-xylene')
+        assert os.path.exists(os.path.join(output_dir, 'p-xylene.mol2'))
+        assert os.path.exists(os.path.join(output_dir, 'p-xylene.gaff.mol2'))
+        assert os.path.exists(os.path.join(output_dir, 'p-xylene.frcmod'))
+        assert os.path.getsize(os.path.join(output_dir, 'p-xylene.mol2')) > 0
+        assert os.path.getsize(os.path.join(output_dir, 'p-xylene.gaff.mol2')) > 0
+        assert os.path.getsize(os.path.join(output_dir, 'p-xylene.frcmod')) > 0
+
+@unittest.skipIf(not is_openeye_installed(), 'This test requires OpenEye installed.')
+def test_setup_smiles_antechamber():
+    """Setup molecule from SMILES with antechamber parametrization."""
+    with temporary_directory() as tmp_dir:
+        yaml_content = """
+        ---
+        options:
+            output_dir: {}
+        molecules:
+            toluene:
+                smiles: Cc1ccccc1
+                parameters: antechamber
+        """.format(tmp_dir)
+
+        yaml_builder = parse_yaml_str(yaml_content)
+        yaml_builder._setup_molecule('toluene')
+
+        output_dir = os.path.join(tmp_dir, YamlBuilder.SETUP_MOLECULES_DIR, 'toluene')
+        assert os.path.exists(os.path.join(output_dir, 'toluene.mol2'))
+        assert os.path.exists(os.path.join(output_dir, 'toluene.gaff.mol2'))
+        assert os.path.exists(os.path.join(output_dir, 'toluene.frcmod'))
+        assert os.path.getsize(os.path.join(output_dir, 'toluene.mol2')) > 0
+        assert os.path.getsize(os.path.join(output_dir, 'toluene.gaff.mol2')) > 0
+        assert os.path.getsize(os.path.join(output_dir, 'toluene.frcmod')) > 0

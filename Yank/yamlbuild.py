@@ -156,7 +156,8 @@ class YamlBuilder:
         # Store other fields, we don't raise an error if we cannot find any
         # since the YAML file could be used only to specify the options
         self._molecules = yaml_config.pop('molecules', {})
-        # TODO - verify that filepath and name are not specified simultaneously
+        # TODO - verify that filepath and name/smiles are not specified simultaneously
+
 
     def build_experiment(self):
         """Build the Yank experiment (TO BE IMPLEMENTED)."""
@@ -174,13 +175,14 @@ class YamlBuilder:
         # Check molecule source
         if 'filepath' in mol_descr:
             input_mol_path = os.path.abspath(mol_descr['filepath'])
-        elif 'name' in mol_descr:
+        else:  # Generate molecule with OpenEye
             input_mol_path = os.path.abspath(os.path.join(output_mol_dir,
                                                           molecule_id + '.mol2'))
-
-            # Generate molecule from name with OpenEye
             try:
-                molecule = openmoltools.openeye.iupac_to_oemol(mol_descr['name'])
+                if 'name' in mol_descr:
+                    molecule = openmoltools.openeye.iupac_to_oemol(mol_descr['name'])
+                elif 'smiles' in mol_descr:
+                    molecule = openmoltools.openeye.smiles_to_oemol(mol_descr['smiles'])
                 molecule = openmoltools.openeye.get_charges(molecule, keep_confs=1)
                 openmoltools.openeye.molecule_to_mol2(molecule, input_mol_path)
             except ImportError as e:
