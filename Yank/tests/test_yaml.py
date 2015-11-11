@@ -149,7 +149,6 @@ def test_yaml_wrong_option_value():
 @unittest.skipIf(not is_openeye_installed(), 'This test requires OpenEye installed.')
 def test_setup_name_antechamber():
     """Setup molecule from name."""
-
     with temporary_directory() as tmp_dir:
         yaml_content = """
         ---
@@ -174,25 +173,24 @@ def test_setup_name_antechamber():
 
 def test_yaml_mol2_antechamber():
     """Test antechamber setup of molecule files."""
-    imatinib_path = os.path.join(example_dir(), 'abl-imatinib-explicit',
-                                 'setup', 'STI02.mol2')
-
+    benzene_path = os.path.join(example_dir(), 'benzene-toluene-explicit',
+                                'setup', 'benzene.tripos.mol2')
     with temporary_directory() as tmp_dir:
         yaml_content = """
         ---
         options:
             output_dir: {}
         molecules:
-            imatinib:
+            benzene:
                 filepath: {}
                 parameters: antechamber
-        """.format(tmp_dir, imatinib_path)
+        """.format(tmp_dir, benzene_path)
 
         yaml_builder = parse_yaml_str(yaml_content)
-        yaml_builder._setup_molecule('imatinib')
+        yaml_builder._setup_molecule('benzene')
 
-        output_dir = os.path.join(tmp_dir, YamlBuilder.SETUP_MOLECULES_DIR, 'imatinib')
-        assert os.path.exists(os.path.join(output_dir, 'imatinib.gaff.mol2'))
-        assert os.path.exists(os.path.join(output_dir, 'imatinib.frcmod'))
-        assert os.path.getsize(os.path.join(output_dir, 'imatinib.gaff.mol2')) > 0
-        assert os.path.getsize(os.path.join(output_dir, 'imatinib.frcmod')) > 0
+        output_dir = os.path.join(tmp_dir, YamlBuilder.SETUP_MOLECULES_DIR, 'benzene')
+        assert os.path.exists(os.path.join(output_dir, 'benzene.gaff.mol2'))
+        assert os.path.exists(os.path.join(output_dir, 'benzene.frcmod'))
+        assert os.path.getsize(os.path.join(output_dir, 'benzene.gaff.mol2')) > 0
+        assert os.path.getsize(os.path.join(output_dir, 'benzene.frcmod')) > 0
