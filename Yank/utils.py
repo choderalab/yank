@@ -405,6 +405,16 @@ def temporary_directory():
     finally:
         shutil.rmtree(tmp_dir)
 
+@contextlib.contextmanager
+def temporary_cd(dir_path):
+    """Context to temporary change the working directory."""
+    prev_dir = os.getcwd()
+    os.chdir(os.path.abspath(dir_path))
+    try:
+        yield
+    finally:
+        os.chdir(prev_dir)
+
 #========================================================================================
 # Conversion utilities
 #========================================================================================

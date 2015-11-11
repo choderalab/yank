@@ -121,6 +121,13 @@ def test_temp_dir_context():
         assert os.path.isdir(tmp_dir)
     assert not os.path.exists(tmp_dir)
 
+def test_temp_cd_context():
+    """Test the context temporary_cd()."""
+    with temporary_directory() as tmp_dir:
+        with temporary_cd(tmp_dir):
+            assert os.getcwd() == os.path.realpath(tmp_dir)
+        assert os.getcwd() != os.path.realpath(tmp_dir)
+
 def test_yank_options():
     """Test option priorities and handling."""
 
