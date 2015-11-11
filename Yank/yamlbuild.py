@@ -156,22 +156,40 @@ class YamlBuilder:
         # Store other fields, we don't raise an error if we cannot find any
         # since the YAML file could be used only to specify the options
         self._molecules = yaml_config.pop('molecules', {})
+        # TODO - verify that filepath and name are not specified simultaneously
 
     def build_experiment(self):
         """Build the Yank experiment (TO BE IMPLEMENTED)."""
         raise NotImplemented
 
-    def _setup_molecule(self, molecule_name):
-        mol_descr = self._molecules[molecule_name]
-        input_mol_path = os.path.abspath(mol_descr['filepath'])
+    def _setup_molecule(self, molecule_id):
+        mol_descr = self._molecules[molecule_id]
+
+        # Create output directory
         output_mol_dir = os.path.join(self._output_dir, self.SETUP_MOLECULES_DIR,
-                                      molecule_name)
-        # Create diretory
+                                      molecule_id)
         if not os.path.isdir(output_mol_dir):
             os.makedirs(output_mol_dir)
 
+        # Check molecule source
+        if 'filepath' in mol_descr:
+            input_mol_path = os.path.abspath(mol_descr['filepath'])
+        elif 'name' in mol_descr:
+            input_mol_path = os.path.abspath(os.path.join(output_mol_dir,
+                                                          molecule_id + '.mol2'))
+
+            # Generate molecule from name with OpenEye
+            try:
+                molecule = openmoltools.openeye.iupac_to_oemol(mol_descr['name'])
+                molecule = openmoltools.openeye.get_charges(molecule, keep_confs=1)
+                openmoltools.openeye.molecule_to_mol2(molecule, input_mol_path)
+            except ImportError as e:
+                error_msg = ('requested molecule generation from name but '
+                             'could not find OpenEye toolkit: ' + str(e))
+                raise YamlParseError(error_msg)
+
         with utils.temporary_cd(output_mol_dir):
-            openmoltools.amber.run_antechamber(molecule_name, input_mol_path)
+            openmoltools.amber.run_antechamber(molecule_id, input_mol_path)
 
 if __name__ == "__main__":
     import doctest

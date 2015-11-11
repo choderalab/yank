@@ -16,6 +16,7 @@ Test YAML functions.
 import os
 import tempfile
 import textwrap
+import unittest
 
 from simtk import unit
 from nose.tools import raises
@@ -26,6 +27,22 @@ from yank.yamlbuild import YamlBuilder, YamlParseError
 #=============================================================================================
 # SUBROUTINES FOR TESTING
 #=============================================================================================
+
+# TODO move this to openmoltools
+def is_openeye_installed():
+    try:
+        from openeye import oechem
+        from openeye import oequacpac
+        from openeye import oeiupac
+        from openeye import oeomega
+
+        if not (oechem.OEChemIsLicensed() and oequacpac.OEQuacPacIsLicensed()
+                and oeiupac.OEIUPACIsLicensed() and oeomega.OEOmegaIsLicensed()):
+            raise ImportError
+    except ImportError:
+        return False
+    return True
+
 
 def example_dir():
     """Return the absolute path to the Yank examples directory."""
@@ -128,6 +145,32 @@ def test_yaml_wrong_option_value():
         minimize: 100
     """
     parse_yaml_str(yaml_content)
+
+@unittest.skipIf(not is_openeye_installed(), 'This test requires OpenEye installed.')
+def test_setup_name_antechamber():
+    """Setup molecule from name."""
+
+    with temporary_directory() as tmp_dir:
+        yaml_content = """
+        ---
+        options:
+            output_dir: {}
+        molecules:
+            p-xylene:
+                name: p-xylene
+                parameters: antechamber
+        """.format(tmp_dir)
+
+        yaml_builder = parse_yaml_str(yaml_content)
+        yaml_builder._setup_molecule('p-xylene')
+
+        output_dir = os.path.join(tmp_dir, YamlBuilder.SETUP_MOLECULES_DIR, 'p-xylene')
+        assert os.path.exists(os.path.join(output_dir, 'p-xylene.mol2'))
+        assert os.path.exists(os.path.join(output_dir, 'p-xylene.gaff.mol2'))
+        assert os.path.exists(os.path.join(output_dir, 'p-xylene.frcmod'))
+        assert os.path.getsize(os.path.join(output_dir, 'p-xylene.mol2')) > 0
+        assert os.path.getsize(os.path.join(output_dir, 'p-xylene.gaff.mol2')) > 0
+        assert os.path.getsize(os.path.join(output_dir, 'p-xylene.frcmod')) > 0
 
 def test_yaml_mol2_antechamber():
     """Test antechamber setup of molecule files."""
