@@ -13,10 +13,12 @@ Tools to build Yank experiments from a YAML configuration file.
 # GLOBAL IMPORTS
 #=============================================================================================
 
+import os
 import yaml
 import logging
 logger = logging.getLogger(__name__)
 
+import openmoltools
 from simtk import unit
 
 import utils
@@ -90,13 +92,16 @@ class YamlBuilder:
 
     """
 
-    default_options = {
+    SETUP_DIR = 'setup'
+    SETUP_MOLECULES_DIR = os.path.join(SETUP_DIR, 'molecules')
+
+    DEFAULT_OPTIONS = {
         'verbose': False,
         'mpi': False,
         'platform': None,
         'precision': None,
         'resume': False,
-        'output_directory': 'output/'
+        'output_dir': 'output/'
     }
 
     @property
@@ -128,33 +133,45 @@ class YamlBuilder:
 
         # Find and merge options and metadata
         try:
-            opts = yaml_config['options']
+            opts = yaml_config.pop('options')
         except KeyError:
             opts = {}
             logger.warning('No YAML options found.')
-        try:
-            opts.update(yaml_config['metadata'])
-        except KeyError:
-            pass
+        opts.update(yaml_config.pop('metadata', {}))
 
         # Store YAML builder options
-        self._options = {par: opts.pop(par, default)
-                         for par, default in self.default_options.items()}
+        for opt, default in self.DEFAULT_OPTIONS.items():
+            setattr(self, '_' + opt, opts.pop(opt, default))
 
-        # Store yank and repex options
+        # Validate and store yank and repex options
         template_options = Yank.default_parameters.copy()
         template_options.update(ReplicaExchange.default_parameters)
         try:
-            opts = utils.validate_parameters(opts, template_options, check_unknown=True,
-                                             process_units_str=True, float_to_int=True)
+            self._options = utils.validate_parameters(opts, template_options, check_unknown=True,
+                                                      process_units_str=True, float_to_int=True)
         except (TypeError, ValueError) as e:
             logger.error(str(e))
             raise YamlParseError(str(e))
-        self._options.update(opts)
+
+        # Store other fields, we don't raise an error if we cannot find any
+        # since the YAML file could be used only to specify the options
+        self._molecules = yaml_config.pop('molecules', {})
 
     def build_experiment(self):
         """Build the Yank experiment (TO BE IMPLEMENTED)."""
         raise NotImplemented
+
+    def _setup_molecule(self, molecule_name):
+        mol_descr = self._molecules[molecule_name]
+        input_mol_path = os.path.abspath(mol_descr['filepath'])
+        output_mol_dir = os.path.join(self._output_dir, self.SETUP_MOLECULES_DIR,
+                                      molecule_name)
+        # Create diretory
+        if not os.path.isdir(output_mol_dir):
+            os.makedirs(output_mol_dir)
+
+        with utils.temporary_cd(output_mol_dir):
+            openmoltools.amber.run_antechamber(molecule_name, input_mol_path)
 
 if __name__ == "__main__":
     import doctest

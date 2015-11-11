@@ -20,11 +20,17 @@ import textwrap
 from simtk import unit
 from nose.tools import raises
 
+from yank.utils import temporary_directory
 from yank.yamlbuild import YamlBuilder, YamlParseError
 
 #=============================================================================================
 # SUBROUTINES FOR TESTING
 #=============================================================================================
+
+def example_dir():
+    """Return the absolute path to the Yank examples directory."""
+    this_file_dir = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(this_file_dir, '..', '..', 'examples')
 
 def parse_yaml_str(yaml_content):
     """Parse the YAML string and return the YamlBuilder object used."""
@@ -51,7 +57,7 @@ def test_yaml_parsing():
     test: 2
     """
     yaml_builder = parse_yaml_str(yaml_content)
-    assert len(yaml_builder.options) == len(yaml_builder.default_options)
+    assert len(yaml_builder.options) == 0
 
     # Correct parsing
     yaml_content = """
@@ -65,7 +71,7 @@ def test_yaml_parsing():
         platform: CUDA
         precision: mixed
         resume: true
-        output_directory: /path/to/output/
+        output_dir: /path/to/output/
         restraint_type: harmonic
         randomize_ligand: yes
         randomize_ligand_sigma_multiplier: 2.0
@@ -89,7 +95,7 @@ def test_yaml_parsing():
     """
 
     yaml_builder = parse_yaml_str(yaml_content)
-    assert len(yaml_builder.options) == 27
+    assert len(yaml_builder.options) == 21
 
     # Check correct types
     assert yaml_builder.options['replica_mixing_scheme'] == 'swap-all'
@@ -122,3 +128,28 @@ def test_yaml_wrong_option_value():
         minimize: 100
     """
     parse_yaml_str(yaml_content)
+
+def test_yaml_mol2_antechamber():
+    """Test antechamber setup of molecule files."""
+    imatinib_path = os.path.join(example_dir(), 'abl-imatinib-explicit',
+                                 'setup', 'STI02.mol2')
+
+    with temporary_directory() as tmp_dir:
+        yaml_content = """
+        ---
+        options:
+            output_dir: {}
+        molecules:
+            imatinib:
+                filepath: {}
+                parameters: antechamber
+        """.format(tmp_dir, imatinib_path)
+
+        yaml_builder = parse_yaml_str(yaml_content)
+        yaml_builder._setup_molecule('imatinib')
+
+        output_dir = os.path.join(tmp_dir, YamlBuilder.SETUP_MOLECULES_DIR, 'imatinib')
+        assert os.path.exists(os.path.join(output_dir, 'imatinib.gaff.mol2'))
+        assert os.path.exists(os.path.join(output_dir, 'imatinib.frcmod'))
+        assert os.path.getsize(os.path.join(output_dir, 'imatinib.gaff.mol2')) > 0
+        assert os.path.getsize(os.path.join(output_dir, 'imatinib.frcmod')) > 0
