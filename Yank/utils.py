@@ -5,11 +5,13 @@ import logging
 import tempfile
 import itertools
 import contextlib
+import subprocess
 import collections
 
 from pkg_resources import resource_filename
 
 from simtk import unit
+from mdtraj.utils import enter_temp_directory
 
 #========================================================================================
 # Logging functions
@@ -546,6 +548,8 @@ class TLeap:
 
     def __init__(self):
         self._script = ''
+        self._input_files = []
+        self._output_files = []
 
     def add_commands(self, *args):
         for command in args:
@@ -553,21 +557,24 @@ class TLeap:
 
     def load_parameters(self, *args):
         for parameters in args:
-            extension = os.path.splitext(parameters)[1][1:]
-            if extension == 'frcmod':
+            extension = os.path.splitext(parameters)[1]
+            if extension == '.frcmod':
                 self.add_commands('loadAmberParams ' + parameters)
             else:
                 self.add_commands('source ' + parameters)
 
-    def load_group(self, name, filepath):
-        extension = os.path.splitext(filepath)[1][1:]
-        if extension == 'mol2':
+    def load_group(self, name, file_path):
+        extension = os.path.splitext(file_path)[1]
+        if extension == '.mol2':
             load_command = 'loadMol2'
-        elif extension == 'pdb':
+        elif extension == '.pdb':
             load_command = 'loadPdb'
         else:
             raise ValueError('cannot load format {} in tLeap'.format(extension))
-        self.add_commands('{} = {} {}'.format(name, load_command, filepath))
+        self.add_commands('{} = {} {}'.format(name, load_command, file_path))
+
+        # Update list of input files to copy in temporary folder before run
+        self._input_files.append(os.path.abspath(file_path))
 
     def combine(self, group, *args):
         components = ' '.join(args)
@@ -577,18 +584,48 @@ class TLeap:
         self.add_commands('solvateBox {} {} {} iso'.format(group, water_model,
                                                            str(clearance)))
 
-    def save(self, group, format, output_name):
-        if format == 'amber':
-            self.add_commands('saveAmberParm {0} {1}.prmtop {1}.inpcrd'.format(
-                group, output_name
-            ))
-        elif format == 'pdb':
-            self.add_commands('savePDB {} {}.pdb'.format(group, output_name))
+    def save_group(self, group, output_path):
+        file_name = os.path.basename(output_path)
+        name, extension = os.path.splitext(file_name)
+        if extension == '.prmtop' or extension == '.inpcrd':
+            self.add_commands('saveAmberParm {0} {1}.prmtop {1}.inpcrd'.format(group, name))
+        elif extension == '.pdb':
+            self.add_commands('savePDB {} {}'.format(group, file_name))
         else:
-            raise ValueError('cannot export format {} from tLeap'.format(format))
+            raise ValueError('cannot export format {} from tLeap'.format(extension[1:]))
+
+        # Update list of output files to copy from temporary folder after run
+        self._output_files.append(os.path.abspath(output_path))
+        if extension == '.prmtop':
+            output_dir = os.path.abspath(os.path.dirname(output_path))
+            self._output_files.append(os.path.join(output_dir, name + '.inpcrd'))
+        elif extension == '.inpcrd':
+            output_dir = os.path.abspath(os.path.dirname(output_path))
+            self._output_files.append(os.path.join(output_dir, name + '.prmtop'))
 
     def new_section(self, comment):
         self.add_commands('\n# ' + comment)
+
+    def export_script(self, file_path):
+        with open(file_path, 'w') as f:
+            f.write(self.script)
+
+    def run(self):
+        with enter_temp_directory():
+            # Copy input files
+            for file_path in self._input_files:
+                file_name = os.path.basename(file_path)
+                shutil.copy(file_path, file_name)
+
+            # Save script and run tleap
+            self.export_script('leap.in')
+            subprocess.check_output(['tleap', '-f', 'leap.in'])
+
+            #Copy back output files
+            for file_path in self._output_files:
+                file_name = os.path.basename(file_path)
+                shutil.copy(file_name, file_path)
+                shutil.copy(file_name, file_path)
 
 
 #=============================================================================================
