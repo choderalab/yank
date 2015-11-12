@@ -22,33 +22,17 @@ import unittest
 from simtk import unit
 from nose.tools import raises
 
-from yank.utils import temporary_directory
+from yank.utils import temporary_directory, is_openeye_installed
 from yank.yamlbuild import YamlBuilder, YamlParseError
 
 #=============================================================================================
 # SUBROUTINES FOR TESTING
 #=============================================================================================
 
-# TODO move this to openmoltools
-def is_openeye_installed():
-    try:
-        from openeye import oechem
-        from openeye import oequacpac
-        from openeye import oeiupac
-        from openeye import oeomega
-
-        if not (oechem.OEChemIsLicensed() and oequacpac.OEQuacPacIsLicensed()
-                and oeiupac.OEIUPACIsLicensed() and oeomega.OEOmegaIsLicensed()):
-            raise ImportError
-    except ImportError:
-        return False
-    return True
-
-
 def example_dir():
     """Return the absolute path to the Yank examples directory."""
-    this_file_dir = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(this_file_dir, '..', '..', 'examples')
+    this_file_dir = os.path.dirname(__file__)
+    return os.path.abspath(os.path.join(this_file_dir, '..', '..', 'examples'))
 
 def parse_yaml_str(yaml_content):
     """Parse the YAML string and return the YamlBuilder object used."""
@@ -223,7 +207,7 @@ def test_setup_smiles_antechamber():
 
 def test_experiment_iteration():
     """Test iteration over combinatorial experiments."""
-    exp_template = 'components: {{ligands: {}, receptors: {}, solvents: {}}}'
+    exp_template = 'components: {{ligand: {}, receptor: {}, solvent: {}}}'
     yaml_content = """
     ---
     options:
@@ -247,7 +231,7 @@ def test_experiment_iteration():
 
 def test_multiple_experiments_iteration():
     """Test iteration over sequence of combinatorial experiments."""
-    exp_template = 'components: {{ligands: {}, receptors: {}, solvents: solvent}}'
+    exp_template = 'components: {{ligand: {}, receptor: {}, solvent: solvent}}'
     yaml_content = """
     ---
     options:
@@ -259,7 +243,6 @@ def test_multiple_experiments_iteration():
     experiments: [exp1, exp-name2]
     """.format(exp_template.format('[ligand1, ligand2]', 'receptor1'),
                exp_template.format('[ligand1, ligand2]', 'receptor2'))
-
     yaml_builder = parse_yaml_str(yaml_content)
     generated_exp = {yaml.dump(exp).strip() for exp in yaml_builder._expand_experiments()}
     for exp in generated_exp:

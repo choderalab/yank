@@ -539,6 +539,20 @@ def validate_parameters(parameters, template_parameters, check_unknown=False,
 # Stuff to move to openmoltools when they'll be stable
 #=============================================================================================
 
+def is_openeye_installed():
+    try:
+        from openeye import oechem
+        from openeye import oequacpac
+        from openeye import oeiupac
+        from openeye import oeomega
+
+        if not (oechem.OEChemIsLicensed() and oequacpac.OEQuacPacIsLicensed()
+                and oeiupac.OEIUPACIsLicensed() and oeomega.OEOmegaIsLicensed()):
+            raise ImportError
+    except ImportError:
+        return False
+    return True
+
 class TLeap:
     """Programmatic interface to write and run tLeap scripts."""
 
