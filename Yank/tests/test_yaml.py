@@ -224,32 +224,16 @@ def test_setup_smiles_antechamber():
 def test_experiment_iteration():
     """Test iteration over combinatorial experiments."""
     exp_template = 'components: {{ligands: {}, receptors: {}, solvents: {}}}'
-    yaml_template = """
+    yaml_content = """
     ---
     options:
         output_dir: output
-    molecules:
-        receptor1:
-            filepath: receptor1.pdb
-        receptor2:
-            filepath: receptor2.pdb
-        ligand1:
-            filepath: ligand1.mol2
-        ligand2:
-            filepath: ligand2.mol2
-    solvents:
-        solvent1:
-            nonbondedMethod: NoCutoff
-        solvent1:
-            nonbondedMethod: NoCutoff
-            gbsamodel: obc2
     experiment:
         {}
-    """.format(exp_template)
-
-    yaml_builder = parse_yaml_str(yaml_template.format('[ligand1, ligand2]',
-                                                       '[receptor1, receptor2]',
-                                                       '[solvent1, solvent2]'))
+    """.format(exp_template.format('[ligand1, ligand2]',
+                                   '[receptor1, receptor2]',
+                                   '[solvent1, solvent2]'))
+    yaml_builder = parse_yaml_str(yaml_content)
     generated_exp = {yaml.dump(exp).strip() for exp in yaml_builder._expand_experiments()}
     assert len(generated_exp) == 8
     assert exp_template.format('ligand1', 'receptor1', 'solvent1') in generated_exp
@@ -260,3 +244,28 @@ def test_experiment_iteration():
     assert exp_template.format('ligand2', 'receptor1', 'solvent2') in generated_exp
     assert exp_template.format('ligand2', 'receptor2', 'solvent1') in generated_exp
     assert exp_template.format('ligand2', 'receptor2', 'solvent2') in generated_exp
+
+def test_multiple_experiments_iteration():
+    """Test iteration over sequence of combinatorial experiments."""
+    exp_template = 'components: {{ligands: {}, receptors: {}, solvents: solvent}}'
+    yaml_content = """
+    ---
+    options:
+        output_dir: output
+    exp1:
+        {}
+    exp-name2:
+        {}
+    experiments: [exp1, exp-name2]
+    """.format(exp_template.format('[ligand1, ligand2]', 'receptor1'),
+               exp_template.format('[ligand1, ligand2]', 'receptor2'))
+
+    yaml_builder = parse_yaml_str(yaml_content)
+    generated_exp = {yaml.dump(exp).strip() for exp in yaml_builder._expand_experiments()}
+    for exp in generated_exp:
+        print exp
+    assert len(generated_exp) == 4
+    assert exp_template.format('ligand1', 'receptor1') in generated_exp
+    assert exp_template.format('ligand2', 'receptor1') in generated_exp
+    assert exp_template.format('ligand1', 'receptor2') in generated_exp
+    assert exp_template.format('ligand2', 'receptor2') in generated_exp

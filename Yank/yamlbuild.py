@@ -158,8 +158,13 @@ class YamlBuilder:
         self._molecules = yaml_config.pop('molecules', {})
         # TODO - verify that filepath and name/smiles are not specified simultaneously
 
-        self._experiment = utils.CombinatorialTree(yaml_config.pop('experiment', {}))
-
+        # Check if there is a sequence of experiments or a single one
+        self._experiments = yaml_config.get('experiments', None)
+        if self._experiments is None:
+            self._experiments = [utils.CombinatorialTree(yaml_config.get('experiment', {}))]
+        else:
+            for i, exp_name in enumerate(self._experiments):
+                self._experiments[i] = utils.CombinatorialTree(yaml_config[exp_name])
 
     def build_experiment(self):
         """Build the Yank experiment (TO BE IMPLEMENTED)."""
@@ -167,7 +172,9 @@ class YamlBuilder:
 
     def _expand_experiments(self):
         """Iterate over all possible combinations of experiments"""
-        return self._experiment.__iter__()
+        for exp in self._experiments:
+            for combination in exp:
+                yield combination
 
     def _setup_molecule(self, molecule_id):
         mol_descr = self._molecules[molecule_id]
