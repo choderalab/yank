@@ -14,6 +14,7 @@ Test YAML functions.
 #=============================================================================================
 
 import os
+import yaml
 import tempfile
 import textwrap
 import unittest
@@ -219,3 +220,43 @@ def test_setup_smiles_antechamber():
         assert os.path.getsize(os.path.join(output_dir, 'toluene.mol2')) > 0
         assert os.path.getsize(os.path.join(output_dir, 'toluene.gaff.mol2')) > 0
         assert os.path.getsize(os.path.join(output_dir, 'toluene.frcmod')) > 0
+
+def test_experiment_iteration():
+    """Test iteration over combinatorial experiments."""
+    exp_template = 'components: {{ligands: {}, receptors: {}, solvents: {}}}'
+    yaml_template = """
+    ---
+    options:
+        output_dir: output
+    molecules:
+        receptor1:
+            filepath: receptor1.pdb
+        receptor2:
+            filepath: receptor2.pdb
+        ligand1:
+            filepath: ligand1.mol2
+        ligand2:
+            filepath: ligand2.mol2
+    solvents:
+        solvent1:
+            nonbondedMethod: NoCutoff
+        solvent1:
+            nonbondedMethod: NoCutoff
+            gbsamodel: obc2
+    experiment:
+        {}
+    """.format(exp_template)
+
+    yaml_builder = parse_yaml_str(yaml_template.format('[ligand1, ligand2]',
+                                                       '[receptor1, receptor2]',
+                                                       '[solvent1, solvent2]'))
+    generated_exp = {yaml.dump(exp).strip() for exp in yaml_builder._expand_experiments()}
+    assert len(generated_exp) == 8
+    assert exp_template.format('ligand1', 'receptor1', 'solvent1') in generated_exp
+    assert exp_template.format('ligand1', 'receptor1', 'solvent2') in generated_exp
+    assert exp_template.format('ligand1', 'receptor2', 'solvent1') in generated_exp
+    assert exp_template.format('ligand1', 'receptor2', 'solvent2') in generated_exp
+    assert exp_template.format('ligand2', 'receptor1', 'solvent1') in generated_exp
+    assert exp_template.format('ligand2', 'receptor1', 'solvent2') in generated_exp
+    assert exp_template.format('ligand2', 'receptor2', 'solvent1') in generated_exp
+    assert exp_template.format('ligand2', 'receptor2', 'solvent2') in generated_exp

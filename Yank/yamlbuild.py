@@ -158,10 +158,16 @@ class YamlBuilder:
         self._molecules = yaml_config.pop('molecules', {})
         # TODO - verify that filepath and name/smiles are not specified simultaneously
 
+        self._experiment = utils.CombinatorialTree(yaml_config.pop('experiment', {}))
+
 
     def build_experiment(self):
         """Build the Yank experiment (TO BE IMPLEMENTED)."""
         raise NotImplemented
+
+    def _expand_experiments(self):
+        """Iterate over all possible combinations of experiments"""
+        return self._experiment.__iter__()
 
     def _setup_molecule(self, molecule_id):
         mol_descr = self._molecules[molecule_id]
