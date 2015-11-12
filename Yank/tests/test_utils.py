@@ -9,6 +9,8 @@ Test various utility functions.
 # GLOBAL IMPORTS
 #=============================================================================================
 
+import textwrap
+
 from nose import tools
 from yank.utils import *
 
@@ -157,3 +159,42 @@ def test_yank_options():
     assert yank_opt.items() == [('option1', 1), ('option2', 'test'), ('option3', -2)]
     assert yank_opt.keys() == ['option1', 'option2', 'option3']
 
+def test_TLeap_script():
+    """Test TLeap script creation."""
+    expected_script = """
+    source oldff/leaprc.ff99SBildn
+    source leaprc.gaff
+    receptor = loadPdb receptor.pdbfixer.pdb
+    loadAmberParams ligand.gaff.frcmod
+    ligand = loadMol2 ligand.gaff.mol2
+    complex = combine { receptor ligand }
+    solvateBox complex TIP3PBOX 10.0 iso
+    check complex
+    charge complex
+
+    # New section
+    saveAmberParm complex complex.prmtop complex.inpcrd
+    savePDB complex complex.pdb
+    solvateBox ligand TIP3PBOX 10.0 iso
+    saveAmberParm ligand solvent.prmtop solvent.inpcrd
+    savePDB ligand solvent.pdb
+    quit
+    """
+    expected_script = textwrap.dedent(expected_script[1:])  # delete first \n char
+
+    tleap = TLeap()
+    tleap.load_parameters('oldff/leaprc.ff99SBildn', 'leaprc.gaff')
+    tleap.load_group(name='receptor', filepath='receptor.pdbfixer.pdb')
+    tleap.load_parameters('ligand.gaff.frcmod')
+    tleap.load_group(name='ligand', filepath='ligand.gaff.mol2')
+    tleap.combine('complex', 'receptor', 'ligand')
+    tleap.solvate(group='complex', water_model='TIP3PBOX', clearance=10.0)
+    tleap.add_commands('check complex', 'charge complex')
+    tleap.new_section('New section')
+    tleap.save(group='complex', format='amber', output_name='complex')
+    tleap.save(group='complex', format='pdb', output_name='complex')
+    tleap.solvate(group='ligand', water_model='TIP3PBOX', clearance=10.0)
+    tleap.save(group='ligand', format='amber', output_name='solvent')
+    tleap.save(group='ligand', format='pdb', output_name='solvent')
+
+    assert tleap.script == expected_script

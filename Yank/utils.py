@@ -533,6 +533,63 @@ def validate_parameters(parameters, template_parameters, check_unknown=False,
 
     return validated_par
 
+#=============================================================================================
+# Stuff to move to openmoltools when they'll be stable
+#=============================================================================================
+
+class TLeap:
+    """Programmatic interface to write and run tLeap scripts."""
+
+    @property
+    def script(self):
+        return self._script + 'quit\n'
+
+    def __init__(self):
+        self._script = ''
+
+    def add_commands(self, *args):
+        for command in args:
+            self._script += command + '\n'
+
+    def load_parameters(self, *args):
+        for parameters in args:
+            extension = os.path.splitext(parameters)[1][1:]
+            if extension == 'frcmod':
+                self.add_commands('loadAmberParams ' + parameters)
+            else:
+                self.add_commands('source ' + parameters)
+
+    def load_group(self, name, filepath):
+        extension = os.path.splitext(filepath)[1][1:]
+        if extension == 'mol2':
+            load_command = 'loadMol2'
+        elif extension == 'pdb':
+            load_command = 'loadPdb'
+        else:
+            raise ValueError('cannot load format {} in tLeap'.format(extension))
+        self.add_commands('{} = {} {}'.format(name, load_command, filepath))
+
+    def combine(self, group, *args):
+        components = ' '.join(args)
+        self.add_commands('{} = combine {{ {} }}'.format(group, components))
+
+    def solvate(self, group, water_model, clearance):
+        self.add_commands('solvateBox {} {} {} iso'.format(group, water_model,
+                                                           str(clearance)))
+
+    def save(self, group, format, output_name):
+        if format == 'amber':
+            self.add_commands('saveAmberParm {0} {1}.prmtop {1}.inpcrd'.format(
+                group, output_name
+            ))
+        elif format == 'pdb':
+            self.add_commands('savePDB {} {}.pdb'.format(group, output_name))
+        else:
+            raise ValueError('cannot export format {} from tLeap'.format(format))
+
+    def new_section(self, comment):
+        self.add_commands('\n# ' + comment)
+
 
 #=============================================================================================
 # Main and tests
