@@ -290,3 +290,45 @@ def test_setup_implicit_system_leap():
         assert os.path.getsize(os.path.join(output_dir, 'complex.inpcrd')) > 0
         assert os.path.getsize(os.path.join(output_dir, 'solvent.prmtop')) > 0
         assert os.path.getsize(os.path.join(output_dir, 'solvent.inpcrd')) > 0
+
+def test_setup_explicit_system_leap():
+    """Create prmtop and inpcrd protein-ligand system in explicit solvent."""
+    setup_dir = os.path.join(example_dir(), 'benzene-toluene-explicit', 'setup')
+    benzene_path = os.path.join(setup_dir, 'benzene.tripos.mol2')
+    toluene_path = os.path.join(setup_dir, 'toluene.tripos.mol2')
+    with temporary_directory() as tmp_dir:
+        tmp_dir = 'temp'
+        yaml_content = """
+        ---
+        options:
+            output_dir: {}
+        molecules:
+            benzene:
+                filepath: {}
+                parameters: antechamber
+            toluene:
+                filepath: {}
+                parameters: antechamber
+        solvents:
+            PMEtip3p:
+                nonbondedMethod: PME
+                clearance: 10*angstroms
+        """.format(tmp_dir, benzene_path, toluene_path)
+
+        yaml_builder = parse_yaml_str(yaml_content)
+        components = {'receptor': 'benzene',
+                      'ligand': 'toluene',
+                      'solvent': 'PMEtip3p'}
+        yaml_builder._setup_molecule('benzene')
+        yaml_builder._setup_molecule('toluene')
+        yaml_builder._setup_system(components, 'experiment')
+
+        output_dir = os.path.join(tmp_dir, YamlBuilder.SETUP_SYSTEMS_DIR, 'experiment')
+        assert os.path.exists(os.path.join(output_dir, 'complex.prmtop'))
+        assert os.path.exists(os.path.join(output_dir, 'complex.inpcrd'))
+        assert os.path.exists(os.path.join(output_dir, 'solvent.prmtop'))
+        assert os.path.exists(os.path.join(output_dir, 'solvent.inpcrd'))
+        assert os.path.getsize(os.path.join(output_dir, 'complex.prmtop')) > 0
+        assert os.path.getsize(os.path.join(output_dir, 'complex.inpcrd')) > 0
+        assert os.path.getsize(os.path.join(output_dir, 'solvent.prmtop')) > 0
+        assert os.path.getsize(os.path.join(output_dir, 'solvent.inpcrd')) > 0

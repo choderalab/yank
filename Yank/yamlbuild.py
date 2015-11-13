@@ -227,12 +227,6 @@ class YamlBuilder:
         tleap.new_section('Load GAFF parameters')
         tleap.load_parameters('leaprc.gaff')
 
-        # Implicit solvent
-        solvent = self._solvents[components['solvent']]
-        if solvent['nonbondedMethod'] == 'NoCutoff' and 'gbsamodel' in solvent:
-            tleap.new_section('Set GB radii to recommended values for OBC')
-            tleap.add_commands('set default PBRadii mbondi2')
-
         # Load receptor and ligand
         for group_name in ['receptor', 'ligand']:
             group = self._molecules[components[group_name]]
@@ -243,6 +237,22 @@ class YamlBuilder:
         # Create complex
         tleap.new_section('Create complex')
         tleap.combine('complex', 'receptor', 'ligand')
+
+        # Configure solvent
+        solvent = self._solvents[components['solvent']]
+        if solvent['nonbondedMethod'] == 'NoCutoff':
+            if 'gbsamodel' in solvent:  # GBSA implicit solvent
+                tleap.new_section('Set GB radii to recommended values for OBC')
+                tleap.add_commands('set default PBRadii mbondi2')
+        else:  # explicit solvent
+            tleap.new_section('Solvate systems')
+            clearance = utils.process_unit_bearing_str(solvent['clearance'], unit.angstroms)
+            clearance = clearance.value_in_unit(unit.angstroms)
+            tleap.solvate(group='complex', water_model='TIP3PBOX', clearance=clearance)
+            tleap.solvate(group='ligand', water_model='TIP3PBOX', clearance=clearance)
+
+        # Check charge
+        tleap.new_section('Check charge')
         tleap.add_commands('check complex', 'charge complex')
 
         # Save prmtop and inpcrd files
