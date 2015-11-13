@@ -93,6 +93,7 @@ class YamlBuilder:
     """
 
     SETUP_DIR = 'setup'
+    SETUP_SYSTEMS_DIR = os.path.join(SETUP_DIR, 'systems')
     SETUP_MOLECULES_DIR = os.path.join(SETUP_DIR, 'molecules')
 
     DEFAULT_OPTIONS = {
@@ -158,6 +159,8 @@ class YamlBuilder:
         self._molecules = yaml_config.pop('molecules', {})
         # TODO - verify that filepath and name/smiles are not specified simultaneously
 
+        self._solvents = yaml_config.get('solvents', {})
+
         # Check if there is a sequence of experiments or a single one
         self._experiments = yaml_config.get('experiments', None)
         if self._experiments is None:
@@ -185,26 +188,74 @@ class YamlBuilder:
         if not os.path.isdir(output_mol_dir):
             os.makedirs(output_mol_dir)
 
-        # Check molecule source
-        if 'filepath' in mol_descr:
-            input_mol_path = os.path.abspath(mol_descr['filepath'])
-        else:  # Generate molecule with OpenEye
-            input_mol_path = os.path.abspath(os.path.join(output_mol_dir,
-                                                          molecule_id + '.mol2'))
+        # Check if we have to generate the molecule with OpenEye
+        if 'filepath' not in mol_descr:
             try:
                 if 'name' in mol_descr:
                     molecule = openmoltools.openeye.iupac_to_oemol(mol_descr['name'])
                 elif 'smiles' in mol_descr:
                     molecule = openmoltools.openeye.smiles_to_oemol(mol_descr['smiles'])
                 molecule = openmoltools.openeye.get_charges(molecule, keep_confs=1)
-                openmoltools.openeye.molecule_to_mol2(molecule, input_mol_path)
+                mol_descr['filepath'] = os.path.join(output_mol_dir, molecule_id + '.mol2')
+                openmoltools.openeye.molecule_to_mol2(molecule, mol_descr['filepath'])
             except ImportError as e:
                 error_msg = ('requested molecule generation from name but '
                              'could not find OpenEye toolkit: ' + str(e))
                 raise YamlParseError(error_msg)
 
-        with utils.temporary_cd(output_mol_dir):
-            openmoltools.amber.run_antechamber(molecule_id, input_mol_path)
+        # Check if we need to parametrize the molecule
+        if mol_descr['parameters'] == 'antechamber':
+
+            # Generate parameters
+            input_mol_path = os.path.abspath(mol_descr['filepath'])
+            with utils.temporary_cd(output_mol_dir):
+                openmoltools.amber.run_antechamber(molecule_id, input_mol_path)
+
+            # Save new parameters paths
+            mol_descr['filepath'] = os.path.join(output_mol_dir, molecule_id + '.gaff.mol2')
+            mol_descr['parameters'] = os.path.join(output_mol_dir, molecule_id + '.frcmod')
+
+    def _setup_system(self, components, output_dir):
+        # Create output directory
+        output_sys_dir = os.path.join(self._output_dir, self.SETUP_SYSTEMS_DIR,
+                                      output_dir)
+        if not os.path.isdir(output_sys_dir):
+            os.makedirs(output_sys_dir)
+
+        # Create tleap script
+        tleap = utils.TLeap()
+        tleap.new_section('Load GAFF parameters')
+        tleap.load_parameters('leaprc.gaff')
+
+        # Implicit solvent
+        solvent = self._solvents[components['solvent']]
+        if solvent['nonbondedMethod'] == 'NoCutoff' and 'gbsamodel' in solvent:
+            tleap.new_section('Set GB radii to recommended values for OBC')
+            tleap.add_commands('set default PBRadii mbondi2')
+
+        # Load receptor and ligand
+        for group_name in ['receptor', 'ligand']:
+            group = self._molecules[components[group_name]]
+            tleap.new_section('Load ' + group_name)
+            tleap.load_parameters(group['parameters'])
+            tleap.load_group(name=group_name, file_path=group['filepath'])
+
+        # Create complex
+        tleap.new_section('Create complex')
+        tleap.combine('complex', 'receptor', 'ligand')
+        tleap.add_commands('check complex', 'charge complex')
+
+        # Save prmtop and inpcrd files
+        tleap.new_section('Save prmtop and inpcrd files')
+        tleap.save_group('complex', os.path.join(output_sys_dir, 'complex.prmtop'))
+        tleap.save_group('ligand', os.path.join(output_sys_dir, 'solvent.prmtop'))
+
+        # Save tleap script for reference
+        tleap.export_script(os.path.join(output_sys_dir, 'leap.in'))
+
+        # Run tleap!
+        tleap.run()
+
 
 if __name__ == "__main__":
     import doctest

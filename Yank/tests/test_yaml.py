@@ -251,3 +251,42 @@ def test_multiple_experiments_iteration():
     assert exp_template.format('ligand2', 'receptor1') in generated_exp
     assert exp_template.format('ligand1', 'receptor2') in generated_exp
     assert exp_template.format('ligand2', 'receptor2') in generated_exp
+
+def test_setup_implicit_system_leap():
+    """Create prmtop and inpcrd for implicit solvent protein-ligand system."""
+    receptor_path = os.path.join(example_dir(), 'p-xylene-implicit', 'setup',
+                                 'receptor.pdbfixer.pdb')
+    with temporary_directory() as tmp_dir:
+        yaml_content = """
+        ---
+        options:
+            output_dir: {}
+        molecules:
+            T4lysozyme:
+                filepath: {}
+                parameters: oldff/leaprc.ff99SBildn
+            p-xylene:
+                name: p-xylene
+                parameters: antechamber
+        solvents:
+            GBSA-OBC2:
+                nonbondedMethod: NoCutoff
+                gbsamodel: obc2
+        """.format(tmp_dir, receptor_path)
+
+        yaml_builder = parse_yaml_str(yaml_content)
+        components = {'receptor': 'T4lysozyme',
+                      'ligand': 'p-xylene',
+                      'solvent': 'GBSA-OBC2'}
+        yaml_builder._setup_molecule('p-xylene')
+        yaml_builder._setup_system(components, 'experiment')
+
+        output_dir = os.path.join(tmp_dir, YamlBuilder.SETUP_SYSTEMS_DIR, 'experiment')
+        assert os.path.exists(os.path.join(output_dir, 'complex.prmtop'))
+        assert os.path.exists(os.path.join(output_dir, 'complex.inpcrd'))
+        assert os.path.exists(os.path.join(output_dir, 'solvent.prmtop'))
+        assert os.path.exists(os.path.join(output_dir, 'solvent.inpcrd'))
+        assert os.path.getsize(os.path.join(output_dir, 'complex.prmtop')) > 0
+        assert os.path.getsize(os.path.join(output_dir, 'complex.inpcrd')) > 0
+        assert os.path.getsize(os.path.join(output_dir, 'solvent.prmtop')) > 0
+        assert os.path.getsize(os.path.join(output_dir, 'solvent.inpcrd')) > 0
