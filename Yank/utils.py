@@ -558,7 +558,7 @@ class TLeap:
 
     @property
     def script(self):
-        return self._script + 'quit\n'
+        return self._script + '\nquit\n'
 
     def __init__(self):
         self._script = ''
@@ -570,22 +570,27 @@ class TLeap:
             self._script += command + '\n'
 
     def load_parameters(self, *args):
-        for parameters in args:
-            extension = os.path.splitext(parameters)[1]
+        for par_file in args:
+            extension = os.path.splitext(par_file)[1]
             if extension == '.frcmod':
-                self.add_commands('loadAmberParams ' + parameters)
+                file_name = os.path.basename(par_file)
+                self.add_commands('loadAmberParams ' + file_name)
+
+                # Update list of input files to copy in temporary folder before run
+                self._input_files.append(os.path.abspath(par_file))
             else:
-                self.add_commands('source ' + parameters)
+                self.add_commands('source ' + par_file)
 
     def load_group(self, name, file_path):
-        extension = os.path.splitext(file_path)[1]
+        file_name = os.path.basename(file_path)
+        extension = os.path.splitext(file_name)[1]
         if extension == '.mol2':
             load_command = 'loadMol2'
         elif extension == '.pdb':
             load_command = 'loadPdb'
         else:
             raise ValueError('cannot load format {} in tLeap'.format(extension))
-        self.add_commands('{} = {} {}'.format(name, load_command, file_path))
+        self.add_commands('{} = {} {}'.format(name, load_command, file_name))
 
         # Update list of input files to copy in temporary folder before run
         self._input_files.append(os.path.abspath(file_path))
@@ -638,7 +643,6 @@ class TLeap:
             #Copy back output files
             for file_path in self._output_files:
                 file_name = os.path.basename(file_path)
-                shutil.copy(file_name, file_path)
                 shutil.copy(file_name, file_path)
 
 

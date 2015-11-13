@@ -178,6 +178,7 @@ def test_TLeap_script():
     solvateBox ligand TIP3PBOX 10.0 iso
     saveAmberParm ligand solvent.prmtop solvent.inpcrd
     savePDB ligand solvent.pdb
+
     quit
     """
     expected_script = textwrap.dedent(expected_script[1:])  # delete first \n char
@@ -185,8 +186,8 @@ def test_TLeap_script():
     tleap = TLeap()
     tleap.load_parameters('oldff/leaprc.ff99SBildn', 'leaprc.gaff')
     tleap.load_group(name='receptor', file_path='receptor.pdbfixer.pdb')
-    tleap.load_parameters('ligand.gaff.frcmod')
-    tleap.load_group(name='ligand', file_path='ligand.gaff.mol2')
+    tleap.load_parameters('internally/stored/path/ligand.gaff.frcmod')
+    tleap.load_group(name='ligand', file_path='internally/stored/path/ligand.gaff.mol2')
     tleap.combine('complex', 'receptor', 'ligand')
     tleap.solvate(group='complex', water_model='TIP3PBOX', clearance=10.0)
     tleap.add_commands('check complex', 'charge complex')
@@ -194,7 +195,7 @@ def test_TLeap_script():
     tleap.save_group(group='complex', output_path='complex.prmtop')
     tleap.save_group(group='complex', output_path='complex.pdb')
     tleap.solvate(group='ligand', water_model='TIP3PBOX', clearance=10.0)
-    tleap.save_group(group='ligand', output_path='ignored/path/solvent.inpcrd')
+    tleap.save_group(group='ligand', output_path='internally/stored/path/solvent.inpcrd')
     tleap.save_group(group='ligand', output_path='solvent.pdb')
 
     assert tleap.script == expected_script
