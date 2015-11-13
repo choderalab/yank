@@ -22,8 +22,8 @@ import unittest
 from simtk import unit
 from nose.tools import raises
 
-from yank.utils import temporary_directory, is_openeye_installed
 from yank.yamlbuild import YamlBuilder, YamlParseError
+from yank.utils import temporary_directory, is_openeye_installed, get_data_filename
 
 #=============================================================================================
 # SUBROUTINES FOR TESTING
@@ -31,8 +31,7 @@ from yank.yamlbuild import YamlBuilder, YamlParseError
 
 def example_dir():
     """Return the absolute path to the Yank examples directory."""
-    this_file_dir = os.path.dirname(__file__)
-    return os.path.abspath(os.path.join(this_file_dir, '..', '..', 'examples'))
+    return get_data_filename(os.path.join('..', 'examples'))
 
 def parse_yaml_str(yaml_content):
     """Parse the YAML string and return the YamlBuilder object used."""
