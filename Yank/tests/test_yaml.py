@@ -279,17 +279,26 @@ def test_setup_implicit_system_leap():
                       'ligand': 'p-xylene',
                       'solvent': 'GBSA-OBC2'}
         yaml_builder._setup_molecule('p-xylene')
-        yaml_builder._setup_system(components, 'experiment')
+        yaml_builder._setup_system(components, 'experimentT4')
 
-        output_dir = os.path.join(tmp_dir, YamlBuilder.SETUP_SYSTEMS_DIR, 'experiment')
-        assert os.path.exists(os.path.join(output_dir, 'complex.prmtop'))
-        assert os.path.exists(os.path.join(output_dir, 'complex.inpcrd'))
-        assert os.path.exists(os.path.join(output_dir, 'solvent.prmtop'))
-        assert os.path.exists(os.path.join(output_dir, 'solvent.inpcrd'))
-        assert os.path.getsize(os.path.join(output_dir, 'complex.prmtop')) > 0
-        assert os.path.getsize(os.path.join(output_dir, 'complex.inpcrd')) > 0
-        assert os.path.getsize(os.path.join(output_dir, 'solvent.prmtop')) > 0
-        assert os.path.getsize(os.path.join(output_dir, 'solvent.inpcrd')) > 0
+        output_dir = os.path.join(tmp_dir, YamlBuilder.SETUP_SYSTEMS_DIR, 'experimentT4')
+        for phase in ['complex', 'solvent']:
+            found_resnames = set()
+            pdb_path = os.path.join(output_dir, phase + '.pdb')
+            prmtop_path = os.path.join(output_dir, phase + '.prmtop')
+            inpcrd_path = os.path.join(output_dir, phase + '.inpcrd')
+
+            with open(pdb_path, 'r') as f:
+                for line in f:
+                    if len(line) > 10:
+                        found_resnames.add(line[17:20])
+
+            assert os.path.exists(prmtop_path)
+            assert os.path.exists(inpcrd_path)
+            assert os.path.getsize(prmtop_path) > 0
+            assert os.path.getsize(inpcrd_path) > 0
+            assert 'MOL' in found_resnames
+            assert 'WAT' not in found_resnames
 
 def test_setup_explicit_system_leap():
     """Create prmtop and inpcrd protein-ligand system in explicit solvent."""
@@ -297,7 +306,6 @@ def test_setup_explicit_system_leap():
     benzene_path = os.path.join(setup_dir, 'benzene.tripos.mol2')
     toluene_path = os.path.join(setup_dir, 'toluene.tripos.mol2')
     with temporary_directory() as tmp_dir:
-        tmp_dir = 'temp'
         yaml_content = """
         ---
         options:
@@ -321,14 +329,24 @@ def test_setup_explicit_system_leap():
                       'solvent': 'PMEtip3p'}
         yaml_builder._setup_molecule('benzene')
         yaml_builder._setup_molecule('toluene')
-        yaml_builder._setup_system(components, 'experiment')
+        yaml_builder._setup_system(components, 'experimentBT')
 
-        output_dir = os.path.join(tmp_dir, YamlBuilder.SETUP_SYSTEMS_DIR, 'experiment')
-        assert os.path.exists(os.path.join(output_dir, 'complex.prmtop'))
-        assert os.path.exists(os.path.join(output_dir, 'complex.inpcrd'))
-        assert os.path.exists(os.path.join(output_dir, 'solvent.prmtop'))
-        assert os.path.exists(os.path.join(output_dir, 'solvent.inpcrd'))
-        assert os.path.getsize(os.path.join(output_dir, 'complex.prmtop')) > 0
-        assert os.path.getsize(os.path.join(output_dir, 'complex.inpcrd')) > 0
-        assert os.path.getsize(os.path.join(output_dir, 'solvent.prmtop')) > 0
-        assert os.path.getsize(os.path.join(output_dir, 'solvent.inpcrd')) > 0
+        expected_resnames = {'complex': set(['BEN', 'TOL', 'WAT']),
+                             'solvent': set(['TOL', 'WAT'])}
+        output_dir = os.path.join(tmp_dir, YamlBuilder.SETUP_SYSTEMS_DIR, 'experimentBT')
+        for phase in expected_resnames:
+            found_resnames = set()
+            pdb_path = os.path.join(output_dir, phase + '.pdb')
+            prmtop_path = os.path.join(output_dir, phase + '.prmtop')
+            inpcrd_path = os.path.join(output_dir, phase + '.inpcrd')
+
+            with open(pdb_path, 'r') as f:
+                for line in f:
+                    if len(line) > 10:
+                        found_resnames.add(line[17:20])
+
+            assert os.path.exists(prmtop_path)
+            assert os.path.exists(inpcrd_path)
+            assert os.path.getsize(prmtop_path) > 0
+            assert os.path.getsize(inpcrd_path) > 0
+            assert found_resnames == expected_resnames[phase]

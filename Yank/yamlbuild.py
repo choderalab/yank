@@ -222,10 +222,19 @@ class YamlBuilder:
         if not os.path.isdir(output_sys_dir):
             os.makedirs(output_sys_dir)
 
+        # Identify components
+        receptor = self._molecules[components['receptor']]
+        ligand = self._molecules[components['ligand']]
+        solvent = self._solvents[components['solvent']]
+
         # Create tleap script
         tleap = utils.TLeap()
         tleap.new_section('Load GAFF parameters')
         tleap.load_parameters('leaprc.gaff')
+
+        # Check that AMBER force field is specified
+        if not ('leaprc.' in receptor['parameters'] or 'leaprc.' in ligand['parameters']):
+            tleap.load_parameters('leaprc.ff14SB')
 
         # Load receptor and ligand
         for group_name in ['receptor', 'ligand']:
@@ -239,7 +248,6 @@ class YamlBuilder:
         tleap.combine('complex', 'receptor', 'ligand')
 
         # Configure solvent
-        solvent = self._solvents[components['solvent']]
         if solvent['nonbondedMethod'] == 'NoCutoff':
             if 'gbsamodel' in solvent:  # GBSA implicit solvent
                 tleap.new_section('Set GB radii to recommended values for OBC')
@@ -247,7 +255,7 @@ class YamlBuilder:
         else:  # explicit solvent
             tleap.new_section('Solvate systems')
             clearance = utils.process_unit_bearing_str(solvent['clearance'], unit.angstroms)
-            clearance = clearance.value_in_unit(unit.angstroms)
+            clearance = float(clearance.value_in_unit(unit.angstroms))
             tleap.solvate(group='complex', water_model='TIP3PBOX', clearance=clearance)
             tleap.solvate(group='ligand', water_model='TIP3PBOX', clearance=clearance)
 
@@ -258,7 +266,9 @@ class YamlBuilder:
         # Save prmtop and inpcrd files
         tleap.new_section('Save prmtop and inpcrd files')
         tleap.save_group('complex', os.path.join(output_sys_dir, 'complex.prmtop'))
+        tleap.save_group('complex', os.path.join(output_sys_dir, 'complex.pdb'))
         tleap.save_group('ligand', os.path.join(output_sys_dir, 'solvent.prmtop'))
+        tleap.save_group('ligand', os.path.join(output_sys_dir, 'solvent.pdb'))
 
         # Save tleap script for reference
         tleap.export_script(os.path.join(output_sys_dir, 'leap.in'))
