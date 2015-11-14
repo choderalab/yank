@@ -581,12 +581,15 @@ class TLeap:
 
     @property
     def script(self):
-        return self._script + '\nquit\n'
+        return self._script.format(**(self._file_paths)) + '\nquit\n'
 
     def __init__(self):
         self._script = ''
-        self._input_files = []
-        self._output_files = []
+        self._file_paths = {}  # paths of input/output files to copy in/from temp dir
+        # self._input_paths = []  # paths of input files to copy in temp dir
+        # self._output_paths = []  # paths of output files to copy from temp dir
+        #self._local_input = []  # input file names in temp dir
+        #self._local_output = []  # output file names in temp dir
 
     def add_commands(self, *args):
         for command in args:
@@ -596,31 +599,31 @@ class TLeap:
         for par_file in args:
             extension = os.path.splitext(par_file)[1]
             if extension == '.frcmod':
-                file_name = os.path.basename(par_file)
-                self.add_commands('loadAmberParams ' + file_name)
+                local_name = 'moli{}'.format(len(self._file_paths))
+                self.add_commands('loadAmberParams {{{}}}'.format(local_name))
 
                 # Update list of input files to copy in temporary folder before run
-                self._input_files.append(os.path.abspath(par_file))
+                self._file_paths[local_name] = par_file
             else:
                 self.add_commands('source ' + par_file)
 
     def load_group(self, name, file_path):
-        file_name = os.path.basename(file_path)
-        extension = os.path.splitext(file_name)[1]
+        extension = os.path.splitext(file_path)[1]
         if extension == '.mol2':
             load_command = 'loadMol2'
         elif extension == '.pdb':
             load_command = 'loadPdb'
         else:
             raise ValueError('cannot load format {} in tLeap'.format(extension))
-        self.add_commands('{} = {} {}'.format(name, load_command, file_name))
+        local_name = 'moli{}'.format(len(self._file_paths))
+        self.add_commands('{} = {} {{{}}}'.format(name, load_command, local_name))
 
         # Update list of input files to copy in temporary folder before run
-        self._input_files.append(os.path.abspath(file_path))
+        self._file_paths[local_name] = file_path
 
     def combine(self, group, *args):
         components = ' '.join(args)
-        self.add_commands('{} = combine {{ {} }}'.format(group, components))
+        self.add_commands('{} = combine {{{{ {} }}}}'.format(group, components))
 
     def solvate(self, group, water_model, clearance):
         self.add_commands('solvateBox {} {} {} iso'.format(group, water_model,
@@ -628,22 +631,28 @@ class TLeap:
 
     def save_group(self, group, output_path):
         file_name = os.path.basename(output_path)
-        name, extension = os.path.splitext(file_name)
-        if extension == '.prmtop' or extension == '.inpcrd':
-            self.add_commands('saveAmberParm {0} {1}.prmtop {1}.inpcrd'.format(group, name))
-        elif extension == '.pdb':
-            self.add_commands('savePDB {} {}'.format(group, file_name))
-        else:
-            raise ValueError('cannot export format {} from tLeap'.format(extension[1:]))
+        file_name, extension = os.path.splitext(file_name)
+        local_name = 'molo{}'.format(len(self._file_paths))
 
         # Update list of output files to copy from temporary folder after run
-        self._output_files.append(os.path.abspath(output_path))
-        if extension == '.prmtop':
-            output_dir = os.path.abspath(os.path.dirname(output_path))
-            self._output_files.append(os.path.join(output_dir, name + '.inpcrd'))
-        elif extension == '.inpcrd':
-            output_dir = os.path.abspath(os.path.dirname(output_path))
-            self._output_files.append(os.path.join(output_dir, name + '.prmtop'))
+        self._file_paths[local_name] = output_path
+
+        # Add command
+        if extension == '.prmtop' or extension == '.inpcrd':
+            local_name2 = 'molo{}'.format(len(self._file_paths))
+            self.add_commands('saveAmberParm {} {{{}}} {{{}}}'.format(group, local_name,
+                                                                      local_name2))
+            # Update list of output files with the one not explicit
+            if extension == '.inpcrd':
+                extension2 = '.prmtop'
+            else:
+                extension2 = '.inpcrd'
+            output_path2 = os.path.join(os.path.dirname(output_path), file_name + extension2)
+            self._file_paths[local_name2] = output_path2
+        elif extension == '.pdb':
+            self.add_commands('savePDB {} {{{}}}'.format(group, local_name))
+        else:
+            raise ValueError('cannot export format {} from tLeap'.format(extension[1:]))
 
     def new_section(self, comment):
         self.add_commands('\n# ' + comment)
@@ -653,20 +662,30 @@ class TLeap:
             f.write(self.script)
 
     def run(self):
+        # Transform paths in absolute paths since we'll change the working directory
+        input_files = {local + os.path.splitext(path)[1]: os.path.abspath(path)
+                       for local, path in self._file_paths.items() if 'moli' in local}
+        output_files = {local + os.path.splitext(path)[1]: os.path.abspath(path)
+                        for local, path in self._file_paths.items() if 'molo' in local}
+
+        # Resolve all the names in the script
+        local_files = {local: local + os.path.splitext(path)[1]
+                       for local, path in self._file_paths.items()}
+        script = self._script.format(**local_files) + 'quit\n'
+
         with enter_temp_directory():
             # Copy input files
-            for file_path in self._input_files:
-                file_name = os.path.basename(file_path)
-                shutil.copy(file_path, file_name)
+            for local_file, file_path in input_files.items():
+                shutil.copy(file_path, local_file)
 
             # Save script and run tleap
-            self.export_script('leap.in')
+            with open('leap.in', 'w') as f:
+                f.write(script)
             subprocess.check_output(['tleap', '-f', 'leap.in'])
 
             #Copy back output files
-            for file_path in self._output_files:
-                file_name = os.path.basename(file_path)
-                shutil.copy(file_name, file_path)
+            for local_file, file_path in output_files.items():
+                shutil.copy(local_file, file_path)
 
 
 #=============================================================================================
