@@ -13,17 +13,13 @@ Test YAML functions.
 # GLOBAL IMPORTS
 #=============================================================================================
 
-import os
-import yaml
 import tempfile
 import textwrap
 import unittest
 
-from simtk import unit
 from nose.tools import raises
 
-from yank.yamlbuild import YamlBuilder, YamlParseError
-from yank.utils import temporary_directory, is_openeye_installed, get_data_filename
+from yank.yamlbuild import *
 
 #=============================================================================================
 # SUBROUTINES FOR TESTING
@@ -31,7 +27,7 @@ from yank.utils import temporary_directory, is_openeye_installed, get_data_filen
 
 def example_dir():
     """Return the absolute path to the Yank examples directory."""
-    return get_data_filename(os.path.join('..', 'examples'))
+    return utils.get_data_filename(os.path.join('..', 'examples'))
 
 def parse_yaml_str(yaml_content):
     """Parse the YAML string and return the YamlBuilder object used."""
@@ -48,6 +44,22 @@ def parse_yaml_str(yaml_content):
 #=============================================================================================
 # UNIT TESTS
 #=============================================================================================
+
+def test_compute_min_dist():
+    """Test computation of minimum distance between two molecules"""
+    mol1_pos = np.array([[-1, -1, -1], [1, 1, 1]], np.float)
+    mol2_pos = np.array([[3, 3, 3], [3, 4, 5]], np.float)
+    mol3_pos = np.array([[2, 2, 2], [2, 4, 5]], np.float)
+    assert compute_min_dist(mol1_pos, mol2_pos, mol3_pos) == np.sqrt(3)
+
+def test_remove_overlap():
+    """Test function remove_overlap()."""
+    mol1_pos = np.array([[-1, -1, -1], [1, 1, 1]], np.float)
+    mol2_pos = np.array([[1, 1, 1], [3, 4, 5]], np.float)
+    mol3_pos = np.array([[2, 2, 2], [2, 4, 5]], np.float)
+    assert compute_min_dist(mol1_pos, mol2_pos, mol3_pos) < 0.1
+    mol1_pos = remove_overlap(mol1_pos, mol2_pos, mol3_pos, min_distance=0.1, sigma=2.0)
+    assert compute_min_dist(mol1_pos, mol2_pos, mol3_pos) >= 0.1
 
 def test_yaml_parsing():
     """Check that YAML file is parsed correctly."""
@@ -72,6 +84,7 @@ def test_yaml_parsing():
         platform: CUDA
         precision: mixed
         resume: true
+        min_distance: 2.0*angstrom
         output_dir: /path/to/output/
         restraint_type: harmonic
         randomize_ligand: yes
@@ -134,7 +147,7 @@ def test_yaml_mol2_antechamber():
     """Test antechamber setup of molecule files."""
     benzene_path = os.path.join(example_dir(), 'benzene-toluene-explicit',
                                 'setup', 'benzene.tripos.mol2')
-    with temporary_directory() as tmp_dir:
+    with utils.temporary_directory() as tmp_dir:
         yaml_content = """
         ---
         options:
@@ -146,7 +159,7 @@ def test_yaml_mol2_antechamber():
         """.format(tmp_dir, benzene_path)
 
         yaml_builder = parse_yaml_str(yaml_content)
-        yaml_builder._setup_molecule('benzene')
+        yaml_builder._setup_molecules('benzene')
 
         output_dir = os.path.join(tmp_dir, YamlBuilder.SETUP_MOLECULES_DIR, 'benzene')
         assert os.path.exists(os.path.join(output_dir, 'benzene.gaff.mol2'))
@@ -154,10 +167,10 @@ def test_yaml_mol2_antechamber():
         assert os.path.getsize(os.path.join(output_dir, 'benzene.gaff.mol2')) > 0
         assert os.path.getsize(os.path.join(output_dir, 'benzene.frcmod')) > 0
 
-@unittest.skipIf(not is_openeye_installed(), 'This test requires OpenEye installed.')
+@unittest.skipIf(not utils.is_openeye_installed(), 'This test requires OpenEye installed.')
 def test_setup_name_antechamber():
     """Setup molecule from name with antechamber parametrization."""
-    with temporary_directory() as tmp_dir:
+    with utils.temporary_directory() as tmp_dir:
         yaml_content = """
         ---
         options:
@@ -169,7 +182,7 @@ def test_setup_name_antechamber():
         """.format(tmp_dir)
 
         yaml_builder = parse_yaml_str(yaml_content)
-        yaml_builder._setup_molecule('p-xylene')
+        yaml_builder._setup_molecules('p-xylene')
 
         output_dir = os.path.join(tmp_dir, YamlBuilder.SETUP_MOLECULES_DIR, 'p-xylene')
         assert os.path.exists(os.path.join(output_dir, 'p-xylene.mol2'))
@@ -179,10 +192,10 @@ def test_setup_name_antechamber():
         assert os.path.getsize(os.path.join(output_dir, 'p-xylene.gaff.mol2')) > 0
         assert os.path.getsize(os.path.join(output_dir, 'p-xylene.frcmod')) > 0
 
-@unittest.skipIf(not is_openeye_installed(), 'This test requires OpenEye installed.')
+@unittest.skipIf(not utils.is_openeye_installed(), 'This test requires OpenEye installed.')
 def test_setup_smiles_antechamber():
     """Setup molecule from SMILES with antechamber parametrization."""
-    with temporary_directory() as tmp_dir:
+    with utils.temporary_directory() as tmp_dir:
         yaml_content = """
         ---
         options:
@@ -194,7 +207,7 @@ def test_setup_smiles_antechamber():
         """.format(tmp_dir)
 
         yaml_builder = parse_yaml_str(yaml_content)
-        yaml_builder._setup_molecule('toluene')
+        yaml_builder._setup_molecules('toluene')
 
         output_dir = os.path.join(tmp_dir, YamlBuilder.SETUP_MOLECULES_DIR, 'toluene')
         assert os.path.exists(os.path.join(output_dir, 'toluene.mol2'))
@@ -244,8 +257,6 @@ def test_multiple_experiments_iteration():
                exp_template.format('[ligand1, ligand2]', 'receptor2'))
     yaml_builder = parse_yaml_str(yaml_content)
     generated_exp = {yaml.dump(exp).strip() for exp in yaml_builder._expand_experiments()}
-    for exp in generated_exp:
-        print exp
     assert len(generated_exp) == 4
     assert exp_template.format('ligand1', 'receptor1') in generated_exp
     assert exp_template.format('ligand2', 'receptor1') in generated_exp
@@ -254,9 +265,10 @@ def test_multiple_experiments_iteration():
 
 def test_setup_implicit_system_leap():
     """Create prmtop and inpcrd for implicit solvent protein-ligand system."""
-    receptor_path = os.path.join(example_dir(), 'p-xylene-implicit', 'setup',
-                                 'receptor.pdbfixer.pdb')
-    with temporary_directory() as tmp_dir:
+    setup_dir = os.path.join(example_dir(), 'p-xylene-implicit', 'setup')
+    receptor_path = os.path.join(setup_dir, 'receptor.pdbfixer.pdb')
+    ligand_path = os.path.join(setup_dir, 'ligand.tripos.mol2')
+    with utils.temporary_directory() as tmp_dir:
         yaml_content = """
         ---
         options:
@@ -266,21 +278,22 @@ def test_setup_implicit_system_leap():
                 filepath: {}
                 parameters: oldff/leaprc.ff99SBildn
             p-xylene:
-                name: p-xylene
+                filepath: {}
                 parameters: antechamber
         solvents:
             GBSA-OBC2:
                 nonbondedMethod: NoCutoff
                 gbsamodel: obc2
-        """.format(tmp_dir, receptor_path)
+        """.format(tmp_dir, receptor_path, ligand_path)
 
         yaml_builder = parse_yaml_str(yaml_content)
         components = {'receptor': 'T4lysozyme',
                       'ligand': 'p-xylene',
                       'solvent': 'GBSA-OBC2'}
-        yaml_builder._setup_molecule('p-xylene')
-        yaml_builder._setup_system(components, 'experimentT4')
+        yaml_builder._setup_molecules('p-xylene')
+        yaml_builder._setup_system(output_dir='experimentT4', components=components)
 
+        # Test that output files exist and there is no water
         output_dir = os.path.join(tmp_dir, YamlBuilder.SETUP_SYSTEMS_DIR, 'experimentT4')
         for phase in ['complex', 'solvent']:
             found_resnames = set()
@@ -300,12 +313,12 @@ def test_setup_implicit_system_leap():
             assert 'MOL' in found_resnames
             assert 'WAT' not in found_resnames
 
+@unittest.skipIf(not utils.is_openeye_installed(), 'This test requires OpenEye installed.')
 def test_setup_explicit_system_leap():
     """Create prmtop and inpcrd protein-ligand system in explicit solvent."""
-    setup_dir = os.path.join(example_dir(), 'benzene-toluene-explicit', 'setup')
-    benzene_path = os.path.join(setup_dir, 'benzene.tripos.mol2')
-    toluene_path = os.path.join(setup_dir, 'toluene.tripos.mol2')
-    with temporary_directory() as tmp_dir:
+    benzene_path = os.path.join(example_dir(), 'benzene-toluene-explicit',
+                                'setup', 'benzene.tripos.mol2')
+    with utils.temporary_directory() as tmp_dir:
         yaml_content = """
         ---
         options:
@@ -315,22 +328,22 @@ def test_setup_explicit_system_leap():
                 filepath: {}
                 parameters: antechamber
             toluene:
-                filepath: {}
+                name: toluene
                 parameters: antechamber
         solvents:
             PMEtip3p:
                 nonbondedMethod: PME
                 clearance: 10*angstroms
-        """.format(tmp_dir, benzene_path, toluene_path)
+        """.format(tmp_dir, benzene_path)
 
         yaml_builder = parse_yaml_str(yaml_content)
         components = {'receptor': 'benzene',
                       'ligand': 'toluene',
                       'solvent': 'PMEtip3p'}
-        yaml_builder._setup_molecule('benzene')
-        yaml_builder._setup_molecule('toluene')
-        yaml_builder._setup_system(components, 'experimentBT')
+        yaml_builder._setup_molecules('benzene', 'toluene')
+        yaml_builder._setup_system(output_dir='experimentBT', components=components)
 
+        # Test that output file exists and that there is water
         expected_resnames = {'complex': set(['BEN', 'TOL', 'WAT']),
                              'solvent': set(['TOL', 'WAT'])}
         output_dir = os.path.join(tmp_dir, YamlBuilder.SETUP_SYSTEMS_DIR, 'experimentBT')
@@ -350,3 +363,24 @@ def test_setup_explicit_system_leap():
             assert os.path.getsize(prmtop_path) > 0
             assert os.path.getsize(inpcrd_path) > 0
             assert found_resnames == expected_resnames[phase]
+
+        # Test that molecules do not overlap
+        toluene_path = os.path.join(tmp_dir, YamlBuilder.SETUP_MOLECULES_DIR,
+                                    'toluene', 'toluene.gaff.mol2')
+        toluene_pos = utils.get_oe_mol_positions(utils.read_molecule(toluene_path))
+        benzene_pos = utils.get_oe_mol_positions(utils.read_molecule(benzene_path))
+        assert compute_min_dist(toluene_pos, benzene_pos) >= 1.0
+
+
+# TODO hardcoded group names in TLeap
+# TODO run single explicit/implicit experiment
+# TODO start from prmtop and inpcrd files
+# TODO start form gro and top files
+# TODO save YAML format for each experiment
+# TODO validate syntax
+# TODO epik
+
+# TODO documentation validate_parameters, future openmoltools methods, YamlBuilder methods
+
+# TODO default solvents?
+# TODO default protocol?
