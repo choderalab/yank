@@ -262,6 +262,9 @@ class YamlBuilder:
         if not os.path.isdir(output_sys_dir):
             os.makedirs(output_sys_dir)
 
+        # Setup molecules
+        self._setup_molecules(components['receptor'], components['ligand'])
+
         # Identify components
         receptor = self._molecules[components['receptor']]
         ligand = self._molecules[components['ligand']]

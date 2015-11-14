@@ -167,8 +167,10 @@ def test_yaml_mol2_antechamber():
         assert os.path.getsize(os.path.join(output_dir, 'benzene.frcmod')) > 0
 
 @unittest.skipIf(not utils.is_openeye_installed(), 'This test requires OpenEye installed.')
-def test_setup_name_antechamber():
-    """Setup molecule from name with antechamber parametrization."""
+def test_setup_name_smiles_antechamber():
+    """Setup molecule from name and SMILES with antechamber parametrization."""
+    benzene_path = os.path.join(example_dir(), 'benzene-toluene-explicit',
+                                'setup', 'benzene.tripos.mol2')
     with utils.temporary_directory() as tmp_dir:
         yaml_content = """
         ---
@@ -178,43 +180,36 @@ def test_setup_name_antechamber():
             p-xylene:
                 name: p-xylene
                 parameters: antechamber
-        """.format(tmp_dir)
-
-        yaml_builder = parse_yaml_str(yaml_content)
-        yaml_builder._setup_molecules('p-xylene')
-
-        output_dir = os.path.join(tmp_dir, YamlBuilder.SETUP_MOLECULES_DIR, 'p-xylene')
-        assert os.path.exists(os.path.join(output_dir, 'p-xylene.mol2'))
-        assert os.path.exists(os.path.join(output_dir, 'p-xylene.gaff.mol2'))
-        assert os.path.exists(os.path.join(output_dir, 'p-xylene.frcmod'))
-        assert os.path.getsize(os.path.join(output_dir, 'p-xylene.mol2')) > 0
-        assert os.path.getsize(os.path.join(output_dir, 'p-xylene.gaff.mol2')) > 0
-        assert os.path.getsize(os.path.join(output_dir, 'p-xylene.frcmod')) > 0
-
-@unittest.skipIf(not utils.is_openeye_installed(), 'This test requires OpenEye installed.')
-def test_setup_smiles_antechamber():
-    """Setup molecule from SMILES with antechamber parametrization."""
-    with utils.temporary_directory() as tmp_dir:
-        yaml_content = """
-        ---
-        options:
-            output_dir: {}
-        molecules:
+            benzene:
+                filepath: {}
+                parameters: antechamber
             toluene:
                 smiles: Cc1ccccc1
                 parameters: antechamber
-        """.format(tmp_dir)
+        """.format(tmp_dir, benzene_path)
 
         yaml_builder = parse_yaml_str(yaml_content)
-        yaml_builder._setup_molecules('toluene')
 
-        output_dir = os.path.join(tmp_dir, YamlBuilder.SETUP_MOLECULES_DIR, 'toluene')
-        assert os.path.exists(os.path.join(output_dir, 'toluene.mol2'))
-        assert os.path.exists(os.path.join(output_dir, 'toluene.gaff.mol2'))
-        assert os.path.exists(os.path.join(output_dir, 'toluene.frcmod'))
-        assert os.path.getsize(os.path.join(output_dir, 'toluene.mol2')) > 0
-        assert os.path.getsize(os.path.join(output_dir, 'toluene.gaff.mol2')) > 0
-        assert os.path.getsize(os.path.join(output_dir, 'toluene.frcmod')) > 0
+        # The order of the arguments in _setup_molecules is important, we want to test
+        # that overlapping molecules in toluene are removed even if benzene has been
+        # indicated to be processed afterwards
+        yaml_builder._setup_molecules('toluene', 'benzene', 'p-xylene')
+
+        for mol in ['toluene', 'p-xylene']:
+            output_dir = os.path.join(tmp_dir, YamlBuilder.SETUP_MOLECULES_DIR, mol)
+            assert os.path.exists(os.path.join(output_dir, mol + '.mol2'))
+            assert os.path.exists(os.path.join(output_dir, mol + '.gaff.mol2'))
+            assert os.path.exists(os.path.join(output_dir, mol + '.frcmod'))
+            assert os.path.getsize(os.path.join(output_dir, mol + '.mol2')) > 0
+            assert os.path.getsize(os.path.join(output_dir, mol + '.gaff.mol2')) > 0
+            assert os.path.getsize(os.path.join(output_dir, mol + '.frcmod')) > 0
+
+        # Test that molecules do not overlap
+        toluene_path = os.path.join(tmp_dir, YamlBuilder.SETUP_MOLECULES_DIR,
+                                    'toluene', 'toluene.gaff.mol2')
+        toluene_pos = utils.get_oe_mol_positions(utils.read_oe_molecule(toluene_path))
+        benzene_pos = utils.get_oe_mol_positions(utils.read_oe_molecule(benzene_path))
+        assert compute_min_dist(toluene_pos, benzene_pos) >= 1.0
 
 @raises(YamlParseError)
 @unittest.skipIf(not utils.is_openeye_installed(), 'This test requires OpenEye installed.')
@@ -313,7 +308,6 @@ def test_setup_implicit_system_leap():
         components = {'receptor': 'T4lysozyme',
                       'ligand': 'p-xylene',
                       'solvent': 'GBSA-OBC2'}
-        yaml_builder._setup_molecules('p-xylene')
         yaml_builder._setup_system(output_dir='experimentT4', components=components)
 
         # Test that output files exist and there is no water
@@ -364,10 +358,6 @@ def test_setup_explicit_system_leap():
                       'ligand': 'toluene',
                       'solvent': 'PMEtip3p'}
 
-        # The order of the arguments in _setup_molecules is important, we want to test
-        # that overlapping molecules in toluene are removed even if benzene has been
-        # indicated to be processed afterwards
-        yaml_builder._setup_molecules('toluene', 'benzene')
         yaml_builder._setup_system(output_dir='experimentBT', components=components)
 
         # Test that output file exists and that there is water
@@ -390,13 +380,6 @@ def test_setup_explicit_system_leap():
             assert os.path.getsize(prmtop_path) > 0
             assert os.path.getsize(inpcrd_path) > 0
             assert found_resnames == expected_resnames[phase]
-
-        # Test that molecules do not overlap
-        toluene_path = os.path.join(tmp_dir, YamlBuilder.SETUP_MOLECULES_DIR,
-                                    'toluene', 'toluene.gaff.mol2')
-        toluene_pos = utils.get_oe_mol_positions(utils.read_oe_molecule(toluene_path))
-        benzene_pos = utils.get_oe_mol_positions(utils.read_oe_molecule(benzene_path))
-        assert compute_min_dist(toluene_pos, benzene_pos) >= 1.0
 
 
 # TODO run single explicit/implicit experiment
