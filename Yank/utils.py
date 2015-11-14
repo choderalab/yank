@@ -553,6 +553,29 @@ def is_openeye_installed():
         return False
     return True
 
+def read_molecule(file_path):
+    from openeye import oechem
+    molecule = oechem.OEGraphMol()
+    ifs = oechem.oemolistream()
+    ifs.open(file_path)
+    oechem.OEReadMolecule(ifs, molecule)
+    ifs.close()
+    return molecule
+
+def get_oe_mol_positions(molecule):
+    import numpy as np
+    from openeye import oechem
+    oe_coords = oechem.OEFloatArray(3)
+    molecule_pos = np.zeros((molecule.NumAtoms(), 3))
+    for i, atom in enumerate(molecule.GetAtoms()):
+        molecule.GetCoords(atom, oe_coords)
+        molecule_pos[i] = oe_coords
+    return molecule_pos
+
+def set_oe_mol_positions(molecule, positions):
+    for i, atom in enumerate(molecule.GetAtoms()):
+        molecule.SetCoords(atom, positions[i])
+
 class TLeap:
     """Programmatic interface to write and run tLeap scripts."""
 
