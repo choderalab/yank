@@ -33,50 +33,6 @@ from sampling import ModifiedHamiltonianExchange
 # UTILITY FUNCTIONS
 #=============================================================================================
 
-def process_second_compatible_quantity(quantity_str):
-    """
-    Shortcut to process a string containing a quantity compatible with seconds.
-
-    Parameters
-    ----------
-    quantity_str : str
-         A string containing a value with a unit of measure for time.
-
-    Returns
-    -------
-    quantity : simtk.unit.Quantity
-       The specified string, returned as a Quantity.
-
-    See Also
-    --------
-    utils.process_unit_bearing_str : the function used for the actual conversion.
-
-    """
-    return utils.process_unit_bearing_str(quantity_str, unit.seconds)
-
-def process_bool(bool_val):
-    """Raise ValueError if this an ambiguous representation of a bool.
-
-    PyYAML load a boolean the following words: true, True, yes, Yes, false, False,
-    no and No, but in Python strings and numbers can be used as booleans and create
-    subtle errors. This function ensure that the value is a true boolean.
-
-    Returns
-    -------
-    bool
-        bool_val only if it is a boolean.
-
-    Raises
-    ------
-    ValueError
-        If bool_var is not a boolean.
-
-    """
-    if isinstance(bool_val, bool):
-        return bool_val
-    else:
-        raise ValueError('The value must be true, yes, false, or no.')
-
 def compute_min_dist(mol_positions, *args):
     for pos1 in args:
         # Compute squared distances
