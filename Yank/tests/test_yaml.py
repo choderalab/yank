@@ -84,7 +84,6 @@ def test_yaml_parsing():
         platform: CUDA
         precision: mixed
         resume: true
-        min_distance: 2.0*angstrom
         output_dir: /path/to/output/
         restraint_type: harmonic
         randomize_ligand: yes
@@ -217,6 +216,30 @@ def test_setup_smiles_antechamber():
         assert os.path.getsize(os.path.join(output_dir, 'toluene.gaff.mol2')) > 0
         assert os.path.getsize(os.path.join(output_dir, 'toluene.frcmod')) > 0
 
+@raises(YamlParseError)
+@unittest.skipIf(not utils.is_openeye_installed(), 'This test requires OpenEye installed.')
+def test_overlapping_atoms():
+    """Check that exception is raised when overlapping atoms."""
+    setup_dir = os.path.join(example_dir(), 'benzene-toluene-explicit', 'setup')
+    benzene_path = os.path.join(setup_dir, 'benzene.tripos.mol2')
+    toluene_path = os.path.join(setup_dir, 'toluene.tripos.mol2')
+    with utils.temporary_directory() as tmp_dir:
+        yaml_content = """
+        ---
+        options:
+            output_dir: {}
+        molecules:
+            benzene:
+                filepath: {}
+                parameters: antechamber
+            toluene:
+                filepath: {}
+                parameters: antechamber
+        """.format(tmp_dir, benzene_path, toluene_path)
+
+        yaml_builder = parse_yaml_str(yaml_content)
+        yaml_builder._setup_molecules('benzene', 'toluene')
+
 def test_experiment_iteration():
     """Test iteration over combinatorial experiments."""
     exp_template = 'components: {{ligand: {}, receptor: {}, solvent: {}}}'
@@ -340,7 +363,11 @@ def test_setup_explicit_system_leap():
         components = {'receptor': 'benzene',
                       'ligand': 'toluene',
                       'solvent': 'PMEtip3p'}
-        yaml_builder._setup_molecules('benzene', 'toluene')
+
+        # The order of the arguments in _setup_molecules is important, we want to test
+        # that overlapping molecules in toluene are removed even if benzene has been
+        # indicated to be processed afterwards
+        yaml_builder._setup_molecules('toluene', 'benzene')
         yaml_builder._setup_system(output_dir='experimentBT', components=components)
 
         # Test that output file exists and that there is water
@@ -367,20 +394,21 @@ def test_setup_explicit_system_leap():
         # Test that molecules do not overlap
         toluene_path = os.path.join(tmp_dir, YamlBuilder.SETUP_MOLECULES_DIR,
                                     'toluene', 'toluene.gaff.mol2')
-        toluene_pos = utils.get_oe_mol_positions(utils.read_molecule(toluene_path))
-        benzene_pos = utils.get_oe_mol_positions(utils.read_molecule(benzene_path))
+        toluene_pos = utils.get_oe_mol_positions(utils.read_oe_molecule(toluene_path))
+        benzene_pos = utils.get_oe_mol_positions(utils.read_oe_molecule(benzene_path))
         assert compute_min_dist(toluene_pos, benzene_pos) >= 1.0
 
 
-# TODO hardcoded group names in TLeap
 # TODO run single explicit/implicit experiment
 # TODO start from prmtop and inpcrd files
 # TODO start form gro and top files
 # TODO save YAML format for each experiment
 # TODO validate syntax
+# TODO handle resume molecule setup for combinatorial experiments
 # TODO epik
 
 # TODO documentation validate_parameters, future openmoltools methods, YamlBuilder methods
+# TODO ModifiedHamiltonianExchange use very similar algorithm to remove_overlap: refactor
 
 # TODO default solvents?
 # TODO default protocol?

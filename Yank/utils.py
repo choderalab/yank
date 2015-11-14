@@ -553,7 +553,7 @@ def is_openeye_installed():
         return False
     return True
 
-def read_molecule(file_path):
+def read_oe_molecule(file_path):
     from openeye import oechem
     molecule = oechem.OEGraphMol()
     ifs = oechem.oemolistream()

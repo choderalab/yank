@@ -95,8 +95,7 @@ class YamlBuilder:
         'platform': None,
         'precision': None,
         'resume': False,
-        'output_dir': 'output/',
-        'min_distance': 1.0 * unit.angstroms
+        'output_dir': 'output/'
     }
 
     @property
@@ -175,81 +174,86 @@ class YamlBuilder:
             for combination in exp:
                 yield combination
 
+    def _generate_molecule(self, molecule_id):
+        """Generate molecule and save it to mol2 in molecule['filepath']."""
+        mol_descr = self._molecules[molecule_id]
+        try:
+            if 'name' in mol_descr:
+                molecule = openmoltools.openeye.iupac_to_oemol(mol_descr['name'])
+            elif 'smiles' in mol_descr:
+                molecule = openmoltools.openeye.smiles_to_oemol(mol_descr['smiles'])
+            molecule = openmoltools.openeye.get_charges(molecule, keep_confs=1)
+        except ImportError as e:
+            error_msg = ('requested molecule generation from name or smiles but '
+                         'could not find OpenEye toolkit: ' + str(e))
+            raise YamlParseError(error_msg)
+
+        return molecule
+
     def _setup_molecules(self, *args):
-        done = set()  # molecules that we have already processed
-        fixed_pos = {}  # positions of molecules to ensure not overlapping atoms
-
-        # We need to process the OpenEye-generated molecules lastly to avoid overlapping atoms
         file_mol_ids = {mol_id for mol_id in args if 'filepath' in self._molecules[mol_id]}
-        oe_mol_ids = {mol_id for mol_id in args if mol_id not in file_mol_ids}
-        ordered_args = list(file_mol_ids) + list(oe_mol_ids)
 
-        for molecule_id in ordered_args:
-            mol_descr = self._molecules[molecule_id]
+        # Generate missing molecules with OpenEye
+        oe_molecules = {mol_id: self._generate_molecule(mol_id)
+                        for mol_id in args if mol_id not in file_mol_ids}
+
+        # Check that non-generated molecules don't have overlapping atoms
+        # TODO this check should be available even without OpenEye
+        # TODO also there should be an option to solve the overlap in this case
+        fixed_pos = {}  # positions of molecules from files
+        if utils.is_openeye_installed():
+            mol_id_list = list(file_mol_ids)
+            positions = [utils.get_oe_mol_positions(utils.read_oe_molecule(
+                         self._molecules[mol_id]['filepath'])) for mol_id in mol_id_list]
+            for i in range(len(positions) - 1):
+                posi = positions[i]
+                if compute_min_dist(posi, *positions[i+1:]) < 0.1:
+                    raise YamlParseError('The given molecules have overlapping atoms!')
+
+            # Convert positions list to dictionary
+            fixed_pos = {mol_id_list[i]: positions[i] for i in range(len(mol_id_list))}
+
+        # Find and solve overlapping atoms in OpenEye generated molecules
+        for mol_id, molecule in oe_molecules.items():
+            molecule_pos = utils.get_oe_mol_positions(molecule)
+            if fixed_pos:
+                molecule_pos = remove_overlap(molecule_pos, *(fixed_pos.values()),
+                                              min_distance=1.0, sigma=1.0)
+                utils.set_oe_mol_positions(molecule, molecule_pos)
+
+            # Update fixed positions for next round
+            fixed_pos[mol_id] = molecule_pos
+
+        # Save parametrized molecules
+        for mol_id in args:
+            mol_descr = self._molecules[mol_id]
 
             # Create output directory
             output_mol_dir = os.path.join(self._output_dir, self.SETUP_MOLECULES_DIR,
-                                          molecule_id)
+                                          mol_id)
             if not os.path.isdir(output_mol_dir):
                 os.makedirs(output_mol_dir)
 
-            # Check if we have to generate the molecule with OpenEye
-            if 'filepath' not in mol_descr:
-                try:
-                    if 'name' in mol_descr:
-                        molecule = openmoltools.openeye.iupac_to_oemol(mol_descr['name'])
-                    elif 'smiles' in mol_descr:
-                        molecule = openmoltools.openeye.smiles_to_oemol(mol_descr['smiles'])
-                    molecule = openmoltools.openeye.get_charges(molecule, keep_confs=1)
+            # Write OpenEye generated molecules in mol2 files
+            if mol_id in oe_molecules:
+                # We update the 'filepath' key in the molecule description
+                mol_descr['filepath'] = os.path.join(output_mol_dir, mol_id + '.mol2')
 
-                    # Ensure that OpenEye-generated molecule have no overlapping atoms
-                    # Update list of molecules that need to keep their position
-                    if len(fixed_pos) == 0:
-                        # We need to do this only once since we process first the other molecules
-                        fixed_pos.update({mol_id: utils.get_oe_mol_positions(
-                                          utils.read_molecule(self._molecules[mol_id]['filepath']))
-                                          for mol_id in done if mol_id not in fixed_pos})
-                    if len(fixed_pos) > 0:
-                        # Check that not OpenEye-generated molecules have no overlapping atoms
-                        if len(fixed_pos) > 1:
-                            if compute_min_dist(*(fixed_pos.values())) < 0.1:
-                                raise YamlParseError('The given molecules have overlapping atoms!')
+                # We set the residue name as the first three uppercase letters
+                residue_name = re.sub('[^A-Za-z]+', '', mol_id.upper())
+                openmoltools.openeye.molecule_to_mol2(molecule, mol_descr['filepath'],
+                                                      residue_name=residue_name)
 
-                        # Remove the overlap
-                        mol_pos = utils.get_oe_mol_positions(molecule)
-                        min_distance = float(self._min_distance.value_in_unit(unit.angstroms))
-                        mol_pos = remove_overlap(mol_pos, *(fixed_pos.values()),
-                                                 min_distance=min_distance, sigma=min_distance)
-                        utils.set_oe_mol_positions(molecule, mol_pos)
-
-                        # Update fixed positions for next round
-                        fixed_pos[molecule_id] = mol_pos
-
-                    # We set the residue name as the first three uppercase letters
-                    mol_descr['filepath'] = os.path.join(output_mol_dir, molecule_id + '.mol2')
-                    residue_name = re.sub('[^A-Za-z]+', '', molecule_id.upper())
-                    openmoltools.openeye.molecule_to_mol2(molecule, mol_descr['filepath'],
-                                                          residue_name=residue_name)
-                except ImportError as e:
-                    error_msg = ('requested molecule generation from name but '
-                                 'could not find OpenEye toolkit: ' + str(e))
-                    raise YamlParseError(error_msg)
-
-            # Check if we need to parametrize the molecule
+            # Parametrize the molecule with antechamber
             if mol_descr['parameters'] == 'antechamber':
-
                 # Generate parameters
                 input_mol_path = os.path.abspath(mol_descr['filepath'])
                 with utils.temporary_cd(output_mol_dir):
-                    openmoltools.amber.run_antechamber(molecule_id, input_mol_path)
+                    openmoltools.amber.run_antechamber(mol_id, input_mol_path)
 
                 # Save new parameters paths
-                mol_descr['filepath'] = os.path.join(output_mol_dir, molecule_id + '.gaff.mol2')
-                mol_descr['parameters'] = os.path.join(output_mol_dir, molecule_id + '.frcmod')
-
-            # Update processed molecules
-            done.add(molecule_id)
-
+                mol_descr['filepath'] = os.path.join(output_mol_dir, mol_id + '.gaff.mol2')
+                mol_descr['parameters'] = os.path.join(output_mol_dir, mol_id + '.frcmod')
 
     def _setup_system(self, output_dir, components):
         # Create output directory
