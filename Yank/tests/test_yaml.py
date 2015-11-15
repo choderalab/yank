@@ -376,13 +376,11 @@ def test_run_experiment():
             assert os.path.isfile(os.path.join(output_dir, 'complex-implicit.nc'))
             assert os.path.isfile(os.path.join(output_dir, 'solvent-implicit.nc'))
 
-# TODO select ligand with variable resname
-# TODO run single explicit/implicit experiment
-# TODO start from prmtop and inpcrd files
-# TODO start form gro and top files
+# TODO handle resume molecule setup for combinatorial experiments
 # TODO save YAML format for each experiment
 # TODO validate syntax
-# TODO handle resume molecule setup for combinatorial experiments
+# TODO start from prmtop and inpcrd files
+# TODO start form gro and top files
 # TODO epik
 
 # TODO documentation validate_parameters, future openmoltools methods, YamlBuilder methods

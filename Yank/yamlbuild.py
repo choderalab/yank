@@ -343,6 +343,11 @@ class YamlBuilder:
         # Setup complex and solvent systems
         self._setup_system(systems_dir, components)
 
+        # Get ligand resname for alchemical atom selection
+        ligand_res = utils.get_mol2_resname(self._molecules[components['ligand']]['filepath'])
+        if ligand_res is None:
+            ligand_res = 'MOL'
+
         # Configure logger
         utils.config_root_logger(self._verbose, os.path.join(results_dir, 'yaml.log'))
 
@@ -412,8 +417,8 @@ class YamlBuilder:
                 logger.error(err_msg)
                 raise RuntimeError(err_msg)
 
-            # Find ligand atoms and receptor atoms.
-            ligand_dsl = 'resname MOL'  # MDTraj DSL that specifies ligand atoms
+            # Find ligand atoms and receptor atoms
+            ligand_dsl = 'resname ' + ligand_res  # MDTraj DSL that specifies ligand atoms
             atom_indices[phase] = find_components(prmtop.topology, ligand_dsl)
 
         # Specify thermodynamic state

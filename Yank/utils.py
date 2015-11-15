@@ -576,6 +576,20 @@ def set_oe_mol_positions(molecule, positions):
     for i, atom in enumerate(molecule.GetAtoms()):
         molecule.SetCoords(atom, positions[i])
 
+def get_mol2_resname(file_path):
+    """Find resname of first atom in tripos mol2 file."""
+    with open(file_path, 'r') as f:
+        atom_found = False
+        for line in f:
+            fields = line.split()
+            if atom_found:
+                try:
+                    return fields[7]
+                except IndexError:
+                    return None
+            elif len(fields) > 0 and fields[0] == '@<TRIPOS>ATOM':
+                atom_found = True
+
 class TLeap:
     """Programmatic interface to write and run tLeap scripts."""
 
