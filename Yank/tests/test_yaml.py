@@ -51,33 +51,56 @@ def test_yaml_parsing():
     test: 2
     """
     yaml_builder = parse_yaml_str(yaml_content)
-    assert len(yaml_builder.options) == 0
+    assert len(yaml_builder.options) == len(yaml_builder.default_options)
 
     # Correct parsing
     yaml_content = """
     ---
     metadata:
         title: Test YANK YAML YAY!
+
     options:
-        timestep: 2.0 * femtoseconds
+        verbose: true
+        mpi: yes
+        platform: CUDA
+        precision: mixed
+        resume: true
+        output_directory: /path/to/output/
+        restraint_type: harmonic
+        randomize_ligand: yes
+        randomize_ligand_sigma_multiplier: 2.0
+        randomize_ligand_close_cutoff: 1.5 * angstrom
+        mc_displacement_sigma: 10.0 * angstroms
+        collision_rate: 5.0 / picosecond
+        constraint_tolerance: 1.0e-6
+        timestep: 2.0 * femtosecond
         nsteps_per_iteration: 2500
-        number_of_iterations: 10
-        minimize: false
-        equilibrate: yes
-        equilibration_timestep: 1.0 * femtoseconds
-        number_of_equilibration_iterations: 1000
+        number_of_iterations: 1000.999
+        equilibration_timestep: 1.0 * femtosecond
+        number_of_equilibration_iterations: 100
+        minimize: False
+        minimize_tolerance: 1.0 * kilojoules_per_mole / nanometers
+        minimize_maxIterations: 0
+        replica_mixing_scheme: swap-all
+        online_analysis: no
+        online_analysis_min_iterations: 20
+        show_energies: True
+        show_mixing_statistics: yes
     """
 
     yaml_builder = parse_yaml_str(yaml_content)
-    assert len(yaml_builder.options) == 8
-    assert yaml_builder.options['title'] == 'Test YANK YAML YAY!'
+    assert len(yaml_builder.options) == 27
+
+    # Check correct types
+    assert yaml_builder.options['replica_mixing_scheme'] == 'swap-all'
     assert yaml_builder.options['timestep'] == 2.0 * unit.femtoseconds
+    assert yaml_builder.options['constraint_tolerance'] == 1.0e-6
     assert yaml_builder.options['nsteps_per_iteration'] == 2500
-    assert yaml_builder.options['number_of_iterations'] == 10
+    assert type(yaml_builder.options['nsteps_per_iteration']) is int
+    assert yaml_builder.options['number_of_iterations'] == 1000
+    assert type(yaml_builder.options['number_of_iterations']) is int
     assert yaml_builder.options['minimize'] is False
-    assert yaml_builder.options['equilibrate'] is True
-    assert yaml_builder.options['equilibration_timestep'] == 1.0 * unit.femtoseconds
-    assert yaml_builder.options['number_of_equilibration_iterations'] == 1000
+    assert yaml_builder.options['show_mixing_statistics'] is True
 
 @raises(YamlParseError)
 def test_yaml_unknown_options():
@@ -96,6 +119,6 @@ def test_yaml_wrong_option_value():
     yaml_content = """
     ---
     options:
-        equilibrate: 1000
+        minimize: 100
     """
     parse_yaml_str(yaml_content)

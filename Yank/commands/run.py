@@ -30,9 +30,7 @@ from yank import utils
 def dispatch(args):
     from yank.yank import Yank # TODO: Fix this awkward import syntax.
 
-    # Create YANK object associated with data storage directory.
     store_directory = args['--store']
-    yank = Yank(store_directory)
 
     # Set override options.
     options = dict()
@@ -48,10 +46,8 @@ def dispatch(args):
         mpicomm = MPI.COMM_WORLD
 
     # Configure logger
-    if args['--verbose']:
-        options['verbose'] = True
-    utils.config_root_logger(options['verbose'],
-                             log_file_path=os.path.join(store_directory, 'run.log'), mpicomm=mpicomm)
+    utils.config_root_logger(args['--verbose'], mpicomm=mpicomm,
+                             log_file_path=os.path.join(store_directory, 'run.log'))
 
     if args['--iterations']:
         options['number_of_iterations'] = int(args['--iterations'])
@@ -82,12 +78,15 @@ def dispatch(args):
             else:
                 raise Exception("Platform selection logic is outdated and needs to be updated to add platform '%s'." % platform_name)
 
+    # Create YANK object associated with data storage directory.
+    yank = Yank(store_directory, mpicomm=mpicomm, **options)
+
     # Set YANK to resume from the store file.
     phases = None # By default, resume from all phases found in store_directory
     if args['--phase']: phases=[args['--phase']]
     yank.resume(phases=phases)
 
     # Run simulation.
-    yank.run(mpicomm=mpicomm, options=options)
+    yank.run()
 
     return True

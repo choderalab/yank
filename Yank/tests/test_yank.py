@@ -34,6 +34,8 @@ import numpy as np
 from simtk import openmm
 from openmmtools import testsystems
 
+from nose import tools
+
 from yank import Yank
 from yank.repex import ThermodynamicState
 
@@ -50,6 +52,18 @@ kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA # Boltzmann constant
 #=============================================================================================
 # MAIN AND TESTS
 #=============================================================================================
+
+def test_parameters():
+    """Test Yank parameters initialization."""
+
+    # Check that both Yank and Repex parameters are accepted
+    Yank(store_directory='test', restraint_type='harmonic', nsteps_per_iteration=1)
+
+@tools.raises(TypeError)
+def test_unknown_parameters():
+    """Test whether Yank raises exception on wrong initialization."""
+    Yank(store_directory='test', wrong_parameter=False)
+
 
 def notest_LennardJonesPair(box_width_nsigma=6.0):
     """
@@ -123,8 +137,8 @@ def notest_LennardJonesPair(box_width_nsigma=6.0):
     atom_indices = { 'complex-explicit' : { 'ligand' : [1] } }
 
     # Create new simulation.
-    yank = Yank(store_dir)
-    yank.create(phases, systems, positions, atom_indices, thermodynamic_state, options=options, protocols=protocols)
+    yank = Yank(store_dir, **options)
+    yank.create(phases, systems, positions, atom_indices, thermodynamic_state, protocols=protocols)
 
     # Run the simulation.
     yank.run()

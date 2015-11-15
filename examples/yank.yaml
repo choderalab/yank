@@ -1,0 +1,231 @@
+# This file tries to sum up all the various things
+# that will be possible to do with yank-yaml
+
+#yank-yaml0.1
+---
+metadata:
+  title:
+  email:
+
+
+# Separate options / yank block, or put all yank/repex/alchemy at base level?
+options:
+  yamlbuilder:
+    verbose: true
+    mpi: yes
+    platform: CUDA
+    precision: mixed
+    resume: yes
+  yank:
+    restraint_type: harmonic
+    randomize_ligand: yes
+    minimize: yes
+    output_directory: /path/to/output/
+  repex:
+    timestep: 1.0 * femtoseconds
+    nsteps_per_iteration: 2500
+    number_of_iterations: 1000
+    equilibration_timestep: 1.0*femtoseconds
+    number_of_equilibration_iterations: 100
+    online_analysis: no
+  alchemy:
+    annihilate_sterics: False
+    annihilate_electrostatics: True
+
+
+molecules:
+  abl-2hyy:
+    rcsbid: 2hyy
+    select: "chain A"
+    mutations: "ASP-137-ASH"
+    parameters: ['amber99sbildn.xml', 'ions.xml']
+    loopoptions: stuff for loop refinement
+
+  imatinib:
+    filename: gleevec.smiles
+    epik: 0  # take 0th state from epik for protonation
+    parameters: antechamber/paramchem
+  bosutinib:
+    prmtop: bosu.prmtop      or      charmmpsf: bosu.psf
+    inpcrd: bosu.inpcrd      or      charmmpdb: bosu.pdb
+
+  p38-schrodinger:
+    filename: p38_protein.pdb
+  p38-ligands:
+    filename: p32_ligands.sdf
+    select: [p38a_2n, p38a_3flz, p38a_2h]  # how do we handle multi-molecules files?
+
+
+solvents:
+  vacuum:
+    nonbondedMethod: NoCutoff
+  PMEtip3p:
+    nonbondedMethod: PME
+    nonbondedCutoff: 1*nanometer
+    solventmodel: tip3p
+    salt:
+      NaCl: 150*millimolar
+      MgCl2: 10*millimolar
+    clearance: 10*angstroms
+  RFtip3p:
+    nonbondedMethod: RF
+    solventmodel: tip3p
+    salt:
+      NaCl: 150*millimolar
+      MgCl2: 10*millimolar
+    clearance: 10*angstroms
+  PMEtip4p:
+    nonbondedMethod: PME
+    nonbondedCutoff: 1.2*nanometer
+    solventmodel: tip4p
+    salt:
+      KCl: 150*millimolar
+    clearance: 10*angstroms
+  GBSAobc1:
+    nonbondedMethod: NoCutoff
+    gbsamodel: obc1
+  GBSAobc2:
+    nonbondedMethod: NoCutoff
+    gbsamodel: obc2
+
+
+alchemical_protocols:
+  10states_protocol:
+    lambda_electrostatics: [1.0, 0.9, 0.8, ...]
+    lambda_sterics: [1.0, 0.9, 0.8, ...]
+  20states_protocol:
+    lambda_electrostatics: [1.0, 0.95, 0.9, ...]
+    lambda_sterics: [1.0, 0.95, 0.9, ...]
+
+
+# The names in components, alchemical_transformation and alchemical_atoms
+# are searched both in molecules and in experiment.components. Pre-set
+# phases don't have to be explicitly defined and can be overwritten by
+# the user. For pre-set phases alchemical_atoms and alchemical_protocol
+# assume the value 'auto'.
+phases:
+  # Pre-set phases equivalents examples, these don't actually have to be defined
+  # ----------------------------------------------------------------------------
+  default_absolute_complex: &default_absolute_complex_phase
+    components: [solvent, receptor, molecule]
+    alchemical_transformation: molecule->null
+  default_absolute_solvent: &default_absolute_solvent_phase
+    components: [solvent, molecule]
+    alchemical_transformation: molecule->null
+  default_relative_complex: &default_relative_complex_phase
+    components: [solvent, static, molecule1]
+    alchemical_transformation: molecule1->molecule2
+  default_relative_solvent: &default_relative_solvent_phase
+    components: [solvent, molecule1]
+    alchemical_transformation: molecule1->molecule2
+
+  # User-defined phases examples
+  # ----------------------------
+  imatinib_bosutinib: &imatinib_bosutinib_phase
+    alchemical_transformation: imatinib->bosutinib
+    alchemical_atoms:
+      dummy_atoms: [imatinib12, imatinib13, bosutinb14]
+      transform_atoms: [imatinib15->bosutinib16, imatinib17->bosutinib18]
+    alchemical_protocol: 20states_protocol
+
+
+# Can we automatically infer the type of energy calculation from "components"
+# and "alchemical_transformation"?
+protocols:
+  # Pre-set phases equivalents examples, these don't actually have to be defined
+  # ----------------------------------------------------------------------------
+  default_absolute_binding:
+    type: absolute-binding
+    phases:
+      complex: *default_absolute_complex_phase
+      solvent: *default_absolute_solvent_phase
+  default_absolute_solvation:
+    type: absolute-solvation
+    phases:
+      solvent: *default_absolute_solvent_phase
+      vacuum:
+        <<: *default_absolute_solvent_phase
+        components: [vacuum, molecule]
+  default_relative_solvation:
+    type: relative-solvation
+    phases:
+      solvent: *default_relative_solvent_phase
+      vacuum:
+        <<: *default_relative_solvent_phase
+        components: [vacuum, molecule1, molecule2]
+  default_phase_change:
+    type: phase-change
+    phases:
+      solvent1:
+        <<: *default_absolute_solvent_phase
+        components: [solvent1, molecule]
+      solvent2:
+        <<: *default_absolute_solvent_phase
+        components: [solvent2, molecule]
+
+  # User-defined protocols
+  # ----------------------
+  my_absolute_binding:
+    type: absolute-binding
+    phases:
+      my_complex:
+        components: [solvent, receptor, ligand]
+        alchemical_transformation: ligand->null
+        alchemical_protocol: 20states_protocol
+      my_solvent:
+        components: [solvent, ligand]
+        alchemical_transformation: ligand->null
+        alchemical_protocol: 10states_protocol
+        phase_options:
+          repex.niterations: 200
+  my_relative_binding
+    type: relative-binding
+    phases:
+      relative_complex:
+        components: [GBSAobc2, abl-2hyy, imatinib]
+        <<: *imatinib_bosutinib_phase
+      relative_solvent:
+        components: [GBSAobc2, imatinib]
+        <<: *imatinib_bosutinib_phase
+
+
+# The default alchemical factory could be easily inferred from the protocol.
+absolute_experiment:
+  components:
+    receptor: [abl-2hyy, src]
+    ligand: [imatinib, afatinib, bosutinib]
+    solvent: [PMEtip3p, RFtip3p, PMEtip4p, GBSAobc1, GBSAobc2]
+  protocols: my_absolute_binding
+
+# An example of relative binding that uses a pre-set protocol. This will be
+# possible only after implementing automatic tuning of alchemical protocol
+# and automatic determination of the alchemical atoms.
+relative_experiment:
+  components:
+    static: abl-2hyy
+    molecule1: imatinib
+    molecule2: [bosutinib, afatinib]
+    solvent: [GBSAobc1, GBSAobc2]
+  protocols: default_relative_binding
+
+# An example of experiment with protein mutations using pre-set phases.
+mutations_experiment:
+  components:
+    static: imatinib
+    molecule1: abl-2hyy
+    molecule2: [abl-2hyy:VAL31ALA, abl-2hyy:ASP137ASH]
+    solvent: vacuum
+  phases: default_relative_binding
+
+# In this example the section "components" is not needed here since the
+# user-defined phases here use precise solvents and molecules
+custom_experiment:
+  alchemical_factory: mymodule.MyAlchemicalFactory
+  hydrogenMass: [3*amu, 5*amu]
+  constraints: [HBonds, AllBonds]
+  thermodynamics:
+    temperature: 300*kelvin
+    pressure: 1*atmosphere
+  protocols: my_relative_binding
+
+experiments: [absolute_experiment, relative_experiment, mutations_experiment, custom_experiment]
