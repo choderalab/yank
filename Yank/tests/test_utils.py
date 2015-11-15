@@ -103,6 +103,15 @@ def test_validate_parameters():
     # If check_unknown flag is not True it should not raise an error
     validate_parameters({'unkown': 0}, template_pars)
 
+    # Test special conversion
+    def convert_length(length):
+        return str(length)
+    special_conv = {'length': convert_length}
+    convert_pars = {'length': '1.0*nanometers'}
+    convert_pars = validate_parameters(convert_pars, template_pars, process_units_str=True,
+                                       special_conversions=special_conv)
+    assert convert_pars['length'] == '1.0*nanometers'
+
 @tools.raises(ValueError)
 def test_incompatible_parameters():
     """Check that validate_parameters raises exception with unknown parameter."""
@@ -165,8 +174,8 @@ def test_TLeap_script():
     source oldff/leaprc.ff99SBildn
     source leaprc.gaff
     receptor = loadPdb receptor.pdbfixer.pdb
-    loadAmberParams path/to/ligand.gaff.frcmod
-    ligand = loadMol2 ligand.gaff.mol2
+    loadAmberParams ligand.gaff.frcmod
+    ligand = loadMol2 path/to/ligand.gaff.mol2
     complex = combine { receptor ligand }
     solvateBox complex TIP3PBOX 10.0 iso
     check complex
@@ -197,7 +206,7 @@ def test_TLeap_script():
     tleap.solvate(group='ligand', water_model='TIP3PBOX', clearance=10.0)
     tleap.save_group(group='ligand', output_path='solvent.inpcrd')
     tleap.save_group(group='ligand', output_path='solvent.pdb')
-
+    print tleap.script
     assert tleap.script == expected_script
 
 def test_TLeap_export_run():

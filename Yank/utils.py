@@ -507,7 +507,8 @@ def process_unit_bearing_str(quantity_str, compatible_units):
     return quantity
 
 def validate_parameters(parameters, template_parameters, check_unknown=False,
-                        process_units_str=False, float_to_int=False):
+                        process_units_str=False, float_to_int=False,
+                        special_conversions={}):
 
     # Create validated parameters
     validated_par = {par: parameters[par] for par in parameters
@@ -522,16 +523,21 @@ def validate_parameters(parameters, template_parameters, check_unknown=False,
         templ_value = template_parameters[par]
 
         # Convert requested types
-        # bool inherits from int in Python so we can't simply use isinstance
-        if float_to_int and type(templ_value) is int:
-            validated_par[par] = int(value)
-        elif process_units_str and isinstance(templ_value, unit.Quantity):
-            validated_par[par] = process_unit_bearing_str(value, templ_value.unit)
+        # Special conversions have priority
+        if par in special_conversions:
+            converter_func = special_conversions[par]
+            validated_par[par] = converter_func(value)
+        else: # Automatic conversions and type checking
+            # bool inherits from int in Python so we can't simply use isinstance
+            if float_to_int and type(templ_value) is int:
+                validated_par[par] = int(value)
+            elif process_units_str and isinstance(templ_value, unit.Quantity):
+                validated_par[par] = process_unit_bearing_str(value, templ_value.unit)
 
-        # Check for incompatible types
-        if type(validated_par[par]) != type(templ_value) and templ_value is not None:
-            raise ValueError("parameter {}={} is incompatible with {}".format(
-                par, validated_par[par], template_parameters[par]))
+            # Check for incompatible types
+            if type(validated_par[par]) != type(templ_value) and templ_value is not None:
+                raise ValueError("parameter {}={} is incompatible with {}".format(
+                    par, validated_par[par], template_parameters[par]))
 
     return validated_par
 
