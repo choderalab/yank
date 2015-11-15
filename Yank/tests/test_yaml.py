@@ -81,8 +81,6 @@ def test_yaml_parsing():
     options:
         verbose: true
         mpi: yes
-        platform: CUDA
-        precision: mixed
         resume: true
         output_dir: /path/to/output/
         restraint_type: harmonic
@@ -235,52 +233,6 @@ def test_overlapping_atoms():
         yaml_builder = parse_yaml_str(yaml_content)
         yaml_builder._setup_molecules('benzene', 'toluene')
 
-def test_experiment_iteration():
-    """Test iteration over combinatorial experiments."""
-    exp_template = 'components: {{ligand: {}, receptor: {}, solvent: {}}}'
-    yaml_content = """
-    ---
-    options:
-        output_dir: output
-    experiment:
-        {}
-    """.format(exp_template.format('[ligand1, ligand2]',
-                                   '[receptor1, receptor2]',
-                                   '[solvent1, solvent2]'))
-    yaml_builder = parse_yaml_str(yaml_content)
-    generated_exp = {yaml.dump(exp).strip() for exp in yaml_builder._expand_experiments()}
-    assert len(generated_exp) == 8
-    assert exp_template.format('ligand1', 'receptor1', 'solvent1') in generated_exp
-    assert exp_template.format('ligand1', 'receptor1', 'solvent2') in generated_exp
-    assert exp_template.format('ligand1', 'receptor2', 'solvent1') in generated_exp
-    assert exp_template.format('ligand1', 'receptor2', 'solvent2') in generated_exp
-    assert exp_template.format('ligand2', 'receptor1', 'solvent1') in generated_exp
-    assert exp_template.format('ligand2', 'receptor1', 'solvent2') in generated_exp
-    assert exp_template.format('ligand2', 'receptor2', 'solvent1') in generated_exp
-    assert exp_template.format('ligand2', 'receptor2', 'solvent2') in generated_exp
-
-def test_multiple_experiments_iteration():
-    """Test iteration over sequence of combinatorial experiments."""
-    exp_template = 'components: {{ligand: {}, receptor: {}, solvent: solvent}}'
-    yaml_content = """
-    ---
-    options:
-        output_dir: output
-    exp1:
-        {}
-    exp-name2:
-        {}
-    experiments: [exp1, exp-name2]
-    """.format(exp_template.format('[ligand1, ligand2]', 'receptor1'),
-               exp_template.format('[ligand1, ligand2]', 'receptor2'))
-    yaml_builder = parse_yaml_str(yaml_content)
-    generated_exp = {yaml.dump(exp).strip() for exp in yaml_builder._expand_experiments()}
-    assert len(generated_exp) == 4
-    assert exp_template.format('ligand1', 'receptor1') in generated_exp
-    assert exp_template.format('ligand2', 'receptor1') in generated_exp
-    assert exp_template.format('ligand1', 'receptor2') in generated_exp
-    assert exp_template.format('ligand2', 'receptor2') in generated_exp
-
 def test_setup_implicit_system_leap():
     """Create prmtop and inpcrd for implicit solvent protein-ligand system."""
     setup_dir = os.path.join(example_dir(), 'p-xylene-implicit', 'setup')
@@ -301,17 +253,18 @@ def test_setup_implicit_system_leap():
         solvents:
             GBSA-OBC2:
                 nonbondedMethod: NoCutoff
-                gbsamodel: obc2
+                implicitSolvent: OBC2
         """.format(tmp_dir, receptor_path, ligand_path)
 
         yaml_builder = parse_yaml_str(yaml_content)
         components = {'receptor': 'T4lysozyme',
                       'ligand': 'p-xylene',
                       'solvent': 'GBSA-OBC2'}
-        yaml_builder._setup_system(output_dir='experimentT4', components=components)
+
+        output_dir = os.path.join(tmp_dir, YamlBuilder.SETUP_SYSTEMS_DIR, 'experimentT4')
+        yaml_builder._setup_system(output_dir=output_dir, components=components)
 
         # Test that output files exist and there is no water
-        output_dir = os.path.join(tmp_dir, YamlBuilder.SETUP_SYSTEMS_DIR, 'experimentT4')
         for phase in ['complex', 'solvent']:
             found_resnames = set()
             pdb_path = os.path.join(output_dir, phase + '.pdb')
@@ -358,12 +311,12 @@ def test_setup_explicit_system_leap():
                       'ligand': 'toluene',
                       'solvent': 'PMEtip3p'}
 
-        yaml_builder._setup_system(output_dir='experimentBT', components=components)
+        output_dir = os.path.join(tmp_dir, YamlBuilder.SETUP_SYSTEMS_DIR, 'experimentBT')
+        yaml_builder._setup_system(output_dir=output_dir, components=components)
 
         # Test that output file exists and that there is water
         expected_resnames = {'complex': set(['BEN', 'TOL', 'WAT']),
                              'solvent': set(['TOL', 'WAT'])}
-        output_dir = os.path.join(tmp_dir, YamlBuilder.SETUP_SYSTEMS_DIR, 'experimentBT')
         for phase in expected_resnames:
             found_resnames = set()
             pdb_path = os.path.join(output_dir, phase + '.pdb')
@@ -381,7 +334,49 @@ def test_setup_explicit_system_leap():
             assert os.path.getsize(inpcrd_path) > 0
             assert found_resnames == expected_resnames[phase]
 
+def test_run_experiment():
+    setup_dir = os.path.join(example_dir(), 'p-xylene-implicit', 'setup')
+    receptor_path = os.path.join(setup_dir, 'receptor.pdbfixer.pdb')
+    ligand_path = os.path.join(setup_dir, 'ligand.tripos.mol2')
+    with utils.temporary_directory() as tmp_dir:
+        yaml_content = """
+        ---
+        options:
+            number_of_iterations: 1
+            output_dir: {}
+        molecules:
+            T4lysozyme:
+                filepath: {}
+                parameters: oldff/leaprc.ff99SBildn
+            p-xylene:
+                filepath: {}
+                parameters: antechamber
+        solvents:
+            vacuum:
+                nonbondedMethod: NoCutoff
+            GBSA-OBC2:
+                nonbondedMethod: NoCutoff
+                implicitSolvent: OBC2
+        experiment:
+            components:
+                receptor: T4lysozyme
+                ligand: p-xylene
+                solvent: [vacuum, GBSA-OBC2]
+            thermodynamics:
+                temperature: 300*kelvin
+                pressure: 1*atmosphere
+        """.format(tmp_dir, receptor_path, ligand_path)
 
+        yaml_builder = parse_yaml_str(yaml_content)
+        yaml_builder.build_experiment()
+
+        for exp_name in ['T4lysozyme_p-xylene_vacuum', 'T4lysozyme_p-xylene_GBSA-OBC2']:
+            output_dir = os.path.join(tmp_dir, yaml_builder.EXPERIMENTS_DIR, exp_name)
+            assert os.path.isdir(output_dir)
+            assert os.path.isfile(os.path.join(output_dir, 'complex-implicit.nc'))
+            assert os.path.isfile(os.path.join(output_dir, 'solvent-implicit.nc'))
+
+# TODO select ligand with variable resname
 # TODO run single explicit/implicit experiment
 # TODO start from prmtop and inpcrd files
 # TODO start form gro and top files

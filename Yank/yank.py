@@ -124,7 +124,6 @@ class Yank(object):
             'collision_rate': 5.0 / unit.picoseconds,
             'minimize': False,
             'show_mixing_statistics': True,  # this causes slowdown with iteration and should not be used for production
-            'platform': None,
             'displacement_sigma': 1.0 * unit.nanometers  # attempt to displace ligand by this stddev will be made each iteration
         }
         self._repex_parameters.update(kwargs)

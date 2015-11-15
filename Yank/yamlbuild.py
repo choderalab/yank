@@ -21,12 +21,13 @@ logger = logging.getLogger(__name__)
 
 import numpy as np
 import openmoltools
-from simtk import unit
+from simtk import unit, openmm
 
 import utils
 from yank import Yank
-from repex import ReplicaExchange
+from repex import ReplicaExchange, ThermodynamicState
 from sampling import ModifiedHamiltonianExchange
+from pipeline import find_components
 
 
 #=============================================================================================
@@ -88,15 +89,17 @@ class YamlBuilder:
     SETUP_DIR = 'setup'
     SETUP_SYSTEMS_DIR = os.path.join(SETUP_DIR, 'systems')
     SETUP_MOLECULES_DIR = os.path.join(SETUP_DIR, 'molecules')
+    EXPERIMENTS_DIR = 'experiments'
 
     DEFAULT_OPTIONS = {
         'verbose': False,
         'mpi': False,
-        'platform': None,
-        'precision': None,
         'resume': False,
         'output_dir': 'output/'
     }
+
+    SOLVENT_FILTER = set(('nonbondedMethod', 'nonbondedCutoff', 'implicitSolvent'))
+    EXPERIMENT_FILTER = set(('constraints', 'hydrogenMass'))
 
     @property
     def options(self):
@@ -155,24 +158,29 @@ class YamlBuilder:
         # TODO - verify that filepath and name/smiles are not specified simultaneously
 
         self._solvents = yaml_config.get('solvents', {})
+        # TODO verify that implicitSolvent and cutoff are specified at the same time
 
         # Check if there is a sequence of experiments or a single one
-        self._experiments = yaml_config.get('experiments', None)
-        if self._experiments is None:
-            self._experiments = [utils.CombinatorialTree(yaml_config.get('experiment', {}))]
-        else:
-            for i, exp_name in enumerate(self._experiments):
-                self._experiments[i] = utils.CombinatorialTree(yaml_config[exp_name])
+        try:
+            self._experiments = {exp_name: utils.CombinatorialTree(yaml_config[exp_name])
+                                 for exp_name in yaml_config['experiments']}
+        except KeyError:
+            single_exp = yaml_config.get('experiment', {})
+            self._experiments = {'experiment': utils.CombinatorialTree(single_exp)}
 
     def build_experiment(self):
-        """Build the Yank experiment (TO BE IMPLEMENTED)."""
-        raise NotImplemented
+        """Build the Yank experiment."""
+        exp_dir = os.path.join(self._output_dir, self.EXPERIMENTS_DIR)
+        for exp_name, experiment in self._experiments.items():
+            # If there is a sequence of experiments, create a subfolder for each one
+            if len(self._experiments) > 1:
+                output_dir = os.path.join(exp_dir, exp_name)
+            else:
+                output_dir = exp_dir
 
-    def _expand_experiments(self):
-        """Iterate over all possible combinations of experiments"""
-        for exp in self._experiments:
-            for combination in exp:
-                yield combination
+            # Loop over all combinations
+            for combination in experiment:
+                self._run_experiment(combination, output_dir)
 
     def _generate_molecule(self, molecule_id):
         """Generate molecule and save it to mol2 in molecule['filepath']."""
@@ -228,7 +236,9 @@ class YamlBuilder:
         for mol_id in args:
             mol_descr = self._molecules[mol_id]
 
-            # Create output directory
+            # Create output directory only if it's needed
+            if not (mol_id in oe_molecules or mol_descr['parameters'] == 'antechamber'):
+                continue
             output_mol_dir = os.path.join(self._output_dir, self.SETUP_MOLECULES_DIR,
                                           mol_id)
             if not os.path.isdir(output_mol_dir):
@@ -257,10 +267,8 @@ class YamlBuilder:
 
     def _setup_system(self, output_dir, components):
         # Create output directory
-        output_sys_dir = os.path.join(self._output_dir, self.SETUP_SYSTEMS_DIR,
-                                      output_dir)
-        if not os.path.isdir(output_sys_dir):
-            os.makedirs(output_sys_dir)
+        if not os.path.isdir(output_dir):
+            os.makedirs(output_dir)
 
         # Setup molecules
         self._setup_molecules(components['receptor'], components['ligand'])
@@ -292,7 +300,7 @@ class YamlBuilder:
 
         # Configure solvent
         if solvent['nonbondedMethod'] == 'NoCutoff':
-            if 'gbsamodel' in solvent:  # GBSA implicit solvent
+            if 'implicitSolvent' in solvent:  # GBSA implicit solvent
                 tleap.new_section('Set GB radii to recommended values for OBC')
                 tleap.add_commands('set default PBRadii mbondi2')
         else:  # explicit solvent
@@ -308,16 +316,133 @@ class YamlBuilder:
 
         # Save prmtop and inpcrd files
         tleap.new_section('Save prmtop and inpcrd files')
-        tleap.save_group('complex', os.path.join(output_sys_dir, 'complex.prmtop'))
-        tleap.save_group('complex', os.path.join(output_sys_dir, 'complex.pdb'))
-        tleap.save_group('ligand', os.path.join(output_sys_dir, 'solvent.prmtop'))
-        tleap.save_group('ligand', os.path.join(output_sys_dir, 'solvent.pdb'))
+        tleap.save_group('complex', os.path.join(output_dir, 'complex.prmtop'))
+        tleap.save_group('complex', os.path.join(output_dir, 'complex.pdb'))
+        tleap.save_group('ligand', os.path.join(output_dir, 'solvent.prmtop'))
+        tleap.save_group('ligand', os.path.join(output_dir, 'solvent.pdb'))
 
         # Save tleap script for reference
-        tleap.export_script(os.path.join(output_sys_dir, 'leap.in'))
+        tleap.export_script(os.path.join(output_dir, 'leap.in'))
 
         # Run tleap!
         tleap.run()
+
+    def _run_experiment(self, experiment, output_dir):
+        components = experiment['components']
+        systems = {}  # systems[phase] is the System object associated with phase 'phase'
+        positions = {}  # positions[phase] is a list of coordinates associated with phase 'phase'
+        atom_indices = {}  # ligand_atoms[phase] is a list of ligand atom indices associated with phase 'phase'
+
+        # Store output paths, system_dir will be created by _setup_system()
+        folder_name = '_'.join((components['receptor'], components['ligand'], components['solvent']))
+        results_dir = os.path.join(output_dir, folder_name)
+        systems_dir = os.path.join(self._output_dir, self.SETUP_SYSTEMS_DIR, folder_name)
+        if not os.path.isdir(results_dir):
+            os.makedirs(results_dir)
+
+        # Setup complex and solvent systems
+        self._setup_system(systems_dir, components)
+
+        # Configure logger
+        utils.config_root_logger(self._verbose, os.path.join(results_dir, 'yaml.log'))
+
+        # Solvent configuration
+        solvent = self._solvents[components['solvent']]
+        system_opts = {opt: getattr(openmm.app, solvent[opt])
+                       for opt in self.SOLVENT_FILTER if opt in solvent}
+
+        # Experiment configuration
+        # TODO move these in options and convert them automatically
+        system_opts.update({opt: experiment[opt]
+                            for opt in self.EXPERIMENT_FILTER if opt in experiment})
+        if 'constraints' in system_opts:
+            system_opts['constraints'] = getattr(openmm.app, system_opts['constraints'])
+        if 'hydrogenMass' in system_opts:
+            system_opts['hydrogenMass'] = utils.process_unit_bearing_str(system_opts['hydrogenMass'],
+                                                                         unit.amus)
+
+        # Prepare phases of calculation.
+        for phase_prefix in ['complex', 'solvent']:
+            # Read Amber prmtop and create System object.
+            prmtop_filename = os.path.join(systems_dir, '%s.prmtop' % phase_prefix)
+            prmtop = openmm.app.AmberPrmtopFile(prmtop_filename)
+
+            # Read Amber inpcrd and load positions.
+            inpcrd_filename = os.path.join(systems_dir, '%s.inpcrd' % phase_prefix)
+            inpcrd = openmm.app.AmberInpcrdFile(inpcrd_filename)
+
+            # Determine if this will be an explicit or implicit solvent simulation.
+            if inpcrd.boxVectors is not None:
+                is_periodic = True
+                phase_suffix = 'explicit'
+            else:
+                is_periodic = False
+                phase_suffix = 'implicit'
+            phase = '{}-{}'.format(phase_prefix, phase_suffix)
+
+            # Check for solvent configuration inconsistencies
+            # TODO: Check to make sure both prmtop and inpcrd agree on explicit/implicit.
+            err_msg = ''
+            if is_periodic:
+                if 'implicitSolvent' in system_opts:
+                    err_msg = 'Found periodic box in inpcrd file and implicitSolvent specified.'
+                if system_opts['nonbondedMethod'] == openmm.app.NoCutoff:
+                    err_msg = 'Found periodic box in inpcrd file but nonbondedMethod is NoCutoff'
+            else:
+                if system_opts['nonbondedMethod'] != openmm.app.NoCutoff:
+                    err_msg = 'nonbondedMethod is NoCutoff but could not find periodic box in inpcrd.'
+            if len(err_msg) != 0:
+                logger.error(err_msg)
+                raise RuntimeError(err_msg)
+
+            # Create system and update box vectors (if needed)
+            systems[phase] = prmtop.createSystem(removeCMMotion=False, **system_opts)
+            if is_periodic:
+                systems[phase].setDefaultPeriodicBoxVectors(*inpcrd.boxVectors)
+
+            # Store numpy positions
+            positions[phase] = inpcrd.getPositions(asNumpy=True)
+
+            # Check to make sure number of atoms match between prmtop and inpcrd.
+            prmtop_natoms = systems[phase].getNumParticles()
+            inpcrd_natoms = positions[phase].shape[0]
+            if prmtop_natoms != inpcrd_natoms:
+                err_msg = "Atom number mismatch: prmtop {} has {} atoms; inpcrd {} has {} atoms.".format(
+                    prmtop_filename, prmtop_natoms, inpcrd_filename, inpcrd_natoms)
+                logger.error(err_msg)
+                raise RuntimeError(err_msg)
+
+            # Find ligand atoms and receptor atoms.
+            ligand_dsl = 'resname MOL'  # MDTraj DSL that specifies ligand atoms
+            atom_indices[phase] = find_components(prmtop.topology, ligand_dsl)
+
+        # Specify thermodynamic state
+        # TODO move these in options and convert them automatically
+        try:
+            thermo = experiment['thermodynamics']
+        except KeyError:
+            thermo = {'temperature': '298*kelvin', 'pressure': '1*atmospheres'}
+        temperature = thermo.get('temperature', '298*kelvin')
+        pressure = thermo.get('pressure', '1*atmospheres')
+        temperature = utils.process_unit_bearing_str(temperature, unit.kelvin)
+        pressure = utils.process_unit_bearing_str(pressure, unit.atmospheres)
+        thermodynamic_state = ThermodynamicState(temperature=temperature, pressure=pressure)
+
+        # Configure MPI, if requested
+        if self._mpi:
+            from mpi4py import MPI
+            MPI.COMM_WORLD.barrier()
+            mpicomm = MPI.COMM_WORLD
+        else:
+            mpicomm = None
+
+        # TODO configure platform and precision when they are fixed in Yank
+
+        # Create and run simulation
+        phases = systems.keys()
+        yank = Yank(results_dir, mpicomm=mpicomm, **self._options)
+        yank.create(phases, systems, positions, atom_indices, thermodynamic_state)
+        yank.run()
 
 
 if __name__ == "__main__":
