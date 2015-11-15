@@ -70,7 +70,7 @@ def test_yaml_parsing():
     test: 2
     """
     yaml_builder = parse_yaml_str(yaml_content)
-    assert len(yaml_builder.options) == 0
+    assert len(yaml_builder.yank_options) == 0
 
     # Correct parsing
     yaml_content = """
@@ -83,6 +83,10 @@ def test_yaml_parsing():
         mpi: yes
         resume: true
         output_dir: /path/to/output/
+        temperature: 300*kelvin
+        pressure: 1*atmosphere
+        constraints: AllBonds
+        hydrogenMass: 2*amus
         restraint_type: harmonic
         randomize_ligand: yes
         randomize_ligand_sigma_multiplier: 2.0
@@ -106,18 +110,19 @@ def test_yaml_parsing():
     """
 
     yaml_builder = parse_yaml_str(yaml_content)
-    assert len(yaml_builder.options) == 21
+    assert len(yaml_builder.yank_options) == 21
 
     # Check correct types
-    assert yaml_builder.options['replica_mixing_scheme'] == 'swap-all'
-    assert yaml_builder.options['timestep'] == 2.0 * unit.femtoseconds
-    assert yaml_builder.options['constraint_tolerance'] == 1.0e-6
-    assert yaml_builder.options['nsteps_per_iteration'] == 2500
-    assert type(yaml_builder.options['nsteps_per_iteration']) is int
-    assert yaml_builder.options['number_of_iterations'] == 1000
-    assert type(yaml_builder.options['number_of_iterations']) is int
-    assert yaml_builder.options['minimize'] is False
-    assert yaml_builder.options['show_mixing_statistics'] is True
+    assert yaml_builder._constraints == openmm.app.AllBonds
+    assert yaml_builder.yank_options['replica_mixing_scheme'] == 'swap-all'
+    assert yaml_builder.yank_options['timestep'] == 2.0 * unit.femtoseconds
+    assert yaml_builder.yank_options['constraint_tolerance'] == 1.0e-6
+    assert yaml_builder.yank_options['nsteps_per_iteration'] == 2500
+    assert type(yaml_builder.yank_options['nsteps_per_iteration']) is int
+    assert yaml_builder.yank_options['number_of_iterations'] == 1000
+    assert type(yaml_builder.yank_options['number_of_iterations']) is int
+    assert yaml_builder.yank_options['minimize'] is False
+    assert yaml_builder.yank_options['show_mixing_statistics'] is True
 
 @raises(YamlParseError)
 def test_yaml_unknown_options():

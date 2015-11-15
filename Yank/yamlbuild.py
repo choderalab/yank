@@ -68,6 +68,9 @@ def remove_overlap(mol_positions, *args, **kwargs):
 
     return x
 
+def to_openmm_app(str):
+    return getattr(openmm.app, str)
+
 #=============================================================================================
 # BUILDER CLASS
 #=============================================================================================
@@ -95,15 +98,23 @@ class YamlBuilder:
         'verbose': False,
         'mpi': False,
         'resume': False,
-        'output_dir': 'output/'
+        'output_dir': 'output/',
+        'temperature': 298 * unit.kelvin,
+        'pressure': 1 * unit.atmosphere,
+        'constraints': openmm.app.HBonds,
+        'hydrogenMass': 1 * unit.amu
     }
 
-    SOLVENT_FILTER = set(('nonbondedMethod', 'nonbondedCutoff', 'implicitSolvent'))
-    EXPERIMENT_FILTER = set(('constraints', 'hydrogenMass'))
+    SPECIAL_CONVERSIONS = {
+        'constraints': to_openmm_app
+    }
+
+    CREATE_SYSTEM_FILTER = set(('nonbondedMethod', 'nonbondedCutoff', 'implicitSolvent',
+                                'constraints', 'hydrogenMass'))
 
     @property
-    def options(self):
-        return self._options
+    def yank_options(self):
+        return self._yank_options
 
     def __init__(self, yaml_file):
         """Parse the given YAML configuration file.
@@ -136,9 +147,12 @@ class YamlBuilder:
             logger.warning('No YAML options found.')
         opts.update(yaml_config.pop('metadata', {}))
 
-        # Store YAML builder options
+        # Validate YAML builder options
         opts.update(utils.validate_parameters(opts, self.DEFAULT_OPTIONS, check_unknown=False,
-                                              process_units_str=True, float_to_int=True))
+                                              process_units_str=True, float_to_int=True,
+                                              special_conversions=self.SPECIAL_CONVERSIONS))
+
+        # Convert options into member variables and remove them from opts
         for opt, default in self.DEFAULT_OPTIONS.items():
             setattr(self, '_' + opt, opts.pop(opt, default))
 
@@ -146,8 +160,8 @@ class YamlBuilder:
         template_options = Yank.default_parameters.copy()
         template_options.update(ReplicaExchange.default_parameters)
         try:
-            self._options = utils.validate_parameters(opts, template_options, check_unknown=True,
-                                                      process_units_str=True, float_to_int=True)
+            self._yank_options = utils.validate_parameters(opts, template_options, check_unknown=True,
+                                                           process_units_str=True, float_to_int=True)
         except (TypeError, ValueError) as e:
             logger.error(str(e))
             raise YamlParseError(str(e))
@@ -181,6 +195,10 @@ class YamlBuilder:
             # Loop over all combinations
             for combination in experiment:
                 self._run_experiment(combination, output_dir)
+
+    def _get_options_dict(self):
+        """Return a dictionary version of the options saved as member variables."""
+        return {opt: getattr(self, '_' + opt) for opt in self.DEFAULT_OPTIONS}
 
     def _generate_molecule(self, molecule_id):
         """Generate molecule and save it to mol2 in molecule['filepath']."""
@@ -353,18 +371,12 @@ class YamlBuilder:
 
         # Solvent configuration
         solvent = self._solvents[components['solvent']]
-        system_opts = {opt: getattr(openmm.app, solvent[opt])
-                       for opt in self.SOLVENT_FILTER if opt in solvent}
+        system_opts = {opt: to_openmm_app(solvent[opt])
+                       for opt in self.CREATE_SYSTEM_FILTER if opt in solvent}
 
         # Experiment configuration
-        # TODO move these in options and convert them automatically
-        system_opts.update({opt: experiment[opt]
-                            for opt in self.EXPERIMENT_FILTER if opt in experiment})
-        if 'constraints' in system_opts:
-            system_opts['constraints'] = getattr(openmm.app, system_opts['constraints'])
-        if 'hydrogenMass' in system_opts:
-            system_opts['hydrogenMass'] = utils.process_unit_bearing_str(system_opts['hydrogenMass'],
-                                                                         unit.amus)
+        opts = self._get_options_dict()
+        system_opts.update({opt: opts[opt] for opt in self.CREATE_SYSTEM_FILTER if opt in opts})
 
         # Prepare phases of calculation.
         for phase_prefix in ['complex', 'solvent']:
@@ -421,17 +433,9 @@ class YamlBuilder:
             ligand_dsl = 'resname ' + ligand_res  # MDTraj DSL that specifies ligand atoms
             atom_indices[phase] = find_components(prmtop.topology, ligand_dsl)
 
-        # Specify thermodynamic state
-        # TODO move these in options and convert them automatically
-        try:
-            thermo = experiment['thermodynamics']
-        except KeyError:
-            thermo = {'temperature': '298*kelvin', 'pressure': '1*atmospheres'}
-        temperature = thermo.get('temperature', '298*kelvin')
-        pressure = thermo.get('pressure', '1*atmospheres')
-        temperature = utils.process_unit_bearing_str(temperature, unit.kelvin)
-        pressure = utils.process_unit_bearing_str(pressure, unit.atmospheres)
-        thermodynamic_state = ThermodynamicState(temperature=temperature, pressure=pressure)
+        # Create thermodynamic state
+        thermodynamic_state = ThermodynamicState(temperature=self._temperature,
+                                                 pressure=self._pressure)
 
         # Configure MPI, if requested
         if self._mpi:
@@ -445,7 +449,7 @@ class YamlBuilder:
 
         # Create and run simulation
         phases = systems.keys()
-        yank = Yank(results_dir, mpicomm=mpicomm, **self._options)
+        yank = Yank(results_dir, mpicomm=mpicomm, **self._yank_options)
         yank.create(phases, systems, positions, atom_indices, thermodynamic_state)
         yank.run()
 
