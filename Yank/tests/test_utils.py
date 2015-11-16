@@ -47,7 +47,7 @@ def test_find_leaves():
     assert leaf_vals == [1, [2, 3, 4], ['a', 'b', 'c']]
 
 def test_expand_tree():
-    """Test CombinatorialTree expansion."""
+    """Test CombinatorialTree generators."""
     simple_tree = CombinatorialTree({'simple': {'scalar': 1,
                                                 'vector': [2, 3, 4],
                                                 'nested': {
@@ -62,6 +62,18 @@ def test_expand_tree():
               {'simple': {'scalar': 1, 'vector': 4, 'nested': {'leaf': 'b'}}},
               {'simple': {'scalar': 1, 'vector': 4, 'nested': {'leaf': 'c'}}}]
     assert result == [exp for exp in simple_tree]
+
+    # Test named_combinations generator
+    expected_names = set(['2_a', '3_a', '4_a', '2_b', '3_b', '4_b', '2_c', '3_c', '4_c'])
+    assert expected_names == set([name for name, _ in simple_tree.named_combinations(
+                                                       separator='_', max_name_length=3)])
+
+    # Test maximum length, similar names and special characters
+    long_tree = CombinatorialTree({'key1': ['th#*&^isnameistoolong1', 'th#*&^isnameistoolong2'],
+                                   'key2': ['test1', 'test2']})
+    expected_names = set(['test-thisn', 'test-thisn-2', 'test-thisn-3', 'test-thisn-4'])
+    assert expected_names == set([name for name, _ in long_tree.named_combinations(
+                                                       separator='-', max_name_length=10)])
 
 def test_validate_parameters():
     """Test validate_parameters function."""
@@ -206,7 +218,7 @@ def test_TLeap_script():
     tleap.solvate(group='ligand', water_model='TIP3PBOX', clearance=10.0)
     tleap.save_group(group='ligand', output_path='solvent.inpcrd')
     tleap.save_group(group='ligand', output_path='solvent.pdb')
-    print tleap.script
+
     assert tleap.script == expected_script
 
 def test_TLeap_export_run():
