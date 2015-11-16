@@ -16,6 +16,7 @@ Tools to build Yank experiments from a YAML configuration file.
 import os
 import re
 import yaml
+import collections
 import logging
 logger = logging.getLogger(__name__)
 
@@ -114,7 +115,8 @@ class YamlBuilder:
 
     @property
     def yank_options(self):
-        return self._yank_options
+        return {opt: val for opt, val in self.options.items()
+                if opt not in self.DEFAULT_OPTIONS}
 
     def __init__(self, yaml_file):
         """Parse the given YAML configuration file.
@@ -139,32 +141,13 @@ class YamlBuilder:
             logger.error(error_msg)
             raise YamlParseError(error_msg)
 
-        # Find and merge options and metadata
-        try:
-            opts = yaml_config.pop('options')
-        except KeyError:
-            opts = {}
-            logger.warning('No YAML options found.')
-        opts.update(yaml_config.pop('metadata', {}))
+        # Merge options and metadata
+        temp_options = yaml_config.pop('options', {})
+        temp_options.update(yaml_config.pop('metadata', {}))
 
-        # Validate YAML builder options
-        opts.update(utils.validate_parameters(opts, self.DEFAULT_OPTIONS, check_unknown=False,
-                                              process_units_str=True, float_to_int=True,
-                                              special_conversions=self.SPECIAL_CONVERSIONS))
-
-        # Convert options into member variables and remove them from opts
-        for opt, default in self.DEFAULT_OPTIONS.items():
-            setattr(self, '_' + opt, opts.pop(opt, default))
-
-        # Validate and store yank and repex options
-        template_options = Yank.default_parameters.copy()
-        template_options.update(ReplicaExchange.default_parameters)
-        try:
-            self._yank_options = utils.validate_parameters(opts, template_options, check_unknown=True,
-                                                           process_units_str=True, float_to_int=True)
-        except (TypeError, ValueError) as e:
-            logger.error(str(e))
-            raise YamlParseError(str(e))
+        # Validate options and fill in defaults
+        self.options = self.DEFAULT_OPTIONS.copy()
+        self.options.update(self._validate_options(temp_options))
 
         # Store other fields, we don't raise an error if we cannot find any
         # since the YAML file could be used only to specify the options
@@ -192,11 +175,21 @@ class YamlBuilder:
 
             # Loop over all combinations
             for name, combination in experiment.named_combinations(separator='_', max_name_length=30):
-                self._run_experiment(combination, output_dir, name)
+                self._run_experiment(combination, os.path.join(output_dir, name))
 
-    def _get_options_dict(self):
-        """Return a dictionary version of the options saved as member variables."""
-        return {opt: getattr(self, '_' + opt) for opt in self.DEFAULT_OPTIONS}
+    def _validate_options(self, options):
+        """Return a dictionary with YamlBuilder and Yank options validated."""
+        template_options = self.DEFAULT_OPTIONS.copy()
+        template_options.update(Yank.default_parameters)
+        template_options.update(ReplicaExchange.default_parameters)
+        try:
+            valid = utils.validate_parameters(options, template_options, check_unknown=True,
+                                              process_units_str=True, float_to_int=True,
+                                              special_conversions=self.SPECIAL_CONVERSIONS)
+        except (TypeError, ValueError) as e:
+            logger.error(str(e))
+            raise YamlParseError(str(e))
+        return valid
 
     def _generate_molecule(self, molecule_id):
         """Generate molecule and save it to mol2 in molecule['filepath']."""
@@ -214,7 +207,7 @@ class YamlBuilder:
 
         return molecule
 
-    def _setup_molecules(self, *args):
+    def _setup_molecules(self, output_dir, *args):
         file_mol_ids = {mol_id for mol_id in args if 'filepath' in self._molecules[mol_id]}
 
         # Generate missing molecules with OpenEye
@@ -255,15 +248,14 @@ class YamlBuilder:
             # Create output directory only if it's needed
             if not (mol_id in oe_molecules or mol_descr['parameters'] == 'antechamber'):
                 continue
-            output_mol_dir = os.path.join(self._output_dir, self.SETUP_MOLECULES_DIR,
-                                          mol_id)
-            if not os.path.isdir(output_mol_dir):
-                os.makedirs(output_mol_dir)
+            mol_dir = os.path.join(output_dir, self.SETUP_MOLECULES_DIR, mol_id)
+            if not os.path.isdir(mol_dir):
+                os.makedirs(mol_dir)
 
             # Write OpenEye generated molecules in mol2 files
             if mol_id in oe_molecules:
                 # We update the 'filepath' key in the molecule description
-                mol_descr['filepath'] = os.path.join(output_mol_dir, mol_id + '.mol2')
+                mol_descr['filepath'] = os.path.join(mol_dir, mol_id + '.mol2')
 
                 # We set the residue name as the first three uppercase letters
                 residue_name = re.sub('[^A-Za-z]+', '', mol_id.upper())
@@ -274,14 +266,14 @@ class YamlBuilder:
             if mol_descr['parameters'] == 'antechamber':
                 # Generate parameters
                 input_mol_path = os.path.abspath(mol_descr['filepath'])
-                with utils.temporary_cd(output_mol_dir):
+                with utils.temporary_cd(mol_dir):
                     openmoltools.amber.run_antechamber(mol_id, input_mol_path)
 
                 # Save new parameters paths
-                mol_descr['filepath'] = os.path.join(output_mol_dir, mol_id + '.gaff.mol2')
-                mol_descr['parameters'] = os.path.join(output_mol_dir, mol_id + '.frcmod')
+                mol_descr['filepath'] = os.path.join(mol_dir, mol_id + '.gaff.mol2')
+                mol_descr['parameters'] = os.path.join(mol_dir, mol_id + '.frcmod')
 
-    def _setup_system(self, components):
+    def _setup_system(self, components, output_dir):
         # Identify components
         receptor_id = components['receptor']
         ligand_id = components['ligand']
@@ -291,13 +283,13 @@ class YamlBuilder:
         solvent = self._solvents[solvent_id]
 
         # Setup molecules
-        self._setup_molecules(receptor_id, ligand_id)
+        self._setup_molecules(output_dir, receptor_id, ligand_id)
 
         # Create output directory
-        output_dir = '_'.join((receptor_id, ligand_id, solvent_id))
-        output_dir = os.path.join(self._output_dir, self.SETUP_SYSTEMS_DIR, output_dir)
-        if not os.path.isdir(output_dir):
-            os.makedirs(output_dir)
+        system_dir = '_'.join((receptor_id, ligand_id, solvent_id))
+        system_dir = os.path.join(output_dir, self.SETUP_SYSTEMS_DIR, system_dir)
+        if not os.path.isdir(system_dir):
+            os.makedirs(system_dir)
 
         # Create tleap script
         tleap = utils.TLeap()
@@ -337,49 +329,50 @@ class YamlBuilder:
 
         # Save prmtop and inpcrd files
         tleap.new_section('Save prmtop and inpcrd files')
-        tleap.save_group('complex', os.path.join(output_dir, 'complex.prmtop'))
-        tleap.save_group('complex', os.path.join(output_dir, 'complex.pdb'))
-        tleap.save_group('ligand', os.path.join(output_dir, 'solvent.prmtop'))
-        tleap.save_group('ligand', os.path.join(output_dir, 'solvent.pdb'))
+        tleap.save_group('complex', os.path.join(system_dir, 'complex.prmtop'))
+        tleap.save_group('complex', os.path.join(system_dir, 'complex.pdb'))
+        tleap.save_group('ligand', os.path.join(system_dir, 'solvent.prmtop'))
+        tleap.save_group('ligand', os.path.join(system_dir, 'solvent.pdb'))
 
         # Save tleap script for reference
-        tleap.export_script(os.path.join(output_dir, 'leap.in'))
+        tleap.export_script(os.path.join(system_dir, 'leap.in'))
 
         # Run tleap!
         tleap.run()
 
-        return output_dir
+        return system_dir
 
-    def _run_experiment(self, experiment, output_dir, combination_name):
+    def _run_experiment(self, experiment, experiment_dir):
         components = experiment['components']
         systems = {}  # systems[phase] is the System object associated with phase 'phase'
         positions = {}  # positions[phase] is a list of coordinates associated with phase 'phase'
         atom_indices = {}  # ligand_atoms[phase] is a list of ligand atom indices associated with phase 'phase'
 
+        # Get and validate experiment options
+        exp_opts = self.options.copy()
+        exp_opts.update(self._validate_options(experiment.get('options', {})))
+
         # Store output paths
-        results_dir = os.path.join(self._output_dir, self.EXPERIMENTS_DIR, output_dir, combination_name)
+        results_dir = os.path.join(exp_opts['output_dir'], self.EXPERIMENTS_DIR, experiment_dir)
         if not os.path.isdir(results_dir):
             os.makedirs(results_dir)
 
+        # Configure logger
+        utils.config_root_logger(exp_opts['verbose'], os.path.join(results_dir, 'yaml.log'))
+
         # Setup complex and solvent systems
-        systems_dir = self._setup_system(components)
+        systems_dir = self._setup_system(components, exp_opts['output_dir'])
 
         # Get ligand resname for alchemical atom selection
         ligand_res = utils.get_mol2_resname(self._molecules[components['ligand']]['filepath'])
         if ligand_res is None:
             ligand_res = 'MOL'
 
-        # Configure logger
-        utils.config_root_logger(self._verbose, os.path.join(results_dir, 'yaml.log'))
-
         # Solvent configuration
         solvent = self._solvents[components['solvent']]
         system_opts = {opt: to_openmm_app(solvent[opt])
                        for opt in self.CREATE_SYSTEM_FILTER if opt in solvent}
-
-        # Experiment configuration
-        opts = self._get_options_dict()
-        system_opts.update({opt: opts[opt] for opt in self.CREATE_SYSTEM_FILTER if opt in opts})
+        system_opts.update({opt: exp_opts[opt] for opt in self.CREATE_SYSTEM_FILTER if opt in exp_opts})
 
         # Prepare phases of calculation.
         for phase_prefix in ['complex', 'solvent']:
@@ -437,11 +430,11 @@ class YamlBuilder:
             atom_indices[phase] = find_components(prmtop.topology, ligand_dsl)
 
         # Create thermodynamic state
-        thermodynamic_state = ThermodynamicState(temperature=self._temperature,
-                                                 pressure=self._pressure)
+        thermodynamic_state = ThermodynamicState(temperature=exp_opts['temperature'],
+                                                 pressure=exp_opts['pressure'])
 
         # Configure MPI, if requested
-        if self._mpi:
+        if exp_opts['mpi']:
             from mpi4py import MPI
             MPI.COMM_WORLD.barrier()
             mpicomm = MPI.COMM_WORLD
@@ -452,7 +445,7 @@ class YamlBuilder:
 
         # Create and run simulation
         phases = systems.keys()
-        yank = Yank(results_dir, mpicomm=mpicomm, **self._yank_options)
+        yank = Yank(results_dir, mpicomm=mpicomm, **self.yank_options)
         yank.create(phases, systems, positions, atom_indices, thermodynamic_state)
         yank.run()
 

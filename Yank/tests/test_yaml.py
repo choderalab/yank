@@ -70,6 +70,7 @@ def test_yaml_parsing():
     test: 2
     """
     yaml_builder = parse_yaml_str(yaml_content)
+    assert len(yaml_builder.options) == len(yaml_builder.DEFAULT_OPTIONS)
     assert len(yaml_builder.yank_options) == 0
 
     # Correct parsing
@@ -110,10 +111,11 @@ def test_yaml_parsing():
     """
 
     yaml_builder = parse_yaml_str(yaml_content)
+    assert len(yaml_builder.options) == 29
     assert len(yaml_builder.yank_options) == 21
 
     # Check correct types
-    assert yaml_builder._constraints == openmm.app.AllBonds
+    assert yaml_builder.options['constraints'] == openmm.app.AllBonds
     assert yaml_builder.yank_options['replica_mixing_scheme'] == 'swap-all'
     assert yaml_builder.yank_options['timestep'] == 2.0 * unit.femtoseconds
     assert yaml_builder.yank_options['constraint_tolerance'] == 1.0e-6
@@ -161,7 +163,7 @@ def test_yaml_mol2_antechamber():
         """.format(tmp_dir, benzene_path)
 
         yaml_builder = parse_yaml_str(yaml_content)
-        yaml_builder._setup_molecules('benzene')
+        yaml_builder._setup_molecules(tmp_dir, 'benzene')
 
         output_dir = os.path.join(tmp_dir, YamlBuilder.SETUP_MOLECULES_DIR, 'benzene')
         assert os.path.exists(os.path.join(output_dir, 'benzene.gaff.mol2'))
@@ -196,7 +198,7 @@ def test_setup_name_smiles_antechamber():
         # The order of the arguments in _setup_molecules is important, we want to test
         # that overlapping molecules in toluene are removed even if benzene has been
         # indicated to be processed afterwards
-        yaml_builder._setup_molecules('toluene', 'benzene', 'p-xylene')
+        yaml_builder._setup_molecules(tmp_dir, 'toluene', 'benzene', 'p-xylene')
 
         for mol in ['toluene', 'p-xylene']:
             output_dir = os.path.join(tmp_dir, YamlBuilder.SETUP_MOLECULES_DIR, mol)
@@ -236,7 +238,7 @@ def test_overlapping_atoms():
         """.format(tmp_dir, benzene_path, toluene_path)
 
         yaml_builder = parse_yaml_str(yaml_content)
-        yaml_builder._setup_molecules('benzene', 'toluene')
+        yaml_builder._setup_molecules(tmp_dir, 'benzene', 'toluene')
 
 def test_setup_implicit_system_leap():
     """Create prmtop and inpcrd for implicit solvent protein-ligand system."""
@@ -266,7 +268,7 @@ def test_setup_implicit_system_leap():
                       'ligand': 'p-xylene',
                       'solvent': 'GBSA-OBC2'}
 
-        output_dir = yaml_builder._setup_system(components)
+        output_dir = yaml_builder._setup_system(components, tmp_dir)
 
         # Test that output files exist and there is no water
         for phase in ['complex', 'solvent']:
@@ -315,7 +317,7 @@ def test_setup_explicit_system_leap():
                       'ligand': 'toluene',
                       'solvent': 'PMEtip3p'}
 
-        output_dir = yaml_builder._setup_system(components)
+        output_dir = yaml_builder._setup_system(components, tmp_dir)
 
         # Test that output file exists and that there is water
         expected_resnames = {'complex': set(['BEN', 'TOL', 'WAT']),
@@ -346,7 +348,7 @@ def test_run_experiment():
         ---
         options:
             number_of_iterations: 1
-            output_dir: {}
+            output_dir: 'temp'
         molecules:
             T4lysozyme:
                 filepath: {}
@@ -365,12 +367,15 @@ def test_run_experiment():
                 receptor: T4lysozyme
                 ligand: p-xylene
                 solvent: [vacuum, GBSA-OBC2]
-        """.format(tmp_dir, receptor_path, ligand_path)
+            options:
+                output_dir: {}
+        """.format(receptor_path, ligand_path, tmp_dir)
 
         yaml_builder = parse_yaml_str(yaml_content)
         yaml_builder.build_experiment()
 
         for exp_name in ['vacuum', 'GBSAOBC2']:
+            # The output directory must be the one in the experiment section
             output_dir = os.path.join(tmp_dir, yaml_builder.EXPERIMENTS_DIR, exp_name)
             assert os.path.isdir(output_dir)
             assert os.path.isfile(os.path.join(output_dir, 'complex-implicit.nc'))
