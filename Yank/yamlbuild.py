@@ -184,17 +184,15 @@ class YamlBuilder:
 
     def build_experiment(self):
         """Build the Yank experiment."""
-        exp_dir = os.path.join(self._output_dir, self.EXPERIMENTS_DIR)
+        output_dir = ''
         for exp_name, experiment in self._experiments.items():
             # If there is a sequence of experiments, create a subfolder for each one
             if len(self._experiments) > 1:
-                output_dir = os.path.join(exp_dir, exp_name)
-            else:
-                output_dir = exp_dir
+                output_dir = exp_name
 
             # Loop over all combinations
-            for combination in experiment:
-                self._run_experiment(combination, output_dir)
+            for name, combination in experiment.named_combinations(separator='_', max_name_length=30):
+                self._run_experiment(combination, output_dir, name)
 
     def _get_options_dict(self):
         """Return a dictionary version of the options saved as member variables."""
@@ -283,18 +281,23 @@ class YamlBuilder:
                 mol_descr['filepath'] = os.path.join(output_mol_dir, mol_id + '.gaff.mol2')
                 mol_descr['parameters'] = os.path.join(output_mol_dir, mol_id + '.frcmod')
 
-    def _setup_system(self, output_dir, components):
-        # Create output directory
-        if not os.path.isdir(output_dir):
-            os.makedirs(output_dir)
+    def _setup_system(self, components):
+        # Identify components
+        receptor_id = components['receptor']
+        ligand_id = components['ligand']
+        solvent_id = components['solvent']
+        receptor = self._molecules[receptor_id]
+        ligand = self._molecules[ligand_id]
+        solvent = self._solvents[solvent_id]
 
         # Setup molecules
-        self._setup_molecules(components['receptor'], components['ligand'])
+        self._setup_molecules(receptor_id, ligand_id)
 
-        # Identify components
-        receptor = self._molecules[components['receptor']]
-        ligand = self._molecules[components['ligand']]
-        solvent = self._solvents[components['solvent']]
+        # Create output directory
+        output_dir = '_'.join((receptor_id, ligand_id, solvent_id))
+        output_dir = os.path.join(self._output_dir, self.SETUP_SYSTEMS_DIR, output_dir)
+        if not os.path.isdir(output_dir):
+            os.makedirs(output_dir)
 
         # Create tleap script
         tleap = utils.TLeap()
@@ -345,21 +348,21 @@ class YamlBuilder:
         # Run tleap!
         tleap.run()
 
-    def _run_experiment(self, experiment, output_dir):
+        return output_dir
+
+    def _run_experiment(self, experiment, output_dir, combination_name):
         components = experiment['components']
         systems = {}  # systems[phase] is the System object associated with phase 'phase'
         positions = {}  # positions[phase] is a list of coordinates associated with phase 'phase'
         atom_indices = {}  # ligand_atoms[phase] is a list of ligand atom indices associated with phase 'phase'
 
-        # Store output paths, system_dir will be created by _setup_system()
-        folder_name = '_'.join((components['receptor'], components['ligand'], components['solvent']))
-        results_dir = os.path.join(output_dir, folder_name)
-        systems_dir = os.path.join(self._output_dir, self.SETUP_SYSTEMS_DIR, folder_name)
+        # Store output paths
+        results_dir = os.path.join(self._output_dir, self.EXPERIMENTS_DIR, output_dir, combination_name)
         if not os.path.isdir(results_dir):
             os.makedirs(results_dir)
 
         # Setup complex and solvent systems
-        self._setup_system(systems_dir, components)
+        systems_dir = self._setup_system(components)
 
         # Get ligand resname for alchemical atom selection
         ligand_res = utils.get_mol2_resname(self._molecules[components['ligand']]['filepath'])

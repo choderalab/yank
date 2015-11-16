@@ -266,8 +266,7 @@ def test_setup_implicit_system_leap():
                       'ligand': 'p-xylene',
                       'solvent': 'GBSA-OBC2'}
 
-        output_dir = os.path.join(tmp_dir, YamlBuilder.SETUP_SYSTEMS_DIR, 'experimentT4')
-        yaml_builder._setup_system(output_dir=output_dir, components=components)
+        output_dir = yaml_builder._setup_system(components)
 
         # Test that output files exist and there is no water
         for phase in ['complex', 'solvent']:
@@ -316,8 +315,7 @@ def test_setup_explicit_system_leap():
                       'ligand': 'toluene',
                       'solvent': 'PMEtip3p'}
 
-        output_dir = os.path.join(tmp_dir, YamlBuilder.SETUP_SYSTEMS_DIR, 'experimentBT')
-        yaml_builder._setup_system(output_dir=output_dir, components=components)
+        output_dir = yaml_builder._setup_system(components)
 
         # Test that output file exists and that there is water
         expected_resnames = {'complex': set(['BEN', 'TOL', 'WAT']),
@@ -367,15 +365,12 @@ def test_run_experiment():
                 receptor: T4lysozyme
                 ligand: p-xylene
                 solvent: [vacuum, GBSA-OBC2]
-            thermodynamics:
-                temperature: 300*kelvin
-                pressure: 1*atmosphere
         """.format(tmp_dir, receptor_path, ligand_path)
 
         yaml_builder = parse_yaml_str(yaml_content)
         yaml_builder.build_experiment()
 
-        for exp_name in ['T4lysozyme_p-xylene_vacuum', 'T4lysozyme_p-xylene_GBSA-OBC2']:
+        for exp_name in ['vacuum', 'GBSAOBC2']:
             output_dir = os.path.join(tmp_dir, yaml_builder.EXPERIMENTS_DIR, exp_name)
             assert os.path.isdir(output_dir)
             assert os.path.isfile(os.path.join(output_dir, 'complex-implicit.nc'))
@@ -390,6 +385,7 @@ def test_run_experiment():
 
 # TODO documentation validate_parameters, future openmoltools methods, YamlBuilder methods
 # TODO ModifiedHamiltonianExchange use very similar algorithm to remove_overlap: refactor
+# TODO refactor common code yamlbuilder and commands in pipeline
 
 # TODO default solvents?
 # TODO default protocol?
