@@ -637,7 +637,7 @@ class ReplicaExchange(object):
         file_exists = os.path.exists(self.store_filename) and (os.path.getsize(self.store_filename) > 0)
         if self.mpicomm: file_exists= self.mpicomm.bcast(file_exists, root=0) # use whatever root node decides
         if file_exists:
-            raise Exception("NetCDF file %s already exists; cowardly refusing to overwrite." % self.store_filename)
+            raise RuntimeError("NetCDF file %s already exists; cowardly refusing to overwrite." % self.store_filename)
         self._resume = False
 
         # TODO: Make a deep copy of specified states once this is fixed in OpenMM.
