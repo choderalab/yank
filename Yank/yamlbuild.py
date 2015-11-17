@@ -15,6 +15,7 @@ Tools to build Yank experiments from a YAML configuration file.
 
 import os
 import re
+import copy
 import yaml
 import logging
 logger = logging.getLogger(__name__)
@@ -110,13 +111,9 @@ class YamlBuilder:
         'constraints': to_openmm_app
     }
 
-    CREATE_SYSTEM_FILTER = set(('nonbondedMethod', 'nonbondedCutoff', 'implicitSolvent',
-                                'constraints', 'hydrogenMass'))
-
     @property
     def yank_options(self):
-        return {opt: val for opt, val in self.options.items()
-                if opt not in self.DEFAULT_OPTIONS}
+        return self._isolate_yank_options(self.options)
 
     def __init__(self, yaml_file):
         """Parse the given YAML configuration file.
@@ -137,35 +134,39 @@ class YamlBuilder:
         # TODO check version of yank-yaml language
         # TODO what if there are multiple streams in the YAML file?
         with open(yaml_file, 'r') as f:
-            yaml_config = yaml.load(f)
+            yaml_content = yaml.load(f)
 
-        if yaml_config is None:
+        if yaml_content is None:
             error_msg = 'The YAML file is empty!'
             logger.error(error_msg)
             raise YamlParseError(error_msg)
 
-        # Merge options and metadata
-        temp_options = yaml_config.pop('options', {})
-        temp_options.update(yaml_config.pop('metadata', {}))
+        # Save raw YAML content that will be needed when generating the YAML files
+        self._raw_yaml = copy.deepcopy({key: yaml_content.get(key, {})
+                                        for key in ['options', 'molecules']})
 
-        # Validate options and fill in defaults
+        # Merge options and metadata and validate
+        temp_options = yaml_content.get('options', {})
+        temp_options.update(yaml_content.get('metadata', {}))
+
+        # Validate options and fill in default values
         self.options = self.DEFAULT_OPTIONS.copy()
         self.options.update(self._validate_options(temp_options))
 
         # Store other fields, we don't raise an error if we cannot find any
         # since the YAML file could be used only to specify the options
-        self._molecules = yaml_config.pop('molecules', {})
+        self._molecules = yaml_content.get('molecules', {})
         # TODO - verify that filepath and name/smiles are not specified simultaneously
 
-        self._solvents = yaml_config.get('solvents', {})
+        self._solvents = yaml_content.get('solvents', {})
         # TODO verify that implicitSolvent and cutoff are specified at the same time
 
         # Check if there is a sequence of experiments or a single one
         try:
-            self._experiments = {exp_name: utils.CombinatorialTree(yaml_config[exp_name])
-                                 for exp_name in yaml_config['experiments']}
+            self._experiments = {exp_name: utils.CombinatorialTree(yaml_content[exp_name])
+                                 for exp_name in yaml_content['experiments']}
         except KeyError:
-            single_exp = yaml_config.get('experiment', {})
+            single_exp = yaml_content.get('experiment', {})
             self._experiments = {'experiment': utils.CombinatorialTree(single_exp)}
 
     def build_experiment(self):
@@ -201,6 +202,10 @@ class YamlBuilder:
             logger.error(str(e))
             raise YamlParseError(str(e))
         return valid
+
+    def _isolate_yank_options(self, options):
+        return {opt: val for opt, val in options.items()
+                if opt not in self.DEFAULT_OPTIONS}
 
     def _expand_experiments(self):
         """Generator to generated experiments with output directory."""
@@ -259,7 +264,7 @@ class YamlBuilder:
 
             # Check for errors
             if err_msg != '':
-                err_msg += (' already exists; cowardly refusing to proceed. Move/delete'
+                err_msg += (' already exists; cowardly refusing to proceed. Move/delete '
                             'directory or set {} options').format(solving_option)
                 logger.error(err_msg)
                 raise YamlParseError(err_msg)
@@ -449,6 +454,36 @@ class YamlBuilder:
 
         return system_dir
 
+    def _generate_yaml(self, experiment, output_dir, file_name=''):
+        """Generate the minimum YAML file describing the experiment."""
+        if file_name == '':
+            file_name = 'experiment'
+        file_name += '.yaml'
+        components = set(experiment['components'].values())
+
+        # Molecules section data
+        mol_section = {mol_id: molecule for mol_id, molecule in self._raw_yaml['molecules'].items()
+                       if mol_id in components}
+
+        # Solvents section data
+        sol_section = {solvent_id: solvent for solvent_id, solvent in self._solvents.items()
+                       if solvent_id in components}
+
+        # We pop the options section in experiment and merge it to the general one
+        exp_section = experiment.copy()
+        opt_section = self._raw_yaml['options'].copy()
+        opt_section.update(exp_section.pop('options', {}))
+
+        # Create YAML with the sections in order
+        yaml_content = yaml.dump({'options': opt_section}, default_flow_style=False, line_break='\n', explicit_start=True)
+        yaml_content += yaml.dump({'molecules': mol_section}, default_flow_style=False, line_break='\n')
+        yaml_content += yaml.dump({'solvents': sol_section}, default_flow_style=False, line_break='\n')
+        yaml_content += yaml.dump({'experiment': exp_section}, default_flow_style=False, line_break='\n')
+
+        # Export YAML into a file
+        with open(os.path.join(output_dir, file_name), 'w') as f:
+            f.write(yaml_content)
+
     def _run_experiment(self, experiment, experiment_dir):
         components = experiment['components']
         systems = {}  # systems[phase] is the System object associated with phase 'phase'
@@ -458,7 +493,7 @@ class YamlBuilder:
         # Get and validate experiment sub-options
         exp_opts = self.options.copy()
         exp_opts.update(self._validate_options(experiment.get('options', {})))
-        yank_opts =  {opt: val for opt, val in exp_opts.items() if opt not in self.DEFAULT_OPTIONS}
+        yank_opts = self._isolate_yank_options(exp_opts)
 
         # Configure MPI, if requested
         if exp_opts['mpi']:
@@ -482,6 +517,9 @@ class YamlBuilder:
             os.makedirs(results_dir)
             utils.config_root_logger(exp_opts['verbose'], os.path.join(results_dir, 'yaml.log'))
 
+            # Export YAML file for reproducibility
+            self._generate_yaml(experiment, results_dir, experiment_dir)
+
             # Setup complex and solvent systems
             systems_dir = self._setup_system(exp_opts['output_dir'], components)
 
@@ -491,10 +529,12 @@ class YamlBuilder:
                 ligand_res = 'MOL'
 
             # Solvent configuration
+            create_system_filter = set(('nonbondedMethod', 'nonbondedCutoff', 'implicitSolvent',
+                                        'constraints', 'hydrogenMass'))
             solvent = self._solvents[components['solvent']]
             system_opts = {opt: to_openmm_app(solvent[opt])
-                           for opt in self.CREATE_SYSTEM_FILTER if opt in solvent}
-            system_opts.update({opt: exp_opts[opt] for opt in self.CREATE_SYSTEM_FILTER
+                           for opt in create_system_filter if opt in solvent}
+            system_opts.update({opt: exp_opts[opt] for opt in create_system_filter
                                 if opt in exp_opts})
 
             # Prepare phases of calculation.

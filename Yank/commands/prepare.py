@@ -390,7 +390,7 @@ def dispatch_binding(args):
 
     # Parse YAML options, CLI options have priority
     if args['--yaml']:
-        options.update(YamlBuilder(args['--yaml']).options)
+        options.update(YamlBuilder(args['--yaml']).yank_options)
 
     # Create new simulation.
     yank = Yank(store_dir, **options)

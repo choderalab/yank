@@ -363,6 +363,70 @@ def test_setup_explicit_system_leap():
             assert os.path.getsize(inpcrd_path) > 0
             assert found_resnames == expected_resnames[phase]
 
+def test_yaml_creation():
+    """Test the content of generated single experiment YAML files."""
+    setup_dir = os.path.join(example_dir(), 'p-xylene-implicit', 'setup')
+    receptor_path = os.path.join(setup_dir, 'receptor.pdbfixer.pdb')
+    ligand_path = os.path.join(setup_dir, 'ligand.tripos.mol2')
+    with utils.temporary_directory() as tmp_dir:
+        options = """
+        options:
+          nsteps_per_iteration: 5
+          output_dir: {}""".format(tmp_dir)
+        molecules = """
+          T4lysozyme:
+            filepath: {}
+            parameters: oldff/leaprc.ff99SBildn
+          p-xylene:
+            filepath: {}
+            parameters: antechamber""".format(receptor_path, ligand_path)
+        solvent = """
+          vacuum:
+            nonbondedMethod: NoCutoff"""
+        experiment = """
+          components:
+            ligand: p-xylene
+            receptor: T4lysozyme
+            solvent: vacuum"""
+
+        yaml_content = """
+        ---{}
+        molecules:{}
+          benzene:
+            filepath: benzene.mol2
+            parameters: antechamber
+        solvents:{}
+          vacuum:
+            nonbondedMethod: NoCutoff
+        experiment1:{}
+        experiment2:
+          components:
+            receptor: T4lysozyme
+            ligand: benzene
+            solvent: GBSA-OBC2
+        experiments: [experiment1, experiment2]
+        """.format(options, molecules, solvent, experiment)
+
+        expected_yaml_content = textwrap.dedent("""
+        ---{}
+        molecules:{}
+        solvents:{}
+        experiment:{}
+        """.format(options, molecules, solvent, experiment))
+        expected_yaml_content = expected_yaml_content[1:]  # remove first '\n'
+
+        yaml_builder = parse_yaml_str(yaml_content)
+
+        # during setup we can modify molecule's fields, so we need
+        # to check that it doesn't affect the YAML file exported
+        experiment_dict = yaml.load(experiment)
+        yaml_builder._setup_system(tmp_dir, experiment_dict['components'])
+
+        yaml_builder._generate_yaml(experiment_dict, tmp_dir, '')
+        with open(os.path.join(tmp_dir, 'experiment.yaml'), 'r') as f:
+            for line, expected in zip(f, expected_yaml_content.split('\n')):
+                assert line[:-1] == expected  # without final '\n'
+
 def test_run_experiment():
     setup_dir = os.path.join(example_dir(), 'p-xylene-implicit', 'setup')
     receptor_path = os.path.join(setup_dir, 'receptor.pdbfixer.pdb')
@@ -440,6 +504,7 @@ def test_run_experiment():
             assert os.path.isdir(output_dir)
             assert os.path.isfile(os.path.join(output_dir, 'complex-implicit.nc'))
             assert os.path.isfile(os.path.join(output_dir, 'solvent-implicit.nc'))
+            assert os.path.isfile(os.path.join(output_dir, exp_name + '.yaml'))
 
         # Now we can't run the experiment again with resume_simulation: no
         try:
