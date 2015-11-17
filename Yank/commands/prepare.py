@@ -466,7 +466,6 @@ def dispatch_binding(args):
         options.update(YamlBuilder(args['--yaml']).options)
 
     # Create new simulation.
-    print options # DEBUG
     yank = Yank(store_dir, **options)
     yank.create(phases, systems, positions, atom_indices, thermodynamic_state)
 
