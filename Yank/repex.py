@@ -1953,7 +1953,7 @@ class ReplicaExchange(object):
             if type(option_value) == unit.Quantity:
                 option_unit = option_value.unit
                 option_value = option_value / option_unit
-            # Store the Python type.            
+            # Store the Python type.
             option_type = type(option_value)
             option_type_name = typename(option_type)
             # Handle booleans
@@ -1994,7 +1994,7 @@ class ReplicaExchange(object):
     def _restore_dict_from_netcdf(self, ncgrp):
         """
         Restore dict from NetCDF.
-        
+
         Parameters
         ----------
         ncgrp : netcdf.Dataset group
@@ -2020,10 +2020,14 @@ class ReplicaExchange(object):
             elif option_ncvar.shape == ():
                 option_value = option_ncvar.getValue()
                 # Cast to python types.
-                if type(option_value) in [np.int32, np.int64]:
+                if type_name == 'bool':
+                    option_value = bool(option_value)
+                elif type_name == 'int':
                     option_value = int(option_value)
-                if type(option_value) in [np.float32, np.float64]:
+                elif type_name == 'float':
                     option_value = float(option_value)
+                elif type_name == 'str':
+                    option_value = str(option_value)
                 logger.debug("Restoring option: %s -> %s (type: %s)" % (option_name, str(option_value), type(option_value)))
             elif (option_ncvar.shape[0] >= 0):
                 option_value = np.array(option_ncvar[:], eval(type_name))
@@ -2087,14 +2091,14 @@ class ReplicaExchange(object):
 
         # Find the group.
         ncgrp_options = ncfile.groups['options']
-        
+
         # Restore options as dict.
         options = self._restore_dict_from_netcdf(ncgrp_options)
 
         # Set these as attributes.
         for option_name in options.keys():
             setattr(self, option_name, options[option_name])
-        
+
         # Signal success.
         return True
 
@@ -2717,4 +2721,3 @@ class HamiltonianExchange(ReplicaExchange):
 if __name__ == "__main__":
     import doctest
     doctest.testmod()
-
