@@ -113,8 +113,8 @@ class Yank(object):
         self.default_protocols['complex-explicit'] = AbsoluteAlchemicalFactory.defaultComplexProtocolExplicit()
 
         # Store Yank parameters
-        for opt, default in self.default_parameters.items():
-            setattr(self, '_' + opt, kwargs.pop(opt, default))
+        for option_name, default_value in self.default_parameters.items():
+            setattr(self, '_' + option_name, kwargs.pop(option_name, default_value))
 
         # Check for unknown parameters
         if not set(kwargs) <= set(ModifiedHamiltonianExchange.default_parameters):
@@ -365,7 +365,7 @@ class Yank(object):
         if self._randomize_ligand and (phase == 'complex-implicit'):
             logger.debug("Randomizing ligand positions and excluding overlapping configurations...")
             randomized_positions = list()
-            nstates = len(systems)
+            nstates = len(alchemical_states)
             for state_index in range(nstates):
                 positions_index = np.random.randint(0, len(positions))
                 current_positions = positions[positions_index]
@@ -541,4 +541,3 @@ class Yank(object):
             results['binding']['dDelta_f'] = np.sqrt(results['solvent']['dDelta_f']**2 + results['complex']['dDelta_f']**2)
 
         return results
-
