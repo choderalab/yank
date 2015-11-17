@@ -13,6 +13,7 @@ Test YAML functions.
 # GLOBAL IMPORTS
 #=============================================================================================
 
+import time
 import tempfile
 import textwrap
 import unittest
@@ -82,7 +83,8 @@ def test_yaml_parsing():
     options:
         verbose: true
         mpi: yes
-        resume: true
+        resume_setup: true
+        resume_simulation: true
         output_dir: /path/to/output/
         temperature: 300*kelvin
         pressure: 1*atmosphere
@@ -111,7 +113,7 @@ def test_yaml_parsing():
     """
 
     yaml_builder = parse_yaml_str(yaml_content)
-    assert len(yaml_builder.options) == 29
+    assert len(yaml_builder.options) == 30
     assert len(yaml_builder.yank_options) == 21
 
     # Check correct types
@@ -166,10 +168,24 @@ def test_yaml_mol2_antechamber():
         yaml_builder._setup_molecules(tmp_dir, 'benzene')
 
         output_dir = os.path.join(tmp_dir, YamlBuilder.SETUP_MOLECULES_DIR, 'benzene')
-        assert os.path.exists(os.path.join(output_dir, 'benzene.gaff.mol2'))
-        assert os.path.exists(os.path.join(output_dir, 'benzene.frcmod'))
-        assert os.path.getsize(os.path.join(output_dir, 'benzene.gaff.mol2')) > 0
-        assert os.path.getsize(os.path.join(output_dir, 'benzene.frcmod')) > 0
+        gaff_path = os.path.join(output_dir, 'benzene.gaff.mol2')
+        frcmod_path = os.path.join(output_dir, 'benzene.frcmod')
+
+        # Get last modified time
+        last_touched_gaff = os.stat(gaff_path).st_mtime
+        last_touched_frcmod = os.stat(frcmod_path).st_mtime
+
+        # Check that output files have been created
+        assert os.path.exists(gaff_path)
+        assert os.path.exists(frcmod_path)
+        assert os.path.getsize(gaff_path) > 0
+        assert os.path.getsize(frcmod_path) > 0
+
+        # Check that setup_molecules do not recreate molecule files
+        time.sleep(0.5)  # st_mtime doesn't have much precision
+        yaml_builder._setup_molecules(tmp_dir, 'benzene')
+        assert last_touched_gaff == os.stat(gaff_path).st_mtime
+        assert last_touched_frcmod == os.stat(frcmod_path).st_mtime
 
 @unittest.skipIf(not utils.is_openeye_installed(), 'This test requires OpenEye installed.')
 def test_setup_name_smiles_antechamber():
@@ -250,6 +266,7 @@ def test_setup_implicit_system_leap():
         ---
         options:
             output_dir: {}
+            resume_setup: yes
         molecules:
             T4lysozyme:
                 filepath: {}
@@ -268,7 +285,9 @@ def test_setup_implicit_system_leap():
                       'ligand': 'p-xylene',
                       'solvent': 'GBSA-OBC2'}
 
-        output_dir = yaml_builder._setup_system(components, tmp_dir)
+        output_dir = yaml_builder._setup_system(tmp_dir, components)
+        last_modified_path = os.path.join(output_dir, 'complex.prmtop')
+        last_modified = os.stat(last_modified_path).st_mtime
 
         # Test that output files exist and there is no water
         for phase in ['complex', 'solvent']:
@@ -288,6 +307,11 @@ def test_setup_implicit_system_leap():
             assert os.path.getsize(inpcrd_path) > 0
             assert 'MOL' in found_resnames
             assert 'WAT' not in found_resnames
+
+        # Test that another call do not regenerate the system
+        time.sleep(0.5)  # st_mtime doesn't have much precision
+        yaml_builder._setup_system(tmp_dir, components)
+        assert last_modified == os.stat(last_modified_path).st_mtime
 
 @unittest.skipIf(not utils.is_openeye_installed(), 'This test requires OpenEye installed.')
 def test_setup_explicit_system_leap():
@@ -317,7 +341,7 @@ def test_setup_explicit_system_leap():
                       'ligand': 'toluene',
                       'solvent': 'PMEtip3p'}
 
-        output_dir = yaml_builder._setup_system(components, tmp_dir)
+        output_dir = yaml_builder._setup_system(tmp_dir, components)
 
         # Test that output file exists and that there is water
         expected_resnames = {'complex': set(['BEN', 'TOL', 'WAT']),
@@ -347,6 +371,8 @@ def test_run_experiment():
         yaml_content = """
         ---
         options:
+            resume_setup: no
+            resume_simulation: no
             number_of_iterations: 1
             output_dir: 'temp'
         molecules:
@@ -372,8 +398,42 @@ def test_run_experiment():
         """.format(receptor_path, ligand_path, tmp_dir)
 
         yaml_builder = parse_yaml_str(yaml_content)
+
+        # Now check_setup_resume should not raise exceptions
+        yaml_builder._check_setup_resume()
+
+        # We setup a molecule and with resume_setup: no we can't do the experiment
+        err_msg = ''
+        yaml_builder._setup_molecules(tmp_dir, 'p-xylene')
+        try:
+            yaml_builder.build_experiment()
+        except YamlParseError as e:
+            err_msg = str(e)
+        assert 'molecule' in err_msg
+
+        # Same thing with a system
+        err_msg = ''
+        system_dir = yaml_builder._setup_system(tmp_dir, {'receptor': 'T4lysozyme',
+                                                          'ligand': 'p-xylene',
+                                                          'solvent': 'vacuum'})
+        try:
+            yaml_builder.build_experiment()
+        except YamlParseError as e:
+            err_msg = str(e)
+        assert 'system' in err_msg
+
+        # Now we set resume_setup to True and things work
+        yaml_builder.options['resume_setup'] = True
+        molecule_dir = yaml_builder._get_molecule_setup_dir(tmp_dir, 'p-xylene')
+        molecule_last_touched = os.stat(molecule_dir).st_mtime
+        system_last_touched = os.stat(system_dir).st_mtime
         yaml_builder.build_experiment()
 
+        # Neither the system nor the molecule has been processed again
+        assert molecule_last_touched == os.stat(molecule_dir).st_mtime
+        assert system_last_touched == os.stat(system_dir).st_mtime
+
+        # The experiments folders are correctly named and positioned
         for exp_name in ['vacuum', 'GBSAOBC2']:
             # The output directory must be the one in the experiment section
             output_dir = os.path.join(tmp_dir, yaml_builder.EXPERIMENTS_DIR, exp_name)
@@ -381,7 +441,17 @@ def test_run_experiment():
             assert os.path.isfile(os.path.join(output_dir, 'complex-implicit.nc'))
             assert os.path.isfile(os.path.join(output_dir, 'solvent-implicit.nc'))
 
-# TODO handle resume molecule setup for combinatorial experiments
+        # Now we can't run the experiment again with resume_simulation: no
+        try:
+            yaml_builder.build_experiment()
+        except YamlParseError as e:
+            err_msg = str(e)
+        assert 'experiment' in err_msg
+
+        # We set resume_simulation: yes and now things work
+        yaml_builder.options['resume_simulation'] = True
+        yaml_builder.build_experiment()
+
 # TODO save YAML format for each experiment
 # TODO validate syntax
 # TODO start from prmtop and inpcrd files
