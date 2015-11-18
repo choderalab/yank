@@ -1,7 +1,6 @@
 import os
 import re
 import copy
-import math
 import shutil
 import logging
 import tempfile
@@ -719,6 +718,73 @@ def get_mol2_resname(file_path):
                     return None
             elif len(fields) > 0 and fields[0] == '@<TRIPOS>ATOM':
                 atom_found = True
+
+def is_schrodinger_suite_installed():
+    try:
+        os.environ['SCHRODINGER']
+    except KeyError:
+        return False
+    return True
+
+def run_structconvert(input_file_path, output_file_path):
+    formats_map = {'sdf': 'sd'}
+
+    # Locate structconvert executable
+    if not is_schrodinger_suite_installed():
+        raise RuntimeError("Cannot locate Schrodinger's suite")
+    structconvert_path = os.path.join(os.environ['SCHRODINGER'], 'utilities',
+                                      'structconvert')
+    # Determine input and output format
+    input_format = os.path.splitext(input_file_path)[1][1:]
+    output_format = os.path.splitext(output_file_path)[1][1:]
+    if input_format in formats_map:
+        input_format = formats_map[input_format]
+    if output_format in formats_map:
+        output_format = formats_map[output_format]
+
+    # Run structconvert, we need the list in case there are spaces in paths
+    cmd = [structconvert_path, '-i' + input_format, input_file_path,
+           '-o' + output_format, output_file_path]
+    subprocess.check_output(cmd)
+
+def run_epik(input_file_path, output_file_path, max_structures=32, ph=7.0,
+             ph_tolerance=None, tautomerize=False):
+    """Support all file format supported by structconvert."""
+
+    # Locate epik executable
+    if not is_schrodinger_suite_installed():
+        raise RuntimeError("Cannot locate Schrodinger's suite")
+    epik_path = os.path.join(os.environ['SCHRODINGER'], 'epik')
+
+    # Preparing epik command arguments for format()
+    epik_args = dict(ms=max_structures, ph=ph)
+    epik_args['pht'] = '-pht {}'.format(ph_tolerance) if ph_tolerance else ''
+    epik_args['nt'] = '-nt' if tautomerize else ''
+
+    # Determine if we need to convert input and/or output file
+    input_mae = os.path.splitext(input_file_path)[1] == '.mae'
+    output_mae = os.path.splitext(output_file_path)[1] == '.mae'
+    if input_mae:
+        epik_input = input_file_path
+    else:
+        epik_input = os.path.splitext(input_file_path)[0] + '.mae'
+        run_structconvert(input_file_path, epik_input)
+    if output_mae:
+        epik_output = output_file_path
+    else:
+        epik_output = os.path.splitext(output_file_path)[0] + '.mae'
+
+    # Run epik, we need list in case there's a space in path
+    cmd = [epik_path, '-imae', epik_input, '-omae', epik_output]
+    cmd += '-ms {ms} -ph {ph} {pht} {nt} -pKa_atom -WAIT'.format(**epik_args).split()
+    subprocess.check_output(cmd)
+
+    # Convert output and remove temp files if needed
+    if not output_mae:
+        run_structconvert(epik_output, output_file_path)
+        os.remove(epik_output)
+    if not input_mae:
+        os.remove(epik_input)
 
 class TLeap:
     """Programmatic interface to write and run tLeap scripts."""
