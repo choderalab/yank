@@ -107,10 +107,6 @@ class YamlBuilder:
         'hydrogenMass': 1 * unit.amu
     }
 
-    SPECIAL_CONVERSIONS = {
-        'constraints': to_openmm_app
-    }
-
     @property
     def yank_options(self):
         return self._isolate_yank_options(self.options)
@@ -143,31 +139,12 @@ class YamlBuilder:
 
         # Save raw YAML content that will be needed when generating the YAML files
         self._raw_yaml = copy.deepcopy({key: yaml_content.get(key, {})
-                                        for key in ['options', 'molecules']})
+                                        for key in ['options', 'molecules', 'solvents']})
 
-        # Merge options and metadata and validate
-        temp_options = yaml_content.get('options', {})
-        temp_options.update(yaml_content.get('metadata', {}))
-
-        # Validate options and fill in default values
-        self.options = self.DEFAULT_OPTIONS.copy()
-        self.options.update(self._validate_options(temp_options))
-
-        # Store other fields, we don't raise an error if we cannot find any
-        # since the YAML file could be used only to specify the options
-        self._molecules = yaml_content.get('molecules', {})
-        # TODO - verify that filepath and name/smiles are not specified simultaneously
-
-        self._solvents = yaml_content.get('solvents', {})
-        # TODO verify that implicitSolvent and cutoff are specified at the same time
-
-        # Check if there is a sequence of experiments or a single one
-        try:
-            self._experiments = {exp_name: utils.CombinatorialTree(yaml_content[exp_name])
-                                 for exp_name in yaml_content['experiments']}
-        except KeyError:
-            single_exp = yaml_content.get('experiment', {})
-            self._experiments = {'experiment': utils.CombinatorialTree(single_exp)}
+        self._parse_options(yaml_content)
+        self._parse_molecules(yaml_content)
+        self._parse_solvents(yaml_content)
+        self._parse_experiments(yaml_content)
 
     def build_experiment(self):
         """Build the Yank experiment."""
@@ -194,10 +171,11 @@ class YamlBuilder:
         template_options = self.DEFAULT_OPTIONS.copy()
         template_options.update(Yank.default_parameters)
         template_options.update(ReplicaExchange.default_parameters)
+        openmm_app_type = {'constraints': to_openmm_app}
         try:
             valid = utils.validate_parameters(options, template_options, check_unknown=True,
                                               process_units_str=True, float_to_int=True,
-                                              special_conversions=self.SPECIAL_CONVERSIONS)
+                                              special_conversions=openmm_app_type)
         except (TypeError, ValueError) as e:
             logger.error(str(e))
             raise YamlParseError(str(e))
@@ -206,6 +184,99 @@ class YamlBuilder:
     def _isolate_yank_options(self, options):
         return {opt: val for opt, val in options.items()
                 if opt not in self.DEFAULT_OPTIONS}
+
+    def _parse_options(self, yaml_content):
+        # Merge options and metadata and validate
+        temp_options = yaml_content.get('options', {})
+        temp_options.update(yaml_content.get('metadata', {}))
+
+        # Validate options and fill in default values
+        self.options = self.DEFAULT_OPTIONS.copy()
+        self.options.update(self._validate_options(temp_options))
+
+    def _parse_molecules(self, yaml_content):
+        file_formats = set(['mol2', 'pdb'])
+        sources = set(['filepath', 'name', 'smiles'])
+        template_mol = {'filepath': 'str', 'name': 'str', 'smiles': 'str', 'parameters': 'str'}
+
+        self._molecules = yaml_content.get('molecules', {})
+
+        # First validate and convert
+        for molecule_id, molecule in self._molecules.items():
+            try:
+                self._molecules[molecule_id] = utils.validate_parameters(molecule, template_mol,
+                                                                         check_unknown=True)
+            except (TypeError, ValueError) as e:
+                raise YamlParseError(str(e))
+
+        err_msg = ''
+        for molecule_id, molecule in self._molecules.items():
+            fields = set(molecule.keys())
+
+            # Check that only one source is specified
+            specified_sources = sources & fields
+            if not specified_sources or len(specified_sources) > 1:
+                err_msg = ('need only one between {} for molecule {}').format(
+                    ', '.join(list(sources)), molecule_id)
+
+            # Check supported file formats
+            elif 'filepath' in specified_sources:
+                extension = os.path.splitext(molecule['filepath'])[1][1:]  # remove '.'
+                if extension not in file_formats:
+                    err_msg = 'molecule {}, only {} files supported'.format(
+                        molecule_id, ', '.join(file_formats))
+
+            # Check that parameters are specified
+            if 'parameters' not in fields:
+                err_msg = 'no parameters specified for molecule {}'.format(molecule_id)
+
+            if err_msg != '':
+                logger.error(err_msg)
+                raise YamlParseError(err_msg)
+
+    def _parse_solvents(self, yaml_content):
+        template_parameters = {'nonbondedMethod': openmm.app.PME, 'nonbondedCutoff': 1 * unit.angstroms,
+                               'implicitSolvent': openmm.app.OBC2, 'clearance': 10.0 * unit.angstroms}
+        openmm_app_type = ('nonbondedMethod', 'implicitSolvent')
+        openmm_app_type = {option: to_openmm_app for option in openmm_app_type}
+
+        self._solvents = yaml_content.get('solvents', {})
+
+        # First validate and convert
+        for solvent_id, solvent in self._solvents.items():
+            try:
+                self._solvents[solvent_id] = utils.validate_parameters(solvent, template_parameters,
+                                                         check_unknown=True, process_units_str=True,
+                                                         special_conversions=openmm_app_type)
+            except (TypeError, ValueError, AttributeError) as e:
+                raise YamlParseError(str(e))
+
+        err_msg = ''
+        for solvent_id, solvent in self._solvents.items():
+
+            # Test mandatory parameters
+            if 'nonbondedMethod' not in solvent:
+                err_msg = 'solvent {} must specify nonbondedMethod'.format(solvent_id)
+                raise YamlParseError(err_msg)
+
+            # Test solvent consistency
+            nonbonded_method = solvent['nonbondedMethod']
+            if nonbonded_method == openmm.app.NoCutoff:
+                if 'nonbondedCutoff' in solvent:
+                    err_msg = ('solvent {} specify both nonbondedMethod: NoCutoff and '
+                               'and nonbondedCutoff').format(solvent_id)
+            else:
+                if 'implicitSolvent' in solvent:
+                    err_msg = ('solvent {} specify both nonbondedMethod: {} '
+                               'and implicitSolvent').format(solvent_id, nonbonded_method)
+                elif 'clearance' not in solvent:
+                    err_msg = ('solvent {} uses explicit solvent but '
+                               'no clearance specified').format(solvent_id)
+
+            # Raise error
+            if err_msg != '':
+                logger.error(err_msg)
+                raise YamlParseError(err_msg)
 
     def _expand_experiments(self):
         """Generator to generated experiments with output directory."""
@@ -217,6 +288,50 @@ class YamlBuilder:
             # Loop over all combinations
             for name, combination in experiment.named_combinations(separator='_', max_name_length=40):
                 yield os.path.join(output_dir, name), combination
+
+    def _parse_experiments(self, yaml_content):
+        """Perform dry run and validate components and options of every combination."""
+        experiment_template = {'components': {}, 'options': {}}
+        components_template = {'receptor': 'str', 'ligand': 'str', 'solvent': 'str'}
+
+        # Check if there is a sequence of experiments or a single one
+        try:
+            self._experiments = {exp_name: utils.CombinatorialTree(yaml_content[exp_name])
+                                 for exp_name in yaml_content['experiments']}
+        except KeyError:
+            self._experiments = yaml_content.get('experiment', {})
+            if self._experiments:
+                self._experiments = {'experiment': utils.CombinatorialTree(self._experiments)}
+
+        # Check validity of every experiment combination
+        err_msg = ''
+        for exp_name, exp in self._expand_experiments():
+            if exp_name == '':
+                exp_name = 'experiment'
+
+            # Check if we can identify components
+            if 'components' not in exp:
+                raise YamlParseError('Cannot find components for {}'.format(exp_name))
+            components = exp['components']
+
+            # Validate and check for unknowns
+            try:
+                utils.validate_parameters(exp, experiment_template, check_unknown=True)
+                utils.validate_parameters(components, components_template, check_unknown=True)
+                self._validate_options(exp.get('options', {}))
+            except (ValueError, TypeError) as e:
+                raise YamlParseError(str(e))
+
+            # Check that components have been specified
+            if components['receptor'] not in self._molecules:
+                err_msg = 'Cannot identify receptor for {}'.format(exp_name)
+            elif components['ligand'] not in self._molecules:
+                err_msg = 'Cannot identify ligand for {}'.format(exp_name)
+            elif components['solvent'] not in self._solvents:
+                err_msg = 'Cannot identify solvent for {}'.format(exp_name)
+
+            if err_msg != '':
+                raise YamlParseError(err_msg)
 
     def _check_setup_resume(self):
         """Perform dry run to check if we are going to overwrite setup files."""
@@ -424,14 +539,13 @@ class YamlBuilder:
         tleap.combine('complex', 'receptor', 'ligand')
 
         # Configure solvent
-        if solvent['nonbondedMethod'] == 'NoCutoff':
+        if solvent['nonbondedMethod'] == openmm.app.NoCutoff:
             if 'implicitSolvent' in solvent:  # GBSA implicit solvent
                 tleap.new_section('Set GB radii to recommended values for OBC')
                 tleap.add_commands('set default PBRadii mbondi2')
         else:  # explicit solvent
             tleap.new_section('Solvate systems')
-            clearance = utils.process_unit_bearing_str(solvent['clearance'], unit.angstroms)
-            clearance = float(clearance.value_in_unit(unit.angstroms))
+            clearance = float(solvent['clearance'].value_in_unit(unit.angstroms))
             tleap.solvate(group='complex', water_model='TIP3PBOX', clearance=clearance)
             tleap.solvate(group='ligand', water_model='TIP3PBOX', clearance=clearance)
 
@@ -466,7 +580,7 @@ class YamlBuilder:
                        if mol_id in components}
 
         # Solvents section data
-        sol_section = {solvent_id: solvent for solvent_id, solvent in self._solvents.items()
+        sol_section = {solvent_id: solvent for solvent_id, solvent in self._raw_yaml['solvents'].items()
                        if solvent_id in components}
 
         # We pop the options section in experiment and merge it to the general one
@@ -528,12 +642,11 @@ class YamlBuilder:
             if ligand_res is None:
                 ligand_res = 'MOL'
 
-            # Solvent configuration
+            # System configuration
             create_system_filter = set(('nonbondedMethod', 'nonbondedCutoff', 'implicitSolvent',
                                         'constraints', 'hydrogenMass'))
             solvent = self._solvents[components['solvent']]
-            system_opts = {opt: to_openmm_app(solvent[opt])
-                           for opt in create_system_filter if opt in solvent}
+            system_opts = {opt: solvent[opt] for opt in create_system_filter if opt in solvent}
             system_opts.update({opt: exp_opts[opt] for opt in create_system_filter
                                 if opt in exp_opts})
 

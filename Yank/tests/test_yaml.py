@@ -149,6 +149,202 @@ def test_yaml_wrong_option_value():
     """
     parse_yaml_str(yaml_content)
 
+@raises(YamlParseError)
+def test_no_molecule_source():
+    """Test that an exception is raised if there's no source for molecule."""
+    yaml_content = """
+    ---
+    molecules:
+        moltest:
+            parameters: antechamber
+    """
+    parse_yaml_str(yaml_content)
+
+@raises(YamlParseError)
+def test_no_molecule_parameters():
+    """Test that an exception is raised if there are no parameters for molecule."""
+    yaml_content = """
+    ---
+    molecules:
+        moltest:
+            filepath: moltest.pdb
+    """
+    parse_yaml_str(yaml_content)
+
+@raises(YamlParseError)
+def test_multiple_molecule_source():
+    """An exception is raised if there are multiple sources for a molecule."""
+    yaml_content = """
+    ---
+    molecules:
+        moltest:
+            filepath: moltest.mol2
+            name: moltest
+            parameters: antechamber
+    """
+    parse_yaml_str(yaml_content)
+
+@raises(YamlParseError)
+def test_unsupported_molecule_file():
+    """An exception is raised with unsupported file formats."""
+    yaml_content = """
+    ---
+    molecules:
+        moltest:
+            filepath: moltest.bla
+            parameters: antechamber
+    """
+    parse_yaml_str(yaml_content)
+
+@raises(YamlParseError)
+def test_unknown_molecule_option():
+    """An exception is raised if there are unknown molecule options."""
+    yaml_content = """
+    ---
+    molecules:
+        moltest:
+            filepath: moltest.mol2
+            blabla: moltest
+            parameters: antechamber
+    """
+    parse_yaml_str(yaml_content)
+
+@raises(YamlParseError)
+def test_wrong_molecule_option():
+    """An exception is raised if a molecule option have wrong type."""
+    yaml_content = """
+    ---
+    molecules:
+        moltest:
+            filepath: 3
+            parameters: antechamber
+    """
+    parse_yaml_str(yaml_content)
+
+@raises(YamlParseError)
+def test_no_nonbonded_method():
+    """An exception is raised when a solvent doesn't specify nonbonded method."""
+    yaml_content = """
+    ---
+    solvents:
+        solvtest:
+            nonbondedCutoff: 3*nanometers
+    """
+    parse_yaml_str(yaml_content)
+
+@raises(YamlParseError)
+def test_implicit_solvent_consistence():
+    """An exception is raised with NoCutoff and nonbondedCutoff."""
+    yaml_content = """
+    ---
+    solvents:
+        solvtest:
+            nonbondedMethod: NoCutoff
+            nonbondedCutoff: 3*nanometers
+    """
+    parse_yaml_str(yaml_content)
+
+@raises(YamlParseError)
+def test_explicit_solvent_consistence():
+    """An exception is raised with explicit nonbonded method and implicitSolvent."""
+    yaml_content = """
+    ---
+    solvents:
+        solvtest:
+            nonbondedMethod: PME
+            implicitSolvent: OBC2
+    """
+    parse_yaml_str(yaml_content)
+
+@raises(YamlParseError)
+def test_unknown_solvent_option():
+    """An exception is raised when there are unknown solvent options."""
+    yaml_content = """
+    ---
+    solvents:
+        solvtest:
+            nonbondedMethod: NoCutoff
+            blabla: 3*nanometers
+    """
+    parse_yaml_str(yaml_content)
+
+@raises(YamlParseError)
+def test_wrong_solvent_option():
+    """An exception is raised when a solvent option has the wrong type."""
+    yaml_content = """
+    ---
+    solvents:
+        solvtest:
+            nonbondedMethod: NoCutoff
+            implicitSolvent: OBX2
+    """
+    parse_yaml_str(yaml_content)
+
+def test_exp_sequence():
+    """Test all experiments in a sequence are parsed."""
+    yaml_content = """
+    ---
+    molecules:
+        rec:
+            filepath: rec.pdb
+            parameters: oldff/leaprc.ff99SBildn
+        lig:
+            name: lig
+            parameters: antechamber
+    solvents:
+        solv1:
+            nonbondedMethod: NoCutoff
+        solv2:
+            nonbondedMethod: NoCutoff
+    experiment1:
+        components:
+            receptor: rec
+            ligand: lig
+            solvent: [solv1, solv2]
+    experiment2:
+        components:
+            receptor: rec
+            ligand: lig
+            solvent: solv1
+    experiments: [experiment1, experiment2]
+    """
+    yaml_builder = parse_yaml_str(yaml_content)
+    assert len(yaml_builder._experiments) == 2
+
+@raises(YamlParseError)
+def test_unkown_component():
+    """An exception is thrown if we cannot identify components."""
+    yaml_content = """
+    ---
+    molecules:
+        rec:
+            filepath: rec.pdb
+            parameters: oldff/leaprc.ff99SBildn
+        lig:
+            name: lig
+            parameters: antechamber
+    solvents:
+        solv1:
+            nonbondedMethod: NoCutoff
+    experiment:
+        components:
+            receptor: rec
+            ligand: lig
+            solvent: [solv1, solv2]
+    """
+    parse_yaml_str(yaml_content)
+
+@raises(YamlParseError)
+def test_no_component():
+    """An exception is thrown there are no components."""
+    yaml_content = """
+    ---
+    experiment:
+        options:
+            output_dir: {}
+    """
+    parse_yaml_str(yaml_content)
+
 def test_yaml_mol2_antechamber():
     """Test antechamber setup of molecule files."""
     benzene_path = os.path.join(example_dir(), 'benzene-toluene-explicit',
@@ -396,15 +592,10 @@ def test_yaml_creation():
             filepath: benzene.mol2
             parameters: antechamber
         solvents:{}
-          vacuum:
+          GBSA-OBC2:
             nonbondedMethod: NoCutoff
-        experiment1:{}
-        experiment2:
-          components:
-            receptor: T4lysozyme
-            ligand: benzene
-            solvent: GBSA-OBC2
-        experiments: [experiment1, experiment2]
+            implicitSolvent: OBC2
+        experiment:{}
         """.format(options, molecules, solvent, experiment)
 
         expected_yaml_content = textwrap.dedent("""
@@ -517,8 +708,7 @@ def test_run_experiment():
         yaml_builder.options['resume_simulation'] = True
         yaml_builder.build_experiment()
 
-# TODO save YAML format for each experiment
-# TODO validate syntax
+# TODO move verbose to driver class and move logger.error to YamlParserError init
 # TODO start from prmtop and inpcrd files
 # TODO start form gro and top files
 # TODO epik
