@@ -14,7 +14,6 @@ Compute the binding affinity of a peptide to an MHC:TCR complex.
 import os, os.path
 import yank
 import mdtraj
-import pdbfixer
 import numpy as np
 from simtk import openmm, unit
 from simtk.openmm import app
@@ -272,24 +271,24 @@ def solvate_and_minimize(topology, positions, phase=''):
 
 from yank.yank import Yank
 
-# Initialize YANK object.
-yank = Yank(store_dir)
-
 # Set options.
 options = dict()
 options['number_of_iterations'] = niterations
 options['number_of_equilibration_iterations'] = nequiliterations
 options['nsteps_per_iteration'] = nsteps_per_iteration
 options['online_analysis'] = False
-yank.restraint_type = None
 options['randomize_ligand'] = False
 options['minimize'] = True
 options['timestep'] = timestep
 options['collision_rate'] = collision_rate
 options['platform'] = platform
 
+options['restraint_type'] = None
 if not is_periodic:
-    yank.restraint_type = 'harmonic'
+    options['restraint_type'] = 'harmonic'
+
+# Turn off MC ligand displacement.
+options['mc_displacement_sigma'] = None
 
 # Prepare phases of calculation.
 phase_prefixes = ['solvent', 'complex'] # list of calculation phases (thermodynamic legs) to set up
@@ -366,10 +365,8 @@ else:
 
 # TODO: Select protocols.
 
-# Turn off MC ligand displacement.
-yank.mc_displacement_sigma = None
-
 # Create new simulation.
-yank.create(phases, systems, positions, atom_indices, thermodynamic_state, options=options)
+yank = Yank(store_dir, **options)
+yank.create(phases, systems, positions, atom_indices, thermodynamic_state)
 
 # TODO: Write PDB files

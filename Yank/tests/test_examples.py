@@ -13,12 +13,9 @@ Test examples.
 # GLOBAL IMPORTS
 #=============================================================================================
 
-import os, os.path
-import subprocess
+import os
 
-from openmmtools import testsystems
-
-from nose.plugins.skip import Skip, SkipTest
+from yank import utils
 from nose.plugins.attrib import attr
 
 #=============================================================================================
@@ -26,16 +23,17 @@ from nose.plugins.attrib import attr
 #=============================================================================================
 
 def run_example(path, example):
+    example_dir = os.path.join(path, example)
+
+    # Skip folders that do not contain working examples (e.g. yank-yaml-cookbook)
+    if not os.path.exists(os.path.join(example_dir, 'run.sh')):
+        return
+
     # Change to example directory.
-    cwd = os.getcwd()
-    os.chdir(os.path.join(path, example))
-
-    # Execute one iteration of the example.
-    import subprocess
-    returncode = subprocess.call('NITERATIONS=1 ./run.sh', shell=True, executable='/bin/bash')
-
-    # Restore working directory.
-    os.chdir(cwd)
+    with utils.temporary_cd(example_dir):
+        # Execute one iteration of the example.
+        import subprocess
+        returncode = subprocess.call('NITERATIONS=1 ./run.sh', shell=True, executable='/bin/bash')
 
     if returncode:
         raise Exception('Example %s returned exit code %d' % (example, returncode))
