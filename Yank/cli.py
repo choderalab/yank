@@ -27,9 +27,10 @@ Usage:
   yank [-h | --help] [-c | --cite]
   yank selftest [-v | --verbose]
   yank platforms
-  yank prepare binding amber --setupdir=DIRECTORY --ligand=DSLSTRING (-s=STORE | --store=STORE) [-n=NSTEPS | --nsteps=NSTEPS] [-i=NITER | --iterations=NITER] [--equilibrate=NEQUIL] [--restraints <restraint_type>] [--randomize-ligand] [--nbmethod=METHOD] [--cutoff=CUTOFF] [--gbsa=GBSA] [--constraints=CONSTRAINTS] [--temperature=TEMPERATURE] [--pressure=PRESSURE] [--minimize] [--yaml=FILEPATH] [-v | --verbose]
-  yank prepare binding gromacs --setupdir=DIRECTORY --ligand=DSLSTRING (-s=STORE | --store=STORE) [--gromacsinclude=DIRECTORY] [-n=NSTEPS | --nsteps=NSTEPS] [-i=NITER | --iterations=NITER] [--equilibrate=NEQUIL] [--restraints <restraint_type>] [--randomize-ligand] [--nbmethod=METHOD] [--cutoff=CUTOFF] [--gbsa=GBSA] [--constraints=CONSTRAINTS] [--temperature=TEMPERATURE] [--pressure=PRESSURE] [--minimize] [--yaml=FILEPATH] [-v | --verbose]
+  yank prepare binding amber --setupdir=DIRECTORY --ligand=DSLSTRING (-s=STORE | --store=STORE) [-n=NSTEPS | --nsteps=NSTEPS] [-i=NITER | --iterations=NITER] [--equilibrate=NEQUIL] [--restraints <restraint_type>] [--randomize-ligand] [--nbmethod=METHOD] [--cutoff=CUTOFF] [--gbsa=GBSA] [--constraints=CONSTRAINTS] [--temperature=TEMPERATURE] [--pressure=PRESSURE] [--minimize] [-y=FILEPATH | --yaml=FILEPATH] [-v | --verbose]
+  yank prepare binding gromacs --setupdir=DIRECTORY --ligand=DSLSTRING (-s=STORE | --store=STORE) [--gromacsinclude=DIRECTORY] [-n=NSTEPS | --nsteps=NSTEPS] [-i=NITER | --iterations=NITER] [--equilibrate=NEQUIL] [--restraints <restraint_type>] [--randomize-ligand] [--nbmethod=METHOD] [--cutoff=CUTOFF] [--gbsa=GBSA] [--constraints=CONSTRAINTS] [--temperature=TEMPERATURE] [--pressure=PRESSURE] [--minimize] [-y=FILEPATH | --yaml=FILEPATH] [-v | --verbose]
   yank run (-s=STORE | --store=STORE) [-m | --mpi] [-i=NITER | --iterations=NITER] [--platform=PLATFORM] [--precision=PRECISION] [--phase=PHASE] [-o | --online-analysis] [-v | --verbose]
+  yank script (-y=FILEPATH | --yaml=FILEPATH)
   yank status (-s=STORE | --store=STORE) [-v | --verbose]
   yank analyze (-s STORE | --store=STORE) [-v | --verbose]
   yank cleanup (-s=STORE | --store=STORE) [-v | --verbose]
@@ -40,6 +41,7 @@ Commands:
   prepare binding amber         Set up binding free energy calculation using AMBER input files
   prepare binding gromacs       Set up binding free energy calculation using gromacs input files
   run                           Run the calculation that has been set up
+  script                        Set up and run free energy calculations from a YAML script.
   status                        Get the current status
   analyze                       Analyze data
   cleanup                       Clean up (delete) run files.
@@ -58,7 +60,7 @@ General options:
   --equilibrate=NEQUIL          Number of equilibration iterations
   --minimize                    Minimize configurations before running simulation.
   -m, --mpi                     Use MPI to parallelize the calculation
-  --yaml=FILEPATH               Use options specified in the YAML configuration file. Command-line options have priority.
+  -y, --yaml=FILEPATH           Path to the YAML script specifying options and/or how to set up and run the experiment.
 
 Simulation options:
   --restraints=TYPE             Restraint type to add between protein and ligand in implicit solvent (harmonic, flat-bottom) [default: flat-bottom]
@@ -97,7 +99,7 @@ def main(argv=None):
         dispatched = commands.cite.dispatch(args)
 
     # Handle commands.
-    command_list = ['selftest', 'platforms', 'prepare', 'run', 'status', 'analyze', 'cleanup'] # TODO: Build this list automagically by introspection of commands submodule.
+    command_list = ['selftest', 'platforms', 'prepare', 'run', 'script', 'status', 'analyze', 'cleanup'] # TODO: Build this list automagically by introspection of commands submodule.
     for command in command_list:
         if args[command]:
             dispatched = getattr(commands, command).dispatch(args)

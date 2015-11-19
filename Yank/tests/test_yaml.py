@@ -30,18 +30,6 @@ def example_dir():
     """Return the absolute path to the Yank examples directory."""
     return utils.get_data_filename(os.path.join('..', 'examples'))
 
-def parse_yaml_str(yaml_content):
-    """Parse the YAML string and return the YamlBuilder object used."""
-    yaml_file = tempfile.NamedTemporaryFile(delete=False)
-    try:
-        # Check that handles no options
-        yaml_file.write(textwrap.dedent(yaml_content))
-        yaml_file.close()
-        yaml_builder = YamlBuilder(yaml_file.name)
-    finally:
-        os.remove(yaml_file.name)
-    return yaml_builder
-
 #=============================================================================================
 # UNIT TESTS
 #=============================================================================================
@@ -70,7 +58,7 @@ def test_yaml_parsing():
     ---
     test: 2
     """
-    yaml_builder = parse_yaml_str(yaml_content)
+    yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
     assert len(yaml_builder.options) == len(yaml_builder.DEFAULT_OPTIONS)
     assert len(yaml_builder.yank_options) == 0
 
@@ -112,7 +100,7 @@ def test_yaml_parsing():
         show_mixing_statistics: yes
     """
 
-    yaml_builder = parse_yaml_str(yaml_content)
+    yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
     assert len(yaml_builder.options) == 30
     assert len(yaml_builder.yank_options) == 21
 
@@ -137,7 +125,7 @@ def test_yaml_unknown_options():
     options:
         wrong_option: 3
     """
-    parse_yaml_str(yaml_content)
+    YamlBuilder(textwrap.dedent(yaml_content))
 
 @raises(YamlParseError)
 def test_yaml_wrong_option_value():
@@ -147,7 +135,7 @@ def test_yaml_wrong_option_value():
     options:
         minimize: 100
     """
-    parse_yaml_str(yaml_content)
+    YamlBuilder(textwrap.dedent(yaml_content))
 
 @raises(YamlParseError)
 def test_no_molecule_source():
@@ -158,7 +146,7 @@ def test_no_molecule_source():
         moltest:
             parameters: antechamber
     """
-    parse_yaml_str(yaml_content)
+    YamlBuilder(textwrap.dedent(yaml_content))
 
 @raises(YamlParseError)
 def test_no_molecule_parameters():
@@ -169,7 +157,7 @@ def test_no_molecule_parameters():
         moltest:
             filepath: moltest.pdb
     """
-    parse_yaml_str(yaml_content)
+    YamlBuilder(textwrap.dedent(yaml_content))
 
 @raises(YamlParseError)
 def test_multiple_molecule_source():
@@ -182,7 +170,7 @@ def test_multiple_molecule_source():
             name: moltest
             parameters: antechamber
     """
-    parse_yaml_str(yaml_content)
+    YamlBuilder(textwrap.dedent(yaml_content))
 
 @raises(YamlParseError)
 def test_unsupported_molecule_file():
@@ -194,7 +182,7 @@ def test_unsupported_molecule_file():
             filepath: moltest.bla
             parameters: antechamber
     """
-    parse_yaml_str(yaml_content)
+    YamlBuilder(textwrap.dedent(yaml_content))
 
 @raises(YamlParseError)
 def test_unknown_molecule_option():
@@ -207,7 +195,7 @@ def test_unknown_molecule_option():
             blabla: moltest
             parameters: antechamber
     """
-    parse_yaml_str(yaml_content)
+    YamlBuilder(textwrap.dedent(yaml_content))
 
 @raises(YamlParseError)
 def test_wrong_molecule_option():
@@ -219,7 +207,7 @@ def test_wrong_molecule_option():
             filepath: 3
             parameters: antechamber
     """
-    parse_yaml_str(yaml_content)
+    YamlBuilder(textwrap.dedent(yaml_content))
 
 @raises(YamlParseError)
 def test_no_nonbonded_method():
@@ -230,7 +218,7 @@ def test_no_nonbonded_method():
         solvtest:
             nonbondedCutoff: 3*nanometers
     """
-    parse_yaml_str(yaml_content)
+    YamlBuilder(textwrap.dedent(yaml_content))
 
 @raises(YamlParseError)
 def test_implicit_solvent_consistence():
@@ -242,7 +230,7 @@ def test_implicit_solvent_consistence():
             nonbondedMethod: NoCutoff
             nonbondedCutoff: 3*nanometers
     """
-    parse_yaml_str(yaml_content)
+    YamlBuilder(textwrap.dedent(yaml_content))
 
 @raises(YamlParseError)
 def test_explicit_solvent_consistence():
@@ -254,7 +242,7 @@ def test_explicit_solvent_consistence():
             nonbondedMethod: PME
             implicitSolvent: OBC2
     """
-    parse_yaml_str(yaml_content)
+    YamlBuilder(textwrap.dedent(yaml_content))
 
 @raises(YamlParseError)
 def test_unknown_solvent_option():
@@ -266,7 +254,7 @@ def test_unknown_solvent_option():
             nonbondedMethod: NoCutoff
             blabla: 3*nanometers
     """
-    parse_yaml_str(yaml_content)
+    YamlBuilder(textwrap.dedent(yaml_content))
 
 @raises(YamlParseError)
 def test_wrong_solvent_option():
@@ -278,7 +266,7 @@ def test_wrong_solvent_option():
             nonbondedMethod: NoCutoff
             implicitSolvent: OBX2
     """
-    parse_yaml_str(yaml_content)
+    YamlBuilder(textwrap.dedent(yaml_content))
 
 def test_exp_sequence():
     """Test all experiments in a sequence are parsed."""
@@ -308,7 +296,7 @@ def test_exp_sequence():
             solvent: solv1
     experiments: [experiment1, experiment2]
     """
-    yaml_builder = parse_yaml_str(yaml_content)
+    yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
     assert len(yaml_builder._experiments) == 2
 
 @raises(YamlParseError)
@@ -332,7 +320,7 @@ def test_unkown_component():
             ligand: lig
             solvent: [solv1, solv2]
     """
-    parse_yaml_str(yaml_content)
+    YamlBuilder(textwrap.dedent(yaml_content))
 
 @raises(YamlParseError)
 def test_no_component():
@@ -343,7 +331,7 @@ def test_no_component():
         options:
             output_dir: output
     """
-    parse_yaml_str(yaml_content)
+    YamlBuilder(textwrap.dedent(yaml_content))
 
 def test_yaml_mol2_antechamber():
     """Test antechamber setup of molecule files."""
@@ -360,7 +348,7 @@ def test_yaml_mol2_antechamber():
                 parameters: antechamber
         """.format(tmp_dir, benzene_path)
 
-        yaml_builder = parse_yaml_str(yaml_content)
+        yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
         yaml_builder._setup_molecules(tmp_dir, 'benzene')
 
         output_dir = os.path.join(tmp_dir, YamlBuilder.SETUP_MOLECULES_DIR, 'benzene')
@@ -405,7 +393,7 @@ def test_setup_name_smiles_antechamber():
                 parameters: antechamber
         """.format(tmp_dir, benzene_path)
 
-        yaml_builder = parse_yaml_str(yaml_content)
+        yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
 
         # The order of the arguments in _setup_molecules is important, we want to test
         # that overlapping molecules in toluene are removed even if benzene has been
@@ -449,7 +437,7 @@ def test_overlapping_atoms():
                 parameters: antechamber
         """.format(tmp_dir, benzene_path, toluene_path)
 
-        yaml_builder = parse_yaml_str(yaml_content)
+        yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
         yaml_builder._setup_molecules(tmp_dir, 'benzene', 'toluene')
 
 @unittest.skipIf(not utils.is_schrodinger_suite_installed(), "This test requires Schrodinger's suite")
@@ -469,7 +457,7 @@ def test_epik_enumeration():
                 parameters: antechamber
         """.format(tmp_dir, benzene_path)
 
-        yaml_builder = parse_yaml_str(yaml_content)
+        yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
         yaml_builder._setup_molecules(tmp_dir, 'benzene')
 
         output_dir = os.path.join(tmp_dir, YamlBuilder.SETUP_MOLECULES_DIR, 'benzene')
@@ -500,7 +488,7 @@ def test_setup_implicit_system_leap():
                 implicitSolvent: OBC2
         """.format(tmp_dir, receptor_path, ligand_path)
 
-        yaml_builder = parse_yaml_str(yaml_content)
+        yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
         components = {'receptor': 'T4lysozyme',
                       'ligand': 'p-xylene',
                       'solvent': 'GBSA-OBC2'}
@@ -556,7 +544,7 @@ def test_setup_explicit_system_leap():
                 clearance: 10*angstroms
         """.format(tmp_dir, benzene_path)
 
-        yaml_builder = parse_yaml_str(yaml_content)
+        yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
         components = {'receptor': 'benzene',
                       'ligand': 'toluene',
                       'solvent': 'PMEtip3p'}
@@ -630,7 +618,7 @@ def test_yaml_creation():
         """.format(options, molecules, solvent, experiment))
         expected_yaml_content = expected_yaml_content[1:]  # remove first '\n'
 
-        yaml_builder = parse_yaml_str(yaml_content)
+        yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
 
         # during setup we can modify molecule's fields, so we need
         # to check that it doesn't affect the YAML file exported
@@ -677,7 +665,7 @@ def test_run_experiment():
                 output_dir: {}
         """.format(yaml_dir, receptor_path, ligand_path, tmp_dir)
 
-        yaml_builder = parse_yaml_str(yaml_content)
+        yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
 
         # Now check_setup_resume should not raise exceptions
         yaml_builder._check_setup_resume()
@@ -734,7 +722,6 @@ def test_run_experiment():
         yaml_builder.options['resume_simulation'] = True
         yaml_builder.build_experiment()
 
-# TODO move verbose to driver class and move logger.error to YamlParserError init
 # TODO start from prmtop and inpcrd files
 # TODO start form gro and top files
 

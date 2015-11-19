@@ -113,7 +113,7 @@ class YamlBuilder:
     def yank_options(self):
         return self._isolate_yank_options(self.options)
 
-    def __init__(self, yaml_file):
+    def __init__(self, yaml_source):
         """Parse the given YAML configuration file.
 
         This does not build the actual experiment but simply checks that the syntax
@@ -121,8 +121,8 @@ class YamlBuilder:
 
         Parameters
         ----------
-        yaml_file : str
-            A relative or absolute path to the YAML configuration file.
+        yaml_source : str
+            A path to the YAML script or the YAML content.
 
         """
 
@@ -131,8 +131,11 @@ class YamlBuilder:
 
         # TODO check version of yank-yaml language
         # TODO what if there are multiple streams in the YAML file?
-        with open(yaml_file, 'r') as f:
-            yaml_content = yaml.load(f)
+        try:
+            with open(yaml_source, 'r') as f:
+                yaml_content = yaml.load(f)
+        except IOError:
+            yaml_content = yaml.load(yaml_source)
 
         if yaml_content is None:
             raise YamlParseError('The YAML file is empty!')
