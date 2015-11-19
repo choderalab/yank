@@ -78,7 +78,9 @@ def to_openmm_app(str):
 
 class YamlParseError(Exception):
     """Represent errors occurring during parsing of Yank YAML file."""
-    pass
+    def __init__(self, message):
+        super(YamlParseError, self).__init__(message)
+        logger.error(message)
 
 class YamlBuilder:
     """Parse YAML configuration file and build the experiment.
@@ -133,14 +135,13 @@ class YamlBuilder:
             yaml_content = yaml.load(f)
 
         if yaml_content is None:
-            error_msg = 'The YAML file is empty!'
-            logger.error(error_msg)
-            raise YamlParseError(error_msg)
+            raise YamlParseError('The YAML file is empty!')
 
         # Save raw YAML content that will be needed when generating the YAML files
         self._raw_yaml = copy.deepcopy({key: yaml_content.get(key, {})
                                         for key in ['options', 'molecules', 'solvents']})
 
+        # Parse each section
         self._parse_options(yaml_content)
         self._parse_molecules(yaml_content)
         self._parse_solvents(yaml_content)
@@ -177,7 +178,6 @@ class YamlBuilder:
                                               process_units_str=True, float_to_int=True,
                                               special_conversions=openmm_app_type)
         except (TypeError, ValueError) as e:
-            logger.error(str(e))
             raise YamlParseError(str(e))
         return valid
 
@@ -232,7 +232,6 @@ class YamlBuilder:
                 err_msg = 'no parameters specified for molecule {}'.format(molecule_id)
 
             if err_msg != '':
-                logger.error(err_msg)
                 raise YamlParseError(err_msg)
 
     def _parse_solvents(self, yaml_content):
@@ -276,7 +275,6 @@ class YamlBuilder:
 
             # Raise error
             if err_msg != '':
-                logger.error(err_msg)
                 raise YamlParseError(err_msg)
 
     def _expand_experiments(self):
@@ -382,7 +380,6 @@ class YamlBuilder:
             if err_msg != '':
                 err_msg += (' already exists; cowardly refusing to proceed. Move/delete '
                             'directory or set {} options').format(solving_option)
-                logger.error(err_msg)
                 raise YamlParseError(err_msg)
 
     def _generate_molecule(self, molecule_id):
@@ -578,9 +575,6 @@ class YamlBuilder:
 
     def _generate_yaml(self, experiment, output_dir, file_name=''):
         """Generate the minimum YAML file describing the experiment."""
-        if file_name == '':
-            file_name = 'experiment'
-        file_name += '.yaml'
         components = set(experiment['components'].values())
 
         # Molecules section data
@@ -607,10 +601,12 @@ class YamlBuilder:
             f.write(yaml_content)
 
     def _run_experiment(self, experiment, experiment_dir):
-        components = experiment['components']
         systems = {}  # systems[phase] is the System object associated with phase 'phase'
         positions = {}  # positions[phase] is a list of coordinates associated with phase 'phase'
         atom_indices = {}  # ligand_atoms[phase] is a list of ligand atom indices associated with phase 'phase'
+
+        components = experiment['components']
+        exp_name = 'experiment' if experiment_dir == '' else os.path.basename(experiment_dir)
 
         # Get and validate experiment sub-options
         exp_opts = self.options.copy()
@@ -627,20 +623,23 @@ class YamlBuilder:
 
         # TODO configure platform and precision when they are fixed in Yank
 
-        # Initialize simulation
+        # Create directory and configure logger for this experiment
         results_dir = self._get_experiment_dir(exp_opts['output_dir'], experiment_dir)
+        if not os.path.isdir(results_dir):
+            os.makedirs(results_dir)
+            resume = False
+        else:
+            resume = True
+        utils.config_root_logger(exp_opts['verbose'], os.path.join(results_dir, exp_name + '.log'))
+
+        # Initialize simulation
         yank = Yank(results_dir, mpicomm=mpicomm, **yank_opts)
 
-        # Check if this is a new simulation or if we are resuming
-        if os.path.isdir(results_dir):
-            utils.config_root_logger(exp_opts['verbose'], os.path.join(results_dir, 'yaml.log'))
+        if resume:
             yank.resume()
         else:
-            os.makedirs(results_dir)
-            utils.config_root_logger(exp_opts['verbose'], os.path.join(results_dir, 'yaml.log'))
-
             # Export YAML file for reproducibility
-            self._generate_yaml(experiment, results_dir, experiment_dir)
+            self._generate_yaml(experiment, results_dir, exp_name + '.yaml')
 
             # Setup complex and solvent systems
             systems_dir = self._setup_system(exp_opts['output_dir'], components)

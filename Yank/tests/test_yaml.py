@@ -341,7 +341,7 @@ def test_no_component():
     ---
     experiment:
         options:
-            output_dir: {}
+            output_dir: output
     """
     parse_yaml_str(yaml_content)
 
@@ -637,7 +637,7 @@ def test_yaml_creation():
         experiment_dict = yaml.load(experiment)
         yaml_builder._setup_system(tmp_dir, experiment_dict['components'])
 
-        yaml_builder._generate_yaml(experiment_dict, tmp_dir, '')
+        yaml_builder._generate_yaml(experiment_dict, tmp_dir, 'experiment.yaml')
         with open(os.path.join(tmp_dir, 'experiment.yaml'), 'r') as f:
             for line, expected in zip(f, expected_yaml_content.split('\n')):
                 assert line[:-1] == expected  # without final '\n'
@@ -647,13 +647,14 @@ def test_run_experiment():
     receptor_path = os.path.join(setup_dir, 'receptor.pdbfixer.pdb')
     ligand_path = os.path.join(setup_dir, 'ligand.tripos.mol2')
     with utils.temporary_directory() as tmp_dir:
+        yaml_dir = os.path.join(tmp_dir, 'main')
         yaml_content = """
         ---
         options:
             resume_setup: no
             resume_simulation: no
             number_of_iterations: 1
-            output_dir: 'temp'
+            output_dir: {}
         molecules:
             T4lysozyme:
                 filepath: {}
@@ -674,7 +675,7 @@ def test_run_experiment():
                 solvent: [vacuum, GBSA-OBC2]
             options:
                 output_dir: {}
-        """.format(receptor_path, ligand_path, tmp_dir)
+        """.format(yaml_dir, receptor_path, ligand_path, tmp_dir)
 
         yaml_builder = parse_yaml_str(yaml_content)
 
@@ -720,6 +721,7 @@ def test_run_experiment():
             assert os.path.isfile(os.path.join(output_dir, 'complex-implicit.nc'))
             assert os.path.isfile(os.path.join(output_dir, 'solvent-implicit.nc'))
             assert os.path.isfile(os.path.join(output_dir, exp_name + '.yaml'))
+            assert os.path.isfile(os.path.join(output_dir, exp_name + '.log'))
 
         # Now we can't run the experiment again with resume_simulation: no
         try:
