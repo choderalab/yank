@@ -117,16 +117,7 @@ class Yank(object):
                 ', '.join(kwargs.keys())))
 
         # Store repex parameters
-        self._repex_parameters = {
-            'number_of_equilibration_iterations': 0,
-            'number_of_iterations': 100,
-            'timestep': 2.0 * unit.femtoseconds,
-            'collision_rate': 5.0 / unit.picoseconds,
-            'minimize': False,
-            'show_mixing_statistics': True,  # this causes slowdown with iteration and should not be used for production
-            'displacement_sigma': 1.0 * unit.nanometers  # attempt to displace ligand by this stddev will be made each iteration
-        }
-        self._repex_parameters.update(kwargs)
+        self._repex_parameters = copy.deepcopy(kwargs)
 
         return
 
@@ -276,6 +267,18 @@ class Yank(object):
 
         """
 
+        # We add default repex options only on creation, on resume repex will pick them from the store file
+        repex_parameters = {
+            'number_of_equilibration_iterations': 0,
+            'number_of_iterations': 100,
+            'timestep': 2.0 * unit.femtoseconds,
+            'collision_rate': 5.0 / unit.picoseconds,
+            'minimize': False,
+            'show_mixing_statistics': True,  # this causes slowdown with iteration and should not be used for production
+            'displacement_sigma': 1.0 * unit.nanometers  # attempt to displace ligand by this stddev will be made each iteration
+        }
+        repex_parameters.update(self._repex_parameters)
+
         # Make sure positions argument is a list of coordinate snapshots.
         if hasattr(positions, 'unit'):
             # Wrap in list.
@@ -387,7 +390,7 @@ class Yank(object):
         simulation = ModifiedHamiltonianExchange(store_filename, mpicomm=self._mpicomm)
         simulation.create(thermodynamic_state, alchemical_states, positions,
                           displacement_sigma=self._mc_displacement_sigma, mc_atoms=mc_atoms,
-                          options=self._repex_parameters, metadata=metadata)
+                          options=repex_parameters, metadata=metadata)
 
         # Initialize simulation.
         # TODO: Use the right scheme for initializing the simulation without running.
