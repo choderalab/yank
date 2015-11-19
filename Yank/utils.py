@@ -631,7 +631,7 @@ def process_unit_bearing_str(quantity_str, compatible_units):
 
 def validate_parameters(parameters, template_parameters, check_unknown=False,
                         process_units_str=False, float_to_int=False,
-                        special_conversions={}):
+                        ignore_none=True, special_conversions={}):
 
     # Create validated parameters
     validated_par = {par: parameters[par] for par in parameters
@@ -646,6 +646,9 @@ def validate_parameters(parameters, template_parameters, check_unknown=False,
         templ_value = template_parameters[par]
 
         # Convert requested types
+        if ignore_none and value is None:
+            continue
+
         # Special conversions have priority
         if par in special_conversions:
             converter_func = special_conversions[par]
