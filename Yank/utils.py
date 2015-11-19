@@ -747,9 +747,32 @@ def run_structconvert(input_file_path, output_file_path):
            '-o' + output_format, output_file_path]
     subprocess.check_output(cmd)
 
+def run_maesubset(input_file_path, output_file_path, range):
+    """Range is 0-based."""
+
+    # Locate epik executable
+    if not is_schrodinger_suite_installed():
+        raise RuntimeError("Cannot locate Schrodinger's suite")
+    maesubset_path = os.path.join(os.environ['SCHRODINGER'], 'utilities', 'maesubset')
+
+    # Determine molecules to extract
+    try:
+        range_str = [str(i + 1) for i in range]
+    except TypeError:
+        range_str = [str(range + 1)]
+    range_str = ','.join(range_str)
+
+    # Run maesubset, we need the list in case there are spaces in paths
+    cmd = [maesubset_path, '-n', range_str, input_file_path]
+    output = subprocess.check_output(cmd)
+
+    # Save result
+    with open(output_file_path, 'w') as f:
+        f.write(output)
+
 def run_epik(input_file_path, output_file_path, max_structures=32, ph=7.0,
-             ph_tolerance=None, tautomerize=False):
-    """Support all file format supported by structconvert."""
+             ph_tolerance=None, tautomerize=False, extract_range=None):
+    """Support all file format supported by structconvert. Range is 0-based as in run_maesubset."""
 
     # Locate epik executable
     if not is_schrodinger_suite_installed():
@@ -769,7 +792,7 @@ def run_epik(input_file_path, output_file_path, max_structures=32, ph=7.0,
     else:
         epik_input = os.path.splitext(input_file_path)[0] + '.mae'
         run_structconvert(input_file_path, epik_input)
-    if output_mae:
+    if output_mae and extract_range is None:
         epik_output = output_file_path
     else:
         epik_output = os.path.splitext(output_file_path)[0] + '.mae'
@@ -779,8 +802,21 @@ def run_epik(input_file_path, output_file_path, max_structures=32, ph=7.0,
     cmd += '-ms {ms} -ph {ph} {pht} {nt} -pKa_atom -WAIT'.format(**epik_args).split()
     subprocess.check_output(cmd)
 
-    # Convert output and remove temp files if needed
-    if not output_mae:
+    # Check if we need to extract a range of structures
+    if extract_range is not None:
+        if output_mae:
+            maesubset_output = output_file_path
+        else:
+            maesubset_output = 'extract.mae'
+        run_maesubset(epik_output, maesubset_output, extract_range)
+
+    # Convert output if necessary and clean up temp files
+    if extract_range is not None:
+        if not output_mae:
+            run_structconvert(maesubset_output, output_file_path)
+            os.remove(maesubset_output)
+        os.remove(epik_output)
+    elif not output_mae:
         run_structconvert(epik_output, output_file_path)
         os.remove(epik_output)
     if not input_mae:
