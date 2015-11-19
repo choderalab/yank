@@ -25,10 +25,10 @@ import openmoltools
 from simtk import unit, openmm
 
 import utils
+import pipeline
 from yank import Yank
 from repex import ReplicaExchange, ThermodynamicState
 from sampling import ModifiedHamiltonianExchange
-from pipeline import find_components
 
 
 #=============================================================================================
@@ -604,10 +604,6 @@ class YamlBuilder:
             f.write(yaml_content)
 
     def _run_experiment(self, experiment, experiment_dir):
-        systems = {}  # systems[phase] is the System object associated with phase 'phase'
-        positions = {}  # positions[phase] is a list of coordinates associated with phase 'phase'
-        atom_indices = {}  # ligand_atoms[phase] is a list of ligand atom indices associated with phase 'phase'
-
         components = experiment['components']
         exp_name = 'experiment' if experiment_dir == '' else os.path.basename(experiment_dir)
 
@@ -644,83 +640,31 @@ class YamlBuilder:
             # Export YAML file for reproducibility
             self._generate_yaml(experiment, results_dir, exp_name + '.yaml')
 
-            # Setup complex and solvent systems
-            systems_dir = self._setup_system(exp_opts['output_dir'], components)
+            # Determine system files path
+            system_dir = self._setup_system(exp_opts['output_dir'], components)
 
             # Get ligand resname for alchemical atom selection
-            ligand_res = utils.get_mol2_resname(self._molecules[components['ligand']]['filepath'])
-            if ligand_res is None:
-                ligand_res = 'MOL'
+            ligand_dsl = utils.get_mol2_resname(self._molecules[components['ligand']]['filepath'])
+            if ligand_dsl is None:
+                ligand_dsl = 'MOL'
+            ligand_dsl = 'resname ' + ligand_dsl
 
             # System configuration
             create_system_filter = set(('nonbondedMethod', 'nonbondedCutoff', 'implicitSolvent',
                                         'constraints', 'hydrogenMass'))
             solvent = self._solvents[components['solvent']]
-            system_opts = {opt: solvent[opt] for opt in create_system_filter if opt in solvent}
-            system_opts.update({opt: exp_opts[opt] for opt in create_system_filter
+            system_pars = {opt: solvent[opt] for opt in create_system_filter if opt in solvent}
+            system_pars.update({opt: exp_opts[opt] for opt in create_system_filter
                                 if opt in exp_opts})
 
-            # Prepare phases of calculation.
-            for phase_prefix in ['complex', 'solvent']:
-                # Read Amber prmtop and create System object.
-                prmtop_filename = os.path.join(systems_dir, '%s.prmtop' % phase_prefix)
-                prmtop = openmm.app.AmberPrmtopFile(prmtop_filename)
-
-                # Read Amber inpcrd and load positions.
-                inpcrd_filename = os.path.join(systems_dir, '%s.inpcrd' % phase_prefix)
-                inpcrd = openmm.app.AmberInpcrdFile(inpcrd_filename)
-
-                # Determine if this will be an explicit or implicit solvent simulation.
-                if inpcrd.boxVectors is not None:
-                    is_periodic = True
-                    phase_suffix = 'explicit'
-                else:
-                    is_periodic = False
-                    phase_suffix = 'implicit'
-                phase = '{}-{}'.format(phase_prefix, phase_suffix)
-
-                # Check for solvent configuration inconsistencies
-                # TODO: Check to make sure both prmtop and inpcrd agree on explicit/implicit.
-                err_msg = ''
-                if is_periodic:
-                    if 'implicitSolvent' in system_opts:
-                        err_msg = 'Found periodic box in inpcrd file and implicitSolvent specified.'
-                    if system_opts['nonbondedMethod'] == openmm.app.NoCutoff:
-                        err_msg = 'Found periodic box in inpcrd file but nonbondedMethod is NoCutoff'
-                else:
-                    if system_opts['nonbondedMethod'] != openmm.app.NoCutoff:
-                        err_msg = 'nonbondedMethod is NoCutoff but could not find periodic box in inpcrd.'
-                if len(err_msg) != 0:
-                    logger.error(err_msg)
-                    raise RuntimeError(err_msg)
-
-                # Create system and update box vectors (if needed)
-                systems[phase] = prmtop.createSystem(removeCMMotion=False, **system_opts)
-                if is_periodic:
-                    systems[phase].setDefaultPeriodicBoxVectors(*inpcrd.boxVectors)
-
-                # Store numpy positions
-                positions[phase] = inpcrd.getPositions(asNumpy=True)
-
-                # Check to make sure number of atoms match between prmtop and inpcrd.
-                prmtop_natoms = systems[phase].getNumParticles()
-                inpcrd_natoms = positions[phase].shape[0]
-                if prmtop_natoms != inpcrd_natoms:
-                    err_msg = "Atom number mismatch: prmtop {} has {} atoms; inpcrd {} has {} atoms.".format(
-                        prmtop_filename, prmtop_natoms, inpcrd_filename, inpcrd_natoms)
-                    logger.error(err_msg)
-                    raise RuntimeError(err_msg)
-
-                # Find ligand atoms and receptor atoms
-                ligand_dsl = 'resname ' + ligand_res  # MDTraj DSL that specifies ligand atoms
-                atom_indices[phase] = find_components(prmtop.topology, ligand_dsl)
+            # Prepare system
+            phases, systems, positions, atom_indices = pipeline.prepare_amber(system_dir, ligand_dsl, system_pars)
 
             # Create thermodynamic state
             thermodynamic_state = ThermodynamicState(temperature=exp_opts['temperature'],
                                                      pressure=exp_opts['pressure'])
 
             # Create new simulation
-            phases = systems.keys()
             yank.create(phases, systems, positions, atom_indices, thermodynamic_state)
 
         # Run the simulation!

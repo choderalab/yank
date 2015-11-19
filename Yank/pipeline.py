@@ -13,7 +13,14 @@ Utility functions to help setting up Yank configurations.
 # GLOBAL IMPORTS
 #=============================================================================================
 
+import os
+import logging
+logger = logging.getLogger(__name__)
+
 import mdtraj
+from simtk import openmm
+
+from repex import ThermodynamicState
 
 #=============================================================================================
 # UTILITY FUNCTIONS
@@ -90,3 +97,77 @@ def find_components(topology, ligand_dsl, solvent_resnames=_SOLVENT_RESNAMES):
     atom_indices['complex'] = atom_indices['receptor'] + atom_indices['ligand']
 
     return atom_indices
+
+def prepare_amber(system_dir, ligand_dsl, system_parameters, verbose=False):
+    systems = {}  # systems[phase] is the System object associated with phase 'phase'
+    positions = {}  # positions[phase] is a list of coordinates associated with phase 'phase'
+    atom_indices = {}  # ligand_atoms[phase] is a list of ligand atom indices of phase 'phase'
+
+    # Prepare phases of calculation.
+    for phase_prefix in ['complex', 'solvent']:
+        prmtop_file_path = os.path.join(system_dir, '{}.prmtop'.format(phase_prefix))
+        inpcrd_file_path = os.path.join(system_dir, '{}.inpcrd'.format(phase_prefix))
+        if verbose:
+            logger.info("reading phase %s: " % phase_prefix)
+            logger.info("prmtop: %s" % prmtop_file_path)
+            logger.info("inpcrd: %s" % inpcrd_file_path)
+
+        # Read Amber prmtop and inpcrd files
+        prmtop = openmm.app.AmberPrmtopFile(prmtop_file_path)
+        inpcrd = openmm.app.AmberInpcrdFile(inpcrd_file_path)
+
+        # Determine if this will be an explicit or implicit solvent simulation.
+        if inpcrd.boxVectors is not None:
+            is_periodic = True
+            phase_suffix = 'explicit'
+        else:
+            is_periodic = False
+            phase_suffix = 'implicit'
+        phase = '{}-{}'.format(phase_prefix, phase_suffix)
+
+        # Adjust nonbondedMethod
+        # TODO: Ensure that selected method is appropriate.
+        if 'nonbondedMethod' not in system_parameters:
+            if is_periodic:
+                system_parameters['nonbondedMethod'] = openmm.app.CutoffPeriodic
+            else:
+                system_parameters['nonbondedMethod'] = openmm.app.NoCutoff
+
+        # Check for solvent configuration inconsistencies
+        # TODO: Check to make sure both prmtop and inpcrd agree on explicit/implicit.
+        err_msg = ''
+        if is_periodic:
+            if 'implicitSolvent' in system_parameters:
+                err_msg = 'Found periodic box in inpcrd file and implicitSolvent specified.'
+            if system_parameters['nonbondedMethod'] == openmm.app.NoCutoff:
+                err_msg = 'Found periodic box in inpcrd file but nonbondedMethod is NoCutoff'
+        else:
+            if system_parameters['nonbondedMethod'] != openmm.app.NoCutoff:
+                err_msg = 'nonbondedMethod is NoCutoff but could not find periodic box in inpcrd.'
+        if len(err_msg) != 0:
+            logger.error(err_msg)
+            raise RuntimeError(err_msg)
+
+        # Create system and update box vectors (if needed)
+        systems[phase] = prmtop.createSystem(removeCMMotion=False, **system_parameters)
+        if is_periodic:
+            systems[phase].setDefaultPeriodicBoxVectors(*inpcrd.boxVectors)
+
+        # Store numpy positions
+        positions[phase] = inpcrd.getPositions(asNumpy=True)
+
+        # Check to make sure number of atoms match between prmtop and inpcrd.
+        prmtop_natoms = systems[phase].getNumParticles()
+        inpcrd_natoms = positions[phase].shape[0]
+        if prmtop_natoms != inpcrd_natoms:
+            err_msg = "Atom number mismatch: prmtop {} has {} atoms; inpcrd {} has {} atoms.".format(
+                prmtop_file_path, prmtop_natoms, inpcrd_file_path, inpcrd_natoms)
+            logger.error(err_msg)
+            raise RuntimeError(err_msg)
+
+        # Find ligand atoms and receptor atoms
+        atom_indices[phase] = find_components(prmtop.topology, ligand_dsl)
+
+    phases = systems.keys()
+
+    return [phases, systems, positions, atom_indices]

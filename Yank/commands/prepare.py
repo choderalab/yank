@@ -21,10 +21,10 @@ from simtk import unit
 from simtk.openmm import app
 
 from yank import utils
+from yank import pipeline
 from yank.yank import Yank # TODO: Fix this weird import path to something more sane, like 'from yank import Yank'
 from yank.repex import ThermodynamicState # TODO: Fix this weird import path to something more sane, like 'from yank.repex import ThermodynamicState'
 from yank.yamlbuild import YamlBuilder
-from yank.pipeline import find_components
 
 #=============================================================================================
 # SUBROUTINES
@@ -95,89 +95,27 @@ def setup_binding_amber(args):
 
     """
     verbose = args['--verbose']
+    setup_directory = args['--setupdir']  # Directory where prmtop/inpcrd files are to be found
+    system_parameters = {}  # parameters to pass to prmtop.createSystem
 
     # Implicit solvent
     if args['--gbsa']:
-        implicitSolvent = getattr(app, args['--gbsa'])
-    else:
-        implicitSolvent = None
+        system_parameters['implicitSolvent'] = getattr(app, args['--gbsa'])
 
     # Select nonbonded treatment
-    # TODO: Carefully check whether input file is periodic or not.
     if args['--nbmethod']:
-        nonbondedMethod = getattr(app, args['--nbmethod'])
-    else:
-        nonbondedMethod = None
+        system_parameters['nonbondedMethod'] = getattr(app, args['--nbmethod'])
 
     # Constraints
     if args['--constraints']:
-        constraints = getattr(app, args['--constraints'])
-    else:
-        constraints = None
+        system_parameters['constraints'] = getattr(app, args['--constraints'])
 
     # Cutoff
     if args['--cutoff']:
-        nonbondedCutoff = process_unit_bearing_arg(args, '--cutoff', unit.nanometers)
-    else:
-        nonbondedCutoff = None
-
-    # COM removal
-    removeCMMotion = False
+        system_parameters['nonbondedCutoff'] = process_unit_bearing_arg(args, '--cutoff', unit.nanometers)
 
     # Prepare phases of calculation.
-    phase_prefixes = ['solvent', 'complex'] # list of calculation phases (thermodynamic legs) to set up
-    components = ['ligand', 'receptor', 'solvent'] # components of the binding system
-    systems = dict() # systems[phase] is the System object associated with phase 'phase'
-    positions = dict() # positions[phase] is a list of coordinates associated with phase 'phase'
-    atom_indices = dict() # ligand_atoms[phase] is a list of ligand atom indices associated with phase 'phase'
-    setup_directory = args['--setupdir'] # Directory where prmtop/inpcrd files are to be found
-    for phase_prefix in phase_prefixes:
-        if verbose: logger.info("reading phase %s: " % phase_prefix)
-        # Read Amber prmtop and create System object.
-        prmtop_filename = os.path.join(setup_directory, '%s.prmtop' % phase_prefix)
-        if verbose: logger.info("prmtop: %s" % prmtop_filename)
-        prmtop = app.AmberPrmtopFile(prmtop_filename)
-        # Read Amber inpcrd and load positions.
-        inpcrd_filename = os.path.join(setup_directory, '%s.inpcrd' % phase_prefix)
-        if verbose: logger.info("inpcrd: %s" % inpcrd_filename)
-        inpcrd = app.AmberInpcrdFile(inpcrd_filename)
-        # Determine if this will be an explicit or implicit solvent simulation.
-        phase_suffix = 'implicit'
-        is_periodic = False
-        if inpcrd.boxVectors is not None:
-            is_periodic = True
-            phase_suffix = 'explicit'
-        # Check if both periodic box and implicit solvent are defined
-        if is_periodic and implicitSolvent is not None:
-            logger.error('Detected both a periodic box and an implicit solvent.')
-            raise Exception('Detected both a periodic box and an implicit solvent.')
-        # Adjust nonbondedMethod.
-        # TODO: Ensure that selected method is appropriate.
-        if nonbondedMethod == None:
-            if is_periodic:
-                nonbondedMethod = app.CutoffPeriodic
-            else:
-                nonbondedMethod = app.NoCutoff
-        # TODO: Check to make sure both prmtop and inpcrd agree on explicit/implicit.
-        phase = '%s-%s' % (phase_prefix, phase_suffix)
-        systems[phase] = prmtop.createSystem(nonbondedMethod=nonbondedMethod, nonbondedCutoff=nonbondedCutoff, implicitSolvent=implicitSolvent, constraints=constraints, removeCMMotion=removeCMMotion)
-        positions[phase] = inpcrd.getPositions(asNumpy=True)
-        # Update box vectors (if needed).
-        if is_periodic:
-            systems[phase].setDefaultPeriodicBoxVectors(*inpcrd.boxVectors)
-        # Check to make sure number of atoms match between prmtop and inpcrd.
-        prmtop_natoms = systems[phase].getNumParticles()
-        inpcrd_natoms = positions[phase].shape[0]
-        if prmtop_natoms != inpcrd_natoms:
-            raise Exception("Atom number mismatch: prmtop %s has %d atoms; inpcrd %s has %d atoms." % (prmtop_filename, prmtop_natoms, inpcrd_filename, inpcrd_natoms))
-
-        # Find ligand atoms and receptor atoms.
-        ligand_dsl = args['--ligand'] # MDTraj DSL that specifies ligand atoms
-        atom_indices[phase] = find_components(prmtop.topology, ligand_dsl)
-
-    phases = systems.keys()
-
-    return [phases, systems, positions, atom_indices]
+    return pipeline.prepare_amber(setup_directory, args['--ligand'], system_parameters, verbose)
 
 def setup_binding_gromacs(args):
     """
