@@ -197,7 +197,8 @@ class YamlBuilder:
     def _parse_molecules(self, yaml_content):
         file_formats = set(['mol2', 'pdb'])
         sources = set(['filepath', 'name', 'smiles'])
-        template_mol = {'filepath': 'str', 'name': 'str', 'smiles': 'str', 'parameters': 'str'}
+        template_mol = {'filepath': 'str', 'name': 'str', 'smiles': 'str',
+                        'parameters': 'str', 'epik': 0}
 
         self._molecules = yaml_content.get('molecules', {})
 
@@ -486,6 +487,13 @@ class YamlBuilder:
                 residue_name = re.sub('[^A-Za-z]+', '', mol_id.upper())
                 openmoltools.openeye.molecule_to_mol2(molecule, mol_descr['filepath'],
                                                       residue_name=residue_name)
+
+            # Enumerate protonation states with epik
+            if 'epik' in mol_descr:
+                epik_idx = mol_descr['epik']
+                epik_output_file = os.path.join(mol_dir, mol_id + '-epik.mol2')
+                utils.run_epik(mol_descr['filepath'], epik_output_file, extract_range=epik_idx)
+                mol_descr['filepath'] = epik_output_file
 
             # Parametrize the molecule with antechamber
             if mol_descr['parameters'] == 'antechamber':

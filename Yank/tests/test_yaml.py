@@ -452,6 +452,30 @@ def test_overlapping_atoms():
         yaml_builder = parse_yaml_str(yaml_content)
         yaml_builder._setup_molecules(tmp_dir, 'benzene', 'toluene')
 
+@unittest.skipIf(not utils.is_schrodinger_suite_installed(), "This test requires Schrodinger's suite")
+def test_epik_enumeration():
+    """Test that epik protonation state enumeration."""
+    benzene_path = os.path.join(example_dir(), 'benzene-toluene-explicit', 'setup',
+                                'benzene.tripos.mol2')
+    with utils.temporary_directory() as tmp_dir:
+        yaml_content = """
+        ---
+        options:
+            output_dir: {}
+        molecules:
+            benzene:
+                filepath: {}
+                epik: 0
+                parameters: antechamber
+        """.format(tmp_dir, benzene_path)
+
+        yaml_builder = parse_yaml_str(yaml_content)
+        yaml_builder._setup_molecules(tmp_dir, 'benzene')
+
+        output_dir = os.path.join(tmp_dir, YamlBuilder.SETUP_MOLECULES_DIR, 'benzene')
+        assert os.path.exists(os.path.join(output_dir, 'benzene-epik.mol2'))
+        assert os.path.getsize(os.path.join(output_dir, 'benzene-epik.mol2')) > 0
+
 def test_setup_implicit_system_leap():
     """Create prmtop and inpcrd for implicit solvent protein-ligand system."""
     setup_dir = os.path.join(example_dir(), 'p-xylene-implicit', 'setup')
@@ -711,7 +735,6 @@ def test_run_experiment():
 # TODO move verbose to driver class and move logger.error to YamlParserError init
 # TODO start from prmtop and inpcrd files
 # TODO start form gro and top files
-# TODO epik
 
 # TODO documentation validate_parameters, future openmoltools methods, YamlBuilder methods
 # TODO ModifiedHamiltonianExchange use very similar algorithm to remove_overlap: refactor

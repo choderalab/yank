@@ -734,6 +734,11 @@ def run_structconvert(input_file_path, output_file_path):
         raise RuntimeError("Cannot locate Schrodinger's suite")
     structconvert_path = os.path.join(os.environ['SCHRODINGER'], 'utilities',
                                       'structconvert')
+
+    # Normalize paths
+    input_file_path = os.path.abspath(input_file_path)
+    output_file_path = os.path.abspath(output_file_path)
+
     # Determine input and output format
     input_format = os.path.splitext(input_file_path)[1][1:]
     output_format = os.path.splitext(output_file_path)[1][1:]
@@ -754,6 +759,10 @@ def run_maesubset(input_file_path, output_file_path, range):
     if not is_schrodinger_suite_installed():
         raise RuntimeError("Cannot locate Schrodinger's suite")
     maesubset_path = os.path.join(os.environ['SCHRODINGER'], 'utilities', 'maesubset')
+
+    # Normalize paths
+    input_file_path = os.path.abspath(input_file_path)
+    output_file_path = os.path.abspath(output_file_path)
 
     # Determine molecules to extract
     try:
@@ -779,6 +788,11 @@ def run_epik(input_file_path, output_file_path, max_structures=32, ph=7.0,
         raise RuntimeError("Cannot locate Schrodinger's suite")
     epik_path = os.path.join(os.environ['SCHRODINGER'], 'epik')
 
+    # Normalize paths
+    input_file_path = os.path.abspath(input_file_path)
+    output_file_path = os.path.abspath(output_file_path)
+    output_dir = os.path.dirname(output_file_path)
+
     # Preparing epik command arguments for format()
     epik_args = dict(ms=max_structures, ph=ph)
     epik_args['pht'] = '-pht {}'.format(ph_tolerance) if ph_tolerance else ''
@@ -790,24 +804,27 @@ def run_epik(input_file_path, output_file_path, max_structures=32, ph=7.0,
     if input_mae:
         epik_input = input_file_path
     else:
-        epik_input = os.path.splitext(input_file_path)[0] + '.mae'
+        input_file_name = os.path.splitext(os.path.basename(input_file_path))[0]
+        epik_input = os.path.join(output_dir, input_file_name + '.mae')
         run_structconvert(input_file_path, epik_input)
     if output_mae and extract_range is None:
         epik_output = output_file_path
     else:
         epik_output = os.path.splitext(output_file_path)[0] + '.mae'
 
-    # Run epik, we need list in case there's a space in path
+    # Run epik, we need list in case there's a space in the paths
+    # We run with output_dir as working directory to save there the log file
     cmd = [epik_path, '-imae', epik_input, '-omae', epik_output]
     cmd += '-ms {ms} -ph {ph} {pht} {nt} -pKa_atom -WAIT'.format(**epik_args).split()
-    subprocess.check_output(cmd)
+    with temporary_cd(output_dir):
+        subprocess.check_call(cmd)
 
     # Check if we need to extract a range of structures
     if extract_range is not None:
         if output_mae:
             maesubset_output = output_file_path
         else:
-            maesubset_output = 'extract.mae'
+            maesubset_output = os.path.join(output_dir, 'extract.mae')
         run_maesubset(epik_output, maesubset_output, extract_range)
 
     # Convert output if necessary and clean up temp files
