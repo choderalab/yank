@@ -625,7 +625,7 @@ def test_yaml_creation():
         experiment_dict = yaml.load(experiment)
         yaml_builder._setup_system(tmp_dir, experiment_dict['components'])
 
-        yaml_builder._generate_yaml(experiment_dict, tmp_dir, 'experiment.yaml')
+        yaml_builder._generate_yaml(experiment_dict, os.path.join(tmp_dir, 'experiment.yaml'))
         with open(os.path.join(tmp_dir, 'experiment.yaml'), 'r') as f:
             for line, expected in zip(f, expected_yaml_content.split('\n')):
                 assert line[:-1] == expected  # without final '\n'
@@ -724,10 +724,6 @@ def test_run_experiment():
 
 # TODO start from prmtop and inpcrd files
 # TODO start form gro and top files
-
-# TODO documentation validate_parameters, future openmoltools methods, YamlBuilder methods
-# TODO ModifiedHamiltonianExchange use very similar algorithm to remove_overlap: refactor
-# TODO refactor common code yamlbuilder and commands in pipeline
 
 # TODO default solvents?
 # TODO default protocol?

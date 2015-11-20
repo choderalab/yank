@@ -632,6 +632,76 @@ def process_unit_bearing_str(quantity_str, compatible_units):
 def validate_parameters(parameters, template_parameters, check_unknown=False,
                         process_units_str=False, float_to_int=False,
                         ignore_none=True, special_conversions={}):
+    """Utility function for parameters and options validation.
+
+    Use the given template to filter the given parameters and infer their expected
+    types. Perform various automatic conversions when requested. If the template is
+    None, the parameter to validate is not checked for type compatibility.
+
+    Parameters
+    ----------
+    parameters : dict
+        The parameters to validate.
+    template_parameters : dict
+        The template used to filter the parameters and infer the types.
+    check_unknown : bool
+        If True, an exception is raised when parameters contain a key that is not
+        contained in template_parameters.
+    process_units_str: bool
+        If True, the function will attempt to convert the strings whose template
+        type is simtk.unit.Quantity.
+    float_to_int : bool
+        If True, floats in parameters whose template type is int are truncated.
+    ignore_none : bool
+        If True, the function do not process parameters whose value is None.
+    special_conversions : dict
+        Contains a coverter function with signature convert(arg) that must be
+        applied to the parameters specified by the dictionary key.
+
+    Returns
+    -------
+    validate_par : dict
+        The converted parameters that are contained both in parameters and
+        template_parameters.
+
+    Raises
+    ------
+    TypeError
+        If check_unknown is True and there are parameters not in template_parameters.
+    ValueError
+        If a parameter has an incompatible type with its template parameter.
+
+    Examples
+    --------
+    Create the template parameters
+    >>> template_pars = dict()
+    >>> template_pars['bool'] = True
+    >>> template_pars['int'] = 2
+    >>> template_pars['unspecified'] = None  # this won't be checked for type compatibility
+    >>> template_pars['to_be_converted'] = [1, 2, 3]
+    >>> template_pars['length'] = 2.0 * unit.nanometers
+
+    Now the parameters to validate
+    >>> input_pars = dict()
+    >>> input_pars['bool'] = None  # this will be skipped with ignore_none=True
+    >>> input_pars['int'] = 4.3  # this will be truncated to 4 with float_to_int=True
+    >>> input_pars['unspecified'] = 'input'  # this can be of any type since the template is None
+    >>> input_pars['to_be_converted'] = {'key': 3}
+    >>> input_pars['length'] = '1.0*nanometers'
+    >>> input_pars['unknown'] = 'test'  # this will be silently filtered if check_unkown=False
+
+    Validate the parameters
+    >>> valid = validate_parameters(input_pars, template_pars, process_units_str=True,
+    ...                             float_to_int=True, special_conversions={'to_be_converted': list})
+    >>> import pprint
+    >>> pprint.pprint(valid)
+    {'bool': None,
+     'int': 4,
+     'length': Quantity(value=1.0, unit=nanometer),
+     'to_be_converted': ['key'],
+     'unspecified': 'input'}
+
+    """
 
     # Create validated parameters
     validated_par = {par: parameters[par] for par in parameters
@@ -730,6 +800,10 @@ def is_schrodinger_suite_installed():
     return True
 
 def run_structconvert(input_file_path, output_file_path):
+    """Run Schrodinger's structconvert to convert from one format to another.
+
+    The formats are inferred from the given files extensions.
+    """
     formats_map = {'sdf': 'sd'}
 
     # Locate structconvert executable
@@ -756,7 +830,14 @@ def run_structconvert(input_file_path, output_file_path):
     subprocess.check_output(cmd)
 
 def run_maesubset(input_file_path, output_file_path, range):
-    """Range is 0-based."""
+    """Run Schrodinger's maesubset to extract a range of structures from a Maestro file.
+
+    Parameters
+    ----------
+    range : int or list of ints
+        The 0-based indices of the structures to extract from the input files.
+
+    """
 
     # Locate epik executable
     if not is_schrodinger_suite_installed():
@@ -784,7 +865,11 @@ def run_maesubset(input_file_path, output_file_path, range):
 
 def run_epik(input_file_path, output_file_path, max_structures=32, ph=7.0,
              ph_tolerance=None, tautomerize=False, extract_range=None):
-    """Support all file format supported by structconvert. Range is 0-based as in run_maesubset."""
+    """Run Schrodinger's epik to enumerate protonation and tautomeric states.
+
+    Support all file format supported by structconvert. Range is 0-based as with run_maesubset().
+
+    """
 
     # Locate epik executable
     if not is_schrodinger_suite_installed():
@@ -843,7 +928,13 @@ def run_epik(input_file_path, output_file_path, max_structures=32, ph=7.0,
         os.remove(epik_input)
 
 class TLeap:
-    """Programmatic interface to write and run tLeap scripts."""
+    """Programmatic interface to write and run tLeap scripts.
+
+    To avoid problems with special characters in file paths, the class run the
+    tleap script in a temporary folder with hardcoded names for files and then
+    copy the output files in their respective folders.
+
+    """
 
     @property
     def script(self):
@@ -852,10 +943,6 @@ class TLeap:
     def __init__(self):
         self._script = ''
         self._file_paths = {}  # paths of input/output files to copy in/from temp dir
-        # self._input_paths = []  # paths of input files to copy in temp dir
-        # self._output_paths = []  # paths of output files to copy from temp dir
-        #self._local_input = []  # input file names in temp dir
-        #self._local_output = []  # output file names in temp dir
 
     def add_commands(self, *args):
         for command in args:

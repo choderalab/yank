@@ -36,6 +36,29 @@ from sampling import ModifiedHamiltonianExchange
 #=============================================================================================
 
 def compute_min_dist(mol_positions, *args):
+    """Compute the minimum distance between a molecule and a set of other molecules.
+
+    All the positions must be expressed in the same unit of measure.
+
+    Parameters
+    ----------
+    mol_positions : numpy.ndarray
+        An Nx3 array where, N is the number of atoms, containing the positions of
+        the atoms of the molecule for which we want to compute the minimum distance
+        from the others
+
+    Other parameters
+    ----------------
+    args
+        A series of numpy.ndarrays containing the positions of the atoms of the other
+        molecules
+
+    Returns
+    -------
+    min_dist : float
+        The minimum distance between mol_positions and the other set of positions
+
+    """
     for pos1 in args:
         # Compute squared distances
         # Each row is an array of distances from a mol2 atom to all mol1 atoms
@@ -50,6 +73,38 @@ def compute_min_dist(mol_positions, *args):
     return min_dist
 
 def remove_overlap(mol_positions, *args, **kwargs):
+    """Remove any eventual overlap between a molecule and a set of others.
+
+    The method both randomly shifts and rotates the molecule (when overlapping atoms
+    are detected) until it does not clash with any other given molecule anymore. All
+    the others are kept fixed.
+
+    All the positions must be expressed in the same unit of measure.
+
+    Parameters
+    ----------
+    mol_positions : numpy.ndarray
+        An Nx3 array where, N is the number of atoms, containing the positions of
+        the atoms of the molecule that we want to not clash with the others.
+    min_distance : float
+        The minimum distance accepted to consider the molecule not clashing with
+        the others. Must be in the same unit of measure of the positions.
+    sigma : float
+        The maximum displacement for a single step. Must be in the same unit of
+        measure of the positions.
+
+    Other parameters
+    ----------------
+    args
+        A series of numpy.ndarrays containing the positions of the atoms of the
+        molecules that are kept fixed.
+
+    Returns
+    -------
+    x : numpy.ndarray
+        Positions of the atoms of the given molecules that do not clash.
+
+    """
     x = np.copy(mol_positions)
     sigma = kwargs.get('sigma', 1.0)
     min_distance = kwargs.get('min_distance', 1.0)
@@ -70,6 +125,7 @@ def remove_overlap(mol_positions, *args, **kwargs):
     return x
 
 def to_openmm_app(str):
+    """Converter function to be used with validate_parameters()."""
     return getattr(openmm.app, str)
 
 #=============================================================================================
@@ -85,10 +141,47 @@ class YamlParseError(Exception):
 class YamlBuilder:
     """Parse YAML configuration file and build the experiment.
 
+    The class firstly perform a dry run to check if this is going to overwrite
+    some files and raises an exception if it finds already existing output folders
+    unless the options resume_setup or resume_simulation are True.
+
     Properties
     ----------
-    options : dict
-        The options specified in the parsed YAML file.
+    yank_options : dict
+        The options specified in the parsed YAML file that will be passed to Yank.
+        These are not the full range of options specified in the script since some
+        of them are used to configure YamlBuilder and not the Yank object.
+
+    Examples
+    --------
+    >>> setup_dir = utils.get_data_filename(os.path.join('..', 'examples',
+    ...                                     'p-xylene-implicit', 'setup'))
+    >>> pxylene_path = os.path.join(setup_dir, 'ligand.tripos.mol2')
+    >>> lysozyme_path = os.path.join(setup_dir, 'receptor.pdbfixer.pdb')
+    >>> with utils.temporary_directory() as tmp_dir:
+    >>>     yaml_content = '''
+    ...     ---
+    ...     options:
+    ...         number_of_iterations: 1
+    ...         output_dir: {}
+    ...     molecules:
+    ...         T4lysozyme:
+    ...             filepath: {}
+    ...             parameters: oldff/leaprc.ff99SBildn
+    ...         p-xylene:
+    ...             filepath: {}
+    ...             parameters: antechamber
+    ...     solvents:
+    ...         vacuum:
+    ...             nonbondedMethod: NoCutoff
+    ...     experiment:
+    ...         components:
+    ...             receptor: T4lysozyme
+    ...             ligand: p-xylene
+    ...             solvent: vacuum
+    ...     '''.format(tmp_dir, lysozyme_path, pxylene_path)
+    >>> yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
+    >>> yaml_builder.build_experiment()
 
     """
 
@@ -151,7 +244,7 @@ class YamlBuilder:
         self._parse_experiments(yaml_content)
 
     def build_experiment(self):
-        """Build the Yank experiment."""
+        """Set up and run all the Yank experiments."""
         self._check_setup_resume()
 
         for output_dir, combination in self._expand_experiments():
@@ -159,15 +252,18 @@ class YamlBuilder:
 
     @classmethod
     def _get_molecule_setup_dir(cls, output_dir, molecule_id):
+        """Return directory where the setup files of the molecule should be stored."""
         return os.path.join(output_dir, cls.SETUP_MOLECULES_DIR, molecule_id)
 
     @classmethod
     def _get_system_setup_dir(cls, output_dir, receptor_id, ligand_id, solvent_id):
+        """Return directory where the setup files of the system should be stored."""
         system_dir = '_'.join((receptor_id, ligand_id, solvent_id))
         return os.path.join(output_dir, cls.SETUP_SYSTEMS_DIR, system_dir)
 
     @classmethod
     def _get_experiment_dir(cls, output_dir, experiment_dir):
+        """Return directory where the experiment output files should be stored."""
         return os.path.join(output_dir, cls.EXPERIMENTS_DIR, experiment_dir)
 
     def _validate_options(self, options):
@@ -185,10 +281,19 @@ class YamlBuilder:
         return valid
 
     def _isolate_yank_options(self, options):
+        """Return the options that do not belong to YamlBuilder."""
         return {opt: val for opt, val in options.items()
                 if opt not in self.DEFAULT_OPTIONS}
 
     def _parse_options(self, yaml_content):
+        """Validate and store options in the script.
+
+        Parameters
+        ----------
+        yaml_content : dict
+            The dictionary representing the YAML script loaded by yaml.load()
+
+        """
         # Merge options and metadata and validate
         temp_options = yaml_content.get('options', {})
         temp_options.update(yaml_content.get('metadata', {}))
@@ -198,6 +303,18 @@ class YamlBuilder:
         self.options.update(self._validate_options(temp_options))
 
     def _parse_molecules(self, yaml_content):
+        """Load molecules information and check that their syntax is correct.
+
+        One and only one source must be specified (e.g. filepath, name). Also
+        the parameters must be specified, and the extension of filepath must
+        match one of the supported file formats.
+
+        Parameters
+        ----------
+        yaml_content : dict
+            The dictionary representing the YAML script loaded by yaml.load()
+
+        """
         file_formats = set(['mol2', 'pdb'])
         sources = set(['filepath', 'name', 'smiles'])
         template_mol = {'filepath': 'str', 'name': 'str', 'smiles': 'str',
@@ -238,6 +355,19 @@ class YamlBuilder:
                 raise YamlParseError(err_msg)
 
     def _parse_solvents(self, yaml_content):
+        """Load solvents information and check that their syntax is correct.
+
+        The option nonbondedMethod must be specified. All quantities are converted to
+        simtk.app.Quantity objects or openmm.app.TYPE (e.g. app.PME, app.OBC2). This
+        also perform some consistency checks to verify that the user did not mix
+        implicit and explicit solvent parameters.
+
+        Parameters
+        ----------
+        yaml_content : dict
+            The dictionary representing the YAML script loaded by yaml.load()
+
+        """
         template_parameters = {'nonbondedMethod': openmm.app.PME, 'nonbondedCutoff': 1 * unit.angstroms,
                                'implicitSolvent': openmm.app.OBC2, 'clearance': 10.0 * unit.angstroms}
         openmm_app_type = ('nonbondedMethod', 'implicitSolvent')
@@ -281,7 +411,19 @@ class YamlBuilder:
                 raise YamlParseError(err_msg)
 
     def _expand_experiments(self):
-        """Generator to generated experiments with output directory."""
+        """Generates all possible combinations of experiment.
+
+        Each generated experiment is uniquely named.
+
+        Returns
+        -------
+        output_dir : str
+            A unique path where to save the experiment output files relative to
+            the main output directory specified by the user in the options.
+        combination : dict
+            The dictionary describing a single experiment.
+
+        """
         output_dir = ''
         for exp_name, experiment in self._experiments.items():
             if len(self._experiments) > 1:
@@ -292,7 +434,17 @@ class YamlBuilder:
                 yield os.path.join(output_dir, name), combination
 
     def _parse_experiments(self, yaml_content):
-        """Perform dry run and validate components and options of every combination."""
+        """Perform dry run and validate components and options of every combination.
+
+        Receptor, ligand and solvent must be already loaded. If they are not found
+        an exception is raised. Experiments options are validated as well.
+
+        Parameters
+        ----------
+        yaml_content : dict
+            The dictionary representing the YAML script loaded by yaml.load()
+
+        """
         experiment_template = {'components': {}, 'options': {}}
         components_template = {'receptor': 'str', 'ligand': 'str', 'solvent': 'str'}
 
@@ -336,7 +488,17 @@ class YamlBuilder:
                 raise YamlParseError(err_msg)
 
     def _check_setup_resume(self):
-        """Perform dry run to check if we are going to overwrite setup files."""
+        """Perform dry run to check if we are going to overwrite files.
+
+        If we find folders that YamlBuilder should create we throw an Exception
+        unless resume_setup or resume_simulation are found, in which case we
+        assume we need to use the existing files. We never overwrite files, the
+        user is responsible to delete them or move them.
+
+        It's important to check all possible combinations at the beginning to
+        avoid interrupting the user simulation after few experiments.
+
+        """
         err_msg = ''
         for exp_sub_dir, combination in self._expand_experiments():
             try:
@@ -386,7 +548,22 @@ class YamlBuilder:
                 raise YamlParseError(err_msg)
 
     def _generate_molecule(self, molecule_id):
-        """Generate molecule and save it to mol2 in molecule['filepath']."""
+        """Generate molecule using the OpenEye toolkit from name or smiles.
+
+        The molecules is charged with OpenEye's recommended AM1BCC charge
+        selection scheme.
+
+        Parameters
+        ----------
+        molecule_id : str
+            The id of the molecule as given in the YAML script
+
+        Returns
+        -------
+        molecule : OEMol
+            The generated molecule.
+
+        """
         mol_descr = self._molecules[molecule_id]
         try:
             if 'name' in mol_descr:
@@ -402,8 +579,32 @@ class YamlBuilder:
         return molecule
 
     def _setup_molecules(self, output_dir, *args):
-        """OpenEye-generated molecules can change position from one experiment to another
-        depeding on positions of other fixed molecules."""
+        """Set up the files needed to generate the system for all the molecules.
+
+        If OpenEye tools are installed, this generate the molecules when the source is
+        not a file. If two (or more) molecules generated by OpenEye have overlapping
+        atoms, the molecules are randomly shifted and rotated until the clash is resolved.
+        With the OpenEye toolkit installed, we also perform a sanity check to verify that
+        the molecules from files do not have overlapping atoms. An Exception is raised if
+        this is not the case.
+
+        If the Schrodinger's suite is install, this can enumerate tautomeric and protonation
+        states with epik when requested.
+
+        This also parametrize the molecule with antechamber when requested.
+
+        Parameters
+        ----------
+        output_dir : str
+            The path to the main output directory specified by the user in the YAML options
+
+        Other parameters
+        ----------------
+        args
+            All the molecules ids that compose the system. These molecules are the only
+            ones considered when trying to resolve the overlapping atoms.
+
+        """
 
         # Determine which molecules should have fixed positions
         # At the end of parametrization we update the 'filepath' key also for OpenEye-generated
@@ -508,6 +709,26 @@ class YamlBuilder:
                 mol_descr['parameters'] = os.path.join(mol_dir, mol_id + '.frcmod')
 
     def _setup_system(self, output_dir, components):
+        """Create the prmtop and inpcrd files from the given components.
+
+        This calls _setup_molecules() so there's no need to call it ahead. The
+        system files are generated with tleap. If no molecule specify a general
+        force field, leaprc.ff14SB is loaded.
+
+        Parameters
+        ----------
+        output_dir : str
+            The path to the main output directory specified by the user in the YAML options
+        components : dict
+            A dictionary containing the keys 'receptor', 'ligand' and 'solvent' with the ids
+            of molecules and solvents
+
+        Returns
+        -------
+        system_dir : str
+            The path to the directory containing the prmtop and inpcrd files
+
+        """
 
         # Identify components
         receptor_id = components['receptor']
@@ -576,8 +797,17 @@ class YamlBuilder:
 
         return system_dir
 
-    def _generate_yaml(self, experiment, output_dir, file_name=''):
-        """Generate the minimum YAML file describing the experiment."""
+    def _generate_yaml(self, experiment, file_path):
+        """Generate the minimum YAML file needed to reproduce the experiment.
+
+        Parameters
+        ----------
+        experiment : dict
+            The dictionary describing a single experiment.
+        file_path : str
+            The path to the file to save.
+
+        """
         components = set(experiment['components'].values())
 
         # Molecules section data
@@ -600,10 +830,21 @@ class YamlBuilder:
         yaml_content += yaml.dump({'experiment': exp_section}, default_flow_style=False, line_break='\n')
 
         # Export YAML into a file
-        with open(os.path.join(output_dir, file_name), 'w') as f:
+        with open(file_path, 'w') as f:
             f.write(yaml_content)
 
     def _run_experiment(self, experiment, experiment_dir):
+        """Prepare and run a single experiment.
+
+        Parameters
+        ----------
+        experiment : dict
+            A dictionary describing a single experiment
+        experiment_dir : str
+            The directory where to store the output files relative to the main
+            output directory as specified by the user in the YAML script
+
+        """
         components = experiment['components']
         exp_name = 'experiment' if experiment_dir == '' else os.path.basename(experiment_dir)
 
@@ -638,7 +879,7 @@ class YamlBuilder:
             yank.resume()
         else:
             # Export YAML file for reproducibility
-            self._generate_yaml(experiment, results_dir, exp_name + '.yaml')
+            self._generate_yaml(experiment, os.path.join(results_dir, exp_name + '.yaml'))
 
             # Determine system files path
             system_dir = self._setup_system(exp_opts['output_dir'], components)
