@@ -59,9 +59,6 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
     >>> import tempfile
     >>> file = tempfile.NamedTemporaryFile() # temporary file for testing
     >>> store_filename = file.name
-    >>> # Configure logging
-    >>> import logging
-    >>> logging.disable(logging.ERROR)
     >>> # Create reference state.
     >>> from repex import ThermodynamicState
     >>> reference_state = ThermodynamicState(reference_system, temperature=298.0*unit.kelvin)
@@ -746,7 +743,3 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         print ""
 
         return
-
-if __name__ == '__main__':
-    import doctest
-    doctest.testmod()

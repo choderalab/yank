@@ -516,9 +516,6 @@ class ReplicaExchange(object):
     >>> states = [ ThermodynamicState(system=system, temperature=T_i[i]) for i in range(nreplicas) ]
     >>> import tempfile
     >>> store_filename = tempfile.NamedTemporaryFile(delete=False).name + '.nc'
-    >>> # Configure logging
-    >>> import logging
-    >>> logging.disable(logging.ERROR)
     >>> # Create simulation.
     >>> simulation = ReplicaExchange(store_filename)
     >>> simulation.create(states, positions) # initialize the replica-exchange simulation
@@ -1561,7 +1558,7 @@ class ReplicaExchange(object):
             try:
                 self._mix_all_replicas_cython()
             except ValueError as e:
-                logger.warning(str(e))
+                logger.warning(e.message)
                 self._mix_all_replicas()
         elif self.replica_mixing_scheme == 'none':
             # Don't mix replicas.
@@ -2125,11 +2122,8 @@ class ReplicaExchange(object):
             The NetCDF file in which metadata is to be stored.
 
         """
-        try:
-            ncgrp = ncfile.groups['metadata']
-            self.metadata = self._restore_dict_from_netcdf(ncgrp)
-        except:
-            self.metadata = None
+        ncgrp = ncfile.groups['metadata']
+        self.metadata = self._restore_dict_from_netcdf(ncgrp)
 
     def _resume_from_netcdf(self):
         """
@@ -2478,9 +2472,6 @@ class ParallelTempering(ReplicaExchange):
     >>> import tempfile
     >>> file = tempfile.NamedTemporaryFile() # temporary file for testing
     >>> store_filename = file.name
-    >>> # Configure logging
-    >>> import logging
-    >>> logging.disable(logging.ERROR)
     >>> # Initialize parallel tempering on an exponentially-spaced scale
     >>> Tmin = 298.0 * unit.kelvin
     >>> Tmax = 600.0 * unit.kelvin
@@ -2669,9 +2660,6 @@ class HamiltonianExchange(ReplicaExchange):
     >>> import tempfile
     >>> file = tempfile.NamedTemporaryFile() # temporary file for testing
     >>> store_filename = file.name
-    >>> # Configure logging
-    >>> import logging
-    >>> logging.disable(logging.ERROR)
     >>> # Create reference state.
     >>> reference_state = ThermodynamicState(reference_system, temperature=298.0*unit.kelvin)
     >>> # Create simulation.
