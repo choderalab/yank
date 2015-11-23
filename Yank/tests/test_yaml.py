@@ -692,14 +692,15 @@ def test_run_experiment():
 
         # Now we set resume_setup to True and things work
         yaml_builder.options['resume_setup'] = True
-        molecule_dir = yaml_builder._get_molecule_setup_dir(tmp_dir, 'p-xylene')
-        molecule_last_touched = os.stat(molecule_dir).st_mtime
-        system_last_touched = os.stat(system_dir).st_mtime
+        frcmod_file = yaml_builder._check_molecule_setup(tmp_dir, 'p-xylene')[2]
+        prmtop_file = os.path.join(system_dir, 'complex.prmtop')
+        molecule_last_touched = os.stat(frcmod_file).st_mtime
+        system_last_touched = os.stat(prmtop_file).st_mtime
         yaml_builder.build_experiment()
 
         # Neither the system nor the molecule has been processed again
-        assert molecule_last_touched == os.stat(molecule_dir).st_mtime
-        assert system_last_touched == os.stat(system_dir).st_mtime
+        assert molecule_last_touched == os.stat(frcmod_file).st_mtime
+        assert system_last_touched == os.stat(prmtop_file).st_mtime
 
         # The experiments folders are correctly named and positioned
         for exp_name in ['vacuum', 'GBSAOBC2']:
