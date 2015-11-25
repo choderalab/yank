@@ -9,6 +9,8 @@ Test various utility functions.
 # GLOBAL IMPORTS
 #=============================================================================================
 
+import textwrap
+
 from nose import tools
 from yank.utils import *
 
@@ -45,7 +47,7 @@ def test_find_leaves():
     assert leaf_vals == [1, [2, 3, 4], ['a', 'b', 'c']]
 
 def test_expand_tree():
-    """Test CombinatorialTree expansion."""
+    """Test CombinatorialTree generators."""
     simple_tree = CombinatorialTree({'simple': {'scalar': 1,
                                                 'vector': [2, 3, 4],
                                                 'nested': {
@@ -60,6 +62,18 @@ def test_expand_tree():
               {'simple': {'scalar': 1, 'vector': 4, 'nested': {'leaf': 'b'}}},
               {'simple': {'scalar': 1, 'vector': 4, 'nested': {'leaf': 'c'}}}]
     assert result == [exp for exp in simple_tree]
+
+    # Test named_combinations generator
+    expected_names = set(['2_a', '3_a', '4_a', '2_b', '3_b', '4_b', '2_c', '3_c', '4_c'])
+    assert expected_names == set([name for name, _ in simple_tree.named_combinations(
+                                                       separator='_', max_name_length=3)])
+
+    # Test maximum length, similar names and special characters
+    long_tree = CombinatorialTree({'key1': ['th#*&^isnameistoolong1', 'th#*&^isnameistoolong2'],
+                                   'key2': ['test1', 'test2']})
+    expected_names = set(['test-thisn', 'test-thisn-2', 'test-thisn-3', 'test-thisn-4'])
+    assert expected_names == set([name for name, _ in long_tree.named_combinations(
+                                                       separator='-', max_name_length=10)])
 
 def test_validate_parameters():
     """Test validate_parameters function."""
@@ -101,6 +115,15 @@ def test_validate_parameters():
     # If check_unknown flag is not True it should not raise an error
     validate_parameters({'unkown': 0}, template_pars)
 
+    # Test special conversion
+    def convert_length(length):
+        return str(length)
+    special_conv = {'length': convert_length}
+    convert_pars = {'length': '1.0*nanometers'}
+    convert_pars = validate_parameters(convert_pars, template_pars, process_units_str=True,
+                                       special_conversions=special_conv)
+    assert convert_pars['length'] == '1.0*nanometers'
+
 @tools.raises(ValueError)
 def test_incompatible_parameters():
     """Check that validate_parameters raises exception with unknown parameter."""
@@ -115,7 +138,18 @@ def test_unknown_parameters():
     wrong_pars = {'unknown_par': 3}
     validate_parameters(wrong_pars, template_pars, check_unknown=True)
 
+def test_temp_dir_context():
+    """Test the context temporary_directory()."""
+    with temporary_directory() as tmp_dir:
+        assert os.path.isdir(tmp_dir)
+    assert not os.path.exists(tmp_dir)
 
+def test_temp_cd_context():
+    """Test the context temporary_cd()."""
+    with temporary_directory() as tmp_dir:
+        with temporary_cd(tmp_dir):
+            assert os.getcwd() == os.path.realpath(tmp_dir)
+        assert os.getcwd() != os.path.realpath(tmp_dir)
 
 def test_yank_options():
     """Test option priorities and handling."""
@@ -145,4 +179,72 @@ def test_yank_options():
     # test iteration interface
     assert yank_opt.items() == [('option1', 1), ('option2', 'test'), ('option3', -2)]
     assert yank_opt.keys() == ['option1', 'option2', 'option3']
+
+def test_TLeap_script():
+    """Test TLeap script creation."""
+    expected_script = """
+    source oldff/leaprc.ff99SBildn
+    source leaprc.gaff
+    receptor = loadPdb receptor.pdbfixer.pdb
+    loadAmberParams ligand.gaff.frcmod
+    ligand = loadMol2 path/to/ligand.gaff.mol2
+    complex = combine { receptor ligand }
+    solvateBox complex TIP3PBOX 10.0 iso
+    check complex
+    charge complex
+
+    # New section
+    saveAmberParm complex complex.prmtop complex.inpcrd
+    savePDB complex complex.pdb
+    solvateBox ligand TIP3PBOX 10.0 iso
+    saveAmberParm ligand solvent.inpcrd solvent.prmtop
+    savePDB ligand solvent.pdb
+
+    quit
+    """
+    expected_script = textwrap.dedent(expected_script[1:])  # delete first \n char
+
+    tleap = TLeap()
+    tleap.load_parameters('oldff/leaprc.ff99SBildn', 'leaprc.gaff')
+    tleap.load_group(name='receptor', file_path='receptor.pdbfixer.pdb')
+    tleap.load_parameters('ligand.gaff.frcmod')
+    tleap.load_group(name='ligand', file_path='path/to/ligand.gaff.mol2')
+    tleap.combine('complex', 'receptor', 'ligand')
+    tleap.solvate(group='complex', water_model='TIP3PBOX', clearance=10.0)
+    tleap.add_commands('check complex', 'charge complex')
+    tleap.new_section('New section')
+    tleap.save_group(group='complex', output_path='complex.prmtop')
+    tleap.save_group(group='complex', output_path='complex.pdb')
+    tleap.solvate(group='ligand', water_model='TIP3PBOX', clearance=10.0)
+    tleap.save_group(group='ligand', output_path='solvent.inpcrd')
+    tleap.save_group(group='ligand', output_path='solvent.pdb')
+
+    assert tleap.script == expected_script
+
+def test_TLeap_export_run():
+    """Check that TLeap saves and runs scripts correctly."""
+    setup_dir = get_data_filename(os.path.join('..', 'examples',
+                                               'benzene-toluene-explicit', 'setup'))
+    benzene_gaff = os.path.join(setup_dir, 'benzene.gaff.mol2')
+    benzene_frcmod = os.path.join(setup_dir, 'benzene.frcmod')
+
+    tleap = TLeap()
+    tleap.load_parameters('oldff/leaprc.ff99SB', 'leaprc.gaff')
+    tleap.load_group(name='benzene', file_path=benzene_gaff)
+    tleap.load_parameters(benzene_frcmod)
+
+    with temporary_directory() as tmp_dir:
+        output_path = os.path.join(tmp_dir, 'benzene')
+        tleap.save_group(group='benzene', output_path=output_path + '.prmtop')
+
+        export_path = os.path.join(tmp_dir, 'leap.in')
+        tleap.export_script(export_path)
+        assert os.path.isfile(export_path)
+        assert os.path.getsize(export_path) > 0
+
+        tleap.run()
+        assert os.path.isfile(output_path + '.prmtop')
+        assert os.path.isfile(output_path + '.inpcrd')
+        assert os.path.getsize(output_path + '.prmtop') > 0
+        assert os.path.getsize(output_path + '.inpcrd') > 0
 

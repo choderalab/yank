@@ -11,6 +11,7 @@ import selftest
 import platforms
 import prepare
 import run
+import script
 import status
 import analyze
 import cleanup
