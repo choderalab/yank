@@ -433,20 +433,22 @@ class YamlBuilder:
         experiment_template = {'components': {}, 'options': {}}
         components_template = {'receptor': 'str', 'ligand': 'str', 'solvent': 'str'}
 
+        if 'experiments' not in yaml_content:
+            self._experiments = {}
+            return
+
         # Check if there is a sequence of experiments or a single one
-        try:
+        if isinstance(yaml_content['experiments'], list):
             self._experiments = {exp_name: utils.CombinatorialTree(yaml_content[exp_name])
                                  for exp_name in yaml_content['experiments']}
-        except KeyError:
-            self._experiments = yaml_content.get('experiment', {})
-            if self._experiments:
-                self._experiments = {'experiment': utils.CombinatorialTree(self._experiments)}
+        else:
+            self._experiments = {'experiments': utils.CombinatorialTree(yaml_content['experiments'])}
 
         # Check validity of every experiment combination
         err_msg = ''
         for exp_name, exp in self._expand_experiments():
             if exp_name == '':
-                exp_name = 'experiment'
+                exp_name = 'experiments'
 
             # Check if we can identify components
             if 'components' not in exp:
@@ -906,7 +908,7 @@ class YamlBuilder:
         yaml_content = yaml.dump({'options': opt_section}, default_flow_style=False, line_break='\n', explicit_start=True)
         yaml_content += yaml.dump({'molecules': mol_section}, default_flow_style=False, line_break='\n')
         yaml_content += yaml.dump({'solvents': sol_section}, default_flow_style=False, line_break='\n')
-        yaml_content += yaml.dump({'experiment': exp_section}, default_flow_style=False, line_break='\n')
+        yaml_content += yaml.dump({'experiments': exp_section}, default_flow_style=False, line_break='\n')
 
         # Export YAML into a file
         with open(file_path, 'w') as f:
@@ -925,7 +927,7 @@ class YamlBuilder:
 
         """
         components = experiment['components']
-        exp_name = 'experiment' if experiment_dir == '' else os.path.basename(experiment_dir)
+        exp_name = 'experiments' if experiment_dir == '' else os.path.basename(experiment_dir)
 
         # Get and validate experiment sub-options
         exp_opts = self.options.copy()

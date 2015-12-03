@@ -314,7 +314,7 @@ def test_unkown_component():
     solvents:
         solv1:
             nonbondedMethod: NoCutoff
-    experiment:
+    experiments:
         components:
             receptor: rec
             ligand: lig
@@ -327,7 +327,7 @@ def test_no_component():
     """An exception is thrown there are no components."""
     yaml_content = """
     ---
-    experiment:
+    experiments:
         options:
             output_dir: output
     """
@@ -607,14 +607,14 @@ def test_yaml_creation():
           GBSA-OBC2:
             nonbondedMethod: NoCutoff
             implicitSolvent: OBC2
-        experiment:{}
+        experiments:{}
         """.format(options, molecules, solvent, experiment)
 
         expected_yaml_content = textwrap.dedent("""
         ---{}
         molecules:{}
         solvents:{}
-        experiment:{}
+        experiments:{}
         """.format(options, molecules, solvent, experiment))
         expected_yaml_content = expected_yaml_content[1:]  # remove first '\n'
 
@@ -656,7 +656,7 @@ def test_run_experiment():
             GBSA-OBC2:
                 nonbondedMethod: NoCutoff
                 implicitSolvent: OBC2
-        experiment:
+        experiments:
             components:
                 receptor: T4lysozyme
                 ligand: p-xylene
