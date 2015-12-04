@@ -180,6 +180,14 @@ def test_yank_options():
     assert yank_opt.items() == [('option1', 1), ('option2', 'test'), ('option3', -2)]
     assert yank_opt.keys() == ['option1', 'option2', 'option3']
 
+def test_underscore_to_camelcase():
+    """Test underscore_to_camelCase() conversion function."""
+    cases = ['', '__', 'foo', 'foo_bar', '_foo_bar_', '__foo_bar__', '__foo__bar_']
+    expected = ['', '__', 'foo', 'fooBar', '_fooBar_', '__fooBar__', '__fooBar_']
+    for exp, case in zip(expected, cases):
+        print '*', case
+        assert exp == underscore_to_camelcase(case)
+
 def test_TLeap_script():
     """Test TLeap script creation."""
     expected_script = """
