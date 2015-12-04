@@ -598,7 +598,7 @@ def underscore_to_camelcase(underscore_str):
     Examples
     --------
     >>> underscore_to_camelcase('__my___variable_')
-    ... __myVariable_
+    '__myVariable_'
 
     """
     # Count leading and trailing '_' characters
