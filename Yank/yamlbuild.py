@@ -254,6 +254,10 @@ class YamlBuilder:
 
     def build_experiment(self):
         """Set up and run all the Yank experiments."""
+        # Throw exception if there are no experiments
+        if len(self._experiments) == 0:
+            raise YamlParseError('No experiments specified!')
+
         # Run all experiments with paths relative to the script directory
         with utils.temporary_cd(self._script_dir):
             self._check_setup_resume()
