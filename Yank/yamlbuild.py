@@ -180,7 +180,7 @@ class YamlBuilder:
     ...     solvents:
     ...         vacuum:
     ...             nonbonded_method: NoCutoff
-    ...     experiment:
+    ...     experiments:
     ...         components:
     ...             receptor: T4lysozyme
     ...             ligand: p-xylene
