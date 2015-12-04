@@ -79,7 +79,7 @@ def test_script_yaml():
                 parameters: antechamber
         solvents:
             vacuum:
-                nonbondedMethod: NoCutoff
+                nonbonded_method: NoCutoff
         experiment:
             components:
                 receptor: T4lysozyme

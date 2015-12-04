@@ -77,7 +77,7 @@ def test_yaml_parsing():
         temperature: 300*kelvin
         pressure: 1*atmosphere
         constraints: AllBonds
-        hydrogenMass: 2*amus
+        hydrogen_mass: 2*amus
         restraint_type: harmonic
         randomize_ligand: yes
         randomize_ligand_sigma_multiplier: 2.0
@@ -92,7 +92,7 @@ def test_yaml_parsing():
         number_of_equilibration_iterations: 100
         minimize: False
         minimize_tolerance: 1.0 * kilojoules_per_mole / nanometers
-        minimize_maxIterations: 0
+        minimize_max_iterations: 0
         replica_mixing_scheme: swap-all
         online_analysis: no
         online_analysis_min_iterations: 20
@@ -216,31 +216,31 @@ def test_no_nonbonded_method():
     ---
     solvents:
         solvtest:
-            nonbondedCutoff: 3*nanometers
+            nonbonded_cutoff: 3*nanometers
     """
     YamlBuilder(textwrap.dedent(yaml_content))
 
 @raises(YamlParseError)
 def test_implicit_solvent_consistence():
-    """An exception is raised with NoCutoff and nonbondedCutoff."""
+    """An exception is raised with NoCutoff and nonbonded_cutoff."""
     yaml_content = """
     ---
     solvents:
         solvtest:
-            nonbondedMethod: NoCutoff
-            nonbondedCutoff: 3*nanometers
+            nonbonded_method: NoCutoff
+            nonbonded_cutoff: 3*nanometers
     """
     YamlBuilder(textwrap.dedent(yaml_content))
 
 @raises(YamlParseError)
 def test_explicit_solvent_consistence():
-    """An exception is raised with explicit nonbonded method and implicitSolvent."""
+    """An exception is raised with explicit nonbonded method and implicit_solvent."""
     yaml_content = """
     ---
     solvents:
         solvtest:
-            nonbondedMethod: PME
-            implicitSolvent: OBC2
+            nonbonded_method: PME
+            implicit_solvent: OBC2
     """
     YamlBuilder(textwrap.dedent(yaml_content))
 
@@ -251,7 +251,7 @@ def test_unknown_solvent_option():
     ---
     solvents:
         solvtest:
-            nonbondedMethod: NoCutoff
+            nonbonded_method: NoCutoff
             blabla: 3*nanometers
     """
     YamlBuilder(textwrap.dedent(yaml_content))
@@ -263,8 +263,8 @@ def test_wrong_solvent_option():
     ---
     solvents:
         solvtest:
-            nonbondedMethod: NoCutoff
-            implicitSolvent: OBX2
+            nonbonded_method: NoCutoff
+            implicit_solvent: OBX2
     """
     YamlBuilder(textwrap.dedent(yaml_content))
 
@@ -281,9 +281,11 @@ def test_exp_sequence():
             parameters: antechamber
     solvents:
         solv1:
-            nonbondedMethod: NoCutoff
+            nonbonded_method: NoCutoff
         solv2:
-            nonbondedMethod: NoCutoff
+            nonbonded_method: PME
+            nonbonded_cutoff: 1*nanometer
+            clearance: 10*angstroms
     experiment1:
         components:
             receptor: rec
@@ -313,7 +315,7 @@ def test_unkown_component():
             parameters: antechamber
     solvents:
         solv1:
-            nonbondedMethod: NoCutoff
+            nonbonded_method: NoCutoff
     experiments:
         components:
             receptor: rec
@@ -484,8 +486,8 @@ def test_setup_implicit_system_leap():
                 parameters: antechamber
         solvents:
             GBSA-OBC2:
-                nonbondedMethod: NoCutoff
-                implicitSolvent: OBC2
+                nonbonded_method: NoCutoff
+                implicit_solvent: OBC2
         """.format(tmp_dir, receptor_path, ligand_path)
 
         yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
@@ -540,7 +542,7 @@ def test_setup_explicit_system_leap():
                 parameters: antechamber
         solvents:
             PMEtip3p:
-                nonbondedMethod: PME
+                nonbonded_method: PME
                 clearance: 10*angstroms
         """.format(tmp_dir, benzene_path)
 
@@ -590,7 +592,7 @@ def test_yaml_creation():
             parameters: antechamber""".format(receptor_path, ligand_path)
         solvent = """
           vacuum:
-            nonbondedMethod: NoCutoff"""
+            nonbonded_method: NoCutoff"""
         experiment = """
           components:
             ligand: p-xylene
@@ -605,8 +607,8 @@ def test_yaml_creation():
             parameters: antechamber
         solvents:{}
           GBSA-OBC2:
-            nonbondedMethod: NoCutoff
-            implicitSolvent: OBC2
+            nonbonded_method: NoCutoff
+            implicit_solvent: OBC2
         experiments:{}
         """.format(options, molecules, solvent, experiment)
 
@@ -652,10 +654,10 @@ def test_run_experiment():
                 parameters: antechamber
         solvents:
             vacuum:
-                nonbondedMethod: NoCutoff
+                nonbonded_method: NoCutoff
             GBSA-OBC2:
-                nonbondedMethod: NoCutoff
-                implicitSolvent: OBC2
+                nonbonded_method: NoCutoff
+                implicit_solvent: OBC2
         experiments:
             components:
                 receptor: T4lysozyme

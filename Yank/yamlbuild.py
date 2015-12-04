@@ -174,7 +174,7 @@ class YamlBuilder:
     ...             parameters: antechamber
     ...     solvents:
     ...         vacuum:
-    ...             nonbondedMethod: NoCutoff
+    ...             nonbonded_method: NoCutoff
     ...     experiment:
     ...         components:
     ...             receptor: T4lysozyme
@@ -200,7 +200,7 @@ class YamlBuilder:
         'temperature': 298 * unit.kelvin,
         'pressure': 1 * unit.atmosphere,
         'constraints': openmm.app.HBonds,
-        'hydrogenMass': 1 * unit.amu
+        'hydrogen_mass': 1 * unit.amu
     }
 
     @property
@@ -342,7 +342,7 @@ class YamlBuilder:
     def _parse_solvents(self, yaml_content):
         """Load solvents information and check that their syntax is correct.
 
-        The option nonbondedMethod must be specified. All quantities are converted to
+        The option nonbonded_method must be specified. All quantities are converted to
         simtk.app.Quantity objects or openmm.app.TYPE (e.g. app.PME, app.OBC2). This
         also perform some consistency checks to verify that the user did not mix
         implicit and explicit solvent parameters.
@@ -353,9 +353,9 @@ class YamlBuilder:
             The dictionary representing the YAML script loaded by yaml.load()
 
         """
-        template_parameters = {'nonbondedMethod': openmm.app.PME, 'nonbondedCutoff': 1 * unit.angstroms,
-                               'implicitSolvent': openmm.app.OBC2, 'clearance': 10.0 * unit.angstroms}
-        openmm_app_type = ('nonbondedMethod', 'implicitSolvent')
+        template_parameters = {'nonbonded_method': openmm.app.PME, 'nonbonded_cutoff': 1 * unit.nanometer,
+                               'implicit_solvent': openmm.app.OBC2, 'clearance': 10.0 * unit.angstroms}
+        openmm_app_type = ('nonbonded_method', 'implicit_solvent')
         openmm_app_type = {option: to_openmm_app for option in openmm_app_type}
 
         self._solvents = yaml_content.get('solvents', {})
@@ -373,20 +373,20 @@ class YamlBuilder:
         for solvent_id, solvent in self._solvents.items():
 
             # Test mandatory parameters
-            if 'nonbondedMethod' not in solvent:
-                err_msg = 'solvent {} must specify nonbondedMethod'.format(solvent_id)
+            if 'nonbonded_method' not in solvent:
+                err_msg = 'solvent {} must specify nonbonded_method'.format(solvent_id)
                 raise YamlParseError(err_msg)
 
             # Test solvent consistency
-            nonbonded_method = solvent['nonbondedMethod']
+            nonbonded_method = solvent['nonbonded_method']
             if nonbonded_method == openmm.app.NoCutoff:
-                if 'nonbondedCutoff' in solvent:
-                    err_msg = ('solvent {} specify both nonbondedMethod: NoCutoff and '
-                               'and nonbondedCutoff').format(solvent_id)
+                if 'nonbonded_cutoff' in solvent:
+                    err_msg = ('solvent {} specify both nonbonded_method: NoCutoff and '
+                               'and nonbonded_cutoff').format(solvent_id)
             else:
-                if 'implicitSolvent' in solvent:
-                    err_msg = ('solvent {} specify both nonbondedMethod: {} '
-                               'and implicitSolvent').format(solvent_id, nonbonded_method)
+                if 'implicit_solvent' in solvent:
+                    err_msg = ('solvent {} specify both nonbonded_method: {} '
+                               'and implicit_solvent').format(solvent_id, nonbonded_method)
                 elif 'clearance' not in solvent:
                     err_msg = ('solvent {} uses explicit solvent but '
                                'no clearance specified').format(solvent_id)
@@ -849,8 +849,8 @@ class YamlBuilder:
         tleap.combine('complex', 'receptor', 'ligand')
 
         # Configure solvent
-        if solvent['nonbondedMethod'] == openmm.app.NoCutoff:
-            if 'implicitSolvent' in solvent:  # GBSA implicit solvent
+        if solvent['nonbonded_method'] == openmm.app.NoCutoff:
+            if 'implicit_solvent' in solvent:  # GBSA implicit solvent
                 tleap.new_section('Set GB radii to recommended values for OBC')
                 tleap.add_commands('set default PBRadii mbondi2')
         else:  # explicit solvent
@@ -972,12 +972,16 @@ class YamlBuilder:
             ligand_dsl = 'resname ' + ligand_dsl
 
             # System configuration
-            create_system_filter = set(('nonbondedMethod', 'nonbondedCutoff', 'implicitSolvent',
-                                        'constraints', 'hydrogenMass'))
+            create_system_filter = set(('nonbonded_method', 'nonbonded_cutoff', 'implicit_solvent',
+                                        'constraints', 'hydrogen_mass'))
             solvent = self._solvents[components['solvent']]
             system_pars = {opt: solvent[opt] for opt in create_system_filter if opt in solvent}
             system_pars.update({opt: exp_opts[opt] for opt in create_system_filter
                                 if opt in exp_opts})
+
+            # Convert underscore_parameters to camelCase for OpenMM API
+            system_pars = {utils.underscore_to_camelcase(opt): value
+                           for opt, value in system_pars.items()}
 
             # Prepare system
             phases, systems, positions, atom_indices = pipeline.prepare_amber(system_dir, ligand_dsl, system_pars)
