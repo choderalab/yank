@@ -141,6 +141,11 @@ class YamlParseError(Exception):
 class YamlBuilder:
     """Parse YAML configuration file and build the experiment.
 
+    The relative paths indicated in the script are assumed to be relative to
+    the script directory. However, if YamlBuilder is initiated with a string
+    rather than a file path, the paths will be relative to the user's working
+    directory.
+
     The class firstly perform a dry run to check if this is going to overwrite
     some files and raises an exception if it finds already existing output folders
     unless the options resume_setup or resume_simulation are True.
@@ -225,11 +230,14 @@ class YamlBuilder:
 
         # TODO check version of yank-yaml language
         # TODO what if there are multiple streams in the YAML file?
+        # Load YAML script and decide working directory for relative paths
         try:
             with open(yaml_source, 'r') as f:
                 yaml_content = yaml.load(f)
+            self._script_dir = os.path.dirname(yaml_source)
         except IOError:
             yaml_content = yaml.load(yaml_source)
+            self._script_dir = os.getcwd()
 
         if yaml_content is None:
             raise YamlParseError('The YAML file is empty!')
@@ -246,10 +254,12 @@ class YamlBuilder:
 
     def build_experiment(self):
         """Set up and run all the Yank experiments."""
-        self._check_setup_resume()
+        # Run all experiments with paths relative to the script directory
+        with utils.temporary_cd(self._script_dir):
+            self._check_setup_resume()
 
-        for output_dir, combination in self._expand_experiments():
-            self._run_experiment(combination, output_dir)
+            for output_dir, combination in self._expand_experiments():
+                self._run_experiment(combination, output_dir)
 
     def _validate_options(self, options):
         """Return a dictionary with YamlBuilder and Yank options validated."""
