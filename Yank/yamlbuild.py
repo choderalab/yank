@@ -903,6 +903,7 @@ class YamlBuilder:
             The path to the file to save.
 
         """
+        yaml_dir = os.path.dirname(file_path)
         components = set(experiment['components'].values())
 
         # Molecules section data
@@ -917,6 +918,15 @@ class YamlBuilder:
         exp_section = experiment.copy()
         opt_section = self._raw_yaml['options'].copy()
         opt_section.update(exp_section.pop('options', {}))
+
+        # Convert relative paths to new script directory
+        mol_section = copy.deepcopy(mol_section)  # copy to avoid modifying raw yaml
+        for molecule in mol_section.values():
+            if 'filepath' in molecule and not os.path.isabs(molecule['filepath']):
+                molecule['filepath'] = os.path.relpath(molecule['filepath'], yaml_dir)
+
+        if 'output_dir' in opt_section and not os.path.isabs(opt_section['output_dir']):
+            opt_section['output_dir'] = os.path.relpath(opt_section['output_dir'], yaml_dir)
 
         # Create YAML with the sections in order
         yaml_content = yaml.dump({'options': opt_section}, default_flow_style=False, line_break='\n', explicit_start=True)

@@ -581,15 +581,11 @@ def test_yaml_creation():
     with utils.temporary_directory() as tmp_dir:
         options = """
         options:
-          nsteps_per_iteration: 5
-          output_dir: {}""".format(tmp_dir)
+          nsteps_per_iteration: 5"""
         molecules = """
           T4lysozyme:
             filepath: {}
-            parameters: oldff/leaprc.ff99SBildn
-          p-xylene:
-            filepath: {}
-            parameters: antechamber""".format(receptor_path, ligand_path)
+            parameters: oldff/leaprc.ff99SBildn""".format(receptor_path)
         solvent = """
           vacuum:
             nonbonded_method: NoCutoff"""
@@ -601,7 +597,11 @@ def test_yaml_creation():
 
         yaml_content = """
         ---{}
+          output_dir: {}
         molecules:{}
+          p-xylene:
+            filepath: {}
+            parameters: antechamber
           benzene:
             filepath: benzene.mol2
             parameters: antechamber
@@ -610,14 +610,23 @@ def test_yaml_creation():
             nonbonded_method: NoCutoff
             implicit_solvent: OBC2
         experiments:{}
-        """.format(options, molecules, solvent, experiment)
+        """.format(options, os.path.relpath(tmp_dir), molecules,
+                   os.path.relpath(ligand_path), solvent, experiment)
 
+        # We need to check whether the relative paths to the output directory and
+        # for p-xylene are handled correctly while absolute paths (T4lysozyme) are
+        # left untouched
         expected_yaml_content = textwrap.dedent("""
         ---{}
+          output_dir: .
         molecules:{}
+          p-xylene:
+            filepath: {}
+            parameters: antechamber
         solvents:{}
         experiments:{}
-        """.format(options, molecules, solvent, experiment))
+        """.format(options, molecules, os.path.relpath(ligand_path, tmp_dir),
+                   solvent, experiment))
         expected_yaml_content = expected_yaml_content[1:]  # remove first '\n'
 
         yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
