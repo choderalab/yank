@@ -74,6 +74,8 @@ def test_yaml_parsing():
         resume_setup: true
         resume_simulation: true
         output_dir: /path/to/output/
+        setup_dir: /path/to/output/setup/
+        experiments_dir: /path/to/output/experiments/
         temperature: 300*kelvin
         pressure: 1*atmosphere
         constraints: AllBonds
@@ -101,7 +103,7 @@ def test_yaml_parsing():
     """
 
     yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
-    assert len(yaml_builder.options) == 30
+    assert len(yaml_builder.options) == 32
     assert len(yaml_builder.yank_options) == 21
 
     # Check correct types
@@ -353,7 +355,7 @@ def test_yaml_mol2_antechamber():
         yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
         yaml_builder._setup_molecules(tmp_dir, 'benzene')
 
-        output_dir = os.path.join(tmp_dir, YamlBuilder.SETUP_MOLECULES_DIR, 'benzene')
+        output_dir = os.path.join(tmp_dir, YamlBuilder.MOLECULES_DIR, 'benzene')
         gaff_path = os.path.join(output_dir, 'benzene.gaff.mol2')
         frcmod_path = os.path.join(output_dir, 'benzene.frcmod')
 
@@ -403,7 +405,7 @@ def test_setup_name_smiles_antechamber():
         yaml_builder._setup_molecules(tmp_dir, 'toluene', 'benzene', 'p-xylene')
 
         for mol in ['toluene', 'p-xylene']:
-            output_dir = os.path.join(tmp_dir, YamlBuilder.SETUP_MOLECULES_DIR, mol)
+            output_dir = os.path.join(tmp_dir, YamlBuilder.MOLECULES_DIR, mol)
             assert os.path.exists(os.path.join(output_dir, mol + '.mol2'))
             assert os.path.exists(os.path.join(output_dir, mol + '.gaff.mol2'))
             assert os.path.exists(os.path.join(output_dir, mol + '.frcmod'))
@@ -412,7 +414,7 @@ def test_setup_name_smiles_antechamber():
             assert os.path.getsize(os.path.join(output_dir, mol + '.frcmod')) > 0
 
         # Test that molecules do not overlap
-        toluene_path = os.path.join(tmp_dir, YamlBuilder.SETUP_MOLECULES_DIR,
+        toluene_path = os.path.join(tmp_dir, YamlBuilder.MOLECULES_DIR,
                                     'toluene', 'toluene.gaff.mol2')
         toluene_pos = utils.get_oe_mol_positions(utils.read_oe_molecule(toluene_path))
         benzene_pos = utils.get_oe_mol_positions(utils.read_oe_molecule(benzene_path))
@@ -462,7 +464,7 @@ def test_epik_enumeration():
         yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
         yaml_builder._setup_molecules(tmp_dir, 'benzene')
 
-        output_dir = os.path.join(tmp_dir, YamlBuilder.SETUP_MOLECULES_DIR, 'benzene')
+        output_dir = os.path.join(tmp_dir, YamlBuilder.MOLECULES_DIR, 'benzene')
         assert os.path.exists(os.path.join(output_dir, 'benzene-epik.mol2'))
         assert os.path.getsize(os.path.join(output_dir, 'benzene-epik.mol2')) > 0
 
@@ -646,14 +648,13 @@ def test_run_experiment():
     receptor_path = os.path.join(setup_dir, 'receptor.pdbfixer.pdb')
     ligand_path = os.path.join(setup_dir, 'ligand.tripos.mol2')
     with utils.temporary_directory() as tmp_dir:
-        yaml_dir = os.path.join(tmp_dir, 'main')
         yaml_content = """
         ---
         options:
             resume_setup: no
             resume_simulation: no
             number_of_iterations: 1
-            output_dir: {}
+            output_dir: overwritten
         molecules:
             T4lysozyme:
                 filepath: {}
@@ -674,12 +675,14 @@ def test_run_experiment():
                 solvent: [vacuum, GBSA-OBC2]
             options:
                 output_dir: {}
-        """.format(yaml_dir, receptor_path, ligand_path, tmp_dir)
+                setup_dir: ''
+                experiments_dir: ''
+        """.format(receptor_path, ligand_path, tmp_dir)
 
         yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
 
         # Now check_setup_resume should not raise exceptions
-        yaml_builder._check_setup_resume()
+        yaml_builder._check_resume()
 
         # We setup a molecule and with resume_setup: no we can't do the experiment
         err_msg = ''
@@ -716,7 +719,7 @@ def test_run_experiment():
         # The experiments folders are correctly named and positioned
         for exp_name in ['vacuum', 'GBSAOBC2']:
             # The output directory must be the one in the experiment section
-            output_dir = os.path.join(tmp_dir, yaml_builder.EXPERIMENTS_DIR, exp_name)
+            output_dir = os.path.join(tmp_dir, exp_name)
             assert os.path.isdir(output_dir)
             assert os.path.isfile(os.path.join(output_dir, 'complex-implicit.nc'))
             assert os.path.isfile(os.path.join(output_dir, 'solvent-implicit.nc'))
