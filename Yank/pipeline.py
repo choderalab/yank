@@ -99,6 +99,31 @@ def find_components(topology, ligand_dsl, solvent_resnames=_SOLVENT_RESNAMES):
     return atom_indices
 
 def prepare_amber(system_dir, ligand_dsl, system_parameters, verbose=False):
+    """Create a system from prmtop and inpcrd files.
+
+    Parameters
+    ----------
+    system_dir : str
+        Path to the directory containing the prmtop and inpcrd files.
+    ligand_dsl : str
+        MDTraj DSL string that specify the ligand atoms.
+    system_parameters : dict
+        A kwargs dictionary to pass to openmm.app.AmberPrmtopFile.createSystem().
+    verbose : bool
+        Whether or not to log informations (default is False).
+
+    Returns
+    -------
+    phases : list of str
+       Phases (thermodynamic legs) of the calculation.
+    systems : dict
+       systems[phase] is the OpenMM System reference object for phase 'phase'.
+    positions : dict
+       positions[phase] is a numpy array of positions for initializing replicas.
+    atom_indices : dict
+       atom_indices[phase][component] is list of atom indices for component 'component' in phase 'phase'.
+
+    """
     systems = {}  # systems[phase] is the System object associated with phase 'phase'
     positions = {}  # positions[phase] is a list of coordinates associated with phase 'phase'
     atom_indices = {}  # ligand_atoms[phase] is a list of ligand atom indices of phase 'phase'

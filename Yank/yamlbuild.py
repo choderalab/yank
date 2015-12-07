@@ -141,6 +141,11 @@ class YamlParseError(Exception):
 class YamlBuilder:
     """Parse YAML configuration file and build the experiment.
 
+    The relative paths indicated in the script are assumed to be relative to
+    the script directory. However, if YamlBuilder is initiated with a string
+    rather than a file path, the paths will be relative to the user's working
+    directory.
+
     The class firstly perform a dry run to check if this is going to overwrite
     some files and raises an exception if it finds already existing output folders
     unless the options resume_setup or resume_simulation are True.
@@ -154,12 +159,13 @@ class YamlBuilder:
 
     Examples
     --------
+    >>> import textwrap
     >>> setup_dir = utils.get_data_filename(os.path.join('..', 'examples',
     ...                                     'p-xylene-implicit', 'setup'))
     >>> pxylene_path = os.path.join(setup_dir, 'ligand.tripos.mol2')
     >>> lysozyme_path = os.path.join(setup_dir, 'receptor.pdbfixer.pdb')
     >>> with utils.temporary_directory() as tmp_dir:
-    >>>     yaml_content = '''
+    ...     yaml_content = '''
     ...     ---
     ...     options:
     ...         number_of_iterations: 1
@@ -173,8 +179,8 @@ class YamlBuilder:
     ...             parameters: antechamber
     ...     solvents:
     ...         vacuum:
-    ...             nonbondedMethod: NoCutoff
-    ...     experiment:
+    ...             nonbonded_method: NoCutoff
+    ...     experiments:
     ...         components:
     ...             receptor: T4lysozyme
     ...             ligand: p-xylene
@@ -185,21 +191,21 @@ class YamlBuilder:
 
     """
 
-    SETUP_DIR = 'setup'
-    SETUP_SYSTEMS_DIR = os.path.join(SETUP_DIR, 'systems')
-    SETUP_MOLECULES_DIR = os.path.join(SETUP_DIR, 'molecules')
-    EXPERIMENTS_DIR = 'experiments'
+    SYSTEMS_DIR = 'systems'
+    MOLECULES_DIR = 'molecules'
 
     DEFAULT_OPTIONS = {
         'verbose': False,
         'mpi': False,
         'resume_setup': False,
         'resume_simulation': False,
-        'output_dir': 'output/',
+        'output_dir': 'output',
+        'setup_dir': 'setup',
+        'experiments_dir': 'experiments',
         'temperature': 298 * unit.kelvin,
         'pressure': 1 * unit.atmosphere,
         'constraints': openmm.app.HBonds,
-        'hydrogenMass': 1 * unit.amu
+        'hydrogen_mass': 1 * unit.amu
     }
 
     @property
@@ -224,11 +230,14 @@ class YamlBuilder:
 
         # TODO check version of yank-yaml language
         # TODO what if there are multiple streams in the YAML file?
+        # Load YAML script and decide working directory for relative paths
         try:
             with open(yaml_source, 'r') as f:
                 yaml_content = yaml.load(f)
+            self._script_dir = os.path.dirname(yaml_source)
         except IOError:
             yaml_content = yaml.load(yaml_source)
+            self._script_dir = os.getcwd()
 
         if yaml_content is None:
             raise YamlParseError('The YAML file is empty!')
@@ -245,10 +254,16 @@ class YamlBuilder:
 
     def build_experiment(self):
         """Set up and run all the Yank experiments."""
-        self._check_setup_resume()
+        # Throw exception if there are no experiments
+        if len(self._experiments) == 0:
+            raise YamlParseError('No experiments specified!')
 
-        for output_dir, combination in self._expand_experiments():
-            self._run_experiment(combination, output_dir)
+        # Run all experiments with paths relative to the script directory
+        with utils.temporary_cd(self._script_dir):
+            self._check_resume()
+
+            for output_dir, combination in self._expand_experiments():
+                self._run_experiment(combination, output_dir)
 
     def _validate_options(self, options):
         """Return a dictionary with YamlBuilder and Yank options validated."""
@@ -268,6 +283,27 @@ class YamlBuilder:
         """Return the options that do not belong to YamlBuilder."""
         return {opt: val for opt, val in options.items()
                 if opt not in self.DEFAULT_OPTIONS}
+
+    def _determine_experiment_options(self, experiment):
+        """Merge the options specified in the experiment section with the general ones.
+
+        Options in the general section have priority. Options in the experiment section
+        are validated.
+
+        Parameters
+        ----------
+        experiment : dict
+            The dictionary encoding the experiment.
+
+        Returns
+        -------
+        exp_options : dict
+            A new dictionary containing the all the options that apply for the experiment.
+
+        """
+        exp_options = self.options.copy()
+        exp_options.update(self._validate_options(experiment.get('options', {})))
+        return exp_options
 
     def _parse_options(self, yaml_content):
         """Validate and store options in the script.
@@ -341,7 +377,7 @@ class YamlBuilder:
     def _parse_solvents(self, yaml_content):
         """Load solvents information and check that their syntax is correct.
 
-        The option nonbondedMethod must be specified. All quantities are converted to
+        The option nonbonded_method must be specified. All quantities are converted to
         simtk.app.Quantity objects or openmm.app.TYPE (e.g. app.PME, app.OBC2). This
         also perform some consistency checks to verify that the user did not mix
         implicit and explicit solvent parameters.
@@ -352,9 +388,9 @@ class YamlBuilder:
             The dictionary representing the YAML script loaded by yaml.load()
 
         """
-        template_parameters = {'nonbondedMethod': openmm.app.PME, 'nonbondedCutoff': 1 * unit.angstroms,
-                               'implicitSolvent': openmm.app.OBC2, 'clearance': 10.0 * unit.angstroms}
-        openmm_app_type = ('nonbondedMethod', 'implicitSolvent')
+        template_parameters = {'nonbonded_method': openmm.app.PME, 'nonbonded_cutoff': 1 * unit.nanometer,
+                               'implicit_solvent': openmm.app.OBC2, 'clearance': 10.0 * unit.angstroms}
+        openmm_app_type = ('nonbonded_method', 'implicit_solvent')
         openmm_app_type = {option: to_openmm_app for option in openmm_app_type}
 
         self._solvents = yaml_content.get('solvents', {})
@@ -372,20 +408,20 @@ class YamlBuilder:
         for solvent_id, solvent in self._solvents.items():
 
             # Test mandatory parameters
-            if 'nonbondedMethod' not in solvent:
-                err_msg = 'solvent {} must specify nonbondedMethod'.format(solvent_id)
+            if 'nonbonded_method' not in solvent:
+                err_msg = 'solvent {} must specify nonbonded_method'.format(solvent_id)
                 raise YamlParseError(err_msg)
 
             # Test solvent consistency
-            nonbonded_method = solvent['nonbondedMethod']
+            nonbonded_method = solvent['nonbonded_method']
             if nonbonded_method == openmm.app.NoCutoff:
-                if 'nonbondedCutoff' in solvent:
-                    err_msg = ('solvent {} specify both nonbondedMethod: NoCutoff and '
-                               'and nonbondedCutoff').format(solvent_id)
+                if 'nonbonded_cutoff' in solvent:
+                    err_msg = ('solvent {} specify both nonbonded_method: NoCutoff and '
+                               'and nonbonded_cutoff').format(solvent_id)
             else:
-                if 'implicitSolvent' in solvent:
-                    err_msg = ('solvent {} specify both nonbondedMethod: {} '
-                               'and implicitSolvent').format(solvent_id, nonbonded_method)
+                if 'implicit_solvent' in solvent:
+                    err_msg = ('solvent {} specify both nonbonded_method: {} '
+                               'and implicit_solvent').format(solvent_id, nonbonded_method)
                 elif 'clearance' not in solvent:
                     err_msg = ('solvent {} uses explicit solvent but '
                                'no clearance specified').format(solvent_id)
@@ -432,20 +468,22 @@ class YamlBuilder:
         experiment_template = {'components': {}, 'options': {}}
         components_template = {'receptor': 'str', 'ligand': 'str', 'solvent': 'str'}
 
+        if 'experiments' not in yaml_content:
+            self._experiments = {}
+            return
+
         # Check if there is a sequence of experiments or a single one
-        try:
+        if isinstance(yaml_content['experiments'], list):
             self._experiments = {exp_name: utils.CombinatorialTree(yaml_content[exp_name])
                                  for exp_name in yaml_content['experiments']}
-        except KeyError:
-            self._experiments = yaml_content.get('experiment', {})
-            if self._experiments:
-                self._experiments = {'experiment': utils.CombinatorialTree(self._experiments)}
+        else:
+            self._experiments = {'experiments': utils.CombinatorialTree(yaml_content['experiments'])}
 
         # Check validity of every experiment combination
         err_msg = ''
         for exp_name, exp in self._expand_experiments():
             if exp_name == '':
-                exp_name = 'experiment'
+                exp_name = 'experiments'
 
             # Check if we can identify components
             if 'components' not in exp:
@@ -471,7 +509,39 @@ class YamlBuilder:
             if err_msg != '':
                 raise YamlParseError(err_msg)
 
-    def _check_molecule_setup(self, output_dir, molecule_id):
+    @staticmethod
+    def _get_setup_dir(experiment_options):
+        """Return the path to the directory where the setup output files
+        should be stored.
+
+        Parameters
+        ----------
+        experiment_options : dict
+            A dictionary containing the validated options that apply to the
+            experiment as obtained by _determine_experiment_options().
+
+        """
+        return os.path.join(experiment_options['output_dir'], experiment_options['setup_dir'])
+
+    @staticmethod
+    def _get_experiment_dir(experiment_options, experiment_subdir):
+        """Return the path to the directory where the experiment output files
+        should be stored.
+
+        Parameters
+        ----------
+        experiment_options : dict
+            A dictionary containing the validated options that apply to the
+            experiment as obtained by _determine_experiment_options().
+        experiment_subdir : str
+            The relative path w.r.t. the main experiments directory (determined
+            through the options) of the experiment-specific subfolder.
+
+        """
+        return os.path.join(experiment_options['output_dir'],
+                            experiment_options['experiments_dir'], experiment_subdir)
+
+    def _check_molecule_setup(self, setup_dir, molecule_id):
         """Check whether the molecule has been set up already.
 
         The molecule must be set up if it needs to be parametrize by antechamber
@@ -482,8 +552,8 @@ class YamlBuilder:
 
         Parameters
         ----------
-        output_dir : str
-            The path to the main output directory specified by the user in the YAML options.
+        setup_dir : str
+            The path to the main setup directory specified by the user in the YAML options.
         molecule_id : str
             The id of the molecule indicated by the user in the YAML file.
 
@@ -507,7 +577,7 @@ class YamlBuilder:
         parameters = ''
         is_setup = False
         raw_molecule_descr = self._raw_yaml['molecules'][molecule_id]
-        molecule_dir = os.path.join(output_dir, self.SETUP_MOLECULES_DIR, molecule_id)
+        molecule_dir = os.path.join(setup_dir, self.MOLECULES_DIR, molecule_id)
 
         # Check that this molecule doesn't have be generated by OpenEye
         # OpenEye and that the eventual antechamber output already exists
@@ -524,13 +594,13 @@ class YamlBuilder:
         return is_setup, molecule_dir, parameters, filepath
 
     @classmethod
-    def _check_system_setup(cls, output_dir, receptor_id, ligand_id, solvent_id):
+    def _check_system_setup(cls, setup_dir, receptor_id, ligand_id, solvent_id):
         """Check whether the system has been set up already.
 
         Parameters
         ----------
-        output_dir : str
-            The path to the main output directory specified by the user in the YAML options.
+        setup_dir : str
+            The path to the main setup directory specified by the user in the YAML options.
         receptor_id : str
             The id of the receptor indicated by the user in the YAML file.
         ligand_id : str
@@ -547,19 +617,14 @@ class YamlBuilder:
 
         """
         system_dir = '_'.join((receptor_id, ligand_id, solvent_id))
-        system_dir = os.path.join(output_dir, cls.SETUP_SYSTEMS_DIR, system_dir)
+        system_dir = os.path.join(setup_dir, cls.SYSTEMS_DIR, system_dir)
         is_setup = (os.path.exists(os.path.join(system_dir, 'complex.prmtop')) and
                     os.path.exists(os.path.join(system_dir, 'complex.inpcrd')) and
                     os.path.exists(os.path.join(system_dir, 'solvent.prmtop')) and
                     os.path.exists(os.path.join(system_dir, 'solvent.inpcrd')))
         return is_setup, system_dir
 
-    @classmethod
-    def _get_experiment_dir(cls, output_dir, experiment_dir):
-        """Return directory where the experiment output files should be stored."""
-        return os.path.join(output_dir, cls.EXPERIMENTS_DIR, experiment_dir)
-
-    def _check_setup_resume(self):
+    def _check_resume(self):
         """Perform dry run to check if we are going to overwrite files.
 
         If we find folders that YamlBuilder should create we throw an Exception
@@ -573,18 +638,10 @@ class YamlBuilder:
         """
         err_msg = ''
         for exp_sub_dir, combination in self._expand_experiments():
-            try:
-                output_dir = combination['options']['output_dir']
-            except KeyError:
-                output_dir = self.options['output_dir']
-            try:
-                resume_setup = combination['options']['resume_setup']
-            except KeyError:
-                resume_setup = self.options['resume_setup']
-            try:
-                resume_sim = combination['options']['resume_simulation']
-            except KeyError:
-                resume_sim = self.options['resume_simulation']
+            # Determine and validate options
+            exp_options = self._determine_experiment_options(combination)
+            resume_sim = exp_options['resume_simulation']
+            resume_setup = exp_options['resume_setup']
 
             # Identify components
             components = combination['components']
@@ -593,19 +650,20 @@ class YamlBuilder:
             solvent_id = components['solvent']
 
             # Check experiment dir
-            experiment_dir = self._get_experiment_dir(output_dir, exp_sub_dir)
+            experiment_dir = self._get_experiment_dir(exp_options, exp_sub_dir)
             if os.path.exists(experiment_dir) and not resume_sim:
                 err_msg = 'experiment directory {}'.format(experiment_dir)
                 solving_option = 'resume_simulation'
             else:
                 # Check system and molecule setup dirs
-                is_sys_setup, system_dir = self._check_system_setup(output_dir, receptor_id,
+                setup_dir = self._get_setup_dir(exp_options)
+                is_sys_setup, system_dir = self._check_system_setup(setup_dir, receptor_id,
                                                                     ligand_id, solvent_id)
                 if is_sys_setup and not resume_setup:
                     err_msg = 'system setup directory {}'.format(system_dir)
                 else:
                     for molecule_id in [receptor_id, ligand_id]:
-                        is_setup, mol_dir, param = self._check_molecule_setup(output_dir, molecule_id)[:3]
+                        is_setup, mol_dir, param = self._check_molecule_setup(setup_dir, molecule_id)[:3]
                         if is_setup and param != '' and not resume_setup:
                             err_msg = 'molecule setup directory {}'.format(mol_dir)
                             break
@@ -650,7 +708,7 @@ class YamlBuilder:
 
         return molecule
 
-    def _setup_molecules(self, output_dir, *args):
+    def _setup_molecules(self, setup_dir, *args):
         """Set up the files needed to generate the system for all the molecules.
 
         If OpenEye tools are installed, this generate the molecules when the source is
@@ -667,8 +725,8 @@ class YamlBuilder:
 
         Parameters
         ----------
-        output_dir : str
-            The path to the main output directory specified by the user in the YAML options
+        setup_dir : str
+            The path to the main setup directory specified by the user in the YAML options
 
         Other parameters
         ----------------
@@ -736,7 +794,7 @@ class YamlBuilder:
         # Save parametrized molecules
         for mol_id in args:
             mol_descr = self._molecules[mol_id]
-            is_setup, mol_dir, parameters, filepath = self._check_molecule_setup(output_dir, mol_id)
+            is_setup, mol_dir, parameters, filepath = self._check_molecule_setup(setup_dir, mol_id)
 
             # Have we already processed this molecule? Do we have to do it at all?
             # We don't want to create the output folder if we don't need to
@@ -781,7 +839,7 @@ class YamlBuilder:
                 mol_descr['filepath'] = os.path.join(mol_dir, mol_id + '.gaff.mol2')
                 mol_descr['parameters'] = os.path.join(mol_dir, mol_id + '.frcmod')
 
-    def _setup_system(self, output_dir, components):
+    def _setup_system(self, setup_dir, components):
         """Create the prmtop and inpcrd files from the given components.
 
         This calls _setup_molecules() so there's no need to call it ahead. The
@@ -790,8 +848,8 @@ class YamlBuilder:
 
         Parameters
         ----------
-        output_dir : str
-            The path to the main output directory specified by the user in the YAML options
+        setup_dir : str
+            The path to the main setup directory specified by the user in the YAML options
         components : dict
             A dictionary containing the keys 'receptor', 'ligand' and 'solvent' with the ids
             of molecules and solvents
@@ -812,7 +870,7 @@ class YamlBuilder:
         solvent = self._solvents[solvent_id]
 
         # Check if system has been already processed
-        is_setup, system_dir = self._check_system_setup(output_dir, receptor_id,
+        is_setup, system_dir = self._check_system_setup(setup_dir, receptor_id,
                                                         ligand_id, solvent_id)
         if is_setup:
             return system_dir
@@ -823,7 +881,7 @@ class YamlBuilder:
             os.makedirs(system_dir)
 
         # Setup molecules
-        self._setup_molecules(output_dir, receptor_id, ligand_id)
+        self._setup_molecules(setup_dir, receptor_id, ligand_id)
 
         # Create tleap script
         tleap = utils.TLeap()
@@ -846,8 +904,8 @@ class YamlBuilder:
         tleap.combine('complex', 'receptor', 'ligand')
 
         # Configure solvent
-        if solvent['nonbondedMethod'] == openmm.app.NoCutoff:
-            if 'implicitSolvent' in solvent:  # GBSA implicit solvent
+        if solvent['nonbonded_method'] == openmm.app.NoCutoff:
+            if 'implicit_solvent' in solvent:  # GBSA implicit solvent
                 tleap.new_section('Set GB radii to recommended values for OBC')
                 tleap.add_commands('set default PBRadii mbondi2')
         else:  # explicit solvent
@@ -886,6 +944,7 @@ class YamlBuilder:
             The path to the file to save.
 
         """
+        yaml_dir = os.path.dirname(file_path)
         components = set(experiment['components'].values())
 
         # Molecules section data
@@ -901,11 +960,30 @@ class YamlBuilder:
         opt_section = self._raw_yaml['options'].copy()
         opt_section.update(exp_section.pop('options', {}))
 
+        # Convert relative paths to new script directory
+        mol_section = copy.deepcopy(mol_section)  # copy to avoid modifying raw yaml
+        for molecule in mol_section.values():
+            if 'filepath' in molecule and not os.path.isabs(molecule['filepath']):
+                molecule['filepath'] = os.path.relpath(molecule['filepath'], yaml_dir)
+
+        try:
+            output_dir = opt_section['output_dir']
+        except KeyError:
+            output_dir = self.DEFAULT_OPTIONS['output_dir']
+        if not os.path.isabs(output_dir):
+            opt_section['output_dir'] = os.path.relpath(output_dir, yaml_dir)
+
+        # If we are converting a combinatorial experiment into a
+        # single one we must set the correct experiment directory
+        experiment_dir = os.path.relpath(yaml_dir, output_dir)
+        if experiment_dir != self.DEFAULT_OPTIONS['experiments_dir']:
+            opt_section['experiments_dir'] = experiment_dir
+
         # Create YAML with the sections in order
         yaml_content = yaml.dump({'options': opt_section}, default_flow_style=False, line_break='\n', explicit_start=True)
         yaml_content += yaml.dump({'molecules': mol_section}, default_flow_style=False, line_break='\n')
         yaml_content += yaml.dump({'solvents': sol_section}, default_flow_style=False, line_break='\n')
-        yaml_content += yaml.dump({'experiment': exp_section}, default_flow_style=False, line_break='\n')
+        yaml_content += yaml.dump({'experiments': exp_section}, default_flow_style=False, line_break='\n')
 
         # Export YAML into a file
         with open(file_path, 'w') as f:
@@ -924,11 +1002,10 @@ class YamlBuilder:
 
         """
         components = experiment['components']
-        exp_name = 'experiment' if experiment_dir == '' else os.path.basename(experiment_dir)
+        exp_name = 'experiments' if experiment_dir == '' else os.path.basename(experiment_dir)
 
         # Get and validate experiment sub-options
-        exp_opts = self.options.copy()
-        exp_opts.update(self._validate_options(experiment.get('options', {})))
+        exp_opts = self._determine_experiment_options(experiment)
         yank_opts = self._isolate_yank_options(exp_opts)
 
         # Configure MPI, if requested
@@ -942,7 +1019,7 @@ class YamlBuilder:
         # TODO configure platform and precision when they are fixed in Yank
 
         # Create directory and configure logger for this experiment
-        results_dir = self._get_experiment_dir(exp_opts['output_dir'], experiment_dir)
+        results_dir = self._get_experiment_dir(exp_opts, experiment_dir)
         if not os.path.isdir(results_dir):
             os.makedirs(results_dir)
             resume = False
@@ -960,7 +1037,8 @@ class YamlBuilder:
             self._generate_yaml(experiment, os.path.join(results_dir, exp_name + '.yaml'))
 
             # Determine system files path
-            system_dir = self._setup_system(exp_opts['output_dir'], components)
+            setup_dir = self._get_setup_dir(exp_opts)
+            system_dir = self._setup_system(setup_dir, components)
 
             # Get ligand resname for alchemical atom selection
             ligand_dsl = utils.get_mol2_resname(self._molecules[components['ligand']]['filepath'])
@@ -969,12 +1047,16 @@ class YamlBuilder:
             ligand_dsl = 'resname ' + ligand_dsl
 
             # System configuration
-            create_system_filter = set(('nonbondedMethod', 'nonbondedCutoff', 'implicitSolvent',
-                                        'constraints', 'hydrogenMass'))
+            create_system_filter = set(('nonbonded_method', 'nonbonded_cutoff', 'implicit_solvent',
+                                        'constraints', 'hydrogen_mass'))
             solvent = self._solvents[components['solvent']]
             system_pars = {opt: solvent[opt] for opt in create_system_filter if opt in solvent}
             system_pars.update({opt: exp_opts[opt] for opt in create_system_filter
                                 if opt in exp_opts})
+
+            # Convert underscore_parameters to camelCase for OpenMM API
+            system_pars = {utils.underscore_to_camelcase(opt): value
+                           for opt, value in system_pars.items()}
 
             # Prepare system
             phases, systems, positions, atom_indices = pipeline.prepare_amber(system_dir, ligand_dsl, system_pars)

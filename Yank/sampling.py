@@ -514,7 +514,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         logger.debug("Replica %5d/%5d: initial energy %8.3f kT", replica_index, self.nstates, state.reduced_potential(positions, box_vectors=box_vectors, context=context))
 
         # Minimize energy.
-        self.mm.LocalEnergyMinimizer.minimize(context, self.minimize_tolerance, self.minimize_maxIterations)
+        self.mm.LocalEnergyMinimizer.minimize(context, self.minimize_tolerance, self.minimize_max_iterations)
 
         # Store final positions
         positions = context.getState(getPositions=True,enforcePeriodicBox=True).getPositions(asNumpy=True)

@@ -74,10 +74,12 @@ def test_yaml_parsing():
         resume_setup: true
         resume_simulation: true
         output_dir: /path/to/output/
+        setup_dir: /path/to/output/setup/
+        experiments_dir: /path/to/output/experiments/
         temperature: 300*kelvin
         pressure: 1*atmosphere
         constraints: AllBonds
-        hydrogenMass: 2*amus
+        hydrogen_mass: 2*amus
         restraint_type: harmonic
         randomize_ligand: yes
         randomize_ligand_sigma_multiplier: 2.0
@@ -92,7 +94,7 @@ def test_yaml_parsing():
         number_of_equilibration_iterations: 100
         minimize: False
         minimize_tolerance: 1.0 * kilojoules_per_mole / nanometers
-        minimize_maxIterations: 0
+        minimize_max_iterations: 0
         replica_mixing_scheme: swap-all
         online_analysis: no
         online_analysis_min_iterations: 20
@@ -101,7 +103,7 @@ def test_yaml_parsing():
     """
 
     yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
-    assert len(yaml_builder.options) == 30
+    assert len(yaml_builder.options) == 32
     assert len(yaml_builder.yank_options) == 21
 
     # Check correct types
@@ -216,31 +218,31 @@ def test_no_nonbonded_method():
     ---
     solvents:
         solvtest:
-            nonbondedCutoff: 3*nanometers
+            nonbonded_cutoff: 3*nanometers
     """
     YamlBuilder(textwrap.dedent(yaml_content))
 
 @raises(YamlParseError)
 def test_implicit_solvent_consistence():
-    """An exception is raised with NoCutoff and nonbondedCutoff."""
+    """An exception is raised with NoCutoff and nonbonded_cutoff."""
     yaml_content = """
     ---
     solvents:
         solvtest:
-            nonbondedMethod: NoCutoff
-            nonbondedCutoff: 3*nanometers
+            nonbonded_method: NoCutoff
+            nonbonded_cutoff: 3*nanometers
     """
     YamlBuilder(textwrap.dedent(yaml_content))
 
 @raises(YamlParseError)
 def test_explicit_solvent_consistence():
-    """An exception is raised with explicit nonbonded method and implicitSolvent."""
+    """An exception is raised with explicit nonbonded method and implicit_solvent."""
     yaml_content = """
     ---
     solvents:
         solvtest:
-            nonbondedMethod: PME
-            implicitSolvent: OBC2
+            nonbonded_method: PME
+            implicit_solvent: OBC2
     """
     YamlBuilder(textwrap.dedent(yaml_content))
 
@@ -251,7 +253,7 @@ def test_unknown_solvent_option():
     ---
     solvents:
         solvtest:
-            nonbondedMethod: NoCutoff
+            nonbonded_method: NoCutoff
             blabla: 3*nanometers
     """
     YamlBuilder(textwrap.dedent(yaml_content))
@@ -263,8 +265,8 @@ def test_wrong_solvent_option():
     ---
     solvents:
         solvtest:
-            nonbondedMethod: NoCutoff
-            implicitSolvent: OBX2
+            nonbonded_method: NoCutoff
+            implicit_solvent: OBX2
     """
     YamlBuilder(textwrap.dedent(yaml_content))
 
@@ -281,9 +283,11 @@ def test_exp_sequence():
             parameters: antechamber
     solvents:
         solv1:
-            nonbondedMethod: NoCutoff
+            nonbonded_method: NoCutoff
         solv2:
-            nonbondedMethod: NoCutoff
+            nonbonded_method: PME
+            nonbonded_cutoff: 1*nanometer
+            clearance: 10*angstroms
     experiment1:
         components:
             receptor: rec
@@ -313,8 +317,8 @@ def test_unkown_component():
             parameters: antechamber
     solvents:
         solv1:
-            nonbondedMethod: NoCutoff
-    experiment:
+            nonbonded_method: NoCutoff
+    experiments:
         components:
             receptor: rec
             ligand: lig
@@ -327,7 +331,7 @@ def test_no_component():
     """An exception is thrown there are no components."""
     yaml_content = """
     ---
-    experiment:
+    experiments:
         options:
             output_dir: output
     """
@@ -351,7 +355,7 @@ def test_yaml_mol2_antechamber():
         yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
         yaml_builder._setup_molecules(tmp_dir, 'benzene')
 
-        output_dir = os.path.join(tmp_dir, YamlBuilder.SETUP_MOLECULES_DIR, 'benzene')
+        output_dir = os.path.join(tmp_dir, YamlBuilder.MOLECULES_DIR, 'benzene')
         gaff_path = os.path.join(output_dir, 'benzene.gaff.mol2')
         frcmod_path = os.path.join(output_dir, 'benzene.frcmod')
 
@@ -401,7 +405,7 @@ def test_setup_name_smiles_antechamber():
         yaml_builder._setup_molecules(tmp_dir, 'toluene', 'benzene', 'p-xylene')
 
         for mol in ['toluene', 'p-xylene']:
-            output_dir = os.path.join(tmp_dir, YamlBuilder.SETUP_MOLECULES_DIR, mol)
+            output_dir = os.path.join(tmp_dir, YamlBuilder.MOLECULES_DIR, mol)
             assert os.path.exists(os.path.join(output_dir, mol + '.mol2'))
             assert os.path.exists(os.path.join(output_dir, mol + '.gaff.mol2'))
             assert os.path.exists(os.path.join(output_dir, mol + '.frcmod'))
@@ -410,7 +414,7 @@ def test_setup_name_smiles_antechamber():
             assert os.path.getsize(os.path.join(output_dir, mol + '.frcmod')) > 0
 
         # Test that molecules do not overlap
-        toluene_path = os.path.join(tmp_dir, YamlBuilder.SETUP_MOLECULES_DIR,
+        toluene_path = os.path.join(tmp_dir, YamlBuilder.MOLECULES_DIR,
                                     'toluene', 'toluene.gaff.mol2')
         toluene_pos = utils.get_oe_mol_positions(utils.read_oe_molecule(toluene_path))
         benzene_pos = utils.get_oe_mol_positions(utils.read_oe_molecule(benzene_path))
@@ -460,7 +464,7 @@ def test_epik_enumeration():
         yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
         yaml_builder._setup_molecules(tmp_dir, 'benzene')
 
-        output_dir = os.path.join(tmp_dir, YamlBuilder.SETUP_MOLECULES_DIR, 'benzene')
+        output_dir = os.path.join(tmp_dir, YamlBuilder.MOLECULES_DIR, 'benzene')
         assert os.path.exists(os.path.join(output_dir, 'benzene-epik.mol2'))
         assert os.path.getsize(os.path.join(output_dir, 'benzene-epik.mol2')) > 0
 
@@ -484,8 +488,8 @@ def test_setup_implicit_system_leap():
                 parameters: antechamber
         solvents:
             GBSA-OBC2:
-                nonbondedMethod: NoCutoff
-                implicitSolvent: OBC2
+                nonbonded_method: NoCutoff
+                implicit_solvent: OBC2
         """.format(tmp_dir, receptor_path, ligand_path)
 
         yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
@@ -540,7 +544,7 @@ def test_setup_explicit_system_leap():
                 parameters: antechamber
         solvents:
             PMEtip3p:
-                nonbondedMethod: PME
+                nonbonded_method: PME
                 clearance: 10*angstroms
         """.format(tmp_dir, benzene_path)
 
@@ -577,20 +581,13 @@ def test_yaml_creation():
     receptor_path = os.path.join(setup_dir, 'receptor.pdbfixer.pdb')
     ligand_path = os.path.join(setup_dir, 'ligand.tripos.mol2')
     with utils.temporary_directory() as tmp_dir:
-        options = """
-        options:
-          nsteps_per_iteration: 5
-          output_dir: {}""".format(tmp_dir)
         molecules = """
           T4lysozyme:
             filepath: {}
-            parameters: oldff/leaprc.ff99SBildn
-          p-xylene:
-            filepath: {}
-            parameters: antechamber""".format(receptor_path, ligand_path)
+            parameters: oldff/leaprc.ff99SBildn""".format(receptor_path)
         solvent = """
           vacuum:
-            nonbondedMethod: NoCutoff"""
+            nonbonded_method: NoCutoff"""
         experiment = """
           components:
             ligand: p-xylene
@@ -598,24 +595,40 @@ def test_yaml_creation():
             solvent: vacuum"""
 
         yaml_content = """
-        ---{}
+        ---
+        options:
+          output_dir: {}
         molecules:{}
+          p-xylene:
+            filepath: {}
+            parameters: antechamber
           benzene:
             filepath: benzene.mol2
             parameters: antechamber
         solvents:{}
           GBSA-OBC2:
-            nonbondedMethod: NoCutoff
-            implicitSolvent: OBC2
-        experiment:{}
-        """.format(options, molecules, solvent, experiment)
+            nonbonded_method: NoCutoff
+            implicit_solvent: OBC2
+        experiments:{}
+        """.format(os.path.relpath(tmp_dir), molecules,
+                   os.path.relpath(ligand_path), solvent, experiment)
 
+        # We need to check whether the relative paths to the output directory and
+        # for p-xylene are handled correctly while absolute paths (T4lysozyme) are
+        # left untouched
         expected_yaml_content = textwrap.dedent("""
-        ---{}
+        ---
+        options:
+          experiments_dir: .
+          output_dir: .
         molecules:{}
+          p-xylene:
+            filepath: {}
+            parameters: antechamber
         solvents:{}
-        experiment:{}
-        """.format(options, molecules, solvent, experiment))
+        experiments:{}
+        """.format(molecules, os.path.relpath(ligand_path, tmp_dir),
+                   solvent, experiment))
         expected_yaml_content = expected_yaml_content[1:]  # remove first '\n'
 
         yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
@@ -635,14 +648,13 @@ def test_run_experiment():
     receptor_path = os.path.join(setup_dir, 'receptor.pdbfixer.pdb')
     ligand_path = os.path.join(setup_dir, 'ligand.tripos.mol2')
     with utils.temporary_directory() as tmp_dir:
-        yaml_dir = os.path.join(tmp_dir, 'main')
         yaml_content = """
         ---
         options:
             resume_setup: no
             resume_simulation: no
             number_of_iterations: 1
-            output_dir: {}
+            output_dir: overwritten
         molecules:
             T4lysozyme:
                 filepath: {}
@@ -652,23 +664,25 @@ def test_run_experiment():
                 parameters: antechamber
         solvents:
             vacuum:
-                nonbondedMethod: NoCutoff
+                nonbonded_method: NoCutoff
             GBSA-OBC2:
-                nonbondedMethod: NoCutoff
-                implicitSolvent: OBC2
-        experiment:
+                nonbonded_method: NoCutoff
+                implicit_solvent: OBC2
+        experiments:
             components:
                 receptor: T4lysozyme
                 ligand: p-xylene
                 solvent: [vacuum, GBSA-OBC2]
             options:
                 output_dir: {}
-        """.format(yaml_dir, receptor_path, ligand_path, tmp_dir)
+                setup_dir: ''
+                experiments_dir: ''
+        """.format(receptor_path, ligand_path, tmp_dir)
 
         yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
 
         # Now check_setup_resume should not raise exceptions
-        yaml_builder._check_setup_resume()
+        yaml_builder._check_resume()
 
         # We setup a molecule and with resume_setup: no we can't do the experiment
         err_msg = ''
@@ -705,7 +719,7 @@ def test_run_experiment():
         # The experiments folders are correctly named and positioned
         for exp_name in ['vacuum', 'GBSAOBC2']:
             # The output directory must be the one in the experiment section
-            output_dir = os.path.join(tmp_dir, yaml_builder.EXPERIMENTS_DIR, exp_name)
+            output_dir = os.path.join(tmp_dir, exp_name)
             assert os.path.isdir(output_dir)
             assert os.path.isfile(os.path.join(output_dir, 'complex-implicit.nc'))
             assert os.path.isfile(os.path.join(output_dir, 'solvent-implicit.nc'))

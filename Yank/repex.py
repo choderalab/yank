@@ -476,7 +476,7 @@ class ReplicaExchange(object):
        Minimize configurations before running the simulation (default: True)
     minimize_tolerance : simtk.unit.Quantity (units: energy/mole/length)
        Set minimization tolerance (default: 1.0 * unit.kilojoules_per_mole / unit.nanometers).
-    minimize_maxIterations : int
+    minimize_max_iterations : int
        Maximum number of iterations for minimization.
     replica_mixing_scheme : str
        Specify how to mix replicas. Supported schemes are 'swap-neighbors' and
@@ -549,7 +549,7 @@ class ReplicaExchange(object):
                           'title': 'Replica-exchange simulation created using ReplicaExchange class of repex.py on %s' % time.asctime(time.localtime()),
                           'minimize': True,
                           'minimize_tolerance': 1.0 * unit.kilojoules_per_mole / unit.nanometers,
-                          'minimize_maxIterations': 0,
+                          'minimize_max_iterations': 0,
                           'replica_mixing_scheme': 'swap-all',
                           'online_analysis': False,
                           'online_analysis_min_iterations': 20,
@@ -1315,7 +1315,7 @@ class ReplicaExchange(object):
         positions = self.replica_positions[replica_index]
         context.setPositions(positions)
         # Minimize energy.
-        minimized_positions = self.mm.LocalEnergyMinimizer.minimize(context, self.minimize_tolerance, self.minimize_maxIterations)
+        minimized_positions = self.mm.LocalEnergyMinimizer.minimize(context, self.minimize_tolerance, self.minimize_max_iterations)
         # Store final positions
         self.replica_positions[replica_index] = context.getState(getPositions=True,enforcePeriodicBox=True).getPositions(asNumpy=True)
         # Clean up.

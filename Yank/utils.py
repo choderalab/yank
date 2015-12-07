@@ -579,6 +579,43 @@ def typename(atype):
 
     return typename
 
+def underscore_to_camelcase(underscore_str):
+    """Convert the given string from underscore_case to camelCase.
+
+    Underscores at the beginning or at the end of the string are ignored. All
+    underscores in the middle of the string are removed.
+
+    Parameters
+    ----------
+    underscore_str : str
+        String in underscore_case to convert to camelCase style.
+
+    Returns
+    -------
+    camelcase_str : str
+        String in camelCase style.
+
+    Examples
+    --------
+    >>> underscore_to_camelcase('__my___variable_')
+    '__myVariable_'
+
+    """
+    # Count leading and trailing '_' characters
+    n_leading = re.search(r'[^_]', underscore_str)
+    if n_leading is None:  # this is empty or contains only '_'s
+        return underscore_str
+    n_leading = n_leading.start()
+    n_trailing = re.search(r'[^_]', underscore_str[::-1]).start()
+
+    # Remove all underscores, join and capitalize
+    words = underscore_str.split('_')
+    camelcase_str = '_' * n_leading + words[n_leading]
+    camelcase_str += ''.join(str.capitalize(word) for word in words[n_leading + 1:])
+    camelcase_str += '_' * n_trailing
+
+    return camelcase_str
+
 def process_unit_bearing_str(quantity_str, compatible_units):
     """
     Process a unit-bearing string to produce a Quantity.

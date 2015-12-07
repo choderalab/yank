@@ -25,6 +25,7 @@ from yank import pipeline
 from yank.yank import Yank # TODO: Fix this weird import path to something more sane, like 'from yank import Yank'
 from yank.repex import ThermodynamicState # TODO: Fix this weird import path to something more sane, like 'from yank.repex import ThermodynamicState'
 from yank.yamlbuild import YamlBuilder
+from yank.pipeline import find_components
 
 #=============================================================================================
 # SUBROUTINES

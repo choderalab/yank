@@ -69,7 +69,7 @@ def test_script_yaml():
         ---
         options:
             number_of_iterations: 1
-            output_dir: {}
+            output_dir: '.'
         molecules:
             T4lysozyme:
                 filepath: {}
@@ -79,18 +79,15 @@ def test_script_yaml():
                 parameters: antechamber
         solvents:
             vacuum:
-                nonbondedMethod: NoCutoff
-        experiment:
+                nonbonded_method: NoCutoff
+        experiments:
             components:
                 receptor: T4lysozyme
                 ligand: p-xylene
                 solvent: vacuum
-        """.format(tmp_dir, lysozyme_path, pxylene_path)
-        yaml_file = tempfile.NamedTemporaryFile(delete=False)
-        try:
-            # Check that handles no options
-            yaml_file.write(textwrap.dedent(yaml_content))
-            yaml_file.close()
-            run_cli('script --yaml={}'.format(yaml_file.name))
-        finally:
-            os.remove(yaml_file.name)
+        """.format(lysozyme_path, pxylene_path)
+
+        yaml_file_path = os.path.join(tmp_dir, 'yank.yaml')
+        with open(yaml_file_path, 'w') as f:
+            f.write(textwrap.dedent(yaml_content))
+        run_cli('script --yaml={}'.format(yaml_file_path))
