@@ -581,9 +581,6 @@ def test_yaml_creation():
     receptor_path = os.path.join(setup_dir, 'receptor.pdbfixer.pdb')
     ligand_path = os.path.join(setup_dir, 'ligand.tripos.mol2')
     with utils.temporary_directory() as tmp_dir:
-        options = """
-        options:
-          nsteps_per_iteration: 5"""
         molecules = """
           T4lysozyme:
             filepath: {}
@@ -598,7 +595,8 @@ def test_yaml_creation():
             solvent: vacuum"""
 
         yaml_content = """
-        ---{}
+        ---
+        options:
           output_dir: {}
         molecules:{}
           p-xylene:
@@ -612,14 +610,16 @@ def test_yaml_creation():
             nonbonded_method: NoCutoff
             implicit_solvent: OBC2
         experiments:{}
-        """.format(options, os.path.relpath(tmp_dir), molecules,
+        """.format(os.path.relpath(tmp_dir), molecules,
                    os.path.relpath(ligand_path), solvent, experiment)
 
         # We need to check whether the relative paths to the output directory and
         # for p-xylene are handled correctly while absolute paths (T4lysozyme) are
         # left untouched
         expected_yaml_content = textwrap.dedent("""
-        ---{}
+        ---
+        options:
+          experiments_dir: .
           output_dir: .
         molecules:{}
           p-xylene:
@@ -627,7 +627,7 @@ def test_yaml_creation():
             parameters: antechamber
         solvents:{}
         experiments:{}
-        """.format(options, molecules, os.path.relpath(ligand_path, tmp_dir),
+        """.format(molecules, os.path.relpath(ligand_path, tmp_dir),
                    solvent, experiment))
         expected_yaml_content = expected_yaml_content[1:]  # remove first '\n'
 

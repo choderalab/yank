@@ -966,8 +966,18 @@ class YamlBuilder:
             if 'filepath' in molecule and not os.path.isabs(molecule['filepath']):
                 molecule['filepath'] = os.path.relpath(molecule['filepath'], yaml_dir)
 
-        if 'output_dir' in opt_section and not os.path.isabs(opt_section['output_dir']):
-            opt_section['output_dir'] = os.path.relpath(opt_section['output_dir'], yaml_dir)
+        try:
+            output_dir = opt_section['output_dir']
+        except KeyError:
+            output_dir = self.DEFAULT_OPTIONS['output_dir']
+        if not os.path.isabs(output_dir):
+            opt_section['output_dir'] = os.path.relpath(output_dir, yaml_dir)
+
+        # If we are converting a combinatorial experiment into a
+        # single one we must set the correct experiment directory
+        experiment_dir = os.path.relpath(yaml_dir, output_dir)
+        if experiment_dir != self.DEFAULT_OPTIONS['experiments_dir']:
+            opt_section['experiments_dir'] = experiment_dir
 
         # Create YAML with the sections in order
         yaml_content = yaml.dump({'options': opt_section}, default_flow_style=False, line_break='\n', explicit_start=True)
