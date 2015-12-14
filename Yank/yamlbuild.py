@@ -588,23 +588,35 @@ class YamlBuilder:
     ...     yaml_content = '''
     ...     ---
     ...     options:
-    ...         number_of_iterations: 1
-    ...         output_dir: {}
+    ...       number_of_iterations: 1
+    ...       output_dir: {}
     ...     molecules:
-    ...         T4lysozyme:
-    ...             filepath: {}
-    ...             parameters: oldff/leaprc.ff99SBildn
-    ...         p-xylene:
-    ...             filepath: {}
-    ...             parameters: antechamber
+    ...       T4lysozyme:
+    ...         filepath: {}
+    ...         parameters: oldff/leaprc.ff99SBildn
+    ...       p-xylene:
+    ...         filepath: {}
+    ...         parameters: antechamber
     ...     solvents:
-    ...         vacuum:
-    ...             nonbonded_method: NoCutoff
+    ...       vacuum:
+    ...         nonbonded_method: NoCutoff
+    ...     protocols:
+    ...       absolute-binding:
+    ...         phases:
+    ...           complex:
+    ...             alchemical_path:
+    ...               lambda_electrostatics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
+    ...               lambda_sterics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
+    ...           solvent:
+    ...             alchemical_path:
+    ...               lambda_electrostatics: [1.0, 0.8, 0.6, 0.3, 0.0]
+    ...               lambda_sterics: [1.0, 0.8, 0.6, 0.3, 0.0]
     ...     experiments:
-    ...         components:
-    ...             receptor: T4lysozyme
-    ...             ligand: p-xylene
-    ...             solvent: vacuum
+    ...       components:
+    ...         receptor: T4lysozyme
+    ...         ligand: p-xylene
+    ...         solvent: vacuum
+    ...       protocol: absolute-binding
     ...     '''.format(tmp_dir, lysozyme_path, pxylene_path)
     >>> yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
     >>> yaml_builder.build_experiment()
