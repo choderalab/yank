@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 import numpy as np
 import openmoltools
 from simtk import unit, openmm
+from alchemy import AlchemicalState
 
 import utils
 import pipeline
@@ -129,8 +130,22 @@ def to_openmm_app(str):
     return getattr(openmm.app, str)
 
 #=============================================================================================
-# BUILDER CLASS
+# UTILITY CLASSES
 #=============================================================================================
+
+class YamlParseError(Exception):
+    """Represent errors occurring during parsing of Yank YAML file."""
+    def __init__(self, message):
+        super(YamlParseError, self).__init__(message)
+        logger.error(message)
+
+class YankDumper(yaml.Dumper):
+    """PyYAML Dumper that always return sequences in flow style and maps in block style."""
+    def represent_sequence(self, tag, sequence, flow_style=None):
+        return yaml.Dumper.represent_sequence(self, tag, sequence, flow_style=True)
+
+    def represent_mapping(self, tag, mapping, flow_style=None):
+        return yaml.Dumper.represent_mapping(self, tag, mapping, flow_style=False)
 
 class SetupDatabase:
     """Provide utility functions to set up systems and molecules.
@@ -539,11 +554,9 @@ class SetupDatabase:
                 mol_descr['parameters'] = os.path.join(mol_dir, mol_id + '.frcmod')
                 self._parametrized_molecules.add(mol_id)
 
-class YamlParseError(Exception):
-    """Represent errors occurring during parsing of Yank YAML file."""
-    def __init__(self, message):
-        super(YamlParseError, self).__init__(message)
-        logger.error(message)
+#=============================================================================================
+# BUILDER CLASS
+#=============================================================================================
 
 class YamlBuilder:
     """Parse YAML configuration file and build the experiment.
@@ -648,7 +661,7 @@ class YamlBuilder:
 
         # Save raw YAML content that will be needed when generating the YAML files
         self._raw_yaml = copy.deepcopy({key: yaml_content.get(key, {})
-                                        for key in ['options', 'molecules', 'solvents']})
+                                        for key in ['options', 'molecules', 'solvents', 'protocols']})
 
         # Validate and store options
         self._parse_options(yaml_content)
@@ -657,6 +670,9 @@ class YamlBuilder:
         self._db = SetupDatabase(setup_dir=self._get_setup_dir(self.options))
         self._parse_molecules(yaml_content)
         self._parse_solvents(yaml_content)
+
+        # Validate protocols
+        self._parse_protocols(yaml_content)
 
         # Validate experiments
         self._parse_experiments(yaml_content)
@@ -839,6 +855,50 @@ class YamlBuilder:
             if err_msg != '':
                 raise YamlParseError(err_msg)
 
+    def _parse_protocols(self, yaml_content):
+        """Validate protocols.
+
+        Each protocol must contain a complex and a solvent phase and it must specify
+        an alchemical_path with at least lambda_sterics and lambda_electrostatics.
+
+        Parameters
+        ----------
+        yaml_content : dict
+            The dictionary representing the YAML script loaded by yaml.load()
+
+        """
+        phase_template = {'alchemical_path': {}, 'annihilate_electrostatics': True,
+                          'annihilate_sterics': False}
+        self._protocols = yaml_content.get('protocols', {})
+
+        for protocol_id, protocol in self._protocols.items():
+            # Phases must be specified
+            if 'phases' not in protocol:
+                err_msg = 'Protocol {} must specify phases'
+                raise YamlParseError(err_msg.format(protocol_id))
+            phases = protocol['phases']
+
+            # There must be complex and solvent phases
+            if 'complex' not in phases or 'solvent' not in phases:
+                err_msg = 'Protocol {} must specify complex and solvent phases.'
+                raise YamlParseError(err_msg.format(protocol_id))
+
+            for phase_name, phase in phases.items():
+                # alchemical_path must be specified with sterics and electrostatics
+                if 'alchemical_path' not in phase:
+                    err_msg = 'Protocol {} phase {} must specify alchemical_path.'
+                    raise YamlParseError(err_msg.format(protocol_id, phase_name))
+
+                alchemical_path = phase['alchemical_path']
+                if ('lambda_sterics' not in alchemical_path or
+                            'lambda_electrostatics' not in alchemical_path):
+                    err_msg = ('Protocol {} phase {} must specify both'
+                               'lambda_sterics and lambda_electrostatics')
+                    raise YamlParseError(err_msg.format(protocol_id, phase_name))
+
+            # Check that lambda variables all have same dimensions
+            self._get_alchemical_paths(protocol_id)
+
     def _expand_experiments(self):
         """Generates all possible combinations of experiment.
 
@@ -863,10 +923,10 @@ class YamlBuilder:
                 yield os.path.join(output_dir, name), combination
 
     def _parse_experiments(self, yaml_content):
-        """Perform dry run and validate components and options of every combination.
+        """Perform dry run and validate components, protocol and options of every combination.
 
-        Receptor, ligand and solvent must be already loaded. If they are not found
-        an exception is raised. Experiments options are validated as well.
+        Receptor, ligand, solvent and protocol must be already loaded. If they are
+        not found an exception is raised. Experiments options are validated as well.
 
         Parameters
         ----------
@@ -874,7 +934,7 @@ class YamlBuilder:
             The dictionary representing the YAML script loaded by yaml.load()
 
         """
-        experiment_template = {'components': {}, 'options': {}}
+        experiment_template = {'components': {}, 'options': {}, 'protocol': 'str'}
         components_template = {'receptor': 'str', 'ligand': 'str', 'solvent': 'str'}
 
         if 'experiments' not in yaml_content:
@@ -914,6 +974,12 @@ class YamlBuilder:
                 err_msg = 'Cannot identify ligand for {}'.format(exp_name)
             elif components['solvent'] not in self._db.solvents:
                 err_msg = 'Cannot identify solvent for {}'.format(exp_name)
+
+            # Check that protocol has been specified
+            if 'protocol' not in exp:
+                err_msg = 'Cannot find protocol for {}.'.format(exp_name)
+            elif exp['protocol'] not in self._protocols:
+                err_msg = 'Cannot identify protocol for {}'.format(exp_name)
 
             if err_msg != '':
                 raise YamlParseError(err_msg)
@@ -1025,6 +1091,10 @@ class YamlBuilder:
         sol_section = {solvent_id: solvent for solvent_id, solvent in self._raw_yaml['solvents'].items()
                        if solvent_id in components}
 
+        # Protocols section data
+        prot_section = {protocol_id: protocol for protocol_id, protocol in self._raw_yaml['protocols'].items()
+                        if protocol_id in experiment['protocol']}
+
         # We pop the options section in experiment and merge it to the general one
         exp_section = experiment.copy()
         opt_section = self._raw_yaml['options'].copy()
@@ -1050,14 +1120,44 @@ class YamlBuilder:
             opt_section['experiments_dir'] = experiment_dir
 
         # Create YAML with the sections in order
-        yaml_content = yaml.dump({'options': opt_section}, default_flow_style=False, line_break='\n', explicit_start=True)
-        yaml_content += yaml.dump({'molecules': mol_section}, default_flow_style=False, line_break='\n')
-        yaml_content += yaml.dump({'solvents': sol_section}, default_flow_style=False, line_break='\n')
-        yaml_content += yaml.dump({'experiments': exp_section}, default_flow_style=False, line_break='\n')
+        dump_options = {'Dumper': YankDumper, 'line_break': '\n', 'indent': 4}
+        yaml_content = yaml.dump({'options': opt_section}, explicit_start=True, **dump_options)
+        yaml_content += yaml.dump({'molecules': mol_section},  **dump_options)
+        yaml_content += yaml.dump({'solvents': sol_section},  **dump_options)
+        yaml_content += yaml.dump({'protocols': prot_section},  **dump_options)
+        yaml_content += yaml.dump({'experiments': exp_section},  **dump_options)
 
         # Export YAML into a file
         with open(file_path, 'w') as f:
             f.write(yaml_content)
+
+    def _get_alchemical_paths(self, protocol_id):
+        """Return the list of AlchemicalStates specified in the protocol.
+
+        Parameters
+        ----------
+        protocol_id : str
+            The protocol ID specified in the YAML script.
+
+        Returns
+        -------
+        alchemical_paths : dict of list of AlchemicalState
+            alchemical_paths[phase] is the list of AlchemicalStates specified in the
+            YAML script for protocol 'protocol_id' and phase 'phase'.
+
+        """
+        alchemical_protocol = {}
+        for phase_name, phase in self._protocols[protocol_id]['phases'].items():
+            # Separate lambda variables names from their associated lists
+            lambdas, values = zip(*phase['alchemical_path'].items())
+
+            # Transpose so that each row contains single alchemical state values
+            values = zip(*values)
+
+            alchemical_protocol[phase_name] = [AlchemicalState(
+                                               **{var: val for var, val in zip(lambdas, state_values)}
+                                               ) for state_values in values]
+        return alchemical_protocol
 
     def _run_experiment(self, experiment, experiment_dir):
         """Prepare and run a single experiment.
@@ -1137,8 +1237,15 @@ class YamlBuilder:
             thermodynamic_state = ThermodynamicState(temperature=exp_opts['temperature'],
                                                      pressure=exp_opts['pressure'])
 
+            # Get protocols as list of AlchemicalStates and adjust phase name
+            alchemical_paths = self._get_alchemical_paths(experiment['protocol'])
+            suffix = 'explicit' if 'explicit' in phases[0] else 'implicit'
+            alchemical_paths = {phase + '-' + suffix: protocol
+                                for phase, protocol in alchemical_paths.items()}
+
             # Create new simulation
-            yank.create(phases, systems, positions, atom_indices, thermodynamic_state)
+            yank.create(phases, systems, positions, atom_indices,
+                        thermodynamic_state, protocols=alchemical_paths)
 
         # Run the simulation!
         yank.run()

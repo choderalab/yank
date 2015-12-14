@@ -26,6 +26,22 @@ from yank.yamlbuild import *
 # SUBROUTINES FOR TESTING
 #=============================================================================================
 
+standard_protocol = """
+        absolute-binding:
+            phases:
+                complex:
+                    alchemical_path:
+                        lambda_electrostatics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
+                        lambda_sterics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
+                solvent:
+                    alchemical_path:
+                        lambda_electrostatics: [1.0, 0.8, 0.6, 0.3, 0.0]
+                        lambda_sterics: [1.0, 0.8, 0.6, 0.3, 0.0]"""
+
+def indent(str):
+    """Put 4 extra spaces in front of every line."""
+    return '\n    '.join(str.split('\n'))
+
 def example_dir():
     """Return the absolute path to the Yank examples directory."""
     return utils.get_data_filename(os.path.join('..', 'examples'))
@@ -270,6 +286,44 @@ def test_wrong_solvent_option():
     """
     YamlBuilder(textwrap.dedent(yaml_content))
 
+def test_alchemical_path():
+    """Check that conversion to list of AlchemicalStates is correct."""
+    yaml_content = """
+    ---
+    protocols:{}
+    """.format(standard_protocol)
+    yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
+    alchemical_paths = yaml_builder._get_alchemical_paths('absolute-binding')
+
+    assert len(alchemical_paths) == 2
+    assert 'complex' in alchemical_paths
+    assert 'solvent' in alchemical_paths
+
+    complex_path = alchemical_paths['complex']
+    assert isinstance(complex_path[0], AlchemicalState)
+    assert complex_path[3]['lambda_electrostatics'] == 0.6
+    assert complex_path[4]['lambda_sterics'] == 0.4
+    assert complex_path[5]['lambda_restraints'] == 0.0
+    assert len(complex_path) == 7
+
+@raises(YamlParseError)
+def test_mandatory_alchemical_path():
+    """An exception is raised if alchemical path is not specified."""
+    yaml_content = """
+    ---
+    protocols:
+        absolute-binding:
+            phases:
+                complex:
+                    alchemical_path:
+                        lambda_electrostatics: [1.0, 0.8, 0.6, 0.3, 0.0]
+                        lambda_sterics: [1.0, 0.8, 0.6, 0.3, 0.0]
+                solvent:
+                    alchemical_path:
+                        lambda_electrostatics: [1.0, 0.8, 0.6, 0.3, 0.0]
+    """
+    YamlBuilder(textwrap.dedent(yaml_content))
+
 def test_exp_sequence():
     """Test all experiments in a sequence are parsed."""
     yaml_content = """
@@ -288,18 +342,21 @@ def test_exp_sequence():
             nonbonded_method: PME
             nonbonded_cutoff: 1*nanometer
             clearance: 10*angstroms
+    protocols:{}
     experiment1:
         components:
             receptor: rec
             ligand: lig
             solvent: [solv1, solv2]
+        protocol: absolute-binding
     experiment2:
         components:
             receptor: rec
             ligand: lig
             solvent: solv1
+        protocol: absolute-binding
     experiments: [experiment1, experiment2]
-    """
+    """.format(standard_protocol)
     yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
     assert len(yaml_builder._experiments) == 2
 
@@ -318,12 +375,14 @@ def test_unkown_component():
     solvents:
         solv1:
             nonbonded_method: NoCutoff
+    protocols:{}
     experiments:
         components:
             receptor: rec
             ligand: lig
             solvent: [solv1, solv2]
-    """
+        protocol: absolute-bindings
+    """.format(standard_protocol)
     YamlBuilder(textwrap.dedent(yaml_content))
 
 @raises(YamlParseError)
@@ -331,10 +390,31 @@ def test_no_component():
     """An exception is thrown there are no components."""
     yaml_content = """
     ---
+    protocols:{}
     experiments:
-        options:
-            output_dir: output
-    """
+        protocols: absolute-bindings
+    """.format(standard_protocol)
+    YamlBuilder(textwrap.dedent(yaml_content))
+
+@raises(YamlParseError)
+def test_no_protocol():
+    """An exception is thrown there is no protocol."""
+    yaml_content = """
+    ---
+    molecules:
+        mol:
+            filepath: mol.pdb
+            parameters: oldff/leaprc.ff99SBildn
+    solvents:
+        solv1:
+            nonbonded_method: NoCutoff
+    protocols:{}
+    experiments:
+        components:
+            receptor: mol
+            ligand: mol
+            solvent: solv1
+    """.format(standard_protocol)
     YamlBuilder(textwrap.dedent(yaml_content))
 
 def test_yaml_mol2_antechamber():
@@ -586,36 +666,40 @@ def test_yaml_creation():
     ligand_path = os.path.join(setup_dir, 'ligand.tripos.mol2')
     with utils.temporary_directory() as tmp_dir:
         molecules = """
-          T4lysozyme:
-            filepath: {}
-            parameters: oldff/leaprc.ff99SBildn""".format(receptor_path)
+            T4lysozyme:
+                filepath: {}
+                parameters: oldff/leaprc.ff99SBildn""".format(receptor_path)
         solvent = """
-          vacuum:
-            nonbonded_method: NoCutoff"""
+            vacuum:
+                nonbonded_method: NoCutoff"""
+        protocol = indent(standard_protocol)
         experiment = """
-          components:
-            ligand: p-xylene
-            receptor: T4lysozyme
-            solvent: vacuum"""
+            components:
+                ligand: p-xylene
+                receptor: T4lysozyme
+                solvent: vacuum
+            protocol: absolute-binding"""
 
         yaml_content = """
         ---
         options:
-          output_dir: {}
+            output_dir: {}
         molecules:{}
-          p-xylene:
-            filepath: {}
-            parameters: antechamber
-          benzene:
-            filepath: benzene.mol2
-            parameters: antechamber
+            p-xylene:
+                filepath: {}
+                parameters: antechamber
+            benzene:
+                filepath: benzene.mol2
+                parameters: antechamber
         solvents:{}
-          GBSA-OBC2:
-            nonbonded_method: NoCutoff
-            implicit_solvent: OBC2
+            GBSA-OBC2:
+                nonbonded_method: NoCutoff
+                implicit_solvent: OBC2
+        protocols:{}
         experiments:{}
         """.format(os.path.relpath(tmp_dir), molecules,
-                   os.path.relpath(ligand_path), solvent, experiment)
+                   os.path.relpath(ligand_path), solvent,
+                   protocol, experiment)
 
         # We need to check whether the relative paths to the output directory and
         # for p-xylene are handled correctly while absolute paths (T4lysozyme) are
@@ -623,16 +707,17 @@ def test_yaml_creation():
         expected_yaml_content = textwrap.dedent("""
         ---
         options:
-          experiments_dir: .
-          output_dir: .
+            experiments_dir: .
+            output_dir: .
         molecules:{}
-          p-xylene:
-            filepath: {}
-            parameters: antechamber
+            p-xylene:
+                filepath: {}
+                parameters: antechamber
         solvents:{}
+        protocols:{}
         experiments:{}
         """.format(molecules, os.path.relpath(ligand_path, tmp_dir),
-                   solvent, experiment))
+                   solvent, protocol, experiment))
         expected_yaml_content = expected_yaml_content[1:]  # remove first '\n'
 
         yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
@@ -672,6 +757,7 @@ def test_run_experiment():
             GBSA-OBC2:
                 nonbonded_method: NoCutoff
                 implicit_solvent: OBC2
+        protocols:{}
         experiments:
             components:
                 receptor: T4lysozyme
@@ -681,7 +767,8 @@ def test_run_experiment():
                 output_dir: {}
                 setup_dir: ''
                 experiments_dir: ''
-        """.format(receptor_path, ligand_path, tmp_dir)
+            protocol: absolute-binding
+        """.format(receptor_path, ligand_path, indent(standard_protocol), tmp_dir)
 
         yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
 
