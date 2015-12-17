@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 import numpy as np
 import openmoltools
 from simtk import unit, openmm
-from alchemy import AlchemicalState
+from alchemy import AlchemicalState, AbsoluteAlchemicalFactory
 
 import utils
 import pipeline
@@ -707,6 +707,7 @@ class YamlBuilder:
         template_options = self.DEFAULT_OPTIONS.copy()
         template_options.update(Yank.default_parameters)
         template_options.update(ReplicaExchange.default_parameters)
+        template_options.update(utils.get_keyword_args(AbsoluteAlchemicalFactory.__init__))
         openmm_app_type = {'constraints': to_openmm_app}
         try:
             valid = utils.validate_parameters(options, template_options, check_unknown=True,

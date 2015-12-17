@@ -2,6 +2,7 @@ import os
 import re
 import copy
 import shutil
+import inspect
 import logging
 import tempfile
 import itertools
@@ -665,6 +666,26 @@ def process_unit_bearing_str(quantity_str, compatible_units):
                                                                      str(compatible_units)))
     # Return unit-bearing quantity.
     return quantity
+
+def get_keyword_args(function):
+    """Inspect function signature and return keyword args with their default values.
+
+    Parameters
+    ----------
+    function : function
+        The function to interrogate.
+
+    Returns
+    -------
+    kwargs : dict
+        A dictionary 'keyword argument' -> 'default value'. The arguments of the
+        function that do not have a default value will not be included.
+
+    """
+    argspec = inspect.getargspec(function)
+    kwargs = argspec.args[len(argspec.args) - len(argspec.defaults):]
+    kwargs = {arg: value for arg, value in zip(kwargs, argspec.defaults)}
+    return kwargs
 
 def validate_parameters(parameters, template_parameters, check_unknown=False,
                         process_units_str=False, float_to_int=False,

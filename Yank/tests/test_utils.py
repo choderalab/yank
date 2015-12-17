@@ -75,6 +75,13 @@ def test_expand_tree():
     assert expected_names == set([name for name, _ in long_tree.named_combinations(
                                                        separator='-', max_name_length=10)])
 
+def test_get_keyword_args():
+    """Test get_keyword_args() function."""
+    def f(a, b, c=True, d=3.0):
+        pass
+    expected = {'c': True, 'd': 3.0}
+    assert expected == get_keyword_args(f)
+
 def test_validate_parameters():
     """Test validate_parameters function."""
 

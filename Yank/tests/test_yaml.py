@@ -116,11 +116,13 @@ def test_yaml_parsing():
         online_analysis_min_iterations: 20
         show_energies: True
         show_mixing_statistics: yes
+        annihilate_sterics: no
+        annihilate_electrostatics: true
     """
 
     yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
-    assert len(yaml_builder.options) == 32
-    assert len(yaml_builder.yank_options) == 21
+    assert len(yaml_builder.options) == 34
+    assert len(yaml_builder.yank_options) == 23
 
     # Check correct types
     assert yaml_builder.options['constraints'] == openmm.app.AllBonds
@@ -744,6 +746,7 @@ def test_run_experiment():
             resume_simulation: no
             number_of_iterations: 1
             output_dir: overwritten
+            annihilate_sterics: yes
         molecules:
             T4lysozyme:
                 filepath: {}
