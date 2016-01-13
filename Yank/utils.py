@@ -963,7 +963,7 @@ def run_epik(input_file_path, output_file_path, max_structures=32, ph=7.0,
     cmd = [epik_path, '-imae', epik_input, '-omae', epik_output]
     cmd += '-ms {ms} -ph {ph} {pht} {nt} -pKa_atom -WAIT -NO_JOBCONTROL'.format(**epik_args).split()
     with temporary_cd(output_dir):
-        subprocess.check_call(cmd, stdout=devnull, stderr=devnull)
+        subprocess.check_call(cmd)
 
     # Check if we need to extract a range of structures
     if extract_range is not None:
