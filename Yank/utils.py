@@ -961,7 +961,7 @@ def run_epik(input_file_path, output_file_path, max_structures=32, ph=7.0,
     # Run epik, we need list in case there's a space in the paths
     # We run with output_dir as working directory to save there the log file
     cmd = [epik_path, '-imae', epik_input, '-omae', epik_output]
-    cmd += '-ms {ms} -ph {ph} {pht} {nt} -pKa_atom -WAIT'.format(**epik_args).split()
+    cmd += '-ms {ms} -ph {ph} {pht} {nt} -pKa_atom -WAIT -NO_JOBCONTROL'.format(**epik_args).split()
     with temporary_cd(output_dir):
         subprocess.check_call(cmd)
 
