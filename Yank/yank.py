@@ -20,6 +20,7 @@ import os
 import os.path
 import copy
 import glob
+import inspect
 import logging
 logger = logging.getLogger(__name__)
 
@@ -78,13 +79,17 @@ class Yank(object):
         Other Parameters
         ----------------
         **kwargs
-           More options to pass to the ReplicaExchange class on initialization.
+           More options to pass to the ReplicaExchange or AlchemicalFactory classes
+           on initialization.
 
         See Also
         --------
         ReplicaExchange.default_parameters : extra parameters accepted.
 
         """
+
+        # Copy kwargs to avoid modifications
+        parameters = copy.deepcopy(kwargs)
 
         # Record that we are not yet initialized.
         self._initialized = False
@@ -109,17 +114,22 @@ class Yank(object):
 
         # Store Yank parameters
         for option_name, default_value in self.default_parameters.items():
-            setattr(self, '_' + option_name, kwargs.pop(option_name, default_value))
-
-        # Check for unknown parameters
-        if not set(kwargs) <= set(ModifiedHamiltonianExchange.default_parameters):
-            raise TypeError('got an unexpected keyword arguments {}'.format(
-                ', '.join(kwargs.keys())))
+            setattr(self, '_' + option_name, parameters.pop(option_name, default_value))
 
         # Store repex parameters
-        self._repex_parameters = copy.deepcopy(kwargs)
+        self._repex_parameters = {par: parameters.pop(par) for par in
+                                  ModifiedHamiltonianExchange.default_parameters
+                                  if par in parameters}
 
-        return
+        # Store AlchemicalFactory parameters
+        self._alchemy_parameters = {par: parameters.pop(par) for par in
+                                    inspect.getargspec(AbsoluteAlchemicalFactory.__init__).args
+                                    if par in parameters}
+
+        # Check for unknown parameters
+        if len(parameters) > 0:
+            raise TypeError('got an unexpected keyword arguments {}'.format(
+                ', '.join(parameters.keys())))
 
     def _find_phases_in_store_directory(self):
         """
@@ -337,7 +347,8 @@ class Yank(object):
         # Create alchemically-modified states using alchemical factory.
         logger.debug("Creating alchemically-modified states...")
         #factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=atom_indices['ligand'], test_positions=positions[0], platform=repex_options['platform']) # DEBUG code for testing
-        factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=atom_indices['ligand'])
+        factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=atom_indices['ligand'],
+                                            **self._alchemy_parameters)
         alchemical_states = protocols[phase]
         alchemical_system = factory.alchemically_modified_system
         thermodynamic_state.system = alchemical_system
