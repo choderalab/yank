@@ -538,7 +538,8 @@ class SetupDatabase:
             if 'epik' in mol_descr:
                 epik_idx = mol_descr['epik']
                 epik_output_file = os.path.join(mol_dir, mol_id + '-epik.mol2')
-                utils.run_epik(mol_descr['filepath'], epik_output_file, extract_range=epik_idx)
+                utils.run_epik(mol_descr['filepath'], epik_output_file, tautomerize=True,
+                               extract_range=epik_idx)
                 mol_descr['filepath'] = epik_output_file
 
             # Parametrize the molecule with antechamber
