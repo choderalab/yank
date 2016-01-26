@@ -377,6 +377,15 @@ class SetupDatabase:
                 tleap.add_commands('set default PBRadii mbondi2')
         else:  # explicit solvent
             tleap.new_section('Solvate systems')
+
+            # Neutralizing
+            if 'positive_ion' in solvent:
+                tleap.neutralize(unit='complex', ion=solvent['positive_ion'])
+                tleap.neutralize(unit='ligand', ion=solvent['positive_ion'])
+            if 'negative_ion' in solvent:
+                tleap.neutralize(unit='complex', ion=solvent['negative_ion'])
+                tleap.neutralize(unit='ligand', ion=solvent['negative_ion'])
+
             clearance = float(solvent['clearance'].value_in_unit(unit.angstroms))
             tleap.solvate(group='complex', water_model='TIP3PBOX', clearance=clearance)
             tleap.solvate(group='ligand', water_model='TIP3PBOX', clearance=clearance)
@@ -828,7 +837,8 @@ class YamlBuilder:
 
         """
         template_parameters = {'nonbonded_method': openmm.app.PME, 'nonbonded_cutoff': 1 * unit.nanometer,
-                               'implicit_solvent': openmm.app.OBC2, 'clearance': 10.0 * unit.angstroms}
+                               'implicit_solvent': openmm.app.OBC2, 'clearance': 10.0 * unit.angstroms,
+                               'positive_ion': 'string', 'negative_ion': 'string'}
         openmm_app_type = ('nonbonded_method', 'implicit_solvent')
         openmm_app_type = {option: to_openmm_app for option in openmm_app_type}
 

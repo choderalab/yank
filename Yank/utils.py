@@ -1036,6 +1036,9 @@ class TLeap:
         components = ' '.join(args)
         self.add_commands('{} = combine {{{{ {} }}}}'.format(group, components))
 
+    def neutralize(self, unit, ion):
+        self.add_commands('addIons2 {} {} 0'.format(unit, ion))
+
     def solvate(self, group, water_model, clearance):
         self.add_commands('solvateBox {} {} {} iso'.format(group, water_model,
                                                            str(clearance)))

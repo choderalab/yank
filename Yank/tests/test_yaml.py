@@ -661,6 +661,46 @@ def test_setup_explicit_system_leap():
             assert os.path.getsize(inpcrd_path) > 0
             assert found_resnames == expected_resnames[phase]
 
+def test_neutralize_system():
+    """Test whether the system charge is neutralized correctly."""
+    setup_dir = os.path.join(example_dir(), 'p-xylene-explicit', 'setup')
+    receptor_path = os.path.join(setup_dir, 'receptor.pdbfixer.pdb')
+    ligand_path = os.path.join(setup_dir, 'ligand.tripos.mol2')
+    with utils.temporary_directory() as tmp_dir:
+        yaml_content = """
+        ---
+        options:
+            output_dir: {}
+        molecules:
+            receptor:
+                filepath: {}
+                parameters: oldff/leaprc.ff99SBildn
+            ligand:
+                filepath: {}
+                parameters: antechamber
+        solvents:
+            PMEtip3p:
+                nonbonded_method: PME
+                clearance: 10*angstroms
+                positive_ion: K+
+                negative_ion: Cl-
+        """.format(tmp_dir, receptor_path, ligand_path)
+
+        yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
+        components = {'receptor': 'receptor',
+                      'ligand': 'ligand',
+                      'solvent': 'PMEtip3p'}
+
+        output_dir = yaml_builder._db.get_system(components)
+
+        # Test that output file exists and that there are ions
+        found_resnames = set()
+        with open(os.path.join(output_dir, 'complex.pdb'), 'r') as f:
+            for line in f:
+                if len(line) > 10:
+                    found_resnames.add(line[17:20])
+        assert set(['MOL', 'WAT', 'Cl-']) <= found_resnames
+
 def test_yaml_creation():
     """Test the content of generated single experiment YAML files."""
     setup_dir = os.path.join(example_dir(), 'p-xylene-implicit', 'setup')
