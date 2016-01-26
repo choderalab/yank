@@ -362,6 +362,79 @@ def test_exp_sequence():
     yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
     assert len(yaml_builder._experiments) == 2
 
+def test_expand_molecules():
+    """Check that combinatorial molecules are handled correctly."""
+    yaml_content = """
+    ---
+    molecules:
+        rec:
+            filepath: [conf1.pdb, conf2.pdb]
+            parameters: oldff/leaprc.ff99SBildn
+        lig:
+            name: [iupac1, iupac2]
+            parameters: antechamber
+            epik: [0, 2]
+    solvents:
+        solv1:
+            nonbonded_method: NoCutoff
+        solv2:
+            nonbonded_method: PME
+            nonbonded_cutoff: 1*nanometer
+            clearance: 10*angstroms
+    protocols:{}
+    experiments:
+        components:
+            receptor: [rec, lig]
+            ligand: lig
+            solvent: [solv1, solv2]
+        protocol: absolute-binding
+    """.format(standard_protocol)
+
+    expected_content = """
+    ---
+    molecules:
+        rec_conf1pdb:
+            filepath: conf1.pdb
+            parameters: oldff/leaprc.ff99SBildn
+        rec_conf2pdb:
+            filepath: conf2.pdb
+            parameters: oldff/leaprc.ff99SBildn
+        lig_0_iupac1:
+            name: iupac1
+            parameters: antechamber
+            epik: 0
+        lig_2_iupac1:
+            name: iupac1
+            parameters: antechamber
+            epik: 2
+        lig_0_iupac2:
+            name: iupac2
+            parameters: antechamber
+            epik: 0
+        lig_2_iupac2:
+            name: iupac2
+            parameters: antechamber
+            epik: 2
+    solvents:
+        solv1:
+            nonbonded_method: NoCutoff
+        solv2:
+            nonbonded_method: PME
+            nonbonded_cutoff: 1*nanometer
+            clearance: 10*angstroms
+    protocols:{}
+    experiments:
+        components:
+            receptor: [rec_conf1pdb, rec_conf2pdb, lig_0_iupac2, lig_2_iupac1, lig_2_iupac2, lig_0_iupac1]
+            ligand: [lig_0_iupac2, lig_2_iupac1, lig_2_iupac2, lig_0_iupac1]
+            solvent: [solv1, solv2]
+        protocol: absolute-binding
+    """.format(standard_protocol)
+
+    raw = yaml.load(textwrap.dedent(yaml_content))
+    expanded = YamlBuilder._expand_molecules(raw)
+    assert expanded == yaml.load(textwrap.dedent(expected_content))
+
 @raises(YamlParseError)
 def test_unkown_component():
     """An exception is thrown if we cannot identify components."""

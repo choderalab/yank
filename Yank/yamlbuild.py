@@ -647,6 +647,114 @@ class YamlBuilder:
         'hydrogen_mass': 1 * unit.amu
     }
 
+    @classmethod
+    def _expand_molecules(cls, yaml_content):
+        """Expand combinatorial molecules.
+
+        Generate new YAML content with no combinatorial molecules. The new content
+        is identical to the old one but combinatorial molecules are substituted by
+        the description of all the non-combinatorial molecules that they generate.
+        Moreover, the components of experiments that use combinatorial molecules
+        are resolved.
+
+        Parameters
+        ----------
+        yaml_content : dict
+            The YAML content as returned by yaml.load().
+
+        Returns
+        -------
+        expanded_content : dict
+            The new YAML content with combinatorial molecules expanded.
+
+        Examples
+        --------
+        >>> import textwrap
+        >>> yaml_content = '''
+        ... ---
+        ... molecules:
+        ...     rec:
+        ...         filepath: [conf1.pdb, conf2.pdb]
+        ...         parameters: oldff/leaprc.ff99SBildn
+        ...     lig:
+        ...         name: iupacname
+        ...         parameters: antechamber
+        ... solvents:
+        ...     solv1:
+        ...         nonbonded_method: NoCutoff
+        ... experiments:
+        ...     components:
+        ...         receptor: rec
+        ...         ligand: lig
+        ...         solvent: solv1
+        ... '''
+        >>> expected_content = '''
+        ... ---
+        ... molecules:
+        ...     rec_conf1pdb:
+        ...         filepath: conf1.pdb
+        ...         parameters: oldff/leaprc.ff99SBildn
+        ...     rec_conf2pdb:
+        ...         filepath: conf2.pdb
+        ...         parameters: oldff/leaprc.ff99SBildn
+        ...     lig:
+        ...         name: iupacname
+        ...         parameters: antechamber
+        ... solvents:
+        ...     solv1:
+        ...         nonbonded_method: NoCutoff
+        ... experiments:
+        ...     components:
+        ...         receptor: [rec_conf1pdb, rec_conf2pdb]
+        ...         ligand: lig
+        ...         solvent: solv1
+        ... '''
+        >>> raw = yaml.load(textwrap.dedent(yaml_content))
+        >>> expanded = YamlBuilder._expand_molecules(raw)
+        >>> expanded == yaml.load(textwrap.dedent(expected_content))
+        True
+
+        """
+        expanded_content = copy.deepcopy(yaml_content)
+
+        if 'molecules' in expanded_content:
+            all_comb_mols = set()  # keep track of all combinatorial molecules
+            for comb_mol_name, comb_molecule in expanded_content['molecules'].items():
+                comb_molecule = utils.CombinatorialTree(comb_molecule)
+                combinations = {comb_mol_name + '_' + name: mol
+                                for name, mol in comb_molecule.named_combinations(
+                                                    separator='_', max_name_length=30)}
+                if len(combinations) > 1:
+                    all_comb_mols.add(comb_mol_name)  # the combinatorial molecule will be removed
+                    expanded_content['molecules'].update(combinations)  # add all combinations
+
+                    # Check if experiments is a list or a dict
+                    if isinstance(expanded_content['experiments'], list):
+                        experiment_names = expanded_content['experiments']
+                    else:
+                        experiment_names = ['experiments']
+
+                    # Resolve combinatorial molecules in experiments
+                    for exp_name in experiment_names:
+                        components = expanded_content[exp_name]['components']
+                        for component_name in ['receptor', 'ligand']:
+                            component = components[component_name]
+                            if isinstance(component, list):
+                                try:
+                                    i = component.index(comb_mol_name)
+                                    component[i:i+1] = combinations.keys()
+                                except ValueError:
+                                    pass
+                            elif component == comb_mol_name:
+                                components[component_name] = combinations.keys()
+
+            # Delete old combinatorial molecules
+            for comb_mol_name in all_comb_mols:
+                del expanded_content['molecules'][comb_mol_name]
+
+        return expanded_content
+
+
     @property
     def yank_options(self):
         return self._isolate_yank_options(self.options)
@@ -680,6 +788,9 @@ class YamlBuilder:
 
         if yaml_content is None:
             raise YamlParseError('The YAML file is empty!')
+
+        # Expand combinatorial molecules
+        yaml_content = YamlBuilder._expand_molecules(yaml_content)
 
         # Save raw YAML content that will be needed when generating the YAML files
         self._raw_yaml = copy.deepcopy({key: yaml_content.get(key, {})
@@ -943,7 +1054,7 @@ class YamlBuilder:
                 output_dir = exp_name
 
             # Loop over all combinations
-            for name, combination in experiment.named_combinations(separator='_', max_name_length=40):
+            for name, combination in experiment.named_combinations(separator='_', max_name_length=50):
                 yield os.path.join(output_dir, name), combination
 
     def _parse_experiments(self, yaml_content):
