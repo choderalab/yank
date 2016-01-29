@@ -747,7 +747,7 @@ def test_neutralize_system():
         molecules:
             receptor:
                 filepath: {}
-                parameters: oldff/leaprc.ff99SBildn
+                parameters: leaprc.ff14SB
             ligand:
                 filepath: {}
                 parameters: antechamber

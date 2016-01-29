@@ -356,8 +356,20 @@ class SetupDatabase:
         tleap.load_parameters('leaprc.gaff')
 
         # Check that AMBER force field is specified
-        if not ('leaprc.' in receptor['parameters'] or 'leaprc.' in ligand['parameters']):
-            tleap.load_parameters('leaprc.ff14SB')
+        # if not 'leaprc.' in receptor['parameters'] or not 'leaprc.' in ligand['parameters']:
+        #     tleap.load_parameters('leaprc.ff14SB')
+        if 'leaprc.' in receptor['parameters']:
+            amber_ff = receptor['parameters']
+        elif 'leaprc.' in ligand['parameters']:
+            amber_ff = ligand['parameters']
+        else:
+            amber_ff = 'leaprc.ff14SB'
+        tleap.load_parameters(amber_ff)
+
+        # In ff12SB and ff14SB ions parameters must be loaded separately
+        if (('positive_ion' in solvent or 'negative_ion' in solvent) and
+                (amber_ff == 'leaprc.ff12SB' or amber_ff == 'leaprc.ff14SB')):
+            tleap.add_commands('loadAmberParams frcmod.ionsjc_tip3p')
 
         # Load receptor and ligand
         for group_name in ['receptor', 'ligand']:
