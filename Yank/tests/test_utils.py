@@ -261,4 +261,5 @@ def test_TLeap_export_run():
         assert os.path.isfile(output_path + '.inpcrd')
         assert os.path.getsize(output_path + '.prmtop') > 0
         assert os.path.getsize(output_path + '.inpcrd') > 0
+        assert os.path.isfile(os.path.join(tmp_dir, 'leap.log'))
 

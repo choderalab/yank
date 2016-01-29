@@ -1097,6 +1097,11 @@ class TLeap:
                 f.write(script)
             subprocess.check_output(['tleap', '-f', 'leap.in'])
 
+            # Save leap.log in directory of first output file
+            if len(output_files) > 0:
+                log_path = os.path.join(os.path.dirname(output_files.values()[0]), 'leap.log')
+                shutil.copy('leap.log', log_path)
+
             #Copy back output files
             for local_file, file_path in output_files.items():
                 shutil.copy(local_file, file_path)
