@@ -66,6 +66,14 @@ def test_remove_overlap():
     mol1_pos = remove_overlap(mol1_pos, mol2_pos, mol3_pos, min_distance=0.1, sigma=2.0)
     assert compute_min_dist(mol1_pos, mol2_pos, mol3_pos) >= 0.1
 
+def test_pull_close():
+    """Test function pull_close()."""
+    mol1_pos = np.array([[-1, -1, -1], [1, 1, 1]], np.float)
+    mol2_pos = np.array([[10, 10, 10], [13, 14, 15]], np.float)
+    translation = pull_close(mol1_pos, mol2_pos, 1.5, 5)
+    assert isinstance(translation, np.ndarray)
+    assert 1.5 <= compute_min_dist(mol1_pos, mol2_pos + translation) <= 5
+
 def test_yaml_parsing():
     """Check that YAML file is parsed correctly."""
 
@@ -773,6 +781,12 @@ def test_neutralize_system():
                 if len(line) > 10:
                     found_resnames.add(line[17:20])
         assert set(['MOL', 'WAT', 'Cl-']) <= found_resnames
+
+        # Check that parameter files exist
+        prmtop_path = os.path.join(output_dir, 'complex.prmtop')
+        inpcrd_path = os.path.join(output_dir, 'complex.inpcrd')
+        assert os.path.exists(prmtop_path)
+        assert os.path.exists(inpcrd_path)
 
 def test_yaml_creation():
     """Test the content of generated single experiment YAML files."""

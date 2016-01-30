@@ -125,6 +125,74 @@ def remove_overlap(mol_positions, *args, **kwargs):
 
     return x
 
+def pull_close(fixed_mol_pos, translated_mol_pos, min_bound, max_bound):
+    """Heuristic algorithm to quickly translate the ligand close to the receptor.
+
+    The distance of the ligand from the receptor here is defined as the shortest
+    Euclidean distance between an atom of the ligand and one of the receptor.
+    The molecules positions will not be modified if the ligand is already at a
+    distance in the interval [min_bound, max_bound].
+
+    Parameters
+    ----------
+    fixed_mol_pos : numpy.array
+        The positions of the molecule to keep fixed as a Nx3 array.
+    translated_mol_pos : numpy.array
+        The positions of the molecule to translate as a Nx3 array.
+    min_bound : float
+        Minimum distance from the receptor to the ligand. This should be high
+        enough for the ligand to not overlap the receptor atoms at the beginning
+        of the simulation.
+    max_bound : float
+        Maximum distance from the receptor to the ligand. This should be short
+        enough to make the ligand and the receptor interact since the beginning
+        of the simulation.
+
+    Returns
+    -------
+    translation : numpy.array
+        A 1x3 array containing the translation vector to apply to translated_mol_pos
+        to move the molecule at a distance between min_bound and max_bound from
+        fixed_mol_pos.
+
+    """
+
+    goal_distance = (min_bound + max_bound) / 2
+    trans_pos = copy.deepcopy(translated_mol_pos)  # positions that we can modify
+
+    # Find translation
+    final_translation = np.zeros(3)
+    while True:
+
+        # Compute squared distances between all atoms
+        # Each row is an array of distances from a translated atom to all fixed atoms
+        # We don't need to apply square root to everything
+        distances2 = np.array([((fixed_mol_pos - pos)**2).sum(1) for pos in trans_pos])
+
+        # Find closest atoms and their distance
+        min_idx = np.unravel_index(distances2.argmin(), distances2.shape)
+        min_dist = np.sqrt(distances2[min_idx])
+
+        # If closest atom is between boundaries translate ligand
+        if min_bound <= min_dist <= max_bound:
+            break
+
+        # Compute unit vector that connects receptor and ligand atom
+        direction = fixed_mol_pos[min_idx[1]] - trans_pos[min_idx[0]]
+        direction = direction / np.sqrt((direction**2).sum())
+
+        if max_bound < min_dist:  # the atom is far away
+            translation = (min_dist - goal_distance) * direction
+            trans_pos += translation
+            final_translation += translation
+        elif min_dist < min_bound:  # the two molecules overlap
+            max_dist = np.sqrt(distances2.max())
+            translation = (max_dist + goal_distance) * direction
+            trans_pos += translation
+            final_translation += translation
+
+    return final_translation
+
 def to_openmm_app(str):
     """Converter function to be used with validate_parameters()."""
     return getattr(openmm.app, str)
@@ -167,6 +235,7 @@ class SetupDatabase:
 
     SYSTEMS_DIR = 'systems'
     MOLECULES_DIR = 'molecules'
+    CLASH_THRESHOLD = 1.0  # distance in Angstroms to consider two atoms clashing
 
     def __init__(self, setup_dir, molecules=None, solvents=None):
         """Initialize the database.
@@ -378,6 +447,29 @@ class SetupDatabase:
             tleap.load_parameters(group['parameters'])
             tleap.load_group(name=group_name, file_path=group['filepath'])
 
+        # If the ligand is too far away from the molecule we want to pull it closer
+        # Check if we have the positions, otherwise skip
+        ligand_pos = None
+        try:
+            receptor_pos = self._fixed_pos_cache[receptor_id]
+        except KeyError:
+            try:
+                receptor_pos = utils.get_oe_mol_positions(self._oe_molecules[receptor_id])
+            except KeyError:
+                receptor_pos = None
+        try:
+            ligand_pos = self._fixed_pos_cache[ligand_id]
+        except KeyError:
+            try:
+                ligand_pos = utils.get_oe_mol_positions(self._oe_molecules[ligand_id])
+            except KeyError:
+                ligand_pos = None
+        if not (receptor_pos is None or ligand_pos is None):
+            translation = pull_close(receptor_pos, ligand_pos, min_bound=self.CLASH_THRESHOLD,
+                                     max_bound=7.0)
+            if translation.any():
+                tleap.add_commands('translate ligand {{{{ {} {} {} }}}}'.format(*translation))
+
         # Create complex
         tleap.new_section('Create complex')
         tleap.combine('complex', 'receptor', 'ligand')
@@ -504,7 +596,7 @@ class SetupDatabase:
             # Verify that distances between any pair of fixed molecules is big enough
             for i in range(len(positions) - 1):
                 posi = positions[i]
-                if compute_min_dist(posi, *positions[i+1:]) < 0.1:
+                if compute_min_dist(posi, *positions[i+1:]) < self.CLASH_THRESHOLD:
                     raise YamlParseError('The given molecules have overlapping atoms!')
 
             # Convert positions list to dictionary, this is needed to solve overlaps
@@ -525,7 +617,7 @@ class SetupDatabase:
             # Remove overlap and save new positions
             if fixed_pos:
                 molecule_pos = remove_overlap(molecule_pos, *(fixed_pos.values()),
-                                              min_distance=1.0, sigma=1.0)
+                                              min_distance=self.CLASH_THRESHOLD, sigma=1.0)
                 utils.set_oe_mol_positions(molecule, molecule_pos)
 
             # Update fixed positions for next round
