@@ -1452,11 +1452,9 @@ class YamlBuilder:
 
         # Create directory and configure logger for this experiment
         results_dir = self._get_experiment_dir(exp_opts, experiment_dir)
-        resume = True
-        if self._mpicomm is None or self._mpicomm.rank == 0:
-            if not os.path.isdir(results_dir):
-                os.makedirs(results_dir)
-                resume = False
+        resume = os.path.isdir(results_dir)
+        if not resume and (self._mpicomm is None or self._mpicomm.rank == 0):
+            os.makedirs(results_dir)
         if self._mpicomm:  # process 0 send result to other processes
             resume = self._mpicomm.bcast(resume, root=0)
         utils.config_root_logger(exp_opts['verbose'], os.path.join(results_dir, exp_name + '.log'),
@@ -1467,20 +1465,13 @@ class YamlBuilder:
 
         if resume:
             yank.resume()
-        else:
+        elif self._mpicomm is None or self._mpicomm.rank == 0:
             # Export YAML file for reproducibility
             self._generate_yaml(experiment, os.path.join(results_dir, exp_name + '.yaml'))
 
-            # Determine system files path
+            # Setup the system
             logger.info('Setting up the system for {}, {} and {}'.format(*components.values()))
-            system_dir = self._db.get_system_dir(components['receptor'], components['ligand'],
-                                                 components['solvent'])
-
-            # Setup the system, this create files and folders so only process 0 does it
-            if self._mpicomm is None or self._mpicomm.rank == 0:
-                self._db.get_system(components)
-            if self._mpicomm:
-                self._mpicomm.barrier()  # wait for system to be setup
+            system_dir = self._db.get_system(components)
 
             # Get ligand resname for alchemical atom selection
             ligand_dsl = utils.get_mol2_resname(self._db.molecules[components['ligand']]['filepath'])
@@ -1517,7 +1508,11 @@ class YamlBuilder:
             yank.create(phases, systems, positions, atom_indices,
                         thermodynamic_state, protocols=alchemical_paths)
 
-        # Run the simulation!
+        # Run the simulation
+        if self._mpicomm:  # wait for the simulation to be prepared
+            self._mpicomm.barrier()
+            if self._mpicomm.rank != 0:
+                yank.resume()  # resume from netcdf file created by root node
         yank.run()
 
 

@@ -398,7 +398,7 @@ class Yank(object):
         logger.debug("Creating replica exchange object...")
         store_filename = os.path.join(self._store_directory, phase + '.nc')
         self._store_filenames[phase] = store_filename
-        simulation = ModifiedHamiltonianExchange(store_filename, mpicomm=self._mpicomm)
+        simulation = ModifiedHamiltonianExchange(store_filename)
         simulation.create(thermodynamic_state, alchemical_states, positions,
                           displacement_sigma=self._mc_displacement_sigma, mc_atoms=mc_atoms,
                           options=repex_parameters, metadata=metadata)
