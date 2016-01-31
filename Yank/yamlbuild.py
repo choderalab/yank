@@ -931,6 +931,7 @@ class YamlBuilder:
         # Run all experiments with paths relative to the script directory
         with utils.temporary_cd(self._script_dir):
             # This is hard disk intensive, only process 0 should do it
+            overwrite = True
             if self._mpicomm is None or self._mpicomm.rank == 0:
                 overwrite, err_msg = self._check_resume()
             if self._mpicomm:
@@ -1451,12 +1452,11 @@ class YamlBuilder:
 
         # Create directory and configure logger for this experiment
         results_dir = self._get_experiment_dir(exp_opts, experiment_dir)
+        resume = True
         if self._mpicomm is None or self._mpicomm.rank == 0:
             if not os.path.isdir(results_dir):
                 os.makedirs(results_dir)
                 resume = False
-            else:
-                resume = True
         if self._mpicomm:  # process 0 send result to other processes
             resume = self._mpicomm.bcast(resume, root=0)
         utils.config_root_logger(exp_opts['verbose'], os.path.join(results_dir, exp_name + '.log'),
@@ -1471,11 +1471,16 @@ class YamlBuilder:
             # Export YAML file for reproducibility
             self._generate_yaml(experiment, os.path.join(results_dir, exp_name + '.yaml'))
 
-            # Determine system files path, this create files and folders so only process 0 does it
+            # Determine system files path
+            logger.info('Setting up the system for {}, {} and {}'.format(*components.values()))
+            system_dir = self._db.get_system_dir(components['receptor'], components['ligand'],
+                                                 components['solvent'])
+
+            # Setup the system, this create files and folders so only process 0 does it
             if self._mpicomm is None or self._mpicomm.rank == 0:
-                system_dir = self._db.get_system(components)
+                self._db.get_system(components)
             if self._mpicomm:
-                system_dir = self._mpicomm.bcast(system_dir, root=0)
+                self._mpicomm.barrier()  # wait for system to be setup
 
             # Get ligand resname for alchemical atom selection
             ligand_dsl = utils.get_mol2_resname(self._db.molecules[components['ligand']]['filepath'])
