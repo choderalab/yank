@@ -15,6 +15,7 @@ Tools to build Yank experiments from a YAML configuration file.
 
 import os
 import re
+import sys
 import copy
 import yaml
 import logging
@@ -125,6 +126,74 @@ def remove_overlap(mol_positions, *args, **kwargs):
 
     return x
 
+def pull_close(fixed_mol_pos, translated_mol_pos, min_bound, max_bound):
+    """Heuristic algorithm to quickly translate the ligand close to the receptor.
+
+    The distance of the ligand from the receptor here is defined as the shortest
+    Euclidean distance between an atom of the ligand and one of the receptor.
+    The molecules positions will not be modified if the ligand is already at a
+    distance in the interval [min_bound, max_bound].
+
+    Parameters
+    ----------
+    fixed_mol_pos : numpy.array
+        The positions of the molecule to keep fixed as a Nx3 array.
+    translated_mol_pos : numpy.array
+        The positions of the molecule to translate as a Nx3 array.
+    min_bound : float
+        Minimum distance from the receptor to the ligand. This should be high
+        enough for the ligand to not overlap the receptor atoms at the beginning
+        of the simulation.
+    max_bound : float
+        Maximum distance from the receptor to the ligand. This should be short
+        enough to make the ligand and the receptor interact since the beginning
+        of the simulation.
+
+    Returns
+    -------
+    translation : numpy.array
+        A 1x3 array containing the translation vector to apply to translated_mol_pos
+        to move the molecule at a distance between min_bound and max_bound from
+        fixed_mol_pos.
+
+    """
+
+    goal_distance = (min_bound + max_bound) / 2
+    trans_pos = copy.deepcopy(translated_mol_pos)  # positions that we can modify
+
+    # Find translation
+    final_translation = np.zeros(3)
+    while True:
+
+        # Compute squared distances between all atoms
+        # Each row is an array of distances from a translated atom to all fixed atoms
+        # We don't need to apply square root to everything
+        distances2 = np.array([((fixed_mol_pos - pos)**2).sum(1) for pos in trans_pos])
+
+        # Find closest atoms and their distance
+        min_idx = np.unravel_index(distances2.argmin(), distances2.shape)
+        min_dist = np.sqrt(distances2[min_idx])
+
+        # If closest atom is between boundaries translate ligand
+        if min_bound <= min_dist <= max_bound:
+            break
+
+        # Compute unit vector that connects receptor and ligand atom
+        direction = fixed_mol_pos[min_idx[1]] - trans_pos[min_idx[0]]
+        direction = direction / np.sqrt((direction**2).sum())
+
+        if max_bound < min_dist:  # the atom is far away
+            translation = (min_dist - goal_distance) * direction
+            trans_pos += translation
+            final_translation += translation
+        elif min_dist < min_bound:  # the two molecules overlap
+            max_dist = np.sqrt(distances2.max())
+            translation = (max_dist + goal_distance) * direction
+            trans_pos += translation
+            final_translation += translation
+
+    return final_translation
+
 def to_openmm_app(str):
     """Converter function to be used with validate_parameters()."""
     return getattr(openmm.app, str)
@@ -167,6 +236,7 @@ class SetupDatabase:
 
     SYSTEMS_DIR = 'systems'
     MOLECULES_DIR = 'molecules'
+    CLASH_THRESHOLD = 1.0  # distance in Angstroms to consider two atoms clashing
 
     def __init__(self, setup_dir, molecules=None, solvents=None):
         """Initialize the database.
@@ -356,8 +426,20 @@ class SetupDatabase:
         tleap.load_parameters('leaprc.gaff')
 
         # Check that AMBER force field is specified
-        if not ('leaprc.' in receptor['parameters'] or 'leaprc.' in ligand['parameters']):
-            tleap.load_parameters('leaprc.ff14SB')
+        # if not 'leaprc.' in receptor['parameters'] or not 'leaprc.' in ligand['parameters']:
+        #     tleap.load_parameters('leaprc.ff14SB')
+        if 'leaprc.' in receptor['parameters']:
+            amber_ff = receptor['parameters']
+        elif 'leaprc.' in ligand['parameters']:
+            amber_ff = ligand['parameters']
+        else:
+            amber_ff = 'leaprc.ff14SB'
+        tleap.load_parameters(amber_ff)
+
+        # In ff12SB and ff14SB ions parameters must be loaded separately
+        if (('positive_ion' in solvent or 'negative_ion' in solvent) and
+                (amber_ff == 'leaprc.ff12SB' or amber_ff == 'leaprc.ff14SB')):
+            tleap.add_commands('loadAmberParams frcmod.ionsjc_tip3p')
 
         # Load receptor and ligand
         for group_name in ['receptor', 'ligand']:
@@ -365,6 +447,29 @@ class SetupDatabase:
             tleap.new_section('Load ' + group_name)
             tleap.load_parameters(group['parameters'])
             tleap.load_group(name=group_name, file_path=group['filepath'])
+
+        # If the ligand is too far away from the molecule we want to pull it closer
+        # Check if we have the positions, otherwise skip
+        ligand_pos = None
+        try:
+            receptor_pos = self._fixed_pos_cache[receptor_id]
+        except KeyError:
+            try:
+                receptor_pos = utils.get_oe_mol_positions(self._oe_molecules[receptor_id])
+            except KeyError:
+                receptor_pos = None
+        try:
+            ligand_pos = self._fixed_pos_cache[ligand_id]
+        except KeyError:
+            try:
+                ligand_pos = utils.get_oe_mol_positions(self._oe_molecules[ligand_id])
+            except KeyError:
+                ligand_pos = None
+        if not (receptor_pos is None or ligand_pos is None):
+            translation = pull_close(receptor_pos, ligand_pos, min_bound=self.CLASH_THRESHOLD,
+                                     max_bound=7.0)
+            if translation.any():
+                tleap.add_commands('translate ligand {{{{ {} {} {} }}}}'.format(*translation))
 
         # Create complex
         tleap.new_section('Create complex')
@@ -377,6 +482,15 @@ class SetupDatabase:
                 tleap.add_commands('set default PBRadii mbondi2')
         else:  # explicit solvent
             tleap.new_section('Solvate systems')
+
+            # Neutralizing
+            if 'positive_ion' in solvent:
+                tleap.neutralize(unit='complex', ion=solvent['positive_ion'])
+                tleap.neutralize(unit='ligand', ion=solvent['positive_ion'])
+            if 'negative_ion' in solvent:
+                tleap.neutralize(unit='complex', ion=solvent['negative_ion'])
+                tleap.neutralize(unit='ligand', ion=solvent['negative_ion'])
+
             clearance = float(solvent['clearance'].value_in_unit(unit.angstroms))
             tleap.solvate(group='complex', water_model='TIP3PBOX', clearance=clearance)
             tleap.solvate(group='ligand', water_model='TIP3PBOX', clearance=clearance)
@@ -483,7 +597,7 @@ class SetupDatabase:
             # Verify that distances between any pair of fixed molecules is big enough
             for i in range(len(positions) - 1):
                 posi = positions[i]
-                if compute_min_dist(posi, *positions[i+1:]) < 0.1:
+                if compute_min_dist(posi, *positions[i+1:]) < self.CLASH_THRESHOLD:
                     raise YamlParseError('The given molecules have overlapping atoms!')
 
             # Convert positions list to dictionary, this is needed to solve overlaps
@@ -504,7 +618,7 @@ class SetupDatabase:
             # Remove overlap and save new positions
             if fixed_pos:
                 molecule_pos = remove_overlap(molecule_pos, *(fixed_pos.values()),
-                                              min_distance=1.0, sigma=1.0)
+                                              min_distance=self.CLASH_THRESHOLD, sigma=1.0)
                 utils.set_oe_mol_positions(molecule, molecule_pos)
 
             # Update fixed positions for next round
@@ -538,7 +652,8 @@ class SetupDatabase:
             if 'epik' in mol_descr:
                 epik_idx = mol_descr['epik']
                 epik_output_file = os.path.join(mol_dir, mol_id + '-epik.mol2')
-                utils.run_epik(mol_descr['filepath'], epik_output_file, extract_range=epik_idx)
+                utils.run_epik(mol_descr['filepath'], epik_output_file, tautomerize=True,
+                               extract_range=epik_idx)
                 mol_descr['filepath'] = epik_output_file
 
             # Parametrize the molecule with antechamber
@@ -637,6 +752,114 @@ class YamlBuilder:
         'hydrogen_mass': 1 * unit.amu
     }
 
+    @classmethod
+    def _expand_molecules(cls, yaml_content):
+        """Expand combinatorial molecules.
+
+        Generate new YAML content with no combinatorial molecules. The new content
+        is identical to the old one but combinatorial molecules are substituted by
+        the description of all the non-combinatorial molecules that they generate.
+        Moreover, the components of experiments that use combinatorial molecules
+        are resolved.
+
+        Parameters
+        ----------
+        yaml_content : dict
+            The YAML content as returned by yaml.load().
+
+        Returns
+        -------
+        expanded_content : dict
+            The new YAML content with combinatorial molecules expanded.
+
+        Examples
+        --------
+        >>> import textwrap
+        >>> yaml_content = '''
+        ... ---
+        ... molecules:
+        ...     rec:
+        ...         filepath: [conf1.pdb, conf2.pdb]
+        ...         parameters: oldff/leaprc.ff99SBildn
+        ...     lig:
+        ...         name: iupacname
+        ...         parameters: antechamber
+        ... solvents:
+        ...     solv1:
+        ...         nonbonded_method: NoCutoff
+        ... experiments:
+        ...     components:
+        ...         receptor: rec
+        ...         ligand: lig
+        ...         solvent: solv1
+        ... '''
+        >>> expected_content = '''
+        ... ---
+        ... molecules:
+        ...     rec_conf1pdb:
+        ...         filepath: conf1.pdb
+        ...         parameters: oldff/leaprc.ff99SBildn
+        ...     rec_conf2pdb:
+        ...         filepath: conf2.pdb
+        ...         parameters: oldff/leaprc.ff99SBildn
+        ...     lig:
+        ...         name: iupacname
+        ...         parameters: antechamber
+        ... solvents:
+        ...     solv1:
+        ...         nonbonded_method: NoCutoff
+        ... experiments:
+        ...     components:
+        ...         receptor: [rec_conf1pdb, rec_conf2pdb]
+        ...         ligand: lig
+        ...         solvent: solv1
+        ... '''
+        >>> raw = yaml.load(textwrap.dedent(yaml_content))
+        >>> expanded = YamlBuilder._expand_molecules(raw)
+        >>> expanded == yaml.load(textwrap.dedent(expected_content))
+        True
+
+        """
+        expanded_content = copy.deepcopy(yaml_content)
+
+        if 'molecules' in expanded_content:
+            all_comb_mols = set()  # keep track of all combinatorial molecules
+            for comb_mol_name, comb_molecule in expanded_content['molecules'].items():
+                comb_molecule = utils.CombinatorialTree(comb_molecule)
+                combinations = {comb_mol_name + '_' + name: mol
+                                for name, mol in comb_molecule.named_combinations(
+                                                    separator='_', max_name_length=30)}
+                if len(combinations) > 1:
+                    all_comb_mols.add(comb_mol_name)  # the combinatorial molecule will be removed
+                    expanded_content['molecules'].update(combinations)  # add all combinations
+
+                    # Check if experiments is a list or a dict
+                    if isinstance(expanded_content['experiments'], list):
+                        experiment_names = expanded_content['experiments']
+                    else:
+                        experiment_names = ['experiments']
+
+                    # Resolve combinatorial molecules in experiments
+                    for exp_name in experiment_names:
+                        components = expanded_content[exp_name]['components']
+                        for component_name in ['receptor', 'ligand']:
+                            component = components[component_name]
+                            if isinstance(component, list):
+                                try:
+                                    i = component.index(comb_mol_name)
+                                    component[i:i+1] = combinations.keys()
+                                except ValueError:
+                                    pass
+                            elif component == comb_mol_name:
+                                components[component_name] = combinations.keys()
+
+            # Delete old combinatorial molecules
+            for comb_mol_name in all_comb_mols:
+                del expanded_content['molecules'][comb_mol_name]
+
+        return expanded_content
+
+
     @property
     def yank_options(self):
         return self._isolate_yank_options(self.options)
@@ -654,6 +877,7 @@ class YamlBuilder:
 
         """
 
+        self._mpicomm = None  # MPI communicator
         self._oe_molecules = {}  # molecules generated by OpenEye
         self._fixed_pos_cache = {}  # positions of molecules given as files
 
@@ -670,6 +894,9 @@ class YamlBuilder:
 
         if yaml_content is None:
             raise YamlParseError('The YAML file is empty!')
+
+        # Expand combinatorial molecules
+        yaml_content = YamlBuilder._expand_molecules(yaml_content)
 
         # Save raw YAML content that will be needed when generating the YAML files
         self._raw_yaml = copy.deepcopy({key: yaml_content.get(key, {})
@@ -695,9 +922,24 @@ class YamlBuilder:
         if len(self._experiments) == 0:
             raise YamlParseError('No experiments specified!')
 
+        # Configure MPI, if requested
+        if self.options['mpi']:
+            from mpi4py import MPI
+            MPI.COMM_WORLD.barrier()
+            self._mpicomm = MPI.COMM_WORLD
+
         # Run all experiments with paths relative to the script directory
         with utils.temporary_cd(self._script_dir):
-            self._check_resume()
+            # This is hard disk intensive, only process 0 should do it
+            overwrite = True
+            if self._mpicomm is None or self._mpicomm.rank == 0:
+                overwrite, err_msg = self._check_resume()
+            if self._mpicomm:
+                overwrite = self._mpicomm.bcast(overwrite, root=0)
+                if overwrite and self._mpicomm.rank != 0:
+                    sys.exit()
+            if overwrite:  # self._mpicomm is None or rank == 0
+                raise YamlParseError(err_msg)
 
             for output_dir, combination in self._expand_experiments():
                 self._run_experiment(combination, output_dir)
@@ -827,7 +1069,8 @@ class YamlBuilder:
 
         """
         template_parameters = {'nonbonded_method': openmm.app.PME, 'nonbonded_cutoff': 1 * unit.nanometer,
-                               'implicit_solvent': openmm.app.OBC2, 'clearance': 10.0 * unit.angstroms}
+                               'implicit_solvent': openmm.app.OBC2, 'clearance': 10.0 * unit.angstroms,
+                               'positive_ion': 'string', 'negative_ion': 'string'}
         openmm_app_type = ('nonbonded_method', 'implicit_solvent')
         openmm_app_type = {option: to_openmm_app for option in openmm_app_type}
 
@@ -932,7 +1175,7 @@ class YamlBuilder:
                 output_dir = exp_name
 
             # Loop over all combinations
-            for name, combination in experiment.named_combinations(separator='_', max_name_length=40):
+            for name, combination in experiment.named_combinations(separator='_', max_name_length=50):
                 yield os.path.join(output_dir, name), combination
 
     def _parse_experiments(self, yaml_content):
@@ -1032,7 +1275,7 @@ class YamlBuilder:
     def _check_resume(self):
         """Perform dry run to check if we are going to overwrite files.
 
-        If we find folders that YamlBuilder should create we throw an Exception
+        If we find folders that YamlBuilder should create we return True
         unless resume_setup or resume_simulation are found, in which case we
         assume we need to use the existing files. We never overwrite files, the
         user is responsible to delete them or move them.
@@ -1040,8 +1283,16 @@ class YamlBuilder:
         It's important to check all possible combinations at the beginning to
         avoid interrupting the user simulation after few experiments.
 
+        Returns
+        -------
+        overwrite : bool
+            True in case we will have to overwrite some files, False otherwise.
+        err_msg : str
+            An error message in case overwrite is True, an empty string otherwise.
+
         """
         err_msg = ''
+        overwrite = False
         for exp_sub_dir, combination in self._expand_experiments():
             # Determine and validate options
             exp_options = self._determine_experiment_options(combination)
@@ -1078,9 +1329,12 @@ class YamlBuilder:
 
             # Check for errors
             if err_msg != '':
+                overwrite = True
                 err_msg += (' already exists; cowardly refusing to proceed. Move/delete '
                             'directory or set {} options').format(solving_option)
-                raise YamlParseError(err_msg)
+                break
+
+        return overwrite, err_msg
 
     def _generate_yaml(self, experiment, file_path):
         """Generate the minimum YAML file needed to reproduce the experiment.
@@ -1194,35 +1448,29 @@ class YamlBuilder:
         # Set database path
         self._db.setup_dir = self._get_setup_dir(exp_opts)
 
-        # Configure MPI, if requested
-        if exp_opts['mpi']:
-            from mpi4py import MPI
-            MPI.COMM_WORLD.barrier()
-            mpicomm = MPI.COMM_WORLD
-        else:
-            mpicomm = None
-
         # TODO configure platform and precision when they are fixed in Yank
 
         # Create directory and configure logger for this experiment
         results_dir = self._get_experiment_dir(exp_opts, experiment_dir)
-        if not os.path.isdir(results_dir):
+        resume = os.path.isdir(results_dir)
+        if not resume and (self._mpicomm is None or self._mpicomm.rank == 0):
             os.makedirs(results_dir)
-            resume = False
-        else:
-            resume = True
-        utils.config_root_logger(exp_opts['verbose'], os.path.join(results_dir, exp_name + '.log'))
+        if self._mpicomm:  # process 0 send result to other processes
+            resume = self._mpicomm.bcast(resume, root=0)
+        utils.config_root_logger(exp_opts['verbose'], os.path.join(results_dir, exp_name + '.log'),
+                                 self._mpicomm)
 
         # Initialize simulation
-        yank = Yank(results_dir, mpicomm=mpicomm, **yank_opts)
+        yank = Yank(results_dir, mpicomm=self._mpicomm, **yank_opts)
 
         if resume:
             yank.resume()
-        else:
+        elif self._mpicomm is None or self._mpicomm.rank == 0:
             # Export YAML file for reproducibility
             self._generate_yaml(experiment, os.path.join(results_dir, exp_name + '.yaml'))
 
-            # Determine system files path
+            # Setup the system
+            logger.info('Setting up the system for {}, {} and {}'.format(*components.values()))
             system_dir = self._db.get_system(components)
 
             # Get ligand resname for alchemical atom selection
@@ -1260,7 +1508,11 @@ class YamlBuilder:
             yank.create(phases, systems, positions, atom_indices,
                         thermodynamic_state, protocols=alchemical_paths)
 
-        # Run the simulation!
+        # Run the simulation
+        if self._mpicomm:  # wait for the simulation to be prepared
+            self._mpicomm.barrier()
+            if self._mpicomm.rank != 0:
+                yank.resume()  # resume from netcdf file created by root node
         yank.run()
 
 

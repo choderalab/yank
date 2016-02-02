@@ -80,11 +80,23 @@ def test_script_yaml():
         solvents:
             vacuum:
                 nonbonded_method: NoCutoff
+        protocols:
+            absolute-binding:
+                phases:
+                    complex:
+                        alchemical_path:
+                            lambda_electrostatics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
+                            lambda_sterics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
+                    solvent:
+                        alchemical_path:
+                            lambda_electrostatics: [1.0, 0.8, 0.6, 0.3, 0.0]
+                            lambda_sterics: [1.0, 0.8, 0.6, 0.3, 0.0]
         experiments:
             components:
                 receptor: T4lysozyme
                 ligand: p-xylene
                 solvent: vacuum
+            protocol: absolute-binding
         """.format(lysozyme_path, pxylene_path)
 
         yaml_file_path = os.path.join(tmp_dir, 'yank.yaml')

@@ -192,7 +192,6 @@ def test_underscore_to_camelcase():
     cases = ['', '__', 'foo', 'foo_bar', '_foo_bar_', '__foo_bar__', '__foo__bar_']
     expected = ['', '__', 'foo', 'fooBar', '_fooBar_', '__fooBar__', '__fooBar_']
     for exp, case in zip(expected, cases):
-        print '*', case
         assert exp == underscore_to_camelcase(case)
 
 def test_TLeap_script():
@@ -262,4 +261,5 @@ def test_TLeap_export_run():
         assert os.path.isfile(output_path + '.inpcrd')
         assert os.path.getsize(output_path + '.prmtop') > 0
         assert os.path.getsize(output_path + '.inpcrd') > 0
+        assert os.path.isfile(os.path.join(tmp_dir, 'leap.log'))
 

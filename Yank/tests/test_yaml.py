@@ -66,6 +66,14 @@ def test_remove_overlap():
     mol1_pos = remove_overlap(mol1_pos, mol2_pos, mol3_pos, min_distance=0.1, sigma=2.0)
     assert compute_min_dist(mol1_pos, mol2_pos, mol3_pos) >= 0.1
 
+def test_pull_close():
+    """Test function pull_close()."""
+    mol1_pos = np.array([[-1, -1, -1], [1, 1, 1]], np.float)
+    mol2_pos = np.array([[10, 10, 10], [13, 14, 15]], np.float)
+    translation = pull_close(mol1_pos, mol2_pos, 1.5, 5)
+    assert isinstance(translation, np.ndarray)
+    assert 1.5 <= compute_min_dist(mol1_pos, mol2_pos + translation) <= 5
+
 def test_yaml_parsing():
     """Check that YAML file is parsed correctly."""
 
@@ -361,6 +369,79 @@ def test_exp_sequence():
     """.format(standard_protocol)
     yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
     assert len(yaml_builder._experiments) == 2
+
+def test_expand_molecules():
+    """Check that combinatorial molecules are handled correctly."""
+    yaml_content = """
+    ---
+    molecules:
+        rec:
+            filepath: [conf1.pdb, conf2.pdb]
+            parameters: oldff/leaprc.ff99SBildn
+        lig:
+            name: [iupac1, iupac2]
+            parameters: antechamber
+            epik: [0, 2]
+    solvents:
+        solv1:
+            nonbonded_method: NoCutoff
+        solv2:
+            nonbonded_method: PME
+            nonbonded_cutoff: 1*nanometer
+            clearance: 10*angstroms
+    protocols:{}
+    experiments:
+        components:
+            receptor: [rec, lig]
+            ligand: lig
+            solvent: [solv1, solv2]
+        protocol: absolute-binding
+    """.format(standard_protocol)
+
+    expected_content = """
+    ---
+    molecules:
+        rec_conf1pdb:
+            filepath: conf1.pdb
+            parameters: oldff/leaprc.ff99SBildn
+        rec_conf2pdb:
+            filepath: conf2.pdb
+            parameters: oldff/leaprc.ff99SBildn
+        lig_0_iupac1:
+            name: iupac1
+            parameters: antechamber
+            epik: 0
+        lig_2_iupac1:
+            name: iupac1
+            parameters: antechamber
+            epik: 2
+        lig_0_iupac2:
+            name: iupac2
+            parameters: antechamber
+            epik: 0
+        lig_2_iupac2:
+            name: iupac2
+            parameters: antechamber
+            epik: 2
+    solvents:
+        solv1:
+            nonbonded_method: NoCutoff
+        solv2:
+            nonbonded_method: PME
+            nonbonded_cutoff: 1*nanometer
+            clearance: 10*angstroms
+    protocols:{}
+    experiments:
+        components:
+            receptor: [rec_conf1pdb, rec_conf2pdb, lig_0_iupac2, lig_2_iupac1, lig_2_iupac2, lig_0_iupac1]
+            ligand: [lig_0_iupac2, lig_2_iupac1, lig_2_iupac2, lig_0_iupac1]
+            solvent: [solv1, solv2]
+        protocol: absolute-binding
+    """.format(standard_protocol)
+
+    raw = yaml.load(textwrap.dedent(yaml_content))
+    expanded = YamlBuilder._expand_molecules(raw)
+    assert expanded == yaml.load(textwrap.dedent(expected_content))
 
 @raises(YamlParseError)
 def test_unkown_component():
@@ -660,6 +741,52 @@ def test_setup_explicit_system_leap():
             assert os.path.getsize(prmtop_path) > 0
             assert os.path.getsize(inpcrd_path) > 0
             assert found_resnames == expected_resnames[phase]
+
+def test_neutralize_system():
+    """Test whether the system charge is neutralized correctly."""
+    setup_dir = os.path.join(example_dir(), 'p-xylene-explicit', 'setup')
+    receptor_path = os.path.join(setup_dir, 'receptor.pdbfixer.pdb')
+    ligand_path = os.path.join(setup_dir, 'ligand.tripos.mol2')
+    with utils.temporary_directory() as tmp_dir:
+        yaml_content = """
+        ---
+        options:
+            output_dir: {}
+        molecules:
+            receptor:
+                filepath: {}
+                parameters: leaprc.ff14SB
+            ligand:
+                filepath: {}
+                parameters: antechamber
+        solvents:
+            PMEtip3p:
+                nonbonded_method: PME
+                clearance: 10*angstroms
+                positive_ion: K+
+                negative_ion: Cl-
+        """.format(tmp_dir, receptor_path, ligand_path)
+
+        yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
+        components = {'receptor': 'receptor',
+                      'ligand': 'ligand',
+                      'solvent': 'PMEtip3p'}
+
+        output_dir = yaml_builder._db.get_system(components)
+
+        # Test that output file exists and that there are ions
+        found_resnames = set()
+        with open(os.path.join(output_dir, 'complex.pdb'), 'r') as f:
+            for line in f:
+                if len(line) > 10:
+                    found_resnames.add(line[17:20])
+        assert set(['MOL', 'WAT', 'Cl-']) <= found_resnames
+
+        # Check that parameter files exist
+        prmtop_path = os.path.join(output_dir, 'complex.prmtop')
+        inpcrd_path = os.path.join(output_dir, 'complex.inpcrd')
+        assert os.path.exists(prmtop_path)
+        assert os.path.exists(inpcrd_path)
 
 def test_yaml_creation():
     """Test the content of generated single experiment YAML files."""

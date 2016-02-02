@@ -1036,6 +1036,9 @@ class TLeap:
         components = ' '.join(args)
         self.add_commands('{} = combine {{{{ {} }}}}'.format(group, components))
 
+    def neutralize(self, unit, ion):
+        self.add_commands('addIons2 {} {} 0'.format(unit, ion))
+
     def solvate(self, group, water_model, clearance):
         self.add_commands('solvateBox {} {} {} iso'.format(group, water_model,
                                                            str(clearance)))
@@ -1093,6 +1096,11 @@ class TLeap:
             with open('leap.in', 'w') as f:
                 f.write(script)
             subprocess.check_output(['tleap', '-f', 'leap.in'])
+
+            # Save leap.log in directory of first output file
+            if len(output_files) > 0:
+                log_path = os.path.join(os.path.dirname(output_files.values()[0]), 'leap.log')
+                shutil.copy('leap.log', log_path)
 
             #Copy back output files
             for local_file, file_path in output_files.items():
