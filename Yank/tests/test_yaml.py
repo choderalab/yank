@@ -69,10 +69,13 @@ def test_remove_overlap():
 def test_pull_close():
     """Test function pull_close()."""
     mol1_pos = np.array([[-1, -1, -1], [1, 1, 1]], np.float)
-    mol2_pos = np.array([[10, 10, 10], [13, 14, 15]], np.float)
-    translation = pull_close(mol1_pos, mol2_pos, 1.5, 5)
-    assert isinstance(translation, np.ndarray)
-    assert 1.5 <= compute_min_dist(mol1_pos, mol2_pos + translation) <= 5
+    mol2_pos = np.array([[-1, -1, -1], [1, 1, 1]], np.float)
+    mol3_pos = np.array([[10, 10, 10], [13, 14, 15]], np.float)
+    translation2 = pull_close(mol1_pos, mol2_pos, 1.5, 5)
+    translation3 = pull_close(mol1_pos, mol3_pos, 1.5, 5)
+    assert isinstance(translation2, np.ndarray)
+    assert 1.5 <= compute_min_dist(mol1_pos, mol2_pos + translation2) <= 5
+    assert 1.5 <= compute_min_dist(mol1_pos, mol3_pos + translation3) <= 5
 
 def test_yaml_parsing():
     """Check that YAML file is parsed correctly."""
@@ -542,8 +545,6 @@ def test_yaml_mol2_antechamber():
 @unittest.skipIf(not utils.is_openeye_installed(), 'This test requires OpenEye installed.')
 def test_setup_name_smiles_antechamber():
     """Setup molecule from name and SMILES with antechamber parametrization."""
-    benzene_path = os.path.join(example_dir(), 'benzene-toluene-explicit',
-                                'setup', 'benzene.tripos.mol2')
     with utils.temporary_directory() as tmp_dir:
         yaml_content = """
         ---
@@ -554,20 +555,13 @@ def test_setup_name_smiles_antechamber():
             p-xylene:
                 name: p-xylene
                 parameters: antechamber
-            benzene:
-                filepath: {}
-                parameters: antechamber
             toluene:
                 smiles: Cc1ccccc1
                 parameters: antechamber
-        """.format(tmp_dir, benzene_path)
+        """.format(tmp_dir)
 
         yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
-
-        # The order of the arguments in _setup_molecules is important, we want to test
-        # that overlapping molecules in toluene are removed even if benzene has been
-        # indicated to be processed afterwards
-        yaml_builder._db._setup_molecules('toluene', 'benzene', 'p-xylene')
+        yaml_builder._db._setup_molecules('toluene', 'p-xylene')
 
         for mol in ['toluene', 'p-xylene']:
             output_dir = os.path.join(tmp_dir, SetupDatabase.MOLECULES_DIR, mol)
@@ -578,17 +572,9 @@ def test_setup_name_smiles_antechamber():
             assert os.path.getsize(os.path.join(output_dir, mol + '.gaff.mol2')) > 0
             assert os.path.getsize(os.path.join(output_dir, mol + '.frcmod')) > 0
 
-        # Test that molecules do not overlap
-        toluene_path = os.path.join(tmp_dir, SetupDatabase.MOLECULES_DIR,
-                                    'toluene', 'toluene.gaff.mol2')
-        toluene_pos = utils.get_oe_mol_positions(utils.read_oe_molecule(toluene_path))
-        benzene_pos = utils.get_oe_mol_positions(utils.read_oe_molecule(benzene_path))
-        assert compute_min_dist(toluene_pos, benzene_pos) >= 1.0
-
-@raises(YamlParseError)
 @unittest.skipIf(not utils.is_openeye_installed(), 'This test requires OpenEye installed.')
-def test_overlapping_atoms():
-    """Check that exception is raised when overlapping atoms."""
+def test_clashing_atoms():
+    """Check that clashing atoms are resolved."""
     setup_dir = os.path.join(example_dir(), 'benzene-toluene-explicit', 'setup')
     benzene_path = os.path.join(setup_dir, 'benzene.tripos.mol2')
     toluene_path = os.path.join(setup_dir, 'toluene.tripos.mol2')
@@ -605,10 +591,34 @@ def test_overlapping_atoms():
             toluene:
                 filepath: {}
                 parameters: antechamber
+        solvents:
+            vacuum:
+                nonbonded_method: NoCutoff
         """.format(tmp_dir, benzene_path, toluene_path)
 
         yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
-        yaml_builder._db._setup_molecules('benzene', 'toluene')
+        components = {'receptor': 'benzene', 'ligand': 'toluene', 'solvent': 'vacuum'}
+        system_dir = yaml_builder._db.get_system(components)
+
+        # Sanity check: at the beginning molecules clash
+        toluene_pos = utils.get_oe_mol_positions(utils.read_oe_molecule(toluene_path))
+        benzene_pos = utils.get_oe_mol_positions(utils.read_oe_molecule(benzene_path))
+        assert compute_min_dist(toluene_pos, benzene_pos) < SetupDatabase.CLASH_THRESHOLD
+
+        # Get positions of molecules in the final system
+        prmtop = openmm.app.AmberPrmtopFile(os.path.join(system_dir, 'complex.prmtop'))
+        inpcrd = openmm.app.AmberInpcrdFile(os.path.join(system_dir, 'complex.inpcrd'))
+        positions = inpcrd.getPositions(asNumpy=True) / unit.angstrom
+        atom_indices = pipeline.find_components(prmtop.topology, 'resname TOL')
+        benzene_pos2 = positions.take(atom_indices['receptor'], axis=0)
+        toluene_pos2 = positions.take(atom_indices['ligand'], axis=0)
+
+        # Sanity check: only toluene's positions were touched
+        assert np.allclose(benzene_pos, benzene_pos2, atol=1.e-3)
+        assert not np.allclose(toluene_pos, toluene_pos2, atol=1.e-3)
+
+        # Test that clashes are resolved in the system
+        assert compute_min_dist(toluene_pos2, benzene_pos2) >= SetupDatabase.CLASH_THRESHOLD
 
 @unittest.skipIf(not utils.is_schrodinger_suite_installed(), "This test requires Schrodinger's suite")
 def test_epik_enumeration():
