@@ -14,7 +14,6 @@ Test YAML functions.
 #=============================================================================================
 
 import time
-import tempfile
 import textwrap
 import unittest
 
