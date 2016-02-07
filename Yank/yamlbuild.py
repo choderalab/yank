@@ -221,6 +221,7 @@ def pack_transformation(mol1_pos, mol2_pos, min_distance, max_distance):
     x0 = mol2_pos.mean(0)
 
     # Try until we have a non-overlapping conformation w.r.t. all fixed molecules
+    i = 0
     min_dist, max_dist = compute_dist_bound(mol1_pos, mol2_pos)
     while min_dist < min_distance or max_distance <= max_dist:
         # Select random atom of fixed molecule and use it to propose new x0 position
@@ -234,6 +235,13 @@ def pack_transformation(mol1_pos, mol2_pos, min_distance, max_distance):
         # Apply random transformation and test
         x = ((Rq * np.matrix(mol2_pos - x0).T).T + x0).A + translation
         min_dist, max_dist = compute_dist_bound(mol1_pos, x)
+
+        # Check n iterations
+        i += 1
+        if i >= 1000:
+            err_msg = 'Cannot fit mol2 into solvation box!'
+            logger.error(err_msg)
+            raise RuntimeError(err_msg)
 
     # Generate 4x4 affine transformation in molecule reference frame
     if translation is not None:
