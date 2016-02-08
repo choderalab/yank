@@ -600,7 +600,7 @@ def test_setup_name_smiles_antechamber():
 @unittest.skipIf(not utils.is_openeye_installed(), 'This test requires OpenEye installed.')
 def test_clashing_atoms():
     """Check that clashing atoms are resolved."""
-    CLEARANCE = 10
+    CLEARANCE = 10.0
     setup_dir = os.path.join(example_dir(), 'benzene-toluene-explicit', 'setup')
     benzene_path = os.path.join(setup_dir, 'benzene.tripos.mol2')
     toluene_path = os.path.join(setup_dir, 'toluene.tripos.mol2')
@@ -648,7 +648,6 @@ def test_clashing_atoms():
 
             # Test that clashes are resolved in the system
             min_dist, max_dist = compute_dist_bound(toluene_pos2, benzene_pos2)
-            print min_dist, max_dist
             assert min_dist >= SetupDatabase.CLASH_THRESHOLD
 
             # For solvent we check that molecule is within the box

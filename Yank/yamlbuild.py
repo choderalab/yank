@@ -189,6 +189,8 @@ def pack_transformation(mol1_pos, mol2_pos, min_distance, max_distance):
 
     The method randomly shifts and rotates mol2 until all its atoms are within
     min_distance and max_distance from mol1. The position of mol1 is kept fixed.
+    Every 200 failed iterations, the algorithm increases max_distance by 50%. It
+    raise an exception after 1000 iterations.
 
     All the positions must be expressed in the same unit of measure.
 
@@ -238,6 +240,8 @@ def pack_transformation(mol1_pos, mol2_pos, min_distance, max_distance):
 
         # Check n iterations
         i += 1
+        if i % 200 == 0:
+            max_distance *= 1.5
         if i >= 1000:
             err_msg = 'Cannot fit mol2 into solvation box!'
             logger.error(err_msg)
@@ -367,7 +371,7 @@ class SetupDatabase:
 
     SYSTEMS_DIR = 'systems'
     MOLECULES_DIR = 'molecules'
-    CLASH_THRESHOLD = 1.0  # distance in Angstroms to consider two atoms clashing
+    CLASH_THRESHOLD = 1.5  # distance in Angstroms to consider two atoms clashing
 
     def __init__(self, setup_dir, molecules=None, solvents=None):
         """Initialize the database.
@@ -596,7 +600,7 @@ class SetupDatabase:
 
             # Find the transformation
             try:
-                max_dist = solvent['clearance'].value_in_unit(unit.angstrom)
+                max_dist = solvent['clearance'].value_in_unit(unit.angstrom) / 1.5
             except KeyError:
                 max_dist = 10.0
             transformation = pack_transformation(positions[0], positions[1],
