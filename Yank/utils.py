@@ -1068,6 +1068,13 @@ class TLeap:
         else:
             raise ValueError('cannot export format {} from tLeap'.format(extension[1:]))
 
+    def transform(self, unit, transformation):
+        """Transformation is an array-like representing the affine transformation matrix."""
+        command = 'transform {} {}'.format(unit, transformation)
+        command = command.replace(r'[', '{{').replace(r']', '}}')
+        command = command.replace('\n', '').replace('  ', ' ')
+        self.add_commands(command)
+
     def new_section(self, comment):
         self.add_commands('\n# ' + comment)
 

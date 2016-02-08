@@ -202,6 +202,7 @@ def test_TLeap_script():
     receptor = loadPdb receptor.pdbfixer.pdb
     loadAmberParams ligand.gaff.frcmod
     ligand = loadMol2 path/to/ligand.gaff.mol2
+    transform ligand {{ 1 0 0 6} { 0 -1 0 0} { 0 0 1 0} { 0 0 0 1}}
     complex = combine { receptor ligand }
     solvateBox complex TIP3PBOX 10.0 iso
     check complex
@@ -223,6 +224,7 @@ def test_TLeap_script():
     tleap.load_group(name='receptor', file_path='receptor.pdbfixer.pdb')
     tleap.load_parameters('ligand.gaff.frcmod')
     tleap.load_group(name='ligand', file_path='path/to/ligand.gaff.mol2')
+    tleap.transform('ligand', np.array([[1, 0, 0, 6], [0, -1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]))
     tleap.combine('complex', 'receptor', 'ligand')
     tleap.solvate(group='complex', water_model='TIP3PBOX', clearance=10.0)
     tleap.add_commands('check complex', 'charge complex')
