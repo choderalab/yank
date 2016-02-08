@@ -600,6 +600,7 @@ def test_setup_name_smiles_antechamber():
 @unittest.skipIf(not utils.is_openeye_installed(), 'This test requires OpenEye installed.')
 def test_clashing_atoms():
     """Check that clashing atoms are resolved."""
+    CLEARANCE = 10
     setup_dir = os.path.join(example_dir(), 'benzene-toluene-explicit', 'setup')
     benzene_path = os.path.join(setup_dir, 'benzene.tripos.mol2')
     toluene_path = os.path.join(setup_dir, 'toluene.tripos.mol2')
@@ -619,31 +620,40 @@ def test_clashing_atoms():
         solvents:
             vacuum:
                 nonbonded_method: NoCutoff
-        """.format(tmp_dir, benzene_path, toluene_path)
-
-        yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
-        components = {'receptor': 'benzene', 'ligand': 'toluene', 'solvent': 'vacuum'}
-        system_dir = yaml_builder._db.get_system(components)
+            PME:
+                nonbonded_method: PME
+                nonbonded_cutoff: 1*nanometer
+                clearance: {}*angstroms
+        """.format(tmp_dir, benzene_path, toluene_path, CLEARANCE)
 
         # Sanity check: at the beginning molecules clash
         toluene_pos = utils.get_oe_mol_positions(utils.read_oe_molecule(toluene_path))
         benzene_pos = utils.get_oe_mol_positions(utils.read_oe_molecule(benzene_path))
         assert compute_min_dist(toluene_pos, benzene_pos) < SetupDatabase.CLASH_THRESHOLD
 
-        # Get positions of molecules in the final system
-        prmtop = openmm.app.AmberPrmtopFile(os.path.join(system_dir, 'complex.prmtop'))
-        inpcrd = openmm.app.AmberInpcrdFile(os.path.join(system_dir, 'complex.inpcrd'))
-        positions = inpcrd.getPositions(asNumpy=True) / unit.angstrom
-        atom_indices = pipeline.find_components(prmtop.topology, 'resname TOL')
-        benzene_pos2 = positions.take(atom_indices['receptor'], axis=0)
-        toluene_pos2 = positions.take(atom_indices['ligand'], axis=0)
+        yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
 
-        # Sanity check: only toluene's positions were touched
-        assert np.allclose(benzene_pos, benzene_pos2, atol=1.e-3)
-        assert not np.allclose(toluene_pos, toluene_pos2, atol=1.e-3)
+        components = {'receptor': 'benzene', 'ligand': 'toluene'}
+        for solvent in ['vacuum', 'PME']:
+            components['solvent'] = solvent
+            system_dir = yaml_builder._db.get_system(components)
 
-        # Test that clashes are resolved in the system
-        assert compute_min_dist(toluene_pos2, benzene_pos2) >= SetupDatabase.CLASH_THRESHOLD
+            # Get positions of molecules in the final system
+            prmtop = openmm.app.AmberPrmtopFile(os.path.join(system_dir, 'complex.prmtop'))
+            inpcrd = openmm.app.AmberInpcrdFile(os.path.join(system_dir, 'complex.inpcrd'))
+            positions = inpcrd.getPositions(asNumpy=True).value_in_unit(unit.angstrom)
+            atom_indices = pipeline.find_components(prmtop.topology, 'resname TOL')
+            benzene_pos2 = positions.take(atom_indices['receptor'], axis=0)
+            toluene_pos2 = positions.take(atom_indices['ligand'], axis=0)
+
+            # Test that clashes are resolved in the system
+            min_dist, max_dist = compute_dist_bound(toluene_pos2, benzene_pos2)
+            print min_dist, max_dist
+            assert min_dist >= SetupDatabase.CLASH_THRESHOLD
+
+            # For solvent we check that molecule is within the box
+            if solvent == 'PME':
+                assert max_dist <= CLEARANCE
 
 @unittest.skipIf(not utils.is_schrodinger_suite_installed(), "This test requires Schrodinger's suite")
 def test_epik_enumeration():

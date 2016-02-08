@@ -594,11 +594,16 @@ class SetupDatabase:
                             utils.read_oe_molecule(self.molecules[mol_id]['filepath']))
                 positions[i] = self._pos_cache[mol_id]
 
-            translation = pull_close(positions[0], positions[1], min_bound=self.CLASH_THRESHOLD,
-                                     max_bound=6.0)
-            if translation.any():
+            # Find the transformation
+            try:
+                max_dist = solvent['clearance'].value_in_unit(unit.angstrom)
+            except KeyError:
+                max_dist = 10.0
+            transformation = pack_transformation(positions[0], positions[1],
+                                                 self.CLASH_THRESHOLD, max_dist)
+            if (transformation != np.identity(4)).any():
                 logger.warning('Changing starting ligand positions.')
-                tleap.add_commands('translate ligand {{{{ {} {} {} }}}}'.format(*translation))
+                tleap.transform('ligand', transformation)
 
         # Create complex
         tleap.new_section('Create complex')
