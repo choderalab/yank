@@ -45,6 +45,22 @@ def example_dir():
     """Return the absolute path to the Yank examples directory."""
     return utils.get_data_filename(os.path.join('..', 'examples'))
 
+def create_2frames_pdb(pdb_path):
+    """Create a 2-frame PDB file in pdb_path. The second frame has same positions
+    of the first one but with inversed z-coordinate."""
+    lysozyme_path = os.path.join(example_dir(), 'p-xylene-implicit', 'setup', 'receptor.pdbfixer.pdb')
+    lysozyme = PDBFile(lysozyme_path)
+
+    # Rotate positions to invert z for the second frame
+    rot = np.array([[1, 0, 0], [0, 1, 0], [0, 0, -1]])  # flip w.r.t. x-y plane
+    symmetric_pos = lysozyme.getPositions(asNumpy=True).value_in_unit(unit.angstrom)
+    symmetric_pos = symmetric_pos.dot(rot) * unit.angstrom
+
+    with open(pdb_path, 'w') as f:
+        PDBFile.writeHeader(lysozyme.topology, file=f)
+        PDBFile.writeModel(lysozyme.topology, lysozyme.positions, file=f, modelIndex=0)
+        PDBFile.writeModel(lysozyme.topology, symmetric_pos, file=f, modelIndex=1)
+
 #=============================================================================================
 # UNIT TESTS
 #=============================================================================================
@@ -400,76 +416,94 @@ def test_exp_sequence():
 
 def test_expand_molecules():
     """Check that combinatorial molecules are handled correctly."""
-    yaml_content = """
-    ---
-    molecules:
-        rec:
-            filepath: [conf1.pdb, conf2.pdb]
-            parameters: oldff/leaprc.ff99SBildn
-        lig:
-            name: [iupac1, iupac2]
-            parameters: antechamber
-            epik: [0, 2]
-    solvents:
-        solv1:
-            nonbonded_method: NoCutoff
-        solv2:
-            nonbonded_method: PME
-            nonbonded_cutoff: 1*nanometer
-            clearance: 10*angstroms
-    protocols:{}
-    experiments:
-        components:
-            receptor: [rec, lig]
-            ligand: lig
-            solvent: [solv1, solv2]
-        protocol: absolute-binding
-    """.format(standard_protocol)
+    with utils.temporary_directory() as tmp_dir:
+        multi_pdb_path = os.path.join(tmp_dir, 'multi.pdb')
+        yaml_content = """
+        ---
+        molecules:
+            rec:
+                filepath: [conf1.pdb, conf2.pdb]
+                parameters: oldff/leaprc.ff99SBildn
+            lig:
+                name: [iupac1, iupac2]
+                parameters: antechamber
+                epik: [0, 2]
+            multi:
+                filepath: {}
+                parameters: leaprc.ff14SB
+                select: all
+        solvents:
+            solv1:
+                nonbonded_method: NoCutoff
+            solv2:
+                nonbonded_method: PME
+                nonbonded_cutoff: 1*nanometer
+                clearance: 10*angstroms
+        protocols:{}
+        experiments:
+            components:
+                receptor: [rec, multi]
+                ligand: lig
+                solvent: [solv1, solv2]
+            protocol: absolute-binding
+        """.format(multi_pdb_path, indent(standard_protocol))
+        yaml_content = textwrap.dedent(yaml_content)
 
-    expected_content = """
-    ---
-    molecules:
-        rec_conf1pdb:
-            filepath: conf1.pdb
-            parameters: oldff/leaprc.ff99SBildn
-        rec_conf2pdb:
-            filepath: conf2.pdb
-            parameters: oldff/leaprc.ff99SBildn
-        lig_0_iupac1:
-            name: iupac1
-            parameters: antechamber
-            epik: 0
-        lig_2_iupac1:
-            name: iupac1
-            parameters: antechamber
-            epik: 2
-        lig_0_iupac2:
-            name: iupac2
-            parameters: antechamber
-            epik: 0
-        lig_2_iupac2:
-            name: iupac2
-            parameters: antechamber
-            epik: 2
-    solvents:
-        solv1:
-            nonbonded_method: NoCutoff
-        solv2:
-            nonbonded_method: PME
-            nonbonded_cutoff: 1*nanometer
-            clearance: 10*angstroms
-    protocols:{}
-    experiments:
-        components:
-            receptor: [rec_conf1pdb, rec_conf2pdb, lig_0_iupac2, lig_2_iupac1, lig_2_iupac2, lig_0_iupac1]
-            ligand: [lig_0_iupac2, lig_2_iupac1, lig_2_iupac2, lig_0_iupac1]
-            solvent: [solv1, solv2]
-        protocol: absolute-binding
-    """.format(standard_protocol)
+        expected_content = """
+        ---
+        molecules:
+            rec_conf1pdb:
+                filepath: conf1.pdb
+                parameters: oldff/leaprc.ff99SBildn
+            rec_conf2pdb:
+                filepath: conf2.pdb
+                parameters: oldff/leaprc.ff99SBildn
+            lig_0_iupac1:
+                name: iupac1
+                parameters: antechamber
+                epik: 0
+            lig_2_iupac1:
+                name: iupac1
+                parameters: antechamber
+                epik: 2
+            lig_0_iupac2:
+                name: iupac2
+                parameters: antechamber
+                epik: 0
+            lig_2_iupac2:
+                name: iupac2
+                parameters: antechamber
+                epik: 2
+            multi_0:
+                filepath: {}
+                parameters: leaprc.ff14SB
+                select: 0
+            multi_1:
+                filepath: {}
+                parameters: leaprc.ff14SB
+                select: 1
+        solvents:
+            solv1:
+                nonbonded_method: NoCutoff
+            solv2:
+                nonbonded_method: PME
+                nonbonded_cutoff: 1*nanometer
+                clearance: 10*angstroms
+        protocols:{}
+        experiments:
+            components:
+                receptor: [rec_conf1pdb, rec_conf2pdb, multi_1, multi_0]
+                ligand: [lig_0_iupac2, lig_2_iupac1, lig_2_iupac2, lig_0_iupac1]
+                solvent: [solv1, solv2]
+            protocol: absolute-binding
+        """.format(multi_pdb_path, multi_pdb_path, indent(standard_protocol))
+        expected_content = textwrap.dedent(expected_content)
 
-    raw = yaml.load(textwrap.dedent(yaml_content))
-    expanded = YamlBuilder._expand_molecules(raw)
-    assert expanded == yaml.load(textwrap.dedent(expected_content))
+        create_2frames_pdb(multi_pdb_path)
+
+        raw = yaml.load(yaml_content)
+        expanded = YamlBuilder(yaml_content)._expand_molecules(raw)
+        assert expanded == yaml.load(expected_content)
 
 @raises(YamlParseError)
 def test_unkown_component():
@@ -678,6 +712,60 @@ def test_epik_enumeration():
         output_dir = os.path.join(tmp_dir, SetupDatabase.MOLECULES_DIR, 'benzene')
         assert os.path.exists(os.path.join(output_dir, 'benzene-epik.mol2'))
         assert os.path.getsize(os.path.join(output_dir, 'benzene-epik.mol2')) > 0
+
+
+def test_select_pdb_conformation():
+    """Check that frame selection in multi-model PDB files works."""
+    with utils.temporary_directory() as tmp_dir:
+        multi_pdb_path = os.path.join(tmp_dir, 'multi.pdb')
+        yaml_content = """
+        ---
+        options:
+            output_dir: {}
+            setup_dir: .
+        molecules:
+            selected:
+                filepath: {}
+                parameters: leaprc.ff14SB
+                select: 1
+        """.format(tmp_dir, multi_pdb_path)
+        yaml_content = textwrap.dedent(yaml_content)
+        create_2frames_pdb(multi_pdb_path)
+        yaml_builder = YamlBuilder(yaml_content)
+
+        # The molecule now is neither set up nor processed
+        is_setup, is_processed = yaml_builder._db.is_molecule_setup('selected')
+        assert is_setup is False
+        assert is_processed is False
+
+        # The setup of the molecule must isolate the frame in a single-frame PDB
+        yaml_builder._db._setup_molecules('selected')
+        selected_pdb_path = os.path.join(tmp_dir, SetupDatabase.MOLECULES_DIR,
+                                         'selected', 'selected.pdb')
+        assert os.path.exists(os.path.join(selected_pdb_path))
+        assert os.path.getsize(os.path.join(selected_pdb_path)) > 0
+
+        # The positions must be the ones of the second frame
+        selected_pdb = PDBFile(selected_pdb_path)
+        selected_pos = selected_pdb.getPositions(asNumpy=True)
+        second_pos = PDBFile(multi_pdb_path).getPositions(asNumpy=True, frame=1)
+        assert selected_pdb.getNumFrames() == 1
+        assert (selected_pos == second_pos).all()
+
+        # The description of the molecule is now updated
+        assert os.path.normpath(yaml_builder._db.molecules['selected']['filepath']) == selected_pdb_path
+
+        # The molecule now both set up and processed
+        is_setup, is_processed = yaml_builder._db.is_molecule_setup('selected')
+        assert is_setup is True
+        assert is_processed is True
+
+        # A new instance of YamlBuilder is able to resume with correct molecule
+        yaml_builder = YamlBuilder(yaml_content)
+        is_setup, is_processed = yaml_builder._db.is_molecule_setup('selected')
+        assert is_setup is True
+        assert is_processed is True
+
 
 def test_setup_implicit_system_leap():
     """Create prmtop and inpcrd for implicit solvent protein-ligand system."""
@@ -922,6 +1010,7 @@ def test_run_experiment():
             T4lysozyme:
                 filepath: {}
                 parameters: oldff/leaprc.ff99SBildn
+                select: 0
             p-xylene:
                 filepath: {}
                 parameters: antechamber
