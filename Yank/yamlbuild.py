@@ -909,11 +909,23 @@ class YamlBuilder:
         ... solvents:
         ...     solv1:
         ...         nonbonded_method: NoCutoff
+        ... protocols:
+        ...     absolute-binding:
+        ...         phases:
+        ...             complex:
+        ...                 alchemical_path:
+        ...                     lambda_electrostatics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
+        ...                     lambda_sterics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
+        ...             solvent:
+        ...                 alchemical_path:
+        ...                     lambda_electrostatics: [1.0, 0.8, 0.6, 0.3, 0.0]
+        ...                     lambda_sterics: [1.0, 0.8, 0.6, 0.3, 0.0]
         ... experiments:
         ...     components:
         ...         receptor: rec
         ...         ligand: lig
         ...         solvent: solv1
+        ...     protocol: absolute-binding
         ... '''
         >>> expected_content = '''
         ... ---
@@ -930,14 +942,27 @@ class YamlBuilder:
         ... solvents:
         ...     solv1:
         ...         nonbonded_method: NoCutoff
+        ... protocols:
+        ...     absolute-binding:
+        ...         phases:
+        ...             complex:
+        ...                 alchemical_path:
+        ...                     lambda_electrostatics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
+        ...                     lambda_sterics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
+        ...             solvent:
+        ...                 alchemical_path:
+        ...                     lambda_electrostatics: [1.0, 0.8, 0.6, 0.3, 0.0]
+        ...                     lambda_sterics: [1.0, 0.8, 0.6, 0.3, 0.0]
         ... experiments:
         ...     components:
         ...         receptor: [rec_conf1pdb, rec_conf2pdb]
         ...         ligand: lig
         ...         solvent: solv1
+        ...     protocol: absolute-binding
         ... '''
-        >>> raw = yaml.load(textwrap.dedent(yaml_content))
-        >>> expanded = YamlBuilder._expand_molecules(raw)
+        >>> yaml_content = textwrap.dedent(yaml_content)
+        >>> raw = yaml.load(yaml_content)
+        >>> expanded = YamlBuilder(yaml_content)._expand_molecules(raw)
         >>> expanded == yaml.load(textwrap.dedent(expected_content))
         True
 
