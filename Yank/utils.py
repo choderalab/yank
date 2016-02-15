@@ -813,18 +813,69 @@ def is_openeye_installed():
         return False
     return True
 
-def read_oe_molecule(file_path):
+
+def read_oe_molecule(file_path, conformer_idx=None):
     from openeye import oechem
-    molecule = oechem.OEGraphMol()
+
+    # Open input file stream
     ifs = oechem.oemolistream()
-    ifs.open(file_path)
-    oechem.OEReadMolecule(ifs, molecule)
-    ifs.close()
+    if not ifs.open(file_path):
+        oechem.OEThrow.Fatal('Unable to open {}'.format(file_path))
+
+    # Read all conformations
+    for mol in ifs.GetOEMols():
+        try:
+            molecule.NewConf(mol)
+        except UnboundLocalError:
+            molecule = oechem.OEMol(mol)
+
+    # Select conformation of interest
+    if conformer_idx is not None:
+        if molecule.NumConfs() <= conformer_idx:
+            raise ValueError('conformer_idx {} out of range'.format(conformer_idx))
+        molecule = oechem.OEGraphMol(molecule.GetConf(oechem.OEHasConfIdx(conformer_idx)))
+
     return molecule
 
-def get_oe_mol_positions(molecule):
+
+def write_oe_molecule(oe_mol, file_path, mol2_resname=None):
+    """Write all conformations in a file and automatically detects format."""
+    from openeye import oechem
+
+    # Get correct OpenEye format
+    extension = os.path.splitext(file_path)[1][1:]  # remove dot
+    oe_format = getattr(oechem, 'OEFormat_' + extension.upper())
+
+    # Open stream and write molecule
+    ofs = oechem.oemolostream()
+    ofs.SetFormat(oe_format)
+    if not ofs.open(file_path):
+        oechem.OEThrow.Fatal('Unable to create {}'.format(file_path))
+    oechem.OEWriteMolecule(ofs, oe_mol)
+    ofs.close()
+
+    # If this is a mol2 file, we need to replace the resname
+    # TODO when you merge to openmoltools, incapsulate this and add to molecule_to_mol2()
+    if mol2_resname is not None and extension == 'mol2':
+        with open(file_path, 'r') as f:
+            lines = f.readlines()
+        lines = [line.replace('<0>', mol2_resname) for line in lines]
+        with open(file_path, 'w') as f:
+            f.writelines(lines)
+
+
+def get_oe_mol_positions(molecule, conformer_idx=0):
     import numpy as np
     from openeye import oechem
+    # Extract correct conformer
+    if conformer_idx > 0:
+        try:
+            if molecule.NumConfs() <= conformer_idx:
+                raise UnboundLocalError  # same error message
+            molecule = oechem.OEGraphMol(molecule.GetConf(oechem.OEHasConfIdx(conformer_idx)))
+        except UnboundLocalError:
+            raise ValueError('conformer_idx {} out of range'.format(conformer_idx))
+    # Extract positions
     oe_coords = oechem.OEFloatArray(3)
     molecule_pos = np.zeros((molecule.NumAtoms(), 3))
     for i, atom in enumerate(molecule.GetAtoms()):

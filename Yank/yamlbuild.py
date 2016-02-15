@@ -761,6 +761,12 @@ class SetupDatabase:
                         smiles_lines = filter(bool, smiles_file.readlines())
                     with open(single_file_path, 'w') as f:
                         f.write(smiles_lines[model_idx])
+                elif extension == '.mol2' or extension == '.sdf':
+                    if not utils.is_openeye_installed():
+                        raise RuntimeError('Cannot support {} files selection without OpenEye'.format(
+                                extension[1:]))
+                    oe_molecule = utils.read_oe_molecule(mol_descr['filepath'], conformer_idx=model_idx)
+                    utils.write_oe_molecule(oe_molecule, single_file_path)
                 else:
                     raise RuntimeError('Model selection is not supported for {} files'.format(extension[1:]))
 
@@ -771,6 +777,9 @@ class SetupDatabase:
             # we update the 'filepath' key also for OpenEye-generated molecules so
             # we don't need to keep track of the molecules we have already generated
             if extension is None or extension == '.smiles' or extension == '.csv':
+                if not utils.is_openeye_installed():
+                    raise RuntimeError('Cannot support {} files without OpenEye'.format(extension[1:]))
+
                 # Retrieve the first SMILES string, we take the last column
                 if extension is not None:
                     with open(mol_descr['filepath'], 'r') as smiles_file:
@@ -797,6 +806,22 @@ class SetupDatabase:
                 utils.run_epik(mol_descr['filepath'], epik_output_file, tautomerize=True,
                                extract_range=epik_idx)
                 mol_descr['filepath'] = epik_output_file
+
+            # Antechamber does not support sdf files so we need to convert them
+            extension = os.path.splitext(mol_descr['filepath'])[1]
+            if extension == '.sdf':
+                if not utils.is_openeye_installed():
+                    raise RuntimeError('Cannot support sdf files without OpenEye')
+                mol2_file_path = os.path.join(mol_dir, mol_id + '.mol2')
+                oe_molecule = utils.read_oe_molecule(mol_descr['filepath'])
+
+                # We set the residue name as the first three uppercase letters of mol_id
+                residue_name = re.sub('[^A-Za-z]+', '', mol_id.upper())[:3]
+                openmoltools.openeye.molecule_to_mol2(oe_molecule, mol2_file_path,
+                                                      residue_name=residue_name)
+
+                # Update filepath information
+                mol_descr['filepath'] = mol2_file_path
 
             # Parametrize the molecule with antechamber
             if mol_descr['parameters'] == 'antechamber':
@@ -1010,6 +1035,11 @@ class YamlBuilder:
                         elif extension == 'csv' or extension == 'smiles':
                             with open(comb_molecule['filepath'], 'r') as smiles_file:
                                 n_models = len(filter(bool, smiles_file.readlines()))  # remove blank lines
+                        elif extension == 'sdf' or extension == 'mol2':
+                            if not utils.is_openeye_installed():
+                                err_msg = 'Molecule {}: Cannot "select" from {} file without OpenEye toolkit'
+                                raise RuntimeError(err_msg.format(comb_mol_name, extension))
+                            n_models = utils.read_oe_molecule(comb_molecule['filepath']).NumConfs()
                         else:
                             raise YamlParseError('Molecule {}: Cannot "select" from {} file'.format(
                                     comb_mol_name, extension))
@@ -1206,7 +1236,7 @@ class YamlBuilder:
             The dictionary representing the YAML script loaded by yaml.load()
 
         """
-        file_formats = set(['mol2', 'pdb', 'smiles', 'csv'])
+        file_formats = set(['mol2', 'sdf', 'pdb', 'smiles', 'csv'])
         sources = set(['filepath', 'name', 'smiles'])
         template_mol = {'filepath': 'str', 'name': 'str', 'smiles': 'str',
                         'parameters': 'str', 'epik': 0, 'select': 0}

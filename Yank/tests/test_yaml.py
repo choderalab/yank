@@ -620,13 +620,17 @@ class TestMultiMoleculeFiles():
         cls.tmp_dir = tempfile.mkdtemp()
         cls.pdb_path = os.path.join(cls.tmp_dir, 'multi.pdb')
         cls.smiles_path = os.path.join(cls.tmp_dir, 'multi.smiles')
+        cls.sdf_path = os.path.join(cls.tmp_dir, 'multi.sdf')
+        cls.mol2_path = os.path.join(cls.tmp_dir, 'multi.mol2')
+
+        # Rotation matrix to invert z-coordinate, i.e. flip molecule w.r.t. x-y plane
+        rot = np.array([[1, 0, 0], [0, 1, 0], [0, 0, -1]])
 
         # Create 2-frame PDB file. First frame is lysozyme, second is lysozyme with inverted z
         lysozyme_path = os.path.join(example_dir(), 'p-xylene-implicit', 'setup', 'receptor.pdbfixer.pdb')
         lysozyme = PDBFile(lysozyme_path)
 
         # Rotate positions to invert z for the second frame
-        rot = np.array([[1, 0, 0], [0, 1, 0], [0, 0, -1]])  # flip w.r.t. x-y plane
         symmetric_pos = lysozyme.getPositions(asNumpy=True).value_in_unit(unit.angstrom)
         symmetric_pos = symmetric_pos.dot(rot) * unit.angstrom
 
@@ -639,6 +643,20 @@ class TestMultiMoleculeFiles():
         with open(cls.smiles_path, 'w') as f:
             f.write('benzene,c1ccccc1\n')
             f.write('toluene,Cc1ccccc1\n')
+
+        # Create 2-molecule sdf and mol2 with OpenEye
+        if utils.is_openeye_installed():
+            from openeye import oechem
+            benzene_path = os.path.join(example_dir(), 'benzene-toluene-explicit',
+                                        'setup', 'benzene.tripos.mol2')
+            oe_benzene = utils.read_oe_molecule(benzene_path)
+            oe_benzene_pos = utils.get_oe_mol_positions(oe_benzene).dot(rot)
+            oe_benzene.NewConf(oechem.OEFloatArray(oe_benzene_pos.flatten()))
+
+            # Save 2-conformer benzene in sdf and mol2 format
+            utils.write_oe_molecule(oe_benzene, cls.sdf_path)
+            utils.write_oe_molecule(oe_benzene, cls.mol2_path, mol2_resname='MOL')
+
 
     @classmethod
     def teardown_class(cls):
@@ -664,6 +682,14 @@ class TestMultiMoleculeFiles():
                 filepath: {}
                 parameters: antechamber
                 select: all
+            sdf:
+                filepath: {}
+                parameters: antechamber
+                select: all
+            mol2:
+                filepath: {}
+                parameters: antechamber
+                select: all
         solvents:
             solv1:
                 nonbonded_method: NoCutoff
@@ -678,7 +704,8 @@ class TestMultiMoleculeFiles():
                 ligand: lig
                 solvent: [solv1, solv2]
             protocol: absolute-binding
-        """.format(self.pdb_path, self.smiles_path, indent(indent(standard_protocol)))
+        """.format(self.pdb_path, self.smiles_path, self.sdf_path,
+                   self.mol2_path, indent(indent(standard_protocol)))
         yaml_content = textwrap.dedent(yaml_content)
 
         expected_content = """
@@ -722,6 +749,22 @@ class TestMultiMoleculeFiles():
                 filepath: {}
                 parameters: antechamber
                 select: 1
+            sdf_0:
+                filepath: {}
+                parameters: antechamber
+                select: 0
+            sdf_1:
+                filepath: {}
+                parameters: antechamber
+                select: 1
+            mol2_0:
+                filepath: {}
+                parameters: antechamber
+                select: 0
+            mol2_1:
+                filepath: {}
+                parameters: antechamber
+                select: 1
         solvents:
             solv1:
                 nonbonded_method: NoCutoff
@@ -737,6 +780,7 @@ class TestMultiMoleculeFiles():
                 solvent: [solv1, solv2]
             protocol: absolute-binding
         """.format(self.pdb_path, self.pdb_path, self.smiles_path, self.smiles_path,
+                   self.sdf_path, self.sdf_path, self.mol2_path, self.mol2_path,
                    indent(standard_protocol))
         expected_content = textwrap.dedent(expected_content)
 
@@ -844,6 +888,86 @@ class TestMultiMoleculeFiles():
                 is_setup, is_processed = yaml_builder._db.is_molecule_setup(mol_id)
                 assert is_setup is True
                 assert is_processed is True
+
+    @unittest.skipIf(not utils.is_openeye_installed(), 'This test requires OpenEye installed.')
+    def test_select_sdf_mol2(self):
+        """Check that selection in sdf and mol2 files works."""
+        with utils.temporary_directory() as tmp_dir:
+            yaml_content = """
+            ---
+            options:
+                output_dir: {}
+                setup_dir: .
+            molecules:
+                sdf_0:
+                    filepath: {}
+                    parameters: antechamber
+                    select: 0
+                sdf_1:
+                    filepath: {}
+                    parameters: antechamber
+                    select: 1
+                mol2_0:
+                    filepath: {}
+                    parameters: antechamber
+                    select: 0
+                mol2_1:
+                    filepath: {}
+                    parameters: antechamber
+                    select: 1
+            """.format(tmp_dir, self.sdf_path, self.sdf_path, self.mol2_path, self.mol2_path)
+            yaml_content = textwrap.dedent(yaml_content)
+            yaml_builder = YamlBuilder(yaml_content)
+
+            for extension in ['sdf', 'mol2']:
+                multi_path = getattr(self, extension + '_path')
+                for model_idx in [0, 1]:
+                    mol_id = extension + '_' + str(model_idx)
+
+                    # The molecule now is neither set up nor processed
+                    is_setup, is_processed = yaml_builder._db.is_molecule_setup(mol_id)
+                    assert is_setup is False
+                    assert is_processed is False
+
+                    yaml_builder._db._setup_molecules(mol_id)
+
+                    # The setup of the molecule must isolate the frame in a single-frame PDB
+                    single_mol_path = os.path.join(tmp_dir, SetupDatabase.MOLECULES_DIR,
+                                                   mol_id, mol_id + '.' + extension)
+                    assert os.path.exists(os.path.join(single_mol_path))
+                    assert os.path.getsize(os.path.join(single_mol_path)) > 0
+
+                    # sdf files must be converted to mol2 to be fed to antechamber
+                    if extension == 'sdf':
+                        single_mol_path = os.path.join(tmp_dir, SetupDatabase.MOLECULES_DIR,
+                                                       mol_id, mol_id + '.mol2')
+                        assert os.path.exists(os.path.join(single_mol_path))
+                        assert os.path.getsize(os.path.join(single_mol_path)) > 0
+
+                    # Check antechamber parametrization
+                    single_mol_path = os.path.join(tmp_dir, SetupDatabase.MOLECULES_DIR,
+                                                   mol_id, mol_id + '.gaff.mol2')
+                    assert os.path.exists(os.path.join(single_mol_path))
+                    assert os.path.getsize(os.path.join(single_mol_path)) > 0
+
+                    # The positions must be approximately correct (antechamber move the molecule)
+                    selected_oe_mol = utils.read_oe_molecule(single_mol_path)
+                    selected_pos = utils.get_oe_mol_positions(selected_oe_mol)
+                    second_oe_mol = utils.read_oe_molecule(multi_path, conformer_idx=model_idx)
+                    second_pos = utils.get_oe_mol_positions(second_oe_mol)
+                    assert selected_oe_mol.NumConfs() == 1
+                    assert np.allclose(selected_pos, second_pos, atol=1e-1)
+
+                    # The molecule now both set up and processed
+                    is_setup, is_processed = yaml_builder._db.is_molecule_setup(mol_id)
+                    assert is_setup is True
+                    assert is_processed is True
+
+                    # A new instance of YamlBuilder is able to resume with correct molecule
+                    yaml_builder = YamlBuilder(yaml_content)
+                    is_setup, is_processed = yaml_builder._db.is_molecule_setup(mol_id)
+                    assert is_setup is True
+                    assert is_processed is True
 
 
 def test_setup_implicit_system_leap():
