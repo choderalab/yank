@@ -14,9 +14,10 @@ Test YAML functions.
 #=============================================================================================
 
 import time
-import tempfile
+import shutil
 import textwrap
 import unittest
+import tempfile
 
 from nose.tools import raises
 
@@ -57,6 +58,15 @@ def test_compute_min_dist():
     mol3_pos = np.array([[2, 2, 2], [2, 4, 5]], np.float)
     assert compute_min_dist(mol1_pos, mol2_pos, mol3_pos) == np.sqrt(3)
 
+def test_compute_dist_bound():
+    """Test compute_dist_bound() function."""
+    mol1_pos = np.array([[-1, -1, -1], [1, 1, 1]])
+    mol2_pos = np.array([[2, 2, 2], [2, 4, 5]])  # determine min dist
+    mol3_pos = np.array([[3, 3, 3], [3, 4, 5]])  # determine max dist
+    min_dist, max_dist = compute_dist_bound(mol1_pos, mol2_pos, mol3_pos)
+    assert min_dist == np.linalg.norm(mol1_pos[1] - mol2_pos[0])
+    assert max_dist == np.linalg.norm(mol1_pos[1] - mol3_pos[1])
+
 def test_remove_overlap():
     """Test function remove_overlap()."""
     mol1_pos = np.array([[-1, -1, -1], [1, 1, 1]], np.float)
@@ -69,10 +79,30 @@ def test_remove_overlap():
 def test_pull_close():
     """Test function pull_close()."""
     mol1_pos = np.array([[-1, -1, -1], [1, 1, 1]], np.float)
-    mol2_pos = np.array([[10, 10, 10], [13, 14, 15]], np.float)
-    translation = pull_close(mol1_pos, mol2_pos, 1.5, 5)
-    assert isinstance(translation, np.ndarray)
-    assert 1.5 <= compute_min_dist(mol1_pos, mol2_pos + translation) <= 5
+    mol2_pos = np.array([[-1, -1, -1], [1, 1, 1]], np.float)
+    mol3_pos = np.array([[10, 10, 10], [13, 14, 15]], np.float)
+    translation2 = pull_close(mol1_pos, mol2_pos, 1.5, 5)
+    translation3 = pull_close(mol1_pos, mol3_pos, 1.5, 5)
+    assert isinstance(translation2, np.ndarray)
+    assert 1.5 <= compute_min_dist(mol1_pos, mol2_pos + translation2) <= 5
+    assert 1.5 <= compute_min_dist(mol1_pos, mol3_pos + translation3) <= 5
+
+def test_pack_transformation():
+    """Test function pack_transformation()."""
+    BOX_SIZE = 5
+    CLASH_DIST = 1
+
+    mol1 = np.array([[-1, -1, -1], [1, 1, 1]], np.float)
+    mols = [np.copy(mol1),  # distance = 0
+            mol1 + 2 * BOX_SIZE]  # distance > box
+    mols_affine = [np.append(mol, np.ones((2, 1)), axis=1) for mol in mols]
+
+    transformations = [pack_transformation(mol1, mol2, CLASH_DIST, BOX_SIZE) for mol2 in mols]
+    for mol, transf in zip(mols_affine, transformations):
+        assert isinstance(transf, np.ndarray)
+        mol2 = mol.dot(transf.T)[:, :3]  # transform and "de-affine"
+        min_dist, max_dist = compute_dist_bound(mol1, mol2)
+        assert CLASH_DIST <= min_dist and max_dist <= BOX_SIZE
 
 def test_yaml_parsing():
     """Check that YAML file is parsed correctly."""
@@ -370,78 +400,6 @@ def test_exp_sequence():
     yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
     assert len(yaml_builder._experiments) == 2
 
-def test_expand_molecules():
-    """Check that combinatorial molecules are handled correctly."""
-    yaml_content = """
-    ---
-    molecules:
-        rec:
-            filepath: [conf1.pdb, conf2.pdb]
-            parameters: oldff/leaprc.ff99SBildn
-        lig:
-            name: [iupac1, iupac2]
-            parameters: antechamber
-            epik: [0, 2]
-    solvents:
-        solv1:
-            nonbonded_method: NoCutoff
-        solv2:
-            nonbonded_method: PME
-            nonbonded_cutoff: 1*nanometer
-            clearance: 10*angstroms
-    protocols:{}
-    experiments:
-        components:
-            receptor: [rec, lig]
-            ligand: lig
-            solvent: [solv1, solv2]
-        protocol: absolute-binding
-    """.format(standard_protocol)
-
-    expected_content = """
-    ---
-    molecules:
-        rec_conf1pdb:
-            filepath: conf1.pdb
-            parameters: oldff/leaprc.ff99SBildn
-        rec_conf2pdb:
-            filepath: conf2.pdb
-            parameters: oldff/leaprc.ff99SBildn
-        lig_0_iupac1:
-            name: iupac1
-            parameters: antechamber
-            epik: 0
-        lig_2_iupac1:
-            name: iupac1
-            parameters: antechamber
-            epik: 2
-        lig_0_iupac2:
-            name: iupac2
-            parameters: antechamber
-            epik: 0
-        lig_2_iupac2:
-            name: iupac2
-            parameters: antechamber
-            epik: 2
-    solvents:
-        solv1:
-            nonbonded_method: NoCutoff
-        solv2:
-            nonbonded_method: PME
-            nonbonded_cutoff: 1*nanometer
-            clearance: 10*angstroms
-    protocols:{}
-    experiments:
-        components:
-            receptor: [rec_conf1pdb, rec_conf2pdb, lig_0_iupac2, lig_2_iupac1, lig_2_iupac2, lig_0_iupac1]
-            ligand: [lig_0_iupac2, lig_2_iupac1, lig_2_iupac2, lig_0_iupac1]
-            solvent: [solv1, solv2]
-        protocol: absolute-binding
-    """.format(standard_protocol)
-
-    raw = yaml.load(textwrap.dedent(yaml_content))
-    expanded = YamlBuilder._expand_molecules(raw)
-    assert expanded == yaml.load(textwrap.dedent(expected_content))
 
 @raises(YamlParseError)
 def test_unkown_component():
@@ -542,8 +500,6 @@ def test_yaml_mol2_antechamber():
 @unittest.skipIf(not utils.is_openeye_installed(), 'This test requires OpenEye installed.')
 def test_setup_name_smiles_antechamber():
     """Setup molecule from name and SMILES with antechamber parametrization."""
-    benzene_path = os.path.join(example_dir(), 'benzene-toluene-explicit',
-                                'setup', 'benzene.tripos.mol2')
     with utils.temporary_directory() as tmp_dir:
         yaml_content = """
         ---
@@ -554,20 +510,13 @@ def test_setup_name_smiles_antechamber():
             p-xylene:
                 name: p-xylene
                 parameters: antechamber
-            benzene:
-                filepath: {}
-                parameters: antechamber
             toluene:
                 smiles: Cc1ccccc1
                 parameters: antechamber
-        """.format(tmp_dir, benzene_path)
+        """.format(tmp_dir)
 
         yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
-
-        # The order of the arguments in _setup_molecules is important, we want to test
-        # that overlapping molecules in toluene are removed even if benzene has been
-        # indicated to be processed afterwards
-        yaml_builder._db._setup_molecules('toluene', 'benzene', 'p-xylene')
+        yaml_builder._db._setup_molecules('toluene', 'p-xylene')
 
         for mol in ['toluene', 'p-xylene']:
             output_dir = os.path.join(tmp_dir, SetupDatabase.MOLECULES_DIR, mol)
@@ -578,17 +527,10 @@ def test_setup_name_smiles_antechamber():
             assert os.path.getsize(os.path.join(output_dir, mol + '.gaff.mol2')) > 0
             assert os.path.getsize(os.path.join(output_dir, mol + '.frcmod')) > 0
 
-        # Test that molecules do not overlap
-        toluene_path = os.path.join(tmp_dir, SetupDatabase.MOLECULES_DIR,
-                                    'toluene', 'toluene.gaff.mol2')
-        toluene_pos = utils.get_oe_mol_positions(utils.read_oe_molecule(toluene_path))
-        benzene_pos = utils.get_oe_mol_positions(utils.read_oe_molecule(benzene_path))
-        assert compute_min_dist(toluene_pos, benzene_pos) >= 1.0
-
-@raises(YamlParseError)
 @unittest.skipIf(not utils.is_openeye_installed(), 'This test requires OpenEye installed.')
-def test_overlapping_atoms():
-    """Check that exception is raised when overlapping atoms."""
+def test_clashing_atoms():
+    """Check that clashing atoms are resolved."""
+    CLEARANCE = 10.0
     setup_dir = os.path.join(example_dir(), 'benzene-toluene-explicit', 'setup')
     benzene_path = os.path.join(setup_dir, 'benzene.tripos.mol2')
     toluene_path = os.path.join(setup_dir, 'toluene.tripos.mol2')
@@ -605,10 +547,42 @@ def test_overlapping_atoms():
             toluene:
                 filepath: {}
                 parameters: antechamber
-        """.format(tmp_dir, benzene_path, toluene_path)
+        solvents:
+            vacuum:
+                nonbonded_method: NoCutoff
+            PME:
+                nonbonded_method: PME
+                nonbonded_cutoff: 1*nanometer
+                clearance: {}*angstroms
+        """.format(tmp_dir, benzene_path, toluene_path, CLEARANCE)
+
+        # Sanity check: at the beginning molecules clash
+        toluene_pos = utils.get_oe_mol_positions(utils.read_oe_molecule(toluene_path))
+        benzene_pos = utils.get_oe_mol_positions(utils.read_oe_molecule(benzene_path))
+        assert compute_min_dist(toluene_pos, benzene_pos) < SetupDatabase.CLASH_THRESHOLD
 
         yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
-        yaml_builder._db._setup_molecules('benzene', 'toluene')
+
+        components = {'receptor': 'benzene', 'ligand': 'toluene'}
+        for solvent in ['vacuum', 'PME']:
+            components['solvent'] = solvent
+            system_dir = yaml_builder._db.get_system(components)
+
+            # Get positions of molecules in the final system
+            prmtop = openmm.app.AmberPrmtopFile(os.path.join(system_dir, 'complex.prmtop'))
+            inpcrd = openmm.app.AmberInpcrdFile(os.path.join(system_dir, 'complex.inpcrd'))
+            positions = inpcrd.getPositions(asNumpy=True).value_in_unit(unit.angstrom)
+            atom_indices = pipeline.find_components(prmtop.topology, 'resname TOL')
+            benzene_pos2 = positions.take(atom_indices['receptor'], axis=0)
+            toluene_pos2 = positions.take(atom_indices['ligand'], axis=0)
+
+            # Test that clashes are resolved in the system
+            min_dist, max_dist = compute_dist_bound(toluene_pos2, benzene_pos2)
+            assert min_dist >= SetupDatabase.CLASH_THRESHOLD
+
+            # For solvent we check that molecule is within the box
+            if solvent == 'PME':
+                assert max_dist <= CLEARANCE
 
 @unittest.skipIf(not utils.is_schrodinger_suite_installed(), "This test requires Schrodinger's suite")
 def test_epik_enumeration():
@@ -634,6 +608,367 @@ def test_epik_enumeration():
         output_dir = os.path.join(tmp_dir, SetupDatabase.MOLECULES_DIR, 'benzene')
         assert os.path.exists(os.path.join(output_dir, 'benzene-epik.mol2'))
         assert os.path.getsize(os.path.join(output_dir, 'benzene-epik.mol2')) > 0
+
+
+class TestMultiMoleculeFiles():
+
+    @classmethod
+    def setup_class(cls):
+        """Create a 2-frame PDB file in pdb_path. The second frame has same positions
+        of the first one but with inversed z-coordinate."""
+        # Creating a temporary directory and generating paths for output files
+        cls.tmp_dir = tempfile.mkdtemp()
+        cls.pdb_path = os.path.join(cls.tmp_dir, 'multi.pdb')
+        cls.smiles_path = os.path.join(cls.tmp_dir, 'multi.smiles')
+        cls.sdf_path = os.path.join(cls.tmp_dir, 'multi.sdf')
+        cls.mol2_path = os.path.join(cls.tmp_dir, 'multi.mol2')
+
+        # Rotation matrix to invert z-coordinate, i.e. flip molecule w.r.t. x-y plane
+        rot = np.array([[1, 0, 0], [0, 1, 0], [0, 0, -1]])
+
+        # Create 2-frame PDB file. First frame is lysozyme, second is lysozyme with inverted z
+        lysozyme_path = os.path.join(example_dir(), 'p-xylene-implicit', 'setup', 'receptor.pdbfixer.pdb')
+        lysozyme = PDBFile(lysozyme_path)
+
+        # Rotate positions to invert z for the second frame
+        symmetric_pos = lysozyme.getPositions(asNumpy=True).value_in_unit(unit.angstrom)
+        symmetric_pos = symmetric_pos.dot(rot) * unit.angstrom
+
+        with open(cls.pdb_path, 'w') as f:
+            PDBFile.writeHeader(lysozyme.topology, file=f)
+            PDBFile.writeModel(lysozyme.topology, lysozyme.positions, file=f, modelIndex=0)
+            PDBFile.writeModel(lysozyme.topology, symmetric_pos, file=f, modelIndex=1)
+
+        # Create 2-molecule SMILES file
+        with open(cls.smiles_path, 'w') as f:
+            f.write('benzene,c1ccccc1\n')
+            f.write('toluene,Cc1ccccc1\n')
+
+        # Create 2-molecule sdf and mol2 with OpenEye
+        if utils.is_openeye_installed():
+            from openeye import oechem
+            benzene_path = os.path.join(example_dir(), 'benzene-toluene-explicit',
+                                        'setup', 'benzene.tripos.mol2')
+            oe_benzene = utils.read_oe_molecule(benzene_path)
+            oe_benzene_pos = utils.get_oe_mol_positions(oe_benzene).dot(rot)
+            oe_benzene.NewConf(oechem.OEFloatArray(oe_benzene_pos.flatten()))
+
+            # Save 2-conformer benzene in sdf and mol2 format
+            utils.write_oe_molecule(oe_benzene, cls.sdf_path)
+            utils.write_oe_molecule(oe_benzene, cls.mol2_path, mol2_resname='MOL')
+
+
+    @classmethod
+    def teardown_class(cls):
+        shutil.rmtree(cls.tmp_dir)
+
+    def test_expand_molecules(self):
+        """Check that combinatorial molecules are handled correctly."""
+        yaml_content = """
+        ---
+        molecules:
+            rec:
+                filepath: [conf1.pdb, conf2.pdb]
+                parameters: oldff/leaprc.ff99SBildn
+            lig:
+                name: [iupac1, iupac2]
+                parameters: antechamber
+                epik: [0, 2]
+            multi:
+                filepath: {}
+                parameters: leaprc.ff14SB
+                select: all
+            smiles:
+                filepath: {}
+                parameters: antechamber
+                select: all
+            sdf:
+                filepath: {}
+                parameters: antechamber
+                select: all
+            mol2:
+                filepath: {}
+                parameters: antechamber
+                select: all
+        solvents:
+            solv1:
+                nonbonded_method: NoCutoff
+            solv2:
+                nonbonded_method: PME
+                nonbonded_cutoff: 1*nanometer
+                clearance: 10*angstroms
+        protocols:{}
+        experiments:
+            components:
+                receptor: [rec, multi]
+                ligand: lig
+                solvent: [solv1, solv2]
+            protocol: absolute-binding
+        """.format(self.pdb_path, self.smiles_path, self.sdf_path,
+                   self.mol2_path, indent(indent(standard_protocol)))
+        yaml_content = textwrap.dedent(yaml_content)
+
+        expected_content = """
+        ---
+        molecules:
+            rec_conf1pdb:
+                filepath: conf1.pdb
+                parameters: oldff/leaprc.ff99SBildn
+            rec_conf2pdb:
+                filepath: conf2.pdb
+                parameters: oldff/leaprc.ff99SBildn
+            lig_0_iupac1:
+                name: iupac1
+                parameters: antechamber
+                epik: 0
+            lig_2_iupac1:
+                name: iupac1
+                parameters: antechamber
+                epik: 2
+            lig_0_iupac2:
+                name: iupac2
+                parameters: antechamber
+                epik: 0
+            lig_2_iupac2:
+                name: iupac2
+                parameters: antechamber
+                epik: 2
+            multi_0:
+                filepath: {}
+                parameters: leaprc.ff14SB
+                select: 0
+            multi_1:
+                filepath: {}
+                parameters: leaprc.ff14SB
+                select: 1
+            smiles_0:
+                filepath: {}
+                parameters: antechamber
+                select: 0
+            smiles_1:
+                filepath: {}
+                parameters: antechamber
+                select: 1
+            sdf_0:
+                filepath: {}
+                parameters: antechamber
+                select: 0
+            sdf_1:
+                filepath: {}
+                parameters: antechamber
+                select: 1
+            mol2_0:
+                filepath: {}
+                parameters: antechamber
+                select: 0
+            mol2_1:
+                filepath: {}
+                parameters: antechamber
+                select: 1
+        solvents:
+            solv1:
+                nonbonded_method: NoCutoff
+            solv2:
+                nonbonded_method: PME
+                nonbonded_cutoff: 1*nanometer
+                clearance: 10*angstroms
+        protocols:{}
+        experiments:
+            components:
+                receptor: [rec_conf1pdb, rec_conf2pdb, multi_1, multi_0]
+                ligand: [lig_0_iupac2, lig_2_iupac1, lig_2_iupac2, lig_0_iupac1]
+                solvent: [solv1, solv2]
+            protocol: absolute-binding
+        """.format(self.pdb_path, self.pdb_path, self.smiles_path, self.smiles_path,
+                   self.sdf_path, self.sdf_path, self.mol2_path, self.mol2_path,
+                   indent(standard_protocol))
+        expected_content = textwrap.dedent(expected_content)
+
+        raw = yaml.load(yaml_content)
+        expanded = YamlBuilder(yaml_content)._expand_molecules(raw)
+        assert expanded == yaml.load(expected_content)
+
+    def test_select_pdb_conformation(self):
+        """Check that frame selection in multi-model PDB files works."""
+        with utils.temporary_directory() as tmp_dir:
+            yaml_content = """
+            ---
+            options:
+                output_dir: {}
+                setup_dir: .
+            molecules:
+                selected:
+                    filepath: {}
+                    parameters: leaprc.ff14SB
+                    select: 1
+            """.format(tmp_dir, self.pdb_path)
+            yaml_content = textwrap.dedent(yaml_content)
+            yaml_builder = YamlBuilder(yaml_content)
+
+            # The molecule now is neither set up nor processed
+            is_setup, is_processed = yaml_builder._db.is_molecule_setup('selected')
+            assert is_setup is False
+            assert is_processed is False
+
+            # The setup of the molecule must isolate the frame in a single-frame PDB
+            yaml_builder._db._setup_molecules('selected')
+            selected_pdb_path = os.path.join(tmp_dir, SetupDatabase.MOLECULES_DIR,
+                                             'selected', 'selected.pdb')
+            assert os.path.exists(os.path.join(selected_pdb_path))
+            assert os.path.getsize(os.path.join(selected_pdb_path)) > 0
+
+            # The positions must be the ones of the second frame
+            selected_pdb = PDBFile(selected_pdb_path)
+            selected_pos = selected_pdb.getPositions(asNumpy=True)
+            second_pos = PDBFile(self.pdb_path).getPositions(asNumpy=True, frame=1)
+            assert selected_pdb.getNumFrames() == 1
+            assert (selected_pos == second_pos).all()
+
+            # The description of the molecule is now updated
+            assert os.path.normpath(yaml_builder._db.molecules['selected']['filepath']) == selected_pdb_path
+
+            # The molecule now both set up and processed
+            is_setup, is_processed = yaml_builder._db.is_molecule_setup('selected')
+            assert is_setup is True
+            assert is_processed is True
+
+            # A new instance of YamlBuilder is able to resume with correct molecule
+            yaml_builder = YamlBuilder(yaml_content)
+            is_setup, is_processed = yaml_builder._db.is_molecule_setup('selected')
+            assert is_setup is True
+            assert is_processed is True
+
+    @unittest.skipIf(not utils.is_openeye_installed(), 'This test requires OpenEye installed.')
+    def test_setup_smiles(self):
+        """Check that setup molecule from SMILES files works."""
+        from openeye.oechem import OEMolToSmiles
+
+        with utils.temporary_directory() as tmp_dir:
+            yaml_content = """
+            ---
+            options:
+                output_dir: {}
+                setup_dir: .
+            molecules:
+                take-first:
+                    filepath: {}
+                    parameters: antechamber
+                select-second:
+                    filepath: {}
+                    parameters: antechamber
+                    select: 1
+            """.format(tmp_dir, self.smiles_path, self.smiles_path)
+            yaml_content = textwrap.dedent(yaml_content)
+            yaml_builder = YamlBuilder(yaml_content)
+
+            for i, mol_id in enumerate(['take-first', 'select-second']):
+                # The molecule now is neither set up nor processed
+                is_setup, is_processed = yaml_builder._db.is_molecule_setup(mol_id)
+                assert is_setup is False
+                assert is_processed is False
+
+                # The single SMILES has been converted to mol2 file
+                yaml_builder._db._setup_molecules(mol_id)
+                mol2_path = os.path.join(tmp_dir, SetupDatabase.MOLECULES_DIR, mol_id, mol_id + '.mol2')
+                assert os.path.exists(os.path.join(mol2_path))
+                assert os.path.getsize(os.path.join(mol2_path)) > 0
+
+                # The mol2 represents the right molecule
+                csv_smiles_str = (open(self.smiles_path, 'r').readlines()[i]).strip().split(',')[1]
+                mol2_smiles_str = OEMolToSmiles(utils.read_oe_molecule(mol2_path))
+                assert mol2_smiles_str == csv_smiles_str
+
+                # The molecule now both set up and processed
+                is_setup, is_processed = yaml_builder._db.is_molecule_setup(mol_id)
+                assert is_setup is True
+                assert is_processed is True
+
+                # A new instance of YamlBuilder is able to resume with correct molecule
+                yaml_builder = YamlBuilder(yaml_content)
+                is_setup, is_processed = yaml_builder._db.is_molecule_setup(mol_id)
+                assert is_setup is True
+                assert is_processed is True
+
+    @unittest.skipIf(not utils.is_openeye_installed(), 'This test requires OpenEye installed.')
+    def test_select_sdf_mol2(self):
+        """Check that selection in sdf and mol2 files works."""
+        with utils.temporary_directory() as tmp_dir:
+            yaml_content = """
+            ---
+            options:
+                output_dir: {}
+                setup_dir: .
+            molecules:
+                sdf_0:
+                    filepath: {}
+                    parameters: antechamber
+                    select: 0
+                sdf_1:
+                    filepath: {}
+                    parameters: antechamber
+                    select: 1
+                mol2_0:
+                    filepath: {}
+                    parameters: antechamber
+                    select: 0
+                mol2_1:
+                    filepath: {}
+                    parameters: antechamber
+                    select: 1
+            """.format(tmp_dir, self.sdf_path, self.sdf_path, self.mol2_path, self.mol2_path)
+            yaml_content = textwrap.dedent(yaml_content)
+            yaml_builder = YamlBuilder(yaml_content)
+
+            for extension in ['sdf', 'mol2']:
+                multi_path = getattr(self, extension + '_path')
+                for model_idx in [0, 1]:
+                    mol_id = extension + '_' + str(model_idx)
+
+                    # The molecule now is neither set up nor processed
+                    is_setup, is_processed = yaml_builder._db.is_molecule_setup(mol_id)
+                    assert is_setup is False
+                    assert is_processed is False
+
+                    yaml_builder._db._setup_molecules(mol_id)
+
+                    # The setup of the molecule must isolate the frame in a single-frame PDB
+                    single_mol_path = os.path.join(tmp_dir, SetupDatabase.MOLECULES_DIR,
+                                                   mol_id, mol_id + '.' + extension)
+                    assert os.path.exists(os.path.join(single_mol_path))
+                    assert os.path.getsize(os.path.join(single_mol_path)) > 0
+
+                    # sdf files must be converted to mol2 to be fed to antechamber
+                    if extension == 'sdf':
+                        single_mol_path = os.path.join(tmp_dir, SetupDatabase.MOLECULES_DIR,
+                                                       mol_id, mol_id + '.mol2')
+                        assert os.path.exists(os.path.join(single_mol_path))
+                        assert os.path.getsize(os.path.join(single_mol_path)) > 0
+
+                    # Check antechamber parametrization
+                    single_mol_path = os.path.join(tmp_dir, SetupDatabase.MOLECULES_DIR,
+                                                   mol_id, mol_id + '.gaff.mol2')
+                    assert os.path.exists(os.path.join(single_mol_path))
+                    assert os.path.getsize(os.path.join(single_mol_path)) > 0
+
+                    # The positions must be approximately correct (antechamber move the molecule)
+                    selected_oe_mol = utils.read_oe_molecule(single_mol_path)
+                    selected_pos = utils.get_oe_mol_positions(selected_oe_mol)
+                    second_oe_mol = utils.read_oe_molecule(multi_path, conformer_idx=model_idx)
+                    second_pos = utils.get_oe_mol_positions(second_oe_mol)
+                    assert selected_oe_mol.NumConfs() == 1
+                    assert np.allclose(selected_pos, second_pos, atol=1e-1)
+
+                    # The molecule now both set up and processed
+                    is_setup, is_processed = yaml_builder._db.is_molecule_setup(mol_id)
+                    assert is_setup is True
+                    assert is_processed is True
+
+                    # A new instance of YamlBuilder is able to resume with correct molecule
+                    yaml_builder = YamlBuilder(yaml_content)
+                    is_setup, is_processed = yaml_builder._db.is_molecule_setup(mol_id)
+                    assert is_setup is True
+                    assert is_processed is True
+
 
 def test_setup_implicit_system_leap():
     """Create prmtop and inpcrd for implicit solvent protein-ligand system."""
@@ -878,6 +1213,7 @@ def test_run_experiment():
             T4lysozyme:
                 filepath: {}
                 parameters: oldff/leaprc.ff99SBildn
+                select: 0
             p-xylene:
                 filepath: {}
                 parameters: antechamber

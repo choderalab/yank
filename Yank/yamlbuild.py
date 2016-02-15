@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 import numpy as np
 import openmoltools
 from simtk import unit, openmm
+from simtk.openmm.app import PDBFile
 from alchemy import AlchemicalState, AbsoluteAlchemicalFactory
 
 import utils
@@ -73,6 +74,64 @@ def compute_min_dist(mol_positions, *args):
         except UnboundLocalError:
             min_dist = np.sqrt(distances2[min_idx])
     return min_dist
+
+def compute_dist_bound(mol_positions, *args):
+    """Compute minimum and maximum distances between a molecule and a set of
+    other molecules.
+
+    All the positions must be expressed in the same unit of measure.
+
+    Parameters
+    ----------
+    mol_positions : numpy.ndarray
+        An Nx3 array where, N is the number of atoms, containing the positions of
+        the atoms of the molecule for which we want to compute the minimum distance
+        from the others
+
+    Other parameters
+    ----------------
+    args
+        A series of numpy.ndarrays containing the positions of the atoms of the other
+        molecules
+
+    Returns
+    -------
+    min_dist : float
+        The minimum distance between mol_positions and the atoms of the other positions
+    max_dist : float
+        The maximum distance between mol_positions and the atoms of the other positions
+
+    Examples
+    --------
+    >>> mol1_pos = np.array([[-1, -1, -1], [1, 1, 1]], np.float)
+    >>> mol2_pos = np.array([[2, 2, 2], [2, 4, 5]], np.float)  # determine min dist
+    >>> mol3_pos = np.array([[3, 3, 3], [3, 4, 5]], np.float)  # determine max dist
+    >>> min_dist, max_dist = compute_dist_bound(mol1_pos, mol2_pos, mol3_pos)
+    >>> min_dist == np.linalg.norm(mol1_pos[1] - mol2_pos[0])
+    True
+    >>> max_dist == np.linalg.norm(mol1_pos[1] - mol3_pos[1])
+    True
+
+    """
+    min_dist = None
+
+    for arg_pos in args:
+        # Compute squared distances of all atoms. Each row is an array
+        # of distances from an atom in arg_pos to all the atoms in arg_pos
+        distances2 = np.array([((mol_positions - atom)**2).sum(1) for atom in arg_pos])
+
+        # Find distances of each arg_pos atom to mol_positions
+        distances2 = np.amin(distances2, axis=1)
+
+        # Find closest and distant atom
+        if min_dist is None:
+            min_dist = np.sqrt(distances2.min())
+            max_dist = np.sqrt(distances2.max())
+        else:
+            min_dist = min(min_dist, np.sqrt(distances2.min()))
+            max_dist = max(max_dist, np.sqrt(distances2.max()))
+
+    return min_dist, max_dist
 
 def remove_overlap(mol_positions, *args, **kwargs):
     """Remove any eventual overlap between a molecule and a set of others.
@@ -125,6 +184,80 @@ def remove_overlap(mol_positions, *args, **kwargs):
         x += sigma * np.random.randn(3)
 
     return x
+
+def pack_transformation(mol1_pos, mol2_pos, min_distance, max_distance):
+    """Compute an affine transformation that solve clashes and fit mol2 in the box.
+
+    The method randomly shifts and rotates mol2 until all its atoms are within
+    min_distance and max_distance from mol1. The position of mol1 is kept fixed.
+    Every 200 failed iterations, the algorithm increases max_distance by 50%. It
+    raise an exception after 1000 iterations.
+
+    All the positions must be expressed in the same unit of measure.
+
+    Parameters
+    ----------
+    mol1_pos : numpy.ndarray
+        An Nx3 array where, N is the number of atoms, containing the positions of
+        the atoms of the molecule that will be kept fixed.
+    mol2_pos : numpy.ndarray
+        An Nx3 array where, N is the number of atoms, containing the positions of
+        the atoms of the molecule that will be eventually moved.
+    min_distance : float
+        The minimum distance accepted to consider mol2 not clashing with mol1. It
+        must be in the same unit of measure of the positions.
+    max_distance : float
+        The maximum distance from mol1 to consider mol2 within the box. It must
+        be in the same unit of measure of the positions.
+
+    Returns
+    -------
+    transformation : numpy.ndarray
+        A 4x4 ndarray representing the affine transformation that translate and
+        rotate mol2.
+
+    """
+    translation = None  # we'll use this to check if we made changes to mol2_pos
+    transformation = np.identity(4)
+
+    # Compute center of geometry
+    x0 = mol2_pos.mean(0)
+
+    # Try until we have a non-overlapping conformation w.r.t. all fixed molecules
+    i = 0
+    min_dist, max_dist = compute_dist_bound(mol1_pos, mol2_pos)
+    while min_dist < min_distance or max_distance <= max_dist:
+        # Select random atom of fixed molecule and use it to propose new x0 position
+        mol1_atom_idx = np.random.random_integers(0, len(mol1_pos) - 1)
+        translation = mol1_pos[mol1_atom_idx] + max_distance * np.random.randn(3) - x0
+
+        # Generate random rotation matrix
+        q = ModifiedHamiltonianExchange._generate_uniform_quaternion()
+        Rq = ModifiedHamiltonianExchange._rotation_matrix_from_quaternion(q)
+
+        # Apply random transformation and test
+        x = ((Rq * np.matrix(mol2_pos - x0).T).T + x0).A + translation
+        min_dist, max_dist = compute_dist_bound(mol1_pos, x)
+
+        # Check n iterations
+        i += 1
+        if i % 200 == 0:
+            max_distance *= 1.5
+        if i >= 1000:
+            err_msg = 'Cannot fit mol2 into solvation box!'
+            logger.error(err_msg)
+            raise RuntimeError(err_msg)
+
+    # Generate 4x4 affine transformation in molecule reference frame
+    if translation is not None:
+        transl_to_origin, transl_to_x0, rot_transl_matrix = (np.identity(4) for _ in range(3))
+        transl_to_origin[:3, 3] = -x0  # translate the molecule from x0 to origin
+        rot_transl_matrix[:3, :3] = Rq  # rotate molecule in origin
+        rot_transl_matrix[:3, 3] = translation  # translate molecule
+        transl_to_x0[:3, 3] = x0  # translate the molecule from origin to x0
+        transformation = transl_to_x0.dot(rot_transl_matrix.dot(transl_to_origin))
+
+    return transformation
 
 def pull_close(fixed_mol_pos, translated_mol_pos, min_bound, max_bound):
     """Heuristic algorithm to quickly translate the ligand close to the receptor.
@@ -179,8 +312,11 @@ def pull_close(fixed_mol_pos, translated_mol_pos, min_bound, max_bound):
             break
 
         # Compute unit vector that connects receptor and ligand atom
-        direction = fixed_mol_pos[min_idx[1]] - trans_pos[min_idx[0]]
-        direction = direction / np.sqrt((direction**2).sum())
+        if min_dist != 0:
+            direction = fixed_mol_pos[min_idx[1]] - trans_pos[min_idx[0]]
+        else:  # any deterministic direction
+            direction = np.array([1, 1, 1])
+        direction = direction / np.sqrt((direction**2).sum())  # normalize
 
         if max_bound < min_dist:  # the atom is far away
             translation = (min_dist - goal_distance) * direction
@@ -236,7 +372,7 @@ class SetupDatabase:
 
     SYSTEMS_DIR = 'systems'
     MOLECULES_DIR = 'molecules'
-    CLASH_THRESHOLD = 1.0  # distance in Angstroms to consider two atoms clashing
+    CLASH_THRESHOLD = 1.5  # distance in Angstroms to consider two atoms clashing
 
     def __init__(self, setup_dir, molecules=None, solvents=None):
         """Initialize the database.
@@ -256,9 +392,8 @@ class SetupDatabase:
         self.solvents = solvents
 
         # Private attributes
-        self._oe_molecules = {}  # molecules generated by OpenEye
-        self._fixed_pos_cache = {}  # positions of molecules given as files
-        self._parametrized_molecules = set()  # keep track of parametrized molecules
+        self._pos_cache = {}  # cache positions of molecules
+        self._processed_mols = set()  # keep track of parametrized molecules
 
     def get_molecule_dir(self, molecule_id):
         """Return the directory where the parameter files are stored.
@@ -304,10 +439,12 @@ class SetupDatabase:
         """Check whether the molecule has been processed previously.
 
         The molecule must be set up if it needs to be parametrize by antechamber
-        (and the gaff.mol2 and frcmod files do not exist) or if the molecule must
-        be generated by OpenEye. We set up the molecule in the second case even if
-        the final output files already exist since its initial position may change
-        from system to system in order to avoid overlapping atoms.
+        (and the gaff.mol2 and frcmod files do not exist), if the molecule must be
+        generated by OpenEye, or if it needs to be extracted by a multi-molecule file.
+
+        An example to clarify the difference between the two return values: a protein
+        in a single-frame pdb does not have to be processed (since it does not go through
+        antechamber) thus the function will return is_setup=True and is_processed=False.
 
         Parameters
         ----------
@@ -320,35 +457,54 @@ class SetupDatabase:
             True if the molecule's parameter files have been specified by the user
             or if they have been generated by SetupDatabase.
         is_processed : bool
-            True if is_setup is True and the parameter files have been generated
-            previously by SetupDatabase (i.e. if the parameter files were not
-            manually specified by the user).
+            True if parameter files have been generated previously by SetupDatabase
+            (i.e. if the parameter files were not manually specified by the user).
 
         """
-        is_setup = True
-        is_processed = False
-        molecule = self.molecules[molecule_id]
 
-        # Does the molecule have to be generated by OpenEye?
-        if 'filepath' not in molecule or molecule_id in self._oe_molecules:
-            is_setup = False
+        # The only way to check if we processed the molecule in the current run is
+        # through self._processed_mols as 'parameters' will be changed after setup
+        if molecule_id in self._processed_mols:
+            return True, True
 
-        # Do the parameter files already exist?
-        elif (molecule['parameters'] == 'antechamber' or
-                      molecule_id in self._parametrized_molecules):
-            molecule_dir = self.get_molecule_dir(molecule_id)
-            parameters = os.path.join(molecule_dir, molecule_id + '.frcmod')
-            filepath = os.path.join(molecule_dir, molecule_id + '.gaff.mol2')
-            if not (os.path.isfile(parameters) and os.path.isfile(filepath)):
-                is_setup = False
-            else:
-                is_processed = True
+        # Some convenience variables
+        molecule_descr = self.molecules[molecule_id]
+        molecule_dir = self.get_molecule_dir(molecule_id)
+        try:
+            extension = os.path.splitext(molecule_descr['filepath'])[1]
+        except KeyError:
+            extension = None
 
-                # Make sure internal description is correct
-                molecule['filepath'] = filepath
-                molecule['parameters'] = parameters
+        # The following checks must be performed in reverse order w.r.t. how they
+        # are executed in _setup_molecules()
 
-        return is_setup, is_processed
+        files_to_check = {}
+
+        # If the molecule must go through antechamber we search for its output
+        if molecule_descr['parameters'] == 'antechamber':
+            files_to_check['filepath'] = os.path.join(molecule_dir, molecule_id + '.gaff.mol2')
+            files_to_check['parameters'] = os.path.join(molecule_dir, molecule_id + '.frcmod')
+
+        # If the molecule must be generated by OpenEye, a mol2 should have been created
+        elif extension is None or extension == '.smiles' or extension == '.csv':
+            files_to_check['filepath'] = os.path.join(molecule_dir, molecule_id + '.mol2')
+
+        # If a single structure must be extracted we search for output
+        elif 'select' in molecule_descr:
+            files_to_check['filepath'] = os.path.join(molecule_dir, molecule_id + extension)
+
+        # Check if this needed to be processed at all
+        if not files_to_check:
+            return True, False
+
+        # Check if all output files exist
+        all_file_exist = True
+        for descr_key, file_path in files_to_check.items():
+            all_file_exist &= os.path.isfile(file_path) and os.path.getsize(file_path) > 0
+            if all_file_exist:
+                molecule_descr[descr_key] = file_path  # Make sure internal description is correct
+
+        return all_file_exist, all_file_exist
 
     def is_system_setup(self, receptor, ligand, solvent):
         """Check whether the system has been already set up.
@@ -448,28 +604,28 @@ class SetupDatabase:
             tleap.load_parameters(group['parameters'])
             tleap.load_group(name=group_name, file_path=group['filepath'])
 
-        # If the ligand is too far away from the molecule we want to pull it closer
-        # Check if we have the positions, otherwise skip
-        ligand_pos = None
-        try:
-            receptor_pos = self._fixed_pos_cache[receptor_id]
-        except KeyError:
+        # Check that molecules don't have clashing atoms. Also, if the ligand
+        # is too far away from the molecule we want to pull it closer
+        # TODO this check should be available even without OpenEye
+        if utils.is_openeye_installed():
+            mol_id_list = [receptor_id, ligand_id]
+            positions = [0 for _ in mol_id_list]
+            for i, mol_id in enumerate(mol_id_list):
+                if mol_id not in self._pos_cache:
+                    self._pos_cache[mol_id] = utils.get_oe_mol_positions(
+                            utils.read_oe_molecule(self.molecules[mol_id]['filepath']))
+                positions[i] = self._pos_cache[mol_id]
+
+            # Find the transformation
             try:
-                receptor_pos = utils.get_oe_mol_positions(self._oe_molecules[receptor_id])
+                max_dist = solvent['clearance'].value_in_unit(unit.angstrom) / 1.5
             except KeyError:
-                receptor_pos = None
-        try:
-            ligand_pos = self._fixed_pos_cache[ligand_id]
-        except KeyError:
-            try:
-                ligand_pos = utils.get_oe_mol_positions(self._oe_molecules[ligand_id])
-            except KeyError:
-                ligand_pos = None
-        if not (receptor_pos is None or ligand_pos is None):
-            translation = pull_close(receptor_pos, ligand_pos, min_bound=self.CLASH_THRESHOLD,
-                                     max_bound=7.0)
-            if translation.any():
-                tleap.add_commands('translate ligand {{{{ {} {} {} }}}}'.format(*translation))
+                max_dist = 10.0
+            transformation = pack_transformation(positions[0], positions[1],
+                                                 self.CLASH_THRESHOLD, max_dist)
+            if (transformation != np.identity(4)).any():
+                logger.warning('Changing starting ligand positions.')
+                tleap.transform('ligand', transformation)
 
         # Create complex
         tleap.new_section('Create complex')
@@ -568,63 +724,6 @@ class SetupDatabase:
 
         """
 
-        # Determine which molecules should have fixed positions
-        # At the end of parametrization we update the 'filepath' key also for OpenEye-generated
-        # molecules so we need to check that the molecule is not in self._oe_molecules as well
-        file_mol_ids = {mol_id for mol_id in args if 'filepath' in self.molecules[mol_id] and
-                        mol_id not in self._oe_molecules}
-
-        # Generate missing molecules with OpenEye
-        for mol_id in args:
-            if mol_id not in file_mol_ids and mol_id not in self._oe_molecules:
-                self._oe_molecules[mol_id] = self._generate_molecule(mol_id)
-
-        # Check that non-generated molecules don't have overlapping atoms
-        # TODO this check should be available even without OpenEye
-        # TODO also there should be an option allowing to solve the overlap in this case too?
-        fixed_pos = {}  # positions of molecules from files of THIS setup
-        if utils.is_openeye_installed():
-            # We need positions as a list so we separate the ids and positions in two lists
-            mol_id_list = list(file_mol_ids)
-            positions = [0 for _ in mol_id_list]
-            for i, mol_id in enumerate(mol_id_list):
-                try:
-                    positions[i] = self._fixed_pos_cache[mol_id]
-                except KeyError:
-                    positions[i] = utils.get_oe_mol_positions(utils.read_oe_molecule(
-                        self.molecules[mol_id]['filepath']))
-
-            # Verify that distances between any pair of fixed molecules is big enough
-            for i in range(len(positions) - 1):
-                posi = positions[i]
-                if compute_min_dist(posi, *positions[i+1:]) < self.CLASH_THRESHOLD:
-                    raise YamlParseError('The given molecules have overlapping atoms!')
-
-            # Convert positions list to dictionary, this is needed to solve overlaps
-            fixed_pos = {mol_id_list[i]: positions[i] for i in range(len(mol_id_list))}
-
-            # Cache positions for future molecule setups
-            self._fixed_pos_cache.update(fixed_pos)
-
-        # Find and solve overlapping atoms in OpenEye generated molecules
-        for mol_id in args:
-            # Retrive OpenEye-generated molecule
-            try:
-                molecule = self._oe_molecules[mol_id]
-            except KeyError:
-                continue
-            molecule_pos = utils.get_oe_mol_positions(molecule)
-
-            # Remove overlap and save new positions
-            if fixed_pos:
-                molecule_pos = remove_overlap(molecule_pos, *(fixed_pos.values()),
-                                              min_distance=self.CLASH_THRESHOLD, sigma=1.0)
-                utils.set_oe_mol_positions(molecule, molecule_pos)
-
-            # Update fixed positions for next round
-            fixed_pos[mol_id] = molecule_pos
-
-        # Save parametrized molecules
         for mol_id in args:
             mol_descr = self.molecules[mol_id]
 
@@ -638,14 +737,66 @@ class SetupDatabase:
             if not os.path.exists(mol_dir):
                 os.makedirs(mol_dir)
 
-            # Write OpenEye generated molecules in mol2 files
-            if mol_id in self._oe_molecules:
+            try:
+                extension = os.path.splitext(mol_descr['filepath'])[1]
+            except KeyError:
+                extension = None
+
+            # Extract single model if this is a multi-model file
+            if 'select' in mol_descr:
+                model_idx = mol_descr['select']
+                single_file_path = os.path.join(mol_dir, mol_id + extension)
+                if extension == '.pdb':
+                    # Create single-model PDB file
+                    pdb_file = PDBFile(mol_descr['filepath'])
+                    with open(single_file_path, 'w') as f:
+                        PDBFile.writeHeader(pdb_file.topology, file=f)
+                        PDBFile.writeModel(pdb_file.topology, pdb_file.getPositions(frame=model_idx), file=f)
+                    # We might as well already cache the positions
+                    self._pos_cache[mol_id] = pdb_file.getPositions(asNumpy=True, frame=model_idx) / unit.angstrom
+                elif extension == '.smiles' or extension == '.csv':
+                    # Extract the correct line and save it in a new file
+                    # We ignore blank-lines with filter() when counting models
+                    with open(mol_descr['filepath'], 'r') as smiles_file:
+                        smiles_lines = filter(bool, smiles_file.readlines())
+                    with open(single_file_path, 'w') as f:
+                        f.write(smiles_lines[model_idx])
+                elif extension == '.mol2' or extension == '.sdf':
+                    if not utils.is_openeye_installed():
+                        raise RuntimeError('Cannot support {} files selection without OpenEye'.format(
+                                extension[1:]))
+                    oe_molecule = utils.read_oe_molecule(mol_descr['filepath'], conformer_idx=model_idx)
+                    utils.write_oe_molecule(oe_molecule, single_file_path)
+                else:
+                    raise RuntimeError('Model selection is not supported for {} files'.format(extension[1:]))
+
+                # Save new file path
+                mol_descr['filepath'] = single_file_path
+
+            # Generate missing molecules with OpenEye. At the end of parametrization
+            # we update the 'filepath' key also for OpenEye-generated molecules so
+            # we don't need to keep track of the molecules we have already generated
+            if extension is None or extension == '.smiles' or extension == '.csv':
+                if not utils.is_openeye_installed():
+                    raise RuntimeError('Cannot support {} files without OpenEye'.format(extension[1:]))
+
+                # Retrieve the first SMILES string, we take the last column
+                if extension is not None:
+                    with open(mol_descr['filepath'], 'r') as smiles_file:
+                        smiles_str = smiles_file.readline().strip().split(',')[-1]
+                    mol_descr['smiles'] = smiles_str  # prepare for _generate_molecule()
+
+                # Generate molecule and cache atom positions
+                oe_molecule = self._generate_molecule(mol_id)
+                self._pos_cache[mol_id] = utils.get_oe_mol_positions(oe_molecule)
+
+                # Write OpenEye generated molecules in mol2 files
                 # We update the 'filepath' key in the molecule description
                 mol_descr['filepath'] = os.path.join(mol_dir, mol_id + '.mol2')
 
-                # We set the residue name as the first three uppercase letters
-                residue_name = re.sub('[^A-Za-z]+', '', mol_id.upper())
-                openmoltools.openeye.molecule_to_mol2(molecule, mol_descr['filepath'],
+                # We set the residue name as the first three uppercase letters of mol_id
+                residue_name = re.sub('[^A-Za-z]+', '', mol_id.upper())[:3]
+                openmoltools.openeye.molecule_to_mol2(oe_molecule, mol_descr['filepath'],
                                                       residue_name=residue_name)
 
             # Enumerate protonation states with epik
@@ -656,6 +807,22 @@ class SetupDatabase:
                                extract_range=epik_idx)
                 mol_descr['filepath'] = epik_output_file
 
+            # Antechamber does not support sdf files so we need to convert them
+            extension = os.path.splitext(mol_descr['filepath'])[1]
+            if extension == '.sdf':
+                if not utils.is_openeye_installed():
+                    raise RuntimeError('Cannot support sdf files without OpenEye')
+                mol2_file_path = os.path.join(mol_dir, mol_id + '.mol2')
+                oe_molecule = utils.read_oe_molecule(mol_descr['filepath'])
+
+                # We set the residue name as the first three uppercase letters of mol_id
+                residue_name = re.sub('[^A-Za-z]+', '', mol_id.upper())[:3]
+                openmoltools.openeye.molecule_to_mol2(oe_molecule, mol2_file_path,
+                                                      residue_name=residue_name)
+
+                # Update filepath information
+                mol_descr['filepath'] = mol2_file_path
+
             # Parametrize the molecule with antechamber
             if mol_descr['parameters'] == 'antechamber':
                 # Generate parameters
@@ -663,11 +830,12 @@ class SetupDatabase:
                 with utils.temporary_cd(mol_dir):
                     openmoltools.amber.run_antechamber(mol_id, input_mol_path)
 
-                # Save new parameters paths, this way if we try to
-                # setup the molecule again it will just be skipped
+                # Save new parameters paths
                 mol_descr['filepath'] = os.path.join(mol_dir, mol_id + '.gaff.mol2')
                 mol_descr['parameters'] = os.path.join(mol_dir, mol_id + '.frcmod')
-                self._parametrized_molecules.add(mol_id)
+
+            # Keep track of processed molecule
+            self._processed_mols.add(mol_id)
 
 #=============================================================================================
 # BUILDER CLASS
@@ -752,8 +920,7 @@ class YamlBuilder:
         'hydrogen_mass': 1 * unit.amu
     }
 
-    @classmethod
-    def _expand_molecules(cls, yaml_content):
+    def _expand_molecules(self, yaml_content):
         """Expand combinatorial molecules.
 
         Generate new YAML content with no combinatorial molecules. The new content
@@ -787,11 +954,23 @@ class YamlBuilder:
         ... solvents:
         ...     solv1:
         ...         nonbonded_method: NoCutoff
+        ... protocols:
+        ...     absolute-binding:
+        ...         phases:
+        ...             complex:
+        ...                 alchemical_path:
+        ...                     lambda_electrostatics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
+        ...                     lambda_sterics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
+        ...             solvent:
+        ...                 alchemical_path:
+        ...                     lambda_electrostatics: [1.0, 0.8, 0.6, 0.3, 0.0]
+        ...                     lambda_sterics: [1.0, 0.8, 0.6, 0.3, 0.0]
         ... experiments:
         ...     components:
         ...         receptor: rec
         ...         ligand: lig
         ...         solvent: solv1
+        ...     protocol: absolute-binding
         ... '''
         >>> expected_content = '''
         ... ---
@@ -808,14 +987,27 @@ class YamlBuilder:
         ... solvents:
         ...     solv1:
         ...         nonbonded_method: NoCutoff
+        ... protocols:
+        ...     absolute-binding:
+        ...         phases:
+        ...             complex:
+        ...                 alchemical_path:
+        ...                     lambda_electrostatics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
+        ...                     lambda_sterics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
+        ...             solvent:
+        ...                 alchemical_path:
+        ...                     lambda_electrostatics: [1.0, 0.8, 0.6, 0.3, 0.0]
+        ...                     lambda_sterics: [1.0, 0.8, 0.6, 0.3, 0.0]
         ... experiments:
         ...     components:
         ...         receptor: [rec_conf1pdb, rec_conf2pdb]
         ...         ligand: lig
         ...         solvent: solv1
+        ...     protocol: absolute-binding
         ... '''
-        >>> raw = yaml.load(textwrap.dedent(yaml_content))
-        >>> expanded = YamlBuilder._expand_molecules(raw)
+        >>> yaml_content = textwrap.dedent(yaml_content)
+        >>> raw = yaml.load(yaml_content)
+        >>> expanded = YamlBuilder(yaml_content)._expand_molecules(raw)
         >>> expanded == yaml.load(textwrap.dedent(expected_content))
         True
 
@@ -825,6 +1017,37 @@ class YamlBuilder:
         if 'molecules' in expanded_content:
             all_comb_mols = set()  # keep track of all combinatorial molecules
             for comb_mol_name, comb_molecule in expanded_content['molecules'].items():
+
+                # First transform "select: all" syntax into a combinatorial "select"
+                if 'select' in comb_molecule and comb_molecule['select'] == 'all':
+                    # We need a file to select from
+                    # TODO this should be checked only in _parse_molecules(), will be
+                    # TODO easy when we'll have automatic data validation
+                    if 'filepath' not in comb_molecule:
+                        raise YamlParseError('Molecule {}: Need filepath with select: all'.format(
+                            comb_mol_name))
+
+                    # Get the number of models in the file
+                    extension = os.path.splitext(comb_molecule['filepath'])[1][1:]  # remove dot
+                    with utils.temporary_cd(self._script_dir):
+                        if extension == 'pdb':
+                            n_models = PDBFile(comb_molecule['filepath']).getNumFrames()
+                        elif extension == 'csv' or extension == 'smiles':
+                            with open(comb_molecule['filepath'], 'r') as smiles_file:
+                                n_models = len(filter(bool, smiles_file.readlines()))  # remove blank lines
+                        elif extension == 'sdf' or extension == 'mol2':
+                            if not utils.is_openeye_installed():
+                                err_msg = 'Molecule {}: Cannot "select" from {} file without OpenEye toolkit'
+                                raise RuntimeError(err_msg.format(comb_mol_name, extension))
+                            n_models = utils.read_oe_molecule(comb_molecule['filepath']).NumConfs()
+                        else:
+                            raise YamlParseError('Molecule {}: Cannot "select" from {} file'.format(
+                                    comb_mol_name, extension))
+
+                    # Substitute select: all with list of all models indices to trigger combinations
+                    comb_molecule['select'] = range(n_models)
+
+                # Find all combinations
                 comb_molecule = utils.CombinatorialTree(comb_molecule)
                 combinations = {comb_mol_name + '_' + name: mol
                                 for name, mol in comb_molecule.named_combinations(
@@ -878,8 +1101,6 @@ class YamlBuilder:
         """
 
         self._mpicomm = None  # MPI communicator
-        self._oe_molecules = {}  # molecules generated by OpenEye
-        self._fixed_pos_cache = {}  # positions of molecules given as files
 
         # TODO check version of yank-yaml language
         # TODO what if there are multiple streams in the YAML file?
@@ -896,7 +1117,7 @@ class YamlBuilder:
             raise YamlParseError('The YAML file is empty!')
 
         # Expand combinatorial molecules
-        yaml_content = YamlBuilder._expand_molecules(yaml_content)
+        yaml_content = self._expand_molecules(yaml_content)
 
         # Save raw YAML content that will be needed when generating the YAML files
         self._raw_yaml = copy.deepcopy({key: yaml_content.get(key, {})
@@ -1015,10 +1236,10 @@ class YamlBuilder:
             The dictionary representing the YAML script loaded by yaml.load()
 
         """
-        file_formats = set(['mol2', 'pdb'])
+        file_formats = set(['mol2', 'sdf', 'pdb', 'smiles', 'csv'])
         sources = set(['filepath', 'name', 'smiles'])
         template_mol = {'filepath': 'str', 'name': 'str', 'smiles': 'str',
-                        'parameters': 'str', 'epik': 0}
+                        'parameters': 'str', 'epik': 0, 'select': 0}
 
         self._db.molecules = yaml_content.get('molecules', {})
 
@@ -1026,7 +1247,7 @@ class YamlBuilder:
         for molecule_id, molecule in self._db.molecules.items():
             try:
                 self._db.molecules[molecule_id] = utils.validate_parameters(molecule, template_mol,
-                                                                         check_unknown=True)
+                                                                            check_unknown=True)
             except (TypeError, ValueError) as e:
                 raise YamlParseError(str(e))
 
@@ -1050,6 +1271,10 @@ class YamlBuilder:
             # Check that parameters are specified
             if 'parameters' not in fields:
                 err_msg = 'no parameters specified for molecule {}'.format(molecule_id)
+
+            # Check selection from multi-model input files
+            if 'select' in fields and 'filepath' not in molecule:
+                err_msg = 'molecule {}, need filepath select'.format(molecule_id)
 
             if err_msg != '':
                 raise YamlParseError(err_msg)
@@ -1123,8 +1348,6 @@ class YamlBuilder:
             The dictionary representing the YAML script loaded by yaml.load()
 
         """
-        phase_template = {'alchemical_path': {}, 'annihilate_electrostatics': True,
-                          'annihilate_sterics': False}
         self._protocols = yaml_content.get('protocols', {})
 
         for protocol_id, protocol in self._protocols.items():
@@ -1465,54 +1688,55 @@ class YamlBuilder:
 
         if resume:
             yank.resume()
-        elif self._mpicomm is None or self._mpicomm.rank == 0:
-            # Export YAML file for reproducibility
-            self._generate_yaml(experiment, os.path.join(results_dir, exp_name + '.yaml'))
+        else:
+            if self._mpicomm is None or self._mpicomm.rank == 0:
+                # Export YAML file for reproducibility
+                self._generate_yaml(experiment, os.path.join(results_dir, exp_name + '.yaml'))
 
-            # Setup the system
-            logger.info('Setting up the system for {}, {} and {}'.format(*components.values()))
-            system_dir = self._db.get_system(components)
+                # Setup the system
+                logger.info('Setting up the system for {}, {} and {}'.format(*components.values()))
+                system_dir = self._db.get_system(components)
 
-            # Get ligand resname for alchemical atom selection
-            ligand_dsl = utils.get_mol2_resname(self._db.molecules[components['ligand']]['filepath'])
-            if ligand_dsl is None:
-                ligand_dsl = 'MOL'
-            ligand_dsl = 'resname ' + ligand_dsl
+                # Get ligand resname for alchemical atom selection
+                ligand_dsl = utils.get_mol2_resname(self._db.molecules[components['ligand']]['filepath'])
+                if ligand_dsl is None:
+                    ligand_dsl = 'MOL'
+                ligand_dsl = 'resname ' + ligand_dsl
 
-            # System configuration
-            create_system_filter = set(('nonbonded_method', 'nonbonded_cutoff', 'implicit_solvent',
-                                        'constraints', 'hydrogen_mass'))
-            solvent = self._db.solvents[components['solvent']]
-            system_pars = {opt: solvent[opt] for opt in create_system_filter if opt in solvent}
-            system_pars.update({opt: exp_opts[opt] for opt in create_system_filter
-                                if opt in exp_opts})
+                # System configuration
+                create_system_filter = set(('nonbonded_method', 'nonbonded_cutoff', 'implicit_solvent',
+                                            'constraints', 'hydrogen_mass'))
+                solvent = self._db.solvents[components['solvent']]
+                system_pars = {opt: solvent[opt] for opt in create_system_filter if opt in solvent}
+                system_pars.update({opt: exp_opts[opt] for opt in create_system_filter
+                                    if opt in exp_opts})
 
-            # Convert underscore_parameters to camelCase for OpenMM API
-            system_pars = {utils.underscore_to_camelcase(opt): value
-                           for opt, value in system_pars.items()}
+                # Convert underscore_parameters to camelCase for OpenMM API
+                system_pars = {utils.underscore_to_camelcase(opt): value
+                               for opt, value in system_pars.items()}
 
-            # Prepare system
-            phases, systems, positions, atom_indices = pipeline.prepare_amber(system_dir, ligand_dsl, system_pars)
+                # Prepare system
+                phases, systems, positions, atom_indices = pipeline.prepare_amber(system_dir, ligand_dsl, system_pars)
 
-            # Create thermodynamic state
-            thermodynamic_state = ThermodynamicState(temperature=exp_opts['temperature'],
-                                                     pressure=exp_opts['pressure'])
+                # Create thermodynamic state
+                thermodynamic_state = ThermodynamicState(temperature=exp_opts['temperature'],
+                                                         pressure=exp_opts['pressure'])
 
-            # Get protocols as list of AlchemicalStates and adjust phase name
-            alchemical_paths = self._get_alchemical_paths(experiment['protocol'])
-            suffix = 'explicit' if 'explicit' in phases[0] else 'implicit'
-            alchemical_paths = {phase + '-' + suffix: protocol
-                                for phase, protocol in alchemical_paths.items()}
+                # Get protocols as list of AlchemicalStates and adjust phase name
+                alchemical_paths = self._get_alchemical_paths(experiment['protocol'])
+                suffix = 'explicit' if 'explicit' in phases[0] else 'implicit'
+                alchemical_paths = {phase + '-' + suffix: protocol
+                                    for phase, protocol in alchemical_paths.items()}
 
-            # Create new simulation
-            yank.create(phases, systems, positions, atom_indices,
-                        thermodynamic_state, protocols=alchemical_paths)
+                # Create new simulation
+                yank.create(phases, systems, positions, atom_indices,
+                            thermodynamic_state, protocols=alchemical_paths)
 
-        # Run the simulation
-        if self._mpicomm:  # wait for the simulation to be prepared
-            self._mpicomm.barrier()
-            if self._mpicomm.rank != 0:
-                yank.resume()  # resume from netcdf file created by root node
+            # Run the simulation
+            if self._mpicomm:  # wait for the simulation to be prepared
+                self._mpicomm.barrier()
+                if self._mpicomm.rank != 0:
+                    yank.resume()  # resume from netcdf file created by root node
         yank.run()
 
 
