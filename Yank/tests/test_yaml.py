@@ -50,10 +50,12 @@ def examples_paths():
     examples_dir = utils.get_data_filename(os.path.join('..', 'examples'))
     p_xylene_dir = os.path.join(examples_dir, 'p-xylene-implicit', 'setup')
     ben_tol_dir = os.path.join(examples_dir, 'benzene-toluene-explicit', 'setup')
+    abl_imatinib_dir = os.path.join(examples_dir, 'abl-imatinib-explicit', 'setup')
     paths['lysozyme'] = os.path.join(p_xylene_dir, 'receptor.pdbfixer.pdb')
     paths['p-xylene'] = os.path.join(p_xylene_dir, 'ligand.tripos.mol2')
     paths['benzene'] = os.path.join(ben_tol_dir, 'benzene.tripos.mol2')
     paths['toluene'] = os.path.join(ben_tol_dir, 'toluene.tripos.mol2')
+    paths['abl'] = os.path.join(abl_imatinib_dir, '2HYY-pdbfixer.pdb')
     return paths
 
 #=============================================================================================
@@ -139,6 +141,7 @@ def test_yaml_parsing():
         output_dir: /path/to/output/
         setup_dir: /path/to/output/setup/
         experiments_dir: /path/to/output/experiments/
+        pack: no
         temperature: 300*kelvin
         pressure: 1*atmosphere
         constraints: AllBonds
@@ -168,7 +171,7 @@ def test_yaml_parsing():
     """
 
     yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
-    assert len(yaml_builder.options) == 34
+    assert len(yaml_builder.options) == 35
     assert len(yaml_builder.yank_options) == 23
 
     # Check correct types
@@ -612,6 +615,53 @@ def test_epik_enumeration():
         output_dir = os.path.join(tmp_dir, SetupDatabase.MOLECULES_DIR, 'benzene')
         assert os.path.exists(os.path.join(output_dir, 'benzene-epik.mol2'))
         assert os.path.getsize(os.path.join(output_dir, 'benzene-epik.mol2')) > 0
+
+
+def test_strip_protons():
+    """Test that protons are stripped correctly for tleap."""
+    abl_path = examples_paths()['abl']
+    with utils.temporary_directory() as tmp_dir:
+        yaml_content = """
+        ---
+        options:
+            output_dir: {}
+            setup_dir: .
+        molecules:
+            abl:
+                filepath: {}
+                parameters: leaprc.ff14SB
+        """.format(tmp_dir, abl_path)
+
+        # Safety check: protein must have protons
+        has_hydrogen = False
+        with open(abl_path, 'r') as f:
+            for line in f:
+                if line[:6] == 'ATOM  ' and (line[12] == 'H' or line[13] == 'H'):
+                    has_hydrogen = True
+                    break
+        assert has_hydrogen
+
+        yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
+        output_path = os.path.join(tmp_dir, SetupDatabase.MOLECULES_DIR, 'abl', 'abl.pdb')
+
+        # We haven't set the strip_protons options, so this shouldn't do anything
+        yaml_builder._db._setup_molecules('abl')
+        assert not os.path.exists(output_path)
+
+        # Now we set the strip_protons options and repeat
+        yaml_builder._db.molecules['abl']['strip_protons'] = True
+        yaml_builder._db._setup_molecules('abl')
+        assert os.path.exists(output_path)
+        assert os.path.getsize(output_path) > 0
+
+        # The new pdb does not have hydrogen atoms
+        has_hydrogen = False
+        with open(output_path, 'r') as f:
+            for line in f:
+                if line[:6] == 'ATOM  ' and (line[12] == 'H' or line[13] == 'H'):
+                    has_hydrogen = True
+                    break
+        assert not has_hydrogen
 
 
 class TestMultiMoleculeFiles():
