@@ -331,7 +331,7 @@ def pull_close(fixed_mol_pos, translated_mol_pos, min_bound, max_bound):
     return final_translation
 
 
-def _strip_protons(input_file_path, output_file_path):
+def strip_protons(input_file_path, output_file_path):
     """Remove all hydrogens from PDB file and save the result."""
     output_file = open(output_file_path, 'w')
     with open(input_file_path, 'r') as input_file:
@@ -797,7 +797,7 @@ class SetupDatabase:
                 if extension != '.pdb':
                     raise RuntimeError('Cannot strip protons off {} files.'.format(extension[1:]))
                 output_file_path = os.path.join(mol_dir, mol_id + '.pdb')
-                _strip_protons(mol_descr['filepath'], output_file_path)
+                strip_protons(mol_descr['filepath'], output_file_path)
                 mol_descr['filepath'] = output_file_path
 
             # Generate missing molecules with OpenEye. At the end of parametrization
