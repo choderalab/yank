@@ -612,9 +612,12 @@ def test_epik_enumeration():
         yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
         yaml_builder._db._setup_molecules('benzene')
 
-        output_dir = os.path.join(tmp_dir, SetupDatabase.MOLECULES_DIR, 'benzene')
-        assert os.path.exists(os.path.join(output_dir, 'benzene-epik.mol2'))
-        assert os.path.getsize(os.path.join(output_dir, 'benzene-epik.mol2')) > 0
+        output_basename = os.path.join(tmp_dir, SetupDatabase.MOLECULES_DIR, 'benzene',
+                                       'benzene-epik.')
+        assert os.path.exists(output_basename + 'mol2')
+        assert os.path.getsize(output_basename + 'mol2') > 0
+        assert os.path.exists(output_basename + 'sdf')
+        assert os.path.getsize(output_basename + 'sdf') > 0
 
 
 def test_strip_protons():

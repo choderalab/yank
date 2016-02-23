@@ -829,10 +829,12 @@ class SetupDatabase:
             # Enumerate protonation states with epik
             if 'epik' in mol_descr:
                 epik_idx = mol_descr['epik']
-                epik_output_file = os.path.join(mol_dir, mol_id + '-epik.mol2')
-                utils.run_epik(mol_descr['filepath'], epik_output_file, tautomerize=True,
+                epik_mol2_file = os.path.join(mol_dir, mol_id + '-epik.mol2')
+                epik_sdf_file = os.path.join(mol_dir, mol_id + '-epik.sdf')
+                utils.run_epik(mol_descr['filepath'], epik_sdf_file, tautomerize=True,
                                extract_range=epik_idx)
-                mol_descr['filepath'] = epik_output_file
+                utils.run_structconvert(epik_sdf_file, epik_mol2_file)
+                mol_descr['filepath'] = epik_mol2_file
 
             # Antechamber does not support sdf files so we need to convert them
             extension = os.path.splitext(mol_descr['filepath'])[1]
