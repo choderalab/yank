@@ -908,6 +908,44 @@ def is_schrodinger_suite_installed():
         return False
     return True
 
+
+def run_proplister(input_file_path):
+    """Run proplister utilities on a file and return its properties.
+
+    This currently assumes there is only one molecule in the input file.
+
+    Parameters
+    ----------
+    input_file_path: str
+        The path to the file describing the molecule.
+
+    Returns
+    -------
+    properties: dict
+        A dictionary of property_name -> property_value.
+
+    """
+    if not is_schrodinger_suite_installed():
+        raise RuntimeError("Cannot locate Schrodinger's suite")
+    proplister_path = os.path.join(os.environ['SCHRODINGER'], 'utilities', 'proplister')
+
+    # Normalize path
+    input_file_path = os.path.abspath(input_file_path)
+
+    # Run proplister, we need the list in case there are spaces in paths
+    cmd = [proplister_path, '-a', '-c', input_file_path]
+    output = subprocess.check_output(cmd)
+
+    # The output is a cvs file with comma separators. The first line are the
+    # property names and then each row are the values for each molecule
+    output = output.split('\n')
+    names = output[0].split(',')
+    values = output[1].split(',')
+
+    properties = dict(zip(names, values))
+    return properties
+
+
 def run_structconvert(input_file_path, output_file_path):
     """Run Schrodinger's structconvert to convert from one format to another.
 
