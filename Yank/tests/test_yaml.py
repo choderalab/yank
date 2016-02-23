@@ -43,9 +43,20 @@ def indent(str):
     """Put 4 extra spaces in front of every line."""
     return '\n    '.join(str.split('\n'))
 
-def example_dir():
-    """Return the absolute path to the Yank examples directory."""
-    return utils.get_data_filename(os.path.join('..', 'examples'))
+
+def examples_paths():
+    """Return the absolute path to the Yank examples relevant to tests."""
+    paths = {}
+    examples_dir = utils.get_data_filename(os.path.join('..', 'examples'))
+    p_xylene_dir = os.path.join(examples_dir, 'p-xylene-implicit', 'setup')
+    ben_tol_dir = os.path.join(examples_dir, 'benzene-toluene-explicit', 'setup')
+    abl_imatinib_dir = os.path.join(examples_dir, 'abl-imatinib-explicit', 'setup')
+    paths['lysozyme'] = os.path.join(p_xylene_dir, 'receptor.pdbfixer.pdb')
+    paths['p-xylene'] = os.path.join(p_xylene_dir, 'ligand.tripos.mol2')
+    paths['benzene'] = os.path.join(ben_tol_dir, 'benzene.tripos.mol2')
+    paths['toluene'] = os.path.join(ben_tol_dir, 'toluene.tripos.mol2')
+    paths['abl'] = os.path.join(abl_imatinib_dir, '2HYY-pdbfixer.pdb')
+    return paths
 
 #=============================================================================================
 # UNIT TESTS
@@ -130,6 +141,7 @@ def test_yaml_parsing():
         output_dir: /path/to/output/
         setup_dir: /path/to/output/setup/
         experiments_dir: /path/to/output/experiments/
+        pack: no
         temperature: 300*kelvin
         pressure: 1*atmosphere
         constraints: AllBonds
@@ -159,7 +171,7 @@ def test_yaml_parsing():
     """
 
     yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
-    assert len(yaml_builder.options) == 34
+    assert len(yaml_builder.options) == 35
     assert len(yaml_builder.yank_options) == 23
 
     # Check correct types
@@ -460,8 +472,6 @@ def test_no_protocol():
 
 def test_yaml_mol2_antechamber():
     """Test antechamber setup of molecule files."""
-    benzene_path = os.path.join(example_dir(), 'benzene-toluene-explicit',
-                                'setup', 'benzene.tripos.mol2')
     with utils.temporary_directory() as tmp_dir:
         yaml_content = """
         ---
@@ -472,7 +482,7 @@ def test_yaml_mol2_antechamber():
             benzene:
                 filepath: {}
                 parameters: antechamber
-        """.format(tmp_dir, benzene_path)
+        """.format(tmp_dir, examples_paths()['benzene'])
 
         yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
         yaml_builder._db._setup_molecules('benzene')
@@ -530,10 +540,9 @@ def test_setup_name_smiles_antechamber():
 @unittest.skipIf(not utils.is_openeye_installed(), 'This test requires OpenEye installed.')
 def test_clashing_atoms():
     """Check that clashing atoms are resolved."""
-    CLEARANCE = 10.0
-    setup_dir = os.path.join(example_dir(), 'benzene-toluene-explicit', 'setup')
-    benzene_path = os.path.join(setup_dir, 'benzene.tripos.mol2')
-    toluene_path = os.path.join(setup_dir, 'toluene.tripos.mol2')
+    clearance = 10.0
+    benzene_path = examples_paths()['benzene']
+    toluene_path = examples_paths()['toluene']
     with utils.temporary_directory() as tmp_dir:
         yaml_content = """
         ---
@@ -554,7 +563,7 @@ def test_clashing_atoms():
                 nonbonded_method: PME
                 nonbonded_cutoff: 1*nanometer
                 clearance: {}*angstroms
-        """.format(tmp_dir, benzene_path, toluene_path, CLEARANCE)
+        """.format(tmp_dir, benzene_path, toluene_path, clearance)
 
         # Sanity check: at the beginning molecules clash
         toluene_pos = utils.get_oe_mol_positions(utils.read_oe_molecule(toluene_path))
@@ -582,13 +591,11 @@ def test_clashing_atoms():
 
             # For solvent we check that molecule is within the box
             if solvent == 'PME':
-                assert max_dist <= CLEARANCE
+                assert max_dist <= clearance
 
 @unittest.skipIf(not utils.is_schrodinger_suite_installed(), "This test requires Schrodinger's suite")
 def test_epik_enumeration():
     """Test that epik protonation state enumeration."""
-    benzene_path = os.path.join(example_dir(), 'benzene-toluene-explicit', 'setup',
-                                'benzene.tripos.mol2')
     with utils.temporary_directory() as tmp_dir:
         yaml_content = """
         ---
@@ -600,14 +607,64 @@ def test_epik_enumeration():
                 filepath: {}
                 epik: 0
                 parameters: antechamber
-        """.format(tmp_dir, benzene_path)
+        """.format(tmp_dir, examples_paths()['benzene'])
 
         yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
         yaml_builder._db._setup_molecules('benzene')
 
-        output_dir = os.path.join(tmp_dir, SetupDatabase.MOLECULES_DIR, 'benzene')
-        assert os.path.exists(os.path.join(output_dir, 'benzene-epik.mol2'))
-        assert os.path.getsize(os.path.join(output_dir, 'benzene-epik.mol2')) > 0
+        output_basename = os.path.join(tmp_dir, SetupDatabase.MOLECULES_DIR, 'benzene',
+                                       'benzene-epik.')
+        assert os.path.exists(output_basename + 'mol2')
+        assert os.path.getsize(output_basename + 'mol2') > 0
+        assert os.path.exists(output_basename + 'sdf')
+        assert os.path.getsize(output_basename + 'sdf') > 0
+
+
+def test_strip_protons():
+    """Test that protons are stripped correctly for tleap."""
+    abl_path = examples_paths()['abl']
+    with utils.temporary_directory() as tmp_dir:
+        yaml_content = """
+        ---
+        options:
+            output_dir: {}
+            setup_dir: .
+        molecules:
+            abl:
+                filepath: {}
+                parameters: leaprc.ff14SB
+        """.format(tmp_dir, abl_path)
+
+        # Safety check: protein must have protons
+        has_hydrogen = False
+        with open(abl_path, 'r') as f:
+            for line in f:
+                if line[:6] == 'ATOM  ' and (line[12] == 'H' or line[13] == 'H'):
+                    has_hydrogen = True
+                    break
+        assert has_hydrogen
+
+        yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
+        output_path = os.path.join(tmp_dir, SetupDatabase.MOLECULES_DIR, 'abl', 'abl.pdb')
+
+        # We haven't set the strip_protons options, so this shouldn't do anything
+        yaml_builder._db._setup_molecules('abl')
+        assert not os.path.exists(output_path)
+
+        # Now we set the strip_protons options and repeat
+        yaml_builder._db.molecules['abl']['strip_protons'] = True
+        yaml_builder._db._setup_molecules('abl')
+        assert os.path.exists(output_path)
+        assert os.path.getsize(output_path) > 0
+
+        # The new pdb does not have hydrogen atoms
+        has_hydrogen = False
+        with open(output_path, 'r') as f:
+            for line in f:
+                if line[:6] == 'ATOM  ' and (line[12] == 'H' or line[13] == 'H'):
+                    has_hydrogen = True
+                    break
+        assert not has_hydrogen
 
 
 class TestMultiMoleculeFiles():
@@ -627,7 +684,7 @@ class TestMultiMoleculeFiles():
         rot = np.array([[1, 0, 0], [0, 1, 0], [0, 0, -1]])
 
         # Create 2-frame PDB file. First frame is lysozyme, second is lysozyme with inverted z
-        lysozyme_path = os.path.join(example_dir(), 'p-xylene-implicit', 'setup', 'receptor.pdbfixer.pdb')
+        lysozyme_path = examples_paths()['lysozyme']
         lysozyme = PDBFile(lysozyme_path)
 
         # Rotate positions to invert z for the second frame
@@ -647,9 +704,7 @@ class TestMultiMoleculeFiles():
         # Create 2-molecule sdf and mol2 with OpenEye
         if utils.is_openeye_installed():
             from openeye import oechem
-            benzene_path = os.path.join(example_dir(), 'benzene-toluene-explicit',
-                                        'setup', 'benzene.tripos.mol2')
-            oe_benzene = utils.read_oe_molecule(benzene_path)
+            oe_benzene = utils.read_oe_molecule(examples_paths()['benzene'])
             oe_benzene_pos = utils.get_oe_mol_positions(oe_benzene).dot(rot)
             oe_benzene.NewConf(oechem.OEFloatArray(oe_benzene_pos.flatten()))
 
@@ -972,9 +1027,6 @@ class TestMultiMoleculeFiles():
 
 def test_setup_implicit_system_leap():
     """Create prmtop and inpcrd for implicit solvent protein-ligand system."""
-    setup_dir = os.path.join(example_dir(), 'p-xylene-implicit', 'setup')
-    receptor_path = os.path.join(setup_dir, 'receptor.pdbfixer.pdb')
-    ligand_path = os.path.join(setup_dir, 'ligand.tripos.mol2')
     with utils.temporary_directory() as tmp_dir:
         yaml_content = """
         ---
@@ -992,7 +1044,7 @@ def test_setup_implicit_system_leap():
             GBSA-OBC2:
                 nonbonded_method: NoCutoff
                 implicit_solvent: OBC2
-        """.format(tmp_dir, receptor_path, ligand_path)
+        """.format(tmp_dir, examples_paths()['lysozyme'], examples_paths()['p-xylene'])
 
         yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
         components = {'receptor': 'T4lysozyme',
@@ -1030,8 +1082,6 @@ def test_setup_implicit_system_leap():
 @unittest.skipIf(not utils.is_openeye_installed(), 'This test requires OpenEye installed.')
 def test_setup_explicit_system_leap():
     """Create prmtop and inpcrd protein-ligand system in explicit solvent."""
-    benzene_path = os.path.join(example_dir(), 'benzene-toluene-explicit',
-                                'setup', 'benzene.tripos.mol2')
     with utils.temporary_directory() as tmp_dir:
         yaml_content = """
         ---
@@ -1048,7 +1098,7 @@ def test_setup_explicit_system_leap():
             PMEtip3p:
                 nonbonded_method: PME
                 clearance: 10*angstroms
-        """.format(tmp_dir, benzene_path)
+        """.format(tmp_dir, examples_paths()['benzene'])
 
         yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
         components = {'receptor': 'benzene',
@@ -1079,9 +1129,6 @@ def test_setup_explicit_system_leap():
 
 def test_neutralize_system():
     """Test whether the system charge is neutralized correctly."""
-    setup_dir = os.path.join(example_dir(), 'p-xylene-explicit', 'setup')
-    receptor_path = os.path.join(setup_dir, 'receptor.pdbfixer.pdb')
-    ligand_path = os.path.join(setup_dir, 'ligand.tripos.mol2')
     with utils.temporary_directory() as tmp_dir:
         yaml_content = """
         ---
@@ -1100,7 +1147,7 @@ def test_neutralize_system():
                 clearance: 10*angstroms
                 positive_ion: K+
                 negative_ion: Cl-
-        """.format(tmp_dir, receptor_path, ligand_path)
+        """.format(tmp_dir, examples_paths()['lysozyme'], examples_paths()['p-xylene'])
 
         yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
         components = {'receptor': 'receptor',
@@ -1125,14 +1172,12 @@ def test_neutralize_system():
 
 def test_yaml_creation():
     """Test the content of generated single experiment YAML files."""
-    setup_dir = os.path.join(example_dir(), 'p-xylene-implicit', 'setup')
-    receptor_path = os.path.join(setup_dir, 'receptor.pdbfixer.pdb')
-    ligand_path = os.path.join(setup_dir, 'ligand.tripos.mol2')
+    ligand_path = examples_paths()['p-xylene']
     with utils.temporary_directory() as tmp_dir:
         molecules = """
             T4lysozyme:
                 filepath: {}
-                parameters: oldff/leaprc.ff99SBildn""".format(receptor_path)
+                parameters: oldff/leaprc.ff99SBildn""".format(examples_paths()['lysozyme'])
         solvent = """
             vacuum:
                 nonbonded_method: NoCutoff"""
@@ -1197,9 +1242,6 @@ def test_yaml_creation():
                 assert line[:-1] == expected  # without final '\n'
 
 def test_run_experiment():
-    setup_dir = os.path.join(example_dir(), 'p-xylene-implicit', 'setup')
-    receptor_path = os.path.join(setup_dir, 'receptor.pdbfixer.pdb')
-    ligand_path = os.path.join(setup_dir, 'ligand.tripos.mol2')
     with utils.temporary_directory() as tmp_dir:
         yaml_content = """
         ---
@@ -1234,7 +1276,8 @@ def test_run_experiment():
                 setup_dir: ''
                 experiments_dir: ''
             protocol: absolute-binding
-        """.format(receptor_path, ligand_path, indent(standard_protocol), tmp_dir)
+        """.format(examples_paths()['lysozyme'], examples_paths()['p-xylene'],
+                   indent(standard_protocol), tmp_dir)
 
         yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
 
