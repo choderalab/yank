@@ -744,6 +744,7 @@ class SetupDatabase:
         """
 
         for mol_id in args:
+            net_formal_charge = None  # used by antechamber
             mol_descr = self.molecules[mol_id]
 
             # Have we already processed this molecule? Do we have to do it at all?
@@ -834,6 +835,11 @@ class SetupDatabase:
                 utils.run_epik(mol_descr['filepath'], epik_sdf_file, tautomerize=True,
                                extract_range=epik_idx)
                 utils.run_structconvert(epik_sdf_file, epik_mol2_file)
+
+                # Save new net charge
+                net_formal_charge = int(utils.run_proplister(epik_sdf_file)['i_epik_Tot_Q'])
+
+                # Keep filepath consistent
                 mol_descr['filepath'] = epik_mol2_file
 
             # Antechamber does not support sdf files so we need to convert them
@@ -857,7 +863,8 @@ class SetupDatabase:
                 # Generate parameters
                 input_mol_path = os.path.abspath(mol_descr['filepath'])
                 with utils.temporary_cd(mol_dir):
-                    openmoltools.amber.run_antechamber(mol_id, input_mol_path)
+                    openmoltools.amber.run_antechamber(mol_id, input_mol_path,
+                                                       net_charge=net_formal_charge)
 
                 # Save new parameters paths
                 mol_descr['filepath'] = os.path.join(mol_dir, mol_id + '.gaff.mol2')
