@@ -16,6 +16,7 @@ Tools to build Yank experiments from a YAML configuration file.
 import os
 import re
 import sys
+import glob
 import copy
 import yaml
 import logging
@@ -1534,6 +1535,33 @@ class YamlBuilder:
         return os.path.join(experiment_options['output_dir'],
                             experiment_options['experiments_dir'], experiment_subdir)
 
+    def _check_resume_experiment(self, experiment_dir):
+        """Check if Yank output files already exist.
+
+        Parameters
+        ----------
+        experiment_dir : dict
+            The path to the directory that should contain the output files.
+
+        Returns
+        -------
+        bool
+            True if NetCDF output files already exist, False otherwise.
+
+        """
+        # Check that output directory exists
+        if not os.path.isdir(experiment_dir):
+            return False
+
+        # Check that complex and solvent NetCDF files exist
+        complex_file_path = glob.glob(os.path.join(experiment_dir, 'complex-*.nc'))
+        solvent_file_path = glob.glob(os.path.join(experiment_dir, 'solvent-*.nc'))
+        if len(complex_file_path) == 0 or len(solvent_file_path) == 0:
+            return False
+
+        output_file_paths = complex_file_path + solvent_file_path
+        return all(os.path.getsize(f) > 0 for f in output_file_paths)
+
     def _check_resume(self):
         """Perform dry run to check if we are going to overwrite files.
 
@@ -1569,8 +1597,8 @@ class YamlBuilder:
 
             # Check experiment dir
             experiment_dir = self._get_experiment_dir(exp_options, exp_sub_dir)
-            if os.path.exists(experiment_dir) and not resume_sim:
-                err_msg = 'experiment directory {}'.format(experiment_dir)
+            if self._check_resume_experiment(experiment_dir) and not resume_sim:
+                err_msg = 'experiment files in directory {}'.format(experiment_dir)
                 solving_option = 'resume_simulation'
             else:
                 # Check system and molecule setup dirs
@@ -1714,9 +1742,10 @@ class YamlBuilder:
 
         # Create directory and configure logger for this experiment
         results_dir = self._get_experiment_dir(exp_opts, experiment_dir)
-        resume = os.path.isdir(results_dir)
-        if not resume and (self._mpicomm is None or self._mpicomm.rank == 0):
-            os.makedirs(results_dir)
+        if self._mpicomm is None or self._mpicomm.rank == 0:
+            if not os.path.isdir(results_dir):
+                os.makedirs(results_dir)
+            resume = self._check_resume_experiment(results_dir)
         if self._mpicomm:  # process 0 send result to other processes
             resume = self._mpicomm.bcast(resume, root=0)
         utils.config_root_logger(exp_opts['verbose'], os.path.join(results_dir, exp_name + '.log'),
