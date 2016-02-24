@@ -1742,10 +1742,12 @@ class YamlBuilder:
 
         # Create directory and configure logger for this experiment
         results_dir = self._get_experiment_dir(exp_opts, experiment_dir)
+        resume = os.path.isdir(results_dir)
         if self._mpicomm is None or self._mpicomm.rank == 0:
-            if not os.path.isdir(results_dir):
+            if not resume:
                 os.makedirs(results_dir)
-            resume = self._check_resume_experiment(results_dir)
+            else:
+                resume = self._check_resume_experiment(results_dir)
         if self._mpicomm:  # process 0 send result to other processes
             resume = self._mpicomm.bcast(resume, root=0)
         utils.config_root_logger(exp_opts['verbose'], os.path.join(results_dir, exp_name + '.log'),
