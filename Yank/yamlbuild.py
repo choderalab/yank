@@ -836,8 +836,9 @@ class SetupDatabase:
                                extract_range=epik_idx)
                 utils.run_structconvert(epik_sdf_file, epik_mol2_file)
 
-                # Save new net charge
-                net_formal_charge = int(utils.run_proplister(epik_sdf_file)['i_epik_Tot_Q'])
+                # Save new net charge, i_epik_Tot_Q property is a float string
+                net_formal_charge = utils.run_proplister(epik_sdf_file)['i_epik_Tot_Q']
+                net_formal_charge = int(round(float(net_formal_charge)))
 
                 # Keep filepath consistent
                 mol_descr['filepath'] = epik_mol2_file
