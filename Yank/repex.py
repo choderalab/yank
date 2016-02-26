@@ -607,7 +607,10 @@ class ReplicaExchange(object):
 
         # Check if netcdf file exists, assuming we want to resume if one exists.
         self._resume = os.path.exists(self.store_filename) and (os.path.getsize(self.store_filename) > 0)
-        if self.mpicomm: self._resume = self.mpicomm.bcast(self._resume, root=0) # use whatever root node decides
+        if self.mpicomm:
+            logger.debug('Node {}/{}: MPI bcast - sharing self._resume'.format(
+                    self.mpicomm.rank, self.mpicomm.size))
+            self._resume = self.mpicomm.bcast(self._resume, root=0)  # use whatever root node decides
 
         return
 
@@ -635,7 +638,10 @@ class ReplicaExchange(object):
 
         # Check if netcdf file exists.
         file_exists = os.path.exists(self.store_filename) and (os.path.getsize(self.store_filename) > 0)
-        if self.mpicomm: file_exists= self.mpicomm.bcast(file_exists, root=0) # use whatever root node decides
+        if self.mpicomm:
+            logger.debug('Node {}/{}: MPI bcast - sharing file_exists'.format(
+                    self.mpicomm.rank, self.mpicomm.size))
+            file_exists = self.mpicomm.bcast(file_exists, root=0)  # use whatever root node decides
         if file_exists:
             raise RuntimeError("NetCDF file %s already exists; cowardly refusing to overwrite." % self.store_filename)
         self._resume = False
@@ -688,7 +694,10 @@ class ReplicaExchange(object):
 
         # Check if netcdf file exists.
         file_exists = os.path.exists(self.store_filename) and (os.path.getsize(self.store_filename) > 0)
-        if self.mpicomm: file_exists= self.mpicomm.bcast(file_exists, root=0) # use whatever root node decides
+        if self.mpicomm:
+            logger.debug('Node {}/{}: MPI bcast - sharing file_exists'.format(
+                    self.mpicomm.rank, self.mpicomm.size))
+            file_exists = self.mpicomm.bcast(file_exists, root=0)  # use whatever root node decides
         if not file_exists:
             raise Exception("NetCDF file %s does not exist; cannot resume." % self.store_filename)
 
@@ -1237,7 +1246,7 @@ class ReplicaExchange(object):
         elapsed_time = end_time - start_time
         # Collect elapsed time.
         node_elapsed_times = self.mpicomm.gather(elapsed_time, root=0) # barrier
-        if logger.isEnabledFor(logging.DEBUG):
+        if self.mpicomm.rank == 0 and logger.isEnabledFor(logging.DEBUG):
             node_elapsed_times = np.array(node_elapsed_times)
             end_time = time.time()
             elapsed_time = end_time - start_time
@@ -1342,6 +1351,8 @@ class ReplicaExchange(object):
                     logger.debug("node %d / %d : minimizing replica %d / %d" % (self.mpicomm.rank, self.mpicomm.size, replica_index, self.nstates))
                     self._minimize_replica(replica_index)
                 end_time = time.time()
+                debug_msg = 'Node {}/{}: MPI barrier'.format(self.mpicomm.rank, self.mpicomm.size)
+                logger.debug(debug_msg + ' - waiting for the minimization to be completed.')
                 self.mpicomm.barrier()
                 logger.debug("Running trajectories: elapsed time %.3f s" % (end_time - start_time))
 
@@ -1540,6 +1551,8 @@ class ReplicaExchange(object):
 
         if (self.mpicomm) and (self.mpicomm.rank != 0):
             # Non-root nodes receive state information.
+            logger.debug('Node {}/{}: MPI bcast - sharing replica_states'.format(
+                    self.mpicomm.rank, self.mpicomm.size))
             self.replica_states = self.mpicomm.bcast(self.replica_states, root=0)
             return
 
@@ -1590,7 +1603,8 @@ class ReplicaExchange(object):
 
         if self.mpicomm:
             # Root node will share state information with all replicas.
-            logger.debug("Sharing state information...")
+            logger.debug('Node {}/{}: MPI bcast - sharing replica_states'.format(
+                    self.mpicomm.rank, self.mpicomm.size))
             self.replica_states = self.mpicomm.bcast(self.replica_states, root=0)
 
         # Report on mixing.
@@ -1649,6 +1663,8 @@ class ReplicaExchange(object):
 
         if self.iteration < 2:
             return
+        if self.mpicomm and self.mpicomm.rank != 0:
+            return  # only root node have access to ncfile
         if not logger.isEnabledFor(logging.DEBUG):
             return
 

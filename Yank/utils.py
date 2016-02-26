@@ -105,8 +105,10 @@ def config_root_logger(verbose, log_file_path=None, mpicomm=None):
     else:
         rank = 0
 
-    if rank != 0:
-        log_file_path = None
+    # Create different log files for each MPI process
+    if rank != 0 and log_file_path is not None:
+        basepath, ext = os.path.splitext(log_file_path)
+        log_file_path = '{}_{}{}'.format(basepath, rank, ext)
 
     # Add handler for stdout and stderr messages
     terminal_handler = logging.StreamHandler()

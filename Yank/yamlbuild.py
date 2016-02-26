@@ -1739,7 +1739,7 @@ class YamlBuilder:
 
         # TODO configure platform and precision when they are fixed in Yank
 
-        # Create directory and configure logger for this experiment
+        # Create directory and determine if we need to resume the simulation
         results_dir = self._get_experiment_dir(exp_opts, experiment_dir)
         resume = os.path.isdir(results_dir)
         if self._mpicomm is None or self._mpicomm.rank == 0:
@@ -1749,6 +1749,8 @@ class YamlBuilder:
                 resume = self._check_resume_experiment(results_dir)
         if self._mpicomm:  # process 0 send result to other processes
             resume = self._mpicomm.bcast(resume, root=0)
+
+        # Configure logger for this experiment
         utils.config_root_logger(exp_opts['verbose'], os.path.join(results_dir, exp_name + '.log'),
                                  self._mpicomm)
 
@@ -1803,6 +1805,8 @@ class YamlBuilder:
 
             # Run the simulation
             if self._mpicomm:  # wait for the simulation to be prepared
+                debug_msg = 'Node {}/{}: MPI barrier'.format(self._mpicomm.rank, self._mpicomm.size)
+                logger.debug(debug_msg + ' - waiting for the simulation to be created.')
                 self._mpicomm.barrier()
                 if self._mpicomm.rank != 0:
                     yank.resume()  # resume from netcdf file created by root node
