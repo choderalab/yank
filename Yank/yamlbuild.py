@@ -831,11 +831,17 @@ class SetupDatabase:
             # Enumerate protonation states with epik
             if 'epik' in mol_descr:
                 epik_idx = mol_descr['epik']
-                epik_mol2_file = os.path.join(mol_dir, mol_id + '-epik.mol2')
-                epik_sdf_file = os.path.join(mol_dir, mol_id + '-epik.sdf')
-                utils.run_epik(mol_descr['filepath'], epik_sdf_file, tautomerize=True,
+                epik_base_path = os.path.join(mol_dir, mol_id + '-epik.')
+                epik_mae_file = epik_base_path + 'mae'
+                epik_mol2_file = epik_base_path + 'mol2'
+                epik_sdf_file = epik_base_path + 'sdf'
+
+                # Run epik and convert from maestro to both mol2 and sdf
+                # to not lose neither the penalties nor the residue name
+                utils.run_epik(mol_descr['filepath'], epik_mae_file, tautomerize=True,
                                extract_range=epik_idx)
-                utils.run_structconvert(epik_sdf_file, epik_mol2_file)
+                utils.run_structconvert(epik_mae_file, epik_sdf_file)
+                utils.run_structconvert(epik_mae_file, epik_mol2_file)
 
                 # Save new net charge from the i_epik_Tot_Q property
                 net_charge = int(utils.run_proplister(epik_sdf_file)['i_epik_Tot_Q'])
