@@ -1050,7 +1050,7 @@ def run_epik(input_file_path, output_file_path, max_structures=32, ph=7.0,
     if output_mae and extract_range is None:
         epik_output = output_file_path
     else:
-        epik_output = os.path.splitext(output_file_path)[0] + '.mae'
+        epik_output = os.path.splitext(output_file_path)[0] + '-temp.mae'
 
     # Run epik, we need list in case there's a space in the paths
     # We run with output_dir as working directory to save there the log file
