@@ -20,8 +20,6 @@ logger = logging.getLogger(__name__)
 import mdtraj
 from simtk import openmm
 
-from repex import ThermodynamicState
-
 #=============================================================================================
 # UTILITY FUNCTIONS
 #=============================================================================================
