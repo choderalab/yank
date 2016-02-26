@@ -1,5 +1,6 @@
 import os
 import re
+import csv
 import copy
 import shutil
 import inspect
@@ -104,8 +105,10 @@ def config_root_logger(verbose, log_file_path=None, mpicomm=None):
     else:
         rank = 0
 
-    if rank != 0:
-        log_file_path = None
+    # Create different log files for each MPI process
+    if rank != 0 and log_file_path is not None:
+        basepath, ext = os.path.splitext(log_file_path)
+        log_file_path = '{}_{}{}'.format(basepath, rank, ext)
 
     # Add handler for stdout and stderr messages
     terminal_handler = logging.StreamHandler()
@@ -936,11 +939,13 @@ def run_proplister(input_file_path):
     cmd = [proplister_path, '-a', '-c', input_file_path]
     output = subprocess.check_output(cmd)
 
-    # The output is a cvs file with comma separators. The first line are the
-    # property names and then each row are the values for each molecule
-    output = output.split('\n')
-    names = output[0].split(',')
-    values = output[1].split(',')
+    # The output is a cvs file. The first line are the property names and then each row
+    # contains the values for each molecule. We use the csv module to avoid splitting
+    # strings that contain commas (e.g. "2,2-dimethylpropane"). We assume we want only
+    # the tags of the first molecule in the file
+    csv_reader = csv.reader(output.split('\n'))
+    names = csv_reader.next()
+    values = csv_reader.next()
 
     properties = dict(zip(names, values))
     return properties
@@ -1045,7 +1050,7 @@ def run_epik(input_file_path, output_file_path, max_structures=32, ph=7.0,
     if output_mae and extract_range is None:
         epik_output = output_file_path
     else:
-        epik_output = os.path.splitext(output_file_path)[0] + '.mae'
+        epik_output = os.path.splitext(output_file_path)[0] + '-temp.mae'
 
     # Run epik, we need list in case there's a space in the paths
     # We run with output_dir as working directory to save there the log file

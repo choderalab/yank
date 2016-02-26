@@ -16,6 +16,7 @@ Tools to build Yank experiments from a YAML configuration file.
 import os
 import re
 import sys
+import glob
 import copy
 import yaml
 import logging
@@ -744,7 +745,7 @@ class SetupDatabase:
         """
 
         for mol_id in args:
-            net_formal_charge = None  # used by antechamber
+            net_charge = None  # used by antechamber
             mol_descr = self.molecules[mol_id]
 
             # Have we already processed this molecule? Do we have to do it at all?
@@ -830,14 +831,20 @@ class SetupDatabase:
             # Enumerate protonation states with epik
             if 'epik' in mol_descr:
                 epik_idx = mol_descr['epik']
-                epik_mol2_file = os.path.join(mol_dir, mol_id + '-epik.mol2')
-                epik_sdf_file = os.path.join(mol_dir, mol_id + '-epik.sdf')
-                utils.run_epik(mol_descr['filepath'], epik_sdf_file, tautomerize=True,
-                               extract_range=epik_idx)
-                utils.run_structconvert(epik_sdf_file, epik_mol2_file)
+                epik_base_path = os.path.join(mol_dir, mol_id + '-epik.')
+                epik_mae_file = epik_base_path + 'mae'
+                epik_mol2_file = epik_base_path + 'mol2'
+                epik_sdf_file = epik_base_path + 'sdf'
 
-                # Save new net charge
-                net_formal_charge = int(utils.run_proplister(epik_sdf_file)['i_epik_Tot_Q'])
+                # Run epik and convert from maestro to both mol2 and sdf
+                # to not lose neither the penalties nor the residue name
+                utils.run_epik(mol_descr['filepath'], epik_mae_file, tautomerize=True,
+                               extract_range=epik_idx)
+                utils.run_structconvert(epik_mae_file, epik_sdf_file)
+                utils.run_structconvert(epik_mae_file, epik_mol2_file)
+
+                # Save new net charge from the i_epik_Tot_Q property
+                net_charge = int(utils.run_proplister(epik_sdf_file)['i_epik_Tot_Q'])
 
                 # Keep filepath consistent
                 mol_descr['filepath'] = epik_mol2_file
@@ -864,7 +871,7 @@ class SetupDatabase:
                 input_mol_path = os.path.abspath(mol_descr['filepath'])
                 with utils.temporary_cd(mol_dir):
                     openmoltools.amber.run_antechamber(mol_id, input_mol_path,
-                                                       net_charge=net_formal_charge)
+                                                       net_charge=net_charge)
 
                 # Save new parameters paths
                 mol_descr['filepath'] = os.path.join(mol_dir, mol_id + '.gaff.mol2')
@@ -1533,6 +1540,33 @@ class YamlBuilder:
         return os.path.join(experiment_options['output_dir'],
                             experiment_options['experiments_dir'], experiment_subdir)
 
+    def _check_resume_experiment(self, experiment_dir):
+        """Check if Yank output files already exist.
+
+        Parameters
+        ----------
+        experiment_dir : dict
+            The path to the directory that should contain the output files.
+
+        Returns
+        -------
+        bool
+            True if NetCDF output files already exist, False otherwise.
+
+        """
+        # Check that output directory exists
+        if not os.path.isdir(experiment_dir):
+            return False
+
+        # Check that complex and solvent NetCDF files exist
+        complex_file_path = glob.glob(os.path.join(experiment_dir, 'complex-*.nc'))
+        solvent_file_path = glob.glob(os.path.join(experiment_dir, 'solvent-*.nc'))
+        if len(complex_file_path) == 0 or len(solvent_file_path) == 0:
+            return False
+
+        output_file_paths = complex_file_path + solvent_file_path
+        return all(os.path.getsize(f) > 0 for f in output_file_paths)
+
     def _check_resume(self):
         """Perform dry run to check if we are going to overwrite files.
 
@@ -1568,8 +1602,8 @@ class YamlBuilder:
 
             # Check experiment dir
             experiment_dir = self._get_experiment_dir(exp_options, exp_sub_dir)
-            if os.path.exists(experiment_dir) and not resume_sim:
-                err_msg = 'experiment directory {}'.format(experiment_dir)
+            if self._check_resume_experiment(experiment_dir) and not resume_sim:
+                err_msg = 'experiment files in directory {}'.format(experiment_dir)
                 solving_option = 'resume_simulation'
             else:
                 # Check system and molecule setup dirs
@@ -1711,13 +1745,18 @@ class YamlBuilder:
 
         # TODO configure platform and precision when they are fixed in Yank
 
-        # Create directory and configure logger for this experiment
+        # Create directory and determine if we need to resume the simulation
         results_dir = self._get_experiment_dir(exp_opts, experiment_dir)
         resume = os.path.isdir(results_dir)
-        if not resume and (self._mpicomm is None or self._mpicomm.rank == 0):
-            os.makedirs(results_dir)
+        if self._mpicomm is None or self._mpicomm.rank == 0:
+            if not resume:
+                os.makedirs(results_dir)
+            else:
+                resume = self._check_resume_experiment(results_dir)
         if self._mpicomm:  # process 0 send result to other processes
             resume = self._mpicomm.bcast(resume, root=0)
+
+        # Configure logger for this experiment
         utils.config_root_logger(exp_opts['verbose'], os.path.join(results_dir, exp_name + '.log'),
                                  self._mpicomm)
 
@@ -1772,6 +1811,8 @@ class YamlBuilder:
 
             # Run the simulation
             if self._mpicomm:  # wait for the simulation to be prepared
+                debug_msg = 'Node {}/{}: MPI barrier'.format(self._mpicomm.rank, self._mpicomm.size)
+                logger.debug(debug_msg + ' - waiting for the simulation to be created.')
                 self._mpicomm.barrier()
                 if self._mpicomm.rank != 0:
                     yank.resume()  # resume from netcdf file created by root node
