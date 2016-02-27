@@ -18,6 +18,7 @@ import shutil
 import textwrap
 import unittest
 import tempfile
+import itertools
 
 from nose.tools import raises
 
@@ -1175,11 +1176,11 @@ def test_neutralize_system():
 def test_charged_ligand():
     """Check that there are alchemical counterions for charged ligands."""
     with utils.temporary_directory() as tmp_dir:
-        tmp_dir = 'temp'
         yaml_content = """
         ---
         options:
             output_dir: {}
+            resume_setup: yes
         molecules:
             aspartic-acid:
                 name: "(3S)-3-amino-4-hydroxy-4-oxo-butanoate"
@@ -1209,7 +1210,7 @@ def test_charged_ligand():
         assert utils.get_mol2_net_charge(asp_path) == -1
         assert utils.get_mol2_net_charge(lys_path) == 1
 
-        # Even if the system is neutral, there should be ions
+        # Even if the system is globally neutral, there should be ions
         # because there must be an alchemical ion for the charged ligand
         found_resnames = set()
         with open(os.path.join(output_dir, 'complex.pdb'), 'r') as f:
@@ -1217,6 +1218,19 @@ def test_charged_ligand():
                 if len(line) > 10:
                     found_resnames.add(line[17:20])
         assert set(['Na+', 'Cl-']) <= found_resnames
+
+        # Test that 'ligand_counterions' component contain one anion
+        _, systems, _, atom_indices = pipeline.prepare_amber(output_dir, 'resname ASP',
+                                                {'nonbondedMethod': openmm.app.PME}, -1)
+        for phase in ['complex', 'solvent']:
+            prmtop_file_path = os.path.join(output_dir, '{}.prmtop'.format(phase))
+            topology = openmm.app.AmberPrmtopFile(prmtop_file_path).topology
+            phase += '-explicit'
+
+            assert len(atom_indices[phase]['ligand_counterions']) == 1
+            ion_idx = atom_indices[phase]['ligand_counterions'][0]
+            ion_atom = next(itertools.islice(topology.atoms(), ion_idx, None))
+            assert '+' in ion_atom.residue.name
 
 
 def test_yaml_creation():

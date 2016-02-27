@@ -1801,7 +1801,8 @@ class YamlBuilder:
                 system_dir = self._db.get_system(components, exp_opts['pack'])
 
                 # Get ligand resname for alchemical atom selection
-                ligand_dsl = utils.get_mol2_resname(self._db.molecules[components['ligand']]['filepath'])
+                ligand_descr = self._db.molecules[components['ligand']]
+                ligand_dsl = utils.get_mol2_resname(ligand_descr['filepath'])
                 if ligand_dsl is None:
                     ligand_dsl = 'MOL'
                 ligand_dsl = 'resname ' + ligand_dsl
@@ -1819,7 +1820,8 @@ class YamlBuilder:
                                for opt, value in system_pars.items()}
 
                 # Prepare system
-                phases, systems, positions, atom_indices = pipeline.prepare_amber(system_dir, ligand_dsl, system_pars)
+                phases, systems, positions, atom_indices = pipeline.prepare_amber(system_dir, ligand_dsl,
+                                                                 system_pars, ligand_descr['net_charge'])
 
                 # Create thermodynamic state
                 thermodynamic_state = ThermodynamicState(temperature=exp_opts['temperature'],
