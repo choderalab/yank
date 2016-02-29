@@ -18,6 +18,7 @@ import shutil
 import textwrap
 import unittest
 import tempfile
+import itertools
 
 from nose.tools import raises
 
@@ -1169,6 +1170,68 @@ def test_neutralize_system():
         inpcrd_path = os.path.join(output_dir, 'complex.inpcrd')
         assert os.path.exists(prmtop_path)
         assert os.path.exists(inpcrd_path)
+
+
+@unittest.skipIf(not utils.is_openeye_installed(), "This test requires OpenEye toolkit")
+def test_charged_ligand():
+    """Check that there are alchemical counterions for charged ligands."""
+    with utils.temporary_directory() as tmp_dir:
+        yaml_content = """
+        ---
+        options:
+            output_dir: {}
+            resume_setup: yes
+        molecules:
+            aspartic-acid:
+                name: "(3S)-3-amino-4-hydroxy-4-oxo-butanoate"
+                parameters: antechamber
+            lysine:
+                name: "[(5S)-5-amino-6-hydroxy-6-oxo-hexyl]azanium"
+                parameters: antechamber
+        solvents:
+            PMEtip3p:
+                nonbonded_method: PME
+                clearance: 10*angstroms
+                positive_ion: Na+
+                negative_ion: Cl-
+        """.format(tmp_dir)
+
+        yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
+        components = {'receptor': 'lysine',
+                      'ligand': 'aspartic-acid',
+                      'solvent': 'PMEtip3p'}
+        output_dir = yaml_builder._db.get_system(components)
+
+        # Safety check: Asp is negatively charged, Lys is positively charged
+        asp_path = os.path.join(yaml_builder._db.get_molecule_dir('aspartic-acid'),
+                                'aspartic-acid.gaff.mol2')
+        lys_path = os.path.join(yaml_builder._db.get_molecule_dir('lysine'),
+                                'lysine.gaff.mol2')
+        assert utils.get_mol2_net_charge(asp_path) == -1
+        assert utils.get_mol2_net_charge(lys_path) == 1
+
+        # Even if the system is globally neutral, there should be ions
+        # because there must be an alchemical ion for the charged ligand
+        found_resnames = set()
+        with open(os.path.join(output_dir, 'complex.pdb'), 'r') as f:
+            for line in f:
+                if len(line) > 10:
+                    found_resnames.add(line[17:20])
+        assert set(['Na+', 'Cl-']) <= found_resnames
+
+        # Test that 'ligand_counterions' component contain one anion
+        _, systems, _, atom_indices = pipeline.prepare_amber(output_dir, 'resname ASP',
+                                                {'nonbondedMethod': openmm.app.PME}, -1)
+        for phase in ['complex', 'solvent']:
+            prmtop_file_path = os.path.join(output_dir, '{}.prmtop'.format(phase))
+            topology = openmm.app.AmberPrmtopFile(prmtop_file_path).topology
+            phase += '-explicit'
+
+            assert len(atom_indices[phase]['ligand_counterions']) == 1
+            ion_idx = atom_indices[phase]['ligand_counterions'][0]
+            ion_atom = next(itertools.islice(topology.atoms(), ion_idx, None))
+            assert '+' in ion_atom.residue.name
+
 
 def test_yaml_creation():
     """Test the content of generated single experiment YAML files."""

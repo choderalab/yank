@@ -116,7 +116,7 @@ def setup_binding_amber(args):
         system_parameters['nonbondedCutoff'] = process_unit_bearing_arg(args, '--cutoff', unit.nanometers)
 
     # Prepare phases of calculation.
-    return pipeline.prepare_amber(setup_directory, args['--ligand'], system_parameters, verbose)
+    return pipeline.prepare_amber(setup_directory, args['--ligand'], system_parameters, verbose=verbose)
 
 def setup_binding_gromacs(args):
     """

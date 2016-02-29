@@ -205,7 +205,8 @@ class Yank(object):
            A dict of positions corresponding to each phase, e.g. positions['solvent'] is a single set of positions or list of positions to seed replicas.
            Shape must be natoms x 3, with natoms matching number of particles in corresponding system.
         atom_indices : dict of dict list of int, optional, default=None
-           atom_indices[phase][component] is a list of atom indices, for each component in ['ligand', 'receptor', 'complex', 'solvent']
+           atom_indices[phase][component] is a list of atom indices, for each component in ['ligand', 'receptor',
+           'complex', 'solvent', 'ligand_counterions']
         thermodynamic_state : ThermodynamicState (System need not be defined), optional, default=None
            Thermodynamic state at which calculations are to be carried out
         protocols : dict of list of AlchemicalState, optional, default=None
@@ -269,7 +270,8 @@ class Yank(object):
         positions : list of simtk.unit.Qunatity objects containing (natoms x 3) positions (as np or lists)
            The list of positions to be used to seed replicas in a round-robin way.
         atom_indices : dict
-           atom_indices[phase][component] is the set of atom indices associated with component, where component is ['ligand', 'receptor']
+           atom_indices[phase][component] is the set of atom indices associated with component, where component
+           is ['ligand', 'receptor', 'complex', 'solvent', 'ligand_counterions']
         thermodynamic_state : ThermodynamicState
            Thermodynamic state from which reference temperature and pressure are to be taken.
         protocols : dict of list of AlchemicalState, optional, default=None
@@ -346,8 +348,11 @@ class Yank(object):
 
         # Create alchemically-modified states using alchemical factory.
         logger.debug("Creating alchemically-modified states...")
-        #factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=atom_indices['ligand'], test_positions=positions[0], platform=repex_options['platform']) # DEBUG code for testing
-        factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=atom_indices['ligand'],
+        try:
+            alchemical_indices = atom_indices['ligand_counterions'] + atom_indices['ligand']
+        except KeyError:
+            alchemical_indices = atom_indices['ligand']
+        factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=alchemical_indices,
                                             **self._alchemy_parameters)
         alchemical_states = protocols[phase]
         alchemical_system = factory.alchemically_modified_system

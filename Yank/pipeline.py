@@ -20,8 +20,6 @@ logger = logging.getLogger(__name__)
 import mdtraj
 from simtk import openmm
 
-from repex import ThermodynamicState
-
 #=============================================================================================
 # UTILITY FUNCTIONS
 #=============================================================================================
@@ -50,27 +48,36 @@ _SOLVENT_RESNAMES = frozenset(['118', '119', '1AL', '1CU', '2FK', '2HP', '2OF', 
         'TRA', 'UNX', 'V', 'V2+', 'VN3', 'VO4', 'W', 'WO5', 'Y1', 'YB', 'YB2',
         'YH', 'YT3', 'ZN', 'ZN2', 'ZN3', 'ZNA', 'ZNO', 'ZO3'])
 
-def find_components(topology, ligand_dsl, solvent_resnames=_SOLVENT_RESNAMES):
-    """
-    Return list of receptor and ligand atoms.
+
+def find_components(topology, ligand_dsl, ligand_net_charge=0,
+                    solvent_resnames=_SOLVENT_RESNAMES):
+    """Determine the atom indices of the system components.
+
     Ligand atoms are specified through MDTraj domain-specific language (DSL),
-    while receptor atoms are everything else excluding water.
+    while receptor atoms are everything else excluding solvent.
+
+    If ligand_net_charge is non-zero, the function also isolates the indices
+    of ligand-neutralizing counterions in the 'ligand_counterions' component.
 
     Parameters
     ----------
     topology : mdtraj.Topology, simtk.openmm.app.Topology
-       The topology object specifying the system. If simtk.openmm.app.Topology
-       is passed instead this will be converted.
+        The topology object specifying the system. If simtk.openmm.app.Topology
+        is passed instead this will be converted.
     ligand_dsl : str
-       DSL specification of the ligand atoms.
-    solvent_resnames : list of str, optional, default=['WAT', 'TIP', 'HOH']
-       List of solvent residue names to exclude from receptor definition.
+        DSL specification of the ligand atoms.
+    ligand_net_charge : int, optional
+        The net charge of the ligand (default is 0).
+    solvent_resnames : list of str, optional
+        List of solvent residue names to exclude from receptor definition (default
+        is _SOLVENT_RESNAME).
 
     Returns
     -------
     atom_indices : dict of list of int
-       atom_indices[component] is a list of atom indices belonging to that component, where
-       component is one of 'receptor', 'ligand', 'solvent', 'complex'
+        atom_indices[component] is a list of atom indices belonging to that
+        component, where component is one of 'receptor', 'ligand', 'solvent',
+        'complex', and 'ligand_counterions'.
 
     """
     atom_indices = {}
@@ -96,9 +103,27 @@ def find_components(topology, ligand_dsl, solvent_resnames=_SOLVENT_RESNAMES):
                                 if atom.index not in not_receptor_set]
     atom_indices['complex'] = atom_indices['receptor'] + atom_indices['ligand']
 
+    # Isolate ligand-neutralizing counterions
+    if ligand_net_charge != 0:
+        if ligand_net_charge > 0:
+            counterions_set = {name for name in solvent_resnames if '-' in name}
+        elif ligand_net_charge < 0:
+            counterions_set = {name for name in solvent_resnames if '+' in name}
+
+        ligand_counterions = [atom.index for atom in mdtraj_top.atoms
+                              if atom.residue.name in counterions_set]
+        atom_indices['ligand_counterions'] = ligand_counterions[:abs(ligand_net_charge)]
+
+        # Eliminate ligand counterions indices from solvent component
+        atom_indices['solvent'] = [i for i in atom_indices['solvent']
+                                   if i not in atom_indices['ligand_counterions']]
+    else:
+        atom_indices['ligand_counterions'] = []
+
     return atom_indices
 
-def prepare_amber(system_dir, ligand_dsl, system_parameters, verbose=False):
+
+def prepare_amber(system_dir, ligand_dsl, system_parameters, ligand_net_charge=0, verbose=False):
     """Create a system from prmtop and inpcrd files.
 
     Parameters
@@ -109,19 +134,24 @@ def prepare_amber(system_dir, ligand_dsl, system_parameters, verbose=False):
         MDTraj DSL string that specify the ligand atoms.
     system_parameters : dict
         A kwargs dictionary to pass to openmm.app.AmberPrmtopFile.createSystem().
+    ligand_net_charge : int, optional
+       The net charge of the ligand. If non-zero, the function will look in the
+       system for ligand-neutralizing counterions that will be included in atom_indices
+       (default is 0).
     verbose : bool
         Whether or not to log informations (default is False).
 
     Returns
     -------
     phases : list of str
-       Phases (thermodynamic legs) of the calculation.
+        Phases (thermodynamic legs) of the calculation.
     systems : dict
-       systems[phase] is the OpenMM System reference object for phase 'phase'.
+        systems[phase] is the OpenMM System reference object for phase 'phase'.
     positions : dict
-       positions[phase] is a numpy array of positions for initializing replicas.
+        positions[phase] is a numpy array of positions for initializing replicas.
     atom_indices : dict
-       atom_indices[phase][component] is list of atom indices for component 'component' in phase 'phase'.
+        atom_indices[phase][component] is list of atom indices for component 'component'
+        in phase 'phase' as returned by find_components().
 
     """
     systems = {}  # systems[phase] is the System object associated with phase 'phase'
@@ -191,7 +221,7 @@ def prepare_amber(system_dir, ligand_dsl, system_parameters, verbose=False):
             raise RuntimeError(err_msg)
 
         # Find ligand atoms and receptor atoms
-        atom_indices[phase] = find_components(prmtop.topology, ligand_dsl)
+        atom_indices[phase] = find_components(prmtop.topology, ligand_dsl, ligand_net_charge)
 
     phases = systems.keys()
 

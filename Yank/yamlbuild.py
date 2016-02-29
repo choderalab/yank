@@ -659,13 +659,31 @@ class SetupDatabase:
         else:  # explicit solvent
             tleap.new_section('Solvate systems')
 
-            # Neutralizing
+            # Add ligand-neutralizing ions
+            if 'net_charge' in ligand and ligand['net_charge'] != 0:
+                net_charge = ligand['net_charge']
+
+                # Check that solvent is configured for charged ligand
+                if not ('positive_ion' in solvent and 'negative_ion' in solvent):
+                    err_msg = ('Found charged ligand but no indications for ions in '
+                               'solvent {}').format(solvent_id)
+                    logger.error(err_msg)
+                    raise RuntimeError(err_msg)
+
+                # Add ions to the system
+                if net_charge > 0:
+                    ion = solvent['positive_ion']
+                else:
+                    ion = solvent['negative_ion']
+                tleap.add_ions(unit='complex', ion=ion, num_ions=abs(net_charge))
+
+            # Neutralizing solvation box
             if 'positive_ion' in solvent:
-                tleap.neutralize(unit='complex', ion=solvent['positive_ion'])
-                tleap.neutralize(unit='ligand', ion=solvent['positive_ion'])
+                tleap.add_ions(unit='complex', ion=solvent['positive_ion'])
+                tleap.add_ions(unit='ligand', ion=solvent['positive_ion'])
             if 'negative_ion' in solvent:
-                tleap.neutralize(unit='complex', ion=solvent['negative_ion'])
-                tleap.neutralize(unit='ligand', ion=solvent['negative_ion'])
+                tleap.add_ions(unit='complex', ion=solvent['negative_ion'])
+                tleap.add_ions(unit='ligand', ion=solvent['negative_ion'])
 
             clearance = float(solvent['clearance'].value_in_unit(unit.angstroms))
             tleap.solvate(group='complex', water_model='TIP3PBOX', clearance=clearance)
@@ -876,6 +894,14 @@ class SetupDatabase:
                 # Save new parameters paths
                 mol_descr['filepath'] = os.path.join(mol_dir, mol_id + '.gaff.mol2')
                 mol_descr['parameters'] = os.path.join(mol_dir, mol_id + '.frcmod')
+
+            # Determine small molecule net charge
+            extension = os.path.splitext(mol_descr['filepath'])[1]
+            if extension == '.mol2':
+                if net_charge is not None:
+                    mol_descr['net_charge'] = net_charge
+                else:
+                    mol_descr['net_charge'] = utils.get_mol2_net_charge(mol_descr['filepath'])
 
             # Keep track of processed molecule
             self._processed_mols.add(mol_id)
@@ -1775,7 +1801,8 @@ class YamlBuilder:
                 system_dir = self._db.get_system(components, exp_opts['pack'])
 
                 # Get ligand resname for alchemical atom selection
-                ligand_dsl = utils.get_mol2_resname(self._db.molecules[components['ligand']]['filepath'])
+                ligand_descr = self._db.molecules[components['ligand']]
+                ligand_dsl = utils.get_mol2_resname(ligand_descr['filepath'])
                 if ligand_dsl is None:
                     ligand_dsl = 'MOL'
                 ligand_dsl = 'resname ' + ligand_dsl
@@ -1793,7 +1820,8 @@ class YamlBuilder:
                                for opt, value in system_pars.items()}
 
                 # Prepare system
-                phases, systems, positions, atom_indices = pipeline.prepare_amber(system_dir, ligand_dsl, system_pars)
+                phases, systems, positions, atom_indices = pipeline.prepare_amber(system_dir, ligand_dsl,
+                                                                 system_pars, ligand_descr['net_charge'])
 
                 # Create thermodynamic state
                 thermodynamic_state = ThermodynamicState(temperature=exp_opts['temperature'],

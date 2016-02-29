@@ -13,8 +13,8 @@ import collections
 
 from pkg_resources import resource_filename
 
+import mdtraj
 from simtk import unit
-from mdtraj.utils import enter_temp_directory
 
 #========================================================================================
 # Logging functions
@@ -802,6 +802,29 @@ def validate_parameters(parameters, template_parameters, check_unknown=False,
 # Stuff to move to openmoltools when they'll be stable
 #=============================================================================================
 
+
+def get_mol2_net_charge(mol2_file_path):
+    """Compute the sum of the partial charges for a molecule in a mol2 file.
+
+    Note that the mol2 file must indicated the charge of each atom consistently.
+    The function works only for single-structure mol2 files.
+
+    Parameters
+    ----------
+    mol2_file_path : str
+        Path to the mol2 file containing the molecule(s).
+
+    Returns
+    -------
+    net_charge : int
+        The molecule net charge calculated as the sum of its partial charges
+
+    """
+    atoms_frame, _ = mdtraj.formats.mol2.mol2_to_dataframes(mol2_file_path)
+    net_charge = atoms_frame['charge'].sum()
+    return int(round(net_charge))
+
+
 def is_openeye_installed():
     try:
         from openeye import oechem
@@ -1130,8 +1153,8 @@ class TLeap:
         components = ' '.join(args)
         self.add_commands('{} = combine {{{{ {} }}}}'.format(group, components))
 
-    def neutralize(self, unit, ion):
-        self.add_commands('addIons2 {} {} 0'.format(unit, ion))
+    def add_ions(self, unit, ion, num_ions=0):
+        self.add_commands('addIons2 {} {} {}'.format(unit, ion, num_ions))
 
     def solvate(self, group, water_model, clearance):
         self.add_commands('solvateBox {} {} {} iso'.format(group, water_model,
@@ -1188,7 +1211,7 @@ class TLeap:
                        for local, path in self._file_paths.items()}
         script = self._script.format(**local_files) + 'quit\n'
 
-        with enter_temp_directory():
+        with mdtraj.utils.enter_temp_directory():
             # Copy input files
             for local_file, file_path in input_files.items():
                 shutil.copy(file_path, local_file)
