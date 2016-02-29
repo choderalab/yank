@@ -885,10 +885,28 @@ class SetupDatabase:
 
             # Parametrize the molecule with antechamber
             if mol_descr['parameters'] == 'antechamber':
+                # Generate charges with OpenEye if available
+                if utils.is_openeye_installed():
+                    mol2_file_path = os.path.join(mol_dir, mol_id + '.mol2')
+                    oe_molecule = utils.read_oe_molecule(mol_descr['filepath'])
+
+                    # Setting keep_confs = None keeps the original conformation
+                    oe_molecule = openmoltools.openeye.get_charges(oe_molecule, keep_confs=None)
+                    residue_name = utils.get_mol2_resname(mol_descr['filepath'])
+                    openmoltools.openeye.molecule_to_mol2(oe_molecule, mol2_file_path,
+                                                          residue_name=residue_name)
+
+                    charge_method = None  # antechamber read charges from mol2
+                    net_charge = None  # we don't need Epik's net charge
+                    mol_descr['filepath'] = mol2_file_path
+                else:
+                    charge_method = 'bcc'  # if OpenEye not available, use sqm
+
                 # Generate parameters
                 input_mol_path = os.path.abspath(mol_descr['filepath'])
                 with utils.temporary_cd(mol_dir):
                     openmoltools.amber.run_antechamber(mol_id, input_mol_path,
+                                                       charge_method=charge_method,
                                                        net_charge=net_charge)
 
                 # Save new parameters paths
