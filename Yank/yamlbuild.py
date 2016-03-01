@@ -494,7 +494,8 @@ class SetupDatabase:
         files_to_check = {}
 
         # If the molecule must go through antechamber we search for its output
-        if molecule_descr['parameters'] == 'antechamber':
+        if (molecule_descr['parameters'] == 'antechamber' or
+                    molecule_descr['parameters'] == 'openeye:am1bcc-gaff'):
             files_to_check['filepath'] = molecule_id_path + '.gaff.mol2'
             files_to_check['parameters'] = molecule_id_path + '.frcmod'
 
@@ -884,9 +885,16 @@ class SetupDatabase:
                 mol_descr['filepath'] = mol2_file_path
 
             # Parametrize the molecule with antechamber
-            if mol_descr['parameters'] == 'antechamber':
-                # Generate charges with OpenEye if available
-                if utils.is_openeye_installed():
+            if (mol_descr['parameters'] == 'antechamber' or
+                mol_descr['parameters'] == 'openeye:am1bcc-gaff'):
+
+                # Generate charges with OpenEye requested
+                if mol_descr['parameters'] == 'openeye:am1bcc-gaff':
+                    if not utils.is_openeye_installed():
+                        err_msg = ('Cannot find OpenEye toolkit to compute charges '
+                                   'for molecule {}').format(mol_id)
+                        logger.error(err_msg)
+                        raise RuntimeError(err_msg)
                     mol2_file_path = os.path.join(mol_dir, mol_id + '.mol2')
                     oe_molecule = utils.read_oe_molecule(mol_descr['filepath'])
 
@@ -899,8 +907,8 @@ class SetupDatabase:
                     charge_method = None  # antechamber read charges from mol2
                     net_charge = None  # we don't need Epik's net charge
                     mol_descr['filepath'] = mol2_file_path
-                else:
-                    charge_method = 'bcc'  # if OpenEye not available, use sqm
+                else:  # use antechamber and sqm
+                    charge_method = 'bcc'
 
                 # Generate parameters
                 input_mol_path = os.path.abspath(mol_descr['filepath'])
