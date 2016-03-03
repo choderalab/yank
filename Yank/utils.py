@@ -14,6 +14,7 @@ import collections
 from pkg_resources import resource_filename
 
 import mdtraj
+import numpy as np
 from simtk import unit
 
 #========================================================================================
@@ -891,7 +892,6 @@ def write_oe_molecule(oe_mol, file_path, mol2_resname=None):
 
 
 def get_oe_mol_positions(molecule, conformer_idx=0):
-    import numpy as np
     from openeye import oechem
     # Extract correct conformer
     if conformer_idx > 0:
