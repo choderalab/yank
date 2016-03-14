@@ -1118,6 +1118,7 @@ class TLeap:
     def __init__(self):
         self._script = ''
         self._file_paths = {}  # paths of input/output files to copy in/from temp dir
+        self._loaded_parameters = set()  # parameter files already loaded
 
     def add_commands(self, *args):
         for command in args:
@@ -1125,6 +1126,11 @@ class TLeap:
 
     def load_parameters(self, *args):
         for par_file in args:
+            # Check that this is not already loaded
+            if par_file in self._loaded_parameters:
+                continue
+
+            # use loadAmberParams if this is a frcmod file and source otherwise
             extension = os.path.splitext(par_file)[1]
             if extension == '.frcmod':
                 local_name = 'moli{}'.format(len(self._file_paths))
@@ -1134,6 +1140,9 @@ class TLeap:
                 self._file_paths[local_name] = par_file
             else:
                 self.add_commands('source ' + par_file)
+
+            # Update loaded parameters cache
+            self._loaded_parameters.add(par_file)
 
     def load_group(self, name, file_path):
         extension = os.path.splitext(file_path)[1]
