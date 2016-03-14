@@ -602,8 +602,6 @@ class SetupDatabase:
         tleap.load_parameters('leaprc.gaff')
 
         # Check that AMBER force field is specified
-        # if not 'leaprc.' in receptor['parameters'] or not 'leaprc.' in ligand['parameters']:
-        #     tleap.load_parameters('leaprc.ff14SB')
         if 'leaprc.' in receptor['parameters']:
             amber_ff = receptor['parameters']
         elif 'leaprc.' in ligand['parameters']:
