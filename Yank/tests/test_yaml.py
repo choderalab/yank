@@ -23,6 +23,7 @@ import itertools
 from nose.tools import raises
 
 from yank.yamlbuild import *
+from mdtraj.formats.mol2 import mol2_to_dataframes
 
 #=============================================================================================
 # SUBROUTINES FOR TESTING
@@ -508,9 +509,10 @@ def test_yaml_mol2_antechamber():
         assert last_touched_gaff == os.stat(gaff_path).st_mtime
         assert last_touched_frcmod == os.stat(frcmod_path).st_mtime
 
+
 @unittest.skipIf(not utils.is_openeye_installed(), 'This test requires OpenEye installed.')
-def test_setup_name_smiles_antechamber():
-    """Setup molecule from name and SMILES with antechamber parametrization."""
+def test_setup_name_smiles_openeye_charges():
+    """Setup molecule from name and SMILES with openeye charges and gaff."""
     with utils.temporary_directory() as tmp_dir:
         yaml_content = """
         ---
@@ -520,7 +522,7 @@ def test_setup_name_smiles_antechamber():
         molecules:
             p-xylene:
                 name: p-xylene
-                parameters: antechamber
+                parameters: openeye:am1bcc-gaff
             toluene:
                 smiles: Cc1ccccc1
                 parameters: antechamber
@@ -530,13 +532,27 @@ def test_setup_name_smiles_antechamber():
         yaml_builder._db._setup_molecules('toluene', 'p-xylene')
 
         for mol in ['toluene', 'p-xylene']:
-            output_dir = os.path.join(tmp_dir, SetupDatabase.MOLECULES_DIR, mol)
-            assert os.path.exists(os.path.join(output_dir, mol + '.mol2'))
-            assert os.path.exists(os.path.join(output_dir, mol + '.gaff.mol2'))
-            assert os.path.exists(os.path.join(output_dir, mol + '.frcmod'))
-            assert os.path.getsize(os.path.join(output_dir, mol + '.mol2')) > 0
-            assert os.path.getsize(os.path.join(output_dir, mol + '.gaff.mol2')) > 0
-            assert os.path.getsize(os.path.join(output_dir, mol + '.frcmod')) > 0
+            output_basepath = os.path.join(tmp_dir, SetupDatabase.MOLECULES_DIR, mol, mol)
+
+            # Check that all the files have been created
+            assert os.path.exists(output_basepath + '.mol2')
+            assert os.path.exists(output_basepath + '.gaff.mol2')
+            assert os.path.exists(output_basepath + '.frcmod')
+            assert os.path.getsize(output_basepath + '.mol2') > 0
+            assert os.path.getsize(output_basepath + '.gaff.mol2') > 0
+            assert os.path.getsize(output_basepath + '.frcmod') > 0
+
+            atoms_frame, _ = mol2_to_dataframes(output_basepath + '.mol2')
+            input_charges = atoms_frame['charge']
+            atoms_frame, _ = mol2_to_dataframes(output_basepath + '.gaff.mol2')
+            output_charges = atoms_frame['charge']
+
+            # With openeye:am1bcc charges, the final charges should be unaltered
+            if mol == 'p-xylene':
+                assert input_charges.equals(output_charges)
+            else:  # With antechamber, sqm should alter the charges a little
+                assert not input_charges.equals(output_charges)
+
 
 @unittest.skipIf(not utils.is_openeye_installed(), 'This test requires OpenEye installed.')
 def test_clashing_atoms():
