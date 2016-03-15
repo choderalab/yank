@@ -594,7 +594,9 @@ def test_clashing_atoms():
             if solvent == 'PME':
                 assert max_dist <= clearance
 
-@unittest.skipIf(not utils.is_schrodinger_suite_installed(), "This test requires Schrodinger's suite")
+
+@unittest.skipIf(not omt.schrodinger.is_schrodinger_suite_installed(),
+                 "This test requires Schrodinger's suite")
 def test_epik_enumeration():
     """Test that epik protonation state enumeration."""
     with utils.temporary_directory() as tmp_dir:

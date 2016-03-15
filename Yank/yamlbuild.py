@@ -854,13 +854,13 @@ class SetupDatabase:
 
                 # Run epik and convert from maestro to both mol2 and sdf
                 # to not lose neither the penalties nor the residue name
-                utils.run_epik(mol_descr['filepath'], epik_mae_file, tautomerize=True,
-                               extract_range=epik_idx)
-                utils.run_structconvert(epik_mae_file, epik_sdf_file)
-                utils.run_structconvert(epik_mae_file, epik_mol2_file)
+                omt.schrodinger.run_epik(mol_descr['filepath'], epik_mae_file, tautomerize=True,
+                                         extract_range=epik_idx)
+                omt.schrodinger.run_structconvert(epik_mae_file, epik_sdf_file)
+                omt.schrodinger.run_structconvert(epik_mae_file, epik_mol2_file)
 
                 # Save new net charge from the i_epik_Tot_Q property
-                net_charge = int(utils.run_proplister(epik_sdf_file)['i_epik_Tot_Q'])
+                net_charge = int(omt.schrodinger.run_proplister(epik_sdf_file)['i_epik_Tot_Q'])
 
                 # Keep filepath consistent
                 mol_descr['filepath'] = epik_mol2_file
