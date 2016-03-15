@@ -595,7 +595,7 @@ def test_clashing_atoms():
                 assert max_dist <= clearance
 
 
-@unittest.skipIf(not omt.schrodinger.is_schrodinger_suite_installed(),
+@unittest.skipIf(not openmoltools.schrodinger.is_schrodinger_suite_installed(),
                  "This test requires Schrodinger's suite")
 def test_epik_enumeration():
     """Test that epik protonation state enumeration."""
