@@ -23,7 +23,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 import numpy as np
-import openmoltools
+import openmoltools as omt
 from simtk import unit, openmm
 from simtk.openmm.app import PDBFile
 from alchemy import AlchemicalState, AbsoluteAlchemicalFactory
@@ -726,10 +726,10 @@ class SetupDatabase:
         mol_descr = self.molecules[molecule_id]  # molecule description
         try:
             if 'name' in mol_descr:
-                molecule = openmoltools.openeye.iupac_to_oemol(mol_descr['name'])
+                molecule = omt.openeye.iupac_to_oemol(mol_descr['name'])
             elif 'smiles' in mol_descr:
-                molecule = openmoltools.openeye.smiles_to_oemol(mol_descr['smiles'])
-            molecule = openmoltools.openeye.get_charges(molecule, keep_confs=1)
+                molecule = omt.openeye.smiles_to_oemol(mol_descr['smiles'])
+            molecule = omt.openeye.get_charges(molecule, keep_confs=1)
         except ImportError as e:
             error_msg = ('requested molecule generation from name or smiles but '
                          'could not find OpenEye toolkit: ' + str(e))
@@ -841,8 +841,8 @@ class SetupDatabase:
 
                 # We set the residue name as the first three uppercase letters of mol_id
                 residue_name = re.sub('[^A-Za-z]+', '', mol_id.upper())[:3]
-                openmoltools.openeye.molecule_to_mol2(oe_molecule, mol_descr['filepath'],
-                                                      residue_name=residue_name)
+                omt.openeye.molecule_to_mol2(oe_molecule, mol_descr['filepath'],
+                                             residue_name=residue_name)
 
             # Enumerate protonation states with epik
             if 'epik' in mol_descr:
@@ -875,8 +875,8 @@ class SetupDatabase:
 
                 # We set the residue name as the first three uppercase letters of mol_id
                 residue_name = re.sub('[^A-Za-z]+', '', mol_id.upper())[:3]
-                openmoltools.openeye.molecule_to_mol2(oe_molecule, mol2_file_path,
-                                                      residue_name=residue_name)
+                omt.openeye.molecule_to_mol2(oe_molecule, mol2_file_path,
+                                             residue_name=residue_name)
 
                 # Update filepath information
                 mol_descr['filepath'] = mol2_file_path
@@ -886,8 +886,7 @@ class SetupDatabase:
                 # Generate parameters
                 input_mol_path = os.path.abspath(mol_descr['filepath'])
                 with utils.temporary_cd(mol_dir):
-                    openmoltools.amber.run_antechamber(mol_id, input_mol_path,
-                                                       net_charge=net_charge)
+                    omt.amber.run_antechamber(mol_id, input_mol_path, net_charge=net_charge)
 
                 # Save new parameters paths
                 mol_descr['filepath'] = os.path.join(mol_dir, mol_id + '.gaff.mol2')
