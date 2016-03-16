@@ -861,7 +861,7 @@ class SetupDatabase:
                 omt.schrodinger.run_structconvert(epik_mae_file, epik_mol2_file)
 
                 # Save new net charge from the i_epik_Tot_Q property
-                net_charge = int(omt.schrodinger.run_proplister(epik_sdf_file)['i_epik_Tot_Q'])
+                net_charge = int(omt.schrodinger.run_proplister(epik_sdf_file)[0]['i_epik_Tot_Q'])
 
                 # Keep filepath consistent
                 mol_descr['filepath'] = epik_mol2_file
