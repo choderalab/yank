@@ -519,8 +519,11 @@ class SetupDatabase:
         all_file_exist = True
         for descr_key, file_path in files_to_check.items():
             all_file_exist &= os.path.isfile(file_path) and os.path.getsize(file_path) > 0
-            if all_file_exist:
-                molecule_descr[descr_key] = file_path  # Make sure internal description is correct
+            if all_file_exist:  # Make sure internal description is correct
+                molecule_descr[descr_key] = file_path
+                extension = os.path.splitext(molecule_descr['filepath'])[1]
+                if extension == '.mol2':
+                    molecule_descr['net_charge'] = utils.get_mol2_net_charge(molecule_descr['filepath'])
 
         return all_file_exist, all_file_exist
 
