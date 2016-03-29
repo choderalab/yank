@@ -17,15 +17,15 @@ requirements:
     - scipy
     - setuptools
     - netcdf4
-    - openmm
+    - openmm-dev
     - mdtraj 1.5.1 # TODO remove me when segment_id bug is fixed (this is installed through openmoltools)
     - openmmtools >=0.7.2
-    - pymbar
+    - pymbar-dev
     - ambermini
     - docopt
-    - openmoltools
+    - openmoltools-dev
     - sphinxcontrib-bibtex
-    - alchemy >=1.1.3
+    - alchemy-dev
     #- gcc 4.8.2 # [linux]
     #- gcc 4.8.2 # [osx]
 
@@ -36,25 +36,25 @@ requirements:
     - scipy
     - cython
     - netcdf4
-    - openmm
+    - openmm-dev
     - mdtraj 1.5.1 # TODO remove me when segment_id bug is fixed (this is installed through openmoltools)
-    - openmmtools >=0.7.2
-    - pymbar
+    - openmmtools-dev
+    - pymbar-dev
     - ambermini
     - docopt
-    - openmoltools
+    - openmoltools-dev
     - mpi4py
     - pyyaml
     - clusterutils
     - sphinxcontrib-bibtex
-    - alchemy >=1.1.3
+    - alchemy-dev
     #- libgcc
 
 test:
   requires:
     - nose
     - nose-timer
-    - openmmtools
+    - openmmtools-dev
   imports:
     - yank
   commands:
