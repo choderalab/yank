@@ -19,7 +19,7 @@ requirements:
     - netcdf4
     - openmm-dev
     - mdtraj 1.5.1 # TODO remove me when segment_id bug is fixed (this is installed through openmoltools)
-    - openmmtools >=0.7.2
+    - openmmtools-dev
     - pymbar-dev
     - ambermini
     - docopt
