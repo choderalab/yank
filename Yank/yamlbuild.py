@@ -23,7 +23,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 import numpy as np
-import openmoltools
+import openmoltools as omt
 from simtk import unit, openmm
 from simtk.openmm.app import PDBFile
 from alchemy import AlchemicalState, AbsoluteAlchemicalFactory
@@ -519,8 +519,11 @@ class SetupDatabase:
         all_file_exist = True
         for descr_key, file_path in files_to_check.items():
             all_file_exist &= os.path.isfile(file_path) and os.path.getsize(file_path) > 0
-            if all_file_exist:
-                molecule_descr[descr_key] = file_path  # Make sure internal description is correct
+            if all_file_exist:  # Make sure internal description is correct
+                molecule_descr[descr_key] = file_path
+                extension = os.path.splitext(molecule_descr['filepath'])[1]
+                if extension == '.mol2':
+                    molecule_descr['net_charge'] = utils.get_mol2_net_charge(molecule_descr['filepath'])
 
         return all_file_exist, all_file_exist
 
@@ -603,8 +606,6 @@ class SetupDatabase:
         tleap.load_parameters('leaprc.gaff')
 
         # Check that AMBER force field is specified
-        # if not 'leaprc.' in receptor['parameters'] or not 'leaprc.' in ligand['parameters']:
-        #     tleap.load_parameters('leaprc.ff14SB')
         if 'leaprc.' in receptor['parameters']:
             amber_ff = receptor['parameters']
         elif 'leaprc.' in ligand['parameters']:
@@ -729,10 +730,10 @@ class SetupDatabase:
         mol_descr = self.molecules[molecule_id]  # molecule description
         try:
             if 'name' in mol_descr:
-                molecule = openmoltools.openeye.iupac_to_oemol(mol_descr['name'])
+                molecule = omt.openeye.iupac_to_oemol(mol_descr['name'])
             elif 'smiles' in mol_descr:
-                molecule = openmoltools.openeye.smiles_to_oemol(mol_descr['smiles'])
-            molecule = openmoltools.openeye.get_charges(molecule, keep_confs=1)
+                molecule = omt.openeye.smiles_to_oemol(mol_descr['smiles'])
+            molecule = omt.openeye.get_charges(molecule, keep_confs=1)
         except ImportError as e:
             error_msg = ('requested molecule generation from name or smiles but '
                          'could not find OpenEye toolkit: ' + str(e))
@@ -844,8 +845,8 @@ class SetupDatabase:
 
                 # We set the residue name as the first three uppercase letters of mol_id
                 residue_name = re.sub('[^A-Za-z]+', '', mol_id.upper())[:3]
-                openmoltools.openeye.molecule_to_mol2(oe_molecule, mol_descr['filepath'],
-                                                      residue_name=residue_name)
+                omt.openeye.molecule_to_mol2(oe_molecule, mol_descr['filepath'],
+                                             residue_name=residue_name)
 
             # Enumerate protonation states with epik
             if 'epik' in mol_descr:
@@ -857,13 +858,13 @@ class SetupDatabase:
 
                 # Run epik and convert from maestro to both mol2 and sdf
                 # to not lose neither the penalties nor the residue name
-                utils.run_epik(mol_descr['filepath'], epik_mae_file, tautomerize=True,
-                               extract_range=epik_idx)
-                utils.run_structconvert(epik_mae_file, epik_sdf_file)
-                utils.run_structconvert(epik_mae_file, epik_mol2_file)
+                omt.schrodinger.run_epik(mol_descr['filepath'], epik_mae_file, tautomerize=True,
+                                         extract_range=epik_idx)
+                omt.schrodinger.run_structconvert(epik_mae_file, epik_sdf_file)
+                omt.schrodinger.run_structconvert(epik_mae_file, epik_mol2_file)
 
                 # Save new net charge from the i_epik_Tot_Q property
-                net_charge = int(utils.run_proplister(epik_sdf_file)['i_epik_Tot_Q'])
+                net_charge = int(omt.schrodinger.run_proplister(epik_sdf_file)[0]['i_epik_Tot_Q'])
 
                 # Keep filepath consistent
                 mol_descr['filepath'] = epik_mol2_file
@@ -878,8 +879,8 @@ class SetupDatabase:
 
                 # We set the residue name as the first three uppercase letters of mol_id
                 residue_name = re.sub('[^A-Za-z]+', '', mol_id.upper())[:3]
-                openmoltools.openeye.molecule_to_mol2(oe_molecule, mol2_file_path,
-                                                      residue_name=residue_name)
+                omt.openeye.molecule_to_mol2(oe_molecule, mol2_file_path,
+                                             residue_name=residue_name)
 
                 # Update filepath information
                 mol_descr['filepath'] = mol2_file_path
@@ -899,10 +900,10 @@ class SetupDatabase:
                     oe_molecule = utils.read_oe_molecule(mol_descr['filepath'])
 
                     # Setting keep_confs = None keeps the original conformation
-                    oe_molecule = openmoltools.openeye.get_charges(oe_molecule, keep_confs=None)
+                    oe_molecule = omt.openeye.get_charges(oe_molecule, keep_confs=None)
                     residue_name = utils.get_mol2_resname(mol_descr['filepath'])
-                    openmoltools.openeye.molecule_to_mol2(oe_molecule, mol2_file_path,
-                                                          residue_name=residue_name)
+                    omt.openeye.molecule_to_mol2(oe_molecule, mol2_file_path,
+                                                 residue_name=residue_name)
 
                     charge_method = None  # antechamber read charges from mol2
                     net_charge = None  # we don't need Epik's net charge
@@ -913,9 +914,9 @@ class SetupDatabase:
                 # Generate parameters
                 input_mol_path = os.path.abspath(mol_descr['filepath'])
                 with utils.temporary_cd(mol_dir):
-                    openmoltools.amber.run_antechamber(mol_id, input_mol_path,
-                                                       charge_method=charge_method,
-                                                       net_charge=net_charge)
+                    omt.amber.run_antechamber(mol_id, input_mol_path,
+                                              charge_method=charge_method,
+                                              net_charge=net_charge)
 
                 # Save new parameters paths
                 mol_descr['filepath'] = os.path.join(mol_dir, mol_id + '.gaff.mol2')

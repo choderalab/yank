@@ -14,6 +14,7 @@ import collections
 from pkg_resources import resource_filename
 
 import mdtraj
+import numpy as np
 from simtk import unit
 
 #========================================================================================
@@ -891,7 +892,6 @@ def write_oe_molecule(oe_mol, file_path, mol2_resname=None):
 
 
 def get_oe_mol_positions(molecule, conformer_idx=0):
-    import numpy as np
     from openeye import oechem
     # Extract correct conformer
     if conformer_idx > 0:
@@ -927,180 +927,6 @@ def get_mol2_resname(file_path):
             elif len(fields) > 0 and fields[0] == '@<TRIPOS>ATOM':
                 atom_found = True
 
-def is_schrodinger_suite_installed():
-    try:
-        os.environ['SCHRODINGER']
-    except KeyError:
-        return False
-    return True
-
-
-def run_proplister(input_file_path):
-    """Run proplister utilities on a file and return its properties.
-
-    This currently assumes there is only one molecule in the input file.
-
-    Parameters
-    ----------
-    input_file_path: str
-        The path to the file describing the molecule.
-
-    Returns
-    -------
-    properties: dict
-        A dictionary of property_name -> property_value.
-
-    """
-    if not is_schrodinger_suite_installed():
-        raise RuntimeError("Cannot locate Schrodinger's suite")
-    proplister_path = os.path.join(os.environ['SCHRODINGER'], 'utilities', 'proplister')
-
-    # Normalize path
-    input_file_path = os.path.abspath(input_file_path)
-
-    # Run proplister, we need the list in case there are spaces in paths
-    cmd = [proplister_path, '-a', '-c', input_file_path]
-    output = subprocess.check_output(cmd)
-
-    # The output is a cvs file. The first line are the property names and then each row
-    # contains the values for each molecule. We use the csv module to avoid splitting
-    # strings that contain commas (e.g. "2,2-dimethylpropane"). We assume we want only
-    # the tags of the first molecule in the file
-    csv_reader = csv.reader(output.split('\n'))
-    names = csv_reader.next()
-    values = csv_reader.next()
-
-    properties = dict(zip(names, values))
-    return properties
-
-
-def run_structconvert(input_file_path, output_file_path):
-    """Run Schrodinger's structconvert to convert from one format to another.
-
-    The formats are inferred from the given files extensions.
-    """
-    formats_map = {'sdf': 'sd'}
-
-    # Locate structconvert executable
-    if not is_schrodinger_suite_installed():
-        raise RuntimeError("Cannot locate Schrodinger's suite")
-    structconvert_path = os.path.join(os.environ['SCHRODINGER'], 'utilities',
-                                      'structconvert')
-
-    # Normalize paths
-    input_file_path = os.path.abspath(input_file_path)
-    output_file_path = os.path.abspath(output_file_path)
-
-    # Determine input and output format
-    input_format = os.path.splitext(input_file_path)[1][1:]
-    output_format = os.path.splitext(output_file_path)[1][1:]
-    if input_format in formats_map:
-        input_format = formats_map[input_format]
-    if output_format in formats_map:
-        output_format = formats_map[output_format]
-
-    # Run structconvert, we need the list in case there are spaces in paths
-    cmd = [structconvert_path, '-i' + input_format, input_file_path,
-           '-o' + output_format, output_file_path]
-    subprocess.check_output(cmd)
-
-def run_maesubset(input_file_path, output_file_path, range):
-    """Run Schrodinger's maesubset to extract a range of structures from a Maestro file.
-
-    Parameters
-    ----------
-    range : int or list of ints
-        The 0-based indices of the structures to extract from the input files.
-
-    """
-
-    # Locate epik executable
-    if not is_schrodinger_suite_installed():
-        raise RuntimeError("Cannot locate Schrodinger's suite")
-    maesubset_path = os.path.join(os.environ['SCHRODINGER'], 'utilities', 'maesubset')
-
-    # Normalize paths
-    input_file_path = os.path.abspath(input_file_path)
-    output_file_path = os.path.abspath(output_file_path)
-
-    # Determine molecules to extract
-    try:
-        range_str = [str(i + 1) for i in range]
-    except TypeError:
-        range_str = [str(range + 1)]
-    range_str = ','.join(range_str)
-
-    # Run maesubset, we need the list in case there are spaces in paths
-    cmd = [maesubset_path, '-n', range_str, input_file_path]
-    output = subprocess.check_output(cmd)
-
-    # Save result
-    with open(output_file_path, 'w') as f:
-        f.write(output)
-
-def run_epik(input_file_path, output_file_path, max_structures=32, ph=7.0,
-             ph_tolerance=None, tautomerize=False, extract_range=None):
-    """Run Schrodinger's epik to enumerate protonation and tautomeric states.
-
-    Support all file format supported by structconvert. Range is 0-based as with run_maesubset().
-
-    """
-
-    # Locate epik executable
-    if not is_schrodinger_suite_installed():
-        raise RuntimeError("Cannot locate Schrodinger's suite")
-    epik_path = os.path.join(os.environ['SCHRODINGER'], 'epik')
-
-    # Normalize paths
-    input_file_path = os.path.abspath(input_file_path)
-    output_file_path = os.path.abspath(output_file_path)
-    output_dir = os.path.dirname(output_file_path)
-
-    # Preparing epik command arguments for format()
-    epik_args = dict(ms=max_structures, ph=ph)
-    epik_args['pht'] = '-pht {}'.format(ph_tolerance) if ph_tolerance else ''
-    epik_args['nt'] = '-nt' if tautomerize else ''
-
-    # Determine if we need to convert input and/or output file
-    input_mae = os.path.splitext(input_file_path)[1] == '.mae'
-    output_mae = os.path.splitext(output_file_path)[1] == '.mae'
-    if input_mae:
-        epik_input = input_file_path
-    else:
-        input_file_name = os.path.splitext(os.path.basename(input_file_path))[0]
-        epik_input = os.path.join(output_dir, input_file_name + '.mae')
-        run_structconvert(input_file_path, epik_input)
-    if output_mae and extract_range is None:
-        epik_output = output_file_path
-    else:
-        epik_output = os.path.splitext(output_file_path)[0] + '-temp.mae'
-
-    # Run epik, we need list in case there's a space in the paths
-    # We run with output_dir as working directory to save there the log file
-    cmd = [epik_path, '-imae', epik_input, '-omae', epik_output]
-    cmd += '-ms {ms} -ph {ph} {pht} {nt} -pKa_atom -WAIT -NO_JOBCONTROL'.format(**epik_args).split()
-    with temporary_cd(output_dir):
-        subprocess.check_call(cmd)
-
-    # Check if we need to extract a range of structures
-    if extract_range is not None:
-        if output_mae:
-            maesubset_output = output_file_path
-        else:
-            maesubset_output = os.path.join(output_dir, 'extract.mae')
-        run_maesubset(epik_output, maesubset_output, extract_range)
-
-    # Convert output if necessary and clean up temp files
-    if extract_range is not None:
-        if not output_mae:
-            run_structconvert(maesubset_output, output_file_path)
-            os.remove(maesubset_output)
-        os.remove(epik_output)
-    elif not output_mae:
-        run_structconvert(epik_output, output_file_path)
-        os.remove(epik_output)
-    if not input_mae:
-        os.remove(epik_input)
 
 class TLeap:
     """Programmatic interface to write and run tLeap scripts.
@@ -1118,6 +944,7 @@ class TLeap:
     def __init__(self):
         self._script = ''
         self._file_paths = {}  # paths of input/output files to copy in/from temp dir
+        self._loaded_parameters = set()  # parameter files already loaded
 
     def add_commands(self, *args):
         for command in args:
@@ -1125,6 +952,11 @@ class TLeap:
 
     def load_parameters(self, *args):
         for par_file in args:
+            # Check that this is not already loaded
+            if par_file in self._loaded_parameters:
+                continue
+
+            # use loadAmberParams if this is a frcmod file and source otherwise
             extension = os.path.splitext(par_file)[1]
             if extension == '.frcmod':
                 local_name = 'moli{}'.format(len(self._file_paths))
@@ -1134,6 +966,9 @@ class TLeap:
                 self._file_paths[local_name] = par_file
             else:
                 self.add_commands('source ' + par_file)
+
+            # Update loaded parameters cache
+            self._loaded_parameters.add(par_file)
 
     def load_group(self, name, file_path):
         extension = os.path.splitext(file_path)[1]

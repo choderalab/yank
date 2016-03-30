@@ -223,6 +223,7 @@ def test_TLeap_script():
     tleap.load_parameters('oldff/leaprc.ff99SBildn', 'leaprc.gaff')
     tleap.load_group(name='receptor', file_path='receptor.pdbfixer.pdb')
     tleap.load_parameters('ligand.gaff.frcmod')
+    tleap.load_parameters('ligand.gaff.frcmod')  # tLeap should not load this twice
     tleap.load_group(name='ligand', file_path='path/to/ligand.gaff.mol2')
     tleap.transform('ligand', np.array([[1, 0, 0, 6], [0, -1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]))
     tleap.combine('complex', 'receptor', 'ligand')
