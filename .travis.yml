@@ -29,7 +29,7 @@ env:
     - ORGNAME="omnia"
     - PACKAGENAME="yank"
     # encrypted BINSTAR_TOKEN for push of dev package to binstar
-    - secure: "Q1Y0QOwtfQqHEhbqCPi3FBYFh8jNu16/fQr5d8Q1aTYcayf18nyxNwLbhOs/94pVyQt68G53bPw2J30w/Q0PULnDVRBpnS5hcu2IsnV1sjrSHyEJjjiyDQJGwcNRt7wBbLefyGV0v5Siia5VvjBYDEgDZ1/p9A6HaZRPx/3nuLQ="
+    - secure: "iGrY1Jrr6ZvxtvjnTBVLFIPQBaalzkZX+DJWFZuk6j8igjDrlEVE2iGmpx5Akb7/H5/rRPI1GcnYy0e2OXSVHyxwcn2I6TXia3g6K95yxH43xOaTEfiFGfxSgP6M5OZSJjlLUmv3cpnJ66r6kYjQgTn9djY2iLsGKkFdR8pn6gQ="
     # encrypted AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
     - secure: "SrSd1JoI8dBXQxDAX0xBTYBinTusRBQoPETnxHrBAgKdoty1pkzaghTKNMsrGsk78iwkkj1hAyttIY9trdFQkmx+OTx0fLKFmDHsMkgko4RzTtrgLgoxuRIs/gruID2cN1XKEbxlhRmQF14+q8/X1q6iGGdYMrxo51JcYPuEOSo="
     - secure: "br6QRMYXhHltYTEh/d+zejxcunT3GsqwQvxxLmqnLxi+LIxX4j7eymR6p4fPBd5mCRxyvkQEjnSZxF6e7JlEKxWVcMG28I/dBWzVIRW3EKQQNRmyI+JL1dfNaqj68kHJD+FknBwHK9LD238JPcyqXPdVrm9iPkDijPczvPBxvDs="

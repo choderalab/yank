@@ -1,0 +1,46 @@
+---
+molecules:
+  Abl:
+    filepath: setup/2HYY-pdbfixer.pdb
+    parameters: leaprc.ff14SB
+  STI:
+    filepath: setup/STI02.mol2
+    parameters: antechamber
+                
+solvents:
+  rf:
+    nonbonded_method: CutoffPeriodic
+    nonbonded_cutoff: 9*angstroms
+    clearance: 9*angstroms
+    positive_ion: Na+
+    negative_ion: Cl-
+
+experiments:
+  components:
+    receptor: Abl
+    ligand: STI
+    solvent: rf
+  protocol: absolute-binding
+
+protocols:
+  absolute-binding:
+    phases:
+      complex:
+        alchemical_path:
+          lambda_electrostatics: [1.00, 0.95, 0.90, 0.85, 0.80, 0.75, 0.70, 0.65, 0.60, 0.55, 0.50, 0.45, 0.40, 0.35, 0.30, 0.25, 0.20, 0.15, 0.10, 0.05, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00]
+          lambda_sterics:        [1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 0.95, 0.90, 0.85, 0.80, 0.75, 0.70, 0.65, 0.60, 0.55, 0.50, 0.45, 0.40, 0.35, 0.30, 0.25, 0.20, 0.15, 0.10, 0.00]
+      solvent:
+        alchemical_path:
+          lambda_electrostatics: [1.00, 0.95, 0.90, 0.85, 0.80, 0.75, 0.70, 0.65, 0.60, 0.55, 0.50, 0.45, 0.40, 0.35, 0.30, 0.25, 0.20, 0.15, 0.10, 0.05, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00]
+          lambda_sterics:        [1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 0.95, 0.90, 0.85, 0.80, 0.75, 0.70, 0.65, 0.60, 0.55, 0.50, 0.45, 0.40, 0.35, 0.30, 0.25, 0.20, 0.15, 0.10, 0.00]
+                
+options:
+  minimize: yes
+  verbose: yes
+  mpi: yes
+  output_dir: .
+  number_of_iterations: 1000
+  restraint_type: harmonic
+  temperature: 300*kelvin
+  pressure: 1*atmosphere
+  softcore_beta: 0.0
