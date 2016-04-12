@@ -1,0 +1,2465 @@
+log started: Tue Jul  7 23:33:23 2015
+
+Log file: ./leap.log
+>> #
+>> # ----- leaprc for loading the ff99SB (Hornak & Simmerling) force field
+>> #       modified for the "ILDN" changes
+>> #
+>> #	load atom type hybridizations
+>> #
+>> addAtomTypes {
+>> 	{ "H"   "H" "sp3" }
+>> 	{ "HO"  "H" "sp3" }
+>> 	{ "HS"  "H" "sp3" }
+>> 	{ "H1"  "H" "sp3" }
+>> 	{ "H2"  "H" "sp3" }
+>> 	{ "H3"  "H" "sp3" }
+>> 	{ "H4"  "H" "sp3" }
+>> 	{ "H5"  "H" "sp3" }
+>> 	{ "HW"  "H" "sp3" }
+>> 	{ "HC"  "H" "sp3" }
+>> 	{ "HA"  "H" "sp3" }
+>> 	{ "HP"  "H" "sp3" }
+>> 	{ "OH"  "O" "sp3" }
+>> 	{ "OS"  "O" "sp3" }
+>> 	{ "O"   "O" "sp2" }
+>> 	{ "O2"  "O" "sp2" }
+>> 	{ "OW"  "O" "sp3" }
+>> 	{ "CT"  "C" "sp3" }
+>> 	{ "CH"  "C" "sp3" }
+>> 	{ "C2"  "C" "sp3" }
+>> 	{ "C3"  "C" "sp3" }
+>> 	{ "C"   "C" "sp2" }
+>> 	{ "C*"  "C" "sp2" }
+>> 	{ "CA"  "C" "sp2" }
+>> 	{ "CB"  "C" "sp2" }
+>> 	{ "CC"  "C" "sp2" }
+>> 	{ "CN"  "C" "sp2" }
+>> 	{ "CM"  "C" "sp2" }
+>> 	{ "CK"  "C" "sp2" }
+>> 	{ "CQ"  "C" "sp2" }
+>> 	{ "CD"  "C" "sp2" }
+>> 	{ "CE"  "C" "sp2" }
+>> 	{ "CF"  "C" "sp2" }
+>> 	{ "CP"  "C" "sp2" }
+>> 	{ "CI"  "C" "sp2" }
+>> 	{ "CJ"  "C" "sp2" }
+>> 	{ "CW"  "C" "sp2" }
+>> 	{ "CV"  "C" "sp2" }
+>> 	{ "CR"  "C" "sp2" }
+>> 	{ "CA"  "C" "sp2" }
+>> 	{ "CY"  "C" "sp2" }
+>> 	{ "C0"  "Ca" "sp3" }
+>> 	{ "MG"  "Mg" "sp3" }
+>> 	{ "N"   "N" "sp2" }
+>> 	{ "NA"  "N" "sp2" }
+>> 	{ "N2"  "N" "sp2" }
+>> 	{ "N*"  "N" "sp2" }
+>> 	{ "NP"  "N" "sp2" }
+>> 	{ "NQ"  "N" "sp2" }
+>> 	{ "NB"  "N" "sp2" }
+>> 	{ "NC"  "N" "sp2" }
+>> 	{ "NT"  "N" "sp3" }
+>> 	{ "N3"  "N" "sp3" }
+>> 	{ "S"   "S" "sp3" }
+>> 	{ "SH"  "S" "sp3" }
+>> 	{ "P"   "P" "sp3" }
+>> 	{ "LP"  ""  "sp3" }
+>> 	{ "F"   "F" "sp3" }
+>> 	{ "CL"  "Cl" "sp3" }
+>> 	{ "BR"  "Br" "sp3" }
+>> 	{ "I"   "I"  "sp3" }
+>> 	{ "FE"  "Fe" "sp3" }
+>> 	{ "EP"  ""  "sp3" }
+>> # glycam
+>> 	{ "OG"  "O" "sp3" }
+>> 	{ "OL"  "O" "sp3" }
+>> 	{ "AC"  "C" "sp3" }
+>> 	{ "EC"  "C" "sp3" }
+>> #ildn
+>> 	{ "C3"  "C" "sp3" }
+>> 	{ "C4"  "C" "sp3" }
+>> 	{ "C5"   "C" "sp2" }
+>> 	{ "C6"   "C" "sp2" }
+>> 	{ "NP"   "N" "sp2" }
+>> 	{ "OM"   "O" "sp2" } # guess!!!
+>> }
+>> #
+>> #	Load the main parameter set.
+>> #
+>> parm99 = loadamberparams parm99.dat
+Loading parameters: /Users/choderaj/anaconda/bin/../dat/leap/parm/parm99.dat
+Reading title:
+PARM99 for DNA,RNA,AA, organic molecules, TIP3P wat. Polariz.& LP incl.02/04/99
+(UNKNOWN ATOM TYPE: HZ)
+(UNKNOWN ATOM TYPE: IM)
+(UNKNOWN ATOM TYPE: Li)
+(UNKNOWN ATOM TYPE: IP)
+(UNKNOWN ATOM TYPE: K)
+(UNKNOWN ATOM TYPE: Rb)
+(UNKNOWN ATOM TYPE: Cs)
+(UNKNOWN ATOM TYPE: Zn)
+(UNKNOWN ATOM TYPE: IB)
+(UNKNOWN ATOM TYPE: LP)
+>> mods = loadamberparams frcmod.ff99SBildn
+Loading parameters: /Users/choderaj/anaconda/bin/../dat/leap/parm/frcmod.ff99SBildn
+Reading force field modification type file (frcmod)
+Reading title:
+Modification/update of parm99.dat (Hornak & Simmerling) + ILDN corrections
+>> #
+>> #	Load DNA/RNA libraries
+>> #
+>> loadOff all_nucleic94.lib
+Loading library: /Users/choderaj/anaconda/bin/../dat/leap/lib/all_nucleic94.lib
+Loading: DA
+Loading: DA3
+Loading: DA5
+Loading: DAN
+Loading: DC
+Loading: DC3
+Loading: DC5
+Loading: DCN
+Loading: DG
+Loading: DG3
+Loading: DG5
+Loading: DGN
+Loading: DT
+Loading: DT3
+Loading: DT5
+Loading: DTN
+Loading: RA
+Loading: RA3
+Loading: RA5
+Loading: RAN
+Loading: RC
+Loading: RC3
+Loading: RC5
+Loading: RCN
+Loading: RG
+Loading: RG3
+Loading: RG5
+Loading: RGN
+Loading: RU
+Loading: RU3
+Loading: RU5
+Loading: RUN
+>> #
+>> #	Load main chain and terminating 
+>> #	amino acid libraries (i.e. ff94 libs)
+>> #
+>> loadOff all_amino94ildn.lib
+Loading library: /Users/choderaj/anaconda/bin/../dat/leap/lib/all_amino94ildn.lib
+Loading: ALA
+Loading: ARG
+Loading: ASH
+Loading: ASN
+Loading: ASP
+Loading: CYM
+Loading: CYS
+Loading: CYX
+Loading: GLH
+Loading: GLN
+Loading: GLU
+Loading: GLY
+Loading: HID
+Loading: HIE
+Loading: HIP
+Loading: ILE
+Loading: LEU
+Loading: LYN
+Loading: LYS
+Loading: MET
+Loading: PHE
+Loading: PRO
+Loading: SER
+Loading: THR
+Loading: TRP
+Loading: TYR
+Loading: VAL
+>> loadOff all_aminoct94ildn.lib
+Loading library: /Users/choderaj/anaconda/bin/../dat/leap/lib/all_aminoct94ildn.lib
+Loading: CALA
+Loading: CARG
+Loading: CASN
+Loading: CASP
+Loading: CCYS
+Loading: CCYX
+Loading: CGLN
+Loading: CGLU
+Loading: CGLY
+Loading: CHID
+Loading: CHIE
+Loading: CHIP
+Loading: CILE
+Loading: CLEU
+Loading: CLYS
+Loading: CMET
+Loading: CPHE
+Loading: CPRO
+Loading: CSER
+Loading: CTHR
+Loading: CTRP
+Loading: CTYR
+Loading: CVAL
+Loading: NHE
+Loading: NME
+>> loadOff all_aminont94ildn.lib
+Loading library: /Users/choderaj/anaconda/bin/../dat/leap/lib/all_aminont94ildn.lib
+Loading: ACE
+Loading: NALA
+Loading: NARG
+Loading: NASN
+Loading: NASP
+Loading: NCYS
+Loading: NCYX
+Loading: NGLN
+Loading: NGLU
+Loading: NGLY
+Loading: NHID
+Loading: NHIE
+Loading: NHIP
+Loading: NILE
+Loading: NLEU
+Loading: NLYS
+Loading: NMET
+Loading: NPHE
+Loading: NPRO
+Loading: NSER
+Loading: NTHR
+Loading: NTRP
+Loading: NTYR
+Loading: NVAL
+>> #
+>> #       Load water and ions
+>> # 
+>> loadOff ions94.lib
+Loading library: /Users/choderaj/anaconda/bin/../dat/leap/lib/ions94.lib
+Loading: CIO
+Loading: Cl-
+Loading: Cs+
+Loading: IB
+Loading: K+
+Loading: Li+
+Loading: MG2
+Loading: Na+
+Loading: Rb+
+>> loadOff solvents.lib
+Loading library: /Users/choderaj/anaconda/bin/../dat/leap/lib/solvents.lib
+Loading: CHCL3BOX
+Loading: DC4
+Loading: MEOHBOX
+Loading: NMABOX
+Loading: OPC
+Loading: OPCBOX
+Loading: PL3
+Loading: POL3BOX
+Loading: QSPCFWBOX
+Loading: SPC
+Loading: SPCBOX
+Loading: SPCFWBOX
+Loading: SPF
+Loading: SPG
+Loading: T4E
+Loading: TIP3PBOX
+Loading: TIP3PFBOX
+Loading: TIP4PBOX
+Loading: TIP4PEWBOX
+Loading: TIP5PBOX
+Loading: TP3
+Loading: TP4
+Loading: TP5
+Loading: TPF
+>> HOH = TP3
+>> WAT = TP3
+>> 
+>> #
+>> #	Define the PDB name map for the amino acids and DNA.
+>> #
+>> addPdbResMap {
+>>   { 0 "ALA" "NALA" } { 1 "ALA" "CALA" }
+>>   { 0 "ARG" "NARG" } { 1 "ARG" "CARG" }
+>>   { 0 "ASN" "NASN" } { 1 "ASN" "CASN" }
+>>   { 0 "ASP" "NASP" } { 1 "ASP" "CASP" }
+>>   { 0 "CYS" "NCYS" } { 1 "CYS" "CCYS" }
+>>   { 0 "CYX" "NCYX" } { 1 "CYX" "CCYX" }
+>>   { 0 "GLN" "NGLN" } { 1 "GLN" "CGLN" }
+>>   { 0 "GLU" "NGLU" } { 1 "GLU" "CGLU" }
+>>   { 0 "GLY" "NGLY" } { 1 "GLY" "CGLY" }
+>>   { 0 "HID" "NHID" } { 1 "HID" "CHID" }
+>>   { 0 "HIE" "NHIE" } { 1 "HIE" "CHIE" }
+>>   { 0 "HIP" "NHIP" } { 1 "HIP" "CHIP" }
+>>   { 0 "ILE" "NILE" } { 1 "ILE" "CILE" }
+>>   { 0 "LEU" "NLEU" } { 1 "LEU" "CLEU" }
+>>   { 0 "LYS" "NLYS" } { 1 "LYS" "CLYS" }
+>>   { 0 "MET" "NMET" } { 1 "MET" "CMET" }
+>>   { 0 "PHE" "NPHE" } { 1 "PHE" "CPHE" }
+>>   { 0 "PRO" "NPRO" } { 1 "PRO" "CPRO" }
+>>   { 0 "SER" "NSER" } { 1 "SER" "CSER" }
+>>   { 0 "THR" "NTHR" } { 1 "THR" "CTHR" }
+>>   { 0 "TRP" "NTRP" } { 1 "TRP" "CTRP" }
+>>   { 0 "TYR" "NTYR" } { 1 "TYR" "CTYR" }
+>>   { 0 "VAL" "NVAL" } { 1 "VAL" "CVAL" }
+>>   { 0 "HIS" "NHIS" } { 1 "HIS" "CHIS" }
+>>   { 0 "GUA" "DG5"  } { 1 "GUA" "DG3"  } { "GUA" "DG" }
+>>   { 0 "ADE" "DA5"  } { 1 "ADE" "DA3"  } { "ADE" "DA" }
+>>   { 0 "CYT" "DC5"  } { 1 "CYT" "DC3"  } { "CYT" "DC" }
+>>   { 0 "THY" "DT5"  } { 1 "THY" "DT3"  } { "THY" "DT" }
+>>   { 0 "G" "RG5"  } { 1 "G" "RG3"  } { "G" "RG" } { "GN" "RGN" }
+>>   { 0 "A" "RA5"  } { 1 "A" "RA3"  } { "A" "RA" } { "AN" "RAN" }
+>>   { 0 "C" "RC5"  } { 1 "C" "RC3"  } { "C" "RC" } { "CN" "RCN" }
+>>   { 0 "U" "RU5"  } { 1 "U" "RU3"  } { "U" "RU" } { "UN" "RUN" }
+>>   { 0 "DG" "DG5"  } { 1 "DG" "DG3"  }  
+>>   { 0 "DA" "DA5"  } { 1 "DA" "DA3"  }  
+>>   { 0 "DC" "DC5"  } { 1 "DC" "DC3"  }  
+>>   { 0 "DT" "DT5"  } { 1 "DT" "DT3"  }
+>> 
+>> }
+>> 
+>> addPdbAtomMap {
+>>   { "O5*" "O5'" }
+>>   { "C5*" "C5'" }
+>>   { "C4*" "C4'" }
+>>   { "O4*" "O4'" }
+>>   { "C3*" "C3'" }
+>>   { "O3*" "O3'" }
+>>   { "C2*" "C2'" }
+>>   { "C1*" "C1'" }
+>>   { "C5M" "C7"  }
+>>   { "O2*" "O2'" }
+>>   { "H1*" "H1'" }
+>>   { "H2*1" "H2'1" }
+>>   { "H2*2" "H2'2" }
+>>   { "H2'"  "H2'1" }
+>>   { "H2''" "H2'2" }
+>>   { "H3*" "H3'" }
+>>   { "H4*" "H4'" }
+>>   { "H5*1" "H5'1" }
+>>   { "H5*2" "H5'2" }
+>>   { "H5'"  "H5'1" }
+>>   { "H5''" "H5'2" }
+>>   { "HO2'" "HO'2" }
+>>   { "HO5'" "H5T" }
+>>   { "HO3'" "H3T" }
+>>   { "O1'" "O4'" }
+>>   { "OA"  "O1P" }
+>>   { "OB"  "O2P" }
+>>   { "OP1" "O1P" }
+>>   { "OP2" "O2P" }
+>> }
+>> 
+>> 
+>> #
+>> # assumed that most often proteins use HIE
+>> #
+>> NHIS = NHIE
+>> HIS = HIE
+>> CHIS = CHIE
+> 
+> 
+> # Load GAFF parameters.
+> source leaprc.gaff
+----- Source: /Users/choderaj/anaconda/bin/../dat/leap/cmd/leaprc.gaff
+----- Source of /Users/choderaj/anaconda/bin/../dat/leap/cmd/leaprc.gaff done
+>> logFile leap.log
+log started: Tue Jul  7 23:33:23 2015
+
+Log file: ./leap.log
+>> #
+>> # ----- leaprc for loading the general Amber Force field.
+>> #       This file is mostly for use with Antechamber
+>> #
+>> #	load atom type hybridizations
+>> #
+>> addAtomTypes {
+>> 	{ "h1"  "H" "sp3" }
+>> 	{ "h2"  "H" "sp3" }
+>> 	{ "h3"  "H" "sp3" }
+>> 	{ "h4"  "H" "sp3" }
+>> 	{ "h5"  "H" "sp3" }
+>> 	{ "ha"  "H" "sp3" }
+>> 	{ "hc"  "H" "sp3" }
+>> 	{ "hn"  "H" "sp3" }
+>> 	{ "ho"  "H" "sp3" }
+>> 	{ "hp"  "H" "sp3" }
+>> 	{ "hs"  "H" "sp3" }
+>> 	{ "hw"  "H" "sp3" }
+>> 	{ "hx"  "H" "sp3" }
+>> 	{ "o"  "O" "sp2" }
+>> 	{ "o2"  "O" "sp2" }
+>> 	{ "oh"  "O" "sp3" }
+>> 	{ "os"  "O" "sp3" }
+>> 	{ "ow"  "O" "sp3" }
+>> 	{ "c"  "C" "sp2" }
+>> 	{ "c1"  "C" "sp2" }
+>> 	{ "c2"  "C" "sp2" }
+>> 	{ "c3"  "C" "sp3" }
+>> 	{ "ca"  "C" "sp2" }
+>> 	{ "cc"  "C" "sp2" }
+>> 	{ "cd"  "C" "sp2" }
+>> 	{ "ce"  "C" "sp2" }
+>> 	{ "cf"  "C" "sp2" }
+>> 	{ "cg"  "C" "sp2" }
+>> 	{ "ch"  "C" "sp2" }
+>> 	{ "cp"  "C" "sp2" }
+>> 	{ "cq"  "C" "sp2" }
+>> 	{ "cu"  "C" "sp2" }
+>> 	{ "cv"  "C" "sp2" }
+>> 	{ "cx"  "C" "sp2" }
+>> 	{ "cy"  "C" "sp2" }
+>> 	{ "cz"  "C" "sp2" }
+>> 	{ "n"   "N" "sp2" }
+>> 	{ "n1"  "N" "sp2" }
+>> 	{ "n2"  "N" "sp2" }
+>> 	{ "n3"  "N" "sp3" }
+>> 	{ "n4"  "N" "sp3" }
+>> 	{ "na"  "N" "sp2" }
+>> 	{ "nb"  "N" "sp2" }
+>> 	{ "nc"  "N" "sp2" }
+>> 	{ "nd"  "N" "sp2" }
+>> 	{ "ne"  "N" "sp2" }
+>> 	{ "nf"  "N" "sp2" }
+>> 	{ "nh"  "N" "sp2" }
+>> 	{ "no"  "N" "sp2" }
+>> 	{ "s"   "S" "sp2" }
+>> 	{ "s2"   "S" "sp2" }
+>> 	{ "s3"   "S" "sp3" }
+>> 	{ "s4"   "S" "sp3" }
+>> 	{ "s6"   "S" "sp3" }
+>> 	{ "sh"   "S" "sp3" }
+>> 	{ "ss"   "S" "sp3" }
+>> 	{ "sx"   "S" "sp3" }
+>> 	{ "sy"   "S" "sp3" }
+>> 	{ "p2"   "P" "sp2" }
+>> 	{ "p3"   "P" "sp3" }
+>> 	{ "p4"   "P" "sp3" }
+>> 	{ "p5"   "P" "sp3" }
+>> 	{ "pb"   "P" "sp3" }
+>> 	{ "pc"   "P" "sp3" }
+>> 	{ "pd"   "P" "sp3" }
+>> 	{ "pe"   "P" "sp3" }
+>> 	{ "pf"   "P" "sp3" }
+>> 	{ "px"   "P" "sp3" }
+>> 	{ "py"   "P" "sp3" }
+>> 	{ "f"   "F" "sp3" }
+>> 	{ "cl"  "Cl" "sp3" }
+>> 	{ "br"  "Br" "sp3" }
+>> 	{ "i"   "I"  "sp3" }
+>> }
+>> #
+>> #	Load the general force field parameter set.
+>> #
+>> gaff = loadamberparams gaff.dat
+Loading parameters: /Users/choderaj/anaconda/bin/../dat/leap/parm/gaff.dat
+Reading title:
+AMBER General Force Field for organic molecules (Version 1.7, Nov 2013)
+> 
+> 
+> # Load in protein.
+> receptor = loadPdb receptor.pdbfixer.CYX.pdb
+Loading PDB file: ./receptor.pdbfixer.CYX.pdb
+Enter zPdbReadScan from call depth  0.
+Exit  zPdbReadScan from call depth  0.
+Matching PDB residue names to LEaP variables.
+Mapped residue HIS, term: Terminal/beginning, seq. number: 0 to: NHIS.
+(Residue 1: LYS, Nonterminal, was not found in name map.)
+(Residue 2: SER, Nonterminal, was not found in name map.)
+(Residue 3: GLU, Nonterminal, was not found in name map.)
+(Residue 4: VAL, Nonterminal, was not found in name map.)
+(Residue 5: ALA, Nonterminal, was not found in name map.)
+(Residue 6: HIS, Nonterminal, was not found in name map.)
+(Residue 7: ARG, Nonterminal, was not found in name map.)
+(Residue 8: PHE, Nonterminal, was not found in name map.)
+(Residue 9: LYS, Nonterminal, was not found in name map.)
+(Residue 10: ASP, Nonterminal, was not found in name map.)
+(Residue 11: LEU, Nonterminal, was not found in name map.)
+(Residue 12: GLY, Nonterminal, was not found in name map.)
+(Residue 13: GLU, Nonterminal, was not found in name map.)
+(Residue 14: GLU, Nonterminal, was not found in name map.)
+(Residue 15: ASN, Nonterminal, was not found in name map.)
+(Residue 16: PHE, Nonterminal, was not found in name map.)
+(Residue 17: LYS, Nonterminal, was not found in name map.)
+(Residue 18: ALA, Nonterminal, was not found in name map.)
+(Residue 19: LEU, Nonterminal, was not found in name map.)
+(Residue 20: VAL, Nonterminal, was not found in name map.)
+(Residue 21: LEU, Nonterminal, was not found in name map.)
+(Residue 22: ILE, Nonterminal, was not found in name map.)
+(Residue 23: ALA, Nonterminal, was not found in name map.)
+(Residue 24: PHE, Nonterminal, was not found in name map.)
+(Residue 25: ALA, Nonterminal, was not found in name map.)
+(Residue 26: GLN, Nonterminal, was not found in name map.)
+(Residue 27: TYR, Nonterminal, was not found in name map.)
+(Residue 28: LEU, Nonterminal, was not found in name map.)
+(Residue 29: GLN, Nonterminal, was not found in name map.)
+(Residue 30: GLN, Nonterminal, was not found in name map.)
+(Residue 31: CYX, Nonterminal, was not found in name map.)
+(Residue 32: PRO, Nonterminal, was not found in name map.)
+(Residue 33: PHE, Nonterminal, was not found in name map.)
+(Residue 34: GLU, Nonterminal, was not found in name map.)
+(Residue 35: ASP, Nonterminal, was not found in name map.)
+(Residue 36: HIS, Nonterminal, was not found in name map.)
+(Residue 37: VAL, Nonterminal, was not found in name map.)
+(Residue 38: LYS, Nonterminal, was not found in name map.)
+(Residue 39: LEU, Nonterminal, was not found in name map.)
+(Residue 40: VAL, Nonterminal, was not found in name map.)
+(Residue 41: ASN, Nonterminal, was not found in name map.)
+(Residue 42: GLU, Nonterminal, was not found in name map.)
+(Residue 43: VAL, Nonterminal, was not found in name map.)
+(Residue 44: THR, Nonterminal, was not found in name map.)
+(Residue 45: GLU, Nonterminal, was not found in name map.)
+(Residue 46: PHE, Nonterminal, was not found in name map.)
+(Residue 47: ALA, Nonterminal, was not found in name map.)
+(Residue 48: LYS, Nonterminal, was not found in name map.)
+(Residue 49: THR, Nonterminal, was not found in name map.)
+(Residue 50: CYX, Nonterminal, was not found in name map.)
+(Residue 51: VAL, Nonterminal, was not found in name map.)
+(Residue 52: ALA, Nonterminal, was not found in name map.)
+(Residue 53: ASP, Nonterminal, was not found in name map.)
+(Residue 54: GLU, Nonterminal, was not found in name map.)
+(Residue 55: SER, Nonterminal, was not found in name map.)
+(Residue 56: ALA, Nonterminal, was not found in name map.)
+(Residue 57: GLU, Nonterminal, was not found in name map.)
+(Residue 58: ASN, Nonterminal, was not found in name map.)
+(Residue 59: CYX, Nonterminal, was not found in name map.)
+(Residue 60: ASP, Nonterminal, was not found in name map.)
+(Residue 61: LYS, Nonterminal, was not found in name map.)
+(Residue 62: SER, Nonterminal, was not found in name map.)
+(Residue 63: LEU, Nonterminal, was not found in name map.)
+(Residue 64: HIS, Nonterminal, was not found in name map.)
+(Residue 65: THR, Nonterminal, was not found in name map.)
+(Residue 66: LEU, Nonterminal, was not found in name map.)
+(Residue 67: PHE, Nonterminal, was not found in name map.)
+(Residue 68: GLY, Nonterminal, was not found in name map.)
+(Residue 69: ASP, Nonterminal, was not found in name map.)
+(Residue 70: LYS, Nonterminal, was not found in name map.)
+(Residue 71: LEU, Nonterminal, was not found in name map.)
+(Residue 72: CYX, Nonterminal, was not found in name map.)
+(Residue 73: THR, Nonterminal, was not found in name map.)
+(Residue 74: VAL, Nonterminal, was not found in name map.)
+(Residue 75: ALA, Nonterminal, was not found in name map.)
+(Residue 76: THR, Nonterminal, was not found in name map.)
+(Residue 77: LEU, Nonterminal, was not found in name map.)
+(Residue 78: ARG, Nonterminal, was not found in name map.)
+(Residue 79: GLU, Nonterminal, was not found in name map.)
+(Residue 80: THR, Nonterminal, was not found in name map.)
+(Residue 81: TYR, Nonterminal, was not found in name map.)
+(Residue 82: GLY, Nonterminal, was not found in name map.)
+(Residue 83: GLU, Nonterminal, was not found in name map.)
+(Residue 84: MET, Nonterminal, was not found in name map.)
+(Residue 85: ALA, Nonterminal, was not found in name map.)
+(Residue 86: ASP, Nonterminal, was not found in name map.)
+(Residue 87: CYX, Nonterminal, was not found in name map.)
+(Residue 88: CYX, Nonterminal, was not found in name map.)
+(Residue 89: ALA, Nonterminal, was not found in name map.)
+(Residue 90: LYS, Nonterminal, was not found in name map.)
+(Residue 91: GLN, Nonterminal, was not found in name map.)
+(Residue 92: GLU, Nonterminal, was not found in name map.)
+(Residue 93: PRO, Nonterminal, was not found in name map.)
+(Residue 94: GLU, Nonterminal, was not found in name map.)
+(Residue 95: ARG, Nonterminal, was not found in name map.)
+(Residue 96: ASN, Nonterminal, was not found in name map.)
+(Residue 97: GLU, Nonterminal, was not found in name map.)
+(Residue 98: CYX, Nonterminal, was not found in name map.)
+(Residue 99: PHE, Nonterminal, was not found in name map.)
+(Residue 100: LEU, Nonterminal, was not found in name map.)
+(Residue 101: GLN, Nonterminal, was not found in name map.)
+(Residue 102: HIS, Nonterminal, was not found in name map.)
+(Residue 103: LYS, Nonterminal, was not found in name map.)
+(Residue 104: ASP, Nonterminal, was not found in name map.)
+(Residue 105: ASP, Nonterminal, was not found in name map.)
+(Residue 106: ASN, Nonterminal, was not found in name map.)
+(Residue 107: PRO, Nonterminal, was not found in name map.)
+(Residue 108: ASN, Nonterminal, was not found in name map.)
+(Residue 109: LEU, Nonterminal, was not found in name map.)
+(Residue 110: PRO, Nonterminal, was not found in name map.)
+(Residue 111: ARG, Nonterminal, was not found in name map.)
+(Residue 112: LEU, Nonterminal, was not found in name map.)
+(Residue 113: VAL, Nonterminal, was not found in name map.)
+(Residue 114: ARG, Nonterminal, was not found in name map.)
+(Residue 115: PRO, Nonterminal, was not found in name map.)
+(Residue 116: GLU, Nonterminal, was not found in name map.)
+(Residue 117: VAL, Nonterminal, was not found in name map.)
+(Residue 118: ASP, Nonterminal, was not found in name map.)
+(Residue 119: VAL, Nonterminal, was not found in name map.)
+(Residue 120: MET, Nonterminal, was not found in name map.)
+(Residue 121: CYX, Nonterminal, was not found in name map.)
+(Residue 122: THR, Nonterminal, was not found in name map.)
+(Residue 123: ALA, Nonterminal, was not found in name map.)
+(Residue 124: PHE, Nonterminal, was not found in name map.)
+(Residue 125: HIS, Nonterminal, was not found in name map.)
+(Residue 126: ASP, Nonterminal, was not found in name map.)
+(Residue 127: ASN, Nonterminal, was not found in name map.)
+(Residue 128: GLU, Nonterminal, was not found in name map.)
+(Residue 129: GLU, Nonterminal, was not found in name map.)
+(Residue 130: THR, Nonterminal, was not found in name map.)
+(Residue 131: PHE, Nonterminal, was not found in name map.)
+(Residue 132: LEU, Nonterminal, was not found in name map.)
+(Residue 133: LYS, Nonterminal, was not found in name map.)
+(Residue 134: LYS, Nonterminal, was not found in name map.)
+(Residue 135: TYR, Nonterminal, was not found in name map.)
+(Residue 136: LEU, Nonterminal, was not found in name map.)
+(Residue 137: TYR, Nonterminal, was not found in name map.)
+(Residue 138: GLU, Nonterminal, was not found in name map.)
+(Residue 139: ILE, Nonterminal, was not found in name map.)
+(Residue 140: ALA, Nonterminal, was not found in name map.)
+(Residue 141: ARG, Nonterminal, was not found in name map.)
+(Residue 142: ARG, Nonterminal, was not found in name map.)
+(Residue 143: HIS, Nonterminal, was not found in name map.)
+(Residue 144: PRO, Nonterminal, was not found in name map.)
+(Residue 145: TYR, Nonterminal, was not found in name map.)
+(Residue 146: PHE, Nonterminal, was not found in name map.)
+(Residue 147: TYR, Nonterminal, was not found in name map.)
+(Residue 148: ALA, Nonterminal, was not found in name map.)
+(Residue 149: PRO, Nonterminal, was not found in name map.)
+(Residue 150: GLU, Nonterminal, was not found in name map.)
+(Residue 151: LEU, Nonterminal, was not found in name map.)
+(Residue 152: LEU, Nonterminal, was not found in name map.)
+(Residue 153: PHE, Nonterminal, was not found in name map.)
+(Residue 154: PHE, Nonterminal, was not found in name map.)
+(Residue 155: ALA, Nonterminal, was not found in name map.)
+(Residue 156: LYS, Nonterminal, was not found in name map.)
+(Residue 157: ARG, Nonterminal, was not found in name map.)
+(Residue 158: TYR, Nonterminal, was not found in name map.)
+(Residue 159: LYS, Nonterminal, was not found in name map.)
+(Residue 160: ALA, Nonterminal, was not found in name map.)
+(Residue 161: ALA, Nonterminal, was not found in name map.)
+(Residue 162: PHE, Nonterminal, was not found in name map.)
+(Residue 163: THR, Nonterminal, was not found in name map.)
+(Residue 164: GLU, Nonterminal, was not found in name map.)
+(Residue 165: CYX, Nonterminal, was not found in name map.)
+(Residue 166: CYX, Nonterminal, was not found in name map.)
+(Residue 167: GLN, Nonterminal, was not found in name map.)
+(Residue 168: ALA, Nonterminal, was not found in name map.)
+(Residue 169: ALA, Nonterminal, was not found in name map.)
+(Residue 170: ASP, Nonterminal, was not found in name map.)
+(Residue 171: LYS, Nonterminal, was not found in name map.)
+(Residue 172: ALA, Nonterminal, was not found in name map.)
+(Residue 173: ALA, Nonterminal, was not found in name map.)
+(Residue 174: CYX, Nonterminal, was not found in name map.)
+(Residue 175: LEU, Nonterminal, was not found in name map.)
+(Residue 176: LEU, Nonterminal, was not found in name map.)
+(Residue 177: PRO, Nonterminal, was not found in name map.)
+(Residue 178: LYS, Nonterminal, was not found in name map.)
+(Residue 179: LEU, Nonterminal, was not found in name map.)
+(Residue 180: ASP, Nonterminal, was not found in name map.)
+(Residue 181: GLU, Nonterminal, was not found in name map.)
+(Residue 182: LEU, Nonterminal, was not found in name map.)
+(Residue 183: ARG, Nonterminal, was not found in name map.)
+(Residue 184: ASP, Nonterminal, was not found in name map.)
+(Residue 185: GLU, Nonterminal, was not found in name map.)
+(Residue 186: GLY, Nonterminal, was not found in name map.)
+(Residue 187: LYS, Nonterminal, was not found in name map.)
+(Residue 188: ALA, Nonterminal, was not found in name map.)
+(Residue 189: SER, Nonterminal, was not found in name map.)
+(Residue 190: SER, Nonterminal, was not found in name map.)
+(Residue 191: ALA, Nonterminal, was not found in name map.)
+(Residue 192: LYS, Nonterminal, was not found in name map.)
+(Residue 193: GLN, Nonterminal, was not found in name map.)
+(Residue 194: ARG, Nonterminal, was not found in name map.)
+(Residue 195: LEU, Nonterminal, was not found in name map.)
+(Residue 196: LYS, Nonterminal, was not found in name map.)
+(Residue 197: CYX, Nonterminal, was not found in name map.)
+(Residue 198: ALA, Nonterminal, was not found in name map.)
+(Residue 199: SER, Nonterminal, was not found in name map.)
+(Residue 200: LEU, Nonterminal, was not found in name map.)
+(Residue 201: GLN, Nonterminal, was not found in name map.)
+(Residue 202: LYS, Nonterminal, was not found in name map.)
+(Residue 203: PHE, Nonterminal, was not found in name map.)
+(Residue 204: GLY, Nonterminal, was not found in name map.)
+(Residue 205: GLU, Nonterminal, was not found in name map.)
+(Residue 206: ARG, Nonterminal, was not found in name map.)
+(Residue 207: ALA, Nonterminal, was not found in name map.)
+(Residue 208: PHE, Nonterminal, was not found in name map.)
+(Residue 209: LYS, Nonterminal, was not found in name map.)
+(Residue 210: ALA, Nonterminal, was not found in name map.)
+(Residue 211: TRP, Nonterminal, was not found in name map.)
+(Residue 212: ALA, Nonterminal, was not found in name map.)
+(Residue 213: VAL, Nonterminal, was not found in name map.)
+(Residue 214: ALA, Nonterminal, was not found in name map.)
+(Residue 215: ARG, Nonterminal, was not found in name map.)
+(Residue 216: LEU, Nonterminal, was not found in name map.)
+(Residue 217: SER, Nonterminal, was not found in name map.)
+(Residue 218: GLN, Nonterminal, was not found in name map.)
+(Residue 219: ARG, Nonterminal, was not found in name map.)
+(Residue 220: PHE, Nonterminal, was not found in name map.)
+(Residue 221: PRO, Nonterminal, was not found in name map.)
+(Residue 222: LYS, Nonterminal, was not found in name map.)
+(Residue 223: ALA, Nonterminal, was not found in name map.)
+(Residue 224: GLU, Nonterminal, was not found in name map.)
+(Residue 225: PHE, Nonterminal, was not found in name map.)
+(Residue 226: ALA, Nonterminal, was not found in name map.)
+(Residue 227: GLU, Nonterminal, was not found in name map.)
+(Residue 228: VAL, Nonterminal, was not found in name map.)
+(Residue 229: SER, Nonterminal, was not found in name map.)
+(Residue 230: LYS, Nonterminal, was not found in name map.)
+(Residue 231: LEU, Nonterminal, was not found in name map.)
+(Residue 232: VAL, Nonterminal, was not found in name map.)
+(Residue 233: THR, Nonterminal, was not found in name map.)
+(Residue 234: ASP, Nonterminal, was not found in name map.)
+(Residue 235: LEU, Nonterminal, was not found in name map.)
+(Residue 236: THR, Nonterminal, was not found in name map.)
+(Residue 237: LYS, Nonterminal, was not found in name map.)
+(Residue 238: VAL, Nonterminal, was not found in name map.)
+(Residue 239: HIS, Nonterminal, was not found in name map.)
+(Residue 240: THR, Nonterminal, was not found in name map.)
+(Residue 241: GLU, Nonterminal, was not found in name map.)
+(Residue 242: CYX, Nonterminal, was not found in name map.)
+(Residue 243: CYX, Nonterminal, was not found in name map.)
+(Residue 244: HIS, Nonterminal, was not found in name map.)
+(Residue 245: GLY, Nonterminal, was not found in name map.)
+(Residue 246: ASP, Nonterminal, was not found in name map.)
+(Residue 247: LEU, Nonterminal, was not found in name map.)
+(Residue 248: LEU, Nonterminal, was not found in name map.)
+(Residue 249: GLU, Nonterminal, was not found in name map.)
+(Residue 250: CYX, Nonterminal, was not found in name map.)
+(Residue 251: ALA, Nonterminal, was not found in name map.)
+(Residue 252: ASP, Nonterminal, was not found in name map.)
+(Residue 253: ASP, Nonterminal, was not found in name map.)
+(Residue 254: ARG, Nonterminal, was not found in name map.)
+(Residue 255: ALA, Nonterminal, was not found in name map.)
+(Residue 256: ASP, Nonterminal, was not found in name map.)
+(Residue 257: LEU, Nonterminal, was not found in name map.)
+(Residue 258: ALA, Nonterminal, was not found in name map.)
+(Residue 259: LYS, Nonterminal, was not found in name map.)
+(Residue 260: TYR, Nonterminal, was not found in name map.)
+(Residue 261: ILE, Nonterminal, was not found in name map.)
+(Residue 262: CYX, Nonterminal, was not found in name map.)
+(Residue 263: GLU, Nonterminal, was not found in name map.)
+(Residue 264: ASN, Nonterminal, was not found in name map.)
+(Residue 265: GLN, Nonterminal, was not found in name map.)
+(Residue 266: ASP, Nonterminal, was not found in name map.)
+(Residue 267: SER, Nonterminal, was not found in name map.)
+(Residue 268: ILE, Nonterminal, was not found in name map.)
+(Residue 269: SER, Nonterminal, was not found in name map.)
+(Residue 270: SER, Nonterminal, was not found in name map.)
+(Residue 271: LYS, Nonterminal, was not found in name map.)
+(Residue 272: LEU, Nonterminal, was not found in name map.)
+(Residue 273: LYS, Nonterminal, was not found in name map.)
+(Residue 274: GLU, Nonterminal, was not found in name map.)
+(Residue 275: CYX, Nonterminal, was not found in name map.)
+(Residue 276: CYX, Nonterminal, was not found in name map.)
+(Residue 277: GLU, Nonterminal, was not found in name map.)
+(Residue 278: LYS, Nonterminal, was not found in name map.)
+(Residue 279: PRO, Nonterminal, was not found in name map.)
+(Residue 280: LEU, Nonterminal, was not found in name map.)
+(Residue 281: LEU, Nonterminal, was not found in name map.)
+(Residue 282: GLU, Nonterminal, was not found in name map.)
+(Residue 283: LYS, Nonterminal, was not found in name map.)
+(Residue 284: SER, Nonterminal, was not found in name map.)
+(Residue 285: HIS, Nonterminal, was not found in name map.)
+(Residue 286: CYX, Nonterminal, was not found in name map.)
+(Residue 287: ILE, Nonterminal, was not found in name map.)
+(Residue 288: ALA, Nonterminal, was not found in name map.)
+(Residue 289: GLU, Nonterminal, was not found in name map.)
+(Residue 290: VAL, Nonterminal, was not found in name map.)
+(Residue 291: GLU, Nonterminal, was not found in name map.)
+(Residue 292: ASN, Nonterminal, was not found in name map.)
+(Residue 293: ASP, Nonterminal, was not found in name map.)
+(Residue 294: GLU, Nonterminal, was not found in name map.)
+(Residue 295: MET, Nonterminal, was not found in name map.)
+(Residue 296: PRO, Nonterminal, was not found in name map.)
+(Residue 297: ALA, Nonterminal, was not found in name map.)
+(Residue 298: ASP, Nonterminal, was not found in name map.)
+(Residue 299: LEU, Nonterminal, was not found in name map.)
+(Residue 300: PRO, Nonterminal, was not found in name map.)
+(Residue 301: SER, Nonterminal, was not found in name map.)
+(Residue 302: LEU, Nonterminal, was not found in name map.)
+(Residue 303: ALA, Nonterminal, was not found in name map.)
+(Residue 304: ALA, Nonterminal, was not found in name map.)
+(Residue 305: ASP, Nonterminal, was not found in name map.)
+(Residue 306: PHE, Nonterminal, was not found in name map.)
+(Residue 307: VAL, Nonterminal, was not found in name map.)
+(Residue 308: GLU, Nonterminal, was not found in name map.)
+(Residue 309: SER, Nonterminal, was not found in name map.)
+(Residue 310: LYS, Nonterminal, was not found in name map.)
+(Residue 311: ASP, Nonterminal, was not found in name map.)
+(Residue 312: VAL, Nonterminal, was not found in name map.)
+(Residue 313: CYX, Nonterminal, was not found in name map.)
+(Residue 314: LYS, Nonterminal, was not found in name map.)
+(Residue 315: ASN, Nonterminal, was not found in name map.)
+(Residue 316: TYR, Nonterminal, was not found in name map.)
+(Residue 317: ALA, Nonterminal, was not found in name map.)
+(Residue 318: GLU, Nonterminal, was not found in name map.)
+(Residue 319: ALA, Nonterminal, was not found in name map.)
+(Residue 320: LYS, Nonterminal, was not found in name map.)
+(Residue 321: ASP, Nonterminal, was not found in name map.)
+(Residue 322: VAL, Nonterminal, was not found in name map.)
+(Residue 323: PHE, Nonterminal, was not found in name map.)
+(Residue 324: LEU, Nonterminal, was not found in name map.)
+(Residue 325: GLY, Nonterminal, was not found in name map.)
+(Residue 326: MET, Nonterminal, was not found in name map.)
+(Residue 327: PHE, Nonterminal, was not found in name map.)
+(Residue 328: LEU, Nonterminal, was not found in name map.)
+(Residue 329: TYR, Nonterminal, was not found in name map.)
+(Residue 330: GLU, Nonterminal, was not found in name map.)
+(Residue 331: TYR, Nonterminal, was not found in name map.)
+(Residue 332: ALA, Nonterminal, was not found in name map.)
+(Residue 333: ARG, Nonterminal, was not found in name map.)
+(Residue 334: ARG, Nonterminal, was not found in name map.)
+(Residue 335: HIS, Nonterminal, was not found in name map.)
+(Residue 336: PRO, Nonterminal, was not found in name map.)
+(Residue 337: ASP, Nonterminal, was not found in name map.)
+(Residue 338: TYR, Nonterminal, was not found in name map.)
+(Residue 339: SER, Nonterminal, was not found in name map.)
+(Residue 340: VAL, Nonterminal, was not found in name map.)
+(Residue 341: VAL, Nonterminal, was not found in name map.)
+(Residue 342: LEU, Nonterminal, was not found in name map.)
+(Residue 343: LEU, Nonterminal, was not found in name map.)
+(Residue 344: LEU, Nonterminal, was not found in name map.)
+(Residue 345: ARG, Nonterminal, was not found in name map.)
+(Residue 346: LEU, Nonterminal, was not found in name map.)
+(Residue 347: ALA, Nonterminal, was not found in name map.)
+(Residue 348: LYS, Nonterminal, was not found in name map.)
+(Residue 349: THR, Nonterminal, was not found in name map.)
+(Residue 350: TYR, Nonterminal, was not found in name map.)
+(Residue 351: GLU, Nonterminal, was not found in name map.)
+(Residue 352: THR, Nonterminal, was not found in name map.)
+(Residue 353: THR, Nonterminal, was not found in name map.)
+(Residue 354: LEU, Nonterminal, was not found in name map.)
+(Residue 355: GLU, Nonterminal, was not found in name map.)
+(Residue 356: LYS, Nonterminal, was not found in name map.)
+(Residue 357: CYX, Nonterminal, was not found in name map.)
+(Residue 358: CYX, Nonterminal, was not found in name map.)
+(Residue 359: ALA, Nonterminal, was not found in name map.)
+(Residue 360: ALA, Nonterminal, was not found in name map.)
+(Residue 361: ALA, Nonterminal, was not found in name map.)
+(Residue 362: ASP, Nonterminal, was not found in name map.)
+(Residue 363: PRO, Nonterminal, was not found in name map.)
+(Residue 364: HIS, Nonterminal, was not found in name map.)
+(Residue 365: GLU, Nonterminal, was not found in name map.)
+(Residue 366: CYX, Nonterminal, was not found in name map.)
+(Residue 367: TYR, Nonterminal, was not found in name map.)
+(Residue 368: ALA, Nonterminal, was not found in name map.)
+(Residue 369: LYS, Nonterminal, was not found in name map.)
+(Residue 370: VAL, Nonterminal, was not found in name map.)
+(Residue 371: PHE, Nonterminal, was not found in name map.)
+(Residue 372: ASP, Nonterminal, was not found in name map.)
+(Residue 373: GLU, Nonterminal, was not found in name map.)
+(Residue 374: PHE, Nonterminal, was not found in name map.)
+(Residue 375: LYS, Nonterminal, was not found in name map.)
+(Residue 376: PRO, Nonterminal, was not found in name map.)
+(Residue 377: LEU, Nonterminal, was not found in name map.)
+(Residue 378: VAL, Nonterminal, was not found in name map.)
+(Residue 379: GLU, Nonterminal, was not found in name map.)
+(Residue 380: GLU, Nonterminal, was not found in name map.)
+(Residue 381: PRO, Nonterminal, was not found in name map.)
+(Residue 382: GLN, Nonterminal, was not found in name map.)
+(Residue 383: ASN, Nonterminal, was not found in name map.)
+(Residue 384: LEU, Nonterminal, was not found in name map.)
+(Residue 385: ILE, Nonterminal, was not found in name map.)
+(Residue 386: LYS, Nonterminal, was not found in name map.)
+(Residue 387: GLN, Nonterminal, was not found in name map.)
+(Residue 388: ASN, Nonterminal, was not found in name map.)
+(Residue 389: CYX, Nonterminal, was not found in name map.)
+(Residue 390: GLU, Nonterminal, was not found in name map.)
+(Residue 391: LEU, Nonterminal, was not found in name map.)
+(Residue 392: PHE, Nonterminal, was not found in name map.)
+(Residue 393: GLU, Nonterminal, was not found in name map.)
+(Residue 394: GLN, Nonterminal, was not found in name map.)
+(Residue 395: LEU, Nonterminal, was not found in name map.)
+(Residue 396: GLY, Nonterminal, was not found in name map.)
+(Residue 397: GLU, Nonterminal, was not found in name map.)
+(Residue 398: TYR, Nonterminal, was not found in name map.)
+(Residue 399: LYS, Nonterminal, was not found in name map.)
+(Residue 400: PHE, Nonterminal, was not found in name map.)
+(Residue 401: GLN, Nonterminal, was not found in name map.)
+(Residue 402: ASN, Nonterminal, was not found in name map.)
+(Residue 403: ALA, Nonterminal, was not found in name map.)
+(Residue 404: LEU, Nonterminal, was not found in name map.)
+(Residue 405: LEU, Nonterminal, was not found in name map.)
+(Residue 406: VAL, Nonterminal, was not found in name map.)
+(Residue 407: ARG, Nonterminal, was not found in name map.)
+(Residue 408: TYR, Nonterminal, was not found in name map.)
+(Residue 409: THR, Nonterminal, was not found in name map.)
+(Residue 410: LYS, Nonterminal, was not found in name map.)
+(Residue 411: LYS, Nonterminal, was not found in name map.)
+(Residue 412: VAL, Nonterminal, was not found in name map.)
+(Residue 413: PRO, Nonterminal, was not found in name map.)
+(Residue 414: GLN, Nonterminal, was not found in name map.)
+(Residue 415: VAL, Nonterminal, was not found in name map.)
+(Residue 416: SER, Nonterminal, was not found in name map.)
+(Residue 417: THR, Nonterminal, was not found in name map.)
+(Residue 418: PRO, Nonterminal, was not found in name map.)
+(Residue 419: THR, Nonterminal, was not found in name map.)
+(Residue 420: LEU, Nonterminal, was not found in name map.)
+(Residue 421: VAL, Nonterminal, was not found in name map.)
+(Residue 422: GLU, Nonterminal, was not found in name map.)
+(Residue 423: VAL, Nonterminal, was not found in name map.)
+(Residue 424: SER, Nonterminal, was not found in name map.)
+(Residue 425: ARG, Nonterminal, was not found in name map.)
+(Residue 426: ASN, Nonterminal, was not found in name map.)
+(Residue 427: LEU, Nonterminal, was not found in name map.)
+(Residue 428: GLY, Nonterminal, was not found in name map.)
+(Residue 429: LYS, Nonterminal, was not found in name map.)
+(Residue 430: VAL, Nonterminal, was not found in name map.)
+(Residue 431: GLY, Nonterminal, was not found in name map.)
+(Residue 432: SER, Nonterminal, was not found in name map.)
+(Residue 433: LYS, Nonterminal, was not found in name map.)
+(Residue 434: CYX, Nonterminal, was not found in name map.)
+(Residue 435: CYX, Nonterminal, was not found in name map.)
+(Residue 436: LYS, Nonterminal, was not found in name map.)
+(Residue 437: HIS, Nonterminal, was not found in name map.)
+(Residue 438: PRO, Nonterminal, was not found in name map.)
+(Residue 439: GLU, Nonterminal, was not found in name map.)
+(Residue 440: ALA, Nonterminal, was not found in name map.)
+(Residue 441: LYS, Nonterminal, was not found in name map.)
+(Residue 442: ARG, Nonterminal, was not found in name map.)
+(Residue 443: MET, Nonterminal, was not found in name map.)
+(Residue 444: PRO, Nonterminal, was not found in name map.)
+(Residue 445: CYX, Nonterminal, was not found in name map.)
+(Residue 446: ALA, Nonterminal, was not found in name map.)
+(Residue 447: GLU, Nonterminal, was not found in name map.)
+(Residue 448: ASP, Nonterminal, was not found in name map.)
+(Residue 449: TYR, Nonterminal, was not found in name map.)
+(Residue 450: LEU, Nonterminal, was not found in name map.)
+(Residue 451: SER, Nonterminal, was not found in name map.)
+(Residue 452: VAL, Nonterminal, was not found in name map.)
+(Residue 453: VAL, Nonterminal, was not found in name map.)
+(Residue 454: LEU, Nonterminal, was not found in name map.)
+(Residue 455: ASN, Nonterminal, was not found in name map.)
+(Residue 456: GLN, Nonterminal, was not found in name map.)
+(Residue 457: LEU, Nonterminal, was not found in name map.)
+(Residue 458: CYX, Nonterminal, was not found in name map.)
+(Residue 459: VAL, Nonterminal, was not found in name map.)
+(Residue 460: LEU, Nonterminal, was not found in name map.)
+(Residue 461: HIS, Nonterminal, was not found in name map.)
+(Residue 462: GLU, Nonterminal, was not found in name map.)
+(Residue 463: LYS, Nonterminal, was not found in name map.)
+(Residue 464: THR, Nonterminal, was not found in name map.)
+(Residue 465: PRO, Nonterminal, was not found in name map.)
+(Residue 466: VAL, Nonterminal, was not found in name map.)
+(Residue 467: SER, Nonterminal, was not found in name map.)
+(Residue 468: ASP, Nonterminal, was not found in name map.)
+(Residue 469: ARG, Nonterminal, was not found in name map.)
+(Residue 470: VAL, Nonterminal, was not found in name map.)
+(Residue 471: THR, Nonterminal, was not found in name map.)
+(Residue 472: LYS, Nonterminal, was not found in name map.)
+(Residue 473: CYX, Nonterminal, was not found in name map.)
+(Residue 474: CYX, Nonterminal, was not found in name map.)
+(Residue 475: THR, Nonterminal, was not found in name map.)
+(Residue 476: GLU, Nonterminal, was not found in name map.)
+(Residue 477: SER, Nonterminal, was not found in name map.)
+(Residue 478: LEU, Nonterminal, was not found in name map.)
+(Residue 479: VAL, Nonterminal, was not found in name map.)
+(Residue 480: ASN, Nonterminal, was not found in name map.)
+(Residue 481: ARG, Nonterminal, was not found in name map.)
+(Residue 482: ARG, Nonterminal, was not found in name map.)
+(Residue 483: PRO, Nonterminal, was not found in name map.)
+(Residue 484: CYX, Nonterminal, was not found in name map.)
+(Residue 485: PHE, Nonterminal, was not found in name map.)
+(Residue 486: SER, Nonterminal, was not found in name map.)
+(Residue 487: ALA, Nonterminal, was not found in name map.)
+(Residue 488: LEU, Nonterminal, was not found in name map.)
+(Residue 489: GLU, Nonterminal, was not found in name map.)
+(Residue 490: VAL, Nonterminal, was not found in name map.)
+(Residue 491: ASP, Nonterminal, was not found in name map.)
+(Residue 492: GLU, Nonterminal, was not found in name map.)
+(Residue 493: THR, Nonterminal, was not found in name map.)
+(Residue 494: TYR, Nonterminal, was not found in name map.)
+(Residue 495: VAL, Nonterminal, was not found in name map.)
+(Residue 496: PRO, Nonterminal, was not found in name map.)
+(Residue 497: LYS, Nonterminal, was not found in name map.)
+(Residue 498: GLU, Nonterminal, was not found in name map.)
+(Residue 499: PHE, Nonterminal, was not found in name map.)
+(Residue 500: ASN, Nonterminal, was not found in name map.)
+(Residue 501: ALA, Nonterminal, was not found in name map.)
+(Residue 502: GLU, Nonterminal, was not found in name map.)
+(Residue 503: THR, Nonterminal, was not found in name map.)
+(Residue 504: PHE, Nonterminal, was not found in name map.)
+(Residue 505: THR, Nonterminal, was not found in name map.)
+(Residue 506: PHE, Nonterminal, was not found in name map.)
+(Residue 507: HIS, Nonterminal, was not found in name map.)
+(Residue 508: ALA, Nonterminal, was not found in name map.)
+(Residue 509: ASP, Nonterminal, was not found in name map.)
+(Residue 510: ILE, Nonterminal, was not found in name map.)
+(Residue 511: CYX, Nonterminal, was not found in name map.)
+(Residue 512: THR, Nonterminal, was not found in name map.)
+(Residue 513: LEU, Nonterminal, was not found in name map.)
+(Residue 514: SER, Nonterminal, was not found in name map.)
+(Residue 515: GLU, Nonterminal, was not found in name map.)
+(Residue 516: LYS, Nonterminal, was not found in name map.)
+(Residue 517: GLU, Nonterminal, was not found in name map.)
+(Residue 518: ARG, Nonterminal, was not found in name map.)
+(Residue 519: GLN, Nonterminal, was not found in name map.)
+(Residue 520: ILE, Nonterminal, was not found in name map.)
+(Residue 521: LYS, Nonterminal, was not found in name map.)
+(Residue 522: LYS, Nonterminal, was not found in name map.)
+(Residue 523: GLN, Nonterminal, was not found in name map.)
+(Residue 524: THR, Nonterminal, was not found in name map.)
+(Residue 525: ALA, Nonterminal, was not found in name map.)
+(Residue 526: LEU, Nonterminal, was not found in name map.)
+(Residue 527: VAL, Nonterminal, was not found in name map.)
+(Residue 528: GLU, Nonterminal, was not found in name map.)
+(Residue 529: LEU, Nonterminal, was not found in name map.)
+(Residue 530: VAL, Nonterminal, was not found in name map.)
+(Residue 531: LYS, Nonterminal, was not found in name map.)
+(Residue 532: HIS, Nonterminal, was not found in name map.)
+(Residue 533: LYS, Nonterminal, was not found in name map.)
+(Residue 534: PRO, Nonterminal, was not found in name map.)
+(Residue 535: LYS, Nonterminal, was not found in name map.)
+(Residue 536: ALA, Nonterminal, was not found in name map.)
+(Residue 537: THR, Nonterminal, was not found in name map.)
+(Residue 538: LYS, Nonterminal, was not found in name map.)
+(Residue 539: GLU, Nonterminal, was not found in name map.)
+(Residue 540: GLN, Nonterminal, was not found in name map.)
+(Residue 541: LEU, Nonterminal, was not found in name map.)
+(Residue 542: LYS, Nonterminal, was not found in name map.)
+(Residue 543: ALA, Nonterminal, was not found in name map.)
+(Residue 544: VAL, Nonterminal, was not found in name map.)
+(Residue 545: MET, Nonterminal, was not found in name map.)
+(Residue 546: ASP, Nonterminal, was not found in name map.)
+(Residue 547: ASP, Nonterminal, was not found in name map.)
+(Residue 548: PHE, Nonterminal, was not found in name map.)
+(Residue 549: ALA, Nonterminal, was not found in name map.)
+(Residue 550: ALA, Nonterminal, was not found in name map.)
+(Residue 551: PHE, Nonterminal, was not found in name map.)
+(Residue 552: VAL, Nonterminal, was not found in name map.)
+(Residue 553: GLU, Nonterminal, was not found in name map.)
+(Residue 554: LYS, Nonterminal, was not found in name map.)
+(Residue 555: CYX, Nonterminal, was not found in name map.)
+(Residue 556: CYX, Nonterminal, was not found in name map.)
+(Residue 557: LYS, Nonterminal, was not found in name map.)
+(Residue 558: ALA, Nonterminal, was not found in name map.)
+(Residue 559: ASP, Nonterminal, was not found in name map.)
+(Residue 560: ASP, Nonterminal, was not found in name map.)
+(Residue 561: LYS, Nonterminal, was not found in name map.)
+(Residue 562: GLU, Nonterminal, was not found in name map.)
+(Residue 563: THR, Nonterminal, was not found in name map.)
+(Residue 564: CYX, Nonterminal, was not found in name map.)
+(Residue 565: PHE, Nonterminal, was not found in name map.)
+(Residue 566: ALA, Nonterminal, was not found in name map.)
+(Residue 567: GLU, Nonterminal, was not found in name map.)
+(Residue 568: GLU, Nonterminal, was not found in name map.)
+(Residue 569: GLY, Nonterminal, was not found in name map.)
+(Residue 570: LYS, Nonterminal, was not found in name map.)
+(Residue 571: LYS, Nonterminal, was not found in name map.)
+(Residue 572: LEU, Nonterminal, was not found in name map.)
+(Residue 573: VAL, Nonterminal, was not found in name map.)
+(Residue 574: ALA, Nonterminal, was not found in name map.)
+(Residue 575: ALA, Nonterminal, was not found in name map.)
+(Residue 576: SER, Nonterminal, was not found in name map.)
+(Residue 577: GLN, Nonterminal, was not found in name map.)
+(Residue 578: ALA, Nonterminal, was not found in name map.)
+(Residue 579: ALA, Nonterminal, was not found in name map.)
+(Residue 580: LEU, Nonterminal, was not found in name map.)
+Mapped residue GLY, term: Terminal/last, seq. number: 581 to: CGLY.
+Joining NHIE - LYS
+Joining LYS - SER
+Joining SER - GLU
+Joining GLU - VAL
+Joining VAL - ALA
+Joining ALA - HIE
+Joining HIE - ARG
+Joining ARG - PHE
+Joining PHE - LYS
+Joining LYS - ASP
+Joining ASP - LEU
+Joining LEU - GLY
+Joining GLY - GLU
+Joining GLU - GLU
+Joining GLU - ASN
+Joining ASN - PHE
+Joining PHE - LYS
+Joining LYS - ALA
+Joining ALA - LEU
+Joining LEU - VAL
+Joining VAL - LEU
+Joining LEU - ILE
+Joining ILE - ALA
+Joining ALA - PHE
+Joining PHE - ALA
+Joining ALA - GLN
+Joining GLN - TYR
+Joining TYR - LEU
+Joining LEU - GLN
+Joining GLN - GLN
+Joining GLN - CYX
+Joining CYX - PRO
+Joining PRO - PHE
+Joining PHE - GLU
+Joining GLU - ASP
+Joining ASP - HIE
+Joining HIE - VAL
+Joining VAL - LYS
+Joining LYS - LEU
+Joining LEU - VAL
+Joining VAL - ASN
+Joining ASN - GLU
+Joining GLU - VAL
+Joining VAL - THR
+Joining THR - GLU
+Joining GLU - PHE
+Joining PHE - ALA
+Joining ALA - LYS
+Joining LYS - THR
+Joining THR - CYX
+Joining CYX - VAL
+Joining VAL - ALA
+Joining ALA - ASP
+Joining ASP - GLU
+Joining GLU - SER
+Joining SER - ALA
+Joining ALA - GLU
+Joining GLU - ASN
+Joining ASN - CYX
+Joining CYX - ASP
+Joining ASP - LYS
+Joining LYS - SER
+Joining SER - LEU
+Joining LEU - HIE
+Joining HIE - THR
+Joining THR - LEU
+Joining LEU - PHE
+Joining PHE - GLY
+Joining GLY - ASP
+Joining ASP - LYS
+Joining LYS - LEU
+Joining LEU - CYX
+Joining CYX - THR
+Joining THR - VAL
+Joining VAL - ALA
+Joining ALA - THR
+Joining THR - LEU
+Joining LEU - ARG
+Joining ARG - GLU
+Joining GLU - THR
+Joining THR - TYR
+Joining TYR - GLY
+Joining GLY - GLU
+Joining GLU - MET
+Joining MET - ALA
+Joining ALA - ASP
+Joining ASP - CYX
+Joining CYX - CYX
+Joining CYX - ALA
+Joining ALA - LYS
+Joining LYS - GLN
+Joining GLN - GLU
+Joining GLU - PRO
+Joining PRO - GLU
+Joining GLU - ARG
+Joining ARG - ASN
+Joining ASN - GLU
+Joining GLU - CYX
+Joining CYX - PHE
+Joining PHE - LEU
+Joining LEU - GLN
+Joining GLN - HIE
+Joining HIE - LYS
+Joining LYS - ASP
+Joining ASP - ASP
+Joining ASP - ASN
+Joining ASN - PRO
+Joining PRO - ASN
+Joining ASN - LEU
+Joining LEU - PRO
+Joining PRO - ARG
+Joining ARG - LEU
+Joining LEU - VAL
+Joining VAL - ARG
+Joining ARG - PRO
+Joining PRO - GLU
+Joining GLU - VAL
+Joining VAL - ASP
+Joining ASP - VAL
+Joining VAL - MET
+Joining MET - CYX
+Joining CYX - THR
+Joining THR - ALA
+Joining ALA - PHE
+Joining PHE - HIE
+Joining HIE - ASP
+Joining ASP - ASN
+Joining ASN - GLU
+Joining GLU - GLU
+Joining GLU - THR
+Joining THR - PHE
+Joining PHE - LEU
+Joining LEU - LYS
+Joining LYS - LYS
+Joining LYS - TYR
+Joining TYR - LEU
+Joining LEU - TYR
+Joining TYR - GLU
+Joining GLU - ILE
+Joining ILE - ALA
+Joining ALA - ARG
+Joining ARG - ARG
+Joining ARG - HIE
+Joining HIE - PRO
+Joining PRO - TYR
+Joining TYR - PHE
+Joining PHE - TYR
+Joining TYR - ALA
+Joining ALA - PRO
+Joining PRO - GLU
+Joining GLU - LEU
+Joining LEU - LEU
+Joining LEU - PHE
+Joining PHE - PHE
+Joining PHE - ALA
+Joining ALA - LYS
+Joining LYS - ARG
+Joining ARG - TYR
+Joining TYR - LYS
+Joining LYS - ALA
+Joining ALA - ALA
+Joining ALA - PHE
+Joining PHE - THR
+Joining THR - GLU
+Joining GLU - CYX
+Joining CYX - CYX
+Joining CYX - GLN
+Joining GLN - ALA
+Joining ALA - ALA
+Joining ALA - ASP
+Joining ASP - LYS
+Joining LYS - ALA
+Joining ALA - ALA
+Joining ALA - CYX
+Joining CYX - LEU
+Joining LEU - LEU
+Joining LEU - PRO
+Joining PRO - LYS
+Joining LYS - LEU
+Joining LEU - ASP
+Joining ASP - GLU
+Joining GLU - LEU
+Joining LEU - ARG
+Joining ARG - ASP
+Joining ASP - GLU
+Joining GLU - GLY
+Joining GLY - LYS
+Joining LYS - ALA
+Joining ALA - SER
+Joining SER - SER
+Joining SER - ALA
+Joining ALA - LYS
+Joining LYS - GLN
+Joining GLN - ARG
+Joining ARG - LEU
+Joining LEU - LYS
+Joining LYS - CYX
+Joining CYX - ALA
+Joining ALA - SER
+Joining SER - LEU
+Joining LEU - GLN
+Joining GLN - LYS
+Joining LYS - PHE
+Joining PHE - GLY
+Joining GLY - GLU
+Joining GLU - ARG
+Joining ARG - ALA
+Joining ALA - PHE
+Joining PHE - LYS
+Joining LYS - ALA
+Joining ALA - TRP
+Joining TRP - ALA
+Joining ALA - VAL
+Joining VAL - ALA
+Joining ALA - ARG
+Joining ARG - LEU
+Joining LEU - SER
+Joining SER - GLN
+Joining GLN - ARG
+Joining ARG - PHE
+Joining PHE - PRO
+Joining PRO - LYS
+Joining LYS - ALA
+Joining ALA - GLU
+Joining GLU - PHE
+Joining PHE - ALA
+Joining ALA - GLU
+Joining GLU - VAL
+Joining VAL - SER
+Joining SER - LYS
+Joining LYS - LEU
+Joining LEU - VAL
+Joining VAL - THR
+Joining THR - ASP
+Joining ASP - LEU
+Joining LEU - THR
+Joining THR - LYS
+Joining LYS - VAL
+Joining VAL - HIE
+Joining HIE - THR
+Joining THR - GLU
+Joining GLU - CYX
+Joining CYX - CYX
+Joining CYX - HIE
+Joining HIE - GLY
+Joining GLY - ASP
+Joining ASP - LEU
+Joining LEU - LEU
+Joining LEU - GLU
+Joining GLU - CYX
+Joining CYX - ALA
+Joining ALA - ASP
+Joining ASP - ASP
+Joining ASP - ARG
+Joining ARG - ALA
+Joining ALA - ASP
+Joining ASP - LEU
+Joining LEU - ALA
+Joining ALA - LYS
+Joining LYS - TYR
+Joining TYR - ILE
+Joining ILE - CYX
+Joining CYX - GLU
+Joining GLU - ASN
+Joining ASN - GLN
+Joining GLN - ASP
+Joining ASP - SER
+Joining SER - ILE
+Joining ILE - SER
+Joining SER - SER
+Joining SER - LYS
+Joining LYS - LEU
+Joining LEU - LYS
+Joining LYS - GLU
+Joining GLU - CYX
+Joining CYX - CYX
+Joining CYX - GLU
+Joining GLU - LYS
+Joining LYS - PRO
+Joining PRO - LEU
+Joining LEU - LEU
+Joining LEU - GLU
+Joining GLU - LYS
+Joining LYS - SER
+Joining SER - HIE
+Joining HIE - CYX
+Joining CYX - ILE
+Joining ILE - ALA
+Joining ALA - GLU
+Joining GLU - VAL
+Joining VAL - GLU
+Joining GLU - ASN
+Joining ASN - ASP
+Joining ASP - GLU
+Joining GLU - MET
+Joining MET - PRO
+Joining PRO - ALA
+Joining ALA - ASP
+Joining ASP - LEU
+Joining LEU - PRO
+Joining PRO - SER
+Joining SER - LEU
+Joining LEU - ALA
+Joining ALA - ALA
+Joining ALA - ASP
+Joining ASP - PHE
+Joining PHE - VAL
+Joining VAL - GLU
+Joining GLU - SER
+Joining SER - LYS
+Joining LYS - ASP
+Joining ASP - VAL
+Joining VAL - CYX
+Joining CYX - LYS
+Joining LYS - ASN
+Joining ASN - TYR
+Joining TYR - ALA
+Joining ALA - GLU
+Joining GLU - ALA
+Joining ALA - LYS
+Joining LYS - ASP
+Joining ASP - VAL
+Joining VAL - PHE
+Joining PHE - LEU
+Joining LEU - GLY
+Joining GLY - MET
+Joining MET - PHE
+Joining PHE - LEU
+Joining LEU - TYR
+Joining TYR - GLU
+Joining GLU - TYR
+Joining TYR - ALA
+Joining ALA - ARG
+Joining ARG - ARG
+Joining ARG - HIE
+Joining HIE - PRO
+Joining PRO - ASP
+Joining ASP - TYR
+Joining TYR - SER
+Joining SER - VAL
+Joining VAL - VAL
+Joining VAL - LEU
+Joining LEU - LEU
+Joining LEU - LEU
+Joining LEU - ARG
+Joining ARG - LEU
+Joining LEU - ALA
+Joining ALA - LYS
+Joining LYS - THR
+Joining THR - TYR
+Joining TYR - GLU
+Joining GLU - THR
+Joining THR - THR
+Joining THR - LEU
+Joining LEU - GLU
+Joining GLU - LYS
+Joining LYS - CYX
+Joining CYX - CYX
+Joining CYX - ALA
+Joining ALA - ALA
+Joining ALA - ALA
+Joining ALA - ASP
+Joining ASP - PRO
+Joining PRO - HIE
+Joining HIE - GLU
+Joining GLU - CYX
+Joining CYX - TYR
+Joining TYR - ALA
+Joining ALA - LYS
+Joining LYS - VAL
+Joining VAL - PHE
+Joining PHE - ASP
+Joining ASP - GLU
+Joining GLU - PHE
+Joining PHE - LYS
+Joining LYS - PRO
+Joining PRO - LEU
+Joining LEU - VAL
+Joining VAL - GLU
+Joining GLU - GLU
+Joining GLU - PRO
+Joining PRO - GLN
+Joining GLN - ASN
+Joining ASN - LEU
+Joining LEU - ILE
+Joining ILE - LYS
+Joining LYS - GLN
+Joining GLN - ASN
+Joining ASN - CYX
+Joining CYX - GLU
+Joining GLU - LEU
+Joining LEU - PHE
+Joining PHE - GLU
+Joining GLU - GLN
+Joining GLN - LEU
+Joining LEU - GLY
+Joining GLY - GLU
+Joining GLU - TYR
+Joining TYR - LYS
+Joining LYS - PHE
+Joining PHE - GLN
+Joining GLN - ASN
+Joining ASN - ALA
+Joining ALA - LEU
+Joining LEU - LEU
+Joining LEU - VAL
+Joining VAL - ARG
+Joining ARG - TYR
+Joining TYR - THR
+Joining THR - LYS
+Joining LYS - LYS
+Joining LYS - VAL
+Joining VAL - PRO
+Joining PRO - GLN
+Joining GLN - VAL
+Joining VAL - SER
+Joining SER - THR
+Joining THR - PRO
+Joining PRO - THR
+Joining THR - LEU
+Joining LEU - VAL
+Joining VAL - GLU
+Joining GLU - VAL
+Joining VAL - SER
+Joining SER - ARG
+Joining ARG - ASN
+Joining ASN - LEU
+Joining LEU - GLY
+Joining GLY - LYS
+Joining LYS - VAL
+Joining VAL - GLY
+Joining GLY - SER
+Joining SER - LYS
+Joining LYS - CYX
+Joining CYX - CYX
+Joining CYX - LYS
+Joining LYS - HIE
+Joining HIE - PRO
+Joining PRO - GLU
+Joining GLU - ALA
+Joining ALA - LYS
+Joining LYS - ARG
+Joining ARG - MET
+Joining MET - PRO
+Joining PRO - CYX
+Joining CYX - ALA
+Joining ALA - GLU
+Joining GLU - ASP
+Joining ASP - TYR
+Joining TYR - LEU
+Joining LEU - SER
+Joining SER - VAL
+Joining VAL - VAL
+Joining VAL - LEU
+Joining LEU - ASN
+Joining ASN - GLN
+Joining GLN - LEU
+Joining LEU - CYX
+Joining CYX - VAL
+Joining VAL - LEU
+Joining LEU - HIE
+Joining HIE - GLU
+Joining GLU - LYS
+Joining LYS - THR
+Joining THR - PRO
+Joining PRO - VAL
+Joining VAL - SER
+Joining SER - ASP
+Joining ASP - ARG
+Joining ARG - VAL
+Joining VAL - THR
+Joining THR - LYS
+Joining LYS - CYX
+Joining CYX - CYX
+Joining CYX - THR
+Joining THR - GLU
+Joining GLU - SER
+Joining SER - LEU
+Joining LEU - VAL
+Joining VAL - ASN
+Joining ASN - ARG
+Joining ARG - ARG
+Joining ARG - PRO
+Joining PRO - CYX
+Joining CYX - PHE
+Joining PHE - SER
+Joining SER - ALA
+Joining ALA - LEU
+Joining LEU - GLU
+Joining GLU - VAL
+Joining VAL - ASP
+Joining ASP - GLU
+Joining GLU - THR
+Joining THR - TYR
+Joining TYR - VAL
+Joining VAL - PRO
+Joining PRO - LYS
+Joining LYS - GLU
+Joining GLU - PHE
+Joining PHE - ASN
+Joining ASN - ALA
+Joining ALA - GLU
+Joining GLU - THR
+Joining THR - PHE
+Joining PHE - THR
+Joining THR - PHE
+Joining PHE - HIE
+Joining HIE - ALA
+Joining ALA - ASP
+Joining ASP - ILE
+Joining ILE - CYX
+Joining CYX - THR
+Joining THR - LEU
+Joining LEU - SER
+Joining SER - GLU
+Joining GLU - LYS
+Joining LYS - GLU
+Joining GLU - ARG
+Joining ARG - GLN
+Joining GLN - ILE
+Joining ILE - LYS
+Joining LYS - LYS
+Joining LYS - GLN
+Joining GLN - THR
+Joining THR - ALA
+Joining ALA - LEU
+Joining LEU - VAL
+Joining VAL - GLU
+Joining GLU - LEU
+Joining LEU - VAL
+Joining VAL - LYS
+Joining LYS - HIE
+Joining HIE - LYS
+Joining LYS - PRO
+Joining PRO - LYS
+Joining LYS - ALA
+Joining ALA - THR
+Joining THR - LYS
+Joining LYS - GLU
+Joining GLU - GLN
+Joining GLN - LEU
+Joining LEU - LYS
+Joining LYS - ALA
+Joining ALA - VAL
+Joining VAL - MET
+Joining MET - ASP
+Joining ASP - ASP
+Joining ASP - PHE
+Joining PHE - ALA
+Joining ALA - ALA
+Joining ALA - PHE
+Joining PHE - VAL
+Joining VAL - GLU
+Joining GLU - LYS
+Joining LYS - CYX
+Joining CYX - CYX
+Joining CYX - LYS
+Joining LYS - ALA
+Joining ALA - ASP
+Joining ASP - ASP
+Joining ASP - LYS
+Joining LYS - GLU
+Joining GLU - THR
+Joining THR - CYX
+Joining CYX - PHE
+Joining PHE - ALA
+Joining ALA - GLU
+Joining GLU - GLU
+Joining GLU - GLY
+Joining GLY - LYS
+Joining LYS - LYS
+Joining LYS - LEU
+Joining LEU - VAL
+Joining VAL - ALA
+Joining ALA - ALA
+Joining ALA - SER
+Joining SER - GLN
+Joining GLN - ALA
+Joining ALA - ALA
+Joining ALA - LEU
+Joining LEU - CGLY
+  total atoms in file: 4631
+  Leap added 4554 missing atoms according to residue templates:
+       4554 H / lone pairs
+> 
+> # Load parameters for ligand.
+> mods = loadAmberParams ligand.gaff.frcmod
+Loading parameters: ./ligand.gaff.frcmod
+Reading force field modification type file (frcmod)
+Reading title:
+Remark line goes here
+> 
+> # Load parameters for ligand.
+> loadAmberParams ligand.gaff.frcmod
+Loading parameters: ./ligand.gaff.frcmod
+Reading force field modification type file (frcmod)
+Reading title:
+Remark line goes here
+> 
+> # Load ligand.
+> ligand = loadMol2 ligand.gaff.mol2
+Loading Mol2 file: ./ligand.gaff.mol2
+Reading MOLECULE named aspirin
+> 
+> # Translate the ligand
+> translate ligand { 0 20.0 10.0 }
+> 
+> # Write ligand in vacuum.
+> saveamberparm ligand vacuum.prmtop vacuum.inpcrd
+Checking Unit.
+Building topology.
+Building atom parameters.
+Building bond parameters.
+Building angle parameters.
+Building proper torsion parameters.
+Building improper torsion parameters.
+ total 8 improper torsions applied
+Building H-Bond parameters.
+Incorporating Non-Bonded adjustments.
+Not Marking per-residue atom chain types.
+Marking per-residue atom chain types.
+  (Residues lacking connect0/connect1 - 
+   these don't have chain types marked:
+
+	res	total affected
+
+	MOL	1
+  )
+ (no restraints)
+> savepdb ligand vacuum.pdb
+Writing pdb file: vacuum.pdb
+> 
+> # Create complex.
+> complex = combine { receptor ligand }
+  Sequence: default_name
+  Sequence: aspirin
+> solvatebox complex TIP3PBOX 10.0 iso
+  Solute vdw bounding box:              95.153 55.015 83.646
+  Total bounding box for atom centers:  115.153 115.153 115.153
+      (box expansion for 'iso' is  70.5%)
+  Solvent unit box:                     18.774 18.774 18.774
+The number of boxes:  x= 7  y= 7  z= 7
+Adding box at: x=0  y=0  z=0
+Center of solvent box is: 56.323047, 56.323047, 56.323047
+Adding box at: x=0  y=0  z=1
+Center of solvent box is: 56.323047, 56.323047, 37.548698
+Adding box at: x=0  y=0  z=2
+Center of solvent box is: 56.323047, 56.323047, 18.774349
+Adding box at: x=0  y=0  z=3
+Center of solvent box is: 56.323047, 56.323047, 0.000000
+Adding box at: x=0  y=0  z=4
+Center of solvent box is: 56.323047, 56.323047, -18.774349
+Adding box at: x=0  y=0  z=5
+Center of solvent box is: 56.323047, 56.323047, -37.548698
+Adding box at: x=0  y=0  z=6
+Center of solvent box is: 56.323047, 56.323047, -56.323047
+Adding box at: x=0  y=1  z=0
+Center of solvent box is: 56.323047, 37.548698, 56.323047
+Adding box at: x=0  y=1  z=1
+Center of solvent box is: 56.323047, 37.548698, 37.548698
+Adding box at: x=0  y=1  z=2
+Center of solvent box is: 56.323047, 37.548698, 18.774349
+Adding box at: x=0  y=1  z=3
+Center of solvent box is: 56.323047, 37.548698, 0.000000
+Adding box at: x=0  y=1  z=4
+Center of solvent box is: 56.323047, 37.548698, -18.774349
+Adding box at: x=0  y=1  z=5
+Center of solvent box is: 56.323047, 37.548698, -37.548698
+Adding box at: x=0  y=1  z=6
+Center of solvent box is: 56.323047, 37.548698, -56.323047
+Adding box at: x=0  y=2  z=0
+Center of solvent box is: 56.323047, 18.774349, 56.323047
+Adding box at: x=0  y=2  z=1
+Center of solvent box is: 56.323047, 18.774349, 37.548698
+Adding box at: x=0  y=2  z=2
+Center of solvent box is: 56.323047, 18.774349, 18.774349
+Adding box at: x=0  y=2  z=3
+Center of solvent box is: 56.323047, 18.774349, 0.000000
+Adding box at: x=0  y=2  z=4
+Center of solvent box is: 56.323047, 18.774349, -18.774349
+Adding box at: x=0  y=2  z=5
+Center of solvent box is: 56.323047, 18.774349, -37.548698
+Adding box at: x=0  y=2  z=6
+Center of solvent box is: 56.323047, 18.774349, -56.323047
+Adding box at: x=0  y=3  z=0
+Center of solvent box is: 56.323047, 0.000000, 56.323047
+Adding box at: x=0  y=3  z=1
+Center of solvent box is: 56.323047, 0.000000, 37.548698
+Adding box at: x=0  y=3  z=2
+Center of solvent box is: 56.323047, 0.000000, 18.774349
+Adding box at: x=0  y=3  z=3
+Center of solvent box is: 56.323047, 0.000000, 0.000000
+Adding box at: x=0  y=3  z=4
+Center of solvent box is: 56.323047, 0.000000, -18.774349
+Adding box at: x=0  y=3  z=5
+Center of solvent box is: 56.323047, 0.000000, -37.548698
+Adding box at: x=0  y=3  z=6
+Center of solvent box is: 56.323047, 0.000000, -56.323047
+Adding box at: x=0  y=4  z=0
+Center of solvent box is: 56.323047, -18.774349, 56.323047
+Adding box at: x=0  y=4  z=1
+Center of solvent box is: 56.323047, -18.774349, 37.548698
+Adding box at: x=0  y=4  z=2
+Center of solvent box is: 56.323047, -18.774349, 18.774349
+Adding box at: x=0  y=4  z=3
+Center of solvent box is: 56.323047, -18.774349, 0.000000
+Adding box at: x=0  y=4  z=4
+Center of solvent box is: 56.323047, -18.774349, -18.774349
+Adding box at: x=0  y=4  z=5
+Center of solvent box is: 56.323047, -18.774349, -37.548698
+Adding box at: x=0  y=4  z=6
+Center of solvent box is: 56.323047, -18.774349, -56.323047
+Adding box at: x=0  y=5  z=0
+Center of solvent box is: 56.323047, -37.548698, 56.323047
+Adding box at: x=0  y=5  z=1
+Center of solvent box is: 56.323047, -37.548698, 37.548698
+Adding box at: x=0  y=5  z=2
+Center of solvent box is: 56.323047, -37.548698, 18.774349
+Adding box at: x=0  y=5  z=3
+Center of solvent box is: 56.323047, -37.548698, 0.000000
+Adding box at: x=0  y=5  z=4
+Center of solvent box is: 56.323047, -37.548698, -18.774349
+Adding box at: x=0  y=5  z=5
+Center of solvent box is: 56.323047, -37.548698, -37.548698
+Adding box at: x=0  y=5  z=6
+Center of solvent box is: 56.323047, -37.548698, -56.323047
+Adding box at: x=0  y=6  z=0
+Center of solvent box is: 56.323047, -56.323047, 56.323047
+Adding box at: x=0  y=6  z=1
+Center of solvent box is: 56.323047, -56.323047, 37.548698
+Adding box at: x=0  y=6  z=2
+Center of solvent box is: 56.323047, -56.323047, 18.774349
+Adding box at: x=0  y=6  z=3
+Center of solvent box is: 56.323047, -56.323047, 0.000000
+Adding box at: x=0  y=6  z=4
+Center of solvent box is: 56.323047, -56.323047, -18.774349
+Adding box at: x=0  y=6  z=5
+Center of solvent box is: 56.323047, -56.323047, -37.548698
+Adding box at: x=0  y=6  z=6
+Center of solvent box is: 56.323047, -56.323047, -56.323047
+Adding box at: x=1  y=0  z=0
+Center of solvent box is: 37.548698, 56.323047, 56.323047
+Adding box at: x=1  y=0  z=1
+Center of solvent box is: 37.548698, 56.323047, 37.548698
+Adding box at: x=1  y=0  z=2
+Center of solvent box is: 37.548698, 56.323047, 18.774349
+Adding box at: x=1  y=0  z=3
+Center of solvent box is: 37.548698, 56.323047, 0.000000
+Adding box at: x=1  y=0  z=4
+Center of solvent box is: 37.548698, 56.323047, -18.774349
+Adding box at: x=1  y=0  z=5
+Center of solvent box is: 37.548698, 56.323047, -37.548698
+Adding box at: x=1  y=0  z=6
+Center of solvent box is: 37.548698, 56.323047, -56.323047
+Adding box at: x=1  y=1  z=0
+Center of solvent box is: 37.548698, 37.548698, 56.323047
+Adding box at: x=1  y=1  z=1
+Center of solvent box is: 37.548698, 37.548698, 37.548698
+Adding box at: x=1  y=1  z=2
+Center of solvent box is: 37.548698, 37.548698, 18.774349
+Adding box at: x=1  y=1  z=3
+Center of solvent box is: 37.548698, 37.548698, 0.000000
+Adding box at: x=1  y=1  z=4
+Center of solvent box is: 37.548698, 37.548698, -18.774349
+Adding box at: x=1  y=1  z=5
+Center of solvent box is: 37.548698, 37.548698, -37.548698
+Adding box at: x=1  y=1  z=6
+Center of solvent box is: 37.548698, 37.548698, -56.323047
+Adding box at: x=1  y=2  z=0
+Center of solvent box is: 37.548698, 18.774349, 56.323047
+Adding box at: x=1  y=2  z=1
+Center of solvent box is: 37.548698, 18.774349, 37.548698
+Adding box at: x=1  y=2  z=2
+Center of solvent box is: 37.548698, 18.774349, 18.774349
+Adding box at: x=1  y=2  z=3
+Center of solvent box is: 37.548698, 18.774349, 0.000000
+Adding box at: x=1  y=2  z=4
+Center of solvent box is: 37.548698, 18.774349, -18.774349
+Adding box at: x=1  y=2  z=5
+Center of solvent box is: 37.548698, 18.774349, -37.548698
+Adding box at: x=1  y=2  z=6
+Center of solvent box is: 37.548698, 18.774349, -56.323047
+Adding box at: x=1  y=3  z=0
+Center of solvent box is: 37.548698, 0.000000, 56.323047
+Adding box at: x=1  y=3  z=1
+Center of solvent box is: 37.548698, 0.000000, 37.548698
+Adding box at: x=1  y=3  z=2
+Center of solvent box is: 37.548698, 0.000000, 18.774349
+Adding box at: x=1  y=3  z=3
+Center of solvent box is: 37.548698, 0.000000, 0.000000
+Adding box at: x=1  y=3  z=4
+Center of solvent box is: 37.548698, 0.000000, -18.774349
+Adding box at: x=1  y=3  z=5
+Center of solvent box is: 37.548698, 0.000000, -37.548698
+Adding box at: x=1  y=3  z=6
+Center of solvent box is: 37.548698, 0.000000, -56.323047
+Adding box at: x=1  y=4  z=0
+Center of solvent box is: 37.548698, -18.774349, 56.323047
+Adding box at: x=1  y=4  z=1
+Center of solvent box is: 37.548698, -18.774349, 37.548698
+Adding box at: x=1  y=4  z=2
+Center of solvent box is: 37.548698, -18.774349, 18.774349
+Adding box at: x=1  y=4  z=3
+Center of solvent box is: 37.548698, -18.774349, 0.000000
+Adding box at: x=1  y=4  z=4
+Center of solvent box is: 37.548698, -18.774349, -18.774349
+Adding box at: x=1  y=4  z=5
+Center of solvent box is: 37.548698, -18.774349, -37.548698
+Adding box at: x=1  y=4  z=6
+Center of solvent box is: 37.548698, -18.774349, -56.323047
+Adding box at: x=1  y=5  z=0
+Center of solvent box is: 37.548698, -37.548698, 56.323047
+Adding box at: x=1  y=5  z=1
+Center of solvent box is: 37.548698, -37.548698, 37.548698
+Adding box at: x=1  y=5  z=2
+Center of solvent box is: 37.548698, -37.548698, 18.774349
+Adding box at: x=1  y=5  z=3
+Center of solvent box is: 37.548698, -37.548698, 0.000000
+Adding box at: x=1  y=5  z=4
+Center of solvent box is: 37.548698, -37.548698, -18.774349
+Adding box at: x=1  y=5  z=5
+Center of solvent box is: 37.548698, -37.548698, -37.548698
+Adding box at: x=1  y=5  z=6
+Center of solvent box is: 37.548698, -37.548698, -56.323047
+Adding box at: x=1  y=6  z=0
+Center of solvent box is: 37.548698, -56.323047, 56.323047
+Adding box at: x=1  y=6  z=1
+Center of solvent box is: 37.548698, -56.323047, 37.548698
+Adding box at: x=1  y=6  z=2
+Center of solvent box is: 37.548698, -56.323047, 18.774349
+Adding box at: x=1  y=6  z=3
+Center of solvent box is: 37.548698, -56.323047, 0.000000
+Adding box at: x=1  y=6  z=4
+Center of solvent box is: 37.548698, -56.323047, -18.774349
+Adding box at: x=1  y=6  z=5
+Center of solvent box is: 37.548698, -56.323047, -37.548698
+Adding box at: x=1  y=6  z=6
+Center of solvent box is: 37.548698, -56.323047, -56.323047
+Adding box at: x=2  y=0  z=0
+Center of solvent box is: 18.774349, 56.323047, 56.323047
+Adding box at: x=2  y=0  z=1
+Center of solvent box is: 18.774349, 56.323047, 37.548698
+Adding box at: x=2  y=0  z=2
+Center of solvent box is: 18.774349, 56.323047, 18.774349
+Adding box at: x=2  y=0  z=3
+Center of solvent box is: 18.774349, 56.323047, 0.000000
+Adding box at: x=2  y=0  z=4
+Center of solvent box is: 18.774349, 56.323047, -18.774349
+Adding box at: x=2  y=0  z=5
+Center of solvent box is: 18.774349, 56.323047, -37.548698
+Adding box at: x=2  y=0  z=6
+Center of solvent box is: 18.774349, 56.323047, -56.323047
+Adding box at: x=2  y=1  z=0
+Center of solvent box is: 18.774349, 37.548698, 56.323047
+Adding box at: x=2  y=1  z=1
+Center of solvent box is: 18.774349, 37.548698, 37.548698
+Adding box at: x=2  y=1  z=2
+Center of solvent box is: 18.774349, 37.548698, 18.774349
+Adding box at: x=2  y=1  z=3
+Center of solvent box is: 18.774349, 37.548698, 0.000000
+Adding box at: x=2  y=1  z=4
+Center of solvent box is: 18.774349, 37.548698, -18.774349
+Adding box at: x=2  y=1  z=5
+Center of solvent box is: 18.774349, 37.548698, -37.548698
+Adding box at: x=2  y=1  z=6
+Center of solvent box is: 18.774349, 37.548698, -56.323047
+Adding box at: x=2  y=2  z=0
+Center of solvent box is: 18.774349, 18.774349, 56.323047
+Adding box at: x=2  y=2  z=1
+Center of solvent box is: 18.774349, 18.774349, 37.548698
+Adding box at: x=2  y=2  z=2
+Center of solvent box is: 18.774349, 18.774349, 18.774349
+Adding box at: x=2  y=2  z=3
+Center of solvent box is: 18.774349, 18.774349, 0.000000
+Adding box at: x=2  y=2  z=4
+Center of solvent box is: 18.774349, 18.774349, -18.774349
+Adding box at: x=2  y=2  z=5
+Center of solvent box is: 18.774349, 18.774349, -37.548698
+Adding box at: x=2  y=2  z=6
+Center of solvent box is: 18.774349, 18.774349, -56.323047
+Adding box at: x=2  y=3  z=0
+Center of solvent box is: 18.774349, 0.000000, 56.323047
+Adding box at: x=2  y=3  z=1
+Center of solvent box is: 18.774349, 0.000000, 37.548698
+Adding box at: x=2  y=3  z=2
+Center of solvent box is: 18.774349, 0.000000, 18.774349
+Adding box at: x=2  y=3  z=3
+Center of solvent box is: 18.774349, 0.000000, 0.000000
+Adding box at: x=2  y=3  z=4
+Center of solvent box is: 18.774349, 0.000000, -18.774349
+Adding box at: x=2  y=3  z=5
+Center of solvent box is: 18.774349, 0.000000, -37.548698
+Adding box at: x=2  y=3  z=6
+Center of solvent box is: 18.774349, 0.000000, -56.323047
+Adding box at: x=2  y=4  z=0
+Center of solvent box is: 18.774349, -18.774349, 56.323047
+Adding box at: x=2  y=4  z=1
+Center of solvent box is: 18.774349, -18.774349, 37.548698
+Adding box at: x=2  y=4  z=2
+Center of solvent box is: 18.774349, -18.774349, 18.774349
+Adding box at: x=2  y=4  z=3
+Center of solvent box is: 18.774349, -18.774349, 0.000000
+Adding box at: x=2  y=4  z=4
+Center of solvent box is: 18.774349, -18.774349, -18.774349
+Adding box at: x=2  y=4  z=5
+Center of solvent box is: 18.774349, -18.774349, -37.548698
+Adding box at: x=2  y=4  z=6
+Center of solvent box is: 18.774349, -18.774349, -56.323047
+Adding box at: x=2  y=5  z=0
+Center of solvent box is: 18.774349, -37.548698, 56.323047
+Adding box at: x=2  y=5  z=1
+Center of solvent box is: 18.774349, -37.548698, 37.548698
+Adding box at: x=2  y=5  z=2
+Center of solvent box is: 18.774349, -37.548698, 18.774349
+Adding box at: x=2  y=5  z=3
+Center of solvent box is: 18.774349, -37.548698, 0.000000
+Adding box at: x=2  y=5  z=4
+Center of solvent box is: 18.774349, -37.548698, -18.774349
+Adding box at: x=2  y=5  z=5
+Center of solvent box is: 18.774349, -37.548698, -37.548698
+Adding box at: x=2  y=5  z=6
+Center of solvent box is: 18.774349, -37.548698, -56.323047
+Adding box at: x=2  y=6  z=0
+Center of solvent box is: 18.774349, -56.323047, 56.323047
+Adding box at: x=2  y=6  z=1
+Center of solvent box is: 18.774349, -56.323047, 37.548698
+Adding box at: x=2  y=6  z=2
+Center of solvent box is: 18.774349, -56.323047, 18.774349
+Adding box at: x=2  y=6  z=3
+Center of solvent box is: 18.774349, -56.323047, 0.000000
+Adding box at: x=2  y=6  z=4
+Center of solvent box is: 18.774349, -56.323047, -18.774349
+Adding box at: x=2  y=6  z=5
+Center of solvent box is: 18.774349, -56.323047, -37.548698
+Adding box at: x=2  y=6  z=6
+Center of solvent box is: 18.774349, -56.323047, -56.323047
+Adding box at: x=3  y=0  z=0
+Center of solvent box is: 0.000000, 56.323047, 56.323047
+Adding box at: x=3  y=0  z=1
+Center of solvent box is: 0.000000, 56.323047, 37.548698
+Adding box at: x=3  y=0  z=2
+Center of solvent box is: 0.000000, 56.323047, 18.774349
+Adding box at: x=3  y=0  z=3
+Center of solvent box is: 0.000000, 56.323047, 0.000000
+Adding box at: x=3  y=0  z=4
+Center of solvent box is: 0.000000, 56.323047, -18.774349
+Adding box at: x=3  y=0  z=5
+Center of solvent box is: 0.000000, 56.323047, -37.548698
+Adding box at: x=3  y=0  z=6
+Center of solvent box is: 0.000000, 56.323047, -56.323047
+Adding box at: x=3  y=1  z=0
+Center of solvent box is: 0.000000, 37.548698, 56.323047
+Adding box at: x=3  y=1  z=1
+Center of solvent box is: 0.000000, 37.548698, 37.548698
+Adding box at: x=3  y=1  z=2
+Center of solvent box is: 0.000000, 37.548698, 18.774349
+Adding box at: x=3  y=1  z=3
+Center of solvent box is: 0.000000, 37.548698, 0.000000
+Adding box at: x=3  y=1  z=4
+Center of solvent box is: 0.000000, 37.548698, -18.774349
+Adding box at: x=3  y=1  z=5
+Center of solvent box is: 0.000000, 37.548698, -37.548698
+Adding box at: x=3  y=1  z=6
+Center of solvent box is: 0.000000, 37.548698, -56.323047
+Adding box at: x=3  y=2  z=0
+Center of solvent box is: 0.000000, 18.774349, 56.323047
+Adding box at: x=3  y=2  z=1
+Center of solvent box is: 0.000000, 18.774349, 37.548698
+Adding box at: x=3  y=2  z=2
+Center of solvent box is: 0.000000, 18.774349, 18.774349
+Adding box at: x=3  y=2  z=3
+Center of solvent box is: 0.000000, 18.774349, 0.000000
+Adding box at: x=3  y=2  z=4
+Center of solvent box is: 0.000000, 18.774349, -18.774349
+Adding box at: x=3  y=2  z=5
+Center of solvent box is: 0.000000, 18.774349, -37.548698
+Adding box at: x=3  y=2  z=6
+Center of solvent box is: 0.000000, 18.774349, -56.323047
+Adding box at: x=3  y=3  z=0
+Center of solvent box is: 0.000000, 0.000000, 56.323047
+Adding box at: x=3  y=3  z=1
+Center of solvent box is: 0.000000, 0.000000, 37.548698
+Adding box at: x=3  y=3  z=2
+Center of solvent box is: 0.000000, 0.000000, 18.774349
+Adding box at: x=3  y=3  z=3
+Center of solvent box is: 0.000000, 0.000000, 0.000000
+Adding box at: x=3  y=3  z=4
+Center of solvent box is: 0.000000, 0.000000, -18.774349
+Adding box at: x=3  y=3  z=5
+Center of solvent box is: 0.000000, 0.000000, -37.548698
+Adding box at: x=3  y=3  z=6
+Center of solvent box is: 0.000000, 0.000000, -56.323047
+Adding box at: x=3  y=4  z=0
+Center of solvent box is: 0.000000, -18.774349, 56.323047
+Adding box at: x=3  y=4  z=1
+Center of solvent box is: 0.000000, -18.774349, 37.548698
+Adding box at: x=3  y=4  z=2
+Center of solvent box is: 0.000000, -18.774349, 18.774349
+Adding box at: x=3  y=4  z=3
+Center of solvent box is: 0.000000, -18.774349, 0.000000
+Adding box at: x=3  y=4  z=4
+Center of solvent box is: 0.000000, -18.774349, -18.774349
+Adding box at: x=3  y=4  z=5
+Center of solvent box is: 0.000000, -18.774349, -37.548698
+Adding box at: x=3  y=4  z=6
+Center of solvent box is: 0.000000, -18.774349, -56.323047
+Adding box at: x=3  y=5  z=0
+Center of solvent box is: 0.000000, -37.548698, 56.323047
+Adding box at: x=3  y=5  z=1
+Center of solvent box is: 0.000000, -37.548698, 37.548698
+Adding box at: x=3  y=5  z=2
+Center of solvent box is: 0.000000, -37.548698, 18.774349
+Adding box at: x=3  y=5  z=3
+Center of solvent box is: 0.000000, -37.548698, 0.000000
+Adding box at: x=3  y=5  z=4
+Center of solvent box is: 0.000000, -37.548698, -18.774349
+Adding box at: x=3  y=5  z=5
+Center of solvent box is: 0.000000, -37.548698, -37.548698
+Adding box at: x=3  y=5  z=6
+Center of solvent box is: 0.000000, -37.548698, -56.323047
+Adding box at: x=3  y=6  z=0
+Center of solvent box is: 0.000000, -56.323047, 56.323047
+Adding box at: x=3  y=6  z=1
+Center of solvent box is: 0.000000, -56.323047, 37.548698
+Adding box at: x=3  y=6  z=2
+Center of solvent box is: 0.000000, -56.323047, 18.774349
+Adding box at: x=3  y=6  z=3
+Center of solvent box is: 0.000000, -56.323047, 0.000000
+Adding box at: x=3  y=6  z=4
+Center of solvent box is: 0.000000, -56.323047, -18.774349
+Adding box at: x=3  y=6  z=5
+Center of solvent box is: 0.000000, -56.323047, -37.548698
+Adding box at: x=3  y=6  z=6
+Center of solvent box is: 0.000000, -56.323047, -56.323047
+Adding box at: x=4  y=0  z=0
+Center of solvent box is: -18.774349, 56.323047, 56.323047
+Adding box at: x=4  y=0  z=1
+Center of solvent box is: -18.774349, 56.323047, 37.548698
+Adding box at: x=4  y=0  z=2
+Center of solvent box is: -18.774349, 56.323047, 18.774349
+Adding box at: x=4  y=0  z=3
+Center of solvent box is: -18.774349, 56.323047, 0.000000
+Adding box at: x=4  y=0  z=4
+Center of solvent box is: -18.774349, 56.323047, -18.774349
+Adding box at: x=4  y=0  z=5
+Center of solvent box is: -18.774349, 56.323047, -37.548698
+Adding box at: x=4  y=0  z=6
+Center of solvent box is: -18.774349, 56.323047, -56.323047
+Adding box at: x=4  y=1  z=0
+Center of solvent box is: -18.774349, 37.548698, 56.323047
+Adding box at: x=4  y=1  z=1
+Center of solvent box is: -18.774349, 37.548698, 37.548698
+Adding box at: x=4  y=1  z=2
+Center of solvent box is: -18.774349, 37.548698, 18.774349
+Adding box at: x=4  y=1  z=3
+Center of solvent box is: -18.774349, 37.548698, 0.000000
+Adding box at: x=4  y=1  z=4
+Center of solvent box is: -18.774349, 37.548698, -18.774349
+Adding box at: x=4  y=1  z=5
+Center of solvent box is: -18.774349, 37.548698, -37.548698
+Adding box at: x=4  y=1  z=6
+Center of solvent box is: -18.774349, 37.548698, -56.323047
+Adding box at: x=4  y=2  z=0
+Center of solvent box is: -18.774349, 18.774349, 56.323047
+Adding box at: x=4  y=2  z=1
+Center of solvent box is: -18.774349, 18.774349, 37.548698
+Adding box at: x=4  y=2  z=2
+Center of solvent box is: -18.774349, 18.774349, 18.774349
+Adding box at: x=4  y=2  z=3
+Center of solvent box is: -18.774349, 18.774349, 0.000000
+Adding box at: x=4  y=2  z=4
+Center of solvent box is: -18.774349, 18.774349, -18.774349
+Adding box at: x=4  y=2  z=5
+Center of solvent box is: -18.774349, 18.774349, -37.548698
+Adding box at: x=4  y=2  z=6
+Center of solvent box is: -18.774349, 18.774349, -56.323047
+Adding box at: x=4  y=3  z=0
+Center of solvent box is: -18.774349, 0.000000, 56.323047
+Adding box at: x=4  y=3  z=1
+Center of solvent box is: -18.774349, 0.000000, 37.548698
+Adding box at: x=4  y=3  z=2
+Center of solvent box is: -18.774349, 0.000000, 18.774349
+Adding box at: x=4  y=3  z=3
+Center of solvent box is: -18.774349, 0.000000, 0.000000
+Adding box at: x=4  y=3  z=4
+Center of solvent box is: -18.774349, 0.000000, -18.774349
+Adding box at: x=4  y=3  z=5
+Center of solvent box is: -18.774349, 0.000000, -37.548698
+Adding box at: x=4  y=3  z=6
+Center of solvent box is: -18.774349, 0.000000, -56.323047
+Adding box at: x=4  y=4  z=0
+Center of solvent box is: -18.774349, -18.774349, 56.323047
+Adding box at: x=4  y=4  z=1
+Center of solvent box is: -18.774349, -18.774349, 37.548698
+Adding box at: x=4  y=4  z=2
+Center of solvent box is: -18.774349, -18.774349, 18.774349
+Adding box at: x=4  y=4  z=3
+Center of solvent box is: -18.774349, -18.774349, 0.000000
+Adding box at: x=4  y=4  z=4
+Center of solvent box is: -18.774349, -18.774349, -18.774349
+Adding box at: x=4  y=4  z=5
+Center of solvent box is: -18.774349, -18.774349, -37.548698
+Adding box at: x=4  y=4  z=6
+Center of solvent box is: -18.774349, -18.774349, -56.323047
+Adding box at: x=4  y=5  z=0
+Center of solvent box is: -18.774349, -37.548698, 56.323047
+Adding box at: x=4  y=5  z=1
+Center of solvent box is: -18.774349, -37.548698, 37.548698
+Adding box at: x=4  y=5  z=2
+Center of solvent box is: -18.774349, -37.548698, 18.774349
+Adding box at: x=4  y=5  z=3
+Center of solvent box is: -18.774349, -37.548698, 0.000000
+Adding box at: x=4  y=5  z=4
+Center of solvent box is: -18.774349, -37.548698, -18.774349
+Adding box at: x=4  y=5  z=5
+Center of solvent box is: -18.774349, -37.548698, -37.548698
+Adding box at: x=4  y=5  z=6
+Center of solvent box is: -18.774349, -37.548698, -56.323047
+Adding box at: x=4  y=6  z=0
+Center of solvent box is: -18.774349, -56.323047, 56.323047
+Adding box at: x=4  y=6  z=1
+Center of solvent box is: -18.774349, -56.323047, 37.548698
+Adding box at: x=4  y=6  z=2
+Center of solvent box is: -18.774349, -56.323047, 18.774349
+Adding box at: x=4  y=6  z=3
+Center of solvent box is: -18.774349, -56.323047, 0.000000
+Adding box at: x=4  y=6  z=4
+Center of solvent box is: -18.774349, -56.323047, -18.774349
+Adding box at: x=4  y=6  z=5
+Center of solvent box is: -18.774349, -56.323047, -37.548698
+Adding box at: x=4  y=6  z=6
+Center of solvent box is: -18.774349, -56.323047, -56.323047
+Adding box at: x=5  y=0  z=0
+Center of solvent box is: -37.548698, 56.323047, 56.323047
+Adding box at: x=5  y=0  z=1
+Center of solvent box is: -37.548698, 56.323047, 37.548698
+Adding box at: x=5  y=0  z=2
+Center of solvent box is: -37.548698, 56.323047, 18.774349
+Adding box at: x=5  y=0  z=3
+Center of solvent box is: -37.548698, 56.323047, 0.000000
+Adding box at: x=5  y=0  z=4
+Center of solvent box is: -37.548698, 56.323047, -18.774349
+Adding box at: x=5  y=0  z=5
+Center of solvent box is: -37.548698, 56.323047, -37.548698
+Adding box at: x=5  y=0  z=6
+Center of solvent box is: -37.548698, 56.323047, -56.323047
+Adding box at: x=5  y=1  z=0
+Center of solvent box is: -37.548698, 37.548698, 56.323047
+Adding box at: x=5  y=1  z=1
+Center of solvent box is: -37.548698, 37.548698, 37.548698
+Adding box at: x=5  y=1  z=2
+Center of solvent box is: -37.548698, 37.548698, 18.774349
+Adding box at: x=5  y=1  z=3
+Center of solvent box is: -37.548698, 37.548698, 0.000000
+Adding box at: x=5  y=1  z=4
+Center of solvent box is: -37.548698, 37.548698, -18.774349
+Adding box at: x=5  y=1  z=5
+Center of solvent box is: -37.548698, 37.548698, -37.548698
+Adding box at: x=5  y=1  z=6
+Center of solvent box is: -37.548698, 37.548698, -56.323047
+Adding box at: x=5  y=2  z=0
+Center of solvent box is: -37.548698, 18.774349, 56.323047
+Adding box at: x=5  y=2  z=1
+Center of solvent box is: -37.548698, 18.774349, 37.548698
+Adding box at: x=5  y=2  z=2
+Center of solvent box is: -37.548698, 18.774349, 18.774349
+Adding box at: x=5  y=2  z=3
+Center of solvent box is: -37.548698, 18.774349, 0.000000
+Adding box at: x=5  y=2  z=4
+Center of solvent box is: -37.548698, 18.774349, -18.774349
+Adding box at: x=5  y=2  z=5
+Center of solvent box is: -37.548698, 18.774349, -37.548698
+Adding box at: x=5  y=2  z=6
+Center of solvent box is: -37.548698, 18.774349, -56.323047
+Adding box at: x=5  y=3  z=0
+Center of solvent box is: -37.548698, 0.000000, 56.323047
+Adding box at: x=5  y=3  z=1
+Center of solvent box is: -37.548698, 0.000000, 37.548698
+Adding box at: x=5  y=3  z=2
+Center of solvent box is: -37.548698, 0.000000, 18.774349
+Adding box at: x=5  y=3  z=3
+Center of solvent box is: -37.548698, 0.000000, 0.000000
+Adding box at: x=5  y=3  z=4
+Center of solvent box is: -37.548698, 0.000000, -18.774349
+Adding box at: x=5  y=3  z=5
+Center of solvent box is: -37.548698, 0.000000, -37.548698
+Adding box at: x=5  y=3  z=6
+Center of solvent box is: -37.548698, 0.000000, -56.323047
+Adding box at: x=5  y=4  z=0
+Center of solvent box is: -37.548698, -18.774349, 56.323047
+Adding box at: x=5  y=4  z=1
+Center of solvent box is: -37.548698, -18.774349, 37.548698
+Adding box at: x=5  y=4  z=2
+Center of solvent box is: -37.548698, -18.774349, 18.774349
+Adding box at: x=5  y=4  z=3
+Center of solvent box is: -37.548698, -18.774349, 0.000000
+Adding box at: x=5  y=4  z=4
+Center of solvent box is: -37.548698, -18.774349, -18.774349
+Adding box at: x=5  y=4  z=5
+Center of solvent box is: -37.548698, -18.774349, -37.548698
+Adding box at: x=5  y=4  z=6
+Center of solvent box is: -37.548698, -18.774349, -56.323047
+Adding box at: x=5  y=5  z=0
+Center of solvent box is: -37.548698, -37.548698, 56.323047
+Adding box at: x=5  y=5  z=1
+Center of solvent box is: -37.548698, -37.548698, 37.548698
+Adding box at: x=5  y=5  z=2
+Center of solvent box is: -37.548698, -37.548698, 18.774349
+Adding box at: x=5  y=5  z=3
+Center of solvent box is: -37.548698, -37.548698, 0.000000
+Adding box at: x=5  y=5  z=4
+Center of solvent box is: -37.548698, -37.548698, -18.774349
+Adding box at: x=5  y=5  z=5
+Center of solvent box is: -37.548698, -37.548698, -37.548698
+Adding box at: x=5  y=5  z=6
+Center of solvent box is: -37.548698, -37.548698, -56.323047
+Adding box at: x=5  y=6  z=0
+Center of solvent box is: -37.548698, -56.323047, 56.323047
+Adding box at: x=5  y=6  z=1
+Center of solvent box is: -37.548698, -56.323047, 37.548698
+Adding box at: x=5  y=6  z=2
+Center of solvent box is: -37.548698, -56.323047, 18.774349
+Adding box at: x=5  y=6  z=3
+Center of solvent box is: -37.548698, -56.323047, 0.000000
+Adding box at: x=5  y=6  z=4
+Center of solvent box is: -37.548698, -56.323047, -18.774349
+Adding box at: x=5  y=6  z=5
+Center of solvent box is: -37.548698, -56.323047, -37.548698
+Adding box at: x=5  y=6  z=6
+Center of solvent box is: -37.548698, -56.323047, -56.323047
+Adding box at: x=6  y=0  z=0
+Center of solvent box is: -56.323047, 56.323047, 56.323047
+Adding box at: x=6  y=0  z=1
+Center of solvent box is: -56.323047, 56.323047, 37.548698
+Adding box at: x=6  y=0  z=2
+Center of solvent box is: -56.323047, 56.323047, 18.774349
+Adding box at: x=6  y=0  z=3
+Center of solvent box is: -56.323047, 56.323047, 0.000000
+Adding box at: x=6  y=0  z=4
+Center of solvent box is: -56.323047, 56.323047, -18.774349
+Adding box at: x=6  y=0  z=5
+Center of solvent box is: -56.323047, 56.323047, -37.548698
+Adding box at: x=6  y=0  z=6
+Center of solvent box is: -56.323047, 56.323047, -56.323047
+Adding box at: x=6  y=1  z=0
+Center of solvent box is: -56.323047, 37.548698, 56.323047
+Adding box at: x=6  y=1  z=1
+Center of solvent box is: -56.323047, 37.548698, 37.548698
+Adding box at: x=6  y=1  z=2
+Center of solvent box is: -56.323047, 37.548698, 18.774349
+Adding box at: x=6  y=1  z=3
+Center of solvent box is: -56.323047, 37.548698, 0.000000
+Adding box at: x=6  y=1  z=4
+Center of solvent box is: -56.323047, 37.548698, -18.774349
+Adding box at: x=6  y=1  z=5
+Center of solvent box is: -56.323047, 37.548698, -37.548698
+Adding box at: x=6  y=1  z=6
+Center of solvent box is: -56.323047, 37.548698, -56.323047
+Adding box at: x=6  y=2  z=0
+Center of solvent box is: -56.323047, 18.774349, 56.323047
+Adding box at: x=6  y=2  z=1
+Center of solvent box is: -56.323047, 18.774349, 37.548698
+Adding box at: x=6  y=2  z=2
+Center of solvent box is: -56.323047, 18.774349, 18.774349
+Adding box at: x=6  y=2  z=3
+Center of solvent box is: -56.323047, 18.774349, 0.000000
+Adding box at: x=6  y=2  z=4
+Center of solvent box is: -56.323047, 18.774349, -18.774349
+Adding box at: x=6  y=2  z=5
+Center of solvent box is: -56.323047, 18.774349, -37.548698
+Adding box at: x=6  y=2  z=6
+Center of solvent box is: -56.323047, 18.774349, -56.323047
+Adding box at: x=6  y=3  z=0
+Center of solvent box is: -56.323047, 0.000000, 56.323047
+Adding box at: x=6  y=3  z=1
+Center of solvent box is: -56.323047, 0.000000, 37.548698
+Adding box at: x=6  y=3  z=2
+Center of solvent box is: -56.323047, 0.000000, 18.774349
+Adding box at: x=6  y=3  z=3
+Center of solvent box is: -56.323047, 0.000000, 0.000000
+Adding box at: x=6  y=3  z=4
+Center of solvent box is: -56.323047, 0.000000, -18.774349
+Adding box at: x=6  y=3  z=5
+Center of solvent box is: -56.323047, 0.000000, -37.548698
+Adding box at: x=6  y=3  z=6
+Center of solvent box is: -56.323047, 0.000000, -56.323047
+Adding box at: x=6  y=4  z=0
+Center of solvent box is: -56.323047, -18.774349, 56.323047
+Adding box at: x=6  y=4  z=1
+Center of solvent box is: -56.323047, -18.774349, 37.548698
+Adding box at: x=6  y=4  z=2
+Center of solvent box is: -56.323047, -18.774349, 18.774349
+Adding box at: x=6  y=4  z=3
+Center of solvent box is: -56.323047, -18.774349, 0.000000
+Adding box at: x=6  y=4  z=4
+Center of solvent box is: -56.323047, -18.774349, -18.774349
+Adding box at: x=6  y=4  z=5
+Center of solvent box is: -56.323047, -18.774349, -37.548698
+Adding box at: x=6  y=4  z=6
+Center of solvent box is: -56.323047, -18.774349, -56.323047
+Adding box at: x=6  y=5  z=0
+Center of solvent box is: -56.323047, -37.548698, 56.323047
+Adding box at: x=6  y=5  z=1
+Center of solvent box is: -56.323047, -37.548698, 37.548698
+Adding box at: x=6  y=5  z=2
+Center of solvent box is: -56.323047, -37.548698, 18.774349
+Adding box at: x=6  y=5  z=3
+Center of solvent box is: -56.323047, -37.548698, 0.000000
+Adding box at: x=6  y=5  z=4
+Center of solvent box is: -56.323047, -37.548698, -18.774349
+Adding box at: x=6  y=5  z=5
+Center of solvent box is: -56.323047, -37.548698, -37.548698
+Adding box at: x=6  y=5  z=6
+Center of solvent box is: -56.323047, -37.548698, -56.323047
+Adding box at: x=6  y=6  z=0
+Center of solvent box is: -56.323047, -56.323047, 56.323047
+Adding box at: x=6  y=6  z=1
+Center of solvent box is: -56.323047, -56.323047, 37.548698
+Adding box at: x=6  y=6  z=2
+Center of solvent box is: -56.323047, -56.323047, 18.774349
+Adding box at: x=6  y=6  z=3
+Center of solvent box is: -56.323047, -56.323047, 0.000000
+Adding box at: x=6  y=6  z=4
+Center of solvent box is: -56.323047, -56.323047, -18.774349
+Adding box at: x=6  y=6  z=5
+Center of solvent box is: -56.323047, -56.323047, -37.548698
+Adding box at: x=6  y=6  z=6
+Center of solvent box is: -56.323047, -56.323047, -56.323047
+  Volume: 1663246.238 A^3 
+  Total mass 864088.618 amu,  Density 0.863 g/cc
+  Added 44282 residues.
+> saveamberparm complex complex.prmtop complex.inpcrd
+Checking Unit.
+WARNING: The unperturbed charge of the unit: -14.000000 is not zero.
+
+ -- ignoring the warning.
+
+Building topology.
+Building atom parameters.
+Building bond parameters.
+Building angle parameters.
+Building proper torsion parameters.
+Building improper torsion parameters.
+ ** Warning: No sp2 improper torsion term for  NA-CA-CN-CB
+        atoms are: NE1 CZ2 CE2 CD2
+ ** Warning: No sp2 improper torsion term for  C*-CN-CB-CA
+        atoms are: CG CE2 CD2 CE3
+ total 1803 improper torsions applied
+Building H-Bond parameters.
+Incorporating Non-Bonded adjustments.
+Not Marking per-residue atom chain types.
+Marking per-residue atom chain types.
+  (Residues lacking connect0/connect1 - 
+   these don't have chain types marked:
+
+	res	total affected
+
+	CGLY	1
+	MOL	1
+	NHIE	1
+	WAT	44282
+  )
+ (no restraints)
+> savepdb complex complex.pdb
+Writing pdb file: complex.pdb
+ Converting N-terminal residue name to PDB format: NHIE -> HIE
+ Converting C-terminal residue name to PDB format: CGLY -> GLY
+> 
+> # Solvate ligand.
+> solvatebox ligand TIP3PBOX 10.0 iso
+  Solute vdw bounding box:              9.018 6.022 10.917
+  Total bounding box for atom centers:  30.917 30.917 30.917
+      (box expansion for 'iso' is  26.6%)
+  Solvent unit box:                     18.774 18.774 18.774
+The number of boxes:  x= 2  y= 2  z= 2
+Adding box at: x=0  y=0  z=0
+Center of solvent box is: 9.387175, 9.387175, 9.387175
+Adding box at: x=0  y=0  z=1
+Center of solvent box is: 9.387175, 9.387175, -9.387175
+Adding box at: x=0  y=1  z=0
+Center of solvent box is: 9.387175, -9.387175, 9.387175
+Adding box at: x=0  y=1  z=1
+Center of solvent box is: 9.387175, -9.387175, -9.387175
+Adding box at: x=1  y=0  z=0
+Center of solvent box is: -9.387175, 9.387175, 9.387175
+Adding box at: x=1  y=0  z=1
+Center of solvent box is: -9.387175, 9.387175, -9.387175
+Adding box at: x=1  y=1  z=0
+Center of solvent box is: -9.387175, -9.387175, 9.387175
+Adding box at: x=1  y=1  z=1
+Center of solvent box is: -9.387175, -9.387175, -9.387175
+  Volume: 39926.148 A^3 
+  Total mass 15529.786 amu,  Density 0.646 g/cc
+  Added 852 residues.
+> saveamberparm ligand solvent.prmtop solvent.inpcrd
+Checking Unit.
+Building topology.
+Building atom parameters.
+Building bond parameters.
+Building angle parameters.
+Building proper torsion parameters.
+Building improper torsion parameters.
+ total 8 improper torsions applied
+Building H-Bond parameters.
+Incorporating Non-Bonded adjustments.
+Not Marking per-residue atom chain types.
+Marking per-residue atom chain types.
+  (Residues lacking connect0/connect1 - 
+   these don't have chain types marked:
+
+	res	total affected
+
+	MOL	1
+	WAT	852
+  )
+ (no restraints)
+> savepdb ligand solvent.pdb
+Writing pdb file: solvent.pdb
+> 
+> quit
+	Quit
