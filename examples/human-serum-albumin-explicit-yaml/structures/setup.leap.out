@@ -1,0 +1,133 @@
+-I: Adding /Users/choderaj/anaconda/bin/../dat/leap/prep to search path.
+-I: Adding /Users/choderaj/anaconda/bin/../dat/leap/lib to search path.
+-I: Adding /Users/choderaj/anaconda/bin/../dat/leap/parm to search path.
+-I: Adding /Users/choderaj/anaconda/bin/../dat/leap/cmd to search path.
+-f: Source setup.leap.in.
+
+Welcome to LEaP!
+(no leaprc in search path)
+Sourcing: ./setup.leap.in
+----- Source: /Users/choderaj/anaconda/bin/../dat/leap/cmd/oldff/leaprc.ff99SBildn
+----- Source of /Users/choderaj/anaconda/bin/../dat/leap/cmd/oldff/leaprc.ff99SBildn done
+Log file: ./leap.log
+Loading parameters: /Users/choderaj/anaconda/bin/../dat/leap/parm/parm99.dat
+Reading title:
+PARM99 for DNA,RNA,AA, organic molecules, TIP3P wat. Polariz.& LP incl.02/04/99
+Loading parameters: /Users/choderaj/anaconda/bin/../dat/leap/parm/frcmod.ff99SBildn
+Reading force field modification type file (frcmod)
+Reading title:
+Modification/update of parm99.dat (Hornak & Simmerling) + ILDN corrections
+Loading library: /Users/choderaj/anaconda/bin/../dat/leap/lib/all_nucleic94.lib
+Loading library: /Users/choderaj/anaconda/bin/../dat/leap/lib/all_amino94ildn.lib
+Loading library: /Users/choderaj/anaconda/bin/../dat/leap/lib/all_aminoct94ildn.lib
+Loading library: /Users/choderaj/anaconda/bin/../dat/leap/lib/all_aminont94ildn.lib
+Loading library: /Users/choderaj/anaconda/bin/../dat/leap/lib/ions94.lib
+Loading library: /Users/choderaj/anaconda/bin/../dat/leap/lib/solvents.lib
+----- Source: /Users/choderaj/anaconda/bin/../dat/leap/cmd/leaprc.gaff
+----- Source of /Users/choderaj/anaconda/bin/../dat/leap/cmd/leaprc.gaff done
+Log file: ./leap.log
+Loading parameters: /Users/choderaj/anaconda/bin/../dat/leap/parm/gaff.dat
+Reading title:
+AMBER General Force Field for organic molecules (Version 1.7, Nov 2013)
+Loading PDB file: ./receptor.pdbfixer.CYX.pdb
+  total atoms in file: 4631
+  Leap added 4554 missing atoms according to residue templates:
+       4554 H / lone pairs
+Loading parameters: ./ligand.gaff.frcmod
+Reading force field modification type file (frcmod)
+Reading title:
+Remark line goes here
+Loading parameters: ./ligand.gaff.frcmod
+Reading force field modification type file (frcmod)
+Reading title:
+Remark line goes here
+Loading Mol2 file: ./ligand.gaff.mol2
+Reading MOLECULE named aspirin
+Checking Unit.
+Building topology.
+Building atom parameters.
+Building bond parameters.
+Building angle parameters.
+Building proper torsion parameters.
+Building improper torsion parameters.
+ total 8 improper torsions applied
+Building H-Bond parameters.
+Incorporating Non-Bonded adjustments.
+Not Marking per-residue atom chain types.
+Marking per-residue atom chain types.
+  (Residues lacking connect0/connect1 - 
+   these don't have chain types marked:
+
+	res	total affected
+
+	MOL	1
+  )
+ (no restraints)
+Writing pdb file: vacuum.pdb
+  Solute vdw bounding box:              95.153 55.015 83.646
+  Total bounding box for atom centers:  115.153 115.153 115.153
+      (box expansion for 'iso' is  70.5%)
+  Solvent unit box:                     18.774 18.774 18.774
+  Volume: 1663246.238 A^3 
+  Total mass 864088.618 amu,  Density 0.863 g/cc
+  Added 44282 residues.
+Checking Unit.
+WARNING: The unperturbed charge of the unit: -14.000000 is not zero.
+
+ -- ignoring the warning.
+
+Building topology.
+Building atom parameters.
+Building bond parameters.
+Building angle parameters.
+Building proper torsion parameters.
+Building improper torsion parameters.
+ total 1803 improper torsions applied
+Building H-Bond parameters.
+Incorporating Non-Bonded adjustments.
+Not Marking per-residue atom chain types.
+Marking per-residue atom chain types.
+  (Residues lacking connect0/connect1 - 
+   these don't have chain types marked:
+
+	res	total affected
+
+	CGLY	1
+	MOL	1
+	NHIE	1
+	WAT	44282
+  )
+ (no restraints)
+Writing pdb file: complex.pdb
+ Converting N-terminal residue name to PDB format: NHIE -> HIE
+ Converting C-terminal residue name to PDB format: CGLY -> GLY
+  Solute vdw bounding box:              9.018 6.022 10.917
+  Total bounding box for atom centers:  30.917 30.917 30.917
+      (box expansion for 'iso' is  26.6%)
+  Solvent unit box:                     18.774 18.774 18.774
+  Volume: 39926.148 A^3 
+  Total mass 15529.786 amu,  Density 0.646 g/cc
+  Added 852 residues.
+Checking Unit.
+Building topology.
+Building atom parameters.
+Building bond parameters.
+Building angle parameters.
+Building proper torsion parameters.
+Building improper torsion parameters.
+ total 8 improper torsions applied
+Building H-Bond parameters.
+Incorporating Non-Bonded adjustments.
+Not Marking per-residue atom chain types.
+Marking per-residue atom chain types.
+  (Residues lacking connect0/connect1 - 
+   these don't have chain types marked:
+
+	res	total affected
+
+	MOL	1
+	WAT	852
+  )
+ (no restraints)
+Writing pdb file: solvent.pdb
+	Quit

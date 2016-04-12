@@ -1,0 +1,39 @@
+# Create a benzene-toluene system.
+
+# Load AMBER '96 forcefield for protein.
+source oldff/leaprc.ff99SBildn
+
+# Load GAFF parameters.
+source leaprc.gaff
+
+# Load in protein.
+receptor = loadPdb receptor.pdbfixer.CYX.pdb
+
+# Load parameters for ligand.
+mods = loadAmberParams ligand.gaff.frcmod
+
+# Load parameters for ligand.
+loadAmberParams ligand.gaff.frcmod
+
+# Load ligand.
+ligand = loadMol2 ligand.gaff.mol2
+
+# Translate the ligand
+translate ligand { 0 20.0 10.0 }
+
+# Write ligand in vacuum.
+saveamberparm ligand vacuum.prmtop vacuum.inpcrd
+savepdb ligand vacuum.pdb
+
+# Create complex.
+complex = combine { receptor ligand }
+solvatebox complex TIP3PBOX 10.0 iso
+saveamberparm complex complex.prmtop complex.inpcrd
+savepdb complex complex.pdb
+
+# Solvate ligand.
+solvatebox ligand TIP3PBOX 10.0 iso
+saveamberparm ligand solvent.prmtop solvent.inpcrd
+savepdb ligand solvent.pdb
+
+quit
