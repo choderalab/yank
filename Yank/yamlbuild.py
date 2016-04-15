@@ -861,7 +861,7 @@ class SetupDatabase:
 
                 # Run epik and convert from maestro to both mol2 and sdf
                 # to not lose neither the penalties nor the residue name
-                omt.schrodinger.run_epik(mol_descr['filepath'], epik_mae_file, tautomerize=True,
+                omt.schrodinger.run_epik(mol_descr['filepath'], epik_mae_file, tautomerize=False,
                                          extract_range=epik_idx)
                 omt.schrodinger.run_structconvert(epik_mae_file, epik_sdf_file)
                 omt.schrodinger.run_structconvert(epik_mae_file, epik_mol2_file)
