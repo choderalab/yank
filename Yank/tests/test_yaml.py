@@ -630,17 +630,26 @@ def test_epik_enumeration():
                 filepath: {}
                 epik: 0
                 parameters: antechamber
-        """.format(tmp_dir, examples_paths()['benzene'])
+            benzene-custom:
+                filepath: {}
+                epik:
+                    extract_range: 0
+                    ph: 7.0
+                    tautomerize: yes
+                parameters: antechamber
+        """.format(tmp_dir, examples_paths()['benzene'], examples_paths()['benzene'])
 
+        mol_ids = ['benzene', 'benzene-custom']
         yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
-        yaml_builder._db._setup_molecules('benzene')
+        yaml_builder._db._setup_molecules(*mol_ids)
 
-        output_basename = os.path.join(tmp_dir, SetupDatabase.MOLECULES_DIR, 'benzene',
-                                       'benzene-epik.')
-        assert os.path.exists(output_basename + 'mol2')
-        assert os.path.getsize(output_basename + 'mol2') > 0
-        assert os.path.exists(output_basename + 'sdf')
-        assert os.path.getsize(output_basename + 'sdf') > 0
+        for mol_id in mol_ids:
+            output_basename = os.path.join(tmp_dir, SetupDatabase.MOLECULES_DIR,
+                                           mol_id, mol_id + '-epik.')
+            assert os.path.exists(output_basename + 'mol2')
+            assert os.path.getsize(output_basename + 'mol2') > 0
+            assert os.path.exists(output_basename + 'sdf')
+            assert os.path.getsize(output_basename + 'sdf') > 0
 
 
 def test_strip_protons():

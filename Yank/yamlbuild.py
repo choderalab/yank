@@ -853,16 +853,20 @@ class SetupDatabase:
 
             # Enumerate protonation states with epik
             if 'epik' in mol_descr:
-                epik_idx = mol_descr['epik']
                 epik_base_path = os.path.join(mol_dir, mol_id + '-epik.')
                 epik_mae_file = epik_base_path + 'mae'
                 epik_mol2_file = epik_base_path + 'mol2'
                 epik_sdf_file = epik_base_path + 'sdf'
 
+                # The 'epik' keyword can contain both a dictionary with the
+                # arguments to pass to run_epik(), or just the index
+                epik_args = mol_descr['epik']
+                if not isinstance(epik_args, dict):
+                    epik_args = {'extract_range': epik_args, 'tautomerize': False}
+
                 # Run epik and convert from maestro to both mol2 and sdf
                 # to not lose neither the penalties nor the residue name
-                omt.schrodinger.run_epik(mol_descr['filepath'], epik_mae_file, tautomerize=False,
-                                         extract_range=epik_idx)
+                omt.schrodinger.run_epik(mol_descr['filepath'], epik_mae_file, **epik_args)
                 omt.schrodinger.run_structconvert(epik_mae_file, epik_sdf_file)
                 omt.schrodinger.run_structconvert(epik_mae_file, epik_mol2_file)
 
@@ -1339,7 +1343,7 @@ class YamlBuilder:
         file_formats = set(['mol2', 'sdf', 'pdb', 'smiles', 'csv'])
         sources = set(['filepath', 'name', 'smiles'])
         template_mol = {'filepath': 'str', 'name': 'str', 'smiles': 'str',
-                        'parameters': 'str', 'epik': 0, 'select': 0,
+                        'parameters': 'str', 'epik': None, 'select': 0,
                         'strip_protons': False}
 
         self._db.molecules = yaml_content.get('molecules', {})
