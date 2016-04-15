@@ -553,6 +553,10 @@ def test_setup_name_smiles_openeye_charges():
             else:  # With antechamber, sqm should alter the charges a little
                 assert not input_charges.equals(output_charges)
 
+        # Check that molecules are resumed correctly
+        yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
+        yaml_builder._db._setup_molecules('toluene', 'p-xylene')
+
 
 @unittest.skipIf(not utils.is_openeye_installed(), 'This test requires OpenEye installed.')
 def test_clashing_atoms():
