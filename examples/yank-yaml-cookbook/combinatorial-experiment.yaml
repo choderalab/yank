@@ -1,0 +1,126 @@
+# This example show how to setup a combinatorial experiment. We have
+# 2 receptors (each in 2 different conformations) and 2 ligands and we
+# want to measure the binding affinities for all possible combination
+# of these molecules in both implicit and explicit solvent.
+
+# Three dashes start a YAML script
+---
+
+# See the file "all-options.yaml" for the meaning of these options.
+# -----------------------------------------------------------------
+options:
+  verbose: true
+  mpi: yes
+  output_dir: test_kinase
+  temperature: 310*kelvin
+  pressure: 1*atmosphere
+  constraints: HBonds
+  number_of_iterations: 200
+  minimize: yes
+  softcore_beta: 0.0
+
+
+# In the "molecules" section we specify how we want to our molecules
+# to be prepared (i.e. their initial structure and which force
+# field parameters to use for them).
+# ------------------------------------------------------------------
+molecules:
+  abl:                                              # Each molecule is identified by an ID, "abl" in this case.
+    filepath: [2HYY.pdb, 3CS9.pdb]                  # Every list within square brackets in here will be expanded
+                                                    # combinatorially, so the section "abl" actually specifies
+                                                    # two different starting configurations of the kinase Abl.
+    parameters: oldff/leaprc.ff99SBildn             # Both of them will use the parameters in AMBER ff99SBildn
+                                                    # force field.
+    strip_protons: yes                              # Let tleap re-add all hydrogen atoms. This is useful if
+                                                    # the PDB contains atom names for hydrogen that AMBER does
+                                                    # not recognize. The default for this parameter is "no".
+  src:
+    filepath: [2OIQ_A.pdb, 3EL7_A.pdb]
+    parameters: oldff/leaprc.ff99SBildn
+    strip_protons: yes
+  imatinib:
+    filepath: clinical-kinase-inhibitors.csv        # Yank supports pdb, mol2, sdf and csv files. The last one
+                                                    # must contain one row for each molecule. The last column
+                                                    # must be the SMILES description of the molecule. Yank can use
+                                                    # the OpenEye toolkit to generate a molecule from its name
+                                                    # or its SMILES description. Instead of using "filepath",
+                                                    # you can directly use "smiles" or "name". For example, to
+                                                    # specify a benzene molecule you can use either:
+                                                    #
+                                                    # molecules:
+                                                    #   benzene_smiles:
+                                                    #     smiles: c1ccccc1
+                                                    #     parameters: antechamber
+                                                    #   benzene_name:
+                                                    #     smiles: benzene
+                                                    #     parameters: antechamber
+                                                    #
+    select: 0                                       # Select the first row of the csv file which contains the
+                                                    # SMILES description of imatinib. Note that the list syntax
+                                                    # works everywhere within the "molecules" section, so you
+                                                    # could specify both imatinib and bosutinib using
+                                                    #
+                                                    # molecules:
+                                                    #   ligand:
+                                                    #     filepath: clinical-kinase-inhibitors.csv
+                                                    #     parameters: antechamber
+                                                    #     select: [0, 3]
+                                                    #
+                                                    # The "select" keyword works the same way if you specify a
+                                                    # pdb, mol2, or an sdf file containing multiple structures.
+                                                    # You can alternatively specify "select: all" which includes
+                                                    # all the molecules in the given file. This is also the
+                                                    # default value.
+    parameters: antechamber                         # Let antechamber parametrize the molecule using GAFF and
+                                                    # AM1-BCC charges.
+    epik: 0                                         # Run Schrodinger's tool Epik and select the most likely
+                                                    # protonation state for the molecule (in solution)
+  bosutinib:
+    filepath: clinical-kinase-inhibitors.csv
+    parameters: antechamber
+    epik: 0
+    select: 3
+
+
+# Here we specify the parameters of our solvent.
+# -----------------------------------------------------------------
+solvents:
+  RF:
+    nonbonded_method: CutoffPeriodic                # This specifies an explicit solvent using reaction field.
+    nonbonded_cutoff: 1*nanometer                   # Cutoff for interaction is set at 1nm.
+    clearance: 10*angstroms                         # The edge of the solvation box will be at a 10 angstroms
+                                                    # distance from any atom of the receptor and ligand.
+    positive_ion: Na+                               # Neutralizing ions to use.
+    negative_ion: Cl-
+  GBSA:
+    nonbonded_method: NoCutoff                      # Implicit solvent using GBSA/OBC2 model.
+    implicit_solvent: OBC2
+
+
+# Here we specify the alchemical path of our simulation.
+# -----------------------------------------------------------------
+protocols:
+  absolute-binding:
+    phases:
+      complex:
+        alchemical_path:
+          lambda_electrostatics: [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0, 0.0, 0,0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+          lambda_sterics: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0]
+      solvent:
+        alchemical_path:
+          lambda_electrostatics: [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0, 0.0, 0,0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+          lambda_sterics: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0]
+
+
+# Here we specify the which calculations to set up and run. Just as
+# in the section "molecules", every list within square brackets in
+# the section "experiments" will be expanded combinatorially. Here
+# below we have 2x2x2x2=16 calculations to run (2 receptors x
+# x 2 initial receptor structures x 2 ligands x 2 solvent models).
+# -----------------------------------------------------------------
+experiments:                            # If you don't need combinations but you only want to run
+  components:                           # a single calculation, just don't use lists. For example
+    receptor: [abl, src]                #   receptor: abl
+    ligand: [imatinib, bosutinib]       #   ligand: imatinib
+    solvent: [RF, GBSA]                 #   solvent: RF
+  protocol: absolute-binding

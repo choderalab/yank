@@ -466,10 +466,6 @@ class ReplicaExchange(object):
        Number of equilibration iterations before beginning exchanges (default: 0)
     equilibration_timestep : simtk.unit.Quantity (units: time)
        Timestep for use in equilibration (default: 2 fs)
-    replica_mixing_scheme : str
-       Scheme used to swap replicas: 'swap-all' or 'swap-neighbors' (default: 'swap-all')
-    online_analysis : bool
-       If True, analysis will occur each iteration (default: False)
     title : str
        Title for the simulation.
     minimize : bool

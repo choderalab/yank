@@ -1,0 +1,80 @@
+# Here are listed all the options that is possible to specify in a
+# Yank YAML script. There are no mandatory options. If not specified,
+# an option assumes the default value listed below.
+---
+options:
+  # GENERAL OPTIONS
+  # ---------------
+  verbose: no                       # Turn on/off verbose output.
+  mpi: no                           # Turn on/off message passing interface protocol to run
+                                    # simulation through multiple nodes.
+  resume_setup: no                  # By default, Yank will raise an error when it detects
+  resume_simulation: no             # that it will have to overwrite an existing file. Set
+                                    # resume_setup and/or resume_simulation if you want Yank
+                                    # to resume from an existing setup (molecules and system
+                                    # files) and/or simulation (netcdf4 trajectory files)
+                                    # respectively instead.
+  output_dir: output                # The main output folder. A relative path is interpreted
+                                    # as relative w.r.t. the YAML script path.
+  setup_dir: setup                  # The main folder where the setup and simulation files
+  experiments_dir: experiments      # are saved. Relative paths are interpreted as relative
+                                    # w.r.t. output_dir path.
+
+  # SYSTEM AND SIMULATION PREPARATION
+  # ---------------------------------
+  pack: yes                                     # If the ligand is far away from the receptor or if there
+                                                # are clashing atoms (defined as closer than 1.5 angstroms),
+                                                # Yank will randomly translate and rotate the ligand until
+                                                # this is solved. Set this to no if you don't wan't to
+                                                # modify the initial position of the ligand.
+  randomize_ligand: no                          # Randomize the position of the ligand before starting the
+  randomize_ligand_sigma_multiplier: 2.0        # simulation. This works only in implicit solvent. The
+  randomize_ligand_close_cutoff: 1.5 * angstrom # ligand will be randomly rotated and displaced by a vector
+                                                # with magnitude proportional to randomize_ligand_sigma_multiplier
+                                                # with the constraint of being at a distance greater than
+                                                # randomize_ligand_close_cutoff from the receptor.
+  temperature: 298.0 * kelvin                   # Temperature of the system.
+  pressure: 1.0 * atmosphere                    # Pressure of the system.
+  hydrogen_mass: 1.0 * amu                      # Hydrogen mass for HMR simulations.
+  constraints: HBonds                           # Constrain bond lengths and angles. Possible values are None,
+                                                # HBonds, AllBonds, and HAngles (see Openmm createSystem()).
+  restraint_type: flat-bottom                   # Apply a restrain to the ligand to keep it close to the
+                                                # receptor. Possible values are flat-bottom and harmonic.
+                                                # This works only implicit solvent.
+
+  # SIMULATION PARAMETERS
+  # ---------------------
+  online_analysis: no                                           # If set, analysis will occur each iteration.
+  online_analysis_min_iterations: 20                            # Minimum number of iterations needed to begin online analysis.
+  show_energies: yes                                            # If True, will print energies at each iteration.
+  show_mixing_statistics: yes                                   # If True, will show mixing statistics at each iteration.
+  minimize: yes                                                 # Minimize configurations before running the simulation.
+  minimize_max_iterations: 0                                    # Maximum number of iterations for minimization.
+  minimize_tolerance: 1.0 * kilojoules_per_mole / nanometers    # Set minimization tolerance.
+  number_of_equilibration_iterations: 1                         # Number of equilibration iterations.
+  equilibration_timestep: 1.0 * femtosecond                     # Timestep for use in equilibration.
+  number_of_iterations: 1                                       # Number of replica-exchange iterations to simulate.
+  nsteps_per_iteration: 500                                     # Number of timesteps per iteration.
+  timestep: 2.0 * femtosecond                                   # Timestep for Langevin dyanmics.
+  replica_mixing_scheme: swap-all                               # Specify how to mix replicas. Possible values are
+                                                                # swap-neighbors and swap-all.
+  collision_rate: 5.0 / picosecond                              # The collision rate used for Langevin dynamics.
+  constraint_tolerance: 1.0e-6                                  # Relative constraint tolerance.
+  mc_displacement_sigma: 10.0 * angstroms                       # Yank will augument Langevin dynamics with MC moves
+                                                                # rotating and displacing the ligand. This control the
+                                                                # size of the displacement.
+
+  # ALCHEMY PARAMETERS
+  # ------------------
+  annihilate_electrostatics: yes            # If set, electrostatics is annihilated, rather than decoupled.
+  annihilate_sterics: no                    # If set, sterics (Lennard-Jones or Halgren potential) is annihilated,
+                                            # rather than decoupled.
+  softcore_alpha: 0.5                       # Alchemical softcore parameter for Lennard-Jones.
+  softcore_beta: 1.0                        # Alchemical softcore parameter for electrostatics. Set this to zero
+                                            # to recover standard electrostatic scaling.
+  softcore_a: 1                             # Parameters modifying softcore Lennard-Jones form.
+  softcore_b: 1
+  softcore_c: 6
+  softcore_d: 1
+  softcore_e: 1
+  softcore_f: 2
