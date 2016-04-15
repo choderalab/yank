@@ -33,7 +33,7 @@ molecules:
                                                     # force field.
     strip_protons: yes                              # Let tleap re-add all hydrogen atoms. This is useful if
                                                     # the PDB contains atom names for hydrogen that AMBER does
-                                                    # not recognize.
+                                                    # not recognize. The default for this parameter is "no".
   src:
     filepath: [2OIQ_A.pdb, 3EL7_A.pdb]
     parameters: oldff/leaprc.ff99SBildn
@@ -46,6 +46,7 @@ molecules:
                                                     # or its SMILES description. Instead of using "filepath",
                                                     # you can directly use "smiles" or "name". For example, to
                                                     # specify a benzene molecule you can use either:
+                                                    #
                                                     # molecules:
                                                     #   benzene_smiles:
                                                     #     smiles: c1ccccc1
@@ -53,15 +54,23 @@ molecules:
                                                     #   benzene_name:
                                                     #     smiles: benzene
                                                     #     parameters: antechamber
+                                                    #
     select: 0                                       # Select the first row of the csv file which contains the
                                                     # SMILES description of imatinib. Note that the list syntax
                                                     # works everywhere within the "molecules" section, so you
                                                     # could specify both imatinib and bosutinib using
+                                                    #
                                                     # molecules:
                                                     #   ligand:
                                                     #     filepath: clinical-kinase-inhibitors.csv
                                                     #     parameters: antechamber
                                                     #     select: [0, 3]
+                                                    #
+                                                    # The "select" keyword works the same way if you specify a
+                                                    # pdb, mol2, or an sdf file containing multiple structures.
+                                                    # You can alternatively specify "select: all" which includes
+                                                    # all the molecules in the given file. This is also the
+                                                    # default value.
     parameters: antechamber                         # Let antechamber parametrize the molecule using GAFF and
                                                     # AM1-BCC charges.
     epik: 0                                         # Run Schrodinger's tool Epik and select the most likely
@@ -77,8 +86,8 @@ molecules:
 # -----------------------------------------------------------------
 solvents:
   RF:
-    nonbonded_method: CutoffPeriodic                # This specify an explicit solvent using reaction field
-    nonbonded_cutoff: 1*nanometer                   # Cutoff for interaction is set at 1nm
+    nonbonded_method: CutoffPeriodic                # This specifies an explicit solvent using reaction field.
+    nonbonded_cutoff: 1*nanometer                   # Cutoff for interaction is set at 1nm.
     clearance: 10*angstroms                         # The edge of the solvation box will be at a 10 angstroms
                                                     # distance from any atom of the receptor and ligand.
     positive_ion: Na+                               # Neutralizing ions to use.
@@ -109,9 +118,9 @@ protocols:
 # below we have 2x2x2x2=16 calculations to run (2 receptors x
 # x 2 initial receptor structures x 2 ligands x 2 solvent models).
 # -----------------------------------------------------------------
-experiments:
-  components:
-    receptor: [abl, src]
-    ligand: [imatinib, bosutinib]
-    solvent: [RF, GBSA]
+experiments:                            # If you don't need combinations but you only want to run
+  components:                           # a single calculation, just don't use lists. For example
+    receptor: [abl, src]                #   receptor: abl
+    ligand: [imatinib, bosutinib]       #   ligand: imatinib
+    solvent: [RF, GBSA]                 #   solvent: RF
   protocol: absolute-binding
