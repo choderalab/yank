@@ -110,7 +110,10 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
                 mc_atoms = None
 
         # Store trial displacement magnitude and atoms to rotate in MC move.
-        self.displacement_sigma = 1.0 * unit.nanometer
+        if displacement_sigma is None:
+            self.displacement_sigma = 1.0 * unit.nanometer
+        else:
+            self.displacement_sigma = displacement_sigma
         if mc_atoms is not None:
             self.mc_atoms = np.array(mc_atoms)
             self.mc_displacement = True
