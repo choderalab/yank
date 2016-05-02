@@ -38,8 +38,8 @@ requirements:
     - netcdf4
     - openmm ==7.0rc1 # temporarily test against stable version
     - mdtraj 1.5.1 # TODO remove me when segment_id bug is fixed (this is installed through openmoltools)
-    - openmmtools-dev
-    - pymbar-dev
+    - openmmtools ==0.7.5 # temporarily test against stable version
+    - pymbar ==2.1beta0 # temporarily test against stable version
     - ambermini
     - docopt
     - openmoltools ==0.6.9 # temporarily test against stable version
