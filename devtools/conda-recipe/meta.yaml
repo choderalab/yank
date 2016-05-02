@@ -54,7 +54,6 @@ test:
   requires:
     - nose
     - nose-timer
-    - openmmtools-dev
   imports:
     - yank
   commands:
