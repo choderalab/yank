@@ -42,7 +42,7 @@ requirements:
     - pymbar-dev
     - ambermini
     - docopt
-    - openmoltools-dev
+    - openmoltools ==0.6.9 # temporarily test against stable version
     - mpi4py
     - pyyaml
     - clusterutils
@@ -59,7 +59,7 @@ test:
     - yank
   commands:
     - yank --help
-    - yank --selftest    
+    - yank --selftest
 
 about:
   home: https://github.com/choderalab/yank
