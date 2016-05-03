@@ -23,7 +23,7 @@ requirements:
     - pymbar ==2.1beta0 # temporarily test against stable version
     - ambermini ==14.0.1 # temporarily test against stable version
     - docopt
-    - openmoltools ==0.6.9 # temporarily test against stable version
+    - openmoltools ==0.7.0 # temporarily test against stable version
     - sphinxcontrib-bibtex
     - alchemy ==1.2.0
     #- gcc 4.8.2 # [linux]
@@ -42,7 +42,7 @@ requirements:
     - pymbar ==2.1beta0 # temporarily test against stable version
     - ambermini
     - docopt
-    - openmoltools ==0.6.9 # temporarily test against stable version
+    - openmoltools ==0.7.0 # temporarily test against stable version
     - mpi4py
     - pyyaml
     - clusterutils
