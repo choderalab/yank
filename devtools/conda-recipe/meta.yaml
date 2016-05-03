@@ -58,7 +58,7 @@ test:
     - yank
   commands:
     - yank --help
-    - yank --selftest
+    - yank selftest
 
 about:
   home: https://github.com/choderalab/yank
