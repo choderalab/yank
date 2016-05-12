@@ -311,11 +311,37 @@ class Yank(object):
         # Make a deep copy of the reference system so we don't accidentally modify it.
         reference_system = copy.deepcopy(reference_system)
 
+        # Store a serialized copy of the reference system.
+        from simtk.openmm import XmlSerializer
+        metadata['reference_sysem'] = XmlSerializer.serialize(reference_system)
+
         # TODO: Use more general approach to determine whether system is periodic.
         is_periodic = self._is_periodic(reference_system)
 
         # Make sure pressure is None if not periodic.
         if not is_periodic: thermodynamic_state.pressure = None
+
+        # Create a copy of the system for which the fully-interacting energy is to be computed.
+        # For explicit solvent calculations, an enlarged cutoff is used to account for the anisotropic dispersion correction.
+        fully_interacting_system = copy.deepcopy(reference_system)
+        if is_periodic:
+            # Expand cutoff to maximum allowed
+            # TODO: Should we warn if cutoff can't be extended enough?
+            # TODO: Should we extend to some minimum cutoff rather than the maximum allowed?
+            box_vectors = fully_interacting_system.getDefaultPeriodicBoxVectors()
+            max_allowed_cutoff = 0.499 * max([ max(vector) for vector in box_vectors ]) # TODO: Correct this for non-rectangular boxes
+            logger.debug('Setting cutoff for fully interacting system to maximum allowed (%s)' % str(max_allowed_cutoff))
+            for force_index in range(fully_interacting_system.getNumForces()):
+                force = fully_interacting_system.getForce(force_index)
+                if hasattr(force, 'setCutoffDistance'):
+                    force.setCutoffDistance(max_allowed_cutoff)
+                if hasattr(force, 'setCutoff'):
+                    force.setCutoff(max_allowed_cutoff)
+        # Store serialized form.
+        metadata['fully_interacting_system'] = XmlSerializer.serialize(fully_interacting_system)
+        # Construct thermodynamic state
+        fully_interacting_state = copy.deepcopy(thermodynamic_state)
+        fully_interacting_state.system = fully_interacting_system
 
         # Compute standard state corrections for complex phase.
         metadata['standard_state_correction'] = 0.0
@@ -406,7 +432,8 @@ class Yank(object):
         simulation = ModifiedHamiltonianExchange(store_filename)
         simulation.create(thermodynamic_state, alchemical_states, positions,
                           displacement_sigma=self._mc_displacement_sigma, mc_atoms=mc_atoms,
-                          options=repex_parameters, metadata=metadata)
+                          options=repex_parameters, metadata=metadata,
+                          fully_interacting_state=fully_interacting_state)
 
         # Initialize simulation.
         # TODO: Use the right scheme for initializing the simulation without running.

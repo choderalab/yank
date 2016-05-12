@@ -81,14 +81,14 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
     # Options to store.
     options_to_store = ReplicaExchange.options_to_store + ['mc_atoms', 'mc_displacement', 'mc_rotation', 'displacement_sigma', 'displacement_trials_accepted', 'rotation_trials_accepted']
 
-    def create(self, reference_state, alchemical_states, positions, displacement_sigma=None, mc_atoms=None, options=None, metadata=None):
+    def create(self, reference_state, alchemical_states, positions, displacement_sigma=None, mc_atoms=None, options=None, metadata=None, fully_interacting_state=None):
         """
         Initialize a modified Hamiltonian exchange simulation object.
 
         Parameters
         ----------
         reference_state : ThermodynamicState
-           reference state containing all thermodynamic parameters and reference System object'
+           reference state containing all thermodynamic parameters and reference System object
         alchemical_states : list of AlchemicalState
            list of alchemical states (one per replica)
         positions : simtk.unit.Quantity of numpy natoms x 3 with units length
@@ -101,6 +101,8 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
            Optional dict to use for specifying simulation options. Provided keywords will be matched to object variables to replace defaults.
         metadata : dict, optional, default=None
            metadata to store in a 'metadata' group in store file
+        fully_interacting_state : ThermodynamicState
+           Thermodynamic reference state for fully interacting system
 
         """
 
@@ -128,6 +130,9 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
 
         # Store reference system.
         self.reference_system = copy.deepcopy(reference_state.system)
+
+        # Store fully interacting state
+        self.fully_interacting_state = copy.deepcopy(fully_interacting_state)
 
         # TODO: Form metadata dict.
 
@@ -223,6 +228,8 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         setattr(ncvar_serialized_reference_system, 'long_name', "reference is the serialized OpenMM System corresponding to the reference System object")
         ncvar_serialized_reference_system[0] = self.reference_system.__getstate__() # serialize reference system.
 
+        # TODO: Fully interacting state
+
         # Report timing information.
         final_time = time.time()
         elapsed_time = final_time - initial_time
@@ -272,6 +279,8 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
             # Store state.
             self.states.append(state)
 
+        # TODO: Fully interacting state
+
         final_time = time.time()
         elapsed_time = final_time - initial_time
         logger.debug("Restoring thermodynamic states from NetCDF file took %.3f s." % elapsed_time)
@@ -297,6 +306,8 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         final_time = time.time()
         elapsed_time = final_time - initial_time
         logger.debug("Context creation took %.3f s." % elapsed_time)
+
+        # TODO: Fully interacting state
 
         return
 
@@ -728,6 +739,8 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
                 AbsoluteAlchemicalFactory.perturbContext(context, self.states[state_index].alchemical_state)
                 for replica_index in range(self.nstates):
                     self.u_kl[replica_index,state_index] = self.states[state_index].reduced_potential(self.replica_positions[replica_index], box_vectors=self.replica_box_vectors[replica_index], context=context)
+
+        # TODO: Fully interacting state
 
         end_time = time.time()
         elapsed_time = end_time - start_time
