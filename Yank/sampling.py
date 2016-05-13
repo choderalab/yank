@@ -187,6 +187,13 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         Store the thermodynamic states in a NetCDF file.
 
         """
+        if 'scalar' not in ncfile.dimensions:
+            ncfile.createDimension('scalar', 1) # scalar dimension
+
+        # Define reference units
+        temperature_unit = unit.kelvin
+        pressure_unit = unit.atmospheres
+
         logger.debug("Storing thermodynamic states in NetCDF file...")
         initial_time = time.time()
 
@@ -202,15 +209,15 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         setattr(ncvar_temperatures, 'units', 'K')
         setattr(ncvar_temperatures, 'long_name', "temperatures[state] is the temperature of thermodynamic state 'state'")
         for state_index in range(self.nstates):
-            ncvar_temperatures[state_index] = self.states[state_index].temperature / unit.kelvin
+            ncvar_temperatures[state_index] = self.states[state_index].temperature / temperature_unit
 
         # Pressures.
         if self.states[0].pressure is not None:
             ncvar_temperatures = ncgrp_stateinfo.createVariable('pressures', 'f', ('replica',))
-            setattr(ncvar_temperatures, 'units', 'atm')
-            setattr(ncvar_temperatures, 'long_name', "pressures[state] is the external pressure of thermodynamic state 'state'")
+            setattr(ncvar_pressures, 'units', 'atm')
+            setattr(ncvar_pressures, 'long_name', "pressures[state] is the external pressure of thermodynamic state 'state'")
             for state_index in range(self.nstates):
-                ncvar_temperatures[state_index] = self.states[state_index].pressure / unit.atmospheres
+                ncvar_pressures[state_index] = self.states[state_index].pressure / pressure_unit
 
         # Alchemical states.
         ncgrp = ncfile.createGroup('alchemical_states')
@@ -228,7 +235,25 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         setattr(ncvar_serialized_reference_system, 'long_name', "reference is the serialized OpenMM System corresponding to the reference System object")
         ncvar_serialized_reference_system[0] = self.reference_system.__getstate__() # serialize reference system.
 
-        # TODO: Fully interacting state
+        # Fully interacting state
+        ncgrp_stateinfo = ncfile.createGroup('fully_interacting_state')
+        # Temperatures.
+        ncvar_temperatures = ncgrp_stateinfo.createVariable('temperatures', 'f', ('scalar',))
+        setattr(ncvar_temperatures, 'units', 'K')
+        setattr(ncvar_temperatures, 'long_name', "temperatures[state] is the temperature of thermodynamic state 'state'")
+        ncvar_temperatures[0] = self.fully_interacting_state.temperature / temperature_unit
+        # Pressures
+        if self.fully_interacting_state.pressure is not None:
+            ncvar_pressures = ncgrp_stateinfo.createVariable('pressures', 'f', ('scalar',))
+            setattr(ncvar_pressures, 'units', 'atm')
+            setattr(ncvar_pressures, 'long_name', "pressures[state] is the external pressure of thermodynamic state 'state'")
+            for state_index in range(self.nstates):
+                ncvar_pressures[0] = self.fully_interacting_state.pressure / pressure_unit
+        # System
+        logger.debug("Serializing system...")
+        ncvar_serialized_system = ncgrp_stateinfo.createVariable('system', str, ('scalar',), zlib=True)
+        setattr(ncvar_serialized_system, 'long_name', "the serialized OpenMM System corresponding to the fully-interacting system")
+        ncvar_serialized_system[0] = self.fully_interacting_state.system.__getstate__()
 
         # Report timing information.
         final_time = time.time()
@@ -245,6 +270,10 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         """
         logger.debug("Restoring thermodynamic states from NetCDF file...")
         initial_time = time.time()
+
+        # Define reference units
+        temperature_unit = unit.kelvin
+        pressure_unit = unit.atmospheres
 
         # Make sure this NetCDF file contains thermodynamic state information.
         if not 'thermodynamic_states' in ncfile.groups:
@@ -266,10 +295,10 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
             # Populate a new ThermodynamicState object.
             state = ThermodynamicState()
             # Read temperature.
-            state.temperature = float(ncgrp_stateinfo.variables['temperatures'][state_index]) * unit.kelvin
+            state.temperature = float(ncgrp_stateinfo.variables['temperatures'][state_index]) * temperature_unit
             # Read pressure, if present.
             if 'pressures' in ncgrp_stateinfo.variables:
-                state.pressure = float(ncgrp_stateinfo.variables['pressures'][state_index]) * unit.atmospheres
+                state.pressure = float(ncgrp_stateinfo.variables['pressures'][state_index]) * pressure_unit
             # Read alchemical states.
             state.alchemical_state = AlchemicalState()
             for key in ncfile.groups['alchemical_states'].variables.keys():
@@ -279,7 +308,18 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
             # Store state.
             self.states.append(state)
 
-        # TODO: Fully interacting state
+        # Fully interacting state
+        ncgrp_stateinfo = ncfile.groups['fully_interacting_state']
+        # Populate a new ThermodynamicState object.
+        state = ThermodynamicState()
+        # Read temperature.
+        temperature = float(ncgrp_stateinfo.variables['temperatures'][0]) * temperature_unit
+        # Read pressure, if present.
+        if 'pressures' in ncgrp_stateinfo.variables:
+            state.pressure = float(ncgrp_stateinfo.variables['pressures'][0]) * pressure_unit
+        # Set System object
+        state.system = self.mm.System()
+        state.system.__setstate__(str(ncgrp_stateinfo.variables['system'][0]))
 
         final_time = time.time()
         elapsed_time = final_time - initial_time
@@ -307,7 +347,18 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         elapsed_time = final_time - initial_time
         logger.debug("Context creation took %.3f s." % elapsed_time)
 
-        # TODO: Fully interacting state
+        # Create Context for fully interacting state.
+        initial_time = time.time()
+        logger.debug("Creating and caching Context and Integrator for fully interacting state.")
+        state = self.fully_interacting_state
+        integrator = openmm.VerletIntegrator(self.timestep)
+        if self.platform:
+            self._fully_interacting_context = openmm.Context(state.system, integrator, self.platform)
+        else:
+            self._fully_interacting_context = openmm.Context(state.system, integrator)
+        final_time = time.time()
+        elapsed_time = final_time - initial_time
+        logger.debug("Context creation took %.3f s." % elapsed_time)
 
         return
 
@@ -694,6 +745,27 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
 
         return
 
+    def _initialize_create(self):
+        self.u_k                = np.zeros([self.nstates], np.float64)
+        super(ModifiedHamiltonianExchange, self)._initialize_create()
+
+    def _initialize_netcdf(self):
+        super(ModifiedHamiltonianExchange, self)._initialize_netcdf()
+        ncvar_energies  = ncfile.createVariable('fully_interacting_energies', 'f8', ('iteration','replica'), zlib=False, chunksizes=(1,self.nreplicas))
+        setattr(ncvar_energies,  'units', 'kT')
+        setattr(ncvar_energies,  "long_name", "energies[iteration][replica] is the reduced (unitless) energy of replica 'replica' from iteration 'iteration' evaluated at the fully interacting state.")
+        self.ncfile.sync()
+
+    def _write_iteration_netcdf(self):
+        super(ModifiedHamiltonianExchange, self)._write_iteration_netcdf()
+        self.ncfile.variables['fully_interacting_energies'][self.iteration,:] = self.u_k[:]
+        self.ncfile.sync()
+
+    def _resume_from_netcdf(self):
+        super(ModifiedHamiltonianExchange, self)._resume_from_netcdf()
+        # Restore energies.
+        self.u_k = ncfile.variables['fully_interacting_energies'][self.iteration,:].copy()
+
     def _compute_energies(self):
         """
         Compute energies of all replicas at all states.
@@ -740,12 +812,33 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
                 for replica_index in range(self.nstates):
                     self.u_kl[replica_index,state_index] = self.states[state_index].reduced_potential(self.replica_positions[replica_index], box_vectors=self.replica_box_vectors[replica_index], context=context)
 
-        # TODO: Fully interacting state
+        #
+        # Compute energies for fully interacting state
+        #
+
+        context = self._fully_interacting_context
+        if self.mpicomm:
+            # MPI version.
+
+            # Compute energies for this node's replicas.
+            for replica_index in range(self.mpicomm.rank, self.nstates, self.mpicomm.size):
+                self.u_k[replica_index] = self.fully_interacting_state.reduced_potential(self.replica_positions[replica_index], box_vectors=self.replica_box_vectors[replica_index], context=context)
+
+            # Send final energies to all nodes.
+            energies_gather = self.mpicomm.allgather(self.u_k[self.mpicomm.rank:self.nstates:self.mpicomm.size])
+            for replica_index in range(self.nstates):
+                source = replica_index % self.mpicomm.size # node with data
+                index = replica_index // self.mpicomm.size # index within batch
+                self.u_k[replica_index] = energies_gather[source][index]
+        else:
+            # Serial version.
+            for replica_index in range(self.nstates):
+                self.u_k[replica_index] = self.fully_interacting_state.reduced_potential(self.replica_positions[replica_index], box_vectors=self.replica_box_vectors[replica_index], context=context)
 
         end_time = time.time()
         elapsed_time = end_time - start_time
-        time_per_energy= elapsed_time / float(self.nstates)**2
-        logger.debug("Time to compute all energies %.3f s (%.3f per energy calculation)." % (elapsed_time, time_per_energy))
+        time_per_energy= elapsed_time / float(self.nstates)
+        logger.debug("Time to compute fully interacting state energies %.3f s (%.3f per energy calculation)." % (elapsed_time, time_per_energy))
 
         return
 
