@@ -44,6 +44,21 @@ def dispatch(args):
         MPI.COMM_WORLD.barrier()
         logger.info("Initialized MPI on %d processes." % (MPI.COMM_WORLD.size))
         mpicomm = MPI.COMM_WORLD
+        # Set all nodes to abort on exception.
+        # TODO: This is just a band-aid, and may result in file corruption.
+        # TODO: Instead, look into having all running code exit gracefully using context managers.
+        # TODO: Add tests for signal aborts.
+        import signal, os
+        def cleanup(*args):
+            print('Caught signal.')
+            print(args)
+            print('Exiting via call to MPI.Abort()')
+            MPI.COMM_WORLD.Abort(1)
+            os._exit(1)
+        for sig in (signal.SIGABRT, signal.SIGINT, signal.SIGTERM):
+            signal.signal(sig, cleanup)
+        if MPI.COMM_WORLD.rank == 0:
+            logger.info("Configured all MPI processes to call MPI.Abort() on exception.")
 
     # Configure logger
     utils.config_root_logger(args['--verbose'], mpicomm=mpicomm,

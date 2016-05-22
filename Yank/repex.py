@@ -1087,7 +1087,7 @@ class ReplicaExchange(object):
         self._finalize()
 
         if self.mpicomm:
-            # Only the root node needs to clean up.
+            # Only the root node needs to close files.
             if self.mpicomm.rank != 0: return
 
         if hasattr(self, 'ncfile'):
