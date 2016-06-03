@@ -50,11 +50,11 @@ def examples_paths():
     """Return the absolute path to the Yank examples relevant to tests."""
     paths = {}
     examples_dir = utils.get_data_filename(os.path.join('..', 'examples'))
-    p_xylene_dir = os.path.join(examples_dir, 'p-xylene-implicit', 'setup')
+    p_xylene_dir = os.path.join(examples_dir, 'p-xylene-implicit', 'input')
     ben_tol_dir = os.path.join(examples_dir, 'benzene-toluene-explicit', 'setup')
     abl_imatinib_dir = os.path.join(examples_dir, 'abl-imatinib-explicit', 'setup')
-    paths['lysozyme'] = os.path.join(p_xylene_dir, 'receptor.pdbfixer.pdb')
-    paths['p-xylene'] = os.path.join(p_xylene_dir, 'ligand.tripos.mol2')
+    paths['lysozyme'] = os.path.join(p_xylene_dir, '181L-pdbfixer.pdb')
+    paths['p-xylene'] = os.path.join(p_xylene_dir, 'p-xylene.mol2')
     paths['benzene'] = os.path.join(ben_tol_dir, 'benzene.tripos.mol2')
     paths['toluene'] = os.path.join(ben_tol_dir, 'toluene.tripos.mol2')
     paths['abl'] = os.path.join(abl_imatinib_dir, '2HYY-pdbfixer.pdb')

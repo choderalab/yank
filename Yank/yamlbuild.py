@@ -967,9 +967,9 @@ class YamlBuilder:
     --------
     >>> import textwrap
     >>> setup_dir = utils.get_data_filename(os.path.join('..', 'examples',
-    ...                                     'p-xylene-implicit', 'setup'))
-    >>> pxylene_path = os.path.join(setup_dir, 'ligand.tripos.mol2')
-    >>> lysozyme_path = os.path.join(setup_dir, 'receptor.pdbfixer.pdb')
+    ...                                     'p-xylene-implicit', 'input'))
+    >>> pxylene_path = os.path.join(setup_dir, 'p-xylene.mol2')
+    >>> lysozyme_path = os.path.join(setup_dir, '181L-pdbfixer.pdb')
     >>> with utils.temporary_directory() as tmp_dir:
     ...     yaml_content = '''
     ...     ---
