@@ -8,18 +8,15 @@ molecules:
     parameters: antechamber
 
 solvents:
-  RF:
-    nonbonded_method: CutoffPeriodic
-    nonbonded_cutoff: 9*angstroms
-    clearance: 9*angstroms
-    positive_ion: Na+
-    negative_ion: Cl-
+  OBC2:
+    nonbonded_method: NoCutoff
+    implicit_solvent: OBC2
 
 experiments:
   components:
     receptor: T4lysozyme
     ligand: p-xylene
-    solvent: RF
+    solvent: OBC2
   protocol: absolute-binding
 
 protocols:
