@@ -1,5 +1,6 @@
 [![Build Status](https://travis-ci.org/choderalab/yank.png)](https://travis-ci.org/choderalab/yank)
-[![Binstar Badge](https://binstar.org/omnia/yank/badges/version.svg)](https://binstar.org/omnia/yank)
+[![Binstar Badge](https://anaconda.org/omnia/yank/badges/version.svg)](https://anaconda.org/omnia/yank)
+[![Jenkins Test Status](https://jenkins.choderalab.org/buildStatus/icon?job=test-yank-linux-xeon-gtxtitan-jak)](https://jenkins.choderalab.org/job/test-yank-linux-xeon-gtxtitan-jak/)
 
 yank
 ====
@@ -33,6 +34,3 @@ Contributors
 * Andrea Rizzi (WCMC)
 * Michael Shirts (University of Virginia)
 * Kai Wang (University of Virginia)
-
-
-
