@@ -21,6 +21,7 @@ import tempfile
 import itertools
 
 from nose.tools import raises
+from nose.plugins.attrib import attr
 
 from yank.yamlbuild import *
 from mdtraj.formats.mol2 import mol2_to_dataframes
@@ -1335,6 +1336,8 @@ def test_yaml_creation():
             for line, expected in zip(f, expected_yaml_content.split('\n')):
                 assert line[:-1] == expected  # without final '\n'
 
+
+@attr('slow')  # Skip on Travis-CI
 def test_run_experiment():
     with utils.temporary_directory() as tmp_dir:
         yaml_content = """
