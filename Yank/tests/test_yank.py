@@ -22,9 +22,9 @@ This code is licensed under the latest available version of the GNU General Publ
 #=============================================================================================
 
 import numpy as np
-
 from simtk import openmm
 from openmmtools import testsystems
+from mdtraj.utils import enter_temp_directory
 
 from nose import tools
 
@@ -55,6 +55,26 @@ def test_parameters():
 def test_unknown_parameters():
     """Test whether Yank raises exception on wrong initialization."""
     Yank(store_directory='test', wrong_parameter=False)
+
+
+@tools.raises(ValueError)
+def test_no_alchemical_atoms():
+    """Test whether Yank raises exception when no alchemical atoms are specified."""
+    phase = 'solvent-implicit'
+    toluene = testsystems.TolueneImplicit()
+
+    # Create parameters. All the parameters must be legal, we don't
+    # want to catch an exception different than the one we are testing.
+    phases = [phase]
+    systems = {phase: toluene.system}
+    positions = {phase: toluene.positions}
+    atom_indices = {phase: {'ligand': []}}
+    thermodynamic_state = ThermodynamicState(temperature=300.0*unit.kelvin)
+
+    # Create new simulation.
+    with enter_temp_directory():
+        yank = Yank(store_directory='output')
+        yank.create(phases, systems, positions, atom_indices, thermodynamic_state)
 
 
 def notest_LennardJonesPair(box_width_nsigma=6.0):

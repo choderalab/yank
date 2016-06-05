@@ -220,11 +220,16 @@ class Yank(object):
         logger.debug("atom_indices: %s" % atom_indices.keys())
         logger.debug("thermodynamic_state: %s" % thermodynamic_state)
 
-        # Abort if there are files there already but initialization was requested.
+        # Initialization checks
         for phase in phases:
+            # Abort if there are files there already but initialization was requested.
             store_filename = os.path.join(self._store_directory, phase + '.nc')
             if os.path.exists(store_filename):
                 raise Exception("Store filename %s already exists." % store_filename)
+
+            # Abort if there are no atoms to alchemically modify
+            if len(atom_indices[phase]['ligand']) == 0:
+                raise ValueError('Ligand atoms are not specified.')
 
         # Create new repex simulations.
         for phase in phases:
