@@ -21,14 +21,6 @@ This code is licensed under the latest available version of the GNU General Publ
 # GLOBAL IMPORTS
 #=============================================================================================
 
-import os
-import sys
-import math
-import copy
-import time
-import datetime
-from functools import partial
-
 import numpy as np
 
 from simtk import openmm
