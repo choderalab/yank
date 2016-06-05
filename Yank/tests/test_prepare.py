@@ -33,7 +33,7 @@ def test_prepare_amber_implicit(verbose=False):
     command = 'yank prepare binding amber --setupdir=%(examples_path)s --store=%(store_directory)s --iterations=1 --restraints=harmonic --gbsa=OBC2 --temperature=300*kelvin' % vars()
     if verbose: command += ' --verbose'
     argv = command.split()
-    argv.append('--ligand=resname BEN') # if included in the command string it is split in two
+    argv.append('--ligand=resname TOL') # if included in the command string it is split in two
     args = docopt(usage, version=version.version, argv=argv[1:])
     from yank.commands import prepare
     prepare.dispatch(args)
@@ -44,7 +44,7 @@ def test_prepare_amber_explicit(verbose=False):
     command = 'yank prepare binding amber --setupdir=%(examples_path)s --store=%(store_directory)s --iterations=1 --nbmethod=CutoffPeriodic --temperature=300*kelvin --pressure=1*atmospheres' % vars()
     if verbose: command += ' --verbose'
     argv = command.split()
-    argv.append('--ligand=resname BEN') # if included in the command string it is split in two
+    argv.append('--ligand=resname TOL') # if included in the command string it is split in two
     args = docopt(usage, version=version.version, argv=argv[1:])
     from yank.commands import prepare
     prepare.dispatch(args)
@@ -55,7 +55,7 @@ def test_prepare_gromacs_explicit(verbose=False):
     command = 'yank prepare binding gromacs --setupdir=%(examples_path)s --store=%(store_directory)s --iterations=1 --nbmethod=CutoffPeriodic --temperature=300*kelvin --pressure=1*atmospheres --cutoff=1*nanometer' % vars()
     if verbose: command += ' --verbose'
     argv = command.split()
-    argv.append('--ligand=resname MOL') # if included in the command string it is split in two
+    argv.append("--ligand=resname 'p-xylene'") # if included in the command string it is split in two
     args = docopt(usage, version=version.version, argv=argv[1:])
     from yank.commands import prepare
     prepare.dispatch(args)
