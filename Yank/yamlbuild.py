@@ -1840,6 +1840,7 @@ class YamlBuilder:
                 if ligand_dsl is None:
                     ligand_dsl = 'MOL'
                 ligand_dsl = 'resname ' + ligand_dsl
+                logger.debug('DSL string for the ligand: "{}"'.format(ligand_dsl))
 
                 # System configuration
                 create_system_filter = set(('nonbonded_method', 'nonbonded_cutoff', 'implicit_solvent',
