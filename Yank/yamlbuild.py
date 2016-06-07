@@ -1840,6 +1840,7 @@ class YamlBuilder:
                 if ligand_dsl is None:
                     ligand_dsl = 'MOL'
                 ligand_dsl = 'resname ' + ligand_dsl
+                logger.debug('DSL string for the ligand: "{}"'.format(ligand_dsl))
 
                 # System configuration
                 create_system_filter = set(('nonbonded_method', 'nonbonded_cutoff', 'implicit_solvent',
@@ -1856,6 +1857,10 @@ class YamlBuilder:
                 # Prepare system
                 phases, systems, positions, atom_indices = pipeline.prepare_amber(system_dir, ligand_dsl,
                                                                  system_pars, ligand_descr['net_charge'])
+                for phase in phases:
+                    if len(atom_indices[phase]['ligand']) == 0:
+                        raise RuntimeError('Automatically generated DSL string "{}" did not'
+                                           'select any atom for the ligand.'.format(ligand_dsl))
 
                 # Create thermodynamic state
                 thermodynamic_state = ThermodynamicState(temperature=exp_opts['temperature'],
