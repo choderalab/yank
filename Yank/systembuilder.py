@@ -72,7 +72,7 @@ class SystemBuilder(object):
     """
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, ffxml_filenames=None, ffxmls=None, system_creation_parameters=dict(), molecule_name="MOL"):
+    def __init__(self, ffxml_filenames=None, ffxmls=None, system_creation_parameters=None, molecule_name="MOL"):
         """
         Abstract base class for SystemBuilder classes.
 
@@ -98,7 +98,11 @@ class SystemBuilder(object):
         self._positions = None # OpenMM positions as simtk.unit.Quantity with units compatible with nanometers
         self._system = None # OpenMM System object created by ForceField
 
-        self.system_creation_parameters = system_creation_parameters # dictionary of parameters passed to ForceField.createSystem()
+        if system_creation_parameters is None:
+            self.system_creation_parameters = {}
+        else:
+            # dictionary of parameters passed to ForceField.createSystem()
+            self.system_creation_parameters = system_creation_parameters
 
         return
 
@@ -441,7 +445,7 @@ class SmallMoleculeBuilder(SystemBuilder):
 
         return
 
-    def _parameterize_with_openmoltools(self, molecule, charge, parameterize_arguments=dict()):
+    def _parameterize_with_openmoltools(self, molecule, charge, parameterize_arguments=None):
         """
         Parameterize the molecule using openmoltools, appending the parameters to the set of loaded parameters.
 
@@ -451,6 +455,8 @@ class SmallMoleculeBuilder(SystemBuilder):
            Optional kwargs to be passed to openmoltools.
 
         """
+        if parameterize_arguments is None:
+            parameterize_arguments = {}
 
         # Attempt to import openmoltools.
         import openmoltools

@@ -576,7 +576,7 @@ def get_keyword_args(function):
 
 def validate_parameters(parameters, template_parameters, check_unknown=False,
                         process_units_str=False, float_to_int=False,
-                        ignore_none=True, special_conversions={}):
+                        ignore_none=True, special_conversions=None):
     """Utility function for parameters and options validation.
 
     Use the given template to filter the given parameters and infer their expected
@@ -647,6 +647,8 @@ def validate_parameters(parameters, template_parameters, check_unknown=False,
      'unspecified': 'input'}
 
     """
+    if special_conversions is None:
+        special_conversions = {}
 
     # Create validated parameters
     validated_par = {par: parameters[par] for par in parameters
