@@ -11,6 +11,8 @@ Test various utility functions.
 
 import textwrap
 
+import openmoltools as omt
+
 from nose import tools
 from yank.utils import *
 
@@ -145,47 +147,6 @@ def test_unknown_parameters():
     wrong_pars = {'unknown_par': 3}
     validate_parameters(wrong_pars, template_pars, check_unknown=True)
 
-def test_temp_dir_context():
-    """Test the context temporary_directory()."""
-    with temporary_directory() as tmp_dir:
-        assert os.path.isdir(tmp_dir)
-    assert not os.path.exists(tmp_dir)
-
-def test_temp_cd_context():
-    """Test the context temporary_cd()."""
-    with temporary_directory() as tmp_dir:
-        with temporary_cd(tmp_dir):
-            assert os.getcwd() == os.path.realpath(tmp_dir)
-        assert os.getcwd() != os.path.realpath(tmp_dir)
-
-def test_yank_options():
-    """Test option priorities and handling."""
-
-    cl_opt = {'option1': 1}
-    yaml_opt = {'option1': 2, 'option2': 'test'}
-    default_yank_opt = YankOptions()
-    yank_opt = YankOptions(cl_opt=cl_opt, yaml_opt=yaml_opt)
-
-    assert yank_opt['option2'] == 'test'
-    assert yank_opt['option1'] == 1  # command line > yaml
-    assert len(yank_opt) == len(default_yank_opt) + 2, "Excepted two additional options beyond default, found: %s" % str([x for x in yank_opt])
-
-    # runtime > command line
-    yank_opt['option1'] = 0
-    assert yank_opt['option1'] == 0
-
-    # restore old option when deleted at runtime
-    del yank_opt['option1']
-    assert yank_opt['option1'] == 1
-
-    # modify specific priority level
-    yank_opt.default = {'option3': -2}
-    assert len(yank_opt) == 3
-    assert yank_opt['option3'] == -2
-
-    # test iteration interface
-    assert yank_opt.items() == [('option1', 1), ('option2', 'test'), ('option3', -2)]
-    assert yank_opt.keys() == ['option1', 'option2', 'option3']
 
 def test_underscore_to_camelcase():
     """Test underscore_to_camelCase() conversion function."""
@@ -250,7 +211,7 @@ def test_TLeap_export_run():
     tleap.load_group(name='benzene', file_path=benzene_gaff)
     tleap.load_parameters(benzene_frcmod)
 
-    with temporary_directory() as tmp_dir:
+    with omt.utils.temporary_directory() as tmp_dir:
         output_path = os.path.join(tmp_dir, 'benzene')
         tleap.save_group(group='benzene', output_path=output_path + '.prmtop')
 

@@ -920,7 +920,7 @@ class SetupDatabase:
 
                 # Generate parameters
                 input_mol_path = os.path.abspath(mol_descr['filepath'])
-                with utils.temporary_cd(mol_dir):
+                with omt.utils.temporary_cd(mol_dir):
                     omt.amber.run_antechamber(mol_id, input_mol_path,
                                               charge_method=charge_method,
                                               net_charge=net_charge)
@@ -966,11 +966,13 @@ class YamlBuilder:
     Examples
     --------
     >>> import textwrap
+    >>> import openmoltools as omt
+    >>> import utils
     >>> setup_dir = utils.get_data_filename(os.path.join('..', 'examples',
     ...                                     'p-xylene-implicit', 'input'))
     >>> pxylene_path = os.path.join(setup_dir, 'p-xylene.mol2')
     >>> lysozyme_path = os.path.join(setup_dir, '181L-pdbfixer.pdb')
-    >>> with utils.temporary_directory() as tmp_dir:
+    >>> with omt.utils.temporary_directory() as tmp_dir:
     ...     yaml_content = '''
     ...     ---
     ...     options:
@@ -1133,7 +1135,7 @@ class YamlBuilder:
 
                     # Get the number of models in the file
                     extension = os.path.splitext(comb_molecule['filepath'])[1][1:]  # remove dot
-                    with utils.temporary_cd(self._script_dir):
+                    with omt.utils.temporary_cd(self._script_dir):
                         if extension == 'pdb':
                             n_models = PDBFile(comb_molecule['filepath']).getNumFrames()
                         elif extension == 'csv' or extension == 'smiles':
@@ -1254,7 +1256,7 @@ class YamlBuilder:
             self._mpicomm = MPI.COMM_WORLD
 
         # Run all experiments with paths relative to the script directory
-        with utils.temporary_cd(self._script_dir):
+        with omt.utils.temporary_cd(self._script_dir):
             # This is hard disk intensive, only process 0 should do it
             overwrite = True
             if self._mpicomm is None or self._mpicomm.rank == 0:

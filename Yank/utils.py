@@ -389,105 +389,6 @@ class CombinatorialTree(collections.MutableMapping):
                 template_tree[leaf_path] = leaf_val
             yield copy.deepcopy(template_tree._d)
 
-#========================================================================================
-# Yank configuration
-#========================================================================================
-
-class YankOptions(collections.MutableMapping):
-    """Helper class to manage Yank configuration.
-
-    This class provide a single point of entry to read Yank options specified by command
-    line, YAML or determined at runtime (i.e. the ones hardcoded). When the same option
-    is specified multiple times the priority is runtime > command line > YAML > default.
-
-    Attributes
-    ----------
-    cli : dict
-        The options from the command line interface.
-    yaml : dict
-        The options from the YAML configuration file.
-    default : dict
-        The default options.
-
-    Examples
-    --------
-    Command line options have priority over YAML
-
-    >>> cl_opt = {'option1': 1}
-    >>> yaml_opt = {'option1': 2}
-    >>> options = YankOptions(cl_opt=cl_opt, yaml_opt=yaml_opt)
-    >>> options['option1']
-    1
-
-    Modify specific priority level
-
-    >>> options.default = {'option2': -1}
-    >>> options['option2']
-    -1
-
-    Modify options at runtime and restore them
-
-    >>> options['option1'] = 0
-    >>> options['option1']
-    0
-    >>> del options['option1']
-    >>> options['option1']
-    1
-    >>> options['hardcoded'] = 'test'
-    >>> options['hardcoded']
-    'test'
-
-    """
-
-    def __init__(self, cl_opt={}, yaml_opt={}, default_opt={}):
-        """Constructor.
-
-        Parameters
-        ----------
-        cl_opt : dict, optional, default {}
-            The options from the command line.
-        yaml_opt : dict, optional, default {}
-            The options from the YAML configuration file.
-        default_opt : dict, optional, default {}
-            Default options. They have the lowest priority.
-
-        """
-        self._runtime_opt = {}
-        self.cli = cl_opt
-        self.yaml = yaml_opt
-        self.default = default_opt
-
-    def __getitem__(self, option):
-        try:
-            return self._runtime_opt[option]
-        except KeyError:
-            try:
-                return self.cli[option]
-            except KeyError:
-                try:
-                    return self.yaml[option]
-                except KeyError:
-                    return self.default[option]
-
-    def __setitem__(self, option, value):
-        self._runtime_opt[option] = value
-
-    def __delitem__(self, option):
-        del self._runtime_opt[option]
-
-    def __iter__(self):
-        """Iterate over options keeping into account priorities."""
-
-        found_options = set()
-        for opt_set in (self._runtime_opt, self.cli, self.yaml, self.default):
-            for opt in opt_set:
-                if opt not in found_options:
-                    found_options.add(opt)
-                    yield opt
-
-    def __len__(self):
-        return sum(1 for _ in self)
-
 
 #========================================================================================
 # Miscellaneous functions
@@ -526,24 +427,6 @@ def is_iterable_container(value):
     # strings are iterable too so we have to treat them as a special case
     return not isinstance(value, str) and isinstance(value, collections.Iterable)
 
-@contextlib.contextmanager
-def temporary_directory():
-    """Context for safe creation of temporary directories."""
-    tmp_dir = tempfile.mkdtemp()
-    try:
-        yield tmp_dir
-    finally:
-        shutil.rmtree(tmp_dir)
-
-@contextlib.contextmanager
-def temporary_cd(dir_path):
-    """Context to temporary change the working directory."""
-    prev_dir = os.getcwd()
-    os.chdir(os.path.abspath(dir_path))
-    try:
-        yield
-    finally:
-        os.chdir(prev_dir)
 
 #========================================================================================
 # Conversion utilities
@@ -693,7 +576,7 @@ def get_keyword_args(function):
 
 def validate_parameters(parameters, template_parameters, check_unknown=False,
                         process_units_str=False, float_to_int=False,
-                        ignore_none=True, special_conversions={}):
+                        ignore_none=True, special_conversions=None):
     """Utility function for parameters and options validation.
 
     Use the given template to filter the given parameters and infer their expected
@@ -764,6 +647,8 @@ def validate_parameters(parameters, template_parameters, check_unknown=False,
      'unspecified': 'input'}
 
     """
+    if special_conversions is None:
+        special_conversions = {}
 
     # Create validated parameters
     validated_par = {par: parameters[par] for par in parameters
