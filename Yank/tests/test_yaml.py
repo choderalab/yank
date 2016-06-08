@@ -475,7 +475,7 @@ def test_no_protocol():
 
 def test_yaml_mol2_antechamber():
     """Test antechamber setup of molecule files."""
-    with utils.temporary_directory() as tmp_dir:
+    with omt.utils.temporary_directory() as tmp_dir:
         yaml_content = """
         ---
         options:
@@ -514,7 +514,7 @@ def test_yaml_mol2_antechamber():
 @unittest.skipIf(not utils.is_openeye_installed(), 'This test requires OpenEye installed.')
 def test_setup_name_smiles_openeye_charges():
     """Setup molecule from name and SMILES with openeye charges and gaff."""
-    with utils.temporary_directory() as tmp_dir:
+    with omt.utils.temporary_directory() as tmp_dir:
         yaml_content = """
         ---
         options:
@@ -565,7 +565,7 @@ def test_clashing_atoms():
     clearance = 10.0
     benzene_path = examples_paths()['benzene']
     toluene_path = examples_paths()['toluene']
-    with utils.temporary_directory() as tmp_dir:
+    with omt.utils.temporary_directory() as tmp_dir:
         yaml_content = """
         ---
         options:
@@ -620,7 +620,7 @@ def test_clashing_atoms():
                  "This test requires Schrodinger's suite")
 def test_epik_enumeration():
     """Test that epik protonation state enumeration."""
-    with utils.temporary_directory() as tmp_dir:
+    with omt.utils.temporary_directory() as tmp_dir:
         yaml_content = """
         ---
         options:
@@ -656,7 +656,7 @@ def test_epik_enumeration():
 def test_strip_protons():
     """Test that protons are stripped correctly for tleap."""
     abl_path = examples_paths()['abl']
-    with utils.temporary_directory() as tmp_dir:
+    with omt.utils.temporary_directory() as tmp_dir:
         yaml_content = """
         ---
         options:
@@ -879,7 +879,7 @@ class TestMultiMoleculeFiles():
 
     def test_select_pdb_conformation(self):
         """Check that frame selection in multi-model PDB files works."""
-        with utils.temporary_directory() as tmp_dir:
+        with omt.utils.temporary_directory() as tmp_dir:
             yaml_content = """
             ---
             options:
@@ -932,7 +932,7 @@ class TestMultiMoleculeFiles():
         """Check that setup molecule from SMILES files works."""
         from openeye.oechem import OEMolToSmiles
 
-        with utils.temporary_directory() as tmp_dir:
+        with omt.utils.temporary_directory() as tmp_dir:
             yaml_content = """
             ---
             options:
@@ -981,7 +981,7 @@ class TestMultiMoleculeFiles():
     @unittest.skipIf(not utils.is_openeye_installed(), 'This test requires OpenEye installed.')
     def test_select_sdf_mol2(self):
         """Check that selection in sdf and mol2 files works."""
-        with utils.temporary_directory() as tmp_dir:
+        with omt.utils.temporary_directory() as tmp_dir:
             yaml_content = """
             ---
             options:
@@ -1061,7 +1061,7 @@ class TestMultiMoleculeFiles():
 
 def test_setup_implicit_system_leap():
     """Create prmtop and inpcrd for implicit solvent protein-ligand system."""
-    with utils.temporary_directory() as tmp_dir:
+    with omt.utils.temporary_directory() as tmp_dir:
         yaml_content = """
         ---
         options:
@@ -1116,7 +1116,7 @@ def test_setup_implicit_system_leap():
 @unittest.skipIf(not utils.is_openeye_installed(), 'This test requires OpenEye installed.')
 def test_setup_explicit_system_leap():
     """Create prmtop and inpcrd protein-ligand system in explicit solvent."""
-    with utils.temporary_directory() as tmp_dir:
+    with omt.utils.temporary_directory() as tmp_dir:
         yaml_content = """
         ---
         options:
@@ -1163,7 +1163,7 @@ def test_setup_explicit_system_leap():
 
 def test_neutralize_system():
     """Test whether the system charge is neutralized correctly."""
-    with utils.temporary_directory() as tmp_dir:
+    with omt.utils.temporary_directory() as tmp_dir:
         yaml_content = """
         ---
         options:
@@ -1208,7 +1208,7 @@ def test_neutralize_system():
 @unittest.skipIf(not utils.is_openeye_installed(), "This test requires OpenEye toolkit")
 def test_charged_ligand():
     """Check that there are alchemical counterions for charged ligands."""
-    with utils.temporary_directory() as tmp_dir:
+    with omt.utils.temporary_directory() as tmp_dir:
         yaml_content = """
         ---
         options:
@@ -1269,7 +1269,7 @@ def test_charged_ligand():
 def test_yaml_creation():
     """Test the content of generated single experiment YAML files."""
     ligand_path = examples_paths()['p-xylene']
-    with utils.temporary_directory() as tmp_dir:
+    with omt.utils.temporary_directory() as tmp_dir:
         molecules = """
             T4lysozyme:
                 filepath: {}
@@ -1340,7 +1340,7 @@ def test_yaml_creation():
 
 @attr('slow')  # Skip on Travis-CI
 def test_run_experiment():
-    with utils.temporary_directory() as tmp_dir:
+    with omt.utils.temporary_directory() as tmp_dir:
         yaml_content = """
         ---
         options:

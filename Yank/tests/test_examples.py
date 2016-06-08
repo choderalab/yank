@@ -18,8 +18,8 @@ import shutil
 import subprocess
 
 import yaml
+import openmoltools as omt
 
-from yank import utils
 from nose.plugins.attrib import attr
 
 
@@ -79,7 +79,7 @@ def run_example(path, example):
         command = 'NITERATIONS={} ./run.sh'.format(n_iterations)
 
     # Change to example directory.
-    with utils.temporary_cd(example_dir):
+    with omt.utils.temporary_cd(example_dir):
         # Execute n_iterations of the example
         returncode = subprocess.call(command, shell=True, executable='/bin/bash')
 

@@ -11,6 +11,8 @@ Test various utility functions.
 
 import textwrap
 
+import openmoltools as omt
+
 from nose import tools
 from yank.utils import *
 
@@ -145,19 +147,6 @@ def test_unknown_parameters():
     wrong_pars = {'unknown_par': 3}
     validate_parameters(wrong_pars, template_pars, check_unknown=True)
 
-def test_temp_dir_context():
-    """Test the context temporary_directory()."""
-    with temporary_directory() as tmp_dir:
-        assert os.path.isdir(tmp_dir)
-    assert not os.path.exists(tmp_dir)
-
-def test_temp_cd_context():
-    """Test the context temporary_cd()."""
-    with temporary_directory() as tmp_dir:
-        with temporary_cd(tmp_dir):
-            assert os.getcwd() == os.path.realpath(tmp_dir)
-        assert os.getcwd() != os.path.realpath(tmp_dir)
-
 
 def test_underscore_to_camelcase():
     """Test underscore_to_camelCase() conversion function."""
@@ -222,7 +211,7 @@ def test_TLeap_export_run():
     tleap.load_group(name='benzene', file_path=benzene_gaff)
     tleap.load_parameters(benzene_frcmod)
 
-    with temporary_directory() as tmp_dir:
+    with omt.utils.temporary_directory() as tmp_dir:
         output_path = os.path.join(tmp_dir, 'benzene')
         tleap.save_group(group='benzene', output_path=output_path + '.prmtop')
 

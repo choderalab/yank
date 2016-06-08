@@ -427,24 +427,6 @@ def is_iterable_container(value):
     # strings are iterable too so we have to treat them as a special case
     return not isinstance(value, str) and isinstance(value, collections.Iterable)
 
-@contextlib.contextmanager
-def temporary_directory():
-    """Context for safe creation of temporary directories."""
-    tmp_dir = tempfile.mkdtemp()
-    try:
-        yield tmp_dir
-    finally:
-        shutil.rmtree(tmp_dir)
-
-@contextlib.contextmanager
-def temporary_cd(dir_path):
-    """Context to temporary change the working directory."""
-    prev_dir = os.getcwd()
-    os.chdir(os.path.abspath(dir_path))
-    try:
-        yield
-    finally:
-        os.chdir(prev_dir)
 
 #========================================================================================
 # Conversion utilities

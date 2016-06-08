@@ -15,8 +15,9 @@ Test command-line interface.
 
 import os
 import textwrap
-import tempfile
 import commands
+
+import openmoltools as omt
 
 from yank import utils
 
@@ -55,7 +56,7 @@ def test_selftest():
 
 def test_prepare_binding():
     dirname = utils.get_data_filename("../examples/benzene-toluene-implicit/setup/")  # Could only figure out how to install things like yank.egg/examples/, rather than yank.egg/yank/examples/
-    with utils.temporary_directory() as store_dir:
+    with omt.utils.temporary_directory() as store_dir:
         run_cli('prepare binding amber --setupdir=%(dirname)s --ligand="resname TOL" --store %(store_dir)s --gbsa OBC1' % vars())
 
 def test_script_yaml():
@@ -63,7 +64,7 @@ def test_script_yaml():
     setup_dir = utils.get_data_filename(os.path.join('..', 'examples', 'p-xylene-implicit', 'input'))
     pxylene_path = os.path.join(setup_dir, 'p-xylene.mol2')
     lysozyme_path = os.path.join(setup_dir, '181L-pdbfixer.pdb')
-    with utils.temporary_directory() as tmp_dir:
+    with omt.utils.temporary_directory() as tmp_dir:
         yaml_content = """
         ---
         options:
