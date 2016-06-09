@@ -660,8 +660,10 @@ class SetupDatabase:
         # Configure solvent
         if solvent['nonbonded_method'] == openmm.app.NoCutoff:
             if 'implicit_solvent' in solvent:  # GBSA implicit solvent
+                implicit_solvent = solvent['implicit_solvent']
                 tleap.new_section('Set GB radii to recommended values for OBC')
-                tleap.add_commands('set default PBRadii mbondi2')
+                tleap.add_commands('set default PBRadii {}'.format(
+                    pipeline.get_leap_recommended_pbradii(implicit_solvent)))
         else:  # explicit solvent
             tleap.new_section('Solvate systems')
 

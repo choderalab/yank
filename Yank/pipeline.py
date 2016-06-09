@@ -123,6 +123,43 @@ def find_components(topology, ligand_dsl, ligand_net_charge=0,
     return atom_indices
 
 
+# See Amber manual Table 4.1 http://ambermd.org/doc12/Amber15.pdf
+_OPENMM_TO_TLEAP_PBRADII = {'HCT': 'mbondi', 'OBC1': 'mbondi2', 'OBC2': 'mbondi2',
+                            'GBn': 'bondi', 'GBn2': 'mbondi3'}
+
+def get_leap_recommended_pbradii(implicit_solvent):
+    """Return the recommended PBradii setting for LeAP.
+
+    Parameters
+    ----------
+    implicit_solvent : str
+        The implicit solvent model.
+
+    Returns
+    -------
+    pbradii : str or object
+        The LeAP recommended PBradii for the model.
+
+    Raises
+    ------
+    ValueError
+        If the implicit solvent model is not supported by OpenMM.
+
+    Examples
+    --------
+    >>> get_leap_recommended_pbradii('OBC2')
+    'mbondi2'
+    >>> from simtk.openmm.app import HCT
+    >>> get_leap_recommended_pbradii(HCT)
+    'mbondi'
+
+    """
+    try:
+        return _OPENMM_TO_TLEAP_PBRADII[str(implicit_solvent)]
+    except KeyError:
+        raise ValueError('Implicit solvent {} is not supported.'.format(implicit_solvent))
+
+
 def prepare_amber(system_dir, ligand_dsl, system_parameters, ligand_net_charge=0, verbose=False):
     """Create a system from prmtop and inpcrd files.
 
@@ -226,3 +263,8 @@ def prepare_amber(system_dir, ligand_dsl, system_parameters, ligand_net_charge=0
     phases = systems.keys()
 
     return [phases, systems, positions, atom_indices]
+
+
+if __name__ == '__main__':
+    import doctest
+    doctest.testmod()
