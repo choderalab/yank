@@ -1427,11 +1427,7 @@ class YamlBuilder:
 
             # Test solvent consistency
             nonbonded_method = solvent['nonbonded_method']
-            if nonbonded_method == openmm.app.NoCutoff:
-                if 'nonbonded_cutoff' in solvent:
-                    err_msg = ('solvent {} specify both nonbonded_method: NoCutoff and '
-                               'and nonbonded_cutoff').format(solvent_id)
-            else:
+            if nonbonded_method != openmm.app.NoCutoff:
                 if 'implicit_solvent' in solvent:
                     err_msg = ('solvent {} specify both nonbonded_method: {} '
                                'and implicit_solvent').format(solvent_id, nonbonded_method)
