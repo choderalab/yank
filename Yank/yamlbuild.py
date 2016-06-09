@@ -19,13 +19,14 @@ import sys
 import glob
 import copy
 import yaml
+import inspect
 import logging
 logger = logging.getLogger(__name__)
 
 import numpy as np
 import openmoltools as omt
 from simtk import unit, openmm
-from simtk.openmm.app import PDBFile
+from simtk.openmm.app import PDBFile, AmberPrmtopFile
 from alchemy import AlchemicalState, AbsoluteAlchemicalFactory
 
 import utils
@@ -659,8 +660,10 @@ class SetupDatabase:
         # Configure solvent
         if solvent['nonbonded_method'] == openmm.app.NoCutoff:
             if 'implicit_solvent' in solvent:  # GBSA implicit solvent
+                implicit_solvent = solvent['implicit_solvent']
                 tleap.new_section('Set GB radii to recommended values for OBC')
-                tleap.add_commands('set default PBRadii mbondi2')
+                tleap.add_commands('set default PBRadii {}'.format(
+                    pipeline.get_leap_recommended_pbradii(implicit_solvent)))
         else:  # explicit solvent
             tleap.new_section('Solvate systems')
 
@@ -1427,11 +1430,7 @@ class YamlBuilder:
 
             # Test solvent consistency
             nonbonded_method = solvent['nonbonded_method']
-            if nonbonded_method == openmm.app.NoCutoff:
-                if 'nonbonded_cutoff' in solvent:
-                    err_msg = ('solvent {} specify both nonbonded_method: NoCutoff and '
-                               'and nonbonded_cutoff').format(solvent_id)
-            else:
+            if nonbonded_method != openmm.app.NoCutoff:
                 if 'implicit_solvent' in solvent:
                     err_msg = ('solvent {} specify both nonbonded_method: {} '
                                'and implicit_solvent').format(solvent_id, nonbonded_method)
@@ -1844,17 +1843,17 @@ class YamlBuilder:
                 ligand_dsl = 'resname ' + ligand_dsl
                 logger.debug('DSL string for the ligand: "{}"'.format(ligand_dsl))
 
-                # System configuration
-                create_system_filter = set(('nonbonded_method', 'nonbonded_cutoff', 'implicit_solvent',
-                                            'constraints', 'hydrogen_mass'))
+                # System configuration.
+                # OpenMM adopts camel case convention so we need to change the options format.
                 solvent = self._db.solvents[components['solvent']]
-                system_pars = {opt: solvent[opt] for opt in create_system_filter if opt in solvent}
-                system_pars.update({opt: exp_opts[opt] for opt in create_system_filter
-                                    if opt in exp_opts})
-
-                # Convert underscore_parameters to camelCase for OpenMM API
-                system_pars = {utils.underscore_to_camelcase(opt): value
-                               for opt, value in system_pars.items()}
+                options_camelcase = {utils.underscore_to_camelcase(key): value
+                                     for key, value in solvent.items()}
+                options_camelcase.update({utils.underscore_to_camelcase(key): value
+                                          for key, value in exp_opts.items()})
+                # We use inspection to filter the options to pass to createSystem()
+                create_system_args = set(inspect.getargspec(AmberPrmtopFile.createSystem).args)
+                system_pars = {arg: options_camelcase[arg] for arg in create_system_args
+                               if arg in options_camelcase}
 
                 # Prepare system
                 phases, systems, positions, atom_indices = pipeline.prepare_amber(system_dir, ligand_dsl,

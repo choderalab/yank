@@ -293,17 +293,6 @@ def test_no_nonbonded_method():
     """
     YamlBuilder(textwrap.dedent(yaml_content))
 
-@raises(YamlParseError)
-def test_implicit_solvent_consistence():
-    """An exception is raised with NoCutoff and nonbonded_cutoff."""
-    yaml_content = """
-    ---
-    solvents:
-        solvtest:
-            nonbonded_method: NoCutoff
-            nonbonded_cutoff: 3*nanometers
-    """
-    YamlBuilder(textwrap.dedent(yaml_content))
 
 @raises(YamlParseError)
 def test_explicit_solvent_consistence():
