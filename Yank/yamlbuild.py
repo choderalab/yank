@@ -739,7 +739,7 @@ class SetupDatabase:
                 molecule = omt.openeye.iupac_to_oemol(mol_descr['name'])
             elif 'smiles' in mol_descr:
                 molecule = omt.openeye.smiles_to_oemol(mol_descr['smiles'])
-            molecule = omt.openeye.get_charges(molecule, keep_confs=1)
+            molecule = omt.openeye.get_charges(molecule, keep_confs=None)
         except ImportError as e:
             error_msg = ('requested molecule generation from name or smiles but '
                          'could not find OpenEye toolkit: ' + str(e))
