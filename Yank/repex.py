@@ -1055,8 +1055,7 @@ class ReplicaExchange(object):
         if self.show_energies:
             self._show_energies()
 
-        # Analysis objet starts off empty.
-        # TODO: Use an empty dict instead?
+        # Analysis object starts off empty.
         self.analysis = None
 
         # Signal that the class has been initialized.
@@ -1193,7 +1192,7 @@ class ReplicaExchange(object):
         integrator_end_time = time.time()
         # Store final positions
         getstate_start_time = time.time()
-        openmm_state = context.getState(getPositions=True,enforcePeriodicBox=True)
+        openmm_state = context.getState(getPositions=True, enforcePeriodicBox=state.system.usesPeriodicBoundaryConditions())
         getstate_end_time = time.time()
         self.replica_positions[replica_index] = openmm_state.getPositions(asNumpy=True)
         # Store box vectors.
@@ -1322,7 +1321,7 @@ class ReplicaExchange(object):
         # Minimize energy.
         minimized_positions = self.mm.LocalEnergyMinimizer.minimize(context, self.minimize_tolerance, self.minimize_max_iterations)
         # Store final positions
-        self.replica_positions[replica_index] = context.getState(getPositions=True,enforcePeriodicBox=True).getPositions(asNumpy=True)
+        self.replica_positions[replica_index] = context.getState(getPositions=True, enforcePeriodicBox=state.system.usesPeriodicBoundaryConditions()).getPositions(asNumpy=True)
         # Clean up.
         del integrator, context
 
