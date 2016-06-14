@@ -120,21 +120,9 @@ def test_replica_exchange(mpicomm=None, verbose=True):
     # Define mass of carbon atom.
     mass = 12.0 * units.amu
 
-    # Compute thermal energy and inverse temperature from specified temperature.
-    reference_temperature = 300.0 * units.kelvin
-    kB = units.BOLTZMANN_CONSTANT_kB * units.AVOGADRO_CONSTANT_NA
-    kT_reference = kB * reference_temperature # thermal energy
-
-    # Compute spring constant
-    # beta*(K/2) = 1 / (2 * sigma**2)
-    # K = 1 / (beta * sigma**2) = kT / sigma**2
-    # sigma = 1/sqrt(beta*K)
-    sigma = 3.0 * units.angstrom # standard deviation of harmonic oscillators at reference temperature
-    K = kT_reference / sigma**2
-
     # Define thermodynamic states.
     states = list() # thermodynamic states
-    Ks = [K, K, K] # sipring constants
+    Ks = [500.00, 400.0, 300.0] * units.kilocalories_per_mole / units.angstroms**2 # spring constants
     temperatures = [300.0, 350.0, 400.0] * units.kelvin # temperatures
     seed_positions = list()
     analytical_results = list()
