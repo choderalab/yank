@@ -16,6 +16,9 @@ from pkg_resources import resource_filename
 import mdtraj
 import numpy as np
 from simtk import unit
+from schema import Optional
+
+from openmoltools.utils import unwrap_py2  # Shortcuts for other modules
 
 #========================================================================================
 # Logging functions
@@ -553,6 +556,28 @@ def process_unit_bearing_str(quantity_str, compatible_units):
                                                                      str(compatible_units)))
     # Return unit-bearing quantity.
     return quantity
+
+
+def generate_signature_schema(func, update_keys=None):
+    """Generate a dictionary to test function signatures with Schema."""
+    if update_keys is None:
+        update_keys = {}
+
+    # Construct basic Schema dictionary
+    args, _, _, defaults = inspect.getargspec(unwrap_py2(func))
+    func_schema = {Optional(k): type(d) for k, d in zip(args[-len(defaults):], defaults)
+                   if k not in update_keys}
+
+    # None defaults are always accepted, Schema use object for that
+    for k, t in func_schema.items():
+        if isinstance(None, t):
+            func_schema[k] = object
+
+    # Add user keys
+    func_schema.update(update_keys)
+
+    return func_schema
+
 
 def get_keyword_args(function):
     """Inspect function signature and return keyword args with their default values.
