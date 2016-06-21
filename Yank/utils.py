@@ -470,6 +470,19 @@ def typename(atype):
 
     return typename
 
+
+def merge_dict(dict1, dict2):
+    """Return the union of two dictionaries.
+
+    In Python 3.5 there is a syntax to do this {**dict1, **dict2} but
+    in Python 2 you need to go through update().
+
+    """
+    merged_dict = dict1.copy()
+    merged_dict.update(dict2)
+    return merged_dict
+
+
 def underscore_to_camelcase(underscore_str):
     """Convert the given string from underscore_case to camelCase.
 
