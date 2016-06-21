@@ -16,9 +16,9 @@ from pkg_resources import resource_filename
 import mdtraj
 import numpy as np
 from simtk import unit
-from schema import Optional
+from schema import Optional, Use
 
-from openmoltools.utils import wraps_py2, unwrap_py2  # Shortcuts for other modules
+from openmoltools.utils import unwrap_py2  # Shortcuts for other modules
 
 #========================================================================================
 # Logging functions
@@ -507,6 +507,32 @@ def underscore_to_camelcase(underscore_str):
 
     return camelcase_str
 
+
+def camelcase_to_underscore(camelcase_str):
+    """Convert the given string from camelCase to underscore_case.
+
+    Parameters
+    ----------
+    camelcase_str : str
+        String in camelCase to convert to underscore style.
+
+    Returns
+    -------
+    underscore_str : str
+        String in underscore style.
+
+    Examples
+    --------
+    >>> camelcase_to_underscore('myVariable')
+    'my_variable'
+    >>> camelcase_to_underscore('__my_Variable_')
+    '__my__variable_'
+
+    """
+    underscore_str = re.sub(r'([A-Z])', '_\g<1>', camelcase_str)
+    return underscore_str.lower()
+
+
 def process_unit_bearing_str(quantity_str, compatible_units):
     """
     Process a unit-bearing string to produce a Quantity.
@@ -559,7 +585,6 @@ def process_unit_bearing_str(quantity_str, compatible_units):
 
 
 def to_unit_validator(compatible_units):
-    @wraps_py2
     def _to_unit_validator(quantity_str):
         return process_unit_bearing_str(quantity_str, compatible_units)
     return _to_unit_validator
@@ -567,22 +592,32 @@ def to_unit_validator(compatible_units):
 
 def generate_signature_schema(func, update_keys=None):
     """Generate a dictionary to test function signatures with Schema."""
-    if update_keys is None:
-        update_keys = {}
     func_schema = {}
     args, _, _, defaults = inspect.getargspec(unwrap_py2(func))
 
+    # Check for Optional keys
+    if update_keys is None:
+        update_keys = {}
+        optional_keys = set()
+    else:
+        optional_keys = {k._schema for k in update_keys if isinstance(k, Optional)}
+
+    # Transform camelCase to underscore
+    args = map(camelcase_to_underscore, args)
+
+    # Build schema
     for arg, default_value in zip(args[-len(defaults):], defaults):
-        if arg not in update_keys:  # User defined keys are added later
+        if arg not in update_keys and arg not in optional_keys:  # User defined keys are added later
             if default_value is None:  # None defaults are always accepted
                 validator = object
             elif isinstance(default_value, unit.Quantity):  # Convert unit strings
-                validator = to_unit_validator(default_value.unit)
+                validator = Use(to_unit_validator(default_value.unit))
             else:
                 validator = type(default_value)
             func_schema[Optional(arg)] = validator
 
-    func_schema.update(update_keys)  # Add user keys
+    # Add special user keys
+    func_schema.update(update_keys)
 
     return func_schema
 
