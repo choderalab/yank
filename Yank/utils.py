@@ -18,7 +18,7 @@ import numpy as np
 from simtk import unit
 from schema import Optional
 
-from openmoltools.utils import unwrap_py2  # Shortcuts for other modules
+from openmoltools.utils import wraps_py2, unwrap_py2  # Shortcuts for other modules
 
 #========================================================================================
 # Logging functions
@@ -558,23 +558,31 @@ def process_unit_bearing_str(quantity_str, compatible_units):
     return quantity
 
 
+def to_unit_validator(compatible_units):
+    @wraps_py2
+    def _to_unit_validator(quantity_str):
+        return process_unit_bearing_str(quantity_str, compatible_units)
+    return _to_unit_validator
+
+
 def generate_signature_schema(func, update_keys=None):
     """Generate a dictionary to test function signatures with Schema."""
     if update_keys is None:
         update_keys = {}
-
-    # Construct basic Schema dictionary
+    func_schema = {}
     args, _, _, defaults = inspect.getargspec(unwrap_py2(func))
-    func_schema = {Optional(k): type(d) for k, d in zip(args[-len(defaults):], defaults)
-                   if k not in update_keys}
 
-    # None defaults are always accepted, Schema use object for that
-    for k, t in func_schema.items():
-        if isinstance(None, t):
-            func_schema[k] = object
+    for arg, default_value in zip(args[-len(defaults):], defaults):
+        if arg not in update_keys:  # User defined keys are added later
+            if default_value is None:  # None defaults are always accepted
+                validator = object
+            elif isinstance(default_value, unit.Quantity):  # Convert unit strings
+                validator = to_unit_validator(default_value.unit)
+            else:
+                validator = type(default_value)
+            func_schema[Optional(arg)] = validator
 
-    # Add user keys
-    func_schema.update(update_keys)
+    func_schema.update(update_keys)  # Add user keys
 
     return func_schema
 
