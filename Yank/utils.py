@@ -590,24 +590,25 @@ def to_unit_validator(compatible_units):
     return _to_unit_validator
 
 
-def generate_signature_schema(func, update_keys=None):
+def generate_signature_schema(func, update_keys=None, exclude_keys=frozenset()):
     """Generate a dictionary to test function signatures with Schema."""
+    if update_keys is None:
+        update_keys = {}
+
     func_schema = {}
     args, _, _, defaults = inspect.getargspec(unwrap_py2(func))
 
-    # Check for Optional keys
-    if update_keys is None:
-        update_keys = {}
-        optional_keys = set()
-    else:
-        optional_keys = {k._schema for k in update_keys if isinstance(k, Optional)}
+    # Check keys that must be excluded from first pass
+    exclude_keys = set(exclude_keys)
+    exclude_keys.update(update_keys)
+    exclude_keys.update({k._schema for k in update_keys if isinstance(k, Optional)})
 
     # Transform camelCase to underscore
     args = map(camelcase_to_underscore, args)
 
     # Build schema
     for arg, default_value in zip(args[-len(defaults):], defaults):
-        if arg not in update_keys and arg not in optional_keys:  # User defined keys are added later
+        if arg not in exclude_keys:  # User defined keys are added later
             if default_value is None:  # None defaults are always accepted
                 validator = object
             elif isinstance(default_value, unit.Quantity):  # Convert unit strings

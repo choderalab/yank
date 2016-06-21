@@ -99,8 +99,9 @@ def test_generate_signature_schema():
 
     # Check update
     optional_instance = Optional('camel_case')
-    updated_schema = generate_signature_schema(f, update_keys={'none': float, optional_instance: int})
-    assert len(updated_schema) == 3
+    updated_schema = generate_signature_schema(f, update_keys={'none': float, optional_instance: int},
+                                               exclude_keys={'quantity'})
+    assert len(updated_schema) == 2
     assert updated_schema['none'] == float
     assert updated_schema[optional_instance] == int
 
