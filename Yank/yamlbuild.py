@@ -1031,90 +1031,6 @@ class YamlBuilder:
         'hydrogen_mass': 1 * unit.amu
     }
 
-    def _expand_molecules(self, yaml_content):
-        """Expand combinatorial molecules.
-
-        Generate new YAML content with no combinatorial molecules. The new content
-        is identical to the old one but combinatorial molecules are substituted by
-        the description of all the non-combinatorial molecules that they generate.
-        Moreover, the components of experiments that use combinatorial molecules
-        are resolved.
-
-        Parameters
-        ----------
-        yaml_content : dict
-            The YAML content as returned by yaml.load().
-
-        Returns
-        -------
-        expanded_content : dict
-            The new YAML content with combinatorial molecules expanded.
-
-        """
-        expanded_content = copy.deepcopy(yaml_content)
-
-        if 'molecules' in expanded_content:
-            all_comb_mols = set()  # keep track of all combinatorial molecules
-            for comb_mol_name, comb_molecule in expanded_content['molecules'].items():
-
-                # First transform "select: all" syntax into a combinatorial "select"
-                if 'select' in comb_molecule and comb_molecule['select'] == 'all':
-                    # Get the number of models in the file
-                    extension = os.path.splitext(comb_molecule['filepath'])[1][1:]  # remove dot
-                    with omt.utils.temporary_cd(self._script_dir):
-                        if extension == 'pdb':
-                            n_models = PDBFile(comb_molecule['filepath']).getNumFrames()
-                        elif extension == 'csv' or extension == 'smiles':
-                            with open(comb_molecule['filepath'], 'r') as smiles_file:
-                                n_models = len(filter(bool, smiles_file.readlines()))  # remove blank lines
-                        elif extension == 'sdf' or extension == 'mol2':
-                            if not utils.is_openeye_installed():
-                                err_msg = 'Molecule {}: Cannot "select" from {} file without OpenEye toolkit'
-                                raise RuntimeError(err_msg.format(comb_mol_name, extension))
-                            n_models = utils.read_oe_molecule(comb_molecule['filepath']).NumConfs()
-                        else:
-                            raise YamlParseError('Molecule {}: Cannot "select" from {} file'.format(
-                                    comb_mol_name, extension))
-
-                    # Substitute select: all with list of all models indices to trigger combinations
-                    comb_molecule['select'] = range(n_models)
-
-                # Find all combinations
-                comb_molecule = utils.CombinatorialTree(comb_molecule)
-                combinations = {comb_mol_name + '_' + name: mol
-                                for name, mol in comb_molecule.named_combinations(
-                                                    separator='_', max_name_length=30)}
-                if len(combinations) > 1:
-                    all_comb_mols.add(comb_mol_name)  # the combinatorial molecule will be removed
-                    expanded_content['molecules'].update(combinations)  # add all combinations
-
-                    # Check if experiments is a list or a dict
-                    if isinstance(expanded_content['experiments'], list):
-                        experiment_names = expanded_content['experiments']
-                    else:
-                        experiment_names = ['experiments']
-
-                    # Resolve combinatorial molecules in experiments
-                    for exp_name in experiment_names:
-                        components = expanded_content[exp_name]['components']
-                        for component_name in ['receptor', 'ligand']:
-                            component = components[component_name]
-                            if isinstance(component, list):
-                                try:
-                                    i = component.index(comb_mol_name)
-                                    component[i:i+1] = combinations.keys()
-                                except ValueError:
-                                    pass
-                            elif component == comb_mol_name:
-                                components[component_name] = combinations.keys()
-
-            # Delete old combinatorial molecules
-            for comb_mol_name in all_comb_mols:
-                del expanded_content['molecules'][comb_mol_name]
-
-        return expanded_content
-
-
     @property
     def yank_options(self):
         return self._isolate_yank_options(self.options)
@@ -1223,6 +1139,150 @@ class YamlBuilder:
             for output_dir, combination in self._expand_experiments():
                 self._run_experiment(combination, output_dir)
 
+    # --------------------------------------------------------------------------
+    # Options handling
+    # --------------------------------------------------------------------------
+
+    def _isolate_yank_options(self, options):
+        """Return the options that do not belong to YamlBuilder."""
+        return {opt: val for opt, val in options.items()
+                if opt not in self.DEFAULT_OPTIONS}
+
+    def _determine_experiment_options(self, experiment):
+        """Merge the options specified in the experiment section with the general ones.
+
+        Options in the general section have priority. Options in the experiment section
+        are validated.
+
+        Parameters
+        ----------
+        experiment : dict
+            The dictionary encoding the experiment.
+
+        Returns
+        -------
+        exp_options : dict
+            A new dictionary containing the all the options that apply for the experiment.
+
+        """
+        exp_options = self.options.copy()
+        exp_options.update(self._validate_options(experiment.get('options', {})))
+        return exp_options
+
+    # --------------------------------------------------------------------------
+    # Combinatorial expansion
+    # --------------------------------------------------------------------------
+
+    def _expand_molecules(self, yaml_content):
+        """Expand combinatorial molecules.
+
+        Generate new YAML content with no combinatorial molecules. The new content
+        is identical to the old one but combinatorial molecules are substituted by
+        the description of all the non-combinatorial molecules that they generate.
+        Moreover, the components of experiments that use combinatorial molecules
+        are resolved.
+
+        Parameters
+        ----------
+        yaml_content : dict
+            The YAML content as returned by yaml.load().
+
+        Returns
+        -------
+        expanded_content : dict
+            The new YAML content with combinatorial molecules expanded.
+
+        """
+        expanded_content = copy.deepcopy(yaml_content)
+
+        if 'molecules' in expanded_content:
+            all_comb_mols = set()  # keep track of all combinatorial molecules
+            for comb_mol_name, comb_molecule in expanded_content['molecules'].items():
+
+                # First transform "select: all" syntax into a combinatorial "select"
+                if 'select' in comb_molecule and comb_molecule['select'] == 'all':
+                    # Get the number of models in the file
+                    extension = os.path.splitext(comb_molecule['filepath'])[1][1:]  # remove dot
+                    with omt.utils.temporary_cd(self._script_dir):
+                        if extension == 'pdb':
+                            n_models = PDBFile(comb_molecule['filepath']).getNumFrames()
+                        elif extension == 'csv' or extension == 'smiles':
+                            with open(comb_molecule['filepath'], 'r') as smiles_file:
+                                n_models = len(filter(bool, smiles_file.readlines()))  # remove blank lines
+                        elif extension == 'sdf' or extension == 'mol2':
+                            if not utils.is_openeye_installed():
+                                err_msg = 'Molecule {}: Cannot "select" from {} file without OpenEye toolkit'
+                                raise RuntimeError(err_msg.format(comb_mol_name, extension))
+                            n_models = utils.read_oe_molecule(comb_molecule['filepath']).NumConfs()
+                        else:
+                            raise YamlParseError('Molecule {}: Cannot "select" from {} file'.format(
+                                    comb_mol_name, extension))
+
+                    # Substitute select: all with list of all models indices to trigger combinations
+                    comb_molecule['select'] = range(n_models)
+
+                # Find all combinations
+                comb_molecule = utils.CombinatorialTree(comb_molecule)
+                combinations = {comb_mol_name + '_' + name: mol
+                                for name, mol in comb_molecule.named_combinations(
+                                                    separator='_', max_name_length=30)}
+                if len(combinations) > 1:
+                    all_comb_mols.add(comb_mol_name)  # the combinatorial molecule will be removed
+                    expanded_content['molecules'].update(combinations)  # add all combinations
+
+                    # Check if experiments is a list or a dict
+                    if isinstance(expanded_content['experiments'], list):
+                        experiment_names = expanded_content['experiments']
+                    else:
+                        experiment_names = ['experiments']
+
+                    # Resolve combinatorial molecules in experiments
+                    for exp_name in experiment_names:
+                        components = expanded_content[exp_name]['components']
+                        for component_name in ['receptor', 'ligand']:
+                            component = components[component_name]
+                            if isinstance(component, list):
+                                try:
+                                    i = component.index(comb_mol_name)
+                                    component[i:i+1] = combinations.keys()
+                                except ValueError:
+                                    pass
+                            elif component == comb_mol_name:
+                                components[component_name] = combinations.keys()
+
+            # Delete old combinatorial molecules
+            for comb_mol_name in all_comb_mols:
+                del expanded_content['molecules'][comb_mol_name]
+
+        return expanded_content
+
+    def _expand_experiments(self):
+        """Generates all possible combinations of experiment.
+
+        Each generated experiment is uniquely named.
+
+        Returns
+        -------
+        output_dir : str
+            A unique path where to save the experiment output files relative to
+            the main output directory specified by the user in the options.
+        combination : dict
+            The dictionary describing a single experiment.
+
+        """
+        output_dir = ''
+        for exp_name, experiment in self._experiments.items():
+            if len(self._experiments) > 1:
+                output_dir = exp_name
+
+            # Loop over all combinations
+            for name, combination in experiment.named_combinations(separator='_', max_name_length=50):
+                yield os.path.join(output_dir, name), combination
+
+    # --------------------------------------------------------------------------
+    # Parsing and syntax validation
+    # --------------------------------------------------------------------------
+
     @classmethod
     def _validate_options(cls, options):
         """Validate molecules syntax.
@@ -1255,32 +1315,6 @@ class YamlBuilder:
         except (TypeError, ValueError) as e:
             raise YamlParseError(str(e))
         return validated_options
-
-    def _isolate_yank_options(self, options):
-        """Return the options that do not belong to YamlBuilder."""
-        return {opt: val for opt, val in options.items()
-                if opt not in self.DEFAULT_OPTIONS}
-
-    def _determine_experiment_options(self, experiment):
-        """Merge the options specified in the experiment section with the general ones.
-
-        Options in the general section have priority. Options in the experiment section
-        are validated.
-
-        Parameters
-        ----------
-        experiment : dict
-            The dictionary encoding the experiment.
-
-        Returns
-        -------
-        exp_options : dict
-            A new dictionary containing the all the options that apply for the experiment.
-
-        """
-        exp_options = self.options.copy()
-        exp_options.update(self._validate_options(experiment.get('options', {})))
-        return exp_options
 
     @staticmethod
     def _validate_molecules(molecules_description):
@@ -1444,29 +1478,6 @@ class YamlBuilder:
 
         return validated_protocols
 
-    def _expand_experiments(self):
-        """Generates all possible combinations of experiment.
-
-        Each generated experiment is uniquely named.
-
-        Returns
-        -------
-        output_dir : str
-            A unique path where to save the experiment output files relative to
-            the main output directory specified by the user in the options.
-        combination : dict
-            The dictionary describing a single experiment.
-
-        """
-        output_dir = ''
-        for exp_name, experiment in self._experiments.items():
-            if len(self._experiments) > 1:
-                output_dir = exp_name
-
-            # Loop over all combinations
-            for name, combination in experiment.named_combinations(separator='_', max_name_length=50):
-                yield os.path.join(output_dir, name), combination
-
     def _parse_experiments(self, yaml_content):
         """Validate experiments.
 
@@ -1526,6 +1537,10 @@ class YamlBuilder:
             except SchemaError as e:
                 raise YamlParseError('Experiment {}: {}'.format(experiment_id, e.autos[-1]))
 
+    # --------------------------------------------------------------------------
+    # File paths utilities
+    # --------------------------------------------------------------------------
+
     @staticmethod
     def _get_setup_dir(experiment_options):
         """Return the path to the directory where the setup output files
@@ -1557,6 +1572,10 @@ class YamlBuilder:
         """
         return os.path.join(experiment_options['output_dir'],
                             experiment_options['experiments_dir'], experiment_subdir)
+
+    # --------------------------------------------------------------------------
+    # Resuming
+    # --------------------------------------------------------------------------
 
     def _check_resume_experiment(self, experiment_dir):
         """Check if Yank output files already exist.
@@ -1648,6 +1667,10 @@ class YamlBuilder:
                 break
 
         return overwrite, err_msg
+
+    # --------------------------------------------------------------------------
+    # Experiment setup and execution
+    # --------------------------------------------------------------------------
 
     def _generate_yaml(self, experiment, file_path):
         """Generate the minimum YAML file needed to reproduce the experiment.
