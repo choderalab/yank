@@ -456,7 +456,6 @@ def test_yaml_mol2_antechamber():
 def test_setup_name_smiles_openeye_charges():
     """Setup molecule from name and SMILES with openeye charges and gaff."""
     with omt.utils.temporary_directory() as tmp_dir:
-        tmp_dir = 'temp'
         yaml_content = """
         ---
         options:
