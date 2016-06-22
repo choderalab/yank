@@ -598,13 +598,46 @@ def process_unit_bearing_str(quantity_str, compatible_units):
 
 
 def to_unit_validator(compatible_units):
+    """Function generator to test unit bearing strings with Schema."""
     def _to_unit_validator(quantity_str):
         return process_unit_bearing_str(quantity_str, compatible_units)
     return _to_unit_validator
 
 
 def generate_signature_schema(func, update_keys=None, exclude_keys=frozenset()):
-    """Generate a dictionary to test function signatures with Schema."""
+    """Generate a dictionary to test function signatures with Schema.
+
+    Parameters
+    ----------
+    func : function
+        The function used to build the schema.
+    update_keys : dict
+        Keys in here have priority over automatic generation. It can be
+        used to make an argument mandatory, or to use a specific validator.
+    exclude_keys : list-like
+        Keys in here are ignored and not included in the schema.
+
+    Returns
+    -------
+    func_schema : dict
+        The dictionary to be used as Schema type. Contains all keyword
+        variables in the function signature as optional argument with
+        the default type as validator. Unit bearing strings are converted.
+        Argument with default None are always accepted. Camel case
+        parameters in the function are converted to underscore style.
+
+    Examples
+    --------
+    >>> from schema import Schema
+    >>> def f(a, b, camelCase=True, none=None, quantity=3.0*unit.angstroms):
+    ...     pass
+    >>> generate_signature_schema(f, exclude_keys=['quantity'])
+    {Optional('camel_case'): <type 'bool'>, Optional('none'): <type 'object'>}
+    >>> f_schema = Schema(generate_signature_schema(f))
+    >>> f_schema.validate({'quantity': '1.0*nanometer'})
+    {'quantity': Quantity(value=1.0, unit=nanometer)}
+
+    """
     if update_keys is None:
         update_keys = {}
 
