@@ -1203,6 +1203,7 @@ class YamlBuilder:
         """
         self.options = self.DEFAULT_OPTIONS.copy()  # General options (not experiment-specific)
 
+        self._script_dir = os.getcwd()  # basic dir for relative paths
         self._db = None  # Database containing molecules created in parse()
         self._mpicomm = None  # MPI communicator
         self._raw_yaml = {}  # Unconverted input YAML script
@@ -1236,9 +1237,10 @@ class YamlBuilder:
             with open(yaml_source, 'r') as f:
                 yaml_content = yaml.load(f)
             self._script_dir = os.path.dirname(yaml_source)
-        except IOError:
+        except IOError:  # string
             yaml_content = yaml.load(yaml_source)
-            self._script_dir = os.getcwd()
+        except TypeError:  # dict
+            yaml_content = yaml_source.copy()
 
         if yaml_content is None:
             raise YamlParseError('The YAML file is empty!')
@@ -1375,7 +1377,7 @@ class YamlBuilder:
         def is_peptide(filepath):
             """Input file is a peptide."""
             if not os.path.isfile(filepath):
-                raise SchemaError('File path does not exist.')
+                raise YamlParseError('File path does not exist.')
             extension = os.path.splitext(filepath)[1]
             if extension == '.pdb':
                 return True
@@ -1385,7 +1387,7 @@ class YamlBuilder:
             """Input file is a small molecule."""
             file_formats = frozenset(['mol2', 'sdf', 'smiles', 'csv'])
             if not os.path.isfile(filepath):
-                raise SchemaError('File path does not exist.')
+                raise YamlParseError('File path does not exist.')
             extension = os.path.splitext(filepath)[1][1:]
             if extension in file_formats:
                 return True
@@ -1559,17 +1561,17 @@ class YamlBuilder:
         def is_known_molecule(molecule_id):
             if molecule_id in self._db.molecules:
                 return True
-            raise SchemaError('Molecule ' + molecule_id + ' is unknown.')
+            raise YamlParseError('Molecule ' + molecule_id + ' is unknown.')
 
         def is_known_solvent(solvent_id):
             if solvent_id in self._db.solvents:
                 return True
-            raise SchemaError('Solvent ' + solvent_id + ' is unknown.')
+            raise YamlParseError('Solvent ' + solvent_id + ' is unknown.')
 
         def is_known_protocol(protocol_id):
             if protocol_id in self._protocols:
                 return True
-            raise SchemaError('Protocol ' + protocol_id + ' is unknown')
+            raise YamlParseError('Protocol ' + protocol_id + ' is unknown')
 
         # Check if there is a sequence of experiments or a single one
         try:
