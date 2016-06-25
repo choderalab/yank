@@ -168,7 +168,10 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
             if 'MonteCarloBarostat' in forces:
                 barostat = forces['MonteCarloBarostat']
                 # Set temperature and pressure.
-                barostat.setTemperature(state.temperature)
+                try:
+                    barostat.setDefaultTemperature(state.temperature)
+                except AttributeError:  # versions previous to OpenMM0.8
+                    barostat.setTemperature(state.temperature)
                 barostat.setDefaultPressure(state.pressure)
                 barostat.setRandomNumberSeed(int(np.random.randint(0, MAX_SEED)))
             else:
@@ -557,7 +560,10 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
             if 'MonteCarloBarostat' in forces:
                 barostat = forces['MonteCarloBarostat']
                 # Set temperature and pressure.
-                barostat.setTemperature(state.temperature)
+                try:
+                    barostat.setDefaultTemperature(state.temperature)
+                except AttributeError:  # versions previous to OpenMM0.8
+                    barostat.setTemperature(state.temperature)
                 barostat.setDefaultPressure(state.pressure)
                 context.setParameter(barostat.Pressure(), state.pressure) # must be set in context
                 barostat.setRandomNumberSeed(int(np.random.randint(0, MAX_SEED)))
