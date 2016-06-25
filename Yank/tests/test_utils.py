@@ -12,6 +12,7 @@ Test various utility functions.
 import textwrap
 
 import openmoltools as omt
+from schema import Schema
 
 from nose import tools
 from yank.utils import *
@@ -76,6 +77,34 @@ def test_expand_tree():
     expected_names = set(['test-thisn', 'test-thisn-2', 'test-thisn-3', 'test-thisn-4'])
     assert expected_names == set([name for name, _ in long_tree.named_combinations(
                                                        separator='-', max_name_length=10)])
+
+
+def test_generate_signature_schema():
+    """Test generate_signature_schema() function."""
+    def f(a, b, camelCase=True, none=None, quantity=3.0*unit.angstroms):
+        pass
+
+    f_schema = generate_signature_schema(f)
+    assert len(f_schema) == 3
+    for k in f_schema.keys():
+        assert isinstance(k, Optional)
+
+    # Remove Optional() marker for comparison
+    stripped_schema = {k._schema: v for k, v in f_schema.items() if k._schema != 'quantity'}
+    assert {'camel_case': bool, 'none': object} == stripped_schema
+
+    # Check conversion
+    f_schema = Schema(f_schema)
+    assert f_schema.validate({'quantity': '5*angstrom'}) == {'quantity': 5*unit.angstrom}
+
+    # Check update
+    optional_instance = Optional('camel_case')
+    updated_schema = generate_signature_schema(f, update_keys={'none': float, optional_instance: int},
+                                               exclude_keys={'quantity'})
+    assert len(updated_schema) == 2
+    assert updated_schema['none'] == float
+    assert updated_schema[optional_instance] == int
+
 
 def test_get_keyword_args():
     """Test get_keyword_args() function."""

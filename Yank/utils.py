@@ -16,6 +16,9 @@ from pkg_resources import resource_filename
 import mdtraj
 import numpy as np
 from simtk import unit
+from schema import Optional, Use
+
+from openmoltools.utils import unwrap_py2  # Shortcuts for other modules
 
 #========================================================================================
 # Logging functions
@@ -467,6 +470,19 @@ def typename(atype):
 
     return typename
 
+
+def merge_dict(dict1, dict2):
+    """Return the union of two dictionaries.
+
+    In Python 3.5 there is a syntax to do this {**dict1, **dict2} but
+    in Python 2 you need to go through update().
+
+    """
+    merged_dict = dict1.copy()
+    merged_dict.update(dict2)
+    return merged_dict
+
+
 def underscore_to_camelcase(underscore_str):
     """Convert the given string from underscore_case to camelCase.
 
@@ -503,6 +519,32 @@ def underscore_to_camelcase(underscore_str):
     camelcase_str += '_' * n_trailing
 
     return camelcase_str
+
+
+def camelcase_to_underscore(camelcase_str):
+    """Convert the given string from camelCase to underscore_case.
+
+    Parameters
+    ----------
+    camelcase_str : str
+        String in camelCase to convert to underscore style.
+
+    Returns
+    -------
+    underscore_str : str
+        String in underscore style.
+
+    Examples
+    --------
+    >>> camelcase_to_underscore('myVariable')
+    'my_variable'
+    >>> camelcase_to_underscore('__my_Variable_')
+    '__my__variable_'
+
+    """
+    underscore_str = re.sub(r'([A-Z])', '_\g<1>', camelcase_str)
+    return underscore_str.lower()
+
 
 def process_unit_bearing_str(quantity_str, compatible_units):
     """
@@ -553,6 +595,79 @@ def process_unit_bearing_str(quantity_str, compatible_units):
                                                                      str(compatible_units)))
     # Return unit-bearing quantity.
     return quantity
+
+
+def to_unit_validator(compatible_units):
+    """Function generator to test unit bearing strings with Schema."""
+    def _to_unit_validator(quantity_str):
+        return process_unit_bearing_str(quantity_str, compatible_units)
+    return _to_unit_validator
+
+
+def generate_signature_schema(func, update_keys=None, exclude_keys=frozenset()):
+    """Generate a dictionary to test function signatures with Schema.
+
+    Parameters
+    ----------
+    func : function
+        The function used to build the schema.
+    update_keys : dict
+        Keys in here have priority over automatic generation. It can be
+        used to make an argument mandatory, or to use a specific validator.
+    exclude_keys : list-like
+        Keys in here are ignored and not included in the schema.
+
+    Returns
+    -------
+    func_schema : dict
+        The dictionary to be used as Schema type. Contains all keyword
+        variables in the function signature as optional argument with
+        the default type as validator. Unit bearing strings are converted.
+        Argument with default None are always accepted. Camel case
+        parameters in the function are converted to underscore style.
+
+    Examples
+    --------
+    >>> from schema import Schema
+    >>> def f(a, b, camelCase=True, none=None, quantity=3.0*unit.angstroms):
+    ...     pass
+    >>> generate_signature_schema(f, exclude_keys=['quantity'])
+    {Optional('camel_case'): <type 'bool'>, Optional('none'): <type 'object'>}
+    >>> f_schema = Schema(generate_signature_schema(f))
+    >>> f_schema.validate({'quantity': '1.0*nanometer'})
+    {'quantity': Quantity(value=1.0, unit=nanometer)}
+
+    """
+    if update_keys is None:
+        update_keys = {}
+
+    func_schema = {}
+    args, _, _, defaults = inspect.getargspec(unwrap_py2(func))
+
+    # Check keys that must be excluded from first pass
+    exclude_keys = set(exclude_keys)
+    exclude_keys.update(update_keys)
+    exclude_keys.update({k._schema for k in update_keys if isinstance(k, Optional)})
+
+    # Transform camelCase to underscore
+    args = map(camelcase_to_underscore, args)
+
+    # Build schema
+    for arg, default_value in zip(args[-len(defaults):], defaults):
+        if arg not in exclude_keys:  # User defined keys are added later
+            if default_value is None:  # None defaults are always accepted
+                validator = object
+            elif isinstance(default_value, unit.Quantity):  # Convert unit strings
+                validator = Use(to_unit_validator(default_value.unit))
+            else:
+                validator = type(default_value)
+            func_schema[Optional(arg)] = validator
+
+    # Add special user keys
+    func_schema.update(update_keys)
+
+    return func_schema
+
 
 def get_keyword_args(function):
     """Inspect function signature and return keyword args with their default values.

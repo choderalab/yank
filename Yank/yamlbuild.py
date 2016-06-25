@@ -21,6 +21,7 @@ import copy
 import yaml
 import inspect
 import logging
+
 logger = logging.getLogger(__name__)
 
 import numpy as np
@@ -28,6 +29,7 @@ import openmoltools as omt
 from simtk import unit, openmm
 from simtk.openmm.app import PDBFile, AmberPrmtopFile
 from alchemy import AlchemicalState, AbsoluteAlchemicalFactory
+from schema import Schema, And, Or, Use, Optional, SchemaError
 
 import utils
 import pipeline
@@ -739,7 +741,7 @@ class SetupDatabase:
                 molecule = omt.openeye.iupac_to_oemol(mol_descr['name'])
             elif 'smiles' in mol_descr:
                 molecule = omt.openeye.smiles_to_oemol(mol_descr['smiles'])
-            molecule = omt.openeye.get_charges(molecule, keep_confs=None)
+            molecule = omt.openeye.get_charges(molecule, keep_confs=1)
         except ImportError as e:
             error_msg = ('requested molecule generation from name or smiles but '
                          'could not find OpenEye toolkit: ' + str(e))
@@ -1029,6 +1031,148 @@ class YamlBuilder:
         'hydrogen_mass': 1 * unit.amu
     }
 
+    @property
+    def yank_options(self):
+        return self._isolate_yank_options(self.options)
+
+    def __init__(self, yaml_source=None):
+        """Constructor.
+
+        Parameters
+        ----------
+        yaml_source : str or dict
+            A path to the YAML script or the YAML content. If not specified, you
+            can load it later by using parse() (default is None).
+
+        """
+        self.options = self.DEFAULT_OPTIONS.copy()  # General options (not experiment-specific)
+
+        self._script_dir = os.getcwd()  # basic dir for relative paths
+        self._db = None  # Database containing molecules created in parse()
+        self._mpicomm = None  # MPI communicator
+        self._raw_yaml = {}  # Unconverted input YAML script
+        self._protocols = {}  # Alchemical protocols description
+        self._experiments = {}  # Experiments description
+
+        if yaml_source is not None:
+            self.parse(yaml_source)
+
+    def parse(self, yaml_source):
+        """Parse the given YAML configuration file.
+
+        Validate the syntax and load the script into memory. This does not build
+        the actual experiment.
+
+        Parameters
+        ----------
+        yaml_source : str or dict
+            A path to the YAML script or the YAML content.
+
+        Raises
+        ------
+        YamlParseError
+            If the input YAML script is syntactically incorrect.
+
+        """
+        # TODO check version of yank-yaml language
+        # TODO what if there are multiple streams in the YAML file?
+        # Load YAML script and decide working directory for relative paths
+        try:
+            with open(yaml_source, 'r') as f:
+                yaml_content = yaml.load(f)
+            self._script_dir = os.path.dirname(yaml_source)
+        except IOError:  # string
+            yaml_content = yaml.load(yaml_source)
+        except TypeError:  # dict
+            yaml_content = yaml_source.copy()
+
+        if yaml_content is None:
+            raise YamlParseError('The YAML file is empty!')
+
+        # Expand combinatorial molecules
+        yaml_content = self._expand_molecules(yaml_content)
+
+        # Save raw YAML content that will be needed when generating the YAML files
+        self._raw_yaml = copy.deepcopy({key: yaml_content.get(key, {})
+                                        for key in ['options', 'molecules', 'solvents', 'protocols']})
+
+        # Validate options and overwrite defaults
+        self.options.update(self._validate_options(utils.merge_dict(yaml_content.get('options', {}),
+                                                                    yaml_content.get('metadata', {}))))
+
+        # Initialize and configure database with molecules and solvents
+        self._db = SetupDatabase(setup_dir=self._get_setup_dir(self.options))
+        self._db.molecules = self._validate_molecules(yaml_content.get('molecules', {}))
+        self._db.solvents = self._validate_solvents(yaml_content.get('solvents', {}))
+
+        # Validate protocols
+        self._protocols = self._validate_protocols(yaml_content.get('protocols', {}))
+
+        # Validate experiments
+        self._parse_experiments(yaml_content)
+
+    def build_experiment(self):
+        """Set up and run all the Yank experiments."""
+        # Throw exception if there are no experiments
+        if len(self._experiments) == 0:
+            raise YamlParseError('No experiments specified!')
+
+        # Configure MPI, if requested
+        if self.options['mpi']:
+            from mpi4py import MPI
+            MPI.COMM_WORLD.barrier()
+            self._mpicomm = MPI.COMM_WORLD
+
+        # Run all experiments with paths relative to the script directory
+        with omt.utils.temporary_cd(self._script_dir):
+            # This is hard disk intensive, only process 0 should do it
+            overwrite = True
+            if self._mpicomm is None or self._mpicomm.rank == 0:
+                overwrite, err_msg = self._check_resume()
+            if self._mpicomm:
+                overwrite = self._mpicomm.bcast(overwrite, root=0)
+                if overwrite and self._mpicomm.rank != 0:
+                    sys.exit()
+            if overwrite:  # self._mpicomm is None or rank == 0
+                raise YamlParseError(err_msg)
+
+            for output_dir, combination in self._expand_experiments():
+                self._run_experiment(combination, output_dir)
+
+    # --------------------------------------------------------------------------
+    # Options handling
+    # --------------------------------------------------------------------------
+
+    def _isolate_yank_options(self, options):
+        """Return the options that do not belong to YamlBuilder."""
+        return {opt: val for opt, val in options.items()
+                if opt not in self.DEFAULT_OPTIONS}
+
+    def _determine_experiment_options(self, experiment):
+        """Merge the options specified in the experiment section with the general ones.
+
+        Options in the general section have priority. Options in the experiment section
+        are validated.
+
+        Parameters
+        ----------
+        experiment : dict
+            The dictionary encoding the experiment.
+
+        Returns
+        -------
+        exp_options : dict
+            A new dictionary containing the all the options that apply for the experiment.
+
+        """
+        exp_options = self.options.copy()
+        exp_options.update(self._validate_options(experiment.get('options', {})))
+        return exp_options
+
+    # --------------------------------------------------------------------------
+    # Combinatorial expansion
+    # --------------------------------------------------------------------------
+
     def _expand_molecules(self, yaml_content):
         """Expand combinatorial molecules.
 
@@ -1048,78 +1192,6 @@ class YamlBuilder:
         expanded_content : dict
             The new YAML content with combinatorial molecules expanded.
 
-        Examples
-        --------
-        >>> import textwrap
-        >>> yaml_content = '''
-        ... ---
-        ... molecules:
-        ...     rec:
-        ...         filepath: [conf1.pdb, conf2.pdb]
-        ...         parameters: oldff/leaprc.ff99SBildn
-        ...     lig:
-        ...         name: iupacname
-        ...         parameters: antechamber
-        ... solvents:
-        ...     solv1:
-        ...         nonbonded_method: NoCutoff
-        ... protocols:
-        ...     absolute-binding:
-        ...         phases:
-        ...             complex:
-        ...                 alchemical_path:
-        ...                     lambda_electrostatics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
-        ...                     lambda_sterics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
-        ...             solvent:
-        ...                 alchemical_path:
-        ...                     lambda_electrostatics: [1.0, 0.8, 0.6, 0.3, 0.0]
-        ...                     lambda_sterics: [1.0, 0.8, 0.6, 0.3, 0.0]
-        ... experiments:
-        ...     components:
-        ...         receptor: rec
-        ...         ligand: lig
-        ...         solvent: solv1
-        ...     protocol: absolute-binding
-        ... '''
-        >>> expected_content = '''
-        ... ---
-        ... molecules:
-        ...     rec_conf1pdb:
-        ...         filepath: conf1.pdb
-        ...         parameters: oldff/leaprc.ff99SBildn
-        ...     rec_conf2pdb:
-        ...         filepath: conf2.pdb
-        ...         parameters: oldff/leaprc.ff99SBildn
-        ...     lig:
-        ...         name: iupacname
-        ...         parameters: antechamber
-        ... solvents:
-        ...     solv1:
-        ...         nonbonded_method: NoCutoff
-        ... protocols:
-        ...     absolute-binding:
-        ...         phases:
-        ...             complex:
-        ...                 alchemical_path:
-        ...                     lambda_electrostatics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
-        ...                     lambda_sterics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
-        ...             solvent:
-        ...                 alchemical_path:
-        ...                     lambda_electrostatics: [1.0, 0.8, 0.6, 0.3, 0.0]
-        ...                     lambda_sterics: [1.0, 0.8, 0.6, 0.3, 0.0]
-        ... experiments:
-        ...     components:
-        ...         receptor: [rec_conf1pdb, rec_conf2pdb]
-        ...         ligand: lig
-        ...         solvent: solv1
-        ...     protocol: absolute-binding
-        ... '''
-        >>> yaml_content = textwrap.dedent(yaml_content)
-        >>> raw = yaml.load(yaml_content)
-        >>> expanded = YamlBuilder(yaml_content)._expand_molecules(raw)
-        >>> expanded == yaml.load(textwrap.dedent(expected_content))
-        True
-
         """
         expanded_content = copy.deepcopy(yaml_content)
 
@@ -1129,13 +1201,6 @@ class YamlBuilder:
 
                 # First transform "select: all" syntax into a combinatorial "select"
                 if 'select' in comb_molecule and comb_molecule['select'] == 'all':
-                    # We need a file to select from
-                    # TODO this should be checked only in _parse_molecules(), will be
-                    # TODO easy when we'll have automatic data validation
-                    if 'filepath' not in comb_molecule:
-                        raise YamlParseError('Molecule {}: Need filepath with select: all'.format(
-                            comb_mol_name))
-
                     # Get the number of models in the file
                     extension = os.path.splitext(comb_molecule['filepath'])[1][1:]  # remove dot
                     with omt.utils.temporary_cd(self._script_dir):
@@ -1191,299 +1256,6 @@ class YamlBuilder:
 
         return expanded_content
 
-
-    @property
-    def yank_options(self):
-        return self._isolate_yank_options(self.options)
-
-    def __init__(self, yaml_source):
-        """Parse the given YAML configuration file.
-
-        This does not build the actual experiment but simply checks that the syntax
-        is correct and loads the configuration into memory.
-
-        Parameters
-        ----------
-        yaml_source : str
-            A path to the YAML script or the YAML content.
-
-        """
-
-        self._mpicomm = None  # MPI communicator
-
-        # TODO check version of yank-yaml language
-        # TODO what if there are multiple streams in the YAML file?
-        # Load YAML script and decide working directory for relative paths
-        try:
-            with open(yaml_source, 'r') as f:
-                yaml_content = yaml.load(f)
-            self._script_dir = os.path.dirname(yaml_source)
-        except IOError:
-            yaml_content = yaml.load(yaml_source)
-            self._script_dir = os.getcwd()
-
-        if yaml_content is None:
-            raise YamlParseError('The YAML file is empty!')
-
-        # Expand combinatorial molecules
-        yaml_content = self._expand_molecules(yaml_content)
-
-        # Save raw YAML content that will be needed when generating the YAML files
-        self._raw_yaml = copy.deepcopy({key: yaml_content.get(key, {})
-                                        for key in ['options', 'molecules', 'solvents', 'protocols']})
-
-        # Validate and store options
-        self._parse_options(yaml_content)
-
-        # Initialize and configure database
-        self._db = SetupDatabase(setup_dir=self._get_setup_dir(self.options))
-        self._parse_molecules(yaml_content)
-        self._parse_solvents(yaml_content)
-
-        # Validate protocols
-        self._parse_protocols(yaml_content)
-
-        # Validate experiments
-        self._parse_experiments(yaml_content)
-
-    def build_experiment(self):
-        """Set up and run all the Yank experiments."""
-        # Throw exception if there are no experiments
-        if len(self._experiments) == 0:
-            raise YamlParseError('No experiments specified!')
-
-        # Configure MPI, if requested
-        if self.options['mpi']:
-            from mpi4py import MPI
-            MPI.COMM_WORLD.barrier()
-            self._mpicomm = MPI.COMM_WORLD
-
-        # Run all experiments with paths relative to the script directory
-        with omt.utils.temporary_cd(self._script_dir):
-            # This is hard disk intensive, only process 0 should do it
-            overwrite = True
-            if self._mpicomm is None or self._mpicomm.rank == 0:
-                overwrite, err_msg = self._check_resume()
-            if self._mpicomm:
-                overwrite = self._mpicomm.bcast(overwrite, root=0)
-                if overwrite and self._mpicomm.rank != 0:
-                    sys.exit()
-            if overwrite:  # self._mpicomm is None or rank == 0
-                raise YamlParseError(err_msg)
-
-            for output_dir, combination in self._expand_experiments():
-                self._run_experiment(combination, output_dir)
-
-    def _validate_options(self, options):
-        """Return a dictionary with YamlBuilder and Yank options validated."""
-        template_options = self.DEFAULT_OPTIONS.copy()
-        template_options.update(Yank.default_parameters)
-        template_options.update(ReplicaExchange.default_parameters)
-        template_options.update(utils.get_keyword_args(AbsoluteAlchemicalFactory.__init__))
-        openmm_app_type = {'constraints': to_openmm_app}
-        try:
-            valid = utils.validate_parameters(options, template_options, check_unknown=True,
-                                              process_units_str=True, float_to_int=True,
-                                              special_conversions=openmm_app_type)
-        except (TypeError, ValueError) as e:
-            raise YamlParseError(str(e))
-        return valid
-
-    def _isolate_yank_options(self, options):
-        """Return the options that do not belong to YamlBuilder."""
-        return {opt: val for opt, val in options.items()
-                if opt not in self.DEFAULT_OPTIONS}
-
-    def _determine_experiment_options(self, experiment):
-        """Merge the options specified in the experiment section with the general ones.
-
-        Options in the general section have priority. Options in the experiment section
-        are validated.
-
-        Parameters
-        ----------
-        experiment : dict
-            The dictionary encoding the experiment.
-
-        Returns
-        -------
-        exp_options : dict
-            A new dictionary containing the all the options that apply for the experiment.
-
-        """
-        exp_options = self.options.copy()
-        exp_options.update(self._validate_options(experiment.get('options', {})))
-        return exp_options
-
-    def _parse_options(self, yaml_content):
-        """Validate and store options in the script.
-
-        Parameters
-        ----------
-        yaml_content : dict
-            The dictionary representing the YAML script loaded by yaml.load()
-
-        """
-        # Merge options and metadata and validate
-        temp_options = yaml_content.get('options', {})
-        temp_options.update(yaml_content.get('metadata', {}))
-
-        # Validate options and fill in default values
-        self.options = self.DEFAULT_OPTIONS.copy()
-        self.options.update(self._validate_options(temp_options))
-
-    def _parse_molecules(self, yaml_content):
-        """Load molecules information and check that their syntax is correct.
-
-        One and only one source must be specified (e.g. filepath, name). Also
-        the parameters must be specified, and the extension of filepath must
-        match one of the supported file formats.
-
-        Parameters
-        ----------
-        yaml_content : dict
-            The dictionary representing the YAML script loaded by yaml.load()
-
-        """
-        file_formats = set(['mol2', 'sdf', 'pdb', 'smiles', 'csv'])
-        sources = set(['filepath', 'name', 'smiles'])
-        template_mol = {'filepath': 'str', 'name': 'str', 'smiles': 'str',
-                        'parameters': 'str', 'epik': None, 'select': 0,
-                        'strip_protons': False}
-
-        self._db.molecules = yaml_content.get('molecules', {})
-
-        # First validate and convert
-        for molecule_id, molecule in self._db.molecules.items():
-            try:
-                self._db.molecules[molecule_id] = utils.validate_parameters(molecule, template_mol,
-                                                                            check_unknown=True)
-            except (TypeError, ValueError) as e:
-                raise YamlParseError(str(e))
-
-        err_msg = ''
-        for molecule_id, molecule in self._db.molecules.items():
-            fields = set(molecule.keys())
-
-            # Check that only one source is specified
-            specified_sources = sources & fields
-            if not specified_sources or len(specified_sources) > 1:
-                err_msg = ('need only one between {} for molecule {}').format(
-                    ', '.join(list(sources)), molecule_id)
-
-            # Check supported file formats
-            elif 'filepath' in specified_sources:
-                extension = os.path.splitext(molecule['filepath'])[1][1:]  # remove '.'
-                if extension not in file_formats:
-                    err_msg = 'molecule {}, only {} files supported'.format(
-                        molecule_id, ', '.join(file_formats))
-
-            # Check that parameters are specified
-            if 'parameters' not in fields:
-                err_msg = 'no parameters specified for molecule {}'.format(molecule_id)
-
-            # Check selection from multi-model input files
-            if 'select' in fields and 'filepath' not in molecule:
-                err_msg = 'molecule {}, need filepath select'.format(molecule_id)
-
-            if err_msg != '':
-                raise YamlParseError(err_msg)
-
-    def _parse_solvents(self, yaml_content):
-        """Load solvents information and check that their syntax is correct.
-
-        The option nonbonded_method must be specified. All quantities are converted to
-        simtk.app.Quantity objects or openmm.app.TYPE (e.g. app.PME, app.OBC2). This
-        also perform some consistency checks to verify that the user did not mix
-        implicit and explicit solvent parameters.
-
-        Parameters
-        ----------
-        yaml_content : dict
-            The dictionary representing the YAML script loaded by yaml.load()
-
-        """
-        template_parameters = {'nonbonded_method': openmm.app.PME, 'nonbonded_cutoff': 1 * unit.nanometer,
-                               'implicit_solvent': openmm.app.OBC2, 'clearance': 10.0 * unit.angstroms,
-                               'positive_ion': 'string', 'negative_ion': 'string'}
-        openmm_app_type = ('nonbonded_method', 'implicit_solvent')
-        openmm_app_type = {option: to_openmm_app for option in openmm_app_type}
-
-        self._db.solvents = yaml_content.get('solvents', {})
-
-        # First validate and convert
-        for solvent_id, solvent in self._db.solvents.items():
-            try:
-                self._db.solvents[solvent_id] = utils.validate_parameters(solvent, template_parameters,
-                                                         check_unknown=True, process_units_str=True,
-                                                         special_conversions=openmm_app_type)
-            except (TypeError, ValueError, AttributeError) as e:
-                raise YamlParseError(str(e))
-
-        err_msg = ''
-        for solvent_id, solvent in self._db.solvents.items():
-
-            # Test mandatory parameters
-            if 'nonbonded_method' not in solvent:
-                err_msg = 'solvent {} must specify nonbonded_method'.format(solvent_id)
-                raise YamlParseError(err_msg)
-
-            # Test solvent consistency
-            nonbonded_method = solvent['nonbonded_method']
-            if nonbonded_method != openmm.app.NoCutoff:
-                if 'implicit_solvent' in solvent:
-                    err_msg = ('solvent {} specify both nonbonded_method: {} '
-                               'and implicit_solvent').format(solvent_id, nonbonded_method)
-                elif 'clearance' not in solvent:
-                    err_msg = ('solvent {} uses explicit solvent but '
-                               'no clearance specified').format(solvent_id)
-
-            # Raise error
-            if err_msg != '':
-                raise YamlParseError(err_msg)
-
-    def _parse_protocols(self, yaml_content):
-        """Validate protocols.
-
-        Each protocol must contain a complex and a solvent phase and it must specify
-        an alchemical_path with at least lambda_sterics and lambda_electrostatics.
-
-        Parameters
-        ----------
-        yaml_content : dict
-            The dictionary representing the YAML script loaded by yaml.load()
-
-        """
-        self._protocols = yaml_content.get('protocols', {})
-
-        for protocol_id, protocol in self._protocols.items():
-            # Phases must be specified
-            if 'phases' not in protocol:
-                err_msg = 'Protocol {} must specify phases'
-                raise YamlParseError(err_msg.format(protocol_id))
-            phases = protocol['phases']
-
-            # There must be complex and solvent phases
-            if 'complex' not in phases or 'solvent' not in phases:
-                err_msg = 'Protocol {} must specify complex and solvent phases.'
-                raise YamlParseError(err_msg.format(protocol_id))
-
-            for phase_name, phase in phases.items():
-                # alchemical_path must be specified with sterics and electrostatics
-                if 'alchemical_path' not in phase:
-                    err_msg = 'Protocol {} phase {} must specify alchemical_path.'
-                    raise YamlParseError(err_msg.format(protocol_id, phase_name))
-
-                alchemical_path = phase['alchemical_path']
-                if ('lambda_sterics' not in alchemical_path or
-                            'lambda_electrostatics' not in alchemical_path):
-                    err_msg = ('Protocol {} phase {} must specify both'
-                               'lambda_sterics and lambda_electrostatics')
-                    raise YamlParseError(err_msg.format(protocol_id, phase_name))
-
-            # Check that lambda variables all have same dimensions
-            self._get_alchemical_paths(protocol_id)
-
     def _expand_experiments(self):
         """Generates all possible combinations of experiment.
 
@@ -1507,10 +1279,211 @@ class YamlBuilder:
             for name, combination in experiment.named_combinations(separator='_', max_name_length=50):
                 yield os.path.join(output_dir, name), combination
 
-    def _parse_experiments(self, yaml_content):
-        """Perform dry run and validate components, protocol and options of every combination.
+    # --------------------------------------------------------------------------
+    # Parsing and syntax validation
+    # --------------------------------------------------------------------------
 
-        Receptor, ligand, solvent and protocol must be already loaded. If they are
+    @classmethod
+    def _validate_options(cls, options):
+        """Validate molecules syntax.
+
+        Parameters
+        ----------
+        options : dict
+            A dictionary with the options to validate.
+
+        Returns
+        -------
+        validated_options : dict
+            The validated options.
+
+        Raises
+        ------
+        YamlParseError
+            If the syntax for any option is not valid.
+
+        """
+        template_options = cls.DEFAULT_OPTIONS.copy()
+        template_options.update(Yank.default_parameters)
+        template_options.update(ReplicaExchange.default_parameters)
+        template_options.update(utils.get_keyword_args(AbsoluteAlchemicalFactory.__init__))
+        openmm_app_type = {'constraints': to_openmm_app}
+        try:
+            validated_options = utils.validate_parameters(options, template_options, check_unknown=True,
+                                                          process_units_str=True, float_to_int=True,
+                                                          special_conversions=openmm_app_type)
+        except (TypeError, ValueError) as e:
+            raise YamlParseError(str(e))
+        return validated_options
+
+    @staticmethod
+    def _validate_molecules(molecules_description):
+        """Validate molecules syntax.
+
+        Parameters
+        ----------
+        molecules_description : dict
+            A dictionary representing molecules.
+
+        Returns
+        -------
+        validated_molecules : dict
+            The validated molecules description.
+
+        Raises
+        ------
+        YamlParseError
+            If the syntax for any molecule is not valid.
+
+        """
+        def is_peptide(filepath):
+            """Input file is a peptide."""
+            if not os.path.isfile(filepath):
+                raise YamlParseError('File path does not exist.')
+            extension = os.path.splitext(filepath)[1]
+            if extension == '.pdb':
+                return True
+            return False
+
+        def is_small_molecule(filepath):
+            """Input file is a small molecule."""
+            file_formats = frozenset(['mol2', 'sdf', 'smiles', 'csv'])
+            if not os.path.isfile(filepath):
+                raise YamlParseError('File path does not exist.')
+            extension = os.path.splitext(filepath)[1][1:]
+            if extension in file_formats:
+                return True
+            return False
+
+        validated_molecules = molecules_description.copy()
+
+        # Define molecules Schema
+        epik_schema = Or(int, utils.generate_signature_schema(omt.schrodinger.run_epik,
+                                        update_keys={'extract_range': int}))
+        common_schema = {'parameters': str, Optional('epik'): epik_schema}
+        molecule_schema = Or(
+            utils.merge_dict({'smiles': str}, common_schema),
+            utils.merge_dict({'name': str}, common_schema),
+            utils.merge_dict({'filepath': is_small_molecule, Optional('select'): Or(int, 'all')},
+                             common_schema),
+            {'filepath': is_peptide, Optional('select'): Or(int, 'all'),
+             'parameters': str, Optional('strip_protons'): bool}
+        )
+
+        # Schema validation
+        for molecule_id, molecule_descr in molecules_description.items():
+            try:
+                validated_molecules[molecule_id] = molecule_schema.validate(molecule_descr)
+            except SchemaError as e:
+                raise YamlParseError('Molecule {}: {}'.format(molecule_id, e.autos[-1]))
+
+        return validated_molecules
+
+    @staticmethod
+    def _validate_solvents(solvents_description):
+        """Validate molecules syntax.
+
+        Parameters
+        ----------
+        solvents_description : dict
+            A dictionary representing solvents.
+
+        Returns
+        -------
+        validated_solvents : dict
+            The validated solvents description.
+
+        Raises
+        ------
+        YamlParseError
+            If the syntax for any solvent is not valid.
+
+        """
+        def to_explicit_solvent(str):
+            """Check OpenMM explicit solvent."""
+            openmm_app = to_openmm_app(str)
+            if openmm_app == openmm.app.NoCutoff:
+                raise ValueError('Nonbonded method cannot be NoCutoff.')
+            return openmm_app
+
+        def to_no_cutoff(str):
+            """Check OpenMM implicit solvent or vacuum."""
+            openmm_app = to_openmm_app(str)
+            if openmm_app != openmm.app.NoCutoff:
+                raise ValueError('Nonbonded method must be NoCutoff.')
+            return openmm_app
+
+        validated_solvents = solvents_description.copy()
+
+        # Define solvents Schema
+        explicit_schema = utils.generate_signature_schema(AmberPrmtopFile.createSystem,
+                                update_keys={'nonbonded_method': Use(to_explicit_solvent)},
+                                exclude_keys=['implicit_solvent'])
+        explicit_schema.update({'clearance': Use(utils.to_unit_validator(unit.angstrom)),
+                                Optional('positive_ion'): str, Optional('negative_ion'): str})
+        implicit_schema = utils.generate_signature_schema(AmberPrmtopFile.createSystem,
+                                update_keys={'implicit_solvent': Use(to_openmm_app),
+                                             Optional('nonbonded_method'): Use(to_no_cutoff)},
+                                exclude_keys=['rigid_water'])
+        vacuum_schema = utils.generate_signature_schema(AmberPrmtopFile.createSystem,
+                                update_keys={'nonbonded_method': Use(to_no_cutoff)},
+                                exclude_keys=['rigid_water', 'implicit_solvent'])
+        solvent_schema = Schema(Or(explicit_schema, implicit_schema, vacuum_schema))
+
+        # Schema validation
+        for solvent_id, solvent_descr in solvents_description.items():
+            try:
+                validated_solvents[solvent_id] = solvent_schema.validate(solvent_descr)
+            except SchemaError as e:
+                raise YamlParseError('Solvent {}: {}'.format(solvent_id, e.autos[-1]))
+
+        return validated_solvents
+
+    @staticmethod
+    def _validate_protocols(protocols_description):
+        """Validate protocols.
+
+        Parameters
+        ----------
+        protocols_description : dict
+            A dictionary representing protocols.
+
+        Returns
+        -------
+        validated_protocols : dict
+            The validated protocols description.
+
+        Raises
+        ------
+        YamlParseError
+            If the syntax for any protocol is not valid.
+
+        """
+        validated_protocols = protocols_description.copy()
+
+        # Define protocol Schema
+        lambda_list = [And(float, lambda l: 0.0 <= l <= 1.0)]
+        alchemical_path_schema = {'alchemical_path': {'lambda_sterics': lambda_list,
+                                                      'lambda_electrostatics': lambda_list,
+                                                      Optional(str): lambda_list}}
+        protocol_schema = Schema({'phases': {'complex': alchemical_path_schema,
+                                             'solvent': alchemical_path_schema}})
+
+        # Schema validation
+        for protocol_id, protocol_descr in protocols_description.items():
+            try:
+                validated_protocols[protocol_id] = protocol_schema.validate(protocol_descr)
+            except SchemaError as e:
+                raise YamlParseError('Protocol {}: {}'.format(protocol_id, e.autos[-1]))
+
+        return validated_protocols
+
+    def _parse_experiments(self, yaml_content):
+        """Validate experiments.
+
+        Perform dry run and validate components, protocol and options of every combination.
+
+        Receptors, ligands, solvents and protocols must be already loaded. If they are
         not found an exception is raised. Experiments options are validated as well.
 
         Parameters
@@ -1518,56 +1491,55 @@ class YamlBuilder:
         yaml_content : dict
             The dictionary representing the YAML script loaded by yaml.load()
 
-        """
-        experiment_template = {'components': {}, 'options': {}, 'protocol': 'str'}
-        components_template = {'receptor': 'str', 'ligand': 'str', 'solvent': 'str'}
+        Raises
+        ------
+        YamlParseError
+            If the syntax for any experiment is not valid.
 
-        if 'experiments' not in yaml_content:
+        """
+        def is_known_molecule(molecule_id):
+            if molecule_id in self._db.molecules:
+                return True
+            raise YamlParseError('Molecule ' + molecule_id + ' is unknown.')
+
+        def is_known_solvent(solvent_id):
+            if solvent_id in self._db.solvents:
+                return True
+            raise YamlParseError('Solvent ' + solvent_id + ' is unknown.')
+
+        def is_known_protocol(protocol_id):
+            if protocol_id in self._protocols:
+                return True
+            raise YamlParseError('Protocol ' + protocol_id + ' is unknown')
+
+        # Check if there is a sequence of experiments or a single one
+        try:
+            if isinstance(yaml_content['experiments'], list):
+                self._experiments = {exp_name: utils.CombinatorialTree(yaml_content[exp_name])
+                                     for exp_name in yaml_content['experiments']}
+            else:
+                self._experiments = {'experiments': utils.CombinatorialTree(yaml_content['experiments'])}
+        except KeyError:
             self._experiments = {}
             return
 
-        # Check if there is a sequence of experiments or a single one
-        if isinstance(yaml_content['experiments'], list):
-            self._experiments = {exp_name: utils.CombinatorialTree(yaml_content[exp_name])
-                                 for exp_name in yaml_content['experiments']}
-        else:
-            self._experiments = {'experiments': utils.CombinatorialTree(yaml_content['experiments'])}
+        # Define experiment Schema
+        experiment_schema = Schema({'components': {'receptor': is_known_molecule,
+                                                   'ligand': is_known_molecule,
+                                                   'solvent': is_known_solvent},
+                                    'protocol': is_known_protocol,
+                                    Optional('options'): Use(YamlBuilder._validate_options)})
 
-        # Check validity of every experiment combination
-        err_msg = ''
-        for exp_name, exp in self._expand_experiments():
-            if exp_name == '':
-                exp_name = 'experiments'
-
-            # Check if we can identify components
-            if 'components' not in exp:
-                raise YamlParseError('Cannot find components for {}'.format(exp_name))
-            components = exp['components']
-
-            # Validate and check for unknowns
+        # Schema validation
+        for experiment_id, experiment_descr in self._expand_experiments():
             try:
-                utils.validate_parameters(exp, experiment_template, check_unknown=True)
-                utils.validate_parameters(components, components_template, check_unknown=True)
-                self._validate_options(exp.get('options', {}))
-            except (ValueError, TypeError) as e:
-                raise YamlParseError(str(e))
+                experiment_schema.validate(experiment_descr)
+            except SchemaError as e:
+                raise YamlParseError('Experiment {}: {}'.format(experiment_id, e.autos[-1]))
 
-            # Check that components have been specified
-            if components['receptor'] not in self._db.molecules:
-                err_msg = 'Cannot identify receptor for {}'.format(exp_name)
-            elif components['ligand'] not in self._db.molecules:
-                err_msg = 'Cannot identify ligand for {}'.format(exp_name)
-            elif components['solvent'] not in self._db.solvents:
-                err_msg = 'Cannot identify solvent for {}'.format(exp_name)
-
-            # Check that protocol has been specified
-            if 'protocol' not in exp:
-                err_msg = 'Cannot find protocol for {}.'.format(exp_name)
-            elif exp['protocol'] not in self._protocols:
-                err_msg = 'Cannot identify protocol for {}'.format(exp_name)
-
-            if err_msg != '':
-                raise YamlParseError(err_msg)
+    # --------------------------------------------------------------------------
+    # File paths utilities
+    # --------------------------------------------------------------------------
 
     @staticmethod
     def _get_setup_dir(experiment_options):
@@ -1600,6 +1572,10 @@ class YamlBuilder:
         """
         return os.path.join(experiment_options['output_dir'],
                             experiment_options['experiments_dir'], experiment_subdir)
+
+    # --------------------------------------------------------------------------
+    # Resuming
+    # --------------------------------------------------------------------------
 
     def _check_resume_experiment(self, experiment_dir):
         """Check if Yank output files already exist.
@@ -1691,6 +1667,10 @@ class YamlBuilder:
                 break
 
         return overwrite, err_msg
+
+    # --------------------------------------------------------------------------
+    # Experiment setup and execution
+    # --------------------------------------------------------------------------
 
     def _generate_yaml(self, experiment, file_path):
         """Generate the minimum YAML file needed to reproduce the experiment.
