@@ -631,8 +631,12 @@ def generate_signature_schema(func, update_keys=None, exclude_keys=frozenset()):
     >>> from schema import Schema
     >>> def f(a, b, camelCase=True, none=None, quantity=3.0*unit.angstroms):
     ...     pass
-    >>> generate_signature_schema(f, exclude_keys=['quantity'])
-    {Optional('camel_case'): <type 'bool'>, Optional('none'): <type 'object'>}
+    >>> f_dict = generate_signature_schema(f, exclude_keys=['quantity'])
+    >>> print isinstance(f_dict, dict)
+    True
+    >>> # Print (key, values) in the correct order
+    >>> print sorted(f_dict.items(), key=lambda x: x[1])
+    [(Optional('camel_case'), <type 'bool'>), (Optional('none'), <type 'object'>)]
     >>> f_schema = Schema(generate_signature_schema(f))
     >>> f_schema.validate({'quantity': '1.0*nanometer'})
     {'quantity': Quantity(value=1.0, unit=nanometer)}
