@@ -38,12 +38,8 @@ def dispatch(args):
     # Configure MPI, if requested.
     mpicomm = None
     if args['--mpi']:
-        # Initialize MPI.
-        from mpi4py import MPI
-        hostname = os.uname()[1]
-        MPI.COMM_WORLD.barrier()
-        logger.info("Initialized MPI on %d processes." % (MPI.COMM_WORLD.size))
-        mpicomm = MPI.COMM_WORLD
+        mpicomm = utils.initialize_mpi()
+        logger.info("Initialized MPI on %d processes." % (mpicomm.size))
 
     # Configure logger
     utils.config_root_logger(args['--verbose'], mpicomm=mpicomm,
