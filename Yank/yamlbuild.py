@@ -1115,15 +1115,15 @@ class YamlBuilder:
         # Validate experiments
         self._parse_experiments(yaml_content)
 
+        # Configure MPI, if requested
+        if self.options['mpi']:
+            self._mpicomm = utils.initialize_mpi()
+
     def build_experiment(self):
         """Set up and run all the Yank experiments."""
         # Throw exception if there are no experiments
         if len(self._experiments) == 0:
             raise YamlParseError('No experiments specified!')
-
-        # Configure MPI, if requested
-        if self.options['mpi']:
-            self._mpicomm = utils.initialize_mpi()
 
         # Run all experiments with paths relative to the script directory
         with omt.utils.temporary_cd(self._script_dir):
