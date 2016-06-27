@@ -71,7 +71,7 @@ import numpy as np
 import mdtraj as md
 import netCDF4 as netcdf
 
-from utils import is_terminal_verbose
+from utils import is_terminal_verbose, delayed_termination
 
 #=============================================================================================
 # MODULE CONSTANTS
@@ -1774,6 +1774,7 @@ class ReplicaExchange(object):
 
         return
 
+    @delayed_termination
     def _write_iteration_netcdf(self):
         """
         Write positions, states, and energies of current iteration to NetCDF file.
