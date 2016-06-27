@@ -1,13 +1,12 @@
 import os
 import re
-import csv
+import sys
 import copy
 import shutil
+import signal
 import inspect
 import logging
-import tempfile
 import itertools
-import contextlib
 import subprocess
 import collections
 
@@ -418,6 +417,37 @@ def get_data_filename(relative_path):
         raise ValueError("Sorry! %s does not exist. If you just added it, you'll have to re-install" % fn)
 
     return fn
+
+
+def initialize_mpi():
+    """Initialize and configure MPI to handle correctly terminate.
+
+    Returns
+    -------
+    mpicomm : mpi4py communicator
+        The communicator for this node.
+
+    """
+    from mpi4py import MPI
+    MPI.COMM_WORLD.barrier()
+    mpicomm = MPI.COMM_WORLD
+
+    # Override sys.excepthook to abort MPI on exception
+    def mpi_excepthook(type, value, traceback):
+        sys.__excepthook__(type, value, traceback)
+        if mpicomm.size > 1:
+            mpicomm.Abort(1)
+    sys.excepthook = mpi_excepthook
+
+    # Catch sigterm signals
+    def handle_signal(signal, frame):
+        if mpicomm.size > 1:
+            mpicomm.Abort(1)
+    for sig in [signal.SIGINT, signal.SIGTERM, signal.SIGABRT]:
+        signal.signal(sig, handle_signal)
+
+    return mpicomm
+
 
 def is_iterable_container(value):
     """Check whether the given value is a list-like object or not.
