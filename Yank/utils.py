@@ -18,7 +18,7 @@ import numpy as np
 from simtk import unit
 from schema import Optional, Use
 
-from openmoltools.utils import unwrap_py2  # Shortcuts for other modules
+from openmoltools.utils import wraps_py2, unwrap_py2  # Shortcuts for other modules
 
 #========================================================================================
 # Logging functions
@@ -198,6 +198,14 @@ def delay_termination():
     for signum, s in signals_received.items():
         if s is not None:
             old_handlers[signum](*s)
+
+
+def delayed_termination(func):
+    """Decorator to delay handling of termination signals during function execution."""
+    @wraps_py2(func)
+    def _delayed_termination(*args, **kwargs):
+        with delay_termination():
+            return func(*args, **kwargs)
 
 
 #========================================================================================
