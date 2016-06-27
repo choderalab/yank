@@ -206,6 +206,7 @@ def delayed_termination(func):
     def _delayed_termination(*args, **kwargs):
         with delay_termination():
             return func(*args, **kwargs)
+    return _delayed_termination
 
 
 #========================================================================================
