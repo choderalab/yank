@@ -1125,12 +1125,23 @@ class YamlBuilder:
         if len(self._experiments) == 0:
             raise YamlParseError('No experiments specified!')
 
-        # Run all experiments with paths relative to the script directory
+        # Setup and run all experiments with paths relative to the script directory
         with omt.utils.temporary_cd(self._script_dir):
             self._check_resume()
-
+            self._setup_experiments()
             for output_dir, combination in self._expand_experiments():
                 self._run_experiment(combination, output_dir)
+
+    def setup_experiments(self):
+        """Set up all Yank experiments without running them."""
+        # Throw exception if there are no experiments
+        if len(self._experiments) == 0:
+            raise YamlParseError('No experiments specified!')
+
+        # All paths must be relative to the script directory
+        with omt.utils.temporary_cd(self._script_dir):
+            self._check_resume(check_experiments=False)
+            self._setup_experiments()
 
     # --------------------------------------------------------------------------
     # Options handling
@@ -1678,6 +1689,38 @@ class YamlBuilder:
     # Experiment setup and execution
     # --------------------------------------------------------------------------
 
+    def _setup_experiments(self):
+        """Set up all experiments without running them.
+
+        IMPORTANT: This does not check if we are about to overwrite files, nor it
+        cd into the script directory! Use setup_experiments() for that.
+
+        """
+        # TODO parallelize setup
+        # Only root node performs setup
+        if self._mpicomm is not None and self._mpicomm.rank != 0:
+            self._mpicomm.barrier()
+
+        for _, experiment in self._expand_experiments():
+            # Set database path
+            exp_opts = self._determine_experiment_options(experiment)
+            self._db.setup_dir = self._get_setup_dir(exp_opts)
+
+            # Configure setup logging
+            if not os.path.exists(self._db.setup_dir):
+                os.makedirs(self._db.setup_dir)
+            utils.config_root_logger(exp_opts['verbose'], os.path.join(self._db.setup_dir, 'setup.log'),
+                                     self._mpicomm)
+
+            # Force system and molecules setup
+            components = experiment['components']
+            logger.info('Setting up the system for {}, {} and {}'.format(*components.values()))
+            self._db.get_system(components, exp_opts['pack'])
+
+        # Signal resume to child nodes
+        if self._mpicomm is not None:
+            self._mpicomm.barrier()
+
     def _generate_yaml(self, experiment, file_path):
         """Generate the minimum YAML file needed to reproduce the experiment.
 
@@ -1817,8 +1860,7 @@ class YamlBuilder:
                 # Export YAML file for reproducibility
                 self._generate_yaml(experiment, os.path.join(results_dir, exp_name + '.yaml'))
 
-                # Setup the system
-                logger.info('Setting up the system for {}, {} and {}'.format(*components.values()))
+                # Get system path
                 system_dir = self._db.get_system(components, exp_opts['pack'])
 
                 # Get ligand resname for alchemical atom selection
