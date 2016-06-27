@@ -1119,9 +1119,7 @@ class YamlBuilder:
 
         # Configure MPI, if requested
         if self.options['mpi']:
-            from mpi4py import MPI
-            MPI.COMM_WORLD.barrier()
-            self._mpicomm = MPI.COMM_WORLD
+            self._mpicomm = utils.initialize_mpi()
 
         # Run all experiments with paths relative to the script directory
         with omt.utils.temporary_cd(self._script_dir):

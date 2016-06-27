@@ -1,15 +1,15 @@
 import os
 import re
-import csv
+import sys
 import copy
 import shutil
+import signal
 import inspect
 import logging
-import tempfile
 import itertools
-import contextlib
 import subprocess
 import collections
+from contextlib import contextmanager
 
 from pkg_resources import resource_filename
 
@@ -18,7 +18,7 @@ import numpy as np
 from simtk import unit
 from schema import Optional, Use
 
-from openmoltools.utils import unwrap_py2  # Shortcuts for other modules
+from openmoltools.utils import wraps_py2, unwrap_py2  # Shortcuts for other modules
 
 #========================================================================================
 # Logging functions
@@ -138,6 +138,76 @@ def config_root_logger(verbose, log_file_path=None, mpicomm=None):
         logging.root.setLevel(logging.DEBUG)
     else:
         logging.root.setLevel(terminal_handler.level)
+
+
+# =======================================================================================
+# MPI utility functions
+# =======================================================================================
+
+def initialize_mpi():
+    """Initialize and configure MPI to handle correctly terminate.
+
+    Returns
+    -------
+    mpicomm : mpi4py communicator
+        The communicator for this node.
+
+    """
+    from mpi4py import MPI
+    MPI.COMM_WORLD.barrier()
+    mpicomm = MPI.COMM_WORLD
+
+    # Override sys.excepthook to abort MPI on exception
+    def mpi_excepthook(type, value, traceback):
+        sys.__excepthook__(type, value, traceback)
+        if mpicomm.size > 1:
+            mpicomm.Abort(1)
+    sys.excepthook = mpi_excepthook
+
+    # Catch sigterm signals
+    def handle_signal(signal, frame):
+        if mpicomm.size > 1:
+            mpicomm.Abort(1)
+    for sig in [signal.SIGINT, signal.SIGTERM, signal.SIGABRT]:
+        signal.signal(sig, handle_signal)
+
+    return mpicomm
+
+
+@contextmanager
+def delay_termination():
+    """Context manager to delay handling of termination signals."""
+    signals_to_catch = [signal.SIGINT, signal.SIGTERM, signal.SIGABRT]
+    old_handlers = {signum: signal.getsignal(signum) for signum in signals_to_catch}
+    signals_received = {signum: None for signum in signals_to_catch}
+
+    def delay_handler(signum, frame):
+        signals_received[signum] = (signum, frame)
+
+    # Set handlers fot delay
+    for signum in signals_to_catch:
+        signal.signal(signum, delay_handler)
+
+    yield  # Resume program
+
+    # Restore old handlers
+    for signum, handler in old_handlers.items():
+        signal.signal(signum, handler)
+
+    # Fire delayed signals
+    for signum, s in signals_received.items():
+        if s is not None:
+            old_handlers[signum](*s)
+
+
+def delayed_termination(func):
+    """Decorator to delay handling of termination signals during function execution."""
+    @wraps_py2(func)
+    def _delayed_termination(*args, **kwargs):
+        with delay_termination():
+            return func(*args, **kwargs)
+    return _delayed_termination
+
 
 #========================================================================================
 # Combinatorial tree
@@ -418,6 +488,7 @@ def get_data_filename(relative_path):
         raise ValueError("Sorry! %s does not exist. If you just added it, you'll have to re-install" % fn)
 
     return fn
+
 
 def is_iterable_container(value):
     """Check whether the given value is a list-like object or not.
