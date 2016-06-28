@@ -268,7 +268,8 @@ class CombinatorialTree(collections.MutableMapping):
     Expand all possible combinations of a tree. The iterator return a dict, not another
     CombinatorialTree object.
     >>> import pprint  # pprint sort the dictionary by key before printing
-    >>> tree = CombinatorialTree({'a': 1, 'b': [1, 2], 'c': {'d': [3, 4]}})
+    >>> tree = CombinatorialTree({'a': 1, 'b': CombinatorialLeaf([1, 2]),
+    ...                           'c': {'d': CombinatorialLeaf([3, 4])}})
     >>> for t in tree:
     ...     pprint.pprint(t)
     {'a': 1, 'b': 1, 'c': {'d': 3}}
