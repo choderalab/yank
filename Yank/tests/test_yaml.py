@@ -138,7 +138,6 @@ def test_yaml_parsing():
 
     options:
         verbose: true
-        mpi: yes
         resume_setup: true
         resume_simulation: true
         output_dir: /path/to/output/
@@ -174,7 +173,7 @@ def test_yaml_parsing():
     """
 
     yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
-    assert len(yaml_builder.options) == 35
+    assert len(yaml_builder.options) == 34
     assert len(yaml_builder.yank_options) == 23
 
     # Check correct types

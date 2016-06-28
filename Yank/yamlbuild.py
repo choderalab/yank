@@ -1022,7 +1022,6 @@ class YamlBuilder:
 
     DEFAULT_OPTIONS = {
         'verbose': False,
-        'mpi': False,
         'resume_setup': False,
         'resume_simulation': False,
         'output_dir': 'output',
@@ -1104,6 +1103,14 @@ class YamlBuilder:
         self.options.update(self._validate_options(utils.merge_dict(yaml_content.get('options', {}),
                                                                     yaml_content.get('metadata', {}))))
 
+        # Setup MPI and general logging
+        self._mpicomm = utils.initialize_mpi()
+        utils.config_root_logger(self.options['verbose'], log_file_path=None, mpicomm=self._mpicomm)
+        if self._mpicomm is None:
+            logger.debug('MPI disabled.')
+        else:
+            logger.debug('MPI enabled.')
+
         # Initialize and configure database with molecules and solvents
         self._db = SetupDatabase(setup_dir=self._get_setup_dir(self.options))
         self._db.molecules = self._validate_molecules(yaml_content.get('molecules', {}))
@@ -1114,10 +1121,6 @@ class YamlBuilder:
 
         # Validate experiments
         self._parse_experiments(yaml_content)
-
-        # Configure MPI, if requested
-        if self.options['mpi']:
-            self._mpicomm = utils.initialize_mpi()
 
     def build_experiment(self):
         """Set up and run all the Yank experiments."""
@@ -1705,12 +1708,6 @@ class YamlBuilder:
             # Set database path
             exp_opts = self._determine_experiment_options(experiment)
             self._db.setup_dir = self._get_setup_dir(exp_opts)
-
-            # Configure setup logging
-            if not os.path.exists(self._db.setup_dir):
-                os.makedirs(self._db.setup_dir)
-            utils.config_root_logger(exp_opts['verbose'], os.path.join(self._db.setup_dir, 'setup.log'),
-                                     self._mpicomm)
 
             # Force system and molecules setup
             components = experiment['components']

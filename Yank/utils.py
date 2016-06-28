@@ -153,6 +153,20 @@ def initialize_mpi():
         The communicator for this node.
 
     """
+    # Check for environment variables set by mpirun. Variables are from
+    # http://docs.roguewave.com/threadspotter/2012.1/linux/manual_html/apas03.html
+    variables = ['PMI_RANK', 'OMPI_COMM_WORLD_RANK', 'OMPI_MCA_ns_nds_vpid',
+                 'PMI_ID', 'SLURM_PROCID', 'LAMRANK', 'MPI_RANKID',
+                 'MP_CHILD', 'MP_RANK', 'MPIRUN_RANK']
+    use_mpi = False
+    for var in variables:
+        if var in os.environ:
+            use_mpi = True
+            break
+    if not use_mpi:
+        return None
+
+    # Initialize MPI
     from mpi4py import MPI
     MPI.COMM_WORLD.barrier()
     mpicomm = MPI.COMM_WORLD
