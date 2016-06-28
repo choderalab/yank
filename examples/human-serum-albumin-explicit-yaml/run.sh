@@ -1,10 +1,13 @@
 #!/bin/bash
 
+#
+# HSA binding of kinase inhibitors with YANK
+#
+
 # Run the simulation with verbose output:
 echo "Running simulation..."
-build_mpirun_configfile "yank script --yaml=yank.yaml"
-mpirun -configfile configfile
-date
+yank script --yaml=yank.yaml
 
-
-
+# Analyze the data
+echo "Analyzing data..."
+yank analyze --store=experiments
