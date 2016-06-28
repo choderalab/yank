@@ -10,7 +10,6 @@
 # -----------------------------------------------------------------
 options:
   verbose: true
-  mpi: yes
   output_dir: test_kinase
   temperature: 310*kelvin
   pressure: 1*atmosphere

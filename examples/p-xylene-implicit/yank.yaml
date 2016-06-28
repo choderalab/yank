@@ -34,7 +34,6 @@ protocols:
 options:
   #resume_setup: yes
   #resume_simulation: yes
-  #mpi: yes
   minimize: yes
   verbose: yes
   output_dir: .

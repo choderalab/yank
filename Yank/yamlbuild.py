@@ -1016,9 +1016,12 @@ class YamlBuilder:
 
     """
 
+    # --------------------------------------------------------------------------
+    # Public API
+    # --------------------------------------------------------------------------
+
     DEFAULT_OPTIONS = {
         'verbose': False,
-        'mpi': False,
         'resume_setup': False,
         'resume_simulation': False,
         'output_dir': 'output',
@@ -1100,6 +1103,14 @@ class YamlBuilder:
         self.options.update(self._validate_options(utils.merge_dict(yaml_content.get('options', {}),
                                                                     yaml_content.get('metadata', {}))))
 
+        # Setup MPI and general logging
+        self._mpicomm = utils.initialize_mpi()
+        utils.config_root_logger(self.options['verbose'], log_file_path=None, mpicomm=self._mpicomm)
+        if self._mpicomm is None:
+            logger.debug('MPI disabled.')
+        else:
+            logger.debug('MPI enabled.')
+
         # Initialize and configure database with molecules and solvents
         self._db = SetupDatabase(setup_dir=self._get_setup_dir(self.options))
         self._db.molecules = self._validate_molecules(yaml_content.get('molecules', {}))
@@ -1117,25 +1128,23 @@ class YamlBuilder:
         if len(self._experiments) == 0:
             raise YamlParseError('No experiments specified!')
 
-        # Configure MPI, if requested
-        if self.options['mpi']:
-            self._mpicomm = utils.initialize_mpi()
-
-        # Run all experiments with paths relative to the script directory
+        # Setup and run all experiments with paths relative to the script directory
         with omt.utils.temporary_cd(self._script_dir):
-            # This is hard disk intensive, only process 0 should do it
-            overwrite = True
-            if self._mpicomm is None or self._mpicomm.rank == 0:
-                overwrite, err_msg = self._check_resume()
-            if self._mpicomm:
-                overwrite = self._mpicomm.bcast(overwrite, root=0)
-                if overwrite and self._mpicomm.rank != 0:
-                    sys.exit()
-            if overwrite:  # self._mpicomm is None or rank == 0
-                raise YamlParseError(err_msg)
-
+            self._check_resume()
+            self._setup_experiments()
             for output_dir, combination in self._expand_experiments():
                 self._run_experiment(combination, output_dir)
+
+    def setup_experiments(self):
+        """Set up all Yank experiments without running them."""
+        # Throw exception if there are no experiments
+        if len(self._experiments) == 0:
+            raise YamlParseError('No experiments specified!')
+
+        # All paths must be relative to the script directory
+        with omt.utils.temporary_cd(self._script_dir):
+            self._check_resume(check_experiments=False)
+            self._setup_experiments()
 
     # --------------------------------------------------------------------------
     # Options handling
@@ -1602,10 +1611,10 @@ class YamlBuilder:
         output_file_paths = complex_file_path + solvent_file_path
         return all(os.path.getsize(f) > 0 for f in output_file_paths)
 
-    def _check_resume(self):
+    def _check_resume(self, check_setup=True, check_experiments=True):
         """Perform dry run to check if we are going to overwrite files.
 
-        If we find folders that YamlBuilder should create we return True
+        If we find folders that YamlBuilder should create we raise an exception
         unless resume_setup or resume_simulation are found, in which case we
         assume we need to use the existing files. We never overwrite files, the
         user is responsible to delete them or move them.
@@ -1613,34 +1622,46 @@ class YamlBuilder:
         It's important to check all possible combinations at the beginning to
         avoid interrupting the user simulation after few experiments.
 
-        Returns
-        -------
-        overwrite : bool
-            True in case we will have to overwrite some files, False otherwise.
-        err_msg : str
-            An error message in case overwrite is True, an empty string otherwise.
+        Parameters
+        ----------
+        check_setup : bool
+            Check if we are going to overwrite setup files (default is True).
+        check_experiments : bool
+            Check if we are going to overwrite experiment files (default is True).
+
+        Raises
+        ------
+        YamlParseError
+            If files to write already exist and we resuming options are not set.
 
         """
+        # This is hard disk intensive, only process 0 should do it
+        if self._mpicomm is not None and self._mpicomm.rank != 0:
+            self._mpicomm.barrier()  # Wait for root node to check
+            return
+
         err_msg = ''
-        overwrite = False
+
         for exp_sub_dir, combination in self._expand_experiments():
             # Determine and validate options
             exp_options = self._determine_experiment_options(combination)
-            resume_sim = exp_options['resume_simulation']
-            resume_setup = exp_options['resume_setup']
 
-            # Identify components
-            components = combination['components']
-            receptor_id = components['receptor']
-            ligand_id = components['ligand']
-            solvent_id = components['solvent']
+            if check_experiments:
+                resume_sim = exp_options['resume_simulation']
+                experiment_dir = self._get_experiment_dir(exp_options, exp_sub_dir)
+                if not resume_sim and self._check_resume_experiment(experiment_dir):
+                    err_msg = 'experiment files in directory {}'.format(experiment_dir)
+                    solving_option = 'resume_simulation'
 
-            # Check experiment dir
-            experiment_dir = self._get_experiment_dir(exp_options, exp_sub_dir)
-            if self._check_resume_experiment(experiment_dir) and not resume_sim:
-                err_msg = 'experiment files in directory {}'.format(experiment_dir)
-                solving_option = 'resume_simulation'
-            else:
+            if check_setup and err_msg == '':
+                resume_setup = exp_options['resume_setup']
+
+                # Identify components
+                components = combination['components']
+                receptor_id = components['receptor']
+                ligand_id = components['ligand']
+                solvent_id = components['solvent']
+
                 # Check system and molecule setup dirs
                 self._db.setup_dir = self._get_setup_dir(exp_options)
                 is_sys_setup = self._db.is_system_setup(receptor_id, ligand_id, solvent_id)
@@ -1659,16 +1680,43 @@ class YamlBuilder:
 
             # Check for errors
             if err_msg != '':
-                overwrite = True
                 err_msg += (' already exists; cowardly refusing to proceed. Move/delete '
                             'directory or set {} options').format(solving_option)
-                break
+                raise YamlParseError(err_msg)
 
-        return overwrite, err_msg
+        # Signal resume to non-root other nodes
+        if self._mpicomm is not None:
+            self._mpicomm.barrier()
 
     # --------------------------------------------------------------------------
     # Experiment setup and execution
     # --------------------------------------------------------------------------
+
+    def _setup_experiments(self):
+        """Set up all experiments without running them.
+
+        IMPORTANT: This does not check if we are about to overwrite files, nor it
+        cd into the script directory! Use setup_experiments() for that.
+
+        """
+        # TODO parallelize setup
+        # Only root node performs setup
+        if self._mpicomm is not None and self._mpicomm.rank != 0:
+            self._mpicomm.barrier()
+
+        for _, experiment in self._expand_experiments():
+            # Set database path
+            exp_opts = self._determine_experiment_options(experiment)
+            self._db.setup_dir = self._get_setup_dir(exp_opts)
+
+            # Force system and molecules setup
+            components = experiment['components']
+            logger.info('Setting up the system for {}, {} and {}'.format(*components.values()))
+            self._db.get_system(components, exp_opts['pack'])
+
+        # Signal resume to child nodes
+        if self._mpicomm is not None:
+            self._mpicomm.barrier()
 
     def _generate_yaml(self, experiment, file_path):
         """Generate the minimum YAML file needed to reproduce the experiment.
@@ -1809,8 +1857,7 @@ class YamlBuilder:
                 # Export YAML file for reproducibility
                 self._generate_yaml(experiment, os.path.join(results_dir, exp_name + '.yaml'))
 
-                # Setup the system
-                logger.info('Setting up the system for {}, {} and {}'.format(*components.values()))
+                # Get system path
                 system_dir = self._db.get_system(components, exp_opts['pack'])
 
                 # Get ligand resname for alchemical atom selection

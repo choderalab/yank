@@ -37,7 +37,6 @@ protocols:
 options:
   minimize: yes
   verbose: yes
-  mpi: yes
   output_dir: .
   number_of_iterations: 1000
   restraint_type: harmonic
