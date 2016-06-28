@@ -17,6 +17,7 @@ from schema import Schema
 from nose import tools
 from yank.utils import *
 
+
 #=============================================================================================
 # TESTING FUNCTIONS
 #=============================================================================================
@@ -26,6 +27,8 @@ def test_is_iterable_container():
     assert is_iterable_container(3) == False
     assert is_iterable_container('ciao') == False
     assert is_iterable_container([1, 2, 3]) == True
+    assert is_iterable_container(CombinatorialLeaf([1, 2, 3])) == True
+
 
 def test_set_tree_path():
     """Test getting and setting of CombinatorialTree paths."""
@@ -33,13 +36,14 @@ def test_set_tree_path():
     test_nested = CombinatorialTree({'a': {'b': 2}})
     test['a'] = 3
     assert test == {'a': 3}
-    test_nested[('a','b')] = 3
+    test_nested[('a', 'b')] = 3
     assert test_nested == {'a': {'b': 3}}
     test_nested[('a',)] = 5
     assert test_nested == {'a': 5}
 
+
 def test_find_leaves():
-    """Test CombinatorialTree private function _find_leaves()."""
+    """Test CombinatorialTree._find_leaves()."""
     simple_tree = CombinatorialTree({'simple': {'scalar': 1,
                                                 'vector': [2, 3, 4],
                                                 'nested': {
@@ -49,21 +53,36 @@ def test_find_leaves():
                           ('simple', 'nested', 'leaf')]
     assert leaf_vals == [1, [2, 3, 4], ['a', 'b', 'c']]
 
+
+def test_find_combinatorial_leaves():
+    """Test CombinatorialTree._find_combinatorial_leaves()."""
+    simple_tree = CombinatorialTree({'simple': {
+        'scalar': 1,
+        'vector': CombinatorialLeaf([2, 3, 4]),
+        'nested': {
+            'leaf': ['a', 'b', 'c'],
+            'comb-leaf': CombinatorialLeaf(['d', 'e'])}}})
+    leaf_paths, leaf_vals = simple_tree._find_combinatorial_leaves()
+    assert leaf_paths == [('simple', 'vector'), ('simple', 'nested', 'comb-leaf')]
+    assert leaf_vals == [[2, 3, 4], ['d', 'e']]
+
+
 def test_expand_tree():
     """Test CombinatorialTree generators."""
     simple_tree = CombinatorialTree({'simple': {'scalar': 1,
-                                                'vector': [2, 3, 4],
+                                                'vector': CombinatorialLeaf([2, 3, 4]),
                                                 'nested': {
-                                                    'leaf': ['a', 'b', 'c']}}})
-    result = [{'simple': {'scalar': 1, 'vector': 2, 'nested': {'leaf': 'a'}}},
-              {'simple': {'scalar': 1, 'vector': 2, 'nested': {'leaf': 'b'}}},
-              {'simple': {'scalar': 1, 'vector': 2, 'nested': {'leaf': 'c'}}},
-              {'simple': {'scalar': 1, 'vector': 3, 'nested': {'leaf': 'a'}}},
-              {'simple': {'scalar': 1, 'vector': 3, 'nested': {'leaf': 'b'}}},
-              {'simple': {'scalar': 1, 'vector': 3, 'nested': {'leaf': 'c'}}},
-              {'simple': {'scalar': 1, 'vector': 4, 'nested': {'leaf': 'a'}}},
-              {'simple': {'scalar': 1, 'vector': 4, 'nested': {'leaf': 'b'}}},
-              {'simple': {'scalar': 1, 'vector': 4, 'nested': {'leaf': 'c'}}}]
+                                                    'leaf': ['d', 'e'],
+                                                    'combleaf': CombinatorialLeaf(['a', 'b', 'c'])}}})
+    result = [{'simple': {'scalar': 1, 'vector': 2, 'nested': {'leaf': ['d', 'e'], 'combleaf': 'a'}}},
+              {'simple': {'scalar': 1, 'vector': 2, 'nested': {'leaf': ['d', 'e'], 'combleaf': 'b'}}},
+              {'simple': {'scalar': 1, 'vector': 2, 'nested': {'leaf': ['d', 'e'], 'combleaf': 'c'}}},
+              {'simple': {'scalar': 1, 'vector': 3, 'nested': {'leaf': ['d', 'e'], 'combleaf': 'a'}}},
+              {'simple': {'scalar': 1, 'vector': 3, 'nested': {'leaf': ['d', 'e'], 'combleaf': 'b'}}},
+              {'simple': {'scalar': 1, 'vector': 3, 'nested': {'leaf': ['d', 'e'], 'combleaf': 'c'}}},
+              {'simple': {'scalar': 1, 'vector': 4, 'nested': {'leaf': ['d', 'e'], 'combleaf': 'a'}}},
+              {'simple': {'scalar': 1, 'vector': 4, 'nested': {'leaf': ['d', 'e'], 'combleaf': 'b'}}},
+              {'simple': {'scalar': 1, 'vector': 4, 'nested': {'leaf': ['d', 'e'], 'combleaf': 'c'}}}]
     assert result == [exp for exp in simple_tree]
 
     # Test named_combinations generator
@@ -72,8 +91,9 @@ def test_expand_tree():
                                                        separator='_', max_name_length=3)])
 
     # Test maximum length, similar names and special characters
-    long_tree = CombinatorialTree({'key1': ['th#*&^isnameistoolong1', 'th#*&^isnameistoolong2'],
-                                   'key2': ['test1', 'test2']})
+    long_tree = CombinatorialTree({'key1': CombinatorialLeaf(['th#*&^isnameistoolong1',
+                                                              'th#*&^isnameistoolong2']),
+                                   'key2': CombinatorialLeaf(['test1', 'test2'])})
     expected_names = set(['test-thisn', 'test-thisn-2', 'test-thisn-3', 'test-thisn-4'])
     assert expected_names == set([name for name, _ in long_tree.named_combinations(
                                                        separator='-', max_name_length=10)])

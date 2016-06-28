@@ -349,15 +349,28 @@ def to_openmm_app(str):
     """Converter function to be used with validate_parameters()."""
     return getattr(openmm.app, str)
 
-#=============================================================================================
+
+# ============================================================================================
 # UTILITY CLASSES
-#=============================================================================================
+# ============================================================================================
+
+def combinatorial_constructor(loader, node):
+    """Constructor for YAML !Combinatorial entries."""
+    return utils.CombinatorialLeaf(loader.construct_sequence(node))
+yaml.add_constructor(u'!Combinatorial', combinatorial_constructor)
+
+def combinatorial_representer(dumper, data):
+    """YAML representer CombinatorialLeaf nodes."""
+    return dumper.represent_sequence(u'!Combinatorial', data)
+yaml.add_representer(utils.CombinatorialLeaf, combinatorial_representer)
+
 
 class YamlParseError(Exception):
     """Represent errors occurring during parsing of Yank YAML file."""
     def __init__(self, message):
         super(YamlParseError, self).__init__(message)
         logger.error(message)
+
 
 class YankDumper(yaml.Dumper):
     """PyYAML Dumper that always return sequences in flow style and maps in block style."""
@@ -1226,7 +1239,7 @@ class YamlBuilder:
                                     comb_mol_name, extension))
 
                     # Substitute select: all with list of all models indices to trigger combinations
-                    comb_molecule['select'] = range(n_models)
+                    comb_molecule['select'] = utils.CombinatorialLeaf(range(n_models))
 
                 # Find all combinations
                 comb_molecule = utils.CombinatorialTree(comb_molecule)
@@ -1255,7 +1268,7 @@ class YamlBuilder:
                                 except ValueError:
                                     pass
                             elif component == comb_mol_name:
-                                components[component_name] = combinations.keys()
+                                components[component_name] = utils.CombinatorialLeaf(combinations.keys())
 
             # Delete old combinatorial molecules
             for comb_mol_name in all_comb_mols:

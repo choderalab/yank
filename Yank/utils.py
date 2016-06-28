@@ -223,9 +223,15 @@ def delayed_termination(func):
     return _delayed_termination
 
 
-#========================================================================================
+# =======================================================================================
 # Combinatorial tree
-#========================================================================================
+# =======================================================================================
+
+class CombinatorialLeaf(list):
+    """List type that can be expanded combinatorially in CombinatorialTree."""
+    def __repr__(self):
+        return "Combinatorial({})".format(super(CombinatorialLeaf, self).__repr__())
+
 
 class CombinatorialTree(collections.MutableMapping):
     """A tree that can be expanded in a combinatorial fashion.
@@ -309,7 +315,7 @@ class CombinatorialTree(collections.MutableMapping):
         The iterator returns dict objects, not other CombinatorialTrees.
 
         """
-        leaf_paths, leaf_vals = self._find_leaves()
+        leaf_paths, leaf_vals = self._find_combinatorial_leaves()
         return self._combinations_generator(leaf_paths, leaf_vals)
 
     def named_combinations(self, separator, max_name_length):
@@ -331,7 +337,7 @@ class CombinatorialTree(collections.MutableMapping):
             The maximum length of the generated names, excluding disambiguation number.
 
         """
-        leaf_paths, leaf_vals = self._find_leaves()
+        leaf_paths, leaf_vals = self._find_combinatorial_leaves()
         generated_names = {}  # name: count, how many times we have generated the same name
 
         # Find set of paths to combinatorial leaves
@@ -418,7 +424,7 @@ class CombinatorialTree(collections.MutableMapping):
         Returns:
         --------
         A tuple containing two lists. The first one is a list of paths to the leaf
-        nodes in a tuple format (e.g. the path to node['a']['b'] is ('a', 'b') while
+        nodes in a tuple format (e.g. the path to node['a']['b'] is ('a', 'b')) while
         the second one is a list of all the values of those leaf nodes.
 
         Examples:
@@ -450,6 +456,22 @@ class CombinatorialTree(collections.MutableMapping):
 
         return recursive_find_leaves(self._d)
 
+    def _find_combinatorial_leaves(self):
+        """Traverse a dict tree and find CombinatorialLeaf nodes.
+
+        Returns:
+        --------
+        A tuple containing two lists. The first one is a list of paths to combinatorial
+        leaf nodes in a tuple format (e.g. the path to node['a']['b'] is ('a', 'b')) while
+        the second one is a list of the values of those nodes.
+
+        """
+        leaf_paths, leaf_vals = self._find_leaves()
+        combinatorial_ids = [i for i, val in enumerate(leaf_vals) if isinstance(val, CombinatorialLeaf)]
+        combinatorial_leaf_paths = [leaf_paths[i] for i in combinatorial_ids]
+        combinatorial_leaf_vals = [leaf_vals[i] for i in combinatorial_ids]
+        return combinatorial_leaf_paths, combinatorial_leaf_vals
+
     def _combinations_generator(self, leaf_paths, leaf_vals):
         """Generate all possible combinations of experiments.
 
@@ -461,6 +483,7 @@ class CombinatorialTree(collections.MutableMapping):
             The list of paths as returned by _find_leaves().
         leaf_vals : list
             The list of the correspondent values as returned by _find_leaves().
+
         """
         template_tree = CombinatorialTree(self._d)
 

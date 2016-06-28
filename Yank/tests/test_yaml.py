@@ -378,7 +378,7 @@ def test_exp_sequence():
         components:
             receptor: rec
             ligand: lig
-            solvent: [solv1, solv2]
+            solvent: !Combinatorial [solv1, solv2]
         protocol: absolute-binding
     experiment2:
         components:
@@ -697,12 +697,12 @@ class TestMultiMoleculeFiles():
         ---
         molecules:
             rec:
-                filepath: [{}, {}]
+                filepath: !Combinatorial [{}, {}]
                 parameters: oldff/leaprc.ff99SBildn
             lig:
-                name: [iupac1, iupac2]
+                name: !Combinatorial [iupac1, iupac2]
                 parameters: antechamber
-                epik: [0, 2]
+                epik: !Combinatorial [0, 2]
             multi:
                 filepath: {}
                 parameters: leaprc.ff14SB
@@ -729,9 +729,9 @@ class TestMultiMoleculeFiles():
         protocols:{}
         experiments:
             components:
-                receptor: [rec, multi]
+                receptor: !Combinatorial [rec, multi]
                 ligand: lig
-                solvent: [solv1, solv2]
+                solvent: !Combinatorial [solv1, solv2]
             protocol: absolute-binding
         """.format(self.sdf_path, self.mol2_path, self.pdb_path,
                    self.smiles_path, self.sdf_path, self.mol2_path,
@@ -805,9 +805,9 @@ class TestMultiMoleculeFiles():
         protocols:{}
         experiments:
             components:
-                receptor: [rec_varfoldersbkrcx4j47j1n91nzd630_2, rec_varfoldersbkrcx4j47j1n91nzd630, multi_1, multi_0]
-                ligand: [lig_0_iupac2, lig_2_iupac1, lig_2_iupac2, lig_0_iupac1]
-                solvent: [solv1, solv2]
+                receptor: !Combinatorial [rec_varfoldersbkrcx4j47j1n91nzd630_2, rec_varfoldersbkrcx4j47j1n91nzd630, multi_1, multi_0]
+                ligand: !Combinatorial [lig_0_iupac2, lig_2_iupac1, lig_2_iupac2, lig_0_iupac1]
+                solvent: !Combinatorial [solv1, solv2]
             protocol: absolute-binding
         """.format(self.sdf_path, self.mol2_path, self.pdb_path, self.pdb_path,
                    self.smiles_path, self.smiles_path, self.sdf_path, self.sdf_path,
@@ -1310,7 +1310,7 @@ def test_run_experiment():
             components:
                 receptor: T4lysozyme
                 ligand: p-xylene
-                solvent: [vacuum, GBSA-OBC2]
+                solvent: !Combinatorial [vacuum, GBSA-OBC2]
             options:
                 output_dir: {}
                 setup_dir: ''
