@@ -459,8 +459,9 @@ class CombinatorialTree(collections.MutableMapping):
             for update_node_key, update_node_val in self._resolve_paths(self._d, update_path):
                 # Check if the value is a collection or a scalar
                 if isinstance(update_node_val, list):
-                    for i, v in enumerate(update_node_val):
+                    for v in update_node_val:
                         if v in combinatorial_id_nodes:
+                            i = expanded_tree[update_node_key].index(v)
                             expanded_tree[update_node_key][i:i+1] = combinatorial_id_nodes[v]
                 elif update_node_val in combinatorial_id_nodes:
                     comb_leaf = CombinatorialLeaf(combinatorial_id_nodes[update_node_val])
