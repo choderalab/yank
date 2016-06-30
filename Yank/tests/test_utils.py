@@ -110,6 +110,23 @@ def test_expand_tree():
                                                        separator='-', max_name_length=25)])
 
 
+def test_expand_id_nodes():
+    """CombinatorialTree.expand_id_nodes()"""
+    d = {'molecules':
+             {'mol1': {'mol_value': CombinatorialLeaf([1, 2])}},
+         'systems':
+             {'sys1': {'molecules': 'mol1'},
+              'sys2': {'molecules': CombinatorialLeaf(['mol1', 'mol2'])},
+              'sys3': {'prmtopfile': 'mysystem.prmtop'}}}
+    id_nodes_path = ('molecules',)
+    update_nodes_paths = [('systems', '*', 'molecules')]
+    t = CombinatorialTree(d).expand_id_nodes(id_nodes_path, update_nodes_paths)
+    assert t[('molecules',)] == {'mol1_1': {'mol_value': 1}, 'mol1_2': {'mol_value': 2}}
+    assert t[('systems',)] == {'sys1': {'molecules': CombinatorialLeaf(['mol1_2', 'mol1_1'])},
+                               'sys2': {'molecules': CombinatorialLeaf(['mol1_2', 'mol1_1', 'mol2'])},
+                               'sys3': {'prmtopfile': 'mysystem.prmtop'}}
+
+
 def test_generate_signature_schema():
     """Test generate_signature_schema() function."""
     def f(a, b, camelCase=True, none=None, quantity=3.0*unit.angstroms):
