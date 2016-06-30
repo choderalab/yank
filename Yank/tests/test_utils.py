@@ -118,13 +118,11 @@ def test_expand_id_nodes():
              {'sys1': {'molecules': 'mol1'},
               'sys2': {'molecules': CombinatorialLeaf(['mol1', 'mol2'])},
               'sys3': {'prmtopfile': 'mysystem.prmtop'}}}
-    id_nodes_path = ('molecules',)
-    update_nodes_paths = [('systems', '*', 'molecules')]
-    t = CombinatorialTree(d).expand_id_nodes(id_nodes_path, update_nodes_paths)
-    assert t[('molecules',)] == {'mol1_1': {'mol_value': 1}, 'mol1_2': {'mol_value': 2}}
-    assert t[('systems',)] == {'sys1': {'molecules': CombinatorialLeaf(['mol1_2', 'mol1_1'])},
-                               'sys2': {'molecules': CombinatorialLeaf(['mol1_2', 'mol1_1', 'mol2'])},
-                               'sys3': {'prmtopfile': 'mysystem.prmtop'}}
+    t = CombinatorialTree(d).expand_id_nodes('molecules', [('systems', '*', 'molecules')])
+    assert t['molecules'] == {'mol1_1': {'mol_value': 1}, 'mol1_2': {'mol_value': 2}}
+    assert t['systems'] == {'sys1': {'molecules': CombinatorialLeaf(['mol1_2', 'mol1_1'])},
+                            'sys2': {'molecules': CombinatorialLeaf(['mol1_2', 'mol1_1', 'mol2'])},
+                            'sys3': {'prmtopfile': 'mysystem.prmtop'}}
 
 
 def test_generate_signature_schema():

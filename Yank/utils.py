@@ -291,7 +291,10 @@ class CombinatorialTree(collections.MutableMapping):
         self._d = copy.deepcopy(dictionary)
 
     def __getitem__(self, path):
-        return self._resolve_path(self._d, path)
+        try:
+            return self._d[path]
+        except KeyError:
+            return self._resolve_path(self._d, path)
 
     def __setitem__(self, path, value):
         d_node = self.__getitem__(path[:-1])
@@ -427,13 +430,12 @@ class CombinatorialTree(collections.MutableMapping):
         ...      'systems':
         ...          {'sys1': {'molecules': 'mol1'},
         ...           'sys2': {'prmtopfile': 'mysystem.prmtop'}}}
-        >>> id_nodes_path = ('molecules',)
         >>> update_nodes_paths = [('systems', '*', 'molecules')]
-        >>> t = CombinatorialTree(d).expand_id_nodes(id_nodes_path, update_nodes_paths)
-        >>> t[('molecules',)] == {'mol1_1': {'mol_value': 1}, 'mol1_2': {'mol_value': 2}}
+        >>> t = CombinatorialTree(d).expand_id_nodes('molecules', update_nodes_paths)
+        >>> t['molecules'] == {'mol1_1': {'mol_value': 1}, 'mol1_2': {'mol_value': 2}}
         True
-        >>> t[('systems',)] == {'sys1': {'molecules': CombinatorialLeaf(['mol1_2', 'mol1_1'])},
-        ...                     'sys2': {'prmtopfile': 'mysystem.prmtop'}}
+        >>> t['systems'] == {'sys1': {'molecules': CombinatorialLeaf(['mol1_2', 'mol1_1'])},
+        ...                  'sys2': {'prmtopfile': 'mysystem.prmtop'}}
         True
 
         """
