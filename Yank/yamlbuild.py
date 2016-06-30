@@ -1215,64 +1215,46 @@ class YamlBuilder:
         """
         expanded_content = copy.deepcopy(yaml_content)
 
-        if 'molecules' in expanded_content:
-            all_comb_mols = set()  # keep track of all combinatorial molecules
-            for comb_mol_name, comb_molecule in expanded_content['molecules'].items():
+        if 'molecules' not in expanded_content:
+            return expanded_content
 
-                # First transform "select: all" syntax into a combinatorial "select"
-                if 'select' in comb_molecule and comb_molecule['select'] == 'all':
-                    # Get the number of models in the file
-                    extension = os.path.splitext(comb_molecule['filepath'])[1][1:]  # remove dot
-                    with omt.utils.temporary_cd(self._script_dir):
-                        if extension == 'pdb':
-                            n_models = PDBFile(comb_molecule['filepath']).getNumFrames()
-                        elif extension == 'csv' or extension == 'smiles':
-                            with open(comb_molecule['filepath'], 'r') as smiles_file:
-                                n_models = len(filter(bool, smiles_file.readlines()))  # remove blank lines
-                        elif extension == 'sdf' or extension == 'mol2':
-                            if not utils.is_openeye_installed():
-                                err_msg = 'Molecule {}: Cannot "select" from {} file without OpenEye toolkit'
-                                raise RuntimeError(err_msg.format(comb_mol_name, extension))
-                            n_models = utils.read_oe_molecule(comb_molecule['filepath']).NumConfs()
-                        else:
-                            raise YamlParseError('Molecule {}: Cannot "select" from {} file'.format(
-                                    comb_mol_name, extension))
-
-                    # Substitute select: all with list of all models indices to trigger combinations
-                    comb_molecule['select'] = utils.CombinatorialLeaf(range(n_models))
-
-                # Find all combinations
-                comb_molecule = utils.CombinatorialTree(comb_molecule)
-                combinations = {comb_mol_name + '_' + name: mol
-                                for name, mol in comb_molecule.named_combinations(
-                                                    separator='_', max_name_length=30)}
-                if len(combinations) > 1:
-                    all_comb_mols.add(comb_mol_name)  # the combinatorial molecule will be removed
-                    expanded_content['molecules'].update(combinations)  # add all combinations
-
-                    # Check if experiments is a list or a dict
-                    if isinstance(expanded_content['experiments'], list):
-                        experiment_names = expanded_content['experiments']
+        # First substitute all 'select: all' with the correct combination of indices
+        for comb_mol_name, comb_molecule in expanded_content['molecules'].items():
+            if 'select' in comb_molecule and comb_molecule['select'] == 'all':
+                # Get the number of models in the file
+                extension = os.path.splitext(comb_molecule['filepath'])[1][1:]  # remove dot
+                with omt.utils.temporary_cd(self._script_dir):
+                    if extension == 'pdb':
+                        n_models = PDBFile(comb_molecule['filepath']).getNumFrames()
+                    elif extension == 'csv' or extension == 'smiles':
+                        with open(comb_molecule['filepath'], 'r') as smiles_file:
+                            n_models = len(filter(bool, smiles_file.readlines()))  # remove blank lines
+                    elif extension == 'sdf' or extension == 'mol2':
+                        if not utils.is_openeye_installed():
+                            err_msg = 'Molecule {}: Cannot "select" from {} file without OpenEye toolkit'
+                            raise RuntimeError(err_msg.format(comb_mol_name, extension))
+                        n_models = utils.read_oe_molecule(comb_molecule['filepath']).NumConfs()
                     else:
-                        experiment_names = ['experiments']
+                        raise YamlParseError('Molecule {}: Cannot "select" from {} file'.format(
+                            comb_mol_name, extension))
 
-                    # Resolve combinatorial molecules in experiments
-                    for exp_name in experiment_names:
-                        components = expanded_content[exp_name]['components']
-                        for component_name in ['receptor', 'ligand']:
-                            component = components[component_name]
-                            if isinstance(component, list):
-                                try:
-                                    i = component.index(comb_mol_name)
-                                    component[i:i+1] = combinations.keys()
-                                except ValueError:
-                                    pass
-                            elif component == comb_mol_name:
-                                components[component_name] = utils.CombinatorialLeaf(combinations.keys())
+                # Substitute select: all with list of all models indices to trigger combinations
+                comb_molecule['select'] = utils.CombinatorialLeaf(range(n_models))
 
-            # Delete old combinatorial molecules
-            for comb_mol_name in all_comb_mols:
-                del expanded_content['molecules'][comb_mol_name]
+        # Check if we have a sequence of experiments or a single one
+        try:
+            if isinstance(expanded_content['experiments'], list):  # sequence of experiments
+                experiment_names = expanded_content['experiments']
+            else:
+                experiment_names = ['experiments']
+        except KeyError:
+            experiment_names = []
+
+        # Expand molecules and update molecule ids in experiments
+        expanded_content = utils.CombinatorialTree(expanded_content)
+        update_nodes_paths = [(e, 'components', 'receptor') for e in experiment_names]
+        update_nodes_paths += [(e, 'components', 'ligand') for e in experiment_names]
+        expanded_content = expanded_content.expand_id_nodes(('molecules',), update_nodes_paths)
 
         return expanded_content
 
