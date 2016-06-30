@@ -402,7 +402,7 @@ class SetupDatabase:
     MOLECULES_DIR = 'molecules'
     CLASH_THRESHOLD = 1.5  # distance in Angstroms to consider two atoms clashing
 
-    def __init__(self, setup_dir, molecules=None, solvents=None):
+    def __init__(self, setup_dir, molecules=None, solvents=None, systems=None):
         """Initialize the database.
 
         Parameters
@@ -418,6 +418,7 @@ class SetupDatabase:
         self.setup_dir = setup_dir
         self.molecules = molecules
         self.solvents = solvents
+        self.systems = systems
 
         # Private attributes
         self._pos_cache = {}  # cache positions of molecules
@@ -438,20 +439,13 @@ class SetupDatabase:
         """
         return os.path.join(self.setup_dir, self.MOLECULES_DIR, molecule_id)
 
-    def get_system_dir(self, receptor, ligand, solvent):
+    def get_system_dir(self, system_id):
         """Return the directory where the prmtop and inpcrd files are stored.
-
-        The system is uniquely defined by the ids of the receptor, ligand and
-        solvent.
 
         Parameters
         ----------
-        receptor : str
-            The id of the receptor.
-        ligand : str
-            The id of the ligand.
-        solvent : str
-            The id of the solvent.
+        system_id : str
+            The ID of the system.
 
         Returns
         -------
@@ -459,8 +453,7 @@ class SetupDatabase:
             Path to the directory containing the AMBER system files.
 
         """
-        system_dir = '_'.join((receptor, ligand, solvent))
-        system_dir = os.path.join(self.setup_dir, self.SYSTEMS_DIR, system_dir)
+        system_dir = os.path.join(self.setup_dir, self.SYSTEMS_DIR, system_id)
         return system_dir
 
     def is_molecule_setup(self, molecule_id):
@@ -546,32 +539,28 @@ class SetupDatabase:
 
         return all_file_exist, all_file_exist
 
-    def is_system_setup(self, receptor, ligand, solvent):
+    def is_system_setup(self, system_id):
         """Check whether the system has been already set up.
 
         Parameters
         ----------
-        receptor : str
-            The id of the receptor.
-        ligand : str
-            The id of the ligand.
-        solvent : str
-            The id of the solvent.
+        system_id : str
+            The ID of the system.
 
         Returns
         -------
-        system_dir : bool
+        is_setup : bool
             True if the system has been already set up.
 
         """
-        system_dir = self.get_system_dir(receptor, ligand, solvent)
+        system_dir = self.get_system_dir(system_id)
         is_setup = (os.path.exists(os.path.join(system_dir, 'complex.prmtop')) and
                     os.path.exists(os.path.join(system_dir, 'complex.inpcrd')) and
                     os.path.exists(os.path.join(system_dir, 'solvent.prmtop')) and
                     os.path.exists(os.path.join(system_dir, 'solvent.inpcrd')))
         return is_setup
 
-    def get_system(self, components, pack=True):
+    def get_system(self, system_id, pack=True):
         """Make sure that the system files are set up and return the system folder.
 
         If necessary, create the prmtop and inpcrd files from the given components.
@@ -580,11 +569,8 @@ class SetupDatabase:
 
         Parameters
         ----------
-        setup_dir : str
-            The path to the main setup directory specified by the user in the YAML options
-        components : dict
-            A dictionary containing the keys 'receptor', 'ligand' and 'solvent' with the ids
-            of molecules and solvents
+        system_id : str
+            The ID of the system.
         pack : bool
             If True and the ligand is far away from the protein or closer than the clashing
             threshold, this try to find a better position (default is True).
@@ -595,21 +581,17 @@ class SetupDatabase:
             The path to the directory containing the prmtop and inpcrd files
 
         """
-
-        # Identify system
-        receptor_id = components['receptor']
-        ligand_id = components['ligand']
-        solvent_id = components['solvent']
-        system_dir = self.get_system_dir(receptor_id, ligand_id, solvent_id)
-
         # Check if system has been already processed
-        if self.is_system_setup(receptor_id, ligand_id, solvent_id):
+        system_dir = self.get_system_dir(system_id)
+        if self.is_system_setup(system_id):
             return system_dir
 
-        # We still need to check if system_dir exists because the set up may
-        # have been interrupted
         if not os.path.exists(system_dir):
             os.makedirs(system_dir)
+
+        receptor_id = self.systems[system_id]['receptor']
+        ligand_id = self.systems[system_id]['ligand']
+        solvent_id = self.systems[system_id]['solvent']
 
         # Setup molecules
         self._setup_molecules(receptor_id, ligand_id)
@@ -640,7 +622,7 @@ class SetupDatabase:
 
         # Load receptor and ligand
         for group_name in ['receptor', 'ligand']:
-            group = self.molecules[components[group_name]]
+            group = self.molecules[self.systems[system_id][group_name]]
             tleap.new_section('Load ' + group_name)
             tleap.load_parameters(group['parameters'])
             tleap.load_group(name=group_name, file_path=group['filepath'])
@@ -1105,8 +1087,9 @@ class YamlBuilder:
         if yaml_content is None:
             raise YamlParseError('The YAML file is empty!')
 
-        # Expand combinatorial molecules
+        # Expand combinatorial molecules and systems
         yaml_content = self._expand_molecules(yaml_content)
+        yaml_content = self._expand_systems(yaml_content)
 
         # Save raw YAML content that will be needed when generating the YAML files
         self._raw_yaml = copy.deepcopy({key: yaml_content.get(key, {})
@@ -1124,10 +1107,11 @@ class YamlBuilder:
         else:
             logger.debug('MPI enabled.')
 
-        # Initialize and configure database with molecules and solvents
+        # Initialize and configure database with molecules, solvents and systems
         self._db = SetupDatabase(setup_dir=self._get_setup_dir(self.options))
         self._db.molecules = self._validate_molecules(yaml_content.get('molecules', {}))
         self._db.solvents = self._validate_solvents(yaml_content.get('solvents', {}))
+        self._db.systems = self._validate_systems(yaml_content.get('systems', {}))
 
         # Validate protocols
         self._protocols = self._validate_protocols(yaml_content.get('protocols', {}))
@@ -1199,8 +1183,8 @@ class YamlBuilder:
         Generate new YAML content with no combinatorial molecules. The new content
         is identical to the old one but combinatorial molecules are substituted by
         the description of all the non-combinatorial molecules that they generate.
-        Moreover, the components of experiments that use combinatorial molecules
-        are resolved.
+        Moreover, systems that use combinatorial molecules are updated with the new
+        molecules ids.
 
         Parameters
         ----------
@@ -1241,6 +1225,40 @@ class YamlBuilder:
                 # Substitute select: all with list of all models indices to trigger combinations
                 comb_molecule['select'] = utils.CombinatorialLeaf(range(n_models))
 
+        # Expand molecules and update molecule ids in systems
+        expanded_content = utils.CombinatorialTree(expanded_content)
+        update_nodes_paths = [('systems', '*', 'receptor'), ('systems', '*', 'ligand')]
+        expanded_content = expanded_content.expand_id_nodes('molecules', update_nodes_paths)
+
+        return expanded_content
+
+    def _expand_systems(self, yaml_content):
+        """Expand combinatorial systems.
+
+        Generate new YAML content with no combinatorial systems. The new content
+        is identical to the old one but combinatorial systems are substituted by
+        the description of all the non-combinatorial systems that they generate.
+        Moreover, the experiments that use combinatorial systems are updated with
+        the new system ids.
+
+        Molecules must be already expanded when calling this function.
+
+        Parameters
+        ----------
+        yaml_content : dict
+            The YAML content as returned by _expand_molecules().
+
+        Returns
+        -------
+        expanded_content : dict
+            The new YAML content with combinatorial systems expanded.
+
+        """
+        expanded_content = copy.deepcopy(yaml_content)
+
+        if 'systems' not in expanded_content:
+            return expanded_content
+
         # Check if we have a sequence of experiments or a single one
         try:
             if isinstance(expanded_content['experiments'], list):  # sequence of experiments
@@ -1252,9 +1270,8 @@ class YamlBuilder:
 
         # Expand molecules and update molecule ids in experiments
         expanded_content = utils.CombinatorialTree(expanded_content)
-        update_nodes_paths = [(e, 'components', 'receptor') for e in experiment_names]
-        update_nodes_paths += [(e, 'components', 'ligand') for e in experiment_names]
-        expanded_content = expanded_content.expand_id_nodes(('molecules',), update_nodes_paths)
+        update_nodes_paths = [(e, 'system') for e in experiment_names]
+        expanded_content = expanded_content.expand_id_nodes('systems', update_nodes_paths)
 
         return expanded_content
 
@@ -1480,18 +1497,21 @@ class YamlBuilder:
 
         return validated_protocols
 
-    def _parse_experiments(self, yaml_content):
-        """Validate experiments.
+    def _validate_systems(self, systems_description):
+        """Validate systems.
 
-        Perform dry run and validate components, protocol and options of every combination.
-
-        Receptors, ligands, solvents and protocols must be already loaded. If they are
-        not found an exception is raised. Experiments options are validated as well.
+        Receptors, ligands, and solvents must be already loaded. If they are not
+        found an exception is raised.
 
         Parameters
         ----------
         yaml_content : dict
             The dictionary representing the YAML script loaded by yaml.load()
+
+        Returns
+        -------
+        validated_systems : dict
+            The validated protocols description.
 
         Raises
         ------
@@ -1508,6 +1528,44 @@ class YamlBuilder:
             if solvent_id in self._db.solvents:
                 return True
             raise YamlParseError('Solvent ' + solvent_id + ' is unknown.')
+
+        # Define experiment Schema
+        validated_systems = systems_description.copy()
+        system_schema = Schema({'receptor': is_known_molecule, 'ligand': is_known_molecule,
+                                'solvent': is_known_solvent})
+
+        # Schema validation
+        for system_id, system_descr in systems_description.items():
+            try:
+                validated_systems[system_id] = system_schema.validate(system_descr)
+            except SchemaError as e:
+                raise YamlParseError('System {}: {}'.format(system_id, e.autos[-1]))
+
+        return validated_systems
+
+    def _parse_experiments(self, yaml_content):
+        """Validate experiments.
+
+        Perform dry run and validate system, protocol and options of every combination.
+
+        Systems and protocols must be already loaded. If they are not found, an exception
+        is raised. Experiments options are validated as well.
+
+        Parameters
+        ----------
+        yaml_content : dict
+            The dictionary representing the YAML script loaded by yaml.load()
+
+        Raises
+        ------
+        YamlParseError
+            If the syntax for any experiment is not valid.
+
+        """
+        def is_known_system(system_id):
+            if system_id in self._db.systems:
+                return True
+            raise YamlParseError('System ' + system_id + ' is unknown.')
 
         def is_known_protocol(protocol_id):
             if protocol_id in self._protocols:
@@ -1526,10 +1584,7 @@ class YamlBuilder:
             return
 
         # Define experiment Schema
-        experiment_schema = Schema({'components': {'receptor': is_known_molecule,
-                                                   'ligand': is_known_molecule,
-                                                   'solvent': is_known_solvent},
-                                    'protocol': is_known_protocol,
+        experiment_schema = Schema({'system': is_known_system, 'protocol': is_known_protocol,
                                     Optional('options'): Use(YamlBuilder._validate_options)})
 
         # Schema validation
@@ -1650,20 +1705,17 @@ class YamlBuilder:
 
             if check_setup and err_msg == '':
                 resume_setup = exp_options['resume_setup']
-
-                # Identify components
-                components = combination['components']
-                receptor_id = components['receptor']
-                ligand_id = components['ligand']
-                solvent_id = components['solvent']
+                system_id = combination['system']
 
                 # Check system and molecule setup dirs
                 self._db.setup_dir = self._get_setup_dir(exp_options)
-                is_sys_setup = self._db.is_system_setup(receptor_id, ligand_id, solvent_id)
+                is_sys_setup = self._db.is_system_setup(system_id)
                 if is_sys_setup and not resume_setup:
-                    system_dir = self._db.get_system_dir(receptor_id, ligand_id, solvent_id)
+                    system_dir = self._db.get_system_dir(system_id)
                     err_msg = 'system setup directory {}'.format(system_dir)
                 else:
+                    receptor_id = self._db.systems[system_id]['receptor']
+                    ligand_id = self._db.systems[system_id]['ligand']
                     for molecule_id in [receptor_id, ligand_id]:
                         is_processed = self._db.is_molecule_setup(molecule_id)[1]
                         if is_processed and not resume_setup:
@@ -1705,9 +1757,11 @@ class YamlBuilder:
             self._db.setup_dir = self._get_setup_dir(exp_opts)
 
             # Force system and molecules setup
-            components = experiment['components']
-            logger.info('Setting up the system for {}, {} and {}'.format(*components.values()))
-            self._db.get_system(components, exp_opts['pack'])
+            system_id = experiment['system']
+            sys_descr = self._db.systems[system_id]  # system description
+            components = (sys_descr['receptor'], sys_descr['ligand'], sys_descr['solvent'])
+            logger.info('Setting up the system for {}, {} and {}'.format(*components))
+            self._db.get_system(system_id, exp_opts['pack'])
 
         # Signal resume to child nodes
         if self._mpicomm is not None:
@@ -1725,7 +1779,8 @@ class YamlBuilder:
 
         """
         yaml_dir = os.path.dirname(file_path)
-        components = set(experiment['components'].values())
+        sys_descr = self._db.systems[experiment['system']]  # system description
+        components = set([sys_descr['receptor'], sys_descr['ligand'], sys_descr['solvent']])
 
         # Molecules section data
         mol_section = {mol_id: molecule for mol_id, molecule in self._raw_yaml['molecules'].items()
@@ -1734,6 +1789,9 @@ class YamlBuilder:
         # Solvents section data
         sol_section = {solvent_id: solvent for solvent_id, solvent in self._raw_yaml['solvents'].items()
                        if solvent_id in components}
+
+        # Systems section data
+        sys_section = {experiment['system']: self._db.systems[experiment['system']]}
 
         # Protocols section data
         prot_section = {protocol_id: protocol for protocol_id, protocol in self._raw_yaml['protocols'].items()
@@ -1768,6 +1826,7 @@ class YamlBuilder:
         yaml_content = yaml.dump({'options': opt_section}, explicit_start=True, **dump_options)
         yaml_content += yaml.dump({'molecules': mol_section},  **dump_options)
         yaml_content += yaml.dump({'solvents': sol_section},  **dump_options)
+        yaml_content += yaml.dump({'systems': sys_section},  **dump_options)
         yaml_content += yaml.dump({'protocols': prot_section},  **dump_options)
         yaml_content += yaml.dump({'experiments': exp_section},  **dump_options)
 
@@ -1815,7 +1874,6 @@ class YamlBuilder:
             output directory as specified by the user in the YAML script
 
         """
-        components = experiment['components']
         exp_name = 'experiments' if experiment_dir == '' else os.path.basename(experiment_dir)
 
         # Get and validate experiment sub-options
@@ -1853,10 +1911,11 @@ class YamlBuilder:
                 self._generate_yaml(experiment, os.path.join(results_dir, exp_name + '.yaml'))
 
                 # Get system path
-                system_dir = self._db.get_system(components, exp_opts['pack'])
+                system_id = experiment['system']
+                system_dir = self._db.get_system(system_id, exp_opts['pack'])
 
                 # Get ligand resname for alchemical atom selection
-                ligand_descr = self._db.molecules[components['ligand']]
+                ligand_descr = self._db.molecules[self._db.systems[system_id]['ligand']]
                 ligand_dsl = utils.get_mol2_resname(ligand_descr['filepath'])
                 if ligand_dsl is None:
                     ligand_dsl = 'MOL'
@@ -1865,7 +1924,7 @@ class YamlBuilder:
 
                 # System configuration.
                 # OpenMM adopts camel case convention so we need to change the options format.
-                solvent = self._db.solvents[components['solvent']]
+                solvent = self._db.solvents[self._db.systems[system_id]['solvent']]
                 options_camelcase = {utils.underscore_to_camelcase(key): value
                                      for key, value in solvent.items()}
                 options_camelcase.update({utils.underscore_to_camelcase(key): value
