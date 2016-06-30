@@ -988,6 +988,11 @@ class YamlBuilder:
     ...     solvents:
     ...       vacuum:
     ...         nonbonded_method: NoCutoff
+    ...     systems:
+    ...         my_system:
+    ...             receptor: T4lysozyme
+    ...             ligand: p-xylene
+    ...             solvent: vacuum
     ...     protocols:
     ...       absolute-binding:
     ...         phases:
@@ -1000,10 +1005,7 @@ class YamlBuilder:
     ...               lambda_electrostatics: [1.0, 0.8, 0.6, 0.3, 0.0]
     ...               lambda_sterics: [1.0, 0.8, 0.6, 0.3, 0.0]
     ...     experiments:
-    ...       components:
-    ...         receptor: T4lysozyme
-    ...         ligand: p-xylene
-    ...         solvent: vacuum
+    ...       system: my_system
     ...       protocol: absolute-binding
     ...     '''.format(tmp_dir, lysozyme_path, pxylene_path)
     >>> yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
@@ -1529,10 +1531,24 @@ class YamlBuilder:
                 return True
             raise YamlParseError('Solvent ' + solvent_id + ' is unknown.')
 
+        def system_files(files):
+            """Paths to inpcrd and prmtop. Return them in the order [*.inpcrd, *.prmtop]."""
+            extensions = [os.path.splitext(filepath)[1][1:] for filepath in files]
+            assert sorted(extensions) == ['inpcrd', 'prmtop']
+            for filepath in files:
+                if not os.path.isfile(filepath):
+                    raise YamlParseError('File path {} does not exist.'.format(filepath))
+            return [filepath for (ext, filepath) in sorted(zip(extensions, files))]
+
         # Define experiment Schema
         validated_systems = systems_description.copy()
-        system_schema = Schema({'receptor': is_known_molecule, 'ligand': is_known_molecule,
-                                'solvent': is_known_solvent})
+        system_schema = Schema(Or(
+            {'receptor': is_known_molecule, 'ligand': is_known_molecule,
+             'solvent': is_known_solvent},
+
+            {'complex_path': Use(system_files), 'solvent_path': Use(system_files),
+             'ligand_dsl': str, 'solvent': is_known_solvent}
+        ))
 
         # Schema validation
         for system_id, system_descr in systems_description.items():

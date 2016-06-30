@@ -60,6 +60,10 @@ def examples_paths():
     paths['benzene'] = os.path.join(ben_tol_dir, 'benzene.tripos.mol2')
     paths['toluene'] = os.path.join(ben_tol_dir, 'toluene.tripos.mol2')
     paths['abl'] = os.path.join(abl_imatinib_dir, '2HYY-pdbfixer.pdb')
+    paths['bentol-complex'] = [os.path.join(ben_tol_dir, 'complex.prmtop'),
+                               os.path.join(ben_tol_dir, 'complex.inpcrd')]
+    paths['bentol-solvent'] = [os.path.join(ben_tol_dir, 'solvent.prmtop'),
+                               os.path.join(ben_tol_dir, 'solvent.inpcrd')]
     return paths
 
 
@@ -371,7 +375,10 @@ def test_validation_correct_systems():
     basic_script = yaml.load(textwrap.dedent(basic_script))
 
     systems = [
-        {'receptor': 'rec', 'ligand': 'lig', 'solvent': 'solv'}
+        {'receptor': 'rec', 'ligand': 'lig', 'solvent': 'solv'},
+        {'complex_path': examples_paths()['bentol-complex'],
+         'solvent_path': examples_paths()['bentol-solvent'],
+         'ligand_dsl': 'resname BEN', 'solvent': 'solv'}
     ]
     for system in systems:
         modified_script = basic_script.copy()
@@ -397,6 +404,19 @@ def test_validation_wrong_systems():
         {'receptor': 'rec', 'ligand': 1, 'solvent': 'solv'},
         {'receptor': 'rec', 'ligand': 'lig', 'solvent': ['solv', 'solv']},
         {'receptor': 'rec', 'ligand': 'lig', 'solvent': 'unknown'},
+
+        {'complex_path': examples_paths()['bentol-complex'][0],
+         'solvent_path': examples_paths()['bentol-solvent'],
+         'ligand_dsl': 'resname BEN', 'solvent': 'solv'},
+        {'complex_path': ['nonexistingpath.prmtop', 'nonexistingpath.inpcrd'],
+         'solvent_path': examples_paths()['bentol-solvent'],
+         'ligand_dsl': 'resname BEN', 'solvent': 'solv'},
+        {'complex_path': examples_paths()['bentol-complex'],
+         'solvent_path': examples_paths()['bentol-solvent'],
+         'ligand_dsl': 3.4, 'solvent': 'solv'},
+        {'complex_path': examples_paths()['bentol-complex'],
+         'solvent_path': examples_paths()['bentol-solvent'],
+         'ligand_dsl': 'resname BEN', 'solvent': 'unknown'}
     ]
     for system in systems:
         modified_script = basic_script.copy()
