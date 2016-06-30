@@ -98,6 +98,17 @@ def test_expand_tree():
     assert expected_names == set([name for name, _ in long_tree.named_combinations(
                                                        separator='-', max_name_length=10)])
 
+    # Test file paths are handled correctly
+    examples_dir = get_data_filename(os.path.join('..', 'examples'))
+    abl = os.path.join(examples_dir, 'abl-imatinib-explicit', 'setup', '2HYY-pdbfixer.pdb')
+    benzene = os.path.join(examples_dir, 'benzene-toluene-explicit', 'setup', 'benzene.tripos.mol2')
+    long_tree = CombinatorialTree({'key1': CombinatorialLeaf([abl, benzene]),
+                                   'key2': CombinatorialLeaf([benzene, benzene, 'notapath'])})
+    expected_names = set(['benzene-2HYYpdbfixer', 'benzene-2HYYpdbfixer-2', 'notapath-2HYYpdbfixer',
+                          'benzene-benzene', 'benzene-benzene-2', 'notapath-benzene'])
+    assert expected_names == set([name for name, _ in long_tree.named_combinations(
+                                                       separator='-', max_name_length=25)])
+
 
 def test_generate_signature_schema():
     """Test generate_signature_schema() function."""
