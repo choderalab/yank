@@ -378,7 +378,7 @@ def test_exp_sequence():
         components:
             receptor: rec
             ligand: lig
-            solvent: [solv1, solv2]
+            solvent: !Combinatorial [solv1, solv2]
         protocol: absolute-binding
     experiment2:
         components:
@@ -648,10 +648,10 @@ class TestMultiMoleculeFiles():
         of the first one but with inversed z-coordinate."""
         # Creating a temporary directory and generating paths for output files
         cls.tmp_dir = tempfile.mkdtemp()
-        cls.pdb_path = os.path.join(cls.tmp_dir, 'multi.pdb')
-        cls.smiles_path = os.path.join(cls.tmp_dir, 'multi.smiles')
-        cls.sdf_path = os.path.join(cls.tmp_dir, 'multi.sdf')
-        cls.mol2_path = os.path.join(cls.tmp_dir, 'multi.mol2')
+        cls.pdb_path = os.path.join(cls.tmp_dir, 'multipdb.pdb')
+        cls.smiles_path = os.path.join(cls.tmp_dir, 'multismiles.smiles')
+        cls.sdf_path = os.path.join(cls.tmp_dir, 'multisdf.sdf')
+        cls.mol2_path = os.path.join(cls.tmp_dir, 'multimol2.mol2')
 
         # Rotation matrix to invert z-coordinate, i.e. flip molecule w.r.t. x-y plane
         rot = np.array([[1, 0, 0], [0, 1, 0], [0, 0, -1]])
@@ -697,12 +697,12 @@ class TestMultiMoleculeFiles():
         ---
         molecules:
             rec:
-                filepath: [{}, {}]
+                filepath: !Combinatorial [{}, {}]
                 parameters: oldff/leaprc.ff99SBildn
             lig:
-                name: [iupac1, iupac2]
+                name: !Combinatorial [iupac1, iupac2]
                 parameters: antechamber
-                epik: [0, 2]
+                epik: !Combinatorial [0, 2]
             multi:
                 filepath: {}
                 parameters: leaprc.ff14SB
@@ -729,9 +729,9 @@ class TestMultiMoleculeFiles():
         protocols:{}
         experiments:
             components:
-                receptor: [rec, multi]
+                receptor: !Combinatorial [rec, multi]
                 ligand: lig
-                solvent: [solv1, solv2]
+                solvent: !Combinatorial [solv1, solv2]
             protocol: absolute-binding
         """.format(self.sdf_path, self.mol2_path, self.pdb_path,
                    self.smiles_path, self.sdf_path, self.mol2_path,
@@ -741,10 +741,10 @@ class TestMultiMoleculeFiles():
         expected_content = """
         ---
         molecules:
-            rec_varfoldersbkrcx4j47j1n91nzd630:
+            rec_multisdf:
                 filepath: {}
                 parameters: oldff/leaprc.ff99SBildn
-            rec_varfoldersbkrcx4j47j1n91nzd630_2:
+            rec_multimol2:
                 filepath: {}
                 parameters: oldff/leaprc.ff99SBildn
             lig_0_iupac1:
@@ -805,9 +805,9 @@ class TestMultiMoleculeFiles():
         protocols:{}
         experiments:
             components:
-                receptor: [rec_varfoldersbkrcx4j47j1n91nzd630_2, rec_varfoldersbkrcx4j47j1n91nzd630, multi_1, multi_0]
-                ligand: [lig_0_iupac2, lig_2_iupac1, lig_2_iupac2, lig_0_iupac1]
-                solvent: [solv1, solv2]
+                receptor: !Combinatorial [rec_multisdf, rec_multimol2, multi_1, multi_0]
+                ligand: !Combinatorial [lig_0_iupac2, lig_2_iupac1, lig_2_iupac2, lig_0_iupac1]
+                solvent: !Combinatorial [solv1, solv2]
             protocol: absolute-binding
         """.format(self.sdf_path, self.mol2_path, self.pdb_path, self.pdb_path,
                    self.smiles_path, self.smiles_path, self.sdf_path, self.sdf_path,
@@ -1310,7 +1310,7 @@ def test_run_experiment():
             components:
                 receptor: T4lysozyme
                 ligand: p-xylene
-                solvent: [vacuum, GBSA-OBC2]
+                solvent: !Combinatorial [vacuum, GBSA-OBC2]
             options:
                 output_dir: {}
                 setup_dir: ''
