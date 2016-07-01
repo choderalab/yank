@@ -649,7 +649,7 @@ def test_clashing_atoms():
             prmtop = openmm.app.AmberPrmtopFile(os.path.join(system_dir, 'complex.prmtop'))
             inpcrd = openmm.app.AmberInpcrdFile(os.path.join(system_dir, 'complex.inpcrd'))
             positions = inpcrd.getPositions(asNumpy=True).value_in_unit(unit.angstrom)
-            atom_indices = pipeline.find_components(prmtop.topology, 'resname TOL')
+            atom_indices = pipeline.find_components(prmtop.createSystem(), prmtop.topology, 'resname TOL')
             benzene_pos2 = positions.take(atom_indices['receptor'], axis=0)
             toluene_pos2 = positions.take(atom_indices['ligand'], axis=0)
 
@@ -1391,7 +1391,7 @@ def test_charged_ligand():
         system_files_paths = {'solvent': [system_files_paths[0], system_files_paths[1]],
                               'complex': [system_files_paths[2], system_files_paths[3]]}
         _, systems, _, atom_indices = pipeline.prepare_amber(system_files_paths, 'resname ASP',
-                                                {'nonbondedMethod': openmm.app.PME}, -1)
+                                                             {'nonbondedMethod': openmm.app.PME})
         for phase in ['complex', 'solvent']:
             prmtop_file_path = os.path.join(output_dir, '{}.prmtop'.format(phase))
             topology = openmm.app.AmberPrmtopFile(prmtop_file_path).topology

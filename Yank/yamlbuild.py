@@ -550,6 +550,7 @@ class SetupDatabase:
         # Compute and update small molecule net charge
         if all_file_exist:
             extension = os.path.splitext(molecule_descr['filepath'])[1]
+            # TODO what if this is a peptide? This should be computed in _get_system()
             if extension == '.mol2':
                 molecule_descr['net_charge'] = utils.get_mol2_net_charge(molecule_descr['filepath'])
 
@@ -696,6 +697,8 @@ class SetupDatabase:
             tleap.new_section('Solvate systems')
 
             # Add ligand-neutralizing ions
+            # TODO what if this is a peptide? First create solvent.prmtop,
+            # TODO then compute net charge, then create complex.prmtop
             if 'net_charge' in ligand and ligand['net_charge'] != 0:
                 net_charge = ligand['net_charge']
 
@@ -963,6 +966,7 @@ class SetupDatabase:
             # Determine small molecule net charge
             extension = os.path.splitext(mol_descr['filepath'])[1]
             if extension == '.mol2':
+                # TODO what if this is a peptide? this should be computed in _get_system()
                 if net_charge is not None:
                     mol_descr['net_charge'] = net_charge
                 else:
@@ -1985,7 +1989,6 @@ class YamlBuilder:
                         ligand_dsl = 'MOL'
                     ligand_dsl = 'resname ' + ligand_dsl
                 else:  # system files given directly by user
-                    ligand_descr = {'net_charge': 0}  # TODO WRONG! remove me when you get rid of 'net_charge'
                     ligand_dsl = self._db.systems[system_id]['ligand_dsl']
                 logger.debug('DSL string for the ligand: "{}"'.format(ligand_dsl))
 
@@ -2006,7 +2009,7 @@ class YamlBuilder:
                 system_files_paths = {'solvent': [system_files_paths[0], system_files_paths[1]],
                                       'complex': [system_files_paths[2], system_files_paths[3]]}
                 phases, systems, positions, atom_indices = pipeline.prepare_amber(system_files_paths,
-                                                    ligand_dsl, system_pars, ligand_descr['net_charge'])
+                                                                                  ligand_dsl, system_pars)
                 for phase in phases:
                     if len(atom_indices[phase]['ligand']) == 0:
                         raise RuntimeError('DSL string "{}" did not select any atom for '

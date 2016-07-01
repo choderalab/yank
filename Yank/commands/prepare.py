@@ -208,7 +208,7 @@ def setup_binding_gromacs(args):
 
         # Find ligand atoms and receptor atoms.
         ligand_dsl = args['--ligand'] # MDTraj DSL that specifies ligand atoms
-        atom_indices[phase] = find_components(top.topology, ligand_dsl)
+        atom_indices[phase] = find_components(systems[phase], top.topology, ligand_dsl)
 
     phases = systems.keys()
 
