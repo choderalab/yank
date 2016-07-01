@@ -119,7 +119,8 @@ def setup_binding_amber(args):
     setup_directory = os.path.join(setup_directory, '')  # add final slash character
     system_files_paths = {'solvent': [setup_directory + 'solvent.inpcrd', setup_directory + 'solvent.prmtop'],
                           'complex': [setup_directory + 'complex.inpcrd', setup_directory + 'complex.prmtop']}
-    return pipeline.prepare_amber(system_files_paths, args['--ligand'], system_parameters, verbose=verbose)
+    return pipeline.prepare_system(system_files_paths, args['--ligand'], system_parameters, verbose=verbose)
+
 
 def setup_binding_gromacs(args):
     """

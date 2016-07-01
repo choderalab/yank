@@ -53,6 +53,7 @@ def examples_paths():
     paths = {}
     examples_dir = utils.get_data_filename(os.path.join('..', 'examples'))
     p_xylene_dir = os.path.join(examples_dir, 'p-xylene-implicit', 'input')
+    p_xylene_gro_dir = os.path.join(examples_dir, 'p-xylene-gromacs-example', 'setup')
     ben_tol_dir = os.path.join(examples_dir, 'benzene-toluene-explicit', 'setup')
     abl_imatinib_dir = os.path.join(examples_dir, 'abl-imatinib-explicit', 'setup')
     paths['lysozyme'] = os.path.join(p_xylene_dir, '181L-pdbfixer.pdb')
@@ -64,6 +65,11 @@ def examples_paths():
                                os.path.join(ben_tol_dir, 'complex.inpcrd')]
     paths['bentol-solvent'] = [os.path.join(ben_tol_dir, 'solvent.prmtop'),
                                os.path.join(ben_tol_dir, 'solvent.inpcrd')]
+    paths['pxylene-complex'] = [os.path.join(p_xylene_gro_dir, 'complex.top'),
+                                os.path.join(p_xylene_gro_dir, 'complex.gro')]
+    paths['pxylene-solvent'] = [os.path.join(p_xylene_gro_dir, 'solvent.top'),
+                                os.path.join(p_xylene_gro_dir, 'solvent.gro')]
+    paths['pxylene-gro-include'] = os.path.join(p_xylene_gro_dir, 'top')
     return paths
 
 
@@ -382,7 +388,14 @@ def test_validation_correct_systems():
         {'receptor': 'rec', 'ligand': 'lig', 'solvent': 'solv'},
         {'complex_path': examples_paths()['bentol-complex'],
          'solvent_path': examples_paths()['bentol-solvent'],
-         'ligand_dsl': 'resname BEN', 'solvent': 'solv'}
+         'ligand_dsl': 'resname BEN', 'solvent': 'solv'},
+        {'complex_path': examples_paths()['pxylene-complex'],
+         'solvent_path': examples_paths()['pxylene-solvent'],
+         'ligand_dsl': 'resname p-xylene', 'solvent': 'solv',
+         'gromacs_include_dir': examples_paths()['pxylene-gro-include']},
+        {'complex_path': examples_paths()['pxylene-complex'],
+         'solvent_path': examples_paths()['pxylene-solvent'],
+         'ligand_dsl': 'resname p-xylene', 'solvent': 'solv'}
     ]
     for system in systems:
         modified_script = basic_script.copy()
@@ -420,7 +433,12 @@ def test_validation_wrong_systems():
          'ligand_dsl': 3.4, 'solvent': 'solv'},
         {'complex_path': examples_paths()['bentol-complex'],
          'solvent_path': examples_paths()['bentol-solvent'],
-         'ligand_dsl': 'resname BEN', 'solvent': 'unknown'}
+         'ligand_dsl': 'resname BEN', 'solvent': 'unknown'},
+
+        {'complex_path': examples_paths()['bentol-complex'],
+         'solvent_path': examples_paths()['pxylene-solvent'],
+         'ligand_dsl': 'resname p-xylene', 'solvent': 'solv',
+         'gromacs_include_dir': examples_paths()['pxylene-gro-include']}
     ]
     for system in systems:
         modified_script = basic_script.copy()
@@ -1390,8 +1408,8 @@ def test_charged_ligand():
         # Test that 'ligand_counterions' component contain one anion
         system_files_paths = {'solvent': [system_files_paths[0], system_files_paths[1]],
                               'complex': [system_files_paths[2], system_files_paths[3]]}
-        _, systems, _, atom_indices = pipeline.prepare_amber(system_files_paths, 'resname ASP',
-                                                             {'nonbondedMethod': openmm.app.PME})
+        _, systems, _, atom_indices = pipeline.prepare_system(system_files_paths, 'resname ASP',
+                                                              {'nonbondedMethod': openmm.app.PME})
         for phase in ['complex', 'solvent']:
             prmtop_file_path = os.path.join(output_dir, '{}.prmtop'.format(phase))
             topology = openmm.app.AmberPrmtopFile(prmtop_file_path).topology
@@ -1515,6 +1533,32 @@ def test_run_experiment_from_amber_files():
         yaml_script['systems'] = {'system1':
                 {'complex_path': complex_path, 'solvent_path': solvent_path,
                  'ligand_dsl': 'resname TOL', 'solvent': 'PME'}}
+
+        yaml_builder = YamlBuilder(yaml_script)
+        yaml_builder._check_resume()  # check_resume should not raise exceptions
+        yaml_builder.build_experiment()
+
+        # The experiments folders are correctly named and positioned
+        output_dir = yaml_builder._get_experiment_dir(yaml_builder.options, '')
+        assert os.path.isdir(output_dir)
+        assert os.path.isfile(os.path.join(output_dir, 'complex-explicit.nc'))
+        assert os.path.isfile(os.path.join(output_dir, 'solvent-explicit.nc'))
+        assert os.path.isfile(os.path.join(output_dir, 'experiments.yaml'))
+        assert os.path.isfile(os.path.join(output_dir, 'experiments.log'))
+
+
+def test_run_experiment_from_gromacs_files():
+    """Test experiment run from prmtop/inpcrd files."""
+    complex_path = examples_paths()['pxylene-complex']
+    solvent_path = examples_paths()['pxylene-solvent']
+    include_path = examples_paths()['pxylene-gro-include']
+    with omt.utils.temporary_directory() as tmp_dir:
+        yaml_script = get_template_script(tmp_dir)
+        del yaml_script['molecules']  # we shouldn't need any molecule
+        yaml_script['systems'] = {'system1':
+                {'complex_path': complex_path, 'solvent_path': solvent_path,
+                 'ligand_dsl': 'resname "p-xylene"', 'solvent': 'PME',
+                 'gromacs_include_dir': include_path}}
 
         yaml_builder = YamlBuilder(yaml_script)
         yaml_builder._check_resume()  # check_resume should not raise exceptions

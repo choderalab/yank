@@ -1566,14 +1566,23 @@ class YamlBuilder:
                 return True
             raise YamlParseError('Solvent ' + solvent_id + ' is unknown.')
 
-        def system_files(files):
-            """Paths to inpcrd and prmtop. Return them in the order [*.inpcrd, *.prmtop]."""
-            extensions = [os.path.splitext(filepath)[1][1:] for filepath in files]
-            assert sorted(extensions) == ['inpcrd', 'prmtop']
-            for filepath in files:
-                if not os.path.isfile(filepath):
-                    raise YamlParseError('File path {} does not exist.'.format(filepath))
-            return [filepath for (ext, filepath) in sorted(zip(extensions, files))]
+        def system_files(type):
+            def _system_files(files):
+                """Paths to amber/gromacs files. Return them in alphabetical
+                order of extension [*.inpcrd/gro, *.prmtop/top]."""
+                extensions = [os.path.splitext(filepath)[1][1:] for filepath in files]
+                correct_type = False
+                if type == 'amber':
+                    correct_type = sorted(extensions) == ['inpcrd', 'prmtop']
+                elif type == 'gromacs':
+                    correct_type = sorted(extensions) == ['gro', 'top']
+                if not correct_type:
+                    raise RuntimeError('Wrong system files type.')
+                for filepath in files:
+                    if not os.path.isfile(filepath):
+                        raise YamlParseError('File path {} does not exist.'.format(filepath))
+                return [filepath for (ext, filepath) in sorted(zip(extensions, files))]
+            return _system_files
 
         # Define experiment Schema
         validated_systems = systems_description.copy()
@@ -1581,8 +1590,11 @@ class YamlBuilder:
             {'receptor': is_known_molecule, 'ligand': is_known_molecule,
              'solvent': is_known_solvent},
 
-            {'complex_path': Use(system_files), 'solvent_path': Use(system_files),
-             'ligand_dsl': str, 'solvent': is_known_solvent}
+            {'complex_path': Use(system_files('amber')), 'solvent_path': Use(system_files('amber')),
+             'ligand_dsl': str, 'solvent': is_known_solvent},
+
+            {'complex_path': Use(system_files('gromacs')), 'solvent_path': Use(system_files('gromacs')),
+             'ligand_dsl': str, 'solvent': is_known_solvent, Optional('gromacs_include_dir'): os.path.isdir}
         ))
 
         # Schema validation
@@ -1992,24 +2004,16 @@ class YamlBuilder:
                     ligand_dsl = self._db.systems[system_id]['ligand_dsl']
                 logger.debug('DSL string for the ligand: "{}"'.format(ligand_dsl))
 
-                # System configuration.
-                # OpenMM adopts camel case convention so we need to change the options format.
-                solvent = self._db.solvents[self._db.systems[system_id]['solvent']]
-                options_camelcase = {utils.underscore_to_camelcase(key): value
-                                     for key, value in solvent.items()}
-                options_camelcase.update({utils.underscore_to_camelcase(key): value
-                                          for key, value in exp_opts.items()})
-                # We use inspection to filter the options to pass to createSystem()
-                create_system_args = set(inspect.getargspec(AmberPrmtopFile.createSystem).args)
-                system_pars = {arg: options_camelcase[arg] for arg in create_system_args
-                               if arg in options_camelcase}
-
                 # Prepare system
+                solvent_id = self._db.systems[system_id]['solvent']
+                system_options = utils.merge_dict(self._db.solvents[solvent_id], exp_opts)
                 system_files_paths = self._db.get_system(system_id, exp_opts['pack'])
                 system_files_paths = {'solvent': [system_files_paths[0], system_files_paths[1]],
                                       'complex': [system_files_paths[2], system_files_paths[3]]}
-                phases, systems, positions, atom_indices = pipeline.prepare_amber(system_files_paths,
-                                                                                  ligand_dsl, system_pars)
+                gromacs_include_dir = self._db.systems[system_id].get('gromacs_include_dir', None)
+                phases, systems, positions, atom_indices = pipeline.prepare_system(system_files_paths,
+                                    ligand_dsl, system_options, gromacs_include_dir=gromacs_include_dir)
+
                 for phase in phases:
                     if len(atom_indices[phase]['ligand']) == 0:
                         raise RuntimeError('DSL string "{}" did not select any atom for '
