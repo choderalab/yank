@@ -74,6 +74,10 @@ def get_template_script(output_dir='.'):
     ---
     options:
         output_dir: {output_dir}
+        number_of_iterations: 1
+        temperature: 300*kelvin
+        pressure: 1*atmosphere
+        softcore_beta: 0.0
     molecules:
         benzene:
             filepath: {benzene_path}
@@ -138,7 +142,7 @@ def get_template_script(output_dir='.'):
                         lambda_electrostatics: [1.0, 0.8, 0.6, 0.3, 0.0]
                         lambda_sterics: [1.0, 0.8, 0.6, 0.3, 0.0]
     experiments:
-        system: sys
+        system: system1
         protocol: absolute-binding
     """.format(output_dir=output_dir, benzene_path=paths['benzene'],
                pxylene_path=paths['p-xylene'], toluene_path=paths['toluene'],
@@ -639,7 +643,7 @@ def test_clashing_atoms():
         yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
 
         for system_id in ['system_vacuum', 'system_PME']:
-            system_dir = yaml_builder._db.get_system(system_id)
+            system_dir = os.path.dirname(yaml_builder._db.get_system(system_id)[0])
 
             # Get positions of molecules in the final system
             prmtop = openmm.app.AmberPrmtopFile(os.path.join(system_dir, 'complex.prmtop'))
@@ -1208,7 +1212,7 @@ def test_setup_implicit_system_leap():
 
         yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
 
-        output_dir = yaml_builder._db.get_system('system')
+        output_dir = os.path.dirname(yaml_builder._db.get_system('system')[0])
         last_modified_path = os.path.join(output_dir, 'complex.prmtop')
         last_modified = os.stat(last_modified_path).st_mtime
 
@@ -1264,7 +1268,7 @@ def test_setup_explicit_system_leap():
 
         yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
 
-        output_dir = yaml_builder._db.get_system('system')
+        output_dir = os.path.dirname(yaml_builder._db.get_system('system')[0])
 
         # Test that output file exists and that there is water
         expected_resnames = {'complex': set(['BEN', 'TOL', 'WAT']),
@@ -1315,7 +1319,7 @@ def test_neutralize_system():
 
         yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
 
-        output_dir = yaml_builder._db.get_system('system')
+        output_dir = os.path.dirname(yaml_builder._db.get_system('system')[0])
 
         # Test that output file exists and that there are ions
         found_resnames = set()
@@ -1363,7 +1367,8 @@ def test_charged_ligand():
 
         yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
 
-        output_dir = yaml_builder._db.get_system('system')
+        system_files_paths = yaml_builder._db.get_system('system')
+        output_dir = os.path.dirname(system_files_paths[0])
 
         # Safety check: Asp is negatively charged, Lys is positively charged
         asp_path = os.path.join(yaml_builder._db.get_molecule_dir('aspartic-acid'),
@@ -1383,7 +1388,9 @@ def test_charged_ligand():
         assert set(['Na+', 'Cl-']) <= found_resnames
 
         # Test that 'ligand_counterions' component contain one anion
-        _, systems, _, atom_indices = pipeline.prepare_amber(output_dir, 'resname ASP',
+        system_files_paths = {'solvent': [system_files_paths[0], system_files_paths[1]],
+                              'complex': [system_files_paths[2], system_files_paths[3]]}
+        _, systems, _, atom_indices = pipeline.prepare_amber(system_files_paths, 'resname ASP',
                                                 {'nonbondedMethod': openmm.app.PME}, -1)
         for phase in ['complex', 'solvent']:
             prmtop_file_path = os.path.join(output_dir, '{}.prmtop'.format(phase))
@@ -1498,8 +1505,33 @@ def test_get_alchemical_path():
     assert len(complex_path) == 7
 
 
+def test_run_experiment_from_amber_files():
+    """Test experiment run from prmtop/inpcrd files."""
+    complex_path = examples_paths()['bentol-complex']
+    solvent_path = examples_paths()['bentol-solvent']
+    with omt.utils.temporary_directory() as tmp_dir:
+        yaml_script = get_template_script(tmp_dir)
+        del yaml_script['molecules']  # we shouldn't need any molecule
+        yaml_script['systems'] = {'system1':
+                {'complex_path': complex_path, 'solvent_path': solvent_path,
+                 'ligand_dsl': 'resname TOL', 'solvent': 'PME'}}
+
+        yaml_builder = YamlBuilder(yaml_script)
+        yaml_builder._check_resume()  # check_resume should not raise exceptions
+        yaml_builder.build_experiment()
+
+        # The experiments folders are correctly named and positioned
+        output_dir = yaml_builder._get_experiment_dir(yaml_builder.options, '')
+        assert os.path.isdir(output_dir)
+        assert os.path.isfile(os.path.join(output_dir, 'complex-explicit.nc'))
+        assert os.path.isfile(os.path.join(output_dir, 'solvent-explicit.nc'))
+        assert os.path.isfile(os.path.join(output_dir, 'experiments.yaml'))
+        assert os.path.isfile(os.path.join(output_dir, 'experiments.log'))
+
+
 @attr('slow')  # Skip on Travis-CI
 def test_run_experiment():
+    """Test experiment run and resuming."""
     with omt.utils.temporary_directory() as tmp_dir:
         yaml_content = """
         ---
@@ -1555,7 +1587,7 @@ def test_run_experiment():
 
         # Same thing with a system
         err_msg = ''
-        system_dir = yaml_builder._db.get_system('system_vacuum')
+        system_dir = os.path.dirname(yaml_builder._db.get_system('system_vacuum')[0])
         try:
             yaml_builder.build_experiment()
         except YamlParseError as e:
@@ -1596,7 +1628,6 @@ def test_run_experiment():
         yaml_builder.options['resume_simulation'] = True
         yaml_builder.build_experiment()
 
-# TODO start from prmtop and inpcrd files
 # TODO start form gro and top files
 
 # TODO default solvents?

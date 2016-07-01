@@ -160,13 +160,14 @@ def get_leap_recommended_pbradii(implicit_solvent):
         raise ValueError('Implicit solvent {} is not supported.'.format(implicit_solvent))
 
 
-def prepare_amber(system_dir, ligand_dsl, system_parameters, ligand_net_charge=0, verbose=False):
+def prepare_amber(system_files_paths, ligand_dsl, system_parameters, ligand_net_charge=0, verbose=False):
     """Create a system from prmtop and inpcrd files.
 
     Parameters
     ----------
-    system_dir : str
-        Path to the directory containing the prmtop and inpcrd files.
+    system_files_paths : dict
+        system_files_paths[phase] is a list-like object containing the path to topology
+        and system files (e.g. 'complex' -> ['complex.inpcrd', 'complex.prmtop'].
     ligand_dsl : str
         MDTraj DSL string that specify the ligand atoms.
     system_parameters : dict
@@ -196,9 +197,9 @@ def prepare_amber(system_dir, ligand_dsl, system_parameters, ligand_net_charge=0
     atom_indices = {}  # ligand_atoms[phase] is a list of ligand atom indices of phase 'phase'
 
     # Prepare phases of calculation.
-    for phase_prefix in ['complex', 'solvent']:
-        prmtop_file_path = os.path.join(system_dir, '{}.prmtop'.format(phase_prefix))
-        inpcrd_file_path = os.path.join(system_dir, '{}.inpcrd'.format(phase_prefix))
+    for phase_prefix in system_files_paths:
+        inpcrd_file_path = system_files_paths[phase_prefix][0]
+        prmtop_file_path = system_files_paths[phase_prefix][1]
         if verbose:
             logger.info("reading phase %s: " % phase_prefix)
             logger.info("prmtop: %s" % prmtop_file_path)

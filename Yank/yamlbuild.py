@@ -439,8 +439,8 @@ class SetupDatabase:
         """
         return os.path.join(self.setup_dir, self.MOLECULES_DIR, molecule_id)
 
-    def get_system_dir(self, system_id):
-        """Return the directory where the prmtop and inpcrd files are stored.
+    def get_system_files_paths(self, system_id):
+        """Return the paths to the systems files.
 
         Parameters
         ----------
@@ -449,12 +449,28 @@ class SetupDatabase:
 
         Returns
         -------
-        system_dir : str
-            Path to the directory containing the AMBER system files.
+        system_path_solvent : str
+            Path to the system file (.inpcrd or .gro) of the solvent phase.
+        topology_path_solvent : str
+            Path to the topology file (.prmtop or .top) of the solvent phase.
+        system_path_complex : str
+            Path to the system file (.inpcrd or .gro) of the complex phase.
+        topology_path_complex : str
+            Path to the topology file (.prmtop or .top) of the complex phase.
 
         """
-        system_dir = os.path.join(self.setup_dir, self.SYSTEMS_DIR, system_id)
-        return system_dir
+        if 'ligand' in self.systems[system_id]:
+            system_dir = os.path.join(self.setup_dir, self.SYSTEMS_DIR, system_id)
+            system_path_solvent = os.path.join(system_dir, 'solvent.inpcrd')
+            topology_path_solvent = os.path.join(system_dir, 'solvent.prmtop')
+            system_path_complex = os.path.join(system_dir, 'complex.inpcrd')
+            topology_path_complex = os.path.join(system_dir, 'complex.prmtop')
+        else:
+            system_path_solvent, topology_path_solvent = self.systems[system_id]['solvent_path']
+            system_path_complex, topology_path_complex = self.systems[system_id]['complex_path']
+
+        return (system_path_solvent, topology_path_solvent,
+                system_path_complex, topology_path_complex)
 
     def is_molecule_setup(self, molecule_id):
         """Check whether the molecule has been processed previously.
@@ -540,7 +556,7 @@ class SetupDatabase:
         return all_file_exist, all_file_exist
 
     def is_system_setup(self, system_id):
-        """Check whether the system has been already set up.
+        """Check whether the system has been already processed.
 
         Parameters
         ----------
@@ -550,15 +566,22 @@ class SetupDatabase:
         Returns
         -------
         is_setup : bool
-            True if the system has been already set up.
+            True if the system is ready to be used for an experiment. Either because
+            the system has directly provided the system files, or because it already
+            went through the setup pipeline.
+        is_processed : bool
+            True if the system has already gone through the setup pipeline.
 
         """
-        system_dir = self.get_system_dir(system_id)
-        is_setup = (os.path.exists(os.path.join(system_dir, 'complex.prmtop')) and
-                    os.path.exists(os.path.join(system_dir, 'complex.inpcrd')) and
-                    os.path.exists(os.path.join(system_dir, 'solvent.prmtop')) and
-                    os.path.exists(os.path.join(system_dir, 'solvent.inpcrd')))
-        return is_setup
+        if 'ligand' in self.systems[system_id]:
+            system_files_paths = self.get_system_files_paths(system_id)
+            is_setup = (os.path.exists(system_files_paths[0]) and
+                        os.path.exists(system_files_paths[1]) and
+                        os.path.exists(system_files_paths[2]) and
+                        os.path.exists(system_files_paths[3]))
+            return is_setup, is_setup
+        else:
+            return True, False
 
     def get_system(self, system_id, pack=True):
         """Make sure that the system files are set up and return the system folder.
@@ -577,15 +600,23 @@ class SetupDatabase:
 
         Returns
         -------
-        system_dir : str
-            The path to the directory containing the prmtop and inpcrd files
+        system_path_solvent : str
+            Path to the system file (.inpcrd or .gro) of the solvent phase.
+        topology_path_solvent : str
+            Path to the topology file (.prmtop or .top) of the solvent phase.
+        system_path_complex : str
+            Path to the system file (.inpcrd or .gro) of the complex phase.
+        topology_path_complex : str
+            Path to the topology file (.prmtop or .top) of the complex phase.
 
         """
         # Check if system has been already processed
-        system_dir = self.get_system_dir(system_id)
-        if self.is_system_setup(system_id):
-            return system_dir
+        system_files_paths = self.get_system_files_paths(system_id)
+        if self.is_system_setup(system_id)[0]:
+            return system_files_paths
 
+        # We create all the system files in the same directory
+        system_dir = os.path.dirname(system_files_paths[0])
         if not os.path.exists(system_dir):
             os.makedirs(system_dir)
 
@@ -711,7 +742,7 @@ class SetupDatabase:
         # Run tleap!
         tleap.run()
 
-        return system_dir
+        return system_files_paths
 
     def _generate_molecule(self, molecule_id):
         """Generate molecule using the OpenEye toolkit from name or smiles.
@@ -1725,11 +1756,11 @@ class YamlBuilder:
 
                 # Check system and molecule setup dirs
                 self._db.setup_dir = self._get_setup_dir(exp_options)
-                is_sys_setup = self._db.is_system_setup(system_id)
-                if is_sys_setup and not resume_setup:
-                    system_dir = self._db.get_system_dir(system_id)
+                is_sys_setup, is_sys_processed = self._db.is_system_setup(system_id)
+                if is_sys_processed and not resume_setup:
+                    system_dir = os.path.dirname(self._db.get_system_files_paths(system_id)[0])
                     err_msg = 'system setup directory {}'.format(system_dir)
-                else:
+                elif not is_sys_setup:  # then this must go through the pipeline
                     receptor_id = self._db.systems[system_id]['receptor']
                     ligand_id = self._db.systems[system_id]['ligand']
                     for molecule_id in [receptor_id, ligand_id]:
@@ -1775,9 +1806,12 @@ class YamlBuilder:
             # Force system and molecules setup
             system_id = experiment['system']
             sys_descr = self._db.systems[system_id]  # system description
-            components = (sys_descr['receptor'], sys_descr['ligand'], sys_descr['solvent'])
-            logger.info('Setting up the system for {}, {} and {}'.format(*components))
-            self._db.get_system(system_id, exp_opts['pack'])
+            try:
+                components = (sys_descr['receptor'], sys_descr['ligand'], sys_descr['solvent'])
+                logger.info('Setting up the system for {}, {} and {}'.format(*components))
+                self._db.get_system(system_id, exp_opts['pack'])
+            except KeyError:  # system files are given directly by the user
+                pass
 
         # Signal resume to child nodes
         if self._mpicomm is not None:
@@ -1796,22 +1830,30 @@ class YamlBuilder:
         """
         yaml_dir = os.path.dirname(file_path)
         sys_descr = self._db.systems[experiment['system']]  # system description
-        components = set([sys_descr['receptor'], sys_descr['ligand'], sys_descr['solvent']])
 
         # Molecules section data
-        mol_section = {mol_id: molecule for mol_id, molecule in self._raw_yaml['molecules'].items()
-                       if mol_id in components}
+        try:
+            receptor_id = sys_descr['receptor']
+            ligand_id = sys_descr['ligand']
+            mol_section = {receptor_id: self._raw_yaml['molecules'][receptor_id],
+                           ligand_id: self._raw_yaml['molecules'][ligand_id],}
+
+            # Copy to avoid modifying _raw_yaml when updating paths
+            mol_section = copy.deepcopy(mol_section)
+        except KeyError:  # user provided directly system files
+            mol_section = {}
 
         # Solvents section data
-        sol_section = {solvent_id: solvent for solvent_id, solvent in self._raw_yaml['solvents'].items()
-                       if solvent_id in components}
+        solvent_id = sys_descr['solvent']
+        sol_section = {solvent_id: self._raw_yaml['solvents'][solvent_id]}
 
         # Systems section data
-        sys_section = {experiment['system']: self._db.systems[experiment['system']]}
+        system_id = experiment['system']
+        sys_section = {system_id: copy.deepcopy(self._db.systems[system_id])}
 
         # Protocols section data
-        prot_section = {protocol_id: protocol for protocol_id, protocol in self._raw_yaml['protocols'].items()
-                        if protocol_id in experiment['protocol']}
+        protocol_id = experiment['protocol']
+        prot_section = {protocol_id: self._raw_yaml['protocols'][protocol_id]}
 
         # We pop the options section in experiment and merge it to the general one
         exp_section = experiment.copy()
@@ -1819,12 +1861,18 @@ class YamlBuilder:
         opt_section.update(exp_section.pop('options', {}))
 
         # Convert relative paths to new script directory
-        mol_section = copy.deepcopy(mol_section)  # copy to avoid modifying raw yaml
         for molecule in mol_section.values():
             if 'filepath' in molecule and not os.path.isabs(molecule['filepath']):
                 molecule['filepath'] = os.path.relpath(molecule['filepath'], yaml_dir)
 
-        try:
+        try:  # systems for which user has specified directly system files
+            for phase in ['solvent_path', 'complex_path']:
+                for path in sys_section[system_id][phase]:
+                    sys_section[system_id][path] = os.path.relpath(path, yaml_dir)
+        except KeyError:  # system went through pipeline
+            pass
+
+        try:  # output directory
             output_dir = opt_section['output_dir']
         except KeyError:
             output_dir = self.DEFAULT_OPTIONS['output_dir']
@@ -1840,7 +1888,8 @@ class YamlBuilder:
         # Create YAML with the sections in order
         dump_options = {'Dumper': YankDumper, 'line_break': '\n', 'indent': 4}
         yaml_content = yaml.dump({'options': opt_section}, explicit_start=True, **dump_options)
-        yaml_content += yaml.dump({'molecules': mol_section},  **dump_options)
+        if mol_section:
+            yaml_content += yaml.dump({'molecules': mol_section},  **dump_options)
         yaml_content += yaml.dump({'solvents': sol_section},  **dump_options)
         yaml_content += yaml.dump({'systems': sys_section},  **dump_options)
         yaml_content += yaml.dump({'protocols': prot_section},  **dump_options)
@@ -1923,19 +1972,21 @@ class YamlBuilder:
             yank.resume()
         else:
             if self._mpicomm is None or self._mpicomm.rank == 0:
+                system_id = experiment['system']
+
                 # Export YAML file for reproducibility
                 self._generate_yaml(experiment, os.path.join(results_dir, exp_name + '.yaml'))
 
-                # Get system path
-                system_id = experiment['system']
-                system_dir = self._db.get_system(system_id, exp_opts['pack'])
-
                 # Get ligand resname for alchemical atom selection
-                ligand_descr = self._db.molecules[self._db.systems[system_id]['ligand']]
-                ligand_dsl = utils.get_mol2_resname(ligand_descr['filepath'])
-                if ligand_dsl is None:
-                    ligand_dsl = 'MOL'
-                ligand_dsl = 'resname ' + ligand_dsl
+                if self._db.is_system_setup(system_id)[1]:  # system went through pipeline
+                    ligand_descr = self._db.molecules[self._db.systems[system_id]['ligand']]
+                    ligand_dsl = utils.get_mol2_resname(ligand_descr['filepath'])
+                    if ligand_dsl is None:
+                        ligand_dsl = 'MOL'
+                    ligand_dsl = 'resname ' + ligand_dsl
+                else:  # system files given directly by user
+                    ligand_descr = {'net_charge': 0}  # TODO WRONG! remove me when you get rid of 'net_charge'
+                    ligand_dsl = self._db.systems[system_id]['ligand_dsl']
                 logger.debug('DSL string for the ligand: "{}"'.format(ligand_dsl))
 
                 # System configuration.
@@ -1951,12 +2002,15 @@ class YamlBuilder:
                                if arg in options_camelcase}
 
                 # Prepare system
-                phases, systems, positions, atom_indices = pipeline.prepare_amber(system_dir, ligand_dsl,
-                                                                 system_pars, ligand_descr['net_charge'])
+                system_files_paths = self._db.get_system(system_id, exp_opts['pack'])
+                system_files_paths = {'solvent': [system_files_paths[0], system_files_paths[1]],
+                                      'complex': [system_files_paths[2], system_files_paths[3]]}
+                phases, systems, positions, atom_indices = pipeline.prepare_amber(system_files_paths,
+                                                    ligand_dsl, system_pars, ligand_descr['net_charge'])
                 for phase in phases:
                     if len(atom_indices[phase]['ligand']) == 0:
-                        raise RuntimeError('Automatically generated DSL string "{}" did not'
-                                           'select any atom for the ligand.'.format(ligand_dsl))
+                        raise RuntimeError('DSL string "{}" did not select any atom for '
+                                           'the ligand in phase {}.'.format(ligand_dsl, phase))
 
                 # Create thermodynamic state
                 thermodynamic_state = ThermodynamicState(temperature=exp_opts['temperature'],
