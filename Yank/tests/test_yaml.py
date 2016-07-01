@@ -1547,6 +1547,7 @@ def test_run_experiment_from_amber_files():
         assert os.path.isfile(os.path.join(output_dir, 'experiments.log'))
 
 
+@attr('slow')  # Skip on Travis-CI
 def test_run_experiment_from_gromacs_files():
     """Test experiment run from prmtop/inpcrd files."""
     complex_path = examples_paths()['pxylene-complex']
