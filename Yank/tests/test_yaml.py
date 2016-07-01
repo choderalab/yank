@@ -26,9 +26,9 @@ from nose.plugins.attrib import attr
 from yank.yamlbuild import *
 from mdtraj.formats.mol2 import mol2_to_dataframes
 
-#=============================================================================================
-# SUBROUTINES FOR TESTING
-#=============================================================================================
+# ==============================================================================
+# Subroutines for testing
+# ==============================================================================
 
 standard_protocol = """
         absolute-binding:
@@ -42,6 +42,7 @@ standard_protocol = """
                         lambda_electrostatics: [1.0, 0.8, 0.6, 0.3, 0.0]
                         lambda_sterics: [1.0, 0.8, 0.6, 0.3, 0.0]"""
 
+
 def indent(str):
     """Put 4 extra spaces in front of every line."""
     return '\n    '.join(str.split('\n'))
@@ -52,6 +53,7 @@ def examples_paths():
     paths = {}
     examples_dir = utils.get_data_filename(os.path.join('..', 'examples'))
     p_xylene_dir = os.path.join(examples_dir, 'p-xylene-implicit', 'input')
+    p_xylene_gro_dir = os.path.join(examples_dir, 'p-xylene-gromacs-example', 'setup')
     ben_tol_dir = os.path.join(examples_dir, 'benzene-toluene-explicit', 'setup')
     abl_imatinib_dir = os.path.join(examples_dir, 'abl-imatinib-explicit', 'setup')
     paths['lysozyme'] = os.path.join(p_xylene_dir, '181L-pdbfixer.pdb')
@@ -59,11 +61,105 @@ def examples_paths():
     paths['benzene'] = os.path.join(ben_tol_dir, 'benzene.tripos.mol2')
     paths['toluene'] = os.path.join(ben_tol_dir, 'toluene.tripos.mol2')
     paths['abl'] = os.path.join(abl_imatinib_dir, '2HYY-pdbfixer.pdb')
+    paths['bentol-complex'] = [os.path.join(ben_tol_dir, 'complex.prmtop'),
+                               os.path.join(ben_tol_dir, 'complex.inpcrd')]
+    paths['bentol-solvent'] = [os.path.join(ben_tol_dir, 'solvent.prmtop'),
+                               os.path.join(ben_tol_dir, 'solvent.inpcrd')]
+    paths['pxylene-complex'] = [os.path.join(p_xylene_gro_dir, 'complex.top'),
+                                os.path.join(p_xylene_gro_dir, 'complex.gro')]
+    paths['pxylene-solvent'] = [os.path.join(p_xylene_gro_dir, 'solvent.top'),
+                                os.path.join(p_xylene_gro_dir, 'solvent.gro')]
+    paths['pxylene-gro-include'] = os.path.join(p_xylene_gro_dir, 'top')
     return paths
 
-#=============================================================================================
-# UNIT TESTS
-#=============================================================================================
+
+def get_template_script(output_dir='.'):
+    """Return a YAML template script as a dict."""
+    paths = examples_paths()
+    template_script = """
+    ---
+    options:
+        output_dir: {output_dir}
+        number_of_iterations: 1
+        temperature: 300*kelvin
+        pressure: 1*atmosphere
+        softcore_beta: 0.0
+    molecules:
+        benzene:
+            filepath: {benzene_path}
+            parameters: antechamber
+        benzene-epik0:
+            filepath: {benzene_path}
+            epik: 0
+            parameters: antechamber
+        benzene-epikcustom:
+            filepath: {benzene_path}
+            epik:
+                extract_range: 0
+                ph: 7.0
+                tautomerize: yes
+            parameters: antechamber
+        p-xylene:
+            filepath: {pxylene_path}
+            parameters: antechamber
+        p-xylene-name:
+            name: p-xylene
+            parameters: antechamber
+        toluene:
+            filepath: {toluene_path}
+            parameters: antechamber
+        toluene-smiles:
+            smiles: Cc1ccccc1
+            parameters: antechamber
+        toluene:
+            name: toluene
+            parameters: antechamber
+        Abl:
+            filepath: {abl_path}
+            parameters: leaprc.ff14SB
+        T4Lysozyme:
+            filepath: {lysozyme_path}
+            parameters: oldff/leaprc.ff99SBildn
+    solvents:
+        GBSA-OBC2:
+            implicit_solvent: OBC2
+        PME:
+            nonbonded_method: PME
+            nonbonded_cutoff: 1*nanometer
+            clearance: 10*angstroms
+    systems:
+        system1:
+            receptor: Abl
+            ligand: benzene
+            solvent: GBSA-OBC2
+        system2:
+            receptor: T4Lysozyme
+            ligand: p-xylene
+            solvent: PME
+    protocols:
+        absolute-binding:
+            phases:
+                complex:
+                    alchemical_path:
+                        lambda_electrostatics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
+                        lambda_sterics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
+                solvent:
+                    alchemical_path:
+                        lambda_electrostatics: [1.0, 0.8, 0.6, 0.3, 0.0]
+                        lambda_sterics: [1.0, 0.8, 0.6, 0.3, 0.0]
+    experiments:
+        system: system1
+        protocol: absolute-binding
+    """.format(output_dir=output_dir, benzene_path=paths['benzene'],
+               pxylene_path=paths['p-xylene'], toluene_path=paths['toluene'],
+               abl_path=paths['abl'], lysozyme_path=paths['lysozyme'])
+
+    return yaml.load(textwrap.dedent(template_script))
+
+
+# ==============================================================================
+# YamlBuild utility functions
+# ==============================================================================
 
 def test_compute_min_dist():
     """Test computation of minimum distance between two molecules"""
@@ -117,6 +213,11 @@ def test_pack_transformation():
         mol2 = mol.dot(transf.T)[:, :3]  # transform and "de-affine"
         min_dist, max_dist = compute_dist_bound(mol1, mol2)
         assert CLASH_DIST <= min_dist and max_dist <= BOX_SIZE
+
+
+# ==============================================================================
+# YAML parsing and validation
+# ==============================================================================
 
 def test_yaml_parsing():
     """Check that YAML file is parsed correctly."""
@@ -270,6 +371,81 @@ def test_validation_wrong_solvents():
         yield assert_raises, YamlParseError, YamlBuilder._validate_solvents, {'solv': solvent}
 
 
+def test_validation_correct_systems():
+    """YAML validation raises exception with wrong experiments specification."""
+    yaml_builder = YamlBuilder()
+    basic_script = """
+    ---
+    molecules:
+        rec: {{filepath: {}, parameters: oldff/leaprc.ff99SBildn}}
+        lig: {{name: lig, parameters: antechamber}}
+    solvents:
+        solv: {{nonbonded_method: NoCutoff}}
+    """.format(examples_paths()['lysozyme'])
+    basic_script = yaml.load(textwrap.dedent(basic_script))
+
+    systems = [
+        {'receptor': 'rec', 'ligand': 'lig', 'solvent': 'solv'},
+        {'complex_path': examples_paths()['bentol-complex'],
+         'solvent_path': examples_paths()['bentol-solvent'],
+         'ligand_dsl': 'resname BEN', 'solvent': 'solv'},
+        {'complex_path': examples_paths()['pxylene-complex'],
+         'solvent_path': examples_paths()['pxylene-solvent'],
+         'ligand_dsl': 'resname p-xylene', 'solvent': 'solv',
+         'gromacs_include_dir': examples_paths()['pxylene-gro-include']},
+        {'complex_path': examples_paths()['pxylene-complex'],
+         'solvent_path': examples_paths()['pxylene-solvent'],
+         'ligand_dsl': 'resname p-xylene', 'solvent': 'solv'}
+    ]
+    for system in systems:
+        modified_script = basic_script.copy()
+        modified_script['systems'] = {'sys': system}
+        yield yaml_builder.parse, modified_script
+
+
+def test_validation_wrong_systems():
+    """YAML validation raises exception with wrong experiments specification."""
+    yaml_builder = YamlBuilder()
+    basic_script = """
+    ---
+    molecules:
+        rec: {{filepath: {}, parameters: oldff/leaprc.ff99SBildn}}
+        lig: {{name: lig, parameters: antechamber}}
+    solvents:
+        solv: {{nonbonded_method: NoCutoff}}
+    """.format(examples_paths()['lysozyme'])
+    basic_script = yaml.load(textwrap.dedent(basic_script))
+
+    systems = [
+        {'receptor': 'rec', 'ligand': 'lig'},
+        {'receptor': 'rec', 'ligand': 1, 'solvent': 'solv'},
+        {'receptor': 'rec', 'ligand': 'lig', 'solvent': ['solv', 'solv']},
+        {'receptor': 'rec', 'ligand': 'lig', 'solvent': 'unknown'},
+
+        {'complex_path': examples_paths()['bentol-complex'][0],
+         'solvent_path': examples_paths()['bentol-solvent'],
+         'ligand_dsl': 'resname BEN', 'solvent': 'solv'},
+        {'complex_path': ['nonexistingpath.prmtop', 'nonexistingpath.inpcrd'],
+         'solvent_path': examples_paths()['bentol-solvent'],
+         'ligand_dsl': 'resname BEN', 'solvent': 'solv'},
+        {'complex_path': examples_paths()['bentol-complex'],
+         'solvent_path': examples_paths()['bentol-solvent'],
+         'ligand_dsl': 3.4, 'solvent': 'solv'},
+        {'complex_path': examples_paths()['bentol-complex'],
+         'solvent_path': examples_paths()['bentol-solvent'],
+         'ligand_dsl': 'resname BEN', 'solvent': 'unknown'},
+
+        {'complex_path': examples_paths()['bentol-complex'],
+         'solvent_path': examples_paths()['pxylene-solvent'],
+         'ligand_dsl': 'resname p-xylene', 'solvent': 'solv',
+         'gromacs_include_dir': examples_paths()['pxylene-gro-include']}
+    ]
+    for system in systems:
+        modified_script = basic_script.copy()
+        modified_script['systems'] = {'sys': system}
+        yield assert_raises, YamlParseError, yaml_builder.parse, modified_script
+
+
 def test_validation_correct_protocols():
     """YAML validation raises exception with wrong alchemical protocols."""
     basic_protcol = yaml.load(standard_protocol)
@@ -310,14 +486,15 @@ def test_validation_correct_experiments():
         rec: {{filepath: {}, parameters: oldff/leaprc.ff99SBildn}}
         lig: {{name: lig, parameters: antechamber}}
     solvents:
-        solv1: {{nonbonded_method: NoCutoff}}
+        solv: {{nonbonded_method: NoCutoff}}
+    systems:
+        sys: {{receptor: rec, ligand: lig, solvent: solv}}
     protocols:{}
     """.format(examples_paths()['lysozyme'], standard_protocol)
     basic_script = yaml.load(textwrap.dedent(basic_script))
 
     experiments = [
-        {'components': {'receptor': 'rec', 'ligand': 'lig', 'solvent': 'solv1'},
-         'protocol': 'absolute-binding'}
+        {'system': 'sys', 'protocol': 'absolute-binding'}
     ]
     for experiment in experiments:
         modified_script = basic_script.copy()
@@ -334,19 +511,17 @@ def test_validation_wrong_experiments():
         rec: {{filepath: {}, parameters: oldff/leaprc.ff99SBildn}}
         lig: {{name: lig, parameters: antechamber}}
     solvents:
-        solv1: {{nonbonded_method: NoCutoff}}
+        solv: {{nonbonded_method: NoCutoff}}
+    systems:
+        sys: {{receptor: rec, ligand: lig, solvent: solv}}
     protocols:{}
     """.format(examples_paths()['lysozyme'], standard_protocol)
     basic_script = yaml.load(textwrap.dedent(basic_script))
 
     experiments = [
-        {'components': {'receptor': 'rec', 'ligand': 'lig', 'solvent': 'unknownsolv'},
-         'protocol': 'absolute-binding'},
-        {'components': {'receptor': 'rec', 'ligand': 'lig', 'solvent': 'solv1'},
-         'protocol': 'unknownprotocol'},
-        {'components': {'receptor': 'rec', 'ligand': 'lig', 'solvent': ['solv1', 'unknownsolv']},
-         'protocol': 'absolute-binding'},
-        {'components': {'receptor': 'rec', 'ligand': 'lig', 'solvent': 'solv1'}},
+        {'system': 'unknownsys', 'protocol': 'absolute-binding'},
+        {'system': 'sys', 'protocol': 'unknownprotocol'},
+        {'system': 'sys'},
         {'protocol': 'absolute-binding'}
     ]
     for experiment in experiments:
@@ -355,63 +530,9 @@ def test_validation_wrong_experiments():
         yield assert_raises, YamlParseError, yaml_builder.parse, modified_script
 
 
-def test_exp_sequence():
-    """Test all experiments in a sequence are parsed."""
-    yaml_content = """
-    ---
-    molecules:
-        rec:
-            filepath: {}
-            parameters: oldff/leaprc.ff99SBildn
-        lig:
-            name: lig
-            parameters: antechamber
-    solvents:
-        solv1:
-            nonbonded_method: NoCutoff
-        solv2:
-            nonbonded_method: PME
-            nonbonded_cutoff: 1*nanometer
-            clearance: 10*angstroms
-    protocols:{}
-    experiment1:
-        components:
-            receptor: rec
-            ligand: lig
-            solvent: !Combinatorial [solv1, solv2]
-        protocol: absolute-binding
-    experiment2:
-        components:
-            receptor: rec
-            ligand: lig
-            solvent: solv1
-        protocol: absolute-binding
-    experiments: [experiment1, experiment2]
-    """.format(examples_paths()['lysozyme'], standard_protocol)
-    yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
-    assert len(yaml_builder._experiments) == 2
-
-
-def test_get_alchemical_path():
-    """Check that conversion to list of AlchemicalStates is correct."""
-    yaml_content = """
-    ---
-    protocols:{}
-    """.format(standard_protocol)
-    yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
-    alchemical_paths = yaml_builder._get_alchemical_paths('absolute-binding')
-
-    assert len(alchemical_paths) == 2
-    assert 'complex' in alchemical_paths
-    assert 'solvent' in alchemical_paths
-
-    complex_path = alchemical_paths['complex']
-    assert isinstance(complex_path[0], AlchemicalState)
-    assert complex_path[3]['lambda_electrostatics'] == 0.6
-    assert complex_path[4]['lambda_sterics'] == 0.4
-    assert complex_path[5]['lambda_restraints'] == 0.0
-    assert len(complex_path) == 7
-
+# ==============================================================================
+# Molecules pipeline
+# ==============================================================================
 
 def test_yaml_mol2_antechamber():
     """Test antechamber setup of molecule files."""
@@ -525,6 +646,11 @@ def test_clashing_atoms():
                 nonbonded_method: PME
                 nonbonded_cutoff: 1*nanometer
                 clearance: {}*angstroms
+        systems:
+            system:
+                receptor: benzene
+                ligand: toluene
+                solvent: !Combinatorial [vacuum, PME]
         """.format(tmp_dir, benzene_path, toluene_path, clearance)
 
         # Sanity check: at the beginning molecules clash
@@ -534,16 +660,14 @@ def test_clashing_atoms():
 
         yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
 
-        components = {'receptor': 'benzene', 'ligand': 'toluene'}
-        for solvent in ['vacuum', 'PME']:
-            components['solvent'] = solvent
-            system_dir = yaml_builder._db.get_system(components)
+        for system_id in ['system_vacuum', 'system_PME']:
+            system_dir = os.path.dirname(yaml_builder._db.get_system(system_id)[0])
 
             # Get positions of molecules in the final system
             prmtop = openmm.app.AmberPrmtopFile(os.path.join(system_dir, 'complex.prmtop'))
             inpcrd = openmm.app.AmberInpcrdFile(os.path.join(system_dir, 'complex.inpcrd'))
             positions = inpcrd.getPositions(asNumpy=True).value_in_unit(unit.angstrom)
-            atom_indices = pipeline.find_components(prmtop.topology, 'resname TOL')
+            atom_indices = pipeline.find_components(prmtop.createSystem(), prmtop.topology, 'resname TOL')
             benzene_pos2 = positions.take(atom_indices['receptor'], axis=0)
             toluene_pos2 = positions.take(atom_indices['ligand'], axis=0)
 
@@ -552,14 +676,14 @@ def test_clashing_atoms():
             assert min_dist >= SetupDatabase.CLASH_THRESHOLD
 
             # For solvent we check that molecule is within the box
-            if solvent == 'PME':
+            if system_id == 'system_PME':
                 assert max_dist <= clearance
 
 
 @unittest.skipIf(not omt.schrodinger.is_schrodinger_suite_installed(),
                  "This test requires Schrodinger's suite")
 def test_epik_enumeration():
-    """Test that epik protonation state enumeration."""
+    """Test epik protonation state enumeration."""
     with omt.utils.temporary_directory() as tmp_dir:
         yaml_content = """
         ---
@@ -639,6 +763,10 @@ def test_strip_protons():
                     break
         assert not has_hydrogen
 
+
+# ==============================================================================
+# Combinatorial expansion
+# ==============================================================================
 
 class TestMultiMoleculeFiles():
 
@@ -727,11 +855,13 @@ class TestMultiMoleculeFiles():
                 nonbonded_cutoff: 1*nanometer
                 clearance: 10*angstroms
         protocols:{}
-        experiments:
-            components:
+        systems:
+            sys:
                 receptor: !Combinatorial [rec, multi]
                 ligand: lig
                 solvent: !Combinatorial [solv1, solv2]
+        experiments:
+            system: sys
             protocol: absolute-binding
         """.format(self.sdf_path, self.mol2_path, self.pdb_path,
                    self.smiles_path, self.sdf_path, self.mol2_path,
@@ -803,11 +933,13 @@ class TestMultiMoleculeFiles():
                 nonbonded_cutoff: 1*nanometer
                 clearance: 10*angstroms
         protocols:{}
-        experiments:
-            components:
+        systems:
+            sys:
                 receptor: !Combinatorial [rec_multisdf, rec_multimol2, multi_1, multi_0]
                 ligand: !Combinatorial [lig_0_iupac2, lig_2_iupac1, lig_2_iupac2, lig_0_iupac1]
                 solvent: !Combinatorial [solv1, solv2]
+        experiments:
+            system: sys
             protocol: absolute-binding
         """.format(self.sdf_path, self.mol2_path, self.pdb_path, self.pdb_path,
                    self.smiles_path, self.smiles_path, self.sdf_path, self.sdf_path,
@@ -1000,6 +1132,76 @@ class TestMultiMoleculeFiles():
                     assert is_processed is True
 
 
+def test_system_expansion():
+    """Combinatorial systems are correctly expanded."""
+    # We need 2 combinatorial systems
+    template_script = get_template_script()
+    template_script['systems']['system1']['receptor'] = utils.CombinatorialLeaf(['Abl', 'T4Lysozyme'])
+    template_script['systems']['system2']['ligand'] = utils.CombinatorialLeaf(['p-xylene', 'toluene'])
+    template_script['experiments']['system'] = utils.CombinatorialLeaf(['system1', 'system2'])
+
+    # Expected expanded script
+    expected_script = yaml.load(textwrap.dedent("""
+    systems:
+        system1_Abl: {receptor: Abl, ligand: benzene, solvent: GBSA-OBC2}
+        system1_T4Lysozyme: {receptor: T4Lysozyme, ligand: benzene, solvent: GBSA-OBC2}
+        system2_pxylene: {receptor: T4Lysozyme, ligand: p-xylene, solvent: PME}
+        system2_toluene: {receptor: T4Lysozyme, ligand: toluene, solvent: PME}
+    experiments:
+        system: !Combinatorial ['system1_Abl', 'system1_T4Lysozyme', 'system2_pxylene', 'system2_toluene']
+        protocol: absolute-binding
+    """))
+    expanded_script = template_script.copy()
+    expanded_script['systems'] = expected_script['systems']
+    expanded_script['experiments'] = expected_script['experiments']
+
+    assert YamlBuilder(template_script)._expand_systems(template_script) == expanded_script
+
+
+def test_exp_sequence():
+    """Test all experiments in a sequence are parsed."""
+    yaml_content = """
+    ---
+    molecules:
+        rec:
+            filepath: {}
+            parameters: oldff/leaprc.ff99SBildn
+        lig:
+            name: lig
+            parameters: antechamber
+    solvents:
+        solv1:
+            nonbonded_method: NoCutoff
+        solv2:
+            nonbonded_method: PME
+            nonbonded_cutoff: 1*nanometer
+            clearance: 10*angstroms
+    protocols:{}
+    systems:
+        system1:
+            receptor: rec
+            ligand: lig
+            solvent: !Combinatorial [solv1, solv2]
+        system2:
+            receptor: rec
+            ligand: lig
+            solvent: solv1
+    experiment1:
+        system: system1
+        protocol: absolute-binding
+    experiment2:
+        system: system2
+        protocol: absolute-binding
+    experiments: [experiment1, experiment2]
+    """.format(examples_paths()['lysozyme'], standard_protocol)
+    yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
+    assert len(yaml_builder._experiments) == 2
+
+
+# ==============================================================================
+# Systems pipeline
+# ==============================================================================
+
 def test_setup_implicit_system_leap():
     """Create prmtop and inpcrd for implicit solvent protein-ligand system."""
     with omt.utils.temporary_directory() as tmp_dir:
@@ -1019,14 +1221,16 @@ def test_setup_implicit_system_leap():
             GBSA-OBC2:
                 nonbonded_method: NoCutoff
                 implicit_solvent: OBC2
+        systems:
+            system:
+                receptor: T4lysozyme
+                ligand: p-xylene
+                solvent: GBSA-OBC2
         """.format(tmp_dir, examples_paths()['lysozyme'], examples_paths()['p-xylene'])
 
         yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
-        components = {'receptor': 'T4lysozyme',
-                      'ligand': 'p-xylene',
-                      'solvent': 'GBSA-OBC2'}
 
-        output_dir = yaml_builder._db.get_system(components)
+        output_dir = os.path.dirname(yaml_builder._db.get_system('system')[0])
         last_modified_path = os.path.join(output_dir, 'complex.prmtop')
         last_modified = os.stat(last_modified_path).st_mtime
 
@@ -1051,7 +1255,7 @@ def test_setup_implicit_system_leap():
 
         # Test that another call do not regenerate the system
         time.sleep(0.5)  # st_mtime doesn't have much precision
-        yaml_builder._db.get_system(components)
+        yaml_builder._db.get_system('system')
         assert last_modified == os.stat(last_modified_path).st_mtime
 
 @unittest.skipIf(not utils.is_openeye_installed(), 'This test requires OpenEye installed.')
@@ -1073,14 +1277,16 @@ def test_setup_explicit_system_leap():
             PMEtip3p:
                 nonbonded_method: PME
                 clearance: 10*angstroms
+        systems:
+            system:
+                receptor: benzene
+                ligand: toluene
+                solvent: PMEtip3p
         """.format(tmp_dir, examples_paths()['benzene'])
 
         yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
-        components = {'receptor': 'benzene',
-                      'ligand': 'toluene',
-                      'solvent': 'PMEtip3p'}
 
-        output_dir = yaml_builder._db.get_system(components)
+        output_dir = os.path.dirname(yaml_builder._db.get_system('system')[0])
 
         # Test that output file exists and that there is water
         expected_resnames = {'complex': set(['BEN', 'TOL', 'WAT']),
@@ -1122,14 +1328,16 @@ def test_neutralize_system():
                 clearance: 10*angstroms
                 positive_ion: K+
                 negative_ion: Cl-
+        systems:
+            system:
+                receptor: receptor
+                ligand: ligand
+                solvent: PMEtip3p
         """.format(tmp_dir, examples_paths()['lysozyme'], examples_paths()['p-xylene'])
 
         yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
-        components = {'receptor': 'receptor',
-                      'ligand': 'ligand',
-                      'solvent': 'PMEtip3p'}
 
-        output_dir = yaml_builder._db.get_system(components)
+        output_dir = os.path.dirname(yaml_builder._db.get_system('system')[0])
 
         # Test that output file exists and that there are ions
         found_resnames = set()
@@ -1168,13 +1376,17 @@ def test_charged_ligand():
                 clearance: 10*angstroms
                 positive_ion: Na+
                 negative_ion: Cl-
+        systems:
+            system:
+                receptor: lysine
+                ligand: aspartic-acid
+                solvent: PMEtip3p
         """.format(tmp_dir)
 
         yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
-        components = {'receptor': 'lysine',
-                      'ligand': 'aspartic-acid',
-                      'solvent': 'PMEtip3p'}
-        output_dir = yaml_builder._db.get_system(components)
+
+        system_files_paths = yaml_builder._db.get_system('system')
+        output_dir = os.path.dirname(system_files_paths[0])
 
         # Safety check: Asp is negatively charged, Lys is positively charged
         asp_path = os.path.join(yaml_builder._db.get_molecule_dir('aspartic-acid'),
@@ -1194,8 +1406,10 @@ def test_charged_ligand():
         assert set(['Na+', 'Cl-']) <= found_resnames
 
         # Test that 'ligand_counterions' component contain one anion
-        _, systems, _, atom_indices = pipeline.prepare_amber(output_dir, 'resname ASP',
-                                                {'nonbondedMethod': openmm.app.PME}, -1)
+        system_files_paths = {'solvent': [system_files_paths[0], system_files_paths[1]],
+                              'complex': [system_files_paths[2], system_files_paths[3]]}
+        _, systems, _, atom_indices = pipeline.prepare_system(system_files_paths, 'resname ASP',
+                                                              {'nonbondedMethod': openmm.app.PME})
         for phase in ['complex', 'solvent']:
             prmtop_file_path = os.path.join(output_dir, '{}.prmtop'.format(phase))
             topology = openmm.app.AmberPrmtopFile(prmtop_file_path).topology
@@ -1206,6 +1420,10 @@ def test_charged_ligand():
             ion_atom = next(itertools.islice(topology.atoms(), ion_idx, None))
             assert '+' in ion_atom.residue.name
 
+
+# ==============================================================================
+# Experiment execution
+# ==============================================================================
 
 def test_yaml_creation():
     """Test the content of generated single experiment YAML files."""
@@ -1220,12 +1438,14 @@ def test_yaml_creation():
             vacuum:
                 nonbonded_method: NoCutoff"""
         protocol = indent(standard_protocol)
-        experiment = """
-            components:
+        system = """
+            system:
                 ligand: p-xylene
                 receptor: T4lysozyme
-                solvent: vacuum
-            protocol: absolute-binding"""
+                solvent: vacuum"""
+        experiment = """
+            protocol: absolute-binding
+            system: system"""
 
         yaml_content = """
         ---
@@ -1242,11 +1462,12 @@ def test_yaml_creation():
             GBSA-OBC2:
                 nonbonded_method: NoCutoff
                 implicit_solvent: OBC2
+        systems:{}
         protocols:{}
         experiments:{}
         """.format(os.path.relpath(tmp_dir), molecules,
                    os.path.relpath(ligand_path), toluene_path,
-                   solvent, protocol, experiment)
+                   solvent, system, protocol, experiment)
 
         # We need to check whether the relative paths to the output directory and
         # for p-xylene are handled correctly while absolute paths (T4lysozyme) are
@@ -1261,10 +1482,11 @@ def test_yaml_creation():
                 filepath: {}
                 parameters: antechamber
         solvents:{}
+        systems:{}
         protocols:{}
         experiments:{}
         """.format(molecules, os.path.relpath(ligand_path, tmp_dir),
-                   solvent, protocol, experiment))
+                   solvent, system, protocol, experiment))
         expected_yaml_content = expected_yaml_content[1:]  # remove first '\n'
 
         yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
@@ -1272,7 +1494,7 @@ def test_yaml_creation():
         # during setup we can modify molecule's fields, so we need
         # to check that it doesn't affect the YAML file exported
         experiment_dict = yaml.load(experiment)
-        yaml_builder._db.get_system(experiment_dict['components'])
+        yaml_builder._db.get_system(experiment_dict['system'])
 
         yaml_builder._generate_yaml(experiment_dict, os.path.join(tmp_dir, 'experiment.yaml'))
         with open(os.path.join(tmp_dir, 'experiment.yaml'), 'r') as f:
@@ -1280,8 +1502,81 @@ def test_yaml_creation():
                 assert line[:-1] == expected  # without final '\n'
 
 
+def test_get_alchemical_path():
+    """Check that conversion to list of AlchemicalStates is correct."""
+    yaml_content = """
+    ---
+    protocols:{}
+    """.format(standard_protocol)
+    yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
+    alchemical_paths = yaml_builder._get_alchemical_paths('absolute-binding')
+
+    assert len(alchemical_paths) == 2
+    assert 'complex' in alchemical_paths
+    assert 'solvent' in alchemical_paths
+
+    complex_path = alchemical_paths['complex']
+    assert isinstance(complex_path[0], AlchemicalState)
+    assert complex_path[3]['lambda_electrostatics'] == 0.6
+    assert complex_path[4]['lambda_sterics'] == 0.4
+    assert complex_path[5]['lambda_restraints'] == 0.0
+    assert len(complex_path) == 7
+
+
+def test_run_experiment_from_amber_files():
+    """Test experiment run from prmtop/inpcrd files."""
+    complex_path = examples_paths()['bentol-complex']
+    solvent_path = examples_paths()['bentol-solvent']
+    with omt.utils.temporary_directory() as tmp_dir:
+        yaml_script = get_template_script(tmp_dir)
+        del yaml_script['molecules']  # we shouldn't need any molecule
+        yaml_script['systems'] = {'system1':
+                {'complex_path': complex_path, 'solvent_path': solvent_path,
+                 'ligand_dsl': 'resname TOL', 'solvent': 'PME'}}
+
+        yaml_builder = YamlBuilder(yaml_script)
+        yaml_builder._check_resume()  # check_resume should not raise exceptions
+        yaml_builder.build_experiment()
+
+        # The experiments folders are correctly named and positioned
+        output_dir = yaml_builder._get_experiment_dir(yaml_builder.options, '')
+        assert os.path.isdir(output_dir)
+        assert os.path.isfile(os.path.join(output_dir, 'complex-explicit.nc'))
+        assert os.path.isfile(os.path.join(output_dir, 'solvent-explicit.nc'))
+        assert os.path.isfile(os.path.join(output_dir, 'experiments.yaml'))
+        assert os.path.isfile(os.path.join(output_dir, 'experiments.log'))
+
+
+@attr('slow')  # Skip on Travis-CI
+def test_run_experiment_from_gromacs_files():
+    """Test experiment run from prmtop/inpcrd files."""
+    complex_path = examples_paths()['pxylene-complex']
+    solvent_path = examples_paths()['pxylene-solvent']
+    include_path = examples_paths()['pxylene-gro-include']
+    with omt.utils.temporary_directory() as tmp_dir:
+        yaml_script = get_template_script(tmp_dir)
+        del yaml_script['molecules']  # we shouldn't need any molecule
+        yaml_script['systems'] = {'system1':
+                {'complex_path': complex_path, 'solvent_path': solvent_path,
+                 'ligand_dsl': 'resname "p-xylene"', 'solvent': 'PME',
+                 'gromacs_include_dir': include_path}}
+
+        yaml_builder = YamlBuilder(yaml_script)
+        yaml_builder._check_resume()  # check_resume should not raise exceptions
+        yaml_builder.build_experiment()
+
+        # The experiments folders are correctly named and positioned
+        output_dir = yaml_builder._get_experiment_dir(yaml_builder.options, '')
+        assert os.path.isdir(output_dir)
+        assert os.path.isfile(os.path.join(output_dir, 'complex-explicit.nc'))
+        assert os.path.isfile(os.path.join(output_dir, 'solvent-explicit.nc'))
+        assert os.path.isfile(os.path.join(output_dir, 'experiments.yaml'))
+        assert os.path.isfile(os.path.join(output_dir, 'experiments.log'))
+
+
 @attr('slow')  # Skip on Travis-CI
 def test_run_experiment():
+    """Test experiment run and resuming."""
     with omt.utils.temporary_directory() as tmp_dir:
         yaml_content = """
         ---
@@ -1306,11 +1601,13 @@ def test_run_experiment():
                 nonbonded_method: NoCutoff
                 implicit_solvent: OBC2
         protocols:{}
-        experiments:
-            components:
+        systems:
+            system:
                 receptor: T4lysozyme
                 ligand: p-xylene
                 solvent: !Combinatorial [vacuum, GBSA-OBC2]
+        experiments:
+            system: system
             options:
                 output_dir: {}
                 setup_dir: ''
@@ -1335,9 +1632,7 @@ def test_run_experiment():
 
         # Same thing with a system
         err_msg = ''
-        system_dir = yaml_builder._db.get_system({'receptor': 'T4lysozyme',
-                                                  'ligand': 'p-xylene',
-                                                  'solvent': 'vacuum'})
+        system_dir = os.path.dirname(yaml_builder._db.get_system('system_vacuum')[0])
         try:
             yaml_builder.build_experiment()
         except YamlParseError as e:
@@ -1358,7 +1653,7 @@ def test_run_experiment():
         assert system_last_touched == os.stat(prmtop_file).st_mtime
 
         # The experiments folders are correctly named and positioned
-        for exp_name in ['vacuum', 'GBSAOBC2']:
+        for exp_name in ['systemvacuum', 'systemGBSAOBC2']:
             # The output directory must be the one in the experiment section
             output_dir = os.path.join(tmp_dir, exp_name)
             assert os.path.isdir(output_dir)
@@ -1378,7 +1673,6 @@ def test_run_experiment():
         yaml_builder.options['resume_simulation'] = True
         yaml_builder.build_experiment()
 
-# TODO start from prmtop and inpcrd files
 # TODO start form gro and top files
 
 # TODO default solvents?

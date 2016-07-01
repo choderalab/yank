@@ -91,11 +91,13 @@ def test_script_yaml():
                         alchemical_path:
                             lambda_electrostatics: [1.0, 0.8, 0.6, 0.3, 0.0]
                             lambda_sterics: [1.0, 0.8, 0.6, 0.3, 0.0]
-        experiments:
-            components:
+        systems:
+            system:
                 receptor: T4lysozyme
                 ligand: p-xylene
                 solvent: vacuum
+        experiments:
+            system: system
             protocol: absolute-binding
         """.format(lysozyme_path, pxylene_path)
 

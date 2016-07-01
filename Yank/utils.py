@@ -291,7 +291,10 @@ class CombinatorialTree(collections.MutableMapping):
         self._d = copy.deepcopy(dictionary)
 
     def __getitem__(self, path):
-        return self._resolve_path(self._d, path)
+        try:
+            return self._d[path]
+        except KeyError:
+            return self._resolve_path(self._d, path)
 
     def __setitem__(self, path, value):
         d_node = self.__getitem__(path[:-1])
@@ -403,6 +406,69 @@ class CombinatorialTree(collections.MutableMapping):
                 generated_names[name] = 1
             yield name, combination
 
+    def expand_id_nodes(self, id_nodes_path, update_nodes_paths):
+        """Return a new CombinatorialTree with id-bearing nodes expanded
+        and updated in the rest of the script.
+
+        Parameters
+        ----------
+        id_nodes_path : tuple of str
+            The path to the parent node containing ids.
+        update_nodes_paths : list of tuple of str
+            A list of all the paths referring to the ids expanded. The string '*'
+            means every node.
+
+        Returns
+        -------
+        expanded_tree : CombinatorialTree
+            The tree with id nodes expanded.
+
+        Examples
+        --------
+        >>> d = {'molecules':
+        ...          {'mol1': {'mol_value': CombinatorialLeaf([1, 2])}},
+        ...      'systems':
+        ...          {'sys1': {'molecules': 'mol1'},
+        ...           'sys2': {'prmtopfile': 'mysystem.prmtop'}}}
+        >>> update_nodes_paths = [('systems', '*', 'molecules')]
+        >>> t = CombinatorialTree(d).expand_id_nodes('molecules', update_nodes_paths)
+        >>> t['molecules'] == {'mol1_1': {'mol_value': 1}, 'mol1_2': {'mol_value': 2}}
+        True
+        >>> t['systems'] == {'sys1': {'molecules': CombinatorialLeaf(['mol1_2', 'mol1_1'])},
+        ...                  'sys2': {'prmtopfile': 'mysystem.prmtop'}}
+        True
+
+        """
+        expanded_tree = copy.deepcopy(self)
+        combinatorial_id_nodes = {}  # map combinatorial_id -> list of combination_ids
+
+        for id_node_key, id_node_val in self.__getitem__(id_nodes_path).items():
+            # Find all combinations and expand them
+            id_node_val = CombinatorialTree(id_node_val)
+            combinations = {id_node_key + '_' + name: comb for name, comb
+                            in id_node_val.named_combinations(separator='_', max_name_length=30)}
+
+            if len(combinations) > 1:
+                # Substitute combinatorial node with all combinations
+                del expanded_tree[id_nodes_path][id_node_key]
+                expanded_tree[id_nodes_path].update(combinations)
+                combinatorial_id_nodes[id_node_key] = combinations.keys()
+
+        # Update ids in the rest of the tree
+        for update_path in update_nodes_paths:
+            for update_node_key, update_node_val in self._resolve_paths(self._d, update_path):
+                # Check if the value is a collection or a scalar
+                if isinstance(update_node_val, list):
+                    for v in update_node_val:
+                        if v in combinatorial_id_nodes:
+                            i = expanded_tree[update_node_key].index(v)
+                            expanded_tree[update_node_key][i:i+1] = combinatorial_id_nodes[v]
+                elif update_node_val in combinatorial_id_nodes:
+                    comb_leaf = CombinatorialLeaf(combinatorial_id_nodes[update_node_val])
+                    expanded_tree[update_node_key] = comb_leaf
+
+        return expanded_tree
+
     @staticmethod
     def _resolve_path(d, path):
         """Retrieve the value of a nested key in a dictionary.
@@ -416,11 +482,50 @@ class CombinatorialTree(collections.MutableMapping):
 
         Return
         ------
-        val :
-            The value contained in the node pointed by the path.
+        The value contained in the node pointed by the path.
 
         """
         return reduce(lambda d,k: d[k], path, d)
+
+    @staticmethod
+    def _resolve_paths(d, path):
+        """Retrieve all the values of a nested key in a dictionary.
+
+        Paths containing the string '*' are interpreted as any node and
+        are yielded one by one.
+
+        Parameters
+        ----------
+        d : dict
+            The nested dictionary.
+        path : iterable of str
+            The "path" to the node of the dictionary. The character '*'
+            means any node.
+
+        Examples
+        --------
+        >>> d = {'nested': {'correct1': {'a': 1}, 'correct2': {'a': 2}, 'wrong': {'b': 3}}}
+        >>> p = [x for x in CombinatorialTree._resolve_paths(d, ('nested', '*', 'a'))]
+        >>> print sorted(p)
+        [(('nested', 'correct1', 'a'), 1), (('nested', 'correct2', 'a'), 2)]
+
+        """
+        try:
+            if len(path) == 0:
+                yield (), d
+            elif len(path) == 1:
+                yield (path[0],), d[path[0]]
+            else:
+                if path[0] == '*':
+                    keys = d.keys()
+                else:
+                    keys = [path[0]]
+                for key in keys:
+                    for p, v in CombinatorialTree._resolve_paths(d[key], path[1:]):
+                        if v is not None:
+                            yield (key,) + p, v
+        except KeyError:
+            yield None, None
 
     def _find_leaves(self):
         """Traverse a dict tree and find the leaf nodes.

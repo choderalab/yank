@@ -116,7 +116,11 @@ def setup_binding_amber(args):
         system_parameters['nonbondedCutoff'] = process_unit_bearing_arg(args, '--cutoff', unit.nanometers)
 
     # Prepare phases of calculation.
-    return pipeline.prepare_amber(setup_directory, args['--ligand'], system_parameters, verbose=verbose)
+    setup_directory = os.path.join(setup_directory, '')  # add final slash character
+    system_files_paths = {'solvent': [setup_directory + 'solvent.inpcrd', setup_directory + 'solvent.prmtop'],
+                          'complex': [setup_directory + 'complex.inpcrd', setup_directory + 'complex.prmtop']}
+    return pipeline.prepare_system(system_files_paths, args['--ligand'], system_parameters, verbose=verbose)
+
 
 def setup_binding_gromacs(args):
     """
@@ -208,7 +212,7 @@ def setup_binding_gromacs(args):
 
         # Find ligand atoms and receptor atoms.
         ligand_dsl = args['--ligand'] # MDTraj DSL that specifies ligand atoms
-        atom_indices[phase] = find_components(top.topology, ligand_dsl)
+        atom_indices[phase] = find_components(systems[phase], top.topology, ligand_dsl)
 
     phases = systems.keys()
 
