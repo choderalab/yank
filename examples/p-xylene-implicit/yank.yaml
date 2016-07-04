@@ -1,25 +1,22 @@
 ---
 molecules:
-  Abl:
-    filepath: setup/2HYY-pdbfixer.pdb
+  T4lysozyme:
+    filepath: input/181L-pdbfixer.pdb
     parameters: leaprc.ff14SB
-  STI:
-    filepath: setup/STI02.mol2
+  p-xylene:
+    filepath: input/p-xylene.mol2
     parameters: antechamber
-                
+
 solvents:
-  rf:
-    nonbonded_method: CutoffPeriodic
-    nonbonded_cutoff: 9*angstroms
-    clearance: 9*angstroms
-    positive_ion: Na+
-    negative_ion: Cl-
+  OBC2:
+    nonbonded_method: NoCutoff
+    implicit_solvent: OBC2
 
 experiments:
   components:
-    receptor: Abl
-    ligand: STI
-    solvent: rf
+    receptor: T4lysozyme
+    ligand: p-xylene
+    solvent: OBC2
   protocol: absolute-binding
 
 protocols:
@@ -33,8 +30,10 @@ protocols:
         alchemical_path:
           lambda_electrostatics: [1.00, 0.95, 0.90, 0.85, 0.80, 0.75, 0.70, 0.65, 0.60, 0.55, 0.50, 0.45, 0.40, 0.35, 0.30, 0.25, 0.20, 0.15, 0.10, 0.05, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00]
           lambda_sterics:        [1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 0.95, 0.90, 0.85, 0.80, 0.75, 0.70, 0.65, 0.60, 0.55, 0.50, 0.45, 0.40, 0.35, 0.30, 0.25, 0.20, 0.15, 0.10, 0.00]
-                
+
 options:
+  #resume_setup: yes
+  #resume_simulation: yes
   minimize: yes
   verbose: yes
   output_dir: .

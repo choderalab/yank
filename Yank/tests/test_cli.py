@@ -15,8 +15,9 @@ Test command-line interface.
 
 import os
 import textwrap
-import tempfile
 import commands
+
+import openmoltools as omt
 
 from yank import utils
 
@@ -54,17 +55,16 @@ def test_selftest():
     run_cli('selftest')
 
 def test_prepare_binding():
-    # NOTE: switched to yank p-xylene from openmmtools T4-lysozyme because of yank bugs.
-    dirname = utils.get_data_filename("../examples/p-xylene-implicit/setup/")  # Could only figure out how to install things like yank.egg/examples/, rather than yank.egg/yank/examples/
-    with utils.temporary_directory() as store_dir:
-        run_cli('prepare binding amber --setupdir=%(dirname)s --ligand="resname MOL" --store %(store_dir)s --gbsa OBC1' % vars())
+    dirname = utils.get_data_filename("../examples/benzene-toluene-implicit/setup/")  # Could only figure out how to install things like yank.egg/examples/, rather than yank.egg/yank/examples/
+    with omt.utils.temporary_directory() as store_dir:
+        run_cli('prepare binding amber --setupdir=%(dirname)s --ligand="resname TOL" --store %(store_dir)s --gbsa OBC1' % vars())
 
 def test_script_yaml():
-    """Check that yank script --yamlscript command works."""
-    setup_dir = utils.get_data_filename(os.path.join('..', 'examples', 'p-xylene-implicit', 'setup'))
-    pxylene_path = os.path.join(setup_dir, 'ligand.tripos.mol2')
-    lysozyme_path = os.path.join(setup_dir, 'receptor.pdbfixer.pdb')
-    with utils.temporary_directory() as tmp_dir:
+    """Check that yank script --yaml command works."""
+    setup_dir = utils.get_data_filename(os.path.join('..', 'examples', 'p-xylene-implicit', 'input'))
+    pxylene_path = os.path.join(setup_dir, 'p-xylene.mol2')
+    lysozyme_path = os.path.join(setup_dir, '181L-pdbfixer.pdb')
+    with omt.utils.temporary_directory() as tmp_dir:
         yaml_content = """
         ---
         options:
@@ -91,11 +91,13 @@ def test_script_yaml():
                         alchemical_path:
                             lambda_electrostatics: [1.0, 0.8, 0.6, 0.3, 0.0]
                             lambda_sterics: [1.0, 0.8, 0.6, 0.3, 0.0]
-        experiments:
-            components:
+        systems:
+            system:
                 receptor: T4lysozyme
                 ligand: p-xylene
                 solvent: vacuum
+        experiments:
+            system: system
             protocol: absolute-binding
         """.format(lysozyme_path, pxylene_path)
 

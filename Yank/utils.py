@@ -1,21 +1,24 @@
 import os
 import re
-import csv
+import sys
 import copy
 import shutil
+import signal
 import inspect
 import logging
-import tempfile
 import itertools
-import contextlib
 import subprocess
 import collections
+from contextlib import contextmanager
 
 from pkg_resources import resource_filename
 
 import mdtraj
 import numpy as np
 from simtk import unit
+from schema import Optional, Use
+
+from openmoltools.utils import wraps_py2, unwrap_py2  # Shortcuts for other modules
 
 #========================================================================================
 # Logging functions
@@ -136,9 +139,99 @@ def config_root_logger(verbose, log_file_path=None, mpicomm=None):
     else:
         logging.root.setLevel(terminal_handler.level)
 
-#========================================================================================
+
+# =======================================================================================
+# MPI utility functions
+# =======================================================================================
+
+def initialize_mpi():
+    """Initialize and configure MPI to handle correctly terminate.
+
+    Returns
+    -------
+    mpicomm : mpi4py communicator
+        The communicator for this node.
+
+    """
+    # Check for environment variables set by mpirun. Variables are from
+    # http://docs.roguewave.com/threadspotter/2012.1/linux/manual_html/apas03.html
+    variables = ['PMI_RANK', 'OMPI_COMM_WORLD_RANK', 'OMPI_MCA_ns_nds_vpid',
+                 'PMI_ID', 'SLURM_PROCID', 'LAMRANK', 'MPI_RANKID',
+                 'MP_CHILD', 'MP_RANK', 'MPIRUN_RANK']
+    use_mpi = False
+    for var in variables:
+        if var in os.environ:
+            use_mpi = True
+            break
+    if not use_mpi:
+        return None
+
+    # Initialize MPI
+    from mpi4py import MPI
+    MPI.COMM_WORLD.barrier()
+    mpicomm = MPI.COMM_WORLD
+
+    # Override sys.excepthook to abort MPI on exception
+    def mpi_excepthook(type, value, traceback):
+        sys.__excepthook__(type, value, traceback)
+        if mpicomm.size > 1:
+            mpicomm.Abort(1)
+    sys.excepthook = mpi_excepthook
+
+    # Catch sigterm signals
+    def handle_signal(signal, frame):
+        if mpicomm.size > 1:
+            mpicomm.Abort(1)
+    for sig in [signal.SIGINT, signal.SIGTERM, signal.SIGABRT]:
+        signal.signal(sig, handle_signal)
+
+    return mpicomm
+
+
+@contextmanager
+def delay_termination():
+    """Context manager to delay handling of termination signals."""
+    signals_to_catch = [signal.SIGINT, signal.SIGTERM, signal.SIGABRT]
+    old_handlers = {signum: signal.getsignal(signum) for signum in signals_to_catch}
+    signals_received = {signum: None for signum in signals_to_catch}
+
+    def delay_handler(signum, frame):
+        signals_received[signum] = (signum, frame)
+
+    # Set handlers fot delay
+    for signum in signals_to_catch:
+        signal.signal(signum, delay_handler)
+
+    yield  # Resume program
+
+    # Restore old handlers
+    for signum, handler in old_handlers.items():
+        signal.signal(signum, handler)
+
+    # Fire delayed signals
+    for signum, s in signals_received.items():
+        if s is not None:
+            old_handlers[signum](*s)
+
+
+def delayed_termination(func):
+    """Decorator to delay handling of termination signals during function execution."""
+    @wraps_py2(func)
+    def _delayed_termination(*args, **kwargs):
+        with delay_termination():
+            return func(*args, **kwargs)
+    return _delayed_termination
+
+
+# =======================================================================================
 # Combinatorial tree
-#========================================================================================
+# =======================================================================================
+
+class CombinatorialLeaf(list):
+    """List type that can be expanded combinatorially in CombinatorialTree."""
+    def __repr__(self):
+        return "Combinatorial({})".format(super(CombinatorialLeaf, self).__repr__())
+
 
 class CombinatorialTree(collections.MutableMapping):
     """A tree that can be expanded in a combinatorial fashion.
@@ -175,7 +268,8 @@ class CombinatorialTree(collections.MutableMapping):
     Expand all possible combinations of a tree. The iterator return a dict, not another
     CombinatorialTree object.
     >>> import pprint  # pprint sort the dictionary by key before printing
-    >>> tree = CombinatorialTree({'a': 1, 'b': [1, 2], 'c': {'d': [3, 4]}})
+    >>> tree = CombinatorialTree({'a': 1, 'b': CombinatorialLeaf([1, 2]),
+    ...                           'c': {'d': CombinatorialLeaf([3, 4])}})
     >>> for t in tree:
     ...     pprint.pprint(t)
     {'a': 1, 'b': 1, 'c': {'d': 3}}
@@ -197,7 +291,10 @@ class CombinatorialTree(collections.MutableMapping):
         self._d = copy.deepcopy(dictionary)
 
     def __getitem__(self, path):
-        return self._resolve_path(self._d, path)
+        try:
+            return self._d[path]
+        except KeyError:
+            return self._resolve_path(self._d, path)
 
     def __setitem__(self, path, value):
         d_node = self.__getitem__(path[:-1])
@@ -222,7 +319,7 @@ class CombinatorialTree(collections.MutableMapping):
         The iterator returns dict objects, not other CombinatorialTrees.
 
         """
-        leaf_paths, leaf_vals = self._find_leaves()
+        leaf_paths, leaf_vals = self._find_combinatorial_leaves()
         return self._combinations_generator(leaf_paths, leaf_vals)
 
     def named_combinations(self, separator, max_name_length):
@@ -231,9 +328,10 @@ class CombinatorialTree(collections.MutableMapping):
         The names are generated by gluing together the first letters of the values of
         the combinatorial leaves only, separated by the given separator. If the values
         contain special characters, they are ignored. Only letters, numbers and the
-        separator are found in the generated names.
+        separator are found in the generated names. Values representing paths to
+        existing files contribute to the name only with they file name without extensions.
 
-        The iterator return tuples of (name, dict), not other CombinatorialTrees. If
+        The iterator yields tuples of (name, dict), not other CombinatorialTrees. If
         there is only a single combination, an empty string is returned for the name.
 
         Parameters
@@ -244,35 +342,37 @@ class CombinatorialTree(collections.MutableMapping):
             The maximum length of the generated names, excluding disambiguation number.
 
         """
-        leaf_paths, leaf_vals = self._find_leaves()
+        leaf_paths, leaf_vals = self._find_combinatorial_leaves()
         generated_names = {}  # name: count, how many times we have generated the same name
 
-        # Find set of paths to combinatorial leaves
-        comb_paths = [path for path, val in zip(leaf_paths, leaf_vals)
-                      if is_iterable_container(val)]
-
-        # Compile regular expression used during filtering
+        # Compile regular expression used to discard special characters
         filter = re.compile('[^A-Za-z\d]+')
 
         # Iterate over combinations
         for combination in self._combinations_generator(leaf_paths, leaf_vals):
-            # Retrieve values of combinatorial leaves and filter special
-            # characters in values that we don't use for names
-            comb_vals = [str(self._resolve_path(combination, path)) for path in comb_paths]
-            comb_vals = [filter.sub('', val) for val in comb_vals]
+            # Retrieve single values of combinatorial leaves
+            filtered_vals = [str(self._resolve_path(combination, path)) for path in leaf_paths]
+
+            # Strip down file paths to only the file name without extensions
+            for i, val in enumerate(filtered_vals):
+                if os.path.exists(val):
+                    filtered_vals[i] = os.path.basename(val).split(os.extsep)[0]
+
+            # Filter special characters in values that we don't use for names
+            filtered_vals = [filter.sub('', val) for val in filtered_vals]
 
             # Generate name
-            if len(comb_vals) == 0:
+            if len(filtered_vals) == 0:
                 name = ''
-            if len(comb_vals) == 1:
-                name = comb_vals[0][:max_name_length]
+            elif len(filtered_vals) == 1:
+                name = filtered_vals[0][:max_name_length]
             else:
-                name = separator.join(comb_vals)
-                original_vals = comb_vals[:]
+                name = separator.join(filtered_vals)
+                original_vals = filtered_vals[:]
                 while len(name) > max_name_length:
                     # Sort the strings by descending length, if two values have the
                     # same length put first the one whose original value is the shortest
-                    sorted_vals = sorted(enumerate(comb_vals), reverse=True,
+                    sorted_vals = sorted(enumerate(filtered_vals), reverse=True,
                                          key=lambda x: (len(x[1]), -len(original_vals[x[0]])))
 
                     # Find how many strings have the maximum length
@@ -283,7 +383,7 @@ class CombinatorialTree(collections.MutableMapping):
                     # to reach max_name_length or the second longest value
                     length_diff = len(name) - max_name_length
 
-                    if n_max_vals < len(comb_vals):
+                    if n_max_vals < len(filtered_vals):
                         second_max_val_length = len(sorted_vals[n_max_vals][1])
                         length_diff = min(length_diff, max_val_length - second_max_val_length)
 
@@ -294,10 +394,10 @@ class CombinatorialTree(collections.MutableMapping):
                         char_per_str = length_diff / (i + 1)
                         if char_per_str != 0:
                             idx = sorted_vals[i][0]
-                            comb_vals[idx] = comb_vals[idx][:-char_per_str]
+                            filtered_vals[idx] = filtered_vals[idx][:-char_per_str]
                         length_diff -= char_per_str
 
-                    name = separator.join(comb_vals)
+                    name = separator.join(filtered_vals)
 
             if name in generated_names:
                 generated_names[name] += 1
@@ -305,6 +405,69 @@ class CombinatorialTree(collections.MutableMapping):
             else:
                 generated_names[name] = 1
             yield name, combination
+
+    def expand_id_nodes(self, id_nodes_path, update_nodes_paths):
+        """Return a new CombinatorialTree with id-bearing nodes expanded
+        and updated in the rest of the script.
+
+        Parameters
+        ----------
+        id_nodes_path : tuple of str
+            The path to the parent node containing ids.
+        update_nodes_paths : list of tuple of str
+            A list of all the paths referring to the ids expanded. The string '*'
+            means every node.
+
+        Returns
+        -------
+        expanded_tree : CombinatorialTree
+            The tree with id nodes expanded.
+
+        Examples
+        --------
+        >>> d = {'molecules':
+        ...          {'mol1': {'mol_value': CombinatorialLeaf([1, 2])}},
+        ...      'systems':
+        ...          {'sys1': {'molecules': 'mol1'},
+        ...           'sys2': {'prmtopfile': 'mysystem.prmtop'}}}
+        >>> update_nodes_paths = [('systems', '*', 'molecules')]
+        >>> t = CombinatorialTree(d).expand_id_nodes('molecules', update_nodes_paths)
+        >>> t['molecules'] == {'mol1_1': {'mol_value': 1}, 'mol1_2': {'mol_value': 2}}
+        True
+        >>> t['systems'] == {'sys1': {'molecules': CombinatorialLeaf(['mol1_2', 'mol1_1'])},
+        ...                  'sys2': {'prmtopfile': 'mysystem.prmtop'}}
+        True
+
+        """
+        expanded_tree = copy.deepcopy(self)
+        combinatorial_id_nodes = {}  # map combinatorial_id -> list of combination_ids
+
+        for id_node_key, id_node_val in self.__getitem__(id_nodes_path).items():
+            # Find all combinations and expand them
+            id_node_val = CombinatorialTree(id_node_val)
+            combinations = {id_node_key + '_' + name: comb for name, comb
+                            in id_node_val.named_combinations(separator='_', max_name_length=30)}
+
+            if len(combinations) > 1:
+                # Substitute combinatorial node with all combinations
+                del expanded_tree[id_nodes_path][id_node_key]
+                expanded_tree[id_nodes_path].update(combinations)
+                combinatorial_id_nodes[id_node_key] = combinations.keys()
+
+        # Update ids in the rest of the tree
+        for update_path in update_nodes_paths:
+            for update_node_key, update_node_val in self._resolve_paths(self._d, update_path):
+                # Check if the value is a collection or a scalar
+                if isinstance(update_node_val, list):
+                    for v in update_node_val:
+                        if v in combinatorial_id_nodes:
+                            i = expanded_tree[update_node_key].index(v)
+                            expanded_tree[update_node_key][i:i+1] = combinatorial_id_nodes[v]
+                elif update_node_val in combinatorial_id_nodes:
+                    comb_leaf = CombinatorialLeaf(combinatorial_id_nodes[update_node_val])
+                    expanded_tree[update_node_key] = comb_leaf
+
+        return expanded_tree
 
     @staticmethod
     def _resolve_path(d, path):
@@ -319,11 +482,50 @@ class CombinatorialTree(collections.MutableMapping):
 
         Return
         ------
-        val :
-            The value contained in the node pointed by the path.
+        The value contained in the node pointed by the path.
 
         """
         return reduce(lambda d,k: d[k], path, d)
+
+    @staticmethod
+    def _resolve_paths(d, path):
+        """Retrieve all the values of a nested key in a dictionary.
+
+        Paths containing the string '*' are interpreted as any node and
+        are yielded one by one.
+
+        Parameters
+        ----------
+        d : dict
+            The nested dictionary.
+        path : iterable of str
+            The "path" to the node of the dictionary. The character '*'
+            means any node.
+
+        Examples
+        --------
+        >>> d = {'nested': {'correct1': {'a': 1}, 'correct2': {'a': 2}, 'wrong': {'b': 3}}}
+        >>> p = [x for x in CombinatorialTree._resolve_paths(d, ('nested', '*', 'a'))]
+        >>> print sorted(p)
+        [(('nested', 'correct1', 'a'), 1), (('nested', 'correct2', 'a'), 2)]
+
+        """
+        try:
+            if len(path) == 0:
+                yield (), d
+            elif len(path) == 1:
+                yield (path[0],), d[path[0]]
+            else:
+                if path[0] == '*':
+                    keys = d.keys()
+                else:
+                    keys = [path[0]]
+                for key in keys:
+                    for p, v in CombinatorialTree._resolve_paths(d[key], path[1:]):
+                        if v is not None:
+                            yield (key,) + p, v
+        except KeyError:
+            yield None, None
 
     def _find_leaves(self):
         """Traverse a dict tree and find the leaf nodes.
@@ -331,7 +533,7 @@ class CombinatorialTree(collections.MutableMapping):
         Returns:
         --------
         A tuple containing two lists. The first one is a list of paths to the leaf
-        nodes in a tuple format (e.g. the path to node['a']['b'] is ('a', 'b') while
+        nodes in a tuple format (e.g. the path to node['a']['b'] is ('a', 'b')) while
         the second one is a list of all the values of those leaf nodes.
 
         Examples:
@@ -363,6 +565,22 @@ class CombinatorialTree(collections.MutableMapping):
 
         return recursive_find_leaves(self._d)
 
+    def _find_combinatorial_leaves(self):
+        """Traverse a dict tree and find CombinatorialLeaf nodes.
+
+        Returns:
+        --------
+        A tuple containing two lists. The first one is a list of paths to combinatorial
+        leaf nodes in a tuple format (e.g. the path to node['a']['b'] is ('a', 'b')) while
+        the second one is a list of the values of those nodes.
+
+        """
+        leaf_paths, leaf_vals = self._find_leaves()
+        combinatorial_ids = [i for i, val in enumerate(leaf_vals) if isinstance(val, CombinatorialLeaf)]
+        combinatorial_leaf_paths = [leaf_paths[i] for i in combinatorial_ids]
+        combinatorial_leaf_vals = [leaf_vals[i] for i in combinatorial_ids]
+        return combinatorial_leaf_paths, combinatorial_leaf_vals
+
     def _combinations_generator(self, leaf_paths, leaf_vals):
         """Generate all possible combinations of experiments.
 
@@ -374,6 +592,7 @@ class CombinatorialTree(collections.MutableMapping):
             The list of paths as returned by _find_leaves().
         leaf_vals : list
             The list of the correspondent values as returned by _find_leaves().
+
         """
         template_tree = CombinatorialTree(self._d)
 
@@ -388,105 +607,6 @@ class CombinatorialTree(collections.MutableMapping):
             for leaf_path, leaf_val in zip(leaf_paths, combination):
                 template_tree[leaf_path] = leaf_val
             yield copy.deepcopy(template_tree._d)
-
-#========================================================================================
-# Yank configuration
-#========================================================================================
-
-class YankOptions(collections.MutableMapping):
-    """Helper class to manage Yank configuration.
-
-    This class provide a single point of entry to read Yank options specified by command
-    line, YAML or determined at runtime (i.e. the ones hardcoded). When the same option
-    is specified multiple times the priority is runtime > command line > YAML > default.
-
-    Attributes
-    ----------
-    cli : dict
-        The options from the command line interface.
-    yaml : dict
-        The options from the YAML configuration file.
-    default : dict
-        The default options.
-
-    Examples
-    --------
-    Command line options have priority over YAML
-
-    >>> cl_opt = {'option1': 1}
-    >>> yaml_opt = {'option1': 2}
-    >>> options = YankOptions(cl_opt=cl_opt, yaml_opt=yaml_opt)
-    >>> options['option1']
-    1
-
-    Modify specific priority level
-
-    >>> options.default = {'option2': -1}
-    >>> options['option2']
-    -1
-
-    Modify options at runtime and restore them
-
-    >>> options['option1'] = 0
-    >>> options['option1']
-    0
-    >>> del options['option1']
-    >>> options['option1']
-    1
-    >>> options['hardcoded'] = 'test'
-    >>> options['hardcoded']
-    'test'
-
-    """
-
-    def __init__(self, cl_opt={}, yaml_opt={}, default_opt={}):
-        """Constructor.
-
-        Parameters
-        ----------
-        cl_opt : dict, optional, default {}
-            The options from the command line.
-        yaml_opt : dict, optional, default {}
-            The options from the YAML configuration file.
-        default_opt : dict, optional, default {}
-            Default options. They have the lowest priority.
-
-        """
-        self._runtime_opt = {}
-        self.cli = cl_opt
-        self.yaml = yaml_opt
-        self.default = default_opt
-
-    def __getitem__(self, option):
-        try:
-            return self._runtime_opt[option]
-        except KeyError:
-            try:
-                return self.cli[option]
-            except KeyError:
-                try:
-                    return self.yaml[option]
-                except KeyError:
-                    return self.default[option]
-
-    def __setitem__(self, option, value):
-        self._runtime_opt[option] = value
-
-    def __delitem__(self, option):
-        del self._runtime_opt[option]
-
-    def __iter__(self):
-        """Iterate over options keeping into account priorities."""
-
-        found_options = set()
-        for opt_set in (self._runtime_opt, self.cli, self.yaml, self.default):
-            for opt in opt_set:
-                if opt not in found_options:
-                    found_options.add(opt)
-                    yield opt
-
-    def __len__(self):
-        return sum(1 for _ in self)
 
 
 #========================================================================================
@@ -515,6 +635,7 @@ def get_data_filename(relative_path):
 
     return fn
 
+
 def is_iterable_container(value):
     """Check whether the given value is a list-like object or not.
 
@@ -526,24 +647,6 @@ def is_iterable_container(value):
     # strings are iterable too so we have to treat them as a special case
     return not isinstance(value, str) and isinstance(value, collections.Iterable)
 
-@contextlib.contextmanager
-def temporary_directory():
-    """Context for safe creation of temporary directories."""
-    tmp_dir = tempfile.mkdtemp()
-    try:
-        yield tmp_dir
-    finally:
-        shutil.rmtree(tmp_dir)
-
-@contextlib.contextmanager
-def temporary_cd(dir_path):
-    """Context to temporary change the working directory."""
-    prev_dir = os.getcwd()
-    os.chdir(os.path.abspath(dir_path))
-    try:
-        yield
-    finally:
-        os.chdir(prev_dir)
 
 #========================================================================================
 # Conversion utilities
@@ -584,6 +687,19 @@ def typename(atype):
 
     return typename
 
+
+def merge_dict(dict1, dict2):
+    """Return the union of two dictionaries.
+
+    In Python 3.5 there is a syntax to do this {**dict1, **dict2} but
+    in Python 2 you need to go through update().
+
+    """
+    merged_dict = dict1.copy()
+    merged_dict.update(dict2)
+    return merged_dict
+
+
 def underscore_to_camelcase(underscore_str):
     """Convert the given string from underscore_case to camelCase.
 
@@ -620,6 +736,32 @@ def underscore_to_camelcase(underscore_str):
     camelcase_str += '_' * n_trailing
 
     return camelcase_str
+
+
+def camelcase_to_underscore(camelcase_str):
+    """Convert the given string from camelCase to underscore_case.
+
+    Parameters
+    ----------
+    camelcase_str : str
+        String in camelCase to convert to underscore style.
+
+    Returns
+    -------
+    underscore_str : str
+        String in underscore style.
+
+    Examples
+    --------
+    >>> camelcase_to_underscore('myVariable')
+    'my_variable'
+    >>> camelcase_to_underscore('__my_Variable_')
+    '__my__variable_'
+
+    """
+    underscore_str = re.sub(r'([A-Z])', '_\g<1>', camelcase_str)
+    return underscore_str.lower()
+
 
 def process_unit_bearing_str(quantity_str, compatible_units):
     """
@@ -671,6 +813,83 @@ def process_unit_bearing_str(quantity_str, compatible_units):
     # Return unit-bearing quantity.
     return quantity
 
+
+def to_unit_validator(compatible_units):
+    """Function generator to test unit bearing strings with Schema."""
+    def _to_unit_validator(quantity_str):
+        return process_unit_bearing_str(quantity_str, compatible_units)
+    return _to_unit_validator
+
+
+def generate_signature_schema(func, update_keys=None, exclude_keys=frozenset()):
+    """Generate a dictionary to test function signatures with Schema.
+
+    Parameters
+    ----------
+    func : function
+        The function used to build the schema.
+    update_keys : dict
+        Keys in here have priority over automatic generation. It can be
+        used to make an argument mandatory, or to use a specific validator.
+    exclude_keys : list-like
+        Keys in here are ignored and not included in the schema.
+
+    Returns
+    -------
+    func_schema : dict
+        The dictionary to be used as Schema type. Contains all keyword
+        variables in the function signature as optional argument with
+        the default type as validator. Unit bearing strings are converted.
+        Argument with default None are always accepted. Camel case
+        parameters in the function are converted to underscore style.
+
+    Examples
+    --------
+    >>> from schema import Schema
+    >>> def f(a, b, camelCase=True, none=None, quantity=3.0*unit.angstroms):
+    ...     pass
+    >>> f_dict = generate_signature_schema(f, exclude_keys=['quantity'])
+    >>> print isinstance(f_dict, dict)
+    True
+    >>> # Print (key, values) in the correct order
+    >>> print sorted(f_dict.items(), key=lambda x: x[1])
+    [(Optional('camel_case'), <type 'bool'>), (Optional('none'), <type 'object'>)]
+    >>> f_schema = Schema(generate_signature_schema(f))
+    >>> f_schema.validate({'quantity': '1.0*nanometer'})
+    {'quantity': Quantity(value=1.0, unit=nanometer)}
+
+    """
+    if update_keys is None:
+        update_keys = {}
+
+    func_schema = {}
+    args, _, _, defaults = inspect.getargspec(unwrap_py2(func))
+
+    # Check keys that must be excluded from first pass
+    exclude_keys = set(exclude_keys)
+    exclude_keys.update(update_keys)
+    exclude_keys.update({k._schema for k in update_keys if isinstance(k, Optional)})
+
+    # Transform camelCase to underscore
+    args = map(camelcase_to_underscore, args)
+
+    # Build schema
+    for arg, default_value in zip(args[-len(defaults):], defaults):
+        if arg not in exclude_keys:  # User defined keys are added later
+            if default_value is None:  # None defaults are always accepted
+                validator = object
+            elif isinstance(default_value, unit.Quantity):  # Convert unit strings
+                validator = Use(to_unit_validator(default_value.unit))
+            else:
+                validator = type(default_value)
+            func_schema[Optional(arg)] = validator
+
+    # Add special user keys
+    func_schema.update(update_keys)
+
+    return func_schema
+
+
 def get_keyword_args(function):
     """Inspect function signature and return keyword args with their default values.
 
@@ -693,7 +912,7 @@ def get_keyword_args(function):
 
 def validate_parameters(parameters, template_parameters, check_unknown=False,
                         process_units_str=False, float_to_int=False,
-                        ignore_none=True, special_conversions={}):
+                        ignore_none=True, special_conversions=None):
     """Utility function for parameters and options validation.
 
     Use the given template to filter the given parameters and infer their expected
@@ -764,6 +983,8 @@ def validate_parameters(parameters, template_parameters, check_unknown=False,
      'unspecified': 'input'}
 
     """
+    if special_conversions is None:
+        special_conversions = {}
 
     # Create validated parameters
     validated_par = {par: parameters[par] for par in parameters

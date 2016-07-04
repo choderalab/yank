@@ -14,15 +14,19 @@ Utility functions to help setting up Yank configurations.
 #=============================================================================================
 
 import os
+import inspect
 import logging
 logger = logging.getLogger(__name__)
 
 import mdtraj
-from simtk import openmm
+from simtk import openmm, unit
 
-#=============================================================================================
-# UTILITY FUNCTIONS
-#=============================================================================================
+import utils
+
+
+# ==============================================================================
+# Utility functions
+# ==============================================================================
 
 # Common solvent and ions.
 _SOLVENT_RESNAMES = frozenset(['118', '119', '1AL', '1CU', '2FK', '2HP', '2OF', '3CO', '3MT',
@@ -49,8 +53,7 @@ _SOLVENT_RESNAMES = frozenset(['118', '119', '1AL', '1CU', '2FK', '2HP', '2OF', 
         'YH', 'YT3', 'ZN', 'ZN2', 'ZN3', 'ZNA', 'ZNO', 'ZO3'])
 
 
-def find_components(topology, ligand_dsl, ligand_net_charge=0,
-                    solvent_resnames=_SOLVENT_RESNAMES):
+def find_components(system, topology, ligand_dsl, solvent_resnames=_SOLVENT_RESNAMES):
     """Determine the atom indices of the system components.
 
     Ligand atoms are specified through MDTraj domain-specific language (DSL),
@@ -61,13 +64,14 @@ def find_components(topology, ligand_dsl, ligand_net_charge=0,
 
     Parameters
     ----------
+    system : simtk.openmm.app.System
+        The system object containing partial charges to perceive the net charge
+        of the ligand.
     topology : mdtraj.Topology, simtk.openmm.app.Topology
         The topology object specifying the system. If simtk.openmm.app.Topology
         is passed instead this will be converted.
     ligand_dsl : str
         DSL specification of the ligand atoms.
-    ligand_net_charge : int, optional
-        The net charge of the ligand (default is 0).
     solvent_resnames : list of str, optional
         List of solvent residue names to exclude from receptor definition (default
         is _SOLVENT_RESNAME).
@@ -103,6 +107,20 @@ def find_components(topology, ligand_dsl, ligand_net_charge=0,
                                 if atom.index not in not_receptor_set]
     atom_indices['complex'] = atom_indices['receptor'] + atom_indices['ligand']
 
+    # Perceive ligand net charge
+    ligand_net_charge = 0.0 * unit.elementary_charge
+    ligand_atom_indices = set(atom_indices['ligand'])
+    for force_index in range(system.getNumForces()):
+        force = system.getForce(force_index)
+        if isinstance(force, openmm.NonbondedForce):
+            for particle_index in range(force.getNumParticles()):
+                if particle_index in ligand_atom_indices:
+                    ligand_net_charge += force.getParticleParameters(particle_index)[0]
+                    ligand_atom_indices.remove(particle_index)
+    assert len(ligand_atom_indices) == 0
+    ligand_net_charge = int(round(ligand_net_charge / unit.elementary_charge))
+    logger.debug('Ligand net charge: {}'.format(ligand_net_charge))
+
     # Isolate ligand-neutralizing counterions
     if ligand_net_charge != 0:
         if ligand_net_charge > 0:
@@ -113,6 +131,7 @@ def find_components(topology, ligand_dsl, ligand_net_charge=0,
         ligand_counterions = [atom.index for atom in mdtraj_top.atoms
                               if atom.residue.name in counterions_set]
         atom_indices['ligand_counterions'] = ligand_counterions[:abs(ligand_net_charge)]
+        logger.debug('Found {} ligand counterions.'.format(len(atom_indices['ligand_counterions'])))
 
         # Eliminate ligand counterions indices from solvent component
         atom_indices['solvent'] = [i for i in atom_indices['solvent']
@@ -123,23 +142,61 @@ def find_components(topology, ligand_dsl, ligand_net_charge=0,
     return atom_indices
 
 
-def prepare_amber(system_dir, ligand_dsl, system_parameters, ligand_net_charge=0, verbose=False):
+# See Amber manual Table 4.1 http://ambermd.org/doc12/Amber15.pdf
+_OPENMM_TO_TLEAP_PBRADII = {'HCT': 'mbondi', 'OBC1': 'mbondi2', 'OBC2': 'mbondi2',
+                            'GBn': 'bondi', 'GBn2': 'mbondi3'}
+
+
+def get_leap_recommended_pbradii(implicit_solvent):
+    """Return the recommended PBradii setting for LeAP.
+
+    Parameters
+    ----------
+    implicit_solvent : str
+        The implicit solvent model.
+
+    Returns
+    -------
+    pbradii : str or object
+        The LeAP recommended PBradii for the model.
+
+    Raises
+    ------
+    ValueError
+        If the implicit solvent model is not supported by OpenMM.
+
+    Examples
+    --------
+    >>> get_leap_recommended_pbradii('OBC2')
+    'mbondi2'
+    >>> from simtk.openmm.app import HCT
+    >>> get_leap_recommended_pbradii(HCT)
+    'mbondi'
+
+    """
+    try:
+        return _OPENMM_TO_TLEAP_PBRADII[str(implicit_solvent)]
+    except KeyError:
+        raise ValueError('Implicit solvent {} is not supported.'.format(implicit_solvent))
+
+
+def prepare_system(system_files_paths, ligand_dsl, system_options,
+                   gromacs_include_dir=None, verbose=False):
     """Create a system from prmtop and inpcrd files.
 
     Parameters
     ----------
-    system_dir : str
-        Path to the directory containing the prmtop and inpcrd files.
+    system_files_paths : dict
+        system_files_paths[phase] is a list-like object containing the path to topology
+        and system files (e.g. 'complex' -> ['complex.inpcrd', 'complex.prmtop'].
     ligand_dsl : str
         MDTraj DSL string that specify the ligand atoms.
-    system_parameters : dict
-        A kwargs dictionary to pass to openmm.app.AmberPrmtopFile.createSystem().
-    ligand_net_charge : int, optional
-       The net charge of the ligand. If non-zero, the function will look in the
-       system for ligand-neutralizing counterions that will be included in atom_indices
-       (default is 0).
+    system_options : dict
+        A dictionary containing options to pass to createSystem().
+    gromacs_include_dir : str, optional
+        Path to directory in which to look for other files included from the gromacs top file.
     verbose : bool
-        Whether or not to log informations (default is False).
+        Whether or not to log information (default is False).
 
     Returns
     -------
@@ -158,21 +215,48 @@ def prepare_amber(system_dir, ligand_dsl, system_parameters, ligand_net_charge=0
     positions = {}  # positions[phase] is a list of coordinates associated with phase 'phase'
     atom_indices = {}  # ligand_atoms[phase] is a list of ligand atom indices of phase 'phase'
 
-    # Prepare phases of calculation.
-    for phase_prefix in ['complex', 'solvent']:
-        prmtop_file_path = os.path.join(system_dir, '{}.prmtop'.format(phase_prefix))
-        inpcrd_file_path = os.path.join(system_dir, '{}.inpcrd'.format(phase_prefix))
-        if verbose:
-            logger.info("reading phase %s: " % phase_prefix)
-            logger.info("prmtop: %s" % prmtop_file_path)
-            logger.info("inpcrd: %s" % inpcrd_file_path)
+    # Prepare createSystem() options
+    # OpenMM adopts camel case convention so we need to change the options format.
+    # We will use inspection to filter the options to pass to createSystem()
+    system_options = {utils.underscore_to_camelcase(key): value
+                      for key, value in system_options.items()}
 
-        # Read Amber prmtop and inpcrd files
-        prmtop = openmm.app.AmberPrmtopFile(prmtop_file_path)
-        inpcrd = openmm.app.AmberInpcrdFile(inpcrd_file_path)
+    # Prepare phases of calculation.
+    for phase_prefix in system_files_paths:
+
+        # Load system files
+        positions_file_path = system_files_paths[phase_prefix][0]
+        topology_file_path = system_files_paths[phase_prefix][1]
+        if os.path.splitext(topology_file_path)[1] == '.prmtop':
+            # Read Amber prmtop and inpcrd files
+            if verbose:
+                logger.info("reading phase %s: " % phase_prefix)
+                logger.info("prmtop: %s" % topology_file_path)
+                logger.info("inpcrd: %s" % positions_file_path)
+            topology_file = openmm.app.AmberPrmtopFile(topology_file_path)
+            positions_file = openmm.app.AmberInpcrdFile(positions_file_path)
+            box_vectors = positions_file.boxVectors
+            create_system_args = set(inspect.getargspec(openmm.app.AmberPrmtopFile.createSystem).args)
+        else:
+            # Read Gromacs top and gro files
+            if verbose:
+                logger.info("reading phase %s: " % phase_prefix)
+                logger.info("top: %s" % topology_file_path)
+                logger.info("gro: %s" % positions_file)
+
+            positions_file = openmm.app.GromacsGroFile(positions_file_path)
+            box_vectors = positions_file.getPeriodicBoxVectors()
+            topology_file = openmm.app.GromacsTopFile(topology_file_path,
+                                                      periodicBoxVectors=box_vectors,
+                                                      includeDir=gromacs_include_dir)
+            create_system_args = set(inspect.getargspec(openmm.app.GromacsTopFile.createSystem).args)
+
+        # Filter system options according to specific createSystem args
+        system_options = {arg: system_options[arg] for arg in create_system_args
+                          if arg in system_options}
 
         # Determine if this will be an explicit or implicit solvent simulation.
-        if inpcrd.boxVectors is not None:
+        if box_vectors is not None:
             is_periodic = True
             phase_suffix = 'explicit'
         else:
@@ -182,47 +266,52 @@ def prepare_amber(system_dir, ligand_dsl, system_parameters, ligand_net_charge=0
 
         # Adjust nonbondedMethod
         # TODO: Ensure that selected method is appropriate.
-        if 'nonbondedMethod' not in system_parameters:
+        if 'nonbondedMethod' not in system_options:
             if is_periodic:
-                system_parameters['nonbondedMethod'] = openmm.app.CutoffPeriodic
+                system_options['nonbondedMethod'] = openmm.app.CutoffPeriodic
             else:
-                system_parameters['nonbondedMethod'] = openmm.app.NoCutoff
+                system_options['nonbondedMethod'] = openmm.app.NoCutoff
 
         # Check for solvent configuration inconsistencies
-        # TODO: Check to make sure both prmtop and inpcrd agree on explicit/implicit.
+        # TODO: Check to make sure both files agree on explicit/implicit.
         err_msg = ''
         if is_periodic:
-            if 'implicitSolvent' in system_parameters:
+            if 'implicitSolvent' in system_options:
                 err_msg = 'Found periodic box in inpcrd file and implicitSolvent specified.'
-            if system_parameters['nonbondedMethod'] == openmm.app.NoCutoff:
+            if system_options['nonbondedMethod'] == openmm.app.NoCutoff:
                 err_msg = 'Found periodic box in inpcrd file but nonbondedMethod is NoCutoff'
         else:
-            if system_parameters['nonbondedMethod'] != openmm.app.NoCutoff:
+            if system_options['nonbondedMethod'] != openmm.app.NoCutoff:
                 err_msg = 'nonbondedMethod is NoCutoff but could not find periodic box in inpcrd.'
         if len(err_msg) != 0:
             logger.error(err_msg)
             raise RuntimeError(err_msg)
 
         # Create system and update box vectors (if needed)
-        systems[phase] = prmtop.createSystem(removeCMMotion=False, **system_parameters)
+        systems[phase] = topology_file.createSystem(removeCMMotion=False, **system_options)
         if is_periodic:
-            systems[phase].setDefaultPeriodicBoxVectors(*inpcrd.boxVectors)
+            systems[phase].setDefaultPeriodicBoxVectors(*box_vectors)
 
         # Store numpy positions
-        positions[phase] = inpcrd.getPositions(asNumpy=True)
+        positions[phase] = positions_file.getPositions(asNumpy=True)
 
         # Check to make sure number of atoms match between prmtop and inpcrd.
-        prmtop_natoms = systems[phase].getNumParticles()
-        inpcrd_natoms = positions[phase].shape[0]
-        if prmtop_natoms != inpcrd_natoms:
-            err_msg = "Atom number mismatch: prmtop {} has {} atoms; inpcrd {} has {} atoms.".format(
-                prmtop_file_path, prmtop_natoms, inpcrd_file_path, inpcrd_natoms)
+        topology_natoms = systems[phase].getNumParticles()
+        positions_natoms = positions[phase].shape[0]
+        if topology_natoms != positions_natoms:
+            err_msg = "Atom number mismatch: {} has {} atoms; {} has {} atoms.".format(
+                topology_file_path, topology_natoms, positions_file_path, positions_natoms)
             logger.error(err_msg)
             raise RuntimeError(err_msg)
 
         # Find ligand atoms and receptor atoms
-        atom_indices[phase] = find_components(prmtop.topology, ligand_dsl, ligand_net_charge)
+        atom_indices[phase] = find_components(systems[phase], topology_file.topology, ligand_dsl)
 
     phases = systems.keys()
 
     return [phases, systems, positions, atom_indices]
+
+
+if __name__ == '__main__':
+    import doctest
+    doctest.testmod()

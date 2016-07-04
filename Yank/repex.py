@@ -71,7 +71,7 @@ import numpy as np
 import mdtraj as md
 import netCDF4 as netcdf
 
-from utils import is_terminal_verbose
+from utils import is_terminal_verbose, delayed_termination
 
 #=============================================================================================
 # MODULE CONSTANTS
@@ -1055,8 +1055,7 @@ class ReplicaExchange(object):
         if self.show_energies:
             self._show_energies()
 
-        # Analysis objet starts off empty.
-        # TODO: Use an empty dict instead?
+        # Analysis object starts off empty.
         self.analysis = None
 
         # Signal that the class has been initialized.
@@ -1161,7 +1160,10 @@ class ReplicaExchange(object):
             if 'MonteCarloBarostat' in forces:
                 barostat = forces['MonteCarloBarostat']
                 # Set temperature and pressure.
-                barostat.setTemperature(state.temperature)
+                try:
+                    barostat.setDefaultTemperature(state.temperature)
+                except AttributeError:  # versions previous to OpenMM0.8
+                    barostat.setTemperature(state.temperature)
                 barostat.setDefaultPressure(state.pressure)
                 barostat.setRandomNumberSeed(int(np.random.randint(0, MAX_SEED)))
             else:
@@ -1193,7 +1195,7 @@ class ReplicaExchange(object):
         integrator_end_time = time.time()
         # Store final positions
         getstate_start_time = time.time()
-        openmm_state = context.getState(getPositions=True,enforcePeriodicBox=True)
+        openmm_state = context.getState(getPositions=True, enforcePeriodicBox=state.system.usesPeriodicBoundaryConditions())
         getstate_end_time = time.time()
         self.replica_positions[replica_index] = openmm_state.getPositions(asNumpy=True)
         # Store box vectors.
@@ -1322,7 +1324,7 @@ class ReplicaExchange(object):
         # Minimize energy.
         minimized_positions = self.mm.LocalEnergyMinimizer.minimize(context, self.minimize_tolerance, self.minimize_max_iterations)
         # Store final positions
-        self.replica_positions[replica_index] = context.getState(getPositions=True,enforcePeriodicBox=True).getPositions(asNumpy=True)
+        self.replica_positions[replica_index] = context.getState(getPositions=True, enforcePeriodicBox=state.system.usesPeriodicBoundaryConditions()).getPositions(asNumpy=True)
         # Clean up.
         del integrator, context
 
@@ -1772,6 +1774,7 @@ class ReplicaExchange(object):
 
         return
 
+    @delayed_termination
     def _write_iteration_netcdf(self):
         """
         Write positions, states, and energies of current iteration to NetCDF file.
