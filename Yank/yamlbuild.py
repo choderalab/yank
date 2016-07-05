@@ -1590,6 +1590,8 @@ class YamlBuilder:
             {'receptor': is_known_molecule, 'ligand': is_known_molecule,
              'solvent': is_known_solvent},
 
+            {'solute': is_known_molecule, 'solvent': is_known_solvent},
+
             {'complex_path': Use(system_files('amber')), 'solvent_path': Use(system_files('amber')),
              'ligand_dsl': str, 'solvent': is_known_solvent},
 

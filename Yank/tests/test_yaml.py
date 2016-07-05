@@ -386,16 +386,20 @@ def test_validation_correct_systems():
 
     systems = [
         {'receptor': 'rec', 'ligand': 'lig', 'solvent': 'solv'},
+
         {'complex_path': examples_paths()['bentol-complex'],
          'solvent_path': examples_paths()['bentol-solvent'],
          'ligand_dsl': 'resname BEN', 'solvent': 'solv'},
+
         {'complex_path': examples_paths()['pxylene-complex'],
          'solvent_path': examples_paths()['pxylene-solvent'],
          'ligand_dsl': 'resname p-xylene', 'solvent': 'solv',
          'gromacs_include_dir': examples_paths()['pxylene-gro-include']},
         {'complex_path': examples_paths()['pxylene-complex'],
          'solvent_path': examples_paths()['pxylene-solvent'],
-         'ligand_dsl': 'resname p-xylene', 'solvent': 'solv'}
+         'ligand_dsl': 'resname p-xylene', 'solvent': 'solv'},
+
+        {'solute': 'lig', 'solvent': 'solv'}
     ]
     for system in systems:
         modified_script = basic_script.copy()
@@ -438,7 +442,10 @@ def test_validation_wrong_systems():
         {'complex_path': examples_paths()['bentol-complex'],
          'solvent_path': examples_paths()['pxylene-solvent'],
          'ligand_dsl': 'resname p-xylene', 'solvent': 'solv',
-         'gromacs_include_dir': examples_paths()['pxylene-gro-include']}
+         'gromacs_include_dir': examples_paths()['pxylene-gro-include']},
+
+        {'receptor': 'rec', 'solute': 'lig', 'solvent': 'solv'},
+        {'ligand': 'lig', 'solute': 'lig', 'solvent': 'solv'}
     ]
     for system in systems:
         modified_script = basic_script.copy()
