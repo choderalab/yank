@@ -1549,7 +1549,7 @@ def test_run_experiment_from_amber_files():
 
 @attr('slow')  # Skip on Travis-CI
 def test_run_experiment_from_gromacs_files():
-    """Test experiment run from prmtop/inpcrd files."""
+    """Test experiment run from top/gro files."""
     complex_path = examples_paths()['pxylene-complex']
     solvent_path = examples_paths()['pxylene-solvent']
     include_path = examples_paths()['pxylene-gro-include']
