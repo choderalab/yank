@@ -1227,15 +1227,19 @@ class TLeap:
         # Add command
         if extension == '.prmtop' or extension == '.inpcrd':
             local_name2 = 'molo{}'.format(len(self._file_paths))
-            self.add_commands('saveAmberParm {} {{{}}} {{{}}}'.format(group, local_name,
-                                                                      local_name2))
+            command = 'saveAmberParm ' + group + ' {{{}}} {{{}}}'
+
             # Update list of output files with the one not explicit
             if extension == '.inpcrd':
                 extension2 = '.prmtop'
+                command = command.format(local_name2, local_name)
             else:
                 extension2 = '.inpcrd'
+                command = command.format(local_name, local_name2)
             output_path2 = os.path.join(os.path.dirname(output_path), file_name + extension2)
             self._file_paths[local_name2] = output_path2
+
+            self.add_commands(command)
         elif extension == '.pdb':
             self.add_commands('savePDB {} {{{}}}'.format(group, local_name))
         else:
@@ -1279,7 +1283,10 @@ class TLeap:
 
             # Save leap.log in directory of first output file
             if len(output_files) > 0:
-                log_path = os.path.join(os.path.dirname(output_files.values()[0]), 'leap.log')
+                first_output_path = output_files.values()[0]
+                first_output_name = os.path.basename(first_output_path).split('.')[0]
+                first_output_dir = os.path.dirname(first_output_path)
+                log_path = os.path.join(first_output_dir, first_output_name + '.leap.log')
                 shutil.copy('leap.log', log_path)
 
             #Copy back output files
