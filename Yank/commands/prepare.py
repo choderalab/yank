@@ -116,10 +116,11 @@ def setup_binding_amber(args):
         system_parameters['nonbondedCutoff'] = process_unit_bearing_arg(args, '--cutoff', unit.nanometers)
 
     # Determine if this will be an explicit or implicit solvent simulation
-    if system_parameters['nonbondedMethod'] == app.NoCutoff:
-        phases = ['complex-implicit', 'solvent-implicit']
-    else:
+    if ('nonbondedMethod' in system_parameters and
+                system_parameters['nonbondedMethod'] != app.NoCutoff):
         phases = ['complex-explicit', 'solvent-explicit']
+    else:
+        phases = ['complex-implicit', 'solvent-implicit']
 
     # Prepare Yank arguments
     systems = {}
@@ -128,7 +129,7 @@ def setup_binding_amber(args):
     setup_directory = os.path.join(setup_directory, '')  # add final slash character
     system_files_paths = [[setup_directory + 'complex.inpcrd', setup_directory + 'complex.prmtop'],
                           [setup_directory + 'solvent.inpcrd', setup_directory + 'solvent.prmtop']]
-    for phase in phases:
+    for i, phase in enumerate(phases):
         positions_file_path = system_files_paths[i][0]
         topology_file_path = system_files_paths[i][1]
 
