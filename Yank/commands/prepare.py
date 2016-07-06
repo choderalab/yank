@@ -115,11 +115,29 @@ def setup_binding_amber(args):
     if args['--cutoff']:
         system_parameters['nonbondedCutoff'] = process_unit_bearing_arg(args, '--cutoff', unit.nanometers)
 
-    # Prepare phases of calculation.
+    # Determine if this will be an explicit or implicit solvent simulation
+    if system_parameters['nonbondedMethod'] == app.NoCutoff:
+        phases = ['complex-implicit', 'solvent-implicit']
+    else:
+        phases = ['complex-explicit', 'solvent-explicit']
+
+    # Prepare Yank arguments
+    systems = {}
+    positions = {}
+    atom_indices = {}
     setup_directory = os.path.join(setup_directory, '')  # add final slash character
-    system_files_paths = {'solvent': [setup_directory + 'solvent.inpcrd', setup_directory + 'solvent.prmtop'],
-                          'complex': [setup_directory + 'complex.inpcrd', setup_directory + 'complex.prmtop']}
-    return pipeline.prepare_system(system_files_paths, args['--ligand'], system_parameters, verbose=verbose)
+    system_files_paths = [[setup_directory + 'complex.inpcrd', setup_directory + 'complex.prmtop'],
+                          [setup_directory + 'solvent.inpcrd', setup_directory + 'solvent.prmtop']]
+    for phase in phases:
+        positions_file_path = system_files_paths[i][0]
+        topology_file_path = system_files_paths[i][1]
+
+        logger.info("Reading phase {}".format(phase))
+        yank_args = pipeline.prepare_phase(positions_file_path, topology_file_path, args['--ligand'],
+                                           system_parameters, verbose=verbose)
+        systems[phase], positions[phase], atom_indices[phase] = yank_args
+
+    return phases, systems, positions, atom_indices
 
 
 def setup_binding_gromacs(args):

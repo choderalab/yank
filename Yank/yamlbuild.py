@@ -449,17 +449,17 @@ class SetupDatabase:
 
         Returns
         -------
-        system_path_solvent : str
-            Path to the system file (.inpcrd or .gro) of the solvent phase.
-        topology_path_solvent : str
-            Path to the topology file (.prmtop or .top) of the solvent phase.
         system_path_complex : str
             Path to the system file (.inpcrd or .gro) of the complex phase.
         topology_path_complex : str
             Path to the topology file (.prmtop or .top) of the complex phase.
+        system_path_solvent : str
+            Path to the system file (.inpcrd or .gro) of the solvent phase.
+        topology_path_solvent : str
+            Path to the topology file (.prmtop or .top) of the solvent phase.
 
         """
-        if 'ligand' in self.systems[system_id]:
+        if 'ligand' in self.systems[system_id] or 'solute' in self.systems[system_id]:
             system_dir = os.path.join(self.setup_dir, self.SYSTEMS_DIR, system_id)
             system_path_solvent = os.path.join(system_dir, 'solvent.inpcrd')
             topology_path_solvent = os.path.join(system_dir, 'solvent.prmtop')
@@ -469,8 +469,8 @@ class SetupDatabase:
             system_path_solvent, topology_path_solvent = self.systems[system_id]['solvent_path']
             system_path_complex, topology_path_complex = self.systems[system_id]['complex_path']
 
-        return (system_path_solvent, topology_path_solvent,
-                system_path_complex, topology_path_complex)
+        return (system_path_complex, topology_path_complex,
+                system_path_solvent, topology_path_solvent)
 
     def is_molecule_setup(self, molecule_id):
         """Check whether the molecule has been processed previously.
@@ -550,7 +550,7 @@ class SetupDatabase:
         # Compute and update small molecule net charge
         if all_file_exist:
             extension = os.path.splitext(molecule_descr['filepath'])[1]
-            # TODO what if this is a peptide? This should be computed in _get_system()
+            # TODO what if this is a peptide? This should be computed in get_system()
             if extension == '.mol2':
                 molecule_descr['net_charge'] = utils.get_mol2_net_charge(molecule_descr['filepath'])
 
@@ -574,7 +574,7 @@ class SetupDatabase:
             True if the system has already gone through the setup pipeline.
 
         """
-        if 'ligand' in self.systems[system_id]:
+        if 'ligand' in self.systems[system_id] or 'solute' in self.systems[system_id]:
             system_files_paths = self.get_system_files_paths(system_id)
             is_setup = (os.path.exists(system_files_paths[0]) and
                         os.path.exists(system_files_paths[1]) and
@@ -601,14 +601,14 @@ class SetupDatabase:
 
         Returns
         -------
-        system_path_solvent : str
-            Path to the system file (.inpcrd or .gro) of the solvent phase.
-        topology_path_solvent : str
-            Path to the topology file (.prmtop or .top) of the solvent phase.
         system_path_complex : str
             Path to the system file (.inpcrd or .gro) of the complex phase.
         topology_path_complex : str
             Path to the topology file (.prmtop or .top) of the complex phase.
+        system_path_solvent : str
+            Path to the system file (.inpcrd or .gro) of the solvent phase.
+        topology_path_solvent : str
+            Path to the topology file (.prmtop or .top) of the solvent phase.
 
         """
         # Check if system has been already processed
@@ -616,134 +616,34 @@ class SetupDatabase:
         if self.is_system_setup(system_id)[0]:
             return system_files_paths
 
-        # We create all the system files in the same directory
-        system_dir = os.path.dirname(system_files_paths[0])
-        if not os.path.exists(system_dir):
-            os.makedirs(system_dir)
+        system_descr = self.systems[system_id]
 
-        receptor_id = self.systems[system_id]['receptor']
-        ligand_id = self.systems[system_id]['ligand']
-        solvent_id = self.systems[system_id]['solvent']
+        if 'receptor' in system_descr:  # binding free energy calculation
+            receptor_id = system_descr['receptor']
+            ligand_id = system_descr['ligand']
+            solvent_id = system_descr['solvent']
 
-        # Setup molecules
-        self._setup_molecules(receptor_id, ligand_id)
+            # solvent phase
+            self._setup_system(system_files_paths[2], pack, 0, solvent_id, ligand_id)
 
-        # Identify components
-        receptor = self.molecules[receptor_id]
-        ligand = self.molecules[ligand_id]
-        solvent = self.solvents[solvent_id]
-
-        # Create tleap script
-        tleap = utils.TLeap()
-        tleap.new_section('Load GAFF parameters')
-        tleap.load_parameters('leaprc.gaff')
-
-        # Check that AMBER force field is specified
-        if 'leaprc.' in receptor['parameters']:
-            amber_ff = receptor['parameters']
-        elif 'leaprc.' in ligand['parameters']:
-            amber_ff = ligand['parameters']
-        else:
-            amber_ff = 'leaprc.ff14SB'
-        tleap.load_parameters(amber_ff)
-
-        # In ff12SB and ff14SB ions parameters must be loaded separately
-        if (('positive_ion' in solvent or 'negative_ion' in solvent) and
-                (amber_ff == 'leaprc.ff12SB' or amber_ff == 'leaprc.ff14SB')):
-            tleap.add_commands('loadAmberParams frcmod.ionsjc_tip3p')
-
-        # Load receptor and ligand
-        for group_name in ['receptor', 'ligand']:
-            group = self.molecules[self.systems[system_id][group_name]]
-            tleap.new_section('Load ' + group_name)
-            tleap.load_parameters(group['parameters'])
-            tleap.load_group(name=group_name, file_path=group['filepath'])
-
-        # Check that molecules don't have clashing atoms. Also, if the ligand
-        # is too far away from the molecule we want to pull it closer
-        # TODO this check should be available even without OpenEye
-        if pack and utils.is_openeye_installed():
-            mol_id_list = [receptor_id, ligand_id]
-            positions = [0 for _ in mol_id_list]
-            for i, mol_id in enumerate(mol_id_list):
-                if mol_id not in self._pos_cache:
-                    self._pos_cache[mol_id] = utils.get_oe_mol_positions(
-                            utils.read_oe_molecule(self.molecules[mol_id]['filepath']))
-                positions[i] = self._pos_cache[mol_id]
-
-            # Find the transformation
             try:
-                max_dist = solvent['clearance'].value_in_unit(unit.angstrom) / 1.5
+                alchemical_charge = self.molecules[ligand_id]['net_charge']
             except KeyError:
-                max_dist = 10.0
-            transformation = pack_transformation(positions[0], positions[1],
-                                                 self.CLASH_THRESHOLD, max_dist)
-            if (transformation != np.identity(4)).any():
-                logger.warning('Changing starting ligand positions.')
-                tleap.transform('ligand', transformation)
+                alchemical_charge = 0
 
-        # Create complex
-        tleap.new_section('Create complex')
-        tleap.combine('complex', 'receptor', 'ligand')
+            # complex phase
+            self._setup_system(system_files_paths[0], pack, alchemical_charge,
+                               solvent_id, receptor_id, ligand_id)
+        else:  # partition/solvation free energy calculation
+            solute_id = system_descr['solute']
+            solvent1_id = system_descr['solvent1']
+            solvent2_id = system_descr['solvent2']
 
-        # Configure solvent
-        if solvent['nonbonded_method'] == openmm.app.NoCutoff:
-            if 'implicit_solvent' in solvent:  # GBSA implicit solvent
-                implicit_solvent = solvent['implicit_solvent']
-                tleap.new_section('Set GB radii to recommended values for OBC')
-                tleap.add_commands('set default PBRadii {}'.format(
-                    pipeline.get_leap_recommended_pbradii(implicit_solvent)))
-        else:  # explicit solvent
-            tleap.new_section('Solvate systems')
+            # solvent1 phase
+            self._setup_system(system_files_paths[0], pack, 0, solvent1_id, solute_id)
 
-            # Add ligand-neutralizing ions
-            # TODO what if this is a peptide? First create solvent.prmtop,
-            # TODO then compute net charge, then create complex.prmtop
-            if 'net_charge' in ligand and ligand['net_charge'] != 0:
-                net_charge = ligand['net_charge']
-
-                # Check that solvent is configured for charged ligand
-                if not ('positive_ion' in solvent and 'negative_ion' in solvent):
-                    err_msg = ('Found charged ligand but no indications for ions in '
-                               'solvent {}').format(solvent_id)
-                    logger.error(err_msg)
-                    raise RuntimeError(err_msg)
-
-                # Add ions to the system
-                if net_charge > 0:
-                    ion = solvent['positive_ion']
-                else:
-                    ion = solvent['negative_ion']
-                tleap.add_ions(unit='complex', ion=ion, num_ions=abs(net_charge))
-
-            # Neutralizing solvation box
-            if 'positive_ion' in solvent:
-                tleap.add_ions(unit='complex', ion=solvent['positive_ion'])
-                tleap.add_ions(unit='ligand', ion=solvent['positive_ion'])
-            if 'negative_ion' in solvent:
-                tleap.add_ions(unit='complex', ion=solvent['negative_ion'])
-                tleap.add_ions(unit='ligand', ion=solvent['negative_ion'])
-
-            clearance = float(solvent['clearance'].value_in_unit(unit.angstroms))
-            tleap.solvate(group='complex', water_model='TIP3PBOX', clearance=clearance)
-            tleap.solvate(group='ligand', water_model='TIP3PBOX', clearance=clearance)
-
-        # Check charge
-        tleap.new_section('Check charge')
-        tleap.add_commands('check complex', 'charge complex')
-
-        # Save prmtop and inpcrd files
-        tleap.new_section('Save prmtop and inpcrd files')
-        tleap.save_group('complex', os.path.join(system_dir, 'complex.prmtop'))
-        tleap.save_group('complex', os.path.join(system_dir, 'complex.pdb'))
-        tleap.save_group('ligand', os.path.join(system_dir, 'solvent.prmtop'))
-        tleap.save_group('ligand', os.path.join(system_dir, 'solvent.pdb'))
-
-        # Save tleap script for reference
-        tleap.export_script(os.path.join(system_dir, 'leap.in'))
-
-        # Run tleap!
-        tleap.run()
+            # solvent2 phase
+            self._setup_system(system_files_paths[2], pack, 0, solvent2_id, solute_id)
 
         return system_files_paths
 
@@ -966,7 +866,7 @@ class SetupDatabase:
             # Determine small molecule net charge
             extension = os.path.splitext(mol_descr['filepath'])[1]
             if extension == '.mol2':
-                # TODO what if this is a peptide? this should be computed in _get_system()
+                # TODO what if this is a peptide? this should be computed in get_system()
                 if net_charge is not None:
                     mol_descr['net_charge'] = net_charge
                 else:
@@ -974,6 +874,162 @@ class SetupDatabase:
 
             # Keep track of processed molecule
             self._processed_mols.add(mol_id)
+
+    def _setup_system(self, system_file_path, pack, alchemical_charge, solvent_id, *molecule_ids):
+        """Setup a system and create its prmtop/inpcrd files.
+
+        IMPORTANT: This function does not check if it's about to overwrite
+        files. Use get_system() for safe setup.
+
+        Parameters
+        ----------
+        system_file_path : str
+            The path to either the prmtop or inpcrd output file. The other one
+            will be saved in the same folder with the same base name.
+        pack : bool
+            True to automatically solve atom clashes and reduce box dimension.
+        alchemical_charge : int
+            Number of counterions to alchemically modify during the simulation.
+        solvent_id : str
+            The ID of the solvent.
+        *molecule_ids : list-like of str
+            List the IDs of the molecules to pack together in the system.
+
+        """
+        solvent = self.solvents[solvent_id]
+        self._setup_molecules(*molecule_ids)  # Be sure molecules are set up
+
+        # Create tleap script
+        tleap = utils.TLeap()
+
+        # Load all parameters
+        # --------------------
+        tleap.new_section('Load parameters')
+
+        found_amber_ff = False
+        for mol_id in molecule_ids:
+            molecule_parameters = self.molecules[mol_id]['parameters']
+            tleap.load_parameters(molecule_parameters)
+
+            if 'leaprc.' in molecule_parameters:
+                found_amber_ff = True
+
+            # In ff12SB and ff14SB, ions parameters must be loaded separately
+            if ((molecule_parameters == 'leaprc.ff12SB' or molecule_parameters == 'leaprc.ff14SB') and
+                    ('positive_ion' in solvent or 'negative_ion' in solvent)):
+                tleap.add_commands('loadAmberParams frcmod.ionsjc_tip3p')
+
+        # TODO right now we always load GAFF to cope with the "parameters: antechamber"
+        # TODO keyword but we can remove this when we'll be able to specify list of
+        # TODO parameters. The same goes for the AMBER FF which, even if there are no
+        # TODO peptides, is needed for the solvent parameters
+        tleap.load_parameters('leaprc.gaff')
+        if not found_amber_ff:
+            tleap.load_parameters('leaprc.ff14SB')
+            tleap.add_commands('loadAmberParams frcmod.ionsjc_tip3p')
+
+        # Load molecules and create complexes
+        # ------------------------------------
+        tleap.new_section('Load molecules')
+        for mol_id in molecule_ids:
+            tleap.load_group(name=mol_id, file_path=self.molecules[mol_id]['filepath'])
+
+        if len(molecule_ids) > 1:
+            # Check that molecules don't have clashing atoms. Also, if the ligand
+            # is too far away from the molecule we want to pull it closer
+            # TODO this check should be available even without OpenEye
+            if pack and utils.is_openeye_installed():
+
+                # Load atom positions of all molecules
+                positions = [0 for _ in molecule_ids]
+                for i, mol_id in enumerate(molecule_ids):
+                    if mol_id not in self._pos_cache:
+                        self._pos_cache[mol_id] = utils.get_oe_mol_positions(
+                                utils.read_oe_molecule(self.molecules[mol_id]['filepath']))
+                    positions[i] = self._pos_cache[mol_id]
+
+                # Find and apply the transformation to fix clashing
+                # TODO this doesn't work with more than 2 molecule_ids
+                try:
+                    max_dist = solvent['clearance'].value_in_unit(unit.angstrom) / 1.5
+                except KeyError:
+                    max_dist = 10.0
+                transformation = pack_transformation(positions[0], positions[1],
+                                                     self.CLASH_THRESHOLD, max_dist)
+                if (transformation != np.identity(4)).any():
+                    logger.warning('Changing starting positions for {}.'.format(molecule_ids[1]))
+                    tleap.new_section('Fix clashing atoms')
+                    tleap.transform(molecule_ids[1], transformation)
+
+            # Create complex
+            tleap.new_section('Create complex')
+            tleap.combine('complex', *molecule_ids)
+            unit_to_solvate = 'complex'
+        else:
+            unit_to_solvate = molecule_ids[0]
+
+        # Configure solvent
+        # ------------------
+        if solvent['nonbonded_method'] == openmm.app.NoCutoff:
+            try:
+                implicit_solvent = solvent['implicit_solvent']
+            except KeyError:  # vacuum
+                pass
+            else:  # implicit solvent
+                tleap.new_section('Set GB radii to recommended values for OBC')
+                tleap.add_commands('set default PBRadii {}'.format(
+                    pipeline.get_leap_recommended_pbradii(implicit_solvent)))
+        else:  # explicit solvent
+            tleap.new_section('Solvate systems')
+
+            # Add alchemically modified ions
+            if alchemical_charge != 0:
+                try:
+                    if alchemical_charge > 0:
+                        ion = solvent['positive_ion']
+                    else:
+                        ion = solvent['negative_ion']
+                except KeyError:
+                    err_msg = ('Found charged ligand but no indications for ions in '
+                               'solvent {}').format(solvent_id)
+                    logger.error(err_msg)
+                    raise RuntimeError(err_msg)
+                tleap.add_ions(unit=unit_to_solvate, ion=ion, num_ions=abs(alchemical_charge))
+
+            # Neutralizing solvation box
+            if 'positive_ion' in solvent:
+                tleap.add_ions(unit=unit_to_solvate, ion=solvent['positive_ion'])
+            if 'negative_ion' in solvent:
+                tleap.add_ions(unit=unit_to_solvate, ion=solvent['negative_ion'])
+
+            # Solvate unit
+            clearance = float(solvent['clearance'].value_in_unit(unit.angstroms))
+            tleap.solvate(group=unit_to_solvate, water_model='TIP3PBOX', clearance=clearance)
+
+        # Check charge
+        tleap.new_section('Check charge')
+        tleap.add_commands('check ' + unit_to_solvate)
+
+        # Save output files
+        # ------------------
+        system_dir = os.path.dirname(system_file_path)
+        base_file_path = os.path.basename(system_file_path).split('.')[0]
+        base_file_path = os.path.join(system_dir, base_file_path)
+
+        # Create output directory
+        if not os.path.exists(system_dir):
+            os.makedirs(system_dir)
+
+        # Save prmtop, inpcrd and reference pdb files
+        tleap.new_section('Save prmtop and inpcrd files')
+        tleap.save_group(unit_to_solvate, system_file_path)
+        tleap.save_group(unit_to_solvate, base_file_path + '.pdb')
+
+        # Save tleap script for reference
+        tleap.export_script(base_file_path + '.leap.in')
+
+        # Run tleap!
+        tleap.run()
 
 #=============================================================================================
 # BUILDER CLASS
@@ -1264,7 +1320,8 @@ class YamlBuilder:
 
         # Expand molecules and update molecule ids in systems
         expanded_content = utils.CombinatorialTree(expanded_content)
-        update_nodes_paths = [('systems', '*', 'receptor'), ('systems', '*', 'ligand')]
+        update_nodes_paths = [('systems', '*', 'receptor'), ('systems', '*', 'ligand'),
+                              ('systems', '*', 'solute')]
         expanded_content = expanded_content.expand_id_nodes('molecules', update_nodes_paths)
 
         return expanded_content
@@ -1590,7 +1647,8 @@ class YamlBuilder:
             {'receptor': is_known_molecule, 'ligand': is_known_molecule,
              'solvent': is_known_solvent},
 
-            {'solute': is_known_molecule, 'solvent': is_known_solvent},
+            {'solute': is_known_molecule, 'solvent1': is_known_solvent,
+             'solvent2': is_known_solvent},
 
             {'complex_path': Use(system_files('amber')), 'solvent_path': Use(system_files('amber')),
              'ligand_dsl': str, 'solvent': is_known_solvent},
@@ -1779,9 +1837,13 @@ class YamlBuilder:
                     system_dir = os.path.dirname(self._db.get_system_files_paths(system_id)[0])
                     err_msg = 'system setup directory {}'.format(system_dir)
                 elif not is_sys_setup:  # then this must go through the pipeline
-                    receptor_id = self._db.systems[system_id]['receptor']
-                    ligand_id = self._db.systems[system_id]['ligand']
-                    for molecule_id in [receptor_id, ligand_id]:
+                    try:  # binding free energy system
+                        receptor_id = self._db.systems[system_id]['receptor']
+                        ligand_id = self._db.systems[system_id]['ligand']
+                        molecule_ids = [receptor_id, ligand_id]
+                    except KeyError:  # partition/solvation free energy system
+                        molecule_ids = [self._db.systems[system_id]['solute']]
+                    for molecule_id in molecule_ids:
                         is_processed = self._db.is_molecule_setup(molecule_id)[1]
                         if is_processed and not resume_setup:
                             err_msg = 'molecule {} file'.format(molecule_id)
@@ -1825,8 +1887,11 @@ class YamlBuilder:
             system_id = experiment['system']
             sys_descr = self._db.systems[system_id]  # system description
             try:
-                components = (sys_descr['receptor'], sys_descr['ligand'], sys_descr['solvent'])
-                logger.info('Setting up the system for {}, {} and {}'.format(*components))
+                try:  # binding free energy system
+                    components = (sys_descr['receptor'], sys_descr['ligand'], sys_descr['solvent'])
+                except KeyError:  # partition/solvation free energy system
+                    components = (sys_descr['solute'], sys_descr['solvent1'], sys_descr['solvent2'])
+                logger.info('Setting up the systems for {}, {} and {}'.format(*components))
                 self._db.get_system(system_id, exp_opts['pack'])
             except KeyError:  # system files are given directly by the user
                 pass
@@ -1851,10 +1916,12 @@ class YamlBuilder:
 
         # Molecules section data
         try:
-            receptor_id = sys_descr['receptor']
-            ligand_id = sys_descr['ligand']
-            mol_section = {receptor_id: self._raw_yaml['molecules'][receptor_id],
-                           ligand_id: self._raw_yaml['molecules'][ligand_id],}
+            try:  # binding free energy
+                molecule_ids = [sys_descr['receptor'], sys_descr['ligand']]
+            except KeyError:  # partition/solvation free energy
+                molecule_ids = [sys_descr['solute']]
+            mol_section = {mol_id: self._raw_yaml['molecules'][mol_id]
+                           for mol_id in molecule_ids}
 
             # Copy to avoid modifying _raw_yaml when updating paths
             mol_section = copy.deepcopy(mol_section)
@@ -1862,8 +1929,12 @@ class YamlBuilder:
             mol_section = {}
 
         # Solvents section data
-        solvent_id = sys_descr['solvent']
-        sol_section = {solvent_id: self._raw_yaml['solvents'][solvent_id]}
+        try:  # binding free energy
+            solvent_ids = [sys_descr['solvent']]
+        except KeyError:  # partition/solvation free energy
+            solvent_ids = [sys_descr['solvent1'], sys_descr['solvent2']]
+        sol_section = {sol_id: self._raw_yaml['solvents'][sol_id]
+                       for sol_id in solvent_ids}
 
         # Systems section data
         system_id = experiment['system']
@@ -1995,9 +2066,14 @@ class YamlBuilder:
                 # Export YAML file for reproducibility
                 self._generate_yaml(experiment, os.path.join(results_dir, exp_name + '.yaml'))
 
-                # Get ligand resname for alchemical atom selection
+                # Get molecule resname for alchemical atom selection
                 if self._db.is_system_setup(system_id)[1]:  # system went through pipeline
-                    ligand_descr = self._db.molecules[self._db.systems[system_id]['ligand']]
+                    try:  # binding free energy calculation
+                        alchemical_molecule_id = self._db.systems[system_id]['ligand']
+                    except KeyError:  # partition/solvation free energy calculation
+                        alchemical_molecule_id = self._db.systems[system_id]['solute']
+
+                    ligand_descr = self._db.molecules[alchemical_molecule_id]
                     ligand_dsl = utils.get_mol2_resname(ligand_descr['filepath'])
                     if ligand_dsl is None:
                         ligand_dsl = 'MOL'
@@ -2006,15 +2082,36 @@ class YamlBuilder:
                     ligand_dsl = self._db.systems[system_id]['ligand_dsl']
                 logger.debug('DSL string for the ligand: "{}"'.format(ligand_dsl))
 
-                # Prepare system
-                solvent_id = self._db.systems[system_id]['solvent']
-                system_options = utils.merge_dict(self._db.solvents[solvent_id], exp_opts)
+                # Determine complex and solvent phase solvents
+                try:  # binding free energy calculations
+                    solvent_ids = [self._db.systems[system_id]['solvent'],
+                                   self._db.systems[system_id]['solvent']]
+                except KeyError:  # partition/solvation free energy calculations
+                    solvent_ids = [self._db.systems[system_id]['solvent1'],
+                                   self._db.systems[system_id]['solvent2']]
+
+                # Determine if this will be an explicit or implicit solvent simulation
+                if self._db.solvents[solvent_ids[0]]['nonbonded_method'] == openmm.app.NoCutoff:
+                    phases = ['complex-implicit', 'solvent-implicit']
+                else:
+                    phases = ['complex-explicit', 'solvent-explicit']
+
+                # Prepare Yank arguments
+                systems = {}
+                positions = {}
+                atom_indices = {}
                 system_files_paths = self._db.get_system(system_id, exp_opts['pack'])
-                system_files_paths = {'solvent': [system_files_paths[0], system_files_paths[1]],
-                                      'complex': [system_files_paths[2], system_files_paths[3]]}
                 gromacs_include_dir = self._db.systems[system_id].get('gromacs_include_dir', None)
-                phases, systems, positions, atom_indices = pipeline.prepare_system(system_files_paths,
-                                    ligand_dsl, system_options, gromacs_include_dir=gromacs_include_dir)
+                for i, phase in enumerate(phases):
+                    solvent_id = solvent_ids[i]
+                    positions_file_path = system_files_paths[0 + 2 * i]
+                    topology_file_path = system_files_paths[1 + 2 * i]
+                    system_options = utils.merge_dict(self._db.solvents[solvent_id], exp_opts)
+
+                    logger.info("Reading phase {}".format(phase))
+                    yank_args = pipeline.prepare_phase(positions_file_path, topology_file_path, ligand_dsl,
+                                                       system_options, gromacs_include_dir=gromacs_include_dir)
+                    systems[phase], positions[phase], atom_indices[phase] = yank_args
 
                 for phase in phases:
                     if len(atom_indices[phase]['ligand']) == 0:
