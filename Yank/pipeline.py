@@ -180,19 +180,20 @@ def get_leap_recommended_pbradii(implicit_solvent):
         raise ValueError('Implicit solvent {} is not supported.'.format(implicit_solvent))
 
 
-def prepare_system(system_files_paths, ligand_dsl, system_options,
-                   gromacs_include_dir=None, verbose=False):
-    """Create a system from prmtop and inpcrd files.
+def prepare_phase(positions_file_path, topology_file_path, ligand_dsl, system_options,
+                  gromacs_include_dir=None, verbose=False):
+    """Create a Yank arguments for a phase from system files.
 
     Parameters
     ----------
-    system_files_paths : dict
-        system_files_paths[phase] is a list-like object containing the path to topology
-        and system files (e.g. 'complex' -> ['complex.inpcrd', 'complex.prmtop'].
+    positions_file_path : str
+        Path to system position file (e.g. 'complex.inpcrd' or 'complex.gro').
+    topology_file_path : str
+        Path to system topology file (e.g. 'complex.prmtop' or 'complex.top').
     ligand_dsl : str
         MDTraj DSL string that specify the ligand atoms.
     system_options : dict
-        A dictionary containing options to pass to createSystem().
+        system_options[phase] is a a dictionary containing options to pass to createSystem().
     gromacs_include_dir : str, optional
         Path to directory in which to look for other files included from the gromacs top file.
     verbose : bool
@@ -200,116 +201,96 @@ def prepare_system(system_files_paths, ligand_dsl, system_options,
 
     Returns
     -------
-    phases : list of str
-        Phases (thermodynamic legs) of the calculation.
-    systems : dict
-        systems[phase] is the OpenMM System reference object for phase 'phase'.
+    system : simtk.openmm.System
+        OpenMM System reference object from system files.
     positions : dict
-        positions[phase] is a numpy array of positions for initializing replicas.
+        A numpy array of positions for initializing replicas.
     atom_indices : dict
-        atom_indices[phase][component] is list of atom indices for component 'component'
-        in phase 'phase' as returned by find_components().
+        atom_indices[component] is list of atom indices for component 'component' as
+        returned by find_components().
 
     """
-    systems = {}  # systems[phase] is the System object associated with phase 'phase'
-    positions = {}  # positions[phase] is a list of coordinates associated with phase 'phase'
-    atom_indices = {}  # ligand_atoms[phase] is a list of ligand atom indices of phase 'phase'
+    # Load system files
+    if os.path.splitext(topology_file_path)[1] == '.prmtop':
+        # Read Amber prmtop and inpcrd files
+        if verbose:
+            logger.info("prmtop: %s" % topology_file_path)
+            logger.info("inpcrd: %s" % positions_file_path)
+        topology_file = openmm.app.AmberPrmtopFile(topology_file_path)
+        positions_file = openmm.app.AmberInpcrdFile(positions_file_path)
+        box_vectors = positions_file.boxVectors
+        create_system_args = set(inspect.getargspec(openmm.app.AmberPrmtopFile.createSystem).args)
+    else:
+        # Read Gromacs top and gro files
+        if verbose:
+            logger.info("top: %s" % topology_file_path)
+            logger.info("gro: %s" % positions_file_path)
+
+        positions_file = openmm.app.GromacsGroFile(positions_file_path)
+        box_vectors = positions_file.getPeriodicBoxVectors()
+        topology_file = openmm.app.GromacsTopFile(topology_file_path,
+                                                  periodicBoxVectors=box_vectors,
+                                                  includeDir=gromacs_include_dir)
+        create_system_args = set(inspect.getargspec(openmm.app.GromacsTopFile.createSystem).args)
 
     # Prepare createSystem() options
     # OpenMM adopts camel case convention so we need to change the options format.
-    # We will use inspection to filter the options to pass to createSystem()
+    # Then we filter system options according to specific createSystem() args
     system_options = {utils.underscore_to_camelcase(key): value
                       for key, value in system_options.items()}
+    system_options = {arg: system_options[arg] for arg in create_system_args
+                      if arg in system_options}
 
-    # Prepare phases of calculation.
-    for phase_prefix in system_files_paths:
+    # Determine if this will be an explicit or implicit solvent simulation.
+    if box_vectors is not None:
+        is_periodic = True
+    else:
+        is_periodic = False
 
-        # Load system files
-        positions_file_path = system_files_paths[phase_prefix][0]
-        topology_file_path = system_files_paths[phase_prefix][1]
-        if os.path.splitext(topology_file_path)[1] == '.prmtop':
-            # Read Amber prmtop and inpcrd files
-            if verbose:
-                logger.info("reading phase %s: " % phase_prefix)
-                logger.info("prmtop: %s" % topology_file_path)
-                logger.info("inpcrd: %s" % positions_file_path)
-            topology_file = openmm.app.AmberPrmtopFile(topology_file_path)
-            positions_file = openmm.app.AmberInpcrdFile(positions_file_path)
-            box_vectors = positions_file.boxVectors
-            create_system_args = set(inspect.getargspec(openmm.app.AmberPrmtopFile.createSystem).args)
-        else:
-            # Read Gromacs top and gro files
-            if verbose:
-                logger.info("reading phase %s: " % phase_prefix)
-                logger.info("top: %s" % topology_file_path)
-                logger.info("gro: %s" % positions_file)
-
-            positions_file = openmm.app.GromacsGroFile(positions_file_path)
-            box_vectors = positions_file.getPeriodicBoxVectors()
-            topology_file = openmm.app.GromacsTopFile(topology_file_path,
-                                                      periodicBoxVectors=box_vectors,
-                                                      includeDir=gromacs_include_dir)
-            create_system_args = set(inspect.getargspec(openmm.app.GromacsTopFile.createSystem).args)
-
-        # Filter system options according to specific createSystem args
-        system_options = {arg: system_options[arg] for arg in create_system_args
-                          if arg in system_options}
-
-        # Determine if this will be an explicit or implicit solvent simulation.
-        if box_vectors is not None:
-            is_periodic = True
-            phase_suffix = 'explicit'
-        else:
-            is_periodic = False
-            phase_suffix = 'implicit'
-        phase = '{}-{}'.format(phase_prefix, phase_suffix)
-
-        # Adjust nonbondedMethod
-        # TODO: Ensure that selected method is appropriate.
-        if 'nonbondedMethod' not in system_options:
-            if is_periodic:
-                system_options['nonbondedMethod'] = openmm.app.CutoffPeriodic
-            else:
-                system_options['nonbondedMethod'] = openmm.app.NoCutoff
-
-        # Check for solvent configuration inconsistencies
-        # TODO: Check to make sure both files agree on explicit/implicit.
-        err_msg = ''
+    # Adjust nonbondedMethod
+    # TODO: Ensure that selected method is appropriate.
+    if 'nonbondedMethod' not in system_options:
         if is_periodic:
-            if 'implicitSolvent' in system_options:
-                err_msg = 'Found periodic box in inpcrd file and implicitSolvent specified.'
-            if system_options['nonbondedMethod'] == openmm.app.NoCutoff:
-                err_msg = 'Found periodic box in inpcrd file but nonbondedMethod is NoCutoff'
+            system_options['nonbondedMethod'] = openmm.app.CutoffPeriodic
         else:
-            if system_options['nonbondedMethod'] != openmm.app.NoCutoff:
-                err_msg = 'nonbondedMethod is NoCutoff but could not find periodic box in inpcrd.'
-        if len(err_msg) != 0:
-            logger.error(err_msg)
-            raise RuntimeError(err_msg)
+            system_options['nonbondedMethod'] = openmm.app.NoCutoff
 
-        # Create system and update box vectors (if needed)
-        systems[phase] = topology_file.createSystem(removeCMMotion=False, **system_options)
-        if is_periodic:
-            systems[phase].setDefaultPeriodicBoxVectors(*box_vectors)
+    # Check for solvent configuration inconsistencies
+    # TODO: Check to make sure both files agree on explicit/implicit.
+    err_msg = ''
+    if is_periodic:
+        if 'implicitSolvent' in system_options:
+            err_msg = 'Found periodic box in inpcrd file and implicitSolvent specified.'
+        if system_options['nonbondedMethod'] == openmm.app.NoCutoff:
+            err_msg = 'Found periodic box in inpcrd file but nonbondedMethod is NoCutoff'
+    else:
+        if system_options['nonbondedMethod'] != openmm.app.NoCutoff:
+            err_msg = 'nonbondedMethod is NoCutoff but could not find periodic box in inpcrd.'
+    if len(err_msg) != 0:
+        logger.error(err_msg)
+        raise RuntimeError(err_msg)
 
-        # Store numpy positions
-        positions[phase] = positions_file.getPositions(asNumpy=True)
+    # Create system and update box vectors (if needed)
+    system = topology_file.createSystem(removeCMMotion=False, **system_options)
+    if is_periodic:
+        system.setDefaultPeriodicBoxVectors(*box_vectors)
 
-        # Check to make sure number of atoms match between prmtop and inpcrd.
-        topology_natoms = systems[phase].getNumParticles()
-        positions_natoms = positions[phase].shape[0]
-        if topology_natoms != positions_natoms:
-            err_msg = "Atom number mismatch: {} has {} atoms; {} has {} atoms.".format(
-                topology_file_path, topology_natoms, positions_file_path, positions_natoms)
-            logger.error(err_msg)
-            raise RuntimeError(err_msg)
+    # Store numpy positions
+    positions = positions_file.getPositions(asNumpy=True)
 
-        # Find ligand atoms and receptor atoms
-        atom_indices[phase] = find_components(systems[phase], topology_file.topology, ligand_dsl)
+    # Check to make sure number of atoms match between prmtop and inpcrd.
+    topology_natoms = system.getNumParticles()
+    positions_natoms = positions.shape[0]
+    if topology_natoms != positions_natoms:
+        err_msg = "Atom number mismatch: {} has {} atoms; {} has {} atoms.".format(
+            topology_file_path, topology_natoms, positions_file_path, positions_natoms)
+        logger.error(err_msg)
+        raise RuntimeError(err_msg)
 
-    phases = systems.keys()
+    # Find ligand atoms and receptor atoms
+    atom_indices = find_components(system, topology_file.topology, ligand_dsl)
 
-    return [phases, systems, positions, atom_indices]
+    return system, positions, atom_indices
 
 
 if __name__ == '__main__':
