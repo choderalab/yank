@@ -111,7 +111,7 @@ def get_template_script(output_dir='.'):
         toluene-smiles:
             smiles: Cc1ccccc1
             parameters: antechamber
-        toluene:
+        toluene-name:
             name: toluene
             parameters: antechamber
         Abl:
