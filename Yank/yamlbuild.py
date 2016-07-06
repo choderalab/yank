@@ -764,7 +764,10 @@ class SetupDatabase:
             # we don't need to keep track of the molecules we have already generated
             if extension is None or extension == '.smiles' or extension == '.csv':
                 if not utils.is_openeye_installed():
-                    raise RuntimeError('Cannot support {} files without OpenEye'.format(extension[1:]))
+                    if extension is None:
+                        raise RuntimeError('Cannot generate molecule {} without OpenEye'.format(mol_id))
+                    else:
+                        raise RuntimeError('Cannot support {} files without OpenEye'.format(extension[1:]))
 
                 # Retrieve the first SMILES string, we take the last column
                 if extension is not None:
