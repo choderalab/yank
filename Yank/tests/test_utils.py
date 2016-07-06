@@ -250,7 +250,7 @@ def test_TLeap_script():
     saveAmberParm complex complex.prmtop complex.inpcrd
     savePDB complex complex.pdb
     solvateBox ligand TIP3PBOX 10.0 iso
-    saveAmberParm ligand solvent.inpcrd solvent.prmtop
+    saveAmberParm ligand solvent.prmtop solvent.inpcrd
     savePDB ligand solvent.pdb
 
     quit
@@ -302,5 +302,5 @@ def test_TLeap_export_run():
         assert os.path.isfile(output_path + '.inpcrd')
         assert os.path.getsize(output_path + '.prmtop') > 0
         assert os.path.getsize(output_path + '.inpcrd') > 0
-        assert os.path.isfile(os.path.join(tmp_dir, 'leap.log'))
+        assert os.path.isfile(os.path.join(tmp_dir, 'benzene.leap.log'))
 
