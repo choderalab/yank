@@ -33,9 +33,119 @@ from alchemy import AbsoluteAlchemicalFactory
 from sampling import ModifiedHamiltonianExchange # TODO: Modify to 'from yank.sampling import ModifiedHamiltonianExchange'?
 from restraints import HarmonicReceptorLigandRestraint, FlatBottomReceptorLigandRestraint
 
-#=============================================================================================
+
+# ==============================================================================
+# Class that define a single thermodynamic leg (phase) of the calculation
+# ==============================================================================
+
+class AlchemicalPhase(object):
+    """A single thermodynamic leg (phase) of an alchemical free energy calculation.
+
+    Attributes
+    ----------
+    name : str
+        The name of the alchemical phase.
+    cycle_direction : 1 or -1
+        The direction of the alchemical phase in the thermodynamic cycle. If 1
+        the difference in free energy calculated for this phase is summed to the
+        final DeltaG, if -1 it is subtracted.
+    reference_system : simtk.openmm.System
+        The reference system object from which alchemical intermediates are
+        to be constructed.
+    topology : simtk.openmm.app.Topology
+        The topology object for the reference_system.
+    positions : list of simtk.unit.Quantity natoms x 3 array with units of length
+        Atom positions for the system used to seed replicas in a round-robin way.
+    atom_indices : dict of list of int
+        atom_indices[component] is the set of atom indices associated with
+        component, where component is one of ('ligand', 'receptor', 'complex',
+        'solvent', 'ligand_counterions').
+    thermodynamic_state : ThermodynamicState
+        Thermodynamic state from which reference temperature and pressure are
+        to be taken.
+    protocols : list of AlchemicalState
+        The alchemical protocol used for the calculation.
+
+    """
+    @property
+    def cycle_direction(self):
+        return self._cycle_direction
+
+    @cycle_direction.setter
+    def cycle_direction(self, value):
+        if value == '+':
+            self._cycle_direction = 1
+        elif value == '-':
+            self._cycle_direction = -1
+        else:
+            self._cycle_direction = int(np.sign(value))
+            assert self._cycle_direction != 0
+
+    @property
+    def positions(self):
+        return self._positions
+
+    @positions.setter
+    def positions(self, value):
+        # Make sure positions argument is a list of coordinate snapshots
+        if hasattr(value, 'unit'):
+            value = [value]  # Wrap in list
+
+        self._positions = [0 for _ in range(len(value))]
+
+        # Check the dimensions of positions
+        for i in range(len(value)):
+            # Make sure it is recast as a np array
+            positions_unit = value[i].unit
+            self._positions[i] = unit.Quantity(np.array(value[i] / positions_unit),
+                                               positions_unit)
+
+    def __init__(self, name, cycle_direction, reference_system, reference_topology,
+                 positions, atom_indices, thermodynamic_state, protocols):
+        """Constructor.
+
+        Parameters
+        ----------
+        name : str
+            The name of the phase being initialized.
+        cycle_direction : '+', '-' or int
+            The direction of the phase in the thermodynamic cycle. If an integer,
+            it cannot be 0.
+        reference_system : simtk.openmm.System
+            The reference system object from which alchemical intermediates are
+            to be constructed.
+        topology : simtk.openmm.app.Topology
+            The topology object for the reference_system.
+        positions : (list of) simtk.unit.Quantity natoms x 3 array with units of length
+            Initial atom positions for the system. If a single simtk.unit.Quantity
+            natoms x 3 array, all replicas start from the same positions. If a
+            list of simtk.unit.Quantity natoms x 3 arrays are found, they are
+            used to seed replicas in a round-robin way.
+        atom_indices : dict of list of int
+            atom_indices[component] is the set of atom indices associated with
+            component, where component is one of ('ligand', 'receptor', 'complex',
+            'solvent', 'ligand_counterions').
+        thermodynamic_state : ThermodynamicState
+            Thermodynamic state from which reference temperature and pressure are
+            to be taken.
+        protocols : list of AlchemicalState
+            The alchemical protocol used for the calculation.
+
+        """
+        self.name = name
+        self.cycle_direction = cycle_direction
+        self.reference_system = reference_system
+        self.reference_topology = reference_topology
+        self.positions = positions
+        self.atom_indices = atom_indices
+        self.thermodynamic_state = thermodynamic_state
+        self.protocols = protocols
+
+
+
+# ==============================================================================
 # YANK class to manage multiple thermodynamic transformations
-#=============================================================================================
+# ==============================================================================
 
 class Yank(object):
     """
