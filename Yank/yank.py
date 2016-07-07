@@ -19,7 +19,6 @@ Interface for automated free energy calculations.
 import os
 import os.path
 import copy
-import glob
 import inspect
 import logging
 logger = logging.getLogger(__name__)
@@ -32,6 +31,8 @@ import simtk.openmm as openmm
 from alchemy import AbsoluteAlchemicalFactory
 from sampling import ModifiedHamiltonianExchange # TODO: Modify to 'from yank.sampling import ModifiedHamiltonianExchange'?
 from restraints import HarmonicReceptorLigandRestraint, FlatBottomReceptorLigandRestraint
+
+import utils
 
 
 # ==============================================================================
@@ -227,33 +228,6 @@ class Yank(object):
             raise TypeError('got an unexpected keyword arguments {}'.format(
                 ', '.join(parameters.keys())))
 
-    def _find_phases_in_store_directory(self):
-        """
-        Build a list of phases in the store directory.
-
-        Parameters
-        ----------
-        store_directory : str
-           The directory to examine for stored phase datafiles.
-
-        Returns
-        -------
-        phases : list of str
-           The names of phases found.
-
-        """
-        phases = list()
-        fullpaths = glob.glob(os.path.join(self._store_directory, '*.nc'))
-        for fullpath in fullpaths:
-            [filepath, filename] = os.path.split(fullpath)
-            [shortname, extension] = os.path.splitext(filename)
-            phases.append(shortname)
-
-        if len(phases) == 0:
-            raise Exception("Could not find any valid YANK store (*.nc) files in store directory: %s" % self._store_directory)
-
-        return phases
-
     def resume(self, phases=None):
         """
         Resume an existing set of alchemical free energy calculations found in current store directory.
@@ -267,8 +241,8 @@ class Yank(object):
         """
         # If no phases specified, construct a list of phases from the filename prefixes in the store directory.
         if phases is None:
-            phases = self._find_phases_in_store_directory()
-        self._phases = phases
+            phases = utils.find_phases_in_store_directory(self._store_directory)
+        self._phases = phases.keys()
 
         # Construct store filenames.
         self._store_filenames = { phase : os.path.join(self._store_directory, phase + '.nc') for phase in self._phases }

@@ -2,6 +2,7 @@ import os
 import re
 import sys
 import copy
+import glob
 import shutil
 import signal
 import inspect
@@ -634,6 +635,35 @@ def get_data_filename(relative_path):
         raise ValueError("Sorry! %s does not exist. If you just added it, you'll have to re-install" % fn)
 
     return fn
+
+
+def find_phases_in_store_directory(store_directory):
+    """Build a list of phases in the store directory.
+
+    Parameters
+    ----------
+    store_directory : str
+       The directory to examine for stored phase NetCDF data files.
+
+    Returns
+    -------
+    phases : dict of str
+       A dictionary phase_name -> file_path that maps phase names to its NetCDF
+       file path.
+
+    """
+    full_paths = glob.glob(os.path.join(store_directory, '*.nc'))
+
+    phases = {}
+    for full_path in full_paths:
+        file_name = os.path.basename(full_path)
+        short_name, _ = os.path.splitext(file_name)
+        phases[short_name] = full_path
+
+    if len(phases) == 0:
+        raise RuntimeError("Could not find any valid YANK store (*.nc) files in "
+                           "store directory: {}".format(store_directory))
+    return phases
 
 
 def is_iterable_container(value):
