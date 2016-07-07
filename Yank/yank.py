@@ -386,8 +386,8 @@ class Yank(object):
                 logger.error(err_msg)
                 raise RuntimeError(err_msg)
 
-        # Create metadata storage.
-        metadata = dict()
+        # Inizialize metadata storage.
+        metadata = {'cycle_direction': alchemical_phase.cycle_direction}
 
         # TODO: Use more general approach to determine whether system is periodic.
         is_periodic = self._is_periodic(reference_system)
