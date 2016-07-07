@@ -61,9 +61,11 @@ def test_no_alchemical_atoms():
     # Create parameters. With the exception of atom_indices, all other
     # parameters must be legal, we don't want to catch an exception
     # different than the one we are testing.
-    phase = AlchemicalPhase('solvent-implicit', '+', toluene.system, toluene.topology,
-                            toluene.positions, {'ligand': []},
-                            AbsoluteAlchemicalFactory.defaultSolventProtocolImplicit())
+    phase = AlchemicalPhase(name='solvent-implicit', cycle_direction='+',
+                            reference_system=toluene.system,
+                            reference_topology=toluene.topology,
+                            positions=toluene.positions, atom_indices={'ligand': []},
+                            protocol=AbsoluteAlchemicalFactory.defaultSolventProtocolImplicit())
     thermodynamic_state = ThermodynamicState(temperature=300.0*unit.kelvin)
 
     # Create new simulation.
