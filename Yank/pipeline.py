@@ -22,6 +22,7 @@ import mdtraj
 from simtk import openmm, unit
 
 import utils
+from yank import AlchemicalPhase
 
 
 # ==============================================================================
@@ -201,13 +202,9 @@ def prepare_phase(positions_file_path, topology_file_path, ligand_dsl, system_op
 
     Returns
     -------
-    system : simtk.openmm.System
-        OpenMM System reference object from system files.
-    positions : dict
-        A numpy array of positions for initializing replicas.
-    atom_indices : dict
-        atom_indices[component] is list of atom indices for component 'component' as
-        returned by find_components().
+    alchemical_phase : AlchemicalPhase
+        The alchemical phase for Yank calculation with unspecified name, cycle_direction,
+        and protocol.
 
     """
     # Load system files
@@ -290,7 +287,9 @@ def prepare_phase(positions_file_path, topology_file_path, ligand_dsl, system_op
     # Find ligand atoms and receptor atoms
     atom_indices = find_components(system, topology_file.topology, ligand_dsl)
 
-    return system, positions, atom_indices
+    alchemical_phase = AlchemicalPhase('', '+', system, topology_file.topology,
+                                       positions, atom_indices, None)
+    return alchemical_phase
 
 
 if __name__ == '__main__':

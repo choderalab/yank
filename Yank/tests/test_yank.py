@@ -21,18 +21,14 @@ This code is licensed under the latest available version of the GNU General Publ
 # GLOBAL IMPORTS
 #=============================================================================================
 
-import numpy as np
-from simtk import openmm
+
 from openmmtools import testsystems
 from mdtraj.utils import enter_temp_directory
 
 from nose import tools
 
-from yank import Yank
+from yank.yank import *
 from yank.repex import ThermodynamicState
-
-import logging
-logger = logging.getLogger(__name__)
 
 #=============================================================================================
 # MODULE CONSTANTS
@@ -60,21 +56,20 @@ def test_unknown_parameters():
 @tools.raises(ValueError)
 def test_no_alchemical_atoms():
     """Test whether Yank raises exception when no alchemical atoms are specified."""
-    phase = 'solvent-implicit'
     toluene = testsystems.TolueneImplicit()
 
-    # Create parameters. All the parameters must be legal, we don't
-    # want to catch an exception different than the one we are testing.
-    phases = [phase]
-    systems = {phase: toluene.system}
-    positions = {phase: toluene.positions}
-    atom_indices = {phase: {'ligand': []}}
+    # Create parameters. With the exception of atom_indices, all other
+    # parameters must be legal, we don't want to catch an exception
+    # different than the one we are testing.
+    phase = AlchemicalPhase('solvent-implicit', '+', toluene.system, toluene.topology,
+                            toluene.positions, {'ligand': []},
+                            AbsoluteAlchemicalFactory.defaultSolventProtocolImplicit())
     thermodynamic_state = ThermodynamicState(temperature=300.0*unit.kelvin)
 
     # Create new simulation.
     with enter_temp_directory():
         yank = Yank(store_directory='output')
-        yank.create(phases, systems, positions, atom_indices, thermodynamic_state)
+        yank.create(thermodynamic_state, phase)
 
 
 def notest_LennardJonesPair(box_width_nsigma=6.0):
@@ -143,14 +138,12 @@ def notest_LennardJonesPair(box_width_nsigma=6.0):
     protocols[phase] = alchemical_states
 
     # Create phases.
-    systems = { phase : system }
-    positions = { phase : positions }
-    phases = [phase]
-    atom_indices = { 'complex-explicit' : { 'ligand' : [1] } }
+    alchemical_phase = AlchemicalPhase(phase, '+', system, test.topology, positions,
+                                       {'complex-explicit': {'ligand': [1]}}, alchemical_states)
 
     # Create new simulation.
     yank = Yank(store_dir, **options)
-    yank.create(phases, systems, positions, atom_indices, thermodynamic_state, protocols=protocols)
+    yank.create(thermodynamic_state, alchemical_phase)
 
     # Run the simulation.
     yank.run()
