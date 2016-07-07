@@ -17,6 +17,9 @@ import mdtraj
 import numpy as np
 from simtk import openmm, unit
 from simtk.openmm import app
+
+from alchemy import AbsoluteAlchemicalFactory
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -269,7 +272,7 @@ def solvate_and_minimize(topology, positions, phase=''):
 # PREPARE YANK CALCULATION
 # ==============================================================================
 
-from yank.yank import Yank
+from yank.yank import AlchemicalPhase, Yank
 
 # Set options.
 options = dict()
@@ -294,9 +297,14 @@ options['mc_displacement_sigma'] = None
 phase_prefixes = ['solvent', 'complex'] # list of calculation phases (thermodynamic legs) to set up
 components = ['ligand', 'receptor', 'solvent'] # components of the binding system
 phase_prefixes = ['complex'] # DEBUG, since 'solvent' doesn't work yet
-systems = dict() # systems[phase] is the System object associated with phase 'phase'
-positions = dict() # positions[phase] is a list of coordinates associated with phase 'phase'
-atom_indices = dict() # ligand_atoms[phase] is a list of ligand atom indices associated with phase 'phase'
+cycle_directions = {'complex': '+', 'solvent': '-'}
+if is_periodic:
+    protocols = {'complex': AbsoluteAlchemicalFactory.defaultComplexProtocolExplicit(),
+                 'solvent': AbsoluteAlchemicalFactory.defaultSolventProtocolExplicit()}
+else:
+    protocols = {'complex': AbsoluteAlchemicalFactory.defaultComplexProtocolImplicit(),
+                 'solvent': AbsoluteAlchemicalFactory.defaultSolventProtocolImplicit()}
+alchemical_phases = []  # alchemical phases of the calculations
 for phase_prefix in phase_prefixes:
     # Retain the whole system
     if is_periodic:
@@ -339,22 +347,19 @@ for phase_prefix in phase_prefixes:
     filename = os.path.join(workdir, phase + '-initial.pdb')
     app.PDBFile.writeFile(solvated_topology_openmm, solvated_positions, open(filename, 'w'))
 
-    # Record components.
-    systems[phase] = solvated_system
-    positions[phase] = solvated_positions
-
     # Identify various components.
     solvated_topology_mdtraj = mdtraj.Topology.from_openmm(solvated_topology_openmm)
-    atom_indices[phase] = dict()
+    atom_indices = dict()
     for component in components:
-        atom_indices[phase][component] = solvated_topology_mdtraj.select(component_dsl[component])
+        atom_indices[component] = solvated_topology_mdtraj.select(component_dsl[component])
 
     # DEBUG
     print "Atom indices of ligand:"
     print atom_indices[phase]['ligand']
 
-# Create list of phase names.
-phases = systems.keys()
+    alchemical_phases.append(AlchemicalPhase(phase, cycle_directions[phase_prefix], solvated_system,
+                                             solvated_topology_openmm, solvated_positions, atom_indices,
+                                             protocols[phase_prefix]))
 
 # Create reference thermodynamic state.
 from yank.repex import ThermodynamicState # TODO: Fix this weird import path to something more sane, like 'from yank.repex import ThermodynamicState'
@@ -367,6 +372,6 @@ else:
 
 # Create new simulation.
 yank = Yank(store_dir, **options)
-yank.create(phases, systems, positions, atom_indices, thermodynamic_state)
+yank.create(thermodynamic_state, *alchemical_phases)
 
 # TODO: Write PDB files

@@ -2095,45 +2095,43 @@ class YamlBuilder:
 
                 # Determine if this will be an explicit or implicit solvent simulation
                 if self._db.solvents[solvent_ids[0]]['nonbonded_method'] == openmm.app.NoCutoff:
-                    phases = ['complex-implicit', 'solvent-implicit']
+                    phases_names = ['complex-implicit', 'solvent-implicit']
                 else:
-                    phases = ['complex-explicit', 'solvent-explicit']
+                    phases_names = ['complex-explicit', 'solvent-explicit']
+
+                # Get protocols as list of AlchemicalStates
+                alchemical_paths = self._get_alchemical_paths(experiment['protocol'])
+                alchemical_paths = [alchemical_paths['complex'], alchemical_paths['solvent']]
 
                 # Prepare Yank arguments
-                systems = {}
-                positions = {}
-                atom_indices = {}
+                phases = [None, None]
+                cycle_directions = ['+', '-']
                 system_files_paths = self._db.get_system(system_id, exp_opts['pack'])
                 gromacs_include_dir = self._db.systems[system_id].get('gromacs_include_dir', None)
-                for i, phase in enumerate(phases):
+                for i, phase_name in enumerate(phases_names):
                     solvent_id = solvent_ids[i]
                     positions_file_path = system_files_paths[0 + 2 * i]
                     topology_file_path = system_files_paths[1 + 2 * i]
                     system_options = utils.merge_dict(self._db.solvents[solvent_id], exp_opts)
 
-                    logger.info("Reading phase {}".format(phase))
-                    yank_args = pipeline.prepare_phase(positions_file_path, topology_file_path, ligand_dsl,
+                    logger.info("Reading phase {}".format(phase_name))
+                    phases[i] = pipeline.prepare_phase(positions_file_path, topology_file_path, ligand_dsl,
                                                        system_options, gromacs_include_dir=gromacs_include_dir)
-                    systems[phase], positions[phase], atom_indices[phase] = yank_args
+                    phases[i].name = phase_name
+                    phases[i].cycle_direction = cycle_directions[i]
+                    phases[i].protocol = alchemical_paths[i]
 
                 for phase in phases:
-                    if len(atom_indices[phase]['ligand']) == 0:
+                    if len(phase.atom_indices['ligand']) == 0:
                         raise RuntimeError('DSL string "{}" did not select any atom for '
-                                           'the ligand in phase {}.'.format(ligand_dsl, phase))
+                                           'the ligand in phase {}.'.format(ligand_dsl, phase.name))
 
                 # Create thermodynamic state
                 thermodynamic_state = ThermodynamicState(temperature=exp_opts['temperature'],
                                                          pressure=exp_opts['pressure'])
 
-                # Get protocols as list of AlchemicalStates and adjust phase name
-                alchemical_paths = self._get_alchemical_paths(experiment['protocol'])
-                suffix = 'explicit' if 'explicit' in phases[0] else 'implicit'
-                alchemical_paths = {phase + '-' + suffix: protocol
-                                    for phase, protocol in alchemical_paths.items()}
-
                 # Create new simulation
-                yank.create(phases, systems, positions, atom_indices,
-                            thermodynamic_state, protocols=alchemical_paths)
+                yank.create(thermodynamic_state, *phases)
 
             # Run the simulation
             if self._mpicomm:  # wait for the simulation to be prepared

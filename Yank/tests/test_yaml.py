@@ -1421,7 +1421,7 @@ def test_charged_ligand():
             inpcrd_file_path = system_files_paths[phase][0]
             prmtop_file_path = system_files_paths[phase][1]
             atom_indices = pipeline.prepare_phase(inpcrd_file_path, prmtop_file_path, 'resname ASP',
-                                                  {'nonbondedMethod': openmm.app.PME})[2]
+                                                  {'nonbondedMethod': openmm.app.PME}).atom_indices
             topology = openmm.app.AmberPrmtopFile(prmtop_file_path).topology
 
             assert len(atom_indices['ligand_counterions']) == 1

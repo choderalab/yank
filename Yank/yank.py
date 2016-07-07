@@ -33,9 +33,113 @@ from alchemy import AbsoluteAlchemicalFactory
 from sampling import ModifiedHamiltonianExchange # TODO: Modify to 'from yank.sampling import ModifiedHamiltonianExchange'?
 from restraints import HarmonicReceptorLigandRestraint, FlatBottomReceptorLigandRestraint
 
-#=============================================================================================
+
+# ==============================================================================
+# Class that define a single thermodynamic leg (phase) of the calculation
+# ==============================================================================
+
+class AlchemicalPhase(object):
+    """A single thermodynamic leg (phase) of an alchemical free energy calculation.
+
+    Attributes
+    ----------
+    name : str
+        The name of the alchemical phase.
+    cycle_direction : 1 or -1
+        The direction of the alchemical phase in the thermodynamic cycle. If 1
+        the difference in free energy calculated for this phase is summed to the
+        final DeltaG, if -1 it is subtracted.
+    reference_system : simtk.openmm.System
+        The reference system object from which alchemical intermediates are
+        to be constructed.
+    topology : simtk.openmm.app.Topology
+        The topology object for the reference_system.
+    positions : list of simtk.unit.Quantity natoms x 3 array with units of length
+        Atom positions for the system used to seed replicas in a round-robin way.
+    atom_indices : dict of list of int
+        atom_indices[component] is the set of atom indices associated with
+        component, where component is one of ('ligand', 'receptor', 'complex',
+        'solvent', 'ligand_counterions').
+    protocols : list of AlchemicalState
+        The alchemical protocol used for the calculation.
+
+    """
+    @property
+    def cycle_direction(self):
+        return self._cycle_direction
+
+    @cycle_direction.setter
+    def cycle_direction(self, value):
+        if value == '+':
+            self._cycle_direction = 1
+        elif value == '-':
+            self._cycle_direction = -1
+        else:
+            self._cycle_direction = int(np.sign(value))
+            assert self._cycle_direction != 0
+
+    @property
+    def positions(self):
+        return self._positions
+
+    @positions.setter
+    def positions(self, value):
+        # Make sure positions argument is a list of coordinate snapshots
+        if hasattr(value, 'unit'):
+            value = [value]  # Wrap in list
+
+        self._positions = [0 for _ in range(len(value))]
+
+        # Make sure that positions are recast as np arrays
+        for i in range(len(value)):
+            positions_unit = value[i].unit
+            self._positions[i] = unit.Quantity(np.array(value[i] / positions_unit),
+                                               positions_unit)
+
+    def __init__(self, name, cycle_direction, reference_system, reference_topology,
+                 positions, atom_indices, protocol):
+        """Constructor.
+
+        Parameters
+        ----------
+        name : str
+            The name of the phase being initialized.
+        cycle_direction : '+', '-' or int
+            The direction of the phase in the thermodynamic cycle. If an integer,
+            it cannot be 0.
+        reference_system : simtk.openmm.System
+            The reference system object from which alchemical intermediates are
+            to be constructed.
+        topology : simtk.openmm.app.Topology
+            The topology object for the reference_system.
+        positions : (list of) simtk.unit.Quantity natoms x 3 array with units of length
+            Initial atom positions for the system. If a single simtk.unit.Quantity
+            natoms x 3 array, all replicas start from the same positions. If a
+            list of simtk.unit.Quantity natoms x 3 arrays are found, they are
+            used to seed replicas in a round-robin way.
+        atom_indices : dict of list of int
+            atom_indices[component] is the set of atom indices associated with
+            component, where component is one of ('ligand', 'receptor', 'complex',
+            'solvent', 'ligand_counterions').
+        thermodynamic_state : ThermodynamicState
+            Thermodynamic state from which reference temperature and pressure are
+            to be taken.
+        protocol : list of AlchemicalState
+            The alchemical protocol used for the calculation.
+
+        """
+        self.name = name
+        self.cycle_direction = cycle_direction
+        self.reference_system = reference_system
+        self.reference_topology = reference_topology
+        self.positions = positions
+        self.atom_indices = atom_indices
+        self.protocol = protocol
+
+
+# ==============================================================================
 # YANK class to manage multiple thermodynamic transformations
-#=============================================================================================
+# ==============================================================================
 
 class Yank(object):
     """
@@ -103,14 +207,6 @@ class Yank(object):
         # Set internal variables.
         self._phases = list()
         self._store_filenames = dict()
-
-        # Default alchemical protocols.
-        self.default_protocols = dict()
-        self.default_protocols['vacuum'] = AbsoluteAlchemicalFactory.defaultVacuumProtocol()
-        self.default_protocols['solvent-implicit'] = AbsoluteAlchemicalFactory.defaultSolventProtocolImplicit()
-        self.default_protocols['complex-implicit'] = AbsoluteAlchemicalFactory.defaultComplexProtocolImplicit()
-        self.default_protocols['solvent-explicit'] = AbsoluteAlchemicalFactory.defaultSolventProtocolExplicit()
-        self.default_protocols['complex-explicit'] = AbsoluteAlchemicalFactory.defaultComplexProtocolExplicit()
 
         # Store Yank parameters
         for option_name, default_value in self.default_parameters.items():
@@ -188,52 +284,35 @@ class Yank(object):
 
         return
 
-    def create(self, phases, systems, positions, atom_indices, thermodynamic_state, protocols=None):
+    def create(self, thermodynamic_state, *alchemical_phases):
         """
         Set up a new set of alchemical free energy calculations for the specified phases.
 
         Parameters
         ----------
-        store_directory : str
-           The storage directory in which output NetCDF files are read or written.
-        phases : list of str, optional, default=None
-           The list of calculation phases (e.g. ['solvent', 'complex']) to run.
-           If resuming, will resume from all NetCDF files ('*.nc') in the store_directory unless specific phases are given.
-        systems : dict of simtk.openmm.System, optional, default=None
-           A dict of System objects for each phase, e.g. systems['solvent'] is for solvent phase.
-        positions : dict of simtk.unit.Quantity arrays (np or Python) with units compatible with nanometers, or dict of lists, optional, default=None
-           A dict of positions corresponding to each phase, e.g. positions['solvent'] is a single set of positions or list of positions to seed replicas.
-           Shape must be natoms x 3, with natoms matching number of particles in corresponding system.
-        atom_indices : dict of dict list of int, optional, default=None
-           atom_indices[phase][component] is a list of atom indices, for each component in ['ligand', 'receptor',
-           'complex', 'solvent', 'ligand_counterions']
-        thermodynamic_state : ThermodynamicState (System need not be defined), optional, default=None
-           Thermodynamic state at which calculations are to be carried out
-        protocols : dict of list of AlchemicalState, optional, default=None
-           If specified, the alchemical protocol protocols[phase] will be used for phase 'phase' instead of the default.
+        thermodynamic_state : ThermodynamicState (System need not be defined)
+            Thermodynamic state from which reference temperature and pressure are to be taken.
+        *alchemical_phases :
+            Variable list of AlchemicalPhase objects to create.
 
         """
-
-        logger.debug("phases: %s"  % phases)
-        logger.debug("systems: %s" % systems.keys())
-        logger.debug("positions: %s" % positions.keys())
-        logger.debug("atom_indices: %s" % atom_indices.keys())
-        logger.debug("thermodynamic_state: %s" % thermodynamic_state)
+        logger.debug("phases: {}".format([phase.name for phase in alchemical_phases]))
+        logger.debug("thermodynamic_state: {}".format(thermodynamic_state))
 
         # Initialization checks
-        for phase in phases:
+        for phase in alchemical_phases:
             # Abort if there are files there already but initialization was requested.
-            store_filename = os.path.join(self._store_directory, phase + '.nc')
+            store_filename = os.path.join(self._store_directory, phase.name + '.nc')
             if os.path.exists(store_filename):
-                raise Exception("Store filename %s already exists." % store_filename)
+                raise RuntimeError("Store filename %s already exists." % store_filename)
 
             # Abort if there are no atoms to alchemically modify
-            if len(atom_indices[phase]['ligand']) == 0:
+            if len(phase.atom_indices['ligand']) == 0:
                 raise ValueError('Ligand atoms are not specified.')
 
         # Create new repex simulations.
-        for phase in phases:
-            self._create_phase(phase, systems[phase], positions[phase], atom_indices[phase], thermodynamic_state, protocols=protocols)
+        for phase in alchemical_phases:
+            self._create_phase(thermodynamic_state, phase)
 
         # Record that we are now initialized.
         self._initialized = True
@@ -262,28 +341,18 @@ class Yank(object):
             is_periodic = True
         return is_periodic
 
-    def _create_phase(self, phase, reference_system, positions, atom_indices, thermodynamic_state, protocols=None):
+    def _create_phase(self, thermodynamic_state, alchemical_phase):
         """
         Create a repex object for a specified phase.
 
         Parameters
         ----------
-        phase : str
-           The phase being initialized (one of ['complex', 'solvent', 'vacuum'])
-        reference_system : simtk.openmm.System
-           The reference system object from which alchemical intermediates are to be construcfted.
-        positions : list of simtk.unit.Qunatity objects containing (natoms x 3) positions (as np or lists)
-           The list of positions to be used to seed replicas in a round-robin way.
-        atom_indices : dict
-           atom_indices[phase][component] is the set of atom indices associated with component, where component
-           is ['ligand', 'receptor', 'complex', 'solvent', 'ligand_counterions']
-        thermodynamic_state : ThermodynamicState
-           Thermodynamic state from which reference temperature and pressure are to be taken.
-        protocols : dict of list of AlchemicalState, optional, default=None
-           If specified, the alchemical protocol protocols[phase] will be used for phase 'phase' instead of the default.
+        thermodynamic_state : ThermodynamicState (System need not be defined)
+            Thermodynamic state from which reference temperature and pressure are to be taken.
+        alchemical_phase : AlchemicalPhase
+           The alchemical phase to be created.
 
         """
-
         # We add default repex options only on creation, on resume repex will pick them from the store file
         repex_parameters = {
             'number_of_equilibration_iterations': 0,
@@ -296,19 +365,22 @@ class Yank(object):
         }
         repex_parameters.update(self._repex_parameters)
 
-        # Make sure positions argument is a list of coordinate snapshots.
-        if hasattr(positions, 'unit'):
-            # Wrap in list.
-            positions = [positions]
+        # Convenience variables
+        positions = alchemical_phase.positions
+        reference_system = alchemical_phase.reference_system
+        atom_indices = alchemical_phase.atom_indices
+        alchemical_states = alchemical_phase.protocol
 
         # Check the dimensions of positions.
         for index in range(len(positions)):
-            # Make sure it is recast as a np array.
-            positions[index] = unit.Quantity(np.array(positions[index] / positions[index].unit), positions[index].unit)
-
-            [natoms, ndim] = (positions[index] / positions[index].unit).shape
-            if natoms != reference_system.getNumParticles():
-                raise Exception("positions argument must be a list of simtk.unit.Quantity of (natoms,3) lists or np array with units compatible with nanometers.")
+            n_atoms, _ = (positions[index] / positions[index].unit).shape
+            if n_atoms != reference_system.getNumParticles():
+                err_msg = "Phase {}: number of atoms in positions {} and and " \
+                          "reference system differ ({} and {} respectively)"
+                err_msg.format(alchemical_phase.name, index, n_atoms,
+                               reference_system.getNumParticles())
+                logger.error(err_msg)
+                raise RuntimeError(err_msg)
 
         # Create metadata storage.
         metadata = dict()
@@ -325,7 +397,7 @@ class Yank(object):
         # Compute standard state corrections for complex phase.
         metadata['standard_state_correction'] = 0.0
         # TODO: Do we need to include a standard state correction for other phases in periodic boxes?
-        if phase == 'complex-implicit':
+        if alchemical_phase.name == 'complex-implicit':
             # Impose restraints for complex system in implicit solvent to keep ligand from drifting too far away from receptor.
             logger.debug("Creating receptor-ligand restraints...")
             reference_positions = positions[0]
@@ -339,17 +411,13 @@ class Yank(object):
             force = restraints.getRestraintForce() # Get Force object incorporating restraints
             reference_system.addForce(force)
             metadata['standard_state_correction'] = restraints.getStandardStateCorrection() # standard state correction in kT
-        elif phase == 'complex-explicit':
+        elif alchemical_phase.name == 'complex-explicit':
             # For periodic systems, we do not use a restraint, but must add a standard state correction for the box volume.
             # TODO: What if the box volume fluctuates during the simulation?
             box_vectors = reference_system.getDefaultPeriodicBoxVectors()
             box_volume = thermodynamic_state._volume(box_vectors)
             STANDARD_STATE_VOLUME = 1660.53928 * unit.angstrom**3
             metadata['standard_state_correction'] = - np.log(STANDARD_STATE_VOLUME / box_volume)
-
-        # Use default alchemical protocols if not specified.
-        if not protocols:
-            protocols = self.default_protocols
 
         # Create alchemically-modified states using alchemical factory.
         logger.debug("Creating alchemically-modified states...")
@@ -359,7 +427,6 @@ class Yank(object):
             alchemical_indices = atom_indices['ligand']
         factory = AbsoluteAlchemicalFactory(reference_system, ligand_atoms=alchemical_indices,
                                             **self._alchemy_parameters)
-        alchemical_states = protocols[phase]
         alchemical_system = factory.alchemically_modified_system
         thermodynamic_state.system = alchemical_system
 
@@ -380,7 +447,7 @@ class Yank(object):
             logger.debug("All energies are finite.")
 
         # Randomize ligand position if requested, but only for implicit solvent systems.
-        if self._randomize_ligand and (phase == 'complex-implicit'):
+        if self._randomize_ligand and (alchemical_phase.name == 'complex-implicit'):
             logger.debug("Randomizing ligand positions and excluding overlapping configurations...")
             randomized_positions = list()
             nstates = len(alchemical_states)
@@ -393,7 +460,7 @@ class Yank(object):
                                                                                       self._randomize_ligand_close_cutoff)
                 randomized_positions.append(new_positions)
             positions = randomized_positions
-        if self._randomize_ligand and (phase == 'complex-explicit'):
+        if self._randomize_ligand and (alchemical_phase.name == 'complex-explicit'):
             logger.warning("Ligand randomization requested, but will not be performed for explicit solvent simulations.")
 
         # Identify whether any atoms will be displaced via MC, unless option is turned off.
@@ -406,8 +473,8 @@ class Yank(object):
         # Set up simulation.
         # TODO: Support MPI initialization?
         logger.debug("Creating replica exchange object...")
-        store_filename = os.path.join(self._store_directory, phase + '.nc')
-        self._store_filenames[phase] = store_filename
+        store_filename = os.path.join(self._store_directory, alchemical_phase.name + '.nc')
+        self._store_filenames[alchemical_phase.name] = store_filename
         simulation = ModifiedHamiltonianExchange(store_filename)
         simulation.create(thermodynamic_state, alchemical_states, positions,
                           displacement_sigma=self._mc_displacement_sigma, mc_atoms=mc_atoms,
@@ -422,7 +489,7 @@ class Yank(object):
         del simulation
 
         # Add to list of phases that have been set up.
-        self._phases.append(phase)
+        self._phases.append(alchemical_phase.name)
 
         return
 

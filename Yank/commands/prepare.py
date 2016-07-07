@@ -20,9 +20,11 @@ logger = logging.getLogger(__name__)
 from simtk import unit
 from simtk.openmm import app
 
+from alchemy import AbsoluteAlchemicalFactory
+
 from yank import utils
 from yank import pipeline
-from yank.yank import Yank # TODO: Fix this weird import path to something more sane, like 'from yank import Yank'
+from yank.yank import AlchemicalPhase, Yank # TODO: Fix this weird import path to something more sane, like 'from yank import Yank'
 from yank.repex import ThermodynamicState # TODO: Fix this weird import path to something more sane, like 'from yank.repex import ThermodynamicState'
 from yank.yamlbuild import YamlBuilder
 from yank.pipeline import find_components
@@ -85,14 +87,8 @@ def setup_binding_amber(args):
 
     Returns
     -------
-    phases : list of str
+    alchemical_phases : list of AlchemicalPhase
        Phases (thermodynamic legs) of the calculation.
-    systems : dict
-       systems[phase] is the OpenMM System reference object for phase 'phase'.
-    positions : dict
-       positions[phase] is a set of positions (or list of positions) for initializing replicas.
-    atom_indices : dict
-       atom_indices[phase][component] is list of atom indices for component 'component' in phase 'phase'.
 
     """
     verbose = args['--verbose']
@@ -118,27 +114,32 @@ def setup_binding_amber(args):
     # Determine if this will be an explicit or implicit solvent simulation
     if ('nonbondedMethod' in system_parameters and
                 system_parameters['nonbondedMethod'] != app.NoCutoff):
-        phases = ['complex-explicit', 'solvent-explicit']
+        phases_names = ['complex-explicit', 'solvent-explicit']
+        protocols = [AbsoluteAlchemicalFactory.defaultComplexProtocolExplicit(),
+                     AbsoluteAlchemicalFactory.defaultSolventProtocolExplicit()]
     else:
-        phases = ['complex-implicit', 'solvent-implicit']
+        phases_names = ['complex-implicit', 'solvent-implicit']
+        protocols = [AbsoluteAlchemicalFactory.defaultComplexProtocolImplicit(),
+                 AbsoluteAlchemicalFactory.defaultSolventProtocolImplicit()]
 
     # Prepare Yank arguments
-    systems = {}
-    positions = {}
-    atom_indices = {}
+    alchemical_phases = [None, None]
+    cycle_directions = ['+', '-']
     setup_directory = os.path.join(setup_directory, '')  # add final slash character
     system_files_paths = [[setup_directory + 'complex.inpcrd', setup_directory + 'complex.prmtop'],
                           [setup_directory + 'solvent.inpcrd', setup_directory + 'solvent.prmtop']]
-    for i, phase in enumerate(phases):
+    for i, phase_name in enumerate(phases_names):
         positions_file_path = system_files_paths[i][0]
         topology_file_path = system_files_paths[i][1]
 
-        logger.info("Reading phase {}".format(phase))
-        yank_args = pipeline.prepare_phase(positions_file_path, topology_file_path, args['--ligand'],
-                                           system_parameters, verbose=verbose)
-        systems[phase], positions[phase], atom_indices[phase] = yank_args
+        logger.info("Reading phase {}".format(phase_name))
+        alchemical_phases[i] = pipeline.prepare_phase(positions_file_path, topology_file_path, args['--ligand'],
+                                                      system_parameters, verbose=verbose)
+        alchemical_phases[i].name = phase_name
+        alchemical_phases[i].cycle_direction = cycle_directions[i]
+        alchemical_phases[i].protocol = protocols[i]
 
-    return phases, systems, positions, atom_indices
+    return alchemical_phases
 
 
 def setup_binding_gromacs(args):
@@ -152,14 +153,8 @@ def setup_binding_gromacs(args):
 
     Returns
     -------
-    phases : list of str
+    alchemical_phases : list of AlchemicalPhase
        Phases (thermodynamic legs) of the calculation.
-    systems : dict
-       systems[phase] is the OpenMM System reference object for phase 'phase'.
-    positions : dict
-       positions[phase] is a set of positions (or list of positions) for initializing replicas.
-    atom_indices : dict
-       atom_indices[phase][component] is list of atom indices for component 'component' in phase 'phase'.
 
     """
     verbose = args['--verbose']
@@ -196,6 +191,7 @@ def setup_binding_gromacs(args):
     phase_prefixes = ['solvent', 'complex'] # list of calculation phases (thermodynamic legs) to set up
     components = ['ligand', 'receptor', 'solvent'] # components of the binding system
     systems = dict() # systems[phase] is the System object associated with phase 'phase'
+    topologies = dict() # topologies[phase] is the Topology object associated with phase 'phase'
     positions = dict() # positions[phase] is a list of coordinates associated with phase 'phase'
     atom_indices = dict() # ligand_atoms[phase] is a list of ligand atom indices associated with phase 'phase'
     setup_directory = args['--setupdir'] # Directory where prmtop/inpcrd files are to be found
@@ -222,6 +218,7 @@ def setup_binding_gromacs(args):
         # TODO: Check to make sure both prmtop and inpcrd agree on explicit/implicit.
         phase = '%s-%s' % (phase_prefix, phase_suffix)
         systems[phase] = top.createSystem(nonbondedMethod=nonbondedMethod, nonbondedCutoff=nonbondedCutoff, constraints=constraints, removeCMMotion=removeCMMotion)
+        topologies[phase] = top.topology
         positions[phase] = gro.getPositions(asNumpy=True)
         # Check to make sure number of atoms match between prmtop and inpcrd.
         prmtop_natoms = systems[phase].getNumParticles()
@@ -235,7 +232,16 @@ def setup_binding_gromacs(args):
 
     phases = systems.keys()
 
-    return [phases, systems, positions, atom_indices]
+    alchemical_phases = [None, None]
+    cycle_directions = {'complex-explicit': '+', 'solvent-explicit': '-'}
+    protocols = {'complex-explicit': AbsoluteAlchemicalFactory.defaultComplexProtocolExplicit(),
+                 'solvent-explicit': AbsoluteAlchemicalFactory.defaultSolventProtocolImplicit()}
+    for i, name in enumerate(phases):
+        alchemical_phases[i] = AlchemicalPhase(name, cycle_directions[name], systems[name],
+                                               topologies[name], positions[name],
+                                               atom_indices[name], protocols[name])
+
+    return alchemical_phases
 
 def setup_systembuilder(args):
     """
@@ -287,25 +293,13 @@ def dispatch_binding(args):
 
     # Create systems according to specified setup/import method.
     if args['amber']:
-        [phases, systems, positions, atom_indices] = setup_binding_amber(args)
+        alchemical_phases = setup_binding_amber(args)
     elif args['gromacs']:
-        [phases, systems, positions, atom_indices] = setup_binding_gromacs(args)
+        alchemical_phases = setup_binding_gromacs(args)
     else:
         logger.error("No valid binding free energy calculation setup command specified: Must be one of ['amber', 'systembuilder'].")
         # Trigger help argument to be returned.
         return False
-
-    # Report some useful properties.
-    if verbose:
-        if 'complex-explicit' in atom_indices:
-            phase = 'complex-explicit'
-        else:
-            phase = 'complex-implicit'
-        logger.info("TOTAL ATOMS      : %9d" % len(atom_indices[phase]['complex']))
-        logger.info("receptor         : %9d" % len(atom_indices[phase]['receptor']))
-        logger.info("ligand           : %9d" % len(atom_indices[phase]['ligand']))
-        if phase == 'complex-explicit':
-            logger.info("solvent and ions : %9d" % len(atom_indices[phase]['solvent']))
 
     # Set options.
     options = dict()
@@ -356,7 +350,7 @@ def dispatch_binding(args):
 
     # Create new simulation.
     yank = Yank(store_dir, **options)
-    yank.create(phases, systems, positions, atom_indices, thermodynamic_state)
+    yank.create(thermodynamic_state, *alchemical_phases)
 
     # Report success.
     return True
