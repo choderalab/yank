@@ -15,8 +15,6 @@
 
 import os
 import os.path
-import sys
-import math
 
 import numpy as np
 
@@ -26,6 +24,8 @@ from pymbar import MBAR # multistate Bennett acceptance ratio
 from pymbar import timeseries # for statistical inefficiency analysis
 
 import simtk.unit as units
+
+import utils
 
 import logging
 logger = logging.getLogger(__name__)
@@ -384,15 +384,14 @@ def print_status(store_directory):
        True is returned on success; False if some files could not be read.
 
     """
+    # Get NetCDF files
+    phases = utils.find_phases_in_store_directory(store_directory)
 
     # Process each netcdf file.
-    phases = ['solvent', 'complex']
-    for phase in phases:
-        # Construct full path to NetCDF file.
-        fullpath = os.path.join(store_directory, phase + '.nc')
+    for phase, fullpath in phases.items():
 
         # Check that the file exists.
-        if (not os.path.exists(fullpath)):
+        if not os.path.exists(fullpath):
             # Report failure.
             logger.info("File %s not found." % fullpath)
             logger.info("Check to make sure the right directory was specified, and 'yank setup' has been run.")
@@ -434,74 +433,33 @@ def analyze(source_directory):
        The location of the NetCDF simulation storage files.
 
     """
+    phases = utils.find_phases_in_store_directory(source_directory)
 
     # Storage for different phases.
     data = dict()
 
-    phase_prefixes = ['solvent', 'complex']
-    suffixes = ['explicit', 'implicit']
-
-    DeltaF_restraints = None
-
     # Process each netcdf file.
-    netcdf_files_found = 0
-    for phase in phase_prefixes:
-        # Read reference PDB file.
-        #from simtk.openmm import app
-        #reference_pdb_filename = os.path.join(source_directory, phase + '.pdb')
-        #reference_pdb = app.PDBFile(reference_pdb_filename)
-            #if phase in ['vacuum', 'solvent']:
-            #    reference_pdb_filename = os.path.join(source_directory, "ligand.pdb")
-            #else:
-            #    reference_pdb_filename = os.path.join(source_directory, "complex.pdb")
-            #atoms = read_pdb(reference_pdb_filename)
+    for phase, ncfile_path in phases.items():
 
-        for suffix in suffixes:
-            # Construct full path to NetCDF file.
-            fullpath = os.path.join(source_directory, '%s-%s.nc' % (phase, suffix))
-            logger.debug("Attempting to open %s..." % fullpath)
+        # Open NetCDF file for reading.
+        logger.info("Opening NetCDF trajectory file %(ncfile_path)s for reading..." % vars())
+        try:
+            ncfile = netcdf.Dataset(ncfile_path, 'r')
 
-            # Skip if the file doesn't exist.
-            if (not os.path.exists(fullpath)): continue
-
-            # Open NetCDF file for reading.
-            logger.info("Opening NetCDF trajectory file '%(fullpath)s' for reading..." % vars())
-            try:
-                ncfile = netcdf.Dataset(fullpath, 'r')
-            except Exception as e:
-                logger.error(e.message)
-                raise Exception("Error opening NetCDF trajectory file '%(fullpath)s' for reading..." % vars())
-
-            # DEBUG
-            logger.info("dimensions:")
+            logger.debug("dimensions:")
             for dimension_name in ncfile.dimensions.keys():
-                logger.info("%16s %8d" % (dimension_name, len(ncfile.dimensions[dimension_name])))
+                logger.debug("%16s %8d" % (dimension_name, len(ncfile.dimensions[dimension_name])))
 
             # Read dimensions.
             niterations = ncfile.variables['positions'].shape[0]
             nstates = ncfile.variables['positions'].shape[1]
-            natoms = ncfile.variables['positions'].shape[2]
             logger.info("Read %(niterations)d iterations, %(nstates)d states" % vars())
 
-            # Increment number of netcdf files found.
-            netcdf_files_found += 1
-
-            # Read standard state correction free energy.
-            if phase == 'complex':
-                DeltaF_restraints = ncfile.groups['metadata'].variables['standard_state_correction'][0]
-
-            # Read reference PDB file.
-            #if phase in ['vacuum', 'solvent']:
-            #    reference_pdb_filename = os.path.join(source_directory, "ligand.pdb")
-            #else:
-            #    reference_pdb_filename = os.path.join(source_directory, "complex.pdb")
-            #atoms = read_pdb(reference_pdb_filename)
-
-            # Check to make sure no self-energies go nan.
-            #check_energies(ncfile, atoms)
-
-            # Check to make sure no positions are nan
-            #check_positions(ncfile)
+            # Read phase direction and standard state correction free energy.
+            # Yank sets correction to 0 if there are no restraints
+            metadata_group = ncfile.groups['metadata']
+            phase_direction = metadata_group.variables['cycle_direction']
+            DeltaF_restraints = metadata_group.variables['standard_state_correction'][0]
 
             # Choose number of samples to discard to equilibration
             MIN_ITERATIONS = 10 # minimum number of iterations to use automatic detection
@@ -532,6 +490,8 @@ def analyze(source_directory):
             entry['dDeltaF'] = dDeltaf_ij[0,nstates-1]
             entry['DeltaH'] = DeltaH_i[nstates-1] - DeltaH_i[0]
             entry['dDeltaH'] = np.sqrt(dDeltaH_i[0]**2 + dDeltaH_i[nstates-1]**2)
+            entry['DeltaF_restraints'] = DeltaF_restraints
+            entry['sign'] = phase_direction
             data[phase] = entry
 
             # Get temperatures.
@@ -539,40 +499,44 @@ def analyze(source_directory):
             temperature = ncvar[0] * units.kelvin
             kT = kB * temperature
 
-            # Close input NetCDF file.
+        finally:
             ncfile.close()
 
-    # Give the user a useful warning if no NetCDF files found.
-    if netcdf_files_found == 0:
-        raise Exception("No YANK output files were found in the specified store directory (%s)" % source_directory)
+    # Compute free energy and enthalpy
+    DeltaF = 0.0
+    dDeltaF = 0.0
+    DeltaH = 0.0
+    dDeltaH = 0.0
+    for phase in phases:
+        DeltaF -= data[phase]['sign'] * (data[phase]['DeltaF'] + data[phase]['DeltaF_restraints'])
+        dDeltaF += data[phase]['dDeltaF']**2
+        DeltaH -= data[phase]['sign'] * (data[phase]['DeltaH'] + data[phase]['DeltaF_restraints'])
+        dDeltaH += data[phase]['dDeltaH']**2
+    dDeltaF = np.sqrt(dDeltaF)
+    dDeltaH = np.sqrt(dDeltaH)
 
-    # Compute hydration free energy (free energy of transfer from vacuum to water)
-    #DeltaF = data['vacuum']['DeltaF'] - data['solvent']['DeltaF']
-    #dDeltaF = numpy.sqrt(data['vacuum']['dDeltaF']**2 + data['solvent']['dDeltaF']**2)
-    #print "Hydration free energy: %.3f +- %.3f kT (%.3f +- %.3f kcal/mol)" % (DeltaF, dDeltaF, DeltaF * kT / units.kilocalories_per_mole, dDeltaF * kT / units.kilocalories_per_mole)
+    # Attempt to guess type of calculation
+    calculation_type = ''
+    for phase in phases:
+        if 'complex' in phase:
+            calculation_type = ' of binding'
+        elif 'vacuum' in phase:
+            calculation_type = ' of solvation'
 
-    # Compute enthalpy of transfer from vacuum to water
-    #DeltaH = data['vacuum']['DeltaH'] - data['solvent']['DeltaH']
-    #dDeltaH = numpy.sqrt(data['vacuum']['dDeltaH']**2 + data['solvent']['dDeltaH']**2)
-    #print "Enthalpy of hydration: %.3f +- %.3f kT (%.3f +- %.3f kcal/mol)" % (DeltaH, dDeltaH, DeltaH * kT / units.kilocalories_per_mole, dDeltaH * kT / units.kilocalories_per_mole)
-
-    if DeltaF_restraints is None:
-        raise Exception("DeltaF_restraints not found.")
-
-    # Compute binding free energy.
-    DeltaF = data['solvent']['DeltaF'] - DeltaF_restraints - data['complex']['DeltaF']
-    dDeltaF = np.sqrt(data['solvent']['dDeltaF']**2 + data['complex']['dDeltaF']**2)
+    # Print energies
     logger.info("")
-    logger.info("Binding free energy : %16.3f +- %.3f kT (%16.3f +- %.3f kcal/mol)" % (DeltaF, dDeltaF, DeltaF * kT / units.kilocalories_per_mole, dDeltaF * kT / units.kilocalories_per_mole))
-    logger.info("")
-    #logger.info("DeltaG vacuum       : %16.3f +- %.3f kT" % (data['vacuum']['DeltaF'], data['vacuum']['dDeltaF']))
-    logger.info("DeltaG solvent      : %16.3f +- %.3f kT" % (data['solvent']['DeltaF'], data['solvent']['dDeltaF']))
-    logger.info("DeltaG complex      : %16.3f +- %.3f kT" % (data['complex']['DeltaF'], data['complex']['dDeltaF']))
-    logger.info("DeltaG restraint    : %16.3f          kT" % DeltaF_restraints)
+    logger.info("Free energy{}: {:16.3f} +- {:.3f} kT ({:16.3f} +- {:.3f} kT kcal/mol)".format(
+        calculation_type, DeltaF, dDeltaF, DeltaF * kT / units.kilocalories_per_mole,
+        dDeltaF * kT / units.kilocalories_per_mole))
     logger.info("")
 
-    # Compute binding enthalpy
-    DeltaH = data['solvent']['DeltaH'] - DeltaF_restraints - data['complex']['DeltaH']
-    dDeltaH = np.sqrt(data['solvent']['dDeltaH']**2 + data['complex']['dDeltaH']**2)
-    logger.info("Binding enthalpy    : %16.3f +- %.3f kT (%16.3f +- %.3f kcal/mol)" % (DeltaH, dDeltaH, DeltaH * kT / units.kilocalories_per_mole, dDeltaH * kT / units.kilocalories_per_mole))
-
+    for phase in phases:
+        logger.info("DeltaG {:<25} : {:16.3f} +- {:.3f} kT".format(phase, data[phase]['DeltaF'],
+                                                                   data[phase]['dDeltaF']))
+        if data[phase]['DeltaF_restraints'] != 0.0:
+            logger.info("DeltaG {:<25} : {:25.3f} kT".format('restraint',
+                                                             data[phase]['DeltaF_restraints']))
+    logger.info("")
+    logger.info("Enthalpy{}: {:16.3f} +- {:.3f} kT ({:16.3f} +- {:.3f} kcal/mol)".format(
+        calculation_type, DeltaH, dDeltaH, DeltaH * kT / units.kilocalories_per_mole,
+        dDeltaH * kT / units.kilocalories_per_mole))
