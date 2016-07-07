@@ -367,7 +367,7 @@ class Yank(object):
 
         # Convenience variables
         positions = alchemical_phase.positions
-        reference_system = alchemical_phase.reference_system
+        reference_system = copy.deepcopy(alchemical_phase.reference_system)
         atom_indices = alchemical_phase.atom_indices
         alchemical_states = alchemical_phase.protocol
 
@@ -385,11 +385,10 @@ class Yank(object):
         # Create metadata storage.
         metadata = dict()
 
-        # Make a deep copy of the reference system so we don't accidentally modify it.
-        reference_system = copy.deepcopy(reference_system)
-
         # TODO: Use more general approach to determine whether system is periodic.
         is_periodic = self._is_periodic(reference_system)
+        is_complex_explicit = len(atom_indices['receptor']) > 0 and is_periodic
+        is_complex_implicit = len(atom_indices['receptor']) > 0 and not is_periodic
 
         # Make sure pressure is None if not periodic.
         if not is_periodic: thermodynamic_state.pressure = None
@@ -397,7 +396,7 @@ class Yank(object):
         # Compute standard state corrections for complex phase.
         metadata['standard_state_correction'] = 0.0
         # TODO: Do we need to include a standard state correction for other phases in periodic boxes?
-        if alchemical_phase.name == 'complex-implicit':
+        if is_complex_implicit:
             # Impose restraints for complex system in implicit solvent to keep ligand from drifting too far away from receptor.
             logger.debug("Creating receptor-ligand restraints...")
             reference_positions = positions[0]
@@ -411,7 +410,7 @@ class Yank(object):
             force = restraints.getRestraintForce() # Get Force object incorporating restraints
             reference_system.addForce(force)
             metadata['standard_state_correction'] = restraints.getStandardStateCorrection() # standard state correction in kT
-        elif alchemical_phase.name == 'complex-explicit':
+        elif is_complex_explicit:
             # For periodic systems, we do not use a restraint, but must add a standard state correction for the box volume.
             # TODO: What if the box volume fluctuates during the simulation?
             box_vectors = reference_system.getDefaultPeriodicBoxVectors()
@@ -447,7 +446,7 @@ class Yank(object):
             logger.debug("All energies are finite.")
 
         # Randomize ligand position if requested, but only for implicit solvent systems.
-        if self._randomize_ligand and (alchemical_phase.name == 'complex-implicit'):
+        if self._randomize_ligand and is_complex_implicit:
             logger.debug("Randomizing ligand positions and excluding overlapping configurations...")
             randomized_positions = list()
             nstates = len(alchemical_states)
@@ -460,7 +459,7 @@ class Yank(object):
                                                                                       self._randomize_ligand_close_cutoff)
                 randomized_positions.append(new_positions)
             positions = randomized_positions
-        if self._randomize_ligand and (alchemical_phase.name == 'complex-explicit'):
+        if self._randomize_ligand and is_complex_explicit:
             logger.warning("Ligand randomization requested, but will not be performed for explicit solvent simulations.")
 
         # Identify whether any atoms will be displaced via MC, unless option is turned off.
