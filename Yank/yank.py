@@ -310,6 +310,10 @@ class Yank(object):
             if len(phase.atom_indices['ligand']) == 0:
                 raise ValueError('Ligand atoms are not specified.')
 
+        # Create store directory if needed
+        if not os.path.isdir(self._store_directory):
+            os.mkdir(self._store_directory)
+
         # Create new repex simulations.
         for phase in alchemical_phases:
             self._create_phase(thermodynamic_state, phase)
