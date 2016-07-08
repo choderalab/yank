@@ -73,6 +73,11 @@ def examples_paths():
     return paths
 
 
+def yank_load(script):
+    """Shortcut to load a string YAML script with YankLoader."""
+    return yaml.load(textwrap.dedent(script), Loader=YankLoader)
+
+
 def get_template_script(output_dir='.'):
     """Return a YAML template script as a dict."""
     paths = examples_paths()
@@ -156,7 +161,7 @@ def get_template_script(output_dir='.'):
                pxylene_path=paths['p-xylene'], toluene_path=paths['toluene'],
                abl_path=paths['abl'], lysozyme_path=paths['lysozyme'])
 
-    return yaml.load(textwrap.dedent(template_script))
+    return yank_load(template_script)
 
 
 # ==============================================================================
@@ -955,9 +960,9 @@ class TestMultiMoleculeFiles():
                    self.mol2_path, self.mol2_path, indent(standard_protocol))
         expected_content = textwrap.dedent(expected_content)
 
-        raw = yaml.load(yaml_content)
+        raw = yank_load(yaml_content)
         expanded = YamlBuilder(yaml_content)._expand_molecules(raw)
-        assert expanded == yaml.load(expected_content)
+        assert expanded == yank_load(expected_content)
 
     def test_select_pdb_conformation(self):
         """Check that frame selection in multi-model PDB files works."""
@@ -1150,7 +1155,7 @@ def test_system_expansion():
     template_script['experiments']['system'] = utils.CombinatorialLeaf(['system1', 'system2'])
 
     # Expected expanded script
-    expected_script = yaml.load(textwrap.dedent("""
+    expected_script = yank_load("""
     systems:
         system1_Abl: {receptor: Abl, ligand: benzene, solvent: GBSA-OBC2}
         system1_T4Lysozyme: {receptor: T4Lysozyme, ligand: benzene, solvent: GBSA-OBC2}
@@ -1159,7 +1164,7 @@ def test_system_expansion():
     experiments:
         system: !Combinatorial ['system1_Abl', 'system1_T4Lysozyme', 'system2_pxylene', 'system2_toluene']
         protocol: absolute-binding
-    """))
+    """)
     expanded_script = template_script.copy()
     expanded_script['systems'] = expected_script['systems']
     expanded_script['experiments'] = expected_script['experiments']

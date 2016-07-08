@@ -15,11 +15,9 @@ Tools to build Yank experiments from a YAML configuration file.
 
 import os
 import re
-import sys
 import glob
 import copy
 import yaml
-import inspect
 import logging
 
 logger = logging.getLogger(__name__)
@@ -354,17 +352,6 @@ def to_openmm_app(str):
 # UTILITY CLASSES
 # ============================================================================================
 
-def combinatorial_constructor(loader, node):
-    """Constructor for YAML !Combinatorial entries."""
-    return utils.CombinatorialLeaf(loader.construct_sequence(node))
-yaml.add_constructor(u'!Combinatorial', combinatorial_constructor)
-
-def combinatorial_representer(dumper, data):
-    """YAML representer CombinatorialLeaf nodes."""
-    return dumper.represent_sequence(u'!Combinatorial', data)
-yaml.add_representer(utils.CombinatorialLeaf, combinatorial_representer)
-
-
 class YamlParseError(Exception):
     """Represent errors occurring during parsing of Yank YAML file."""
     def __init__(self, message):
@@ -372,13 +359,35 @@ class YamlParseError(Exception):
         logger.error(message)
 
 
+class YankLoader(yaml.Loader):
+    """PyYAML Loader that recognized !Combinatorial nodes and load OrderedDicts."""
+    def __init__(self, *args, **kwargs):
+        super(YankLoader, self).__init__(*args, **kwargs)
+        self.add_constructor(u'!Combinatorial', self.combinatorial_constructor)
+
+    @staticmethod
+    def combinatorial_constructor(loader, node):
+        """Constructor for YAML !Combinatorial entries."""
+        return utils.CombinatorialLeaf(loader.construct_sequence(node))
+
+
 class YankDumper(yaml.Dumper):
     """PyYAML Dumper that always return sequences in flow style and maps in block style."""
+    def __init__(self, *args, **kwargs):
+        super(YankDumper, self).__init__(*args, **kwargs)
+        self.add_representer(utils.CombinatorialLeaf, self.combinatorial_representer)
+
     def represent_sequence(self, tag, sequence, flow_style=None):
         return yaml.Dumper.represent_sequence(self, tag, sequence, flow_style=True)
 
     def represent_mapping(self, tag, mapping, flow_style=None):
         return yaml.Dumper.represent_mapping(self, tag, mapping, flow_style=False)
+
+    @staticmethod
+    def combinatorial_representer(dumper, data):
+        """YAML representer CombinatorialLeaf nodes."""
+        return dumper.represent_sequence(u'!Combinatorial', data)
+
 
 class SetupDatabase:
     """Provide utility functions to set up systems and molecules.
@@ -1173,10 +1182,10 @@ class YamlBuilder:
         # Load YAML script and decide working directory for relative paths
         try:
             with open(yaml_source, 'r') as f:
-                yaml_content = yaml.load(f)
+                yaml_content = yaml.load(f, Loader=YankLoader)
             self._script_dir = os.path.dirname(yaml_source)
         except IOError:  # string
-            yaml_content = yaml.load(yaml_source)
+            yaml_content = yaml.load(yaml_source, Loader=YankLoader)
         except TypeError:  # dict
             yaml_content = yaml_source.copy()
 
