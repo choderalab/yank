@@ -496,10 +496,10 @@ class SetupDatabase:
             ]
         else:
             system_files_paths = [
-                Paths(position_path=self.systems[system_id]['complex_path'][0],
-                      topology_path=self.systems[system_id]['complex_path'][1]),
-                Paths(position_path=self.systems[system_id]['solvent_path'][0],
-                      topology_path=self.systems[system_id]['solvent_path'][1])
+                Paths(position_path=self.systems[system_id]['phase1_path'][0],
+                      topology_path=self.systems[system_id]['phase1_path'][1]),
+                Paths(position_path=self.systems[system_id]['phase2_path'][0],
+                      topology_path=self.systems[system_id]['phase2_path'][1])
             ]
 
         return system_files_paths
@@ -1700,10 +1700,10 @@ class YamlBuilder:
             {'solute': is_known_molecule, 'solvent1': is_known_solvent,
              'solvent2': is_known_solvent},
 
-            {'complex_path': Use(system_files('amber')), 'solvent_path': Use(system_files('amber')),
+            {'phase1_path': Use(system_files('amber')), 'phase2_path': Use(system_files('amber')),
              'ligand_dsl': str, 'solvent': is_known_solvent},
 
-            {'complex_path': Use(system_files('gromacs')), 'solvent_path': Use(system_files('gromacs')),
+            {'phase1_path': Use(system_files('gromacs')), 'phase2_path': Use(system_files('gromacs')),
              'ligand_dsl': str, 'solvent': is_known_solvent, Optional('gromacs_include_dir'): os.path.isdir}
         ))
 
@@ -2006,7 +2006,7 @@ class YamlBuilder:
                 molecule['filepath'] = os.path.relpath(molecule['filepath'], yaml_dir)
 
         try:  # systems for which user has specified directly system files
-            for phase in ['solvent_path', 'complex_path']:
+            for phase in ['phase2_path', 'phase1_path']:
                 for path in sys_section[system_id][phase]:
                     sys_section[system_id][path] = os.path.relpath(path, yaml_dir)
         except KeyError:  # system went through pipeline

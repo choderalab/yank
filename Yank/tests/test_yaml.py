@@ -392,16 +392,16 @@ def test_validation_correct_systems():
         {'receptor': 'rec', 'ligand': 'lig', 'solvent': 'solv'},
         {'receptor': 'rec', 'ligand': 'lig', 'solvent': 'solv', 'pack': True},
 
-        {'complex_path': examples_paths()['bentol-complex'],
-         'solvent_path': examples_paths()['bentol-solvent'],
+        {'phase1_path': examples_paths()['bentol-complex'],
+         'phase2_path': examples_paths()['bentol-solvent'],
          'ligand_dsl': 'resname BEN', 'solvent': 'solv'},
 
-        {'complex_path': examples_paths()['pxylene-complex'],
-         'solvent_path': examples_paths()['pxylene-solvent'],
+        {'phase1_path': examples_paths()['pxylene-complex'],
+         'phase2_path': examples_paths()['pxylene-solvent'],
          'ligand_dsl': 'resname p-xylene', 'solvent': 'solv',
          'gromacs_include_dir': examples_paths()['pxylene-gro-include']},
-        {'complex_path': examples_paths()['pxylene-complex'],
-         'solvent_path': examples_paths()['pxylene-solvent'],
+        {'phase1_path': examples_paths()['pxylene-complex'],
+         'phase2_path': examples_paths()['pxylene-solvent'],
          'ligand_dsl': 'resname p-xylene', 'solvent': 'solv'},
 
         {'solute': 'lig', 'solvent1': 'solv', 'solvent2': 'solv'}
@@ -431,21 +431,21 @@ def test_validation_wrong_systems():
         {'receptor': 'rec', 'ligand': 'lig', 'solvent': ['solv', 'solv']},
         {'receptor': 'rec', 'ligand': 'lig', 'solvent': 'unknown'},
 
-        {'complex_path': examples_paths()['bentol-complex'][0],
-         'solvent_path': examples_paths()['bentol-solvent'],
+        {'phase1_path': examples_paths()['bentol-complex'][0],
+         'phase2_path': examples_paths()['bentol-solvent'],
          'ligand_dsl': 'resname BEN', 'solvent': 'solv'},
-        {'complex_path': ['nonexistingpath.prmtop', 'nonexistingpath.inpcrd'],
-         'solvent_path': examples_paths()['bentol-solvent'],
+        {'phase1_path': ['nonexistingpath.prmtop', 'nonexistingpath.inpcrd'],
+         'phase2_path': examples_paths()['bentol-solvent'],
          'ligand_dsl': 'resname BEN', 'solvent': 'solv'},
-        {'complex_path': examples_paths()['bentol-complex'],
-         'solvent_path': examples_paths()['bentol-solvent'],
+        {'phase1_path': examples_paths()['bentol-complex'],
+         'phase2_path': examples_paths()['bentol-solvent'],
          'ligand_dsl': 3.4, 'solvent': 'solv'},
-        {'complex_path': examples_paths()['bentol-complex'],
-         'solvent_path': examples_paths()['bentol-solvent'],
+        {'phase1_path': examples_paths()['bentol-complex'],
+         'phase2_path': examples_paths()['bentol-solvent'],
          'ligand_dsl': 'resname BEN', 'solvent': 'unknown'},
 
-        {'complex_path': examples_paths()['bentol-complex'],
-         'solvent_path': examples_paths()['pxylene-solvent'],
+        {'phase1_path': examples_paths()['bentol-complex'],
+         'phase2_path': examples_paths()['pxylene-solvent'],
          'ligand_dsl': 'resname p-xylene', 'solvent': 'solv',
          'gromacs_include_dir': examples_paths()['pxylene-gro-include']},
 
@@ -1650,7 +1650,7 @@ def test_run_experiment_from_amber_files():
         yaml_script = get_template_script(tmp_dir)
         del yaml_script['molecules']  # we shouldn't need any molecule
         yaml_script['systems'] = {'system1':
-                {'complex_path': complex_path, 'solvent_path': solvent_path,
+                {'phase1_path': complex_path, 'phase2_path': solvent_path,
                  'ligand_dsl': 'resname TOL', 'solvent': 'PME'}}
 
         yaml_builder = YamlBuilder(yaml_script)
@@ -1681,7 +1681,7 @@ def test_run_experiment_from_gromacs_files():
         yaml_script = get_template_script(tmp_dir)
         del yaml_script['molecules']  # we shouldn't need any molecule
         yaml_script['systems'] = {'system1':
-                {'complex_path': complex_path, 'solvent_path': solvent_path,
+                {'phase1_path': complex_path, 'phase2_path': solvent_path,
                  'ligand_dsl': 'resname "p-xylene"', 'solvent': 'PME',
                  'gromacs_include_dir': include_path}}
 
