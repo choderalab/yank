@@ -20,11 +20,11 @@ import unittest
 import tempfile
 import itertools
 
-from nose.tools import raises, assert_raises
+from nose.tools import assert_raises
 from nose.plugins.attrib import attr
+from mdtraj.formats.mol2 import mol2_to_dataframes
 
 from yank.yamlbuild import *
-from mdtraj.formats.mol2 import mol2_to_dataframes
 
 # ==============================================================================
 # Subroutines for testing
@@ -32,15 +32,14 @@ from mdtraj.formats.mol2 import mol2_to_dataframes
 
 standard_protocol = """
         absolute-binding:
-            phases:
-                complex:
-                    alchemical_path:
-                        lambda_electrostatics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
-                        lambda_sterics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
-                solvent:
-                    alchemical_path:
-                        lambda_electrostatics: [1.0, 0.8, 0.6, 0.3, 0.0]
-                        lambda_sterics: [1.0, 0.8, 0.6, 0.3, 0.0]"""
+            complex:
+                alchemical_path:
+                    lambda_electrostatics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
+                    lambda_sterics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
+            solvent:
+                alchemical_path:
+                    lambda_electrostatics: [1.0, 0.8, 0.6, 0.3, 0.0]
+                    lambda_sterics: [1.0, 0.8, 0.6, 0.3, 0.0]"""
 
 
 def indent(str):
@@ -145,15 +144,14 @@ def get_template_script(output_dir='.'):
             solvent: PME
     protocols:
         absolute-binding:
-            phases:
-                complex:
-                    alchemical_path:
-                        lambda_electrostatics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
-                        lambda_sterics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
-                solvent:
-                    alchemical_path:
-                        lambda_electrostatics: [1.0, 0.8, 0.6, 0.3, 0.0]
-                        lambda_sterics: [1.0, 0.8, 0.6, 0.3, 0.0]
+            complex:
+                alchemical_path:
+                    lambda_electrostatics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
+                    lambda_sterics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
+            solvent:
+                alchemical_path:
+                    lambda_electrostatics: [1.0, 0.8, 0.6, 0.3, 0.0]
+                    lambda_sterics: [1.0, 0.8, 0.6, 0.3, 0.0]
     experiments:
         system: system1
         protocol: absolute-binding
@@ -460,23 +458,72 @@ def test_validation_wrong_systems():
         yield assert_raises, YamlParseError, yaml_builder.parse, modified_script
 
 
+def test_order_phases():
+    """YankLoader preserves protocol phase order."""
+    ordered_phases = ['complex', 'solvent', 'athirdphase']
+    yaml_content = """
+    ---
+    absolute-binding:
+        {}:
+            alchemical_path:
+                lambda_electrostatics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
+                lambda_sterics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
+        {}:
+            alchemical_path:
+                lambda_electrostatics: [1.0, 0.8, 0.6, 0.3, 0.0]
+                lambda_sterics: [1.0, 0.8, 0.6, 0.3, 0.0]
+        {}:
+            alchemical_path:
+                lambda_electrostatics: [1.0, 0.8, 0.6, 0.3, 0.0]
+                lambda_sterics: [1.0, 0.8, 0.6, 0.3, 0.0]""".format(*ordered_phases)
+
+    # Be sure that normal parsing is not ordered or the test is useless
+    parsed = yaml.load(textwrap.dedent(yaml_content))
+    assert parsed['absolute-binding'].keys() != ordered_phases
+
+    # Insert !Ordered tag
+    yaml_content = yaml_content.replace('binding:', 'binding: !Ordered')
+    parsed = yank_load(yaml_content)
+    assert parsed['absolute-binding'].keys() == ordered_phases
+
+
 def test_validation_correct_protocols():
     """YAML validation raises exception with wrong alchemical protocols."""
-    basic_protcol = yaml.load(standard_protocol)
+    basic_protocol = yank_load(standard_protocol)
+
+    # Alchemical paths
     protocols = [
         {'lambda_electrostatics': [1.0, 0.8, 0.6, 0.3, 0.0], 'lambda_sterics': [1.0, 0.8, 0.6, 0.3, 0.0]},
         {'lambda_electrostatics': [1.0, 0.8, 0.6, 0.3, 0.0], 'lambda_sterics': [1.0, 0.8, 0.6, 0.3, 0.0],
          'lambda_torsions': [1.0, 0.8, 0.6, 0.3, 0.0], 'lambda_angles': [1.0, 0.8, 0.6, 0.3, 0.0]}
     ]
     for protocol in protocols:
-        modified_protocol = basic_protcol.copy()
-        modified_protocol['absolute-binding']['phases']['complex']['alchemical_path'] = protocol
+        modified_protocol = copy.deepcopy(basic_protocol)
+        modified_protocol['absolute-binding']['complex']['alchemical_path'] = protocol
         yield YamlBuilder._validate_protocols, modified_protocol
+
+    # Phases
+    alchemical_path = copy.deepcopy(basic_protocol['absolute-binding']['complex'])
+    protocols = [
+        {'complex': alchemical_path, 'solvent': alchemical_path},
+        {'my-complex': alchemical_path, 'my-solvent': alchemical_path},
+        {'solvent1': alchemical_path, 'solvent2': alchemical_path},
+        {'solvent1variant': alchemical_path, 'solvent2variant': alchemical_path},
+        collections.OrderedDict([('my-phase1', alchemical_path), ('my-phase2', alchemical_path)])
+    ]
+    for protocol in protocols:
+        modified_protocol = copy.deepcopy(basic_protocol)
+        modified_protocol['absolute-binding'] = protocol
+        yield YamlBuilder._validate_protocols, modified_protocol
+        validated_protocol = YamlBuilder._validate_protocols(modified_protocol)
+        assert isinstance(validated_protocol['absolute-binding'], collections.OrderedDict)
 
 
 def test_validation_wrong_protocols():
     """YAML validation raises exception with wrong alchemical protocols."""
-    basic_protocol = yaml.load(standard_protocol)
+    basic_protocol = yank_load(standard_protocol)
+
+    # Alchemical paths
     protocols = [
         {'lambda_electrostatics': [1.0, 0.8, 0.6, 0.3, 0.0]},
         {'lambda_electrostatics': [1.0, 0.8, 0.6, 0.3, 0.0], 'lambda_sterics': [1.0, 0.8, 0.6, 0.3, 'wrong!']},
@@ -486,8 +533,27 @@ def test_validation_wrong_protocols():
         {'lambda_electrostatics': [1.0, 0.8, 0.6, 0.3, 0.0], 'lambda_sterics': [1.0, 0.8, 0.6, 0.3, 0.0], 3: 2}
     ]
     for protocol in protocols:
-        modified_protocol = basic_protocol.copy()
-        modified_protocol['absolute-binding']['phases']['complex']['alchemical_path'] = protocol
+        modified_protocol = copy.deepcopy(basic_protocol)
+        modified_protocol['absolute-binding']['complex']['alchemical_path'] = protocol
+        yield assert_raises, YamlParseError, YamlBuilder._validate_protocols, modified_protocol
+
+    # Phases
+    alchemical_path = copy.deepcopy(basic_protocol['absolute-binding']['complex'])
+    protocols = [
+        {'complex': alchemical_path},
+        {2: alchemical_path, 'solvent': alchemical_path},
+        {'complex': alchemical_path, 'solvent': alchemical_path, 'thirdphase': alchemical_path},
+        {'my-complex-solvent': alchemical_path, 'my-solvent': alchemical_path},
+        {'my-complex': alchemical_path, 'my-complex-solvent': alchemical_path},
+        {'my-complex': alchemical_path, 'my-complex': alchemical_path},
+        {'complex': alchemical_path, 'solvent1': alchemical_path, 'solvent2': alchemical_path},
+        {'my-phase1': alchemical_path, 'my-phase2': alchemical_path},
+        collections.OrderedDict([('my-phase1', alchemical_path), ('my-phase2', alchemical_path),
+                                 ('my-phase3', alchemical_path)])
+    ]
+    for protocol in protocols:
+        modified_protocol = copy.deepcopy(basic_protocol)
+        modified_protocol['absolute-binding'] = protocol
         yield assert_raises, YamlParseError, YamlBuilder._validate_protocols, modified_protocol
 
 
@@ -505,7 +571,7 @@ def test_validation_correct_experiments():
         sys: {{receptor: rec, ligand: lig, solvent: solv}}
     protocols:{}
     """.format(examples_paths()['lysozyme'], standard_protocol)
-    basic_script = yaml.load(textwrap.dedent(basic_script))
+    basic_script = yank_load(basic_script)
 
     experiments = [
         {'system': 'sys', 'protocol': 'absolute-binding'}
@@ -530,7 +596,7 @@ def test_validation_wrong_experiments():
         sys: {{receptor: rec, ligand: lig, solvent: solv}}
     protocols:{}
     """.format(examples_paths()['lysozyme'], standard_protocol)
-    basic_script = yaml.load(textwrap.dedent(basic_script))
+    basic_script = yank_load(basic_script)
 
     experiments = [
         {'system': 'unknownsys', 'protocol': 'absolute-binding'},
@@ -675,7 +741,8 @@ def test_clashing_atoms():
         yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
 
         for system_id in ['system_vacuum', 'system_PME']:
-            system_dir = os.path.dirname(yaml_builder._db.get_system(system_id)[0])
+            system_dir = os.path.dirname(
+                yaml_builder._db.get_system(system_id)[0].position_path)
 
             # Get positions of molecules in the final system
             prmtop = openmm.app.AmberPrmtopFile(os.path.join(system_dir, 'complex.prmtop'))
@@ -1244,7 +1311,8 @@ def test_setup_implicit_system_leap():
 
         yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
 
-        output_dir = os.path.dirname(yaml_builder._db.get_system('system')[0])
+        output_dir = os.path.dirname(
+            yaml_builder._db.get_system('system')[0].position_path)
         last_modified_path = os.path.join(output_dir, 'complex.prmtop')
         last_modified = os.stat(last_modified_path).st_mtime
 
@@ -1300,7 +1368,8 @@ def test_setup_explicit_system_leap():
 
         yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
 
-        output_dir = os.path.dirname(yaml_builder._db.get_system('system')[0])
+        output_dir = os.path.dirname(
+            yaml_builder._db.get_system('system')[0].position_path)
 
         # Test that output file exists and that there is water
         expected_resnames = {'complex': set(['BEN', 'TOL', 'WAT']),
@@ -1351,7 +1420,8 @@ def test_neutralize_system():
 
         yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
 
-        output_dir = os.path.dirname(yaml_builder._db.get_system('system')[0])
+        output_dir = os.path.dirname(
+            yaml_builder._db.get_system('system')[0].position_path)
 
         # Test that output file exists and that there are ions
         found_resnames = set()
@@ -1400,7 +1470,7 @@ def test_charged_ligand():
         yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
 
         system_files_paths = yaml_builder._db.get_system('system')
-        output_dir = os.path.dirname(system_files_paths[0])
+        output_dir = os.path.dirname(system_files_paths[0].position_path)
 
         # Safety check: Asp is negatively charged, Lys is positively charged
         asp_path = os.path.join(yaml_builder._db.get_molecule_dir('aspartic-acid'),
@@ -1420,11 +1490,9 @@ def test_charged_ligand():
         assert set(['Na+', 'Cl-']) <= found_resnames
 
         # Test that 'ligand_counterions' component contain one anion
-        system_files_paths = {'complex': [system_files_paths[0], system_files_paths[1]],
-                              'solvent': [system_files_paths[2], system_files_paths[3]]}
-        for phase in ['complex', 'solvent']:
-            inpcrd_file_path = system_files_paths[phase][0]
-            prmtop_file_path = system_files_paths[phase][1]
+        for i, phase in enumerate(['complex', 'solvent']):
+            inpcrd_file_path = system_files_paths[i].position_path
+            prmtop_file_path = system_files_paths[i].topology_path
             atom_indices = pipeline.prepare_phase(inpcrd_file_path, prmtop_file_path, 'resname ASP',
                                                   {'nonbondedMethod': openmm.app.PME}).atom_indices
             topology = openmm.app.AmberPrmtopFile(prmtop_file_path).topology
@@ -1441,10 +1509,11 @@ def test_setup_explicit_solvation_system():
         yaml_script = get_template_script(tmp_dir)
         yaml_script['systems'] = {'system1': {'solute': 'toluene', 'solvent1': 'PME', 'solvent2': 'vacuum'}}
         yaml_builder = YamlBuilder(yaml_script)
-        output_dir = os.path.dirname(yaml_builder._db.get_system('system1')[0])
+        output_dir = os.path.dirname(
+            yaml_builder._db.get_system('system1')[0].position_path)
 
         # Test that output file exists and that it has correct components
-        expected_resnames = {'complex': set(['TOL', 'WAT']), 'solvent': set(['TOL'])}
+        expected_resnames = {'solvent1': set(['TOL', 'WAT']), 'solvent2': set(['TOL'])}
         for phase in expected_resnames:
             found_resnames = set()
             pdb_path = os.path.join(output_dir, phase + '.pdb')
@@ -1583,8 +1652,8 @@ def test_run_experiment_from_amber_files():
         # The experiments folders are correctly named and positioned
         output_dir = yaml_builder._get_experiment_dir(yaml_builder.options, '')
         assert os.path.isdir(output_dir)
-        assert os.path.isfile(os.path.join(output_dir, 'complex-explicit.nc'))
-        assert os.path.isfile(os.path.join(output_dir, 'solvent-explicit.nc'))
+        assert os.path.isfile(os.path.join(output_dir, 'complex.nc'))
+        assert os.path.isfile(os.path.join(output_dir, 'solvent.nc'))
         assert os.path.isfile(os.path.join(output_dir, 'experiments.yaml'))
         assert os.path.isfile(os.path.join(output_dir, 'experiments.log'))
 
@@ -1610,8 +1679,8 @@ def test_run_experiment_from_gromacs_files():
         # The experiments folders are correctly named and positioned
         output_dir = yaml_builder._get_experiment_dir(yaml_builder.options, '')
         assert os.path.isdir(output_dir)
-        assert os.path.isfile(os.path.join(output_dir, 'complex-explicit.nc'))
-        assert os.path.isfile(os.path.join(output_dir, 'solvent-explicit.nc'))
+        assert os.path.isfile(os.path.join(output_dir, 'complex.nc'))
+        assert os.path.isfile(os.path.join(output_dir, 'solvent.nc'))
         assert os.path.isfile(os.path.join(output_dir, 'experiments.yaml'))
         assert os.path.isfile(os.path.join(output_dir, 'experiments.log'))
 
@@ -1674,7 +1743,8 @@ def test_run_experiment():
 
         # Same thing with a system
         err_msg = ''
-        system_dir = os.path.dirname(yaml_builder._db.get_system('system_vacuum')[0])
+        system_dir = os.path.dirname(
+            yaml_builder._db.get_system('system_vacuum')[0].position_path)
         try:
             yaml_builder.build_experiment()
         except YamlParseError as e:
@@ -1699,8 +1769,8 @@ def test_run_experiment():
             # The output directory must be the one in the experiment section
             output_dir = os.path.join(tmp_dir, exp_name)
             assert os.path.isdir(output_dir)
-            assert os.path.isfile(os.path.join(output_dir, 'complex-implicit.nc'))
-            assert os.path.isfile(os.path.join(output_dir, 'solvent-implicit.nc'))
+            assert os.path.isfile(os.path.join(output_dir, 'complex.nc'))
+            assert os.path.isfile(os.path.join(output_dir, 'solvent.nc'))
             assert os.path.isfile(os.path.join(output_dir, exp_name + '.yaml'))
             assert os.path.isfile(os.path.join(output_dir, exp_name + '.log'))
 
@@ -1729,8 +1799,8 @@ def test_run_solvation_experiment():
         # The experiments folders are correctly named and positioned
         output_dir = yaml_builder._get_experiment_dir(yaml_builder.options, '')
         assert os.path.isdir(output_dir)
-        assert os.path.isfile(os.path.join(output_dir, 'complex-explicit.nc'))
-        assert os.path.isfile(os.path.join(output_dir, 'solvent-explicit.nc'))
+        assert os.path.isfile(os.path.join(output_dir, 'complex.nc'))
+        assert os.path.isfile(os.path.join(output_dir, 'solvent.nc'))
         assert os.path.isfile(os.path.join(output_dir, 'experiments.yaml'))
         assert os.path.isfile(os.path.join(output_dir, 'experiments.log'))
 
