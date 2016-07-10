@@ -1695,7 +1695,7 @@ class YamlBuilder:
         validated_systems = systems_description.copy()
         system_schema = Schema(Or(
             {'receptor': is_known_molecule, 'ligand': is_known_molecule,
-             'solvent': is_known_solvent, Optional('pack', default=False): bool},
+             'solvent': is_known_solvent, Optional('pack'): bool},
 
             {'solute': is_known_molecule, 'solvent1': is_known_solvent,
              'solvent2': is_known_solvent},
@@ -1711,6 +1711,9 @@ class YamlBuilder:
         for system_id, system_descr in systems_description.items():
             try:
                 validated_systems[system_id] = system_schema.validate(system_descr)
+                # TODO use Optional('pack', default=False) when upgrade to schema 0.5
+                if 'receptor' in system_descr and 'pack' not in system_descr:
+                    validated_systems[system_id]['pack'] = False
             except SchemaError as e:
                 raise YamlParseError('System {}: {}'.format(system_id, e.autos[-1]))
 
