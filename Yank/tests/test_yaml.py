@@ -249,7 +249,6 @@ def test_yaml_parsing():
         output_dir: /path/to/output/
         setup_dir: /path/to/output/setup/
         experiments_dir: /path/to/output/experiments/
-        pack: no
         temperature: 300*kelvin
         pressure: 1*atmosphere
         constraints: AllBonds
@@ -279,7 +278,7 @@ def test_yaml_parsing():
     """
 
     yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
-    assert len(yaml_builder.options) == 34
+    assert len(yaml_builder.options) == 33
     assert len(yaml_builder.yank_options) == 23
 
     # Check correct types
@@ -391,6 +390,7 @@ def test_validation_correct_systems():
 
     systems = [
         {'receptor': 'rec', 'ligand': 'lig', 'solvent': 'solv'},
+        {'receptor': 'rec', 'ligand': 'lig', 'solvent': 'solv', 'pack': True},
 
         {'complex_path': examples_paths()['bentol-complex'],
          'solvent_path': examples_paths()['bentol-solvent'],
@@ -737,6 +737,7 @@ def test_clashing_atoms():
                 receptor: benzene
                 ligand: toluene
                 solvent: !Combinatorial [vacuum, PME]
+                pack: True
         """.format(tmp_dir, benzene_path, toluene_path, clearance)
 
         # Sanity check: at the beginning molecules clash
@@ -1600,6 +1601,7 @@ def test_yaml_creation():
                 parameters: antechamber
         solvents:{}
         systems:{}
+                pack: False
         protocols:{}
         experiments:{}
         """.format(molecules, os.path.relpath(ligand_path, tmp_dir),
@@ -1613,10 +1615,10 @@ def test_yaml_creation():
         experiment_dict = yaml.load(experiment)
         yaml_builder._db.get_system(experiment_dict['system'])
 
-        yaml_builder._generate_yaml(experiment_dict, os.path.join(tmp_dir, 'experiment.yaml'))
-        with open(os.path.join(tmp_dir, 'experiment.yaml'), 'r') as f:
-            for line, expected in zip(f, expected_yaml_content.split('\n')):
-                assert line[:-1] == expected  # without final '\n'
+        generated_yaml_path = os.path.join(tmp_dir, 'experiment.yaml')
+        yaml_builder._generate_yaml(experiment_dict, generated_yaml_path)
+        with open(generated_yaml_path, 'r') as f:
+            assert yaml.load(f) == yank_load(expected_yaml_content)
 
 
 def test_get_alchemical_path():

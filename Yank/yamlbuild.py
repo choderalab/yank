@@ -616,7 +616,7 @@ class SetupDatabase:
         else:
             return True, False
 
-    def get_system(self, system_id, pack=True):
+    def get_system(self, system_id):
         """Make sure that the system files are set up and return the system folder.
 
         If necessary, create the prmtop and inpcrd files from the given components.
@@ -627,9 +627,6 @@ class SetupDatabase:
         ----------
         system_id : str
             The ID of the system.
-        pack : bool
-            If True and the ligand is far away from the protein or closer than the clashing
-            threshold, this try to find a better position (default is True).
 
         Returns
         -------
@@ -652,7 +649,7 @@ class SetupDatabase:
             solvent_id = system_descr['solvent']
 
             # solvent phase
-            self._setup_system(system_files_paths[1].position_path, pack,
+            self._setup_system(system_files_paths[1].position_path, False,
                                0, solvent_id, ligand_id)
 
             try:
@@ -661,19 +658,20 @@ class SetupDatabase:
                 alchemical_charge = 0
 
             # complex phase
-            self._setup_system(system_files_paths[0].position_path, pack,
-                               alchemical_charge, solvent_id, receptor_id, ligand_id)
+            self._setup_system(system_files_paths[0].position_path,
+                               system_descr['pack'], alchemical_charge,
+                               solvent_id, receptor_id, ligand_id)
         else:  # partition/solvation free energy calculation
             solute_id = system_descr['solute']
             solvent1_id = system_descr['solvent1']
             solvent2_id = system_descr['solvent2']
 
             # solvent1 phase
-            self._setup_system(system_files_paths[0].position_path, pack,
+            self._setup_system(system_files_paths[0].position_path, False,
                                0, solvent1_id, solute_id)
 
             # solvent2 phase
-            self._setup_system(system_files_paths[1].position_path, pack,
+            self._setup_system(system_files_paths[1].position_path, False,
                                0, solvent2_id, solute_id)
 
         return system_files_paths
@@ -1148,7 +1146,6 @@ class YamlBuilder:
         'output_dir': 'output',
         'setup_dir': 'setup',
         'experiments_dir': 'experiments',
-        'pack': True,
         'temperature': 298 * unit.kelvin,
         'pressure': 1 * unit.atmosphere,
         'constraints': openmm.app.HBonds,
@@ -1698,7 +1695,7 @@ class YamlBuilder:
         validated_systems = systems_description.copy()
         system_schema = Schema(Or(
             {'receptor': is_known_molecule, 'ligand': is_known_molecule,
-             'solvent': is_known_solvent},
+             'solvent': is_known_solvent, Optional('pack', default=False): bool},
 
             {'solute': is_known_molecule, 'solvent1': is_known_solvent,
              'solvent2': is_known_solvent},
@@ -1946,7 +1943,7 @@ class YamlBuilder:
                 except KeyError:  # partition/solvation free energy system
                     components = (sys_descr['solute'], sys_descr['solvent1'], sys_descr['solvent2'])
                 logger.info('Setting up the systems for {}, {} and {}'.format(*components))
-                self._db.get_system(system_id, exp_opts['pack'])
+                self._db.get_system(system_id)
             except KeyError:  # system files are given directly by the user
                 pass
 
@@ -2147,7 +2144,7 @@ class YamlBuilder:
 
                 # Get protocols as list of AlchemicalStates
                 alchemical_paths = self._get_alchemical_paths(protocol_id)
-                system_files_paths = self._db.get_system(system_id, exp_opts['pack'])
+                system_files_paths = self._db.get_system(system_id)
                 gromacs_include_dir = self._db.systems[system_id].get('gromacs_include_dir', None)
 
                 # Prepare Yank arguments
