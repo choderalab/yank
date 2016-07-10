@@ -436,8 +436,11 @@ def analyze(source_directory):
     """
     analysis_script_path = os.path.join(source_directory, 'analysis.yaml')
     if not os.path.isfile(analysis_script_path):
-        raise RuntimeError('Cannot find analysis.yaml script')
-    analysis = yaml.load(analysis_script_path)
+        err_msg = 'Cannot find analysis.yaml script in {}'.format(source_directory)
+        logger.error(err_msg)
+        raise RuntimeError(err_msg)
+    with open(analysis_script_path, 'r') as f:
+        analysis = yaml.load(f)
     phases = [phase_name for phase_name, sign in analysis]
 
     # Storage for different phases.
