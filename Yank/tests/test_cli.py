@@ -82,15 +82,14 @@ def test_script_yaml():
                 nonbonded_method: NoCutoff
         protocols:
             absolute-binding:
-                phases:
-                    complex:
-                        alchemical_path:
-                            lambda_electrostatics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
-                            lambda_sterics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
-                    solvent:
-                        alchemical_path:
-                            lambda_electrostatics: [1.0, 0.8, 0.6, 0.3, 0.0]
-                            lambda_sterics: [1.0, 0.8, 0.6, 0.3, 0.0]
+                complex:
+                    alchemical_path:
+                        lambda_electrostatics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
+                        lambda_sterics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
+                solvent:
+                    alchemical_path:
+                        lambda_electrostatics: [1.0, 0.8, 0.6, 0.3, 0.0]
+                        lambda_sterics: [1.0, 0.8, 0.6, 0.3, 0.0]
         systems:
             system:
                 receptor: T4lysozyme
