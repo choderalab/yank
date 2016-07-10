@@ -97,15 +97,6 @@ def test_phase_creation():
         nc_path = os.path.join(output_dir, phase_name + '.nc')
         assert os.path.isfile(nc_path)
 
-        try:
-            ncfile = netcdf.Dataset(nc_path, 'r')
-
-            # Thermodynamic cycle direction has been set
-            nc_direction = ncfile.groups['metadata']['cycle_direction']
-            assert nc_direction.getValue() == 1
-        finally:
-            ncfile.close()
-
 
 def notest_LennardJonesPair(box_width_nsigma=6.0):
     """
