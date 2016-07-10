@@ -16,6 +16,7 @@
 import os
 import os.path
 
+import yaml
 import numpy as np
 
 import netCDF4 as netcdf # netcdf4-python
@@ -433,13 +434,18 @@ def analyze(source_directory):
        The location of the NetCDF simulation storage files.
 
     """
-    phases = utils.find_phases_in_store_directory(source_directory)
+    analysis_script_path = os.path.join(source_directory, 'analysis.yaml')
+    if not os.path.isfile(analysis_script_path):
+        raise RuntimeError('Cannot find analysis.yaml script')
+    analysis = yaml.load(analysis_script_path)
+    phases = [phase_name for phase_name, sign in analysis]
 
     # Storage for different phases.
     data = dict()
 
     # Process each netcdf file.
-    for phase, ncfile_path in phases.items():
+    for phase in phases:
+        ncfile_path = os.path.join(source_directory, phase + '.nc')
 
         # Open NetCDF file for reading.
         logger.info("Opening NetCDF trajectory file %(ncfile_path)s for reading..." % vars())
@@ -457,9 +463,7 @@ def analyze(source_directory):
 
             # Read phase direction and standard state correction free energy.
             # Yank sets correction to 0 if there are no restraints
-            metadata_group = ncfile.groups['metadata']
-            phase_direction = metadata_group.variables['cycle_direction']
-            DeltaF_restraints = metadata_group.variables['standard_state_correction'][0]
+            DeltaF_restraints = ncfile.groups['metadata'].variables['standard_state_correction'][0]
 
             # Choose number of samples to discard to equilibration
             MIN_ITERATIONS = 10 # minimum number of iterations to use automatic detection
@@ -491,7 +495,6 @@ def analyze(source_directory):
             entry['DeltaH'] = DeltaH_i[nstates-1] - DeltaH_i[0]
             entry['dDeltaH'] = np.sqrt(dDeltaH_i[0]**2 + dDeltaH_i[nstates-1]**2)
             entry['DeltaF_restraints'] = DeltaF_restraints
-            entry['sign'] = phase_direction
             data[phase] = entry
 
             # Get temperatures.
@@ -507,10 +510,10 @@ def analyze(source_directory):
     dDeltaF = 0.0
     DeltaH = 0.0
     dDeltaH = 0.0
-    for phase in phases:
-        DeltaF -= data[phase]['sign'] * (data[phase]['DeltaF'] + data[phase]['DeltaF_restraints'])
+    for phase, sign in analysis:
+        DeltaF -= sign * (data[phase]['DeltaF'] + data[phase]['DeltaF_restraints'])
         dDeltaF += data[phase]['dDeltaF']**2
-        DeltaH -= data[phase]['sign'] * (data[phase]['DeltaH'] + data[phase]['DeltaF_restraints'])
+        DeltaH -= sign * (data[phase]['DeltaH'] + data[phase]['DeltaF_restraints'])
         dDeltaH += data[phase]['dDeltaH']**2
     dDeltaF = np.sqrt(dDeltaF)
     dDeltaH = np.sqrt(dDeltaH)
@@ -520,7 +523,7 @@ def analyze(source_directory):
     for phase in phases:
         if 'complex' in phase:
             calculation_type = ' of binding'
-        elif 'vacuum' in phase:
+        elif 'solvent1' in phase:
             calculation_type = ' of solvation'
 
     # Print energies

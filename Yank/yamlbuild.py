@@ -2152,7 +2152,6 @@ class YamlBuilder:
 
                 # Prepare Yank arguments
                 phases = [None, None]
-                cycle_directions = ['+', '-']
                 for i, phase_name in enumerate(self._protocols[protocol_id]):
                     # self._protocols[protocol_id] is an OrderedDict so phases are in the
                     # correct order (e.g. [complex, solvent] or [solvent1, solvent2])
@@ -2165,13 +2164,18 @@ class YamlBuilder:
                     phases[i] = pipeline.prepare_phase(positions_file_path, topology_file_path, ligand_dsl,
                                                        system_options, gromacs_include_dir=gromacs_include_dir)
                     phases[i].name = phase_name
-                    phases[i].cycle_direction = cycle_directions[i]
                     phases[i].protocol = alchemical_paths[phase_name]
 
                 for phase in phases:
                     if len(phase.atom_indices['ligand']) == 0:
                         raise RuntimeError('DSL string "{}" did not select any atom for '
                                            'the ligand in phase {}.'.format(ligand_dsl, phase.name))
+
+                # Dump analysis script
+                analysis = [[phases[0].name, 1], [phases[1].name, -1]]
+                analysis_script_path = os.path.join(results_dir, 'analysis.yaml')
+                with open(analysis_script_path, 'w') as f:
+                    yaml.dump(analysis, f)
 
                 # Create thermodynamic state
                 thermodynamic_state = ThermodynamicState(temperature=exp_opts['temperature'],

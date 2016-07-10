@@ -377,7 +377,7 @@ def test_validation_wrong_solvents():
 
 
 def test_validation_correct_systems():
-    """YAML validation raises exception with wrong experiments specification."""
+    """Correct systems YAML validation."""
     yaml_builder = YamlBuilder()
     basic_script = """
     ---
@@ -488,7 +488,7 @@ def test_order_phases():
 
 
 def test_validation_correct_protocols():
-    """YAML validation raises exception with wrong alchemical protocols."""
+    """Correct protocols YAML validation."""
     basic_protocol = yank_load(standard_protocol)
 
     # Alchemical paths
@@ -509,14 +509,20 @@ def test_validation_correct_protocols():
         {'my-complex': alchemical_path, 'my-solvent': alchemical_path},
         {'solvent1': alchemical_path, 'solvent2': alchemical_path},
         {'solvent1variant': alchemical_path, 'solvent2variant': alchemical_path},
-        collections.OrderedDict([('my-phase1', alchemical_path), ('my-phase2', alchemical_path)])
+        collections.OrderedDict([('a', alchemical_path), ('z', alchemical_path)]),
+        collections.OrderedDict([('z', alchemical_path), ('a', alchemical_path)])
     ]
     for protocol in protocols:
         modified_protocol = copy.deepcopy(basic_protocol)
         modified_protocol['absolute-binding'] = protocol
         yield YamlBuilder._validate_protocols, modified_protocol
-        validated_protocol = YamlBuilder._validate_protocols(modified_protocol)
-        assert isinstance(validated_protocol['absolute-binding'], collections.OrderedDict)
+        sorted_protocol = YamlBuilder._validate_protocols(modified_protocol)['absolute-binding']
+        if isinstance(protocol, collections.OrderedDict):
+            assert sorted_protocol.keys() == protocol.keys()
+        else:
+            assert isinstance(sorted_protocol, collections.OrderedDict)
+            first_phase = sorted_protocol.keys()[0]
+            assert 'complex' in first_phase or 'solvent1' in first_phase
 
 
 def test_validation_wrong_protocols():
@@ -1657,6 +1663,11 @@ def test_run_experiment_from_amber_files():
         assert os.path.isfile(os.path.join(output_dir, 'experiments.yaml'))
         assert os.path.isfile(os.path.join(output_dir, 'experiments.log'))
 
+        # Analysis script is correct
+        analysis_script_path = os.path.join(output_dir, 'analysis.yaml')
+        with open(analysis_script_path, 'r') as f:
+            assert yaml.load(f) == [['complex', 1], ['solvent', -1]]
+
 
 @attr('slow')  # Skip on Travis-CI
 def test_run_experiment_from_gromacs_files():
@@ -1683,6 +1694,11 @@ def test_run_experiment_from_gromacs_files():
         assert os.path.isfile(os.path.join(output_dir, 'solvent.nc'))
         assert os.path.isfile(os.path.join(output_dir, 'experiments.yaml'))
         assert os.path.isfile(os.path.join(output_dir, 'experiments.log'))
+
+        # Analysis script is correct
+        analysis_script_path = os.path.join(output_dir, 'analysis.yaml')
+        with open(analysis_script_path, 'r') as f:
+            assert yaml.load(f) == [['complex', 1], ['solvent', -1]]
 
 
 @attr('slow')  # Skip on Travis-CI
@@ -1774,6 +1790,11 @@ def test_run_experiment():
             assert os.path.isfile(os.path.join(output_dir, exp_name + '.yaml'))
             assert os.path.isfile(os.path.join(output_dir, exp_name + '.log'))
 
+            # Analysis script is correct
+            analysis_script_path = os.path.join(output_dir, 'analysis.yaml')
+            with open(analysis_script_path, 'r') as f:
+                assert yaml.load(f) == [['complex', 1], ['solvent', -1]]
+
         # Now we can't run the experiment again with resume_simulation: no
         try:
             yaml_builder.build_experiment()
@@ -1803,4 +1824,10 @@ def test_run_solvation_experiment():
         assert os.path.isfile(os.path.join(output_dir, 'solvent.nc'))
         assert os.path.isfile(os.path.join(output_dir, 'experiments.yaml'))
         assert os.path.isfile(os.path.join(output_dir, 'experiments.log'))
+
+        # Analysis script is correct
+        analysis_script_path = os.path.join(output_dir, 'analysis.yaml')
+        with open(analysis_script_path, 'r') as f:
+            assert yaml.load(f) == [['complex', 1], ['solvent', -1]]
+
 

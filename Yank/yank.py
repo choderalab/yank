@@ -46,10 +46,6 @@ class AlchemicalPhase(object):
     ----------
     name : str
         The name of the alchemical phase.
-    cycle_direction : 1 or -1
-        The direction of the alchemical phase in the thermodynamic cycle. If 1
-        the difference in free energy calculated for this phase is summed to the
-        final DeltaG, if -1 it is subtracted.
     reference_system : simtk.openmm.System
         The reference system object from which alchemical intermediates are
         to be constructed.
@@ -65,20 +61,6 @@ class AlchemicalPhase(object):
         The alchemical protocol used for the calculation.
 
     """
-    @property
-    def cycle_direction(self):
-        return self._cycle_direction
-
-    @cycle_direction.setter
-    def cycle_direction(self, value):
-        if value == '+':
-            self._cycle_direction = 1
-        elif value == '-':
-            self._cycle_direction = -1
-        else:
-            self._cycle_direction = int(np.sign(value))
-            assert self._cycle_direction != 0
-
     @property
     def positions(self):
         return self._positions
@@ -97,7 +79,7 @@ class AlchemicalPhase(object):
             self._positions[i] = unit.Quantity(np.array(value[i] / positions_unit),
                                                positions_unit)
 
-    def __init__(self, name, cycle_direction, reference_system, reference_topology,
+    def __init__(self, name, reference_system, reference_topology,
                  positions, atom_indices, protocol):
         """Constructor.
 
@@ -105,9 +87,6 @@ class AlchemicalPhase(object):
         ----------
         name : str
             The name of the phase being initialized.
-        cycle_direction : '+', '-' or int
-            The direction of the phase in the thermodynamic cycle. If an integer,
-            it cannot be 0.
         reference_system : simtk.openmm.System
             The reference system object from which alchemical intermediates are
             to be constructed.
@@ -130,7 +109,6 @@ class AlchemicalPhase(object):
 
         """
         self.name = name
-        self.cycle_direction = cycle_direction
         self.reference_system = reference_system
         self.reference_topology = reference_topology
         self.positions = positions
@@ -361,7 +339,7 @@ class Yank(object):
                 raise RuntimeError(err_msg)
 
         # Inizialize metadata storage.
-        metadata = {'cycle_direction': alchemical_phase.cycle_direction}
+        metadata = dict()
 
         # TODO: Use more general approach to determine whether system is periodic.
         is_periodic = self._is_periodic(reference_system)
