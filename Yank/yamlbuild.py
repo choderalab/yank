@@ -1131,7 +1131,7 @@ class YamlBuilder:
     ...       protocol: absolute-binding
     ...     '''.format(tmp_dir, lysozyme_path, pxylene_path)
     >>> yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
-    >>> yaml_builder.build_experiment()
+    >>> yaml_builder.build_experiments()
 
     """
 
@@ -1242,7 +1242,7 @@ class YamlBuilder:
         # Validate experiments
         self._parse_experiments(yaml_content)
 
-    def build_experiment(self):
+    def build_experiments(self):
         """Set up and run all the Yank experiments."""
         # Throw exception if there are no experiments
         if len(self._experiments) == 0:

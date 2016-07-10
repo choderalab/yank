@@ -1655,7 +1655,7 @@ def test_run_experiment_from_amber_files():
 
         yaml_builder = YamlBuilder(yaml_script)
         yaml_builder._check_resume()  # check_resume should not raise exceptions
-        yaml_builder.build_experiment()
+        yaml_builder.build_experiments()
 
         # The experiments folders are correctly named and positioned
         output_dir = yaml_builder._get_experiment_dir(yaml_builder.options, '')
@@ -1687,7 +1687,7 @@ def test_run_experiment_from_gromacs_files():
 
         yaml_builder = YamlBuilder(yaml_script)
         yaml_builder._check_resume()  # check_resume should not raise exceptions
-        yaml_builder.build_experiment()
+        yaml_builder.build_experiments()
 
         # The experiments folders are correctly named and positioned
         output_dir = yaml_builder._get_experiment_dir(yaml_builder.options, '')
@@ -1754,7 +1754,7 @@ def test_run_experiment():
         err_msg = ''
         yaml_builder._db._setup_molecules('p-xylene')
         try:
-            yaml_builder.build_experiment()
+            yaml_builder.build_experiments()
         except YamlParseError as e:
             err_msg = str(e)
         assert 'molecule' in err_msg
@@ -1764,7 +1764,7 @@ def test_run_experiment():
         system_dir = os.path.dirname(
             yaml_builder._db.get_system('system_vacuum')[0].position_path)
         try:
-            yaml_builder.build_experiment()
+            yaml_builder.build_experiments()
         except YamlParseError as e:
             err_msg = str(e)
         assert 'system' in err_msg
@@ -1776,7 +1776,7 @@ def test_run_experiment():
         prmtop_file = os.path.join(system_dir, 'complex.prmtop')
         molecule_last_touched = os.stat(frcmod_file).st_mtime
         system_last_touched = os.stat(prmtop_file).st_mtime
-        yaml_builder.build_experiment()
+        yaml_builder.build_experiments()
 
         # Neither the system nor the molecule has been processed again
         assert molecule_last_touched == os.stat(frcmod_file).st_mtime
@@ -1799,14 +1799,14 @@ def test_run_experiment():
 
         # Now we can't run the experiment again with resume_simulation: no
         try:
-            yaml_builder.build_experiment()
+            yaml_builder.build_experiments()
         except YamlParseError as e:
             err_msg = str(e)
         assert 'experiment' in err_msg
 
         # We set resume_simulation: yes and now things work
         yaml_builder.options['resume_simulation'] = True
-        yaml_builder.build_experiment()
+        yaml_builder.build_experiments()
 
 
 def test_run_solvation_experiment():
@@ -1817,7 +1817,7 @@ def test_run_solvation_experiment():
 
         yaml_builder = YamlBuilder(yaml_script)
         yaml_builder._check_resume()  # check_resume should not raise exceptions
-        yaml_builder.build_experiment()
+        yaml_builder.build_experiments()
 
         # The experiments folders are correctly named and positioned
         output_dir = yaml_builder._get_experiment_dir(yaml_builder.options, '')
