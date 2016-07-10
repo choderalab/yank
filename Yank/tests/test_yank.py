@@ -64,8 +64,7 @@ def test_no_alchemical_atoms():
     # Create parameters. With the exception of atom_indices, all other
     # parameters must be legal, we don't want to catch an exception
     # different than the one we are testing.
-    phase = AlchemicalPhase(name='solvent-implicit', cycle_direction='+',
-                            reference_system=toluene.system,
+    phase = AlchemicalPhase(name='solvent-implicit', reference_system=toluene.system,
                             reference_topology=toluene.topology,
                             positions=toluene.positions, atom_indices={'ligand': []},
                             protocol=AbsoluteAlchemicalFactory.defaultSolventProtocolImplicit())
@@ -84,7 +83,7 @@ def test_phase_creation():
     protocol = AbsoluteAlchemicalFactory.defaultSolventProtocolImplicit()
     atom_indices = find_components(toluene.system, toluene.topology, 'resname TOL')
 
-    phase = AlchemicalPhase(phase_name, '+', toluene.system, toluene.topology,
+    phase = AlchemicalPhase(phase_name, toluene.system, toluene.topology,
                             toluene.positions, atom_indices, protocol)
     thermodynamic_state = ThermodynamicState(temperature=300.0*unit.kelvin)
 
@@ -174,8 +173,9 @@ def notest_LennardJonesPair(box_width_nsigma=6.0):
     protocols[phase] = alchemical_states
 
     # Create phases.
-    alchemical_phase = AlchemicalPhase(phase, '+', system, test.topology, positions,
-                                       {'complex-explicit': {'ligand': [1]}}, alchemical_states)
+    alchemical_phase = AlchemicalPhase(phase, system, test.topology, positions,
+                                       {'complex-explicit': {'ligand': [1]}},
+                                       alchemical_states)
 
     # Create new simulation.
     yank = Yank(store_dir, **options)

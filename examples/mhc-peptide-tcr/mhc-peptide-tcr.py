@@ -297,7 +297,6 @@ options['mc_displacement_sigma'] = None
 phase_prefixes = ['solvent', 'complex'] # list of calculation phases (thermodynamic legs) to set up
 components = ['ligand', 'receptor', 'solvent'] # components of the binding system
 phase_prefixes = ['complex'] # DEBUG, since 'solvent' doesn't work yet
-cycle_directions = {'complex': '+', 'solvent': '-'}
 if is_periodic:
     protocols = {'complex': AbsoluteAlchemicalFactory.defaultComplexProtocolExplicit(),
                  'solvent': AbsoluteAlchemicalFactory.defaultSolventProtocolExplicit()}
@@ -357,8 +356,9 @@ for phase_prefix in phase_prefixes:
     print "Atom indices of ligand:"
     print atom_indices[phase]['ligand']
 
-    alchemical_phases.append(AlchemicalPhase(phase, cycle_directions[phase_prefix], solvated_system,
-                                             solvated_topology_openmm, solvated_positions, atom_indices,
+    alchemical_phases.append(AlchemicalPhase(phase, solvated_system,
+                                             solvated_topology_openmm,
+                                             solvated_positions, atom_indices,
                                              protocols[phase_prefix]))
 
 # Create reference thermodynamic state.
