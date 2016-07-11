@@ -1,9 +1,9 @@
 ---
 options:
-  minimize: no
+  minimize: yes
   verbose: yes
   output_dir: .
-  number_of_iterations: 1
+  number_of_iterations: 1000
   temperature: 300*kelvin
   pressure: 1*atmosphere
   softcore_beta: 0.0
