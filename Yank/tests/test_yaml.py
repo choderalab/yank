@@ -54,7 +54,7 @@ def examples_paths():
     p_xylene_dir = os.path.join(examples_dir, 'p-xylene-implicit', 'input')
     p_xylene_gro_dir = os.path.join(examples_dir, 'p-xylene-gromacs-example', 'setup')
     ben_tol_dir = os.path.join(examples_dir, 'benzene-toluene-explicit', 'setup')
-    abl_imatinib_dir = os.path.join(examples_dir, 'abl-imatinib-explicit', 'setup')
+    abl_imatinib_dir = os.path.join(examples_dir, 'abl-imatinib-explicit', 'input')
     paths['lysozyme'] = os.path.join(p_xylene_dir, '181L-pdbfixer.pdb')
     paths['p-xylene'] = os.path.join(p_xylene_dir, 'p-xylene.mol2')
     paths['benzene'] = os.path.join(ben_tol_dir, 'benzene.tripos.mol2')
@@ -1457,10 +1457,10 @@ def test_charged_ligand():
         molecules:
             aspartic-acid:
                 name: "(3S)-3-amino-4-hydroxy-4-oxo-butanoate"
-                parameters: antechamber
+                parameters: openeye:am1bcc-gaff
             lysine:
                 name: "[(5S)-5-amino-6-hydroxy-6-oxo-hexyl]azanium"
-                parameters: antechamber
+                parameters: openeye:am1bcc-gaff
         solvents:
             PMEtip3p:
                 nonbonded_method: PME
