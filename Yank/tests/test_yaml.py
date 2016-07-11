@@ -134,11 +134,11 @@ def get_template_script(output_dir='.'):
             nonbonded_cutoff: 1*nanometer
             clearance: 10*angstroms
     systems:
-        system1:
-            receptor: Abl
-            ligand: benzene
+        benzene-toluene-implicit:
+            receptor: benzene
+            ligand: toluene
             solvent: GBSA-OBC2
-        system2:
+        t4-pxylene-explicit:
             receptor: T4Lysozyme
             ligand: p-xylene
             solvent: PME
@@ -153,7 +153,7 @@ def get_template_script(output_dir='.'):
                     lambda_electrostatics: [1.0, 0.8, 0.6, 0.3, 0.0]
                     lambda_sterics: [1.0, 0.8, 0.6, 0.3, 0.0]
     experiments:
-        system: system1
+        system: benzene-toluene-implicit
         protocol: absolute-binding
     """.format(output_dir=output_dir, benzene_path=paths['benzene'],
                pxylene_path=paths['p-xylene'], toluene_path=paths['toluene'],
@@ -693,10 +693,10 @@ def test_clashing_atoms():
     toluene_path = examples_paths()['toluene']
     with omt.utils.temporary_directory() as tmp_dir:
         yaml_content = get_template_script(tmp_dir)
-        yaml_content['systems']['system1'] = {'receptor': 'benzene',
-                                              'ligand': 'toluene',
-                                              'solvent': utils.CombinatorialLeaf(['vacuum', 'PME']),
-                                              'pack': True}
+        system_id = 'benzene-toluene-implicit'
+        system_description = yaml_content['systems'][system_id]
+        system_description['pack'] = True
+        system_description['solvent'] = utils.CombinatorialLeaf(['vacuum', 'PME'])
 
         # Sanity check: at the beginning molecules clash
         toluene_pos = utils.get_oe_mol_positions(utils.read_oe_molecule(toluene_path))
@@ -705,7 +705,7 @@ def test_clashing_atoms():
 
         yaml_builder = YamlBuilder(yaml_content)
 
-        for system_id in ['system1_vacuum', 'system1_PME']:
+        for system_id in [system_id + '_vacuum', system_id + '_PME']:
             system_dir = os.path.dirname(
                 yaml_builder._db.get_system(system_id)[0].position_path)
 
@@ -722,7 +722,7 @@ def test_clashing_atoms():
             assert min_dist >= SetupDatabase.CLASH_THRESHOLD
 
             # For solvent we check that molecule is within the box
-            if system_id == 'system1_PME':
+            if system_id == system_id + '_PME':
                 assert max_dist <= clearance
 
 
@@ -1156,6 +1156,9 @@ def test_system_expansion():
     """Combinatorial systems are correctly expanded."""
     # We need 2 combinatorial systems
     template_script = get_template_script()
+    template_system = template_script['systems']['t4-pxylene-explicit']
+    template_script['systems'] = {'system1': template_system.copy(),
+                                  'system2': template_system.copy()}
     template_script['systems']['system1']['receptor'] = utils.CombinatorialLeaf(['Abl', 'T4Lysozyme'])
     template_script['systems']['system2']['ligand'] = utils.CombinatorialLeaf(['p-xylene', 'toluene'])
     template_script['experiments']['system'] = utils.CombinatorialLeaf(['system1', 'system2'])
@@ -1163,8 +1166,8 @@ def test_system_expansion():
     # Expected expanded script
     expected_script = yank_load("""
     systems:
-        system1_Abl: {receptor: Abl, ligand: benzene, solvent: GBSA-OBC2}
-        system1_T4Lysozyme: {receptor: T4Lysozyme, ligand: benzene, solvent: GBSA-OBC2}
+        system1_Abl: {receptor: Abl, ligand: p-xylene, solvent: PME}
+        system1_T4Lysozyme: {receptor: T4Lysozyme, ligand: p-xylene, solvent: PME}
         system2_pxylene: {receptor: T4Lysozyme, ligand: p-xylene, solvent: PME}
         system2_toluene: {receptor: T4Lysozyme, ligand: toluene, solvent: PME}
     experiments:
