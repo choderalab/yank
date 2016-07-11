@@ -1018,9 +1018,9 @@ class SetupDatabase:
             if alchemical_charge != 0:
                 try:
                     if alchemical_charge > 0:
-                        ion = solvent['positive_ion']
-                    else:
                         ion = solvent['negative_ion']
+                    else:
+                        ion = solvent['positive_ion']
                 except KeyError:
                     err_msg = ('Found charged ligand but no indications for ions in '
                                'solvent {}').format(solvent_id)
