@@ -1930,7 +1930,11 @@ class YamlBuilder:
         # TODO parallelize setup
         # Only root node performs setup
         if self._mpicomm is not None and self._mpicomm.rank != 0:
+            debug_msg = 'Node {}/{}: MPI barrier'.format(self._mpicomm.rank,
+                                                         self._mpicomm.size)
+            logger.debug(debug_msg + ' - waiting for the setup to be completed.')
             self._mpicomm.barrier()
+            return
 
         for _, experiment in self._expand_experiments():
             # Set database path
@@ -1952,6 +1956,9 @@ class YamlBuilder:
 
         # Signal resume to child nodes
         if self._mpicomm is not None:
+            debug_msg = 'Node {}/{}: MPI barrier'.format(self._mpicomm.rank,
+                                                         self._mpicomm.size)
+            logger.debug(debug_msg + ' - signal completed setup.')
             self._mpicomm.barrier()
 
     def _generate_yaml(self, experiment, file_path):
