@@ -108,7 +108,7 @@ def get_template_script(output_dir='.'):
             parameters: antechamber
         p-xylene-name:
             name: p-xylene
-            parameters: antechamber
+            parameters: openeye:am1bcc-gaff
         toluene:
             filepath: {toluene_path}
             parameters: antechamber
@@ -623,21 +623,11 @@ def test_validation_wrong_experiments():
 def test_yaml_mol2_antechamber():
     """Test antechamber setup of molecule files."""
     with omt.utils.temporary_directory() as tmp_dir:
-        yaml_content = """
-        ---
-        options:
-            output_dir: {}
-            setup_dir: .
-        molecules:
-            benzene:
-                filepath: {}
-                parameters: antechamber
-        """.format(tmp_dir, examples_paths()['benzene'])
-
-        yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
+        yaml_content = get_template_script(tmp_dir)
+        yaml_builder = YamlBuilder(yaml_content)
         yaml_builder._db._setup_molecules('benzene')
 
-        output_dir = os.path.join(tmp_dir, SetupDatabase.MOLECULES_DIR, 'benzene')
+        output_dir = yaml_builder._db.get_molecule_dir('benzene')
         gaff_path = os.path.join(output_dir, 'benzene.gaff.mol2')
         frcmod_path = os.path.join(output_dir, 'benzene.frcmod')
 
@@ -662,25 +652,14 @@ def test_yaml_mol2_antechamber():
 def test_setup_name_smiles_openeye_charges():
     """Setup molecule from name and SMILES with openeye charges and gaff."""
     with omt.utils.temporary_directory() as tmp_dir:
-        yaml_content = """
-        ---
-        options:
-            output_dir: {}
-            setup_dir: .
-        molecules:
-            p-xylene:
-                name: p-xylene
-                parameters: openeye:am1bcc-gaff
-            toluene:
-                smiles: Cc1ccccc1
-                parameters: antechamber
-        """.format(tmp_dir)
+        molecules_ids = ['toluene-smiles', 'p-xylene-name']
+        yaml_content = get_template_script(tmp_dir)
+        yaml_builder = YamlBuilder(yaml_content)
+        yaml_builder._db._setup_molecules(*molecules_ids)
 
-        yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
-        yaml_builder._db._setup_molecules('toluene', 'p-xylene')
-
-        for mol in ['toluene', 'p-xylene']:
-            output_basepath = os.path.join(tmp_dir, SetupDatabase.MOLECULES_DIR, mol, mol)
+        for mol in molecules_ids:
+            output_dir = yaml_builder._db.get_molecule_dir(mol)
+            output_basepath = os.path.join(output_dir, mol)
 
             # Check that all the files have been created
             assert os.path.exists(output_basepath + '.mol2')
@@ -696,14 +675,14 @@ def test_setup_name_smiles_openeye_charges():
             output_charges = atoms_frame['charge']
 
             # With openeye:am1bcc charges, the final charges should be unaltered
-            if mol == 'p-xylene':
+            if mol == 'p-xylene-name':
                 assert input_charges.equals(output_charges)
             else:  # With antechamber, sqm should alter the charges a little
                 assert not input_charges.equals(output_charges)
 
         # Check that molecules are resumed correctly
-        yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
-        yaml_builder._db._setup_molecules('toluene', 'p-xylene')
+        yaml_builder = YamlBuilder(yaml_content)
+        yaml_builder._db._setup_molecules(*molecules_ids)
 
 
 @unittest.skipIf(not utils.is_openeye_installed(), 'This test requires OpenEye installed.')
@@ -713,41 +692,20 @@ def test_clashing_atoms():
     benzene_path = examples_paths()['benzene']
     toluene_path = examples_paths()['toluene']
     with omt.utils.temporary_directory() as tmp_dir:
-        yaml_content = """
-        ---
-        options:
-            output_dir: {}
-            setup_dir: .
-        molecules:
-            benzene:
-                filepath: {}
-                parameters: antechamber
-            toluene:
-                filepath: {}
-                parameters: antechamber
-        solvents:
-            vacuum:
-                nonbonded_method: NoCutoff
-            PME:
-                nonbonded_method: PME
-                nonbonded_cutoff: 1*nanometer
-                clearance: {}*angstroms
-        systems:
-            system:
-                receptor: benzene
-                ligand: toluene
-                solvent: !Combinatorial [vacuum, PME]
-                pack: True
-        """.format(tmp_dir, benzene_path, toluene_path, clearance)
+        yaml_content = get_template_script(tmp_dir)
+        yaml_content['systems']['system1'] = {'receptor': 'benzene',
+                                              'ligand': 'toluene',
+                                              'solvent': utils.CombinatorialLeaf(['vacuum', 'PME']),
+                                              'pack': True}
 
         # Sanity check: at the beginning molecules clash
         toluene_pos = utils.get_oe_mol_positions(utils.read_oe_molecule(toluene_path))
         benzene_pos = utils.get_oe_mol_positions(utils.read_oe_molecule(benzene_path))
         assert compute_min_dist(toluene_pos, benzene_pos) < SetupDatabase.CLASH_THRESHOLD
 
-        yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
+        yaml_builder = YamlBuilder(yaml_content)
 
-        for system_id in ['system_vacuum', 'system_PME']:
+        for system_id in ['system1_vacuum', 'system1_PME']:
             system_dir = os.path.dirname(
                 yaml_builder._db.get_system(system_id)[0].position_path)
 
@@ -764,7 +722,7 @@ def test_clashing_atoms():
             assert min_dist >= SetupDatabase.CLASH_THRESHOLD
 
             # For solvent we check that molecule is within the box
-            if system_id == 'system_PME':
+            if system_id == 'system1_PME':
                 assert max_dist <= clearance
 
 
@@ -773,32 +731,14 @@ def test_clashing_atoms():
 def test_epik_enumeration():
     """Test epik protonation state enumeration."""
     with omt.utils.temporary_directory() as tmp_dir:
-        yaml_content = """
-        ---
-        options:
-            output_dir: {}
-            setup_dir: .
-        molecules:
-            benzene:
-                filepath: {}
-                epik: 0
-                parameters: antechamber
-            benzene-custom:
-                filepath: {}
-                epik:
-                    extract_range: 0
-                    ph: 7.0
-                    tautomerize: yes
-                parameters: antechamber
-        """.format(tmp_dir, examples_paths()['benzene'], examples_paths()['benzene'])
-
-        mol_ids = ['benzene', 'benzene-custom']
-        yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
+        yaml_content = get_template_script(tmp_dir)
+        yaml_builder = YamlBuilder(yaml_content)
+        mol_ids = ['benzene-epik0', 'benzene-epikcustom']
         yaml_builder._db._setup_molecules(*mol_ids)
 
         for mol_id in mol_ids:
-            output_basename = os.path.join(tmp_dir, SetupDatabase.MOLECULES_DIR,
-                                           mol_id, mol_id + '-epik.')
+            output_dir = yaml_builder._db.get_molecule_dir(mol_id)
+            output_basename = os.path.join(output_dir, mol_id + '-epik.')
             assert os.path.exists(output_basename + 'mol2')
             assert os.path.getsize(output_basename + 'mol2') > 0
             assert os.path.exists(output_basename + 'sdf')
@@ -807,19 +747,9 @@ def test_epik_enumeration():
 
 def test_strip_protons():
     """Test that protons are stripped correctly for tleap."""
+    mol_id = 'Abl'
     abl_path = examples_paths()['abl']
     with omt.utils.temporary_directory() as tmp_dir:
-        yaml_content = """
-        ---
-        options:
-            output_dir: {}
-            setup_dir: .
-        molecules:
-            abl:
-                filepath: {}
-                parameters: leaprc.ff14SB
-        """.format(tmp_dir, abl_path)
-
         # Safety check: protein must have protons
         has_hydrogen = False
         with open(abl_path, 'r') as f:
@@ -829,16 +759,18 @@ def test_strip_protons():
                     break
         assert has_hydrogen
 
-        yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
-        output_path = os.path.join(tmp_dir, SetupDatabase.MOLECULES_DIR, 'abl', 'abl.pdb')
+        yaml_content = get_template_script(tmp_dir)
+        yaml_builder = YamlBuilder(yaml_content)
+        output_dir = yaml_builder._db.get_molecule_dir(mol_id)
+        output_path = os.path.join(output_dir, 'abl.pdb')
 
         # We haven't set the strip_protons options, so this shouldn't do anything
-        yaml_builder._db._setup_molecules('abl')
+        yaml_builder._db._setup_molecules(mol_id)
         assert not os.path.exists(output_path)
 
         # Now we set the strip_protons options and repeat
-        yaml_builder._db.molecules['abl']['strip_protons'] = True
-        yaml_builder._db._setup_molecules('abl')
+        yaml_builder._db.molecules[mol_id]['strip_protons'] = True
+        yaml_builder._db._setup_molecules(mol_id)
         assert os.path.exists(output_path)
         assert os.path.getsize(output_path) > 0
 
