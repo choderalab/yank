@@ -198,8 +198,8 @@ def compute_torsion_trajectories(ncfile, filename):
 # DEBUG: ANALYSIS PATH IS HARD-CODED FOR NOW
 source_directory = 'experiments'
 
-reference_pdbfile = 'setup/systems/Abl_STI_rf/complex.pdb'
-phase = 'complex-explicit'
+reference_pdbfile = 'setup/systems/Abl-STI/complex.pdb'
+phase = 'complex'
 replica = 0 # replica index to render
 #replica = 15 # replica index to render
 

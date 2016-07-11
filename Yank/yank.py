@@ -19,7 +19,6 @@ Interface for automated free energy calculations.
 import os
 import os.path
 import copy
-import glob
 import inspect
 import logging
 logger = logging.getLogger(__name__)
@@ -33,6 +32,8 @@ from alchemy import AbsoluteAlchemicalFactory
 from sampling import ModifiedHamiltonianExchange # TODO: Modify to 'from yank.sampling import ModifiedHamiltonianExchange'?
 from restraints import HarmonicReceptorLigandRestraint, FlatBottomReceptorLigandRestraint
 
+import utils
+
 
 # ==============================================================================
 # Class that define a single thermodynamic leg (phase) of the calculation
@@ -45,10 +46,6 @@ class AlchemicalPhase(object):
     ----------
     name : str
         The name of the alchemical phase.
-    cycle_direction : 1 or -1
-        The direction of the alchemical phase in the thermodynamic cycle. If 1
-        the difference in free energy calculated for this phase is summed to the
-        final DeltaG, if -1 it is subtracted.
     reference_system : simtk.openmm.System
         The reference system object from which alchemical intermediates are
         to be constructed.
@@ -64,20 +61,6 @@ class AlchemicalPhase(object):
         The alchemical protocol used for the calculation.
 
     """
-    @property
-    def cycle_direction(self):
-        return self._cycle_direction
-
-    @cycle_direction.setter
-    def cycle_direction(self, value):
-        if value == '+':
-            self._cycle_direction = 1
-        elif value == '-':
-            self._cycle_direction = -1
-        else:
-            self._cycle_direction = int(np.sign(value))
-            assert self._cycle_direction != 0
-
     @property
     def positions(self):
         return self._positions
@@ -96,7 +79,7 @@ class AlchemicalPhase(object):
             self._positions[i] = unit.Quantity(np.array(value[i] / positions_unit),
                                                positions_unit)
 
-    def __init__(self, name, cycle_direction, reference_system, reference_topology,
+    def __init__(self, name, reference_system, reference_topology,
                  positions, atom_indices, protocol):
         """Constructor.
 
@@ -104,9 +87,6 @@ class AlchemicalPhase(object):
         ----------
         name : str
             The name of the phase being initialized.
-        cycle_direction : '+', '-' or int
-            The direction of the phase in the thermodynamic cycle. If an integer,
-            it cannot be 0.
         reference_system : simtk.openmm.System
             The reference system object from which alchemical intermediates are
             to be constructed.
@@ -129,7 +109,6 @@ class AlchemicalPhase(object):
 
         """
         self.name = name
-        self.cycle_direction = cycle_direction
         self.reference_system = reference_system
         self.reference_topology = reference_topology
         self.positions = positions
@@ -227,33 +206,6 @@ class Yank(object):
             raise TypeError('got an unexpected keyword arguments {}'.format(
                 ', '.join(parameters.keys())))
 
-    def _find_phases_in_store_directory(self):
-        """
-        Build a list of phases in the store directory.
-
-        Parameters
-        ----------
-        store_directory : str
-           The directory to examine for stored phase datafiles.
-
-        Returns
-        -------
-        phases : list of str
-           The names of phases found.
-
-        """
-        phases = list()
-        fullpaths = glob.glob(os.path.join(self._store_directory, '*.nc'))
-        for fullpath in fullpaths:
-            [filepath, filename] = os.path.split(fullpath)
-            [shortname, extension] = os.path.splitext(filename)
-            phases.append(shortname)
-
-        if len(phases) == 0:
-            raise Exception("Could not find any valid YANK store (*.nc) files in store directory: %s" % self._store_directory)
-
-        return phases
-
     def resume(self, phases=None):
         """
         Resume an existing set of alchemical free energy calculations found in current store directory.
@@ -267,8 +219,8 @@ class Yank(object):
         """
         # If no phases specified, construct a list of phases from the filename prefixes in the store directory.
         if phases is None:
-            phases = self._find_phases_in_store_directory()
-        self._phases = phases
+            phases = utils.find_phases_in_store_directory(self._store_directory)
+        self._phases = phases.keys()
 
         # Construct store filenames.
         self._store_filenames = { phase : os.path.join(self._store_directory, phase + '.nc') for phase in self._phases }
@@ -309,6 +261,10 @@ class Yank(object):
             # Abort if there are no atoms to alchemically modify
             if len(phase.atom_indices['ligand']) == 0:
                 raise ValueError('Ligand atoms are not specified.')
+
+        # Create store directory if needed
+        if not os.path.isdir(self._store_directory):
+            os.mkdir(self._store_directory)
 
         # Create new repex simulations.
         for phase in alchemical_phases:
@@ -367,7 +323,7 @@ class Yank(object):
 
         # Convenience variables
         positions = alchemical_phase.positions
-        reference_system = alchemical_phase.reference_system
+        reference_system = copy.deepcopy(alchemical_phase.reference_system)
         atom_indices = alchemical_phase.atom_indices
         alchemical_states = alchemical_phase.protocol
 
@@ -382,14 +338,13 @@ class Yank(object):
                 logger.error(err_msg)
                 raise RuntimeError(err_msg)
 
-        # Create metadata storage.
+        # Inizialize metadata storage.
         metadata = dict()
-
-        # Make a deep copy of the reference system so we don't accidentally modify it.
-        reference_system = copy.deepcopy(reference_system)
 
         # TODO: Use more general approach to determine whether system is periodic.
         is_periodic = self._is_periodic(reference_system)
+        is_complex_explicit = len(atom_indices['receptor']) > 0 and is_periodic
+        is_complex_implicit = len(atom_indices['receptor']) > 0 and not is_periodic
 
         # Make sure pressure is None if not periodic.
         if not is_periodic: thermodynamic_state.pressure = None
@@ -397,7 +352,7 @@ class Yank(object):
         # Compute standard state corrections for complex phase.
         metadata['standard_state_correction'] = 0.0
         # TODO: Do we need to include a standard state correction for other phases in periodic boxes?
-        if alchemical_phase.name == 'complex-implicit':
+        if is_complex_implicit:
             # Impose restraints for complex system in implicit solvent to keep ligand from drifting too far away from receptor.
             logger.debug("Creating receptor-ligand restraints...")
             reference_positions = positions[0]
@@ -411,7 +366,7 @@ class Yank(object):
             force = restraints.getRestraintForce() # Get Force object incorporating restraints
             reference_system.addForce(force)
             metadata['standard_state_correction'] = restraints.getStandardStateCorrection() # standard state correction in kT
-        elif alchemical_phase.name == 'complex-explicit':
+        elif is_complex_explicit:
             # For periodic systems, we do not use a restraint, but must add a standard state correction for the box volume.
             # TODO: What if the box volume fluctuates during the simulation?
             box_vectors = reference_system.getDefaultPeriodicBoxVectors()
@@ -447,7 +402,7 @@ class Yank(object):
             logger.debug("All energies are finite.")
 
         # Randomize ligand position if requested, but only for implicit solvent systems.
-        if self._randomize_ligand and (alchemical_phase.name == 'complex-implicit'):
+        if self._randomize_ligand and is_complex_implicit:
             logger.debug("Randomizing ligand positions and excluding overlapping configurations...")
             randomized_positions = list()
             nstates = len(alchemical_states)
@@ -460,7 +415,7 @@ class Yank(object):
                                                                                       self._randomize_ligand_close_cutoff)
                 randomized_positions.append(new_positions)
             positions = randomized_positions
-        if self._randomize_ligand and (alchemical_phase.name == 'complex-explicit'):
+        if self._randomize_ligand and is_complex_explicit:
             logger.warning("Ligand randomization requested, but will not be performed for explicit solvent simulations.")
 
         # Identify whether any atoms will be displaced via MC, unless option is turned off.

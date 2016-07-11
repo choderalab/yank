@@ -203,8 +203,7 @@ def prepare_phase(positions_file_path, topology_file_path, ligand_dsl, system_op
     Returns
     -------
     alchemical_phase : AlchemicalPhase
-        The alchemical phase for Yank calculation with unspecified name, cycle_direction,
-        and protocol.
+        The alchemical phase for Yank calculation with unspecified name, and protocol.
 
     """
     # Load system files
@@ -287,7 +286,7 @@ def prepare_phase(positions_file_path, topology_file_path, ligand_dsl, system_op
     # Find ligand atoms and receptor atoms
     atom_indices = find_components(system, topology_file.topology, ligand_dsl)
 
-    alchemical_phase = AlchemicalPhase('', '+', system, topology_file.topology,
+    alchemical_phase = AlchemicalPhase('', system, topology_file.topology,
                                        positions, atom_indices, None)
     return alchemical_phase
 

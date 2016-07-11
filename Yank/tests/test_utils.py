@@ -100,7 +100,7 @@ def test_expand_tree():
 
     # Test file paths are handled correctly
     examples_dir = get_data_filename(os.path.join('..', 'examples'))
-    abl = os.path.join(examples_dir, 'abl-imatinib-explicit', 'setup', '2HYY-pdbfixer.pdb')
+    abl = os.path.join(examples_dir, 'abl-imatinib-explicit', 'input', '2HYY-pdbfixer.pdb')
     benzene = os.path.join(examples_dir, 'benzene-toluene-explicit', 'setup', 'benzene.tripos.mol2')
     long_tree = CombinatorialTree({'key1': CombinatorialLeaf([abl, benzene]),
                                    'key2': CombinatorialLeaf([benzene, benzene, 'notapath'])})

@@ -15,12 +15,11 @@ Tools to build Yank experiments from a YAML configuration file.
 
 import os
 import re
-import sys
 import glob
 import copy
 import yaml
-import inspect
 import logging
+import collections
 
 logger = logging.getLogger(__name__)
 
@@ -354,17 +353,6 @@ def to_openmm_app(str):
 # UTILITY CLASSES
 # ============================================================================================
 
-def combinatorial_constructor(loader, node):
-    """Constructor for YAML !Combinatorial entries."""
-    return utils.CombinatorialLeaf(loader.construct_sequence(node))
-yaml.add_constructor(u'!Combinatorial', combinatorial_constructor)
-
-def combinatorial_representer(dumper, data):
-    """YAML representer CombinatorialLeaf nodes."""
-    return dumper.represent_sequence(u'!Combinatorial', data)
-yaml.add_representer(utils.CombinatorialLeaf, combinatorial_representer)
-
-
 class YamlParseError(Exception):
     """Represent errors occurring during parsing of Yank YAML file."""
     def __init__(self, message):
@@ -372,13 +360,48 @@ class YamlParseError(Exception):
         logger.error(message)
 
 
+class YankLoader(yaml.Loader):
+    """PyYAML Loader that recognized !Combinatorial nodes and load OrderedDicts."""
+    def __init__(self, *args, **kwargs):
+        super(YankLoader, self).__init__(*args, **kwargs)
+        self.add_constructor(u'!Combinatorial', self.combinatorial_constructor)
+        self.add_constructor(u'!Ordered', self.ordered_constructor)
+
+    @staticmethod
+    def combinatorial_constructor(loader, node):
+        """Constructor for YAML !Combinatorial entries."""
+        return utils.CombinatorialLeaf(loader.construct_sequence(node))
+
+    @staticmethod
+    def ordered_constructor(loader, node):
+        """Constructor for YAML !Ordered tag."""
+        loader.flatten_mapping(node)
+        return collections.OrderedDict(loader.construct_pairs(node))
+
+
 class YankDumper(yaml.Dumper):
     """PyYAML Dumper that always return sequences in flow style and maps in block style."""
+    def __init__(self, *args, **kwargs):
+        super(YankDumper, self).__init__(*args, **kwargs)
+        self.add_representer(utils.CombinatorialLeaf, self.combinatorial_representer)
+        self.add_representer(collections.OrderedDict, self.ordered_representer)
+
     def represent_sequence(self, tag, sequence, flow_style=None):
         return yaml.Dumper.represent_sequence(self, tag, sequence, flow_style=True)
 
     def represent_mapping(self, tag, mapping, flow_style=None):
         return yaml.Dumper.represent_mapping(self, tag, mapping, flow_style=False)
+
+    @staticmethod
+    def combinatorial_representer(dumper, data):
+        """YAML representer CombinatorialLeaf nodes."""
+        return dumper.represent_sequence(u'!Combinatorial', data)
+
+    @staticmethod
+    def ordered_representer(dumper, data):
+        """YAML representer OrderedDict nodes."""
+        return dumper.represent_mapping(u'!Ordered', data)
+
 
 class SetupDatabase:
     """Provide utility functions to set up systems and molecules.
@@ -449,28 +472,37 @@ class SetupDatabase:
 
         Returns
         -------
-        system_path_complex : str
-            Path to the system file (.inpcrd or .gro) of the complex phase.
-        topology_path_complex : str
-            Path to the topology file (.prmtop or .top) of the complex phase.
-        system_path_solvent : str
-            Path to the system file (.inpcrd or .gro) of the solvent phase.
-        topology_path_solvent : str
-            Path to the topology file (.prmtop or .top) of the solvent phase.
+        system_files_paths : list of namedtuple
+            Elements of the list contain the paths to the system files for
+            each phase. Each namedtuple contains the fields position_path (e.g.
+            inpcrd or gro) and topology_path (e.g. prmtop or top).
 
         """
-        if 'ligand' in self.systems[system_id] or 'solute' in self.systems[system_id]:
-            system_dir = os.path.join(self.setup_dir, self.SYSTEMS_DIR, system_id)
-            system_path_solvent = os.path.join(system_dir, 'solvent.inpcrd')
-            topology_path_solvent = os.path.join(system_dir, 'solvent.prmtop')
-            system_path_complex = os.path.join(system_dir, 'complex.inpcrd')
-            topology_path_complex = os.path.join(system_dir, 'complex.prmtop')
+        Paths = collections.namedtuple('Paths', ['position_path', 'topology_path'])
+        system_dir = os.path.join(self.setup_dir, self.SYSTEMS_DIR, system_id)
+        if 'receptor' in self.systems[system_id]:
+            system_files_paths = [
+                Paths(position_path=os.path.join(system_dir, 'complex.inpcrd'),
+                      topology_path=os.path.join(system_dir, 'complex.prmtop')),
+                Paths(position_path=os.path.join(system_dir, 'solvent.inpcrd'),
+                      topology_path=os.path.join(system_dir, 'solvent.prmtop'))
+            ]
+        elif 'solute' in self.systems[system_id]:
+            system_files_paths = [
+                Paths(position_path=os.path.join(system_dir, 'solvent1.inpcrd'),
+                      topology_path=os.path.join(system_dir, 'solvent1.prmtop')),
+                Paths(position_path=os.path.join(system_dir, 'solvent2.inpcrd'),
+                      topology_path=os.path.join(system_dir, 'solvent2.prmtop'))
+            ]
         else:
-            system_path_solvent, topology_path_solvent = self.systems[system_id]['solvent_path']
-            system_path_complex, topology_path_complex = self.systems[system_id]['complex_path']
+            system_files_paths = [
+                Paths(position_path=self.systems[system_id]['phase1_path'][0],
+                      topology_path=self.systems[system_id]['phase1_path'][1]),
+                Paths(position_path=self.systems[system_id]['phase2_path'][0],
+                      topology_path=self.systems[system_id]['phase2_path'][1])
+            ]
 
-        return (system_path_complex, topology_path_complex,
-                system_path_solvent, topology_path_solvent)
+        return system_files_paths
 
     def is_molecule_setup(self, molecule_id):
         """Check whether the molecule has been processed previously.
@@ -576,15 +608,15 @@ class SetupDatabase:
         """
         if 'ligand' in self.systems[system_id] or 'solute' in self.systems[system_id]:
             system_files_paths = self.get_system_files_paths(system_id)
-            is_setup = (os.path.exists(system_files_paths[0]) and
-                        os.path.exists(system_files_paths[1]) and
-                        os.path.exists(system_files_paths[2]) and
-                        os.path.exists(system_files_paths[3]))
+            is_setup = (os.path.exists(system_files_paths[0].position_path) and
+                        os.path.exists(system_files_paths[0].topology_path) and
+                        os.path.exists(system_files_paths[1].position_path) and
+                        os.path.exists(system_files_paths[1].topology_path))
             return is_setup, is_setup
         else:
             return True, False
 
-    def get_system(self, system_id, pack=True):
+    def get_system(self, system_id):
         """Make sure that the system files are set up and return the system folder.
 
         If necessary, create the prmtop and inpcrd files from the given components.
@@ -595,20 +627,13 @@ class SetupDatabase:
         ----------
         system_id : str
             The ID of the system.
-        pack : bool
-            If True and the ligand is far away from the protein or closer than the clashing
-            threshold, this try to find a better position (default is True).
 
         Returns
         -------
-        system_path_complex : str
-            Path to the system file (.inpcrd or .gro) of the complex phase.
-        topology_path_complex : str
-            Path to the topology file (.prmtop or .top) of the complex phase.
-        system_path_solvent : str
-            Path to the system file (.inpcrd or .gro) of the solvent phase.
-        topology_path_solvent : str
-            Path to the topology file (.prmtop or .top) of the solvent phase.
+        system_files_paths : list of namedtuple
+            Elements of the list contain the paths to the system files for
+            each phase. Each namedtuple contains the fields position_path (e.g.
+            inpcrd or gro) and topology_path (e.g. prmtop or top).
 
         """
         # Check if system has been already processed
@@ -624,7 +649,8 @@ class SetupDatabase:
             solvent_id = system_descr['solvent']
 
             # solvent phase
-            self._setup_system(system_files_paths[2], pack, 0, solvent_id, ligand_id)
+            self._setup_system(system_files_paths[1].position_path, False,
+                               0, solvent_id, ligand_id)
 
             try:
                 alchemical_charge = self.molecules[ligand_id]['net_charge']
@@ -632,7 +658,8 @@ class SetupDatabase:
                 alchemical_charge = 0
 
             # complex phase
-            self._setup_system(system_files_paths[0], pack, alchemical_charge,
+            self._setup_system(system_files_paths[0].position_path,
+                               system_descr['pack'], alchemical_charge,
                                solvent_id, receptor_id, ligand_id)
         else:  # partition/solvation free energy calculation
             solute_id = system_descr['solute']
@@ -640,10 +667,12 @@ class SetupDatabase:
             solvent2_id = system_descr['solvent2']
 
             # solvent1 phase
-            self._setup_system(system_files_paths[0], pack, 0, solvent1_id, solute_id)
+            self._setup_system(system_files_paths[0].position_path, False,
+                               0, solvent1_id, solute_id)
 
             # solvent2 phase
-            self._setup_system(system_files_paths[2], pack, 0, solvent2_id, solute_id)
+            self._setup_system(system_files_paths[1].position_path, False,
+                               0, solvent2_id, solute_id)
 
         return system_files_paths
 
@@ -989,9 +1018,9 @@ class SetupDatabase:
             if alchemical_charge != 0:
                 try:
                     if alchemical_charge > 0:
-                        ion = solvent['positive_ion']
-                    else:
                         ion = solvent['negative_ion']
+                    else:
+                        ion = solvent['positive_ion']
                 except KeyError:
                     err_msg = ('Found charged ligand but no indications for ions in '
                                'solvent {}').format(solvent_id)
@@ -1089,21 +1118,20 @@ class YamlBuilder:
     ...             solvent: vacuum
     ...     protocols:
     ...       absolute-binding:
-    ...         phases:
-    ...           complex:
-    ...             alchemical_path:
-    ...               lambda_electrostatics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
-    ...               lambda_sterics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
-    ...           solvent:
-    ...             alchemical_path:
-    ...               lambda_electrostatics: [1.0, 0.8, 0.6, 0.3, 0.0]
-    ...               lambda_sterics: [1.0, 0.8, 0.6, 0.3, 0.0]
+    ...         complex:
+    ...           alchemical_path:
+    ...             lambda_electrostatics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
+    ...             lambda_sterics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
+    ...         solvent:
+    ...           alchemical_path:
+    ...             lambda_electrostatics: [1.0, 0.8, 0.6, 0.3, 0.0]
+    ...             lambda_sterics: [1.0, 0.8, 0.6, 0.3, 0.0]
     ...     experiments:
     ...       system: my_system
     ...       protocol: absolute-binding
     ...     '''.format(tmp_dir, lysozyme_path, pxylene_path)
     >>> yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
-    >>> yaml_builder.build_experiment()
+    >>> yaml_builder.build_experiments()
 
     """
 
@@ -1118,7 +1146,6 @@ class YamlBuilder:
         'output_dir': 'output',
         'setup_dir': 'setup',
         'experiments_dir': 'experiments',
-        'pack': True,
         'temperature': 298 * unit.kelvin,
         'pressure': 1 * unit.atmosphere,
         'constraints': openmm.app.HBonds,
@@ -1173,10 +1200,10 @@ class YamlBuilder:
         # Load YAML script and decide working directory for relative paths
         try:
             with open(yaml_source, 'r') as f:
-                yaml_content = yaml.load(f)
+                yaml_content = yaml.load(f, Loader=YankLoader)
             self._script_dir = os.path.dirname(yaml_source)
         except IOError:  # string
-            yaml_content = yaml.load(yaml_source)
+            yaml_content = yaml.load(yaml_source, Loader=YankLoader)
         except TypeError:  # dict
             yaml_content = yaml_source.copy()
 
@@ -1215,7 +1242,7 @@ class YamlBuilder:
         # Validate experiments
         self._parse_experiments(yaml_content)
 
-    def build_experiment(self):
+    def build_experiments(self):
         """Set up and run all the Yank experiments."""
         # Throw exception if there are no experiments
         if len(self._experiments) == 0:
@@ -1575,6 +1602,24 @@ class YamlBuilder:
             If the syntax for any protocol is not valid.
 
         """
+        def sort_protocol(protocol):
+            """Reorder phases in dictionary to have complex/solvent1 first."""
+            sortables = [('complex', 'solvent'), ('solvent1', 'solvent2')]
+            for sortable in sortables:
+                # Phases names must be unambiguous, they can't contain both names
+                phase1 = [(k, v) for k, v in protocol.items()
+                          if (sortable[0] in k and sortable[1] not in k)]
+                phase2 = [(k, v) for k, v in protocol.items()
+                          if (sortable[1] in k and sortable[0] not in k)]
+
+                # Phases names must be unique
+                if len(phase1) == 1 and len(phase2) == 1:
+                    return collections.OrderedDict([phase1[0], phase2[0]])
+
+            # Could not find any sortable
+            raise SchemaError('Phases must contain either "complex" and "solvent"'
+                              'or "solvent1" and "solvent2"')
+
         validated_protocols = protocols_description.copy()
 
         # Define protocol Schema
@@ -1582,8 +1627,10 @@ class YamlBuilder:
         alchemical_path_schema = {'alchemical_path': {'lambda_sterics': lambda_list,
                                                       'lambda_electrostatics': lambda_list,
                                                       Optional(str): lambda_list}}
-        protocol_schema = Schema({'phases': {'complex': alchemical_path_schema,
-                                             'solvent': alchemical_path_schema}})
+        protocol_schema = Schema(And(
+            lambda v: len(v) == 2, {str: alchemical_path_schema},
+            Or(collections.OrderedDict, Use(sort_protocol))
+        ))
 
         # Schema validation
         for protocol_id, protocol_descr in protocols_description.items():
@@ -1608,7 +1655,7 @@ class YamlBuilder:
         Returns
         -------
         validated_systems : dict
-            The validated protocols description.
+            The validated systems description.
 
         Raises
         ------
@@ -1648,15 +1695,15 @@ class YamlBuilder:
         validated_systems = systems_description.copy()
         system_schema = Schema(Or(
             {'receptor': is_known_molecule, 'ligand': is_known_molecule,
-             'solvent': is_known_solvent},
+             'solvent': is_known_solvent, Optional('pack'): bool},
 
             {'solute': is_known_molecule, 'solvent1': is_known_solvent,
              'solvent2': is_known_solvent},
 
-            {'complex_path': Use(system_files('amber')), 'solvent_path': Use(system_files('amber')),
+            {'phase1_path': Use(system_files('amber')), 'phase2_path': Use(system_files('amber')),
              'ligand_dsl': str, 'solvent': is_known_solvent},
 
-            {'complex_path': Use(system_files('gromacs')), 'solvent_path': Use(system_files('gromacs')),
+            {'phase1_path': Use(system_files('gromacs')), 'phase2_path': Use(system_files('gromacs')),
              'ligand_dsl': str, 'solvent': is_known_solvent, Optional('gromacs_include_dir'): os.path.isdir}
         ))
 
@@ -1664,6 +1711,9 @@ class YamlBuilder:
         for system_id, system_descr in systems_description.items():
             try:
                 validated_systems[system_id] = system_schema.validate(system_descr)
+                # TODO use Optional('pack', default=False) when upgrade to schema 0.5
+                if 'receptor' in system_descr and 'pack' not in system_descr:
+                    validated_systems[system_id]['pack'] = False
             except SchemaError as e:
                 raise YamlParseError('System {}: {}'.format(system_id, e.autos[-1]))
 
@@ -1760,13 +1810,15 @@ class YamlBuilder:
     # Resuming
     # --------------------------------------------------------------------------
 
-    def _check_resume_experiment(self, experiment_dir):
+    def _check_resume_experiment(self, experiment_dir, protocol_id):
         """Check if Yank output files already exist.
 
         Parameters
         ----------
-        experiment_dir : dict
+        experiment_dir : str
             The path to the directory that should contain the output files.
+        protocol_id : str
+            The ID of the protocol used in the experiment.
 
         Returns
         -------
@@ -1774,18 +1826,15 @@ class YamlBuilder:
             True if NetCDF output files already exist, False otherwise.
 
         """
-        # Check that output directory exists
-        if not os.path.isdir(experiment_dir):
-            return False
+        # Build phases .nc file paths
+        phase_names = self._protocols[protocol_id].keys()
+        phase_paths = [os.path.join(experiment_dir, name + '.nc') for name in phase_names]
 
-        # Check that complex and solvent NetCDF files exist
-        complex_file_path = glob.glob(os.path.join(experiment_dir, 'complex-*.nc'))
-        solvent_file_path = glob.glob(os.path.join(experiment_dir, 'solvent-*.nc'))
-        if len(complex_file_path) == 0 or len(solvent_file_path) == 0:
-            return False
-
-        output_file_paths = complex_file_path + solvent_file_path
-        return all(os.path.getsize(f) > 0 for f in output_file_paths)
+        # Look for existing .nc files in the folder
+        for phase_path in phase_paths:
+            if not (os.path.isfile(phase_path) and os.path.getsize(phase_path) > 0):
+                return False
+        return True
 
     def _check_resume(self, check_setup=True, check_experiments=True):
         """Perform dry run to check if we are going to overwrite files.
@@ -1825,7 +1874,8 @@ class YamlBuilder:
             if check_experiments:
                 resume_sim = exp_options['resume_simulation']
                 experiment_dir = self._get_experiment_dir(exp_options, exp_sub_dir)
-                if not resume_sim and self._check_resume_experiment(experiment_dir):
+                if not resume_sim and self._check_resume_experiment(experiment_dir,
+                                                                    combination['protocol']):
                     err_msg = 'experiment files in directory {}'.format(experiment_dir)
                     solving_option = 'resume_simulation'
 
@@ -1837,7 +1887,8 @@ class YamlBuilder:
                 self._db.setup_dir = self._get_setup_dir(exp_options)
                 is_sys_setup, is_sys_processed = self._db.is_system_setup(system_id)
                 if is_sys_processed and not resume_setup:
-                    system_dir = os.path.dirname(self._db.get_system_files_paths(system_id)[0])
+                    system_dir = os.path.dirname(
+                        self._db.get_system_files_paths(system_id)[0].position_path)
                     err_msg = 'system setup directory {}'.format(system_dir)
                 elif not is_sys_setup:  # then this must go through the pipeline
                     try:  # binding free energy system
@@ -1879,7 +1930,11 @@ class YamlBuilder:
         # TODO parallelize setup
         # Only root node performs setup
         if self._mpicomm is not None and self._mpicomm.rank != 0:
+            debug_msg = 'Node {}/{}: MPI barrier'.format(self._mpicomm.rank,
+                                                         self._mpicomm.size)
+            logger.debug(debug_msg + ' - waiting for the setup to be completed.')
             self._mpicomm.barrier()
+            return
 
         for _, experiment in self._expand_experiments():
             # Set database path
@@ -1895,12 +1950,15 @@ class YamlBuilder:
                 except KeyError:  # partition/solvation free energy system
                     components = (sys_descr['solute'], sys_descr['solvent1'], sys_descr['solvent2'])
                 logger.info('Setting up the systems for {}, {} and {}'.format(*components))
-                self._db.get_system(system_id, exp_opts['pack'])
+                self._db.get_system(system_id)
             except KeyError:  # system files are given directly by the user
                 pass
 
         # Signal resume to child nodes
         if self._mpicomm is not None:
+            debug_msg = 'Node {}/{}: MPI barrier'.format(self._mpicomm.rank,
+                                                         self._mpicomm.size)
+            logger.debug(debug_msg + ' - signal completed setup.')
             self._mpicomm.barrier()
 
     def _generate_yaml(self, experiment, file_path):
@@ -1958,7 +2016,7 @@ class YamlBuilder:
                 molecule['filepath'] = os.path.relpath(molecule['filepath'], yaml_dir)
 
         try:  # systems for which user has specified directly system files
-            for phase in ['solvent_path', 'complex_path']:
+            for phase in ['phase2_path', 'phase1_path']:
                 for path in sys_section[system_id][phase]:
                     sys_section[system_id][path] = os.path.relpath(path, yaml_dir)
         except KeyError:  # system went through pipeline
@@ -2007,7 +2065,7 @@ class YamlBuilder:
 
         """
         alchemical_protocol = {}
-        for phase_name, phase in self._protocols[protocol_id]['phases'].items():
+        for phase_name, phase in self._protocols[protocol_id].items():
             # Separate lambda variables names from their associated lists
             lambdas, values = zip(*phase['alchemical_path'].items())
 
@@ -2031,6 +2089,7 @@ class YamlBuilder:
             output directory as specified by the user in the YAML script
 
         """
+        protocol_id = experiment['protocol']
         exp_name = 'experiments' if experiment_dir == '' else os.path.basename(experiment_dir)
 
         # Get and validate experiment sub-options
@@ -2049,7 +2108,7 @@ class YamlBuilder:
             if not resume:
                 os.makedirs(results_dir)
             else:
-                resume = self._check_resume_experiment(results_dir)
+                resume = self._check_resume_experiment(results_dir, protocol_id)
         if self._mpicomm:  # process 0 send result to other processes
             resume = self._mpicomm.bcast(resume, root=0)
 
@@ -2093,38 +2152,37 @@ class YamlBuilder:
                     solvent_ids = [self._db.systems[system_id]['solvent1'],
                                    self._db.systems[system_id]['solvent2']]
 
-                # Determine if this will be an explicit or implicit solvent simulation
-                if self._db.solvents[solvent_ids[0]]['nonbonded_method'] == openmm.app.NoCutoff:
-                    phases_names = ['complex-implicit', 'solvent-implicit']
-                else:
-                    phases_names = ['complex-explicit', 'solvent-explicit']
-
                 # Get protocols as list of AlchemicalStates
-                alchemical_paths = self._get_alchemical_paths(experiment['protocol'])
-                alchemical_paths = [alchemical_paths['complex'], alchemical_paths['solvent']]
+                alchemical_paths = self._get_alchemical_paths(protocol_id)
+                system_files_paths = self._db.get_system(system_id)
+                gromacs_include_dir = self._db.systems[system_id].get('gromacs_include_dir', None)
 
                 # Prepare Yank arguments
                 phases = [None, None]
-                cycle_directions = ['+', '-']
-                system_files_paths = self._db.get_system(system_id, exp_opts['pack'])
-                gromacs_include_dir = self._db.systems[system_id].get('gromacs_include_dir', None)
-                for i, phase_name in enumerate(phases_names):
+                for i, phase_name in enumerate(self._protocols[protocol_id]):
+                    # self._protocols[protocol_id] is an OrderedDict so phases are in the
+                    # correct order (e.g. [complex, solvent] or [solvent1, solvent2])
                     solvent_id = solvent_ids[i]
-                    positions_file_path = system_files_paths[0 + 2 * i]
-                    topology_file_path = system_files_paths[1 + 2 * i]
+                    positions_file_path = system_files_paths[i].position_path
+                    topology_file_path = system_files_paths[i].topology_path
                     system_options = utils.merge_dict(self._db.solvents[solvent_id], exp_opts)
 
                     logger.info("Reading phase {}".format(phase_name))
                     phases[i] = pipeline.prepare_phase(positions_file_path, topology_file_path, ligand_dsl,
                                                        system_options, gromacs_include_dir=gromacs_include_dir)
                     phases[i].name = phase_name
-                    phases[i].cycle_direction = cycle_directions[i]
-                    phases[i].protocol = alchemical_paths[i]
+                    phases[i].protocol = alchemical_paths[phase_name]
 
                 for phase in phases:
                     if len(phase.atom_indices['ligand']) == 0:
                         raise RuntimeError('DSL string "{}" did not select any atom for '
                                            'the ligand in phase {}.'.format(ligand_dsl, phase.name))
+
+                # Dump analysis script
+                analysis = [[phases[0].name, 1], [phases[1].name, -1]]
+                analysis_script_path = os.path.join(results_dir, 'analysis.yaml')
+                with open(analysis_script_path, 'w') as f:
+                    yaml.dump(analysis, f)
 
                 # Create thermodynamic state
                 thermodynamic_state = ThermodynamicState(temperature=exp_opts['temperature'],

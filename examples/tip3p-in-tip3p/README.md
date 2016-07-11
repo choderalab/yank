@@ -1,29 +1,16 @@
 # TIP3P water in water using reaction field example.
 
 ## Description
-
-
-## Usage
-
-### Set up the system from scratch (not necessary unless source PDB or ligand files are modified):
-```tcsh
-./setup.tcsh
-```
+Hydration free energy calculation of TIP3P water molecule in TIP3P water box at 300K and 1atm.
 
 ## Running the simulation.
 
-Set up the simulation to alchemically decouple water, putting all the output files in `output/`:
+On the console, `cd` into this folder and type:
 ```tcsh
-yank prepare binding amber --setupdir=setup --ligand="resname LIG" --store=output --iterations=1000 --nbmethod=CutoffPeriodic --temperature="300*kelvin" --pressure="1*atmosphere" --minimize --verbose
-```
-
-Run the simulation with verbose output:
-```tcsh
-yank run --store=output --verbose
+yank script --yaml yank.yaml
 ```
 
 Clean up and delete all simulation files:
 ```tcsh
 yank cleanup --store=output
 ```
-

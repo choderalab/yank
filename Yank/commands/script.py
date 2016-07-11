@@ -31,7 +31,7 @@ def dispatch(args):
     """
     if args['--yaml']:
         yaml_builder = YamlBuilder(yaml_source=args['--yaml'])
-        yaml_builder.build_experiment()
+        yaml_builder.build_experiments()
         return True
 
     return False

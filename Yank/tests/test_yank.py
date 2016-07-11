@@ -26,9 +26,12 @@ from openmmtools import testsystems
 from mdtraj.utils import enter_temp_directory
 
 from nose import tools
+import netCDF4 as netcdf
+
+from yank.repex import ThermodynamicState
+from yank.pipeline import find_components
 
 from yank.yank import *
-from yank.repex import ThermodynamicState
 
 #=============================================================================================
 # MODULE CONSTANTS
@@ -61,8 +64,7 @@ def test_no_alchemical_atoms():
     # Create parameters. With the exception of atom_indices, all other
     # parameters must be legal, we don't want to catch an exception
     # different than the one we are testing.
-    phase = AlchemicalPhase(name='solvent-implicit', cycle_direction='+',
-                            reference_system=toluene.system,
+    phase = AlchemicalPhase(name='solvent-implicit', reference_system=toluene.system,
                             reference_topology=toluene.topology,
                             positions=toluene.positions, atom_indices={'ligand': []},
                             protocol=AbsoluteAlchemicalFactory.defaultSolventProtocolImplicit())
@@ -72,6 +74,28 @@ def test_no_alchemical_atoms():
     with enter_temp_directory():
         yank = Yank(store_directory='output')
         yank.create(thermodynamic_state, phase)
+
+
+def test_phase_creation():
+    """Phases are initialized correctly by Yank.create()."""
+    phase_name = 'my-solvent-phase'
+    toluene = testsystems.TolueneImplicit()
+    protocol = AbsoluteAlchemicalFactory.defaultSolventProtocolImplicit()
+    atom_indices = find_components(toluene.system, toluene.topology, 'resname TOL')
+
+    phase = AlchemicalPhase(phase_name, toluene.system, toluene.topology,
+                            toluene.positions, atom_indices, protocol)
+    thermodynamic_state = ThermodynamicState(temperature=300.0*unit.kelvin)
+
+    # Create new simulation.
+    with enter_temp_directory():
+        output_dir = 'output'
+        yank = Yank(store_directory=output_dir)
+        yank.create(thermodynamic_state, phase)
+
+        # Netcdf dataset has been created
+        nc_path = os.path.join(output_dir, phase_name + '.nc')
+        assert os.path.isfile(nc_path)
 
 
 def notest_LennardJonesPair(box_width_nsigma=6.0):
@@ -140,8 +164,9 @@ def notest_LennardJonesPair(box_width_nsigma=6.0):
     protocols[phase] = alchemical_states
 
     # Create phases.
-    alchemical_phase = AlchemicalPhase(phase, '+', system, test.topology, positions,
-                                       {'complex-explicit': {'ligand': [1]}}, alchemical_states)
+    alchemical_phase = AlchemicalPhase(phase, system, test.topology, positions,
+                                       {'complex-explicit': {'ligand': [1]}},
+                                       alchemical_states)
 
     # Create new simulation.
     yank = Yank(store_dir, **options)

@@ -17,6 +17,7 @@ import os, os.path
 import logging
 logger = logging.getLogger(__name__)
 
+import yaml
 from simtk import unit
 from simtk.openmm import app
 
@@ -124,7 +125,6 @@ def setup_binding_amber(args):
 
     # Prepare Yank arguments
     alchemical_phases = [None, None]
-    cycle_directions = ['+', '-']
     setup_directory = os.path.join(setup_directory, '')  # add final slash character
     system_files_paths = [[setup_directory + 'complex.inpcrd', setup_directory + 'complex.prmtop'],
                           [setup_directory + 'solvent.inpcrd', setup_directory + 'solvent.prmtop']]
@@ -136,7 +136,6 @@ def setup_binding_amber(args):
         alchemical_phases[i] = pipeline.prepare_phase(positions_file_path, topology_file_path, args['--ligand'],
                                                       system_parameters, verbose=verbose)
         alchemical_phases[i].name = phase_name
-        alchemical_phases[i].cycle_direction = cycle_directions[i]
         alchemical_phases[i].protocol = protocols[i]
 
     return alchemical_phases
@@ -233,13 +232,12 @@ def setup_binding_gromacs(args):
     phases = systems.keys()
 
     alchemical_phases = [None, None]
-    cycle_directions = {'complex-explicit': '+', 'solvent-explicit': '-'}
     protocols = {'complex-explicit': AbsoluteAlchemicalFactory.defaultComplexProtocolExplicit(),
                  'solvent-explicit': AbsoluteAlchemicalFactory.defaultSolventProtocolImplicit()}
     for i, name in enumerate(phases):
-        alchemical_phases[i] = AlchemicalPhase(name, cycle_directions[name], systems[name],
-                                               topologies[name], positions[name],
-                                               atom_indices[name], protocols[name])
+        alchemical_phases[i] = AlchemicalPhase(name, systems[name], topologies[name],
+                                               positions[name], atom_indices[name],
+                                               protocols[name])
 
     return alchemical_phases
 
@@ -351,6 +349,12 @@ def dispatch_binding(args):
     # Create new simulation.
     yank = Yank(store_dir, **options)
     yank.create(thermodynamic_state, *alchemical_phases)
+
+    # Dump analysis object
+    analysis = [[alchemical_phases[0].name, 1], [alchemical_phases[1].name, -1]]
+    analysis_script_path = os.path.join(store_dir, 'analysis.yaml')
+    with open(analysis_script_path, 'w') as f:
+        yaml.dump(analysis, f)
 
     # Report success.
     return True
