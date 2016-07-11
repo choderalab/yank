@@ -11,10 +11,10 @@ options:
 
 molecules:
   Abl:
-    filepath: setup/2HYY-pdbfixer.pdb
+    filepath: input/2HYY-pdbfixer.pdb
     parameters: leaprc.ff14SB
   STI:
-    filepath: setup/STI02.mol2
+    filepath: input/STI02.mol2
     parameters: antechamber
 
 solvents:
