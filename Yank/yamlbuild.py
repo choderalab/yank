@@ -579,7 +579,7 @@ class SetupDatabase:
                 try:
                     molecule_descr[descr_key] = file_path
                 except TypeError:  # nested key, list are unhashable
-                    molecule_descr[descr_key[0]][descr_key[1]] = file_path
+                    molecule_descr[descr_key[0]][descr_key[1]].append(file_path)
 
         # Compute and update small molecule net charge
         if all_file_exist:
@@ -891,7 +891,7 @@ class SetupDatabase:
 
                 # Save new parameters paths
                 mol_descr['filepath'] = os.path.join(mol_dir, mol_id + '.gaff.mol2')
-                mol_descr['leap']['parameters'] = os.path.join(mol_dir, mol_id + '.frcmod')
+                mol_descr['leap']['parameters'] = [os.path.join(mol_dir, mol_id + '.frcmod')]
 
             # Determine small molecule net charge
             extension = os.path.splitext(mol_descr['filepath'])[1]
@@ -939,7 +939,7 @@ class SetupDatabase:
         found_amber_ff = False
         for mol_id in molecule_ids:
             molecule_parameters = self.molecules[mol_id]['leap']['parameters']
-            tleap.load_parameters(molecule_parameters)
+            tleap.load_parameters(*molecule_parameters)
 
             if 'leaprc.' in molecule_parameters:
                 found_amber_ff = True
@@ -1502,7 +1502,10 @@ class YamlBuilder:
         epik_schema = Or(int, utils.generate_signature_schema(omt.schrodinger.run_epik,
                                                               update_keys={'select': int},
                                                               exclude_keys=['extract_range']))
-        common_schema = {'leap': {'parameters': str}, Optional('openeye'): {'quacpac': 'am1-bcc'},
+
+        parameters_schema = {  # simple strings are converted to list of strings
+            'parameters': And(Use(lambda p: [p] if isinstance(p, str) else p), [str])}
+        common_schema = {'leap': parameters_schema, Optional('openeye'): {'quacpac': 'am1-bcc'},
                          Optional('antechamber'): {'charge_method': Or(str, None)},
                          Optional('epik'): epik_schema}
         molecule_schema = Or(
@@ -1511,7 +1514,7 @@ class YamlBuilder:
             utils.merge_dict({'filepath': is_small_molecule, Optional('select'): Or(int, 'all')},
                              common_schema),
             {'filepath': is_peptide, Optional('select'): Or(int, 'all'),
-             'leap': {'parameters': str}, Optional('strip_protons'): bool}
+             'leap': parameters_schema, Optional('strip_protons'): bool}
         )
 
         # Schema validation

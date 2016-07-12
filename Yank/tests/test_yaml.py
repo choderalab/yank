@@ -321,6 +321,7 @@ def test_validation_correct_molecules():
     paths = examples_paths()
     molecules = [
         {'name': 'toluene', 'leap': {'parameters': 'leaprc.gaff'}},
+        {'name': 'toluene', 'leap': {'parameters': ['leaprc.gaff', 'toluene.frcmod']}},
         {'name': 'p-xylene', 'antechamber': {'charge_method': 'bcc'},
             'leap': {'parameters': 'leaprc.gaff'}},
         {'smiles': 'Cc1ccccc1', 'openeye': {'quacpac': 'am1-bcc'},
@@ -1448,6 +1449,41 @@ def test_setup_explicit_solvation_system():
             assert os.path.getsize(prmtop_path) > 0
             assert os.path.getsize(inpcrd_path) > 0
             assert found_resnames == expected_resnames[phase]
+
+
+def test_setup_multiple_parameters_system():
+    """Set up system with molecule that needs many parameter files."""
+    with omt.utils.temporary_directory() as tmp_dir:
+        tmp_dir = 'temp'
+        yaml_script = get_template_script(tmp_dir)
+
+        # Force antechamber parametrization of benzene to output frcmod file
+        yaml_builder = YamlBuilder(yaml_script)
+        yaml_builder._db._setup_molecules('benzene')
+        benzene_dir = yaml_builder._db.get_molecule_dir('benzene')
+        frcmod_path = os.path.join(benzene_dir, 'benzene.frcmod')
+        benzene_path = os.path.join(benzene_dir, 'benzene.gaff.mol2')
+
+        # Redefine benzene to use leaprc.gaff and benzene.frcmod
+        # and set up system for hydration free energy calculation
+        yaml_script['molecules'] = {
+            'benzene-frcmod': {'filepath': benzene_path,
+                               'leap': {'parameters': ['leaprc.gaff', frcmod_path]}}}
+        yaml_script['systems'] = {
+            'system':
+                {'solute': 'benzene-frcmod', 'solvent1': 'PME', 'solvent2': 'vacuum'}
+        }
+        del yaml_script['experiments']
+
+        yaml_builder = YamlBuilder(yaml_script)
+        system_files_path = yaml_builder._db.get_system('system')
+
+        # Check that output exist:
+        for phase in system_files_path:
+            assert os.path.exists(phase.topology_path)
+            assert os.path.exists(phase.position_path)
+            assert os.path.getsize(phase.topology_path) > 0
+            assert os.path.getsize(phase.position_path) > 0
 
 
 # ==============================================================================
