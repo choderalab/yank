@@ -1215,6 +1215,12 @@ class TLeap:
 
                 # Update list of input files to copy in temporary folder before run
                 self._file_paths[local_name] = par_file
+            if extension == '.off':
+                local_name = 'moli{}'.format(len(self._file_paths))
+                self.add_commands('loadOff {{{}}}'.format(local_name))
+
+                # Update list of input files to copy in temporary folder before run
+                self._file_paths[local_name] = par_file
             else:
                 self.add_commands('source ' + par_file)
 
