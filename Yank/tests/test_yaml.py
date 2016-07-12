@@ -91,54 +91,66 @@ def get_template_script(output_dir='.'):
     molecules:
         benzene:
             filepath: {benzene_path}
-            parameters: antechamber
+            antechamber: {{charge_method: bcc}}
+            leap: {{parameters: leaprc.gaff}}
         benzene-epik0:
             filepath: {benzene_path}
             epik: 0
-            parameters: antechamber
+            antechamber: {{charge_method: bcc}}
+            leap: {{parameters: leaprc.gaff}}
         benzene-epikcustom:
             filepath: {benzene_path}
             epik:
-                extract_range: 0
+                select: 0
                 ph: 7.0
                 tautomerize: yes
-            parameters: antechamber
+            antechamber: {{charge_method: bcc}}
+            leap: {{parameters: leaprc.gaff}}
         p-xylene:
             filepath: {pxylene_path}
-            parameters: antechamber
+            antechamber: {{charge_method: bcc}}
+            leap: {{parameters: leaprc.gaff}}
         p-xylene-name:
             name: p-xylene
-            parameters: openeye:am1bcc-gaff
+            openeye: {{quacpac: am1-bcc}}
+            antechamber: {{charge_method: null}}
+            leap: {{parameters: leaprc.gaff}}
         toluene:
             filepath: {toluene_path}
-            parameters: antechamber
+            antechamber: {{charge_method: bcc}}
+            leap: {{parameters: leaprc.gaff}}
         toluene-smiles:
             smiles: Cc1ccccc1
-            parameters: antechamber
+            antechamber: {{charge_method: bcc}}
+            leap: {{parameters: leaprc.gaff}}
         toluene-name:
             name: toluene
-            parameters: antechamber
+            antechamber: {{charge_method: bcc}}
+            leap: {{parameters: leaprc.gaff}}
         Abl:
             filepath: {abl_path}
-            parameters: leaprc.ff14SB
+            leap: {{parameters: leaprc.ff14SB}}
         T4Lysozyme:
             filepath: {lysozyme_path}
-            parameters: oldff/leaprc.ff99SBildn
+            leap: {{parameters: leaprc.ff14SB}}
     solvents:
         vacuum:
             nonbonded_method: NoCutoff
         GBSA-OBC2:
+            nonbonded_method: NoCutoff
             implicit_solvent: OBC2
         PME:
             nonbonded_method: PME
             nonbonded_cutoff: 1*nanometer
             clearance: 10*angstroms
+            positive_ion: Na+
+            negative_ion: Cl-
     systems:
-        benzene-toluene-implicit:
+        benzene-toluene:
             receptor: benzene
             ligand: toluene
             solvent: GBSA-OBC2
-        t4-pxylene-explicit:
+        t4-pxylene:
             receptor: T4Lysozyme
             ligand: p-xylene
             solvent: PME
@@ -153,7 +165,7 @@ def get_template_script(output_dir='.'):
                     lambda_electrostatics: [1.0, 0.8, 0.6, 0.3, 0.0]
                     lambda_sterics: [1.0, 0.8, 0.6, 0.3, 0.0]
     experiments:
-        system: benzene-toluene-implicit
+        system: benzene-toluene
         protocol: absolute-binding
     """.format(output_dir=output_dir, benzene_path=paths['benzene'],
                pxylene_path=paths['p-xylene'], toluene_path=paths['toluene'],
@@ -308,16 +320,24 @@ def test_validation_correct_molecules():
     """Correct molecules YAML validation."""
     paths = examples_paths()
     molecules = [
-        {'name': 'p-xylene', 'parameters': 'antechamber'},
-        {'smiles': 'Cc1ccccc1', 'parameters': 'openeye:am1bcc-gaff'},
-        {'name': 'p-xylene', 'parameters': 'antechamber', 'epik': 0},
-        {'name': 'p-xylene', 'parameters': 'antechamber',
-            'epik': {'ph': 7.6, 'ph_tolerance': 0.7, 'tautomerize': False, 'extract_range': 0}},
-        {'smiles': 'Cc1ccccc1', 'parameters': 'openeye:am1bcc-gaff', 'epik': 1},
-        {'filepath': paths['abl'], 'parameters': 'oldff/leaprc.ff99SBildn'},
-        {'filepath': paths['abl'], 'parameters': 'oldff/leaprc.ff99SBildn', 'select': 1},
-        {'filepath': paths['abl'], 'parameters': 'oldff/leaprc.ff99SBildn', 'select': 'all'},
-        {'filepath': paths['benzene'], 'parameters': 'oldff/leaprc.ff99SBildn', 'epik': 1}
+        {'name': 'toluene', 'leap': {'parameters': 'leaprc.gaff'}},
+        {'name': 'p-xylene', 'antechamber': {'charge_method': 'bcc'},
+            'leap': {'parameters': 'leaprc.gaff'}},
+        {'smiles': 'Cc1ccccc1', 'openeye': {'quacpac': 'am1-bcc'},
+            'antechamber': {'charge_method': None}, 'leap': {'parameters': 'leaprc.gaff'}},
+        {'name': 'p-xylene', 'antechamber': {'charge_method': 'bcc'},
+            'leap': {'parameters': 'leaprc.gaff'}, 'epik': 0},
+        {'name': 'p-xylene', 'antechamber': {'charge_method': 'bcc'},
+            'leap': {'parameters': 'leaprc.gaff'},
+            'epik': {'ph': 7.6, 'ph_tolerance': 0.7, 'tautomerize': False, 'select': 0}},
+        {'smiles': 'Cc1ccccc1', 'openeye': {'quacpac': 'am1-bcc'},
+            'antechamber': {'charge_method': None}, 'leap': {'parameters': 'leaprc.gaff'}, 'epik': 1},
+
+        {'filepath': paths['abl'], 'leap': {'parameters': 'leaprc.ff99SBildn'}},
+        {'filepath': paths['abl'], 'leap': {'parameters': 'leaprc.ff99SBildn'}, 'select': 1},
+        {'filepath': paths['abl'], 'leap': {'parameters': 'leaprc.ff99SBildn'}, 'select': 'all'},
+        {'filepath': paths['toluene'], 'leap': {'parameters': 'leaprc.gaff'}},
+        {'filepath': paths['benzene'], 'leap': {'parameters': 'leaprc.gaff'}, 'epik': 1}
     ]
     for molecule in molecules:
         yield YamlBuilder._validate_molecules, {'mol': molecule}
@@ -328,20 +348,28 @@ def test_validation_wrong_molecules():
     paths = examples_paths()
     paths['wrongformat'] = utils.get_data_filename(os.path.join('..', 'examples', 'README.md'))
     molecules = [
-        {'parameters': 'antechamber'},
+        {'antechamber': {'charge_method': 'bcc'}, 'leap': {'parameters': 'leaprc.gaff'}},
         {'filepath': paths['abl']},
-        {'filepath': paths['wrongformat'], 'parameters': 'openeye:am1bcc-gaff'},
-        {'name': 'p-xylene', 'parameters': 'antechamber', 'unknown': 4},
-        {'filepath': 'nonexistentfile.pdb', 'parameters': 'oldff/leaprc.ff99SBildn'},
-        {'filepath': paths['toluene'], 'smiles': 'Cc1ccccc1', 'parameters': 'antechamber'},
-        {'filepath': paths['toluene'], 'parameters': 'antechamber', 'strip_protons': True},
-        {'filepath': paths['abl'], 'parameters': 'oldff/leaprc.ff99SBildn', 'epik': 0},
-        {'name': 'p-xylene', 'parameters': 'antechamber', 'epik': {'tautomerize': 6}},
-        {'name': 'toluene', 'smiles': 'Cc1ccccc1', 'parameters': 'antechamber'},
-        {'name': 3, 'parameters': 'openeye:am1bcc-gaff'},
-        {'smiles': 'Cc1ccccc1', 'parameters': 'openeye:am1bcc-gaff', 'select': 1},
-        {'name': 'Cc1ccccc1', 'parameters': 'openeye:am1bcc-gaff', 'select': 1},
-        {'filepath': paths['abl'], 'parameters': 'oldff/leaprc.ff99SBildn', 'select': 'notanoption'},
+        {'filepath': paths['wrongformat'], 'leap': {'parameters': 'leaprc.gaff'}},
+        {'name': 'p-xylene', 'antechamber': {'charge_method': 'bcc'},
+            'leap': {'parameters': 'leaprc.gaff'}, 'unknown': 4},
+        {'smiles': 'Cc1ccccc1', 'openeye': {'quacpac': 'am1-bcc'},
+            'leap': {'parameters': 'leaprc.gaff'}},
+        {'smiles': 'Cc1ccccc1', 'openeye': {'quacpac': 'invalid'},
+            'antechamber': {'charge_method': None}, 'leap': {'parameters': 'leaprc.gaff'}},
+        {'smiles': 'Cc1ccccc1', 'openeye': {'quacpac': 'am1-bcc'},
+            'antechamber': {'charge_method': 'bcc'}, 'leap': {'parameters': 'leaprc.gaff'}},
+        {'filepath': 'nonexistentfile.pdb', 'leap': {'parameters': 'leaprc.ff14SB'}},
+        {'filepath': paths['toluene'], 'smiles': 'Cc1ccccc1', 'leap': {'parameters': 'leaprc.gaff'}},
+        {'filepath': paths['toluene'], 'leap': {'parameters': 'leaprc.gaff'}, 'strip_protons': True},
+        {'filepath': paths['abl'], 'leap': {'parameters': 'leaprc.ff14SB'}, 'epik': 0},
+        {'name': 'toluene', 'leap': {'parameters': 'leaprc.gaff'}, 'epik': {'tautomerize': 6}},
+        {'name': 'toluene', 'leap': {'parameters': 'leaprc.gaff'}, 'epik': {'extract_range': 1}},
+        {'name': 'toluene', 'smiles': 'Cc1ccccc1', 'leap': {'parameters': 'leaprc.gaff'}},
+        {'name': 3, 'leap': {'parameters': 'leaprc.gaff'}},
+        {'smiles': 'Cc1ccccc1', 'leap': {'parameters': 'leaprc.gaff'}, 'select': 1},
+        {'name': 'Cc1ccccc1', 'leap': {'parameters': 'leaprc.gaff'}, 'select': 1},
+        {'filepath': paths['abl'], 'leap': {'parameters': 'leaprc.ff14SB'}, 'select': 'notanoption'},
     ]
     for molecule in molecules:
         yield assert_raises, YamlParseError, YamlBuilder._validate_molecules, {'mol': molecule}
@@ -381,8 +409,8 @@ def test_validation_correct_systems():
     basic_script = """
     ---
     molecules:
-        rec: {{filepath: {}, parameters: oldff/leaprc.ff99SBildn}}
-        lig: {{name: lig, parameters: antechamber}}
+        rec: {{filepath: {}, leap: {{parameters: leaprc.ff14SB}}}}
+        lig: {{name: lig, leap: {{parameters: leaprc.gaff}}}}
     solvents:
         solv: {{nonbonded_method: NoCutoff}}
     """.format(examples_paths()['lysozyme'])
@@ -418,8 +446,8 @@ def test_validation_wrong_systems():
     basic_script = """
     ---
     molecules:
-        rec: {{filepath: {}, parameters: oldff/leaprc.ff99SBildn}}
-        lig: {{name: lig, parameters: antechamber}}
+        rec: {{filepath: {}, leap: {{parameters: leaprc.ff14SB}}}}
+        lig: {{name: lig, leap: {{parameters: leaprc.gaff}}}}
     solvents:
         solv: {{nonbonded_method: NoCutoff}}
     """.format(examples_paths()['lysozyme'])
@@ -569,8 +597,8 @@ def test_validation_correct_experiments():
     basic_script = """
     ---
     molecules:
-        rec: {{filepath: {}, parameters: oldff/leaprc.ff99SBildn}}
-        lig: {{name: lig, parameters: antechamber}}
+        rec: {{filepath: {}, leap: {{parameters: leaprc.ff14SB}}}}
+        lig: {{name: lig, leap: {{parameters: leaprc.gaff}}}}
     solvents:
         solv: {{nonbonded_method: NoCutoff}}
     systems:
@@ -594,8 +622,8 @@ def test_validation_wrong_experiments():
     basic_script = """
     ---
     molecules:
-        rec: {{filepath: {}, parameters: oldff/leaprc.ff99SBildn}}
-        lig: {{name: lig, parameters: antechamber}}
+        rec: {{filepath: {}, leap: {{parameters: leaprc.ff14SB}}}}
+        lig: {{name: lig, leap: {{parameters: leaprc.gaff}}}}
     solvents:
         solv: {{nonbonded_method: NoCutoff}}
     systems:
@@ -652,6 +680,7 @@ def test_yaml_mol2_antechamber():
 def test_setup_name_smiles_openeye_charges():
     """Setup molecule from name and SMILES with openeye charges and gaff."""
     with omt.utils.temporary_directory() as tmp_dir:
+        tmp_dir = 'temp'
         molecules_ids = ['toluene-smiles', 'p-xylene-name']
         yaml_content = get_template_script(tmp_dir)
         yaml_builder = YamlBuilder(yaml_content)
@@ -693,7 +722,7 @@ def test_clashing_atoms():
     toluene_path = examples_paths()['toluene']
     with omt.utils.temporary_directory() as tmp_dir:
         yaml_content = get_template_script(tmp_dir)
-        system_id = 'benzene-toluene-implicit'
+        system_id = 'benzene-toluene'
         system_description = yaml_content['systems'][system_id]
         system_description['pack'] = True
         system_description['solvent'] = utils.CombinatorialLeaf(['vacuum', 'PME'])
@@ -846,26 +875,26 @@ class TestMultiMoleculeFiles():
         molecules:
             rec:
                 filepath: !Combinatorial [{}, {}]
-                parameters: oldff/leaprc.ff99SBildn
+                leap: {{parameters: leaprc.ff14SB}}
             lig:
                 name: !Combinatorial [iupac1, iupac2]
-                parameters: antechamber
+                leap: {{parameters: leaprc.gaff}}
                 epik: !Combinatorial [0, 2]
             multi:
                 filepath: {}
-                parameters: leaprc.ff14SB
+                leap: {{parameters: leaprc.ff14SB}}
                 select: all
             smiles:
                 filepath: {}
-                parameters: antechamber
+                leap: {{parameters: leaprc.gaff}}
                 select: all
             sdf:
                 filepath: {}
-                parameters: antechamber
+                leap: {{parameters: leaprc.gaff}}
                 select: all
             mol2:
                 filepath: {}
-                parameters: antechamber
+                leap: {{parameters: leaprc.gaff}}
                 select: all
         solvents:
             solv1:
@@ -893,57 +922,57 @@ class TestMultiMoleculeFiles():
         molecules:
             rec_multisdf:
                 filepath: {}
-                parameters: oldff/leaprc.ff99SBildn
+                leap: {{parameters: leaprc.ff14SB}}
             rec_multimol2:
                 filepath: {}
-                parameters: oldff/leaprc.ff99SBildn
+                leap: {{parameters: leaprc.ff14SB}}
             lig_0_iupac1:
                 name: iupac1
-                parameters: antechamber
+                leap: {{parameters: leaprc.gaff}}
                 epik: 0
             lig_2_iupac1:
                 name: iupac1
-                parameters: antechamber
+                leap: {{parameters: leaprc.gaff}}
                 epik: 2
             lig_0_iupac2:
                 name: iupac2
-                parameters: antechamber
+                leap: {{parameters: leaprc.gaff}}
                 epik: 0
             lig_2_iupac2:
                 name: iupac2
-                parameters: antechamber
+                leap: {{parameters: leaprc.gaff}}
                 epik: 2
             multi_0:
                 filepath: {}
-                parameters: leaprc.ff14SB
+                leap: {{parameters: leaprc.ff14SB}}
                 select: 0
             multi_1:
                 filepath: {}
-                parameters: leaprc.ff14SB
+                leap: {{parameters: leaprc.ff14SB}}
                 select: 1
             smiles_0:
                 filepath: {}
-                parameters: antechamber
+                leap: {{parameters: leaprc.gaff}}
                 select: 0
             smiles_1:
                 filepath: {}
-                parameters: antechamber
+                leap: {{parameters: leaprc.gaff}}
                 select: 1
             sdf_0:
                 filepath: {}
-                parameters: antechamber
+                leap: {{parameters: leaprc.gaff}}
                 select: 0
             sdf_1:
                 filepath: {}
-                parameters: antechamber
+                leap: {{parameters: leaprc.gaff}}
                 select: 1
             mol2_0:
                 filepath: {}
-                parameters: antechamber
+                leap: {{parameters: leaprc.gaff}}
                 select: 0
             mol2_1:
                 filepath: {}
-                parameters: antechamber
+                leap: {{parameters: leaprc.gaff}}
                 select: 1
         solvents:
             solv1:
@@ -981,7 +1010,7 @@ class TestMultiMoleculeFiles():
             molecules:
                 selected:
                     filepath: {}
-                    parameters: leaprc.ff14SB
+                    leap: {{parameters: leaprc.ff14SB}}
                     select: 1
             """.format(tmp_dir, self.pdb_path)
             yaml_content = textwrap.dedent(yaml_content)
@@ -1034,10 +1063,12 @@ class TestMultiMoleculeFiles():
             molecules:
                 take-first:
                     filepath: {}
-                    parameters: antechamber
+                    antechamber: {{charge_method: bcc}}
+                    leap: {{parameters: leaprc.gaff}}
                 select-second:
                     filepath: {}
-                    parameters: antechamber
+                    antechamber: {{charge_method: bcc}}
+                    leap: {{parameters: leaprc.gaff}}
                     select: 1
             """.format(tmp_dir, self.smiles_path, self.smiles_path)
             yaml_content = textwrap.dedent(yaml_content)
@@ -1083,19 +1114,23 @@ class TestMultiMoleculeFiles():
             molecules:
                 sdf_0:
                     filepath: {}
-                    parameters: antechamber
+                    antechamber: {{charge_method: bcc}}
+                    leap: {{parameters: leaprc.gaff}}
                     select: 0
                 sdf_1:
                     filepath: {}
-                    parameters: antechamber
+                    antechamber: {{charge_method: bcc}}
+                    leap: {{parameters: leaprc.gaff}}
                     select: 1
                 mol2_0:
                     filepath: {}
-                    parameters: antechamber
+                    antechamber: {{charge_method: bcc}}
+                    leap: {{parameters: leaprc.gaff}}
                     select: 0
                 mol2_1:
                     filepath: {}
-                    parameters: antechamber
+                    antechamber: {{charge_method: bcc}}
+                    leap: {{parameters: leaprc.gaff}}
                     select: 1
             """.format(tmp_dir, self.sdf_path, self.sdf_path, self.mol2_path, self.mol2_path)
             yaml_content = textwrap.dedent(yaml_content)
@@ -1156,7 +1191,7 @@ def test_system_expansion():
     """Combinatorial systems are correctly expanded."""
     # We need 2 combinatorial systems
     template_script = get_template_script()
-    template_system = template_script['systems']['t4-pxylene-explicit']
+    template_system = template_script['systems']['t4-pxylene']
     template_script['systems'] = {'system1': template_system.copy(),
                                   'system2': template_system.copy()}
     template_script['systems']['system1']['receptor'] = utils.CombinatorialLeaf(['Abl', 'T4Lysozyme'])
@@ -1188,10 +1223,10 @@ def test_exp_sequence():
     molecules:
         rec:
             filepath: {}
-            parameters: oldff/leaprc.ff99SBildn
+            leap: {{parameters: leaprc.ff14SB}}
         lig:
             name: lig
-            parameters: antechamber
+            leap: {{parameters: leaprc.gaff}}
     solvents:
         solv1:
             nonbonded_method: NoCutoff
@@ -1228,33 +1263,12 @@ def test_exp_sequence():
 def test_setup_implicit_system_leap():
     """Create prmtop and inpcrd for implicit solvent protein-ligand system."""
     with omt.utils.temporary_directory() as tmp_dir:
-        yaml_content = """
-        ---
-        options:
-            output_dir: {}
-            resume_setup: yes
-        molecules:
-            T4lysozyme:
-                filepath: {}
-                parameters: oldff/leaprc.ff99SBildn
-            p-xylene:
-                filepath: {}
-                parameters: antechamber
-        solvents:
-            GBSA-OBC2:
-                nonbonded_method: NoCutoff
-                implicit_solvent: OBC2
-        systems:
-            system:
-                receptor: T4lysozyme
-                ligand: p-xylene
-                solvent: GBSA-OBC2
-        """.format(tmp_dir, examples_paths()['lysozyme'], examples_paths()['p-xylene'])
-
-        yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
+        yaml_content = get_template_script(tmp_dir)
+        yaml_content['systems']['t4-pxylene']['solvent'] = 'GBSA-OBC2'
+        yaml_builder = YamlBuilder(yaml_content)
 
         output_dir = os.path.dirname(
-            yaml_builder._db.get_system('system')[0].position_path)
+            yaml_builder._db.get_system('t4-pxylene')[0].position_path)
         last_modified_path = os.path.join(output_dir, 'complex.prmtop')
         last_modified = os.stat(last_modified_path).st_mtime
 
@@ -1279,39 +1293,19 @@ def test_setup_implicit_system_leap():
 
         # Test that another call do not regenerate the system
         time.sleep(0.5)  # st_mtime doesn't have much precision
-        yaml_builder._db.get_system('system')
+        yaml_builder._db.get_system('t4-pxylene')
         assert last_modified == os.stat(last_modified_path).st_mtime
 
-@unittest.skipIf(not utils.is_openeye_installed(), 'This test requires OpenEye installed.')
+
 def test_setup_explicit_system_leap():
     """Create prmtop and inpcrd protein-ligand system in explicit solvent."""
     with omt.utils.temporary_directory() as tmp_dir:
-        yaml_content = """
-        ---
-        options:
-            output_dir: {}
-        molecules:
-            benzene:
-                filepath: {}
-                parameters: antechamber
-            toluene:
-                name: toluene
-                parameters: antechamber
-        solvents:
-            PMEtip3p:
-                nonbonded_method: PME
-                clearance: 10*angstroms
-        systems:
-            system:
-                receptor: benzene
-                ligand: toluene
-                solvent: PMEtip3p
-        """.format(tmp_dir, examples_paths()['benzene'])
-
-        yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
+        yaml_content = get_template_script(tmp_dir)
+        yaml_content['systems']['benzene-toluene']['solvent'] = 'PME'
+        yaml_builder = YamlBuilder(yaml_content)
 
         output_dir = os.path.dirname(
-            yaml_builder._db.get_system('system')[0].position_path)
+            yaml_builder._db.get_system('benzene-toluene')[0].position_path)
 
         # Test that output file exists and that there is water
         expected_resnames = {'complex': set(['BEN', 'TOL', 'WAT']),
@@ -1336,34 +1330,11 @@ def test_setup_explicit_system_leap():
 def test_neutralize_system():
     """Test whether the system charge is neutralized correctly."""
     with omt.utils.temporary_directory() as tmp_dir:
-        yaml_content = """
-        ---
-        options:
-            output_dir: {}
-        molecules:
-            receptor:
-                filepath: {}
-                parameters: leaprc.ff14SB
-            ligand:
-                filepath: {}
-                parameters: antechamber
-        solvents:
-            PMEtip3p:
-                nonbonded_method: PME
-                clearance: 10*angstroms
-                positive_ion: K+
-                negative_ion: Cl-
-        systems:
-            system:
-                receptor: receptor
-                ligand: ligand
-                solvent: PMEtip3p
-        """.format(tmp_dir, examples_paths()['lysozyme'], examples_paths()['p-xylene'])
-
-        yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
+        yaml_content = get_template_script(tmp_dir)
+        yaml_builder = YamlBuilder(yaml_content)
 
         output_dir = os.path.dirname(
-            yaml_builder._db.get_system('system')[0].position_path)
+            yaml_builder._db.get_system('t4-pxylene')[0].position_path)
 
         # Test that output file exists and that there are ions
         found_resnames = set()
@@ -1392,10 +1363,14 @@ def test_charged_ligand():
         molecules:
             aspartic-acid:
                 name: "(3S)-3-amino-4-hydroxy-4-oxo-butanoate"
-                parameters: openeye:am1bcc-gaff
+                openeye: {{quacpac: am1-bcc}}
+                antechamber: {{charge_method: null}}
+                leap: {{parameters: leaprc.gaff}}
             lysine:
                 name: "[(5S)-5-amino-6-hydroxy-6-oxo-hexyl]azanium"
-                parameters: openeye:am1bcc-gaff
+                openeye: {{quacpac: am1-bcc}}
+                antechamber: {{charge_method: null}}
+                leap: {{parameters: leaprc.gaff}}
         solvents:
             PMEtip3p:
                 nonbonded_method: PME
@@ -1450,6 +1425,7 @@ def test_setup_explicit_solvation_system():
     with omt.utils.temporary_directory() as tmp_dir:
         yaml_script = get_template_script(tmp_dir)
         yaml_script['systems'] = {'system1': {'solute': 'toluene', 'solvent1': 'PME', 'solvent2': 'vacuum'}}
+        del yaml_script['experiments']
         yaml_builder = YamlBuilder(yaml_script)
         output_dir = os.path.dirname(
             yaml_builder._db.get_system('system1')[0].position_path)
@@ -1486,7 +1462,7 @@ def test_yaml_creation():
         molecules = """
             T4lysozyme:
                 filepath: {}
-                parameters: oldff/leaprc.ff99SBildn""".format(examples_paths()['lysozyme'])
+                leap: {{parameters: leaprc.ff14SB}}""".format(examples_paths()['lysozyme'])
         solvent = """
             vacuum:
                 nonbonded_method: NoCutoff"""
@@ -1507,10 +1483,12 @@ def test_yaml_creation():
         molecules:{}
             p-xylene:
                 filepath: {}
-                parameters: antechamber
+                antechamber: {{charge_method: bcc}}
+                leap: {{parameters: leaprc.gaff}}
             benzene:
                 filepath: {}
-                parameters: antechamber
+                antechamber: {{charge_method: bcc}}
+                leap: {{parameters: leaprc.gaff}}
         solvents:{}
             GBSA-OBC2:
                 nonbonded_method: NoCutoff
@@ -1533,7 +1511,8 @@ def test_yaml_creation():
         molecules:{}
             p-xylene:
                 filepath: {}
-                parameters: antechamber
+                antechamber: {{charge_method: bcc}}
+                leap: {{parameters: leaprc.gaff}}
         solvents:{}
         systems:{}
                 pack: False
@@ -1584,7 +1563,7 @@ def test_run_experiment_from_amber_files():
     with omt.utils.temporary_directory() as tmp_dir:
         yaml_script = get_template_script(tmp_dir)
         del yaml_script['molecules']  # we shouldn't need any molecule
-        yaml_script['systems'] = {'system1':
+        yaml_script['systems'] = {'benzene-toluene':
                 {'phase1_path': complex_path, 'phase2_path': solvent_path,
                  'ligand_dsl': 'resname TOL', 'solvent': 'PME'}}
 
@@ -1615,10 +1594,11 @@ def test_run_experiment_from_gromacs_files():
     with omt.utils.temporary_directory() as tmp_dir:
         yaml_script = get_template_script(tmp_dir)
         del yaml_script['molecules']  # we shouldn't need any molecule
-        yaml_script['systems'] = {'system1':
+        yaml_script['systems'] = {'t4-pxylene':
                 {'phase1_path': complex_path, 'phase2_path': solvent_path,
                  'ligand_dsl': 'resname "p-xylene"', 'solvent': 'PME',
                  'gromacs_include_dir': include_path}}
+        yaml_script['experiments']['system'] = 't4-pxylene'
 
         yaml_builder = YamlBuilder(yaml_script)
         yaml_builder._check_resume()  # check_resume should not raise exceptions
@@ -1653,11 +1633,12 @@ def test_run_experiment():
         molecules:
             T4lysozyme:
                 filepath: {}
-                parameters: oldff/leaprc.ff99SBildn
+                leap: {{parameters: leaprc.ff14SB}}
                 select: 0
             p-xylene:
                 filepath: {}
-                parameters: antechamber
+                antechamber: {{charge_method: bcc}}
+                leap: {{parameters: leaprc.gaff}}
         solvents:
             vacuum:
                 nonbonded_method: NoCutoff
@@ -1749,6 +1730,7 @@ def test_run_solvation_experiment():
     with omt.utils.temporary_directory() as tmp_dir:
         yaml_script = get_template_script(tmp_dir)
         yaml_script['systems'] = {'system1': {'solute': 'toluene', 'solvent1': 'PME', 'solvent2': 'vacuum'}}
+        yaml_script['experiments']['system'] = 'system1'
 
         yaml_builder = YamlBuilder(yaml_script)
         yaml_builder._check_resume()  # check_resume should not raise exceptions
