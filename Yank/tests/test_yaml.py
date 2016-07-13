@@ -786,7 +786,7 @@ def test_strip_protons():
         yaml_content = get_template_script(tmp_dir)
         yaml_builder = YamlBuilder(yaml_content)
         output_dir = yaml_builder._db.get_molecule_dir(mol_id)
-        output_path = os.path.join(output_dir, 'abl.pdb')
+        output_path = os.path.join(output_dir, 'Abl.pdb')
 
         # We haven't set the strip_protons options, so this shouldn't do anything
         yaml_builder._db._setup_molecules(mol_id)
