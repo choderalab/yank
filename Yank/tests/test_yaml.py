@@ -92,12 +92,10 @@ def get_template_script(output_dir='.'):
         benzene:
             filepath: {benzene_path}
             antechamber: {{charge_method: bcc}}
-            leap: {{parameters: leaprc.gaff}}
         benzene-epik0:
             filepath: {benzene_path}
             epik: 0
             antechamber: {{charge_method: bcc}}
-            leap: {{parameters: leaprc.gaff}}
         benzene-epikcustom:
             filepath: {benzene_path}
             epik:
@@ -105,34 +103,26 @@ def get_template_script(output_dir='.'):
                 ph: 7.0
                 tautomerize: yes
             antechamber: {{charge_method: bcc}}
-            leap: {{parameters: leaprc.gaff}}
         p-xylene:
             filepath: {pxylene_path}
             antechamber: {{charge_method: bcc}}
-            leap: {{parameters: leaprc.gaff}}
         p-xylene-name:
             name: p-xylene
             openeye: {{quacpac: am1-bcc}}
             antechamber: {{charge_method: null}}
-            leap: {{parameters: leaprc.gaff}}
         toluene:
             filepath: {toluene_path}
             antechamber: {{charge_method: bcc}}
-            leap: {{parameters: leaprc.gaff}}
         toluene-smiles:
             smiles: Cc1ccccc1
             antechamber: {{charge_method: bcc}}
-            leap: {{parameters: leaprc.gaff}}
         toluene-name:
             name: toluene
             antechamber: {{charge_method: bcc}}
-            leap: {{parameters: leaprc.gaff}}
         Abl:
             filepath: {abl_path}
-            leap: {{parameters: leaprc.ff14SB}}
         T4Lysozyme:
             filepath: {lysozyme_path}
-            leap: {{parameters: leaprc.ff14SB}}
     solvents:
         vacuum:
             nonbonded_method: NoCutoff
@@ -146,18 +136,18 @@ def get_template_script(output_dir='.'):
             positive_ion: Na+
             negative_ion: Cl-
     systems:
-        benzene-toluene:
+        explicit-system:
             receptor: benzene
             ligand: toluene
-            solvent: GBSA-OBC2
-            leap:
-                parameters: leaprc.gaff
-        t4-pxylene:
-            receptor: T4Lysozyme
-            ligand: p-xylene
             solvent: PME
             leap:
                 parameters: [leaprc.ff14SB, leaprc.gaff, frcmod.ionsjc_tip3p]
+        implicit-system:
+            receptor: T4Lysozyme
+            ligand: p-xylene
+            solvent: GBSA-OBC2
+            leap:
+                parameters: [leaprc.ff14SB, leaprc.gaff]
     protocols:
         absolute-binding:
             complex:
@@ -169,7 +159,7 @@ def get_template_script(output_dir='.'):
                     lambda_electrostatics: [1.0, 0.8, 0.6, 0.3, 0.0]
                     lambda_sterics: [1.0, 0.8, 0.6, 0.3, 0.0]
     experiments:
-        system: benzene-toluene
+        system: explicit-system
         protocol: absolute-binding
     """.format(output_dir=output_dir, benzene_path=paths['benzene'],
                pxylene_path=paths['p-xylene'], toluene_path=paths['toluene'],
@@ -723,12 +713,11 @@ def test_setup_name_smiles_openeye_charges():
 @unittest.skipIf(not utils.is_openeye_installed(), 'This test requires OpenEye installed.')
 def test_clashing_atoms():
     """Check that clashing atoms are resolved."""
-    clearance = 10.0
     benzene_path = examples_paths()['benzene']
     toluene_path = examples_paths()['toluene']
     with omt.utils.temporary_directory() as tmp_dir:
         yaml_content = get_template_script(tmp_dir)
-        system_id = 'benzene-toluene'
+        system_id = 'explicit-system'
         system_description = yaml_content['systems'][system_id]
         system_description['pack'] = True
         system_description['solvent'] = utils.CombinatorialLeaf(['vacuum', 'PME'])
@@ -758,7 +747,7 @@ def test_clashing_atoms():
 
             # For solvent we check that molecule is within the box
             if system_id == system_id + '_PME':
-                assert max_dist <= clearance
+                assert max_dist <= yaml_content['solvents']['PME']['clearance']
 
 
 @unittest.skipIf(not omt.schrodinger.is_schrodinger_suite_installed(),
@@ -1197,7 +1186,7 @@ def test_system_expansion():
     """Combinatorial systems are correctly expanded."""
     # We need 2 combinatorial systems
     template_script = get_template_script()
-    template_system = template_script['systems']['t4-pxylene']
+    template_system = template_script['systems']['implicit-system']
     del template_system['leap']
     template_script['systems'] = {'system1': template_system.copy(),
                                   'system2': template_system.copy()}
@@ -1208,10 +1197,10 @@ def test_system_expansion():
     # Expected expanded script
     expected_script = yank_load("""
     systems:
-        system1_Abl: {receptor: Abl, ligand: p-xylene, solvent: PME}
-        system1_T4Lysozyme: {receptor: T4Lysozyme, ligand: p-xylene, solvent: PME}
-        system2_pxylene: {receptor: T4Lysozyme, ligand: p-xylene, solvent: PME}
-        system2_toluene: {receptor: T4Lysozyme, ligand: toluene, solvent: PME}
+        system1_Abl: {receptor: Abl, ligand: p-xylene, solvent: GBSA-OBC2}
+        system1_T4Lysozyme: {receptor: T4Lysozyme, ligand: p-xylene, solvent: GBSA-OBC2}
+        system2_pxylene: {receptor: T4Lysozyme, ligand: p-xylene, solvent: GBSA-OBC2}
+        system2_toluene: {receptor: T4Lysozyme, ligand: toluene, solvent: GBSA-OBC2}
     experiments:
         system: !Combinatorial ['system1_Abl', 'system1_T4Lysozyme', 'system2_pxylene', 'system2_toluene']
         protocol: absolute-binding
@@ -1271,11 +1260,10 @@ def test_setup_implicit_system_leap():
     """Create prmtop and inpcrd for implicit solvent protein-ligand system."""
     with omt.utils.temporary_directory() as tmp_dir:
         yaml_content = get_template_script(tmp_dir)
-        yaml_content['systems']['t4-pxylene']['solvent'] = 'GBSA-OBC2'
         yaml_builder = YamlBuilder(yaml_content)
 
         output_dir = os.path.dirname(
-            yaml_builder._db.get_system('t4-pxylene')[0].position_path)
+            yaml_builder._db.get_system('implicit-system')[0].position_path)
         last_modified_path = os.path.join(output_dir, 'complex.prmtop')
         last_modified = os.stat(last_modified_path).st_mtime
 
@@ -1300,7 +1288,7 @@ def test_setup_implicit_system_leap():
 
         # Test that another call do not regenerate the system
         time.sleep(0.5)  # st_mtime doesn't have much precision
-        yaml_builder._db.get_system('t4-pxylene')
+        yaml_builder._db.get_system('implicit-system')
         assert last_modified == os.stat(last_modified_path).st_mtime
 
 
@@ -1308,11 +1296,10 @@ def test_setup_explicit_system_leap():
     """Create prmtop and inpcrd protein-ligand system in explicit solvent."""
     with omt.utils.temporary_directory() as tmp_dir:
         yaml_content = get_template_script(tmp_dir)
-        yaml_content['systems']['benzene-toluene']['solvent'] = 'PME'
         yaml_builder = YamlBuilder(yaml_content)
 
         output_dir = os.path.dirname(
-            yaml_builder._db.get_system('benzene-toluene')[0].position_path)
+            yaml_builder._db.get_system('explicit-system')[0].position_path)
 
         # Test that output file exists and that there is water
         expected_resnames = {'complex': set(['BEN', 'TOL', 'WAT']),
@@ -1338,10 +1325,12 @@ def test_neutralize_system():
     """Test whether the system charge is neutralized correctly."""
     with omt.utils.temporary_directory() as tmp_dir:
         yaml_content = get_template_script(tmp_dir)
+        yaml_content['systems']['explicit-system']['receptor'] = 'T4Lysozyme'
+        yaml_content['systems']['explicit-system']['ligand'] = 'p-xylene'
         yaml_builder = YamlBuilder(yaml_content)
 
         output_dir = os.path.dirname(
-            yaml_builder._db.get_system('t4-pxylene')[0].position_path)
+            yaml_builder._db.get_system('explicit-system')[0].position_path)
 
         # Test that output file exists and that there are ions
         found_resnames = set()
@@ -1372,12 +1361,10 @@ def test_charged_ligand():
                 name: "(3S)-3-amino-4-hydroxy-4-oxo-butanoate"
                 openeye: {{quacpac: am1-bcc}}
                 antechamber: {{charge_method: null}}
-                leap: {{parameters: leaprc.gaff}}
             lysine:
                 name: "[(5S)-5-amino-6-hydroxy-6-oxo-hexyl]azanium"
                 openeye: {{quacpac: am1-bcc}}
                 antechamber: {{charge_method: null}}
-                leap: {{parameters: leaprc.gaff}}
         solvents:
             PMEtip3p:
                 nonbonded_method: PME
@@ -1389,6 +1376,8 @@ def test_charged_ligand():
                 receptor: lysine
                 ligand: aspartic-acid
                 solvent: PMEtip3p
+                leap:
+                    parameters: [leaprc.ff14SB, leaprc.gaff, frcmod.ionsjc_tip3p]
         """.format(tmp_dir)
 
         yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
@@ -1431,7 +1420,10 @@ def test_setup_explicit_solvation_system():
     """Create prmtop and inpcrd files for solvation free energy in explicit solvent."""
     with omt.utils.temporary_directory() as tmp_dir:
         yaml_script = get_template_script(tmp_dir)
-        yaml_script['systems'] = {'system1': {'solute': 'toluene', 'solvent1': 'PME', 'solvent2': 'vacuum'}}
+        yaml_script['systems'] = {
+            'system1':
+                {'solute': 'toluene', 'solvent1': 'PME', 'solvent2': 'vacuum',
+                 'leap': {'parameters': ['leaprc.gaff', 'leaprc.ff14SB']}}}
         del yaml_script['experiments']
         yaml_builder = YamlBuilder(yaml_script)
         output_dir = os.path.dirname(
@@ -1476,7 +1468,8 @@ def test_setup_multiple_parameters_system():
                                'leap': {'parameters': ['leaprc.gaff', frcmod_path]}}}
         yaml_script['systems'] = {
             'system':
-                {'solute': 'benzene-frcmod', 'solvent1': 'PME', 'solvent2': 'vacuum'}
+                {'solute': 'benzene-frcmod', 'solvent1': 'PME', 'solvent2': 'vacuum',
+                 'leap': {'parameters': 'leaprc.ff14SB'}}
         }
         del yaml_script['experiments']
 
@@ -1603,7 +1596,7 @@ def test_run_experiment_from_amber_files():
     with omt.utils.temporary_directory() as tmp_dir:
         yaml_script = get_template_script(tmp_dir)
         del yaml_script['molecules']  # we shouldn't need any molecule
-        yaml_script['systems'] = {'benzene-toluene':
+        yaml_script['systems'] = {'explicit-system':
                 {'phase1_path': complex_path, 'phase2_path': solvent_path,
                  'ligand_dsl': 'resname TOL', 'solvent': 'PME'}}
 
@@ -1634,11 +1627,11 @@ def test_run_experiment_from_gromacs_files():
     with omt.utils.temporary_directory() as tmp_dir:
         yaml_script = get_template_script(tmp_dir)
         del yaml_script['molecules']  # we shouldn't need any molecule
-        yaml_script['systems'] = {'t4-pxylene':
+        yaml_script['systems'] = {'explicit-system':
                 {'phase1_path': complex_path, 'phase2_path': solvent_path,
                  'ligand_dsl': 'resname "p-xylene"', 'solvent': 'PME',
                  'gromacs_include_dir': include_path}}
-        yaml_script['experiments']['system'] = 't4-pxylene'
+        yaml_script['experiments']['system'] = 'explicit-system'
 
         yaml_builder = YamlBuilder(yaml_script)
         yaml_builder._check_resume()  # check_resume should not raise exceptions
@@ -1766,10 +1759,13 @@ def test_run_experiment():
 
 
 def test_run_solvation_experiment():
-    """Test experiment run from prmtop/inpcrd files."""
+    """Test solvation free energy experiment run."""
     with omt.utils.temporary_directory() as tmp_dir:
         yaml_script = get_template_script(tmp_dir)
-        yaml_script['systems'] = {'system1': {'solute': 'toluene', 'solvent1': 'PME', 'solvent2': 'vacuum'}}
+        yaml_script['systems'] = {
+            'system1':
+                {'solute': 'toluene', 'solvent1': 'PME', 'solvent2': 'vacuum',
+                 'leap': {'parameters': ['leaprc.gaff', 'leaprc.ff14SB']}}}
         yaml_script['experiments']['system'] = 'system1'
 
         yaml_builder = YamlBuilder(yaml_script)

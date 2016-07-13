@@ -943,28 +943,11 @@ class SetupDatabase:
         # --------------------
         tleap.new_section('Load parameters')
 
-        found_amber_ff = False
         for mol_id in molecule_ids:
             molecule_parameters = self.molecules[mol_id]['leap']['parameters']
             tleap.load_parameters(*molecule_parameters)
 
-            if 'leaprc.' in molecule_parameters:
-                found_amber_ff = True
-
-            # In ff12SB and ff14SB, ions parameters must be loaded separately
-            if ((molecule_parameters == 'leaprc.ff12SB' or molecule_parameters == 'leaprc.ff14SB') and
-                    ('positive_ion' in solvent or 'negative_ion' in solvent)):
-                tleap.add_commands('loadAmberParams frcmod.ionsjc_tip3p')
-
         tleap.load_parameters(*system_parameters)
-        # TODO right now we always load GAFF to cope with the "parameters: antechamber"
-        # TODO keyword but we can remove this when we'll be able to specify list of
-        # TODO parameters. The same goes for the AMBER FF which, even if there are no
-        # TODO peptides, is needed for the solvent parameters
-        tleap.load_parameters('leaprc.gaff')
-        if not found_amber_ff:
-            tleap.load_parameters('leaprc.ff14SB')
-            tleap.add_commands('loadAmberParams frcmod.ionsjc_tip3p')
 
         # Load molecules and create complexes
         # ------------------------------------
