@@ -1207,14 +1207,22 @@ class TLeap:
             if par_file in self._loaded_parameters:
                 continue
 
-            # use loadAmberParams if this is a frcmod file and source otherwise
-            extension = os.path.splitext(par_file)[1]
-            if extension == '.frcmod':
+            # Check whether this is a user file or a tleap file, and
+            # update list of input files to copy in temporary folder before run
+            if os.path.isfile(par_file):
                 local_name = 'moli{}'.format(len(self._file_paths))
-                self.add_commands('loadAmberParams {{{}}}'.format(local_name))
-
-                # Update list of input files to copy in temporary folder before run
                 self._file_paths[local_name] = par_file
+                local_name = '{' + local_name + '}'
+            else:  # tleap file
+                local_name = par_file
+
+            # use loadAmberParams if this is a frcmod file and source otherwise
+            base_name = os.path.basename(par_file)
+            extension = os.path.splitext(base_name)[1]
+            if 'frcmod' in base_name:
+                self.add_commands('loadAmberParams ' + local_name)
+            elif extension == '.off' or extension == '.lib':
+                self.add_commands('loadOff ' + local_name)
             else:
                 self.add_commands('source ' + par_file)
 
@@ -1309,7 +1317,7 @@ class TLeap:
             # Save script and run tleap
             with open('leap.in', 'w') as f:
                 f.write(script)
-            subprocess.check_output(['tleap', '-f', 'leap.in'])
+            leap_output = subprocess.check_output(['tleap', '-f', 'leap.in'])
 
             # Save leap.log in directory of first output file
             if len(output_files) > 0:
@@ -1319,9 +1327,22 @@ class TLeap:
                 log_path = os.path.join(first_output_dir, first_output_name + '.leap.log')
                 shutil.copy('leap.log', log_path)
 
-            #Copy back output files
-            for local_file, file_path in output_files.items():
-                shutil.copy(local_file, file_path)
+            # Copy back output files. If something goes wrong, some files may not exist
+            raise_error = False
+            try:
+                for local_file, file_path in output_files.items():
+                    shutil.copy(local_file, file_path)
+            except IOError:
+                raise_error = True
+
+            # Look for syntax errors in output (they don't raise CalledProcessError)
+            pattern = ': Argument #\d+ is type \S+ must be of type:'
+            if re.search(pattern, leap_output) is not None:
+                raise_error = True
+
+            if raise_error:
+                raise RuntimeError('Something went wrong while building the system. Check'
+                                   ' the tleap log files saved in {}'.format(log_path))
 
 
 #=============================================================================================

@@ -73,10 +73,10 @@ def test_script_yaml():
         molecules:
             T4lysozyme:
                 filepath: {}
-                parameters: oldff/leaprc.ff99SBildn
             p-xylene:
                 filepath: {}
-                parameters: antechamber
+                antechamber:
+                    charge_method: bcc
         solvents:
             vacuum:
                 nonbonded_method: NoCutoff
@@ -95,6 +95,8 @@ def test_script_yaml():
                 receptor: T4lysozyme
                 ligand: p-xylene
                 solvent: vacuum
+                leap:
+                    parameters: [leaprc.gaff, leaprc.ff14SB]
         experiments:
             system: system
             protocol: absolute-binding
