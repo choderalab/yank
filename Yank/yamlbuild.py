@@ -649,10 +649,11 @@ class SetupDatabase:
             receptor_id = system_descr['receptor']
             ligand_id = system_descr['ligand']
             solvent_id = system_descr['solvent']
+            system_parameters = system_descr['leap']['parameters']
 
             # solvent phase
             self._setup_system(system_files_paths[1].position_path, False,
-                               0, solvent_id, ligand_id)
+                               0, system_parameters, solvent_id, ligand_id)
 
             try:
                 alchemical_charge = self.molecules[ligand_id]['net_charge']
@@ -662,19 +663,21 @@ class SetupDatabase:
             # complex phase
             self._setup_system(system_files_paths[0].position_path,
                                system_descr['pack'], alchemical_charge,
-                               solvent_id, receptor_id, ligand_id)
+                               system_parameters,  solvent_id, receptor_id,
+                               ligand_id)
         else:  # partition/solvation free energy calculation
             solute_id = system_descr['solute']
             solvent1_id = system_descr['solvent1']
             solvent2_id = system_descr['solvent2']
+            system_parameters = system_descr['leap']['parameters']
 
             # solvent1 phase
             self._setup_system(system_files_paths[0].position_path, False,
-                               0, solvent1_id, solute_id)
+                               0, system_parameters, solvent1_id, solute_id)
 
             # solvent2 phase
             self._setup_system(system_files_paths[1].position_path, False,
-                               0, solvent2_id, solute_id)
+                               0, system_parameters, solvent2_id, solute_id)
 
         return system_files_paths
 
@@ -891,7 +894,7 @@ class SetupDatabase:
 
                 # Save new parameters paths
                 mol_descr['filepath'] = os.path.join(mol_dir, mol_id + '.gaff.mol2')
-                mol_descr['leap']['parameters'] = [os.path.join(mol_dir, mol_id + '.frcmod')]
+                mol_descr['leap']['parameters'].append(os.path.join(mol_dir, mol_id + '.frcmod'))
 
             # Determine small molecule net charge
             extension = os.path.splitext(mol_descr['filepath'])[1]
@@ -905,7 +908,8 @@ class SetupDatabase:
             # Keep track of processed molecule
             self._processed_mols.add(mol_id)
 
-    def _setup_system(self, system_file_path, pack, alchemical_charge, solvent_id, *molecule_ids):
+    def _setup_system(self, system_file_path, pack, alchemical_charge,
+                      system_parameters, solvent_id, *molecule_ids):
         """Setup a system and create its prmtop/inpcrd files.
 
         IMPORTANT: This function does not check if it's about to overwrite
@@ -920,6 +924,9 @@ class SetupDatabase:
             True to automatically solve atom clashes and reduce box dimension.
         alchemical_charge : int
             Number of counterions to alchemically modify during the simulation.
+        system_parameters : list of str
+            Contain the parameters file that must be loaded in tleap for the
+            system in addition to the molecule-specific ones.
         solvent_id : str
             The ID of the solvent.
         *molecule_ids : list-like of str
@@ -949,6 +956,7 @@ class SetupDatabase:
                     ('positive_ion' in solvent or 'negative_ion' in solvent)):
                 tleap.add_commands('loadAmberParams frcmod.ionsjc_tip3p')
 
+        tleap.load_parameters(*system_parameters)
         # TODO right now we always load GAFF to cope with the "parameters: antechamber"
         # TODO keyword but we can remove this when we'll be able to specify list of
         # TODO parameters. The same goes for the AMBER FF which, even if there are no
@@ -1214,7 +1222,8 @@ class YamlBuilder:
 
         # Save raw YAML content that will be needed when generating the YAML files
         self._raw_yaml = copy.deepcopy({key: yaml_content.get(key, {})
-                                        for key in ['options', 'molecules', 'solvents', 'protocols']})
+                                        for key in ['options', 'molecules', 'solvents',
+                                                    'systems', 'protocols']})
 
         # Validate options and overwrite defaults
         self.options.update(self._validate_options(utils.merge_dict(yaml_content.get('options', {}),
@@ -1505,7 +1514,7 @@ class YamlBuilder:
 
         parameters_schema = {  # simple strings are converted to list of strings
             'parameters': And(Use(lambda p: [p] if isinstance(p, str) else p), [str])}
-        common_schema = {'leap': parameters_schema, Optional('openeye'): {'quacpac': 'am1-bcc'},
+        common_schema = {Optional('leap'): parameters_schema, Optional('openeye'): {'quacpac': 'am1-bcc'},
                          Optional('antechamber'): {'charge_method': Or(str, None)},
                          Optional('epik'): epik_schema}
         molecule_schema = Or(
@@ -1514,7 +1523,7 @@ class YamlBuilder:
             utils.merge_dict({'filepath': is_small_molecule, Optional('select'): Or(int, 'all')},
                              common_schema),
             {'filepath': is_peptide, Optional('select'): Or(int, 'all'),
-             'leap': parameters_schema, Optional('strip_protons'): bool}
+             Optional('leap'): parameters_schema, Optional('strip_protons'): bool}
         )
 
         # Schema validation
@@ -1536,6 +1545,10 @@ class YamlBuilder:
                     validated_molecules[molecule_id]['epik']['extract_range'] = extract_range
                 except (AttributeError, KeyError):
                     pass
+
+                # Create empty parameters list if not specified
+                if 'leap' not in validated_molecules[molecule_id]:
+                    validated_molecules[molecule_id]['leap'] = {'parameters': []}
             except SchemaError as e:
                 raise YamlParseError('Molecule {}: {}'.format(molecule_id, e.autos[-1]))
 
@@ -1712,12 +1725,15 @@ class YamlBuilder:
 
         # Define experiment Schema
         validated_systems = systems_description.copy()
+        parameters_schema = {  # simple strings are converted to list of strings
+            'parameters': And(Use(lambda p: [p] if isinstance(p, str) else p), [str])}
         system_schema = Schema(Or(
             {'receptor': is_known_molecule, 'ligand': is_known_molecule,
-             'solvent': is_known_solvent, Optional('pack', default=False): bool},
+             'solvent': is_known_solvent, Optional('pack', default=False): bool,
+             Optional('leap'): parameters_schema},
 
             {'solute': is_known_molecule, 'solvent1': is_known_solvent,
-             'solvent2': is_known_solvent},
+             'solvent2': is_known_solvent, Optional('leap'): parameters_schema},
 
             {'phase1_path': Use(system_files('amber')), 'phase2_path': Use(system_files('amber')),
              'ligand_dsl': str, 'solvent': is_known_solvent},
@@ -1730,6 +1746,10 @@ class YamlBuilder:
         for system_id, system_descr in systems_description.items():
             try:
                 validated_systems[system_id] = system_schema.validate(system_descr)
+
+                # Create empty parameters list if not specified
+                if 'leap' not in validated_systems[system_id]:
+                    validated_systems[system_id]['leap'] = {'parameters': []}
             except SchemaError as e:
                 raise YamlParseError('System {}: {}'.format(system_id, e.autos[-1]))
 
@@ -2015,7 +2035,7 @@ class YamlBuilder:
 
         # Systems section data
         system_id = experiment['system']
-        sys_section = {system_id: copy.deepcopy(self._db.systems[system_id])}
+        sys_section = {system_id: copy.deepcopy(self._raw_yaml['systems'][system_id])}
 
         # Protocols section data
         protocol_id = experiment['protocol']
