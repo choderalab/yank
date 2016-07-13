@@ -1093,10 +1093,10 @@ class YamlBuilder:
     ...     molecules:
     ...       T4lysozyme:
     ...         filepath: {}
-    ...         parameters: oldff/leaprc.ff99SBildn
     ...       p-xylene:
     ...         filepath: {}
-    ...         parameters: antechamber
+    ...         antechamber:
+    ...           charge_method: bcc
     ...     solvents:
     ...       vacuum:
     ...         nonbonded_method: NoCutoff
@@ -1105,6 +1105,8 @@ class YamlBuilder:
     ...             receptor: T4lysozyme
     ...             ligand: p-xylene
     ...             solvent: vacuum
+    ...             leap:
+    ...               parameters: [leaprc.gaff, leaprc.ff14SB]
     ...     protocols:
     ...       absolute-binding:
     ...         complex:
