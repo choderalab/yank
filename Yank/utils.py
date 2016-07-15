@@ -1190,7 +1190,7 @@ class TLeap:
 
     @property
     def script(self):
-        return self._script.format(**(self._file_paths)) + '\nquit\n'
+        return self._script.format(**self._file_paths) + '\nquit\n'
 
     def __init__(self):
         self._script = ''
@@ -1298,6 +1298,7 @@ class TLeap:
             f.write(self.script)
 
     def run(self):
+        """Run script and return warning messages in leap log file."""
         # Transform paths in absolute paths since we'll change the working directory
         input_files = {local + os.path.splitext(path)[1]: os.path.abspath(path)
                        for local, path in self._file_paths.items() if 'moli' in local}
@@ -1328,24 +1329,26 @@ class TLeap:
                 shutil.copy('leap.log', log_path)
 
             # Copy back output files. If something goes wrong, some files may not exist
-            error = ''
+            error_msg = ''
             try:
                 for local_file, file_path in output_files.items():
                     shutil.copy(local_file, file_path)
             except IOError:
-                error = "Could not create one of the system files."
+                error_msg = "Could not create one of the system files."
 
             # Look for errors in log that don't raise CalledProcessError
-            patterns = ['Argument #\d+ is type \S+ must be of type: \S+',
-                        'The unperturbed charge of the unit: [+-]?\d+\.\d+ is not zero.']
-            for pattern in patterns:
+            error_patterns = ['Argument #\d+ is type \S+ must be of type: \S+']
+            for pattern in error_patterns:
                 m = re.search(pattern, leap_output)
                 if m is not None:
-                    error = m.group(0)
+                    error_msg = m.group(0)
                     break
 
-            if error != '':
-                raise RuntimeError(error + ' Check log file {}'.format(log_path))
+            if error_msg != '':
+                raise RuntimeError(error_msg + ' Check log file {}'.format(log_path))
+
+            # Check for and return warnings
+            return re.findall('WARNING: (.+)', leap_output)
 
 
 #=============================================================================================
