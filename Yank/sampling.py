@@ -216,7 +216,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
 
         # Pressures.
         if self.states[0].pressure is not None:
-            ncvar_temperatures = ncgrp_stateinfo.createVariable('pressures', 'f', ('replica',))
+            ncvar_pressures = ncgrp_stateinfo.createVariable('pressures', 'f', ('replica',))
             setattr(ncvar_pressures, 'units', 'atm')
             setattr(ncvar_pressures, 'long_name', "pressures[state] is the external pressure of thermodynamic state 'state'")
             for state_index in range(self.nstates):
@@ -752,25 +752,30 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         return
 
     def _initialize_create(self):
-        self.u_k                = np.zeros([self.nstates], np.float64)
+        self.u_k = np.zeros([len(self.states)], np.float64)
         super(ModifiedHamiltonianExchange, self)._initialize_create()
 
     def _initialize_netcdf(self):
         super(ModifiedHamiltonianExchange, self)._initialize_netcdf()
-        ncvar_energies  = ncfile.createVariable('fully_interacting_energies', 'f8', ('iteration','replica'), zlib=False, chunksizes=(1,self.nreplicas))
-        setattr(ncvar_energies,  'units', 'kT')
-        setattr(ncvar_energies,  "long_name", "energies[iteration][replica] is the reduced (unitless) energy of replica 'replica' from iteration 'iteration' evaluated at the fully interacting state.")
+        ncvar_energies = self.ncfile.createVariable('fully_interacting_energies', 'f8',
+                                                    ('iteration', 'replica'), zlib=False,
+                                                    chunksizes=(1, self.nreplicas))
+        setattr(ncvar_energies, 'units', 'kT')
+        setattr(ncvar_energies, 'long_name', "energies[iteration][replica] is the reduced "
+                                              "(unitless) energy of replica 'replica' from "
+                                              "iteration 'iteration' evaluated at the fully "
+                                              "interacting state.")
         self.ncfile.sync()
 
     def _write_iteration_netcdf(self):
         super(ModifiedHamiltonianExchange, self)._write_iteration_netcdf()
-        self.ncfile.variables['fully_interacting_energies'][self.iteration,:] = self.u_k[:]
+        self.ncfile.variables['fully_interacting_energies'][self.iteration, :] = self.u_k[:]
         self.ncfile.sync()
 
     def _resume_from_netcdf(self):
         super(ModifiedHamiltonianExchange, self)._resume_from_netcdf()
-        # Restore energies.
-        self.u_k = ncfile.variables['fully_interacting_energies'][self.iteration,:].copy()
+        # Restore fully interacting energies
+        self.u_k = self.ncfile.variables['fully_interacting_energies'][self.iteration, :].copy()
 
     def _compute_energies(self):
         """
