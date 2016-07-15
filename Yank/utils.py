@@ -1328,21 +1328,24 @@ class TLeap:
                 shutil.copy('leap.log', log_path)
 
             # Copy back output files. If something goes wrong, some files may not exist
-            raise_error = False
+            error = ''
             try:
                 for local_file, file_path in output_files.items():
                     shutil.copy(local_file, file_path)
             except IOError:
-                raise_error = True
+                error = "Could not create one of the system files."
 
-            # Look for syntax errors in output (they don't raise CalledProcessError)
-            pattern = ': Argument #\d+ is type \S+ must be of type:'
-            if re.search(pattern, leap_output) is not None:
-                raise_error = True
+            # Look for errors in log that don't raise CalledProcessError
+            patterns = ['Argument #\d+ is type \S+ must be of type: \S+',
+                        'The unperturbed charge of the unit: [+-]?\d+\.\d+ is not zero.']
+            for pattern in patterns:
+                m = re.search(pattern, leap_output)
+                if m is not None:
+                    error = m.group(0)
+                    break
 
-            if raise_error:
-                raise RuntimeError('Something went wrong while building the system. Check'
-                                   ' the tleap log files saved in {}'.format(log_path))
+            if error != '':
+                raise RuntimeError(error + ' Check log file {}'.format(log_path))
 
 
 #=============================================================================================
