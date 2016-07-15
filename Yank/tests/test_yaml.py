@@ -60,6 +60,7 @@ def examples_paths():
     paths['benzene'] = os.path.join(ben_tol_dir, 'benzene.tripos.mol2')
     paths['toluene'] = os.path.join(ben_tol_dir, 'toluene.tripos.mol2')
     paths['abl'] = os.path.join(abl_imatinib_dir, '2HYY-pdbfixer.pdb')
+    paths['imatinib'] = os.path.join(abl_imatinib_dir, 'STI02.mol2')
     paths['bentol-complex'] = [os.path.join(ben_tol_dir, 'complex.prmtop'),
                                os.path.join(ben_tol_dir, 'complex.inpcrd')]
     paths['bentol-solvent'] = [os.path.join(ben_tol_dir, 'solvent.prmtop'),
@@ -1350,70 +1351,60 @@ def test_neutralize_system():
 @unittest.skipIf(not utils.is_openeye_installed(), "This test requires OpenEye toolkit")
 def test_charged_ligand():
     """Check that there are alchemical counterions for charged ligands."""
+    imatinib_path = examples_paths()['imatinib']
     with omt.utils.temporary_directory() as tmp_dir:
-        yaml_content = """
-        ---
-        options:
-            output_dir: {}
-            resume_setup: yes
+        receptors = {'Asp': -1, 'Abl': -8}  # receptor name -> net charge
+        updates = yank_load("""
         molecules:
-            aspartic-acid:
+            Asp:
                 name: "(3S)-3-amino-4-hydroxy-4-oxo-butanoate"
                 openeye: {{quacpac: am1-bcc}}
                 antechamber: {{charge_method: null}}
-            lysine:
-                name: "[(5S)-5-amino-6-hydroxy-6-oxo-hexyl]azanium"
+            imatinib:
+                filepath: {}
                 openeye: {{quacpac: am1-bcc}}
                 antechamber: {{charge_method: null}}
-        solvents:
-            PMEtip3p:
-                nonbonded_method: PME
-                clearance: 10*angstroms
-                positive_ion: Na+
-                negative_ion: Cl-
-        systems:
-            system:
-                receptor: lysine
-                ligand: aspartic-acid
-                solvent: PMEtip3p
-                leap:
-                    parameters: [leaprc.ff14SB, leaprc.gaff, frcmod.ionsjc_tip3p]
-        """.format(tmp_dir)
+        explicit-system:
+            receptor: !Combinatorial {}
+            ligand: imatinib
+        """.format(imatinib_path, receptors.keys()))
+        yaml_content = get_template_script(tmp_dir)
+        yaml_content['molecules'].update(updates['molecules'])
+        yaml_content['systems']['explicit-system'].update(updates['explicit-system'])
+        yaml_builder = YamlBuilder(yaml_content)
 
-        yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
+        for receptor in receptors:
+            system_files_paths = yaml_builder._db.get_system('explicit-system_' + receptor)
+            for i, phase_name in enumerate(['complex', 'solvent']):
+                inpcrd_file_path = system_files_paths[i].position_path
+                prmtop_file_path = system_files_paths[i].topology_path
+                phase = pipeline.prepare_phase(inpcrd_file_path, prmtop_file_path, 'resname MOL',
+                                               {'nonbondedMethod': openmm.app.PME})
 
-        system_files_paths = yaml_builder._db.get_system('system')
-        output_dir = os.path.dirname(system_files_paths[0].position_path)
+                # Safety check: receptor must be negatively charged as expected
+                if phase_name == 'complex':
+                    receptor_net_charge = pipeline.compute_net_charge(phase.reference_system,
+                                                                      phase.atom_indices['receptor'])
+                    assert receptor_net_charge == receptors[receptor]
 
-        # Safety check: Asp is negatively charged, Lys is positively charged
-        asp_path = os.path.join(yaml_builder._db.get_molecule_dir('aspartic-acid'),
-                                'aspartic-acid.gaff.mol2')
-        lys_path = os.path.join(yaml_builder._db.get_molecule_dir('lysine'),
-                                'lysine.gaff.mol2')
-        assert utils.get_mol2_net_charge(asp_path) == -1
-        assert utils.get_mol2_net_charge(lys_path) == 1
+                # 'ligand_counterions' component contain one cation
+                assert len(phase.atom_indices['ligand_counterions']) == 1
+                ion_idx = phase.atom_indices['ligand_counterions'][0]
+                ion_atom = next(itertools.islice(phase.reference_topology.atoms(), ion_idx, None))
+                assert '-' in ion_atom.residue.name
 
-        # Even if the system is globally neutral, there should be ions
-        # because there must be an alchemical ion for the charged ligand
-        found_resnames = set()
-        with open(os.path.join(output_dir, 'complex.pdb'), 'r') as f:
-            for line in f:
-                if len(line) > 10:
-                    found_resnames.add(line[17:20])
-        assert set(['Na+', 'Cl-']) <= found_resnames
-
-        # Test that 'ligand_counterions' component contain one anion
-        for i, phase in enumerate(['complex', 'solvent']):
-            inpcrd_file_path = system_files_paths[i].position_path
-            prmtop_file_path = system_files_paths[i].topology_path
-            atom_indices = pipeline.prepare_phase(inpcrd_file_path, prmtop_file_path, 'resname ASP',
-                                                  {'nonbondedMethod': openmm.app.PME}).atom_indices
-            topology = openmm.app.AmberPrmtopFile(prmtop_file_path).topology
-
-            assert len(atom_indices['ligand_counterions']) == 1
-            ion_idx = atom_indices['ligand_counterions'][0]
-            ion_atom = next(itertools.islice(topology.atoms(), ion_idx, None))
-            assert '+' in ion_atom.residue.name
+                # In complex, there should be both ions even if the system is globally
+                # neutral (e.g. asp lys system), because of the alchemical ion
+                found_resnames = set()
+                output_dir = os.path.dirname(system_files_paths[0].position_path)
+                with open(os.path.join(output_dir, phase_name + '.pdb'), 'r') as f:
+                    for line in f:
+                        if len(line) > 10:
+                            found_resnames.add(line[17:20])
+                if phase_name == 'complex':
+                    assert set(['Na+', 'Cl-']) <= found_resnames
+                else:
+                    assert set(['Cl-']) <= found_resnames
 
 
 def test_setup_explicit_solvation_system():

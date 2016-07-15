@@ -15,6 +15,7 @@ from contextlib import contextmanager
 from pkg_resources import resource_filename
 
 import mdtraj
+import parmed
 import numpy as np
 from simtk import unit
 from schema import Optional, Use
@@ -1050,33 +1051,59 @@ def validate_parameters(parameters, template_parameters, check_unknown=False,
 
     return validated_par
 
-#=============================================================================================
-# Stuff to move to openmoltools when they'll be stable
-#=============================================================================================
 
+# ==============================================================================
+# Stuff to move to openmoltools/ParmEd when they'll be stable
+# ==============================================================================
 
-def get_mol2_net_charge(mol2_file_path):
-    """Compute the sum of the partial charges for a molecule in a mol2 file.
+class Mol2File(object):
+    """Wrapper of ParmEd mol2 parser for easy manipulation of mol2 files.
 
-    Note that the mol2 file must indicated the charge of each atom consistently.
-    The function works only for single-structure mol2 files.
+    This is not efficient as every operation access the file. The purpose
+    of this class is simply to provide a shortcut to read and write the mol2
+    file with a one-liner. If you need to do multiple operations before
+    saving the file, use ParmEd directly.
 
-    Parameters
-    ----------
-    mol2_file_path : str
-        Path to the mol2 file containing the molecule(s).
-
-    Returns
-    -------
-    net_charge : int
-        The molecule net charge calculated as the sum of its partial charges
+    This works only for single-structure mol2 files.
 
     """
-    atoms_frame, _ = mdtraj.formats.mol2.mol2_to_dataframes(mol2_file_path)
-    net_charge = atoms_frame['charge'].sum()
-    return int(round(net_charge))
+
+    def __init__(self, file_path):
+        """Constructor.
+
+        Parameters
+        -----------
+        file_path : str
+            Path to the mol2 path.
+
+        """
+        self._file_path = file_path
+
+    @property
+    def resname(self):
+        residue = parmed.load_file(self._file_path)
+        return residue.name
+
+    @resname.setter
+    def resname(self, value):
+        residue = parmed.load_file(self._file_path)
+        residue.name = value
+        parmed.formats.Mol2File.write(residue, self._file_path)
+
+    @property
+    def net_charge(self):
+        residue = parmed.load_file(self._file_path)
+        return sum(a.charge for a in residue.atoms)
+
+    @net_charge.setter
+    def net_charge(self, value):
+        residue = parmed.load_file(self._file_path)
+        residue.fix_charges(to=value, precision=6)
+        parmed.formats.Mol2File.write(residue, self._file_path)
 
 
+# OpenEye functions
+# ------------------
 def is_openeye_installed():
     try:
         from openeye import oechem
@@ -1164,20 +1191,6 @@ def set_oe_mol_positions(molecule, positions):
     for i, atom in enumerate(molecule.GetAtoms()):
         molecule.SetCoords(atom, positions[i])
 
-def get_mol2_resname(file_path):
-    """Find resname of first atom in tripos mol2 file."""
-    with open(file_path, 'r') as f:
-        atom_found = False
-        for line in f:
-            fields = line.split()
-            if atom_found:
-                try:
-                    return fields[7]
-                except IndexError:
-                    return None
-            elif len(fields) > 0 and fields[0] == '@<TRIPOS>ATOM':
-                atom_found = True
-
 
 class TLeap:
     """Programmatic interface to write and run tLeap scripts.
@@ -1190,7 +1203,7 @@ class TLeap:
 
     @property
     def script(self):
-        return self._script.format(**(self._file_paths)) + '\nquit\n'
+        return self._script.format(**self._file_paths) + '\nquit\n'
 
     def __init__(self):
         self._script = ''
@@ -1298,6 +1311,7 @@ class TLeap:
             f.write(self.script)
 
     def run(self):
+        """Run script and return warning messages in leap log file."""
         # Transform paths in absolute paths since we'll change the working directory
         input_files = {local + os.path.splitext(path)[1]: os.path.abspath(path)
                        for local, path in self._file_paths.items() if 'moli' in local}
@@ -1328,21 +1342,26 @@ class TLeap:
                 shutil.copy('leap.log', log_path)
 
             # Copy back output files. If something goes wrong, some files may not exist
-            raise_error = False
+            error_msg = ''
             try:
                 for local_file, file_path in output_files.items():
                     shutil.copy(local_file, file_path)
             except IOError:
-                raise_error = True
+                error_msg = "Could not create one of the system files."
 
-            # Look for syntax errors in output (they don't raise CalledProcessError)
-            pattern = ': Argument #\d+ is type \S+ must be of type:'
-            if re.search(pattern, leap_output) is not None:
-                raise_error = True
+            # Look for errors in log that don't raise CalledProcessError
+            error_patterns = ['Argument #\d+ is type \S+ must be of type: \S+']
+            for pattern in error_patterns:
+                m = re.search(pattern, leap_output)
+                if m is not None:
+                    error_msg = m.group(0)
+                    break
 
-            if raise_error:
-                raise RuntimeError('Something went wrong while building the system. Check'
-                                   ' the tleap log files saved in {}'.format(log_path))
+            if error_msg != '':
+                raise RuntimeError(error_msg + ' Check log file {}'.format(log_path))
+
+            # Check for and return warnings
+            return re.findall('WARNING: (.+)', leap_output)
 
 
 #=============================================================================================

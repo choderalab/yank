@@ -586,7 +586,7 @@ class SetupDatabase:
             extension = os.path.splitext(molecule_descr['filepath'])[1]
             # TODO what if this is a peptide? This should be computed in get_system()
             if extension == '.mol2':
-                molecule_descr['net_charge'] = utils.get_mol2_net_charge(molecule_descr['filepath'])
+                molecule_descr['net_charge'] = utils.Mol2File(molecule_descr['filepath']).net_charge
 
         return all_file_exist, all_file_exist
 
@@ -656,7 +656,7 @@ class SetupDatabase:
                                0, system_parameters, solvent_id, ligand_id)
 
             try:
-                alchemical_charge = self.molecules[ligand_id]['net_charge']
+                alchemical_charge = int(round(self.molecules[ligand_id]['net_charge']))
             except KeyError:
                 alchemical_charge = 0
 
@@ -877,10 +877,11 @@ class SetupDatabase:
 
                     # Setting keep_confs = None keeps the original conformation
                     oe_molecule = omt.openeye.get_charges(oe_molecule, keep_confs=None)
-                    residue_name = utils.get_mol2_resname(mol_descr['filepath'])
+                    residue_name = utils.Mol2File(mol_descr['filepath']).resname
                     omt.openeye.molecule_to_mol2(oe_molecule, mol2_file_path,
                                                  residue_name=residue_name)
 
+                    utils.Mol2File(mol2_file_path).net_charge = None  # normalize charges
                     net_charge = None  # we don't need Epik's net charge
                     mol_descr['filepath'] = mol2_file_path
 
@@ -896,14 +897,15 @@ class SetupDatabase:
                 mol_descr['filepath'] = os.path.join(mol_dir, mol_id + '.gaff.mol2')
                 mol_descr['leap']['parameters'].append(os.path.join(mol_dir, mol_id + '.frcmod'))
 
+                # Normalize charges if not done before
+                if 'openeye' not in mol_descr:
+                    utils.Mol2File(mol_descr['filepath']).net_charge = None
+
             # Determine small molecule net charge
             extension = os.path.splitext(mol_descr['filepath'])[1]
             if extension == '.mol2':
                 # TODO what if this is a peptide? this should be computed in get_system()
-                if net_charge is not None:
-                    mol_descr['net_charge'] = net_charge
-                else:
-                    mol_descr['net_charge'] = utils.get_mol2_net_charge(mol_descr['filepath'])
+                mol_descr['net_charge'] = utils.Mol2File(mol_descr['filepath']).net_charge
 
             # Keep track of processed molecule
             self._processed_mols.add(mol_id)
@@ -1049,8 +1051,11 @@ class SetupDatabase:
         # Save tleap script for reference
         tleap.export_script(base_file_path + '.leap.in')
 
-        # Run tleap!
-        tleap.run()
+        # Run tleap and log warnings
+        warnings = tleap.run()
+        for warning in warnings:
+            logger.warning('TLeap: ' + warning)
+
 
 #=============================================================================================
 # BUILDER CLASS
@@ -2157,7 +2162,7 @@ class YamlBuilder:
                         alchemical_molecule_id = self._db.systems[system_id]['solute']
 
                     ligand_descr = self._db.molecules[alchemical_molecule_id]
-                    ligand_dsl = utils.get_mol2_resname(ligand_descr['filepath'])
+                    ligand_dsl = utils.Mol2File(ligand_descr['filepath']).resname
                     if ligand_dsl is None:
                         ligand_dsl = 'MOL'
                     ligand_dsl = 'resname ' + ligand_dsl
