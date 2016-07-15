@@ -29,6 +29,36 @@ from yank import AlchemicalPhase
 # Utility functions
 # ==============================================================================
 
+def compute_net_charge(system, atom_indices):
+    """Compute the total net charge of a subset of atoms in the system.
+
+    Parameters
+    ----------
+    system : simtk.openmm.app.System
+       The system object containing the atoms of interest.
+    atom_indices : list of int
+        Indices of the atoms of interest.
+
+    Returns
+    -------
+    net_charge : int
+        Total net charge as the sum of the partial charges of the atoms.
+
+    """
+    atom_indices = set(atom_indices)  # convert to set to speed up searching
+    net_charge = 0.0 * unit.elementary_charge
+    for force_index in range(system.getNumForces()):
+        force = system.getForce(force_index)
+        if isinstance(force, openmm.NonbondedForce):
+            for particle_index in range(force.getNumParticles()):
+                if particle_index in atom_indices:
+                    net_charge += force.getParticleParameters(particle_index)[0]
+                    atom_indices.remove(particle_index)
+    assert len(atom_indices) == 0
+    net_charge = int(round(net_charge / unit.elementary_charge))
+    return net_charge
+
+
 # Common solvent and ions.
 _SOLVENT_RESNAMES = frozenset(['118', '119', '1AL', '1CU', '2FK', '2HP', '2OF', '3CO', '3MT',
         '3NI', '3OF', '4MO', '543', '6MO', 'ACT', 'AG', 'AL', 'ALF', 'ATH',
@@ -109,17 +139,7 @@ def find_components(system, topology, ligand_dsl, solvent_resnames=_SOLVENT_RESN
     atom_indices['complex'] = atom_indices['receptor'] + atom_indices['ligand']
 
     # Perceive ligand net charge
-    ligand_net_charge = 0.0 * unit.elementary_charge
-    ligand_atom_indices = set(atom_indices['ligand'])
-    for force_index in range(system.getNumForces()):
-        force = system.getForce(force_index)
-        if isinstance(force, openmm.NonbondedForce):
-            for particle_index in range(force.getNumParticles()):
-                if particle_index in ligand_atom_indices:
-                    ligand_net_charge += force.getParticleParameters(particle_index)[0]
-                    ligand_atom_indices.remove(particle_index)
-    assert len(ligand_atom_indices) == 0
-    ligand_net_charge = int(round(ligand_net_charge / unit.elementary_charge))
+    ligand_net_charge = compute_net_charge(system, atom_indices['ligand'])
     logger.debug('Ligand net charge: {}'.format(ligand_net_charge))
 
     # Isolate ligand-neutralizing counterions
