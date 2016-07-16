@@ -1048,8 +1048,55 @@ class ReplicaExchange(object):
         for replica_index in range(self.nstates):
             self.replica_states[replica_index] = replica_index
 
+        # Check to make sure NetCDF file exists.
+        if not os.path.exists(self.store_filename):
+            raise Exception("Store file %s does not exist." % self.store_filename)
+
+        # Open NetCDF file for reading
+        logger.debug("Reading NetCDF file '%s'..." % self.store_filename)
+        ncfile = netcdf.Dataset(self.store_filename, 'r')
+
         # Resume from NetCDF file.
-        self._resume_from_netcdf()
+        self._resume_from_netcdf(ncfile)
+
+        # Close NetCDF file.
+        ncfile.close()
+
+        if (self.mpicomm is None) or (self.mpicomm.rank == 0):
+            # Reopen NetCDF file for appending, and maintain handle.
+            self.ncfile = netcdf.Dataset(self.store_filename, 'a')
+        else:
+            self.ncfile = None
+
+        # On first iteration, we need to do some initialization.
+        if self.iteration == 1:
+            # Perform sanity checks to see if we should terminate here.
+            self._run_sanity_checks()
+
+            # Minimize and equilibrate all replicas.
+            self._minimize_and_equilibrate()
+
+            # Compute energies of all alchemical replicas
+            self._compute_energies()
+
+            # Show energies.
+            if self.show_energies:
+                self._show_energies()
+
+            # Re-store initial state.
+            # TODO: Sort this logic out.
+            #self.ncfile = ncfile
+            #self._write_iteration_netcdf()
+            #self.ncfile = None
+
+        # Run sanity checks.
+        # TODO: Refine this.
+        self._run_sanity_checks()
+        #self._compute_energies() # recompute energies?
+        #self._run_sanity_checks()
+
+        # We will work on the next iteration.
+        self.iteration += 1
 
         # Show energies.
         if self.show_energies:
@@ -2146,19 +2193,16 @@ class ReplicaExchange(object):
             ncgrp = ncfile.groups['metadata']
             self.metadata = self._restore_dict_from_netcdf(ncgrp)
 
-    def _resume_from_netcdf(self):
+    def _resume_from_netcdf(self, ncfile):
         """
         Resume execution by reading current positions and energies from a NetCDF file.
 
+        Parameters
+        ----------
+        ncfile : netcdf.Dataset
+            The NetCDF file in which metadata is to be stored.
+
         """
-
-        # Check to make sure file exists.
-        if not os.path.exists(self.store_filename):
-            raise Exception("Store file %s does not exist." % self.store_filename)
-
-        # Open NetCDF file for reading
-        logger.debug("Reading NetCDF file '%s'..." % self.store_filename)
-        ncfile = netcdf.Dataset(self.store_filename, 'r') # netCDF4
 
         # TODO: Perform sanity check on file before resuming
 
@@ -2188,47 +2232,6 @@ class ReplicaExchange(object):
 
         # Restore energies.
         self.u_kl = ncfile.variables['energies'][self.iteration,:,:].copy()
-
-        # On first iteration, we need to do some initialization.
-        if self.iteration == 0:
-            # Perform sanity checks to see if we should terminate here.
-            self._run_sanity_checks()
-
-            # Minimize and equilibrate all replicas.
-            self._minimize_and_equilibrate()
-
-            # Compute energies of all alchemical replicas
-            self._compute_energies()
-
-            # Show energies.
-            if self.show_energies:
-                self._show_energies()
-
-            # Re-store initial state.
-            # TODO: Sort this logic out.
-            #self.ncfile = ncfile
-            #self._write_iteration_netcdf()
-            #self.ncfile = None
-
-        # Run sanity checks.
-        # TODO: Refine this.
-        self._run_sanity_checks()
-        #self._compute_energies() # recompute energies?
-        #self._run_sanity_checks()
-
-        # Close NetCDF file.
-        ncfile.close()
-
-        # We will work on the next iteration.
-        self.iteration += 1
-
-        if (self.mpicomm is None) or (self.mpicomm.rank == 0):
-            # Reopen NetCDF file for appending, and maintain handle.
-            self.ncfile = netcdf.Dataset(self.store_filename, 'a')
-        else:
-            self.ncfile = None
-
-        return
 
     def _show_energies(self):
         """
