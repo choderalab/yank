@@ -318,15 +318,14 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
             # Populate a new ThermodynamicState object.
             state = ThermodynamicState()
             # Read temperature.
-            temperature = float(ncgrp_stateinfo.variables['temperatures'][0]) * temperature_unit
+            state.temperature = float(ncgrp_stateinfo.variables['temperatures'][0]) * temperature_unit
             # Read pressure, if present.
             if 'pressures' in ncgrp_stateinfo.variables:
                 state.pressure = float(ncgrp_stateinfo.variables['pressures'][0]) * pressure_unit
             # Set System object
             state.system = self.mm.System()
             state.system.__setstate__(str(ncgrp_stateinfo.variables['system'][0]))
-        else:
-            self.fully_interacting_state = None
+            # self.fully_interacting_state = state
 
         final_time = time.time()
         elapsed_time = final_time - initial_time
