@@ -18,7 +18,7 @@ molecules:
     select: all
 
 solvents:
-  RF:
+  water:
     nonbonded_method: PME
     nonbonded_cutoff: 9*angstroms
     clearance: 9*angstroms
@@ -28,7 +28,7 @@ solvents:
 systems:
   hydration-system:
     solute: molecule
-    solvent1: RF
+    solvent1: water
     solvent2: vacuum
     leap:
       parameters: [leaprc.ff14SB, leaprc.gaff]
