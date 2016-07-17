@@ -14,10 +14,10 @@ options:
 molecules:
   T4lysozyme:
     filepath: input/181L-pdbfixer.pdb
-    parameters: leaprc.ff14SB
   p-xylene:
     filepath: input/p-xylene.mol2
-    parameters: antechamber
+    antechamber:
+      charge_method: bcc
 
 solvents:
   OBC2:
@@ -25,10 +25,12 @@ solvents:
     implicit_solvent: OBC2
 
 systems:
-  lys-xyl:
+  lys-pxyl:
     receptor: T4lysozyme
     ligand: p-xylene
     solvent: OBC2
+    leap:
+      parameters: [leaprc.ff14SB, leaprc.gaff]
 
 protocols:
   absolute-binding:
@@ -42,5 +44,5 @@ protocols:
         lambda_sterics:        [1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 0.95, 0.90, 0.85, 0.80, 0.75, 0.70, 0.65, 0.60, 0.55, 0.50, 0.45, 0.40, 0.35, 0.30, 0.25, 0.20, 0.15, 0.10, 0.00]
 
 experiments:
-  system: lys-xyl
+  system: lys-pxyl
   protocol: absolute-binding

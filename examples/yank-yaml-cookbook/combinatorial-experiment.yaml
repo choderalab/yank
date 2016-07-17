@@ -28,14 +28,11 @@ molecules:
     filepath: !Combinatorial [2HYY.pdb, 3CS9.pdb]   # Lists preceded by "!Combinatorial" here will be expanded
                                                     # combinatorially, so the section "abl" actually specifies
                                                     # two different starting configurations of the kinase Abl.
-    parameters: oldff/leaprc.ff99SBildn             # Both of them will use the parameters in AMBER ff99SBildn
-                                                    # force field.
     strip_protons: yes                              # Let tleap re-add all hydrogen atoms. This is useful if
                                                     # the PDB contains atom names for hydrogen that AMBER does
                                                     # not recognize. The default for this parameter is "no".
   src:
     filepath: !Combinatorial [2OIQ_A.pdb, 3EL7_A.pdb]
-    parameters: oldff/leaprc.ff99SBildn
     strip_protons: yes
   imatinib:
     filepath: clinical-kinase-inhibitors.csv        # Yank supports pdb, mol2, sdf and csv files. The last one
@@ -70,13 +67,14 @@ molecules:
                                                     # You can alternatively specify "select: all" which includes
                                                     # all the molecules in the given file. This is also the
                                                     # default value.
-    parameters: antechamber                         # Let antechamber parametrize the molecule using GAFF and
-                                                    # AM1-BCC charges.
+    antechamber:                                    # Let antechamber parametrize the molecule using GAFF and
+      charge_method: bcc                            # AM1-BCC charges.
     epik: 0                                         # Run Schrodinger's tool Epik and select the most likely
                                                     # protonation state for the molecule (in solution)
   bosutinib:
     filepath: clinical-kinase-inhibitors.csv
-    parameters: antechamber
+    antechamber:
+      charge_method: bcc
     epik: 0
     select: 3
 
@@ -96,30 +94,54 @@ solvents:
     implicit_solvent: OBC2
 
 
+# Here we describe the system for the calculation in terms of
+# components that form the system. Just as in the section
+# "molecules", list preceded by "!Combinatorial" in the section
+# "systems" will be expanded combinatorially. Here below we have
+# 2x2x2x2=16 calculations to run (2 receptors x 2 initial receptor
+# structures x 2 ligands x 2 solvent models).
+# -----------------------------------------------------------------
+systems:                                                 # If you don't need combinations but you only want to run a
+  kinase-inhibitor:                                      # single calculation, don't use combinatorial lists. Example:
+    receptor: !Combinatorial [abl, src]                  #   receptor: abl
+    ligand: !Combinatorial [imatinib, bosutinib]         #   ligand: imatinib
+    solvent: !Combinatorial [RF, GBSA]                   #   solvent: RF
+    pack: yes                                            # If the ligand is far away from the receptor or if there
+                                                         # are clashing atoms (defined as closer than 1.5 angstroms),
+                                                         # Yank will randomly translate and rotate the ligand until
+                                                         # this is solved. Set this to "no" if you don't wan't to
+                                                         # modify the initial position of the ligand as defined in
+                                                         # your input file.
+    leap:
+      parameters: [oldff/leaprc.ff99SBildn, leaprc.gaff] # All our calculations will use the parameters in AMBER
+                                                         # ff99SBildn force field and GAFF.
+
+
 # Here we specify the alchemical path of our simulation.
 # -----------------------------------------------------------------
 protocols:
   absolute-binding:
-    phases:
-      complex:
-        alchemical_path:
-          lambda_electrostatics: [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0, 0.0, 0,0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-          lambda_sterics: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0]
-      solvent:
-        alchemical_path:
-          lambda_electrostatics: [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0, 0.0, 0,0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-          lambda_sterics: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0]
+    complex:
+      alchemical_path:
+        lambda_electrostatics: [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0, 0.0, 0,0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        lambda_sterics: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0]
+    solvent:
+      alchemical_path:
+        lambda_electrostatics: [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0, 0.0, 0,0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        lambda_sterics: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0]
 
 
-# Here we specify the which calculations to set up and run. Just as
-# in the section "molecules", list preceded by "!Combinatorial" in
-# the section "experiments" will be expanded combinatorially. Here
-# below we have 2x2x2x2=16 calculations to run (2 receptors x
-# x 2 initial receptor structures x 2 ligands x 2 solvent models).
+# Here we specify which experiments to set up and run. Again, like
+# in sections "molecules" and "systems". Every list preceeded by
+# !Combinatorial will generate multiple experiments. The example
+# below would generate 4 experiments (assuming that my-system1 and
+# my-system2 were not combinatorial systems as well).
+#
+#   experiments:
+#     system: !Combinatorial [my-system1, my-system2]
+#     protocol !Combinatorial [protocol1, protocol2]
+#
 # -----------------------------------------------------------------
-experiments:                                       # If you don't need combinations but you only want to run a
-  components:                                      # single calculation, don't use combinatorial lists. Example
-    receptor: !Combinatorial [abl, src]            #   receptor: abl
-    ligand: !Combinatorial [imatinib, bosutinib]   #   ligand: imatinib
-    solvent: !Combinatorial [RF, GBSA]             #   solvent: RF
+experiments:
+  system: kinase-inhibitor
   protocol: absolute-binding

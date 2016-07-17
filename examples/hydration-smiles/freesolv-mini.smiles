@@ -1,0 +1,12 @@
+mobley_1723043; C1(C(C(C1(F)F)(F)F)(F)F)(F)F; octafluorocyclobutane; 3.43; 0.03; 3.01; 0.04; 10.1007/s10822-010-9350-8; 10.1007/s10822-010-9343-7; 8263; octafluorocyclobutane; Experimental uncertainty not presently available, so assigned a default value.
+mobley_252413; CCCC(C)(C)C; 2,2-dimethylpentane; 2.88; 0.60; 2.90; 0.02; 10.1021/ct050097l; 10.1021/ct800409d; 11542; 2,2-dimethylpentane; Experimental uncertainty not presently available, so assigned a default value.
+mobley_1662128; CCC=C; but-1-ene; 1.38; 0.60; 2.48; 0.02; 10.1021/ct050097l; 10.1021/ct800409d; 7844; but-1-ene; Experimental uncertainty not presently available, so assigned a default value.
+mobley_1873346; Cc1ccccc1; toluene; -0.90; 0.20; -0.70; 0.10; 10.1039/P29900000291; 10.1021/jp0667442; 1140; toluene; Experimental uncertainty as suggested by 10.1039/P29900000291 -- 0.2 kcal/mol.
+mobley_129464; CCCCOCCCC; 1-butoxybutane; -0.83; 0.60; 0.59; 0.03; 10.1021/ct050097l; 10.1021/ct800409d; 8909; 1-butoxybutane; Experimental uncertainty not presently available, so assigned a default value.
+mobley_1019269; CCCCO; butan-1-ol; -4.72; 0.60; -3.14; 0.02; 10.1021/ct050097l; 10.1021/ct800409d; 263; butan-1-ol; Experimental uncertainty not presently available, so assigned a default value.
+mobley_1520842; Cc1ccncc1; 4-methylpyridine; -4.93; 0.60; -3.41; 0.02; 10.1021/ct050097l; 10.1021/ct800409d; 7963; 4-methylpyridine; Experimental uncertainty not presently available, so assigned a default value.
+mobley_1636752; CO; methanol; -5.10; 0.60; -3.48; 0.01; 10.1021/ct050097l; 10.1021/ct800409d; 887; methanol; Experimental uncertainty not presently available, so assigned a default value.
+mobley_3777264; c1cc(cc(c1)[N+](=O)[O-])N; 3-nitroaniline; -8.84; 0.60; -8.24; 0.03; 10.1021/ct050097l; 10.1021/ct800409d; 7423; 3-nitroaniline; Experimental uncertainty not presently available, so assigned a default value.
+mobley_1963873; CC(=O)NC; N-methylacetamide; -10.00; 0.60; -8.39; 0.03; 10.1021/ct050097l; 10.1021/ct800409d; 6582; N-methylacetamide; Experimental uncertainty not presently available, so assigned a default value.
+mobley_2751110; c1cc(ccc1[N+](=O)[O-])O; 4-nitrophenol; -10.64; 0.60; -8.22; 0.02; 10.1021/ct050097l; 10.1021/ct800409d; 980; 4-nitrophenol; Experimental uncertainty not presently available, so assigned a default value.
+mobley_2727678; c1c(c(=O)[nH]c(=O)[nH]1)I; 5-iodouracil; -18.72; 0.64; -17.14; 0.06; 10.1007/s10822-010-9350-8; 10.1007/s10822-010-9343-7; 69672; 5-iodouracil; Experimental uncertainty not presently available, so assigned a default value.

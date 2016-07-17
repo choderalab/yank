@@ -7,7 +7,7 @@ Hydration free energy calculation of benzene in TIP3P water box at 300K and 1atm
 
 On the console, `cd` into this folder and type:
 ```tcsh
-yank script --yaml yank.yaml
+yank script --yaml=yank.yaml
 ```
 
 Clean up and delete all simulation files:

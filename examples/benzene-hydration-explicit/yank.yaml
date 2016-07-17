@@ -11,7 +11,8 @@ options:
 molecules:
   benzene:
     filepath: input/benzene.tripos.mol2
-    parameters: antechamber
+    antechamber:
+      charge_method: bcc
 
 solvents:
   RF:
@@ -26,6 +27,8 @@ systems:
     solute: benzene
     solvent1: RF
     solvent2: vacuum
+    leap:
+      parameters: [leaprc.ff14SB, leaprc.gaff]
 
 protocols:
   hydration:
