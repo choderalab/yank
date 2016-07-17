@@ -90,12 +90,25 @@ def test_phase_creation():
     # Create new simulation.
     with enter_temp_directory():
         output_dir = 'output'
+        utils.config_root_logger(verbose=False)
         yank = Yank(store_directory=output_dir)
         yank.create(thermodynamic_state, phase)
 
         # Netcdf dataset has been created
         nc_path = os.path.join(output_dir, phase_name + '.nc')
         assert os.path.isfile(nc_path)
+
+        # Read data
+        try:
+            nc_file = netcdf.Dataset(nc_path, mode='r')
+            metadata_group = nc_file.groups['metadata']
+            serialized_topology = metadata_group.variables['topology'][0]
+        finally:
+            nc_file.close()
+
+        # Topology has been stored correctly
+        deserialized_topology = utils.deserialize_topology(serialized_topology)
+        assert deserialized_topology == mdtraj.Topology.from_openmm(toluene.topology)
 
 
 def notest_LennardJonesPair(box_width_nsigma=6.0):
