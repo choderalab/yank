@@ -31,7 +31,7 @@ systems:
     solvent1: RF
     solvent2: vacuum
     leap:
-      parameters: ['leaprc.ff14SB', 'leaprc.gaff']
+      parameters: [leaprc.ff14SB, leaprc.gaff]
 
 protocols:
   hydration-protocol:
