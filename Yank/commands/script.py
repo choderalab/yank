@@ -13,7 +13,9 @@ Set up and run YANK calculation from script.
 # GLOBAL IMPORTS
 #=============================================================================================
 
+import os
 from yank.yamlbuild import YamlBuilder
+
 
 #=============================================================================================
 # COMMAND DISPATCH
@@ -30,7 +32,12 @@ def dispatch(args):
 
     """
     if args['--yaml']:
-        yaml_builder = YamlBuilder(yaml_source=args['--yaml'])
+        yaml_path = args['--yaml']
+
+        if not os.path.isfile(yaml_path):
+            raise ValueError('Cannot find YAML script "{}"'.format(yaml_path))
+
+        yaml_builder = YamlBuilder(yaml_source=yaml_path)
         yaml_builder.build_experiments()
         return True
 
