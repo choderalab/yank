@@ -822,9 +822,14 @@ class SetupDatabase:
                             mol_descr['smiles'] = smiles_str
                             try:
                                 oe_molecule = self._generate_molecule(mol_id)
-                            except ValueError:
+                            except (ValueError, RuntimeError):
+                                oe_molecule = None
                                 continue
                             break
+
+                        # Raise an error if no delimiter worked
+                        if oe_molecule is None:
+                            raise RuntimeError('Cannot detect SMILES file format.')
                 else:
                     # Generate molecule from mol_descr['smiles']
                     oe_molecule = self._generate_molecule(mol_id)
