@@ -13,6 +13,7 @@ import textwrap
 
 import openmoltools as omt
 from schema import Schema
+from openmmtools import testsystems
 
 from nose import tools
 from yank.utils import *
@@ -125,6 +126,14 @@ def test_expand_id_nodes():
     assert t['systems'] == {'sys1': {'molecules': CombinatorialLeaf(['mol1_2', 'mol1_1'])},
                             'sys2': {'molecules': CombinatorialLeaf(['mol1_2', 'mol1_1', 'mol2_3', 'mol2_4'])},
                             'sys3': {'prmtopfile': 'mysystem.prmtop'}}
+
+
+def test_topology_serialization():
+    """Correct serialization of Topology objects."""
+    topology = testsystems.AlanineDipeptideImplicit().topology
+    topology_str = serialize_topology(topology)
+    deserialized_topology = deserialize_topology(topology_str)
+    assert mdtraj.Topology.from_openmm(topology) == deserialized_topology
 
 
 def test_generate_signature_schema():
