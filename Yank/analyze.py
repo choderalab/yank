@@ -24,6 +24,7 @@ import netCDF4 as netcdf # netcdf4-python
 from pymbar import MBAR # multistate Bennett acceptance ratio
 from pymbar import timeseries # for statistical inefficiency analysis
 
+import mdtraj
 import simtk.unit as units
 
 import utils
@@ -546,3 +547,107 @@ def analyze(source_directory):
     logger.info("Enthalpy{}: {:16.3f} +- {:.3f} kT ({:16.3f} +- {:.3f} kcal/mol)".format(
         calculation_type, DeltaH, dDeltaH, DeltaH * kT / units.kilocalories_per_mole,
         dDeltaH * kT / units.kilocalories_per_mole))
+
+
+# ==============================================================================
+# Extract trajectory from NetCDF4 file
+# ==============================================================================
+
+def extract_trajectory(output_path, nc_path, state_index=None, replica_index=None,
+                       frame_indices=None, keep_solvent=True, discard_equilibration=False):
+    """Extract phase trajectory from the NetCDF4 file.
+
+    Parameters
+    ----------
+    output_path : str
+        Path to the trajectory file to be created. The extension of the file
+        determines the format.
+    nc_path : str
+        Path to the NetCDF4 file containing the trajectory.
+    state_index : int, optional
+        The index of the alchemical state for which to extract the trajectory.
+        One and only one between state_index and replica_index must be not None
+        (default is None).
+    replica_index : int, optional
+        The index of the replica for which to extract the trajectory. One and
+        only one between state_index and replica_index must be not None (default
+        is None).
+    frame_indices : list of int, optional
+        The indices of the frames to be extracted. If None, all frames are saved
+        (default is None)
+    keep_solvent : bool, optional
+        If False, solvent molecules are ignored (default is True).
+    discard_equilibration : bool, optional
+        If True, initial equilibration frames are discarded (see the method
+        pymbar.timeseries.detectEquilibration() for details, default is False).
+
+    """
+    # Check correct input
+    if (state_index is None) == (replica_index is None):
+        raise ValueError('One and only one between "state_index" and '
+                         '"replica_index" must be specified.')
+
+    # Import simulation data
+    try:
+        nc_file = netcdf.Dataset(nc_path, 'r')
+
+        # Get dimensions
+        n_iterations = nc_file.variables['positions'].shape[0]
+        n_atoms = nc_file.variables['positions'].shape[2]
+
+        # Determine frames to extract
+        if frame_indices is None:
+            # TODO yank saves first frame with 0 energy!
+            frame_indices = range(1, n_iterations)
+
+        # Discard equilibration samples
+        if discard_equilibration:
+            u_n = extract_u_n(nc_file)[frame_indices]
+            n_equil, g, n_eff = timeseries.detectEquilibration(u_n)
+            logger.info(("Discarding initial {} equilibration samples (leaving {} "
+                         "effectively uncorrelated samples)...").format(n_equil, n_eff))
+            frame_indices = frame_indices[n_equil:-1]
+
+        # Extract state positions
+        positions = np.zeros((len(frame_indices), n_atoms, 3))
+        if state_index is not None:
+            # Deconvolute state indices
+            state_indices = np.zeros(len(frame_indices))
+            for i, iteration in enumerate(frame_indices):
+                replica_indices = nc_file.variables['states'][iteration, :]
+                state_indices[i] = np.where(replica_indices == state_index)[0][0]
+
+            # Extract positions
+            for i, iteration in enumerate(frame_indices):
+                replica_index = state_indices[i]
+                positions[i, :, :] = nc_file.variables['positions'][iteration, replica_index, :, :]
+
+        # Extract replica positions
+        else:
+            positions = np.array(nc_file.variables['positions'][:, replica_index, :, :])[:]
+
+        # Extract topology
+        serialized_topology = nc_file.groups('metadata').variables['topology'][0]
+    finally:
+        nc_file.close()
+
+    # Create trajectory object
+    topology = utils.deserialize_topology(serialized_topology)
+    trajectory = mdtraj.Trajectory(positions, topology)
+
+    # Remove solvent
+    if not keep_solvent:
+        trajectory = trajectory.remove_solvent()
+
+    # Detect format
+    extension = os.path.splitext(output_path)[1][1:]  # remove dot
+    try:
+        save_function = getattr(trajectory, 'save_' + extension)
+    except AttributeError:
+        raise ValueError('Cannot detect format from extension of file {}'.format(output_path))
+
+    # Create output directory and save trajectory
+    output_dir = os.path.dirname(output_path)
+    if not os.path.isdir(output_dir):
+        os.makedirs(output_dir)
+    save_function(output_path)
