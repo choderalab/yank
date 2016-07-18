@@ -1069,7 +1069,7 @@ class ReplicaExchange(object):
             self.ncfile = None
 
         # On first iteration, we need to do some initialization.
-        if self.iteration == 1:
+        if self.iteration == 0:
             # Perform sanity checks to see if we should terminate here.
             self._run_sanity_checks()
 
@@ -2023,7 +2023,6 @@ class ReplicaExchange(object):
                 option_value = int(option_value)
             # Store the variable.
             if type(option_value) == str:
-                logger.debug("Storing option: %s -> %s (type: %s)" % (option_name, option_value, option_type_name))
                 ncvar = ncgrp.createVariable(option_name, type(option_value), 'scalar')
                 packed_data = np.empty(1, 'O')
                 packed_data[0] = option_value
@@ -2031,7 +2030,6 @@ class ReplicaExchange(object):
                 setattr(ncvar, 'type', option_type_name)
             elif isinstance(option_value, collections.Iterable):
                 nelements = len(option_value)
-                logger.debug("Storing option: %s -> %s (type: %s, array of length %d)" % (option_name, option_value, option_type_name, nelements))
                 element_type = type(option_value[0])
                 element_type_name = typename(element_type)
                 ncgrp.createDimension(option_name, nelements) # unlimited number of iterations
@@ -2040,15 +2038,21 @@ class ReplicaExchange(object):
                     ncvar[i] = element
                 setattr(ncvar, 'type', element_type_name)
             elif option_value is None:
-                logger.debug("Storing option: %s -> %s (None)" % (option_name, option_value))
                 ncvar = ncgrp.createVariable(option_name, int)
                 ncvar.assignValue(0)
                 setattr(ncvar, 'type', option_type_name)
             else:
-                logger.debug("Storing option: %s -> %s (type: %s, other)" % (option_name, option_value, option_type_name))
                 ncvar = ncgrp.createVariable(option_name, type(option_value))
                 ncvar.assignValue(option_value)
                 setattr(ncvar, 'type', option_type_name)
+
+            # Log value (truncate if too long but save length)
+            if hasattr(option_value, '__len__'):
+                logger.debug("Storing option: {} -> {} (type: {}, length {})".format(
+                    option_name, str(option_value)[:500], option_type_name, len(option_value)))
+            else:
+                logger.debug("Storing option: {} -> {} (type: {})".format(
+                    option_name, option_value, option_type_name))
             if option_unit: setattr(ncvar, 'units', str(option_unit))
 
         return
@@ -2078,7 +2082,6 @@ class ReplicaExchange(object):
             # Get option value.
             if type_name == 'NoneType':
                 option_value = None
-                logger.debug("Restoring option: %s -> %s (None)" % (option_name, str(option_value)))
             elif option_ncvar.shape == ():
                 option_value = option_ncvar.getValue()
                 # Cast to python types.
@@ -2090,16 +2093,21 @@ class ReplicaExchange(object):
                     option_value = float(option_value)
                 elif type_name == 'str':
                     option_value = str(option_value)
-                logger.debug("Restoring option: %s -> %s (type: %s)" % (option_name, str(option_value), type(option_value)))
             elif (option_ncvar.shape[0] >= 0):
                 option_value = np.array(option_ncvar[:], eval(type_name))
                 # TODO: Deal with values that are actually scalar constants.
                 # TODO: Cast to appropriate type
-                logger.debug("Restoring option: %s -> %s (type: %s)" % (option_name, str(option_value), type(option_value)))
             else:
                 option_value = option_ncvar[0]
                 option_value = eval(type_name + '(' + repr(option_value) + ')')
-                logger.debug("Restoring option: %s -> %s (type: %s)" % (option_name, str(option_value), type(option_value)))
+
+            # Log value (truncate if too long but save length)
+            if hasattr(option_value, '__len__'):
+                logger.debug("Restoring option: {} -> {} (type: {}, length {})".format(
+                    option_name, str(option_value)[:500], type(option_value), len(option_value)))
+            else:
+                logger.debug("Retoring option: {} -> {} (type: {})".format(
+                    option_name, option_value, type(option_value)))
 
             # If Quantity, assign unit.
             if hasattr(option_ncvar, 'units'):
