@@ -17,16 +17,16 @@ requirements:
     - scipy
     - setuptools
     - netcdf4
-    - openmm-dev
+    - openmm ==7.0.1
     - mdtraj 1.5.1 # TODO remove me when segment_id bug is fixed (this is installed through openmoltools)
-    - openmmtools-dev
+    - openmmtools ==0.7.5
     - pymbar ==2.1beta0
     - ambermini ==14.0.1
     - docopt
-    - openmoltools-dev
+    - openmoltools ==0.7.1
     - sphinxcontrib-bibtex
-    - alchemy-dev
-    - schema
+    - alchemy ==1.2.0
+    - schema >=0.5.0
     #- gcc 4.8.2 # [linux]
     #- gcc 4.8.2 # [osx]
 
@@ -37,19 +37,19 @@ requirements:
     - scipy
     - cython
     - netcdf4
-    - openmm-dev
+    - openmm ==7.0.1
     - mdtraj 1.5.1 # TODO remove me when segment_id bug is fixed (this is installed through openmoltools)
-    - openmmtools-dev
+    - openmmtools ==0.7.5
     - pymbar ==2.1beta0
-    - ambermini
+    - ambermini ==14.0.1
     - docopt
-    - openmoltools-dev
+    - openmoltools ==0.7.1
     - mpi4py
     - pyyaml
     - clusterutils
     - sphinxcontrib-bibtex
-    - alchemy-dev
-    - schema
+    - alchemy ==1.2.0
+    - schema >=0.5.0
     #- libgcc
 
 test:
