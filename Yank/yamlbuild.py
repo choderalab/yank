@@ -1230,7 +1230,7 @@ class YamlBuilder:
         # Check that YAML loading was successful
         if yaml_content is None:
             raise YamlParseError('The YAML file is empty!')
-        if not isinstance(yaml_source, dict):
+        if not isinstance(yaml_content, dict):
             raise YamlParseError('Cannot load YAML from source: {}'.format(yaml_source))
 
         # Expand combinatorial molecules and systems
