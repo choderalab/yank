@@ -1069,7 +1069,7 @@ class ReplicaExchange(object):
             self.ncfile = None
 
         # On first iteration, we need to do some initialization.
-        if self.iteration == 1:
+        if self.iteration == 0:
             # Perform sanity checks to see if we should terminate here.
             self._run_sanity_checks()
 
