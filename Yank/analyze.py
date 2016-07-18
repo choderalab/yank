@@ -624,7 +624,7 @@ def extract_trajectory(output_path, nc_path, state_index=None, replica_index=Non
 
         # Extract replica positions
         else:
-            positions = np.array(nc_file.variables['positions'][:, replica_index, :, :])[:]
+            positions = nc_file.variables['positions'][:, replica_index, :, :]
 
         # Extract topology
         serialized_topology = nc_file.groups('metadata').variables['topology'][0]
