@@ -33,6 +33,7 @@ Usage:
   yank script (-y=FILEPATH | --yaml=FILEPATH)
   yank status (-s=STORE | --store=STORE) [-v | --verbose]
   yank analyze (-s STORE | --store=STORE) [-v | --verbose]
+  yank analyze extract-trajectory --netcdf=FILEPATH (--state=STATE | --replica=REPLICA) --trajectory=FILEPATH [--start=START_FRAME] [--skip=SKIP_FRAME] [--end=END_FRAME] [--nosolvent] [--discardequil] [-v | --verbose]
   yank cleanup (-s=STORE | --store=STORE) [-v | --verbose]
 
 Commands:
@@ -44,6 +45,7 @@ Commands:
   script                        Set up and run free energy calculations from a YAML script.
   status                        Get the current status
   analyze                       Analyze data
+  extract-trajectory            Extract trajectory from a NetCDF file in a common format.
   cleanup                       Clean up (delete) run files.
 
 General options:
@@ -76,8 +78,19 @@ Amber options:
   --setupdir=DIRECTORY          Setup directory to look for AMBER {receptor|ligand|complex}.{prmtop|inpcrd} files.
   --ligand=DSLSTRING            Specification of the ligand atoms according to MDTraj DSL syntax [default: resname MOL]
 
-Gromacs options
+Gromacs options:
   --gromacsinclude=DIRECTORY    Include directory for gromacs files [default: /usr/local/gromacs/share/gromacs/top]
+
+Extract-trajectory options:
+  --netcdf=FILEPATH             Path to the NetCDF file.
+  --state=STATE_IDX             Index of the alchemical state for which to extract the trajectory
+  --replica=REPLICA_IDX         Index of the replica for which to extract the trajectory
+  --trajectory=FILEPATH         Path to the trajectory file to create (extension determines the format)
+  --start=START_FRAME           Index of the first frame to keep
+  --end=END_FRAME               Index of the last frame to keep
+  --skip=SKIP_FRAME             Extract one frame every SKIP_FRAME
+  --nosolvent                   Do not extract solvent
+  --discardequil                Detect and discard equilibration frames
 
 """
 

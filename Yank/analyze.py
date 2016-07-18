@@ -554,7 +554,8 @@ def analyze(source_directory):
 # ==============================================================================
 
 def extract_trajectory(output_path, nc_path, state_index=None, replica_index=None,
-                       frame_indices=None, keep_solvent=True, discard_equilibration=False):
+                       start_frame=0, end_frame=-1, skip_frame=1, keep_solvent=True,
+                       discard_equilibration=False):
     """Extract phase trajectory from the NetCDF4 file.
 
     Parameters
@@ -572,9 +573,13 @@ def extract_trajectory(output_path, nc_path, state_index=None, replica_index=Non
         The index of the replica for which to extract the trajectory. One and
         only one between state_index and replica_index must be not None (default
         is None).
-    frame_indices : list of int, optional
-        The indices of the frames to be extracted. If None, all frames are saved
-        (default is None)
+    start_frame : int, optional
+        Index of the first frame to include in the trajectory (default is 0).
+    end_frame : int, optional
+        Index of the last frame to include in the trajectory. If negative, will
+        count from the end (default is -1).
+    skip_frame : int, optional
+        Extract one frame every skip_frame (default is 1).
     keep_solvent : bool, optional
         If False, solvent molecules are ignored (default is True).
     discard_equilibration : bool, optional
@@ -586,6 +591,8 @@ def extract_trajectory(output_path, nc_path, state_index=None, replica_index=Non
     if (state_index is None) == (replica_index is None):
         raise ValueError('One and only one between "state_index" and '
                          '"replica_index" must be specified.')
+    if not os.path.isfile(nc_path):
+        raise ValueError('Cannot find file {}'.format(nc_path))
 
     # Import simulation data
     try:
@@ -596,9 +603,14 @@ def extract_trajectory(output_path, nc_path, state_index=None, replica_index=Non
         n_atoms = nc_file.variables['positions'].shape[2]
 
         # Determine frames to extract
-        if frame_indices is None:
+        if start_frame <= 0:
             # TODO yank saves first frame with 0 energy!
-            frame_indices = range(1, n_iterations)
+            start_frame = 1
+        if end_frame < 0:
+            end_frame = n_iterations + end_frame + 1
+        frame_indices = range(start_frame, end_frame, skip_frame)
+        if len(frame_indices) == 0:
+            raise ValueError('No frames selected')
 
         # Discard equilibration samples
         if discard_equilibration:
@@ -648,6 +660,6 @@ def extract_trajectory(output_path, nc_path, state_index=None, replica_index=Non
 
     # Create output directory and save trajectory
     output_dir = os.path.dirname(output_path)
-    if not os.path.isdir(output_dir):
+    if output_dir != '' and not os.path.isdir(output_dir):
         os.makedirs(output_dir)
     save_function(output_path)
