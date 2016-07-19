@@ -21,7 +21,7 @@ requirements:
     - mdtraj 1.5.1 # TODO remove me when segment_id bug is fixed (this is installed through openmoltools)
     - openmmtools ==0.7.5
     - pymbar ==2.1beta0
-    - ambermini ==14.0.1
+    - ambermini >=15.0.4
     - docopt
     - openmoltools ==0.7.1
     - sphinxcontrib-bibtex
@@ -41,7 +41,7 @@ requirements:
     - mdtraj 1.5.1 # TODO remove me when segment_id bug is fixed (this is installed through openmoltools)
     - openmmtools ==0.7.5
     - pymbar ==2.1beta0
-    - ambermini ==14.0.1
+    - ambermini >=15.0.4
     - docopt
     - openmoltools ==0.7.1
     - mpi4py
