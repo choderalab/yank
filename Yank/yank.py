@@ -19,6 +19,7 @@ Interface for automated free energy calculations.
 import os
 import os.path
 import copy
+import mdtraj
 import inspect
 import logging
 logger = logging.getLogger(__name__)
@@ -342,7 +343,8 @@ class Yank(object):
         metadata = dict()
 
         # Store a serialized copy of the reference system.
-        metadata['reference_sysem'] = openmm.XmlSerializer.serialize(reference_system)
+        metadata['reference_system'] = openmm.XmlSerializer.serialize(reference_system)
+        metadata['topology'] = utils.serialize_topology(alchemical_phase.reference_topology)
 
         # TODO: Use more general approach to determine whether system is periodic.
         is_periodic = self._is_periodic(reference_system)

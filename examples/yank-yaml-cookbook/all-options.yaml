@@ -20,11 +20,6 @@ options:
 
   # SYSTEM AND SIMULATION PREPARATION
   # ---------------------------------
-  pack: yes                                     # If the ligand is far away from the receptor or if there
-                                                # are clashing atoms (defined as closer than 1.5 angstroms),
-                                                # Yank will randomly translate and rotate the ligand until
-                                                # this is solved. Set this to no if you don't wan't to
-                                                # modify the initial position of the ligand.
   randomize_ligand: no                          # Randomize the position of the ligand before starting the
   randomize_ligand_sigma_multiplier: 2.0        # simulation. This works only in implicit solvent. The
   randomize_ligand_close_cutoff: 1.5 * angstrom # ligand will be randomly rotated and displaced by a vector

@@ -3,8 +3,10 @@ import re
 import sys
 import copy
 import glob
+import json
 import shutil
 import signal
+import pandas
 import inspect
 import logging
 import itertools
@@ -679,9 +681,59 @@ def is_iterable_container(value):
     return not isinstance(value, str) and isinstance(value, collections.Iterable)
 
 
-#========================================================================================
+# ==============================================================================
 # Conversion utilities
-#========================================================================================
+# ==============================================================================
+
+def serialize_topology(topology):
+    """Serialize topology to string.
+
+    Parameters
+    ----------
+    topology : mdtraj.Topology, simtk.openmm.app.Topology
+        The topology object to serialize.
+
+    Returns
+    -------
+    serialized_topology : str
+        String obtained by jsonizing the return value of to_dataframe() of the
+        mdtraj Topology object.
+
+    """
+    # Check if we need to convert the topology to mdtraj
+    if isinstance(topology, mdtraj.Topology):
+        mdtraj_top = topology
+    else:
+        mdtraj_top = mdtraj.Topology.from_openmm(topology)
+
+    atoms, bonds = mdtraj_top.to_dataframe()
+    separators = (',', ':')  # don't dump whitespaces to save space
+    serialized_topology = json.dumps({'atoms': atoms.to_json(orient='records'),
+                                      'bonds': bonds.tolist()},
+                                     separators=separators)
+    return serialized_topology
+
+
+def deserialize_topology(serialized_topology):
+    """Serialize topology to string.
+
+    Parameters
+    ----------
+    serialized_topology : str
+        Serialized topology as returned by serialize_topology().
+
+    Returns
+    -------
+    topology : mdtraj.Topology
+        The deserialized topology object.
+
+    """
+    topology_dict = json.loads(serialized_topology)
+    atoms = pandas.read_json(topology_dict['atoms'], orient='records')
+    bonds = np.array(topology_dict['bonds'])
+    topology = mdtraj.Topology.from_dataframe(atoms, bonds)
+    return topology
+
 
 def typename(atype):
     """Convert a type object into a fully qualified typename.

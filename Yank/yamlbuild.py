@@ -15,7 +15,7 @@ Tools to build Yank experiments from a YAML configuration file.
 
 import os
 import re
-import glob
+import csv
 import copy
 import yaml
 import logging
@@ -803,14 +803,38 @@ class SetupDatabase:
                     else:
                         raise RuntimeError('Cannot support {} files without OpenEye'.format(extension[1:]))
 
-                # Retrieve the first SMILES string, we take the last column
+                # Retrieve the first SMILES string (eventually extracted
+                # while handling of the 'select' keyword above)
                 if extension is not None:
                     with open(mol_descr['filepath'], 'r') as smiles_file:
-                        smiles_str = smiles_file.readline().strip().split(',')[-1]
-                    mol_descr['smiles'] = smiles_str  # prepare for _generate_molecule()
+                        # Automatically detect if delimiter is comma or semicolon
+                        first_line = smiles_file.readline()
+                        for delimiter in ',;':
+                            logger.debug("Attempt to parse smiles file with delimiter '{}'".format(delimiter))
+                            line_fields = first_line.split(delimiter)
+                            # If there is only one column, take that, otherwise take second
+                            if len(line_fields) > 1:
+                                smiles_str = line_fields[1].strip()
+                            else:
+                                smiles_str = line_fields[0].strip()
 
-                # Generate molecule and cache atom positions
-                oe_molecule = self._generate_molecule(mol_id)
+                            # try to generate the smiles and try new delimiter if it fails
+                            mol_descr['smiles'] = smiles_str
+                            try:
+                                oe_molecule = self._generate_molecule(mol_id)
+                            except (ValueError, RuntimeError):
+                                oe_molecule = None
+                                continue
+                            break
+
+                        # Raise an error if no delimiter worked
+                        if oe_molecule is None:
+                            raise RuntimeError('Cannot detect SMILES file format.')
+                else:
+                    # Generate molecule from mol_descr['smiles']
+                    oe_molecule = self._generate_molecule(mol_id)
+
+                # Cache atom positions
                 self._pos_cache[mol_id] = utils.get_oe_mol_positions(oe_molecule)
 
                 # Write OpenEye generated molecules in mol2 files
@@ -1203,8 +1227,11 @@ class YamlBuilder:
         except TypeError:  # dict
             yaml_content = yaml_source.copy()
 
+        # Check that YAML loading was successful
         if yaml_content is None:
             raise YamlParseError('The YAML file is empty!')
+        if not isinstance(yaml_content, dict):
+            raise YamlParseError('Cannot load YAML from source: {}'.format(yaml_source))
 
         # Expand combinatorial molecules and systems
         yaml_content = self._expand_molecules(yaml_content)

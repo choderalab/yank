@@ -11,10 +11,10 @@ options:
 molecules:
   Abl:
     filepath: input/2HYY-pdbfixer.pdb
-    parameters: leaprc.ff14SB
   STI:
     filepath: input/STI02.mol2
-    parameters: antechamber
+    antechamber:
+      charge_method: bcc
 
 solvents:
   rf:
@@ -29,6 +29,8 @@ systems:
     receptor: Abl
     ligand: STI
     solvent: rf
+    leap:
+      parameters: [leaprc.ff14SB, leaprc.gaff, frcmod.ionsjc_tip3p]
 
 protocols:
   absolute-binding:

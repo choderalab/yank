@@ -81,6 +81,21 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
     # Options to store.
     options_to_store = ReplicaExchange.options_to_store + ['mc_atoms', 'mc_displacement', 'mc_rotation', 'displacement_sigma', 'displacement_trials_accepted', 'rotation_trials_accepted']
 
+    def __init__(self, store_filename, **kwargs):
+        """Constructor.
+
+        See ReplicaExchange.__init__ for details on keyword arguments.
+
+        Parameters
+        ----------
+        store_filename : string
+           Name of file to bind simulation to use as storage for checkpointing and storage of results.
+
+        """
+        super(ModifiedHamiltonianExchange, self).__init__(store_filename, **kwargs)
+        self.fully_interacting_state = None
+        self._fully_interacting_context = None
+
     def create(self, reference_state, alchemical_states, positions, displacement_sigma=None, mc_atoms=None, options=None, metadata=None, fully_interacting_state=None):
         """
         Initialize a modified Hamiltonian exchange simulation object.
@@ -325,7 +340,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
             # Set System object
             state.system = self.mm.System()
             state.system.__setstate__(str(ncgrp_stateinfo.variables['system'][0]))
-            # self.fully_interacting_state = state
+            self.fully_interacting_state = state
 
         final_time = time.time()
         elapsed_time = final_time - initial_time
