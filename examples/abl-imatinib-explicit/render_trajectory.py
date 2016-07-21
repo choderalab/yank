@@ -198,8 +198,8 @@ def compute_torsion_trajectories(ncfile, filename):
 # DEBUG: ANALYSIS PATH IS HARD-CODED FOR NOW
 source_directory = 'experiments'
 
-reference_pdbfile = 'setup/systems/Abl_STI_rf/complex.pdb'
-phase = 'complex-explicit'
+reference_pdbfile = 'setup/systems/Abl-STI/complex.pdb'
+phase = 'complex'
 replica = 0 # replica index to render
 #replica = 15 # replica index to render
 
@@ -327,18 +327,29 @@ cmd.select('ligand', 'resn MOL and not hydrogen')
 cmd.select('ions', 'resn Na\+ or resn Cl\-')
 cmd.deselect()
 cmd.hide('all')
-cmd.show('cartoon', 'receptor')
+cmd.show('spheres', 'receptor')
+util.cbaw('receptor')
+
 cmd.show('spheres', 'ligand')
 cmd.show('spheres', 'ions')
 util.cbay('ligand')
 cmd.color('green', 'receptor')
 
-cmd.show('surface', 'receptor')
+#cmd.show('surface', 'receptor')
+#cmd.set('transparency', 0.65)
+#cmd.set('surface_mode', 3)
+#cmd.set('surface_color', 'white')
 
-cmd.set('transparency', 0.65)
-cmd.set('surface_mode', 3)
-cmd.set('surface_color', 'white')
-
+# QuteMol-like
+cmd.bg_color('white')
+cmd.set('light_count',8)
+cmd.set('spec_count',1)
+cmd.set('shininess', 10)
+cmd.set('specular', 0.25)
+cmd.set('ambient',0)
+cmd.set('direct',0)
+cmd.set('reflect',1.5)
+cmd.set('ray_shadow_decay_factor', 0.1)
 
 # Create one-to-one mapping between states and frames.
 cmd.mset("1 -%d" % cmd.count_states())
@@ -360,7 +371,7 @@ for iteration in range(niterations):
     cmd.frame(iteration+1)
     cmd.rotate([0,0,1], 1, 'all')
     state_index = int(ncfile.variables['states'][iteration, replica])
-    cmd.set('sphere_transparency', float(state_index) / float(nstates-1))
+    cmd.set('sphere_transparency', float(state_index) / float(nstates-1), 'ligand')
     cmd.png(frame_prefix + '%04d.png' % (iteration), ray=True)
     #cmd.mpng(frame_prefix, iteration+1, iteration+1)
     #cmd.load_model(model, 'complex')

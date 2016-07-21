@@ -11,8 +11,12 @@ Test various utility functions.
 
 import textwrap
 
+import openmoltools as omt
+from schema import Schema
+
 from nose import tools
 from yank.utils import *
+
 
 #=============================================================================================
 # TESTING FUNCTIONS
@@ -23,6 +27,8 @@ def test_is_iterable_container():
     assert is_iterable_container(3) == False
     assert is_iterable_container('ciao') == False
     assert is_iterable_container([1, 2, 3]) == True
+    assert is_iterable_container(CombinatorialLeaf([1, 2, 3])) == True
+
 
 def test_set_tree_path():
     """Test getting and setting of CombinatorialTree paths."""
@@ -30,13 +36,14 @@ def test_set_tree_path():
     test_nested = CombinatorialTree({'a': {'b': 2}})
     test['a'] = 3
     assert test == {'a': 3}
-    test_nested[('a','b')] = 3
+    test_nested[('a', 'b')] = 3
     assert test_nested == {'a': {'b': 3}}
     test_nested[('a',)] = 5
     assert test_nested == {'a': 5}
 
+
 def test_find_leaves():
-    """Test CombinatorialTree private function _find_leaves()."""
+    """Test CombinatorialTree._find_leaves()."""
     simple_tree = CombinatorialTree({'simple': {'scalar': 1,
                                                 'vector': [2, 3, 4],
                                                 'nested': {
@@ -46,21 +53,36 @@ def test_find_leaves():
                           ('simple', 'nested', 'leaf')]
     assert leaf_vals == [1, [2, 3, 4], ['a', 'b', 'c']]
 
+
+def test_find_combinatorial_leaves():
+    """Test CombinatorialTree._find_combinatorial_leaves()."""
+    simple_tree = CombinatorialTree({'simple': {
+        'scalar': 1,
+        'vector': CombinatorialLeaf([2, 3, 4]),
+        'nested': {
+            'leaf': ['a', 'b', 'c'],
+            'comb-leaf': CombinatorialLeaf(['d', 'e'])}}})
+    leaf_paths, leaf_vals = simple_tree._find_combinatorial_leaves()
+    assert leaf_paths == [('simple', 'vector'), ('simple', 'nested', 'comb-leaf')]
+    assert leaf_vals == [[2, 3, 4], ['d', 'e']]
+
+
 def test_expand_tree():
     """Test CombinatorialTree generators."""
     simple_tree = CombinatorialTree({'simple': {'scalar': 1,
-                                                'vector': [2, 3, 4],
+                                                'vector': CombinatorialLeaf([2, 3, 4]),
                                                 'nested': {
-                                                    'leaf': ['a', 'b', 'c']}}})
-    result = [{'simple': {'scalar': 1, 'vector': 2, 'nested': {'leaf': 'a'}}},
-              {'simple': {'scalar': 1, 'vector': 2, 'nested': {'leaf': 'b'}}},
-              {'simple': {'scalar': 1, 'vector': 2, 'nested': {'leaf': 'c'}}},
-              {'simple': {'scalar': 1, 'vector': 3, 'nested': {'leaf': 'a'}}},
-              {'simple': {'scalar': 1, 'vector': 3, 'nested': {'leaf': 'b'}}},
-              {'simple': {'scalar': 1, 'vector': 3, 'nested': {'leaf': 'c'}}},
-              {'simple': {'scalar': 1, 'vector': 4, 'nested': {'leaf': 'a'}}},
-              {'simple': {'scalar': 1, 'vector': 4, 'nested': {'leaf': 'b'}}},
-              {'simple': {'scalar': 1, 'vector': 4, 'nested': {'leaf': 'c'}}}]
+                                                    'leaf': ['d', 'e'],
+                                                    'combleaf': CombinatorialLeaf(['a', 'b', 'c'])}}})
+    result = [{'simple': {'scalar': 1, 'vector': 2, 'nested': {'leaf': ['d', 'e'], 'combleaf': 'a'}}},
+              {'simple': {'scalar': 1, 'vector': 2, 'nested': {'leaf': ['d', 'e'], 'combleaf': 'b'}}},
+              {'simple': {'scalar': 1, 'vector': 2, 'nested': {'leaf': ['d', 'e'], 'combleaf': 'c'}}},
+              {'simple': {'scalar': 1, 'vector': 3, 'nested': {'leaf': ['d', 'e'], 'combleaf': 'a'}}},
+              {'simple': {'scalar': 1, 'vector': 3, 'nested': {'leaf': ['d', 'e'], 'combleaf': 'b'}}},
+              {'simple': {'scalar': 1, 'vector': 3, 'nested': {'leaf': ['d', 'e'], 'combleaf': 'c'}}},
+              {'simple': {'scalar': 1, 'vector': 4, 'nested': {'leaf': ['d', 'e'], 'combleaf': 'a'}}},
+              {'simple': {'scalar': 1, 'vector': 4, 'nested': {'leaf': ['d', 'e'], 'combleaf': 'b'}}},
+              {'simple': {'scalar': 1, 'vector': 4, 'nested': {'leaf': ['d', 'e'], 'combleaf': 'c'}}}]
     assert result == [exp for exp in simple_tree]
 
     # Test named_combinations generator
@@ -69,11 +91,68 @@ def test_expand_tree():
                                                        separator='_', max_name_length=3)])
 
     # Test maximum length, similar names and special characters
-    long_tree = CombinatorialTree({'key1': ['th#*&^isnameistoolong1', 'th#*&^isnameistoolong2'],
-                                   'key2': ['test1', 'test2']})
+    long_tree = CombinatorialTree({'key1': CombinatorialLeaf(['th#*&^isnameistoolong1',
+                                                              'th#*&^isnameistoolong2']),
+                                   'key2': CombinatorialLeaf(['test1', 'test2'])})
     expected_names = set(['test-thisn', 'test-thisn-2', 'test-thisn-3', 'test-thisn-4'])
     assert expected_names == set([name for name, _ in long_tree.named_combinations(
                                                        separator='-', max_name_length=10)])
+
+    # Test file paths are handled correctly
+    examples_dir = get_data_filename(os.path.join('..', 'examples'))
+    abl = os.path.join(examples_dir, 'abl-imatinib-explicit', 'input', '2HYY-pdbfixer.pdb')
+    benzene = os.path.join(examples_dir, 'benzene-toluene-explicit', 'setup', 'benzene.tripos.mol2')
+    long_tree = CombinatorialTree({'key1': CombinatorialLeaf([abl, benzene]),
+                                   'key2': CombinatorialLeaf([benzene, benzene, 'notapath'])})
+    expected_names = set(['benzene-2HYYpdbfixer', 'benzene-2HYYpdbfixer-2', 'notapath-2HYYpdbfixer',
+                          'benzene-benzene', 'benzene-benzene-2', 'notapath-benzene'])
+    assert expected_names == set([name for name, _ in long_tree.named_combinations(
+                                                       separator='-', max_name_length=25)])
+
+
+def test_expand_id_nodes():
+    """CombinatorialTree.expand_id_nodes()"""
+    d = {'molecules':
+             {'mol1': {'mol_value': CombinatorialLeaf([1, 2])},
+              'mol2': {'mol_value': CombinatorialLeaf([3, 4])}},
+         'systems':
+             {'sys1': {'molecules': 'mol1'},
+              'sys2': {'molecules': CombinatorialLeaf(['mol1', 'mol2'])},
+              'sys3': {'prmtopfile': 'mysystem.prmtop'}}}
+    t = CombinatorialTree(d).expand_id_nodes('molecules', [('systems', '*', 'molecules')])
+    assert t['molecules'] == {'mol1_1': {'mol_value': 1}, 'mol1_2': {'mol_value': 2},
+                              'mol2_3': {'mol_value': 3}, 'mol2_4': {'mol_value': 4}}
+    assert t['systems'] == {'sys1': {'molecules': CombinatorialLeaf(['mol1_2', 'mol1_1'])},
+                            'sys2': {'molecules': CombinatorialLeaf(['mol1_2', 'mol1_1', 'mol2_3', 'mol2_4'])},
+                            'sys3': {'prmtopfile': 'mysystem.prmtop'}}
+
+
+def test_generate_signature_schema():
+    """Test generate_signature_schema() function."""
+    def f(a, b, camelCase=True, none=None, quantity=3.0*unit.angstroms):
+        pass
+
+    f_schema = generate_signature_schema(f)
+    assert len(f_schema) == 3
+    for k in f_schema.keys():
+        assert isinstance(k, Optional)
+
+    # Remove Optional() marker for comparison
+    stripped_schema = {k._schema: v for k, v in f_schema.items() if k._schema != 'quantity'}
+    assert {'camel_case': bool, 'none': object} == stripped_schema
+
+    # Check conversion
+    f_schema = Schema(f_schema)
+    assert f_schema.validate({'quantity': '5*angstrom'}) == {'quantity': 5*unit.angstrom}
+
+    # Check update
+    optional_instance = Optional('camel_case')
+    updated_schema = generate_signature_schema(f, update_keys={'none': float, optional_instance: int},
+                                               exclude_keys={'quantity'})
+    assert len(updated_schema) == 2
+    assert updated_schema['none'] == float
+    assert updated_schema[optional_instance] == int
+
 
 def test_get_keyword_args():
     """Test get_keyword_args() function."""
@@ -145,47 +224,6 @@ def test_unknown_parameters():
     wrong_pars = {'unknown_par': 3}
     validate_parameters(wrong_pars, template_pars, check_unknown=True)
 
-def test_temp_dir_context():
-    """Test the context temporary_directory()."""
-    with temporary_directory() as tmp_dir:
-        assert os.path.isdir(tmp_dir)
-    assert not os.path.exists(tmp_dir)
-
-def test_temp_cd_context():
-    """Test the context temporary_cd()."""
-    with temporary_directory() as tmp_dir:
-        with temporary_cd(tmp_dir):
-            assert os.getcwd() == os.path.realpath(tmp_dir)
-        assert os.getcwd() != os.path.realpath(tmp_dir)
-
-def test_yank_options():
-    """Test option priorities and handling."""
-
-    cl_opt = {'option1': 1}
-    yaml_opt = {'option1': 2, 'option2': 'test'}
-    default_yank_opt = YankOptions()
-    yank_opt = YankOptions(cl_opt=cl_opt, yaml_opt=yaml_opt)
-
-    assert yank_opt['option2'] == 'test'
-    assert yank_opt['option1'] == 1  # command line > yaml
-    assert len(yank_opt) == len(default_yank_opt) + 2, "Excepted two additional options beyond default, found: %s" % str([x for x in yank_opt])
-
-    # runtime > command line
-    yank_opt['option1'] = 0
-    assert yank_opt['option1'] == 0
-
-    # restore old option when deleted at runtime
-    del yank_opt['option1']
-    assert yank_opt['option1'] == 1
-
-    # modify specific priority level
-    yank_opt.default = {'option3': -2}
-    assert len(yank_opt) == 3
-    assert yank_opt['option3'] == -2
-
-    # test iteration interface
-    assert yank_opt.items() == [('option1', 1), ('option2', 'test'), ('option3', -2)]
-    assert yank_opt.keys() == ['option1', 'option2', 'option3']
 
 def test_underscore_to_camelcase():
     """Test underscore_to_camelCase() conversion function."""
@@ -212,7 +250,7 @@ def test_TLeap_script():
     saveAmberParm complex complex.prmtop complex.inpcrd
     savePDB complex complex.pdb
     solvateBox ligand TIP3PBOX 10.0 iso
-    saveAmberParm ligand solvent.inpcrd solvent.prmtop
+    saveAmberParm ligand solvent.prmtop solvent.inpcrd
     savePDB ligand solvent.pdb
 
     quit
@@ -250,7 +288,7 @@ def test_TLeap_export_run():
     tleap.load_group(name='benzene', file_path=benzene_gaff)
     tleap.load_parameters(benzene_frcmod)
 
-    with temporary_directory() as tmp_dir:
+    with omt.utils.temporary_directory() as tmp_dir:
         output_path = os.path.join(tmp_dir, 'benzene')
         tleap.save_group(group='benzene', output_path=output_path + '.prmtop')
 
@@ -264,5 +302,5 @@ def test_TLeap_export_run():
         assert os.path.isfile(output_path + '.inpcrd')
         assert os.path.getsize(output_path + '.prmtop') > 0
         assert os.path.getsize(output_path + '.inpcrd') > 0
-        assert os.path.isfile(os.path.join(tmp_dir, 'leap.log'))
+        assert os.path.isfile(os.path.join(tmp_dir, 'benzene.leap.log'))
 

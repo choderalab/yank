@@ -6,8 +6,6 @@ options:
   # GENERAL OPTIONS
   # ---------------
   verbose: no                       # Turn on/off verbose output.
-  mpi: no                           # Turn on/off message passing interface protocol to run
-                                    # simulation through multiple nodes.
   resume_setup: no                  # By default, Yank will raise an error when it detects
   resume_simulation: no             # that it will have to overwrite an existing file. Set
                                     # resume_setup and/or resume_simulation if you want Yank

@@ -15,18 +15,20 @@ Tools to build Yank experiments from a YAML configuration file.
 
 import os
 import re
-import sys
 import glob
 import copy
 import yaml
 import logging
+import collections
+
 logger = logging.getLogger(__name__)
 
 import numpy as np
 import openmoltools as omt
 from simtk import unit, openmm
-from simtk.openmm.app import PDBFile
+from simtk.openmm.app import PDBFile, AmberPrmtopFile
 from alchemy import AlchemicalState, AbsoluteAlchemicalFactory
+from schema import Schema, And, Or, Use, Optional, SchemaError
 
 import utils
 import pipeline
@@ -346,9 +348,10 @@ def to_openmm_app(str):
     """Converter function to be used with validate_parameters()."""
     return getattr(openmm.app, str)
 
-#=============================================================================================
+
+# ============================================================================================
 # UTILITY CLASSES
-#=============================================================================================
+# ============================================================================================
 
 class YamlParseError(Exception):
     """Represent errors occurring during parsing of Yank YAML file."""
@@ -356,13 +359,49 @@ class YamlParseError(Exception):
         super(YamlParseError, self).__init__(message)
         logger.error(message)
 
+
+class YankLoader(yaml.Loader):
+    """PyYAML Loader that recognized !Combinatorial nodes and load OrderedDicts."""
+    def __init__(self, *args, **kwargs):
+        super(YankLoader, self).__init__(*args, **kwargs)
+        self.add_constructor(u'!Combinatorial', self.combinatorial_constructor)
+        self.add_constructor(u'!Ordered', self.ordered_constructor)
+
+    @staticmethod
+    def combinatorial_constructor(loader, node):
+        """Constructor for YAML !Combinatorial entries."""
+        return utils.CombinatorialLeaf(loader.construct_sequence(node))
+
+    @staticmethod
+    def ordered_constructor(loader, node):
+        """Constructor for YAML !Ordered tag."""
+        loader.flatten_mapping(node)
+        return collections.OrderedDict(loader.construct_pairs(node))
+
+
 class YankDumper(yaml.Dumper):
     """PyYAML Dumper that always return sequences in flow style and maps in block style."""
+    def __init__(self, *args, **kwargs):
+        super(YankDumper, self).__init__(*args, **kwargs)
+        self.add_representer(utils.CombinatorialLeaf, self.combinatorial_representer)
+        self.add_representer(collections.OrderedDict, self.ordered_representer)
+
     def represent_sequence(self, tag, sequence, flow_style=None):
         return yaml.Dumper.represent_sequence(self, tag, sequence, flow_style=True)
 
     def represent_mapping(self, tag, mapping, flow_style=None):
         return yaml.Dumper.represent_mapping(self, tag, mapping, flow_style=False)
+
+    @staticmethod
+    def combinatorial_representer(dumper, data):
+        """YAML representer CombinatorialLeaf nodes."""
+        return dumper.represent_sequence(u'!Combinatorial', data)
+
+    @staticmethod
+    def ordered_representer(dumper, data):
+        """YAML representer OrderedDict nodes."""
+        return dumper.represent_mapping(u'!Ordered', data)
+
 
 class SetupDatabase:
     """Provide utility functions to set up systems and molecules.
@@ -386,7 +425,7 @@ class SetupDatabase:
     MOLECULES_DIR = 'molecules'
     CLASH_THRESHOLD = 1.5  # distance in Angstroms to consider two atoms clashing
 
-    def __init__(self, setup_dir, molecules=None, solvents=None):
+    def __init__(self, setup_dir, molecules=None, solvents=None, systems=None):
         """Initialize the database.
 
         Parameters
@@ -402,6 +441,7 @@ class SetupDatabase:
         self.setup_dir = setup_dir
         self.molecules = molecules
         self.solvents = solvents
+        self.systems = systems
 
         # Private attributes
         self._pos_cache = {}  # cache positions of molecules
@@ -422,30 +462,47 @@ class SetupDatabase:
         """
         return os.path.join(self.setup_dir, self.MOLECULES_DIR, molecule_id)
 
-    def get_system_dir(self, receptor, ligand, solvent):
-        """Return the directory where the prmtop and inpcrd files are stored.
-
-        The system is uniquely defined by the ids of the receptor, ligand and
-        solvent.
+    def get_system_files_paths(self, system_id):
+        """Return the paths to the systems files.
 
         Parameters
         ----------
-        receptor : str
-            The id of the receptor.
-        ligand : str
-            The id of the ligand.
-        solvent : str
-            The id of the solvent.
+        system_id : str
+            The ID of the system.
 
         Returns
         -------
-        system_dir : str
-            Path to the directory containing the AMBER system files.
+        system_files_paths : list of namedtuple
+            Elements of the list contain the paths to the system files for
+            each phase. Each namedtuple contains the fields position_path (e.g.
+            inpcrd or gro) and topology_path (e.g. prmtop or top).
 
         """
-        system_dir = '_'.join((receptor, ligand, solvent))
-        system_dir = os.path.join(self.setup_dir, self.SYSTEMS_DIR, system_dir)
-        return system_dir
+        Paths = collections.namedtuple('Paths', ['position_path', 'topology_path'])
+        system_dir = os.path.join(self.setup_dir, self.SYSTEMS_DIR, system_id)
+        if 'receptor' in self.systems[system_id]:
+            system_files_paths = [
+                Paths(position_path=os.path.join(system_dir, 'complex.inpcrd'),
+                      topology_path=os.path.join(system_dir, 'complex.prmtop')),
+                Paths(position_path=os.path.join(system_dir, 'solvent.inpcrd'),
+                      topology_path=os.path.join(system_dir, 'solvent.prmtop'))
+            ]
+        elif 'solute' in self.systems[system_id]:
+            system_files_paths = [
+                Paths(position_path=os.path.join(system_dir, 'solvent1.inpcrd'),
+                      topology_path=os.path.join(system_dir, 'solvent1.prmtop')),
+                Paths(position_path=os.path.join(system_dir, 'solvent2.inpcrd'),
+                      topology_path=os.path.join(system_dir, 'solvent2.prmtop'))
+            ]
+        else:
+            system_files_paths = [
+                Paths(position_path=self.systems[system_id]['phase1_path'][0],
+                      topology_path=self.systems[system_id]['phase1_path'][1]),
+                Paths(position_path=self.systems[system_id]['phase2_path'][0],
+                      topology_path=self.systems[system_id]['phase2_path'][1])
+            ]
+
+        return system_files_paths
 
     def is_molecule_setup(self, molecule_id):
         """Check whether the molecule has been processed previously.
@@ -494,22 +551,21 @@ class SetupDatabase:
         files_to_check = {}
 
         # If the molecule must go through antechamber we search for its output
-        if (molecule_descr['parameters'] == 'antechamber' or
-                    molecule_descr['parameters'] == 'openeye:am1bcc-gaff'):
-            files_to_check['filepath'] = molecule_id_path + '.gaff.mol2'
-            files_to_check['parameters'] = molecule_id_path + '.frcmod'
+        if 'antechamber' in molecule_descr:
+            files_to_check = [('filepath', molecule_id_path + '.gaff.mol2'),
+                              (['leap', 'parameters'], molecule_id_path + '.frcmod')]
 
         # If the molecule must be generated by OpenEye, a mol2 should have been created
         elif extension is None or extension == '.smiles' or extension == '.csv':
-            files_to_check['filepath'] = molecule_id_path + '.mol2'
+            files_to_check = [('filepath', molecule_id_path + '.mol2')]
 
         # If we have to strip the protons off a PDB, a new PDB should have been created
         elif 'strip_protons' in molecule_descr and molecule_descr['strip_protons']:
-            files_to_check['filepath'] = molecule_id_path + '.pdb'
+            files_to_check = [('filepath', molecule_id_path + '.pdb')]
 
         # If a single structure must be extracted we search for output
         elif 'select' in molecule_descr:
-            files_to_check['filepath'] = molecule_id_path + extension
+            files_to_check = [('filepath', molecule_id_path + extension)]
 
         # Check if this needed to be processed at all
         if not files_to_check:
@@ -517,45 +573,52 @@ class SetupDatabase:
 
         # Check if all output files exist
         all_file_exist = True
-        for descr_key, file_path in files_to_check.items():
+        for descr_key, file_path in files_to_check:
             all_file_exist &= os.path.isfile(file_path) and os.path.getsize(file_path) > 0
             if all_file_exist:  # Make sure internal description is correct
-                molecule_descr[descr_key] = file_path
+                try:
+                    molecule_descr[descr_key] = file_path
+                except TypeError:  # nested key, list are unhashable
+                    molecule_descr[descr_key[0]][descr_key[1]].append(file_path)
 
         # Compute and update small molecule net charge
         if all_file_exist:
             extension = os.path.splitext(molecule_descr['filepath'])[1]
+            # TODO what if this is a peptide? This should be computed in get_system()
             if extension == '.mol2':
-                molecule_descr['net_charge'] = utils.get_mol2_net_charge(molecule_descr['filepath'])
+                molecule_descr['net_charge'] = utils.Mol2File(molecule_descr['filepath']).net_charge
 
         return all_file_exist, all_file_exist
 
-    def is_system_setup(self, receptor, ligand, solvent):
-        """Check whether the system has been already set up.
+    def is_system_setup(self, system_id):
+        """Check whether the system has been already processed.
 
         Parameters
         ----------
-        receptor : str
-            The id of the receptor.
-        ligand : str
-            The id of the ligand.
-        solvent : str
-            The id of the solvent.
+        system_id : str
+            The ID of the system.
 
         Returns
         -------
-        system_dir : bool
-            True if the system has been already set up.
+        is_setup : bool
+            True if the system is ready to be used for an experiment. Either because
+            the system has directly provided the system files, or because it already
+            went through the setup pipeline.
+        is_processed : bool
+            True if the system has already gone through the setup pipeline.
 
         """
-        system_dir = self.get_system_dir(receptor, ligand, solvent)
-        is_setup = (os.path.exists(os.path.join(system_dir, 'complex.prmtop')) and
-                    os.path.exists(os.path.join(system_dir, 'complex.inpcrd')) and
-                    os.path.exists(os.path.join(system_dir, 'solvent.prmtop')) and
-                    os.path.exists(os.path.join(system_dir, 'solvent.inpcrd')))
-        return is_setup
+        if 'ligand' in self.systems[system_id] or 'solute' in self.systems[system_id]:
+            system_files_paths = self.get_system_files_paths(system_id)
+            is_setup = (os.path.exists(system_files_paths[0].position_path) and
+                        os.path.exists(system_files_paths[0].topology_path) and
+                        os.path.exists(system_files_paths[1].position_path) and
+                        os.path.exists(system_files_paths[1].topology_path))
+            return is_setup, is_setup
+        else:
+            return True, False
 
-    def get_system(self, components, pack=True):
+    def get_system(self, system_id):
         """Make sure that the system files are set up and return the system folder.
 
         If necessary, create the prmtop and inpcrd files from the given components.
@@ -564,154 +627,59 @@ class SetupDatabase:
 
         Parameters
         ----------
-        setup_dir : str
-            The path to the main setup directory specified by the user in the YAML options
-        components : dict
-            A dictionary containing the keys 'receptor', 'ligand' and 'solvent' with the ids
-            of molecules and solvents
-        pack : bool
-            If True and the ligand is far away from the protein or closer than the clashing
-            threshold, this try to find a better position (default is True).
+        system_id : str
+            The ID of the system.
 
         Returns
         -------
-        system_dir : str
-            The path to the directory containing the prmtop and inpcrd files
+        system_files_paths : list of namedtuple
+            Elements of the list contain the paths to the system files for
+            each phase. Each namedtuple contains the fields position_path (e.g.
+            inpcrd or gro) and topology_path (e.g. prmtop or top).
 
         """
-
-        # Identify system
-        receptor_id = components['receptor']
-        ligand_id = components['ligand']
-        solvent_id = components['solvent']
-        system_dir = self.get_system_dir(receptor_id, ligand_id, solvent_id)
-
         # Check if system has been already processed
-        if self.is_system_setup(receptor_id, ligand_id, solvent_id):
-            return system_dir
+        system_files_paths = self.get_system_files_paths(system_id)
+        if self.is_system_setup(system_id)[0]:
+            return system_files_paths
 
-        # We still need to check if system_dir exists because the set up may
-        # have been interrupted
-        if not os.path.exists(system_dir):
-            os.makedirs(system_dir)
+        system_descr = self.systems[system_id]
 
-        # Setup molecules
-        self._setup_molecules(receptor_id, ligand_id)
+        if 'receptor' in system_descr:  # binding free energy calculation
+            receptor_id = system_descr['receptor']
+            ligand_id = system_descr['ligand']
+            solvent_id = system_descr['solvent']
+            system_parameters = system_descr['leap']['parameters']
 
-        # Identify components
-        receptor = self.molecules[receptor_id]
-        ligand = self.molecules[ligand_id]
-        solvent = self.solvents[solvent_id]
+            # solvent phase
+            self._setup_system(system_files_paths[1].position_path, False,
+                               0, system_parameters, solvent_id, ligand_id)
 
-        # Create tleap script
-        tleap = utils.TLeap()
-        tleap.new_section('Load GAFF parameters')
-        tleap.load_parameters('leaprc.gaff')
-
-        # Check that AMBER force field is specified
-        if 'leaprc.' in receptor['parameters']:
-            amber_ff = receptor['parameters']
-        elif 'leaprc.' in ligand['parameters']:
-            amber_ff = ligand['parameters']
-        else:
-            amber_ff = 'leaprc.ff14SB'
-        tleap.load_parameters(amber_ff)
-
-        # In ff12SB and ff14SB ions parameters must be loaded separately
-        if (('positive_ion' in solvent or 'negative_ion' in solvent) and
-                (amber_ff == 'leaprc.ff12SB' or amber_ff == 'leaprc.ff14SB')):
-            tleap.add_commands('loadAmberParams frcmod.ionsjc_tip3p')
-
-        # Load receptor and ligand
-        for group_name in ['receptor', 'ligand']:
-            group = self.molecules[components[group_name]]
-            tleap.new_section('Load ' + group_name)
-            tleap.load_parameters(group['parameters'])
-            tleap.load_group(name=group_name, file_path=group['filepath'])
-
-        # Check that molecules don't have clashing atoms. Also, if the ligand
-        # is too far away from the molecule we want to pull it closer
-        # TODO this check should be available even without OpenEye
-        if pack and utils.is_openeye_installed():
-            mol_id_list = [receptor_id, ligand_id]
-            positions = [0 for _ in mol_id_list]
-            for i, mol_id in enumerate(mol_id_list):
-                if mol_id not in self._pos_cache:
-                    self._pos_cache[mol_id] = utils.get_oe_mol_positions(
-                            utils.read_oe_molecule(self.molecules[mol_id]['filepath']))
-                positions[i] = self._pos_cache[mol_id]
-
-            # Find the transformation
             try:
-                max_dist = solvent['clearance'].value_in_unit(unit.angstrom) / 1.5
+                alchemical_charge = int(round(self.molecules[ligand_id]['net_charge']))
             except KeyError:
-                max_dist = 10.0
-            transformation = pack_transformation(positions[0], positions[1],
-                                                 self.CLASH_THRESHOLD, max_dist)
-            if (transformation != np.identity(4)).any():
-                logger.warning('Changing starting ligand positions.')
-                tleap.transform('ligand', transformation)
+                alchemical_charge = 0
 
-        # Create complex
-        tleap.new_section('Create complex')
-        tleap.combine('complex', 'receptor', 'ligand')
+            # complex phase
+            self._setup_system(system_files_paths[0].position_path,
+                               system_descr['pack'], alchemical_charge,
+                               system_parameters,  solvent_id, receptor_id,
+                               ligand_id)
+        else:  # partition/solvation free energy calculation
+            solute_id = system_descr['solute']
+            solvent1_id = system_descr['solvent1']
+            solvent2_id = system_descr['solvent2']
+            system_parameters = system_descr['leap']['parameters']
 
-        # Configure solvent
-        if solvent['nonbonded_method'] == openmm.app.NoCutoff:
-            if 'implicit_solvent' in solvent:  # GBSA implicit solvent
-                tleap.new_section('Set GB radii to recommended values for OBC')
-                tleap.add_commands('set default PBRadii mbondi2')
-        else:  # explicit solvent
-            tleap.new_section('Solvate systems')
+            # solvent1 phase
+            self._setup_system(system_files_paths[0].position_path, False,
+                               0, system_parameters, solvent1_id, solute_id)
 
-            # Add ligand-neutralizing ions
-            if 'net_charge' in ligand and ligand['net_charge'] != 0:
-                net_charge = ligand['net_charge']
+            # solvent2 phase
+            self._setup_system(system_files_paths[1].position_path, False,
+                               0, system_parameters, solvent2_id, solute_id)
 
-                # Check that solvent is configured for charged ligand
-                if not ('positive_ion' in solvent and 'negative_ion' in solvent):
-                    err_msg = ('Found charged ligand but no indications for ions in '
-                               'solvent {}').format(solvent_id)
-                    logger.error(err_msg)
-                    raise RuntimeError(err_msg)
-
-                # Add ions to the system
-                if net_charge > 0:
-                    ion = solvent['positive_ion']
-                else:
-                    ion = solvent['negative_ion']
-                tleap.add_ions(unit='complex', ion=ion, num_ions=abs(net_charge))
-
-            # Neutralizing solvation box
-            if 'positive_ion' in solvent:
-                tleap.add_ions(unit='complex', ion=solvent['positive_ion'])
-                tleap.add_ions(unit='ligand', ion=solvent['positive_ion'])
-            if 'negative_ion' in solvent:
-                tleap.add_ions(unit='complex', ion=solvent['negative_ion'])
-                tleap.add_ions(unit='ligand', ion=solvent['negative_ion'])
-
-            clearance = float(solvent['clearance'].value_in_unit(unit.angstroms))
-            tleap.solvate(group='complex', water_model='TIP3PBOX', clearance=clearance)
-            tleap.solvate(group='ligand', water_model='TIP3PBOX', clearance=clearance)
-
-        # Check charge
-        tleap.new_section('Check charge')
-        tleap.add_commands('check complex', 'charge complex')
-
-        # Save prmtop and inpcrd files
-        tleap.new_section('Save prmtop and inpcrd files')
-        tleap.save_group('complex', os.path.join(system_dir, 'complex.prmtop'))
-        tleap.save_group('complex', os.path.join(system_dir, 'complex.pdb'))
-        tleap.save_group('ligand', os.path.join(system_dir, 'solvent.prmtop'))
-        tleap.save_group('ligand', os.path.join(system_dir, 'solvent.pdb'))
-
-        # Save tleap script for reference
-        tleap.export_script(os.path.join(system_dir, 'leap.in'))
-
-        # Run tleap!
-        tleap.run()
-
-        return system_dir
+        return system_files_paths
 
     def _generate_molecule(self, molecule_id):
         """Generate molecule using the OpenEye toolkit from name or smiles.
@@ -830,7 +798,10 @@ class SetupDatabase:
             # we don't need to keep track of the molecules we have already generated
             if extension is None or extension == '.smiles' or extension == '.csv':
                 if not utils.is_openeye_installed():
-                    raise RuntimeError('Cannot support {} files without OpenEye'.format(extension[1:]))
+                    if extension is None:
+                        raise RuntimeError('Cannot generate molecule {} without OpenEye'.format(mol_id))
+                    else:
+                        raise RuntimeError('Cannot support {} files without OpenEye'.format(extension[1:]))
 
                 # Retrieve the first SMILES string, we take the last column
                 if extension is not None:
@@ -893,11 +864,9 @@ class SetupDatabase:
                 mol_descr['filepath'] = mol2_file_path
 
             # Parametrize the molecule with antechamber
-            if (mol_descr['parameters'] == 'antechamber' or
-                mol_descr['parameters'] == 'openeye:am1bcc-gaff'):
-
-                # Generate charges with OpenEye requested
-                if mol_descr['parameters'] == 'openeye:am1bcc-gaff':
+            if 'antechamber' in mol_descr:
+                # Generate charges with OpenEye if requested
+                if 'openeye' in mol_descr:
                     if not utils.is_openeye_installed():
                         err_msg = ('Cannot find OpenEye toolkit to compute charges '
                                    'for molecule {}').format(mol_id)
@@ -908,37 +877,185 @@ class SetupDatabase:
 
                     # Setting keep_confs = None keeps the original conformation
                     oe_molecule = omt.openeye.get_charges(oe_molecule, keep_confs=None)
-                    residue_name = utils.get_mol2_resname(mol_descr['filepath'])
+                    residue_name = utils.Mol2File(mol_descr['filepath']).resname
                     omt.openeye.molecule_to_mol2(oe_molecule, mol2_file_path,
                                                  residue_name=residue_name)
 
-                    charge_method = None  # antechamber read charges from mol2
+                    utils.Mol2File(mol2_file_path).net_charge = None  # normalize charges
                     net_charge = None  # we don't need Epik's net charge
                     mol_descr['filepath'] = mol2_file_path
-                else:  # use antechamber and sqm
-                    charge_method = 'bcc'
 
                 # Generate parameters
+                charge_method = mol_descr['antechamber']['charge_method']
                 input_mol_path = os.path.abspath(mol_descr['filepath'])
-                with utils.temporary_cd(mol_dir):
+                with omt.utils.temporary_cd(mol_dir):
                     omt.amber.run_antechamber(mol_id, input_mol_path,
                                               charge_method=charge_method,
                                               net_charge=net_charge)
 
                 # Save new parameters paths
                 mol_descr['filepath'] = os.path.join(mol_dir, mol_id + '.gaff.mol2')
-                mol_descr['parameters'] = os.path.join(mol_dir, mol_id + '.frcmod')
+                mol_descr['leap']['parameters'].append(os.path.join(mol_dir, mol_id + '.frcmod'))
+
+                # Normalize charges if not done before
+                if 'openeye' not in mol_descr:
+                    utils.Mol2File(mol_descr['filepath']).net_charge = None
 
             # Determine small molecule net charge
             extension = os.path.splitext(mol_descr['filepath'])[1]
             if extension == '.mol2':
-                if net_charge is not None:
-                    mol_descr['net_charge'] = net_charge
-                else:
-                    mol_descr['net_charge'] = utils.get_mol2_net_charge(mol_descr['filepath'])
+                # TODO what if this is a peptide? this should be computed in get_system()
+                mol_descr['net_charge'] = utils.Mol2File(mol_descr['filepath']).net_charge
 
             # Keep track of processed molecule
             self._processed_mols.add(mol_id)
+
+    def _setup_system(self, system_file_path, pack, alchemical_charge,
+                      system_parameters, solvent_id, *molecule_ids):
+        """Setup a system and create its prmtop/inpcrd files.
+
+        IMPORTANT: This function does not check if it's about to overwrite
+        files. Use get_system() for safe setup.
+
+        Parameters
+        ----------
+        system_file_path : str
+            The path to either the prmtop or inpcrd output file. The other one
+            will be saved in the same folder with the same base name.
+        pack : bool
+            True to automatically solve atom clashes and reduce box dimension.
+        alchemical_charge : int
+            Number of counterions to alchemically modify during the simulation.
+        system_parameters : list of str
+            Contain the parameters file that must be loaded in tleap for the
+            system in addition to the molecule-specific ones.
+        solvent_id : str
+            The ID of the solvent.
+        *molecule_ids : list-like of str
+            List the IDs of the molecules to pack together in the system.
+
+        """
+        solvent = self.solvents[solvent_id]
+        self._setup_molecules(*molecule_ids)  # Be sure molecules are set up
+
+        # Create tleap script
+        tleap = utils.TLeap()
+
+        # Load all parameters
+        # --------------------
+        tleap.new_section('Load parameters')
+
+        for mol_id in molecule_ids:
+            molecule_parameters = self.molecules[mol_id]['leap']['parameters']
+            tleap.load_parameters(*molecule_parameters)
+
+        tleap.load_parameters(*system_parameters)
+
+        # Load molecules and create complexes
+        # ------------------------------------
+        tleap.new_section('Load molecules')
+        for mol_id in molecule_ids:
+            tleap.load_group(name=mol_id, file_path=self.molecules[mol_id]['filepath'])
+
+        if len(molecule_ids) > 1:
+            # Check that molecules don't have clashing atoms. Also, if the ligand
+            # is too far away from the molecule we want to pull it closer
+            # TODO this check should be available even without OpenEye
+            if pack and utils.is_openeye_installed():
+
+                # Load atom positions of all molecules
+                positions = [0 for _ in molecule_ids]
+                for i, mol_id in enumerate(molecule_ids):
+                    if mol_id not in self._pos_cache:
+                        self._pos_cache[mol_id] = utils.get_oe_mol_positions(
+                                utils.read_oe_molecule(self.molecules[mol_id]['filepath']))
+                    positions[i] = self._pos_cache[mol_id]
+
+                # Find and apply the transformation to fix clashing
+                # TODO this doesn't work with more than 2 molecule_ids
+                try:
+                    max_dist = solvent['clearance'].value_in_unit(unit.angstrom) / 1.5
+                except KeyError:
+                    max_dist = 10.0
+                transformation = pack_transformation(positions[0], positions[1],
+                                                     self.CLASH_THRESHOLD, max_dist)
+                if (transformation != np.identity(4)).any():
+                    logger.warning('Changing starting positions for {}.'.format(molecule_ids[1]))
+                    tleap.new_section('Fix clashing atoms')
+                    tleap.transform(molecule_ids[1], transformation)
+
+            # Create complex
+            tleap.new_section('Create complex')
+            tleap.combine('complex', *molecule_ids)
+            unit_to_solvate = 'complex'
+        else:
+            unit_to_solvate = molecule_ids[0]
+
+        # Configure solvent
+        # ------------------
+        if solvent['nonbonded_method'] == openmm.app.NoCutoff:
+            try:
+                implicit_solvent = solvent['implicit_solvent']
+            except KeyError:  # vacuum
+                pass
+            else:  # implicit solvent
+                tleap.new_section('Set GB radii to recommended values for OBC')
+                tleap.add_commands('set default PBRadii {}'.format(
+                    pipeline.get_leap_recommended_pbradii(implicit_solvent)))
+        else:  # explicit solvent
+            tleap.new_section('Solvate systems')
+
+            # Add alchemically modified ions
+            if alchemical_charge != 0:
+                try:
+                    if alchemical_charge > 0:
+                        ion = solvent['negative_ion']
+                    else:
+                        ion = solvent['positive_ion']
+                except KeyError:
+                    err_msg = ('Found charged ligand but no indications for ions in '
+                               'solvent {}').format(solvent_id)
+                    logger.error(err_msg)
+                    raise RuntimeError(err_msg)
+                tleap.add_ions(unit=unit_to_solvate, ion=ion, num_ions=abs(alchemical_charge))
+
+            # Neutralizing solvation box
+            if 'positive_ion' in solvent:
+                tleap.add_ions(unit=unit_to_solvate, ion=solvent['positive_ion'])
+            if 'negative_ion' in solvent:
+                tleap.add_ions(unit=unit_to_solvate, ion=solvent['negative_ion'])
+
+            # Solvate unit
+            clearance = float(solvent['clearance'].value_in_unit(unit.angstroms))
+            tleap.solvate(group=unit_to_solvate, water_model='TIP3PBOX', clearance=clearance)
+
+        # Check charge
+        tleap.new_section('Check charge')
+        tleap.add_commands('check ' + unit_to_solvate)
+
+        # Save output files
+        # ------------------
+        system_dir = os.path.dirname(system_file_path)
+        base_file_path = os.path.basename(system_file_path).split('.')[0]
+        base_file_path = os.path.join(system_dir, base_file_path)
+
+        # Create output directory
+        if not os.path.exists(system_dir):
+            os.makedirs(system_dir)
+
+        # Save prmtop, inpcrd and reference pdb files
+        tleap.new_section('Save prmtop and inpcrd files')
+        tleap.save_group(unit_to_solvate, system_file_path)
+        tleap.save_group(unit_to_solvate, base_file_path + '.pdb')
+
+        # Save tleap script for reference
+        tleap.export_script(base_file_path + '.leap.in')
+
+        # Run tleap and log warnings
+        warnings = tleap.run()
+        for warning in warnings:
+            logger.warning('TLeap: ' + warning)
+
 
 #=============================================================================================
 # BUILDER CLASS
@@ -966,11 +1083,13 @@ class YamlBuilder:
     Examples
     --------
     >>> import textwrap
+    >>> import openmoltools as omt
+    >>> import utils
     >>> setup_dir = utils.get_data_filename(os.path.join('..', 'examples',
-    ...                                     'p-xylene-implicit', 'setup'))
-    >>> pxylene_path = os.path.join(setup_dir, 'ligand.tripos.mol2')
-    >>> lysozyme_path = os.path.join(setup_dir, 'receptor.pdbfixer.pdb')
-    >>> with utils.temporary_directory() as tmp_dir:
+    ...                                     'p-xylene-implicit', 'input'))
+    >>> pxylene_path = os.path.join(setup_dir, 'p-xylene.mol2')
+    >>> lysozyme_path = os.path.join(setup_dir, '181L-pdbfixer.pdb')
+    >>> with omt.utils.temporary_directory() as tmp_dir:
     ...     yaml_content = '''
     ...     ---
     ...     options:
@@ -979,310 +1098,174 @@ class YamlBuilder:
     ...     molecules:
     ...       T4lysozyme:
     ...         filepath: {}
-    ...         parameters: oldff/leaprc.ff99SBildn
     ...       p-xylene:
     ...         filepath: {}
-    ...         parameters: antechamber
+    ...         antechamber:
+    ...           charge_method: bcc
     ...     solvents:
     ...       vacuum:
     ...         nonbonded_method: NoCutoff
+    ...     systems:
+    ...         my_system:
+    ...             receptor: T4lysozyme
+    ...             ligand: p-xylene
+    ...             solvent: vacuum
+    ...             leap:
+    ...               parameters: [leaprc.gaff, leaprc.ff14SB]
     ...     protocols:
     ...       absolute-binding:
-    ...         phases:
-    ...           complex:
-    ...             alchemical_path:
-    ...               lambda_electrostatics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
-    ...               lambda_sterics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
-    ...           solvent:
-    ...             alchemical_path:
-    ...               lambda_electrostatics: [1.0, 0.8, 0.6, 0.3, 0.0]
-    ...               lambda_sterics: [1.0, 0.8, 0.6, 0.3, 0.0]
+    ...         complex:
+    ...           alchemical_path:
+    ...             lambda_electrostatics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
+    ...             lambda_sterics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
+    ...         solvent:
+    ...           alchemical_path:
+    ...             lambda_electrostatics: [1.0, 0.8, 0.6, 0.3, 0.0]
+    ...             lambda_sterics: [1.0, 0.8, 0.6, 0.3, 0.0]
     ...     experiments:
-    ...       components:
-    ...         receptor: T4lysozyme
-    ...         ligand: p-xylene
-    ...         solvent: vacuum
+    ...       system: my_system
     ...       protocol: absolute-binding
     ...     '''.format(tmp_dir, lysozyme_path, pxylene_path)
     >>> yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
-    >>> yaml_builder.build_experiment()
+    >>> yaml_builder.build_experiments()
 
     """
 
+    # --------------------------------------------------------------------------
+    # Public API
+    # --------------------------------------------------------------------------
+
     DEFAULT_OPTIONS = {
         'verbose': False,
-        'mpi': False,
         'resume_setup': False,
         'resume_simulation': False,
         'output_dir': 'output',
         'setup_dir': 'setup',
         'experiments_dir': 'experiments',
-        'pack': True,
         'temperature': 298 * unit.kelvin,
         'pressure': 1 * unit.atmosphere,
         'constraints': openmm.app.HBonds,
         'hydrogen_mass': 1 * unit.amu
     }
 
-    def _expand_molecules(self, yaml_content):
-        """Expand combinatorial molecules.
-
-        Generate new YAML content with no combinatorial molecules. The new content
-        is identical to the old one but combinatorial molecules are substituted by
-        the description of all the non-combinatorial molecules that they generate.
-        Moreover, the components of experiments that use combinatorial molecules
-        are resolved.
-
-        Parameters
-        ----------
-        yaml_content : dict
-            The YAML content as returned by yaml.load().
-
-        Returns
-        -------
-        expanded_content : dict
-            The new YAML content with combinatorial molecules expanded.
-
-        Examples
-        --------
-        >>> import textwrap
-        >>> yaml_content = '''
-        ... ---
-        ... molecules:
-        ...     rec:
-        ...         filepath: [conf1.pdb, conf2.pdb]
-        ...         parameters: oldff/leaprc.ff99SBildn
-        ...     lig:
-        ...         name: iupacname
-        ...         parameters: antechamber
-        ... solvents:
-        ...     solv1:
-        ...         nonbonded_method: NoCutoff
-        ... protocols:
-        ...     absolute-binding:
-        ...         phases:
-        ...             complex:
-        ...                 alchemical_path:
-        ...                     lambda_electrostatics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
-        ...                     lambda_sterics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
-        ...             solvent:
-        ...                 alchemical_path:
-        ...                     lambda_electrostatics: [1.0, 0.8, 0.6, 0.3, 0.0]
-        ...                     lambda_sterics: [1.0, 0.8, 0.6, 0.3, 0.0]
-        ... experiments:
-        ...     components:
-        ...         receptor: rec
-        ...         ligand: lig
-        ...         solvent: solv1
-        ...     protocol: absolute-binding
-        ... '''
-        >>> expected_content = '''
-        ... ---
-        ... molecules:
-        ...     rec_conf1pdb:
-        ...         filepath: conf1.pdb
-        ...         parameters: oldff/leaprc.ff99SBildn
-        ...     rec_conf2pdb:
-        ...         filepath: conf2.pdb
-        ...         parameters: oldff/leaprc.ff99SBildn
-        ...     lig:
-        ...         name: iupacname
-        ...         parameters: antechamber
-        ... solvents:
-        ...     solv1:
-        ...         nonbonded_method: NoCutoff
-        ... protocols:
-        ...     absolute-binding:
-        ...         phases:
-        ...             complex:
-        ...                 alchemical_path:
-        ...                     lambda_electrostatics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
-        ...                     lambda_sterics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
-        ...             solvent:
-        ...                 alchemical_path:
-        ...                     lambda_electrostatics: [1.0, 0.8, 0.6, 0.3, 0.0]
-        ...                     lambda_sterics: [1.0, 0.8, 0.6, 0.3, 0.0]
-        ... experiments:
-        ...     components:
-        ...         receptor: [rec_conf1pdb, rec_conf2pdb]
-        ...         ligand: lig
-        ...         solvent: solv1
-        ...     protocol: absolute-binding
-        ... '''
-        >>> yaml_content = textwrap.dedent(yaml_content)
-        >>> raw = yaml.load(yaml_content)
-        >>> expanded = YamlBuilder(yaml_content)._expand_molecules(raw)
-        >>> expanded == yaml.load(textwrap.dedent(expected_content))
-        True
-
-        """
-        expanded_content = copy.deepcopy(yaml_content)
-
-        if 'molecules' in expanded_content:
-            all_comb_mols = set()  # keep track of all combinatorial molecules
-            for comb_mol_name, comb_molecule in expanded_content['molecules'].items():
-
-                # First transform "select: all" syntax into a combinatorial "select"
-                if 'select' in comb_molecule and comb_molecule['select'] == 'all':
-                    # We need a file to select from
-                    # TODO this should be checked only in _parse_molecules(), will be
-                    # TODO easy when we'll have automatic data validation
-                    if 'filepath' not in comb_molecule:
-                        raise YamlParseError('Molecule {}: Need filepath with select: all'.format(
-                            comb_mol_name))
-
-                    # Get the number of models in the file
-                    extension = os.path.splitext(comb_molecule['filepath'])[1][1:]  # remove dot
-                    with utils.temporary_cd(self._script_dir):
-                        if extension == 'pdb':
-                            n_models = PDBFile(comb_molecule['filepath']).getNumFrames()
-                        elif extension == 'csv' or extension == 'smiles':
-                            with open(comb_molecule['filepath'], 'r') as smiles_file:
-                                n_models = len(filter(bool, smiles_file.readlines()))  # remove blank lines
-                        elif extension == 'sdf' or extension == 'mol2':
-                            if not utils.is_openeye_installed():
-                                err_msg = 'Molecule {}: Cannot "select" from {} file without OpenEye toolkit'
-                                raise RuntimeError(err_msg.format(comb_mol_name, extension))
-                            n_models = utils.read_oe_molecule(comb_molecule['filepath']).NumConfs()
-                        else:
-                            raise YamlParseError('Molecule {}: Cannot "select" from {} file'.format(
-                                    comb_mol_name, extension))
-
-                    # Substitute select: all with list of all models indices to trigger combinations
-                    comb_molecule['select'] = range(n_models)
-
-                # Find all combinations
-                comb_molecule = utils.CombinatorialTree(comb_molecule)
-                combinations = {comb_mol_name + '_' + name: mol
-                                for name, mol in comb_molecule.named_combinations(
-                                                    separator='_', max_name_length=30)}
-                if len(combinations) > 1:
-                    all_comb_mols.add(comb_mol_name)  # the combinatorial molecule will be removed
-                    expanded_content['molecules'].update(combinations)  # add all combinations
-
-                    # Check if experiments is a list or a dict
-                    if isinstance(expanded_content['experiments'], list):
-                        experiment_names = expanded_content['experiments']
-                    else:
-                        experiment_names = ['experiments']
-
-                    # Resolve combinatorial molecules in experiments
-                    for exp_name in experiment_names:
-                        components = expanded_content[exp_name]['components']
-                        for component_name in ['receptor', 'ligand']:
-                            component = components[component_name]
-                            if isinstance(component, list):
-                                try:
-                                    i = component.index(comb_mol_name)
-                                    component[i:i+1] = combinations.keys()
-                                except ValueError:
-                                    pass
-                            elif component == comb_mol_name:
-                                components[component_name] = combinations.keys()
-
-            # Delete old combinatorial molecules
-            for comb_mol_name in all_comb_mols:
-                del expanded_content['molecules'][comb_mol_name]
-
-        return expanded_content
-
-
     @property
     def yank_options(self):
         return self._isolate_yank_options(self.options)
 
-    def __init__(self, yaml_source):
-        """Parse the given YAML configuration file.
-
-        This does not build the actual experiment but simply checks that the syntax
-        is correct and loads the configuration into memory.
+    def __init__(self, yaml_source=None):
+        """Constructor.
 
         Parameters
         ----------
-        yaml_source : str
-            A path to the YAML script or the YAML content.
+        yaml_source : str or dict
+            A path to the YAML script or the YAML content. If not specified, you
+            can load it later by using parse() (default is None).
 
         """
+        self.options = self.DEFAULT_OPTIONS.copy()  # General options (not experiment-specific)
 
+        self._script_dir = os.getcwd()  # basic dir for relative paths
+        self._db = None  # Database containing molecules created in parse()
         self._mpicomm = None  # MPI communicator
+        self._raw_yaml = {}  # Unconverted input YAML script
+        self._protocols = {}  # Alchemical protocols description
+        self._experiments = {}  # Experiments description
 
+        if yaml_source is not None:
+            self.parse(yaml_source)
+
+    def parse(self, yaml_source):
+        """Parse the given YAML configuration file.
+
+        Validate the syntax and load the script into memory. This does not build
+        the actual experiment.
+
+        Parameters
+        ----------
+        yaml_source : str or dict
+            A path to the YAML script or the YAML content.
+
+        Raises
+        ------
+        YamlParseError
+            If the input YAML script is syntactically incorrect.
+
+        """
         # TODO check version of yank-yaml language
         # TODO what if there are multiple streams in the YAML file?
         # Load YAML script and decide working directory for relative paths
         try:
             with open(yaml_source, 'r') as f:
-                yaml_content = yaml.load(f)
+                yaml_content = yaml.load(f, Loader=YankLoader)
             self._script_dir = os.path.dirname(yaml_source)
-        except IOError:
-            yaml_content = yaml.load(yaml_source)
-            self._script_dir = os.getcwd()
+        except IOError:  # string
+            yaml_content = yaml.load(yaml_source, Loader=YankLoader)
+        except TypeError:  # dict
+            yaml_content = yaml_source.copy()
 
         if yaml_content is None:
             raise YamlParseError('The YAML file is empty!')
 
-        # Expand combinatorial molecules
+        # Expand combinatorial molecules and systems
         yaml_content = self._expand_molecules(yaml_content)
+        yaml_content = self._expand_systems(yaml_content)
 
         # Save raw YAML content that will be needed when generating the YAML files
         self._raw_yaml = copy.deepcopy({key: yaml_content.get(key, {})
-                                        for key in ['options', 'molecules', 'solvents', 'protocols']})
+                                        for key in ['options', 'molecules', 'solvents',
+                                                    'systems', 'protocols']})
 
-        # Validate and store options
-        self._parse_options(yaml_content)
+        # Validate options and overwrite defaults
+        self.options.update(self._validate_options(utils.merge_dict(yaml_content.get('options', {}),
+                                                                    yaml_content.get('metadata', {}))))
 
-        # Initialize and configure database
+        # Setup MPI and general logging
+        self._mpicomm = utils.initialize_mpi()
+        utils.config_root_logger(self.options['verbose'], log_file_path=None, mpicomm=self._mpicomm)
+        if self._mpicomm is None:
+            logger.debug('MPI disabled.')
+        else:
+            logger.debug('MPI enabled.')
+
+        # Initialize and configure database with molecules, solvents and systems
         self._db = SetupDatabase(setup_dir=self._get_setup_dir(self.options))
-        self._parse_molecules(yaml_content)
-        self._parse_solvents(yaml_content)
+        self._db.molecules = self._validate_molecules(yaml_content.get('molecules', {}))
+        self._db.solvents = self._validate_solvents(yaml_content.get('solvents', {}))
+        self._db.systems = self._validate_systems(yaml_content.get('systems', {}))
 
         # Validate protocols
-        self._parse_protocols(yaml_content)
+        self._protocols = self._validate_protocols(yaml_content.get('protocols', {}))
 
         # Validate experiments
         self._parse_experiments(yaml_content)
 
-    def build_experiment(self):
+    def build_experiments(self):
         """Set up and run all the Yank experiments."""
         # Throw exception if there are no experiments
         if len(self._experiments) == 0:
             raise YamlParseError('No experiments specified!')
 
-        # Configure MPI, if requested
-        if self.options['mpi']:
-            from mpi4py import MPI
-            MPI.COMM_WORLD.barrier()
-            self._mpicomm = MPI.COMM_WORLD
-
-        # Run all experiments with paths relative to the script directory
-        with utils.temporary_cd(self._script_dir):
-            # This is hard disk intensive, only process 0 should do it
-            overwrite = True
-            if self._mpicomm is None or self._mpicomm.rank == 0:
-                overwrite, err_msg = self._check_resume()
-            if self._mpicomm:
-                overwrite = self._mpicomm.bcast(overwrite, root=0)
-                if overwrite and self._mpicomm.rank != 0:
-                    sys.exit()
-            if overwrite:  # self._mpicomm is None or rank == 0
-                raise YamlParseError(err_msg)
-
+        # Setup and run all experiments with paths relative to the script directory
+        with omt.utils.temporary_cd(self._script_dir):
+            self._check_resume()
+            self._setup_experiments()
             for output_dir, combination in self._expand_experiments():
                 self._run_experiment(combination, output_dir)
 
-    def _validate_options(self, options):
-        """Return a dictionary with YamlBuilder and Yank options validated."""
-        template_options = self.DEFAULT_OPTIONS.copy()
-        template_options.update(Yank.default_parameters)
-        template_options.update(ReplicaExchange.default_parameters)
-        template_options.update(utils.get_keyword_args(AbsoluteAlchemicalFactory.__init__))
-        openmm_app_type = {'constraints': to_openmm_app}
-        try:
-            valid = utils.validate_parameters(options, template_options, check_unknown=True,
-                                              process_units_str=True, float_to_int=True,
-                                              special_conversions=openmm_app_type)
-        except (TypeError, ValueError) as e:
-            raise YamlParseError(str(e))
-        return valid
+    def setup_experiments(self):
+        """Set up all Yank experiments without running them."""
+        # Throw exception if there are no experiments
+        if len(self._experiments) == 0:
+            raise YamlParseError('No experiments specified!')
+
+        # All paths must be relative to the script directory
+        with omt.utils.temporary_cd(self._script_dir):
+            self._check_resume(check_experiments=False)
+            self._setup_experiments()
+
+    # --------------------------------------------------------------------------
+    # Options handling
+    # --------------------------------------------------------------------------
 
     def _isolate_yank_options(self, options):
         """Return the options that do not belong to YamlBuilder."""
@@ -1310,178 +1293,108 @@ class YamlBuilder:
         exp_options.update(self._validate_options(experiment.get('options', {})))
         return exp_options
 
-    def _parse_options(self, yaml_content):
-        """Validate and store options in the script.
+    # --------------------------------------------------------------------------
+    # Combinatorial expansion
+    # --------------------------------------------------------------------------
+
+    def _expand_molecules(self, yaml_content):
+        """Expand combinatorial molecules.
+
+        Generate new YAML content with no combinatorial molecules. The new content
+        is identical to the old one but combinatorial molecules are substituted by
+        the description of all the non-combinatorial molecules that they generate.
+        Moreover, systems that use combinatorial molecules are updated with the new
+        molecules ids.
 
         Parameters
         ----------
         yaml_content : dict
-            The dictionary representing the YAML script loaded by yaml.load()
+            The YAML content as returned by yaml.load().
+
+        Returns
+        -------
+        expanded_content : dict
+            The new YAML content with combinatorial molecules expanded.
 
         """
-        # Merge options and metadata and validate
-        temp_options = yaml_content.get('options', {})
-        temp_options.update(yaml_content.get('metadata', {}))
+        expanded_content = copy.deepcopy(yaml_content)
 
-        # Validate options and fill in default values
-        self.options = self.DEFAULT_OPTIONS.copy()
-        self.options.update(self._validate_options(temp_options))
+        if 'molecules' not in expanded_content:
+            return expanded_content
 
-    def _parse_molecules(self, yaml_content):
-        """Load molecules information and check that their syntax is correct.
+        # First substitute all 'select: all' with the correct combination of indices
+        for comb_mol_name, comb_molecule in expanded_content['molecules'].items():
+            if 'select' in comb_molecule and comb_molecule['select'] == 'all':
+                # Get the number of models in the file
+                extension = os.path.splitext(comb_molecule['filepath'])[1][1:]  # remove dot
+                with omt.utils.temporary_cd(self._script_dir):
+                    if extension == 'pdb':
+                        n_models = PDBFile(comb_molecule['filepath']).getNumFrames()
+                    elif extension == 'csv' or extension == 'smiles':
+                        with open(comb_molecule['filepath'], 'r') as smiles_file:
+                            n_models = len(filter(bool, smiles_file.readlines()))  # remove blank lines
+                    elif extension == 'sdf' or extension == 'mol2':
+                        if not utils.is_openeye_installed():
+                            err_msg = 'Molecule {}: Cannot "select" from {} file without OpenEye toolkit'
+                            raise RuntimeError(err_msg.format(comb_mol_name, extension))
+                        n_models = utils.read_oe_molecule(comb_molecule['filepath']).NumConfs()
+                    else:
+                        raise YamlParseError('Molecule {}: Cannot "select" from {} file'.format(
+                            comb_mol_name, extension))
 
-        One and only one source must be specified (e.g. filepath, name). Also
-        the parameters must be specified, and the extension of filepath must
-        match one of the supported file formats.
+                # Substitute select: all with list of all models indices to trigger combinations
+                comb_molecule['select'] = utils.CombinatorialLeaf(range(n_models))
+
+        # Expand molecules and update molecule ids in systems
+        expanded_content = utils.CombinatorialTree(expanded_content)
+        update_nodes_paths = [('systems', '*', 'receptor'), ('systems', '*', 'ligand'),
+                              ('systems', '*', 'solute')]
+        expanded_content = expanded_content.expand_id_nodes('molecules', update_nodes_paths)
+
+        return expanded_content
+
+    def _expand_systems(self, yaml_content):
+        """Expand combinatorial systems.
+
+        Generate new YAML content with no combinatorial systems. The new content
+        is identical to the old one but combinatorial systems are substituted by
+        the description of all the non-combinatorial systems that they generate.
+        Moreover, the experiments that use combinatorial systems are updated with
+        the new system ids.
+
+        Molecules must be already expanded when calling this function.
 
         Parameters
         ----------
         yaml_content : dict
-            The dictionary representing the YAML script loaded by yaml.load()
+            The YAML content as returned by _expand_molecules().
+
+        Returns
+        -------
+        expanded_content : dict
+            The new YAML content with combinatorial systems expanded.
 
         """
-        file_formats = set(['mol2', 'sdf', 'pdb', 'smiles', 'csv'])
-        sources = set(['filepath', 'name', 'smiles'])
-        template_mol = {'filepath': 'str', 'name': 'str', 'smiles': 'str',
-                        'parameters': 'str', 'epik': None, 'select': 0,
-                        'strip_protons': False}
+        expanded_content = copy.deepcopy(yaml_content)
 
-        self._db.molecules = yaml_content.get('molecules', {})
+        if 'systems' not in expanded_content:
+            return expanded_content
 
-        # First validate and convert
-        for molecule_id, molecule in self._db.molecules.items():
-            try:
-                self._db.molecules[molecule_id] = utils.validate_parameters(molecule, template_mol,
-                                                                            check_unknown=True)
-            except (TypeError, ValueError) as e:
-                raise YamlParseError(str(e))
-
-        err_msg = ''
-        for molecule_id, molecule in self._db.molecules.items():
-            fields = set(molecule.keys())
-
-            # Check that only one source is specified
-            specified_sources = sources & fields
-            if not specified_sources or len(specified_sources) > 1:
-                err_msg = ('need only one between {} for molecule {}').format(
-                    ', '.join(list(sources)), molecule_id)
-
-            # Check supported file formats
-            elif 'filepath' in specified_sources:
-                extension = os.path.splitext(molecule['filepath'])[1][1:]  # remove '.'
-                if extension not in file_formats:
-                    err_msg = 'molecule {}, only {} files supported'.format(
-                        molecule_id, ', '.join(file_formats))
-
-            # Check that parameters are specified
-            if 'parameters' not in fields:
-                err_msg = 'no parameters specified for molecule {}'.format(molecule_id)
-
-            # Check selection from multi-model input files
-            if 'select' in fields and 'filepath' not in molecule:
-                err_msg = 'molecule {}, need filepath select'.format(molecule_id)
-
-            if err_msg != '':
-                raise YamlParseError(err_msg)
-
-    def _parse_solvents(self, yaml_content):
-        """Load solvents information and check that their syntax is correct.
-
-        The option nonbonded_method must be specified. All quantities are converted to
-        simtk.app.Quantity objects or openmm.app.TYPE (e.g. app.PME, app.OBC2). This
-        also perform some consistency checks to verify that the user did not mix
-        implicit and explicit solvent parameters.
-
-        Parameters
-        ----------
-        yaml_content : dict
-            The dictionary representing the YAML script loaded by yaml.load()
-
-        """
-        template_parameters = {'nonbonded_method': openmm.app.PME, 'nonbonded_cutoff': 1 * unit.nanometer,
-                               'implicit_solvent': openmm.app.OBC2, 'clearance': 10.0 * unit.angstroms,
-                               'positive_ion': 'string', 'negative_ion': 'string'}
-        openmm_app_type = ('nonbonded_method', 'implicit_solvent')
-        openmm_app_type = {option: to_openmm_app for option in openmm_app_type}
-
-        self._db.solvents = yaml_content.get('solvents', {})
-
-        # First validate and convert
-        for solvent_id, solvent in self._db.solvents.items():
-            try:
-                self._db.solvents[solvent_id] = utils.validate_parameters(solvent, template_parameters,
-                                                         check_unknown=True, process_units_str=True,
-                                                         special_conversions=openmm_app_type)
-            except (TypeError, ValueError, AttributeError) as e:
-                raise YamlParseError(str(e))
-
-        err_msg = ''
-        for solvent_id, solvent in self._db.solvents.items():
-
-            # Test mandatory parameters
-            if 'nonbonded_method' not in solvent:
-                err_msg = 'solvent {} must specify nonbonded_method'.format(solvent_id)
-                raise YamlParseError(err_msg)
-
-            # Test solvent consistency
-            nonbonded_method = solvent['nonbonded_method']
-            if nonbonded_method == openmm.app.NoCutoff:
-                if 'nonbonded_cutoff' in solvent:
-                    err_msg = ('solvent {} specify both nonbonded_method: NoCutoff and '
-                               'and nonbonded_cutoff').format(solvent_id)
+        # Check if we have a sequence of experiments or a single one
+        try:
+            if isinstance(expanded_content['experiments'], list):  # sequence of experiments
+                experiment_names = expanded_content['experiments']
             else:
-                if 'implicit_solvent' in solvent:
-                    err_msg = ('solvent {} specify both nonbonded_method: {} '
-                               'and implicit_solvent').format(solvent_id, nonbonded_method)
-                elif 'clearance' not in solvent:
-                    err_msg = ('solvent {} uses explicit solvent but '
-                               'no clearance specified').format(solvent_id)
+                experiment_names = ['experiments']
+        except KeyError:
+            experiment_names = []
 
-            # Raise error
-            if err_msg != '':
-                raise YamlParseError(err_msg)
+        # Expand molecules and update molecule ids in experiments
+        expanded_content = utils.CombinatorialTree(expanded_content)
+        update_nodes_paths = [(e, 'system') for e in experiment_names]
+        expanded_content = expanded_content.expand_id_nodes('systems', update_nodes_paths)
 
-    def _parse_protocols(self, yaml_content):
-        """Validate protocols.
-
-        Each protocol must contain a complex and a solvent phase and it must specify
-        an alchemical_path with at least lambda_sterics and lambda_electrostatics.
-
-        Parameters
-        ----------
-        yaml_content : dict
-            The dictionary representing the YAML script loaded by yaml.load()
-
-        """
-        self._protocols = yaml_content.get('protocols', {})
-
-        for protocol_id, protocol in self._protocols.items():
-            # Phases must be specified
-            if 'phases' not in protocol:
-                err_msg = 'Protocol {} must specify phases'
-                raise YamlParseError(err_msg.format(protocol_id))
-            phases = protocol['phases']
-
-            # There must be complex and solvent phases
-            if 'complex' not in phases or 'solvent' not in phases:
-                err_msg = 'Protocol {} must specify complex and solvent phases.'
-                raise YamlParseError(err_msg.format(protocol_id))
-
-            for phase_name, phase in phases.items():
-                # alchemical_path must be specified with sterics and electrostatics
-                if 'alchemical_path' not in phase:
-                    err_msg = 'Protocol {} phase {} must specify alchemical_path.'
-                    raise YamlParseError(err_msg.format(protocol_id, phase_name))
-
-                alchemical_path = phase['alchemical_path']
-                if ('lambda_sterics' not in alchemical_path or
-                            'lambda_electrostatics' not in alchemical_path):
-                    err_msg = ('Protocol {} phase {} must specify both'
-                               'lambda_sterics and lambda_electrostatics')
-                    raise YamlParseError(err_msg.format(protocol_id, phase_name))
-
-            # Check that lambda variables all have same dimensions
-            self._get_alchemical_paths(protocol_id)
+        return expanded_content
 
     def _expand_experiments(self):
         """Generates all possible combinations of experiment.
@@ -1506,67 +1419,386 @@ class YamlBuilder:
             for name, combination in experiment.named_combinations(separator='_', max_name_length=50):
                 yield os.path.join(output_dir, name), combination
 
-    def _parse_experiments(self, yaml_content):
-        """Perform dry run and validate components, protocol and options of every combination.
+    # --------------------------------------------------------------------------
+    # Parsing and syntax validation
+    # --------------------------------------------------------------------------
 
-        Receptor, ligand, solvent and protocol must be already loaded. If they are
-        not found an exception is raised. Experiments options are validated as well.
+    @classmethod
+    def _validate_options(cls, options):
+        """Validate molecules syntax.
+
+        Parameters
+        ----------
+        options : dict
+            A dictionary with the options to validate.
+
+        Returns
+        -------
+        validated_options : dict
+            The validated options.
+
+        Raises
+        ------
+        YamlParseError
+            If the syntax for any option is not valid.
+
+        """
+        template_options = cls.DEFAULT_OPTIONS.copy()
+        template_options.update(Yank.default_parameters)
+        template_options.update(ReplicaExchange.default_parameters)
+        template_options.update(utils.get_keyword_args(AbsoluteAlchemicalFactory.__init__))
+        openmm_app_type = {'constraints': to_openmm_app}
+        try:
+            validated_options = utils.validate_parameters(options, template_options, check_unknown=True,
+                                                          process_units_str=True, float_to_int=True,
+                                                          special_conversions=openmm_app_type)
+        except (TypeError, ValueError) as e:
+            raise YamlParseError(str(e))
+        return validated_options
+
+    @staticmethod
+    def _validate_molecules(molecules_description):
+        """Validate molecules syntax.
+
+        Parameters
+        ----------
+        molecules_description : dict
+            A dictionary representing molecules.
+
+        Returns
+        -------
+        validated_molecules : dict
+            The validated molecules description.
+
+        Raises
+        ------
+        YamlParseError
+            If the syntax for any molecule is not valid.
+
+        """
+        def is_peptide(filepath):
+            """Input file is a peptide."""
+            if not os.path.isfile(filepath):
+                raise YamlParseError('File path does not exist.')
+            extension = os.path.splitext(filepath)[1]
+            if extension == '.pdb':
+                return True
+            return False
+
+        def is_small_molecule(filepath):
+            """Input file is a small molecule."""
+            file_formats = frozenset(['mol2', 'sdf', 'smiles', 'csv'])
+            if not os.path.isfile(filepath):
+                raise YamlParseError('File path does not exist.')
+            extension = os.path.splitext(filepath)[1][1:]
+            if extension in file_formats:
+                return True
+            return False
+
+        validated_molecules = molecules_description.copy()
+
+        # Define molecules Schema
+        epik_schema = Or(int, utils.generate_signature_schema(omt.schrodinger.run_epik,
+                                                              update_keys={'select': int},
+                                                              exclude_keys=['extract_range']))
+
+        parameters_schema = {  # simple strings are converted to list of strings
+            'parameters': And(Use(lambda p: [p] if isinstance(p, str) else p), [str])}
+        common_schema = {Optional('leap'): parameters_schema, Optional('openeye'): {'quacpac': 'am1-bcc'},
+                         Optional('antechamber'): {'charge_method': Or(str, None)},
+                         Optional('epik'): epik_schema}
+        molecule_schema = Or(
+            utils.merge_dict({'smiles': str}, common_schema),
+            utils.merge_dict({'name': str}, common_schema),
+            utils.merge_dict({'filepath': is_small_molecule, Optional('select'): Or(int, 'all')},
+                             common_schema),
+            {'filepath': is_peptide, Optional('select'): Or(int, 'all'),
+             Optional('leap'): parameters_schema, Optional('strip_protons'): bool}
+        )
+
+        # Schema validation
+        for molecule_id, molecule_descr in molecules_description.items():
+            try:
+                validated_molecules[molecule_id] = molecule_schema.validate(molecule_descr)
+
+                # Check OpenEye charges - antechamber consistency
+                if 'openeye' in validated_molecules[molecule_id]:
+                    if not 'antechamber' in validated_molecules[molecule_id]:
+                        raise YamlParseError('Cannot specify openeye charges without antechamber')
+                    if validated_molecules[molecule_id]['antechamber']['charge_method'] is not None:
+                        raise YamlParseError('Antechamber charge_method must be "null" to read '
+                                             'OpenEye charges')
+
+                # Convert epik "select" to "extract_range" which is accepted by run_epik()
+                try:
+                    extract_range = validated_molecules[molecule_id]['epik'].pop('select')
+                    validated_molecules[molecule_id]['epik']['extract_range'] = extract_range
+                except (AttributeError, KeyError):
+                    pass
+
+                # Create empty parameters list if not specified
+                if 'leap' not in validated_molecules[molecule_id]:
+                    validated_molecules[molecule_id]['leap'] = {'parameters': []}
+            except SchemaError as e:
+                raise YamlParseError('Molecule {}: {}'.format(molecule_id, e.autos[-1]))
+
+        return validated_molecules
+
+    @staticmethod
+    def _validate_solvents(solvents_description):
+        """Validate molecules syntax.
+
+        Parameters
+        ----------
+        solvents_description : dict
+            A dictionary representing solvents.
+
+        Returns
+        -------
+        validated_solvents : dict
+            The validated solvents description.
+
+        Raises
+        ------
+        YamlParseError
+            If the syntax for any solvent is not valid.
+
+        """
+        def to_explicit_solvent(str):
+            """Check OpenMM explicit solvent."""
+            openmm_app = to_openmm_app(str)
+            if openmm_app == openmm.app.NoCutoff:
+                raise ValueError('Nonbonded method cannot be NoCutoff.')
+            return openmm_app
+
+        def to_no_cutoff(str):
+            """Check OpenMM implicit solvent or vacuum."""
+            openmm_app = to_openmm_app(str)
+            if openmm_app != openmm.app.NoCutoff:
+                raise ValueError('Nonbonded method must be NoCutoff.')
+            return openmm_app
+
+        validated_solvents = solvents_description.copy()
+
+        # Define solvents Schema
+        explicit_schema = utils.generate_signature_schema(AmberPrmtopFile.createSystem,
+                                update_keys={'nonbonded_method': Use(to_explicit_solvent)},
+                                exclude_keys=['implicit_solvent'])
+        explicit_schema.update({'clearance': Use(utils.to_unit_validator(unit.angstrom)),
+                                Optional('positive_ion'): str, Optional('negative_ion'): str})
+        implicit_schema = utils.generate_signature_schema(AmberPrmtopFile.createSystem,
+                                update_keys={'implicit_solvent': Use(to_openmm_app),
+                                             Optional('nonbonded_method'): Use(to_no_cutoff)},
+                                exclude_keys=['rigid_water'])
+        vacuum_schema = utils.generate_signature_schema(AmberPrmtopFile.createSystem,
+                                update_keys={'nonbonded_method': Use(to_no_cutoff)},
+                                exclude_keys=['rigid_water', 'implicit_solvent'])
+        solvent_schema = Schema(Or(explicit_schema, implicit_schema, vacuum_schema))
+
+        # Schema validation
+        for solvent_id, solvent_descr in solvents_description.items():
+            try:
+                validated_solvents[solvent_id] = solvent_schema.validate(solvent_descr)
+            except SchemaError as e:
+                raise YamlParseError('Solvent {}: {}'.format(solvent_id, e.autos[-1]))
+
+        return validated_solvents
+
+    @staticmethod
+    def _validate_protocols(protocols_description):
+        """Validate protocols.
+
+        Parameters
+        ----------
+        protocols_description : dict
+            A dictionary representing protocols.
+
+        Returns
+        -------
+        validated_protocols : dict
+            The validated protocols description.
+
+        Raises
+        ------
+        YamlParseError
+            If the syntax for any protocol is not valid.
+
+        """
+        def sort_protocol(protocol):
+            """Reorder phases in dictionary to have complex/solvent1 first."""
+            sortables = [('complex', 'solvent'), ('solvent1', 'solvent2')]
+            for sortable in sortables:
+                # Phases names must be unambiguous, they can't contain both names
+                phase1 = [(k, v) for k, v in protocol.items()
+                          if (sortable[0] in k and sortable[1] not in k)]
+                phase2 = [(k, v) for k, v in protocol.items()
+                          if (sortable[1] in k and sortable[0] not in k)]
+
+                # Phases names must be unique
+                if len(phase1) == 1 and len(phase2) == 1:
+                    return collections.OrderedDict([phase1[0], phase2[0]])
+
+            # Could not find any sortable
+            raise SchemaError('Phases must contain either "complex" and "solvent"'
+                              'or "solvent1" and "solvent2"')
+
+        validated_protocols = protocols_description.copy()
+
+        # Define protocol Schema
+        lambda_list = [And(float, lambda l: 0.0 <= l <= 1.0)]
+        alchemical_path_schema = {'alchemical_path': {'lambda_sterics': lambda_list,
+                                                      'lambda_electrostatics': lambda_list,
+                                                      Optional(str): lambda_list}}
+        protocol_schema = Schema(And(
+            lambda v: len(v) == 2, {str: alchemical_path_schema},
+            Or(collections.OrderedDict, Use(sort_protocol))
+        ))
+
+        # Schema validation
+        for protocol_id, protocol_descr in protocols_description.items():
+            try:
+                validated_protocols[protocol_id] = protocol_schema.validate(protocol_descr)
+            except SchemaError as e:
+                raise YamlParseError('Protocol {}: {}'.format(protocol_id, e.autos[-1]))
+
+        return validated_protocols
+
+    def _validate_systems(self, systems_description):
+        """Validate systems.
+
+        Receptors, ligands, and solvents must be already loaded. If they are not
+        found an exception is raised.
 
         Parameters
         ----------
         yaml_content : dict
             The dictionary representing the YAML script loaded by yaml.load()
 
-        """
-        experiment_template = {'components': {}, 'options': {}, 'protocol': 'str'}
-        components_template = {'receptor': 'str', 'ligand': 'str', 'solvent': 'str'}
+        Returns
+        -------
+        validated_systems : dict
+            The validated systems description.
 
-        if 'experiments' not in yaml_content:
+        Raises
+        ------
+        YamlParseError
+            If the syntax for any experiment is not valid.
+
+        """
+        def is_known_molecule(molecule_id):
+            if molecule_id in self._db.molecules:
+                return True
+            raise YamlParseError('Molecule ' + molecule_id + ' is unknown.')
+
+        def is_known_solvent(solvent_id):
+            if solvent_id in self._db.solvents:
+                return True
+            raise YamlParseError('Solvent ' + solvent_id + ' is unknown.')
+
+        def system_files(type):
+            def _system_files(files):
+                """Paths to amber/gromacs files. Return them in alphabetical
+                order of extension [*.inpcrd/gro, *.prmtop/top]."""
+                extensions = [os.path.splitext(filepath)[1][1:] for filepath in files]
+                correct_type = False
+                if type == 'amber':
+                    correct_type = sorted(extensions) == ['inpcrd', 'prmtop']
+                elif type == 'gromacs':
+                    correct_type = sorted(extensions) == ['gro', 'top']
+                if not correct_type:
+                    raise RuntimeError('Wrong system files type.')
+                for filepath in files:
+                    if not os.path.isfile(filepath):
+                        raise YamlParseError('File path {} does not exist.'.format(filepath))
+                return [filepath for (ext, filepath) in sorted(zip(extensions, files))]
+            return _system_files
+
+        # Define experiment Schema
+        validated_systems = systems_description.copy()
+        parameters_schema = {  # simple strings are converted to list of strings
+            'parameters': And(Use(lambda p: [p] if isinstance(p, str) else p), [str])}
+        system_schema = Schema(Or(
+            {'receptor': is_known_molecule, 'ligand': is_known_molecule,
+             'solvent': is_known_solvent, Optional('pack', default=False): bool,
+             Optional('leap'): parameters_schema},
+
+            {'solute': is_known_molecule, 'solvent1': is_known_solvent,
+             'solvent2': is_known_solvent, Optional('leap'): parameters_schema},
+
+            {'phase1_path': Use(system_files('amber')), 'phase2_path': Use(system_files('amber')),
+             'ligand_dsl': str, 'solvent': is_known_solvent},
+
+            {'phase1_path': Use(system_files('gromacs')), 'phase2_path': Use(system_files('gromacs')),
+             'ligand_dsl': str, 'solvent': is_known_solvent, Optional('gromacs_include_dir'): os.path.isdir}
+        ))
+
+        # Schema validation
+        for system_id, system_descr in systems_description.items():
+            try:
+                validated_systems[system_id] = system_schema.validate(system_descr)
+
+                # Create empty parameters list if not specified
+                if 'leap' not in validated_systems[system_id]:
+                    validated_systems[system_id]['leap'] = {'parameters': []}
+            except SchemaError as e:
+                raise YamlParseError('System {}: {}'.format(system_id, e.autos[-1]))
+
+        return validated_systems
+
+    def _parse_experiments(self, yaml_content):
+        """Validate experiments.
+
+        Perform dry run and validate system, protocol and options of every combination.
+
+        Systems and protocols must be already loaded. If they are not found, an exception
+        is raised. Experiments options are validated as well.
+
+        Parameters
+        ----------
+        yaml_content : dict
+            The dictionary representing the YAML script loaded by yaml.load()
+
+        Raises
+        ------
+        YamlParseError
+            If the syntax for any experiment is not valid.
+
+        """
+        def is_known_system(system_id):
+            if system_id in self._db.systems:
+                return True
+            raise YamlParseError('System ' + system_id + ' is unknown.')
+
+        def is_known_protocol(protocol_id):
+            if protocol_id in self._protocols:
+                return True
+            raise YamlParseError('Protocol ' + protocol_id + ' is unknown')
+
+        # Check if there is a sequence of experiments or a single one
+        try:
+            if isinstance(yaml_content['experiments'], list):
+                self._experiments = {exp_name: utils.CombinatorialTree(yaml_content[exp_name])
+                                     for exp_name in yaml_content['experiments']}
+            else:
+                self._experiments = {'experiments': utils.CombinatorialTree(yaml_content['experiments'])}
+        except KeyError:
             self._experiments = {}
             return
 
-        # Check if there is a sequence of experiments or a single one
-        if isinstance(yaml_content['experiments'], list):
-            self._experiments = {exp_name: utils.CombinatorialTree(yaml_content[exp_name])
-                                 for exp_name in yaml_content['experiments']}
-        else:
-            self._experiments = {'experiments': utils.CombinatorialTree(yaml_content['experiments'])}
+        # Define experiment Schema
+        experiment_schema = Schema({'system': is_known_system, 'protocol': is_known_protocol,
+                                    Optional('options'): Use(YamlBuilder._validate_options)})
 
-        # Check validity of every experiment combination
-        err_msg = ''
-        for exp_name, exp in self._expand_experiments():
-            if exp_name == '':
-                exp_name = 'experiments'
-
-            # Check if we can identify components
-            if 'components' not in exp:
-                raise YamlParseError('Cannot find components for {}'.format(exp_name))
-            components = exp['components']
-
-            # Validate and check for unknowns
+        # Schema validation
+        for experiment_id, experiment_descr in self._expand_experiments():
             try:
-                utils.validate_parameters(exp, experiment_template, check_unknown=True)
-                utils.validate_parameters(components, components_template, check_unknown=True)
-                self._validate_options(exp.get('options', {}))
-            except (ValueError, TypeError) as e:
-                raise YamlParseError(str(e))
+                experiment_schema.validate(experiment_descr)
+            except SchemaError as e:
+                raise YamlParseError('Experiment {}: {}'.format(experiment_id, e.autos[-1]))
 
-            # Check that components have been specified
-            if components['receptor'] not in self._db.molecules:
-                err_msg = 'Cannot identify receptor for {}'.format(exp_name)
-            elif components['ligand'] not in self._db.molecules:
-                err_msg = 'Cannot identify ligand for {}'.format(exp_name)
-            elif components['solvent'] not in self._db.solvents:
-                err_msg = 'Cannot identify solvent for {}'.format(exp_name)
-
-            # Check that protocol has been specified
-            if 'protocol' not in exp:
-                err_msg = 'Cannot find protocol for {}.'.format(exp_name)
-            elif exp['protocol'] not in self._protocols:
-                err_msg = 'Cannot identify protocol for {}'.format(exp_name)
-
-            if err_msg != '':
-                raise YamlParseError(err_msg)
+    # --------------------------------------------------------------------------
+    # File paths utilities
+    # --------------------------------------------------------------------------
 
     @staticmethod
     def _get_setup_dir(experiment_options):
@@ -1600,13 +1832,19 @@ class YamlBuilder:
         return os.path.join(experiment_options['output_dir'],
                             experiment_options['experiments_dir'], experiment_subdir)
 
-    def _check_resume_experiment(self, experiment_dir):
+    # --------------------------------------------------------------------------
+    # Resuming
+    # --------------------------------------------------------------------------
+
+    def _check_resume_experiment(self, experiment_dir, protocol_id):
         """Check if Yank output files already exist.
 
         Parameters
         ----------
-        experiment_dir : dict
+        experiment_dir : str
             The path to the directory that should contain the output files.
+        protocol_id : str
+            The ID of the protocol used in the experiment.
 
         Returns
         -------
@@ -1614,23 +1852,20 @@ class YamlBuilder:
             True if NetCDF output files already exist, False otherwise.
 
         """
-        # Check that output directory exists
-        if not os.path.isdir(experiment_dir):
-            return False
+        # Build phases .nc file paths
+        phase_names = self._protocols[protocol_id].keys()
+        phase_paths = [os.path.join(experiment_dir, name + '.nc') for name in phase_names]
 
-        # Check that complex and solvent NetCDF files exist
-        complex_file_path = glob.glob(os.path.join(experiment_dir, 'complex-*.nc'))
-        solvent_file_path = glob.glob(os.path.join(experiment_dir, 'solvent-*.nc'))
-        if len(complex_file_path) == 0 or len(solvent_file_path) == 0:
-            return False
+        # Look for existing .nc files in the folder
+        for phase_path in phase_paths:
+            if not (os.path.isfile(phase_path) and os.path.getsize(phase_path) > 0):
+                return False
+        return True
 
-        output_file_paths = complex_file_path + solvent_file_path
-        return all(os.path.getsize(f) > 0 for f in output_file_paths)
-
-    def _check_resume(self):
+    def _check_resume(self, check_setup=True, check_experiments=True):
         """Perform dry run to check if we are going to overwrite files.
 
-        If we find folders that YamlBuilder should create we return True
+        If we find folders that YamlBuilder should create we raise an exception
         unless resume_setup or resume_simulation are found, in which case we
         assume we need to use the existing files. We never overwrite files, the
         user is responsible to delete them or move them.
@@ -1638,42 +1873,57 @@ class YamlBuilder:
         It's important to check all possible combinations at the beginning to
         avoid interrupting the user simulation after few experiments.
 
-        Returns
-        -------
-        overwrite : bool
-            True in case we will have to overwrite some files, False otherwise.
-        err_msg : str
-            An error message in case overwrite is True, an empty string otherwise.
+        Parameters
+        ----------
+        check_setup : bool
+            Check if we are going to overwrite setup files (default is True).
+        check_experiments : bool
+            Check if we are going to overwrite experiment files (default is True).
+
+        Raises
+        ------
+        YamlParseError
+            If files to write already exist and we resuming options are not set.
 
         """
+        # This is hard disk intensive, only process 0 should do it
+        if self._mpicomm is not None and self._mpicomm.rank != 0:
+            self._mpicomm.barrier()  # Wait for root node to check
+            return
+
         err_msg = ''
-        overwrite = False
+
         for exp_sub_dir, combination in self._expand_experiments():
             # Determine and validate options
             exp_options = self._determine_experiment_options(combination)
-            resume_sim = exp_options['resume_simulation']
-            resume_setup = exp_options['resume_setup']
 
-            # Identify components
-            components = combination['components']
-            receptor_id = components['receptor']
-            ligand_id = components['ligand']
-            solvent_id = components['solvent']
+            if check_experiments:
+                resume_sim = exp_options['resume_simulation']
+                experiment_dir = self._get_experiment_dir(exp_options, exp_sub_dir)
+                if not resume_sim and self._check_resume_experiment(experiment_dir,
+                                                                    combination['protocol']):
+                    err_msg = 'experiment files in directory {}'.format(experiment_dir)
+                    solving_option = 'resume_simulation'
 
-            # Check experiment dir
-            experiment_dir = self._get_experiment_dir(exp_options, exp_sub_dir)
-            if self._check_resume_experiment(experiment_dir) and not resume_sim:
-                err_msg = 'experiment files in directory {}'.format(experiment_dir)
-                solving_option = 'resume_simulation'
-            else:
+            if check_setup and err_msg == '':
+                resume_setup = exp_options['resume_setup']
+                system_id = combination['system']
+
                 # Check system and molecule setup dirs
                 self._db.setup_dir = self._get_setup_dir(exp_options)
-                is_sys_setup = self._db.is_system_setup(receptor_id, ligand_id, solvent_id)
-                if is_sys_setup and not resume_setup:
-                    system_dir = self._db.get_system_dir(receptor_id, ligand_id, solvent_id)
+                is_sys_setup, is_sys_processed = self._db.is_system_setup(system_id)
+                if is_sys_processed and not resume_setup:
+                    system_dir = os.path.dirname(
+                        self._db.get_system_files_paths(system_id)[0].position_path)
                     err_msg = 'system setup directory {}'.format(system_dir)
-                else:
-                    for molecule_id in [receptor_id, ligand_id]:
+                elif not is_sys_setup:  # then this must go through the pipeline
+                    try:  # binding free energy system
+                        receptor_id = self._db.systems[system_id]['receptor']
+                        ligand_id = self._db.systems[system_id]['ligand']
+                        molecule_ids = [receptor_id, ligand_id]
+                    except KeyError:  # partition/solvation free energy system
+                        molecule_ids = [self._db.systems[system_id]['solute']]
+                    for molecule_id in molecule_ids:
                         is_processed = self._db.is_molecule_setup(molecule_id)[1]
                         if is_processed and not resume_setup:
                             err_msg = 'molecule {} file'.format(molecule_id)
@@ -1684,12 +1934,58 @@ class YamlBuilder:
 
             # Check for errors
             if err_msg != '':
-                overwrite = True
                 err_msg += (' already exists; cowardly refusing to proceed. Move/delete '
                             'directory or set {} options').format(solving_option)
-                break
+                raise YamlParseError(err_msg)
 
-        return overwrite, err_msg
+        # Signal resume to non-root other nodes
+        if self._mpicomm is not None:
+            self._mpicomm.barrier()
+
+    # --------------------------------------------------------------------------
+    # Experiment setup and execution
+    # --------------------------------------------------------------------------
+
+    def _setup_experiments(self):
+        """Set up all experiments without running them.
+
+        IMPORTANT: This does not check if we are about to overwrite files, nor it
+        cd into the script directory! Use setup_experiments() for that.
+
+        """
+        # TODO parallelize setup
+        # Only root node performs setup
+        if self._mpicomm is not None and self._mpicomm.rank != 0:
+            debug_msg = 'Node {}/{}: MPI barrier'.format(self._mpicomm.rank,
+                                                         self._mpicomm.size)
+            logger.debug(debug_msg + ' - waiting for the setup to be completed.')
+            self._mpicomm.barrier()
+            return
+
+        for _, experiment in self._expand_experiments():
+            # Set database path
+            exp_opts = self._determine_experiment_options(experiment)
+            self._db.setup_dir = self._get_setup_dir(exp_opts)
+
+            # Force system and molecules setup
+            system_id = experiment['system']
+            sys_descr = self._db.systems[system_id]  # system description
+            try:
+                try:  # binding free energy system
+                    components = (sys_descr['receptor'], sys_descr['ligand'], sys_descr['solvent'])
+                except KeyError:  # partition/solvation free energy system
+                    components = (sys_descr['solute'], sys_descr['solvent1'], sys_descr['solvent2'])
+                logger.info('Setting up the systems for {}, {} and {}'.format(*components))
+                self._db.get_system(system_id)
+            except KeyError:  # system files are given directly by the user
+                pass
+
+        # Signal resume to child nodes
+        if self._mpicomm is not None:
+            debug_msg = 'Node {}/{}: MPI barrier'.format(self._mpicomm.rank,
+                                                         self._mpicomm.size)
+            logger.debug(debug_msg + ' - signal completed setup.')
+            self._mpicomm.barrier()
 
     def _generate_yaml(self, experiment, file_path):
         """Generate the minimum YAML file needed to reproduce the experiment.
@@ -1703,19 +1999,37 @@ class YamlBuilder:
 
         """
         yaml_dir = os.path.dirname(file_path)
-        components = set(experiment['components'].values())
+        sys_descr = self._db.systems[experiment['system']]  # system description
 
         # Molecules section data
-        mol_section = {mol_id: molecule for mol_id, molecule in self._raw_yaml['molecules'].items()
-                       if mol_id in components}
+        try:
+            try:  # binding free energy
+                molecule_ids = [sys_descr['receptor'], sys_descr['ligand']]
+            except KeyError:  # partition/solvation free energy
+                molecule_ids = [sys_descr['solute']]
+            mol_section = {mol_id: self._raw_yaml['molecules'][mol_id]
+                           for mol_id in molecule_ids}
+
+            # Copy to avoid modifying _raw_yaml when updating paths
+            mol_section = copy.deepcopy(mol_section)
+        except KeyError:  # user provided directly system files
+            mol_section = {}
 
         # Solvents section data
-        sol_section = {solvent_id: solvent for solvent_id, solvent in self._raw_yaml['solvents'].items()
-                       if solvent_id in components}
+        try:  # binding free energy
+            solvent_ids = [sys_descr['solvent']]
+        except KeyError:  # partition/solvation free energy
+            solvent_ids = [sys_descr['solvent1'], sys_descr['solvent2']]
+        sol_section = {sol_id: self._raw_yaml['solvents'][sol_id]
+                       for sol_id in solvent_ids}
+
+        # Systems section data
+        system_id = experiment['system']
+        sys_section = {system_id: copy.deepcopy(self._raw_yaml['systems'][system_id])}
 
         # Protocols section data
-        prot_section = {protocol_id: protocol for protocol_id, protocol in self._raw_yaml['protocols'].items()
-                        if protocol_id in experiment['protocol']}
+        protocol_id = experiment['protocol']
+        prot_section = {protocol_id: self._raw_yaml['protocols'][protocol_id]}
 
         # We pop the options section in experiment and merge it to the general one
         exp_section = experiment.copy()
@@ -1723,12 +2037,18 @@ class YamlBuilder:
         opt_section.update(exp_section.pop('options', {}))
 
         # Convert relative paths to new script directory
-        mol_section = copy.deepcopy(mol_section)  # copy to avoid modifying raw yaml
         for molecule in mol_section.values():
             if 'filepath' in molecule and not os.path.isabs(molecule['filepath']):
                 molecule['filepath'] = os.path.relpath(molecule['filepath'], yaml_dir)
 
-        try:
+        try:  # systems for which user has specified directly system files
+            for phase in ['phase2_path', 'phase1_path']:
+                for path in sys_section[system_id][phase]:
+                    sys_section[system_id][path] = os.path.relpath(path, yaml_dir)
+        except KeyError:  # system went through pipeline
+            pass
+
+        try:  # output directory
             output_dir = opt_section['output_dir']
         except KeyError:
             output_dir = self.DEFAULT_OPTIONS['output_dir']
@@ -1744,8 +2064,10 @@ class YamlBuilder:
         # Create YAML with the sections in order
         dump_options = {'Dumper': YankDumper, 'line_break': '\n', 'indent': 4}
         yaml_content = yaml.dump({'options': opt_section}, explicit_start=True, **dump_options)
-        yaml_content += yaml.dump({'molecules': mol_section},  **dump_options)
+        if mol_section:
+            yaml_content += yaml.dump({'molecules': mol_section},  **dump_options)
         yaml_content += yaml.dump({'solvents': sol_section},  **dump_options)
+        yaml_content += yaml.dump({'systems': sys_section},  **dump_options)
         yaml_content += yaml.dump({'protocols': prot_section},  **dump_options)
         yaml_content += yaml.dump({'experiments': exp_section},  **dump_options)
 
@@ -1769,7 +2091,7 @@ class YamlBuilder:
 
         """
         alchemical_protocol = {}
-        for phase_name, phase in self._protocols[protocol_id]['phases'].items():
+        for phase_name, phase in self._protocols[protocol_id].items():
             # Separate lambda variables names from their associated lists
             lambdas, values = zip(*phase['alchemical_path'].items())
 
@@ -1793,7 +2115,7 @@ class YamlBuilder:
             output directory as specified by the user in the YAML script
 
         """
-        components = experiment['components']
+        protocol_id = experiment['protocol']
         exp_name = 'experiments' if experiment_dir == '' else os.path.basename(experiment_dir)
 
         # Get and validate experiment sub-options
@@ -1812,7 +2134,7 @@ class YamlBuilder:
             if not resume:
                 os.makedirs(results_dir)
             else:
-                resume = self._check_resume_experiment(results_dir)
+                resume = self._check_resume_experiment(results_dir, protocol_id)
         if self._mpicomm:  # process 0 send result to other processes
             resume = self._mpicomm.bcast(resume, root=0)
 
@@ -1827,49 +2149,73 @@ class YamlBuilder:
             yank.resume()
         else:
             if self._mpicomm is None or self._mpicomm.rank == 0:
+                system_id = experiment['system']
+
                 # Export YAML file for reproducibility
                 self._generate_yaml(experiment, os.path.join(results_dir, exp_name + '.yaml'))
 
-                # Setup the system
-                logger.info('Setting up the system for {}, {} and {}'.format(*components.values()))
-                system_dir = self._db.get_system(components, exp_opts['pack'])
+                # Get molecule resname for alchemical atom selection
+                if self._db.is_system_setup(system_id)[1]:  # system went through pipeline
+                    try:  # binding free energy calculation
+                        alchemical_molecule_id = self._db.systems[system_id]['ligand']
+                    except KeyError:  # partition/solvation free energy calculation
+                        alchemical_molecule_id = self._db.systems[system_id]['solute']
 
-                # Get ligand resname for alchemical atom selection
-                ligand_descr = self._db.molecules[components['ligand']]
-                ligand_dsl = utils.get_mol2_resname(ligand_descr['filepath'])
-                if ligand_dsl is None:
-                    ligand_dsl = 'MOL'
-                ligand_dsl = 'resname ' + ligand_dsl
+                    ligand_descr = self._db.molecules[alchemical_molecule_id]
+                    ligand_dsl = utils.Mol2File(ligand_descr['filepath']).resname
+                    if ligand_dsl is None:
+                        ligand_dsl = 'MOL'
+                    ligand_dsl = 'resname ' + ligand_dsl
+                else:  # system files given directly by user
+                    ligand_dsl = self._db.systems[system_id]['ligand_dsl']
+                logger.debug('DSL string for the ligand: "{}"'.format(ligand_dsl))
 
-                # System configuration
-                create_system_filter = set(('nonbonded_method', 'nonbonded_cutoff', 'implicit_solvent',
-                                            'constraints', 'hydrogen_mass'))
-                solvent = self._db.solvents[components['solvent']]
-                system_pars = {opt: solvent[opt] for opt in create_system_filter if opt in solvent}
-                system_pars.update({opt: exp_opts[opt] for opt in create_system_filter
-                                    if opt in exp_opts})
+                # Determine complex and solvent phase solvents
+                try:  # binding free energy calculations
+                    solvent_ids = [self._db.systems[system_id]['solvent'],
+                                   self._db.systems[system_id]['solvent']]
+                except KeyError:  # partition/solvation free energy calculations
+                    solvent_ids = [self._db.systems[system_id]['solvent1'],
+                                   self._db.systems[system_id]['solvent2']]
 
-                # Convert underscore_parameters to camelCase for OpenMM API
-                system_pars = {utils.underscore_to_camelcase(opt): value
-                               for opt, value in system_pars.items()}
+                # Get protocols as list of AlchemicalStates
+                alchemical_paths = self._get_alchemical_paths(protocol_id)
+                system_files_paths = self._db.get_system(system_id)
+                gromacs_include_dir = self._db.systems[system_id].get('gromacs_include_dir', None)
 
-                # Prepare system
-                phases, systems, positions, atom_indices = pipeline.prepare_amber(system_dir, ligand_dsl,
-                                                                 system_pars, ligand_descr['net_charge'])
+                # Prepare Yank arguments
+                phases = [None, None]
+                for i, phase_name in enumerate(self._protocols[protocol_id]):
+                    # self._protocols[protocol_id] is an OrderedDict so phases are in the
+                    # correct order (e.g. [complex, solvent] or [solvent1, solvent2])
+                    solvent_id = solvent_ids[i]
+                    positions_file_path = system_files_paths[i].position_path
+                    topology_file_path = system_files_paths[i].topology_path
+                    system_options = utils.merge_dict(self._db.solvents[solvent_id], exp_opts)
+
+                    logger.info("Reading phase {}".format(phase_name))
+                    phases[i] = pipeline.prepare_phase(positions_file_path, topology_file_path, ligand_dsl,
+                                                       system_options, gromacs_include_dir=gromacs_include_dir)
+                    phases[i].name = phase_name
+                    phases[i].protocol = alchemical_paths[phase_name]
+
+                for phase in phases:
+                    if len(phase.atom_indices['ligand']) == 0:
+                        raise RuntimeError('DSL string "{}" did not select any atom for '
+                                           'the ligand in phase {}.'.format(ligand_dsl, phase.name))
+
+                # Dump analysis script
+                analysis = [[phases[0].name, 1], [phases[1].name, -1]]
+                analysis_script_path = os.path.join(results_dir, 'analysis.yaml')
+                with open(analysis_script_path, 'w') as f:
+                    yaml.dump(analysis, f)
 
                 # Create thermodynamic state
                 thermodynamic_state = ThermodynamicState(temperature=exp_opts['temperature'],
                                                          pressure=exp_opts['pressure'])
 
-                # Get protocols as list of AlchemicalStates and adjust phase name
-                alchemical_paths = self._get_alchemical_paths(experiment['protocol'])
-                suffix = 'explicit' if 'explicit' in phases[0] else 'implicit'
-                alchemical_paths = {phase + '-' + suffix: protocol
-                                    for phase, protocol in alchemical_paths.items()}
-
                 # Create new simulation
-                yank.create(phases, systems, positions, atom_indices,
-                            thermodynamic_state, protocols=alchemical_paths)
+                yank.create(thermodynamic_state, *phases)
 
             # Run the simulation
             if self._mpicomm:  # wait for the simulation to be prepared
