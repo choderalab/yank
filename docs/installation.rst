@@ -119,8 +119,7 @@ Software
 --------
 
 YANK runs on Python 2.7.
-The developers generally use Python 2.7 on both Mac and Linux platforms.
-Automated tests on Linux are performed on every GitHub commit using `Travis CI <http://travis-ci.org>`_, and release tests are performed on Mac and Linux platforms using `Jenkins <http://jenkins.choderalab.org>`_..
+Support for Python 3.x is planned for a future release.
 
 Dependencies
 ++++++++++++
@@ -143,14 +142,23 @@ Required
 * HDF5 (required by NetCDF4):
   http://www.hdfgroup.org/HDF5/
 
-* netcdf4-python (a Python interface for netcdf4):
+* ``netcdf4-python`` (a Python interface for netcdf4):
   http://code.google.com/p/netcdf4-python/
 
-* numpy and scipy:
+* ``numpy`` and ``scipy``:
   http://www.scipy.org/
 
-* `alchemy`
+* ``docopt``:
+  http://docopt.org/
+
+* ``alchemy``
   https://github.com/choderalab/alchemy
+
+* ``pymbar``
+  https://github.com/choderalab/pymbar
+
+* ``schema``
+  https://pypi.python.org/pypi/schema
 
 * `AmberTools <http://ambermd.org/#AmberTools>`_ is needed for setting up protein-ligand systems using LEaP.
   https://github.com/choderalab/ambertools
@@ -158,11 +166,11 @@ Required
 Optional
 ^^^^^^^^
 
-* `mpi4py <http://mpi4py.scipy.org/>`_ is needed if  MPI support is desired.
+* `mpi4py <http://mpi4py.scipy.org/>`_ is needed if `MPI support <https://de.wikipedia.org/wiki/Message_Passing_Interface>`_ is desired.
 
-.. note:: The ``mpi4py`` installation must be compiled against the system-installed MPI implementation used to launch jobs.
+.. note:: The ``mpi4py`` installation must be compiled against the system-installed MPI implementation used to launch jobs. Using the ``conda`` version of ``mpi4py`` together with the ``conda``-provided ``mpirun`` is the simplest way to avoid any issues.
 
-* The `OpenEye toolkit and Python wrappers <http://www.eyesopen.com/toolkits>`_ can be used to enable free energy calculations to be set up directly from any supported OpenEye format, including mol2, PDB, ChemDraw, and many more (requires academic or commercial license).
+* The `OpenEye toolkit and Python wrappers <http://www.eyesopen.com/toolkits>`_ can be used to enable free energy calculations to be set up directly from multiple supported OpenEye formats, including Tripos mol2, PDB, SMILES, and IUPAC names (requires academic or commercial license).
 
 * `scipy.weave <http://docs.scipy.org/doc/scipy-0.14.0/reference/tutorial/weave.html>`_ is an optional dependency for the replica-exchange code, though this functionality will be migrated to `cython <http://cython.org>`_ in future revisions.
 
