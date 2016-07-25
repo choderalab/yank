@@ -87,6 +87,30 @@ Test your YANK installation to make sure everything is behaving properly on your
 
 This will not only check that installation paths are correct, but also run a battery of tests that ensure any automatically detected GPU hardware is behaving as expected.
 
+|
+
+Optional Tools
+--------------
+
+The `OpenEye toolkit and Python wrappers <http://www.eyesopen.com/toolkits>`_ can be installed to enable free energy calculations to be set up directly from `multiple supported small molecule formats <https://docs.eyesopen.com/toolkits/python/oechemtk/molreadwrite.html#file-formats>`_, including
+* Tripos mol2
+* SDF
+* SMILES
+* IUPAC names
+* PDB
+
+Use of the OpenEye toolkit requires an `academic or commercial license <http://www.eyesopen.com/licensing-philosophy>`_.
+
+To install these tools into your conda environment, use `pip`:
+
+.. code-block:: bash
+
+   $ pip install -i https://pypi.anaconda.org/OpenEye/simple OpenEye-toolkits
+
+Note that you will need to configure your ``$OE_LICENSE`` environment variable to point to a valid license file.
+
+|
+
 Supported platforms and environments
 ====================================
 
@@ -124,10 +148,14 @@ Required
 * numpy and scipy:
   http://www.scipy.org/
 
+* `alchemy`
+  https://github.com/choderalab/alchemy
+
+* `AmberTools <http://ambermd.org/#AmberTools>`_ is needed for setting up protein-ligand systems using LEaP.
+  https://github.com/choderalab/ambertools
+
 Optional
 ^^^^^^^^
-
-* `AmberTools <http://ambermd.org/#AmberTools>`_ is helpful for setting up protein-ligand systems using LEaP.
 
 * `mpi4py <http://mpi4py.scipy.org/>`_ is needed if  MPI support is desired.
 
