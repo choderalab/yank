@@ -13,7 +13,7 @@ The `yank Anaconda Cloud page <https://anaconda.org/omnia/yank>`_ has useful ins
 If you are using the `anaconda <https://www.continuum.io/downloads/>`_ scientific Python distribution, you already have the ``conda`` package manager installed.
 If not, the quickest way to get started is to install the `miniconda <http://conda.pydata.org/miniconda.html>`_ distribution, a lightweight minimal installation of Anaconda Python.
 
-On `linux`, you can install the Python 2.7 version into `$HOME/miniconda2` with (on `bash` systems):
+On ``linux``, you can install the Python 2.7 version into ``$HOME/miniconda2`` with (on ``bash`` systems):
 
 .. code-block:: bash
 
@@ -21,7 +21,7 @@ On `linux`, you can install the Python 2.7 version into `$HOME/miniconda2` with 
    $ bash ./Miniconda2-latest-Linux-x86_64.sh -b -p $HOME/miniconda2
    $ export PATH="$HOME/miniconda2/bin:$PATH"
 
-On `osx`, you want to use the `osx` binary
+On ``osx``, you want to use the ```osx`` binary
 
 .. code-block:: bash
 
@@ -29,7 +29,7 @@ On `osx`, you want to use the `osx` binary
    $ bash ./Miniconda2-latest-Linux-x86_64.sh -b -p $HOME/miniconda2
    $ export PATH="$HOME/miniconda2/bin:$PATH"
 
-You may want to add the new `$PATH` extension to your `~/.bashrc` file to ensure Anaconda Python is used by default.
+You may want to add the new ```$PATH`` extension to your ``~/.bashrc`` file to ensure Anaconda Python is used by default.
 Note that YANK will be installed into this local Python installation, so that you will not need to worry about disrupting existing Python installations.
 
 |
@@ -93,6 +93,7 @@ Optional Tools
 --------------
 
 The `OpenEye toolkit and Python wrappers <http://www.eyesopen.com/toolkits>`_ can be installed to enable free energy calculations to be set up directly from `multiple supported small molecule formats <https://docs.eyesopen.com/toolkits/python/oechemtk/molreadwrite.html#file-formats>`_, including
+
 * Tripos mol2
 * SDF
 * SMILES
