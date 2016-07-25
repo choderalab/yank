@@ -11,13 +11,24 @@ Packages are provided on the `omnia binstar channel <http://binstar.org/omnia>`_
 The `yank binstar page <https://binstar.org/omnia/yank>`_ has useful instructions and download statistics.
 
 If you are using the `anaconda <https://store.continuum.io/cshop/anaconda/>`_ scientific Python distribution, you already have the ``conda`` package manager installed.
-If not, but you have the ``pip`` package manager installed (to access packages from `PyPI <http://pypi.org>`_), you can easily get ``conda`` up and running with
+If not, the quickest way to get started is to install the `miniconda <http://conda.pydata.org/miniconda.html>`_ distribution, a lightweight minimal installation of Anaconda Python.
 
-.. code-block:: none
+On `linux`, you can install the Python 2.7 version into `$HOME/miniconda2` with (on `bash` systems):
+.. code-block:: bash
 
-   $ pip install conda
-   $ conda init
-   $ conda update conda --yes
+   $ wget https://repo.continuum.io/miniconda/Miniconda2-latest-Linux-x86_64.sh
+   $ bash ./Miniconda2-latest-Linux-x86_64.sh -b -p $HOME/miniconda2
+   $ export PATH="$HOME/miniconda2/bin:$PATH"
+
+On `osx`, you want to use the `osx` binary
+.. code-block:: bash
+
+   $ wget https://repo.continuum.io/miniconda/Miniconda2-latest-MacOSX-x86_64.sh
+   $ bash ./Miniconda2-latest-Linux-x86_64.sh -b -p $HOME/miniconda2
+   $ export PATH="$HOME/miniconda2/bin:$PATH"
+
+You may want to add the new `$PATH` extension to your `~/.bashrc` file to ensure Anaconda Python is used by default.
+Note that YANK will be installed into this local Python installation, so that you will not need to worry about disrupting existing Python installations.
 
 |
 
@@ -28,7 +39,7 @@ You can install the latest stable release build of YANK via the ``conda`` packag
 
 .. code-block:: none
 
-   $ conda config --add channels http://conda.binstar.org/omnia
+   $ conda config --add channels omnia
    $ conda install yank
 
 This version is recommended for all users not actively developing new algorithms for alchemical free energy calculations.
@@ -42,9 +53,9 @@ Development build
 
 The bleeding-edge, absolute latest, very likely unstable development build of YANK is pushed to `binstar <https://binstar.org/omnia/yank>`_ with each GitHub commit, and can be obtained by
 
-.. code-block:: none
+.. code-block:: bash
 
-   $ conda config --add channels http://conda.binstar.org/omnia
+   $ conda config --add channels omnia
    $ conda install yank-dev
 
 .. warning:: Development builds may be unstable and are generally subjected to less testing than releases.  Use at your own risk!
@@ -55,7 +66,7 @@ Upgrading your installation
 
 To update an earlier ``conda`` installation of YANK to the latest release version, you can use ``conda update``:
 
-.. code-block:: none
+.. code-block:: bash
 
    $ conda update yank
 
@@ -68,7 +79,7 @@ Testing your installation
 
 Test your YANK installation to make sure everything is behaving properly on your machine:
 
-.. code-block:: none
+.. code-block:: bash
 
    $ yank selftest
 
@@ -156,7 +167,7 @@ Installation via `conda` is preferred for all other users.
 
 Clone the source code repository from `GitHub <http://github.com/choderalab/yank>`_.
 
-.. code-block:: none
+.. code-block:: bash
 
    $ git clone git://github.com/choderalab/yank.git
    $ cd yank/
@@ -164,7 +175,7 @@ Clone the source code repository from `GitHub <http://github.com/choderalab/yank
 
 If you wish to install into a different path (often preferred for development), use
 
-.. code-block:: none
+.. code-block:: bash
 
    $ python setup.py install
 
@@ -176,9 +187,8 @@ Testing your installation
 
 Test your YANK installation to make sure everything is behaving properly on your machine:
 
-.. code-block:: none
+.. code-block:: bash
 
    $ yank selftest
 
 This will not only check that installation paths are correct, but also run a battery of tests that ensure any automatically detected GPU hardware is behaving as expected.
-
