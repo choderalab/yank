@@ -8,7 +8,7 @@ Installing via `conda`
 
 The simplest way to install YANK is via the `conda <http://www.continuum.io/blog/conda>`_  package manager.
 Packages are provided on the `omnia Anaconda Cloud channel <http://anaconda.org/omnia>`_ for Linux, OS X, and Win platforms.
-The `yank Anaconda Cloud page <https://anaconda.org/omnia/yank>`_ has useful instructions and `download statistics <https://anaconda.org/omnia/yank/files>`_`.
+The `yank Anaconda Cloud page <https://anaconda.org/omnia/yank>`_ has useful instructions and `download statistics <https://anaconda.org/omnia/yank/files>`_.
 
 If you are using the `anaconda <https://www.continuum.io/downloads/>`_ scientific Python distribution, you already have the ``conda`` package manager installed.
 If not, the quickest way to get started is to install the `miniconda <http://conda.pydata.org/miniconda.html>`_ distribution, a lightweight minimal installation of Anaconda Python.
@@ -94,11 +94,13 @@ Optional Tools
 
 The `OpenEye toolkit and Python wrappers <http://www.eyesopen.com/toolkits>`_ can be installed to enable free energy calculations to be set up directly from `multiple supported small molecule formats <https://docs.eyesopen.com/toolkits/python/oechemtk/molreadwrite.html#file-formats>`_, including
 
-* Tripos mol2
 * SDF
 * SMILES
 * IUPAC names
+* Tripos mol2
 * PDB
+
+Note that PDB and mol2 are supported through the pure AmberTools pipeline as well, though this does not provide access to the OpenEye AM1-BCC charging pipeline.
 
 Use of the OpenEye toolkit requires an `academic or commercial license <http://www.eyesopen.com/licensing-philosophy>`_.
 
@@ -171,6 +173,7 @@ Optional
 .. note:: The ``mpi4py`` installation must be compiled against the system-installed MPI implementation used to launch jobs. Using the ``conda`` version of ``mpi4py`` together with the ``conda``-provided ``mpirun`` is the simplest way to avoid any issues.
 
 * The `OpenEye toolkit and Python wrappers <http://www.eyesopen.com/toolkits>`_ can be used to enable free energy calculations to be set up directly from multiple supported OpenEye formats, including Tripos mol2, PDB, SMILES, and IUPAC names (requires academic or commercial license).
+Note that PDB and mol2 are supported through the pure AmberTools pipeline as well, though this does not provide access to the OpenEye AM1-BCC charging pipeline.
 
 * `scipy.weave <http://docs.scipy.org/doc/scipy-0.14.0/reference/tutorial/weave.html>`_ is an optional dependency for the replica-exchange code, though this functionality will be migrated to `cython <http://cython.org>`_ in future revisions.
 
