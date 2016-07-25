@@ -192,9 +192,6 @@ You can find some benchmarks for OpenMM on several classes of recent GPUs at `op
 
 Ross Walker and the Amber GPU developers maintain a set of `excellent pages with good inexpensive GPU hardware recommendations <http://ambermd.org/gpus/recommended_hardware.htm>`_ that will also work well with OpenMM and YANK.
 
-Amazon EC2 now provides `Linux GPU instances <http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/using_cluster_computing.html>`_ with high-performance GPUs and inexpensive on-demand and `spot pricing <http://aws.amazon.com/ec2/purchasing-options/spot-instances/>`_ (g2.2xlarge).
-We will soon provide ready-to-use images to let you quickly get started on EC2.
-
 Installing from source
 ======================
 
@@ -233,3 +230,12 @@ Test your YANK installation to make sure everything is behaving properly on your
    $ yank selftest
 
 This will not only check that installation paths are correct, but also run a battery of tests that ensure any automatically detected GPU hardware is behaving as expected.
+
+Running on the cloud
+--------------------
+
+Amazon EC2 now provides `Linux GPU instances <http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/using_cluster_computing.html>`_ with high-performance GPUs and inexpensive on-demand and `spot pricing <http://aws.amazon.com/ec2/purchasing-options/spot-instances/>`_ (g2.2xlarge).
+We will soon provide ready-to-use images to let you quickly get started on EC2.
+
+We are also exploring building `Docker containers <https://hub.docker.com/>`_ for rapid, reproducible, portable deployment of YANK to new compute environments.
+Stay tuned!
