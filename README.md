@@ -15,9 +15,8 @@ Documentation and examples can be found at [getyank.org](http://getyank.org)
 Maintainers
 -----------
 
-* John D. Chodera (MSKCC)
-* Patrick B. Grinaway (MSKCC)
-* Arien Sebastian Rustenburg (MSKCC)
+* John D. Chodera `<john.chodera@choderalab.org>` (MSKCC)
+* Andrea Rizzi `<andrea.rizzi@choderalab.org>` (WCMC)
 
 Contributors
 ------------
@@ -26,11 +25,12 @@ Contributors
 * Peter M. Eastman (Stanford)
 * Mark Friedrichs (Stanford)
 * Imran Haque (Stanford)
+* Patrick B. Grinaway (MSKCC)
 * Christoph Klein (University of Virginia)
 * Rosa Luirink (VU Amsterdam)
 * Levi Naden (University of Virginia)
 * Daniel L. Parton (MSKCC)
 * Randy Radmer (Stanford)
-* Andrea Rizzi (WCMC)
+* Arien Sebastian Rustenburg (MSKCC)
 * Michael Shirts (University of Virginia)
 * Kai Wang (University of Virginia)
