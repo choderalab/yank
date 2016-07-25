@@ -188,10 +188,12 @@ Recommended hardware
 ++++++++++++++++++++
 
 We have found the best price/performance results are currently obtained with NVIDIA GTX-class consumer-grade cards, such as the GTX-680, GTX-780, and GTX-Titan cards.
+You can find some benchmarks for OpenMM on several classes of recent GPUs at `openmm.org <http://openmm.org/about.html#benchmarks>`_.
 
 Ross Walker and the Amber GPU developers maintain a set of `excellent pages with good inexpensive GPU hardware recommendations <http://ambermd.org/gpus/recommended_hardware.htm>`_.
 
-Amazon EC2 now provides `Linux GPU instances <http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/using_cluster_computing.html>`_ with high-performance GPUs and inexpensive on-demand and `spot pricing <http://aws.amazon.com/ec2/purchasing-options/spot-instances/>`_ (g2.2xlarge).  We will soon provide ready-to-use images to let you quickly get started on EC2.
+Amazon EC2 now provides `Linux GPU instances <http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/using_cluster_computing.html>`_ with high-performance GPUs and inexpensive on-demand and `spot pricing <http://aws.amazon.com/ec2/purchasing-options/spot-instances/>`_ (g2.2xlarge).
+We will soon provide ready-to-use images to let you quickly get started on EC2.
 
 Installing from source
 ======================
