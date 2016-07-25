@@ -14,6 +14,7 @@ If you are using the `anaconda <https://www.continuum.io/downloads/>`_ scientifi
 If not, the quickest way to get started is to install the `miniconda <http://conda.pydata.org/miniconda.html>`_ distribution, a lightweight minimal installation of Anaconda Python.
 
 On `linux`, you can install the Python 2.7 version into `$HOME/miniconda2` with (on `bash` systems):
+
 .. code-block:: bash
 
    $ wget https://repo.continuum.io/miniconda/Miniconda2-latest-Linux-x86_64.sh
@@ -21,6 +22,7 @@ On `linux`, you can install the Python 2.7 version into `$HOME/miniconda2` with 
    $ export PATH="$HOME/miniconda2/bin:$PATH"
 
 On `osx`, you want to use the `osx` binary
+
 .. code-block:: bash
 
    $ wget https://repo.continuum.io/miniconda/Miniconda2-latest-MacOSX-x86_64.sh
