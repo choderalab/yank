@@ -7,10 +7,10 @@ Installing via `conda`
 ======================
 
 The simplest way to install YANK is via the `conda <http://www.continuum.io/blog/conda>`_  package manager.
-Packages are provided on the `omnia binstar channel <http://binstar.org/omnia>`_ for Linux, OS X, and Win platforms.
-The `yank binstar page <https://binstar.org/omnia/yank>`_ has useful instructions and download statistics.
+Packages are provided on the `omnia Anaconda Cloud channel <http://anaconda.org/omnia>`_ for Linux, OS X, and Win platforms.
+The `yank Anaconda Cloud page <https://anaconda.org/omnia/yank>`_ has useful instructions and download statistics.
 
-If you are using the `anaconda <https://store.continuum.io/cshop/anaconda/>`_ scientific Python distribution, you already have the ``conda`` package manager installed.
+If you are using the `anaconda <https://www.continuum.io/downloads/>`_ scientific Python distribution, you already have the ``conda`` package manager installed.
 If not, the quickest way to get started is to install the `miniconda <http://conda.pydata.org/miniconda.html>`_ distribution, a lightweight minimal installation of Anaconda Python.
 
 On `linux`, you can install the Python 2.7 version into `$HOME/miniconda2` with (on `bash` systems):
