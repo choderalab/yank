@@ -32,5 +32,5 @@ if [ $PUSH_DOCS_TO_S3 = true ]; then
     (cd docs && make html && cd -)
     ls -lt docs/_build
     pwd
-    python devtools/ci/push-docs-to-s3.py
+    python devtools/travis-ci/push-docs-to-s3.py
 fi
