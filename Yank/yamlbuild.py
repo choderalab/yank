@@ -2188,6 +2188,8 @@ class YamlBuilder:
                     except KeyError:  # partition/solvation free energy calculation
                         alchemical_molecule_id = self._db.systems[system_id]['solute']
 
+                    # Make sure that molecule filepath points to the mol2 file
+                    self._db.is_molecule_setup(alchemical_molecule_id)
                     ligand_descr = self._db.molecules[alchemical_molecule_id]
                     ligand_dsl = utils.Mol2File(ligand_descr['filepath']).resname
                     if ligand_dsl is None:

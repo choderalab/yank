@@ -791,9 +791,8 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         super(ModifiedHamiltonianExchange, self)._write_iteration_netcdf()
 
         # Only the root node will write data.
-        if self.mpicomm:
-            if self.mpicomm.rank != 0:
-                return
+        if self.mpicomm is not None and self.mpicomm.rank != 0:
+            return
 
         if self.fully_interacting_state is not None:
             self.ncfile.variables['fully_interacting_energies'][self.iteration, :] = self.u_k[:]
