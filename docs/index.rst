@@ -8,6 +8,8 @@ YANK
 
 .. TODO: Refine this description
 
+.. warning:: YANK is still undergoing major changes prior to a 1.0 release, and has not yet been extensively validated. Use at your own risk!
+
 Features
 --------
 * Modular Python framework for easily exploring new algorithms
