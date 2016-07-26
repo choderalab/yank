@@ -16,11 +16,9 @@ See `Supported hardware`_ for more information about supported and recommended h
 Running on the CPU
 """"""""""""""""""
 
-If you don't have a GPU, the OpenMM ``CPU`` platform will run in multithreaded mode by default.
+If you don't have a GPU, the OpenMM ``CPU`` platform will run in multithreaded mode by default (see `Selecting a platform`_).
 While not as fast as `gromacs <http://www.gromacs.org>`_, running on the CPU can still let you explore the features of YANK without needing a GPU.
 You can also use CPUs acting as ``OpenCL`` devices utilizing the `AMD OpenCL APP SDK <http://developer.amd.com/tools-and-sdks/opencl-zone/>`_ or the `Intel OpenCL SDK <https://software.intel.com/en-us/intel-opencl>`_, though this has not been extensively tested.
-
-.. note:: If you need to select how many threads YANK should use while running in ``CPU`` mode, you can set the environment variable ``OPENMM_CPU_THREADS``. See the `OpenMM manual <http://docs.openmm.org/7.0.0/userguide/library.html?highlight=openmm_cpu_threads#cpu-platform>`_ for more information.
 
 Parallelization
 ===============
@@ -92,12 +90,14 @@ Alternatively, to run the simulation in MPI mode:
 On systems with multiple NVIDIA GPUs per node, it is necessary to perform masking using ``CUDA_VISIBLE_DEVICES``.
 
 On systems using the conda-installed ``mpi4py`` package, the `MPICH2 hydra mpirun <https://wiki.mpich.org/mpich/index.php/Using_the_Hydra_Process_Manager>`_ will be automatically installed for you.
-You can use the cluster utility script `build-mpirun-configfile.py <https://github.com/choderalab/clusterutils/blob/master/scripts/build-mpirun-configfile.py>`_ available in our `clusterutils <https://github.com/choderalab/clusterutils>`_ to generate an appropriate ``configfile``:
+You can use the cluster utility script `build-mpirun-configfile.py <https://github.com/choderalab/clusterutils/blob/master/scripts/build-mpirun-configfile.py>`_ available in our `clusterutils <https://github.com/choderalab/clusterutils>`_ tools to generate an appropriate ``configfile``:
 
 .. code-block:: none
 
   $ python build-mpirun-configfile.py yank script --yaml=yank.yaml
   $ mpirun -configfile configfile
+
+``build-mpirun-configfile.py`` is automatically installed with YANK when you use the ``conda`` installation route.
 
 |
 
