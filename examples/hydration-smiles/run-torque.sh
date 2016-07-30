@@ -17,7 +17,7 @@
 # nodes: number of 8-core nodes
 #   ppn: how many cores per node to use (1 through 8)
 #       (you are always charged for the entire node)
-#PBS -l nodes=2:ppn=4:gpus=4
+#PBS -l nodes=1:ppn=4:gpus=4:shared
 #
 # export all my environment variables to the job
 ##PBS -V
