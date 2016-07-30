@@ -19,7 +19,7 @@ molecules:
 
 solvents:
   water:
-    nonbonded_method: PME
+    nonbonded_method: CutoffPeriodic
     nonbonded_cutoff: 9*angstroms
     clearance: 9*angstroms
   vacuum:
