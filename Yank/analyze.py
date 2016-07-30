@@ -532,7 +532,7 @@ def analyze(source_directory):
 
     # Print energies
     logger.info("")
-    logger.info("Free energy{}: {:16.3f} +- {:.3f} kT ({:16.3f} +- {:.3f} kT kcal/mol)".format(
+    logger.info("Free energy{}: {:16.3f} +- {:.3f} kT ({:16.3f} +- {:.3f} kcal/mol)".format(
         calculation_type, DeltaF, dDeltaF, DeltaF * kT / units.kilocalories_per_mole,
         dDeltaF * kT / units.kilocalories_per_mole))
     logger.info("")
