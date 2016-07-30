@@ -5,36 +5,28 @@ Quickstart (for the impatient)
 
 First, install the `anaconda <https://store.continuum.io/cshop/anaconda/>`_ scientific Python distribution.
 
-Install the release version of YANK from the `omnia binstar channel <https://binstar.org/omnia/yank>`_:
+Install the release version of YANK from the `omnia Anaconda Cloud channel <https://anaconda.org/omnia/yank>`_ (check out our detailed `installation <installation>`_ section):
 
-.. code-block:: none
+.. code-block:: bash
 
-   $ conda install -c https://conda.binstar.org/omnia yank
+   $ conda install -c omnia yank
 
 Go to the ``examples/p-xylene-implicit`` directory to find an example of computing the binding affinity of p-xylene to T4 lysozyme L99A:
 
-.. code-block:: none
+.. code-block:: bash
 
    $ cd ~/anaconda/share/yank/examples/p-xylene-implicit
 
-Use the `yank prepare` command to set up an alchemical free energy calculation using the ``OBC2`` implicit solvent model, specifying the residue named ``BEN`` as the ligand, selecting the temperature of 300 Kelvin, and using the diretory ``output/`` to write out data:
+Run an alchemical free energy calculation (in serial mode) using the parameters specified in the ``yank.yaml`` file:
 
-.. code-block:: none
+.. code-block:: bash
 
-   $ yank prepare binding amber --setupdir=setup --ligand="resname BEN" --store=output --iterations=1000 \
-     --restraints=harmonic --gbsa=OBC2 --temperature=300*kelvin --verbose
+   $ yank script --yaml=yank.yaml
 
-Run the simulation in serial mode with:
+Alternatively, the simulation can be `run in MPI mode <running>`_ if you have multiple GPUs available.
 
-.. code-block:: none
+Analyze the simulation data:
 
-   $ yank run --store=output --verbose
+.. code-block:: bash
 
-Alternatively, run the simulation in MPI mode:
-
-.. code-block:: none
-
-   $ yank run --store=output --mpi --verbose
-
-Note that, in MPI mode, the default device id for each GPU is used.
-See the section `Running YANK <running-yank>`_ for more information on using MPI mode, including strategies for dealing with machines containing multiple GPUs.
+   $ yank analyze --store=experiments
