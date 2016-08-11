@@ -5,40 +5,59 @@ addons:
     sources:
     - ubuntu-toolchain-r-test
     packages:
-      - g++
-      - gfortran
-      - valgrind
-      - csh
-      - g++-multilib
-      - gcc-multilib
-      
+      #- g++
+      #- gfortran
+      #- valgrind
+      #- csh
+      #- g++-multilib
+      #- gcc-multilib
 branches:
   only:
     - master
 
 install:
+  #add random sleep from 1-10s to try to prevent overloading the anaconda servers
+  - sleep $[ ( $RANDOM % 10 )  + 1 ]s
   - source devtools/travis-ci/install.sh
   - export PYTHONUNBUFFERED=true
+  - export CC=gcc
+  - export CXX=g++
+  # Unpack encrypted OpenEye license file
+  - if [ "$TRAVIS_SECURE_ENV_VARS" == true ]; then openssl aes-256-cbc -K $encrypted_80e96da7968b_key -iv $encrypted_80e96da7968b_iv -in oe_license.txt.enc -out $OE_LICENSE -d; fi
+  - if [ "$TRAVIS_SECURE_ENV_VARS" == false ]; then echo "OpenEye license will not be installed in forks."; fi
 
 script:
-  # Add omnia channel
   - conda config --add channels ${ORGNAME}
-  # build the recipe
   - conda build devtools/conda-recipe
-  # Test the local installation
   - source activate _test
+  # Install test dependencies in test environment.
   - conda install --yes --quiet pip nose nose-timer
-  - cd devtools && nosetests $PACKAGENAME --nocapture --verbosity=2 --with-doctest --with-timer -a '!slow' && cd ..
+  - pip install $OPENEYE_CHANNEL OpenEye-toolkits
+  # Run tests
+  - cd devtools && nosetests $NOSETESTS --nocapture --verbosity=3 --with-doctest --with-timer -a '!slow' && cd ..
 
 env:
   matrix:
-    - python=2.7  CONDA_PY=27
-    #- python=3.4  CONDA_PY=34
-    #- python=3.5  CONDA_PY=35
+    # Allfast tests for python 2.7
+    - python=2.7 CONDA_PY=27 NOSETESTS="yank.yank yank.tests.test_yank"
+    - python=2.7 CONDA_PY=27 NOSETESTS="yank.repex yank.tests.test_mixing yank.tests.test_repex"
+    - python=2.7 CONDA_PY=27 NOSETESTS="yank.sampling"
+    - python=2.7 CONDA_PY=27 NOSETESTS="yank.cli yank.commands yank.tests.test_cli yank.tests.test_commands yank.tests.test_prepare"
+    - python=2.7 CONDA_PY=27 NOSETESTS="yank.tests.test_examples"
+    - python=2.7 CONDA_PY=27 NOSETESTS="yank.yamlbuild yank.tests.test_yaml"
+    - python=2.7 CONDA_PY=27 NOSETESTS="yank.utils yank.tests.test_utils"
+    - python=2.7 CONDA_PY=27 NOSETESTS="yank.pipeline"
+    - python=2.7 CONDA_PY=27 NOSETESTS="yank.version"
+    - python=2.7 CONDA_PY=27 NOSETESTS="yank.analyze"
+    - python=2.7 CONDA_PY=27 NOSETESTS="yank.restraints"
+    - python=2.7 CONDA_PY=27 NOSETESTS="yank.mixing"
 
   global:
     - ORGNAME="omnia"
     - PACKAGENAME="yank"
+    # Location of decrypted OpenEye license file
+    - OE_LICENSE="$HOME/oe_license.txt"
+    - OPENEYE_CHANNEL="-i https://pypi.anaconda.org/OpenEye/simple"
     # encrypted BINSTAR_TOKEN for push of dev package to binstar
     - secure: "iGrY1Jrr6ZvxtvjnTBVLFIPQBaalzkZX+DJWFZuk6j8igjDrlEVE2iGmpx5Akb7/H5/rRPI1GcnYy0e2OXSVHyxwcn2I6TXia3g6K95yxH43xOaTEfiFGfxSgP6M5OZSJjlLUmv3cpnJ66r6kYjQgTn9djY2iLsGKkFdR8pn6gQ="
     # encrypted AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
@@ -47,4 +66,4 @@ env:
 
 after_success:
   - echo "after_success"
-  - if [ "$TRAVIS_SECURE_ENV_VARS" == true ]; then ./devtools/travis-ci/after_success.sh; fi
+  - if [ "$TRAVIS_SECURE_ENV_VARS" == true ]; then source devtools/travis-ci/after_success.sh; fi
