@@ -48,6 +48,9 @@ env:
   global:
     - ORGNAME="omnia"
     - PACKAGENAME="yank"
+    # OpenEye toolkit
+    - OE_LICENSE="$HOME/oe_license.txt"
+    - OPENEYE_CHANNEL="-i https://pypi.anaconda.org/openeye/channel/main/simple"    
     # encrypted BINSTAR_TOKEN for push of dev package to binstar
     - secure: "iGrY1Jrr6ZvxtvjnTBVLFIPQBaalzkZX+DJWFZuk6j8igjDrlEVE2iGmpx5Akb7/H5/rRPI1GcnYy0e2OXSVHyxwcn2I6TXia3g6K95yxH43xOaTEfiFGfxSgP6M5OZSJjlLUmv3cpnJ66r6kYjQgTn9djY2iLsGKkFdR8pn6gQ="
     # encrypted AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
