@@ -168,7 +168,6 @@ def get_template_script(output_dir='.'):
 
     return yank_load(template_script)
 
-
 # ==============================================================================
 # YamlBuild utility functions
 # ==============================================================================
@@ -1439,7 +1438,6 @@ def test_setup_explicit_solvation_system():
             assert os.path.getsize(inpcrd_path) > 0
             assert found_resnames == expected_resnames[phase]
 
-
 def test_setup_multiple_parameters_system():
     """Set up system with molecule that needs many parameter files."""
     with omt.utils.temporary_directory() as tmp_dir:
@@ -1757,7 +1755,18 @@ def test_run_solvation_experiment():
             'system1':
                 {'solute': 'toluene', 'solvent1': 'PME', 'solvent2': 'vacuum',
                  'leap': {'parameters': ['leaprc.gaff', 'leaprc.ff14SB']}}}
-        yaml_script['experiments']['system'] = 'system1'
+
+        protocol = yaml_script['protocols']['absolute-binding']['solvent']
+        yaml_script['protocols'] = {
+            'hydration-protocol': {
+                'solvent1' : protocol,
+                'solvent2' : protocol
+            }
+        }
+        yaml_script['experiments'] = {
+            'system' : 'system1',
+            'protocol' : 'hydration-protocol'
+            }
 
         yaml_builder = YamlBuilder(yaml_script)
         yaml_builder._check_resume()  # check_resume should not raise exceptions
@@ -1766,14 +1775,29 @@ def test_run_solvation_experiment():
         # The experiments folders are correctly named and positioned
         output_dir = yaml_builder._get_experiment_dir(yaml_builder.options, '')
         assert os.path.isdir(output_dir)
-        assert os.path.isfile(os.path.join(output_dir, 'complex.nc'))
-        assert os.path.isfile(os.path.join(output_dir, 'solvent.nc'))
+        assert os.path.isfile(os.path.join(output_dir, 'solvent1.nc'))
+        assert os.path.isfile(os.path.join(output_dir, 'solvent2.nc'))
         assert os.path.isfile(os.path.join(output_dir, 'experiments.yaml'))
         assert os.path.isfile(os.path.join(output_dir, 'experiments.log'))
 
         # Analysis script is correct
         analysis_script_path = os.path.join(output_dir, 'analysis.yaml')
         with open(analysis_script_path, 'r') as f:
-            assert yaml.load(f) == [['complex', 1], ['solvent', -1]]
+            assert yaml.load(f) == [['solvent1', 1], ['solvent2', -1]]
 
+        # Check that solvated phase has a barostat.
+        from netCDF4 import Dataset
+        from simtk import openmm
+        ncfile = Dataset(os.path.join(output_dir, 'solvent1.nc'), 'r')
+        ncgrp_stateinfo = ncfile.groups['thermodynamic_states']
+        system = openmm.System()
+        system.__setstate__(str(ncgrp_stateinfo.variables['reference_system'][0]))
+        has_barostat = False
+        for force in system.getForces():
+            if force.__class__.__name__ == 'MonteCarloBarostat':
+                has_barostat = True
+        if not has_barostat:
+            raise Exception('Explicit solvent phase of hydration free energy calculation does not have a barostat.')
 
+if __name__ == '__main__':
+    test_run_solvation_experiment()
