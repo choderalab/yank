@@ -249,6 +249,9 @@ class Yank(object):
             Variable list of AlchemicalPhase objects to create.
 
         """
+        # Make a deep copy of thermodynamic state.
+        thermodynamic_state = copy.deepcopy(thermodynamic_state)
+
         logger.debug("phases: {}".format([phase.name for phase in alchemical_phases]))
         logger.debug("thermodynamic_state: {}".format(thermodynamic_state))
 
