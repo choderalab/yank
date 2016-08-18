@@ -10,8 +10,8 @@ This is just a partial list of those who have made substantial contributions.
 Maintainers
 -----------
 
-* John D. Chodera `<john.chodera@choderalab.org>` (MSKCC)
-* Andrea Rizzi `<andrea.rizzi@choderalab.org>` (WCMC)
+* John D. Chodera ``<john.chodera@choderalab.org>`` (MSKCC)
+* Andrea Rizzi ``<andrea.rizzi@choderalab.org>`` (WCMC)
 
 Contributors
 ------------
@@ -26,6 +26,7 @@ Contributors
 * Robert McGibbon (Stanford)
 * Levi Naden (University of Virginia)
 * Daniel L. Parton (MSKCC)
+* Vijay S. Pande (Stanford)
 * Randy Radmer (Stanford)
 * Arien Sebastian Rustenburg (MSKCC)
 * Michael Shirts (University of Virginia)

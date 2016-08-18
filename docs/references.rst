@@ -11,7 +11,7 @@ Here are a list of references for the various components and algorithms used in 
 YANK
 """"
 
-  Parton DL, Shirts MR, Wang K, Eastman P, Friedrichs M, Pande VS, Branson K, Mobley DL, Chodera JD. YANK: A GPU-accelerated platform for alchemical free energy calculations.
+  Rizzi A, Grinaway PB, Parton DL, Shirts MR, Wang K, Eastman P, Friedrichs M, Pande VS, Branson K, Mobley DL, Chodera JD. YANK: A GPU-accelerated platform for alchemical free energy calculations.
   In preparation.
 
 OpenMM GPU-accelerated molecular mechanics library
@@ -64,5 +64,3 @@ Long-range dispersion corrections for explicit solvent free energy calculations
 
 .. bibliography:: references.bib
    :style: unsrt
-
-
