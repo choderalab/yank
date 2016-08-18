@@ -249,6 +249,9 @@ class Yank(object):
             Variable list of AlchemicalPhase objects to create.
 
         """
+        # Make a deep copy of thermodynamic state.
+        thermodynamic_state = copy.deepcopy(thermodynamic_state)
+
         logger.debug("phases: {}".format([phase.name for phase in alchemical_phases]))
         logger.debug("thermodynamic_state: {}".format(thermodynamic_state))
 
@@ -327,6 +330,28 @@ class Yank(object):
         reference_system = copy.deepcopy(alchemical_phase.reference_system)
         atom_indices = alchemical_phase.atom_indices
         alchemical_states = alchemical_phase.protocol
+
+        # If temperature and pressure are specified, make sure MonteCarloBarostat is attached.
+        if thermodynamic_state.temperature and thermodynamic_state.pressure:
+            forces = { reference_system.getForce(index).__class__.__name__ : reference_system.getForce(index) for index in range(reference_system.getNumForces()) }
+
+            if 'MonteCarloAnisotropicBarostat' in forces:
+                raise Exception('MonteCarloAnisotropicBarostat is unsupported.')
+
+            if 'MonteCarloBarostat' in forces:
+                logger.debug('MonteCarloBarostat found: Setting default temperature and pressure.')
+                barostat = forces['MonteCarloBarostat']
+                # Set temperature and pressure.
+                try:
+                    barostat.setDefaultTemperature(thermodynamic_state.temperature)
+                except AttributeError:  # versions previous to OpenMM7.1
+                    barostat.setTemperature(thermodynamic_state.temperature)
+                barostat.setDefaultPressure(state.pressure)
+            else:
+                # Create barostat and add it to the system if it doesn't have one already.
+                logger.debug('MonteCarloBarostat not found: Creating one.')
+                barostat = openmm.MonteCarloBarostat(thermodynamic_state.pressure, thermodynamic_state.temperature)
+                reference_system.addForce(barostat)
 
         # Check the dimensions of positions.
         for index in range(len(positions)):
