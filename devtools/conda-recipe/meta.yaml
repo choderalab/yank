@@ -19,13 +19,13 @@ requirements:
     - netcdf4
     - openmm-dev
     - mdtraj >=1.7.2
-    - openmmtools-dev
+    - openmmtools
     - pymbar ==2.1beta0
     - ambermini >=15.0.4
     - docopt
-    - openmoltools-dev
+    - openmoltools
     - sphinxcontrib-bibtex
-    - alchemy-dev
+    - alchemy
     - schema >=0.5.0
     #- gcc 4.8.2 # [linux]
     #- gcc 4.8.2 # [osx]
@@ -39,16 +39,16 @@ requirements:
     - netcdf4
     - openmm-dev
     - mdtraj >=1.7.2
-    - openmmtools-dev
+    - openmmtools
     - pymbar ==2.1beta0
     - ambermini >=15.0.4
     - docopt
-    - openmoltools-dev
+    - openmoltools
     - mpi4py
     - pyyaml
     - clusterutils
     - sphinxcontrib-bibtex
-    - alchemy-dev
+    - alchemy
     - schema >=0.5.0
     #- libgcc
 
