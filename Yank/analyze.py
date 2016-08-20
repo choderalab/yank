@@ -53,7 +53,7 @@ def show_mixing_statistics(ncfile, cutoff=0.05, nequil=0):
     ncfile : netCDF4.Dataset
        NetCDF file
     cutoff : float, optional, default=0.05
-       Only transition probabilities above 'cutoff' will be printed    
+       Only transition probabilities above 'cutoff' will be printed
     nequil : int, optional, default=0
        If specified, only samples nequil:end will be used in analysis
 
@@ -639,7 +639,7 @@ def extract_trajectory(output_path, nc_path, state_index=None, replica_index=Non
             positions = nc_file.variables['positions'][:, replica_index, :, :]
 
         # Extract topology
-        serialized_topology = nc_file.groups('metadata').variables['topology'][0]
+        serialized_topology = nc_file.groups['metadata'].variables['topology'][0]
     finally:
         nc_file.close()
 
