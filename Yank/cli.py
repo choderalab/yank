@@ -25,7 +25,7 @@ YANK
 
 Usage:
   yank [-h | --help] [-c | --cite]
-  yank selftest [-v | --verbose]
+  yank selftest [-v | --verbose] [-d | --doctests]
   yank platforms
   yank prepare binding amber --setupdir=DIRECTORY --ligand=DSLSTRING (-s=STORE | --store=STORE) [-n=NSTEPS | --nsteps=NSTEPS] [-i=NITER | --iterations=NITER] [--equilibrate=NEQUIL] [--restraints <restraint_type>] [--randomize-ligand] [--nbmethod=METHOD] [--cutoff=CUTOFF] [--gbsa=GBSA] [--constraints=CONSTRAINTS] [--temperature=TEMPERATURE] [--pressure=PRESSURE] [--minimize] [-y=FILEPATH | --yaml=FILEPATH] [-v | --verbose]
   yank prepare binding gromacs --setupdir=DIRECTORY --ligand=DSLSTRING (-s=STORE | --store=STORE) [--gromacsinclude=DIRECTORY] [-n=NSTEPS | --nsteps=NSTEPS] [-i=NITER | --iterations=NITER] [--equilibrate=NEQUIL] [--restraints <restraint_type>] [--randomize-ligand] [--nbmethod=METHOD] [--cutoff=CUTOFF] [--gbsa=GBSA] [--constraints=CONSTRAINTS] [--temperature=TEMPERATURE] [--pressure=PRESSURE] [--minimize] [-y=FILEPATH | --yaml=FILEPATH] [-v | --verbose]
@@ -47,6 +47,9 @@ Commands:
   analyze                       Analyze data
   extract-trajectory            Extract trajectory from a NetCDF file in a common format.
   cleanup                       Clean up (delete) run files.
+
+Selftest options:
+  -d, --doctests                Run module doctests (will be deprecated in favor of validation tests)
 
 General options:
   -h, --help                    Print command line help

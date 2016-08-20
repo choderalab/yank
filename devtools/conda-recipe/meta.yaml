@@ -60,7 +60,7 @@ test:
     - yank
   commands:
     - yank --help
-    - yank selftest
+    - yank selftest --fast
 
 about:
   home: https://github.com/choderalab/yank
