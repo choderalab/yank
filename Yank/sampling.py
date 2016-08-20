@@ -713,8 +713,20 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         # Assign Maxwell-Boltzmann velocities.
         context.setVelocitiesToTemperature(state.temperature, int(np.random.randint(0, MAX_SEED)))
         setvelocities_end_time = time.time()
-        # Run dynamics.
-        integrator.step(self.nsteps_per_iteration)
+        # Run dynamics, retrying if NaNs are encountered.
+        nan_counter = 0
+        MAX_NAN_RETRIES = 6
+        while nan_counter < MAX_NAN_RETRIES:
+            try:
+                integrator.step(self.nsteps_per_iteration)
+            except Exception as e:
+                if str(e) == 'Particle coordinate is nan':
+                    # If it's a NaN, increment the NaN counter and try again
+                    nan_counter += 1
+                else:
+                    # It's not an exception we recognize, so re-raise it
+                    raise e
+
         integrator_end_time = time.time()
         # Store final positions
         getstate_start_time = time.time()
