@@ -21,7 +21,7 @@ import yaml
 import openmoltools as omt
 
 from nose.plugins.attrib import attr
-
+from functools import partial
 
 #=============================================================================================
 # UNIT TESTS
@@ -107,5 +107,6 @@ def test_examples():
 
     # Test examples
     for directory in directories:
-        run_example(path, directory)
-
+        f = partial(run_example, path, directory)
+        f.description = "Testing %s %s" % (path, directory)
+        yield f
