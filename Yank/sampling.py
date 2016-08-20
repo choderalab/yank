@@ -722,6 +722,15 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
                 # Run dynamics.
                 integrator.step(self.nsteps_per_iteration)
                 integrator_end_time = time.time()
+                # Get final positions
+                getstate_start_time = time.time()
+                openmm_state = context.getState(getPositions=True,enforcePeriodicBox=True)
+                getstate_end_time = time.time()
+                # Check if NaN.
+                positions = openmm_state.getPositions(asNumpy=True)
+                if np.any(np.isnan(positions / unit.angstroms)):
+                    raise Exception('Particle coordinate is nan')
+                # Signal completion
                 completed = True
             except Exception as e:
                 if str(e) == 'Particle coordinate is nan':
@@ -735,9 +744,6 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
                     raise e
 
         # Store final positions
-        getstate_start_time = time.time()
-        openmm_state = context.getState(getPositions=True,enforcePeriodicBox=True)
-        getstate_end_time = time.time()
         self.replica_positions[replica_index] = openmm_state.getPositions(asNumpy=True)
         # Store box vectors.
         self.replica_box_vectors[replica_index] = openmm_state.getPeriodicBoxVectors(asNumpy=True)
