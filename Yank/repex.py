@@ -306,6 +306,13 @@ class ThermodynamicState(object):
         # Set positions.
         context.setPositions(positions)
 
+        # Set alchemical state
+        # TODO: Deal with this better
+        if hasattr(self, 'alchemical_state'):
+            from alchemy import AbsoluteAlchemicalFactory
+            AbsoluteAlchemicalFactory.perturbContext(context, self.alchemical_state)
+            # TODO: Restore old context parameters
+
         # Retrieve potential energy.
         potential_energy = context.getState(getEnergy=True).getPotentialEnergy()
 
