@@ -168,6 +168,13 @@ class ThermodynamicState(object):
 
         return
 
+    @property
+    def kT(self):
+        """
+        Return the thermal energy (kT) of this state.
+        """
+        return (kB * self.temperature)
+
     def reduced_potential(self, positions, box_vectors=None, platform=None, context=None):
         """
         Compute the reduced potential for the given positions in this thermodynamic state.
@@ -299,6 +306,13 @@ class ThermodynamicState(object):
         # Set positions.
         context.setPositions(positions)
 
+        # Set alchemical state
+        # TODO: Deal with this better
+        if hasattr(self, 'alchemical_state'):
+            from alchemy import AbsoluteAlchemicalFactory
+            AbsoluteAlchemicalFactory.perturbContext(context, self.alchemical_state)
+            # TODO: Restore old context parameters
+
         # Retrieve potential energy.
         potential_energy = context.getState(getEnergy=True).getPotentialEnergy()
 
@@ -408,6 +422,10 @@ class ThermodynamicState(object):
         Examples
         --------
         Compute the volume of a Lennard-Jones fluid at 100 K and 1 atm.
+
+        TODO
+        ----
+        * Replace with OpenMM State.getPeriodicBoxVolume()
 
         >>> from openmmtools import testsystems
         >>> testsystem = testsystems.LennardJonesFluid()

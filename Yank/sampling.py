@@ -733,9 +733,8 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
                 context.setVelocitiesToTemperature(state.temperature, int(np.random.randint(0, MAX_SEED)))
                 setvelocities_end_time = time.time()
                 # Check if initial potential energy is NaN.
-                reduced_potential = state.reduced_potential(positions, box_vectors=box_vectors, context=context)
-                if np.isnan(reduced_potential):
-                    raise Exception('Initial potential for replica %d is NaN before dynamics' % replica_index)
+                if np.isnan(context.getState(getEnergy=True).getPotentialEnergy() / state.kT):
+                    raise Exception('Potential for replica %d is NaN before dynamics' % replica_index)
                 # Run dynamics.
                 integrator.step(self.nsteps_per_iteration)
                 integrator_end_time = time.time()
@@ -743,10 +742,15 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
                 getstate_start_time = time.time()
                 openmm_state = context.getState(getPositions=True,enforcePeriodicBox=True)
                 getstate_end_time = time.time()
-                # Check if NaN.
+                # Check if final potential energy is NaN.
+                if np.isnan(context.getState(getEnergy=True).getPotentialEnergy() / state.kT):
+                    raise Exception('Potential for replica %d is NaN after dynamics' % replica_index)
+                # Check if final positions are NaN.
                 positions = openmm_state.getPositions(asNumpy=True)
                 if np.any(np.isnan(positions / unit.angstroms)):
                     raise Exception('Particle coordinate is nan')
+                # Get box vectors
+                box_vectors = openmm_state.getPeriodicBoxVectors(asNumpy=True)
                 # Signal completion
                 completed = True
             except Exception as e:
@@ -760,10 +764,10 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
                     # It's not an exception we recognize, so re-raise it
                     raise e
 
-        # Store final positions
-        self.replica_positions[replica_index] = openmm_state.getPositions(asNumpy=True)
         # Store box vectors.
-        self.replica_box_vectors[replica_index] = openmm_state.getPeriodicBoxVectors(asNumpy=True)
+        self.replica_box_vectors[replica_index] = box_vectors
+        # Store final positions
+        self.replica_positions[replica_index] = positions
 
         # Compute timing.
         end_time = time.time()
