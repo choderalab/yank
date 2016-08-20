@@ -25,11 +25,11 @@ from yank import utils
 
 def dispatch(args):
     # TODO: Figure out how to run nosetests instead.
-
-    print "Running doctests for all modules..."
     verbose = args['--verbose']
 
-    if '--doctests' in args:
+    if args['--doctests']:
+        print "Running doctests for all modules..."
+
         # Run tests on main module.
         import yank
         (failure_count, test_count) = doctest.testmod(yank, verbose=verbose)
@@ -48,3 +48,5 @@ def dispatch(args):
         else:
             print "WARNING: There were %d doctest failures." % failure_count
             sys.exit(1)
+
+    return True
