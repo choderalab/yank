@@ -669,7 +669,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
             u_new = state.reduced_potential(perturbed_positions, context=context)
             # Accept or reject with Metropolis criteria.
             du = u_new - u_old
-            if (du <= 0.0) or (np.random.rand() < np.exp(-du)):
+            if (not np.isnan(u_new)) and ((du <= 0.0) or (np.random.rand() < np.exp(-du))):
                 self.displacement_trials_accepted += 1
                 self.replica_positions[replica_index] = perturbed_positions
             #print "translation du = %f (%d)" % (du, self.displacement_trials_accepted)
@@ -709,6 +709,10 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         completed = False
         while (not completed):
             try:
+                # Check if initial positions are NaN.
+                positions = self.replica_positions[replica_index]
+                if np.any(np.isnan(positions / unit.angstroms)):
+                    raise Exception('Initial particle positions for replica %d before propagation are NaN' % replica_index)
                 # Set box vectors.
                 box_vectors = self.replica_box_vectors[replica_index]
                 context.setPeriodicBoxVectors(box_vectors[0,:], box_vectors[1,:], box_vectors[2,:])
