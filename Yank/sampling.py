@@ -703,19 +703,32 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
 
         start_time = time.time()
 
-        # Set box vectors.
-        box_vectors = self.replica_box_vectors[replica_index]
-        context.setPeriodicBoxVectors(box_vectors[0,:], box_vectors[1,:], box_vectors[2,:])
-        # Set positions.
-        positions = self.replica_positions[replica_index]
-        context.setPositions(positions)
-        setpositions_end_time = time.time()
-        # Assign Maxwell-Boltzmann velocities.
-        context.setVelocitiesToTemperature(state.temperature, int(np.random.randint(0, MAX_SEED)))
-        setvelocities_end_time = time.time()
-        # Run dynamics.
-        integrator.step(self.nsteps_per_iteration)
-        integrator_end_time = time.time()
+        # Run dynamics, retrying if NaNs are encountered.
+        nan_counter = 0
+        MAX_NAN_RETRIES = 6
+        while nan_counter < MAX_NAN_RETRIES:
+            try:
+                # Set box vectors.
+                box_vectors = self.replica_box_vectors[replica_index]
+                context.setPeriodicBoxVectors(box_vectors[0,:], box_vectors[1,:], box_vectors[2,:])
+                # Set positions.
+                positions = self.replica_positions[replica_index]
+                context.setPositions(positions)
+                setpositions_end_time = time.time()
+                # Assign Maxwell-Boltzmann velocities.
+                context.setVelocitiesToTemperature(state.temperature, int(np.random.randint(0, MAX_SEED)))
+                setvelocities_end_time = time.time()
+                # Run dynamics.
+                integrator.step(self.nsteps_per_iteration)
+                integrator_end_time = time.time()
+            except Exception as e:
+                if str(e) == 'Particle coordinate is nan':
+                    # If it's a NaN, increment the NaN counter and try again
+                    nan_counter += 1
+                else:
+                    # It's not an exception we recognize, so re-raise it
+                    raise e
+
         # Store final positions
         getstate_start_time = time.time()
         openmm_state = context.getState(getPositions=True,enforcePeriodicBox=True)

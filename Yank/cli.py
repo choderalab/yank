@@ -25,7 +25,7 @@ YANK
 
 Usage:
   yank [-h | --help] [-c | --cite]
-  yank selftest [-v | --verbose]
+  yank selftest [-v | --verbose] [-d | --doctests]
   yank platforms
   yank prepare binding amber --setupdir=DIRECTORY --ligand=DSLSTRING (-s=STORE | --store=STORE) [-n=NSTEPS | --nsteps=NSTEPS] [-i=NITER | --iterations=NITER] [--equilibrate=NEQUIL] [--restraints <restraint_type>] [--randomize-ligand] [--nbmethod=METHOD] [--cutoff=CUTOFF] [--gbsa=GBSA] [--constraints=CONSTRAINTS] [--temperature=TEMPERATURE] [--pressure=PRESSURE] [--minimize] [-y=FILEPATH | --yaml=FILEPATH] [-v | --verbose]
   yank prepare binding gromacs --setupdir=DIRECTORY --ligand=DSLSTRING (-s=STORE | --store=STORE) [--gromacsinclude=DIRECTORY] [-n=NSTEPS | --nsteps=NSTEPS] [-i=NITER | --iterations=NITER] [--equilibrate=NEQUIL] [--restraints <restraint_type>] [--randomize-ligand] [--nbmethod=METHOD] [--cutoff=CUTOFF] [--gbsa=GBSA] [--constraints=CONSTRAINTS] [--temperature=TEMPERATURE] [--pressure=PRESSURE] [--minimize] [-y=FILEPATH | --yaml=FILEPATH] [-v | --verbose]
@@ -63,6 +63,9 @@ General options:
   --minimize                    Minimize configurations before running simulation.
   -m, --mpi                     Use MPI to parallelize the calculation
   -y, --yaml=FILEPATH           Path to the YAML script specifying options and/or how to set up and run the experiment.
+
+Selftest options:
+  -d, --doctests                Run module doctests
 
 Simulation options:
   --restraints=TYPE             Restraint type to add between protein and ligand in implicit solvent (harmonic, flat-bottom) [default: flat-bottom]
