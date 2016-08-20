@@ -594,17 +594,19 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         # Set box vectors.
         box_vectors = self.replica_box_vectors[replica_index]
         context.setPeriodicBoxVectors(box_vectors[0,:], box_vectors[1,:], box_vectors[2,:])
+
         # Set positions.
         positions = self.replica_positions[replica_index]
         context.setPositions(positions)
 
+        # Report initial energy
         logger.debug("Replica %5d/%5d: initial energy %8.3f kT", replica_index, self.nstates, state.reduced_potential(positions, box_vectors=box_vectors, context=context))
 
         # Minimize energy.
         self.mm.LocalEnergyMinimizer.minimize(context, self.minimize_tolerance, self.minimize_max_iterations)
 
         # Store final positions
-        positions = context.getState(getPositions=True,enforcePeriodicBox=True).getPositions(asNumpy=True)
+        positions = context.getState(getPositions=True, enforcePeriodicBox=state.system.usesPeriodicBoundaryConditions()).getPositions(asNumpy=True)
         self.replica_positions[replica_index] = positions
 
         logger.debug("Replica %5d/%5d: final   energy %8.3f kT", replica_index, self.nstates, state.reduced_potential(positions, box_vectors=box_vectors, context=context))
@@ -718,13 +720,13 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         completed = False
         while (not completed):
             try:
+                # Set box vectors.
+                box_vectors = self.replica_box_vectors[replica_index]
+                context.setPeriodicBoxVectors(box_vectors[0,:], box_vectors[1,:], box_vectors[2,:])
                 # Check if initial positions are NaN.
                 positions = self.replica_positions[replica_index]
                 if np.any(np.isnan(positions / unit.angstroms)):
                     raise Exception('Initial particle positions for replica %d before propagation are NaN' % replica_index)
-                # Set box vectors.
-                box_vectors = self.replica_box_vectors[replica_index]
-                context.setPeriodicBoxVectors(box_vectors[0,:], box_vectors[1,:], box_vectors[2,:])
                 # Set positions.
                 positions = self.replica_positions[replica_index]
                 context.setPositions(positions)
@@ -740,17 +742,17 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
                 integrator_end_time = time.time()
                 # Get final positions
                 getstate_start_time = time.time()
-                openmm_state = context.getState(getPositions=True,enforcePeriodicBox=True)
+                openmm_state = context.getState(getPositions=True, enforcePeriodicBox=state.system.usesPeriodicBoundaryConditions())
                 getstate_end_time = time.time()
-                # Check if final potential energy is NaN.
-                if np.isnan(context.getState(getEnergy=True).getPotentialEnergy() / state.kT):
-                    raise Exception('Potential for replica %d is NaN after dynamics' % replica_index)
                 # Check if final positions are NaN.
                 positions = openmm_state.getPositions(asNumpy=True)
                 if np.any(np.isnan(positions / unit.angstroms)):
                     raise Exception('Particle coordinate is nan')
                 # Get box vectors
                 box_vectors = openmm_state.getPeriodicBoxVectors(asNumpy=True)
+                # Check if final potential energy is NaN.
+                if np.isnan(context.getState(getEnergy=True).getPotentialEnergy() / state.kT):
+                    raise Exception('Potential for replica %d is NaN after dynamics' % replica_index)
                 # Signal completion
                 completed = True
             except Exception as e:
