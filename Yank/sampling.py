@@ -652,6 +652,15 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         # Set alchemical state.
         AbsoluteAlchemicalFactory.perturbContext(context, state.alchemical_state)
 
+        # Set box vectors.
+        box_vectors = self.replica_box_vectors[replica_index]
+        context.setPeriodicBoxVectors(box_vectors[0,:], box_vectors[1,:], box_vectors[2,:])
+
+        # Check if initial potential energy is NaN.
+        reduced_potential = state.reduced_potential(self.replica_positions[replica_index], box_vectors=box_vectors, context=context)
+        if np.isnan(reduced_potential):
+            raise Exception('Initial potential for replica %d state %d is NaN before Monte Carlo displacement/rotation' % (replica_index, state_index))
+
         #
         # Attempt a Monte Carlo rotation/translation move.
         #
@@ -663,10 +672,10 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
             initial_time = time.time()
             # Store original positions and energy.
             original_positions = self.replica_positions[replica_index]
-            u_old = state.reduced_potential(original_positions, context=context)
+            u_old = state.reduced_potential(original_positions, box_vectors=box_vectors, context=context)
             # Make symmetric Gaussian trial displacement of ligand.
             perturbed_positions = self.propose_displacement(self.displacement_sigma, original_positions, self.mc_atoms)
-            u_new = state.reduced_potential(perturbed_positions, context=context)
+            u_new = state.reduced_potential(perturbed_positions, box_vectors=box_vectors, context=context)
             # Accept or reject with Metropolis criteria.
             du = u_new - u_old
             if (not np.isnan(u_new)) and ((du <= 0.0) or (np.random.rand() < np.exp(-du))):
@@ -683,12 +692,12 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
             initial_time = time.time()
             # Store original positions and energy.
             original_positions = self.replica_positions[replica_index]
-            u_old = state.reduced_potential(original_positions, context=context)
+            u_old = state.reduced_potential(original_positions, box_vectors=box_vectors, context=context)
             # Compute new potential.
             perturbed_positions = self.propose_rotation(original_positions, self.mc_atoms)
-            u_new = state.reduced_potential(perturbed_positions, context=context)
+            u_new = state.reduced_potential(perturbed_positions, box_vectors=box_vectors, context=context)
             du = u_new - u_old
-            if (du <= 0.0) or (np.random.rand() < np.exp(-du)):
+            if (not np.isnan(u_new)) and ((du <= 0.0) or (np.random.rand() < np.exp(-du))):
                 self.rotation_trials_accepted += 1
                 self.replica_positions[replica_index] = perturbed_positions
             #print "rotation du = %f (%d)" % (du, self.rotation_trials_accepted)
@@ -723,6 +732,10 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
                 # Assign Maxwell-Boltzmann velocities.
                 context.setVelocitiesToTemperature(state.temperature, int(np.random.randint(0, MAX_SEED)))
                 setvelocities_end_time = time.time()
+                # Check if initial potential energy is NaN.
+                reduced_potential = state.reduced_potential(positions, box_vectors=box_vectors, context=context)
+                if np.isnan(reduced_potential):
+                    raise Exception('Initial potential for replica %d is NaN before dynamics' % replica_index)
                 # Run dynamics.
                 integrator.step(self.nsteps_per_iteration)
                 integrator_end_time = time.time()
