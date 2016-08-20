@@ -704,9 +704,10 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         start_time = time.time()
 
         # Run dynamics, retrying if NaNs are encountered.
-        nan_counter = 0
         MAX_NAN_RETRIES = 6
-        while nan_counter < MAX_NAN_RETRIES:
+        nan_counter = 0
+        completed = False
+        while (not completed):
             try:
                 # Set box vectors.
                 box_vectors = self.replica_box_vectors[replica_index]
@@ -721,10 +722,14 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
                 # Run dynamics.
                 integrator.step(self.nsteps_per_iteration)
                 integrator_end_time = time.time()
+                completed = True
             except Exception as e:
                 if str(e) == 'Particle coordinate is nan':
                     # If it's a NaN, increment the NaN counter and try again
                     nan_counter += 1
+                    if nan_counter >= MAX_NAN_RETRIES:
+                        raise Exception('Maximum number of NAN retries (%d) exceeded.' % MAX_NAN_RETRIES)
+                    logger.info('NaN detected in replica %d. Retrying (%d / %d).' % (replica_index, nan_counter, MAX_NAN_RETRIES))
                 else:
                     # It's not an exception we recognize, so re-raise it
                     raise e
