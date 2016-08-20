@@ -48,9 +48,6 @@ Commands:
   extract-trajectory            Extract trajectory from a NetCDF file in a common format.
   cleanup                       Clean up (delete) run files.
 
-Selftest options:
-  -d, --doctests                Run module doctests (will be deprecated in favor of validation tests)
-
 General options:
   -h, --help                    Print command line help
   -c, --cite                    Print relevant citations
@@ -66,6 +63,9 @@ General options:
   --minimize                    Minimize configurations before running simulation.
   -m, --mpi                     Use MPI to parallelize the calculation
   -y, --yaml=FILEPATH           Path to the YAML script specifying options and/or how to set up and run the experiment.
+
+Selftest options:
+  -d, --doctests                Run module doctests
 
 Simulation options:
   --restraints=TYPE             Restraint type to add between protein and ligand in implicit solvent (harmonic, flat-bottom) [default: flat-bottom]

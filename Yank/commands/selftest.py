@@ -29,7 +29,7 @@ def dispatch(args):
     print "Running doctests for all modules..."
     verbose = args['--verbose']
 
-    if args['--doctests']:
+    if '--doctests' in args:
         # Run tests on main module.
         import yank
         (failure_count, test_count) = doctest.testmod(yank, verbose=verbose)
