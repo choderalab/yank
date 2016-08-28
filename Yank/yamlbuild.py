@@ -712,6 +712,10 @@ class SetupDatabase:
 
         return molecule
 
+    def _check_mol_filename(self, fname):
+        name = os.path.basename(fname)
+        return name.isdigit()
+
     def _setup_molecules(self, *args):
         """Set up the files needed to generate the system for all the molecules.
 
@@ -736,6 +740,8 @@ class SetupDatabase:
         """
 
         for mol_id in args:
+            if self._check_mol_filename(mol_id):
+                raise Exception('tleap does not accept purely numerical filenames.')
             net_charge = None  # used by antechamber
             mol_descr = self.molecules[mol_id]
 
