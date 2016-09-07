@@ -345,10 +345,6 @@ class Yank(object):
         # Inizialize metadata storage.
         metadata = dict()
 
-        # Store a serialized copy of the reference system.
-        metadata['reference_system'] = openmm.XmlSerializer.serialize(reference_system)
-        metadata['topology'] = utils.serialize_topology(alchemical_phase.reference_topology)
-
         # TODO: Use more general approach to determine whether system is periodic.
         is_periodic = self._is_periodic(reference_system)
         is_complex_explicit = len(atom_indices['receptor']) > 0 and is_periodic
@@ -378,6 +374,10 @@ class Yank(object):
                 logger.debug('MonteCarloBarostat not found: Creating one.')
                 barostat = openmm.MonteCarloBarostat(thermodynamic_state.pressure, thermodynamic_state.temperature)
                 reference_system.addForce(barostat)
+
+        # Store a serialized copy of the reference system.
+        metadata['reference_system'] = openmm.XmlSerializer.serialize(reference_system)
+        metadata['topology'] = utils.serialize_topology(alchemical_phase.reference_topology)
 
         # Create a copy of the system for which the fully-interacting energy is to be computed.
         # For explicit solvent calculations, an enlarged cutoff is used to account for the anisotropic dispersion correction.
