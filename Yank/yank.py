@@ -297,7 +297,7 @@ class Yank(object):
 
         is_periodic = False
         forces = { system.getForce(index).__class__.__name__ : system.getForce(index) for index in range(system.getNumForces()) }
-        if forces['NonbondedForce'].getNonbondedMethod in [openmm.NonbondedForce.CutoffPeriodic, openmm.NonbondedForce.Ewald, openmm.NonbondedForce.PME]:
+        if forces['NonbondedForce'].getNonbondedMethod() in [openmm.NonbondedForce.CutoffPeriodic, openmm.NonbondedForce.Ewald, openmm.NonbondedForce.PME]:
             is_periodic = True
         return is_periodic
 
