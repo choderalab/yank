@@ -1432,8 +1432,9 @@ class ReplicaExchange(object):
                     logger.debug("minimizing replica %d / %d" % (replica_index, self.nstates))
                     self._minimize_replica(replica_index)
 
-        # Equilibrate
+        # Equilibrate: temporarily set timestep to equilibration timestep
         production_timestep = self.timestep
+        self.timestep = self.equilibration_timestep
         for iteration in range(self.number_of_equilibration_iterations):
             logger.debug("equilibration iteration %d / %d" % (iteration, self.number_of_equilibration_iterations))
             self._propagate_replicas()
