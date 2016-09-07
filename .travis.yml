@@ -24,25 +24,30 @@ install:
   - if [ "$TRAVIS_SECURE_ENV_VARS" == false ]; then echo "OpenEye license will not be installed in forks."; fi
 
 script:
-  # Add omnia channel
+  # Create a test environment
+  - conda create --yes -n test python=$python
+  # Activate the test environment
+  - source activate test
+  # Add org channel
   - conda config --add channels ${ORGNAME}
-  # build the recipe
-  - conda build devtools/conda-recipe
-  # Test the local installation
-  - source activate _test
-  # Install various tools for testing
-  - conda install --yes --quiet pip nose nose-timer
+  # Add omnia dev channels
+  - conda config --add channels https://conda.anaconda.org/omnia/label/dev
   # Install OpenEye toolkit
+  - conda install --yes --quiet pip
   - pip install $OPENEYE_CHANNEL openeye-toolkits && python -c "import openeye; print(openeye.__version__)"
-  # Check Python version
-  - python --version
-  # Run tests
-  #- cd devtools && nosetests $PACKAGENAME --nocapture --verbosity=2 --with-doctest --with-timer -a '!slow' && cd ..
+  # Build the recipe
+  - conda build devtools/conda-recipe
+  # Install the package
+  - conda install --yes --use-local ${PACKAGENAME}-dev
+  # Install testing dependencies
+  - conda install --yes --quiet nose nose-timer
+  # Test the package
   - cd devtools && nosetests $PACKAGENAME --nocapture --verbosity=2 --with-timer -a '!slow' && cd ..
 
 env:
   matrix:
     - python=2.7  CONDA_PY=27
+    # TODO: Enable python 3.x tests when we are addressing python 3 compatibility.
     #- python=3.4  CONDA_PY=34
     #- python=3.5  CONDA_PY=35
 
