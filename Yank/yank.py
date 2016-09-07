@@ -331,28 +331,6 @@ class Yank(object):
         atom_indices = alchemical_phase.atom_indices
         alchemical_states = alchemical_phase.protocol
 
-        # If temperature and pressure are specified, make sure MonteCarloBarostat is attached.
-        if thermodynamic_state.temperature and thermodynamic_state.pressure:
-            forces = { reference_system.getForce(index).__class__.__name__ : reference_system.getForce(index) for index in range(reference_system.getNumForces()) }
-
-            if 'MonteCarloAnisotropicBarostat' in forces:
-                raise Exception('MonteCarloAnisotropicBarostat is unsupported.')
-
-            if 'MonteCarloBarostat' in forces:
-                logger.debug('MonteCarloBarostat found: Setting default temperature and pressure.')
-                barostat = forces['MonteCarloBarostat']
-                # Set temperature and pressure.
-                try:
-                    barostat.setDefaultTemperature(thermodynamic_state.temperature)
-                except AttributeError:  # versions previous to OpenMM7.1
-                    barostat.setTemperature(thermodynamic_state.temperature)
-                barostat.setDefaultPressure(state.pressure)
-            else:
-                # Create barostat and add it to the system if it doesn't have one already.
-                logger.debug('MonteCarloBarostat not found: Creating one.')
-                barostat = openmm.MonteCarloBarostat(thermodynamic_state.pressure, thermodynamic_state.temperature)
-                reference_system.addForce(barostat)
-
         # Check the dimensions of positions.
         for index in range(len(positions)):
             n_atoms, _ = (positions[index] / positions[index].unit).shape
@@ -377,7 +355,29 @@ class Yank(object):
         is_complex_implicit = len(atom_indices['receptor']) > 0 and not is_periodic
 
         # Make sure pressure is None if not periodic.
-        if not is_periodic: thermodynamic_state.pressure = None
+        if not is_periodic:
+            thermodynamic_state.pressure = None
+        # If temperature and pressure are specified, make sure MonteCarloBarostat is attached.
+        elif thermodynamic_state.temperature and thermodynamic_state.pressure:
+            forces = { reference_system.getForce(index).__class__.__name__ : reference_system.getForce(index) for index in range(reference_system.getNumForces()) }
+
+            if 'MonteCarloAnisotropicBarostat' in forces:
+                raise Exception('MonteCarloAnisotropicBarostat is unsupported.')
+
+            if 'MonteCarloBarostat' in forces:
+                logger.debug('MonteCarloBarostat found: Setting default temperature and pressure.')
+                barostat = forces['MonteCarloBarostat']
+                # Set temperature and pressure.
+                try:
+                    barostat.setDefaultTemperature(thermodynamic_state.temperature)
+                except AttributeError:  # versions previous to OpenMM7.1
+                    barostat.setTemperature(thermodynamic_state.temperature)
+                barostat.setDefaultPressure(thermodynamic_state.pressure)
+            else:
+                # Create barostat and add it to the system if it doesn't have one already.
+                logger.debug('MonteCarloBarostat not found: Creating one.')
+                barostat = openmm.MonteCarloBarostat(thermodynamic_state.pressure, thermodynamic_state.temperature)
+                reference_system.addForce(barostat)
 
         # Create a copy of the system for which the fully-interacting energy is to be computed.
         # For explicit solvent calculations, an enlarged cutoff is used to account for the anisotropic dispersion correction.
