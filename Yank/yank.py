@@ -279,28 +279,6 @@ class Yank(object):
 
         return
 
-    def _is_periodic(self, system):
-        """
-        Report whether a given system is periodic or not.
-
-        Parameters
-        ----------
-        system : simtk.openmm.System
-           The system object to examine for periodic forces.
-
-        Returns
-        -------
-        is_periodic : bool
-           True is returned if a NonbondedForce object is present with getNonBondedMethod() reporting one of [CutoffPeriodic, Ewald, PME]
-
-        """
-
-        is_periodic = False
-        forces = { system.getForce(index).__class__.__name__ : system.getForce(index) for index in range(system.getNumForces()) }
-        if forces['NonbondedForce'].getNonbondedMethod() in [openmm.NonbondedForce.CutoffPeriodic, openmm.NonbondedForce.Ewald, openmm.NonbondedForce.PME]:
-            is_periodic = True
-        return is_periodic
-
     def _create_phase(self, thermodynamic_state, alchemical_phase):
         """
         Create a repex object for a specified phase.
@@ -346,7 +324,7 @@ class Yank(object):
         metadata = dict()
 
         # TODO: Use more general approach to determine whether system is periodic.
-        is_periodic = self._is_periodic(reference_system)
+        is_periodic = reference_system.usesPeriodicBoundaryConditions()
         is_complex_explicit = len(atom_indices['receptor']) > 0 and is_periodic
         is_complex_implicit = len(atom_indices['receptor']) > 0 and not is_periodic
 
