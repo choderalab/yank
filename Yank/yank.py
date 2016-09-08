@@ -365,7 +365,7 @@ class Yank(object):
             # TODO: Should we warn if cutoff can't be extended enough?
             # TODO: Should we extend to some minimum cutoff rather than the maximum allowed?
             box_vectors = fully_interacting_system.getDefaultPeriodicBoxVectors()
-            max_allowed_cutoff = 0.489 * max([max(vector) for vector in box_vectors])  # TODO: Correct this for non-rectangular boxes
+            max_allowed_cutoff = 0.499 * min([max(vector) for vector in box_vectors])  # TODO: Correct this for non-rectangular boxes
             logger.debug('Setting cutoff for fully interacting system to maximum allowed (%s)' % str(max_allowed_cutoff))
             for force_index in range(fully_interacting_system.getNumForces()):
                 force = fully_interacting_system.getForce(force_index)
