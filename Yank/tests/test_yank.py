@@ -102,9 +102,16 @@ def test_phase_creation():
         try:
             nc_file = netcdf.Dataset(nc_path, mode='r')
             metadata_group = nc_file.groups['metadata']
+            serialized_system = metadata_group.variables['reference_system'][0]
             serialized_topology = metadata_group.variables['topology'][0]
         finally:
             nc_file.close()
+
+        # Yank doesn't add a barostat to implicit systems
+        serialized_system = str(serialized_system)  # convert unicode
+        deserialized_system = openmm.XmlSerializer.deserialize(serialized_system)
+        for force in deserialized_system.getForces():
+            assert 'Barostat' not in force.__class__.__name__
 
         # Topology has been stored correctly
         deserialized_topology = utils.deserialize_topology(serialized_topology)
