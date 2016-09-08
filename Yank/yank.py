@@ -361,11 +361,20 @@ class Yank(object):
         # For explicit solvent calculations, an enlarged cutoff is used to account for the anisotropic dispersion correction.
         fully_interacting_system = copy.deepcopy(reference_system)
         if is_periodic:
-            # Expand cutoff to maximum allowed
-            # TODO: Should we warn if cutoff can't be extended enough?
-            # TODO: Should we extend to some minimum cutoff rather than the maximum allowed?
+            # Determine minimum box side dimension
             box_vectors = fully_interacting_system.getDefaultPeriodicBoxVectors()
-            max_allowed_cutoff = 0.499 * min([max(vector) for vector in box_vectors])  # TODO: Correct this for non-rectangular boxes
+            min_box_dimension = min([max(vector) for vector in box_vectors])
+
+            # Expand cutoff to minimize artifact and verify that box is big enough.
+            # If we use a barostat we leave more room for volume fluctuations or
+            # we risk fatal errors. If we don't use a barostat, OpenMM will raise
+            # the appropriate exception on context creation.
+            # TODO: Make max_allowed_cutoff an option
+            max_allowed_cutoff = 16 * unit.angstroms
+            if thermodynamic_state.pressure and min_box_dimension < 2.25 * max_allowed_cutoff:
+                raise RuntimeError('Barostated box sides must be at least 36 Angstroms '
+                                   'to correct for missing dispersion interactions')
+
             logger.debug('Setting cutoff for fully interacting system to maximum allowed (%s)' % str(max_allowed_cutoff))
             for force_index in range(fully_interacting_system.getNumForces()):
                 force = fully_interacting_system.getForce(force_index)
