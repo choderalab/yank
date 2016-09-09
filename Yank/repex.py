@@ -1432,8 +1432,9 @@ class ReplicaExchange(object):
                     logger.debug("minimizing replica %d / %d" % (replica_index, self.nstates))
                     self._minimize_replica(replica_index)
 
-        # Equilibrate
+        # Equilibrate: temporarily set timestep to equilibration timestep
         production_timestep = self.timestep
+        self.timestep = self.equilibration_timestep
         for iteration in range(self.number_of_equilibration_iterations):
             logger.debug("equilibration iteration %d / %d" % (iteration, self.number_of_equilibration_iterations))
             self._propagate_replicas()
@@ -2116,8 +2117,12 @@ class ReplicaExchange(object):
 
             # Log value (truncate if too long but save length)
             if hasattr(option_value, '__len__'):
+                try:
+                    option_value_len = len(option_value)
+                except TypeError:  # this is a zero-dimensional array
+                    option_value_len = np.atleast_1d(option_value)
                 logger.debug("Restoring option: {} -> {} (type: {}, length {})".format(
-                    option_name, str(option_value)[:500], type(option_value), len(option_value)))
+                    option_name, str(option_value)[:500], type(option_value), option_value_len))
             else:
                 logger.debug("Retoring option: {} -> {} (type: {})".format(
                     option_name, option_value, type(option_value)))

@@ -1578,6 +1578,7 @@ def test_get_alchemical_path():
     assert len(complex_path) == 7
 
 
+@attr('slow')  # Skip on Travis-CI
 def test_run_experiment_from_amber_files():
     """Test experiment run from prmtop/inpcrd files."""
     complex_path = examples_paths()['bentol-complex']
@@ -1751,21 +1752,21 @@ def test_run_solvation_experiment():
     """Test solvation free energy experiment run."""
     with omt.utils.temporary_directory() as tmp_dir:
         yaml_script = get_template_script(tmp_dir)
+        yaml_script['solvents']['PME']['clearance'] = '14*angstroms'
         yaml_script['systems'] = {
             'system1':
                 {'solute': 'toluene', 'solvent1': 'PME', 'solvent2': 'vacuum',
                  'leap': {'parameters': ['leaprc.gaff', 'leaprc.ff14SB']}}}
-
         protocol = yaml_script['protocols']['absolute-binding']['solvent']
         yaml_script['protocols'] = {
             'hydration-protocol': {
-                'solvent1' : protocol,
-                'solvent2' : protocol
+                'solvent1': protocol,
+                'solvent2': protocol
             }
         }
         yaml_script['experiments'] = {
-            'system' : 'system1',
-            'protocol' : 'hydration-protocol'
+            'system': 'system1',
+            'protocol': 'hydration-protocol'
             }
 
         yaml_builder = YamlBuilder(yaml_script)
@@ -1787,7 +1788,6 @@ def test_run_solvation_experiment():
 
         # Check that solvated phase has a barostat.
         from netCDF4 import Dataset
-        from simtk import openmm
         ncfile = Dataset(os.path.join(output_dir, 'solvent1.nc'), 'r')
         ncgrp_stateinfo = ncfile.groups['thermodynamic_states']
         system = openmm.System()

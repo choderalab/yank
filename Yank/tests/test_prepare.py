@@ -15,9 +15,7 @@ Test 'yank prepare'.
 
 import tempfile
 
-from openmmtools import testsystems
-
-from nose.plugins.skip import Skip, SkipTest
+from nose.plugins.attrib import attr
 
 from docopt import docopt
 from yank.cli import usage
@@ -38,6 +36,8 @@ def test_prepare_amber_implicit(verbose=False):
     from yank.commands import prepare
     prepare.dispatch(args)
 
+
+@attr('slow')  # Skip on Travis-CI
 def test_prepare_amber_explicit(verbose=False):
     store_directory = tempfile.mkdtemp()
     examples_path = utils.get_data_filename("../examples/benzene-toluene-explicit/setup/")  # Could only figure out how to install things like yank.egg/examples/, rather than yank.egg/yank/examples/
@@ -49,6 +49,8 @@ def test_prepare_amber_explicit(verbose=False):
     from yank.commands import prepare
     prepare.dispatch(args)
 
+
+@attr('slow')  # Skip on Travis-CI
 def test_prepare_gromacs_explicit(verbose=False):
     store_directory = tempfile.mkdtemp()
     examples_path = utils.get_data_filename("../examples/p-xylene-gromacs-example/setup/")

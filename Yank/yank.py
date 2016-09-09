@@ -279,28 +279,6 @@ class Yank(object):
 
         return
 
-    def _is_periodic(self, system):
-        """
-        Report whether a given system is periodic or not.
-
-        Parameters
-        ----------
-        system : simtk.openmm.System
-           The system object to examine for periodic forces.
-
-        Returns
-        -------
-        is_periodic : bool
-           True is returned if a NonbondedForce object is present with getNonBondedMethod() reporting one of [CutoffPeriodic, Ewald, PME]
-
-        """
-
-        is_periodic = False
-        forces = { system.getForce(index).__class__.__name__ : system.getForce(index) for index in range(system.getNumForces()) }
-        if forces['NonbondedForce'].getNonbondedMethod in [openmm.NonbondedForce.CutoffPeriodic, openmm.NonbondedForce.Ewald, openmm.NonbondedForce.PME]:
-            is_periodic = True
-        return is_periodic
-
     def _create_phase(self, thermodynamic_state, alchemical_phase):
         """
         Create a repex object for a specified phase.
@@ -331,28 +309,6 @@ class Yank(object):
         atom_indices = alchemical_phase.atom_indices
         alchemical_states = alchemical_phase.protocol
 
-        # If temperature and pressure are specified, make sure MonteCarloBarostat is attached.
-        if thermodynamic_state.temperature and thermodynamic_state.pressure:
-            forces = { reference_system.getForce(index).__class__.__name__ : reference_system.getForce(index) for index in range(reference_system.getNumForces()) }
-
-            if 'MonteCarloAnisotropicBarostat' in forces:
-                raise Exception('MonteCarloAnisotropicBarostat is unsupported.')
-
-            if 'MonteCarloBarostat' in forces:
-                logger.debug('MonteCarloBarostat found: Setting default temperature and pressure.')
-                barostat = forces['MonteCarloBarostat']
-                # Set temperature and pressure.
-                try:
-                    barostat.setDefaultTemperature(thermodynamic_state.temperature)
-                except AttributeError:  # versions previous to OpenMM7.1
-                    barostat.setTemperature(thermodynamic_state.temperature)
-                barostat.setDefaultPressure(state.pressure)
-            else:
-                # Create barostat and add it to the system if it doesn't have one already.
-                logger.debug('MonteCarloBarostat not found: Creating one.')
-                barostat = openmm.MonteCarloBarostat(thermodynamic_state.pressure, thermodynamic_state.temperature)
-                reference_system.addForce(barostat)
-
         # Check the dimensions of positions.
         for index in range(len(positions)):
             n_atoms, _ = (positions[index] / positions[index].unit).shape
@@ -367,27 +323,58 @@ class Yank(object):
         # Inizialize metadata storage.
         metadata = dict()
 
-        # Store a serialized copy of the reference system.
-        metadata['reference_system'] = openmm.XmlSerializer.serialize(reference_system)
-        metadata['topology'] = utils.serialize_topology(alchemical_phase.reference_topology)
-
         # TODO: Use more general approach to determine whether system is periodic.
-        is_periodic = self._is_periodic(reference_system)
+        is_periodic = reference_system.usesPeriodicBoundaryConditions()
         is_complex_explicit = len(atom_indices['receptor']) > 0 and is_periodic
         is_complex_implicit = len(atom_indices['receptor']) > 0 and not is_periodic
 
         # Make sure pressure is None if not periodic.
-        if not is_periodic: thermodynamic_state.pressure = None
+        if not is_periodic:
+            thermodynamic_state.pressure = None
+        # If temperature and pressure are specified, make sure MonteCarloBarostat is attached.
+        elif thermodynamic_state.temperature and thermodynamic_state.pressure:
+            forces = { reference_system.getForce(index).__class__.__name__ : reference_system.getForce(index) for index in range(reference_system.getNumForces()) }
+
+            if 'MonteCarloAnisotropicBarostat' in forces:
+                raise Exception('MonteCarloAnisotropicBarostat is unsupported.')
+
+            if 'MonteCarloBarostat' in forces:
+                logger.debug('MonteCarloBarostat found: Setting default temperature and pressure.')
+                barostat = forces['MonteCarloBarostat']
+                # Set temperature and pressure.
+                try:
+                    barostat.setDefaultTemperature(thermodynamic_state.temperature)
+                except AttributeError:  # versions previous to OpenMM7.1
+                    barostat.setTemperature(thermodynamic_state.temperature)
+                barostat.setDefaultPressure(thermodynamic_state.pressure)
+            else:
+                # Create barostat and add it to the system if it doesn't have one already.
+                logger.debug('MonteCarloBarostat not found: Creating one.')
+                barostat = openmm.MonteCarloBarostat(thermodynamic_state.pressure, thermodynamic_state.temperature)
+                reference_system.addForce(barostat)
+
+        # Store a serialized copy of the reference system.
+        metadata['reference_system'] = openmm.XmlSerializer.serialize(reference_system)
+        metadata['topology'] = utils.serialize_topology(alchemical_phase.reference_topology)
 
         # Create a copy of the system for which the fully-interacting energy is to be computed.
         # For explicit solvent calculations, an enlarged cutoff is used to account for the anisotropic dispersion correction.
         fully_interacting_system = copy.deepcopy(reference_system)
         if is_periodic:
-            # Expand cutoff to maximum allowed
-            # TODO: Should we warn if cutoff can't be extended enough?
-            # TODO: Should we extend to some minimum cutoff rather than the maximum allowed?
+            # Determine minimum box side dimension
             box_vectors = fully_interacting_system.getDefaultPeriodicBoxVectors()
-            max_allowed_cutoff = 0.499 * max([ max(vector) for vector in box_vectors ]) # TODO: Correct this for non-rectangular boxes
+            min_box_dimension = min([max(vector) for vector in box_vectors])
+
+            # Expand cutoff to minimize artifact and verify that box is big enough.
+            # If we use a barostat we leave more room for volume fluctuations or
+            # we risk fatal errors. If we don't use a barostat, OpenMM will raise
+            # the appropriate exception on context creation.
+            # TODO: Make max_allowed_cutoff an option
+            max_allowed_cutoff = 16 * unit.angstroms
+            if thermodynamic_state.pressure and min_box_dimension < 2.25 * max_allowed_cutoff:
+                raise RuntimeError('Barostated box sides must be at least 36 Angstroms '
+                                   'to correct for missing dispersion interactions')
+
             logger.debug('Setting cutoff for fully interacting system to maximum allowed (%s)' % str(max_allowed_cutoff))
             for force_index in range(fully_interacting_system.getNumForces()):
                 force = fully_interacting_system.getForce(force_index)
