@@ -110,10 +110,9 @@ def show_mixing_statistics(ncfile, cutoff=0.05, nequil=0):
 
     return
 
-
-def estimate_free_energies(ncfile, ndiscard=0, nuse=None, g=None):
+def extract_ncfile_energies(ncfile, ndiscard=0, nuse=None, g=None):
     """
-    Estimate free energies of all alchemical states.
+    Extract and decorelate energies from the ncfile to gather common data for other functions
 
     Parameters
     ----------
@@ -131,7 +130,6 @@ def estimate_free_energies(ncfile, ndiscard=0, nuse=None, g=None):
     * Automatically determine 'ndiscard'.
 
     """
-
     # Get current dimensions.
     niterations = ncfile.variables['energies'].shape[0]
     nstates = ncfile.variables['energies'].shape[1]
@@ -188,13 +186,53 @@ def estimate_free_energies(ncfile, ndiscard=0, nuse=None, g=None):
     logger.info(N_k)
     logger.info("")
 
-    #===================================================================================================
-    # Estimate free energy difference with MBAR.
-    #===================================================================================================
+    return(u_kln, N_k, u_n)
+
+def initialize_MBAR(ncfile, u_kln=None, N_k=None):
+    """
+    Initialize MBAR for Free Energy and Enthalpy estimates, this may take a while.
+
+    ncfile : NetCDF
+       Input YANK netcdf file
+    u_kln : array of numpy.float64, optional, default=None
+       Reduced potential energies of the replicas; if None, will be extracted from the ncfile
+    N_k : array of ints, optional, default=None
+       Number of samples drawn from each kth replica; if None, will be extracted from the ncfile
+
+    TODO
+    ----
+    * Ensure that the u_kln and N_k are decorrelated if not provided in this function
+
+    """
+
+    if u_kln is None or N_k is None:
+        (u_kln, N_k, u_n) = extract_ncfile_energies(ncfile)
 
     # Initialize MBAR (computing free energy estimates, which may take a while)
     logger.info("Computing free energy differences...")
     mbar = MBAR(u_kln, N_k)
+    
+    return mbar
+    
+
+def estimate_free_energies(ncfile, mbar=None):
+    """
+    Estimate free energies of all alchemical states.
+
+    Parameters
+    ----------
+    ncfile : NetCDF
+       Input YANK netcdf file
+    mbar : pymbar MBAR object, optional, default=None
+       Initilized MBAR object from simulations; if None, it will be generated from the ncfile
+    
+    """
+
+    # Create MBAR object if not provided
+    if mbar is None:
+        mbar = initialize_MBAR(ncfile)
+
+    nstates = mbar.N_k.size
 
     # Get matrix of dimensionless free energy differences and uncertainty estimate.
     logger.info("Computing covariance matrix...")
@@ -226,7 +264,7 @@ def estimate_free_energies(ncfile, ndiscard=0, nuse=None, g=None):
     # Return free energy differences and an estimate of the covariance.
     return (Deltaf_ij, dDeltaf_ij)
 
-def estimate_enthalpies(ncfile, ndiscard=0, nuse=None, g=None):
+def estimate_enthalpies(ncfile, mbar=None):
     """
     Estimate enthalpies of all alchemical states.
 
@@ -234,82 +272,22 @@ def estimate_enthalpies(ncfile, ndiscard=0, nuse=None, g=None):
     ----------
     ncfile : NetCDF
        Input YANK netcdf file
-    ndiscard : int, optional, default=0
-       Number of iterations to discard to equilibration
-    nuse : int, optional, default=None
-       Number of iterations to use (after discarding)
-    g : int, optional, default=None
-       Statistical inefficiency to use if desired; if None, will be computed.
+    mbar : pymbar MBAR object, optional, default=None
+       Initilized MBAR object from simulations; if None, it will be generated from the ncfile
 
     TODO
     ----
-    * Automatically determine 'ndiscard'.
-    * Combine some functions with estimate_free_energies.
-
+    * Check if there is an output/function name difference between pymbar 2 and 3
     """
 
-    # Get current dimensions.
-    niterations = ncfile.variables['energies'].shape[0]
-    nstates = ncfile.variables['energies'].shape[1]
-    natoms = ncfile.variables['energies'].shape[2]
+    # Create MBAR object if not provided
+    if mbar is None:
+        mbar = initialize_MBAR(ncfile)
 
-    # Extract energies.
-    logger.info("Reading energies...")
-    energies = ncfile.variables['energies']
-    u_kln_replica = np.zeros([nstates, nstates, niterations], np.float64)
-    for n in range(niterations):
-        u_kln_replica[:,:,n] = energies[n,:,:]
-    logger.info("Done.")
+    nstates = mbar.N_k.size
 
-    # Deconvolute replicas
-    logger.info("Deconvoluting replicas...")
-    u_kln = np.zeros([nstates, nstates, niterations], np.float64)
-    for iteration in range(niterations):
-        state_indices = ncfile.variables['states'][iteration,:]
-        u_kln[state_indices,:,iteration] = energies[iteration,:,:]
-    logger.info("Done.")
-
-    # Compute total negative log probability over all iterations.
-    u_n = np.zeros([niterations], np.float64)
-    for iteration in range(niterations):
-        u_n[iteration] = np.sum(np.diagonal(u_kln[:,:,iteration]))
-    #print u_n
-
-    # DEBUG
-    outfile = open('u_n.out', 'w')
-    for iteration in range(niterations):
-        outfile.write("%8d %24.3f\n" % (iteration, u_n[iteration]))
-    outfile.close()
-
-    # Discard initial data to equilibration.
-    u_kln_replica = u_kln_replica[:,:,ndiscard:]
-    u_kln = u_kln[:,:,ndiscard:]
-    u_n = u_n[ndiscard:]
-
-    # Truncate to number of specified conformations to use
-    if (nuse):
-        u_kln_replica = u_kln_replica[:,:,0:nuse]
-        u_kln = u_kln[:,:,0:nuse]
-        u_n = u_n[0:nuse]
-
-    # Subsample data to obtain uncorrelated samples
-    N_k = np.zeros(nstates, np.int32)
-    indices = timeseries.subsampleCorrelatedData(u_n, g=g) # indices of uncorrelated samples
-    #print u_n # DEBUG
-    #indices = range(0,u_n.size) # DEBUG - assume samples are uncorrelated
-    N = len(indices) # number of uncorrelated samples
-    N_k[:] = N
-    u_kln[:,:,0:N] = u_kln[:,:,indices]
-    logger.info("number of uncorrelated samples:")
-    logger.info(N_k)
-    logger.info("")
-
-    # Compute average enthalpies.
-    H_k = np.zeros([nstates], np.float64) # H_i[i] is estimated enthalpy of state i
-    dH_k = np.zeros([nstates], np.float64)
-    for k in range(nstates):
-        H_k[k] = u_kln[k,k,:].mean()
-        dH_k[k] = u_kln[k,k,:].std() / np.sqrt(N)
+    # Compute average enthalpies
+    (f_k, df_k, H_k, dH_k, S_k, dS_k) = mbar.computeEntropyAndEnthalpy()
 
     return (H_k, dH_k)
 
@@ -486,11 +464,17 @@ def analyze(source_directory):
             # Examine acceptance probabilities.
             show_mixing_statistics(ncfile, cutoff=0.05, nequil=nequil)
 
+            # Extract equilibrated, decorrelated energies
+            (u_kln, N_k, u_n) = extract_ncfile_energies(ncfile, ndiscard = nequil, g=g_t)
+
+            # Create MBAR object to use for free energy and entropy states
+            mbar = initialize_MBAR(ncfile, u_kln=u_kln, N_k=N_k)
+
             # Estimate free energies.
-            (Deltaf_ij, dDeltaf_ij) = estimate_free_energies(ncfile, ndiscard = nequil, g=g_t)
+            (Deltaf_ij, dDeltaf_ij) = estimate_free_energies(ncfile, mbar = mbar)
 
             # Estimate average enthalpies
-            (DeltaH_i, dDeltaH_i) = estimate_enthalpies(ncfile, ndiscard = nequil, g=g_t)
+            (DeltaH_i, dDeltaH_i) = estimate_enthalpies(ncfile, mbar = mbar)
 
             # Accumulate free energy differences
             entry = dict()
