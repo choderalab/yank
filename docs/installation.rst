@@ -153,6 +153,11 @@ To install these tools into your conda environment, use `pip`:
 
 Note that you will need to configure your ``$OE_LICENSE`` environment variable to point to a valid license file.
 
+You can test your OpenEye installation with
+
+.. code-block:: bash
+   $ python -m openeye.examples.openeye_tests
+
 |
 
 Supported platforms and environments
