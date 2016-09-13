@@ -18,6 +18,24 @@ from yank.yamlbuild import YamlBuilder
 
 
 #=============================================================================================
+# COMMAND-LINE INTERFACE
+#=============================================================================================
+
+usage = """
+YANK script
+
+Usage:
+  yank script (-y=FILEPATH | --yaml=FILEPATH)
+
+Description:
+  Set up and run free energy calculations from a YAML scrpit. All options can be specified in the YAML script. 
+
+Required Arguments:
+  -y, --yaml=FILEPATH           Path to the YAML script specifying options and/or how to set up and run the experiment.
+
+"""
+
+#=============================================================================================
 # COMMAND DISPATCH
 #=============================================================================================
 

@@ -18,6 +18,27 @@ import glob
 import sys
 
 #=============================================================================================
+# COMMAND-LINE INTERFACE
+#=============================================================================================
+
+usage = """
+YANK cleanup
+
+Usage:
+  yank cleanup (-s=STORE | --store=STORE) [-v | --verbose]
+
+Description:
+  Clean up (delete) the run files.
+
+Required Arguments:
+  -s=STORE, --store=STORE       Storage directory for NetCDF data files.
+
+General Options:
+  -v, --verbose                 Print verbose output
+
+"""
+
+#=============================================================================================
 # COMMAND DISPATCH
 #=============================================================================================
 

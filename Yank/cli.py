@@ -20,6 +20,32 @@ import docopt
 # COMMAND-LINE INTERFACE
 #=============================================================================================
 
+fastusage = """
+YANK
+
+Usage:
+  yank [-h | --help] [-c | --cite] COMMAND [<ARGS>]...
+
+Commands:
+  help                          Get specific help for the command given in ARGS
+  selftest                      Run selftests
+  platforms                     List available OpenMM platforms.
+  prepare binding amber         Set up binding free energy calculation using AMBER input files
+  prepare binding gromacs       Set up binding free energy calculation using gromacs input files
+  run                           Run the calculation that has been set up
+  script                        Set up and run free energy calculations from a YAML script.
+  status                        Get the current status
+  analyze                       Analyze data OR extract trajectory from a NetCDF file in a common format.
+  cleanup                       Clean up (delete) run files.
+
+Options:
+  -h --help                     Display this message and quit
+  -c, --cite                    Print relevant citations
+
+See 'yank help COMMAND' for more information on a specific command.
+
+"""
+
 usage = """
 YANK
 
@@ -102,24 +128,26 @@ def main(argv=None):
     # Parse command-line arguments.
     from docopt import docopt
     import version
-    args = docopt(usage, version=version.version, argv=argv)
+    args = docopt(fastusage, version=version.version, argv=argv, options_first=True)
 
     dispatched = False # Flag set to True if we have correctly dispatched a command.
     from . import commands # TODO: This would be clearer if we could do 'from yank import commands', but can't figure out how
-
+    import inspect
+    command_list = [module[0] for module in inspect.getmembers(commands, inspect.ismodule)] # Build the list of commands based on the <command>.py modules in the ./commands folder
+        
     # Handle simple arguments.
-    if args['--help']:
-        print usage
-        dispatched = True
     if args['--cite']:
         dispatched = commands.cite.dispatch(args)
 
     # Handle commands.
-    command_list = ['selftest', 'platforms', 'prepare', 'run', 'script', 'status', 'analyze', 'cleanup'] # TODO: Build this list automagically by introspection of commands submodule.
-    for command in command_list:
-        if args[command]:
-            dispatched = getattr(commands, command).dispatch(args)
-
+    if args['COMMAND'] in command_list:
+        # Check that command is valid:
+        command = args['COMMAND']
+        command_usage = getattr(commands, command).usage
+        command_args  = docopt(command_usage, version=version.version, argv=argv) # This will terminate if command is invalid
+        # Execute Command
+        dispatched = getattr(commands, command).dispatch(command_args)
+        
     # If unsuccessful, print usage and exit with an error.
     if not dispatched:
         print usage

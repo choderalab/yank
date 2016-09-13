@@ -31,6 +31,51 @@ from yank.yamlbuild import YamlBuilder
 from yank.pipeline import find_components
 
 #=============================================================================================
+# COMMAND-LINE INTERFACE
+#=============================================================================================
+
+usage = """
+YANK prepare
+
+Usage:
+  yank prepare binding amber --setupdir=DIRECTORY --ligand=DSLSTRING (-s=STORE | --store=STORE) [-n=NSTEPS | --nsteps=NSTEPS] [-i=NITER | --iterations=NITER] [--equilibrate=NEQUIL] [--restraints <restraint_type>] [--randomize-ligand] [--nbmethod=METHOD] [--cutoff=CUTOFF] [--gbsa=GBSA] [--constraints=CONSTRAINTS] [--temperature=TEMPERATURE] [--pressure=PRESSURE] [--minimize] [-y=FILEPATH | --yaml=FILEPATH] [-v | --verbose]
+  yank prepare binding gromacs --setupdir=DIRECTORY --ligand=DSLSTRING (-s=STORE | --store=STORE) [--gromacsinclude=DIRECTORY] [-n=NSTEPS | --nsteps=NSTEPS] [-i=NITER | --iterations=NITER] [--equilibrate=NEQUIL] [--restraints <restraint_type>] [--randomize-ligand] [--nbmethod=METHOD] [--cutoff=CUTOFF] [--gbsa=GBSA] [--constraints=CONSTRAINTS] [--temperature=TEMPERATURE] [--pressure=PRESSURE] [--minimize] [-y=FILEPATH | --yaml=FILEPATH] [-v | --verbose]
+
+Description:
+  prepare binding amber         Set up binding free energy calculation using AMBER input files
+  prepare binding gromacs       Set up binding free energy calculation using gromacs input files
+
+Amber Required Arguments:
+  --setupdir=DIRECTORY          Setup directory to look for AMBER {receptor|ligand|complex}.{prmtop|inpcrd} files.
+  --ligand=DSLSTRING            Specification of the ligand atoms according to MDTraj DSL syntax [default: resname MOL]
+
+Gromacs Required Arguments:
+  --gromacsinclude=DIRECTORY    Include directory for gromacs files [default: /usr/local/gromacs/share/gromacs/top]
+
+General Options:
+  --equilibrate=NEQUIL          Number of equilibration iterations
+  -i=NITER, --iterations=NITER  Number of iterations to run
+  --minimize                    Minimize configurations before running simulation.
+  -n=NSTEPS, --nsteps=NSTEPS    Number of steps per iteration
+  --randomize-ligand            Randomize initial ligand positions if specified
+  -s=STORE, --store=STORE       Storage directory for NetCDF data files.
+  -v, --verbose                 Print verbose output
+  -y, --yaml=FILEPATH           Path to the YAML script specifying options and/or how to set up and run the experiment.
+
+Simulation options:
+  --constraints=CONSTRAINTS     OpenMM constraints (None, HBonds, AllBonds, HAngles) [default: HBonds]
+  --cutoff=CUTOFF               OpenMM nonbonded cutoff (in units of distance) [default: 1*nanometer]
+  --gbsa=GBSA                   OpenMM GBSA model (HCT, OBC1, OBC2, GBn, GBn2)
+  --nbmethod=METHOD             OpenMM nonbonded method (NoCutoff, CutoffPeriodic, PME, Ewald)
+  --pressure=PRESSURE           Pressure for simulation (in atm, or simtk.unit readable string) [default: 1*atmospheres]
+  --restraints=TYPE             Restraint type to add between protein and ligand in implicit solvent (harmonic, flat-bottom) [default: flat-bottom]
+  --temperature=TEMPERATURE     Temperature for simulation (in K, or simtk.unit readable string) [default: 298*kelvin]
+
+
+
+"""
+
+#=============================================================================================
 # SUBROUTINES
 #=============================================================================================
 
