@@ -36,7 +36,11 @@ Required Arguments:
 #=============================================================================================
 
 def dispatch(args):
-    command = args['COMMAND']
+    try:
+        command = args['COMMAND']
+    except:
+        #Case when no args are passed (like in the nosetests)
+        command = None
     # Handle the null case or itself
     if command is None or command == 'help':
         from yank import cli
