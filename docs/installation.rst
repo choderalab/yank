@@ -89,6 +89,47 @@ This will not only check that installation paths are correct, but also run a bat
 
 |
 
+.. _yank-platforms:
+
+Testing Available Platforms
+---------------------------
+
+You will want to make sure that all GPU accelerated platforms available on your hardware are accessible to YANK. The simulation library that YANK runs on, OpenMM, can run on CPU, CUDA, and OpenCL platforms. The following command will check which platforms are available:
+
+.. code-block:: bash
+
+   $ yank platforms
+
+You should see an output that looks like the following:
+
+.. code-block:: bash
+
+   Available OpenMM platforms:
+    0 Reference
+    1 CPU
+    2 CUDA
+    3 OpenCL
+
+If your output is missing on option you expect, such as CUDA on Nvidia GPUs, then please check that you have correct drivers for your GPU installed. Non-standard CUDA installations require setting specific environment variables; please see the :ref:`appropriate section <non-standard-cuda>` for setting these variables.
+
+|
+
+.. _non-standard-cuda:
+
+Configuring Non-Standard CUDA Install Locations
+-----------------------------------------------
+
+Multiple versions of CUDA can be installed on a single machine, such as on shared clusters. If this is the case, it may be necessary to set environment variables to make sure that the right version of CUDA is being used for YANK. You will need to know the full ``<path_to_cuda_install>`` and the location of that installation's ``nvcc`` program is (by default it is at ``<path_to_cuda_install>/bin/nvcc``). Then run the following lines to set the correct variables:
+
+.. code-block:: bash
+
+   export OPENMM_CUDA_COMPILER=<path_to_cuda_install>/bin/nvcc
+   export LD_LIBRARY_PATH=<path_to_cuda_install>/lib64:$LD_LIBRARY_PATH
+
+You may want to add the new ``$OPENMM_CUDA_COMPILER`` variable and ``$LD_LIBRARY_PATH`` extension to you ``~/.bashrc`` file to avoid setting this every time. If ``nvcc`` is installed in a different folder than the example, please use the correct path for your system.
+
+|
+
 Optional Tools
 --------------
 
@@ -111,6 +152,11 @@ To install these tools into your conda environment, use `pip`:
    $ pip install -i https://pypi.anaconda.org/OpenEye/simple OpenEye-toolkits
 
 Note that you will need to configure your ``$OE_LICENSE`` environment variable to point to a valid license file.
+
+You can test your OpenEye installation with
+
+.. code-block:: bash
+   $ python -m openeye.examples.openeye_tests
 
 |
 
@@ -232,7 +278,7 @@ Test your YANK installation to make sure everything is behaving properly on your
 
    $ yank selftest
 
-This will not only check that installation paths are correct, but also run a battery of tests that ensure any automatically detected GPU hardware is behaving as expected.
+This will not only check that installation paths are correct, but also run a battery of tests that ensure any automatically detected GPU hardware is behaving as expected. Please also check that YANK has access to the :ref:`expected platforms <yank-platforms>` and the :ref:`correct CUDA version <non-standard-cuda>` if CUDA is installed in a non-standard location.
 
 Running on the cloud
 --------------------

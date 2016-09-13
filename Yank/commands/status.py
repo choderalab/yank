@@ -16,6 +16,27 @@ Query output files for quick status.
 from yank import utils
 
 #=============================================================================================
+# COMMAND-LINE INTERFACE
+#=============================================================================================
+
+usage = """
+YANK status
+
+Usage:
+  yank status (-s=STORE | --store=STORE) [-v | --verbose]
+
+Description:
+  Get the current status of a running or completed simulation
+
+Required Arguments:
+  -s=STORE, --store=STORE       Storage directory for NetCDF data files.
+
+General Options:
+  -v, --verbose                 Print verbose output
+
+"""
+
+#=============================================================================================
 # COMMAND DISPATCH
 #=============================================================================================
 

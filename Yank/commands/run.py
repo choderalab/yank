@@ -24,6 +24,32 @@ from simtk.openmm import app
 from yank import utils
 
 #=============================================================================================
+# COMMAND-LINE INTERFACE
+#=============================================================================================
+
+usage = """
+YANK run
+
+Usage:
+  yank run (-s=STORE | --store=STORE) [-m | --mpi] [-i=NITER | --iterations=NITER] [--platform=PLATFORM] [--precision=PRECISION] [--phase=PHASE] [-o | --online-analysis] [-v | --verbose]
+
+Description:
+  Run the calculation that has be set up previously by 'yank prepare' (see 'yank help prepare')
+
+Required Arguments:
+  -s=STORE, --store=STORE       Storage directory for NetCDF data files.
+
+General Options:
+  -i=NITER, --iterations=NITER  Number of iterations to run
+  -m, --mpi                     Use MPI to parallelize the calculation
+  -o, --online-analysis         Enable on-the-fly analysis
+  --platform=PLATFORM           OpenMM Platform to use (Reference, CPU, OpenCL, CUDA)
+  --precision=PRECISION         OpenMM Platform precision model to use (for CUDA or OpenCL only, one of {mixed, double, single})
+  -v, --verbose                 Print verbose output
+
+"""
+
+#=============================================================================================
 # COMMAND DISPATCH
 #=============================================================================================
 

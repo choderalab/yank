@@ -18,7 +18,7 @@ import tempfile
 from nose.plugins.attrib import attr
 
 from docopt import docopt
-from yank.cli import usage
+from yank.commands.prepare import usage
 from yank import version, utils
 
 #=============================================================================================
