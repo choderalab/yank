@@ -156,6 +156,7 @@ Note that you will need to configure your ``$OE_LICENSE`` environment variable t
 You can test your OpenEye installation with
 
 .. code-block:: bash
+
    $ python -m openeye.examples.openeye_tests
 
 |
