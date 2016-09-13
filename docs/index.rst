@@ -43,6 +43,7 @@ Documentation
    quickstart
    installation
    running
+   yaml
    theory
    algorithms
    analysis
