@@ -9,3 +9,12 @@ YANK now supports setting up entire simulations with easy to read and write `YAM
 
 .. literalinclude:: ../examples/yank-yaml-cookbook/all-options.yaml
    :language: yaml
+
+|
+
+Combinatorial Options in YAML
+-----------------------------
+YANK's YAML inputs also support running experiments combinatorially, instead of individually running them one at a time. YANK will automatically set up each combination of options you specify with the special ``!Combinatorial [itemA, itemB, ...]`` structure and run them back to back for you. Below is the cookbook for the combinatorial-experiments:
+
+.. literalinclude:: ../examples/yank-yaml-cookbook/combinatorial-experiment.yaml
+   :language: yaml

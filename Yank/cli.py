@@ -51,13 +51,15 @@ def main(argv=None):
     # Parse command-line arguments.
     from docopt import docopt
     import version
-    args = docopt(usage, version=version.version, argv=argv)
+    # Parse the initial options, the options_first flag must be True to for <ARGS> to act as a wildcard for options (- and --) as well
+    args = docopt(usage, version=version.version, argv=argv, options_first=True)
 
     dispatched = False # Flag set to True if we have correctly dispatched a command.
     from . import commands # TODO: This would be clearer if we could do 'from yank import commands', but can't figure out how
     import inspect
-    command_list = [module[0] for module in inspect.getmembers(commands, inspect.ismodule)] # Build the list of commands based on the <command>.py modules in the ./commands folder
-        
+    # Build the list of commands based on the <command>.py modules in the ./commands folder
+    command_list = [module[0] for module in inspect.getmembers(commands, inspect.ismodule)]         
+
     # Handle simple arguments.
     if args['--cite']:
         dispatched = commands.cite.dispatch(args)
