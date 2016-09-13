@@ -171,6 +171,13 @@ systems:                                                 # If you don't need com
       parameters: [oldff/leaprc.ff99SBildn, leaprc.gaff] # All our calculations will use the parameters in AMBER
                                                          # ff99SBildn force field and GAFF.
 
+  imatinib-hydration:                                    # System for hydration free energy of imatinib
+    solute: imatinib
+    solvent1: RF
+    solvent2: vacuum
+    leap:
+      parameters: [leaprc.ff14SB, leaprc.gaff]           # General parameters files for water and imatinib
+
   # It is also possible to skip the automatic system setup
   # and provide your own system in AMBER or Gromacs format
   amber-system:
@@ -222,11 +229,11 @@ experiments:
 
 # It is also possible to specify a sequence of experiments with the syntax
 # my-experiment1:
-#   system: my-system1
+#   system: kinase-inhibitor
 #   protocol: absolute-binding
 #
 # my-experiment2:
-#   system: my-system2
-#   protocol: hydration
+#   system: imatinib-hydration
+#   protocol: hydration-protocol
 #
 # experiments: [my-experiment1, my-experiment2]
