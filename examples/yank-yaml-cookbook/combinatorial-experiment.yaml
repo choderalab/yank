@@ -25,22 +25,26 @@ options:
 # ------------------------------------------------------------------
 molecules:
   abl:                                              # Each molecule is identified by an ID, "abl" in this case.
+                                                    #
     filepath: !Combinatorial [2HYY.pdb, 3CS9.pdb]   # Lists preceded by "!Combinatorial" here will be expanded
                                                     # combinatorially, so the section "abl" actually specifies
                                                     # two different starting configurations of the kinase Abl.
+                                                    #
     strip_protons: yes                              # Let tleap re-add all hydrogen atoms. This is useful if
                                                     # the PDB contains atom names for hydrogen that AMBER does
                                                     # not recognize. The default for this parameter is "no".
   src:
     filepath: !Combinatorial [2OIQ_A.pdb, 3EL7_A.pdb]
     strip_protons: yes
+
   imatinib:
     filepath: clinical-kinase-inhibitors.csv        # Yank supports pdb, mol2, sdf and csv files. The last one
-                                                    # must contain one row for each molecule. The last column
-                                                    # must be the SMILES description of the molecule. Yank can use
-                                                    # the OpenEye toolkit to generate a molecule from its name
-                                                    # or its SMILES description. Instead of using "filepath",
-                                                    # you can directly use "smiles" or "name". For example, to
+                                                    # must contain one row for each molecule. The second column
+                                                    # must be the SMILES description of the molecule (the first
+                                                    # column if the csv file has only one). Yank can use the
+                                                    # OpenEye toolkits to generate a molecule from its name or
+                                                    # its SMILES description. Instead of using "filepath", you
+                                                    # can directly use "smiles" or "name". For example, to
                                                     # specify a benzene molecule you can use either:
                                                     #
                                                     # molecules:
@@ -48,7 +52,7 @@ molecules:
                                                     #     smiles: c1ccccc1
                                                     #     parameters: antechamber
                                                     #   benzene_name:
-                                                    #     smiles: benzene
+                                                    #     name: benzene
                                                     #     parameters: antechamber
                                                     #
     select: 0                                       # Select the first row of the csv file which contains the
@@ -67,31 +71,82 @@ molecules:
                                                     # You can alternatively specify "select: all" which includes
                                                     # all the molecules in the given file. This is also the
                                                     # default value.
+                                                    #
     antechamber:                                    # Let antechamber parametrize the molecule using GAFF and
-      charge_method: bcc                            # AM1-BCC charges.
-    epik: 0                                         # Run Schrodinger's tool Epik and select the most likely
-                                                    # protonation state for the molecule (in solution)
+      charge_method: bcc                            # AM1-BCC charges. See antechamber manual for supported
+                                                    # charge methods. If OpenEye Toolkits are installed, it is
+                                                    # possible to determine the charge with the OpenEye
+                                                    # recommended scheme with
+                                                    #
+                                                    # molecules:
+                                                    #   imatinib:
+                                                    #     filepath: imatinib.mol2
+                                                    #     openeye:
+                                                    #       quacpac: am1-bcc
+                                                    #     antechamber:
+                                                    #       charge_method: null
+                                                    #
+                                                    # Notice that charge_method is set to null to keep the
+                                                    # partial charges determined by openeye.
+                                                    #
+    epik: 0                                         # Run Schrodinger's tool Epik with default parameters and
+                                                    # select the most likely protonation state for the molecule
+                                                    # (in solution). More control over epik parameters is possible
+                                                    #
+                                                    # molecules:
+                                                    #   imatinib:
+                                                    #     filepath: imatinib.mol2
+                                                    #     antechamber:
+                                                    #       charge_method: bcc
+                                                    #     epik:
+                                                    #       select: 0
+                                                    #       ph: 7.6
+                                                    #       ph_tolerance: 0.7
+                                                    #       tautomerize: no
   bosutinib:
-    filepath: clinical-kinase-inhibitors.csv
-    antechamber:
-      charge_method: bcc
-    epik: 0
-    select: 3
+    filepath: molecule_dir/bosutinib.mol2
+    leap:                                           # It is possible to optionally include molecule-specific
+      parameters: [bosutinib.frcmod, bosutinib.off] # parameters files to import in tleap before creating the
+                                                    # system. General parameter files (i.e. leaprc.ff14SB,
+                                                    # leaprc.gaff, etc.) are generally specified in the system
+                                                    # (see below). To import a single parameter file (i.e. not a
+                                                    # list), square brackets are not required.
 
 
-# Here we specify the parameters of our solvent.
+# Here we specify the parameters of our solvent. The list of
+# configuration here is not 100% complete. In general, all parameters
+# of simtk.openmm.app.amberprmtopfile.AmberPrmtopFile.createSystem()
+# can be specified in this section.
 # -----------------------------------------------------------------
 solvents:
-  RF:
+  RF:                                               # Arbitrary ID for this solvent ("RF" in this case).
     nonbonded_method: CutoffPeriodic                # This specifies an explicit solvent using reaction field.
-    nonbonded_cutoff: 1*nanometer                   # Cutoff for interaction is set at 1nm.
+    nonbonded_cutoff: 1*nanometer                   # Cutoff for interactions is set at 1nm.
     clearance: 10*angstroms                         # The edge of the solvation box will be at a 10 angstroms
                                                     # distance from any atom of the receptor and ligand.
     positive_ion: Na+                               # Neutralizing ions to use.
     negative_ion: Cl-
+  vacuum:
+    nonbonded_method: NoCutoff
+
+  # We will not use the next two solvents in the experiment
+  # but here are two examples of how to define an implicit
+  # and a PME solvents with some advanced options supported
+  # by OpenMM.
   GBSA:
     nonbonded_method: NoCutoff                      # Implicit solvent using GBSA/OBC2 model.
     implicit_solvent: OBC2
+    implicit_solvent_salt_concentration: 1.0*mole/liter
+    solute_dielectric: 1.5
+    solvent_dielectric: 80.0
+  PME:
+    nonbonded_method: PME
+    nonbonded_cutoff: 1*nanometer
+    switch_distance: 0.9*nanometer
+    ewald_error_tolerance: 0.0003
+    clearance: 10*angstroms
+    positive_ion: Na+
+    negative_ion: Cl-
 
 
 # Here we describe the system for the calculation in terms of
@@ -105,7 +160,7 @@ systems:                                                 # If you don't need com
   kinase-inhibitor:                                      # single calculation, don't use combinatorial lists. Example:
     receptor: !Combinatorial [abl, src]                  #   receptor: abl
     ligand: !Combinatorial [imatinib, bosutinib]         #   ligand: imatinib
-    solvent: !Combinatorial [RF, GBSA]                   #   solvent: RF
+    solvent: !Combinatorial [RF, vacuum]                 #   solvent: RF
     pack: yes                                            # If the ligand is far away from the receptor or if there
                                                          # are clashing atoms (defined as closer than 1.5 angstroms),
                                                          # Yank will randomly translate and rotate the ligand until
@@ -115,6 +170,22 @@ systems:                                                 # If you don't need com
     leap:
       parameters: [oldff/leaprc.ff99SBildn, leaprc.gaff] # All our calculations will use the parameters in AMBER
                                                          # ff99SBildn force field and GAFF.
+
+  # It is also possible to skip the automatic system setup
+  # and provide your own system in AMBER or Gromacs format
+  amber-system:
+    phase1_path: [complex.prmtop, complex.inpcrd]        # System files for the complex phase.
+    phase2_path: [solvent.prmtop, solvent.inpcrd]        # System files for the solvent phase.
+    ligand_dsl: resname MOL                              # MDTraj DSL string to select the ligand.
+    solvent: RF                                          # Specify how to model the solvent.
+
+  gromacs-system:
+    phase1_path: [complex.top, complex.gro]
+    phase2_path: [solvent.top, solvent.gro]
+    gromacs_include_dir: include/                        # Optional path to the directory containing the files
+                                                         # included in .top files.
+    ligand_dsl: resname MOL
+    solvent: RF
 
 
 # Here we specify the alchemical path of our simulation.
@@ -145,3 +216,17 @@ protocols:
 experiments:
   system: kinase-inhibitor
   protocol: absolute-binding
+  options:                                                  # All options that can be specified in the "options"
+    restraint_type: !Combinatorial [flat-bottom, harmonic]  # section can be included here.
+
+
+# It is also possible to specify a sequence of experiments with the syntax
+# my-experiment1:
+#   system: my-system1
+#   protocol: absolute-binding
+#
+# my-experiment2:
+#   system: my-system2
+#   protocol: hydration
+#
+# experiments: [my-experiment1, my-experiment2]
