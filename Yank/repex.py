@@ -1179,13 +1179,13 @@ class ReplicaExchange(object):
         mbar_citations = """\
         Shirts MR and Chodera JD. Statistically optimal analysis of samples from multiple equilibrium states. J. Chem. Phys. 129:124105, 2008. DOI: 10.1063/1.2978177"""
 
-        print "Please cite the following:"
-        print ""
-        print openmm_citations
+        print("Please cite the following:")
+        print("")
+        print(openmm_citations)
         if self.replica_mixing_scheme == 'swap-all':
-            print gibbs_citations
+            print(gibbs_citations)
         if self.online_analysis:
-            print mbar_citations
+            print(mbar_citations)
 
         return
 
@@ -1519,7 +1519,7 @@ class ReplicaExchange(object):
             # Compute log probability of swap.
             log_P_accept = - (self.u_kl[i,jstate] + self.u_kl[j,istate]) + (self.u_kl[i,istate] + self.u_kl[j,jstate])
 
-            #print "replica (%3d,%3d) states (%3d,%3d) energies (%8.1f,%8.1f) %8.1f -> (%8.1f,%8.1f) %8.1f : log_P_accept %8.1f" % (i,j,istate,jstate,self.u_kl[i,istate],self.u_kl[j,jstate],self.u_kl[i,istate]+self.u_kl[j,jstate],self.u_kl[i,jstate],self.u_kl[j,istate],self.u_kl[i,jstate]+self.u_kl[j,istate],log_P_accept)
+            #print("replica (%3d,%3d) states (%3d,%3d) energies (%8.1f,%8.1f) %8.1f -> (%8.1f,%8.1f) %8.1f : log_P_accept %8.1f" % (i,j,istate,jstate,self.u_kl[i,istate],self.u_kl[j,jstate],self.u_kl[i,istate]+self.u_kl[j,jstate],self.u_kl[i,jstate],self.u_kl[j,istate],self.u_kl[i,jstate]+self.u_kl[j,istate],log_P_accept))
 
             # Record that this move has been proposed.
             self.Nij_proposed[istate,jstate] += 1
@@ -1586,7 +1586,7 @@ class ReplicaExchange(object):
             # Compute log probability of swap.
             log_P_accept = - (self.u_kl[i,jstate] + self.u_kl[j,istate]) + (self.u_kl[i,istate] + self.u_kl[j,jstate])
 
-            #print "replica (%3d,%3d) states (%3d,%3d) energies (%8.1f,%8.1f) %8.1f -> (%8.1f,%8.1f) %8.1f : log_P_accept %8.1f" % (i,j,istate,jstate,self.u_kl[i,istate],self.u_kl[j,jstate],self.u_kl[i,istate]+self.u_kl[j,jstate],self.u_kl[i,jstate],self.u_kl[j,istate],self.u_kl[i,jstate]+self.u_kl[j,istate],log_P_accept)
+            #print("replica (%3d,%3d) states (%3d,%3d) energies (%8.1f,%8.1f) %8.1f -> (%8.1f,%8.1f) %8.1f : log_P_accept %8.1f" % (i,j,istate,jstate,self.u_kl[i,istate],self.u_kl[j,jstate],self.u_kl[i,istate]+self.u_kl[j,jstate],self.u_kl[i,jstate],self.u_kl[j,istate],self.u_kl[i,jstate]+self.u_kl[j,istate],log_P_accept))
 
             # Record that this move has been proposed.
             self.Nij_proposed[istate,jstate] += 1
@@ -1626,7 +1626,7 @@ class ReplicaExchange(object):
         if self.replica_mixing_scheme == 'swap-neighbors':
             self._mix_neighboring_replicas()
         elif self.replica_mixing_scheme == 'swap-all':
-            # Try to use weave-accelerated mixing code if possible, otherwise fall back to Python-accelerated code.
+            # Try to use cython-accelerated mixing code if possible, otherwise fall back to Python-accelerated code.
             try:
                 self._mix_all_replicas_cython()
             except ValueError as e:

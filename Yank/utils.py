@@ -266,7 +266,7 @@ class CombinatorialTree(collections.MutableMapping):
 
     Deletion of a node leave an empty dict!
     >>> del tree[path]
-    >>> print tree
+    >>> print(tree)
     {'a': {}}
 
     Expand all possible combinations of a tree. The iterator return a dict, not another
@@ -283,7 +283,7 @@ class CombinatorialTree(collections.MutableMapping):
 
     Expand all possible combinations and assign unique names
     >>> for name, t in tree.named_combinations(separator='_', max_name_length=5):
-    ...     print name
+    ...     print(name)
     3_1
     3_2
     4_1
@@ -510,7 +510,7 @@ class CombinatorialTree(collections.MutableMapping):
         --------
         >>> d = {'nested': {'correct1': {'a': 1}, 'correct2': {'a': 2}, 'wrong': {'b': 3}}}
         >>> p = [x for x in CombinatorialTree._resolve_paths(d, ('nested', '*', 'a'))]
-        >>> print sorted(p)
+        >>> print(sorted(p))
         [(('nested', 'correct1', 'a'), 1), (('nested', 'correct2', 'a'), 2)]
 
         """
@@ -932,10 +932,10 @@ def generate_signature_schema(func, update_keys=None, exclude_keys=frozenset()):
     >>> def f(a, b, camelCase=True, none=None, quantity=3.0*unit.angstroms):
     ...     pass
     >>> f_dict = generate_signature_schema(f, exclude_keys=['quantity'])
-    >>> print isinstance(f_dict, dict)
+    >>> print(isinstance(f_dict, dict))
     True
     >>> # Print (key, values) in the correct order
-    >>> print sorted(f_dict.items(), key=lambda x: x[1])
+    >>> print(sorted(f_dict.items(), key=lambda x: x[1]))
     [(Optional('camel_case'), <type 'bool'>), (Optional('none'), <type 'object'>)]
     >>> f_schema = Schema(generate_signature_schema(f))
     >>> f_schema.validate({'quantity': '1.0*nanometer'})

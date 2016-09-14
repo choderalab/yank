@@ -75,7 +75,7 @@ def main(argv=None):
         
     # If unsuccessful, print usage and exit with an error.
     if not dispatched:
-        print usage
+        print(usage)
         return True
 
     # Indicate success.

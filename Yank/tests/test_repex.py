@@ -111,7 +111,7 @@ def test_replica_exchange(mpicomm=None, verbose=True):
 
     """
 
-    if verbose and ((not mpicomm) or (mpicomm.rank==0)): print "Testing replica exchange facility with harmonic oscillators: ",
+    if verbose and ((not mpicomm) or (mpicomm.rank==0)): print("Testing replica exchange facility with harmonic oscillators: ", end = " ")
 
     # Define mass of carbon atom.
     mass = 12.0 * units.amu
@@ -159,7 +159,7 @@ def test_replica_exchange(mpicomm=None, verbose=True):
     import tempfile # use a temporary file
     file = tempfile.NamedTemporaryFile(delete=False)
     store_filename = file.name
-    #print "node %d : Storing data in temporary file: %s" % (mpicomm.rank, str(store_filename)) # DEBUG
+    #print("node %d : Storing data in temporary file: %s" % (mpicomm.rank, str(store_filename))) # DEBUG
 
     # Create and configure simulation object.
     simulation = ReplicaExchange(store_filename, mpicomm=mpicomm)
@@ -196,16 +196,16 @@ def test_replica_exchange(mpicomm=None, verbose=True):
     nsigma[indices] = error[indices] / derror[indices]
     MAX_SIGMA = 6.0 # maximum allowed number of standard errors
     if numpy.any(nsigma > MAX_SIGMA):
-        print "Delta_f_ij from online analysis"
-        print online_analysis['Delta_f_ij']
-        print "Delta_f_ij from final analysis"
-        print analysis['Delta_f_ij']
-        print "error"
-        print error
-        print "derror"
-        print derror
-        print "nsigma"
-        print nsigma
+        print("Delta_f_ij from online analysis")
+        print(online_analysis['Delta_f_ij'])
+        print("Delta_f_ij from final analysis")
+        print(analysis['Delta_f_ij'])
+        print("error")
+        print(error)
+        print("derror")
+        print(derror)
+        print("nsigma")
+        print(nsigma)
         raise Exception("Dimensionless free energy differences between online and final analysis exceeds MAX_SIGMA of %.1f" % MAX_SIGMA)
 
     # TODO: Check if deviations exceed tolerance.
@@ -217,36 +217,36 @@ def test_replica_exchange(mpicomm=None, verbose=True):
     nsigma[indices] = error[indices] / dDelta_f_ij[indices]
     MAX_SIGMA = 6.0 # maximum allowed number of standard errors
     if numpy.any(nsigma > MAX_SIGMA):
-        print "Delta_f_ij"
-        print Delta_f_ij
-        print "Delta_f_ij_analytical"
-        print Delta_f_ij_analytical
-        print "error"
-        print error
-        print "stderr"
-        print dDelta_f_ij
-        print "nsigma"
-        print nsigma
+        print("Delta_f_ij")
+        print(Delta_f_ij)
+        print("Delta_f_ij_analytical")
+        print(Delta_f_ij_analytical)
+        print("error")
+        print(error)
+        print("stderr")
+        print(dDelta_f_ij)
+        print("nsigma")
+        print(nsigma)
         raise Exception("Dimensionless free energy difference exceeds MAX_SIGMA of %.1f" % MAX_SIGMA)
 
     error = analysis['Delta_u_ij'] - Delta_u_ij_analytical
     nsigma = numpy.zeros([nstates,nstates], numpy.float32)
     nsigma[indices] = error[indices] / dDelta_f_ij[indices]
     if numpy.any(nsigma > MAX_SIGMA):
-        print "Delta_u_ij"
-        print analysis['Delta_u_ij']
-        print "Delta_u_ij_analytical"
-        print Delta_u_ij_analytical
-        print "error"
-        print error
-        print "nsigma"
-        print nsigma
+        print("Delta_u_ij")
+        print(analysis['Delta_u_ij'])
+        print("Delta_u_ij_analytical")
+        print(Delta_u_ij_analytical)
+        print("error")
+        print(error)
+        print("nsigma")
+        print(nsigma)
         raise Exception("Dimensionless potential energy difference exceeds MAX_SIGMA of %.1f" % MAX_SIGMA)
 
     # Clean up.
     del simulation
 
-    if verbose: print "PASSED."
+    if verbose: print("PASSED.")
     return
 
 def disable_hamiltonian_exchange(mpicomm=None, verbose=True):
@@ -260,7 +260,7 @@ def disable_hamiltonian_exchange(mpicomm=None, verbose=True):
 
     """
 
-    if verbose and ((not mpicomm) or (mpicomm.rank==0)): print "Testing Hamiltonian exchange facility with harmonic oscillators: ",
+    if verbose and ((not mpicomm) or (mpicomm.rank==0)): print("Testing Hamiltonian exchange facility with harmonic oscillators: ", end = " ")
 
     # Create test system of harmonic oscillators
     testsystem = testsystems.HarmonicOscillatorArray()
@@ -298,12 +298,12 @@ def disable_hamiltonian_exchange(mpicomm=None, verbose=True):
         u_i_analytical.append(reduced_potential)
 
     # DEBUG
-    print ""
-    print seed_positions
-    print analytical_results
-    print u_i_analytical
-    print f_i_analytical
-    print ""
+    print("")
+    print(seed_positions)
+    print(analytical_results)
+    print(u_i_analytical)
+    print(f_i_analytical)
+    print("")
 
     # Compute analytical Delta_f_ij
     nstates = len(f_i_analytical)
@@ -323,7 +323,7 @@ def disable_hamiltonian_exchange(mpicomm=None, verbose=True):
     import tempfile # use a temporary file
     file = tempfile.NamedTemporaryFile(delete=False)
     store_filename = file.name
-    #print "Storing data in temporary file: %s" % str(store_filename)
+    #print("Storing data in temporary file: %s" % str(store_filename))
 
     # Create reference thermodynamic state.
     reference_state = ThermodynamicState(systems[0], temperature=temperature)
@@ -359,33 +359,33 @@ def disable_hamiltonian_exchange(mpicomm=None, verbose=True):
     nsigma[indices] = error[indices] / dDelta_f_ij[indices]
     MAX_SIGMA = 6.0 # maximum allowed number of standard errors
     if numpy.any(nsigma > MAX_SIGMA):
-        print "Delta_f_ij"
-        print Delta_f_ij
-        print "Delta_f_ij_analytical"
-        print Delta_f_ij_analytical
-        print "error"
-        print error
-        print "stderr"
-        print dDelta_f_ij
-        print "nsigma"
-        print nsigma
+        print("Delta_f_ij")
+        print(Delta_f_ij)
+        print("Delta_f_ij_analytical")
+        print(Delta_f_ij_analytical)
+        print("error")
+        print(error)
+        print("stderr")
+        print(dDelta_f_ij)
+        print("nsigma")
+        print(nsigma)
         raise Exception("Dimensionless free energy difference exceeds MAX_SIGMA of %.1f" % MAX_SIGMA)
 
     error = analysis['Delta_u_ij'] - Delta_u_ij_analytical
     nsigma = numpy.zeros([nstates,nstates], numpy.float32)
     nsigma[indices] = error[indices] / dDelta_f_ij[indices]
     if numpy.any(nsigma > MAX_SIGMA):
-        print "Delta_u_ij"
-        print analysis['Delta_u_ij']
-        print "Delta_u_ij_analytical"
-        print Delta_u_ij_analytical
-        print "error"
-        print error
-        print "nsigma"
-        print nsigma
+        print("Delta_u_ij")
+        print(analysis['Delta_u_ij'])
+        print("Delta_u_ij_analytical")
+        print(Delta_u_ij_analytical)
+        print("error")
+        print(error)
+        print("nsigma")
+        print(nsigma)
         raise Exception("Dimensionless potential energy difference exceeds MAX_SIGMA of %.1f" % MAX_SIGMA)
 
-    if verbose: print "PASSED."
+    if verbose: print("PASSED.")
     return
 
 def test_parameters():
@@ -411,10 +411,10 @@ if __name__ == "__main__":
     try:
         mpicomm = utils.initialize_mpi()
         if mpicomm.rank == 0:
-            print "MPI initialized successfully."
+            print("MPI initialized successfully.")
     except Exception as e:
-        print e
-        print "Could not start MPI. Using serial code instead."
+        print(e)
+        print("Could not start MPI. Using serial code instead.")
         mpicomm = None
 
     # Test simple system of harmonic oscillators.

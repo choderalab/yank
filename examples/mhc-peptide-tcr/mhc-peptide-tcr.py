@@ -132,7 +132,7 @@ else:
 # ==============================================================================
 
 # DEBUG
-print "fixer.topology.chains(): %s" % str([ chain.id for chain in fixer.topology.chains() ])
+print("fixer.topology.chains(): %s" % str([ chain.id for chain in fixer.topology.chains() ]))
 
 # Write PDB file for solute only.
 logger.info("Writing source PDB...")
@@ -156,7 +156,7 @@ if chain_ids_to_keep is not None:
     fixer.removeChains(chain_numbers_to_remove)
 
 # DEBUG
-print "fixer.topology.chains(): %s" % str([ chain.id for chain in fixer.topology.chains() ])
+print("fixer.topology.chains(): %s" % str([ chain.id for chain in fixer.topology.chains() ]))
 
 # Add missing atoms and residues.
 logger.info("Adding missing atoms and residues...")
@@ -219,7 +219,7 @@ def solvate_and_minimize(topology, positions, phase=''):
     logger.info("System has %d atoms." % system.getNumParticles())
 
     # DEBUG
-    print "modeller.topology.chains(): %s" % str([ chain.id for chain in modeller.topology.chains() ])
+    print("modeller.topology.chains(): %s" % str([ chain.id for chain in modeller.topology.chains() ]))
 
     # Serialize to XML files.
     logger.info("Serializing to XML...")
@@ -330,7 +330,7 @@ for phase_prefix in phase_prefixes:
     subset_topology_openmm = mdtraj_top.subset(atom_indices_to_retain).to_openmm()
 
     # DEBUG
-    print "subset_topology_openmm.chains(): %s" % str([ chain.id for chain in subset_topology_openmm.chains() ])
+    print("subset_topology_openmm.chains(): %s" % str([ chain.id for chain in subset_topology_openmm.chains() ]))
 
     # Extract the positions of the corresponding atoms.
     x = np.array(fixer.positions / unit.angstrom)
@@ -340,7 +340,7 @@ for phase_prefix in phase_prefixes:
     [solvated_topology_openmm, solvated_system, solvated_positions] = solvate_and_minimize(subset_topology_openmm, subset_positions, phase=phase + '-')
 
     # DEBUG
-    print "solvated_topology_openmm.chains(): %s" % str([ chain.id for chain in solvated_topology_openmm.chains() ])
+    print("solvated_topology_openmm.chains(): %s" % str([ chain.id for chain in solvated_topology_openmm.chains() ]))
 
     # Write minimized positions.
     filename = os.path.join(workdir, phase + '-initial.pdb')
@@ -353,8 +353,8 @@ for phase_prefix in phase_prefixes:
         atom_indices[component] = solvated_topology_mdtraj.select(component_dsl[component])
 
     # DEBUG
-    print "Atom indices of ligand:"
-    print atom_indices[phase]['ligand']
+    print("Atom indices of ligand:")
+    print(atom_indices[phase]['ligand'])
 
     alchemical_phases.append(AlchemicalPhase(phase, solvated_system,
                                              solvated_topology_openmm,

@@ -177,7 +177,7 @@ def extract_ncfile_energies(ncfile, ndiscard=0, nuse=None, g=None):
     # Subsample data to obtain uncorrelated samples
     N_k = np.zeros(nstates, np.int32)
     indices = timeseries.subsampleCorrelatedData(u_n, g=g) # indices of uncorrelated samples
-    #print u_n # DEBUG
+    #print(u_n) # DEBUG
     #indices = range(0,u_n.size) # DEBUG - assume samples are uncorrelated
     N = len(indices) # number of uncorrelated samples
     N_k[:] = N
@@ -252,7 +252,7 @@ def estimate_free_energies(ncfile, mbar=None):
             str_row += "%8.3f" % Deltaf_ij[i, j]
         logger.info(str_row)
 
-#    print Deltaf_ij
+#    print(Deltaf_ij)
 #    # Matrix of uncertainties in free energy difference (expectations standard deviations of the estimator about the true free energy)
     logger.info("dDeltaf_ij:")
     for i in range(nstates):

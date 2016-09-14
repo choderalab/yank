@@ -44,12 +44,12 @@ def dispatch(args):
     # Handle the null case or itself
     if command is None or command == 'help':
         from yank import cli
-        print cli.usage
+        print(cli.usage)
         return True
     else:
         from yank import commands
         command_usage = getattr(commands, command).usage
-        print command_usage
+        print(command_usage)
         return True
     # In case something went wrong
     return False

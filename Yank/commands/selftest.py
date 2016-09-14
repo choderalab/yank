@@ -52,7 +52,7 @@ def dispatch(args):
     # result = nose.run(argv=['yank', '--nocapture', '--verbosity=2', '-a', '!slow'] )
 
     if args['--doctests']:
-        print "Running doctests for all modules..."
+        print("Running doctests for all modules...")
 
         # Run tests on main module.
         import yank
@@ -68,17 +68,17 @@ def dispatch(args):
 
         # Report results.
         if failure_count == 0:
-            print "All doctests pass."
+            print("All doctests pass.")
         else:
-            print "WARNING: There were %d doctest failures." % failure_count
+            print("WARNING: There were %d doctest failures." % failure_count)
             sys.exit(1)
 
     if args['--openeye']:
-        print "Testing OpenEye Installation"
+        print("Testing OpenEye Installation")
         try:
             import openeye.examples.openeye_tests as OETests
             OETests.run_test_suite()
         except:
-            print "WARNING: OpenEye Tests Failed."
+            print("WARNING: OpenEye Tests Failed.")
 
     return True
