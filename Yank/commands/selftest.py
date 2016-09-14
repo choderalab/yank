@@ -69,11 +69,12 @@ def dispatch(args):
         print{  "************************************************")
     # OpenEye checks
     try:
-        print("OpenEye install Found! Checking install...")
+        import openeye
         import openeye.examples.openeye_tests as OETests
+        print("OpenEye version $s Found! Checking install..." % openeye.__version__)
         OETests.run_test_suite()
     except:
-        print("OpenEye install not found")
+        print("Valid OpenEye install not found")
         print("Not required, but please check install if you expected it")
     # Run nosetests
     # Note: These will not run during standard nosetests because they must be explicitly called
