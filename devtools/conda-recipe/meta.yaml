@@ -17,10 +17,10 @@ requirements:
     - scipy
     - setuptools
     - netcdf4
-    - openmm
+    - openmm >=7.0.1
     - mdtraj >=1.7.2
     - openmmtools
-    - pymbar ==2.1beta0
+    - pymbar 
     - ambermini >=15.0.4
     - docopt
     - openmoltools
@@ -37,10 +37,10 @@ requirements:
     - scipy
     - cython
     - netcdf4
-    - openmm
+    - openmm >=7.0.1
     - mdtraj >=1.7.2
     - openmmtools
-    - pymbar ==2.1beta0
+    - pymbar 
     - ambermini >=15.0.4
     - docopt
     - openmoltools

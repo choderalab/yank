@@ -20,7 +20,7 @@ def _mix_all_replicas_weave(nstates, replica_states, u_kl, Nij_proposed, Nij_acc
     nswap_attempts = nstates**4 # number of swaps to attempt
     # Handled in C code below.
 
-    if verbose: print "Will attempt to swap all pairs of replicas using weave-accelerated code, using a total of %d attempts." % nswap_attempts
+    if verbose: print("Will attempt to swap all pairs of replicas using weave-accelerated code, using a total of %d attempts." % nswap_attempts)
 
     from scipy import weave
 
