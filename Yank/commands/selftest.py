@@ -92,7 +92,7 @@ def dispatch(args):
             result = nose.run(argv=['yank', '--nocapture', '--verbosity=%d'%verbosity, '-a', '!slow'] )
 
     if args['--doctests'] or args['-d']:
-        print "Running doctests for all modules..."
+        print("Running doctests for all modules...")
 
         # Run tests on main module.
         import yank
@@ -112,8 +112,8 @@ def dispatch(args):
 
         # Report results.
         if failure_count == 0:
-            print "All doctests pass."
+            print("All doctests pass.")
         else:
-            print "WARNING: There were %d doctest failures." % failure_count
+            print("WARNING: There were %d doctest failures." % failure_count)
 
     return True
