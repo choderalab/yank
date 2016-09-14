@@ -17,7 +17,9 @@ import doctest
 import pkgutil
 import sys
 
-from yank import utils
+from yank import utils, version
+from yank.commands import platforms
+import simtk.openmm as mm
 
 
 #=============================================================================================
@@ -27,15 +29,15 @@ usage = """
 YANK selftest
 
 Usage:
-  yank selftest [-v | --verbose] [-d | --doctests] [-o | --openeye]
+  yank selftest  [-d | --doctests] [-n | --nosetests] [-v... | --verbosity=#]]
 
 Description:
   Run the YANK selftests to check that functions are behaving as expected and if external licenses are available
 
 General Options:
-  -v, --verbose                 Print verbose output
   -d, --doctests                Run module doctests
-  -o, --openeye                 Check if the optional OpenEye modules and licenses are working corretly
+  -n, --nosetests               Run the nosetests (slow) on YANK
+  -v, --verbosity=n             Optional verbosity level of nosetests OR verbose doctests (default: 1)
 
 """
 #=============================================================================================
@@ -43,19 +45,61 @@ General Options:
 #=============================================================================================
 
 def dispatch(args):
-    # TODO: Figure out how to run nosetests instead.
-    verbose = args['--verbose']
 
-    # Keeping these as comments for if/when we switch to nosetests instead of doctests
-    # import nose
-    # result = nose.run(argv=['yank', '--nocapture', '--verbosity=2', '--with-timer', '-a', '!slow'] )
-    # result = nose.run(argv=['yank', '--nocapture', '--verbosity=2', '-a', '!slow'] )
+    # Determine verbosity in advance
+    # nosetests: -v == --verbosity=2
+    # Assuming that verbosity = 1 (or no -v) is no verbosity for doctests
+    verbosity = max(args['-v'] + 1, int(args['--verbosity']))
+    # Header
+    print("YANK Selftest")
+    print("-------------")
+    # Yank Version
+    print("Yank Version %s" % version.version)
+    # OpenMM Platforms
+    platforms.dispatch()
+    # Errors
+    platform_errors = mm.Platform.getPlatformLoadErrors()
+    if len(platform_errors) > 0: # This check only required to make header
+        print{  "************************************************")
+        print("\nWarning! There were OpenMM Platform Load Errors!")
+        print{  "************************************************")
+        for e in platform_errors:
+            print(e)
+        print{  "************************************************")
+        print{  "************************************************")
+    # OpenEye checks
+    try:
+        print("OpenEye install Found! Checking install...")
+        import openeye.examples.openeye_tests as OETests
+        OETests.run_test_suite()
+    except:
+        print("OpenEye install not found")
+        print("Not required, but please check install if you expected it")
+    # Run nosetests
+    # Note: These will not run during standard nosetests because they must be explicitly called
+    # i.e. no infinite nosetest loop
+    if args['-n'] or args['--nosetests']:
+        # Clear some lines
+        print("\n\n\n")
+        # Alert User
+        print{"******************************************")
+        print("Nosetests invoked! This will take a while!")
+        print{"******************************************")
+        import nose
+        try: #Check for timer install
+            result = nose.run(argv=['yank', '--nocapture', '--verbosity=%d'%verbosity, '--with-timer', '-a', '!slow'] )
+        except:
+            result = nose.run(argv=['yank', '--nocapture', '--verbosity=%d'%verbosity, '-a', '!slow'] )
 
-    if args['--doctests']:
+    if args['--doctests'] or args['-d']:
         print "Running doctests for all modules..."
 
         # Run tests on main module.
         import yank
+        if verbosity > 1:
+            verbose = True
+        else:
+            verbose = False
         (failure_count, test_count) = doctest.testmod(yank, verbose=verbose)
         # Run tests on all submodules.
         package = yank
@@ -71,14 +115,5 @@ def dispatch(args):
             print "All doctests pass."
         else:
             print "WARNING: There were %d doctest failures." % failure_count
-            sys.exit(1)
-
-    if args['--openeye']:
-        print "Testing OpenEye Installation"
-        try:
-            import openeye.examples.openeye_tests as OETests
-            OETests.run_test_suite()
-        except:
-            print "WARNING: OpenEye Tests Failed."
 
     return True
