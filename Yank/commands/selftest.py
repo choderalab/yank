@@ -60,13 +60,13 @@ def dispatch(args):
     # Errors
     platform_errors = mm.Platform.getPlatformLoadErrors()
     if len(platform_errors) > 0: # This check only required to make header
-        print{  "************************************************")
+        print(  "************************************************")
         print("\nWarning! There were OpenMM Platform Load Errors!")
-        print{  "************************************************")
+        print(  "************************************************")
         for e in platform_errors:
             print(e)
-        print{  "************************************************")
-        print{  "************************************************")
+        print(  "************************************************")
+        print(  "************************************************")
     # OpenEye checks
     try:
         import openeye
@@ -83,9 +83,9 @@ def dispatch(args):
         # Clear some lines
         print("\n\n\n")
         # Alert User
-        print{"******************************************")
+        print("******************************************")
         print("Nosetests invoked! This will take a while!")
-        print{"******************************************")
+        print("******************************************")
         import nose
         try: #Check for timer install
             result = nose.run(argv=['yank', '--nocapture', '--verbosity=%d'%verbosity, '--with-timer', '-a', '!slow'] )
