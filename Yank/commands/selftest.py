@@ -15,9 +15,10 @@ Run YANK self tests after installation.
 
 import doctest
 import pkgutil
-import sys
 
-from yank import utils
+from yank import version
+from yank.commands import platforms
+import simtk.openmm as mm
 
 
 #=============================================================================================
@@ -27,15 +28,18 @@ usage = """
 YANK selftest
 
 Usage:
-  yank selftest [-v | --verbose] [-d | --doctests] [-o | --openeye]
+  yank selftest  [-d | --doctests] [-n | --nosetests] [--verbosity=#] [(--skip (platforms | openeye))]...
 
 Description:
   Run the YANK selftests to check that functions are behaving as expected and if external licenses are available
 
 General Options:
-  -v, --verbose                 Print verbose output
   -d, --doctests                Run module doctests
-  -o, --openeye                 Check if the optional OpenEye modules and licenses are working corretly
+  -n, --nosetests               Run the nosetests (slow) on YANK
+  --verbosity=#                 Optional verbosity level of nosetests OR verbose doctests [default: 1]
+                                Does nothing without -n or -d
+  --skip                        Skips a named selftests (platforms OR openeye) for speed
+                                May be specified multiple times, once per TEST
 
 """
 #=============================================================================================
@@ -43,19 +47,76 @@ General Options:
 #=============================================================================================
 
 def dispatch(args):
-    # TODO: Figure out how to run nosetests instead.
-    verbose = args['--verbose']
 
-    # Keeping these as comments for if/when we switch to nosetests instead of doctests
-    # import nose
-    # result = nose.run(argv=['yank', '--nocapture', '--verbosity=2', '--with-timer', '-a', '!slow'] )
-    # result = nose.run(argv=['yank', '--nocapture', '--verbosity=2', '-a', '!slow'] )
-
+    # Determine verbosity in advance
+    # TODO: Figure out how to get -v back in to command and allow -vv and -vvv
+    # nosetests: -v == --verbosity=2
+    # Assuming that verbosity = 1 (or no -v) is no verbosity for doctests
+    #verbosity = max(args['-v'] + 1, int(args['--verbosity']))
+    verbosity = int(args['--verbosity'])
+    # Header
+    print("\n")
+    print("YANK Selftest")
+    print("-------------")
+    # Yank Version
+    print("Yank Version %s \n" % version.version)
+    # OpenMM Platforms
+    if not (args['platforms'] > 0): # Dont need to check for --skip since invalid without argument
+        platforms.dispatch(None)
+        # Errors
+        platform_errors = mm.Platform.getPluginLoadFailures()
+        if len(platform_errors) > 0: # This check only required to make header
+            print(  "************************************************")
+            print("\nWarning! There were OpenMM Platform Load Errors!")
+            print(  "************************************************")
+            for e in platform_errors:
+                print(e)
+            print(  "************************************************")
+            print(  "************************************************")
+    else:
+        print("Skipped OpenMM Platform Test")
+    # Space out tests
+    print("\n")
+    # OpenEye checks
+    if not (args['openeye'] > 0):
+        try:
+            import openeye
+            import openeye.examples.openeye_tests as OETests
+            print("OpenEye version %s Found! Checking install..." % openeye.__version__)
+            OETests.run_test_suite()
+        except:
+            print("Valid OpenEye install not found")
+            print("Not required, but please check install if you expected it")
+    else:
+        print("Skipped OpenEye Tests")
+    print("\n")
+    # Run nosetests
+    # Note: These will not run during standard nosetests because they must be explicitly called
+    # i.e. no infinite nosetest loop
+    if args['--nosetests']:
+        # Clear some lines
+        print("\n")
+        # Alert User
+        print("******************************************")
+        print("Nosetests invoked! This will take a while!")
+        print("******************************************")
+        import nose
+        try: #Check for timer install
+            result = nose.run(argv=['yank', '--nocapture', '--verbosity=%d'%verbosity, '--with-timer', '-a', '!slow'] )
+        except:
+            result = nose.run(argv=['yank', '--nocapture', '--verbosity=%d'%verbosity, '-a', '!slow'] )
+        print("\n")
     if args['--doctests']:
-        print "Running doctests for all modules..."
-
+        # Alert User
+        print("*****************************************")
+        print("Doctests invoked! This will take a while!")
+        print("*****************************************")
         # Run tests on main module.
         import yank
+        if verbosity > 1:
+            verbose = True
+        else:
+            verbose = False
         (failure_count, test_count) = doctest.testmod(yank, verbose=verbose)
         # Run tests on all submodules.
         package = yank
@@ -68,17 +129,11 @@ def dispatch(args):
 
         # Report results.
         if failure_count == 0:
-            print "All doctests pass."
+            print("All doctests pass.")
         else:
-            print "WARNING: There were %d doctest failures." % failure_count
-            sys.exit(1)
+            print("WARNING: There were %d doctest failures." % failure_count)
+        print("\n")
 
-    if args['--openeye']:
-        print "Testing OpenEye Installation"
-        try:
-            import openeye.examples.openeye_tests as OETests
-            OETests.run_test_suite()
-        except:
-            print "WARNING: OpenEye Tests Failed."
-
+    # Helpful end test
+    print("YANK Selftest complete.\nThank you for using YANK!\n")
     return True
