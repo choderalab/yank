@@ -13,6 +13,8 @@ TODO
 # GLOBAL IMPORTS
 #=============================================================================================
 
+import sys
+
 import math
 
 import numpy
@@ -111,7 +113,7 @@ def test_replica_exchange(mpicomm=None, verbose=True):
 
     """
 
-    if verbose and ((not mpicomm) or (mpicomm.rank==0)): print("Testing replica exchange facility with harmonic oscillators: ", end = " ")
+    if verbose and ((not mpicomm) or (mpicomm.rank==0)): sys.stdout.write("Testing replica exchange facility with harmonic oscillators: ")
 
     # Define mass of carbon atom.
     mass = 12.0 * units.amu
@@ -260,7 +262,7 @@ def disable_hamiltonian_exchange(mpicomm=None, verbose=True):
 
     """
 
-    if verbose and ((not mpicomm) or (mpicomm.rank==0)): print("Testing Hamiltonian exchange facility with harmonic oscillators: ", end = " ")
+    if verbose and ((not mpicomm) or (mpicomm.rank==0)): sys.stdout.write("Testing Hamiltonian exchange facility with harmonic oscillators: ")
 
     # Create test system of harmonic oscillators
     testsystem = testsystems.HarmonicOscillatorArray()
