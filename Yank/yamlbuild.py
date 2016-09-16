@@ -770,7 +770,8 @@ class SetupDatabase:
                     # Extract the correct line and save it in a new file
                     # We ignore blank-lines with filter() when counting models
                     with open(mol_descr['filepath'], 'r') as smiles_file:
-                        smiles_lines = filter(bool, smiles_file.readlines())
+                        # TODO: Make sure this is working after Py 3.X conversion
+                        smiles_lines = [line for line in smiles_files.readlines() if bool(line)]
                     with open(single_file_path, 'w') as f:
                         f.write(smiles_lines[model_idx])
                 elif extension == '.mol2' or extension == '.sdf':
