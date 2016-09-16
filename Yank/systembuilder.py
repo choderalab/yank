@@ -504,7 +504,7 @@ class SmallMoleculeBuilder(SystemBuilder):
             try:
                 if os.path.isfile(file_path):
                     os.unlink(file_path)
-            except Exception, e:
+            except Exception as e:
                 logger.warning(e.message)
 
         return
@@ -681,7 +681,7 @@ class SmallMoleculeBuilder(SystemBuilder):
             try:
                 if os.path.isfile(file_path):
                     os.unlink(file_path)
-            except Exception, e:
+            except Exception as e:
                 logger.warning(e.message)
 
         # Return OpenMM format positions and topology.
