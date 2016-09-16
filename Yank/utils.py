@@ -104,7 +104,7 @@ def config_root_logger(verbose, log_file_path=None, mpicomm=None):
     n_handlers = len(logging.root.handlers)
     if n_handlers > 0:
         root_logger = logging.root
-        for i in xrange(n_handlers):
+        for i in range(n_handlers):
             root_logger.removeHandler(root_logger.handlers[0])
 
     # If this is a worker node, don't save any log file
