@@ -50,7 +50,7 @@ See 'yank help COMMAND' for more information on a specific command.
 def main(argv=None):
     # Parse command-line arguments.
     from docopt import docopt
-    import version
+    from . import version
     # Parse the initial options, the options_first flag must be True to for <ARGS> to act as a wildcard for options (- and --) as well
     args = docopt(usage, version=version.version, argv=argv, options_first=True)
 

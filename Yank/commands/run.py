@@ -21,7 +21,7 @@ from simtk import openmm
 from simtk import unit
 from simtk.openmm import app
 
-from yank import utils
+from .. import utils
 
 #=============================================================================================
 # COMMAND-LINE INTERFACE
@@ -54,7 +54,7 @@ General Options:
 #=============================================================================================
 
 def dispatch(args):
-    from yank.yank import Yank # TODO: Fix this awkward import syntax.
+    from ..yank import Yank
 
     store_directory = args['--store']
 

@@ -21,8 +21,8 @@ logger = logging.getLogger(__name__)
 import mdtraj
 from simtk import openmm, unit
 
-import utils
-from yank import AlchemicalPhase
+from . import utils
+from .yank import AlchemicalPhase
 
 
 # ==============================================================================

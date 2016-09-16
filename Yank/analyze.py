@@ -27,7 +27,7 @@ from pymbar import timeseries # for statistical inefficiency analysis
 import mdtraj
 import simtk.unit as units
 
-import utils
+from yank import utils
 
 import logging
 logger = logging.getLogger(__name__)

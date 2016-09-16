@@ -25,9 +25,9 @@ import numpy as np
 import netCDF4 as netcdf
 from simtk import openmm, unit
 
-from repex import ThermodynamicState
-from repex import ReplicaExchange
-from repex import MAX_SEED
+from .repex import ThermodynamicState
+from .repex import ReplicaExchange
+from .repex import MAX_SEED
 
 from alchemy import AbsoluteAlchemicalFactory, AlchemicalState
 

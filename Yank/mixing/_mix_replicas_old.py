@@ -1,11 +1,8 @@
-
-
-
-
-
-
 def _mix_all_replicas_weave(nstates, replica_states, u_kl, Nij_proposed, Nij_accepted, verbose=True):
     """
+
+    CODE AND FILE TO BE REMOVED IN UPCOMING VERSION
+
     Attempt exchanges between all replicas to enhance mixing.
     Acceleration by 'weave' from scipy is used to speed up mixing by ~ 400x.
 

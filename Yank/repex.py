@@ -71,7 +71,7 @@ import numpy as np
 import mdtraj as md
 import netCDF4 as netcdf
 
-from utils import is_terminal_verbose, delayed_termination
+from .utils import is_terminal_verbose, delayed_termination
 
 #=============================================================================================
 # MODULE CONSTANTS
@@ -2019,7 +2019,7 @@ class ReplicaExchange(object):
             The dict to store.
 
         """
-        from utils import typename
+        from .utils import typename
         import collections
         for option_name in options.keys():
             # Get option value.

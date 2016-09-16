@@ -15,7 +15,7 @@ Test command-line interface.
 
 import os
 import textwrap
-import commands
+from yank import commands
 
 import openmoltools as omt
 

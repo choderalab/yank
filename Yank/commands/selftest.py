@@ -16,8 +16,8 @@ Run YANK self tests after installation.
 import doctest
 import pkgutil
 
-from yank import version
-from yank.commands import platforms
+from .. import version
+from . import platforms
 import simtk.openmm as mm
 
 
@@ -112,7 +112,7 @@ def dispatch(args):
         print("Doctests invoked! This will take a while!")
         print("*****************************************")
         # Run tests on main module.
-        import yank
+        import yank # NOT "from .. import yank" since we want to run on the hwole module
         if verbosity > 1:
             verbose = True
         else:

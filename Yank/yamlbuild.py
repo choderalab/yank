@@ -30,11 +30,11 @@ from simtk.openmm.app import PDBFile, AmberPrmtopFile
 from alchemy import AlchemicalState, AbsoluteAlchemicalFactory
 from schema import Schema, And, Or, Use, Optional, SchemaError
 
-import utils
-import pipeline
-from yank import Yank
-from repex import ReplicaExchange, ThermodynamicState
-from sampling import ModifiedHamiltonianExchange
+from . import utils
+from . import pipeline
+from .yank import Yank
+from .repex import ReplicaExchange, ThermodynamicState
+from .sampling import ModifiedHamiltonianExchange
 
 
 #=============================================================================================
