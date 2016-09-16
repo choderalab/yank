@@ -489,7 +489,14 @@ class CombinatorialTree(collections.MutableMapping):
         The value contained in the node pointed by the path.
 
         """
-        return reduce(lambda d,k: d[k], path, d)
+        # TODO: Make sure this is working
+        # Converted from old py 2.X `reduce` function
+        function = lambda d,k: d[k]
+        it = iter(path)
+        accum_value = d
+        for x in it:
+            accum_value = function(accum_value, x)
+        return accum_value
 
     @staticmethod
     def _resolve_paths(d, path):
@@ -954,7 +961,8 @@ def generate_signature_schema(func, update_keys=None, exclude_keys=frozenset()):
     exclude_keys.update({k._schema for k in update_keys if isinstance(k, Optional)})
 
     # Transform camelCase to underscore
-    args = map(camelcase_to_underscore, args)
+    # TODO: Make sure this is working from the Py3.X conversion
+    args = [camelcase_to_underscore(arg) for arg in args ]
 
     # Build schema
     for arg, default_value in zip(args[-len(defaults):], defaults):
@@ -1387,7 +1395,10 @@ class TLeap:
 
             # Save leap.log in directory of first output file
             if len(output_files) > 0:
-                first_output_path = output_files.values()[0]
+                #Get first output path in Py 3.X way that is also thread-safe
+                for val in output_files.values():
+                    first_output_path = val
+                    break
                 first_output_name = os.path.basename(first_output_path).split('.')[0]
                 first_output_dir = os.path.dirname(first_output_path)
                 log_path = os.path.join(first_output_dir, first_output_name + '.leap.log')

@@ -1359,7 +1359,8 @@ class YamlBuilder:
                         n_models = PDBFile(comb_molecule['filepath']).getNumFrames()
                     elif extension == 'csv' or extension == 'smiles':
                         with open(comb_molecule['filepath'], 'r') as smiles_file:
-                            n_models = len(filter(bool, smiles_file.readlines()))  # remove blank lines
+                            # TODO: Make sure this is working as expected from Py 3.X conversion
+                            n_models = len((line for line in smiles_file.readlines() if bool(line))) # remove blank lines
                     elif extension == 'sdf' or extension == 'mol2':
                         if not utils.is_openeye_installed():
                             err_msg = 'Molecule {}: Cannot "select" from {} file without OpenEye toolkit'
