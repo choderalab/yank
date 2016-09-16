@@ -1368,7 +1368,7 @@ def test_charged_ligand():
         explicit-system:
             receptor: !Combinatorial {}
             ligand: imatinib
-        """.format(imatinib_path, [key for key inreceptors.keys()]))
+        """.format(imatinib_path, [key for key in receptors.keys()]))
         #""".format(imatinib_path, receptors.keys()))
         yaml_content = get_template_script(tmp_dir)
         yaml_content['molecules'].update(updates['molecules'])

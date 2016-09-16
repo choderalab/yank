@@ -395,7 +395,7 @@ class CombinatorialTree(collections.MutableMapping):
                     for i in range(n_max_vals - 1, -1, -1):
                         # Division truncation ensures that we trim more the
                         # ones whose original value is the shortest
-                        char_per_str = length_diff / (i + 1)
+                        char_per_str = int(length_diff / (i + 1))
                         if char_per_str != 0:
                             idx = sorted_vals[i][0]
                             filtered_vals[idx] = filtered_vals[idx][:-char_per_str]
