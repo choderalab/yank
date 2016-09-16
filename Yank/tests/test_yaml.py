@@ -546,7 +546,9 @@ def test_validation_correct_protocols():
             assert sorted_protocol.keys() == protocol.keys()
         else:
             assert isinstance(sorted_protocol, collections.OrderedDict)
-            first_phase = sorted_protocol.keys()[0]
+            for key in sorted_protocol.keys():
+                first_phase = key
+                break
             assert 'complex' in first_phase or 'solvent1' in first_phase
 
 

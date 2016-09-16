@@ -1391,7 +1391,7 @@ class TLeap:
             # Save script and run tleap
             with open('leap.in', 'w') as f:
                 f.write(script)
-            leap_output = subprocess.check_output(['tleap', '-f', 'leap.in'])
+            leap_output = subprocess.check_output(['tleap', '-f', 'leap.in']).decode()
 
             # Save leap.log in directory of first output file
             if len(output_files) > 0:
