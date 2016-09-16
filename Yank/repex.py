@@ -1540,8 +1540,7 @@ class ReplicaExchange(object):
         Attempt to exchange all replicas to enhance mixing, calling code written in Cython.
         """
 
-        from . import mixing
-        from mixing._mix_replicas import _mix_replicas_cython
+        from .mixing._mix_replicas import _mix_replicas_cython
 
         replica_states = md.utils.ensure_type(self.replica_states, np.int64, 1, "Replica States")
         u_kl = md.utils.ensure_type(self.u_kl, np.float64, 2, "Reduced Potentials")
