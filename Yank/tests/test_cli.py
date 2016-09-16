@@ -28,7 +28,7 @@ from yank import utils
 def run_cli(arguments, expected_output=None):
     #cli.main(argv=arguments.split())
     command = 'yank ' + arguments
-    [stoutdata, sterrdata] = subprocess.popen(command.split()).communicate()
+    [stoutdata, sterrdata] = subprocess.Popen(command.split()).communicate()
 
     # TODO: Interprety suprocess data better
     if sterrdata:
