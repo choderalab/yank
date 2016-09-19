@@ -2006,6 +2006,36 @@ class ReplicaExchange(object):
 
         return True
 
+    def _convert_netcdf_store_type(self, stored_type):
+        """
+        Convert the stored NetCDF datatype from string to type without relying on unsafe eval() function
+
+        Parameters
+        ----------
+        stored_type : string 
+            Read from ncfile.Variable.type stored by repex
+ 
+        Returns:
+        --------
+        proper_type : type
+            Python or module type
+  
+        """
+        import importlib
+        try:
+            # Check if it's a builtin type
+            try: # Python 2
+                module = importlib.import_module('__builtin__')
+            except: # Python 3
+                module = importlib.import_module('builtins')
+            proper_type = getattr(module, stored_type)
+        except AttributeError:
+            # if not, separate module and class
+            module, stored_type = stored_type.rsplit(".", 1)
+            module = importlib.import_module(module)
+            proper_type = getattr(module, stored_type)
+        return proper_type
+
     def _store_dict_in_netcdf(self, ncgrp, options):
         """
         Store the contents of a dict in a NetCDF file.
@@ -2107,9 +2137,10 @@ class ReplicaExchange(object):
                 elif type_name == 'str':
                     option_value = str(option_value)
             elif (option_ncvar.shape[0] >= 0):
-                option_value = np.array(option_ncvar[:], eval(type_name))
+                option_value = np.array(option_ncvar[:], self._convert_netcdf_store_type(type_name))
                 # TODO: Deal with values that are actually scalar constants.
                 # TODO: Cast to appropriate type
+                # TODO: Cleanup type detection to reduce if/elif structure
             else:
                 option_value = option_ncvar[0]
                 option_value = eval(type_name + '(' + repr(option_value) + ')')
