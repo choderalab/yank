@@ -2118,32 +2118,29 @@ class ReplicaExchange(object):
         options = dict()
 
         import numpy
+        from .utils import quantity_from_string
         for option_name in ncgrp.variables.keys():
             # Get NetCDF variable.
             option_ncvar = ncgrp.variables[option_name]
             type_name = getattr(option_ncvar, 'type')
+            # TODO: Remove the if/elseif structure into one handy function
             # Get option value.
             if type_name == 'NoneType':
                 option_value = None
-            elif option_ncvar.shape == ():
-                option_value = option_ncvar.getValue()
-                # Cast to python types.
-                if type_name == 'bool':
-                    option_value = bool(option_value)
-                elif type_name == 'int':
-                    option_value = int(option_value)
-                elif type_name == 'float':
-                    option_value = float(option_value)
-                elif type_name == 'str':
-                    option_value = str(option_value)
-            elif (option_ncvar.shape[0] >= 0):
-                option_value = np.array(option_ncvar[:], self._convert_netcdf_store_type(type_name))
-                # TODO: Deal with values that are actually scalar constants.
-                # TODO: Cast to appropriate type
-                # TODO: Cleanup type detection to reduce if/elif structure
-            else:
-                option_value = option_ncvar[0]
-                option_value = eval(type_name + '(' + repr(option_value) + ')')
+            else: # Handle all Types not None
+                option_type = self._convert_netcdf_store_type(type_name)
+                if option_ncvar.shape == ():
+                    # Handle Standard Types
+                    option_value = option_type(option_ncvar.getValue())
+                elif (option_ncvar.shape[0] >= 0):
+                    # Handle array types
+                    option_value = np.array(option_ncvar[:], option_type)
+                    # TODO: Deal with values that are actually scalar constants.
+                    # TODO: Cast to appropriate type
+                else:
+                    # Handle iterable types?
+                    # TODO: Figure out what is actually cast here
+                    option_value = option_type(option_ncvar[0])
 
             # Log value (truncate if too long but save length)
             if hasattr(option_value, '__len__'):
@@ -2161,9 +2158,10 @@ class ReplicaExchange(object):
             if hasattr(option_ncvar, 'units'):
                 option_unit_name = getattr(option_ncvar, 'units')
                 if option_unit_name[0] == '/':
-                    option_value = eval(str(option_value) + option_unit_name, unit.__dict__)
+                    option_value = str(option_value) + option_unit_name
                 else:
-                    option_value = eval(str(option_value) + '*' + option_unit_name, unit.__dict__)
+                    option_value = str(option_value) + '*' + option_unit_name
+                option_value = quantity_from_string(option_value)
             # Store option.
             options[option_name] = option_value
 

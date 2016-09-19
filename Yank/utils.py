@@ -852,6 +852,149 @@ def camelcase_to_underscore(camelcase_str):
     underscore_str = re.sub(r'([A-Z])', '_\g<1>', camelcase_str)
     return underscore_str.lower()
 
+def quantity_from_string(quantity_str):
+    """
+    Generate a simtk.unit.Quantity object from a string of arbitrary nested strings
+
+    Parameters
+    ----------
+    quantity_str : string
+        A string containing a value with a unit of measure
+    
+    Returns
+    -------
+    quantity : simtk.unit.Quantity
+        The specified string, returned as a Quantity
+
+    Raises
+    ------
+    AttributeError
+        If quantity_str does not contain any parsable data
+    TypeError
+        If quantity_str does not contain units
+
+    Examples
+    --------
+    >>> quantity_from_string("1*atmosphere")
+    Quantity(value=1.0, unit=atmosphere)
+
+    >>> quantity_from_string("'1 * joule / second'")
+    Quanity(value=1, unit=joule/second)
+
+    """
+   
+    # Strip out (possible) surrounding quotes
+    quote_pattern = '[^\'"]+'
+    try:
+        quantity_str = re.search(quote_pattern, quantity_str).group()
+    except AttributeError as e:
+        raise AttributeError("Please pass a quantity in format of '#*unit'. e.g. '1*atmosphere'")
+    # Parse String
+    operators = ['(', ')', '*', '/']
+    def find_operator(passed_str):
+        # Process the current string until the next operator
+        for i, char in enumerate(passed_str):
+           if char in operators:
+               break
+        return i
+
+    def nested_string(passed_str):
+        # Loop through a given string level, returns how many indicies of the string it got through
+        last_char_loop = 0
+        number_pass_string = len(passed_str)
+        last_operator = None
+        final_quantity = None
+        # Close Parenthisis flag
+        paren_closed = False
+        while last_char_loop < number_pass_string:
+            next_char_loop = find_operator(passed_str[last_char_loop:]) + last_char_loop
+            next_char = passed_str[next_char_loop]
+            # Figure out what the operator is
+            if (next_char_loop == number_pass_string - 1 and (next_char != ')')) or (next_char_loop == 0 and next_char != '(' and next_char != ')'):
+                # Case of no new operators found
+                argument = passed_str[last_char_loop:]
+            else:
+                argument = passed_str[last_char_loop:next_char_loop]
+            # Determine if argument is a unit
+            try:
+                arg_unit = getattr(unit, argument)
+                arg_type = 'unit'
+            except Exception as e:
+                # Assume its float
+                try:
+                    arg_unit = float(argument)
+                    arg_type = 'float'
+                except: # Usually empty string
+                    if argument == '':
+                        arg_unit = None
+                        arg_type = 'None'
+                    else:
+                        raise e # Raise the syntax error
+            # See if we are at the end
+            augment = None
+            count_indices = 1 # How much to offset by to move past operator
+            if next_char_loop != number_pass_string:
+                next_operator = passed_str[next_char_loop]
+                if next_operator == '*':
+                    try: # Exponent
+                        if passed_str[next_char_loop+1] == '*':
+                            future_operator_loc = next_char_loop + 1 + find_operator(passed_str[next_char_loop+2:])
+                            future_operator = passed_str[future_operator_loc]
+                            if future_operator == '(': # This catches things like x**(3*2), rare, but it could happen
+                                exponent, exponent_type, exp_count_indices = nested_string(passed_str[future_operator_loc+1:])
+                            else:
+                                exponent = passed_str[next_char_loop+2:future_operator_loc+1]
+                                exp_count_indices = future_operator_loc - next_char_loop + 1 # +1 to move past exponent
+                            power = float(exponent) # These should only ever be numbers, not quantities, let error occur if they ar
+                            if power.is_integer(): # Method of float
+                                arg_unit **= int(power)
+                            else:
+                                arg_unit ** power
+                            next_char_loop += exp_count_indices
+                            # Set the actual next operator (Does not handle nested **)
+                            next_operator = passed_str[next_char_loop]
+                    except:
+                        pass
+                # Check for parenthises
+                if next_operator == '(':
+                    augment, augment_type, count_indices  = nested_string(passed_str[next_char_loop+1:])
+                elif next_operator == ')':
+                    paren_closed = True
+            else:
+                # Case of no found operators
+                next_operator = None 
+            # Handle the conditions
+            if (last_operator is None):
+                if (final_quantity is None) and (arg_type is 'None') and (augment is None):
+                    raise TypeError("Given Quantity could not be interpreted as presented")
+                elif (final_quantity is None) and (augment is None):
+                    final_quantity = arg_unit
+                    final_type = arg_type
+                elif (final_quantity is None) and (arg_type is 'None'):
+                    final_quantity = augment
+                    final_type = augment_type
+            else:
+                if augment is None:
+                    augment = arg_unit
+                    augment_type = arg_type
+                if last_operator == '*':
+                    final_quantity *= augment
+                elif last_operator == '/':
+                    final_quantity /= augment
+                # Assign type
+                if augment_type == 'unit':
+                    final_type = 'unit'
+                elif augment_type == 'float':
+                    final_type = 'float'
+            last_operator = next_operator
+            last_char_loop = next_char_loop + count_indices # Set the new position here skipping over processed terms
+            if paren_closed:
+                break
+        return final_quantity, final_type, last_char_loop
+    
+    quantity, final_type, x = nested_string(quantity_str)
+    return quantity
+     
 
 def process_unit_bearing_str(quantity_str, compatible_units):
     """
@@ -884,13 +1027,8 @@ def process_unit_bearing_str(quantity_str, compatible_units):
 
     """
 
-    # WARNING: This is dangerous!
-    # See: http://nedbatchelder.com/blog/201206/eval_really_is_dangerous.html
-    # TODO: Can we use a safer form of (or alternative to) 'eval' here?
-    quantity = eval(quantity_str, unit.__dict__)
-    # Unpack quantity if it was surrounded by quotes.
-    if isinstance(quantity, str):
-        quantity = eval(quantity, unit.__dict__)
+    # Convert string of a Quantity to actual Quantity
+    quantity = quantity_from_string(quantity_str)
     # Check to make sure units are compatible with expected units.
     try:
         quantity.unit.is_compatible(compatible_units)
