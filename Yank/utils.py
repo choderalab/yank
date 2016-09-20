@@ -915,6 +915,8 @@ def quantity_from_string(quantity_str):
                 argument = passed_str[last_char_loop:]
             else:
                 argument = passed_str[last_char_loop:next_char_loop]
+            # Strip leading/trailing spaces
+            argument = argument.strip(' ')
             # Determine if argument is a unit
             try:
                 arg_unit = getattr(unit, argument)
