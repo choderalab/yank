@@ -898,7 +898,26 @@ def quantity_from_string(quantity_str):
                break
         return i
 
+        
     def nested_string(passed_str):
+        def exponent_unit(passed_str):
+            # Attempt to cast argument as an exponenet
+            future_operator_loc = find_operator(passed_str)
+            future_operator = passed_str[future_operator_loc]
+            if future_operator == '(': # This catches things like x**(3*2), rare, but it could happen
+                exponent, exponent_type, exp_count_indices = nested_string(passed_str[future_operator_loc+1:])
+            elif future_operator_loc == 0:
+                # No more operators
+                exponent = passed_str
+                future_operator_loc = len(passed_str)
+                exp_count_indices = future_operator_loc + 2 # +2 to skip the **
+            else:
+                exponent = passed_str[:future_operator_loc]
+                exp_count_indices = future_operator_loc + 2 # +2 to skip the **
+            exponent = float(exponent) # These should only ever be numbers, not quantities, let error occur if they aren't
+            if exponent.is_integer(): # Method of float
+                exponent = int(exponent)
+            return exponent, exp_count_indices
         # Loop through a given string level, returns how many indicies of the string it got through
         last_char_loop = 0
         number_pass_string = len(passed_str)
@@ -940,29 +959,21 @@ def quantity_from_string(quantity_str):
                 if next_operator == '*':
                     try: # Exponent
                         if passed_str[next_char_loop+1] == '*':
-                            future_operator_loc = next_char_loop + 1 + find_operator(passed_str[next_char_loop+2:])
-                            future_operator = passed_str[future_operator_loc]
-                            if future_operator == '(': # This catches things like x**(3*2), rare, but it could happen
-                                exponent, exponent_type, exp_count_indices = nested_string(passed_str[future_operator_loc+1:])
-                            else:
-                                exponent = passed_str[next_char_loop+2:future_operator_loc+1]
-                                exp_count_indices = future_operator_loc - next_char_loop + 1 # +1 to move past exponent
-                            power = float(exponent) # These should only ever be numbers, not quantities, let error occur if they ar
-                            if power.is_integer(): # Method of float
-                                arg_unit **= int(power)
-                            else:
-                                arg_unit ** power
-                            next_char_loop += exp_count_indices
+                            exponent, exponent_offset = exponent_unit(passed_str[next_char_loop+2:])
+                            next_char_loop += exponent_offset
                             # Set the actual next operator (Does not handle nested **)
                             next_operator = passed_str[next_char_loop]
+                            # Apply exponent
+                            arg_unit **= exponent
                     except:
                         pass
                 # Check for parenthises
                 if next_operator == '(':
                     augment, augment_type, count_indices  = nested_string(passed_str[next_char_loop+1:])
+                    count_indices += 1 # add 1 more to offset the '(' itself
                 elif next_operator == ')':
                     paren_closed = True
-            else:
+            else: 
                 # Case of no found operators
                 next_operator = None 
             # Handle the conditions
@@ -991,6 +1002,14 @@ def quantity_from_string(quantity_str):
             last_operator = next_operator
             last_char_loop = next_char_loop + count_indices # Set the new position here skipping over processed terms
             if paren_closed:
+                # Determine if the next term is a ** to exponentiate augment
+                try:
+                    if passed_str[last_char_loop:last_char_loop+2] == '**':
+                        exponent, exponent_offset = exponent_unit(passed_str[last_char_loop+2:])
+                        final_quantity **= exponent
+                        last_char_loop += exponent_offset 
+                except:
+                    pass
                 break
         return final_quantity, final_type, last_char_loop
     
