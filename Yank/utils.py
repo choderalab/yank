@@ -209,11 +209,11 @@ def delay_termination():
     yield  # Resume program
 
     # Restore old handlers
-    for signum, handler in old_handlers.items():
+    for signum, handler in listitems(old_handlers):
         signal.signal(signum, handler)
 
     # Fire delayed signals
-    for signum, s in signals_received.items():
+    for signum, s in listitems(signals_received):
         if s is not None:
             old_handlers[signum](*s)
 
@@ -235,6 +235,9 @@ class CombinatorialLeaf(list):
     """List type that can be expanded combinatorially in CombinatorialTree."""
     def __repr__(self):
         return "Combinatorial({})".format(super(CombinatorialLeaf, self).__repr__())
+    def __eq__(self, other):
+        # Order does not mater, so comparisons should not rely on them
+        return collections.Counter(self) == collections.Counter(other)
 
 
 class CombinatorialTree(collections.MutableMapping):
@@ -446,7 +449,7 @@ class CombinatorialTree(collections.MutableMapping):
         expanded_tree = copy.deepcopy(self)
         combinatorial_id_nodes = {}  # map combinatorial_id -> list of combination_ids
 
-        for id_node_key, id_node_val in self.__getitem__(id_nodes_path).items():
+        for id_node_key, id_node_val in listitems(self.__getitem__(id_nodes_path)):
             # Find all combinations and expand them
             id_node_val = CombinatorialTree(id_node_val)
             combinations = {id_node_key + '_' + name: comb for name, comb
@@ -563,7 +566,7 @@ class CombinatorialTree(collections.MutableMapping):
         def recursive_find_leaves(node):
             leaf_paths = []
             leaf_vals = []
-            for child_key, child_val in node.items():
+            for child_key, child_val in listitems(node):
                 if isinstance(child_val, collections.Mapping):
                     subleaf_paths, subleaf_vals = recursive_find_leaves(child_val)
                     # prepend child key to path
@@ -1101,7 +1104,7 @@ def generate_signature_schema(func, update_keys=None, exclude_keys=frozenset()):
     >>> print(isinstance(f_dict, dict))
     True
     >>> # Print (key, values) in the correct order
-    >>> print(sorted(f_dict.items(), key=lambda x: x[1]))
+    >>> print(sorted(listitems(f_dict), key=lambda x: x[1]))
     [(Optional('camel_case'), <type 'bool'>), (Optional('none'), <type 'object'>)]
     >>> f_schema = Schema(generate_signature_schema(f))
     >>> f_schema.validate({'quantity': '1.0*nanometer'})
@@ -1245,7 +1248,7 @@ def validate_parameters(parameters, template_parameters, check_unknown=False,
         diff = set(parameters) - set(template_parameters)
         raise TypeError("found unknown parameter {}".format(', '.join(diff)))
 
-    for par, value in validated_par.items():
+    for par, value in listitems(validated_par):
         templ_value = template_parameters[par]
 
         # Convert requested types
@@ -1533,18 +1536,18 @@ class TLeap:
         """Run script and return warning messages in leap log file."""
         # Transform paths in absolute paths since we'll change the working directory
         input_files = {local + os.path.splitext(path)[1]: os.path.abspath(path)
-                       for local, path in self._file_paths.items() if 'moli' in local}
+                       for local, path in listitems(self._file_paths) if 'moli' in local}
         output_files = {local + os.path.splitext(path)[1]: os.path.abspath(path)
-                        for local, path in self._file_paths.items() if 'molo' in local}
+                        for local, path in listitems(self._file_paths) if 'molo' in local}
 
         # Resolve all the names in the script
         local_files = {local: local + os.path.splitext(path)[1]
-                       for local, path in self._file_paths.items()}
+                       for local, path in listitems(self._file_paths)}
         script = self._script.format(**local_files) + 'quit\n'
 
         with mdtraj.utils.enter_temp_directory():
             # Copy input files
-            for local_file, file_path in input_files.items():
+            for local_file, file_path in listitems(input_files):
                 shutil.copy(file_path, local_file)
 
             # Save script and run tleap
@@ -1555,7 +1558,7 @@ class TLeap:
             # Save leap.log in directory of first output file
             if len(output_files) > 0:
                 #Get first output path in Py 3.X way that is also thread-safe
-                for val in output_files.values():
+                for val in listvalues(output_files):
                     first_output_path = val
                     break
                 first_output_name = os.path.basename(first_output_path).split('.')[0]
@@ -1566,7 +1569,7 @@ class TLeap:
             # Copy back output files. If something goes wrong, some files may not exist
             error_msg = ''
             try:
-                for local_file, file_path in output_files.items():
+                for local_file, file_path in listitems(output_files):
                     shutil.copy(local_file, file_path)
             except IOError:
                 error_msg = "Could not create one of the system files."
@@ -1585,6 +1588,30 @@ class TLeap:
             # Check for and return warnings
             return re.findall('WARNING: (.+)', leap_output)
 
+
+#=============================================================================================
+# Python 2/3 compatability
+#=============================================================================================
+
+""" 
+Generate same behavior for dict.item in both versions of Python
+Avoids external dependancies on future.utils or six
+
+"""
+try:
+    dict.iteritems
+except AttributeError:
+    # Python 3
+    def listvalues(d):
+        return list(d.values())
+    def listitems(d):
+        return list(d.items())
+else:
+    # Python 2
+    def listvalues(d):
+        return d.values()
+    def listitems(d):
+        return d.items()
 
 #=============================================================================================
 # Main and tests

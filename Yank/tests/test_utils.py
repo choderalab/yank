@@ -50,9 +50,12 @@ def test_find_leaves():
                                                 'nested': {
                                                     'leaf': ['a', 'b', 'c']}}})
     leaf_paths, leaf_vals = simple_tree._find_leaves()
-    assert leaf_paths == [('simple', 'scalar'), ('simple', 'vector'),
-                          ('simple', 'nested', 'leaf')]
-    assert leaf_vals == [1, [2, 3, 4], ['a', 'b', 'c']]
+    print(leaf_paths)
+    assert all(leaf_path in [('simple', 'scalar'), ('simple', 'vector'),
+                             ('simple', 'nested', 'leaf')]
+                         for leaf_path in leaf_paths)
+    assert all(leaf_val in  [1, [2, 3, 4], ['a', 'b', 'c']]
+                        for leaf_val in leaf_vals)
 
 
 def test_find_combinatorial_leaves():
@@ -64,8 +67,10 @@ def test_find_combinatorial_leaves():
             'leaf': ['a', 'b', 'c'],
             'comb-leaf': CombinatorialLeaf(['d', 'e'])}}})
     leaf_paths, leaf_vals = simple_tree._find_combinatorial_leaves()
-    assert leaf_paths == [('simple', 'vector'), ('simple', 'nested', 'comb-leaf')]
-    assert leaf_vals == [[2, 3, 4], ['d', 'e']]
+    assert all(leaf_path in [('simple', 'vector'), ('simple', 'nested', 'comb-leaf')]
+                         for leaf_path in leaf_paths)
+    assert all(leaf_val in [[2, 3, 4], ['d', 'e']] 
+                        for leaf_val in leaf_vals)
 
 
 def test_expand_tree():
@@ -84,7 +89,7 @@ def test_expand_tree():
               {'simple': {'scalar': 1, 'vector': 4, 'nested': {'leaf': ['d', 'e'], 'combleaf': 'a'}}},
               {'simple': {'scalar': 1, 'vector': 4, 'nested': {'leaf': ['d', 'e'], 'combleaf': 'b'}}},
               {'simple': {'scalar': 1, 'vector': 4, 'nested': {'leaf': ['d', 'e'], 'combleaf': 'c'}}}]
-    assert result == [exp for exp in simple_tree]
+    assert all(exp in result for exp in simple_tree)
 
     # Test named_combinations generator
     expected_names = set(['2_a', '3_a', '4_a', '2_b', '3_b', '4_b', '2_c', '3_c', '4_c'])
@@ -124,9 +129,8 @@ def test_expand_id_nodes():
     assert t['molecules'] == {'mol1_1': {'mol_value': 1}, 'mol1_2': {'mol_value': 2},
                               'mol2_3': {'mol_value': 3}, 'mol2_4': {'mol_value': 4}}
     assert t['systems'] == {'sys1': {'molecules': CombinatorialLeaf(['mol1_2', 'mol1_1'])},
-                            'sys2': {'molecules': CombinatorialLeaf(['mol1_2', 'mol1_1', 'mol2_3', 'mol2_4'])},
+                        'sys2': {'molecules': CombinatorialLeaf(['mol1_2', 'mol1_1', 'mol2_3', 'mol2_4'])},
                             'sys3': {'prmtopfile': 'mysystem.prmtop'}}
-
 
 def test_topology_serialization():
     """Correct serialization of Topology objects."""
