@@ -504,12 +504,12 @@ def test_order_phases():
 
     # Be sure that normal parsing is not ordered or the test is useless
     parsed = yaml.load(textwrap.dedent(yaml_content))
-    assert parsed['absolute-binding'].keys() != ordered_phases
+    assert list(parsed['absolute-binding'].keys()) != ordered_phases
 
     # Insert !Ordered tag
     yaml_content = yaml_content.replace('binding:', 'binding: !Ordered')
     parsed = yank_load(yaml_content)
-    assert parsed['absolute-binding'].keys() == ordered_phases
+    assert list(parsed['absolute-binding'].keys()) == ordered_phases
 
 
 def test_validation_correct_protocols():
