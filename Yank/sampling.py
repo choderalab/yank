@@ -25,9 +25,9 @@ import numpy as np
 import netCDF4 as netcdf
 from simtk import openmm, unit
 
-from repex import ThermodynamicState
-from repex import ReplicaExchange
-from repex import MAX_SEED
+from .repex import ThermodynamicState
+from .repex import ReplicaExchange
+from .repex import MAX_SEED
 
 from alchemy import AbsoluteAlchemicalFactory, AlchemicalState
 
@@ -683,7 +683,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
             if (not np.isnan(u_new)) and ((du <= 0.0) or (np.random.rand() < np.exp(-du))):
                 self.displacement_trials_accepted += 1
                 self.replica_positions[replica_index] = perturbed_positions
-            #print "translation du = %f (%d)" % (du, self.displacement_trials_accepted)
+            #print("translation du = %f (%d)" % (du, self.displacement_trials_accepted))
             # Print timing information.
             final_time = time.time()
             elapsed_time = final_time - initial_time
@@ -702,7 +702,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
             if (not np.isnan(u_new)) and ((du <= 0.0) or (np.random.rand() < np.exp(-du))):
                 self.rotation_trials_accepted += 1
                 self.replica_positions[replica_index] = perturbed_positions
-            #print "rotation du = %f (%d)" % (du, self.rotation_trials_accepted)
+            #print("rotation du = %f (%d)" % (du, self.rotation_trials_accepted))
             # Accumulate timing information.
             final_time = time.time()
             elapsed_time = final_time - initial_time
@@ -943,7 +943,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         yank_citations = """\
         Chodera JD, Shirts MR, Wang K, Friedrichs MS, Eastman P, Pande VS, and Branson K. YANK: An extensible platform for GPU-accelerated free energy calculations. In preparation."""
 
-        print yank_citations
-        print ""
+        print(yank_citations)
+        print("")
 
         return

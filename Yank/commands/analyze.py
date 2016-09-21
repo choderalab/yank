@@ -13,7 +13,7 @@ Analyze YANK output file.
 # MODULE IMPORTS
 #=============================================================================================
 
-from yank import utils, analyze
+from .. import utils, analyze
 
 #=============================================================================================
 # COMMAND-LINE INTERFACE

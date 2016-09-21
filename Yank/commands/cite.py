@@ -28,13 +28,13 @@ citations = [
 #=============================================================================================
 
 def dispatch(args):
-    print "Thank you for using YANK!"
-    print ""
-    print "Please cite the following:"
-    print ""
+    print("Thank you for using YANK!")
+    print("")
+    print("Please cite the following:")
+    print("")
     for citation in citations:
-        print citation
-        print ""
+        print(citation)
+        print("")
     # TODO: Also print citations for repex, pymbar, and other dependencies.
 
     return True

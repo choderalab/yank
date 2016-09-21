@@ -213,7 +213,7 @@ cmd.set('cache_frames', 0)
 
 model = cmd.get_model('complex')
 #for atom in model.atom:
-#    print "%8d %4s %3s %5d %8.3f %8.3f %8.3f" % (atom.index, atom.name, atom.resn, int(atom.resi), atom.coord[0], atom.coord[1], atom.coord[2])
+#    print("%8d %4s %3s %5d %8.3f %8.3f %8.3f" % (atom.index, atom.name, atom.resn, int(atom.resi), atom.coord[0], atom.coord[1], atom.coord[2]))
 
 # Read atoms from PDB
 pdbatoms = readAtomsFromPDB(reference_pdbfile)
@@ -224,14 +224,14 @@ for (index, atom) in enumerate(pdbatoms):
     key = (atom['chainID'], int(atom['resSeq']), atom['name'].strip())
     value = index
     pdb_indices[key] = value
-print "pdb_indices has %d entries" % len(pdb_indices.keys())
+print("pdb_indices has %d entries" % len(pdb_indices.keys()))
 
 model_indices = dict()
 for (index, atom) in enumerate(model.atom):
     key = (atom.chain, int(atom.resi), atom.name)
     value = index
     model_indices[key] = value
-print "model_indices has %d entries" % len(model_indices.keys())
+print("model_indices has %d entries" % len(model_indices.keys()))
 
 model_mapping = list()
 for (pdb_index, atom) in enumerate(pdbatoms):
@@ -242,32 +242,32 @@ pdb_mapping = list()
 for (index, atom) in enumerate(model.atom):
     key = (atom.chain, int(atom.resi), atom.name)
     pdb_mapping.append(pdb_indices[key])
-print pdb_mapping
+print(pdb_mapping)
 
 # Construct full path to NetCDF file.
 fullpath = os.path.join(source_directory, phase + '.nc')
 
 # Open NetCDF file for reading.
-print "Opening NetCDF trajectory file '%(fullpath)s' for reading..." % vars()
+print("Opening NetCDF trajectory file '%(fullpath)s' for reading..." % vars())
 #ncfile = Scientific.IO.NetCDF.NetCDFFile(fullpath, 'r')
 ncfile = NetCDF.Dataset(fullpath, 'r')
 
 # DEBUG
-print "dimensions:"
-print ncfile.dimensions
+print("dimensions:")
+print(ncfile.dimensions)
 
 # Read dimensions.
 [niterations,nstates,natoms,ndim] = ncfile.variables['positions'].shape
-print "Read %(niterations)d iterations, %(nstates)d states" % vars()
+print("Read %(niterations)d iterations, %(nstates)d states" % vars())
 
 #niterations = 10 # DEBUG
 
 # Load frames
 cmd.set('all_states', 0)
-print "Loading frames..."
+print("Loading frames...")
 for iteration in range(niterations):
     # Set coordinates
-    print "iteration %8d / %8d" % (iteration, niterations)
+    print("iteration %8d / %8d" % (iteration, niterations))
     positions = (10.0 * ncfile.variables['positions'][iteration, replica, :, :]).squeeze()
     positions[:,:] = positions[pdb_mapping,:]
     xyz = positions.tolist()
@@ -280,7 +280,7 @@ for iteration in range(niterations):
     cmd.alter_state(iteration+1, 'complex', '(x,y,z) = xyz_iter.next()', space=locals())
 
     #for pdb_index in range(natoms):
-        #if (pdb_index % 100)==0: print pdb_index
+        #if (pdb_index % 100)==0: print(pdb_index)
         #model_index = model_mapping[pdb_index]
         #model.atom[model_index].coord = (10 * ncfile.variables['positions'][iteration, replica, pdb_index, :]).squeeze().tolist()
         #for k in range(3):
@@ -288,7 +288,7 @@ for iteration in range(niterations):
     #cmd.load_model(model, 'complex', state=iteration+1)
     #cmd.load_model(model, 'complex')
 
-print "done"
+print("done")
 
 # Align all states
 cmd.intra_fit('all')
@@ -330,7 +330,7 @@ frame_prefix = 'frames/frame'
 cmd.set('ray_trace_frames', 1)
 cmd.set('ray_trace_frames', 0) # DEBUG
 for iteration in range(niterations):
-    print "rendering frame %04d / %04d" % (iteration+1, niterations)
+    print("rendering frame %04d / %04d" % (iteration+1, niterations))
     cmd.frame(iteration+1)
     cmd.set('stick_transparency', float(ncfile.variables['states'][iteration, replica]) / float(nstates-1))
     cmd.png(frame_prefix + '%04d.png' % (iteration), ray=True)

@@ -209,7 +209,7 @@ def notest_LennardJonesPair(box_width_nsigma=6.0):
     output += "Computed binding free energy (with standard state correction)   : %10.5f +- %10.5f kT (nsigma = %3.1f)\n" % (Delta_f, dDelta_f, nsigma)
     output += "Computed binding free energy (without standard state correction): %10.5f +- %10.5f kT (nsigma = %3.1f)\n" % (Delta_f + standard_state_correction, dDelta_f, nsigma)
     output += "Standard state correction alone                                 : %10.5f           kT\n" % (standard_state_correction)
-    print output
+    print(output)
 
     #if (nsigma > NSIGMA_MAX):
     #    output += "\n"
@@ -233,4 +233,4 @@ if __name__ == '__main__':
     dDelta_f_n = np.array(dDelta_f_n)
 
     for (box_width_nsigma, Delta_f, dDelta_f) in zip(box_width_nsigma_values, Delta_f_n, dDelta_f_n):
-        print "%8.3f %12.6f %12.6f" % (box_width_nsigma, Delta_f, dDelta_f)
+        print("%8.3f %12.6f %12.6f" % (box_width_nsigma, Delta_f, dDelta_f))

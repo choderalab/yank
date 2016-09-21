@@ -15,7 +15,7 @@ Test command-line interface.
 
 import os
 import textwrap
-import commands
+import subprocess
 
 import openmoltools as omt
 
@@ -27,24 +27,26 @@ from yank import utils
 
 def run_cli(arguments, expected_output=None):
     #cli.main(argv=arguments.split())
-    [status, output] = commands.getstatusoutput('yank ' + arguments)
+    command = 'yank ' + arguments
+    [stoutdata, sterrdata] = subprocess.Popen(command.split()).communicate()
 
-    if status:
-        message  = "An error return value (%s) was obtained:\n" % str(status)
+    # TODO: Interprety suprocess data better
+    if sterrdata:
+        message  = "An error return value (%s) was obtained:\n" % str(sterrdata)
         message += "\n"
         message += output
         message += "\n"
         raise Exception(message)
 
     if expected_output:
-        if output != expected_output:
+        if stoutdata != expected_output:
             message  = "Output differs from expected output.\n"
             message += "\n"
             message += "Expected output:\n"
             message += expected_output
             message += "\n"
             message += "Actual output:\n"
-            message += output
+            message += stoutdata
             message += "\n"
             raise Exception(message)
 

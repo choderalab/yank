@@ -47,9 +47,8 @@ script:
 env:
   matrix:
     - python=2.7  CONDA_PY=27
-    # TODO: Enable python 3.x tests when we are addressing python 3 compatibility.
-    #- python=3.4  CONDA_PY=34
-    #- python=3.5  CONDA_PY=35
+    - python=3.4  CONDA_PY=34
+    - python=3.5  CONDA_PY=35
 
   global:
     - ORGNAME="omnia"

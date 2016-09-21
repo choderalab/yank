@@ -30,10 +30,10 @@ import simtk.unit as unit
 import simtk.openmm as openmm
 
 from alchemy import AbsoluteAlchemicalFactory
-from sampling import ModifiedHamiltonianExchange # TODO: Modify to 'from yank.sampling import ModifiedHamiltonianExchange'?
-from restraints import HarmonicReceptorLigandRestraint, FlatBottomReceptorLigandRestraint
+from .sampling import ModifiedHamiltonianExchange 
+from .restraints import HarmonicReceptorLigandRestraint, FlatBottomReceptorLigandRestraint
 
-import utils
+from . import utils
 
 
 # ==============================================================================
@@ -565,7 +565,7 @@ class Yank(object):
 
         # TODO: Can we simplify this code by pushing more into analyze.py or repex.py?
 
-        import analyze
+        from . import analyze
         from pymbar import MBAR, timeseries
         import netCDF4 as netcdf
 

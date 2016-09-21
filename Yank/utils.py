@@ -104,7 +104,7 @@ def config_root_logger(verbose, log_file_path=None, mpicomm=None):
     n_handlers = len(logging.root.handlers)
     if n_handlers > 0:
         root_logger = logging.root
-        for i in xrange(n_handlers):
+        for i in range(n_handlers):
             root_logger.removeHandler(root_logger.handlers[0])
 
     # If this is a worker node, don't save any log file
@@ -209,11 +209,11 @@ def delay_termination():
     yield  # Resume program
 
     # Restore old handlers
-    for signum, handler in old_handlers.items():
+    for signum, handler in listitems(old_handlers):
         signal.signal(signum, handler)
 
     # Fire delayed signals
-    for signum, s in signals_received.items():
+    for signum, s in listitems(signals_received):
         if s is not None:
             old_handlers[signum](*s)
 
@@ -235,6 +235,9 @@ class CombinatorialLeaf(list):
     """List type that can be expanded combinatorially in CombinatorialTree."""
     def __repr__(self):
         return "Combinatorial({})".format(super(CombinatorialLeaf, self).__repr__())
+    def __eq__(self, other):
+        # Order does not mater, so comparisons should not rely on them
+        return collections.Counter(self) == collections.Counter(other)
 
 
 class CombinatorialTree(collections.MutableMapping):
@@ -266,7 +269,7 @@ class CombinatorialTree(collections.MutableMapping):
 
     Deletion of a node leave an empty dict!
     >>> del tree[path]
-    >>> print tree
+    >>> print(tree)
     {'a': {}}
 
     Expand all possible combinations of a tree. The iterator return a dict, not another
@@ -283,7 +286,7 @@ class CombinatorialTree(collections.MutableMapping):
 
     Expand all possible combinations and assign unique names
     >>> for name, t in tree.named_combinations(separator='_', max_name_length=5):
-    ...     print name
+    ...     print(name)
     3_1
     3_2
     4_1
@@ -395,7 +398,7 @@ class CombinatorialTree(collections.MutableMapping):
                     for i in range(n_max_vals - 1, -1, -1):
                         # Division truncation ensures that we trim more the
                         # ones whose original value is the shortest
-                        char_per_str = length_diff / (i + 1)
+                        char_per_str = int(length_diff / (i + 1))
                         if char_per_str != 0:
                             idx = sorted_vals[i][0]
                             filtered_vals[idx] = filtered_vals[idx][:-char_per_str]
@@ -446,7 +449,7 @@ class CombinatorialTree(collections.MutableMapping):
         expanded_tree = copy.deepcopy(self)
         combinatorial_id_nodes = {}  # map combinatorial_id -> list of combination_ids
 
-        for id_node_key, id_node_val in self.__getitem__(id_nodes_path).items():
+        for id_node_key, id_node_val in listitems(self.__getitem__(id_nodes_path)):
             # Find all combinations and expand them
             id_node_val = CombinatorialTree(id_node_val)
             combinations = {id_node_key + '_' + name: comb for name, comb
@@ -489,7 +492,14 @@ class CombinatorialTree(collections.MutableMapping):
         The value contained in the node pointed by the path.
 
         """
-        return reduce(lambda d,k: d[k], path, d)
+        # TODO: Make sure this is working
+        # Converted from old py 2.X `reduce` function
+        function = lambda d,k: d[k]
+        it = iter(path)
+        accum_value = d
+        for x in it:
+            accum_value = function(accum_value, x)
+        return accum_value
 
     @staticmethod
     def _resolve_paths(d, path):
@@ -510,7 +520,7 @@ class CombinatorialTree(collections.MutableMapping):
         --------
         >>> d = {'nested': {'correct1': {'a': 1}, 'correct2': {'a': 2}, 'wrong': {'b': 3}}}
         >>> p = [x for x in CombinatorialTree._resolve_paths(d, ('nested', '*', 'a'))]
-        >>> print sorted(p)
+        >>> print(sorted(p))
         [(('nested', 'correct1', 'a'), 1), (('nested', 'correct2', 'a'), 2)]
 
         """
@@ -556,7 +566,7 @@ class CombinatorialTree(collections.MutableMapping):
         def recursive_find_leaves(node):
             leaf_paths = []
             leaf_vals = []
-            for child_key, child_val in node.items():
+            for child_key, child_val in listitems(node):
                 if isinstance(child_val, collections.Mapping):
                     subleaf_paths, subleaf_vals = recursive_find_leaves(child_val)
                     # prepend child key to path
@@ -845,6 +855,170 @@ def camelcase_to_underscore(camelcase_str):
     underscore_str = re.sub(r'([A-Z])', '_\g<1>', camelcase_str)
     return underscore_str.lower()
 
+def quantity_from_string(quantity_str):
+    """
+    Generate a simtk.unit.Quantity object from a string of arbitrary nested strings
+
+    Parameters
+    ----------
+    quantity_str : string
+        A string containing a value with a unit of measure
+    
+    Returns
+    -------
+    quantity : simtk.unit.Quantity
+        The specified string, returned as a Quantity
+
+    Raises
+    ------
+    AttributeError
+        If quantity_str does not contain any parsable data
+    TypeError
+        If quantity_str does not contain units
+
+    Examples
+    --------
+    >>> quantity_from_string("1*atmosphere")
+    Quantity(value=1.0, unit=atmosphere)
+
+    >>> quantity_from_string("'1 * joule / second'")
+    Quanity(value=1, unit=joule/second)
+
+    """
+   
+    # Strip out (possible) surrounding quotes
+    quote_pattern = '[^\'"]+'
+    try:
+        quantity_str = re.search(quote_pattern, quantity_str).group()
+    except AttributeError as e:
+        raise AttributeError("Please pass a quantity in format of '#*unit'. e.g. '1*atmosphere'")
+    # Parse String
+    operators = ['(', ')', '*', '/']
+    def find_operator(passed_str):
+        # Process the current string until the next operator
+        for i, char in enumerate(passed_str):
+           if char in operators:
+               break
+        return i
+
+        
+    def nested_string(passed_str):
+        def exponent_unit(passed_str):
+            # Attempt to cast argument as an exponenet
+            future_operator_loc = find_operator(passed_str)
+            future_operator = passed_str[future_operator_loc]
+            if future_operator == '(': # This catches things like x**(3*2), rare, but it could happen
+                exponent, exponent_type, exp_count_indices = nested_string(passed_str[future_operator_loc+1:])
+            elif future_operator_loc == 0:
+                # No more operators
+                exponent = passed_str
+                future_operator_loc = len(passed_str)
+                exp_count_indices = future_operator_loc + 2 # +2 to skip the **
+            else:
+                exponent = passed_str[:future_operator_loc]
+                exp_count_indices = future_operator_loc + 2 # +2 to skip the **
+            exponent = float(exponent) # These should only ever be numbers, not quantities, let error occur if they aren't
+            if exponent.is_integer(): # Method of float
+                exponent = int(exponent)
+            return exponent, exp_count_indices
+        # Loop through a given string level, returns how many indicies of the string it got through
+        last_char_loop = 0
+        number_pass_string = len(passed_str)
+        last_operator = None
+        final_quantity = None
+        # Close Parenthisis flag
+        paren_closed = False
+        while last_char_loop < number_pass_string:
+            next_char_loop = find_operator(passed_str[last_char_loop:]) + last_char_loop
+            next_char = passed_str[next_char_loop]
+            # Figure out what the operator is
+            if (next_char_loop == number_pass_string - 1 and (next_char != ')')) or (next_char_loop == 0 and next_char != '(' and next_char != ')'):
+                # Case of no new operators found
+                argument = passed_str[last_char_loop:]
+            else:
+                argument = passed_str[last_char_loop:next_char_loop]
+            # Strip leading/trailing spaces
+            argument = argument.strip(' ')
+            # Determine if argument is a unit
+            try:
+                arg_unit = getattr(unit, argument)
+                arg_type = 'unit'
+            except Exception as e:
+                # Assume its float
+                try:
+                    arg_unit = float(argument)
+                    arg_type = 'float'
+                except: # Usually empty string
+                    if argument == '':
+                        arg_unit = None
+                        arg_type = 'None'
+                    else:
+                        raise e # Raise the syntax error
+            # See if we are at the end
+            augment = None
+            count_indices = 1 # How much to offset by to move past operator
+            if next_char_loop != number_pass_string:
+                next_operator = passed_str[next_char_loop]
+                if next_operator == '*':
+                    try: # Exponent
+                        if passed_str[next_char_loop+1] == '*':
+                            exponent, exponent_offset = exponent_unit(passed_str[next_char_loop+2:])
+                            next_char_loop += exponent_offset
+                            # Set the actual next operator (Does not handle nested **)
+                            next_operator = passed_str[next_char_loop]
+                            # Apply exponent
+                            arg_unit **= exponent
+                    except:
+                        pass
+                # Check for parenthises
+                if next_operator == '(':
+                    augment, augment_type, count_indices  = nested_string(passed_str[next_char_loop+1:])
+                    count_indices += 1 # add 1 more to offset the '(' itself
+                elif next_operator == ')':
+                    paren_closed = True
+            else: 
+                # Case of no found operators
+                next_operator = None 
+            # Handle the conditions
+            if (last_operator is None):
+                if (final_quantity is None) and (arg_type is 'None') and (augment is None):
+                    raise TypeError("Given Quantity could not be interpreted as presented")
+                elif (final_quantity is None) and (augment is None):
+                    final_quantity = arg_unit
+                    final_type = arg_type
+                elif (final_quantity is None) and (arg_type is 'None'):
+                    final_quantity = augment
+                    final_type = augment_type
+            else:
+                if augment is None:
+                    augment = arg_unit
+                    augment_type = arg_type
+                if last_operator == '*':
+                    final_quantity *= augment
+                elif last_operator == '/':
+                    final_quantity /= augment
+                # Assign type
+                if augment_type == 'unit':
+                    final_type = 'unit'
+                elif augment_type == 'float':
+                    final_type = 'float'
+            last_operator = next_operator
+            last_char_loop = next_char_loop + count_indices # Set the new position here skipping over processed terms
+            if paren_closed:
+                # Determine if the next term is a ** to exponentiate augment
+                try:
+                    if passed_str[last_char_loop:last_char_loop+2] == '**':
+                        exponent, exponent_offset = exponent_unit(passed_str[last_char_loop+2:])
+                        final_quantity **= exponent
+                        last_char_loop += exponent_offset 
+                except:
+                    pass
+                break
+        return final_quantity, final_type, last_char_loop
+    
+    quantity, final_type, x = nested_string(quantity_str)
+    return quantity
+     
 
 def process_unit_bearing_str(quantity_str, compatible_units):
     """
@@ -877,13 +1051,8 @@ def process_unit_bearing_str(quantity_str, compatible_units):
 
     """
 
-    # WARNING: This is dangerous!
-    # See: http://nedbatchelder.com/blog/201206/eval_really_is_dangerous.html
-    # TODO: Can we use a safer form of (or alternative to) 'eval' here?
-    quantity = eval(quantity_str, unit.__dict__)
-    # Unpack quantity if it was surrounded by quotes.
-    if isinstance(quantity, str):
-        quantity = eval(quantity, unit.__dict__)
+    # Convert string of a Quantity to actual Quantity
+    quantity = quantity_from_string(quantity_str)
     # Check to make sure units are compatible with expected units.
     try:
         quantity.unit.is_compatible(compatible_units)
@@ -932,10 +1101,10 @@ def generate_signature_schema(func, update_keys=None, exclude_keys=frozenset()):
     >>> def f(a, b, camelCase=True, none=None, quantity=3.0*unit.angstroms):
     ...     pass
     >>> f_dict = generate_signature_schema(f, exclude_keys=['quantity'])
-    >>> print isinstance(f_dict, dict)
+    >>> print(isinstance(f_dict, dict))
     True
     >>> # Print (key, values) in the correct order
-    >>> print sorted(f_dict.items(), key=lambda x: x[1])
+    >>> print(sorted(listitems(f_dict), key=lambda x: x[1]))
     [(Optional('camel_case'), <type 'bool'>), (Optional('none'), <type 'object'>)]
     >>> f_schema = Schema(generate_signature_schema(f))
     >>> f_schema.validate({'quantity': '1.0*nanometer'})
@@ -954,7 +1123,8 @@ def generate_signature_schema(func, update_keys=None, exclude_keys=frozenset()):
     exclude_keys.update({k._schema for k in update_keys if isinstance(k, Optional)})
 
     # Transform camelCase to underscore
-    args = map(camelcase_to_underscore, args)
+    # TODO: Make sure this is working from the Py3.X conversion
+    args = [camelcase_to_underscore(arg) for arg in args ]
 
     # Build schema
     for arg, default_value in zip(args[-len(defaults):], defaults):
@@ -1078,7 +1248,7 @@ def validate_parameters(parameters, template_parameters, check_unknown=False,
         diff = set(parameters) - set(template_parameters)
         raise TypeError("found unknown parameter {}".format(', '.join(diff)))
 
-    for par, value in validated_par.items():
+    for par, value in listitems(validated_par):
         templ_value = template_parameters[par]
 
         # Convert requested types
@@ -1366,28 +1536,31 @@ class TLeap:
         """Run script and return warning messages in leap log file."""
         # Transform paths in absolute paths since we'll change the working directory
         input_files = {local + os.path.splitext(path)[1]: os.path.abspath(path)
-                       for local, path in self._file_paths.items() if 'moli' in local}
+                       for local, path in listitems(self._file_paths) if 'moli' in local}
         output_files = {local + os.path.splitext(path)[1]: os.path.abspath(path)
-                        for local, path in self._file_paths.items() if 'molo' in local}
+                        for local, path in listitems(self._file_paths) if 'molo' in local}
 
         # Resolve all the names in the script
         local_files = {local: local + os.path.splitext(path)[1]
-                       for local, path in self._file_paths.items()}
+                       for local, path in listitems(self._file_paths)}
         script = self._script.format(**local_files) + 'quit\n'
 
         with mdtraj.utils.enter_temp_directory():
             # Copy input files
-            for local_file, file_path in input_files.items():
+            for local_file, file_path in listitems(input_files):
                 shutil.copy(file_path, local_file)
 
             # Save script and run tleap
             with open('leap.in', 'w') as f:
                 f.write(script)
-            leap_output = subprocess.check_output(['tleap', '-f', 'leap.in'])
+            leap_output = subprocess.check_output(['tleap', '-f', 'leap.in']).decode()
 
             # Save leap.log in directory of first output file
             if len(output_files) > 0:
-                first_output_path = output_files.values()[0]
+                #Get first output path in Py 3.X way that is also thread-safe
+                for val in listvalues(output_files):
+                    first_output_path = val
+                    break
                 first_output_name = os.path.basename(first_output_path).split('.')[0]
                 first_output_dir = os.path.dirname(first_output_path)
                 log_path = os.path.join(first_output_dir, first_output_name + '.leap.log')
@@ -1396,7 +1569,7 @@ class TLeap:
             # Copy back output files. If something goes wrong, some files may not exist
             error_msg = ''
             try:
-                for local_file, file_path in output_files.items():
+                for local_file, file_path in listitems(output_files):
                     shutil.copy(local_file, file_path)
             except IOError:
                 error_msg = "Could not create one of the system files."
@@ -1415,6 +1588,30 @@ class TLeap:
             # Check for and return warnings
             return re.findall('WARNING: (.+)', leap_output)
 
+
+#=============================================================================================
+# Python 2/3 compatability
+#=============================================================================================
+
+""" 
+Generate same behavior for dict.item in both versions of Python
+Avoids external dependancies on future.utils or six
+
+"""
+try:
+    dict.iteritems
+except AttributeError:
+    # Python 3
+    def listvalues(d):
+        return list(d.values())
+    def listitems(d):
+        return list(d.items())
+else:
+    # Python 2
+    def listvalues(d):
+        return d.values()
+    def listitems(d):
+        return d.items()
 
 #=============================================================================================
 # Main and tests

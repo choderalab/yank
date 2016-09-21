@@ -71,7 +71,7 @@ import numpy as np
 import mdtraj as md
 import netCDF4 as netcdf
 
-from utils import is_terminal_verbose, delayed_termination
+from .utils import is_terminal_verbose, delayed_termination
 
 #=============================================================================================
 # MODULE CONSTANTS
@@ -1179,13 +1179,13 @@ class ReplicaExchange(object):
         mbar_citations = """\
         Shirts MR and Chodera JD. Statistically optimal analysis of samples from multiple equilibrium states. J. Chem. Phys. 129:124105, 2008. DOI: 10.1063/1.2978177"""
 
-        print "Please cite the following:"
-        print ""
-        print openmm_citations
+        print("Please cite the following:")
+        print("")
+        print(openmm_citations)
         if self.replica_mixing_scheme == 'swap-all':
-            print gibbs_citations
+            print(gibbs_citations)
         if self.online_analysis:
-            print mbar_citations
+            print(mbar_citations)
 
         return
 
@@ -1519,7 +1519,7 @@ class ReplicaExchange(object):
             # Compute log probability of swap.
             log_P_accept = - (self.u_kl[i,jstate] + self.u_kl[j,istate]) + (self.u_kl[i,istate] + self.u_kl[j,jstate])
 
-            #print "replica (%3d,%3d) states (%3d,%3d) energies (%8.1f,%8.1f) %8.1f -> (%8.1f,%8.1f) %8.1f : log_P_accept %8.1f" % (i,j,istate,jstate,self.u_kl[i,istate],self.u_kl[j,jstate],self.u_kl[i,istate]+self.u_kl[j,jstate],self.u_kl[i,jstate],self.u_kl[j,istate],self.u_kl[i,jstate]+self.u_kl[j,istate],log_P_accept)
+            #print("replica (%3d,%3d) states (%3d,%3d) energies (%8.1f,%8.1f) %8.1f -> (%8.1f,%8.1f) %8.1f : log_P_accept %8.1f" % (i,j,istate,jstate,self.u_kl[i,istate],self.u_kl[j,jstate],self.u_kl[i,istate]+self.u_kl[j,jstate],self.u_kl[i,jstate],self.u_kl[j,istate],self.u_kl[i,jstate]+self.u_kl[j,istate],log_P_accept))
 
             # Record that this move has been proposed.
             self.Nij_proposed[istate,jstate] += 1
@@ -1540,8 +1540,7 @@ class ReplicaExchange(object):
         Attempt to exchange all replicas to enhance mixing, calling code written in Cython.
         """
 
-        from . import mixing
-        from mixing._mix_replicas import _mix_replicas_cython
+        from .mixing._mix_replicas import _mix_replicas_cython
 
         replica_states = md.utils.ensure_type(self.replica_states, np.int64, 1, "Replica States")
         u_kl = md.utils.ensure_type(self.u_kl, np.float64, 2, "Reduced Potentials")
@@ -1586,7 +1585,7 @@ class ReplicaExchange(object):
             # Compute log probability of swap.
             log_P_accept = - (self.u_kl[i,jstate] + self.u_kl[j,istate]) + (self.u_kl[i,istate] + self.u_kl[j,jstate])
 
-            #print "replica (%3d,%3d) states (%3d,%3d) energies (%8.1f,%8.1f) %8.1f -> (%8.1f,%8.1f) %8.1f : log_P_accept %8.1f" % (i,j,istate,jstate,self.u_kl[i,istate],self.u_kl[j,jstate],self.u_kl[i,istate]+self.u_kl[j,jstate],self.u_kl[i,jstate],self.u_kl[j,istate],self.u_kl[i,jstate]+self.u_kl[j,istate],log_P_accept)
+            #print("replica (%3d,%3d) states (%3d,%3d) energies (%8.1f,%8.1f) %8.1f -> (%8.1f,%8.1f) %8.1f : log_P_accept %8.1f" % (i,j,istate,jstate,self.u_kl[i,istate],self.u_kl[j,jstate],self.u_kl[i,istate]+self.u_kl[j,jstate],self.u_kl[i,jstate],self.u_kl[j,istate],self.u_kl[i,jstate]+self.u_kl[j,istate],log_P_accept))
 
             # Record that this move has been proposed.
             self.Nij_proposed[istate,jstate] += 1
@@ -1626,7 +1625,7 @@ class ReplicaExchange(object):
         if self.replica_mixing_scheme == 'swap-neighbors':
             self._mix_neighboring_replicas()
         elif self.replica_mixing_scheme == 'swap-all':
-            # Try to use weave-accelerated mixing code if possible, otherwise fall back to Python-accelerated code.
+            # Try to use cython-accelerated mixing code if possible, otherwise fall back to Python-accelerated code.
             try:
                 self._mix_all_replicas_cython()
             except ValueError as e:
@@ -2007,6 +2006,36 @@ class ReplicaExchange(object):
 
         return True
 
+    def _convert_netcdf_store_type(self, stored_type):
+        """
+        Convert the stored NetCDF datatype from string to type without relying on unsafe eval() function
+
+        Parameters
+        ----------
+        stored_type : string 
+            Read from ncfile.Variable.type stored by repex
+ 
+        Returns:
+        --------
+        proper_type : type
+            Python or module type
+  
+        """
+        import importlib
+        try:
+            # Check if it's a builtin type
+            try: # Python 2
+                module = importlib.import_module('__builtin__')
+            except: # Python 3
+                module = importlib.import_module('builtins')
+            proper_type = getattr(module, stored_type)
+        except AttributeError:
+            # if not, separate module and class
+            module, stored_type = stored_type.rsplit(".", 1)
+            module = importlib.import_module(module)
+            proper_type = getattr(module, stored_type)
+        return proper_type
+
     def _store_dict_in_netcdf(self, ncgrp, options):
         """
         Store the contents of a dict in a NetCDF file.
@@ -2019,7 +2048,7 @@ class ReplicaExchange(object):
             The dict to store.
 
         """
-        from utils import typename
+        from .utils import typename
         import collections
         for option_name in options.keys():
             # Get option value.
@@ -2089,31 +2118,29 @@ class ReplicaExchange(object):
         options = dict()
 
         import numpy
+        from .utils import quantity_from_string
         for option_name in ncgrp.variables.keys():
             # Get NetCDF variable.
             option_ncvar = ncgrp.variables[option_name]
             type_name = getattr(option_ncvar, 'type')
+            # TODO: Remove the if/elseif structure into one handy function
             # Get option value.
             if type_name == 'NoneType':
                 option_value = None
-            elif option_ncvar.shape == ():
-                option_value = option_ncvar.getValue()
-                # Cast to python types.
-                if type_name == 'bool':
-                    option_value = bool(option_value)
-                elif type_name == 'int':
-                    option_value = int(option_value)
-                elif type_name == 'float':
-                    option_value = float(option_value)
-                elif type_name == 'str':
-                    option_value = str(option_value)
-            elif (option_ncvar.shape[0] >= 0):
-                option_value = np.array(option_ncvar[:], eval(type_name))
-                # TODO: Deal with values that are actually scalar constants.
-                # TODO: Cast to appropriate type
-            else:
-                option_value = option_ncvar[0]
-                option_value = eval(type_name + '(' + repr(option_value) + ')')
+            else: # Handle all Types not None
+                option_type = self._convert_netcdf_store_type(type_name)
+                if option_ncvar.shape == ():
+                    # Handle Standard Types
+                    option_value = option_type(option_ncvar.getValue())
+                elif (option_ncvar.shape[0] >= 0):
+                    # Handle array types
+                    option_value = np.array(option_ncvar[:], option_type)
+                    # TODO: Deal with values that are actually scalar constants.
+                    # TODO: Cast to appropriate type
+                else:
+                    # Handle iterable types?
+                    # TODO: Figure out what is actually cast here
+                    option_value = option_type(option_ncvar[0])
 
             # Log value (truncate if too long but save length)
             if hasattr(option_value, '__len__'):
@@ -2131,9 +2158,10 @@ class ReplicaExchange(object):
             if hasattr(option_ncvar, 'units'):
                 option_unit_name = getattr(option_ncvar, 'units')
                 if option_unit_name[0] == '/':
-                    option_value = eval(str(option_value) + option_unit_name, unit.__dict__)
+                    option_value = str(option_value) + option_unit_name
                 else:
-                    option_value = eval(str(option_value) + '*' + option_unit_name, unit.__dict__)
+                    option_value = str(option_value) + '*' + option_unit_name
+                option_value = quantity_from_string(option_value)
             # Store option.
             options[option_name] = option_value
 

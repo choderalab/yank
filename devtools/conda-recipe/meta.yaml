@@ -17,16 +17,16 @@ requirements:
     - scipy
     - setuptools
     - netcdf4
-    - openmm
+    - openmm >=7.0.1
     - mdtraj >=1.7.2
     - openmmtools
-    - pymbar ==2.1beta0
+    - pymbar 
     - ambermini >=15.0.4
     - docopt
     - openmoltools
     - sphinxcontrib-bibtex
     - alchemy
-    - schema >=0.5.0
+    - schema >=0.6.2
     #- gcc 4.8.2 # [linux]
     #- gcc 4.8.2 # [osx]
 
@@ -37,10 +37,10 @@ requirements:
     - scipy
     - cython
     - netcdf4
-    - openmm
+    - openmm >=7.0.1
     - mdtraj >=1.7.2
     - openmmtools
-    - pymbar ==2.1beta0
+    - pymbar 
     - ambermini >=15.0.4
     - docopt
     - openmoltools
@@ -49,7 +49,7 @@ requirements:
     - clusterutils
     - sphinxcontrib-bibtex
     - alchemy
-    - schema >=0.5.0
+    - schema >=0.6.2
     #- libgcc
 
 test:

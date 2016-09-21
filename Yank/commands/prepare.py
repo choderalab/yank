@@ -23,12 +23,12 @@ from simtk.openmm import app
 
 from alchemy import AbsoluteAlchemicalFactory
 
-from yank import utils
-from yank import pipeline
-from yank.yank import AlchemicalPhase, Yank # TODO: Fix this weird import path to something more sane, like 'from yank import Yank'
-from yank.repex import ThermodynamicState # TODO: Fix this weird import path to something more sane, like 'from yank.repex import ThermodynamicState'
-from yank.yamlbuild import YamlBuilder
-from yank.pipeline import find_components
+from .. import utils
+from .. import pipeline
+from ..yank import AlchemicalPhase, Yank 
+from ..repex import ThermodynamicState 
+from ..yamlbuild import YamlBuilder
+from ..pipeline import find_components
 
 #=============================================================================================
 # COMMAND-LINE INTERFACE

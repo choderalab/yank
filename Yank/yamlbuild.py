@@ -30,11 +30,11 @@ from simtk.openmm.app import PDBFile, AmberPrmtopFile
 from alchemy import AlchemicalState, AbsoluteAlchemicalFactory
 from schema import Schema, And, Or, Use, Optional, SchemaError
 
-import utils
-import pipeline
-from yank import Yank
-from repex import ReplicaExchange, ThermodynamicState
-from sampling import ModifiedHamiltonianExchange
+from . import utils
+from . import pipeline
+from .yank import Yank
+from .repex import ReplicaExchange, ThermodynamicState
+from .sampling import ModifiedHamiltonianExchange
 
 
 #=============================================================================================
@@ -770,7 +770,8 @@ class SetupDatabase:
                     # Extract the correct line and save it in a new file
                     # We ignore blank-lines with filter() when counting models
                     with open(mol_descr['filepath'], 'r') as smiles_file:
-                        smiles_lines = filter(bool, smiles_file.readlines())
+                        # TODO: Make sure this is working after Py 3.X conversion
+                        smiles_lines = [line for line in smiles_file.readlines() if bool(line)]
                     with open(single_file_path, 'w') as f:
                         f.write(smiles_lines[model_idx])
                 elif extension == '.mol2' or extension == '.sdf':
@@ -1296,7 +1297,7 @@ class YamlBuilder:
 
     def _isolate_yank_options(self, options):
         """Return the options that do not belong to YamlBuilder."""
-        return {opt: val for opt, val in options.items()
+        return {opt: val for opt, val in utils.listitems(options)
                 if opt not in self.DEFAULT_OPTIONS}
 
     def _determine_experiment_options(self, experiment):
@@ -1350,7 +1351,7 @@ class YamlBuilder:
             return expanded_content
 
         # First substitute all 'select: all' with the correct combination of indices
-        for comb_mol_name, comb_molecule in expanded_content['molecules'].items():
+        for comb_mol_name, comb_molecule in utils.listitems(expanded_content['molecules']):
             if 'select' in comb_molecule and comb_molecule['select'] == 'all':
                 # Get the number of models in the file
                 extension = os.path.splitext(comb_molecule['filepath'])[1][1:]  # remove dot
@@ -1359,7 +1360,8 @@ class YamlBuilder:
                         n_models = PDBFile(comb_molecule['filepath']).getNumFrames()
                     elif extension == 'csv' or extension == 'smiles':
                         with open(comb_molecule['filepath'], 'r') as smiles_file:
-                            n_models = len(filter(bool, smiles_file.readlines()))  # remove blank lines
+                            # TODO: Make sure this is working as expected from Py 3.X conversion
+                            n_models = len([line for line in smiles_file.readlines() if bool(line)]) # remove blank lines
                     elif extension == 'sdf' or extension == 'mol2':
                         if not utils.is_openeye_installed():
                             err_msg = 'Molecule {}: Cannot "select" from {} file without OpenEye toolkit'
@@ -1438,7 +1440,7 @@ class YamlBuilder:
 
         """
         output_dir = ''
-        for exp_name, experiment in self._experiments.items():
+        for exp_name, experiment in utils.listitems(self._experiments):
             if len(self._experiments) > 1:
                 output_dir = exp_name
 
@@ -1544,7 +1546,7 @@ class YamlBuilder:
         )
 
         # Schema validation
-        for molecule_id, molecule_descr in molecules_description.items():
+        for molecule_id, molecule_descr in utils.listitems(molecules_description):
             try:
                 validated_molecules[molecule_id] = molecule_schema.validate(molecule_descr)
 
@@ -1623,7 +1625,7 @@ class YamlBuilder:
         solvent_schema = Schema(Or(explicit_schema, implicit_schema, vacuum_schema))
 
         # Schema validation
-        for solvent_id, solvent_descr in solvents_description.items():
+        for solvent_id, solvent_descr in utils.listitems(solvents_description):
             try:
                 validated_solvents[solvent_id] = solvent_schema.validate(solvent_descr)
             except SchemaError as e:
@@ -1656,9 +1658,9 @@ class YamlBuilder:
             sortables = [('complex', 'solvent'), ('solvent1', 'solvent2')]
             for sortable in sortables:
                 # Phases names must be unambiguous, they can't contain both names
-                phase1 = [(k, v) for k, v in protocol.items()
+                phase1 = [(k, v) for k, v in utils.listitems(protocol)
                           if (sortable[0] in k and sortable[1] not in k)]
-                phase2 = [(k, v) for k, v in protocol.items()
+                phase2 = [(k, v) for k, v in utils.listitems(protocol)
                           if (sortable[1] in k and sortable[0] not in k)]
 
                 # Phases names must be unique
@@ -1682,7 +1684,7 @@ class YamlBuilder:
         ))
 
         # Schema validation
-        for protocol_id, protocol_descr in protocols_description.items():
+        for protocol_id, protocol_descr in utils.listitems(protocols_description):
             try:
                 validated_protocols[protocol_id] = protocol_schema.validate(protocol_descr)
             except SchemaError as e:
@@ -1760,7 +1762,7 @@ class YamlBuilder:
         ))
 
         # Schema validation
-        for system_id, system_descr in systems_description.items():
+        for system_id, system_descr in utils.listitems(systems_description):
             try:
                 validated_systems[system_id] = system_schema.validate(system_descr)
 
@@ -2064,7 +2066,7 @@ class YamlBuilder:
         opt_section.update(exp_section.pop('options', {}))
 
         # Convert relative paths to new script directory
-        for molecule in mol_section.values():
+        for molecule in utils.listvalues(mol_section):
             if 'filepath' in molecule and not os.path.isabs(molecule['filepath']):
                 molecule['filepath'] = os.path.relpath(molecule['filepath'], yaml_dir)
 
@@ -2118,9 +2120,9 @@ class YamlBuilder:
 
         """
         alchemical_protocol = {}
-        for phase_name, phase in self._protocols[protocol_id].items():
+        for phase_name, phase in utils.listitems(self._protocols[protocol_id]):
             # Separate lambda variables names from their associated lists
-            lambdas, values = zip(*phase['alchemical_path'].items())
+            lambdas, values = zip(*utils.listitems(phase['alchemical_path']))
 
             # Transpose so that each row contains single alchemical state values
             values = zip(*values)
