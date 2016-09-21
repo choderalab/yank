@@ -12,6 +12,7 @@ Test various utility functions.
 import textwrap
 
 import openmoltools as omt
+import simtk.unit as unit
 from schema import Schema
 from openmmtools import testsystems
 
@@ -247,6 +248,19 @@ def test_underscore_to_camelcase():
     expected = ['', '__', 'foo', 'fooBar', '_fooBar_', '__fooBar__', '__fooBar_']
     for exp, case in zip(expected, cases):
         assert exp == underscore_to_camelcase(case)
+
+def test_quantity_from_string():
+    """Test the quantity from string function to ensure output is as expected"""
+    tests = [
+        # (string,                                 expected Unit)
+        ('3',                                      3.0), # Handle basic float
+        ('meter',                                  unit.meter), # Handle basic unit object
+        ('300 * kelvin',                           300*unit.kelvin), # Handle standard Quantity
+        ('" 0.3 * kilojoules_per_mole / watt**3"', 0.3*unit.kilojoules_per_mole/unit.watt**3), # Handle division, exponent, nested string
+        ('1*meter / (4*second)',                   0.25*unit.meter/unit.second), # Handle compound math and parenthesis
+        ('1 * watt**2 /((1* kelvin)**3 / gram))',  1*(unit.watt**2)*(unit.gram)/(unit.kelvin**3)) #Handle everything
+        ]
+    assert all(expected == quantity_from_string(passed_string) for passed_string, expected in tests)
 
 def test_TLeap_script():
     """Test TLeap script creation."""
