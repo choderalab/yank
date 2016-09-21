@@ -963,9 +963,13 @@ def quantity_from_string(quantity_str):
                     try: # Exponent
                         if passed_str[next_char_loop+1] == '*':
                             exponent, exponent_offset = exponent_unit(passed_str[next_char_loop+2:])
-                            next_char_loop += exponent_offset
-                            # Set the actual next operator (Does not handle nested **)
-                            next_operator = passed_str[next_char_loop]
+                            try:
+                                next_char_loop += exponent_offset
+                                # Set the actual next operator (Does not handle nested **)
+                                next_operator = passed_str[next_char_loop]
+                            except IndexError:
+                                # End of string
+                                next_operator = None
                             # Apply exponent
                             arg_unit **= exponent
                     except:
