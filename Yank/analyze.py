@@ -27,7 +27,7 @@ from pymbar import timeseries # for statistical inefficiency analysis
 import mdtraj
 import simtk.unit as units
 
-from yank import utils
+from . import utils
 
 import logging
 logger = logging.getLogger(__name__)
@@ -186,7 +186,30 @@ def extract_ncfile_energies(ncfile, ndiscard=0, nuse=None, g=None):
     logger.info(N_k)
     logger.info("")
 
-    return(u_kln, N_k, u_n)
+    # Check for the fully interacting state, and subsamble as needed
+    try:
+        fully_interacting_u_ln = ncfile.variables['fully_interacting_energies'][:].T #Its stored as nl, need in ln
+        # Discard non-equilibrated samples
+        fully_interacting_u_ln = fully_interacting_u_ln[:,ndiscard:]
+        fully_interacting_u_ln = fully_interacting_u_ln[:,indices]
+        # Augment u_kln to accept the new state
+        u_kln_new = np.zeros([nstates + 1, nstates + 1, N], np.float64)
+        N_k_new = np.zeros(nstates + 1, np.int32)
+        # Insert energies
+        u_kln_new[1:,0,:] = fully_interacting_u_ln
+        # Fill in other energies
+        u_kln_new[1:,1:,:] = u_kln 
+        N_k_new[1:] = N_k
+        # Notify users
+        logger.info("Found a fully interacting state in the energies!")
+        logger.info("Free energies will be reported relative to it instead!")
+        # Reset values, last step in case something went wrong so we dont overwrite u_kln on accident
+        u_kln = u_kln_new
+        N_k = N_k_new
+    except:
+        pass
+
+    return (u_kln, N_k, u_n)
 
 def initialize_MBAR(ncfile, u_kln=None, N_k=None):
     """
@@ -464,13 +487,13 @@ def analyze(source_directory):
             # Examine acceptance probabilities.
             show_mixing_statistics(ncfile, cutoff=0.05, nequil=nequil)
 
-            # Extract equilibrated, decorrelated energies
+            # Extract equilibrated, decorrelated energies, check for fully interacting state
             (u_kln, N_k, u_n) = extract_ncfile_energies(ncfile, ndiscard = nequil, g=g_t)
 
             # Create MBAR object to use for free energy and entropy states
             mbar = initialize_MBAR(ncfile, u_kln=u_kln, N_k=N_k)
 
-            # Estimate free energies.
+            # Estimate free energies, use fully interacting state if present
             (Deltaf_ij, dDeltaf_ij) = estimate_free_energies(ncfile, mbar = mbar)
 
             # Estimate average enthalpies
@@ -480,8 +503,8 @@ def analyze(source_directory):
             entry = dict()
             entry['DeltaF'] = Deltaf_ij[0,nstates-1]
             entry['dDeltaF'] = dDeltaf_ij[0,nstates-1]
-            entry['DeltaH'] = DeltaH_i[nstates-1] - DeltaH_i[0]
-            entry['dDeltaH'] = np.sqrt(dDeltaH_i[0]**2 + dDeltaH_i[nstates-1]**2)
+            entry['DeltaH'] = DeltaH_i[0,nstates-1]
+            entry['dDeltaH'] = dDeltaH_i[0,nstates-1]
             entry['DeltaF_restraints'] = DeltaF_restraints
             data[phase] = entry
 
