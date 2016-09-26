@@ -599,9 +599,9 @@ class CombinatorialTree(collections.MutableMapping):
         combinatorial_leaf_vals = [leaf_vals[i] for i in combinatorial_ids]
 
         # Sort leaves by alphabetical order of the path
-        combinatorial_leaf_paths, combinatorial_leaf_vals = zip(*sorted(zip(combinatorial_leaf_paths,
-                                                                            combinatorial_leaf_vals)))
-
+        if len(combinatorial_leaf_paths) > 0:
+            combinatorial_leaf_paths, combinatorial_leaf_vals = zip(*sorted(zip(combinatorial_leaf_paths,
+                                                                                combinatorial_leaf_vals)))
         return combinatorial_leaf_paths, combinatorial_leaf_vals
 
     def _combinations_generator(self, leaf_paths, leaf_vals):
