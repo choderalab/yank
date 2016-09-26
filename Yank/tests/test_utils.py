@@ -12,7 +12,6 @@ Test various utility functions.
 import textwrap
 
 import openmoltools as omt
-import simtk.unit as unit
 from schema import Schema
 from openmmtools import testsystems
 
@@ -68,10 +67,8 @@ def test_find_combinatorial_leaves():
             'leaf': ['a', 'b', 'c'],
             'comb-leaf': CombinatorialLeaf(['d', 'e'])}}})
     leaf_paths, leaf_vals = simple_tree._find_combinatorial_leaves()
-    assert all(leaf_path in [('simple', 'vector'), ('simple', 'nested', 'comb-leaf')]
-                         for leaf_path in leaf_paths)
-    assert all(leaf_val in [[2, 3, 4], ['d', 'e']] 
-                        for leaf_val in leaf_vals)
+    assert leaf_paths == (('simple', 'nested', 'comb-leaf'), ('simple', 'vector'))
+    assert leaf_vals == (['d', 'e'], [2, 3, 4])
 
 
 def test_expand_tree():
@@ -119,6 +116,7 @@ def test_expand_tree():
                           'benzene-benzene', 'benzene-benzene-2', 'benzene-notapath'])
     expected_names = [expected_names_A, expected_names_B]
     assert set([name for name, _ in long_tree.named_combinations(separator='-', max_name_length=25)]) in expected_names
+
 
 def test_expand_id_nodes():
     """CombinatorialTree.expand_id_nodes()"""
