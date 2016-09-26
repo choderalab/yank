@@ -546,9 +546,7 @@ def test_validation_correct_protocols():
             assert sorted_protocol.keys() == protocol.keys()
         else:
             assert isinstance(sorted_protocol, collections.OrderedDict)
-            for key in sorted_protocol.keys():
-                first_phase = key
-                break
+            first_phase = next(iter(sorted_protocol.keys()))  # py2/3 compatible
             assert 'complex' in first_phase or 'solvent1' in first_phase
 
 
@@ -866,7 +864,7 @@ class TestMultiMoleculeFiles():
 
     # TODO: Fix this test to not be literal check. Py3 causes the combined litteral names to not always be the same
     @unittest.skipIf(not utils.is_openeye_installed(), 'This test requires OpenEye installed.')
-    def notest_expand_molecules(self):
+    def test_expand_molecules(self):
         """Check that combinatorial molecules are handled correctly."""
         yaml_content = """
         ---
@@ -1369,8 +1367,7 @@ def test_charged_ligand():
         explicit-system:
             receptor: !Combinatorial {}
             ligand: imatinib
-        """.format(imatinib_path, [key for key in receptors.keys()]))
-        #""".format(imatinib_path, receptors.keys()))
+        """.format(imatinib_path, list(receptors.keys())))
         yaml_content = get_template_script(tmp_dir)
         yaml_content['molecules'].update(updates['molecules'])
         yaml_content['systems']['explicit-system'].update(updates['explicit-system'])
