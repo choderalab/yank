@@ -43,7 +43,8 @@ Documentation
    quickstart
    installation
    running
-   yaml
+   yamlpages/index
+     yamlpages/options
    theory
    algorithms
    analysis
