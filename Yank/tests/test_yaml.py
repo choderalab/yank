@@ -485,8 +485,7 @@ def test_validation_wrong_systems():
 
 def test_order_phases():
     """YankLoader preserves protocol phase order."""
-    ordered_phases = ['complex', 'solvent', 'athirdphase']
-    yaml_content = """
+    yaml_content_template = """
     ---
     absolute-binding:
         {}:
@@ -500,16 +499,19 @@ def test_order_phases():
         {}:
             alchemical_path:
                 lambda_electrostatics: [1.0, 0.8, 0.6, 0.3, 0.0]
-                lambda_sterics: [1.0, 0.8, 0.6, 0.3, 0.0]""".format(*ordered_phases)
+                lambda_sterics: [1.0, 0.8, 0.6, 0.3, 0.0]"""
 
-    # Be sure that normal parsing is not ordered or the test is useless
-    parsed = yaml.load(textwrap.dedent(yaml_content))
-    assert list(parsed['absolute-binding'].keys()) != ordered_phases
+    # Find order of phases for which normal parsing is not ordered or the test is useless
+    for ordered_phases in itertools.permutations(['athirdphase', 'complex', 'solvent']):
+        yaml_content = yaml_content_template.format(*ordered_phases)
+        parsed = yaml.load(textwrap.dedent(yaml_content))
+        if tuple(parsed['absolute-binding'].keys()) != ordered_phases:
+            break
 
     # Insert !Ordered tag
     yaml_content = yaml_content.replace('binding:', 'binding: !Ordered')
     parsed = yank_load(yaml_content)
-    assert list(parsed['absolute-binding'].keys()) == ordered_phases
+    assert tuple(parsed['absolute-binding'].keys()) == ordered_phases
 
 
 def test_validation_correct_protocols():
