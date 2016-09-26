@@ -30,7 +30,7 @@ import simtk.unit as unit
 import simtk.openmm as openmm
 
 from alchemy import AbsoluteAlchemicalFactory
-from .sampling import ModifiedHamiltonianExchange 
+from .sampling import ModifiedHamiltonianExchange
 from .restraints import HarmonicReceptorLigandRestraint, FlatBottomReceptorLigandRestraint
 
 from . import utils
@@ -394,13 +394,8 @@ class Yank(object):
             # Impose restraints for complex system in implicit solvent to keep ligand from drifting too far away from receptor.
             logger.debug("Creating receptor-ligand restraints...")
             reference_positions = positions[0]
-            if self._restraint_type == 'harmonic':
-                restraints = HarmonicReceptorLigandRestraint(thermodynamic_state, reference_system, reference_positions, atom_indices['receptor'], atom_indices['ligand'])
-            elif self._restraint_type == 'flat-bottom':
-                restraints = FlatBottomReceptorLigandRestraint(thermodynamic_state, reference_system, reference_positions, atom_indices['receptor'], atom_indices['ligand'])
-            else:
-                raise Exception("restraint_type of '%s' is not supported." % self._restraint_type)
-
+            restraints = ReceptorLigandRestraint.dispatch(self._restraint_type,
+                thermodynamic_state, reference_system, reference_positions, atom_indices['receptor'], atom_indices['ligand'])
             force = restraints.getRestraintForce() # Get Force object incorporating restraints
             reference_system.addForce(force)
             metadata['standard_state_correction'] = restraints.getStandardStateCorrection() # standard state correction in kT
