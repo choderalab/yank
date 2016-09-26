@@ -256,7 +256,7 @@ def test_yaml_parsing():
         setup_dir: /path/to/output/setup/
         experiments_dir: /path/to/output/experiments/
         temperature: 300*kelvin
-        pressure: 1*atmosphere
+        pressure: null
         constraints: AllBonds
         hydrogen_mass: 2*amus
         restraint_type: harmonic
@@ -288,6 +288,7 @@ def test_yaml_parsing():
     assert len(yaml_builder.yank_options) == 23
 
     # Check correct types
+    assert yaml_builder.options['pressure'] is None
     assert yaml_builder.options['constraints'] == openmm.app.AllBonds
     assert yaml_builder.yank_options['replica_mixing_scheme'] == 'swap-all'
     assert yaml_builder.yank_options['timestep'] == 2.0 * unit.femtoseconds
