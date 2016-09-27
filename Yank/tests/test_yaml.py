@@ -485,8 +485,7 @@ def test_validation_wrong_systems():
 
 def test_order_phases():
     """YankLoader preserves protocol phase order."""
-    ordered_phases = ['complex', 'solvent', 'athirdphase']
-    yaml_content = """
+    yaml_content_template = """
     ---
     absolute-binding:
         {}:
@@ -500,16 +499,19 @@ def test_order_phases():
         {}:
             alchemical_path:
                 lambda_electrostatics: [1.0, 0.8, 0.6, 0.3, 0.0]
-                lambda_sterics: [1.0, 0.8, 0.6, 0.3, 0.0]""".format(*ordered_phases)
+                lambda_sterics: [1.0, 0.8, 0.6, 0.3, 0.0]"""
 
-    # Be sure that normal parsing is not ordered or the test is useless
-    parsed = yaml.load(textwrap.dedent(yaml_content))
-    assert list(parsed['absolute-binding'].keys()) != ordered_phases
+    # Find order of phases for which normal parsing is not ordered or the test is useless
+    for ordered_phases in itertools.permutations(['athirdphase', 'complex', 'solvent']):
+        yaml_content = yaml_content_template.format(*ordered_phases)
+        parsed = yaml.load(textwrap.dedent(yaml_content))
+        if tuple(parsed['absolute-binding'].keys()) != ordered_phases:
+            break
 
     # Insert !Ordered tag
     yaml_content = yaml_content.replace('binding:', 'binding: !Ordered')
     parsed = yank_load(yaml_content)
-    assert list(parsed['absolute-binding'].keys()) == ordered_phases
+    assert tuple(parsed['absolute-binding'].keys()) == ordered_phases
 
 
 def test_validation_correct_protocols():
@@ -546,9 +548,7 @@ def test_validation_correct_protocols():
             assert sorted_protocol.keys() == protocol.keys()
         else:
             assert isinstance(sorted_protocol, collections.OrderedDict)
-            for key in sorted_protocol.keys():
-                first_phase = key
-                break
+            first_phase = next(iter(sorted_protocol.keys()))  # py2/3 compatible
             assert 'complex' in first_phase or 'solvent1' in first_phase
 
 
@@ -866,7 +866,7 @@ class TestMultiMoleculeFiles():
 
     # TODO: Fix this test to not be literal check. Py3 causes the combined litteral names to not always be the same
     @unittest.skipIf(not utils.is_openeye_installed(), 'This test requires OpenEye installed.')
-    def notest_expand_molecules(self):
+    def test_expand_molecules(self):
         """Check that combinatorial molecules are handled correctly."""
         yaml_content = """
         ---
@@ -1369,8 +1369,7 @@ def test_charged_ligand():
         explicit-system:
             receptor: !Combinatorial {}
             ligand: imatinib
-        """.format(imatinib_path, [key for key in receptors.keys()]))
-        #""".format(imatinib_path, receptors.keys()))
+        """.format(imatinib_path, list(receptors.keys())))
         yaml_content = get_template_script(tmp_dir)
         yaml_content['molecules'].update(updates['molecules'])
         yaml_content['systems']['explicit-system'].update(updates['explicit-system'])
