@@ -3,7 +3,7 @@
 Options for YAML files
 **********************
 
-These are all the simulation, alchemy, and file I/O options controlled by the `options` header in the YAML files for YANK. We have subdivided the categories below, but all settings on this page go under the `options` header in the YAML file:
+These are all the simulation, alchemy, and file I/O options controlled by the ``options`` header in the YAML files for YANK. We have subdivided the categories below, but all settings on this page go under the ``options`` header in the YAML file:
 
 * :ref:`General Options: <yaml-options-options>`
 * :ref:`System and Simulation Prep <yaml_options_sys_and_sim_prep>`
@@ -12,7 +12,7 @@ These are all the simulation, alchemy, and file I/O options controlled by the `o
 
 ----
 
-.. _yaml-options-options:
+.. _yaml_options_options:
 
 General Options: 
 ================
@@ -198,7 +198,7 @@ constraints
    options:
      constraints: HBonds
 
-Constrain bond lengths and angles. See OpenMM `createSystem()` documentation for more details.
+Constrain bond lengths and angles. See OpenMM ``createSystem()`` documentation for more details.
 
 Valid options: [Hbonds]/AllBonds/HAngles
 
@@ -212,7 +212,7 @@ restraint_type
    options:
      restraint_type: flat-bottom
 
-Apply a restraint to the ligand to keep it close to the receptor. This only works in Implicit Solvent. `null` option means no restraint.
+Apply a restraint to the ligand to keep it close to the receptor. This only works in Implicit Solvent. ``null`` option means no restraint.
 
 Valid options: [flat-bottom]/harmonic/null
 
@@ -261,7 +261,7 @@ show_energies
    options:
      show_energies: yes
 
-If "yes", will print out the energies at each iteration.
+If ``yes``, will print out the energies at each iteration.
 
 Valid options: [yes]/no
 
@@ -275,7 +275,7 @@ show_mixing_statistics
    options:
      show_mixing_statistics: yes
 
-If "yes", will print the Hamiltonian Replica Exchange swapping statistics at each iteration. This process adds a small amount of overhead to each iteration.
+If ``yes``, will print the Hamiltonian Replica Exchange swapping statistics at each iteration. This process adds a small amount of overhead to each iteration.
 
 Valid options: [yes]/no
 
@@ -401,7 +401,7 @@ replica_mixing_scheme
    options:
      replica_mixing_scheme: swap-all
 
-Specifies how the Hamiltonian Replica Exchange attempts swaps between replicas. "swap-all" will attempt to exhange every state with every other state. "swap-neighbors"  will attempt only exchanges between adjacent states.
+Specifies how the Hamiltonian Replica Exchange attempts swaps between replicas. ``swap-all`` will attempt to exhange every state with every other state. ``swap-neighbors``  will attempt only exchanges between adjacent states.
 
 Valid Options: [swap-all]/swap-neighbors
 
@@ -480,7 +480,7 @@ annihilate_sterics
    options:
      annihilate_sterics: no
 
-Annihilate sterics (Lennad-Jones or Halgren potential) rather than decouple them. This means that ligand-ligand (alchemical-alchemical) nonbonded sterics will be turned off as well as ligand-nonligand nonbonded sterics. **WARNING:** Do *not* set this option if `annihilate_electrostatics` is "no".
+Annihilate sterics (Lennad-Jones or Halgren potential) rather than decouple them. This means that ligand-ligand (alchemical-alchemical) nonbonded sterics will be turned off as well as ligand-nonligand nonbonded sterics. **WARNING:** Do *not* set this option if ``annihilate_electrostatics`` is "no".
 
 Valid Options: [no]/yes
 
@@ -497,11 +497,11 @@ Steric Alchemical Options
      softcore_b: 1
      softcore_c: 6
 
-The options that control the soft core energy function for decoupling/annihilating steric interactions. Setting `softcore_alpha = 0` with `softcore_a = 1` gives linear scaling of the Lennard-Jones energy function.
+The options that control the soft core energy function for decoupling/annihilating steric interactions. Setting ``softcore_alpha = 0`` with ``softcore_a = 1`` gives linear scaling of the Lennard-Jones energy function.
 
-Valid Options for `softcore_alpha` (0.5): <Float>
+Valid Options for ``softcore_alpha`` (0.5): <Float>
 
-Valid Options for `softcore_[a,b,c]` (1,1,6): <Integer prefered, Float accepted>
+Valid Options for ``softcore_[a,b,c]`` (1,1,6): <Integer prefered, Float accepted>
 
 
 .. _yaml_options_alchemical_electrostatics:
@@ -516,13 +516,13 @@ Electrostatic Alchemical Options
      softcore_e: 1
      softcore_f: 2
 
-The options that control the soft core energy functnon for decoupling/annihilating electrostatic interactions. Setting `softcore_beta = 0` with `softcore_d = 1` gives linear scaling of Coulomb's law.
+The options that control the soft core energy functnon for decoupling/annihilating electrostatic interactions. Setting ``softcore_beta = 0`` with ``softcore_d = 1`` gives linear scaling of Coulomb's law.
     
-Valid Options for `softcore_beta` (1.0): <Float>
+Valid Options for ``softcore_beta`` (1.0): <Float>
 
-Valid Options for `softcore_[d,e,f]` (1,1,2): <Integer prefered, Float accepted>
+Valid Options for ``softcore_[d,e,f]`` (1,1,2): <Integer prefered, Float accepted>
 
 
-.. [1] Quantiy strings are of the format: `<float> * <unit>` where `<unit>` is any valid unit specified in the "Valid Options" for an option. e.g. "<Quantity Length>" indicates any measure of length may be used for <unit> such as nanometer or angstrom. 
-   Compound units are also parsed such as "kilogram / meter**3" for density. 
+.. [1] Quantiy strings are of the format: ``<float> * <unit>`` where ``<unit>`` is any valid unit specified in the "Valid Options" for an option. e.g. "<Quantity Length>" indicates any measure of length may be used for <unit> such as nanometer or angstrom. 
+   Compound units are also parsed such as ``kilogram / meter**3`` for density. 
    Only full unit names as they appear in the simtk.unit package (part of OpenMM) are allowed; so "nm" and "A" will be rejected.

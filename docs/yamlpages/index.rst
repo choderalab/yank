@@ -13,12 +13,17 @@ All Pages
    :maxdepth: 1
 
    options <options>
+   molecules <molecules>
+   solvents <solvents>
+   systems <systems>
+   protocols <protocols>
+   experiments <experiments>
 
 Detailed Options List
 ---------------------
 * :doc:`options <options>`
 
-  * :ref:`General Options: <yaml-options-options>`
+  * :ref:`General Options: <yaml_options_options>`
 
     * :ref:`verbose <yaml_options_verbose>`
     * :ref:`resume_setup <yaml_options_resume_setup>`
@@ -41,7 +46,7 @@ Detailed Options List
   * :ref:`Simulation Parameters: <yaml_options_simulation_parameters>`
 
     * :ref:`online_analysis <yaml_options_online_analysis>`
-    * :ref:`online_analysis_min_iterations <online_analysis_min_iterations>`
+    * :ref:`online_analysis_min_iterations <yaml_options_online_analysis_min_iterations>`
     * :ref:`show_energies <yaml_options_show_energies>`
     * :ref:`show_mixing_statistics <yaml_options_show_mixing_statistics>`
     * :ref:`minimize <yaml_options_minimize>`
@@ -62,13 +67,47 @@ Detailed Options List
     * :ref:`annihilate_electrostatics <yaml_options_annihilate_electrostatics>`
     * :ref:`annihilate_sterics <yaml_options_annihilate_sterics>`
     * :ref:`softcore_alpha <yaml_options_alchemical_sterics>`
-    * :ref:`softcore_beta <yaml_options_alchemical_electrosatics>`
+    * :ref:`softcore_beta <yaml_options_alchemical_electrostatics>`
     * :ref:`softcore_a <yaml_options_alchemical_sterics>`
     * :ref:`softcore_b <yaml_options_alchemical_sterics>`
     * :ref:`softcore_c <yaml_options_alchemical_sterics>`
-    * :ref:`softcore_d <yaml_options_alchemical_electrosatics>`
-    * :ref:`softcore_e <yaml_options_alchemical_electrosatics>`
-    * :ref:`softcore_f <yaml_options_alchemical_electrosatics>`
+    * :ref:`softcore_d <yaml_options_alchemical_electrostatics>`
+    * :ref:`softcore_e <yaml_options_alchemical_electrostatics>`
+    * :ref:`softcore_f <yaml_options_alchemical_electrostatics>`
+
+* :doc:`molecules <molecules>`
+
+  * :ref:`Specifying Molecule Names <yaml_molecules_specifiy_names>`
+
+    * :ref:`filepath <yaml_molecules_filepath>` 
+    * :ref:`smiles <yaml_molecules_smiles>`
+    * :ref:`name <yaml_molecules_name>`
+    * :ref:`strip_protons <yaml_molecules_strip_protons>`
+    * :ref:`select <yaml_molecules_select>`
+  
+  * :ref:`Assigning Partial Charges <yaml_molecules_assign_charges>`
+
+    * :ref:`antechamber <yaml_molecules_antechamber>`
+    * :ref:`openeye <yaml_molecules_openeye>`
+
+  * :ref:`Assigning Extra Information <yaml_molecules_extras>`
+ 
+    * :ref:`leap <yaml_molecules_leap>`
+    * :ref:`epik <yaml_molecules_epik>`
+
+* :doc:`solvents <solvents>`
+
+  * Items!
+
+* :doc:`systems <systems>`
+
+  * Items!
+
+* :doc:`protocols <protocols>`
+
+  * Items!
+
+* :doc:`experiements <experiments>`
 
 
 .. literalinclude:: ../../examples/yank-yaml-cookbook/all-options.yaml
