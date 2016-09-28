@@ -6,6 +6,16 @@ YANK now supports setting up entire simulations with easy to read and write `YAM
 
 .. todo:: This section is a work in progress and not all options are shown yet
 
+All Pages
+---------
+
+.. toctree::
+   :maxdepth: 1
+
+   options <options>
+
+Detailed Options List
+---------------------
 * :doc:`options <options>`
 
   * :ref:`General Options: <yaml-options-options>`
@@ -28,36 +38,37 @@ YANK now supports setting up entire simulations with easy to read and write `YAM
     * :ref:`constraints <yaml_options_constraints>`
     * :ref:`restraint_type <yaml_options_restraint_type>`
 
-  * **Simulation Parameters**
+  * :ref:`Simulation Parameters: <yaml_options_simulation_parameters>`
 
-    * online_analysis
-    * online_analysis_min_iterations
-    * show_energies
-    * show_mixing_statistics
-    * minimize
-    * minimize_max_iterations
-    * number_of_equilibration_iterations
-    * equilibration_timestep
-    * number_of_iterations
-    * nsteps_per_iteration
-    * timestep
-    * replica_mixing_scheme
-    * collision_rate
-    * constraint_tolerance
-    * mc_displacemnt_sigma
+    * :ref:`online_analysis <yaml_options_online_analysis>`
+    * :ref:`online_analysis_min_iterations <online_analysis_min_iterations>`
+    * :ref:`show_energies <yaml_options_show_energies>`
+    * :ref:`show_mixing_statistics <yaml_options_show_mixing_statistics>`
+    * :ref:`minimize <yaml_options_minimize>`
+    * :ref:`minimize_max_iterations <yaml_options_minimize_max_iterations>`
+    * :ref:`minimize_tolerance <yaml_options_minimize_tolerance>`
+    * :ref:`number_of_equilibration_iterations <yaml_options_number_of_equilibration_iterations>`
+    * :ref:`equilibration_timestep <yaml_options_equilibration_timestep>`
+    * :ref:`number_of_iterations <yaml_options_number_of_iterations>`
+    * :ref:`nsteps_per_iteration <yaml_options_nsteps_per_iteration>`
+    * :ref:`timestep <yaml_options_timestep>`
+    * :ref:`replica_mixing_scheme <yaml_options_replica_mixing_scheme>`
+    * :ref:`collision_rate <yaml_options_collision_rate>`
+    * :ref:`constraint_tolerance <yaml_options_constraint_tolerance>`
+    * :ref:`mc_displacemnt_sigma <yaml_options_mc_displacemnt_sigma>`
 
-  * **Alchemy Parameters**
+  * :ref:`Alchemy Parameters <yaml_options_alchemy_parameters>`
 
-    * annihilate_electrostatics
-    * annihilate_sterics
-    * softcore_alpha
-    * softcore_beta
-    * softcore_a
-    * softcore_b
-    * softcore_c
-    * softcore_d
-    * softcore_e
-    * softcore_f
+    * :ref:`annihilate_electrostatics <yaml_options_annihilate_electrostatics>`
+    * :ref:`annihilate_sterics <yaml_options_annihilate_sterics>`
+    * :ref:`softcore_alpha <yaml_options_alchemical_sterics>`
+    * :ref:`softcore_beta <yaml_options_alchemical_electrosatics>`
+    * :ref:`softcore_a <yaml_options_alchemical_sterics>`
+    * :ref:`softcore_b <yaml_options_alchemical_sterics>`
+    * :ref:`softcore_c <yaml_options_alchemical_sterics>`
+    * :ref:`softcore_d <yaml_options_alchemical_electrosatics>`
+    * :ref:`softcore_e <yaml_options_alchemical_electrosatics>`
+    * :ref:`softcore_f <yaml_options_alchemical_electrosatics>`
 
 
 .. literalinclude:: ../../examples/yank-yaml-cookbook/all-options.yaml
