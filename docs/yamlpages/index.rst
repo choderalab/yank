@@ -97,7 +97,14 @@ Detailed Options List
 
 * :doc:`solvents <solvents>`
 
-  * Items!
+  * :ref:`OpenMM System Creation Options <yaml_solvents_openmm_system_options>`
+
+    * :ref:`nonbonded_method <yaml_solvents_nonbonded_method>`
+    * :ref:`nonbonded_cutoff <yaml_solvents_nonbonded_cutoff>`
+    * :ref:`constraints <yaml_solvents_constraints>`
+    * :ref:`rigid_water <yaml_solvents_rigid_water>`
+    * :ref:`implicit_solvent <yaml_solvents_implicit_solvent>`
+    * :ref:`implicit_solvent_salt_concentration <yaml_options_implicit_solvent_salt_conc>`
 
 * :doc:`systems <systems>`
 

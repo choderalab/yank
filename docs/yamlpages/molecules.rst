@@ -5,7 +5,7 @@ Molecules Header for YAML Files
 
 Everything under the ``molecules`` defines what molecules are in your systems. You can specify your own molecule names. Because of this user defined names in the syntax examples are marked as ``{UserDefinedMolecule}``.
 
-You can define any number of ``{UserDefinedMolecule}`` as you like. These molecules will be used in other YAML headed sections.
+You can define as many ``{UserDefinedMolecule}`` as you like. These molecules will be used in other YAML headed sections.
 
 Unlike the primary :doc:`options <options>` for YAML files, many of these settings are optional and do nothing if not specified. The manditory/optional of each setting (and what conditionals), as well as the default behavior of each setting is explicitly stated in the setting's description.
 
@@ -169,7 +169,7 @@ leap
 
 Load molecule-specific force feild parameters into the molecule. These can be created from any source so long as leap can parse them. It is possible to assign partial charges with the files read in this way, which would supersede the options of :ref:`antechamber <yaml_molecules_antechamber>` and :ref:`openeye <yaml_molecules_openeye>`.
 
-This command has only one mandatory subargument ``parameters``, which can accept both single files as a string, or can accept a comma separated list of files enclosed by [ ]. 
+This command has only one mandatory subargument ``parameters``, which can accept both single files as a string, or can accept a comma separated list of files enclosed by [ ]. Filepaths are relative to either the AmberTools default paths or to the folder the YAML script is in. 
 
 *Note*: Protiens do not necssicarily need this command if the force feilds given to the :ref:`leap argument in systems <yaml_systems_leap>` will fully describe them.
 
