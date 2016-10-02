@@ -181,14 +181,19 @@ def extract_ncfile_energies(ncfile, ndiscard=0, nuse=None, g=None):
     #indices = range(0,u_n.size) # DEBUG - assume samples are uncorrelated
     N = len(indices) # number of uncorrelated samples
     N_k[:] = N
-    u_kln[:,:,0:N] = u_kln[:,:,indices]
+    u_kln = u_kln[:,:,indices]
     logger.info("number of uncorrelated samples:")
     logger.info(N_k)
     logger.info("")
 
     # Check for the fully interacting state, and subsamble as needed
     try:
-        fully_interacting_u_ln = ncfile.variables['fully_interacting_energies'][:].T #Its stored as nl, need in ln
+        u_ln_raw = ncfile.variables['fully_interacting_energies'][:].T #Its stored as nl, need in ln
+        fully_interacting_u_ln = np.zeros(u_ln_raw.shape)
+        # Deconvolute the fully interacting state
+        for iteration in range(niterations):
+            state_indices = ncfile.variables['states'][iteration,:]
+            fully_interacting_u_ln[state_indices,iteration] = u_ln_raw[:,iteration]
         # Discard non-equilibrated samples
         fully_interacting_u_ln = fully_interacting_u_ln[:,ndiscard:]
         fully_interacting_u_ln = fully_interacting_u_ln[:,indices]
