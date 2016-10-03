@@ -101,14 +101,47 @@ Detailed Options List
 
     * :ref:`nonbonded_method <yaml_solvents_nonbonded_method>`
     * :ref:`nonbonded_cutoff <yaml_solvents_nonbonded_cutoff>`
+    * :ref:`switch_distance <yaml_solvents_switch_distance>`
     * :ref:`constraints <yaml_solvents_constraints>`
     * :ref:`rigid_water <yaml_solvents_rigid_water>`
     * :ref:`implicit_solvent <yaml_solvents_implicit_solvent>`
     * :ref:`implicit_solvent_salt_concentration <yaml_options_implicit_solvent_salt_conc>`
+    * :ref:`solute_dielectric <yaml_options_solute_dielectric>`
+    * :ref:`solvent_dielectric <yaml_options_solvent_dielectric>`
+    * :ref:`ewald_error_tolerance <yaml_options_ewald_error_tol>`
+
+  * :ref:`LEaP Solvation Options <yaml_solvents_LEaP_options>`
+
+    * :ref:`clearance <yaml_solvents_clearance>`
+    * :ref:`positive_ion <yaml_solvents_positive_ion>`
+    * :ref:`negative_ion <yaml_solvents_negative_ion>`
 
 * :doc:`systems <systems>`
 
-  * Items!
+  * :ref:`Ligand/Receptor Free Energies Setup by YANK <yaml_systems_receptor_ligand>`
+    
+    * :ref:`ligand <yaml_systems_receptor_ligand>`
+    * :ref:`receptor <yaml_systems_receptor_ligand>`
+    * :ref:`solvent <yaml_systems_receptor_ligand>`
+    * :ref:`pack <yaml_systems_receptor_ligand>`
+    * :ref:`leap <yaml_systems_receptor_ligand>`
+ 
+      * :ref:`parameters <yaml_systems_receptor_ligand>`
+
+  * :ref:`Hydration Free Energies Setup by YANK <yaml_systems_hydration>`
+
+    * :ref:`solute <yaml_systems_hydration>`
+    * :ref:`solvent1 <yaml_systems_hydration>`
+    * :ref:`solvent2 <yaml_systems_hydration>`
+    * :ref:`leap <yaml_systems_hydration>`
+
+  * :ref:`Arbitrary Phase Free Energies Setup by User <yaml_systems_user_defined>`
+
+    * :ref:`phase1_path <yaml_systems_user_defined>`
+    * :ref:`phase2_path <yaml_systems_user_defined>`
+    * :ref:`ligand_dsl <yaml_systems_user_defined>`
+    * :ref:`solvent <yaml_systems_user_defined>`
+    * :ref:`gromacs_include_dir <yaml_systems_user_defined>`
 
 * :doc:`protocols <protocols>`
 

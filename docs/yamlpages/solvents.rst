@@ -56,11 +56,30 @@ nonbonded_cutoff
        nonbonded_cutoff: 1 * nanometer
 
 Specify the cutoff radius for the ``nonbonded_method``\s which rely on it. 
-What happens beyond this cutoff depends both on the ``nonbonded_method`` and the ``switchDistance``.
+What happens beyond this cutoff depends both on the ``nonbonded_method`` and the ``switch_distance``.
 
 Nonbonded Methods: ``CutoffPeriodic``, ``Ewald``, ``PME``
 
 Valid Options (1 * nanometer): <Quantity Length> [1]_
+
+
+.. _yaml_solvents_switch_distance:
+
+switch_distance
+---------------
+.. code-block:: yaml
+
+   solents:
+      {UserDefinedSolvent}:
+         switch_distance: 0.9 * nanometer
+
+The distance at which the potential energy switching function is turned on for Lennard-Jones interactions. 
+If the ``switch_distance`` is 0 (or not specified), no switching function will be used. 
+Values greater than nonbonded_cutoff or less than 0 raise errors.
+
+Nonbonded Methods: ``CutoffPeriodic``, ``Ewald``, ``PME``
+
+Valid Options (0 * nanometer) <Quantity Length> [1]_
 
 
 .. _yaml_solvents_constraints:
@@ -108,7 +127,7 @@ implicit_solvent
 .. code-block:: yaml
 
    solvents:
-     {UserDefinedSolvents}:
+     {UserDefinedSolvent}:
        implicit_solvent: OBC2
 
 Specify an implicit solvent model. Please check the OpenMM documentation on each option to see the differences in the models. 
@@ -125,14 +144,136 @@ implicit_solvent_salt_concentration
 .. code-block:: yaml
 
    solvents:
-     {UserDefinedSolvents}:
+     {UserDefinedSolvent}:
        implicit_solvent_salt_concentratio: 1.0 * moles / liter
 
-Specify the salt concentration of the implicit model. Requires that ``implicit_solvent != None``.
+Specify the salt concentration of the implicit model. Requires that ``implicit_solvent != None``. 
+
+You may also specify a Debye length ``temperature`` parameter which accepts <Quantity Temperature> [1]_ as an argument, default ``300 * kelvin``.
+*Note*: This is NOT the temperature for the system as a whole.
 
 Nonbonded Methods: ``NoCutoff``, ``CutoffNonPeriodic``
 
 Valid Options (0.0 * moles / liter): <Quantity Moles / Volume> [1]_
+
+
+.. _yaml_options_solute_dielectric:
+
+solute_dielectric
+----------------------
+.. code-block:: yaml
+   
+   solvents:
+     {UserDefinedSolvent}:
+       solute_dielectric: 1.5
+
+Specify the dielectric of the solute molecules.
+
+Nonbonded Methods: ``NoCutoff``, ``CutoffNonPeriodic``
+
+Valid Options (1.0): <Float>
+
+
+.. _yaml_options_solvent_dielectric:
+
+solvent_dielectric
+----------------------
+.. code-block:: yaml
+   
+   solvents:
+     {UserDefinedSolvent}:
+       solvent_dielectric: 1.5
+
+Specify the dielectric of the implciit solvent models
+
+Nonbonded Methods: ``NoCutoff``, ``CutoffNonPeriodic``
+
+Valid Options (78.5): <Float>
+
+
+.. _yaml_options_ewald_error_tol:
+
+ewald_error_tolerance
+---------------------
+.. code-block:: yaml
+
+   solvents:
+     {UserDefinedSolvent}:
+       ewald_error_tolerance: 0.0005
+
+The relative error tolerance to use for Ewald summations. 
+There are very few times this will need to be explicitly set.
+
+Nonbonded Methods: ``Ewald``, ``PME``
+
+Valid Options (0.0005): <Float>
+
+|
+
+.. _yaml_solvents_LEaP_options:
+
+LEaP Solvation Options
+======================
+
+.. _yaml_solvents_clearance:
+
+clearance
+---------
+.. code-block:: yaml
+   
+   solvents:
+     {UserDefinedSolvent}:
+       clearance: 10 * angstrom
+
+The edge of the solvation box will be at ``clearance`` distance away from any atom of the receptor and ligand.
+This method is a way to solvate without explicitly defining solvent atoms.
+We highly recommed having a :ref:`number of equilibration iterations <yaml_options_number_of_equilibration_iterations>` if this option is invoked.
+
+If not specified, this process is not carried out. 
+
+Nonbonded Methods: ``CuttoffPeriodic``, ``Ewald``, ``PME``
+
+Valid Options: <Quantity Length> [1]_
+
+
+.. _yaml_solvents_positive_ion:
+
+positive_ion
+------------
+.. oode-block:: yaml
+
+   solvents:
+     {UserDefinedSolvent}:
+       positive_ion: Na+
+
+Specifies the positive counter ions that will be added as needed.
+
+No positive counter ions will be added if this option is not specified.
+
+Nonbonded Methods: ``CuttoffPeriodic``, ``Ewald``, ``PME``
+
+Valid Options: <Ion Symbol and charge>
+
+
+.. _yaml_solvents_negative_ion:
+
+negative_ion
+------------
+.. oode-block:: yaml
+
+   solvents:
+     {UserDefinedSolvent}:
+       negative_ion: Cl-
+
+Specifies the negative counter ions that will be added as needed.
+
+No negative counter ions will be added if this option is not specified.
+
+Nonbonded Methods: ``CuttoffPeriodic``, ``Ewald``, ``PME``
+
+Valid Options: <Ion Symbol and charge>
+
+
 
 .. [1] Quantiy strings are of the format: ``<float> * <unit>`` where ``<unit>`` is any valid unit specified in the "Valid Options" for an option.
    e.g. "<Quantity Length>" indicates any measure of length may be used for <unit> such as nanometer or angstrom. 
