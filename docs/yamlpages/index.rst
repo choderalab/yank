@@ -1,6 +1,5 @@
-####
 YAML Files for Simulation
-####
+#########################
 
 YANK now supports setting up entire simulations with easy to read and write `YAML files <http://www.yaml.org/about.html>`. No longer do you need to remember long command line arguments with many ``--`` flags, you can just write a ``yank.yaml`` file and call ``yank script --yaml=yank.yaml`` to carry out all your preparation and simulations. Below are the valid YAML options. We also have example YANK simulations which use YAML files to run.
 
@@ -18,6 +17,8 @@ All Pages
    systems <systems>
    protocols <protocols>
    experiments <experiments>
+   Combinatorial Options <combinatorial>
+   cookbook
 
 Detailed Options List
 ---------------------
@@ -149,23 +150,15 @@ Detailed Options List
   
     * :ref:`alchemical_path <yaml_protocols_example>`
 
-      * :ref:`lambda_electrostatics <yaml_protocols_example>`
-      * :ref:`lambda_sterics <yaml_protocols_example>`
+      * :ref:`lambda_electrostatics <yaml_protocols_alchemical_path>`
+      * :ref:`lambda_sterics <yaml_protocols_alchemical_path>`
     
 * :doc:`experiements <experiments>`
 
   * :ref:`Experiments Syntax <yaml_experiments_syntax>`
+ 
+    * :ref:`system <yaml_experiments_syntax>`
+    * :ref:`protocol <yaml_experiments_syntax>`
+    * :ref:`options <yaml_experiments_syntax>`
+
   * :ref:`Running Multiple Experiments <yaml_experiments_syntax>`
-
-
-.. literalinclude:: ../../examples/yank-yaml-cookbook/all-options.yaml
-   :language: yaml
-
-|
-
-Combinatorial Options in YAML
------------------------------
-YANK's YAML inputs also support running experiments combinatorially, instead of individually running them one at a time. YANK will automatically set up each combination of options you specify with the special ``!Combinatorial [itemA, itemB, ...]`` structure and run them back to back for you. Below is the cookbook for the combinatorial-experiments:
-
-.. literalinclude:: ../../examples/yank-yaml-cookbook/combinatorial-experiment.yaml
-   :language: yaml

@@ -40,9 +40,13 @@ Because each option has very different behavior, we list each of them here and s
   This is the de facto choice for vacuum and implicit solvent.
 * ``CutoffNonPeriodic``: Specify a non-periodic system which uses a cutoff scheme to reduce the computational overhead of computing long range interactions. 
   This scheme is helpful for vacuum and implicit solvent systems with large number of molecules where computing the pairwise interaction at long range between all atoms is inefficient.
-* ``CutoffPeriodic``: Specifies a periodic system with a cutoff scheme and Reaction Field electrostatics for long range interactions. This is YANK's currently prefered mode for explicit solvent.
+* ``CutoffPeriodic``: Specifies a periodic system with a cutoff scheme and Reaction Field electrostatics for long range interactions.
+  There is some cutoff based error associated with using this option and is not currently recommended.
 * ``Ewald``: Specifies a periodic system with a cutoff scheme and Ewald decomposed electrostatics. This is typically not used over PME
-* ``PME``: Specifies a periodic system with a cutoff scheme and Particle Mesh Ewald (PME) decomposed electrostatics.  Currently support by YANK, however, there will be some error introduced by YANK due to the inability efficiently treat long range alchemical PME electrostatics. A solution is being worked on.
+* ``PME``: Specifies a periodic system with a cutoff scheme and Particle Mesh Ewald (PME) decomposed electrostatics. 
+  Currently support by YANK, however, there is a small error introduced by YANK due to the inability efficiently treat long range alchemical PME electrostatics during simulation.
+  We partially correct for this error by computing it at run-time at the cost of a bit of computational overhead.
+  **This is YANK's currently prefered mode for explicit solvent.**
 
 
 .. _yaml_solvents_nonbonded_cutoff:
@@ -75,7 +79,7 @@ switch_distance
 
 The distance at which the potential energy switching function is turned on for Lennard-Jones interactions. 
 If the ``switch_distance`` is 0 (or not specified), no switching function will be used. 
-Values greater than nonbonded_cutoff or less than 0 raise errors.
+Values greater than ``nonbonded_cutoff`` or less than 0 raise errors.
 
 Nonbonded Methods: ``CutoffPeriodic``, ``Ewald``, ``PME``
 
@@ -184,7 +188,7 @@ solvent_dielectric
      {UserDefinedSolvent}:
        solvent_dielectric: 1.5
 
-Specify the dielectric of the implciit solvent models
+Specify the dielectric of the implcit solvent models
 
 Nonbonded Methods: ``NoCutoff``, ``CutoffNonPeriodic``
 
@@ -227,7 +231,9 @@ clearance
 
 The edge of the solvation box will be at ``clearance`` distance away from any atom of the receptor and ligand.
 This method is a way to solvate without explicitly defining solvent atoms.
-We highly recommed having a :ref:`number of equilibration iterations <yaml_options_number_of_equilibration_iterations>` if this option is invoked.
+We highly recommend  having a 
+:ref:`number of equilibration iterations <yaml_options_number_of_equilibration_iterations>` 
+if this option is invoked.
 
 If not specified, this process is not carried out. 
 
@@ -240,7 +246,7 @@ Valid Options: <Quantity Length> [1]_
 
 positive_ion
 ------------
-.. oode-block:: yaml
+.. code-block:: yaml
 
    solvents:
      {UserDefinedSolvent}:
@@ -259,7 +265,7 @@ Valid Options: <Ion Symbol and charge>
 
 negative_ion
 ------------
-.. oode-block:: yaml
+.. code-block:: yaml
 
    solvents:
      {UserDefinedSolvent}:
@@ -275,7 +281,7 @@ Valid Options: <Ion Symbol and charge>
 
 
 
-.. [1] Quantiy strings are of the format: ``<float> * <unit>`` where ``<unit>`` is any valid unit specified in the "Valid Options" for an option.
+.. [1] Quantity strings are of the format: ``<float> * <unit>`` where ``<unit>`` is any valid unit specified in the "Valid Options" for an option.
    e.g. "<Quantity Length>" indicates any measure of length may be used for <unit> such as nanometer or angstrom. 
    Compound units are also parsed such as ``kilogram / meter**3`` for density. 
    Only full unit names as they appear in the simtk.unit package (part of OpenMM) are allowed; so "nm" and "A" will be rejected.

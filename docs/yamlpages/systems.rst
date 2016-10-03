@@ -38,7 +38,7 @@ This is the mandatory structure for leting YANK handle the creation and setup of
 * ``pack``: If the ligand is far away from the receptor or if there are clashing atoms 
   (defined as closer than 1.5 angstroms),  
   Yank will randomly translate and rotate the ligand until  this is solved. 
-  Set this to "no" if you don't wan't to  modify the initial position of the ligand as defined in  your input file.
+  Set this to "no" if you don't want to  modify the initial position of the ligand as defined in  your input file.
 * ``leap`` and ``parameters``: Both options must be specified as shown and tell LEaP which parameter files to use.
   Each file can be one native to LEaP, or a custom file relative to the YAML script location. 
   If multiple files are specified, they must be enclosed around square brackets, ``[ ]``.
@@ -48,7 +48,7 @@ This is the mandatory structure for leting YANK handle the creation and setup of
 
 Hydration Free Energies Setup By YANK
 =====================================
-.. code_block:: yaml
+.. code-block:: yaml
 
    systems:
      {UserDefinedSystem}:
@@ -59,7 +59,7 @@ Hydration Free Energies Setup By YANK
          parameters: [leaprc.ff14SB, leaprc.gaff]
 
 YANK can also do relative hydration free energy simulations. More generally, it can do relative *solvation* free energies between any solvents.
-For example, if you specify a reaction-feild solvent of water and a vacuum solvent, then you would get the hydration free energy (remember, "vacuum" is a ``{UerDefinedSolvent}`` that must be specified to use).
+For example, if you specify a reaction-field solvent of water and a vacuum solvent, then you would get the hydration free energy (remember, "vacuum" is a ``{UerDefinedSolvent}`` that must be specified to use).
 
 * ``solute``: Tells yank which ``{UserDefinedMolecule}`` to use for solvation free energy.
 * ``solvent1``: The first ``{UserDefinedSolvent}`` to use for the solvation free energy.
@@ -73,7 +73,7 @@ For example, if you specify a reaction-feild solvent of water and a vacuum solve
 
 Arbitrary Phase Free Energies Setup by User
 ===========================================
-.. code_block:: yaml
+.. code-block:: yaml
 
    systems:
      {UserDefinedSystem}:
@@ -89,7 +89,7 @@ MDTraj is required to use this options since picking the ligand out of the files
 
 * ``phase1_path``: The set of files which fully describe the first phase of the free energy simulation you want to run.
 * ``phase2_path``: The set of files which fully describe the second phase of the free energy simulation you want to run.
-* ``lidand_dsl``: An MDTraj DSL string which identifies the ligand in the files provied by ``phase1_path`` and ``phase2_path``. 
+* ``lidand_dsl``: An MDTraj DSL string which identifies the ligand in the files provided by ``phase1_path`` and ``phase2_path``. 
 * ``solvent``: A ``{UserDefinedSolvent}`` to put the two phases in. Only one solvent is allowed for this calculation. 
 * ``gromacs_include_dir``: *Optional*, Tells YANK where the GROMACS include directory is to pull files and parameters from.
   This is particularly helpful if your topology file does not contain all parameters.

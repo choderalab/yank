@@ -46,13 +46,13 @@ Below is the mappings of each ``{PhaseNameX}``:
   * ``{PhaseName1}`` -> ``solvent1``
   * ``{PhaseName2}`` -> ``solvent2``
 
- * :ref:`Arbitrary Phase Free Energies Setup by User <yaml_systems_user_defined>`
+* :ref:`Arbitrary Phase Free Energies Setup by User <yaml_systems_user_defined>`
 
   * ``{PhaseName1}`` -> ``phase1``
   * ``{PhaseName2}`` -> ``phase2``
 
 
-.. _yaml_protocls_alchemical_path:
+.. _yaml_protocols_alchemical_path:
 
 alchemical_path, lambda_electrostatics, and lambda_sterics
 ----------------------------------------------------------

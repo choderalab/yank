@@ -3,11 +3,17 @@
 Molecules Header for YAML Files
 *******************************
 
-Everything under the ``molecules`` defines what molecules are in your systems. You can specify your own molecule names. Because of this user defined names in the syntax examples are marked as ``{UserDefinedMolecule}``.
+Everything under the ``molecules`` defines what molecules are in your systems. 
+You can specify your own molecule names. 
+Because of this user defined names in the syntax examples are marked as ``{UserDefinedMolecule}``.
 
-You can define as many ``{UserDefinedMolecule}`` as you like. These molecules will be used in other YAML headed sections.
+You can define as many ``{UserDefinedMolecule}`` as you like. 
+These molecules will be used in other YAML headed sections.
 
-Unlike the primary :doc:`options <options>` for YAML files, many of these settings are optional and do nothing if not specified. The manditory/optional of each setting (and what conditionals), as well as the default behavior of each setting is explicitly stated in the setting's description.
+Unlike the primary :doc:`options <options>` for YAML files, 
+many of these settings are optional and do nothing if not specified. 
+The mandatory/optional of each setting (and what conditionals), 
+as well as the default behavior of each setting is explicitly stated in the setting's description.
 
 
 ----
@@ -27,13 +33,15 @@ filepath
       {UserDefinedMolecule}:
         filepath: benzene.pdb
 
-Filepath of the molecule. Path is relative to the directory the YAML script is in. Depending on what type of molecule you pass in (ligand vs. protien) will determine what manditory arguments are required. For small molecules, you need a way to specify the charges, protiens however can rely on built in force field parameters. 
+Filepath of the molecule. Path is relative to the directory the YAML script is in. Depending on what type of molecule you pass in (ligand vs. protein) will determine what mandatory arguments are required. For small molecules, you need a way to specify the charges, proteins however can rely on built in force field parameters. 
 
 **MANDATORY** but exclusive with :ref:`smiles <yaml_molecules_smiles>` and :ref:`name <yaml_molecules_name>`
 
 Valid Filetypes: PDB, mol2, sdf, cvs
 
-**Note:** If CVS is specified, the first column must be a SMILES string. If multiple molecules are to be used (for the !Combinatorial ability), then each row is its own moleucle where the second column is the SMILES string.
+**Note:** If CVS is specified, the first column must be a SMILES string. 
+If multiple molecules are to be used (for the :doc:`!Combinatorial <combinatorial>` ability), 
+then each row is its own molecule where the second column is the SMILES string.
 
 .. _yaml_molecules_smiles:
 
@@ -75,7 +83,9 @@ strip_protons
      {UserDefinedMolecule}:
        strip_protons: no
 
-Specifies if LEaP will re-add all hydrogen atoms. This is helpful if the PDB contains atom names for hydrogens that AMBER does not recognize. Primarily for protiens, not small molecules.
+Specifies if LEaP will re-add all hydrogen atoms. 
+This is helpful if the PDB contains atom names for hydrogens that AMBER does not recognize. 
+Primarily for proteins, not small molecules.
 
 **OPTIONAL** and defaults to ``no``
 
@@ -143,11 +153,16 @@ openeye
        openeye:
          quacpac: am1-bcc
 
-Use the OpenEye Toolkits if installed to determine molecular charge. Only the current options as shown are permited and must be specified as shown. Specifying this method is prefered over :ref:`antechamber <yaml_molecules_antechamber>` if available.
+Use the OpenEye Toolkits if installed to determine molecular charge.
+Only the current options as shown are permitted and must be specified as shown. 
+Specifying this method is preferred over :ref:`antechamber <yaml_molecules_antechamber>` if available.
 
 **MANDATORY** but exclusive with :ref:`antechamber <yaml_molecules_antechamber>` but...
 
-**OPTIONALLY SUPERSEDED** by :ref:`leap <yaml_molecules_leap>` if pre-processed partial charge data is avilalble for small molecules OR if the partial charge data is included as part of the protein force feild used to buld the :ref:`leap argument in systems <yaml_systems_leap>`.
+**OPTIONALLY SUPERSEDED** by :ref:`leap <yaml_molecules_leap>` 
+if pre-processed partial charge data is available for small molecules OR 
+if the partial charge data is included as part of the protein 
+force feild used to build the :ref:`leap argument in systems <yaml_systems_leap>`.
 
 |
 
@@ -167,11 +182,11 @@ leap
        leap:
          parameters: [mymol.frcmod, mymol.off]
 
-Load molecule-specific force feild parameters into the molecule. These can be created from any source so long as leap can parse them. It is possible to assign partial charges with the files read in this way, which would supersede the options of :ref:`antechamber <yaml_molecules_antechamber>` and :ref:`openeye <yaml_molecules_openeye>`.
+Load molecule-specific force field parameters into the molecule. These can be created from any source so long as leap can parse them. It is possible to assign partial charges with the files read in this way, which would supersede the options of :ref:`antechamber <yaml_molecules_antechamber>` and :ref:`openeye <yaml_molecules_openeye>`.
 
 This command has only one mandatory subargument ``parameters``, which can accept both single files as a string, or can accept a comma separated list of files enclosed by [ ]. Filepaths are relative to either the AmberTools default paths or to the folder the YAML script is in. 
 
-*Note*: Protiens do not necssicarily need this command if the force feilds given to the :ref:`leap argument in systems <yaml_systems_leap>` will fully describe them.
+*Note*: Protiens do not necessarily   need this command if the force fields given to the :ref:`leap argument in systems <yaml_systems_leap>` will fully describe them.
 
 **OPTIONAL**
 

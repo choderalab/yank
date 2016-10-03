@@ -40,7 +40,7 @@ resume_setup
    options:
      resume_setup: no
 
-Choose to resume a setup procedure. YANK will raise an error when it detects that it will overwrite an existing file in the directory specified by :ref:`setup_dir yaml_options_setup_dir`.
+Choose to resume a setup procedure. YANK will raise an error when it detects that it will overwrite an existing file in the directory specified by :ref:`setup_dir <yaml_options_setup_dir>`.
 
 Valid Options: [no]/yes
 
@@ -54,7 +54,7 @@ resume_simulation
    options:
      resume_simulation: no
 
-Choose to resume simulations. YANK will raise an error when it detects that it will overwrite an existing file in the directory specified by :ref:`experiments_dir yaml_options_experiments_dir`.
+Choose to resume simulations. YANK will raise an error when it detects that it will overwrite an existing file in the directory specified by :ref:`experiments_dir <yaml_options_experiments_dir>`.
 
 Valid Options: [no]/yes
 
@@ -80,7 +80,8 @@ setup_dir
    options:
      setup_dir: setup
 
-The folder where all generate simulation setup files are stored. A folder will be created if none exists. Path is relative to to the :ref:`output_dir <yaml_options_output_dir>` folder.
+The folder where all generate simulation setup files are stored. A folder will be created if none exists.
+Path is relative to the :ref:`output_dir <yaml_options_output_dir>` folder.
 
 Valid Options (setup): <Path String>
 
@@ -114,7 +115,12 @@ randomize_liand
    options:
      randomize_liand: no
 
-Randomize the position of the ligand before starting the simulation. Only works in Implicit Solvent. The ligand will be randomly rotated and displaced by a vector with magnitude proportioal to :ref:`randomize_ligand_sigma_multiplier <yaml_options_randomize_ligand_sigma_multiplier>` with the constraint of being at a distance greater than :ref:`randomize_ligand_close_cutoff <yaml_options_ligand_close_cutoff>` from the receptor.
+Randomize the position of the ligand before starting the simulation. 
+Only works in Implicit Solvent. The ligand will be randomly rotated and displaced by 
+a vector with magnitude proportional  to 
+:ref:`randomize_ligand_sigma_multiplier <yaml_options_randomize_ligand_sigma_multiplier>` 
+with the constraint of being at a distance greater than 
+:ref:`randomize_ligand_close_cutoff <yaml_options_ligand_close_cutoff>` from the receptor.
 
 Valid options: [no]/yes
 
@@ -303,7 +309,8 @@ minimize_max_iterations
    options:
      minimize_max_iterations: 0
 
-Set the maximum number of iterations the :ref:`energy minimization process <yaml_options_minimize>` attemps to coverge to :ref:`given tolerance energy <yaml_options_minimize_tolerance>`. 0 steps indicate unlimited.
+Set the maximum number of iterations the 
+:ref:`energy minimization process <yaml_options_minimize>` attempts to converge to :ref:`given tolerance energy <yaml_options_minimize_tolerance>`. 0 steps indicate unlimited.
 
 Valid Options (0): <Integer>
 
@@ -401,7 +408,8 @@ replica_mixing_scheme
    options:
      replica_mixing_scheme: swap-all
 
-Specifies how the Hamiltonian Replica Exchange attempts swaps between replicas. ``swap-all`` will attempt to exhange every state with every other state. ``swap-neighbors``  will attempt only exchanges between adjacent states.
+Specifies how the Hamiltonian Replica Exchange attempts swaps between replicas. 
+``swap-all`` will attempt to exchange every state with every other state. ``swap-neighbors``  will attempt only exchanges between adjacent states.
 
 Valid Options: [swap-all]/swap-neighbors
 
@@ -415,9 +423,9 @@ collision_rate
    options:
      collision_rate: 5.0 / picosecond
 
-The colision rate used for Langevin dynamics. Default quantity of 5.0/picosecond works well for explicit solvent. Implicit solvent will require a different collision rate, e.g. 91 / picosecond works well for TIP3P water.
+The collision rate used for Langevin dynamics. Default quantity of 5.0/picosecond works well for explicit solvent. Implicit solvent will require a different collision rate, e.g. 91 / picosecond works well for TIP3P water.
 
-Collision rates (or fricion coefficients) appear in the Langevin dynamics equation as either inverse time, or one over some time constant, :math:`1/\tau`.  When comparing collision rates, double check if the collision rate is in units of inverse time, or just time. For example: a collision rate of 5.0/ps -> :math:`\tau = 0.2 \, ps`.
+Collision rates (or friction coefficients) appear in the Langevin dynamics equation as either inverse time, or one over some time constant, :math:`1/\tau`.  When comparing collision rates, double check if the collision rate is in units of inverse time, or just time. For example: a collision rate of 5.0/ps -> :math:`\tau = 0.2 \, ps`.
 
 Valid Options (5.0 / picosecond): <Quantity Inverse Time> [1]_
 
@@ -440,12 +448,12 @@ Valid Options (1.0e-6): <Scientific Notation Float>
 
 mc_displacemnt_sigma
 --------------------
-.. code-lobck:: yaml
+.. code-block:: yaml
 
    options:
      mc_displacemnt_sigma: 10.0 * angstroms
 
-YANK will augment Langevin dyanmics with MC moves rotating and displacing the ligand. This parameter controls the size of the displacement
+YANK will augment Langevin dynamics with MC moves rotating and displacing the ligand. This parameter controls the size of the displacement
 
 Valid Options (10 * angstroms): <Quantity Length> [1]_
 
@@ -475,7 +483,7 @@ Valid Options: [yes]/no
 
 annihilate_sterics
 ------------------
-.. annihilate_sterics:: yaml
+.. code-block:: yaml
 
    options:
      annihilate_sterics: no
@@ -523,6 +531,6 @@ Valid Options for ``softcore_beta`` (1.0): <Float>
 Valid Options for ``softcore_[d,e,f]`` (1,1,2): <Integer prefered, Float accepted>
 
 
-.. [1] Quantiy strings are of the format: ``<float> * <unit>`` where ``<unit>`` is any valid unit specified in the "Valid Options" for an option. e.g. "<Quantity Length>" indicates any measure of length may be used for <unit> such as nanometer or angstrom. 
+.. [1] Quantity strings are of the format: ``<float> * <unit>`` where ``<unit>`` is any valid unit specified in the "Valid Options" for an option. e.g. "<Quantity Length>" indicates any measure of length may be used for <unit> such as nanometer or angstrom. 
    Compound units are also parsed such as ``kilogram / meter**3`` for density. 
    Only full unit names as they appear in the simtk.unit package (part of OpenMM) are allowed; so "nm" and "A" will be rejected.

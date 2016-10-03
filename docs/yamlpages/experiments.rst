@@ -35,7 +35,7 @@ The ``options`` directive lets you overwrite :doc:`any global setting <options>`
 Running Multiple Experiments
 ============================
 
-A single experiement can be defined by the following example. However, if one would like to run multiple experiments from the same YAML file, then follow these instructions:
+A single experiment can be defined by the following example. However, if one would like to run multiple experiments from the same YAML file, then follow these instructions:
 
 #. Create a header above ``experiments`` with whatever name of experiment you want to run. We label this as ``{UserDefinedExperiment}``.
 #. Define your ``{UserDefinedExperiment}`` by creating sub-directives just as you would in the main ``experiment`` header (se the :ref:`Experiments Syntax <yaml_experiments_syntax>` for description).
