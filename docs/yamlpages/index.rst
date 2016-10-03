@@ -145,8 +145,13 @@ Detailed Options List
 
 * :doc:`protocols <protocols>`
 
-  * Items!
+  * :ref:`Protocols Syntax <yaml_protocols_example>`
+  
+    * :ref:`alchemical_path <yaml_protocols_example>`
 
+      * :ref:`lambda_electrostatics <yaml_protocols_example>`
+      * :ref:`lambda_sterics <yaml_protocols_example>`
+    
 * :doc:`experiements <experiments>`
 
 
