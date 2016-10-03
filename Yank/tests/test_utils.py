@@ -12,7 +12,6 @@ Test various utility functions.
 import textwrap
 
 import openmoltools as omt
-import simtk.unit as unit
 from schema import Schema
 from openmmtools import testsystems
 
@@ -68,10 +67,10 @@ def test_find_combinatorial_leaves():
             'leaf': ['a', 'b', 'c'],
             'comb-leaf': CombinatorialLeaf(['d', 'e'])}}})
     leaf_paths, leaf_vals = simple_tree._find_combinatorial_leaves()
-    assert all(leaf_path in [('simple', 'vector'), ('simple', 'nested', 'comb-leaf')]
-                         for leaf_path in leaf_paths)
-    assert all(leaf_val in [[2, 3, 4], ['d', 'e']] 
-                        for leaf_val in leaf_vals)
+
+    # Paths must be in alphabetical order with their associated values
+    assert leaf_paths == (('simple', 'nested', 'comb-leaf'), ('simple', 'vector'))
+    assert leaf_vals == (['d', 'e'], [2, 3, 4])
 
 
 def test_expand_tree():
@@ -82,30 +81,28 @@ def test_expand_tree():
                                                     'leaf': ['d', 'e'],
                                                     'combleaf': CombinatorialLeaf(['a', 'b', 'c'])}}})
     result = [{'simple': {'scalar': 1, 'vector': 2, 'nested': {'leaf': ['d', 'e'], 'combleaf': 'a'}}},
-              {'simple': {'scalar': 1, 'vector': 2, 'nested': {'leaf': ['d', 'e'], 'combleaf': 'b'}}},
-              {'simple': {'scalar': 1, 'vector': 2, 'nested': {'leaf': ['d', 'e'], 'combleaf': 'c'}}},
               {'simple': {'scalar': 1, 'vector': 3, 'nested': {'leaf': ['d', 'e'], 'combleaf': 'a'}}},
-              {'simple': {'scalar': 1, 'vector': 3, 'nested': {'leaf': ['d', 'e'], 'combleaf': 'b'}}},
-              {'simple': {'scalar': 1, 'vector': 3, 'nested': {'leaf': ['d', 'e'], 'combleaf': 'c'}}},
               {'simple': {'scalar': 1, 'vector': 4, 'nested': {'leaf': ['d', 'e'], 'combleaf': 'a'}}},
+              {'simple': {'scalar': 1, 'vector': 2, 'nested': {'leaf': ['d', 'e'], 'combleaf': 'b'}}},
+              {'simple': {'scalar': 1, 'vector': 3, 'nested': {'leaf': ['d', 'e'], 'combleaf': 'b'}}},
               {'simple': {'scalar': 1, 'vector': 4, 'nested': {'leaf': ['d', 'e'], 'combleaf': 'b'}}},
+              {'simple': {'scalar': 1, 'vector': 2, 'nested': {'leaf': ['d', 'e'], 'combleaf': 'c'}}},
+              {'simple': {'scalar': 1, 'vector': 3, 'nested': {'leaf': ['d', 'e'], 'combleaf': 'c'}}},
               {'simple': {'scalar': 1, 'vector': 4, 'nested': {'leaf': ['d', 'e'], 'combleaf': 'c'}}}]
-    assert all(exp in result for exp in simple_tree)
+    assert result == [exp for exp in simple_tree]
 
     # Test named_combinations generator using either order to account for generator randomness
-    expected_names_A = set(['2_a', '3_a', '4_a', '2_b', '3_b', '4_b', '2_c', '3_c', '4_c'])
-    expected_names_B = set(['a_2', 'a_3', 'a_4', 'b_2', 'b_3', 'b_4', 'c_2', 'c_3', 'c_4'])
-    expected_names = [expected_names_A, expected_names_B]
-    assert set([name for name, _ in simple_tree.named_combinations(separator='_', max_name_length=3)]) in expected_names
+    expected_names = {'a_2', 'a_3', 'a_4', 'b_2', 'b_3', 'b_4', 'c_2', 'c_3', 'c_4'}
+    assert expected_names == set([name for name, _ in simple_tree.named_combinations(separator='_',
+                                                                                     max_name_length=3)])
 
     # Test maximum length, similar names and special characters
     long_tree = CombinatorialTree({'key1': CombinatorialLeaf(['th#*&^isnameistoolong1',
                                                               'th#*&^isnameistoolong2']),
                                    'key2': CombinatorialLeaf(['test1', 'test2'])})
-    expected_names_A = set(['test-thisn', 'test-thisn-2', 'test-thisn-3', 'test-thisn-4'])
-    expected_names_B = set(['thisn-test', 'thisn-test-2', 'thisn-test-3', 'thisn-test-4'])
-    expected_names = [expected_names_A, expected_names_B]
-    assert set([name for name, _ in long_tree.named_combinations(separator='-', max_name_length=10)]) in expected_names
+    expected_names = {'thisn-test', 'thisn-test-2', 'thisn-test-3', 'thisn-test-4'}
+    assert expected_names == set([name for name, _ in long_tree.named_combinations(separator='-',
+                                                                                   max_name_length=10)])
 
     # Test file paths are handled correctly
     examples_dir = get_data_filename(os.path.join('..', 'examples'))
@@ -113,12 +110,11 @@ def test_expand_tree():
     benzene = os.path.join(examples_dir, 'benzene-toluene-explicit', 'setup', 'benzene.tripos.mol2')
     long_tree = CombinatorialTree({'key1': CombinatorialLeaf([abl, benzene]),
                                    'key2': CombinatorialLeaf([benzene, benzene, 'notapath'])})
-    expected_names_A = set(['benzene-2HYYpdbfixer', 'benzene-2HYYpdbfixer-2', 'notapath-2HYYpdbfixer',
-                          'benzene-benzene', 'benzene-benzene-2', 'notapath-benzene'])
-    expected_names_B = set(['2HYYpdbfixer-benzene', '2HYYpdbfixer-benzene-2', '2HYYpdbfixer-notapath',
-                          'benzene-benzene', 'benzene-benzene-2', 'benzene-notapath'])
-    expected_names = [expected_names_A, expected_names_B]
-    assert set([name for name, _ in long_tree.named_combinations(separator='-', max_name_length=25)]) in expected_names
+    expected_names = {'2HYYpdbfixer-benzene', '2HYYpdbfixer-benzene-2', '2HYYpdbfixer-notapath',
+                      'benzene-benzene', 'benzene-benzene-2', 'benzene-notapath'}
+    assert expected_names == set([name for name, _ in long_tree.named_combinations(separator='-',
+                                                                                   max_name_length=25)])
+
 
 def test_expand_id_nodes():
     """CombinatorialTree.expand_id_nodes()"""
@@ -133,8 +129,9 @@ def test_expand_id_nodes():
     assert t['molecules'] == {'mol1_1': {'mol_value': 1}, 'mol1_2': {'mol_value': 2},
                               'mol2_3': {'mol_value': 3}, 'mol2_4': {'mol_value': 4}}
     assert t['systems'] == {'sys1': {'molecules': CombinatorialLeaf(['mol1_2', 'mol1_1'])},
-                        'sys2': {'molecules': CombinatorialLeaf(['mol1_2', 'mol1_1', 'mol2_3', 'mol2_4'])},
+                            'sys2': {'molecules': CombinatorialLeaf(['mol1_2', 'mol1_1', 'mol2_3', 'mol2_4'])},
                             'sys3': {'prmtopfile': 'mysystem.prmtop'}}
+
 
 def test_topology_serialization():
     """Correct serialization of Topology objects."""

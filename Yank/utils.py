@@ -544,14 +544,14 @@ class CombinatorialTree(collections.MutableMapping):
     def _find_leaves(self):
         """Traverse a dict tree and find the leaf nodes.
 
-        Returns:
-        --------
+        Returns
+        -------
         A tuple containing two lists. The first one is a list of paths to the leaf
         nodes in a tuple format (e.g. the path to node['a']['b'] is ('a', 'b')) while
         the second one is a list of all the values of those leaf nodes.
 
-        Examples:
-        ---------
+        Examples
+        --------
         >>> simple_tree = CombinatorialTree({'simple': {'scalar': 1,
         ...                                             'vector': [2, 3, 4],
         ...                                             'nested': {
@@ -582,17 +582,26 @@ class CombinatorialTree(collections.MutableMapping):
     def _find_combinatorial_leaves(self):
         """Traverse a dict tree and find CombinatorialLeaf nodes.
 
-        Returns:
-        --------
-        A tuple containing two lists. The first one is a list of paths to combinatorial
-        leaf nodes in a tuple format (e.g. the path to node['a']['b'] is ('a', 'b')) while
-        the second one is a list of the values of those nodes.
+        Returns
+        -------
+        combinatorial_leaf_paths, combinatorial_leaf_vals : tuple of tuples
+            combinatorial_leaf_paths is a tuple of paths to combinatorial leaf
+            nodes in tuple format (e.g. the path to node['a']['b'] is ('a', 'b'))
+            while combinatorial_leaf_vals is the tuple of the values of those nodes.
+            The list of paths is guaranteed to be sorted by alphabetical order.
 
         """
         leaf_paths, leaf_vals = self._find_leaves()
+
+        # Filter leaves that are not combinatorial
         combinatorial_ids = [i for i, val in enumerate(leaf_vals) if isinstance(val, CombinatorialLeaf)]
         combinatorial_leaf_paths = [leaf_paths[i] for i in combinatorial_ids]
         combinatorial_leaf_vals = [leaf_vals[i] for i in combinatorial_ids]
+
+        # Sort leaves by alphabetical order of the path
+        if len(combinatorial_leaf_paths) > 0:
+            combinatorial_leaf_paths, combinatorial_leaf_vals = zip(*sorted(zip(combinatorial_leaf_paths,
+                                                                                combinatorial_leaf_vals)))
         return combinatorial_leaf_paths, combinatorial_leaf_vals
 
     def _combinations_generator(self, leaf_paths, leaf_vals):

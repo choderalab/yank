@@ -27,12 +27,12 @@ options:
                                                 # with the constraint of being at a distance greater than
                                                 # randomize_ligand_close_cutoff from the receptor.
   temperature: 298.0 * kelvin                   # Temperature of the system.
-  pressure: 1.0 * atmosphere                    # Pressure of the system.
+  pressure: 1.0 * atmosphere                    # Pressure of the system. Set to null for NVT ensemble.
   hydrogen_mass: 1.0 * amu                      # Hydrogen mass for HMR simulations.
-  constraints: HBonds                           # Constrain bond lengths and angles. Possible values are None,
+  constraints: HBonds                           # Constrain bond lengths and angles. Possible values are null,
                                                 # HBonds, AllBonds, and HAngles (see Openmm createSystem()).
   restraint_type: flat-bottom                   # Apply a restrain to the ligand to keep it close to the
-                                                # receptor. Possible values are flat-bottom and harmonic.
+                                                # receptor. Possible values are null, flat-bottom and harmonic.
                                                 # This works only implicit solvent.
 
   # SIMULATION PARAMETERS
