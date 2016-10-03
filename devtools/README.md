@@ -34,8 +34,6 @@ Checklist for Major Revisions (YANK X.Y+1.0)
 - [ ] Do the steps for All Upates
 - [ ] Create a new release on GitHub, reference the tag and copy the changes in `docs/changelog.rst`
 - [ ] Update the `omnia-md/conda-recipies` repo by creating a new PR with updated versions
-- [ ] Create a new milestone for YANK X.(Y+1).0
-- [ ] Close current milestone
 
 Checklist for Minor Revisions (YANK X.Y.Z+1)
 --------------------------------------------
