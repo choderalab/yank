@@ -154,6 +154,9 @@ Detailed Options List
     
 * :doc:`experiements <experiments>`
 
+  * :ref:`Experiments Syntax <yaml_experiments_syntax>`
+  * :ref:`Running Multiple Experiments <yaml_experiments_syntax>`
+
 
 .. literalinclude:: ../../examples/yank-yaml-cookbook/all-options.yaml
    :language: yaml
