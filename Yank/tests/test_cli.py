@@ -58,7 +58,7 @@ def test_selftest():
         run_cli('selftest')
     except ImportError as e:
         # Trap the libOpenCl error
-        if "libOpenCL.so" in e.message
+        if "libOpenCL.so" in e.message:
             print("Failed to load OpenCL. If this is an expected reult, carry on, if not, please debug!")
         else:
             raise(e)
