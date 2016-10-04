@@ -11,11 +11,10 @@ YANK will automatically set up each combination of options you specify with the 
 Every option which can be specified in the YAML file can be given the `!Combinatorial` flag. 
 **Exceptions** to this rule are as follows:
 
-* All settings in the ``experiments`` header.
 * All settings in the ``protocols`` header.
 * All settings in the ``solvents`` header.
 
-This means all ``options``, ``molecules``, and ``systems`` can be specified with ``!Combinatorial`` options.
+This means all ``options``, ``molecules``, ``systems``, and ``experiments`` can be specified with ``!Combinatorial`` options.
 
 For options which are themselves lists (such as many of the file path options), a nested list is expected.
 e.g. ``!Combinatorial[[complexA.gro, complexA.top], [complexB.gro, complexB.top]]``.

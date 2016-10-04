@@ -5,11 +5,10 @@ Assorted "Ho-To's" for developers
 
 How to contribute changes
 -------------------------
-- Clone the repository
-  * We prefer feature branches for PRs instead of forks
+- Clone the repository if you have write access to the main repo, fork the repositiory if you are a collaborator.
 - Make a new branch with `git checkout -b {your branch name}`
 - Make changes and test your code
-- Push the branch to the main repo with `git push -u origin {your branch name}`
+- Push the branch to the repo (either the main or your fork) with `git push -u origin {your branch name}`
   * Note that `origin` is the default name assigned to the remote, yours may be different
 - Make a PR on GitHub with your changes
 - We'll review the changes and get your code into the repo after lively discussion!
@@ -34,14 +33,14 @@ Checklist for Major Revisions (YANK X.Y+1.0)
 - [ ] Do the steps for All Upates
 - [ ] Create a new release on GitHub, reference the tag and copy the changes in `docs/changelog.rst`
 - [ ] Update the `omnia-md/conda-recipies` repo by creating a new PR with updated versions
+  * Be sure to pin dependencies to fixed version
 
 Checklist for Minor Revisions (YANK X.Y.Z+1)
 --------------------------------------------
 - [ ] Update `setup.py` with the correct Z version number in X.Y.Z
 - [ ] In `setup.py`, set `ISRELEASED` to `False`
 - [ ] Do all the steps for All Updates
-
-- If this is a critical bugfix (i.e. YANK X.Y.0 is broken and/or flat out wrong without the fix):
+  * If this is a critical bugfix (i.e. YANK X.Y.0 is broken and/or flat out wrong without the fix):
 - [ ] Update `docs/changelog.rst`
 - [ ] Update the released version on the site to this version, adjusting the tag and note that this is a critical bugfix which corrects the X.Y release
 - [ ] Update the `omnia-md/conda-recipies` repo to point at the corrected version

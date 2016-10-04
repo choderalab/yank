@@ -19,7 +19,7 @@ Protocols Syntax
 .. code-block:: yaml
 
    protocols:
-     {UserDefinedProtocol:
+     {UserDefinedProtocol}:
        {PhaseName1}:
          alchemical_path:
            lambda_electrostatics: [1.00, 0.75, 0.50, 0.25, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00]
@@ -34,7 +34,7 @@ This is the only valid format for the protocols header and consistes of multiple
 The ``{PhaseName1}`` and ``{PhaseName2}`` headers are ``system`` dependent headers. 
 The ``{UserDefinedSystem`` and ``{UserDefinedProtocol}`` are combined in the ``experiements`` header to make on object.
 Each ``{PhaseNameX}`` in the ``{UserDefinedProtocol}`` must match with the expected type of system created. 
-Below is the mappings of each ``{PhaseNameX}``:
+Below is the *recommended* mappings of each ``{PhaseNameX}``:
 
 * :ref:`Ligand/Receptor Free Energies Setup by YANK <yaml_systems_receptor_ligand>`
 
@@ -50,6 +50,30 @@ Below is the mappings of each ``{PhaseNameX}``:
 
   * ``{PhaseName1}`` -> ``phase1``
   * ``{PhaseName2}`` -> ``phase2``
+
+More generally, the ``{PhaseNameX}`` only has to contain the keyword for the system you expect.
+For instance, in the Ligand/Receptor case, the following would also be a valid structure: 
+.. code-block:: yaml
+
+   {UserDefinedProtocol}:
+     RICKsolventROLL:
+       alchemical_path: ..
+     my_complex_phase:
+       alchemical_path: ..
+
+Where ``RICKsolventROLL`` would correspond to the ``solvent`` phase since it contains the phrase "solvent",
+and ``my_complex_phase`` would correspond to the ``complex`` phase for the same reason.
+
+If you want to name them whatever you would like and instead rely on the which sign is used for the free energy evaluation,
+you can invoke ``{UserDefinedProtocol}: !Ordered`` to make the first entry the ``+`` sign and the second ``-`` sign in the free energy difference.
+Here is an example:
+.. code-block:: yaml
+
+   absolute-binding: !Ordered
+     plus_sign_phase:
+       alchemical_path: ...
+     minus_sign_phase:
+       alchemical_path: ...
 
 
 .. _yaml_protocols_alchemical_path:

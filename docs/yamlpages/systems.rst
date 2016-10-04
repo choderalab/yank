@@ -3,15 +3,22 @@
 Systems Header for YAML Files
 *****************************
 
-The ``systems`` header is where we combine :doc:`molecules <molecules>` and :doc:`solvents <solvents>` together with molecular forcefields and general options to create the environemnt we want to simulation.
-There are several ways we can construct a sysem based on what type of free energy calculation we want to run and on if you want YANK to handle combining receptors and ligands.
+The ``systems`` header is where we combine :doc:`molecules <molecules>` and 
+:doc:`solvents <solvents>` together with molecular forcefields and general 
+options to create the environment we want to simulation.
+There are several ways we can construct a sysem based on what type of free 
+energy calculation we want to run and on if you want YANK to handle combining receptors and ligands.
 
 Just like in :doc:`molecules <molecules>`, the solvents can have arbitrary, user defined names.
 In the examples, these user defined names are marked as ``{UserDefinedSystem}``.
 
-The ``{UserDefinedSystem}`` references both objects created in the :doc:`molecules <molecules>` and :doc:`solvents <solvents>` headers, which were also given arbitrary names. They will be referenced as ``{UserDefinedMolecule}`` and ``{UserDefinedSolvent}``.
+The ``{UserDefinedSystem}`` references both objects created in the 
+:doc:`molecules <molecules>` and :doc:`solvents <solvents>` headers, 
+which were also given arbitrary names. 
+They will be referenced as ``{UserDefinedMolecule}`` and ``{UserDefinedSolvent}``.
 
-We sort the options by type of free energy calculation due to how the arguments change between each type, each requiring their own mandatory arguments.
+We sort the options by type of free energy calculation due to how the 
+arguments change between each type, each requiring their own mandatory arguments.
 
 ----
 
@@ -30,9 +37,10 @@ Ligand/Receptor Free Energies Setup by YANK
        leap:
            parameters: [leaprc.ff14SB, leaprc.gaff]
 
-This is the mandatory structure for leting YANK handle the creation and setup of a Ligand/Receptor system to do binding free energies.
+This is the mandatory structure for leting YANK handle the creation and 
+setup of a Ligand/Receptor system to do binding free energies.
 
-* ``recptor``: Tells YANK which ``{UserDefinedMolecule}`` to load in as the receptor.
+* ``receptor``: Tells YANK which ``{UserDefinedMolecule}`` to load in as the receptor.
 * ``ligand``: Tells YANK which ``{UserDefinedMolecule}`` to load in as the ligand. This molecule will be alchemically modified to compute the free energy difference.
 * ``solvent``: Tells YANK  which ``{UserDefinedSolvent}`` to surround the ``receptor`` and ``ligand`` in. This must be set even if you want to use a vacuum, which is a type of ``solvent`` you can define.
 * ``pack``: If the ligand is far away from the receptor or if there are clashing atoms 
