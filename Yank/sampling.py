@@ -147,7 +147,8 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         self.rotation_trials_accepted = 0 # number of MC displacement trials accepted
 
         # Store reference system.
-        self.reference_system = copy.deepcopy(reference_state.system)
+        self.reference_state = copy.deepcopy(reference_state)
+        self.reference_system = self.reference_state.system
 
         # Store Lennard-Jones states which will be used to create a more accurate fully-interacting energy
         self.reference_LJ_state = copy.deepcopy(reference_LJ_state)
@@ -392,7 +393,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
             reference_LJ_state_integrator = openmm.VerletIntegrator(self.timestep)
             reference_LJ_expanded_state_integrator = openmm.VerletIntegrator(self.timestep)
             if self.platform:
-                self._reference_context = openmm.Context(reference_state.system, reference_state_integrator, self.platform)
+                self._reference_context = openmm.Context(self.reference_system, reference_state_integrator, self.platform)
                 self._reference_LJ_context = openmm.Context(reference_LJ_state.system, reference_LJ_state_integrator, self.platform)
                 self._reference_LJ_expanded_context = openmm.Context(reference_LJ_expanded_state.system, reference_LJ_expanded_state_integrator, self.platform)
             else:
@@ -928,7 +929,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         #
         # Compute energies for fully interacting state
         #
-        if (self.reference_LJ_state is not None) and (self.reference_LJ_expanded_state is not None):
+        if (self.reference_LJ_state is not None) and (self.reference_LJ_expanded_state is not None) and (self.reference_state is not None):
             logger.debug("Computing energies...")
             start_time = time.time()
             reference_context = self._reference_context
