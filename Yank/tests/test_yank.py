@@ -23,6 +23,7 @@ This code is licensed under the latest available version of the GNU General Publ
 
 
 from openmmtools import testsystems
+import mdtraj
 from mdtraj.utils import enter_temp_directory
 
 from nose import tools
@@ -30,6 +31,7 @@ import netCDF4 as netcdf
 
 from yank.repex import ThermodynamicState
 from yank.pipeline import find_components
+
 
 from yank.yank import *
 

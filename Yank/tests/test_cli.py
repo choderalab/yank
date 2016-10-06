@@ -34,7 +34,7 @@ def run_cli(arguments, expected_output=None):
     if sterrdata:
         message  = "An error return value (%s) was obtained:\n" % str(sterrdata)
         message += "\n"
-        message += output
+        message += stoutdata
         message += "\n"
         raise Exception(message)
 

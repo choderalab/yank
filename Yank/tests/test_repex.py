@@ -251,7 +251,7 @@ def test_replica_exchange(mpicomm=None, verbose=True):
     if verbose: print("PASSED.")
     return
 
-def disable_hamiltonian_exchange(mpicomm=None, verbose=True):
+def notest_hamiltonian_exchange(mpicomm=None, verbose=True):
     """
     Test that free energies and average potential energies of a 3D harmonic oscillator are correctly computed when running HamiltonianExchange.
 
@@ -420,5 +420,6 @@ if __name__ == "__main__":
         mpicomm = None
 
     # Test simple system of harmonic oscillators.
-    test_hamiltonian_exchange(mpicomm)
+    # Disabled until we fix the test
+    # test_hamiltonian_exchange(mpicomm)
     test_replica_exchange(mpicomm)
