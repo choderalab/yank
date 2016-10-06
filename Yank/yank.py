@@ -365,7 +365,7 @@ class Yank(object):
                 for particle in range(force.getNumParticles()):
                     q, sigma, epsilon = force.getParticleParameters(particle)
                     force.setParticleParameters(particle, 0, sigma, epsilon)
-                for exception in force.getNumExceptions():
+                for exception in range(force.getNumExceptions()):
                     particle1, particle2, chargeprod, epsilon, sigma = force.getExceptionParameters(exception)
                     force.setExceptionParameters(particle1, particle2, 0, sigma, epsilon)
             else:
