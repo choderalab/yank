@@ -352,7 +352,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
             reference_LJ_state.system = self.mm.System()
             reference_LJ_expanded_state.system = self.mm.System()
             reference_LJ_state.system.__setstate__(str(ncgrp_stateinfo.variables['LJ_only_system'][0]))
-            reference_LJ_state_expanded.system.__setstate__(str(ncgrp_stateinfo.variables['LJ_only_expanded_system'][0]))
+            reference_LJ_expanded_state.system.__setstate__(str(ncgrp_stateinfo.variables['LJ_only_expanded_system'][0]))
             self.reference_LJ_state = reference_LJ_state
             self.reference_LJ_expanded_state = reference_LJ_expanded_state
 
