@@ -13,9 +13,6 @@ Sampling algorithms for YANK.
 # GLOBAL IMPORTS
 #=============================================================================================
 
-import os
-import os.path
-import sys
 import copy
 import time
 import logging
@@ -60,7 +57,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
     >>> file = tempfile.NamedTemporaryFile() # temporary file for testing
     >>> store_filename = file.name
     >>> # Create reference state.
-    >>> from repex import ThermodynamicState
+    >>> from yank.repex import ThermodynamicState
     >>> reference_state = ThermodynamicState(reference_system, temperature=298.0*unit.kelvin)
     >>> reference_state.system = factory.alchemically_modified_system
     >>> displacement_sigma = 1.0 * unit.nanometer

@@ -376,7 +376,7 @@ class Yank(object):
         for forceIndex in forces_to_remove[::-1]:
             reference_system_LJ.removeForce(forceIndex)
 
-        reference_system_LJ_expanded = copy.deepcopy(reference_system)
+        reference_system_LJ_expanded = copy.deepcopy(reference_system_LJ)
         if is_periodic:
             # Determine minimum box side dimension
             box_vectors = reference_system_LJ_expanded.getDefaultPeriodicBoxVectors()
@@ -413,6 +413,8 @@ class Yank(object):
         reference_LJ_expanded_state = copy.deepcopy(thermodynamic_state)
         reference_LJ_state.system = reference_system_LJ
         reference_LJ_expanded_state.system = reference_system_LJ_expanded
+        # Assign reference_system only after we are done copy thermodynamic state
+        thermodynamic_state.system = reference_system
 
         # Compute standard state corrections for complex phase.
         metadata['standard_state_correction'] = 0.0
@@ -458,7 +460,7 @@ class Yank(object):
             integrator = openmm.VerletIntegrator(1.0 * unit.femtosecond)
             context = openmm.Context(alchemical_system, integrator)
             context.setPositions(positions[0])
-            for alchemical_state in alchemical_states:
+            for index, alchemical_state in enumerate(alchemical_states):
                 AbsoluteAlchemicalFactory.perturbContext(context, alchemical_state)
                 potential = context.getState(getEnergy=True).getPotentialEnergy()
                 if np.isnan(potential / unit.kilocalories_per_mole):
