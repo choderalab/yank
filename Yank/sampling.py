@@ -866,7 +866,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         if self.mpicomm is not None and self.mpicomm.rank != 0:
             return
 
-        if self.fully_interacting_state is not None:
+        if (self.reference_LJ_state is not None) and (self.reference_LJ_expanded_state is not None):
             self.ncfile.variables['fully_interacting_energies'][self.iteration, :] = self.u_k[:]
             self.ncfile.sync()
 
