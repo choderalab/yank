@@ -367,7 +367,7 @@ class Yank(object):
                     force.setParticleParameters(particle, 0, sigma, epsilon)
                 for exception in range(force.getNumExceptions()):
                     particle1, particle2, chargeprod, epsilon, sigma = force.getExceptionParameters(exception)
-                    force.setExceptionParameters(particle1, particle2, 0, sigma, epsilon)
+                    force.setExceptionParameters(exception, particle1, particle2, 0, sigma, epsilon)
             else:
                 # Queue force to remove if not a NB fore
                 forces_to_remove.append(forceIndex)
