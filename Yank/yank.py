@@ -358,6 +358,7 @@ class Yank(object):
 
         # fully_interacting_system = copy.deepcopy(reference_system)
         reference_system_LJ = copy.deepcopy(reference_system)
+        forces_to_remove = []
         for forceIndex in range(reference_system_LJ.getNumForces()):
             force = reference_system_LJ.getForce(forceIndex)
             if isinstance(force, openmm.NonbondedForce):
@@ -368,8 +369,12 @@ class Yank(object):
                     particle1, particle2, chargeprod, epsilon, sigma = force.getExceptionParameters(exception)
                     force.setExceptionParameters(particle1, particle2, 0, sigma, epsilon)
             else:
-                # Remove the force if not a NB force
-                reference_system_LJ.removeForce(forceIndex)
+                # Queue force to remove if not a NB fore
+                forces_to_remove.append(forceIndex)
+        # Remove all but NonbondedForce
+        # If done in preveious loop, nuber of forces change so indices change
+        for forceIndex in forces_to_remove[::-1]:
+            reference_system_LJ.removeForce(forceIndex)
 
         reference_system_LJ_expanded = copy.deepcopy(reference_system)
         if is_periodic:
