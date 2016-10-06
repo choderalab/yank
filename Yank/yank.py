@@ -501,7 +501,7 @@ class Yank(object):
         simulation.create(thermodynamic_state, alchemical_states, positions,
                           displacement_sigma=self._mc_displacement_sigma, mc_atoms=mc_atoms,
                           options=repex_parameters, metadata=metadata,
-                          reference_system = reference_system,
+                          reference_state = reference_state,
                           reference_LJ_state = reference_LJ_state,
                           reference_LJ_expanded_state = reference_LJ_expanded_state)
 
