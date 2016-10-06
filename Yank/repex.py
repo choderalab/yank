@@ -65,13 +65,14 @@ import copy
 import time
 import datetime
 import logging
-logger = logging.getLogger(__name__)
 
 import numpy as np
 import mdtraj as md
 import netCDF4 as netcdf
 
 from .utils import is_terminal_verbose, delayed_termination
+
+logger = logging.getLogger(__name__)
 
 #=============================================================================================
 # MODULE CONSTANTS
@@ -2728,21 +2729,21 @@ class HamiltonianExchange(ReplicaExchange):
 
     EXAMPLES
 
-    >>> # Create reference system
+    >>> # Create baseline system
     >>> from openmmtools import testsystems
     >>> testsystem = testsystems.AlanineDipeptideImplicit()
-    >>> [reference_system, positions] = [testsystem.system, testsystem.positions]
-    >>> # Copy reference system.
-    >>> systems = [reference_system for index in range(10)]
+    >>> [base_system, positions] = [testsystem.system, testsystem.positions]
+    >>> # Copy baseline system.
+    >>> systems = [base_system for index in range(10)]
     >>> # Create temporary file for storing output.
     >>> import tempfile
     >>> file = tempfile.NamedTemporaryFile() # temporary file for testing
     >>> store_filename = file.name
-    >>> # Create reference state.
-    >>> reference_state = ThermodynamicState(reference_system, temperature=298.0*unit.kelvin)
+    >>> # Create baseline state.
+    >>> base_state = ThermodynamicState(base_system, temperature=298.0*unit.kelvin)
     >>> # Create simulation.
     >>> simulation = HamiltonianExchange(store_filename)
-    >>> simulation.create(reference_state, systems, positions)
+    >>> simulation.create(base_state, systems, positions)
     >>> simulation.number_of_iterations = 2 # set the simulation to only run 2 iterations
     >>> simulation.timestep = 2.0 * unit.femtoseconds # set the timestep for integration
     >>> simulation.nsteps_per_iteration = 50 # run 50 timesteps per iteration
@@ -2753,14 +2754,14 @@ class HamiltonianExchange(ReplicaExchange):
 
     """
 
-    def create(self, reference_state, systems, positions, options=None, metadata=None):
+    def create(self, base_state, systems, positions, options=None, metadata=None):
         """
         Initialize a Hamiltonian exchange simulation object.
 
         Parameters
         ----------
-        reference_state : ThermodynamicState
-           reference state containing all thermodynamic parameters except the system, which will be replaced by 'systems'
+        base_state : ThermodynamicState
+           baseline state containing all thermodynamic parameters except the system, which will be replaced by 'systems'
         systems : list of simtk.openmm.System
            list of systems to simulate (one per replica)
         positions : simtk.unit.Quantity of np natoms x 3 with units compatible with nanometers
@@ -2776,7 +2777,7 @@ class HamiltonianExchange(ReplicaExchange):
             states = None
         else:
             # Create thermodynamic states from systems.
-            states = [ ThermodynamicState(system=system, temperature=reference_state.temperature, pressure=reference_state.pressure) for system in systems ]
+            states = [ ThermodynamicState(system=system, temperature=base_state.temperature, pressure=base_state.pressure) for system in systems ]
 
         # Initialize replica-exchange simlulation.
         ReplicaExchange.create(self, states, positions, options=options, metadata=metadata)

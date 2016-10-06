@@ -1,8 +1,8 @@
 #!/usr/local/bin/env python
 
-#=============================================================================================
+# =============================================================================================
 # MODULE DOCSTRING
-#=============================================================================================
+# =============================================================================================
 
 """
 Yank
@@ -12,33 +12,32 @@ Interface for automated free energy calculations.
 
 """
 
-#=============================================================================================
+# =============================================================================================
 # GLOBAL IMPORTS
-#=============================================================================================
+# =============================================================================================
 
 import os
 import os.path
 import copy
-import mdtraj
 import inspect
 import logging
-logger = logging.getLogger(__name__)
-
 import numpy as np
 
 import simtk.unit as unit
 import simtk.openmm as openmm
 
 from alchemy import AbsoluteAlchemicalFactory
-from .sampling import ModifiedHamiltonianExchange 
+from .sampling import ModifiedHamiltonianExchange
 from .restraints import HarmonicReceptorLigandRestraint, FlatBottomReceptorLigandRestraint
 
 from . import utils
 
+logger = logging.getLogger(__name__)
 
 # ==============================================================================
 # Class that define a single thermodynamic leg (phase) of the calculation
 # ==============================================================================
+
 
 class AlchemicalPhase(object):
     """A single thermodynamic leg (phase) of an alchemical free energy calculation.
@@ -50,7 +49,7 @@ class AlchemicalPhase(object):
     reference_system : simtk.openmm.System
         The reference system object from which alchemical intermediates are
         to be constructed.
-    topology : simtk.openmm.app.Topology
+    reference_topology : simtk.openmm.app.Topology
         The topology object for the reference_system.
     positions : list of simtk.unit.Quantity natoms x 3 array with units of length
         Atom positions for the system used to seed replicas in a round-robin way.
@@ -58,7 +57,7 @@ class AlchemicalPhase(object):
         atom_indices[component] is the set of atom indices associated with
         component, where component is one of ('ligand', 'receptor', 'complex',
         'solvent', 'ligand_counterions').
-    protocols : list of AlchemicalState
+    protocol : list of AlchemicalState
         The alchemical protocol used for the calculation.
 
     """
@@ -91,7 +90,7 @@ class AlchemicalPhase(object):
         reference_system : simtk.openmm.System
             The reference system object from which alchemical intermediates are
             to be constructed.
-        topology : simtk.openmm.app.Topology
+        reference_topology : simtk.openmm.app.Topology
             The topology object for the reference_system.
         positions : (list of) simtk.unit.Quantity natoms x 3 array with units of length
             Initial atom positions for the system. If a single simtk.unit.Quantity
@@ -102,9 +101,6 @@ class AlchemicalPhase(object):
             atom_indices[component] is the set of atom indices associated with
             component, where component is one of ('ligand', 'receptor', 'complex',
             'solvent', 'ligand_counterions').
-        thermodynamic_state : ThermodynamicState
-            Thermodynamic state from which reference temperature and pressure are
-            to be taken.
         protocol : list of AlchemicalState
             The alchemical protocol used for the calculation.
 
@@ -359,33 +355,66 @@ class Yank(object):
 
         # Create a copy of the system for which the fully-interacting energy is to be computed.
         # For explicit solvent calculations, an enlarged cutoff is used to account for the anisotropic dispersion correction.
-        fully_interacting_system = copy.deepcopy(reference_system)
+
+        # fully_interacting_system = copy.deepcopy(reference_system)
+        reference_system_LJ = copy.deepcopy(reference_system)
+        forces_to_remove = []
+        for forceIndex in range(reference_system_LJ.getNumForces()):
+            force = reference_system_LJ.getForce(forceIndex)
+            if isinstance(force, openmm.NonbondedForce):
+                for particle in range(force.getNumParticles()):
+                    q, sigma, epsilon = force.getParticleParameters(particle)
+                    force.setParticleParameters(particle, 0, sigma, epsilon)
+                for exception in range(force.getNumExceptions()):
+                    particle1, particle2, chargeprod, epsilon, sigma = force.getExceptionParameters(exception)
+                    force.setExceptionParameters(exception, particle1, particle2, 0, sigma, epsilon)
+            else:
+                # Queue force to remove if not a NB fore
+                forces_to_remove.append(forceIndex)
+        # Remove all but NonbondedForce
+        # If done in preveious loop, nuber of forces change so indices change
+        for forceIndex in forces_to_remove[::-1]:
+            reference_system_LJ.removeForce(forceIndex)
+
+        reference_system_LJ_expanded = copy.deepcopy(reference_system_LJ)
         if is_periodic:
             # Determine minimum box side dimension
-            box_vectors = fully_interacting_system.getDefaultPeriodicBoxVectors()
+            box_vectors = reference_system_LJ_expanded.getDefaultPeriodicBoxVectors()
             min_box_dimension = min([max(vector) for vector in box_vectors])
 
             # Expand cutoff to minimize artifact and verify that box is big enough.
             # If we use a barostat we leave more room for volume fluctuations or
             # we risk fatal errors. If we don't use a barostat, OpenMM will raise
             # the appropriate exception on context creation.
-            # TODO: Make max_allowed_cutoff an option
             max_allowed_cutoff = 16 * unit.angstroms
+            # TODO: Make max_allowed_cutoff an option
             if thermodynamic_state.pressure and min_box_dimension < 2.25 * max_allowed_cutoff:
                 raise RuntimeError('Barostated box sides must be at least 36 Angstroms '
                                    'to correct for missing dispersion interactions')
 
             logger.debug('Setting cutoff for fully interacting system to maximum allowed (%s)' % str(max_allowed_cutoff))
-            for force_index in range(fully_interacting_system.getNumForces()):
-                force = fully_interacting_system.getForce(force_index)
-                if hasattr(force, 'setCutoffDistance'):
-                    force.setCutoffDistance(max_allowed_cutoff)
-                if hasattr(force, 'setCutoff'):
-                    force.setCutoff(max_allowed_cutoff)
 
-        # Construct thermodynamic state
-        fully_interacting_state = copy.deepcopy(thermodynamic_state)
-        fully_interacting_state.system = fully_interacting_system
+            # Expanded cutoff LJ system if needed
+            # We don't want to reduce the cutoff if its already large
+            for force in reference_system_LJ_expanded.getForces():
+                try:
+                    if force.getCutoffDistance() < max_allowed_cutoff:
+                        force.setCutoffDistance(max_allowed_cutoff)
+                except:
+                    pass
+                try:
+                    if force.getCutoff() < max_allowed_cutoff:
+                        force.setCutoff(max_allowed_cutoff)
+                except:
+                    pass
+
+        # Construct thermodynamic states
+        reference_state = copy.deepcopy(thermodynamic_state)
+        reference_state.system = reference_system
+        reference_LJ_state = copy.deepcopy(thermodynamic_state)
+        reference_LJ_expanded_state = copy.deepcopy(thermodynamic_state)
+        reference_LJ_state.system = reference_system_LJ
+        reference_LJ_expanded_state.system = reference_system_LJ_expanded
 
         # Compute standard state corrections for complex phase.
         metadata['standard_state_correction'] = 0.0
@@ -431,7 +460,7 @@ class Yank(object):
             integrator = openmm.VerletIntegrator(1.0 * unit.femtosecond)
             context = openmm.Context(alchemical_system, integrator)
             context.setPositions(positions[0])
-            for alchemical_state in alchemical_states:
+            for index, alchemical_state in enumerate(alchemical_states):
                 AbsoluteAlchemicalFactory.perturbContext(context, alchemical_state)
                 potential = context.getState(getEnergy=True).getPotentialEnergy()
                 if np.isnan(potential / unit.kilocalories_per_mole):
@@ -472,7 +501,9 @@ class Yank(object):
         simulation.create(thermodynamic_state, alchemical_states, positions,
                           displacement_sigma=self._mc_displacement_sigma, mc_atoms=mc_atoms,
                           options=repex_parameters, metadata=metadata,
-                          fully_interacting_state=fully_interacting_state)
+                          reference_state = reference_state,
+                          reference_LJ_state = reference_LJ_state,
+                          reference_LJ_expanded_state = reference_LJ_expanded_state)
 
         # Initialize simulation.
         # TODO: Use the right scheme for initializing the simulation without running.
@@ -540,7 +571,7 @@ class Yank(object):
 
         status = dict()
         for phase in self._phases:
-            status[phase] = ModifiedReplicaExchange.status_from_store(self._store_filenames[phase])
+            status[phase] = ModifiedHamiltonianExchange.status_from_store(self._store_filenames[phase])
 
         return status
 
