@@ -162,7 +162,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         # Initialize replica-exchange simlulation.
         states = list()
         for alchemical_state in alchemical_states:
-            state = ThermodynamicState(system=self.reference_system, temperature=base_state.temperature, pressure=base_state.pressure)
+            state = ThermodynamicState(system=self.base_system, temperature=base_state.temperature, pressure=base_state.pressure)
             setattr(state, 'alchemical_state', copy.deepcopy(alchemical_state)) # attach alchemical state
             states.append(state)
 
@@ -257,31 +257,34 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         logger.debug("Serializing system...")
         if 'scalar' not in ncfile.dimensions:
             ncfile.createDimension('scalar', 1) # scalar dimension
-        ncvar_serialized_reference_system = ncgrp_stateinfo.createVariable('reference_system', str, ('scalar',), zlib=True)
-        setattr(ncvar_serialized_reference_system, 'long_name', "reference is the serialized OpenMM System corresponding to the reference System object")
-        ncvar_serialized_reference_system[0] = self.reference_system.__getstate__() # serialize reference system.
+        ncvar_serialized_base_system = ncgrp_stateinfo.createVariable('base_system', str, ('scalar',), zlib=True)
+        setattr(ncvar_serialized_base_system, 'long_name', "baseline is the serialized OpenMM System corresponding to the reference System object")
+        ncvar_serialized_base_system[0] = self.base_system.__getstate__() # serialize reference system.
 
         # Fully interacting state
-        if (self.reference_LJ_state is not None) and (self.reference_LJ_expanded_state is not None):
-            ncgrp_stateinfo = ncfile.createGroup('LJ_only_states')
+        if (self.reference_LJ_state is not None) and (self.reference_LJ_expanded_state is not None) and (self.reference_state is not None):
+            ncgrp_stateinfo = ncfile.createGroup('fully_interacting_states')
             # Temperatures.
             ncvar_temperatures = ncgrp_stateinfo.createVariable('temperatures', 'f', ('scalar',))
             setattr(ncvar_temperatures, 'units', 'K')
             setattr(ncvar_temperatures, 'long_name', "temperatures[state] is the temperature of thermodynamic state 'state'")
-            ncvar_temperatures[0] = self.reference_LJ_state.temperature / temperature_unit
+            ncvar_temperatures[0] = self.reference_state.temperature / temperature_unit
             # Pressures
-            if self.reference_LJ_state.pressure is not None:
+            if self.reference_state.pressure is not None:
                 ncvar_pressures = ncgrp_stateinfo.createVariable('pressures', 'f', ('scalar',))
                 setattr(ncvar_pressures, 'units', 'atm')
                 setattr(ncvar_pressures, 'long_name', "pressures[state] is the external pressure of thermodynamic state 'state'")
                 for state_index in range(self.nstates):
-                    ncvar_pressures[0] = self.reference_LJ_state.pressure / pressure_unit
+                    ncvar_pressures[0] = self.reference_state.pressure / pressure_unit
             # System
             logger.debug("Serializing systems...")
+            ncvar_serialized_reference_system = ncgrp_stateinfo.createVariable('reference_system', str, ('scalar',), zlib=True)
             ncvar_serialized_LJ_only_system = ncgrp_stateinfo.createVariable('LJ_only_system', str, ('scalar',), zlib=True)
             ncvar_serialized_LJ_only_expanded_system = ncgrp_stateinfo.createVariable('LJ_only_expanded_system', str, ('scalar',), zlib=True)
+            setattr(ncvar_serialized_reference_system, 'long_name', "the serialized OpenMM System corresponding to the all forces reference state")
             setattr(ncvar_serialized_LJ_only_system, 'long_name', "the serialized OpenMM System corresponding to the Lennard-Jones only reference state")
             setattr(ncvar_serialized_LJ_only_expanded_system, 'long_name', "the serialized OpenMM System corresponding to the expanded cutoff Lennard-Jones only reference state")
+            ncvar_serialized_reference_system[0] = self.reference_state.system.__getstate__()
             ncvar_serialized_LJ_only_system[0] = self.reference_LJ_state.system.__getstate__()
             ncvar_serialized_LJ_only_expanded_system[0] = self.reference_LJ_expanded_state.system.__getstate__()
 
@@ -318,8 +321,8 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         # Read thermodynamic state information.
         self.states = list()
         # Read reference system
-        self.reference_system = self.mm.System()
-        self.reference_system.__setstate__(str(ncgrp_stateinfo.variables['reference_system'][0]))
+        self.base_system = self.mm.System()
+        self.base_system.__setstate__(str(ncgrp_stateinfo.variables['base_system'][0]))
         # Read other parameters.
         for state_index in range(self.nstates):
             # Populate a new ThermodynamicState object.
@@ -334,26 +337,30 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
             for key in ncfile.groups['alchemical_states'].variables.keys():
                 state.alchemical_state[key] = float(ncfile.groups['alchemical_states'].variables[key][state_index])
             # Set System object (which points to reference system).
-            state.system = self.reference_system
+            state.system = self.base_system
             # Store state.
             self.states.append(state)
 
         # Fully interacting state
         if 'LJ_only_states' in ncfile.groups:
-            ncgrp_stateinfo = ncfile.groups['LJ_only_states']
-            # Populate a new ThermodynamicState object.
-            reference_LJ_state = ThermodynamicState()
+            ncgrp_stateinfo = ncfile.groups['fully_interacting_states']
+            # Populate a new ThermodynamicState object
+            reference_state = ThermodynamicState()
             # Read temperature.
-            reference_LJ_state.temperature = float(ncgrp_stateinfo.variables['temperatures'][0]) * temperature_unit
+            reference_state.temperature = float(ncgrp_stateinfo.variables['temperatures'][0]) * temperature_unit
             # Read pressure, if present.
             if 'pressures' in ncgrp_stateinfo.variables:
-                reference_LJ_state.pressure = float(ncgrp_stateinfo.variables['pressures'][0]) * pressure_unit
-            reference_LJ_expanded_state = copy.deepcopy(reference_LJ_state)
+                reference_state.pressure = float(ncgrp_stateinfo.variables['pressures'][0]) * pressure_unit
+            reference_LJ_state = copy.deepcopy(reference_state)
+            reference_LJ_expanded_state = copy.deepcopy(reference_state)
             # Set System object
+            reference_state.system = self.mm.System()
             reference_LJ_state.system = self.mm.System()
             reference_LJ_expanded_state.system = self.mm.System()
+            reference_state.system.__setstate__(str(ncgrp_stateinfo.variables['reference_system'][0]))
             reference_LJ_state.system.__setstate__(str(ncgrp_stateinfo.variables['LJ_only_system'][0]))
             reference_LJ_expanded_state.system.__setstate__(str(ncgrp_stateinfo.variables['LJ_only_expanded_system'][0]))
+            self.reference_state = reference_state
             self.reference_LJ_state = reference_LJ_state
             self.reference_LJ_expanded_state = reference_LJ_expanded_state
 
@@ -385,7 +392,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
 
         # Create Contexts to compute fully interacting state
         # Expanding LJ cutoff to account for anisotropic dispersion correction
-        if (self.reference_LJ_state is not None) and (self.reference_LJ_expanded_state is not None):
+        if (self.reference_LJ_state is not None) and (self.reference_LJ_expanded_state is not None) and (self.reference_state is not None):
             initial_time = time.time()
             logger.debug("Creating and caching Contexts and Integrators for to compute fully interacting state.")
             reference_state = self.reference_state
@@ -396,7 +403,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
             reference_LJ_state_integrator = openmm.VerletIntegrator(self.timestep)
             reference_LJ_expanded_state_integrator = openmm.VerletIntegrator(self.timestep)
             if self.platform:
-                self._reference_context = openmm.Context(self.reference_system, reference_state_integrator, self.platform)
+                self._reference_context = openmm.Context(reference_state.system, reference_state_integrator, self.platform)
                 self._reference_LJ_context = openmm.Context(reference_LJ_state.system, reference_LJ_state_integrator, self.platform)
                 self._reference_LJ_expanded_context = openmm.Context(reference_LJ_expanded_state.system, reference_LJ_expanded_state_integrator, self.platform)
             else:
@@ -849,7 +856,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
 
     def _initialize_netcdf(self):
         super(ModifiedHamiltonianExchange, self)._initialize_netcdf()
-        if (self.reference_LJ_state is not None) and (self.reference_LJ_expanded_state is not None):
+        if (self.reference_LJ_state is not None) and (self.reference_LJ_expanded_state is not None) and (self.reference_state is not None):
             ncvar_energies = self.ncfile.createVariable('fully_interacting_energies', 'f8',
                                                         ('iteration', 'replica'), zlib=False,
                                                         chunksizes=(1, self.nreplicas))
@@ -867,7 +874,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         if self.mpicomm is not None and self.mpicomm.rank != 0:
             return
 
-        if (self.reference_LJ_state is not None) and (self.reference_LJ_expanded_state is not None):
+        if (self.reference_LJ_state is not None) and (self.reference_LJ_expanded_state is not None) and (self.reference_state is not None):
             self.ncfile.variables['fully_interacting_energies'][self.iteration, :] = self.u_k[:]
             self.ncfile.sync()
 
