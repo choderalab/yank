@@ -409,12 +409,12 @@ class Yank(object):
                     pass
 
         # Construct thermodynamic states
+        reference_state = copy.deepcopy(thermodynamic_state)
+        reference_state.system = reference_system
         reference_LJ_state = copy.deepcopy(thermodynamic_state)
         reference_LJ_expanded_state = copy.deepcopy(thermodynamic_state)
         reference_LJ_state.system = reference_system_LJ
         reference_LJ_expanded_state.system = reference_system_LJ_expanded
-        # Assign reference_system only after we are done copy thermodynamic state
-        thermodynamic_state.system = reference_system
 
         # Compute standard state corrections for complex phase.
         metadata['standard_state_correction'] = 0.0
@@ -501,6 +501,7 @@ class Yank(object):
         simulation.create(thermodynamic_state, alchemical_states, positions,
                           displacement_sigma=self._mc_displacement_sigma, mc_atoms=mc_atoms,
                           options=repex_parameters, metadata=metadata,
+                          reference_system = reference_system,
                           reference_LJ_state = reference_LJ_state,
                           reference_LJ_expanded_state = reference_LJ_expanded_state)
 

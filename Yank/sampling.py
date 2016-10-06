@@ -56,15 +56,15 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
     >>> import tempfile
     >>> file = tempfile.NamedTemporaryFile() # temporary file for testing
     >>> store_filename = file.name
-    >>> # Create reference state.
+    >>> # Create baseline state.
     >>> from yank.repex import ThermodynamicState
-    >>> reference_state = ThermodynamicState(reference_system, temperature=298.0*unit.kelvin)
-    >>> reference_state.system = factory.alchemically_modified_system
+    >>> base_state = ThermodynamicState(reference_system, temperature=298.0*unit.kelvin)
+    >>> base_state.system = factory.alchemically_modified_system
     >>> displacement_sigma = 1.0 * unit.nanometer
     >>> mc_atoms = range(0, reference_system.getNumParticles())
     >>> simulation = ModifiedHamiltonianExchange(store_filename)
     >>> alchemical_states = AbsoluteAlchemicalFactory.defaultSolventProtocolImplicit()
-    >>> simulation.create(reference_state, alchemical_states, positions, displacement_sigma=displacement_sigma, mc_atoms=mc_atoms)
+    >>> simulation.create(base_state, alchemical_states, positions, displacement_sigma=displacement_sigma, mc_atoms=mc_atoms)
     >>> simulation.number_of_iterations = 2 # set the simulation to only run 2 iterations
     >>> simulation.timestep = 2.0 * unit.femtoseconds # set the timestep for integration
     >>> simulation.nsteps_per_iteration = 50 # run 50 timesteps per iteration
@@ -97,14 +97,14 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         self.reference_LJ_expanded_state = None
         self._reference_LJ_expanded_context = None
 
-    def create(self, reference_state, alchemical_states, positions, displacement_sigma=None, mc_atoms=None, options=None, metadata=None, reference_LJ_state=None, reference_LJ_expanded_state=None):
+    def create(self, base_state, alchemical_states, positions, displacement_sigma=None, mc_atoms=None, options=None, metadata=None, reference_state=None, reference_LJ_state=None, reference_LJ_expanded_state=None):
         """
         Initialize a modified Hamiltonian exchange simulation object.
 
         Parameters
         ----------
-        reference_state : ThermodynamicState
-           reference state containing all thermodynamic parameters and reference System object
+        base_state : ThermodynamicState
+           baseline state containing all thermodynamic parameters and reference System object
         alchemical_states : list of AlchemicalState
            list of alchemical states (one per replica)
         positions : simtk.unit.Quantity of numpy natoms x 3 with units length
@@ -117,6 +117,8 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
            Optional dict to use for specifying simulation options. Provided keywords will be matched to object variables to replace defaults.
         metadata : dict, optional, default=None
            metadata to store in a 'metadata' group in store file
+        reference_state : ThermodynamicState
+           Thermodynamic reference state with all interactions
         reference_LJ_state : ThermodynamicState
            Thermodynamic reference state for only Lennard-Jones interactions
         reference_LJ_expanded_state : ThermodynamicState
@@ -146,11 +148,12 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         self.displacement_trials_accepted = 0 # number of MC displacement trials accepted
         self.rotation_trials_accepted = 0 # number of MC displacement trials accepted
 
-        # Store reference system.
-        self.reference_state = copy.deepcopy(reference_state)
-        self.reference_system = self.reference_state.system
+        # Store baseline system.
+        self.base_state = copy.deepcopy(base_state)
+        self.base_system = self.base_state.system
 
         # Store Lennard-Jones states which will be used to create a more accurate fully-interacting energy
+        self.reference_state = copy.deepcopy(reference_state)
         self.reference_LJ_state = copy.deepcopy(reference_LJ_state)
         self.reference_LJ_expanded_state = copy.deepcopy(reference_LJ_expanded_state)
 
@@ -159,7 +162,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         # Initialize replica-exchange simlulation.
         states = list()
         for alchemical_state in alchemical_states:
-            state = ThermodynamicState(system=self.reference_system, temperature=reference_state.temperature, pressure=reference_state.pressure)
+            state = ThermodynamicState(system=self.reference_system, temperature=base_state.temperature, pressure=base_state.pressure)
             setattr(state, 'alchemical_state', copy.deepcopy(alchemical_state)) # attach alchemical state
             states.append(state)
 
