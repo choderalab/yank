@@ -32,7 +32,7 @@ secret_key = {AWS_SECRET_ACCESS_KEY}
 
     # Sync index file.
     template = ('s3cmd --guess-mime-type --config {config} '
-                'sync devtools/ci/index.html s3://{bucket}/')
+                'sync devtools/travis-ci/index.html s3://{bucket}/')
     cmd = template.format(
             config=f.name,
             bucket=BUCKET_NAME)
