@@ -37,8 +37,54 @@ logger = logging.getLogger(__name__)
 kB = units.BOLTZMANN_CONSTANT_kB * units.AVOGADRO_CONSTANT_NA # Boltzmann constant
 
 #=============================================================================================
-# Dispatch appropriate restraint type
+# Dispatch appropriate restraint type from registered restraint classes
 #=============================================================================================
+
+def available_restraint_classes():
+    """
+    Return all available restraint classes.
+
+    Returns
+    -------
+    restraint_classes : dict of str : class
+        restraint_classes[name] is the class corresponding to `name`
+
+    """
+    # Get a list of all subclasses of ReceptorLigandRestraint
+    def get_all_subclasses(cls):
+        """Find all subclasses of a given class recursively."""
+        all_subclasses = []
+
+        for subclass in cls.__subclasses__():
+            all_subclasses.append(subclass)
+            all_subclasses.extend(get_all_subclasses(subclass))
+
+        return all_subclasses
+
+    # Build an index of all names, ensuring there are no name collisions.
+    available_restraints = dict()
+    for cls in get_all_subclasses(ReceptorLigandRestraint):
+        if (cls.name is None):
+            pass
+        elif (cls.name in available_restraints):
+            raise Exception("More than one ProteinLigandRestraint subclass has the name '%s'." % cls.name)
+        else:
+            available_restraints[cls.name] = cls
+
+    return available_restraints
+
+def available_restraint_types():
+    """
+    List all available restraint types.
+
+    Returns
+    -------
+    available_restraint_types : list of str
+        List of names of available restraint classes
+
+    """
+    available_restraints = available_restraint_classes()
+    return available_restraints.keys()
 
 def createRestraints(restraint_type, state, system, coordinates, receptor_atoms, ligand_atoms):
     """
@@ -58,27 +104,12 @@ def createRestraints(restraint_type, state, system, coordinates, receptor_atoms,
         A complete list of ligand atoms
 
     """
-    # Get a list of all subclasses of ReceptorLigandRestraint
-    def get_all_subclasses(cls):
-        """Find all subclasses of a given class recursively."""
-        all_subclasses = []
-
-        for subclass in cls.__subclasses__():
-            all_subclasses.append(subclass)
-            all_subclasses.extend(get_all_subclasses(subclass))
-
-        return all_subclasses
-
-    # Build an index of all names, ensuring there are no name collisions.
-    restraint_index = dict()
-    for cls in get_all_subclasses():
-        if cls.name in restraint_index:
-            raise Exception("More than one ProteinLigandRestraint subclass has the name '%s'." % cls.name)
-        else:
-            restraint_index[cls.name] = cls
-
-    # Return the initialized class.
+    available_restraints = available_restraint_classes()
+    if not (restraint_type in available_restraints):
+        raise Exception("Restraint type '%s' unknown. Options are: %s" % (restraint_type, str(available_restraints.keys())))
+    cls = available_restraints[restraint_type]
     return cls(state, system, coordinates, receptor_atoms, ligand_atoms)
+
 #=============================================================================================
 # Base class for receptor-ligand restraints.
 #=============================================================================================
@@ -161,8 +192,6 @@ class ReceptorLigandRestraint(object):
         self.temperature = state.temperature
         self.kT = kB * self.temperature # thermal energy
         self.beta = 1.0 / self.kT # inverse temperature
-
-        return
 
     def getRestraintForce(self, mm=None):
         """
@@ -276,8 +305,6 @@ class RadiallySymmetricReceptorLigandRestraint(ReceptorLigandRestraint):
 
         # Determine standard state correction.
         self.standard_state_correction = self._computeStandardStateCorrection()
-
-        return
 
     @abstractmethod
     def _determineBondParameters(self):
@@ -548,6 +575,7 @@ class HarmonicReceptorLigandRestraint(RadiallySymmetricReceptorLigandRestraint):
 
     """
 
+    name = 'harmonic'
     energy_function = 'lambda_restraints * (K/2)*r^2'  # harmonic restraint
     bond_parameter_names = ['K']  # list of bond parameters that appear in energy function above
 
