@@ -16,7 +16,7 @@ from Cython.Build import cythonize
 DOCLINES = __doc__.split("\n")
 
 ########################
-VERSION = "0.10.2dev"
+VERSION = "0.11.1"
 ISRELEASED = False
 __version__ = VERSION
 ########################

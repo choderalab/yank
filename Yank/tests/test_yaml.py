@@ -1795,7 +1795,7 @@ def test_run_solvation_experiment():
         ncfile = Dataset(os.path.join(output_dir, 'solvent1.nc'), 'r')
         ncgrp_stateinfo = ncfile.groups['thermodynamic_states']
         system = openmm.System()
-        system.__setstate__(str(ncgrp_stateinfo.variables['reference_system'][0]))
+        system.__setstate__(str(ncgrp_stateinfo.variables['base_system'][0]))
         has_barostat = False
         for force in system.getForces():
             if force.__class__.__name__ == 'MonteCarloBarostat':

@@ -38,12 +38,12 @@ Documentation
 -------------
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: 3
 
    quickstart
    installation
    running
-   yaml
+   yamlpages/index
    theory
    algorithms
    analysis
