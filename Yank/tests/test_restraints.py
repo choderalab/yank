@@ -74,7 +74,7 @@ def test_available_restraint_classes():
     assert(None not in available_restraint_classes)
     assert(None not in available_restraint_types)
 
-    for (restraint_type, restraint_class) in expected_restraints.iteritems():
+    for (restraint_type, restraint_class) in expected_restraints.items():
         msg = "Failed comparing restraint type '%s' with %s" % (restraint_type, str(available_restraint_classes))
         assert(restraint_type in available_restraint_classes), msg
         assert(available_restraint_classes[restraint_type] is restraint_class), msg
@@ -83,7 +83,7 @@ def test_available_restraint_classes():
 def test_restraint_dispatch():
     """Test dispatch of various restraint types.
     """
-    for (restraint_type, restraint_class) in expected_restraints.iteritems():
+    for (restraint_type, restraint_class) in expected_restraints.items():
         # Create a test system
         t = HostGuestNoninteracting()
         # Create a thermodynamic state encoding temperature
