@@ -1203,13 +1203,8 @@ class YamlBuilder:
         # Cache platform specified by user
         if platform_name is not None:
             self._platform = openmm.Platform.getPlatformByName(platform_name)
-        else:  # determine the fastest platform available
-            system = openmm.System()
-            system.addParticle(1.0 * unit.amu)  # system needs at least 1 particle
-            integrator = openmm.VerletIntegrator(1.0 * unit.femtoseconds)
-            context = openmm.Context(system, integrator)
-            self._platform = context.getPlatform()
-            del context, integrator
+        else:
+            self._platform = None
 
         # Parse YAML script
         if yaml_source is not None:
@@ -2050,6 +2045,15 @@ class YamlBuilder:
             platform.
 
         """
+        # Determine and cache the fastest platform available
+        if self._platform is None:
+            system = openmm.System()
+            system.addParticle(1.0 * unit.amu)  # system needs at least 1 particle
+            integrator = openmm.VerletIntegrator(1.0 * unit.femtoseconds)
+            context = openmm.Context(system, integrator)
+            self._platform = context.getPlatform()
+            del context, integrator
+
         platform_name = self._platform.getName()
 
         # If user doesn't specify precision, determine default value
@@ -2066,7 +2070,19 @@ class YamlBuilder:
             if platform_name == 'CUDA':
                 self._platform.setPropertyDefaultValue('CudaPrecision', platform_precision)
             elif platform_name == 'OpenCL':
+                # Some OpenCL devices do not support double precision so we need to test it
                 self._platform.setPropertyDefaultValue('OpenCLPrecision', platform_precision)
+                system = openmm.System()
+                system.addParticle(1.0 * unit.amu)  # system needs at least 1 particle
+                integrator = openmm.VerletIntegrator(1.0 * unit.femtoseconds)
+                try:
+                    context = openmm.Context(system, integrator, self._platform)
+                except Exception as e:
+                    logger.info(str(e) + ". Setting OpenCL precision to 'single'")
+                    self._platform.setPropertyDefaultValue('OpenCLPrecision', 'single')
+                else:
+                    del context
+                del integrator
             elif platform_name == 'Reference' and platform_precision != 'double':
                 raise RuntimeError("Reference platform does not support precision model '{}';"
                                    "only 'double' is supported.".format(platform_precision))
