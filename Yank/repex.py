@@ -570,7 +570,7 @@ class ReplicaExchange(object):
     # Options to store.
     options_to_store = ['collision_rate', 'constraint_tolerance', 'timestep', 'nsteps_per_iteration', 'number_of_iterations', 'equilibration_timestep', 'number_of_equilibration_iterations', 'title', 'minimize', 'replica_mixing_scheme', 'online_analysis', 'show_mixing_statistics']
 
-    def __init__(self, store_filename, mpicomm=None, mm=None, **kwargs):
+    def __init__(self, store_filename, mpicomm=None, platform=None, mm=None, **kwargs):
         """
         Initialize replica-exchange simulation facility.
 
@@ -582,6 +582,8 @@ class ReplicaExchange(object):
            OpenMM API implementation to use
         mpicomm : mpi4py communicator, optional, default=None
            MPI communicator, if parallel execution is desired
+        platform : simtk.openmm.Platform, optional, default=None
+            Platform to use for execution. If None, the fastest available platform is used.
 
         Other Parameters
         ----------------
@@ -601,7 +603,7 @@ class ReplicaExchange(object):
 
         # Set default options.
         # These can be changed externally until object is initialized.
-        self.platform = None
+        self.platform = platform
         self.platform_name = None
         self.integrator = None # OpenMM integrator to use for propagating dynamics
 

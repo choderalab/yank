@@ -131,7 +131,7 @@ class Yank(object):
         'mc_displacement_sigma': 10.0 * unit.angstroms
     }
 
-    def __init__(self, store_directory, mpicomm=None, **kwargs):
+    def __init__(self, store_directory, mpicomm=None, platform=None, **kwargs):
         """
         Initialize YANK object with default parameters.
 
@@ -141,6 +141,9 @@ class Yank(object):
            The storage directory in which output NetCDF files are read or written.
         mpicomm : MPI communicator, optional
            If an MPI communicator is passed, an MPI simulation will be attempted.
+        platform : simtk.openmm.Platform, optional
+            Platform to use for execution. If None, the fastest available platform
+            is used (default: None).
         restraint_type : str, optional
            Restraint type to add between protein and ligand. Supported types are
            'flat-bottom' and 'harmonic'. The second one is available only in
@@ -179,6 +182,9 @@ class Yank(object):
 
         # Save MPI communicator
         self._mpicomm = mpicomm
+
+        # Store platform to pas to replica exchange simulation object
+        self._platform = platform
 
         # Set internal variables.
         self._phases = list()
@@ -497,7 +503,7 @@ class Yank(object):
         logger.debug("Creating replica exchange object...")
         store_filename = os.path.join(self._store_directory, alchemical_phase.name + '.nc')
         self._store_filenames[alchemical_phase.name] = store_filename
-        simulation = ModifiedHamiltonianExchange(store_filename)
+        simulation = ModifiedHamiltonianExchange(store_filename, platform=self._platform)
         simulation.create(thermodynamic_state, alchemical_states, positions,
                           displacement_sigma=self._mc_displacement_sigma, mc_atoms=mc_atoms,
                           options=repex_parameters, metadata=metadata,
@@ -547,7 +553,8 @@ class Yank(object):
         for phase in self._phases:
             store_filename = self._store_filenames[phase]
             # Resume simulation from store file.
-            simulation = ModifiedHamiltonianExchange(store_filename=store_filename, mpicomm=self._mpicomm)
+            simulation = ModifiedHamiltonianExchange(store_filename=store_filename, mpicomm=self._mpicomm,
+                                                     platform=self._platform)
             simulation.resume(options=self._repex_parameters)
             # TODO: We may need to manually update run options here if options=options above does not behave as expected.
             simulation.run(niterations_to_run=niterations_to_run)
@@ -613,7 +620,7 @@ class Yank(object):
             if (not os.path.exists(fullpath)): continue
 
             # Read this phase.
-            simulation = ModifiedHamiltonianExchange(fullpath)
+            simulation = ModifiedHamiltonianExchange(fullpath, platform=self._platform)
             simulation.resume()
 
             # Analyze this phase.
