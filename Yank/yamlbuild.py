@@ -1167,6 +1167,7 @@ class YamlBuilder:
         'output_dir': 'output',
         'setup_dir': 'setup',
         'experiments_dir': 'experiments',
+        'precision': None,
         'temperature': 298 * unit.kelvin,
         'pressure': 1 * unit.atmosphere,
         'constraints': openmm.app.HBonds,
@@ -1177,7 +1178,7 @@ class YamlBuilder:
     def yank_options(self):
         return self._isolate_yank_options(self.options)
 
-    def __init__(self, yaml_source=None):
+    def __init__(self, yaml_source=None, platform_name=None):
         """Constructor.
 
         Parameters
@@ -1185,6 +1186,9 @@ class YamlBuilder:
         yaml_source : str or dict
             A path to the YAML script or the YAML content. If not specified, you
             can load it later by using parse() (default is None).
+        platform_name : str
+            The name of the platform to be used for execution. If None, the
+            fastest available platform is used.
 
         """
         self.options = self.DEFAULT_OPTIONS.copy()  # General options (not experiment-specific)
@@ -1196,6 +1200,18 @@ class YamlBuilder:
         self._protocols = {}  # Alchemical protocols description
         self._experiments = {}  # Experiments description
 
+        # Cache platform specified by user
+        if platform_name is not None:
+            self._platform = openmm.Platform.getPlatformByName(platform_name)
+        else:  # determine the fastest platform available
+            system = openmm.System()
+            system.addParticle(1.0 * unit.amu)  # system needs at least 1 particle
+            integrator = openmm.VerletIntegrator(1.0 * unit.femtoseconds)
+            context = openmm.Context(system, integrator)
+            self._platform = context.getPlatform()
+            del context, integrator
+
+        # Parse YAML script
         if yaml_source is not None:
             self.parse(yaml_source)
 
@@ -2016,6 +2032,50 @@ class YamlBuilder:
             logger.debug(debug_msg + ' - signal completed setup.')
             self._mpicomm.barrier()
 
+    def _configure_platform(self, platform_precision):
+        """
+        Configure the platform to be used for simulation for the given precision.
+
+        Parameters
+        ----------
+        platform_precision : str or None
+            The precision to be used. If None the default value is used,
+            which is always mixed precision except for Reference that only
+            supports double precision.
+
+        Raises
+        ------
+        RuntimeError
+            If the given precision model selected is not compatible with the
+            platform.
+
+        """
+        platform_name = self._platform.getName()
+
+        # If user doesn't specify precision, determine default value
+        if platform_precision is None:
+            # Reference and CPU have only 1 precision model. We'll check
+            # if this is an unknown platform at the end of the function
+            if platform_name != 'Reference' and platform_name != 'CPU':
+                platform_precision = 'mixed'
+
+        # Set platform precision
+        if platform_precision is not None:
+            logger.info("Setting {} platform to use precision model "
+                        "'{}'.".format(platform_name, platform_precision))
+            if platform_name == 'CUDA':
+                self._platform.setPropertyDefaultValue('CudaPrecision', platform_precision)
+            elif platform_name == 'OpenCL':
+                self._platform.setPropertyDefaultValue('OpenCLPrecision', platform_precision)
+            elif platform_name == 'Reference' and platform_precision != 'double':
+                raise RuntimeError("Reference platform does not support precision model '{}';"
+                                   "only 'double' is supported.".format(platform_precision))
+            elif platform_name == 'CPU' and platform_precision != 'mixed':
+                raise RuntimeError("CPU platform does not support precision model '{}';"
+                                   "only 'mixed' is supported.".format(platform_precision))
+            else:
+                raise RuntimeError("Found unknown platform '{}'.".format(platform_name))
+
     def _generate_yaml(self, experiment, file_path):
         """Generate the minimum YAML file needed to reproduce the experiment.
 
@@ -2154,8 +2214,6 @@ class YamlBuilder:
         # Set database path
         self._db.setup_dir = self._get_setup_dir(exp_opts)
 
-        # TODO configure platform and precision when they are fixed in Yank
-
         # Create directory and determine if we need to resume the simulation
         results_dir = self._get_experiment_dir(exp_opts, experiment_dir)
         resume = os.path.isdir(results_dir)
@@ -2171,8 +2229,11 @@ class YamlBuilder:
         utils.config_root_logger(exp_opts['verbose'], os.path.join(results_dir, exp_name + '.log'),
                                  self._mpicomm)
 
+        # Configure platform and precision
+        self._configure_platform(exp_opts['precision'])
+
         # Initialize simulation
-        yank = Yank(results_dir, mpicomm=self._mpicomm, **yank_opts)
+        yank = Yank(results_dir, mpicomm=self._mpicomm, platform=self._platform, **yank_opts)
 
         if resume:
             yank.resume()
