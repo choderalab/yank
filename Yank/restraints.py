@@ -61,13 +61,22 @@ def available_restraint_classes():
 
         return all_subclasses
 
+    def is_abstract(cls):
+        if not hasattr(cls, "__abstractmethods__"):
+            return False # an ordinary class
+        elif len(cls.__abstractmethods__) == 0:
+            return False # a concrete implementation of an abstract class
+        else:
+            return True # an abstract class
+
     # Build an index of all names, ensuring there are no name collisions.
     available_restraints = dict()
     for cls in get_all_subclasses(ReceptorLigandRestraint):
-        if (cls.name is None):
+        if is_abstract(cls):
+            # Skip abstract base classes
             pass
         elif (cls.name in available_restraints):
-            raise Exception("More than one ProteinLigandRestraint subclass has the name '%s'." % cls.name)
+            raise Exception("More than one restraint subclass has the name '%s'." % cls.name)
         else:
             available_restraints[cls.name] = cls
 
@@ -124,7 +133,6 @@ class ReceptorLigandRestraint(object):
     NOTES
 
     Creating a subclass requires the following:
-    * Define class variable `name` with the name this restraint force is selected with in YAML file
     * Perform any necessary processing in subclass `__init__` after calling base class `__init__`
     * Compute `standard_state_correction` in `__init__`
     * Override getRestraintForce() to return a new `Force` instance imposing the restraint
@@ -156,8 +164,6 @@ class ReceptorLigandRestraint(object):
     """
 
     __metaclass__ = ABCMeta
-
-    name = None
 
     def __init__(self, state, system, coordinates, receptor_atoms, ligand_atoms):
         """
@@ -193,6 +199,7 @@ class ReceptorLigandRestraint(object):
         self.kT = kB * self.temperature # thermal energy
         self.beta = 1.0 / self.kT # inverse temperature
 
+    @abstractmethod
     def getRestraintForce(self, mm=None):
         """
         Returns a new Force object that imposes the receptor-ligand restraint.
@@ -227,6 +234,7 @@ class ReceptorLigandRestraint(object):
 
         return system
 
+    @abstractmethod
     def getStandardStateCorrection(self):
         """
         Return the standard state correction.
@@ -243,7 +251,7 @@ class ReceptorLigandRestraint(object):
 # Base class for radially-symmetric receptor-ligand restraints.
 #=============================================================================================
 
-class RadiallySymmetricReceptorLigandRestraint(ReceptorLigandRestraint):
+class RadiallySymmetricRestraint(ReceptorLigandRestraint):
     """
     Impose a single radially-symmetric restraint between ligand and protein to prevent ligand from drifting too far
     from protein in implicit solvent calculations. The restraint is implemented as a `CustomBondForce`.
@@ -283,7 +291,7 @@ class RadiallySymmetricReceptorLigandRestraint(ReceptorLigandRestraint):
             A complete list of ligand atoms
 
         """
-        super(RadiallySymmetricReceptorLigandRestraint, self).__init__(state, system, coordinates, receptor_atoms, ligand_atoms)
+        super(RadiallySymmetricRestraint, self).__init__(state, system, coordinates, receptor_atoms, ligand_atoms)
 
         # Determine atoms closet to centroids on ligand and receptor.
         self.restrained_receptor_atom = self._closestAtomToCentroid(self.coordinates, self.receptor_atoms)
@@ -540,7 +548,7 @@ class RadiallySymmetricReceptorLigandRestraint(ReceptorLigandRestraint):
 # Harmonic protein-ligand restraint.
 #=============================================================================================
 
-class HarmonicReceptorLigandRestraint(RadiallySymmetricReceptorLigandRestraint):
+class Harmonic(RadiallySymmetricRestraint):
     """
     Impose a single restraint between ligand and protein to prevent ligand from drifting too far
     from protein in implicit solvent calculations.
@@ -567,7 +575,7 @@ class HarmonicReceptorLigandRestraint(RadiallySymmetricReceptorLigandRestraint):
     >>> temperature = 298.0 * units.kelvin
     >>> state = ThermodynamicState(temperature=temperature)
     >>> # Create restraints.
-    >>> restraints = HarmonicReceptorLigandRestraint(state, system, positions, receptor_atoms, ligand_atoms)
+    >>> restraints = Harmonic(state, system, positions, receptor_atoms, ligand_atoms)
     >>> # Get standard state correction.
     >>> correction = restraints.getStandardStateCorrection()
     >>> # Get radius of gyration of receptor.
@@ -575,7 +583,6 @@ class HarmonicReceptorLigandRestraint(RadiallySymmetricReceptorLigandRestraint):
 
     """
 
-    name = 'harmonic'
     energy_function = 'lambda_restraints * (K/2)*r^2'  # harmonic restraint
     bond_parameter_names = ['K']  # list of bond parameters that appear in energy function above
 
@@ -623,7 +630,7 @@ class HarmonicReceptorLigandRestraint(RadiallySymmetricReceptorLigandRestraint):
 #=============================================================================================
 
 
-class FlatBottomReceptorLigandRestraint(RadiallySymmetricReceptorLigandRestraint):
+class FlatBottom(RadiallySymmetricRestraint):
     """
     An alternative choice to receptor-ligand restraints that uses a flat potential inside most of the protein volume
     with harmonic restraining walls outside of this.
@@ -642,7 +649,7 @@ class FlatBottomReceptorLigandRestraint(RadiallySymmetricReceptorLigandRestraint
     >>> temperature = 298.0 * units.kelvin
     >>> state = ThermodynamicState(temperature=temperature)
     >>> # Create restraints.
-    >>> restraints = FlatBottomReceptorLigandRestraint(state, system, positions, receptor_atoms, ligand_atoms)
+    >>> restraints = FlatBottom(state, system, positions, receptor_atoms, ligand_atoms)
     >>> # Get standard state correction.
     >>> correction = restraints.getStandardStateCorrection()
     >>> # Get radius of gyration of receptor.
@@ -650,7 +657,6 @@ class FlatBottomReceptorLigandRestraint(RadiallySymmetricReceptorLigandRestraint
 
     """
 
-    name = 'flat-bottom'
     energy_function = 'lambda_restraints * step(r-r0) * (K/2)*(r-r0)^2'  # flat-bottom restraint
     bond_parameter_names = ['K', 'r0']  # list of bond parameters that appear in energy function above
 

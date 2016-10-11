@@ -60,8 +60,8 @@ class HostGuestNoninteracting(HostGuestVacuum):
         self.system.removeForce(force_indices['NonbondedForce'])
 
 expected_restraints = {
-    'harmonic' : yank.restraints.HarmonicReceptorLigandRestraint,
-    'flat-bottom' : yank.restraints.FlatBottomReceptorLigandRestraint,
+    'Harmonic' : yank.restraints.Harmonic,
+    'FlatBottom' : yank.restraints.FlatBottom,
 }
 
 def test_available_restraint_classes():
