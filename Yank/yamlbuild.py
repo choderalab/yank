@@ -2027,6 +2027,46 @@ class YamlBuilder:
             logger.debug(debug_msg + ' - signal completed setup.')
             self._mpicomm.barrier()
 
+    @staticmethod
+    def _opencl_device_support_precision(precision_model):
+        """
+        Check if this device supports the given precision model for OpenCL platform.
+
+        Some OpenCL devices do not support double precision. This offers a test
+        function.
+
+        Returns
+        -------
+        is_supported : bool
+            True if this device supports double precision for OpenCL, False
+            otherwise.
+
+        """
+        opencl_platform = openmm.Platform.getPlatformByName('OpenCL')
+
+        # Platforms are singleton so we need to store
+        # the old precision model before modifying it
+        old_precision = opencl_platform.getPropertyDefaultValue('OpenCLPrecision')
+
+        # Test support by creating a toy context
+        opencl_platform.setPropertyDefaultValue('OpenCLPrecision', precision_model)
+        system = openmm.System()
+        system.addParticle(1.0 * unit.amu)  # system needs at least 1 particle
+        integrator = openmm.VerletIntegrator(1.0 * unit.femtoseconds)
+        try:
+            context = openmm.Context(system, integrator, opencl_platform)
+            is_supported = True
+        except Exception:
+            is_supported = False
+        else:
+            del context
+        del integrator
+
+        # Restore old precision
+        opencl_platform.setPropertyDefaultValue('OpenCLPrecision', old_precision)
+
+        return is_supported
+
     def _configure_platform(self, platform_precision):
         """
         Configure the platform to be used for simulation for the given precision.
@@ -2071,18 +2111,12 @@ class YamlBuilder:
                 self._platform.setPropertyDefaultValue('CudaPrecision', platform_precision)
             elif platform_name == 'OpenCL':
                 # Some OpenCL devices do not support double precision so we need to test it
-                self._platform.setPropertyDefaultValue('OpenCLPrecision', platform_precision)
-                system = openmm.System()
-                system.addParticle(1.0 * unit.amu)  # system needs at least 1 particle
-                integrator = openmm.VerletIntegrator(1.0 * unit.femtoseconds)
-                try:
-                    context = openmm.Context(system, integrator, self._platform)
-                except Exception as e:
-                    logger.info(str(e) + ". Setting OpenCL precision to 'single'")
-                    self._platform.setPropertyDefaultValue('OpenCLPrecision', 'single')
+                if self._opencl_device_support_precision(platform_precision):
+                    self._platform.setPropertyDefaultValue('OpenCLPrecision', platform_precision)
                 else:
-                    del context
-                del integrator
+                    logger.info("This device does not support double precision for OpenCL. "
+                                "Setting OpenCL precision to 'single'")
+                    self._platform.setPropertyDefaultValue('OpenCLPrecision', 'single')
             elif platform_name == 'Reference' and platform_precision != 'double':
                 raise RuntimeError("Reference platform does not support precision model '{}';"
                                    "only 'double' is supported.".format(platform_precision))

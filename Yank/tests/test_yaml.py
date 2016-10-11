@@ -1494,6 +1494,7 @@ def test_select_fastest_platform():
         fastest_platform = 'CPU'
 
     yaml_builder = YamlBuilder(yaml_source='options: {}')
+    yaml_builder._configure_platform(platform_precision='single')
     assert yaml_builder._platform.getName() == fastest_platform
 
 
@@ -1501,43 +1502,39 @@ def test_platform_precision_configuration():
     """Test that the precision for platform is configured correctly."""
     available_platforms = [openmm.Platform.getPlatform(i).getName()
                            for i in range(openmm.Platform.getNumPlatforms())]
+
     for platform_name in available_platforms:
         yaml_builder = YamlBuilder(yaml_source='options: {}', platform_name=platform_name)
 
         # Reference and CPU platform support only one precision model
         if platform_name == 'Reference':
             assert_raises(RuntimeError, yaml_builder._configure_platform, 'mixed')
+            continue
         elif platform_name == 'CPU':
             assert_raises(RuntimeError, yaml_builder._configure_platform, 'double')
-        else:  # check that precision is set correctly
-            for precision in ['mixed', 'double', 'single']:
+            continue
+
+        # Check that precision is set as expected
+        for precision in ['mixed', 'double', 'single']:
+            if platform_name == 'CUDA':
                 yaml_builder._configure_platform(platform_precision=precision)
-                if platform_name == 'CUDA':
-                    assert yaml_builder._platform.getPropertyDefaultValue('CudaPrecision') == precision
-                elif platform_name == 'OpenCL':
+                assert yaml_builder._platform.getPropertyDefaultValue('CudaPrecision') == precision
+            elif platform_name == 'OpenCL':
+                if YamlBuilder._opencl_device_support_precision(precision):
+                    yaml_builder._configure_platform(platform_precision=precision)
                     assert yaml_builder._platform.getPropertyDefaultValue('OpenCLPrecision') == precision
+                else:
+                    assert_raises(RuntimeError, yaml_builder._configure_platform(platform_precision=precision))
 
 
-def test_default_mixed_precision():
+def test_default_platform_precision():
     """Test that the precision for platform is set to mixed by default."""
     available_platforms = [openmm.Platform.getPlatform(i).getName()
                            for i in range(openmm.Platform.getNumPlatforms())]
 
     # Determine whether this device OpenCL platform supports double precision
     if 'OpenCL' in available_platforms:
-        opencl_platform = openmm.Platform.getPlatformByName('OpenCL')
-        opencl_platform.setPropertyDefaultValue('OpenCLPrecision', 'mixed')
-        system = openmm.System()
-        system.addParticle(1.0 * unit.amu)  # system needs at least 1 particle
-        integrator = openmm.VerletIntegrator(1.0 * unit.femtoseconds)
-        try:
-            context = openmm.Context(system, integrator, opencl_platform)
-            opencl_support_double = True
-        except Exception:
-            opencl_support_double = False
-        else:
-            del context
-        del integrator
+        opencl_support_double = YamlBuilder._opencl_device_support_precision('double')
 
     for platform_name in available_platforms:
         # Reference and CPU platform support only one precision model
