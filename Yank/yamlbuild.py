@@ -2096,6 +2096,13 @@ class YamlBuilder:
 
         platform_name = self._platform.getName()
 
+        # Use only a single CPU thread if we are using the CPU platform.
+        # TODO: Since there is an environment variable that can control this,
+        # TODO: we may want to avoid doing this.
+        if platform_name == 'CPU' and self._mpicomm is not None:
+            logger.debug("Setting 'CpuThreads' to 1 because MPI is active.")
+            self._platform.setPropertyDefaultValue('CpuThreads', '1')
+
         # If user doesn't specify precision, determine default value
         if platform_precision is None:
             # Reference and CPU have only 1 precision model. We'll check

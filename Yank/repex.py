@@ -604,7 +604,6 @@ class ReplicaExchange(object):
         # Set default options.
         # These can be changed externally until object is initialized.
         self.platform = platform
-        self.platform_name = None
         self.integrator = None # OpenMM integrator to use for propagating dynamics
 
         # Initialize keywords parameters and check for unknown keywords parameters
@@ -902,28 +901,6 @@ class ReplicaExchange(object):
 
         return
 
-    def _determine_fastest_platform(self, system):
-        """
-        Determine fastest OpenMM platform for given system.
-
-        Parameters
-        ----------
-        system : simtk.openmm.System
-           The system for which the fastest OpenMM Platform object is to be determined.
-
-        Returns
-        -------
-        platform : simtk.openmm.Platform
-           The fastest OpenMM Platform for the specified system.
-
-        """
-        timestep = 1.0 * unit.femtoseconds
-        integrator = openmm.VerletIntegrator(timestep)
-        context = openmm.Context(system, integrator)
-        platform = context.getPlatform()
-        del context, integrator
-        return platform
-
     def _initialize_create(self):
         """
         Initialize the simulation and create a storage file, closing it after completion.
@@ -1021,21 +998,6 @@ class ReplicaExchange(object):
 
         # Determine number of atoms in systems.
         self.natoms = representative_system.getNumParticles()
-
-        # If no platform is specified, instantiate a platform, or try to use the fastest platform.
-        if self.platform is None:
-            # Handle OpenMM platform selection.
-            # TODO: Can we handle this more gracefully, or push this off to ReplicaExchange?
-            if self.platform_name:
-                self.platform = openmm.Platform.getPlatformByName(self.platform_name)
-            else:
-                self.platform = self._determine_fastest_platform(representative_system)
-
-            # Use only a single CPU thread if we are using the CPU platform.
-            # TODO: Since there is an environment variable that can control this, we may want to avoid doing this.
-            if (self.platform.getName() == 'CPU') and self.mpicomm:
-                logger.debug("Setting 'CpuThreads' to 1 because MPI is active.")
-                self.platform.setPropertyDefaultValue('CpuThreads', '1')
 
         # Allocate storage.
         self.replica_positions = list() # replica_positions[i] is the configuration currently held in replica i
