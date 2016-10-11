@@ -1192,6 +1192,29 @@ class ReplicaExchange(object):
 
         return
 
+    def _create_context(self, system, integrator):
+        """
+        Shortcut to handle creation of a context with or without user-selected
+        platform.
+
+        Parameters
+        ----------
+        system : simtk.openmm.System
+           The system associated to the context.
+        integrator : simtk.openmm.Integrator
+           The integrator to use for Context creation.
+
+        Returns
+        -------
+        context : simtk.openmm.Context
+           The created OpenMM Context object.
+
+        """
+        if self.platform is None:
+            return self.mm.Context(system, integrator)
+        else:
+            return self.mm.Context(system, integrator, self.platform)
+
     def _propagate_replica(self, replica_index):
         """
         Propagate the replica corresponding to the specified replica index.
@@ -1238,10 +1261,7 @@ class ReplicaExchange(object):
         # Create Context and integrator.
         integrator = openmm.LangevinIntegrator(state.temperature, self.collision_rate, self.timestep)
         integrator.setRandomNumberSeed(int(np.random.randint(0, MAX_SEED)))
-        if self.platform:
-            context = openmm.Context(state.system, integrator, self.platform)
-        else:
-            context = openmm.Context(state.system, integrator)
+        context = self._create_context(state.system, integrator)
 
         # Set box vectors.
         box_vectors = self.replica_box_vectors[replica_index]
@@ -1377,7 +1397,7 @@ class ReplicaExchange(object):
         state = self.states[state_index] # thermodynamic state
         # Create integrator and context.
         integrator = self.mm.VerletIntegrator(1.0 * unit.femtoseconds)
-        context = self.mm.Context(state.system, integrator, self.platform)
+        context = self._create_context(state.system, integrator)
         # Set box vectors.
         box_vectors = self.replica_box_vectors[replica_index]
         context.setPeriodicBoxVectors(box_vectors[0,:], box_vectors[1,:], box_vectors[2,:])
@@ -2660,7 +2680,7 @@ class ParallelTempering(ReplicaExchange):
             # Create an integrator and context.
             state = self.states[0]
             integrator = self.mm.VerletIntegrator(self.timestep)
-            context = self.mm.Context(state.system, integrator, self.platform)
+            context = self._create_context(state.system, integrator)
 
             for replica_index in range(self.mpicomm.rank, self.nstates, self.mpicomm.size):
                 # Set positions.
@@ -2690,7 +2710,7 @@ class ParallelTempering(ReplicaExchange):
             # Create an integrator and context.
             state = self.states[0]
             integrator = self.mm.VerletIntegrator(self.timestep)
-            context = self.mm.Context(state.system, integrator, self.platform)
+            context = self._create_context(state.system, integrator)
 
             # Compute reduced potentials for all configurations in all states.
             for replica_index in range(self.nstates):
