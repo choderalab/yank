@@ -1167,7 +1167,8 @@ class YamlBuilder:
         'output_dir': 'output',
         'setup_dir': 'setup',
         'experiments_dir': 'experiments',
-        'precision': None,
+        'platform': 'fastest',
+        'precision': 'auto',
         'temperature': 298 * unit.kelvin,
         'pressure': 1 * unit.atmosphere,
         'constraints': openmm.app.HBonds,
@@ -1178,7 +1179,7 @@ class YamlBuilder:
     def yank_options(self):
         return self._isolate_yank_options(self.options)
 
-    def __init__(self, yaml_source=None, platform_name=None):
+    def __init__(self, yaml_source=None):
         """Constructor.
 
         Parameters
@@ -1186,9 +1187,6 @@ class YamlBuilder:
         yaml_source : str or dict
             A path to the YAML script or the YAML content. If not specified, you
             can load it later by using parse() (default is None).
-        platform_name : str
-            The name of the platform to be used for execution. If None, the
-            fastest available platform is used.
 
         """
         self.options = self.DEFAULT_OPTIONS.copy()  # General options (not experiment-specific)
@@ -1199,12 +1197,6 @@ class YamlBuilder:
         self._raw_yaml = {}  # Unconverted input YAML script
         self._protocols = {}  # Alchemical protocols description
         self._experiments = {}  # Experiments description
-
-        # Cache platform specified by user
-        if platform_name is not None:
-            self._platform = openmm.Platform.getPlatformByName(platform_name)
-        else:
-            self._platform = None
 
         # Parse YAML script
         if yaml_source is not None:
@@ -2084,16 +2076,27 @@ class YamlBuilder:
         platform = openmm.Platform.getPlatform(fastest_platform_id)
         return platform
 
-    def _configure_platform(self, platform_precision):
+    def _configure_platform(self, platform_name, platform_precision):
         """
         Configure the platform to be used for simulation for the given precision.
 
         Parameters
         ----------
+        platform_name : str
+            The name of the platform to be used for execution. If 'fastest',
+            the fastest available platform is used.
         platform_precision : str or None
-            The precision to be used. If None the default value is used,
+            The precision to be used. If 'auto' the default value is used,
             which is always mixed precision except for Reference that only
-            supports double precision.
+            supports double precision, and OpenCL when the device supports
+            only single precision. If None, the precision mode won't be
+            set, so OpenMM default value will be used which is always
+            'single' for CUDA and OpenCL.
+
+        Returns
+        -------
+        platform : simtk.openmm.Platform
+           The configured platform.
 
         Raises
         ------
@@ -2102,48 +2105,58 @@ class YamlBuilder:
             platform.
 
         """
-        # Determine and cache the fastest platform available
-        if self._platform is None:
-            self._platform = self._determine_fastest_platform()
-
-        platform_name = self._platform.getName()
+        # Determine the platform to configure
+        if platform_name == 'fastest':
+            platform = openmm.Platform.getPlatformByName(platform_name)
+            platform_name = platform.getName()
+        else:
+            platform = self._determine_fastest_platform()
 
         # Use only a single CPU thread if we are using the CPU platform.
         # TODO: Since there is an environment variable that can control this,
         # TODO: we may want to avoid doing this.
         if platform_name == 'CPU' and self._mpicomm is not None:
             logger.debug("Setting 'CpuThreads' to 1 because MPI is active.")
-            self._platform.setPropertyDefaultValue('CpuThreads', '1')
+            platform.setPropertyDefaultValue('CpuThreads', '1')
 
         # If user doesn't specify precision, determine default value
-        if platform_precision is None:
-            # Reference and CPU have only 1 precision model. We'll check
-            # if this is an unknown platform at the end of the function
-            if platform_name != 'Reference' and platform_name != 'CPU':
+        if platform_precision == 'auto':
+            if platform_name == 'CUDA':
                 platform_precision = 'mixed'
+            elif platform_name == 'OpenCL':
+                if self._opencl_device_support_precision('mixed'):
+                    platform_precision = 'mixed'
+                else:
+                    logger.info("This device does not support double precision for OpenCL. "
+                                "Setting OpenCL precision to 'single'")
+                    platform_precision = 'single'
+            elif platform_name == 'Reference' or platform_name == 'CPU':
+                platform_precision = None  # leave OpenMM default precision
 
         # Set platform precision
         if platform_precision is not None:
             logger.info("Setting {} platform to use precision model "
                         "'{}'.".format(platform_name, platform_precision))
             if platform_name == 'CUDA':
-                self._platform.setPropertyDefaultValue('CudaPrecision', platform_precision)
+                platform.setPropertyDefaultValue('CudaPrecision', platform_precision)
             elif platform_name == 'OpenCL':
                 # Some OpenCL devices do not support double precision so we need to test it
                 if self._opencl_device_support_precision(platform_precision):
-                    self._platform.setPropertyDefaultValue('OpenCLPrecision', platform_precision)
+                    platform.setPropertyDefaultValue('OpenCLPrecision', platform_precision)
                 else:
-                    logger.info("This device does not support double precision for OpenCL. "
-                                "Setting OpenCL precision to 'single'")
-                    self._platform.setPropertyDefaultValue('OpenCLPrecision', 'single')
-            elif platform_name == 'Reference' and platform_precision != 'double':
-                raise RuntimeError("Reference platform does not support precision model '{}';"
-                                   "only 'double' is supported.".format(platform_precision))
-            elif platform_name == 'CPU' and platform_precision != 'mixed':
-                raise RuntimeError("CPU platform does not support precision model '{}';"
-                                   "only 'mixed' is supported.".format(platform_precision))
-            else:
+                    raise RuntimeError('This device does not support double precision for OpenCL.')
+            elif platform_name == 'Reference':
+                if platform_precision != 'double':
+                    raise RuntimeError("Reference platform does not support precision model '{}';"
+                                       "only 'double' is supported.".format(platform_precision))
+            elif platform_name == 'CPU':
+                if platform_precision != 'mixed':
+                    raise RuntimeError("CPU platform does not support precision model '{}';"
+                                       "only 'mixed' is supported.".format(platform_precision))
+            else:  # This is an unkown platform
                 raise RuntimeError("Found unknown platform '{}'.".format(platform_name))
+
+        return platform
 
     def _generate_yaml(self, experiment, file_path):
         """Generate the minimum YAML file needed to reproduce the experiment.
@@ -2299,10 +2312,10 @@ class YamlBuilder:
                                  self._mpicomm)
 
         # Configure platform and precision
-        self._configure_platform(exp_opts['precision'])
+        platform = self._configure_platform(exp_opts['platform'], exp_opts['precision'])
 
         # Initialize simulation
-        yank = Yank(results_dir, mpicomm=self._mpicomm, platform=self._platform, **yank_opts)
+        yank = Yank(results_dir, mpicomm=self._mpicomm, platform=platform, **yank_opts)
 
         if resume:
             yank.resume()

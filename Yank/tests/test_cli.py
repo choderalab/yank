@@ -114,4 +114,4 @@ def test_script_yaml():
         yaml_file_path = os.path.join(tmp_dir, 'yank.yaml')
         with open(yaml_file_path, 'w') as f:
             f.write(textwrap.dedent(yaml_content))
-        run_cli('script --yaml={} --platform=Reference'.format(yaml_file_path))
+        run_cli('script --yaml={}'.format(yaml_file_path))

@@ -33,9 +33,6 @@ Description:
 Required Arguments:
   -y, --yaml=FILEPATH           Path to the YAML script specifying options and/or how to set up and run the experiment.
 
-General Options:
-  --platform=PLATFORM           OpenMM Platform to use (Reference, CPU, OpenCL, CUDA)
-
 """
 
 #=============================================================================================
@@ -54,12 +51,11 @@ def dispatch(args):
     """
     if args['--yaml']:
         yaml_path = args['--yaml']
-        platform_name = args['--platform']
 
         if not os.path.isfile(yaml_path):
             raise ValueError('Cannot find YAML script "{}"'.format(yaml_path))
 
-        yaml_builder = YamlBuilder(yaml_source=yaml_path, platform_name=platform_name)
+        yaml_builder = YamlBuilder(yaml_source=yaml_path)
         yaml_builder.build_experiments()
         return True
 
