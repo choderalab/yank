@@ -846,6 +846,12 @@ class ReplicaExchange(object):
         if not self._initialized:
             self._initialize_resume()
 
+        # Log platform configuration
+        if self.platform is None:
+            logger.info('No user-specified platform found. Will run with OpenMM default.')
+        else:
+            logger.info('Running with platform {}'.format(self.platform.getName()))
+
         # Main loop
         run_start_time = time.time()
         run_start_iteration = self.iteration
