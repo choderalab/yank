@@ -387,6 +387,7 @@ class Yank(object):
             # we risk fatal errors. If we don't use a barostat, OpenMM will raise
             # the appropriate exception on context creation.
             max_allowed_cutoff = 16 * unit.angstroms
+            max_switching_distance = max_allowed_cutoff - (1 * unit.angstrom)
             # TODO: Make max_allowed_cutoff an option
             if thermodynamic_state.pressure and min_box_dimension < 2.25 * max_allowed_cutoff:
                 raise RuntimeError('Barostated box sides must be at least 36 Angstroms '
@@ -400,6 +401,9 @@ class Yank(object):
                 try:
                     if force.getCutoffDistance() < max_allowed_cutoff:
                         force.setCutoffDistance(max_allowed_cutoff)
+                        # Set switch distance
+                        # We don't need to check if we are using a switch since there is a setting for that.
+                        force.setSwitchingDistance(max_switching_distance)
                 except:
                     pass
                 try:

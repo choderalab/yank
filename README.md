@@ -1,6 +1,8 @@
-[![Build Status](https://travis-ci.org/choderalab/yank.png)](https://travis-ci.org/choderalab/yank)
+[![Travis Build Status](https://travis-ci.org/choderalab/yank.png)](https://travis-ci.org/choderalab/yank)
 [![Jenkins Test Status](https://jenkins.choderalab.org/buildStatus/icon?job=test-yank-linux-xeon-gtxtitan-jak)](https://jenkins.choderalab.org/job/test-yank-linux-xeon-gtxtitan-jak/)
-[![Binstar Badge](https://anaconda.org/omnia/yank/badges/version.svg)](https://anaconda.org/omnia/yank)
+[![Anaconda Cloud Badge](https://anaconda.org/omnia/yank/badges/version.svg)](https://anaconda.org/omnia/yank)
+[![Anaconda Cloud Downloads](https://anaconda.org/omnia/yank/badges/downloads.svg)](https://anaconda.org/omnia/yank)
+
 
 yank
 ====
