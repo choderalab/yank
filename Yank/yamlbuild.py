@@ -2078,12 +2078,10 @@ class YamlBuilder:
            The fastest available platform.
 
         """
-        system = openmm.System()
-        system.addParticle(1.0 * unit.amu)  # system needs at least 1 particle
-        integrator = openmm.VerletIntegrator(1.0 * unit.femtoseconds)
-        context = openmm.Context(system, integrator)
-        platform = context.getPlatform()
-        del context, integrator
+        platform_speeds = np.array([openmm.Platform.getPlatform(i).getSpeed()
+                                    for i in range(openmm.Platform.getNumPlatforms())])
+        fastest_platform_id = np.argmax(platform_speeds)
+        platform = openmm.Platform.getPlatform(fastest_platform_id)
         return platform
 
     def _configure_platform(self, platform_precision):
