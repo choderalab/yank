@@ -1493,9 +1493,8 @@ def test_select_fastest_platform():
     else:
         fastest_platform = 'CPU'
 
-    yaml_builder = YamlBuilder(yaml_source='options: {}')
-    yaml_builder._configure_platform(platform_precision='single')
-    assert yaml_builder._platform.getName() == fastest_platform
+    platform = YamlBuilder._determine_fastest_platform()
+    assert platform.getName() == fastest_platform
 
 
 def test_platform_precision_configuration():

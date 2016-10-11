@@ -2067,6 +2067,25 @@ class YamlBuilder:
 
         return is_supported
 
+    @staticmethod
+    def _determine_fastest_platform():
+        """
+        Return the fastest available platform.
+
+        Returns
+        -------
+        platform : simtk.openmm.Platform
+           The fastest available platform.
+
+        """
+        system = openmm.System()
+        system.addParticle(1.0 * unit.amu)  # system needs at least 1 particle
+        integrator = openmm.VerletIntegrator(1.0 * unit.femtoseconds)
+        context = openmm.Context(system, integrator)
+        platform = context.getPlatform()
+        del context, integrator
+        return platform
+
     def _configure_platform(self, platform_precision):
         """
         Configure the platform to be used for simulation for the given precision.
@@ -2087,12 +2106,7 @@ class YamlBuilder:
         """
         # Determine and cache the fastest platform available
         if self._platform is None:
-            system = openmm.System()
-            system.addParticle(1.0 * unit.amu)  # system needs at least 1 particle
-            integrator = openmm.VerletIntegrator(1.0 * unit.femtoseconds)
-            context = openmm.Context(system, integrator)
-            self._platform = context.getPlatform()
-            del context, integrator
+            self._platform = self._determine_fastest_platform()
 
         platform_name = self._platform.getName()
 
