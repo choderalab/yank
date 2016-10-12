@@ -570,7 +570,7 @@ class ReplicaExchange(object):
     # Options to store.
     options_to_store = ['collision_rate', 'constraint_tolerance', 'timestep', 'nsteps_per_iteration', 'number_of_iterations', 'equilibration_timestep', 'number_of_equilibration_iterations', 'title', 'minimize', 'replica_mixing_scheme', 'online_analysis', 'show_mixing_statistics']
 
-    def __init__(self, store_filename, mpicomm=None, mm=None, **kwargs):
+    def __init__(self, store_filename, mpicomm=None, platform=None, mm=None, **kwargs):
         """
         Initialize replica-exchange simulation facility.
 
@@ -582,6 +582,8 @@ class ReplicaExchange(object):
            OpenMM API implementation to use
         mpicomm : mpi4py communicator, optional, default=None
            MPI communicator, if parallel execution is desired
+        platform : simtk.openmm.Platform, optional, default=None
+            Platform to use for execution. If None, the fastest available platform is used.
 
         Other Parameters
         ----------------
@@ -601,8 +603,7 @@ class ReplicaExchange(object):
 
         # Set default options.
         # These can be changed externally until object is initialized.
-        self.platform = None
-        self.platform_name = None
+        self.platform = platform
         self.integrator = None # OpenMM integrator to use for propagating dynamics
 
         # Initialize keywords parameters and check for unknown keywords parameters
@@ -845,6 +846,12 @@ class ReplicaExchange(object):
         if not self._initialized:
             self._initialize_resume()
 
+        # Log platform configuration
+        if self.platform is None:
+            logger.info('No user-specified platform found. Will run with OpenMM default.')
+        else:
+            logger.info('Running with platform {}'.format(self.platform.getName()))
+
         # Main loop
         run_start_time = time.time()
         run_start_iteration = self.iteration
@@ -899,28 +906,6 @@ class ReplicaExchange(object):
         self._finalize()
 
         return
-
-    def _determine_fastest_platform(self, system):
-        """
-        Determine fastest OpenMM platform for given system.
-
-        Parameters
-        ----------
-        system : simtk.openmm.System
-           The system for which the fastest OpenMM Platform object is to be determined.
-
-        Returns
-        -------
-        platform : simtk.openmm.Platform
-           The fastest OpenMM Platform for the specified system.
-
-        """
-        timestep = 1.0 * unit.femtoseconds
-        integrator = openmm.VerletIntegrator(timestep)
-        context = openmm.Context(system, integrator)
-        platform = context.getPlatform()
-        del context, integrator
-        return platform
 
     def _initialize_create(self):
         """
@@ -1019,21 +1004,6 @@ class ReplicaExchange(object):
 
         # Determine number of atoms in systems.
         self.natoms = representative_system.getNumParticles()
-
-        # If no platform is specified, instantiate a platform, or try to use the fastest platform.
-        if self.platform is None:
-            # Handle OpenMM platform selection.
-            # TODO: Can we handle this more gracefully, or push this off to ReplicaExchange?
-            if self.platform_name:
-                self.platform = openmm.Platform.getPlatformByName(self.platform_name)
-            else:
-                self.platform = self._determine_fastest_platform(representative_system)
-
-            # Use only a single CPU thread if we are using the CPU platform.
-            # TODO: Since there is an environment variable that can control this, we may want to avoid doing this.
-            if (self.platform.getName() == 'CPU') and self.mpicomm:
-                logger.debug("Setting 'CpuThreads' to 1 because MPI is active.")
-                self.platform.setPropertyDefaultValue('CpuThreads', '1')
 
         # Allocate storage.
         self.replica_positions = list() # replica_positions[i] is the configuration currently held in replica i
@@ -1190,6 +1160,29 @@ class ReplicaExchange(object):
 
         return
 
+    def _create_context(self, system, integrator):
+        """
+        Shortcut to handle creation of a context with or without user-selected
+        platform.
+
+        Parameters
+        ----------
+        system : simtk.openmm.System
+           The system associated to the context.
+        integrator : simtk.openmm.Integrator
+           The integrator to use for Context creation.
+
+        Returns
+        -------
+        context : simtk.openmm.Context
+           The created OpenMM Context object.
+
+        """
+        if self.platform is None:
+            return self.mm.Context(system, integrator)
+        else:
+            return self.mm.Context(system, integrator, self.platform)
+
     def _propagate_replica(self, replica_index):
         """
         Propagate the replica corresponding to the specified replica index.
@@ -1236,10 +1229,7 @@ class ReplicaExchange(object):
         # Create Context and integrator.
         integrator = openmm.LangevinIntegrator(state.temperature, self.collision_rate, self.timestep)
         integrator.setRandomNumberSeed(int(np.random.randint(0, MAX_SEED)))
-        if self.platform:
-            context = openmm.Context(state.system, integrator, self.platform)
-        else:
-            context = openmm.Context(state.system, integrator)
+        context = self._create_context(state.system, integrator)
 
         # Set box vectors.
         box_vectors = self.replica_box_vectors[replica_index]
@@ -1375,7 +1365,7 @@ class ReplicaExchange(object):
         state = self.states[state_index] # thermodynamic state
         # Create integrator and context.
         integrator = self.mm.VerletIntegrator(1.0 * unit.femtoseconds)
-        context = self.mm.Context(state.system, integrator, self.platform)
+        context = self._create_context(state.system, integrator)
         # Set box vectors.
         box_vectors = self.replica_box_vectors[replica_index]
         context.setPeriodicBoxVectors(box_vectors[0,:], box_vectors[1,:], box_vectors[2,:])
@@ -2658,7 +2648,7 @@ class ParallelTempering(ReplicaExchange):
             # Create an integrator and context.
             state = self.states[0]
             integrator = self.mm.VerletIntegrator(self.timestep)
-            context = self.mm.Context(state.system, integrator, self.platform)
+            context = self._create_context(state.system, integrator)
 
             for replica_index in range(self.mpicomm.rank, self.nstates, self.mpicomm.size):
                 # Set positions.
@@ -2688,7 +2678,7 @@ class ParallelTempering(ReplicaExchange):
             # Create an integrator and context.
             state = self.states[0]
             integrator = self.mm.VerletIntegrator(self.timestep)
-            context = self.mm.Context(state.system, integrator, self.platform)
+            context = self._create_context(state.system, integrator)
 
             # Compute reduced potentials for all configurations in all states.
             for replica_index in range(self.nstates):
