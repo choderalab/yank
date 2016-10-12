@@ -12,6 +12,7 @@ Maintainers
 
 * John D. Chodera ``<john.chodera@choderalab.org>`` (MSKCC)
 * Andrea Rizzi ``<andrea.rizzi@choderalab.org>`` (WCMC)
+* Levi N. Naden ``<levi.naden@choderalab.org>`` (MSKCC)
 
 Contributors
 ------------
@@ -24,10 +25,9 @@ Contributors
 * Christoph Klein (University of Virginia)
 * Rosa Luirink (VU Amsterdam)
 * Robert McGibbon (Stanford)
-* Levi Naden (University of Virginia)
 * Daniel L. Parton (MSKCC)
 * Vijay S. Pande (Stanford)
 * Randy Radmer (Stanford)
 * Arien Sebastian Rustenburg (MSKCC)
-* Michael Shirts (University of Virginia)
+* Michael Shirts (University of Colorado Boulder)
 * Kai Wang (University of Virginia)
