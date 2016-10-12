@@ -95,6 +95,67 @@ def test_restraint_dispatch():
         assert(restraint.__class__.__name__ == restraint_type)
         assert(restraint.__class__ == restraint_class)
 
+def test_protein_ligand_restraints():
+    """Test the restraints in a protein:ligand system.
+    """
+    from yank.yamlbuild import YamlBuilder
+    from yank.utils import get_data_filename
+
+    data = {
+        'restraints' : ','.join([ restraint_key for restraint_key in expected_restraints ]),
+        'receptor_filepath' : get_data_filename('tests/data/p-xylene-implicit/input/181L-pdbfixer.pdb'),
+        'ligand_filepath'   : get_data_filename('tests/data/p-xylene-implicit/input/p-xylene.mol2'),
+    }
+    yaml_script = """
+---
+options:
+  minimize: no
+  verbose: yes
+  output_dir: .
+  number_of_iterations: 2
+  restraint_type: !Combinatorial [%(restraints)s]
+  temperature: 300*kelvin
+  softcore_beta: 0.0
+
+molecules:
+  T4lysozyme:
+    filepath: %(receptor_filepath)s
+  p-xylene:
+    filepath: %(ligand_filepath)s
+    antechamber:
+      charge_method: bcc
+
+solvents:
+  OBC2:
+    nonbonded_method: NoCutoff
+    implicit_solvent: OBC2
+
+systems:
+  lys-pxyl:
+    receptor: T4lysozyme
+    ligand: p-xylene
+    solvent: OBC2
+    leap:
+      parameters: [leaprc.ff14SB, leaprc.gaff]
+
+protocols:
+  absolute-binding:
+    complex:
+      alchemical_path:
+        lambda_electrostatics: [1.0, 0.0, 0.0]
+        lambda_sterics:        [1.0, 1.0, 0.0]
+    solvent:
+      alchemical_path:
+        lambda_electrostatics: [1.0, 0.0, 0.0]
+        lambda_sterics:        [1.0, 1.0, 0.0]
+
+experiments:
+  system: lys-pxyl
+  protocol: absolute-binding
+""" % data
+    yaml_builder = YamlBuilder(yaml_script)
+    yaml_builder.build_experiment()  # run both setup and experiments
+
 #=============================================================================================
 # MAIN
 #=============================================================================================

@@ -124,7 +124,7 @@ class Yank(object):
     """
 
     default_parameters = {
-        'restraint_type': 'flat-bottom',
+        'restraint_type': 'FlatBottom',
         'randomize_ligand': False,
         'randomize_ligand_sigma_multiplier': 2.0,
         'randomize_ligand_close_cutoff': 1.5 * unit.angstrom,
@@ -142,9 +142,9 @@ class Yank(object):
         mpicomm : MPI communicator, optional
            If an MPI communicator is passed, an MPI simulation will be attempted.
         restraint_type : str, optional
-           Restraint type to add between protein and ligand. Supported types are
-           'flat-bottom' and 'harmonic'. The second one is available only in
-           implicit solvent (default: 'flat-bottom').
+           Restraint type to add between protein and ligand.
+           Supported types are 'FlatBottom' and 'Harmonic'
+           The second one is available only in implicit solvent (default: 'FlatBottom').
         randomize_ligand : bool, optional
            Randomize ligand position when True. Not available in explicit solvent
            (default: False).
