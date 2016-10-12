@@ -2107,10 +2107,10 @@ class YamlBuilder:
         """
         # Determine the platform to configure
         if platform_name == 'fastest':
-            platform = openmm.Platform.getPlatformByName(platform_name)
+            platform = self._determine_fastest_platform()
             platform_name = platform.getName()
         else:
-            platform = self._determine_fastest_platform()
+            platform = openmm.Platform.getPlatformByName(platform_name)
 
         # Use only a single CPU thread if we are using the CPU platform.
         # TODO: Since there is an environment variable that can control this,
