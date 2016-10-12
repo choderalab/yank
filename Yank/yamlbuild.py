@@ -2072,7 +2072,7 @@ class YamlBuilder:
         """
         platform_speeds = np.array([openmm.Platform.getPlatform(i).getSpeed()
                                     for i in range(openmm.Platform.getNumPlatforms())])
-        fastest_platform_id = np.argmax(platform_speeds)
+        fastest_platform_id = int(np.argmax(platform_speeds))
         platform = openmm.Platform.getPlatform(fastest_platform_id)
         return platform
 
