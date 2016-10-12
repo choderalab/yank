@@ -17,6 +17,13 @@ options:
   setup_dir: setup                  # The main folder where the setup and simulation files
   experiments_dir: experiments      # are saved. Relative paths are interpreted as relative
                                     # w.r.t. output_dir path.
+  platform: fastest                 # The OpenMM platform to use between 'Reference', 'CPU',
+                                    # 'OpenCL', and 'CUDA'. The default value 'fastest' selects
+                                    # automatically the fastest available platform.
+  precision: auto                   # Precision mode. For OpenCL and CUDA platforms, this
+                                    # can be set to 'single', 'mixed' or 'double'. The default
+                                    # value 'auto' selects always 'mixed' when the device
+                                    # support this precision, otherwise 'single'.
 
   # SYSTEM AND SIMULATION PREPARATION
   # ---------------------------------

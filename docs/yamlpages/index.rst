@@ -32,6 +32,8 @@ Detailed Options List
     * :ref:`output_dir <yaml_options_output_dir>`
     * :ref:`setup_dir <yaml_options_setup_dir>`
     * :ref:`experiments_dir <yaml_options_experiments_dir>`
+    * :ref:`platform <yaml_options_platform>`
+    * :ref:`precision <yaml_options_precision>`
 
   * :ref:`System and Simulation Prep <yaml_options_sys_and_sim_prep>`
 
