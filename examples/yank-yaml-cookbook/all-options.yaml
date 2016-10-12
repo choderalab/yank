@@ -31,8 +31,8 @@ options:
   hydrogen_mass: 1.0 * amu                      # Hydrogen mass for HMR simulations.
   constraints: HBonds                           # Constrain bond lengths and angles. Possible values are null,
                                                 # HBonds, AllBonds, and HAngles (see Openmm createSystem()).
-  restraint_type: flat-bottom                   # Apply a restrain to the ligand to keep it close to the
-                                                # receptor. Possible values are null, flat-bottom and harmonic.
+  restraint_type: Harmonic                      # Apply a restrain to the ligand to keep it close to the
+                                                # receptor. Possible values are null, Harmonic, and FlatBottom.
                                                 # This works only implicit solvent.
 
   # SIMULATION PARAMETERS

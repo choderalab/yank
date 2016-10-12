@@ -6,7 +6,7 @@ options:
   verbose: yes
   output_dir: .
   number_of_iterations: 1000
-  restraint_type: harmonic
+  restraint_type: Harmonic
   temperature: 300*kelvin
   pressure: 1*atmosphere
   softcore_beta: 0.0
