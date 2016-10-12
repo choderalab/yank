@@ -25,7 +25,7 @@ import scipy.integrate
 import simtk.unit as units
 import simtk.openmm as openmm
 
-from abc import ABCMeta, abstractmethod
+import abc
 
 import logging
 logger = logging.getLogger(__name__)
@@ -72,13 +72,14 @@ def available_restraint_classes():
     # Build an index of all names, ensuring there are no name collisions.
     available_restraints = dict()
     for cls in get_all_subclasses(ReceptorLigandRestraint):
+        classname = cls.__name__
         if is_abstract(cls):
             # Skip abstract base classes
             pass
-        elif (cls.name in available_restraints):
-            raise Exception("More than one restraint subclass has the name '%s'." % cls.name)
+        elif (classname in available_restraints):
+            raise Exception("More than one restraint subclass has the name '%s'." % classname)
         else:
-            available_restraints[cls.name] = cls
+            available_restraints[classname] = cls
 
     return available_restraints
 
@@ -162,9 +163,7 @@ class ReceptorLigandRestraint(object):
     TODO: Should these all really be public data fields?
 
     """
-
-    __metaclass__ = ABCMeta
-
+    __metaclass__ = abc.ABCMeta
     def __init__(self, state, system, coordinates, receptor_atoms, ligand_atoms):
         """
         Initialize a receptor-ligand restraint class.
@@ -199,7 +198,7 @@ class ReceptorLigandRestraint(object):
         self.kT = kB * self.temperature # thermal energy
         self.beta = 1.0 / self.kT # inverse temperature
 
-    @abstractmethod
+    @abc.abstractmethod
     def getRestraintForce(self, mm=None):
         """
         Returns a new Force object that imposes the receptor-ligand restraint.
@@ -234,7 +233,6 @@ class ReceptorLigandRestraint(object):
 
         return system
 
-    @abstractmethod
     def getStandardStateCorrection(self):
         """
         Return the standard state correction.
@@ -269,9 +267,7 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
       return them in a list in the same order as 'bond_parameter_names'.
 
     """
-
-    __metaclass__ = ABCMeta
-
+    __metaclass__ = abc.ABCMeta
     energy_function = ''  # energy function to use in computation of restraint
     bond_parameter_names = []  # list of bond parameters that appear in energy function above
 
@@ -314,7 +310,7 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
         # Determine standard state correction.
         self.standard_state_correction = self._computeStandardStateCorrection()
 
-    @abstractmethod
+    @abc.abstractmethod
     def _determineBondParameters(self):
         """
         Determine bond parameters for CustomBondForce between protein and ligand.

@@ -92,7 +92,7 @@ def test_restraint_dispatch():
         # Add restraints
         restraint = yank.restraints.createRestraints(restraint_type, thermodynamic_state, t.system, t.positions, t.receptor_atoms, t.ligand_atoms)
         # Check that we got the right restraint class
-        assert(restraint.name == restraint_type)
+        assert(restraint.__class__.__name__ == restraint_type)
         assert(restraint.__class__ == restraint_class)
 
 #=============================================================================================
