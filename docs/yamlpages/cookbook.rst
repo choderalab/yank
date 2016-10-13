@@ -4,10 +4,23 @@ Cookbook for YAML Options
 *************************
 
 Having all the options laid out in front of you is good for advanced users, but sometimes practical examples are much more helpful.
-Below is the YANK YAML Cookbook.
-A series of examples that may help you understanding how to put together these options found on the other pages.
+Below is the YANK YAML Cookbook:
+A series of examples that may help you understanding how to put together the options found on the other pages.
 
 ----
+
+Best Practices Shown by These Examples
+======================================
+
+The following examples exemplify some of the `best practices <http://www.alchemistry.org/wiki/Best_Practices>` laid out on
+`alchemistry.org <http://www.alchemistry.org/>`. Specifically:
+
+* There are no partial atomic charges on an atom while its Lennard-Jones interactions are being removed.
+* The whole free energy setup and run is automated through YANK's YAML format, meaning its easily transferable and repeatable
+* A statistically efficient alchemical path is selected because the ``softcore_X`` parameters were not set, so the default,
+  efficient, soft core parameters were chosen automatically.
+
+
 
 .. _yaml_ex_implicit:
 
@@ -26,6 +39,7 @@ In this example:
 * Setting good stock options for implicit simulations
 * Setting up simple protein/ligand binding simulation
 * NVT ensemble
+
 
 .. code-block:: yaml
 
