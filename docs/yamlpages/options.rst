@@ -203,7 +203,7 @@ pressure
    options:
      pressure: 1.0 * atmosphere
 
-Pressure of the system. If set to `null`, the simulation samples as an NVT ensemble.
+Pressure of the system. If set to ``null``, the simulation samples as an NVT ensemble.
 
 Valid options (1 * atmosphere): null / <Quantity Pressure> [1]_
 
