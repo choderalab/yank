@@ -342,7 +342,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
             self.states.append(state)
 
         # Fully interacting state
-        if 'LJ_only_states' in ncfile.groups:
+        if 'fully_interacting_states' in ncfile.groups:
             ncgrp_stateinfo = ncfile.groups['fully_interacting_states']
             # Populate a new ThermodynamicState object
             reference_state = ThermodynamicState()
@@ -940,7 +940,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         # Compute energies for fully interacting state
         #
         if (self.reference_LJ_state is not None) and (self.reference_LJ_expanded_state is not None) and (self.reference_state is not None):
-            logger.debug("Computing energies...")
+            logger.debug("Computing energies for fully interacting state...")
             start_time = time.time()
             reference_context = self._reference_context
             reference_LJ_context = self._reference_LJ_context
