@@ -48,7 +48,7 @@ def test_resuming():
     with enter_temp_directory():
         store_file_name = 'simulation.nc'
         simulation = ModifiedHamiltonianExchange(store_file_name)
-        simulation.create(base_state, alchemical_states, positions,
+        simulation.create(base_state, alchemical_states, positions, mc_atoms=ligand_atoms,
                           reference_state=reference_state,
                           reference_LJ_state=reference_LJ_state,
                           reference_LJ_expanded_state=reference_LJ_expanded_state)
