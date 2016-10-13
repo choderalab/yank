@@ -14,8 +14,8 @@ A series of examples that may help you understanding how to put together these o
 Example: Implicit Solvent Binding Simulation:
 =============================================
 
-This example sets up para-xylene binding to T4-Lysozyme in implciit solvent. 
-We reccommend these settings as a good baseline simulation setup.
+This example sets up para-xylene binding to T4-Lysozyme in implicit solvent.
+We recommend these settings as a good baseline simulation setup.
 Although you do not have to set all these options (e.g. the ligand may be a pdb file, not just a SMILES string), many 
 of these options are good stock settings to remember.
 
@@ -39,6 +39,7 @@ In this example:
     minimize: yes
     number_of_iterations: 2000
     temperature: 300*kelvin
+    pressure: null
   
   molecules:
     T4_lysozyme:
@@ -91,13 +92,16 @@ Example: Absolute Binding free energy in explicit solvent
 
 This example takes the same para-xylene binding to T4-Lysozyme system as before, but now uses an explicit solvent setup, 
 minimal options, and automatic water addition (TIP3P).
-This example also sets up MPI so you can run on a cluster; assumes 4 nodes are available
+
+This example also shows how to make YANK run with MPI; assumes 4 nodes are available.
+It should be noted there is nothing you set in the YAML file or with YANK itself to run with MPI.
+YANK automatically detects if MPI was called to run YANK and interacts with it accordingly.
 
 In this Example:
 
 * Automatic solvent addition
 * Setting good stock options for explicit simulations
-* Configuring MPI
+* Call MPI
 * NPT ensemble
 
 .. code-block:: yaml
@@ -105,7 +109,6 @@ In this Example:
    options:
      minimize: yes
      verbose: yes
-     mpi: yes
      output_dir: .
      number_of_iterations: 2000
      restraint_type: harmonic
