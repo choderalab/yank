@@ -155,13 +155,6 @@ def extract_ncfile_energies(ncfile, ndiscard=0, nuse=None, g=None):
     u_n = np.zeros([niterations], np.float64)
     for iteration in range(niterations):
         u_n[iteration] = np.sum(np.diagonal(u_kln[:,:,iteration]))
-    #logger.info(u_n
-
-    # DEBUG
-    outfile = open('u_n.out', 'w')
-    for iteration in range(niterations):
-        outfile.write("%8d %24.3f\n" % (iteration, u_n[iteration]))
-    outfile.close()
 
     # Discard initial data to equilibration.
     u_kln_replica = u_kln_replica[:,:,ndiscard:]
@@ -272,7 +265,7 @@ def estimate_free_energies(ncfile, mbar=None):
         # pymbar 3
         (Deltaf_ij, dDeltaf_ij, theta_ij) = mbar.getFreeEnergyDifferences()
 
-#    # Matrix of free energy differences
+    # Matrix of free energy differences
     logger.info("Deltaf_ij:")
     for i in range(nstates):
         str_row = ""
@@ -280,8 +273,8 @@ def estimate_free_energies(ncfile, mbar=None):
             str_row += "%8.3f" % Deltaf_ij[i, j]
         logger.info(str_row)
 
-#    print(Deltaf_ij)
-#    # Matrix of uncertainties in free energy difference (expectations standard deviations of the estimator about the true free energy)
+    # Matrix of uncertainties in free energy difference (expectations standard
+    # deviations of the estimator about the true free energy)
     logger.info("dDeltaf_ij:")
     for i in range(nstates):
         str_row = ""
@@ -290,7 +283,8 @@ def estimate_free_energies(ncfile, mbar=None):
         logger.info(str_row)
 
     # Return free energy differences and an estimate of the covariance.
-    return (Deltaf_ij, dDeltaf_ij)
+    return Deltaf_ij, dDeltaf_ij
+
 
 def estimate_enthalpies(ncfile, mbar=None):
     """
