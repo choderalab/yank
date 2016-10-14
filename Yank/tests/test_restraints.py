@@ -101,11 +101,6 @@ def test_protein_ligand_restraints():
     from yank.yamlbuild import YamlBuilder
     from yank.utils import get_data_filename
 
-    data = {
-        'restraints' : ','.join([ restraint_key for restraint_key in expected_restraints ]),
-        'receptor_filepath' : get_data_filename('tests/data/p-xylene-implicit/input/181L-pdbfixer.pdb'),
-        'ligand_filepath'   : get_data_filename('tests/data/p-xylene-implicit/input/p-xylene.mol2'),
-    }
     yaml_script = """
 ---
 options:
@@ -113,7 +108,7 @@ options:
   verbose: yes
   output_dir: .
   number_of_iterations: 2
-  restraint_type: !Combinatorial [%(restraints)s]
+  restraint_type: %(restraint_type)s
   temperature: 300*kelvin
   softcore_beta: 0.0
 
@@ -152,9 +147,16 @@ protocols:
 experiments:
   system: lys-pxyl
   protocol: absolute-binding
-""" % data
-    yaml_builder = YamlBuilder(yaml_script)
-    yaml_builder.build_experiment()  # run both setup and experiments
+"""
+    # Test all possible restraint types.
+    for restraint_type in expected_restraints:
+        data = {
+            'restraint_type' : restraint_type,
+            'receptor_filepath' : get_data_filename('tests/data/p-xylene-implicit/input/181L-pdbfixer.pdb'),
+            'ligand_filepath'   : get_data_filename('tests/data/p-xylene-implicit/input/p-xylene.mol2'),
+        }
+        yaml_builder = YamlBuilder(yaml_script % data)
+        yaml_builder.build_experiment()  # run both setup and experiments
 
 #=============================================================================================
 # MAIN
