@@ -500,10 +500,10 @@ def analyze(source_directory):
 
             # Accumulate free energy differences
             entry = dict()
-            entry['DeltaF'] = Deltaf_ij[0,nstates-1]
-            entry['dDeltaF'] = dDeltaf_ij[0,nstates-1]
-            entry['DeltaH'] = DeltaH_i[0,nstates-1]
-            entry['dDeltaH'] = dDeltaH_i[0,nstates-1]
+            entry['DeltaF'] = Deltaf_ij[0, -1]
+            entry['dDeltaF'] = dDeltaf_ij[0, -1]
+            entry['DeltaH'] = DeltaH_i[0, -1]
+            entry['dDeltaH'] = dDeltaH_i[0, -1]
             entry['DeltaF_restraints'] = DeltaF_restraints
             data[phase] = entry
 
