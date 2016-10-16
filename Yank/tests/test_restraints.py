@@ -155,8 +155,9 @@ experiments:
             'receptor_filepath' : get_data_filename('tests/data/p-xylene-implicit/input/181L-pdbfixer.pdb'),
             'ligand_filepath'   : get_data_filename('tests/data/p-xylene-implicit/input/p-xylene.mol2'),
         }
+        # run both setup and experiment
         yaml_builder = YamlBuilder(yaml_script % data)
-        yaml_builder.build_experiment()  # run both setup and experiments
+        yaml_builder.build_experiments()
 
 #=============================================================================================
 # MAIN
