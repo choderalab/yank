@@ -4,8 +4,10 @@ options:
   verbose: yes
   output_dir: .
   number_of_iterations: 1000
+  nsteps_per_iteration: 500
   temperature: 300*kelvin
   pressure: 1*atmosphere
+  restraint_type: Boresch
   softcore_beta: 0.0
 
 molecules:
@@ -13,14 +15,23 @@ molecules:
     filepath: input/2HYY-pdbfixer.pdb
   STI:
     filepath: input/STI02.mol2
+    openeye:
+      quacpac: am1-bcc
     antechamber:
-      charge_method: bcc
+      charge_method: null
 
 solvents:
+  pme:
+    nonbonded_method: PME
+    nonbonded_cutoff: 9*angstroms
+    clearance: 12*angstroms
+    positive_ion: Na+
+    negative_ion: Cl-
+
   rf:
     nonbonded_method: CutoffPeriodic
     nonbonded_cutoff: 9*angstroms
-    clearance: 9*angstroms
+    clearance: 12*angstroms
     positive_ion: Na+
     negative_ion: Cl-
 
@@ -28,7 +39,7 @@ systems:
   Abl-STI:
     receptor: Abl
     ligand: STI
-    solvent: rf
+    solvent: pme
     leap:
       parameters: [leaprc.ff14SB, leaprc.gaff, frcmod.ionsjc_tip3p]
 
