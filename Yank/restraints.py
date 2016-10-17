@@ -22,8 +22,9 @@ import time
 import numpy as np
 import scipy.integrate
 
-import simtk.unit as units
-import simtk.openmm as openmm
+from simtk import openmm, unit
+
+import mdtraj as md
 
 import abc
 
@@ -34,7 +35,8 @@ logger = logging.getLogger(__name__)
 # MODULE CONSTANTS
 #=============================================================================================
 
-kB = units.BOLTZMANN_CONSTANT_kB * units.AVOGADRO_CONSTANT_NA # Boltzmann constant
+kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA # Boltzmann constant
+V0 = 1660.0*unit.angstroms**3 # standard state volume
 
 #=============================================================================================
 # Dispatch appropriate restraint type from registered restraint classes
@@ -96,7 +98,7 @@ def available_restraint_types():
     available_restraints = available_restraint_classes()
     return available_restraints.keys()
 
-def createRestraints(restraint_type, state, system, coordinates, receptor_atoms, ligand_atoms):
+def createRestraints(restraint_type, topology, state, system, coordinates, receptor_atoms, ligand_atoms):
     """
     Initialize a receptor-ligand restraint class matching the specified restraint type name.
 
@@ -104,6 +106,8 @@ def createRestraints(restraint_type, state, system, coordinates, receptor_atoms,
     ----------
     restraint_type : str
         Restraint type name matching a register (imported) subclass of ReceptorLigandRestraint.
+    topology : openmm.app.Topology
+        Reference topology for the complex
     state : thermodynamics.ThermodynamicState
         The thermodynamic state specifying temperature, pressure, etc. to which restraints are to be added
     coordinates : simtk.unit.Quantity of natoms x 3 with units compatible with nanometers
@@ -118,7 +122,7 @@ def createRestraints(restraint_type, state, system, coordinates, receptor_atoms,
     if not (restraint_type in available_restraints):
         raise Exception("Restraint type '%s' unknown. Options are: %s" % (restraint_type, str(available_restraints.keys())))
     cls = available_restraints[restraint_type]
-    return cls(state, system, coordinates, receptor_atoms, ligand_atoms)
+    return cls(topology, state, system, coordinates, receptor_atoms, ligand_atoms)
 
 #=============================================================================================
 # Base class for receptor-ligand restraints.
@@ -140,8 +144,8 @@ class ReceptorLigandRestraint(object):
 
     Public class fields
     -------------------
-    name : str
-        The name by which this restraint is selected in YAML file.
+    topology : openmm.app.Topology
+        Reference topology for the complex
     state : simtk.openmm.State
         The State object used during initialization
     system : simtk.openmm.System
@@ -164,12 +168,14 @@ class ReceptorLigandRestraint(object):
 
     """
     __metaclass__ = abc.ABCMeta
-    def __init__(self, state, system, coordinates, receptor_atoms, ligand_atoms):
+    def __init__(self, topology, state, system, coordinates, receptor_atoms, ligand_atoms):
         """
         Initialize a receptor-ligand restraint class.
 
         Parameters
         ----------
+        topology : openmm.app.Topology
+            Reference topology for the complex
         state : thermodynamics.ThermodynamicState
            The thermodynamic state specifying temperature, pressure, etc. to which restraints are to be added
         coordinates : simtk.unit.Quantity of natoms x 3 with units compatible with nanometers
@@ -180,10 +186,10 @@ class ReceptorLigandRestraint(object):
             A complete list of ligand atoms
 
         """
-
+        self.topology = topology
         self.state = state
         self.system = system
-        self.coordinates = units.Quantity(np.array(coordinates / coordinates.unit), coordinates.unit)
+        self.coordinates = unit.Quantity(np.array(coordinates / coordinates.unit), coordinates.unit)
         self.receptor_atoms = list(receptor_atoms)
         self.ligand_atoms = list(ligand_atoms)
 
@@ -199,7 +205,7 @@ class ReceptorLigandRestraint(object):
         self.beta = 1.0 / self.kT # inverse temperature
 
     @abc.abstractmethod
-    def getRestraintForce(self, mm=None):
+    def getRestraintForce(self):
         """
         Returns a new Force object that imposes the receptor-ligand restraint.
 
@@ -271,12 +277,14 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
     energy_function = ''  # energy function to use in computation of restraint
     bond_parameter_names = []  # list of bond parameters that appear in energy function above
 
-    def __init__(self, state, system, coordinates, receptor_atoms, ligand_atoms):
+    def __init__(self, topology, state, system, coordinates, receptor_atoms, ligand_atoms):
         """
         Initialize a receptor-ligand restraint class.
 
         Parameters
         ----------
+        topology : openmm.app.Topology
+            Reference topology for the complex
         state : thermodynamics.ThermodynamicState
            The thermodynamic state specifying temperature, pressure, etc. to which restraints are to be added
         coordinates : simtk.unit.Quantity of natoms x 3 with units compatible with nanometers
@@ -287,7 +295,7 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
             A complete list of ligand atoms
 
         """
-        super(RadiallySymmetricRestraint, self).__init__(state, system, coordinates, receptor_atoms, ligand_atoms)
+        super(RadiallySymmetricRestraint, self).__init__(topology, state, system, coordinates, receptor_atoms, ligand_atoms)
 
         # Determine atoms closet to centroids on ligand and receptor.
         self.restrained_receptor_atom = self._closestAtomToCentroid(self.coordinates, self.receptor_atoms)
@@ -362,7 +370,7 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
 
         return radius_of_gyration
 
-    def _createRestraintForce(self, particle1, particle2, mm=None):
+    def _createRestraintForce(self, particle1, particle2):
         """
         Create a new copy of the receptor-ligand restraint force.
 
@@ -382,9 +390,6 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
            A restraint force object
 
         """
-
-        if mm is None: mm = openmm
-
         force = openmm.CustomBondForce(self.energy_function)
         force.addGlobalParameter('lambda_restraints', 1.0)
         for parameter in self.bond_parameter_names:
@@ -410,23 +415,23 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
 
         initial_time = time.time()
 
-        r_min = 0 * units.nanometers
-        r_max = 100 * units.nanometers # TODO: Use maximum distance between atoms?
+        r_min = 0 * unit.nanometers
+        r_max = 100 * unit.nanometers # TODO: Use maximum distance between atoms?
 
         # Create a System object containing two particles connected by the reference force
         system = openmm.System()
-        system.addParticle(1.0 * units.amu)
-        system.addParticle(1.0 * units.amu)
+        system.addParticle(1.0 * unit.amu)
+        system.addParticle(1.0 * unit.amu)
         force = self._createRestraintForce(0, 1)
         system.addForce(force)
 
         # Create a Reference context to evaluate energies on the CPU.
-        integrator = openmm.VerletIntegrator(1.0 * units.femtoseconds)
+        integrator = openmm.VerletIntegrator(1.0 * unit.femtoseconds)
         platform = openmm.Platform.getPlatformByName('Reference')
         context = openmm.Context(system, integrator, platform)
 
         # Set default positions.
-        positions = units.Quantity(np.zeros([2,3]), units.nanometers)
+        positions = unit.Quantity(np.zeros([2,3]), unit.nanometers)
         context.setPositions(positions)
 
         # Create a function to compute integrand as a function of interparticle separation.
@@ -445,20 +450,20 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
                Contribution to integrand (in nm^2).
 
             """
-            positions[1, 0] = r * units.nanometers
+            positions[1, 0] = r * unit.nanometers
             context.setPositions(positions)
             state = context.getState(getEnergy=True)
             potential = state.getPotentialEnergy()
             dI = 4.0 * math.pi * r**2 * math.exp(-beta * potential)
             return dI
 
-        (shell_volume, shell_volume_error) = scipy.integrate.quad(lambda r : integrand(r), r_min / units.nanometers, r_max / units.nanometers) * units.nanometers**3 # integrate shell volume
-        logger.debug("shell_volume = %f nm^3" % (shell_volume / units.nanometers**3))
+        (shell_volume, shell_volume_error) = scipy.integrate.quad(lambda r : integrand(r), r_min / unit.nanometers, r_max / unit.nanometers) * unit.nanometers**3 # integrate shell volume
+        logger.debug("shell_volume = %f nm^3" % (shell_volume / unit.nanometers**3))
 
         # Compute standard-state volume for a single molecule in a box of size (1 L) / (avogadros number)
-        liter = 1000.0 * units.centimeters**3  # one liter
-        box_volume = liter / (units.AVOGADRO_CONSTANT_NA*units.mole) # standard state volume
-        logger.debug("box_volume = %f nm^3" % (box_volume / units.nanometers**3))
+        liter = 1000.0 * unit.centimeters**3  # one liter
+        box_volume = liter / (unit.AVOGADRO_CONSTANT_NA*unit.mole) # standard state volume
+        logger.debug("box_volume = %f nm^3" % (box_volume / unit.nanometers**3))
 
         # Compute standard state correction for releasing shell restraints into standard-state box (in units of kT).
         DeltaG = - math.log(box_volume / shell_volume)
@@ -471,7 +476,7 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
         # Return standard state correction (in kT).
         return DeltaG
 
-    def getRestraintForce(self, mm=None):
+    def getRestraintForce(self):
         """
         Returns a new Force object that imposes the receptor-ligand restraint.
 
@@ -487,7 +492,7 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
            The created restraint force.
 
         """
-        return self._createRestraintForce(self.restrained_receptor_atom, self.restrained_ligand_atom, mm=mm)
+        return self._createRestraintForce(self.restrained_receptor_atom, self.restrained_ligand_atom)
 
     def _closestAtomToCentroid(self, coordinates, indices=None, masses=None):
         """
@@ -495,7 +500,7 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
 
         Parameters
         ----------
-        coordinates : units.Quantity of natoms x 3 with units compatible with nanometers
+        coordinates : unit.Quantity of natoms x 3 with units compatible with nanometers
            Coordinates of object to identify atom closes to centroid
         indices : list of int, optional, default=None
            List of atoms indices for which closest atom to centroid is to be computed.
@@ -568,7 +573,7 @@ class Harmonic(RadiallySymmetricRestraint):
     >>> ligand_atoms = range(2603,2621)
     >>> # Construct a reference thermodynamic state.
     >>> from repex import ThermodynamicState
-    >>> temperature = 298.0 * units.kelvin
+    >>> temperature = 298.0 * unit.kelvin
     >>> state = ThermodynamicState(temperature=temperature)
     >>> # Create restraints.
     >>> restraints = Harmonic(state, system, positions, receptor_atoms, ligand_atoms)
@@ -631,7 +636,8 @@ class FlatBottom(RadiallySymmetricRestraint):
     An alternative choice to receptor-ligand restraints that uses a flat potential inside most of the protein volume
     with harmonic restraining walls outside of this.
 
-    EXAMPLE
+    Examples
+    --------
 
     >>> # Create a test system.
     >>> from openmmtools import testsystems
@@ -642,7 +648,7 @@ class FlatBottom(RadiallySymmetricRestraint):
     >>> ligand_atoms = range(2603,2621)
     >>> # Construct a reference thermodynamic state.
     >>> from repex import ThermodynamicState
-    >>> temperature = 298.0 * units.kelvin
+    >>> temperature = 298.0 * unit.kelvin
     >>> state = ThermodynamicState(temperature=temperature)
     >>> # Create restraints.
     >>> restraints = FlatBottom(state, system, positions, receptor_atoms, ligand_atoms)
@@ -697,20 +703,298 @@ class FlatBottom(RadiallySymmetricRestraint):
             sigma = 1.4826 * median_absolute_distance
 
             # Calculate r0, which is a multiple of sigma plus 5 A.
-            r0 = 2*sigma + 5.0 * units.angstroms
+            r0 = 2*sigma + 5.0 * unit.angstroms
         else:
-            DEFAULT_DISTANCE = 15.0 * units.angstroms
+            DEFAULT_DISTANCE = 15.0 * unit.angstroms
             logger.warning("Receptor only contains %d atoms; using default distance of %s" % (natoms, str(DEFAULT_DISTANCE)))
             r0 = DEFAULT_DISTANCE
 
-        logger.debug("restraint distance r0 = %.1f A" % (r0 / units.angstroms))
+        logger.debug("restraint distance r0 = %.1f A" % (r0 / unit.angstroms))
 
         # Set spring constant/
-        #K = (2.0 * 0.0083144621 * 5.0 * 298.0 * 100) * units.kilojoules_per_mole/units.nanometers**2
-        K = 0.6 * units.kilocalories_per_mole / units.angstroms**2
-        logger.debug("K = %.1f kcal/mol/A^2" % (K / (units.kilocalories_per_mole / units.angstroms**2)))
+        #K = (2.0 * 0.0083144621 * 5.0 * 298.0 * 100) * unit.kilojoules_per_mole/unit.nanometers**2
+        K = 0.6 * unit.kilocalories_per_mole / unit.angstroms**2
+        logger.debug("K = %.1f kcal/mol/A^2" % (K / (unit.kilocalories_per_mole / unit.angstroms**2)))
 
         # Assemble parameter vector.
         bond_parameters = [K, r0]
 
         return bond_parameters
+
+
+#=============================================================================================
+# Base class for orientation-dependent receptor-ligand restraints.
+#=============================================================================================
+
+class OrientationDependentRestraint(ReceptorLigandRestraint):
+    """
+    Impose an orientation-dependent restraint between ligand and protein to prevent ligand from
+    changing to a different binding mode.
+
+    This restraint strength is controlled by a global context parameter called 'lambda_restraints'.
+
+    """
+    __metaclass__ = abc.ABCMeta
+    energy_function = ''  # energy function to use in computation of restraint
+    bond_parameter_names = []  # list of bond parameters that appear in energy function above
+
+    def __init__(self, topology, state, system, coordinates, receptor_atoms, ligand_atoms):
+        """
+        Initialize a receptor-ligand restraint class.
+
+        Parameters
+        ----------
+        topology : openmm.app.Topology
+            Reference topology for the complex
+        state : thermodynamics.ThermodynamicState
+           The thermodynamic state specifying temperature, pressure, etc. to which restraints are to be added
+        coordinates : simtk.unit.Quantity of natoms x 3 with units compatible with nanometers
+           Reference coordinates to use for imposing restraints
+        receptor_atoms : list of int
+            A complete list of receptor atoms
+        ligand_atoms : list of int
+            A complete list of ligand atoms
+
+        """
+        super(OrientationDependentRestraint, self).__init__(state, system, coordinates, receptor_atoms, ligand_atoms)
+        pass
+
+class Borsesch(OrientationDependentRestraint):
+    """
+    Impose Boresch-style orientational restraints on protein-ligand system to restraint ligand binding mode.
+
+    This restraint strength is controlled by a global context parameter called 'lambda_restraints'.
+
+    Notes
+    -----
+    Currently, all equilibrium values are measured from the initial structure, while spring constants are set to
+    20 kcal/(mol A**2) or 20 kcal/(mol rad**2) as in Ref [1].
+
+    Future iterations of this feature will introduce the ability to extract equilibrium parameters and spring constants
+    from a short simulation.
+
+    WARNING
+    -------
+    Symmetry corrections for symmetric ligands are not automatically applied.
+    See Ref [1] and [2] for more information on correcting for ligand symmetry.
+
+    References
+    ----------
+    [1] Boresch S, Tettinger F, Leitgeb M, Karplus M. J Phys Chem B. 107:9535, 2003.
+        http://dx.doi.org/10.1021/jp0217839
+    [2] Mobley DL, Chodera JD, and Dill KA. J Chem Phys 125:084902, 2006.
+        https://dx.doi.org/10.1063%2F1.2221683
+
+    """
+
+    def _is_collinear(self, positions, atoms, THRESHOLD=0.1):
+        """Report whether any sequential vectors in a sequence of atoms are collinear to within a given dot product threshold.
+
+        Parameters
+        ----------
+        positions : simtk.unit.Quantity of natoms x 3 with units compatible with nanometers
+            Reference coordinates to use for imposing restraints
+        atoms : array-like, dtype:int, length:natoms
+            A seris of indices of atoms
+        THRESHOLD : float, optional, default=0.1
+            Atoms are not colinear if their sequential vector separation dot products are greater than THRESHOLD
+
+        Returns
+        -------
+        result : bool
+            Returns True if any sequential pair of vectors is collinear; False otherwise.
+
+        """
+        result = False
+        for i in range(len(atoms)-2):
+            v1 = positions[atoms[i+1],:] - positions[atoms[i],:]
+            v2 = positions[atoms[i+2],:] - positions[atoms[i+1],:]
+            innerprod = np.dot(v1, v2)
+            result = result or (innerprod < THRESHOLD)
+
+        return result
+
+    def _select_restraint_atoms(self, positions, receptor_atoms, ligand_atoms):
+        """
+        Select atoms to be used in restraint.
+
+        Parameters
+        ----------
+        positions : simtk.unit.Quantity of natoms x 3 with units compatible with nanometers
+           Reference coordinates to use for imposing restraints
+        receptor_atoms : list of int
+            List of atom indices belonging to the receptor
+        ligand_atoms : list of int
+            List of atom indices belonging to the ligand
+
+        Returns
+        -------
+        restraint_atoms : list of int
+            List of six atom indices used in the restraint.
+            restraint_atoms[0:3] belong to the receptor
+            restraint_atoms[4:6] belong to the ligand
+
+        Notes
+        -----
+        The current algorithm simply selects random subsets of receptor and ligand atoms
+        and rejects those that are too close to collinear. Future updates can further refine
+        this algorithm.
+
+        """
+        if (len(receptor_atoms) < 3) or (len(ligand_atoms) < 3):
+            raise Exception('Both receptor_atoms (len %d) and ligand_atoms (len %d) must contain at least three atoms.' % (len(receptor_atoms), len(ligand_atoms)))
+
+        # Iterate until we have found a set of non-collinear atoms.
+        accepted = False
+        while (not accepted):
+            # Select three random atoms from the receptor and ligand
+            restraint_atoms = random.sample(receptor_atoms, 3) + random.sample(ligand_atoms, 3)
+            # Reject collinear sets of atoms.
+            accepted = not self._is_collinear(positions, restraint_atoms)
+
+        return restraint_atoms
+
+    def _determine_restraint_parameters(self, state, system, positions):
+        """
+        Determine restraint parameters.
+
+        Parameters
+        ----------
+        state : thermodynamics.ThermodynamicState
+            The thermodynamic state specifying temperature, pressure, etc. to which restraints are to be added
+        system : simtk.openmm.System
+            OpenMM representation of fully interacting system
+        positions : simtk.unit.Quantity of natoms x 3 with units compatible with nanometers
+            Reference coordinates to use for imposing restraints
+
+        Attributes set
+        --------------
+        [r_aA0, theta_A0, theta_B0]
+        [K_r, K_thetaA, K_thetaB, K_phiA, K_phiB, K_phiC]
+        See Ref [1] for definitions
+
+        Notes
+        -----
+        Currently, all equilibrium values are measured from the initial structure, while spring constants are set to
+        20 kcal/(mol A**2) or 20 kcal/(mol rad**2) as in [1].
+
+        Future iterations of this feature will introduce the ability to extract equilibrium parameters and spring constants
+        from a short simulation.
+
+        References
+        ----------
+        [1] Boresch S, Tettinger F, Leitgeb M, Karplus M. J Phys Chem B. 107:9535, 2003.
+        http://dx.doi.org/10.1021/jp0217839
+
+        """
+        # Set spring constants uniformly, as in Ref [1] Table 1 caption.
+        self.K_r = 20.0 * unit.kilocalories_per_mole / unit.angstrom**2
+        self.K_thetaA = self.K_thetaB = self.K_phiA = self.K_phiB = self.K_phiC = 20.0 * unit.kilocalories_per_mole / unit.radian**2
+
+        # Measure equilibrium geometries from static reference structure
+        t = md.Trajectory(positions, top=self.topology)
+        distances = md.geometry.compute_distances(t, [self.restraint_atoms[2:4]], periodic=False)
+        [self.r_aA0] = distances[0] * unit.nanometers
+        angles = md.geometry.compute_angles(t, [self.restraint_atoms[1:4], self.restraint_atoms[2:5]], periodic=False)
+        [self.theta_A, self.theta_B] = [angles[0] * unit.radians, angles[1] * unit.radians]
+        dihedrals = md.geometry.compute_dihedrals(t, [self.restraint_atoms[0:4], self.restraint_atoms[1:5], self.restraint_atoms[2:6]], periodic=False)
+        [self.phi_A, self.phi_B, self.phi_C] = [dihedrals[0] * unit.radians, dihedrals[1] * unit.radians, dihedrals[2] * unit.radians]
+
+    def __init__(self, state, system, positions, receptor_atoms, ligand_atoms):
+        """
+        Initialize a receptor-ligand restraint class.
+
+        Parameters
+        ----------
+        state : thermodynamics.ThermodynamicState
+            The thermodynamic state specifying temperature, pressure, etc. to which restraints are to be added
+        system : simtk.openmm.System
+            OpenMM representation of fully interacting system
+        positions : simtk.unit.Quantity of natoms x 3 with units compatible with nanometers
+            Reference coordinates to use for imposing restraints
+        receptor_atoms : list of int
+            A complete list of receptor atoms
+        ligand_atoms : list of int
+            A complete list of ligand atoms
+
+        """
+        super(Boresch, self).__init__(state, system, coordinates, receptor_atoms, ligand_atoms)
+
+        # Select atoms to be used in restraint.
+        self.restraint_atoms = self._select_restraint_atoms(positions, receptor_atoms, ligand_atoms)
+
+        # Determine restraint parameters
+        self._determine_restraint_parameters(state, system, positions)
+
+        # Determine standard state correction.
+        self.standard_state_correction = self._computeStandardStateCorrection()
+
+    def _createRestraintForce(self, particle1, particle2):
+        """
+        Create a new copy of the receptor-ligand restraint force.
+
+        Parameters
+        ----------
+        particle1 : int
+           Index of first particle for which restraint is to be applied.
+        particle2 : int
+           Index of second particle for which restraint is to be applied
+        mm : simtk.openmm compliant interface, optional, default=None
+           If specified, use an alternative OpenMM API implementation.
+           Otherwise, use simtk.openmm.
+
+        Returns
+        -------
+        force : simtk.openmm.CustomBondForce
+           A restraint force object
+
+        WARNING
+        -------
+        Because the domain of the `dihedral()` function in `CustomCompoundBondForce` is unknown, it is not currently clear whether the dihedral restraints will work.
+        We should replace those restraints with a negative log von Mises distribution: https://en.wikipedia.org/wiki/Von_Mises_distribution
+        where the von Mises parameter kappa would be computed from the desired standard deviation (kappa ~ sigma**(-2))
+        and the standard state correction would need to be modified
+
+        Notes
+        -----
+        There may be a better way to implement this restraint.
+
+        """
+        energy_function = """
+            lambda_restraints * E;
+            E = (K_r/2)*(distance(p3,p4) - r_aA0)^2
+            + (K_thetaA/2)*(angle(p2,p3,p4)-theta_A0)^2 + (K_thetaB/2)*(angle(p3,p4,p5)-theta_B0)^2
+            + (K_phiA/2)*(dihedral(p1,p2,p3,p4)-phi_A)^2+ (K_phiA/2)*(dihedral(p2,p3,p4,p5)-phi_B)^2+ (K_phiC/2)*(dihedral(p3,p4,p5,p6)-phi_C)^2
+            """
+        force = openmm.CustomCompoundBondForce(energy_function)
+        force.addGlobalParameter('lambda_restraints', 1.0)
+        force.addBond(self.restraint_atoms, [])
+        return force
+
+    def _computeStandardStateCorrection(self):
+        """
+        Compute the standard state correction for the arbitrary restraint energy function.
+
+        Returns
+        -------
+        DeltaG : float
+           Computed standard-state correction in dimensionless units (kT)
+
+        Notes
+        -----
+        Uses analytical approach from [1], but this approach is known to be inexact.
+
+        """
+        # Retrieve constants for convenience.
+        [r_aA0, theta_A0, theta_B0] = [self.r_aA0, self.theta_A0, self.theta_B0]
+        [K_r, K_thetaA, K_thetaB, K_phiA, K_phiB, K_phiC] = [self.K_r, self.K_thetaA, self.K_thetaB, self.K_phiA, self.K_phiB, self.K_phiC]
+        kT = self.kT
+        pi = np.pi
+
+        # Eq 32 of Ref [1]
+        DeltaG = -np.log( \
+            (8. * pi**2 * V0) / (r_aA0**2 * unit.sin(theta_A0) * unit.sin(theta_B0)) \
+            * unit.sqrt(K_r * K_thetaA * K_thetaB * K_phiA * K_phiB * K*phiC) / (2 * pi * kT)**3 \
+            )
+        # Return standard state correction (in kT).
+        return DeltaG

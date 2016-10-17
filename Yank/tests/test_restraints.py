@@ -14,6 +14,7 @@ Test restraints module.
 #=============================================================================================
 
 import tempfile
+import shutil
 
 from nose.plugins.attrib import attr
 
@@ -90,7 +91,7 @@ def test_restraint_dispatch():
         from openmmtools.testsystems import ThermodynamicState
         thermodynamic_state = ThermodynamicState(temperature=300.0*unit.kelvin)
         # Add restraints
-        restraint = yank.restraints.createRestraints(restraint_type, thermodynamic_state, t.system, t.positions, t.receptor_atoms, t.ligand_atoms)
+        restraint = yank.restraints.createRestraints(restraint_type, t.topology, thermodynamic_state, t.system, t.positions, t.receptor_atoms, t.ligand_atoms)
         # Check that we got the right restraint class
         assert(restraint.__class__.__name__ == restraint_type)
         assert(restraint.__class__ == restraint_class)
@@ -106,8 +107,9 @@ def test_protein_ligand_restraints():
 options:
   minimize: no
   verbose: yes
-  output_dir: .
+  output_dir: %(output_directory)s
   number_of_iterations: 2
+  nsteps_per_iteration: 10
   restraint_type: %(restraint_type)s
   temperature: 300*kelvin
   softcore_beta: 0.0
@@ -121,15 +123,14 @@ molecules:
       charge_method: bcc
 
 solvents:
-  OBC2:
+  vacuum:
     nonbonded_method: NoCutoff
-    implicit_solvent: OBC2
 
 systems:
   lys-pxyl:
     receptor: T4lysozyme
     ligand: p-xylene
-    solvent: OBC2
+    solvent: vacuum
     leap:
       parameters: [leaprc.ff14SB, leaprc.gaff]
 
@@ -150,14 +151,19 @@ experiments:
 """
     # Test all possible restraint types.
     for restraint_type in expected_restraints:
+        output_directory = tempfile.mkdtemp()
         data = {
+            'output_directory' : output_directory,
             'restraint_type' : restraint_type,
             'receptor_filepath' : get_data_filename('tests/data/p-xylene-implicit/input/181L-pdbfixer.pdb'),
             'ligand_filepath'   : get_data_filename('tests/data/p-xylene-implicit/input/p-xylene.mol2'),
         }
         # run both setup and experiment
         yaml_builder = YamlBuilder(yaml_script % data)
+        print(yaml_script % data)
         yaml_builder.build_experiments()
+        # Clean up
+        #shutil.rmtree(output_directory)
 
 #=============================================================================================
 # MAIN

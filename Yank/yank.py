@@ -428,7 +428,7 @@ class Yank(object):
             logger.debug("Creating receptor-ligand restraints...")
             reference_positions = positions[0]
             restraints = createRestraints(self._restraint_type,
-                thermodynamic_state, reference_system, reference_positions, atom_indices['receptor'], atom_indices['ligand'])
+                alchemical_phase.reference_topology, thermodynamic_state, reference_system, reference_positions, atom_indices['receptor'], atom_indices['ligand'])
             force = restraints.getRestraintForce() # Get Force object incorporating restraints
             reference_system.addForce(force)
             metadata['standard_state_correction'] = restraints.getStandardStateCorrection() # standard state correction in kT
