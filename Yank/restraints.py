@@ -209,12 +209,6 @@ class ReceptorLigandRestraint(object):
         """
         Returns a new Force object that imposes the receptor-ligand restraint.
 
-        Parameters
-        ----------
-        mm : simtk.openmm compliant interface, optional, default=None
-           If specified, use an alternative OpenMM API implementation.
-           Otherwise, use simtk.openmm.
-
         Returns
         -------
         force : simtk.openmm.HarmonicBondForce
@@ -380,9 +374,6 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
            Index of first particle for which restraint is to be applied.
         particle2 : int
            Index of second particle for which restraint is to be applied
-        mm : simtk.openmm compliant interface, optional, default=None
-           If specified, use an alternative OpenMM API implementation.
-           Otherwise, use simtk.openmm.
 
         Returns
         -------
@@ -479,12 +470,6 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
     def getRestraintForce(self):
         """
         Returns a new Force object that imposes the receptor-ligand restraint.
-
-        Parameters
-        ----------
-        mm : simtk.openmm compliant interface, optional, default=None
-           If specified, use an alternative OpenMM API implementation.
-           Otherwise, use simtk.openmm.
 
         Returns
         -------
@@ -939,9 +924,6 @@ class Borsesch(OrientationDependentRestraint):
            Index of first particle for which restraint is to be applied.
         particle2 : int
            Index of second particle for which restraint is to be applied
-        mm : simtk.openmm compliant interface, optional, default=None
-           If specified, use an alternative OpenMM API implementation.
-           Otherwise, use simtk.openmm.
 
         Returns
         -------
