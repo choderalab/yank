@@ -138,12 +138,13 @@ protocols:
   absolute-binding:
     complex:
       alchemical_path:
-        lambda_electrostatics: [1.0, 0.0, 0.0]
-        lambda_sterics:        [1.0, 1.0, 0.0]
+        lambda_restraints:     [0.0, 0.5, 1.0]
+        lambda_electrostatics: [1.0, 1.0, 1.0]
+        lambda_sterics:        [1.0, 1.0, 1.0]
     solvent:
       alchemical_path:
-        lambda_electrostatics: [1.0, 0.0, 0.0]
-        lambda_sterics:        [1.0, 1.0, 0.0]
+        lambda_electrostatics: [1.0, 1.0, 1.0]
+        lambda_sterics:        [1.0, 1.0, 1.0]
 
 experiments:
   system: lys-pxyl
@@ -160,10 +161,9 @@ experiments:
         }
         # run both setup and experiment
         yaml_builder = YamlBuilder(yaml_script % data)
-        print(yaml_script % data)
         yaml_builder.build_experiments()
         # Clean up
-        #shutil.rmtree(output_directory)
+        shutil.rmtree(output_directory)
 
 #=============================================================================================
 # MAIN
