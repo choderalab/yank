@@ -63,6 +63,7 @@ class HostGuestNoninteracting(HostGuestVacuum):
 expected_restraints = {
     'Harmonic' : yank.restraints.Harmonic,
     'FlatBottom' : yank.restraints.FlatBottom,
+    'Boresch' : yank.restraints.Boresch,
 }
 
 def test_available_restraint_classes():
@@ -151,7 +152,8 @@ experiments:
   protocol: absolute-binding
 """
     # Test all possible restraint types.
-    for restraint_type in expected_restraints:
+    available_restraint_types = yank.restraints.available_restraint_types()
+    for restraint_type in available_restraint_types:
         output_directory = tempfile.mkdtemp()
         data = {
             'output_directory' : output_directory,
