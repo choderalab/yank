@@ -828,8 +828,8 @@ class Boresch(OrientationDependentRestraint):
         for i in range(len(atoms)-2):
             v1 = positions[atoms[i+1],:] - positions[atoms[i],:]
             v2 = positions[atoms[i+2],:] - positions[atoms[i+1],:]
-            innerprod = np.dot(v1, v2)
-            result = result or (innerprod > THRESHOLD)
+            normalized_inner_product = np.dot(v1, v2) / np.sqrt(np.dot(v1, v1) * np.dot(v2, v2))
+            result = result or (normalized_inner_product > THRESHOLD)
 
         return result
 
