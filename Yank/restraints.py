@@ -129,7 +129,9 @@ def createRestraints(restraint_type, topology, state, system, positions, recepto
 # Base class for receptor-ligand restraints.
 #=============================================================================================
 
-class ReceptorLigandRestraint(object):
+ABC = abc.ABCMeta('ABC', (object,), {}) # compatible with Python 2 *and* 3
+
+class ReceptorLigandRestraint(ABC):
     """
     Impose a single restraint between ligand and protein to prevent ligand from drifting too far
     from protein in implicit solvent calculations.
@@ -168,7 +170,6 @@ class ReceptorLigandRestraint(object):
     TODO: Should these all really be public data fields?
 
     """
-    __metaclass__ = abc.ABCMeta
     def __init__(self, topology, state, system, positions, receptor_atoms, ligand_atoms):
         """
         Initialize a receptor-ligand restraint class.
@@ -269,7 +270,6 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
       return them in a list in the same order as 'bond_parameter_names'.
 
     """
-    __metaclass__ = abc.ABCMeta
     energy_function = ''  # energy function to use in computation of restraint
     bond_parameter_names = []  # list of bond parameters that appear in energy function above
 
@@ -626,7 +626,6 @@ class Harmonic(RadiallySymmetricRestraint):
 # Flat-bottom protein-ligand restraint.
 #=============================================================================================
 
-
 class FlatBottom(RadiallySymmetricRestraint):
     """
     An alternative choice to receptor-ligand restraints that uses a flat potential inside most of the protein volume
@@ -730,7 +729,6 @@ class OrientationDependentRestraint(ReceptorLigandRestraint):
     This restraint strength is controlled by a global context parameter called 'lambda_restraints'.
 
     """
-    __metaclass__ = abc.ABCMeta
     energy_function = ''  # energy function to use in computation of restraint
     bond_parameter_names = []  # list of bond parameters that appear in energy function above
 

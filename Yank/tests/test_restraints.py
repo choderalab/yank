@@ -107,7 +107,7 @@ def test_protein_ligand_restraints():
 ---
 options:
   minimize: no
-  verbose: yes
+  verbose: no
   output_dir: %(output_directory)s
   number_of_iterations: 2
   nsteps_per_iteration: 10
@@ -154,7 +154,9 @@ experiments:
     # Test all possible restraint types.
     available_restraint_types = yank.restraints.available_restraint_types()
     for restraint_type in available_restraint_types:
-        print(restraint_type)
+        print('***********************************')
+        print('Testing %s restraints...' % restraint_type)
+        print('***********************************')
         output_directory = tempfile.mkdtemp()
         data = {
             'output_directory' : output_directory,
