@@ -142,8 +142,8 @@ class ReceptorLigandRestraint(ABC):
 
     Creating a subclass requires the following:
     * Perform any necessary processing in subclass `__init__` after calling base class `__init__`
-    * Compute `standard_state_correction` in `__init__`
     * Override getRestraintForce() to return a new `Force` instance imposing the restraint
+    * Override getStandardStateCorrection() to return standard state correction
 
     Public class fields
     -------------------
