@@ -15,10 +15,8 @@ molecules:
     filepath: input/2HYY-pdbfixer.pdb
   STI:
     filepath: input/STI02.mol2
-    openeye:
-      quacpac: am1-bcc
     antechamber:
-      charge_method: null
+      charge_method: bcc
 
 solvents:
   pme:
