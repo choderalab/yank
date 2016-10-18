@@ -229,7 +229,7 @@ class ReceptorLigandRestraint(ABC):
 
         Returns
         -------
-        force : simtk.openmm.HarmonicBondForce
+        force : simtk.openmm.Force
            The created restraint force.
 
         """
@@ -376,7 +376,7 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
 
         Returns
         -------
-        force : simtk.openmm.HarmonicBondForce
+        force : simtk.openmm.CustomBondForce
            The created restraint force.
 
         """
@@ -399,7 +399,7 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
 
         Returns
         -------
-        force : simtk.openmm.HarmonicBondForce
+        force : simtk.openmm.CustomBondForce
            The created restraint force.
 
         """
@@ -911,7 +911,7 @@ class Boresch(OrientationDependentRestraint):
 
         Returns
         -------
-        force : simtk.openmm.CustomBondForce
+        force : simtk.openmm.CustomCompoundBondForce
            A restraint force object
 
         WARNING
