@@ -478,18 +478,6 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
         # Return standard state correction (in kT).
         return DeltaG
 
-    def getRestraintForce(self):
-        """
-        Returns a new Force object that imposes the receptor-ligand restraint.
-
-        Returns
-        -------
-        force : simtk.openmm.HarmonicBondForce
-           The created restraint force.
-
-        """
-        return self._createRestraintForce(self.restrained_receptor_atom, self.restrained_ligand_atom)
-
     def _closestAtomToCentroid(self, positions, indices=None, masses=None):
         """
         Identify the closest atom to the centroid of the given coordinate set.
@@ -729,8 +717,6 @@ class OrientationDependentRestraint(ReceptorLigandRestraint):
     This restraint strength is controlled by a global context parameter called 'lambda_restraints'.
 
     """
-    energy_function = ''  # energy function to use in computation of restraint
-    bond_parameter_names = []  # list of bond parameters that appear in energy function above
 
     def __init__(self, topology, state, system, positions, receptor_atoms, ligand_atoms):
         """
@@ -806,7 +792,7 @@ class Boresch(OrientationDependentRestraint):
         # Determine restraint parameters
         self._determine_restraint_parameters(state, system, positions)
 
-    def _is_collinear(self, positions, atoms, THRESHOLD=0.9):
+    def _is_collinear(self, positions, atoms, threshold=0.9):
         """Report whether any sequential vectors in a sequence of atoms are collinear to within a given dot product threshold.
 
         Parameters
@@ -815,7 +801,7 @@ class Boresch(OrientationDependentRestraint):
             Reference positions to use for imposing restraints
         atoms : array-like, dtype:int, length:natoms
             A seris of indices of atoms
-        THRESHOLD : float, optional, default=0.9
+        threshold : float, optional, default=0.9
             Atoms are not collinear if their sequential vector separation dot products are less than THRESHOLD
 
         Returns
@@ -829,7 +815,7 @@ class Boresch(OrientationDependentRestraint):
             v1 = positions[atoms[i+1],:] - positions[atoms[i],:]
             v2 = positions[atoms[i+2],:] - positions[atoms[i+1],:]
             normalized_inner_product = np.dot(v1, v2) / np.sqrt(np.dot(v1, v1) * np.dot(v2, v2))
-            result = result or (normalized_inner_product > THRESHOLD)
+            result = result or (normalized_inner_product > threshold)
 
         return result
 
