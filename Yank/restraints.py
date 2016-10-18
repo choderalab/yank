@@ -131,36 +131,12 @@ class ReceptorLigandRestraint(ABC):
 
     This restraint strength is controlled by a global context parameter called 'lambda_restraints'.
 
-    NOTES
-
+    Notes
+    -----
     Creating a subclass requires the following:
     * Perform any necessary processing in subclass `__init__` after calling base class `__init__`
     * Override getRestraintForce() to return a new `Force` instance imposing the restraint
     * Override getStandardStateCorrection() to return standard state correction
-
-    Public class fields
-    -------------------
-    topology : openmm.app.Topology
-        Reference topology for the complex
-    state : simtk.openmm.State
-        The State object used during initialization
-    system : simtk.openmm.System
-        The System object used during initialization
-    positions : simtk.unit.Quantity of dimension (nparticles,3) with units compatible with angstroms
-        The system positions used during initialization to define the restraint
-        TODO: Should this be optional?
-    receptor_atoms : list of int
-        List of atoms declared to be part of the receptor
-    ligand_atoms : list of int
-        List of atoms declared to be part of the ligand to be restrained to the receptor
-    temperature : simtk.unit.Quantity
-        The temperature specified during initialization.
-    kT : simtk.unit.Quantity
-        Thermal specified during initialization.
-    beta : simtk.unit.Quantity
-        The inverse temperature specified during initialization.
-
-    TODO: Should these all really be public data fields?
 
     """
     def __init__(self, topology, state, system, positions, receptor_atoms, ligand_atoms):
@@ -181,12 +157,12 @@ class ReceptorLigandRestraint(ABC):
             A complete list of ligand atoms
 
         """
-        self.topology = topology
-        self.state = state
-        self.system = system
-        self.positions = unit.Quantity(np.array(positions / positions.unit), positions.unit)
-        self.receptor_atoms = list(receptor_atoms)
-        self.ligand_atoms = list(ligand_atoms)
+        self._topology = topology
+        self._state = state
+        self._system = system
+        self._positions = unit.Quantity(np.array(positions / positions.unit), positions.unit)
+        self._receptor_atoms = list(receptor_atoms)
+        self._ligand_atoms = list(ligand_atoms)
 
         # Perform some sanity checks.
         natoms = system.getNumParticles()
@@ -195,9 +171,17 @@ class ReceptorLigandRestraint(ABC):
         if np.any(np.array(ligand_atoms) >= natoms):
             raise ValueError("Ligand atom indices fall outside [0,natoms), where natoms = %d.  ligand_atoms = %s" % (natoms, str(ligand_atoms)))
 
-        self.temperature = state.temperature
-        self.kT = kB * self.temperature # thermal energy
-        self.beta = 1.0 / self.kT # inverse temperature
+    @property
+    def temperature(self):
+        return self._state.temperature
+
+    @property
+    def kT(self):
+        return kB * self.temperature
+
+    @property
+    def beta(self):
+        return 1.0 / self.kT
 
     def get_restrained_system_copy(self):
         """
@@ -209,7 +193,7 @@ class ReceptorLigandRestraint(ABC):
            A copy of the restrained system
 
         """
-        system = copy.deepcopy(self.system)
+        system = copy.deepcopy(self._system)
         force = self.get_restraint_force()
         system.addForce(force)
 
@@ -263,8 +247,8 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
       return them in a list in the same order as 'bond_parameter_names'.
 
     """
-    energy_function = ''  # energy function to use in computation of restraint
-    bond_parameter_names = []  # list of bond parameters that appear in energy function above
+    _energy_function = ''  # energy function to use in computation of restraint
+    _bond_parameter_names = []  # list of bond parameters that appear in energy function above
 
     def __init__(self, topology, state, system, positions, receptor_atoms, ligand_atoms):
         """
@@ -287,22 +271,22 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
         super(RadiallySymmetricRestraint, self).__init__(topology, state, system, positions, receptor_atoms, ligand_atoms)
 
         # Determine atoms closet to centroids on ligand and receptor.
-        self.restrained_receptor_atom = self._closest_atom_to_centroid(self.positions, self.receptor_atoms)
-        self.restrained_ligand_atom = self._closest_atom_to_centroid(self.positions, self.ligand_atoms)
+        self._restrained_receptor_atom = self._closest_atom_to_centroid(self._positions, self._receptor_atoms)
+        self._restrained_ligand_atom = self._closest_atom_to_centroid(self._positions, self._ligand_atoms)
 
-        if not (self.restrained_receptor_atom in set(receptor_atoms)):
-            raise ValueError("Restrained receptor atom (%d) not in set of receptor atoms (%s)" % (self.restrained_receptor_atom, str(receptor_atoms)))
-        if not (self.restrained_ligand_atom in set(ligand_atoms)):
-            raise ValueError("Restrained ligand atom (%d) not in set of ligand atoms (%s)" % (self.restrained_ligand_atom, str(ligand_atoms)))
+        if not (self._restrained_receptor_atom in set(receptor_atoms)):
+            raise ValueError("Restrained receptor atom (%d) not in set of receptor atoms (%s)" % (self._restrained_receptor_atom, str(receptor_atoms)))
+        if not (self._restrained_ligand_atom in set(ligand_atoms)):
+            raise ValueError("Restrained ligand atom (%d) not in set of ligand atoms (%s)" % (self._restrained_ligand_atom, str(ligand_atoms)))
 
-        logger.debug("restrained receptor atom: %d" % self.restrained_receptor_atom)
-        logger.debug("restrained ligand atom: %d" % self.restrained_ligand_atom)
+        logger.debug("restrained receptor atom: %d" % self._restrained_receptor_atom)
+        logger.debug("restrained ligand atom: %d" % self._restrained_ligand_atom)
 
         # Determine radius of gyration of receptor.
-        self.radius_of_gyration = self._compute_radius_of_gyration(self.positions[self.receptor_atoms,:])
+        self._radius_of_gyration = self._compute_radius_of_gyration(self._positions[self._receptor_atoms,:])
 
         # Determine parameters
-        self.bond_parameters = self._determine_bond_parameters()
+        self._bond_parameters = self._determine_bond_parameters()
 
     @abc.abstractmethod
     def _determine_bond_parameters(self):
@@ -373,16 +357,16 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
            The created restraint force.
 
         """
-        force = openmm.CustomBondForce(self.energy_function)
+        force = openmm.CustomBondForce(self._energy_function)
         force.addGlobalParameter('lambda_restraints', 1.0)
-        for parameter in self.bond_parameter_names:
+        for parameter in self._bond_parameter_names:
             force.addPerBondParameter(parameter)
         try:
-            force.addBond(particle1, particle2, self.bond_parameters)
+            force.addBond(particle1, particle2, self._bond_parameters)
         except Exception as e:
             print('particle1: %s' % str(particle1))
             print('particle2: %s' % str(particle1))
-            print('bond_parameters: %s' % str(self.bond_parameters))
+            print('bond_parameters: %s' % str(self._bond_parameters))
             raise(e)
         return force
 
@@ -396,7 +380,7 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
            The created restraint force.
 
         """
-        return self._create_restraint_force(self.restrained_receptor_atom, self.restrained_ligand_atom)
+        return self._create_restraint_force(self._restrained_receptor_atom, self._restrained_ligand_atom)
 
     def get_standard_state_correction(self):
         """
@@ -561,8 +545,8 @@ class Harmonic(RadiallySymmetricRestraint):
 
     """
 
-    energy_function = 'lambda_restraints * (K/2)*r^2'  # harmonic restraint
-    bond_parameter_names = ['K']  # list of bond parameters that appear in energy function above
+    _energy_function = 'lambda_restraints * (K/2)*r^2'  # harmonic restraint
+    _bond_parameter_names = ['K']  # list of bond parameters that appear in energy function above
 
     def _determine_bond_parameters(self):
         """
@@ -578,13 +562,13 @@ class Harmonic(RadiallySymmetricRestraint):
 
         """
 
-        unit = self.positions.unit
+        unit = self._positions.unit
 
         # Get dimensionless receptor positions.
-        x = self.positions[self.receptor_atoms,:] / unit
+        x = self._positions[self._receptor_atoms,:] / unit
 
         # Get dimensionless restrained atom coordinate.
-        xref = self.positions[self.restrained_receptor_atom,:] / unit # (3,) array
+        xref = self._positions[self._restrained_receptor_atom,:] / unit # (3,) array
         xref = np.reshape(xref, (1,3)) # (1,3) array
 
         # Compute distances from restrained atom.
@@ -635,8 +619,8 @@ class FlatBottom(RadiallySymmetricRestraint):
 
     """
 
-    energy_function = 'lambda_restraints * step(r-r0) * (K/2)*(r-r0)^2'  # flat-bottom restraint
-    bond_parameter_names = ['K', 'r0']  # list of bond parameters that appear in energy function above
+    _energy_function = 'lambda_restraints * step(r-r0) * (K/2)*(r-r0)^2'  # flat-bottom restraint
+    _bond_parameter_names = ['K', 'r0']  # list of bond parameters that appear in energy function above
 
     def _determine_bond_parameters(self):
         """
@@ -653,22 +637,22 @@ class FlatBottom(RadiallySymmetricRestraint):
 
         """
 
-        x_unit = self.positions.unit
+        x_unit = self._positions.unit
 
         # Get dimensionless receptor positions.
-        x = self.positions[self.receptor_atoms, :] / x_unit
+        x = self._positions[self._receptor_atoms, :] / x_unit
 
         # Determine number of atoms.
         natoms = x.shape[0]
 
         if (natoms > 3):
             # Check that restrained receptor atom is in expected range.
-            if (self.restrained_receptor_atom > natoms):
-                raise ValueError('Receptor atom %d was selected for restraint, but system only has %d atoms.' % (self.restrained_receptor_atom, natoms))
+            if (self._restrained_receptor_atom > natoms):
+                raise ValueError('Receptor atom %d was selected for restraint, but system only has %d atoms.' % (self._restrained_receptor_atom, natoms))
 
             # Compute median absolute distance to central atom.
             # (Working in non-unit-bearing floats for speed.)
-            xref = np.reshape(x[self.restrained_receptor_atom,:], (1,3)) # (1,3) array
+            xref = np.reshape(x[self._restrained_receptor_atom,:], (1,3)) # (1,3) array
             distances = np.sqrt(((x - np.tile(xref, (natoms, 1)))**2).sum(1)) # distances[i] is the distance from the centroid to particle i
             median_absolute_distance = np.median(abs(distances))
 
@@ -780,7 +764,7 @@ class Boresch(OrientationDependentRestraint):
         super(Boresch, self).__init__(topology, state, system, positions, receptor_atoms, ligand_atoms)
 
         # Select atoms to be used in restraint.
-        self.restraint_atoms = self._select_restraint_atoms(positions, receptor_atoms, ligand_atoms)
+        self._restraint_atoms = self._select_restraint_atoms(positions, receptor_atoms, ligand_atoms)
 
         # Determine restraint parameters
         self._determine_restraint_parameters()
@@ -876,18 +860,26 @@ class Boresch(OrientationDependentRestraint):
         http://dx.doi.org/10.1021/jp0217839
 
         """
+        self._parameters = dict()
+
         # Set spring constants uniformly, as in Ref [1] Table 1 caption.
-        self.K_r = 20.0 * unit.kilocalories_per_mole / unit.angstrom**2
-        self.K_thetaA = self.K_thetaB = self.K_phiA = self.K_phiB = self.K_phiC = 20.0 * unit.kilocalories_per_mole / unit.radian**2
+        self._parameters['K_r'] = 20.0 * unit.kilocalories_per_mole / unit.angstrom**2
+        for name in ['K_thetaA', 'K_thetaB', 'K_phiA', 'K_phiB', 'K_phiC']:
+            self._parameters[name] = 20.0 * unit.kilocalories_per_mole / unit.radian**2
 
         # Measure equilibrium geometries from static reference structure
-        t = md.Trajectory(self.positions / unit.nanometers, self.topology)
-        distances = md.geometry.compute_distances(t, [self.restraint_atoms[2:4]], periodic=False)
-        [self.r_aA0] = distances[0] * unit.nanometers
-        angles = md.geometry.compute_angles(t, [self.restraint_atoms[1:4], self.restraint_atoms[2:5]], periodic=False)
-        [self.theta_A0, self.theta_B0] = [angles[0][0] * unit.radians, angles[0][1] * unit.radians]
-        dihedrals = md.geometry.compute_dihedrals(t, [self.restraint_atoms[0:4], self.restraint_atoms[1:5], self.restraint_atoms[2:6]], periodic=False)
-        [self.phi_A0, self.phi_B0, self.phi_C0] = [dihedrals[0][0] * unit.radians, dihedrals[0][1] * unit.radians, dihedrals[0][2] * unit.radians]
+        t = md.Trajectory(self._positions / unit.nanometers, self._topology)
+
+        distances = md.geometry.compute_distances(t, [self._restraint_atoms[2:4]], periodic=False)
+        self._parameters['r_aA0'] = distances[0] * unit.nanometers
+
+        angles = md.geometry.compute_angles(t, [self._restraint_atoms[i:(i+3)] for i in range(1,3)], periodic=False)
+        for (name, angle) in zip(['theta_A0', 'theta_B0'], angles[0]):
+            self._parameters[name] = angle * unit.radians
+
+        dihedrals = md.geometry.compute_dihedrals(t, [self._restraint_atoms[i:(i+4)] for i in range(3)], periodic=False)
+        for (name, angle) in zip(['phi_A0', 'phi_B0', 'phi_C0'], dihedrals[0]):
+            self._parameters[name] = angle * unit.radians
 
     def get_restraint_force(self):
         """
@@ -921,16 +913,13 @@ class Boresch(OrientationDependentRestraint):
             pi = %f;
             """ % np.pi
         # Add constant definitions to the energy function
-        constants = [
-            'K_r', 'r_aA0', 'K_thetaA', 'theta_A0', 'K_thetaB', 'theta_B0',
-            'K_phiA', 'phi_A0', 'K_phiB', 'phi_B0', 'K_phiC', 'phi_C0']
-        for constant in constants:
-            energy_function += '%s = %f; ' % (constant, getattr(self, constant).value_in_unit_system(unit.md_unit_system))
+        for name in self._parameters:
+            energy_function += '%s = %f; ' % (name, self._parameters[name].value_in_unit_system(unit.md_unit_system))
         # Create the force
         nparticles = 6 # number of particles involved in restraint: p1 ... p6
         force = openmm.CustomCompoundBondForce(nparticles, energy_function)
         force.addGlobalParameter('lambda_restraints', 1.0)
-        force.addBond(self.restraint_atoms, [])
+        force.addBond(self._restraint_atoms, [])
         return force
 
     def get_standard_state_correction(self):
@@ -947,16 +936,19 @@ class Boresch(OrientationDependentRestraint):
         Uses analytical approach from [1], but this approach is known to be inexact.
 
         """
+        class Bunch(object):
+            def __init__(self, adict):
+                self.__dict__.update(adict)
+
         # Retrieve constants for convenience.
-        [r_aA0, theta_A0, theta_B0] = [self.r_aA0, self.theta_A0, self.theta_B0]
-        [K_r, K_thetaA, K_thetaB, K_phiA, K_phiB, K_phiC] = [self.K_r, self.K_thetaA, self.K_thetaB, self.K_phiA, self.K_phiB, self.K_phiC]
+        p = Bunch(self._parameters)
         kT = self.kT
         pi = np.pi
 
         # Eq 32 of Ref [1]
         DeltaG = -np.log( \
-            (8. * pi**2 * V0) / (r_aA0**2 * unit.sin(theta_A0) * unit.sin(theta_B0)) \
-            * unit.sqrt(K_r * K_thetaA * K_thetaB * K_phiA * K_phiB * K_phiC) / (2 * pi * kT)**3 \
+            (8. * pi**2 * V0) / (p.r_aA0**2 * unit.sin(p.theta_A0) * unit.sin(p.theta_B0)) \
+            * unit.sqrt(p.K_r * p.K_thetaA * p.K_thetaB * p.K_phiA * p.K_phiB * p.K_phiC) / (2 * pi * kT)**3 \
             )
         # Return standard state correction (in kT).
         return DeltaG
