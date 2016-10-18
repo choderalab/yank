@@ -816,7 +816,7 @@ class Boresch(OrientationDependentRestraint):
         atoms : array-like, dtype:int, length:natoms
             A seris of indices of atoms
         THRESHOLD : float, optional, default=0.9
-            Atoms are not colinear if their sequential vector separation dot products are less than THRESHOLD
+            Atoms are not collinear if their sequential vector separation dot products are less than THRESHOLD
 
         Returns
         -------
