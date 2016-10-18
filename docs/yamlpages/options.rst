@@ -99,6 +99,33 @@ The folder where all generate simulation setup files are stored. A folder will b
 
 Valid Options (experiments): <Path String>
 
+
+.. _yaml_options_platform:
+
+platform
+--------
+.. code-block:: yaml
+
+   options:
+     platform: fastest
+
+The OpenMM platform used to run the calculations. The default value (``fastest``) automatically selects the fastest available platform. Some platforms (especially ``CUDA`` and ``OpenCL``) may not be available on all systems.
+
+Valid options: [fastest]/CUDA/OpenCL/CPU/Reference
+
+.. _yaml_options_precision:
+
+precision
+---------
+.. code-block:: yaml
+
+   options:
+     precision: auto
+
+Floating point precision to use during the simulation. It can be set for OpenCL and CUDA platforms only. The default value (``auto``) is equivalent to ``mixed`` when the device support this precision, and ``single`` otherwise.
+
+Valid options: [auto]/double/mixed/single
+
 |
 
 .. _yaml_options_sys_and_sim_prep:
@@ -169,14 +196,14 @@ Valid options (298 * kelvin): <Quantity Temperature> [1]_
 
 .. _yaml_options_pressure:
 
-presuure
+pressure
 --------
 .. code-block:: yaml
 
    options:
      pressure: 1.0 * atmosphere
 
-Pressure of the system. If set to `null`, the simulation samples as an NVT ensemble.
+Pressure of the system. If set to ``null``, the simulation samples as an NVT ensemble.
 
 Valid options (1 * atmosphere): null / <Quantity Pressure> [1]_
 

@@ -1167,6 +1167,8 @@ class YamlBuilder:
         'output_dir': 'output',
         'setup_dir': 'setup',
         'experiments_dir': 'experiments',
+        'platform': 'fastest',
+        'precision': 'auto',
         'temperature': 298 * unit.kelvin,
         'pressure': 1 * unit.atmosphere,
         'constraints': openmm.app.HBonds,
@@ -1196,6 +1198,7 @@ class YamlBuilder:
         self._protocols = {}  # Alchemical protocols description
         self._experiments = {}  # Experiments description
 
+        # Parse YAML script
         if yaml_source is not None:
             self.parse(yaml_source)
 
@@ -2016,6 +2019,145 @@ class YamlBuilder:
             logger.debug(debug_msg + ' - signal completed setup.')
             self._mpicomm.barrier()
 
+    @staticmethod
+    def _opencl_device_support_precision(precision_model):
+        """
+        Check if this device supports the given precision model for OpenCL platform.
+
+        Some OpenCL devices do not support double precision. This offers a test
+        function.
+
+        Returns
+        -------
+        is_supported : bool
+            True if this device supports double precision for OpenCL, False
+            otherwise.
+
+        """
+        opencl_platform = openmm.Platform.getPlatformByName('OpenCL')
+
+        # Platforms are singleton so we need to store
+        # the old precision model before modifying it
+        old_precision = opencl_platform.getPropertyDefaultValue('OpenCLPrecision')
+
+        # Test support by creating a toy context
+        opencl_platform.setPropertyDefaultValue('OpenCLPrecision', precision_model)
+        system = openmm.System()
+        system.addParticle(1.0 * unit.amu)  # system needs at least 1 particle
+        integrator = openmm.VerletIntegrator(1.0 * unit.femtoseconds)
+        try:
+            context = openmm.Context(system, integrator, opencl_platform)
+            is_supported = True
+        except Exception:
+            is_supported = False
+        else:
+            del context
+        del integrator
+
+        # Restore old precision
+        opencl_platform.setPropertyDefaultValue('OpenCLPrecision', old_precision)
+
+        return is_supported
+
+    @staticmethod
+    def _determine_fastest_platform():
+        """
+        Return the fastest available platform.
+
+        Returns
+        -------
+        platform : simtk.openmm.Platform
+           The fastest available platform.
+
+        """
+        platform_speeds = np.array([openmm.Platform.getPlatform(i).getSpeed()
+                                    for i in range(openmm.Platform.getNumPlatforms())])
+        fastest_platform_id = int(np.argmax(platform_speeds))
+        platform = openmm.Platform.getPlatform(fastest_platform_id)
+        return platform
+
+    def _configure_platform(self, platform_name, platform_precision):
+        """
+        Configure the platform to be used for simulation for the given precision.
+
+        Parameters
+        ----------
+        platform_name : str
+            The name of the platform to be used for execution. If 'fastest',
+            the fastest available platform is used.
+        platform_precision : str or None
+            The precision to be used. If 'auto' the default value is used,
+            which is always mixed precision except for Reference that only
+            supports double precision, and OpenCL when the device supports
+            only single precision. If None, the precision mode won't be
+            set, so OpenMM default value will be used which is always
+            'single' for CUDA and OpenCL.
+
+        Returns
+        -------
+        platform : simtk.openmm.Platform
+           The configured platform.
+
+        Raises
+        ------
+        RuntimeError
+            If the given precision model selected is not compatible with the
+            platform.
+
+        """
+        # Determine the platform to configure
+        if platform_name == 'fastest':
+            platform = self._determine_fastest_platform()
+            platform_name = platform.getName()
+        else:
+            platform = openmm.Platform.getPlatformByName(platform_name)
+
+        # Use only a single CPU thread if we are using the CPU platform.
+        # TODO: Since there is an environment variable that can control this,
+        # TODO: we may want to avoid doing this.
+        if platform_name == 'CPU' and self._mpicomm is not None:
+            logger.debug("Setting 'CpuThreads' to 1 because MPI is active.")
+            platform.setPropertyDefaultValue('CpuThreads', '1')
+
+        # If user doesn't specify precision, determine default value
+        if platform_precision == 'auto':
+            if platform_name == 'CUDA':
+                platform_precision = 'mixed'
+            elif platform_name == 'OpenCL':
+                if self._opencl_device_support_precision('mixed'):
+                    platform_precision = 'mixed'
+                else:
+                    logger.info("This device does not support double precision for OpenCL. "
+                                "Setting OpenCL precision to 'single'")
+                    platform_precision = 'single'
+            elif platform_name == 'Reference' or platform_name == 'CPU':
+                platform_precision = None  # leave OpenMM default precision
+
+        # Set platform precision
+        if platform_precision is not None:
+            logger.info("Setting {} platform to use precision model "
+                        "'{}'.".format(platform_name, platform_precision))
+            if platform_name == 'CUDA':
+                platform.setPropertyDefaultValue('CudaPrecision', platform_precision)
+            elif platform_name == 'OpenCL':
+                # Some OpenCL devices do not support double precision so we need to test it
+                if self._opencl_device_support_precision(platform_precision):
+                    platform.setPropertyDefaultValue('OpenCLPrecision', platform_precision)
+                else:
+                    raise RuntimeError('This device does not support double precision for OpenCL.')
+            elif platform_name == 'Reference':
+                if platform_precision != 'double':
+                    raise RuntimeError("Reference platform does not support precision model '{}';"
+                                       "only 'double' is supported.".format(platform_precision))
+            elif platform_name == 'CPU':
+                if platform_precision != 'mixed':
+                    raise RuntimeError("CPU platform does not support precision model '{}';"
+                                       "only 'mixed' is supported.".format(platform_precision))
+            else:  # This is an unkown platform
+                raise RuntimeError("Found unknown platform '{}'.".format(platform_name))
+
+        return platform
+
     def _generate_yaml(self, experiment, file_path):
         """Generate the minimum YAML file needed to reproduce the experiment.
 
@@ -2154,8 +2296,6 @@ class YamlBuilder:
         # Set database path
         self._db.setup_dir = self._get_setup_dir(exp_opts)
 
-        # TODO configure platform and precision when they are fixed in Yank
-
         # Create directory and determine if we need to resume the simulation
         results_dir = self._get_experiment_dir(exp_opts, experiment_dir)
         resume = os.path.isdir(results_dir)
@@ -2171,8 +2311,11 @@ class YamlBuilder:
         utils.config_root_logger(exp_opts['verbose'], os.path.join(results_dir, exp_name + '.log'),
                                  self._mpicomm)
 
+        # Configure platform and precision
+        platform = self._configure_platform(exp_opts['platform'], exp_opts['precision'])
+
         # Initialize simulation
-        yank = Yank(results_dir, mpicomm=self._mpicomm, **yank_opts)
+        yank = Yank(results_dir, mpicomm=self._mpicomm, platform=platform, **yank_opts)
 
         if resume:
             yank.resume()

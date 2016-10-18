@@ -342,7 +342,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
             self.states.append(state)
 
         # Fully interacting state
-        if 'LJ_only_states' in ncfile.groups:
+        if 'fully_interacting_states' in ncfile.groups:
             ncgrp_stateinfo = ncfile.groups['fully_interacting_states']
             # Populate a new ThermodynamicState object
             reference_state = ThermodynamicState()
@@ -382,10 +382,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         state = self.states[0]
         self._integrator = openmm.LangevinIntegrator(state.temperature, self.collision_rate, self.timestep)
         self._integrator.setRandomNumberSeed(int(np.random.randint(0, MAX_SEED)))
-        if self.platform:
-            self._context = openmm.Context(state.system, self._integrator, self.platform)
-        else:
-            self._context = openmm.Context(state.system, self._integrator)
+        self._context = self._create_context(state.system, self._integrator)
         final_time = time.time()
         elapsed_time = final_time - initial_time
         logger.debug("Context creation took %.3f s." % elapsed_time)
@@ -402,14 +399,13 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
             reference_state_integrator = openmm.VerletIntegrator(self.timestep)
             reference_LJ_state_integrator = openmm.VerletIntegrator(self.timestep)
             reference_LJ_expanded_state_integrator = openmm.VerletIntegrator(self.timestep)
-            if self.platform:
-                self._reference_context = openmm.Context(reference_state.system, reference_state_integrator, self.platform)
-                self._reference_LJ_context = openmm.Context(reference_LJ_state.system, reference_LJ_state_integrator, self.platform)
-                self._reference_LJ_expanded_context = openmm.Context(reference_LJ_expanded_state.system, reference_LJ_expanded_state_integrator, self.platform)
-            else:
-                self._reference_context = openmm.Context(reference_state.system, reference_state_integrator)
-                self._reference_LJ_context = openmm.Context(reference_LJ_state.system, reference_LJ_state_integrator)
-                self._reference_LJ_expanded_context = openmm.Context(reference_LJ_expanded_state.system, reference_LJ_expanded_state_integrator)
+
+            self._reference_context = self._create_context(reference_state.system,
+                                                           reference_state_integrator)
+            self._reference_LJ_context = self._create_context(reference_LJ_state.system,
+                                                              reference_LJ_state_integrator)
+            self._reference_LJ_expanded_context = self._create_context(reference_LJ_expanded_state.system,
+                                                                       reference_LJ_expanded_state_integrator)
 
             final_time = time.time()
             elapsed_time = final_time - initial_time
@@ -940,7 +936,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         # Compute energies for fully interacting state
         #
         if (self.reference_LJ_state is not None) and (self.reference_LJ_expanded_state is not None) and (self.reference_state is not None):
-            logger.debug("Computing energies...")
+            logger.debug("Computing energies for fully interacting state...")
             start_time = time.time()
             reference_context = self._reference_context
             reference_LJ_context = self._reference_LJ_context

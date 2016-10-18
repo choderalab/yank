@@ -25,7 +25,7 @@ usage = """
 YANK script
 
 Usage:
-  yank script (-y=FILEPATH | --yaml=FILEPATH)
+  yank script (-y=FILEPATH | --yaml=FILEPATH) [--platform=PLATFORM]
 
 Description:
   Set up and run free energy calculations from a YAML scrpit. All options can be specified in the YAML script. 

@@ -3,7 +3,7 @@ YAML Files for Simulation
 
 YANK now supports setting up entire simulations with easy to read and write `YAML files <http://www.yaml.org/about.html>`. No longer do you need to remember long command line arguments with many ``--`` flags, you can just write a ``yank.yaml`` file and call ``yank script --yaml=yank.yaml`` to carry out all your preparation and simulations. Below are the valid YAML options. We also have example YANK simulations which use YAML files to run.
 
-.. todo:: This section is a work in progress and not all options are shown yet
+To see examples and some of the recommended stock settings, check out the :doc:`cookbook`! To see *all* options available to the YAML scripts: check out the detailed list below.
 
 All Pages
 ---------
@@ -32,6 +32,8 @@ Detailed Options List
     * :ref:`output_dir <yaml_options_output_dir>`
     * :ref:`setup_dir <yaml_options_setup_dir>`
     * :ref:`experiments_dir <yaml_options_experiments_dir>`
+    * :ref:`platform <yaml_options_platform>`
+    * :ref:`precision <yaml_options_precision>`
 
   * :ref:`System and Simulation Prep <yaml_options_sys_and_sim_prep>`
 
