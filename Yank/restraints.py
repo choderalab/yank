@@ -386,7 +386,7 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
             force.addPerBondParameter(parameter)
         try:
             force.addBond(particle1, particle2, self.bond_parameters)
-        exception Exception as e:
+        except Exception as e:
             print('particle1: %s' % str(particle1))
             print('particle2: %s' % str(particle1))
             print('bond_parameters: %s' % str(self.bond_parameters))
