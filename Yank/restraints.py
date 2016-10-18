@@ -937,6 +937,7 @@ class Boresch(OrientationDependentRestraint):
 
         """
         class Bunch(object):
+            """Make a dict accessible via an object accessor"""
             def __init__(self, adict):
                 self.__dict__.update(adict)
 
