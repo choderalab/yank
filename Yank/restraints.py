@@ -245,7 +245,7 @@ class ReceptorLigandRestraint(object):
            The standard-state correction, in kT
 
         """
-        raise NotImplementedError('getRestraintForce not implemented')
+        raise NotImplementedError('getStandardStateCorrection not implemented')
 
 #=============================================================================================
 # Base class for radially-symmetric receptor-ligand restraints.
@@ -747,7 +747,6 @@ class OrientationDependentRestraint(ReceptorLigandRestraint):
 
         """
         super(OrientationDependentRestraint, self).__init__(topology, state, system, positions, receptor_atoms, ligand_atoms)
-        pass
 
 class Boresch(OrientationDependentRestraint):
     """

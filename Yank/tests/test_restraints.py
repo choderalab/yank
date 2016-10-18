@@ -154,6 +154,7 @@ experiments:
     # Test all possible restraint types.
     available_restraint_types = yank.restraints.available_restraint_types()
     for restraint_type in available_restraint_types:
+        print(restraint_type)
         output_directory = tempfile.mkdtemp()
         data = {
             'output_directory' : output_directory,
