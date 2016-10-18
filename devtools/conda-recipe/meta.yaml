@@ -20,7 +20,7 @@ requirements:
     - openmm >=7.0.1
     - mdtraj >=1.7.2
     - openmmtools
-    - pymbar 
+    - pymbar
     - ambermini >=15.0.4
     - docopt
     - openmoltools
@@ -40,7 +40,7 @@ requirements:
     - openmm >=7.0.1
     - mdtraj >=1.7.2
     - openmmtools
-    - pymbar 
+    - pymbar
     - ambermini >=15.0.4
     - docopt
     - openmoltools

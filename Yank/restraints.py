@@ -28,6 +28,7 @@ from simtk import openmm, unit
 import mdtraj as md
 
 import abc
+import inspect
 
 import logging
 logger = logging.getLogger(__name__)
@@ -64,19 +65,11 @@ def available_restraint_classes():
 
         return all_subclasses
 
-    def is_abstract(cls):
-        if not hasattr(cls, "__abstractmethods__"):
-            return False # an ordinary class
-        elif len(cls.__abstractmethods__) == 0:
-            return False # a concrete implementation of an abstract class
-        else:
-            return True # an abstract class
-
     # Build an index of all names, ensuring there are no name collisions.
     available_restraints = dict()
     for cls in get_all_subclasses(ReceptorLigandRestraint):
         classname = cls.__name__
-        if is_abstract(cls):
+        if inspect.isabstract(cls):
             # Skip abstract base classes
             pass
         elif (classname in available_restraints):
