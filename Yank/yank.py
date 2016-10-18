@@ -28,7 +28,7 @@ import simtk.openmm as openmm
 
 from alchemy import AbsoluteAlchemicalFactory
 from .sampling import ModifiedHamiltonianExchange
-from .restraints import createRestraints
+from .restraints import create_restraints
 
 from . import utils
 
@@ -433,11 +433,11 @@ class Yank(object):
             # Impose restraints for complex system in implicit solvent to keep ligand from drifting too far away from receptor.
             logger.debug("Creating receptor-ligand restraints...")
             reference_positions = positions[0]
-            restraints = createRestraints(self._restraint_type,
+            restraints = create_restraints(self._restraint_type,
                 alchemical_phase.reference_topology, thermodynamic_state, reference_system, reference_positions, atom_indices['receptor'], atom_indices['ligand'])
-            force = restraints.getRestraintForce() # Get Force object incorporating restraints
+            force = restraints.get_restraint_force() # Get Force object incorporating restraints
             reference_system.addForce(force)
-            metadata['standard_state_correction'] = restraints.getStandardStateCorrection() # standard state correction in kT
+            metadata['standard_state_correction'] = restraints.get_standard_state_correction() # standard state correction in kT
         elif is_complex_explicit:
             # For periodic systems, we do not use a restraint, but must add a standard state correction for the box volume.
             # TODO: What if the box volume fluctuates during the simulation?

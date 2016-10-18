@@ -92,7 +92,7 @@ def test_restraint_dispatch():
         from openmmtools.testsystems import ThermodynamicState
         thermodynamic_state = ThermodynamicState(temperature=300.0*unit.kelvin)
         # Add restraints
-        restraint = yank.restraints.createRestraints(restraint_type, t.topology, thermodynamic_state, t.system, t.positions, t.receptor_atoms, t.ligand_atoms)
+        restraint = yank.restraints.create_restraints(restraint_type, t.topology, thermodynamic_state, t.system, t.positions, t.receptor_atoms, t.ligand_atoms)
         # Check that we got the right restraint class
         assert(restraint.__class__.__name__ == restraint_type)
         assert(restraint.__class__ == restraint_class)
