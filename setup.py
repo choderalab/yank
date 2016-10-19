@@ -129,8 +129,8 @@ setup(
     platforms=['Linux', 'Mac OS-X', 'Unix', 'Windows'],
     classifiers=CLASSIFIERS.splitlines(),
     package_dir={'yank': 'Yank'},
-    packages=['yank', "yank.tests", "yank.commands", "yank.mixing"] + ['yank.%s' % package for package in find_packages('yank')],
-    package_data={'yank': find_package_data('examples', 'yank')},  # NOTE: examples installs to yank.egg/examples/, NOT yank.egg/yank/examples/.  You need to do utils.get_data_filename("../examples/*/setup/").
+    packages=['yank', "yank.tests", "yank.tests.data", "yank.commands", "yank.mixing"] + ['yank.%s' % package for package in find_packages('yank')],
+    package_data={'yank' : find_package_data('examples', 'yank') + find_package_data('Yank/tests/data', 'yank')},  # NOTE: examples installs to yank.egg/examples/, NOT yank.egg/yank/examples/.  You need to do utils.get_data_filename("../examples/*/setup/").
     zip_safe=False,
     install_requires=[
         'numpy',
@@ -143,8 +143,7 @@ setup(
         'netcdf4',
         'alchemy',
         'schema',
+        'openmoltools',
         ],
     ext_modules=cythonize(mixing_ext),
     entry_points={'console_scripts': ['yank = yank.cli:main']})
-
-

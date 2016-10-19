@@ -28,7 +28,7 @@ import simtk.openmm as openmm
 
 from alchemy import AbsoluteAlchemicalFactory
 from .sampling import ModifiedHamiltonianExchange
-from .restraints import HarmonicReceptorLigandRestraint, FlatBottomReceptorLigandRestraint
+from .restraints import create_restraints
 
 from . import utils
 
@@ -124,7 +124,7 @@ class Yank(object):
     """
 
     default_parameters = {
-        'restraint_type': 'flat-bottom',
+        'restraint_type': 'FlatBottom',
         'randomize_ligand': False,
         'randomize_ligand_sigma_multiplier': 2.0,
         'randomize_ligand_close_cutoff': 1.5 * unit.angstrom,
@@ -145,9 +145,9 @@ class Yank(object):
             Platform to use for execution. If None, the fastest available platform
             is used (default: None).
         restraint_type : str, optional
-           Restraint type to add between protein and ligand. Supported types are
-           'flat-bottom' and 'harmonic'. The second one is available only in
-           implicit solvent (default: 'flat-bottom').
+           Restraint type to add between protein and ligand.
+           Supported types are 'FlatBottom' and 'Harmonic'
+           The second one is available only in implicit solvent (default: 'FlatBottom').
         randomize_ligand : bool, optional
            Randomize ligand position when True. Not available in explicit solvent
            (default: False).
@@ -433,16 +433,11 @@ class Yank(object):
             # Impose restraints for complex system in implicit solvent to keep ligand from drifting too far away from receptor.
             logger.debug("Creating receptor-ligand restraints...")
             reference_positions = positions[0]
-            if self._restraint_type == 'harmonic':
-                restraints = HarmonicReceptorLigandRestraint(thermodynamic_state, reference_system, reference_positions, atom_indices['receptor'], atom_indices['ligand'])
-            elif self._restraint_type == 'flat-bottom':
-                restraints = FlatBottomReceptorLigandRestraint(thermodynamic_state, reference_system, reference_positions, atom_indices['receptor'], atom_indices['ligand'])
-            else:
-                raise Exception("restraint_type of '%s' is not supported." % self._restraint_type)
-
-            force = restraints.getRestraintForce() # Get Force object incorporating restraints
+            restraints = create_restraints(self._restraint_type,
+                alchemical_phase.reference_topology, thermodynamic_state, reference_system, reference_positions, atom_indices['receptor'], atom_indices['ligand'])
+            force = restraints.get_restraint_force() # Get Force object incorporating restraints
             reference_system.addForce(force)
-            metadata['standard_state_correction'] = restraints.getStandardStateCorrection() # standard state correction in kT
+            metadata['standard_state_correction'] = restraints.get_standard_state_correction() # standard state correction in kT
         elif is_complex_explicit:
             # For periodic systems, we do not use a restraint, but must add a standard state correction for the box volume.
             # TODO: What if the box volume fluctuates during the simulation?

@@ -224,7 +224,7 @@ experiments:
   system: kinase-inhibitor
   protocol: absolute-binding
   options:                                                  # All options that can be specified in the "options"
-    restraint_type: !Combinatorial [flat-bottom, harmonic]  # section can be included here.
+    restraint_type: !Combinatorial [Harmonic, FlatBottom]   # section can be included here.
 
 
 # It is also possible to specify a sequence of experiments with the syntax

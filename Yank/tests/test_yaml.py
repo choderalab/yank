@@ -261,7 +261,7 @@ def test_yaml_parsing():
         pressure: null
         constraints: AllBonds
         hydrogen_mass: 2*amus
-        restraint_type: harmonic
+        restraint_type: Harmonic
         randomize_ligand: yes
         randomize_ligand_sigma_multiplier: 2.0
         randomize_ligand_close_cutoff: 1.5 * angstrom
