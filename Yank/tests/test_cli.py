@@ -70,7 +70,7 @@ def notest_prepare_binding():
 
 def test_script_yaml():
     """Check that yank script --yaml command works."""
-    setup_dir = utils.get_data_filename(os.path.join('..', 'Yank', 'tests', 'data', 'p-xylene-implicit'))
+    setup_dir = utils.get_data_filename(os.path.join('p-xylene-implicit'))
     pxylene_path = os.path.join(setup_dir, 'p-xylene.mol2')
     lysozyme_path = os.path.join(setup_dir, '181L-pdbfixer.pdb')
     with omt.utils.temporary_directory() as tmp_dir:
