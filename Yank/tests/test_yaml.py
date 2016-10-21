@@ -50,7 +50,7 @@ def indent(str):
 def examples_paths():
     """Return the absolute path to the Yank examples relevant to tests."""
     paths = {}
-    data_dir = utils.get_data_filename(os.path.join('..', 'Yank', 'tests', 'data'))
+    data_dir = utils.get_data_filename(os.path.join('tests', 'data'))
     p_xylene_dir = os.path.join(data_dir, 'p-xylene-implicit')
     p_xylene_gro_dir = os.path.join(data_dir, 'p-xylene-gromacs-example')
     ben_tol_dir = os.path.join(data_dir, 'benzene-toluene-explicit')
@@ -342,7 +342,7 @@ def test_validation_correct_molecules():
 def test_validation_wrong_molecules():
     """YAML validation raises exception with wrong molecules."""
     paths = examples_paths()
-    paths['wrongformat'] = utils.get_data_filename(os.path.join('..', 'examples', 'README.md'))
+    paths['wrongformat'] = utils.get_data_filename(os.path.join('tests', 'data', 'README.md'))
     molecules = [
         {'antechamber': {'charge_method': 'bcc'}},
         {'filepath': paths['wrongformat']},

@@ -105,7 +105,7 @@ def test_expand_tree():
                                                                                    max_name_length=10)])
 
     # Test file paths are handled correctly
-    data_dir = get_data_filename(os.path.join('..', 'Yank', 'tests', 'data'))
+    data_dir = get_data_filename(os.path.join('tests', 'data'))
     abl = os.path.join(data_dir, 'abl-imatinib-explicit', '2HYY-pdbfixer.pdb')
     benzene = os.path.join(data_dir, 'benzene-toluene-explicit', 'benzene.tripos.mol2')
     long_tree = CombinatorialTree({'key1': CombinatorialLeaf([abl, benzene]),
@@ -305,7 +305,7 @@ def test_TLeap_script():
 
 def test_TLeap_export_run():
     """Check that TLeap saves and runs scripts correctly."""
-    setup_dir = get_data_filename(os.path.join('..', 'Yank', 'tests', 'data',
+    setup_dir = get_data_filename(os.path.join('tests', 'data',
                                                'benzene-toluene-explicit'))
     benzene_gaff = os.path.join(setup_dir, 'benzene.gaff.mol2')
     benzene_frcmod = os.path.join(setup_dir, 'benzene.frcmod')
