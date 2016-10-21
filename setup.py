@@ -16,7 +16,7 @@ from Cython.Build import cythonize
 DOCLINES = __doc__.split("\n")
 
 ########################
-VERSION = "0.11.2"
+VERSION = "0.11.3"
 ISRELEASED = False
 __version__ = VERSION
 ########################
@@ -130,7 +130,7 @@ setup(
     classifiers=CLASSIFIERS.splitlines(),
     package_dir={'yank': 'Yank'},
     packages=['yank', "yank.tests", "yank.tests.data", "yank.commands", "yank.mixing"] + ['yank.%s' % package for package in find_packages('yank')],
-    package_data={'yank' : find_package_data('examples', 'yank') + find_package_data('Yank/tests/data', 'yank')},  # NOTE: examples installs to yank.egg/examples/, NOT yank.egg/yank/examples/.  You need to do utils.get_data_filename("../examples/*/setup/").
+    package_data={'yank' : find_package_data('Yank/tests/data', 'yank')},  # NOTE: examples installs to yank.egg/examples/, NOT yank.egg/yank/examples/.  You need to do utils.get_data_filename("../examples/*/setup/").
     zip_safe=False,
     install_requires=[
         'numpy',

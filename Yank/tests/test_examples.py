@@ -97,7 +97,7 @@ def get_immediate_subdirectories(path):
     return [name for name in os.listdir(path) if os.path.isdir(os.path.join(path, name)) and os.path.exists(os.path.join(path, name, 'run.sh'))]
 
 @attr('slow') # Skip on Travis-CI
-def test_examples():
+def notest_examples():
     # Get example path.
     from pkg_resources import resource_filename
     path = resource_filename('yank', '../examples')
