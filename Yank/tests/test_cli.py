@@ -63,14 +63,14 @@ def test_selftest():
         else:
             raise(e)
 
-def test_prepare_binding():
+def notest_prepare_binding():
     dirname = utils.get_data_filename("../examples/benzene-toluene-implicit/setup/")  # Could only figure out how to install things like yank.egg/examples/, rather than yank.egg/yank/examples/
     with omt.utils.temporary_directory() as store_dir:
         run_cli('prepare binding amber --setupdir=%(dirname)s --ligand="resname TOL" --store %(store_dir)s --gbsa OBC1' % vars())
 
 def test_script_yaml():
     """Check that yank script --yaml command works."""
-    setup_dir = utils.get_data_filename(os.path.join('..', 'examples', 'p-xylene-implicit', 'input'))
+    setup_dir = utils.get_data_filename(os.path.join('tests', 'data', 'p-xylene-implicit'))
     pxylene_path = os.path.join(setup_dir, 'p-xylene.mol2')
     lysozyme_path = os.path.join(setup_dir, '181L-pdbfixer.pdb')
     with omt.utils.temporary_directory() as tmp_dir:

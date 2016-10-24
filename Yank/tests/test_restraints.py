@@ -161,8 +161,8 @@ experiments:
         data = {
             'output_directory' : output_directory,
             'restraint_type' : restraint_type,
-            'receptor_filepath' : get_data_filename('tests/data/p-xylene-implicit/input/181L-pdbfixer.pdb'),
-            'ligand_filepath'   : get_data_filename('tests/data/p-xylene-implicit/input/p-xylene.mol2'),
+            'receptor_filepath' : get_data_filename('tests/data/p-xylene-implicit/181L-pdbfixer.pdb'),
+            'ligand_filepath'   : get_data_filename('tests/data/p-xylene-implicit/p-xylene.mol2'),
         }
         # run both setup and experiment
         yaml_builder = YamlBuilder(yaml_script % data)

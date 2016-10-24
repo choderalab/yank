@@ -50,11 +50,11 @@ def indent(str):
 def examples_paths():
     """Return the absolute path to the Yank examples relevant to tests."""
     paths = {}
-    examples_dir = utils.get_data_filename(os.path.join('..', 'examples'))
-    p_xylene_dir = os.path.join(examples_dir, 'p-xylene-implicit', 'input')
-    p_xylene_gro_dir = os.path.join(examples_dir, 'p-xylene-gromacs-example', 'setup')
-    ben_tol_dir = os.path.join(examples_dir, 'benzene-toluene-explicit', 'setup')
-    abl_imatinib_dir = os.path.join(examples_dir, 'abl-imatinib-explicit', 'input')
+    data_dir = utils.get_data_filename(os.path.join('tests', 'data'))
+    p_xylene_dir = os.path.join(data_dir, 'p-xylene-implicit')
+    p_xylene_gro_dir = os.path.join(data_dir, 'p-xylene-gromacs-example')
+    ben_tol_dir = os.path.join(data_dir, 'benzene-toluene-explicit')
+    abl_imatinib_dir = os.path.join(data_dir, 'abl-imatinib-explicit')
     paths['lysozyme'] = os.path.join(p_xylene_dir, '181L-pdbfixer.pdb')
     paths['p-xylene'] = os.path.join(p_xylene_dir, 'p-xylene.mol2')
     paths['benzene'] = os.path.join(ben_tol_dir, 'benzene.tripos.mol2')
@@ -342,7 +342,7 @@ def test_validation_correct_molecules():
 def test_validation_wrong_molecules():
     """YAML validation raises exception with wrong molecules."""
     paths = examples_paths()
-    paths['wrongformat'] = utils.get_data_filename(os.path.join('..', 'examples', 'README.md'))
+    paths['wrongformat'] = utils.get_data_filename(os.path.join('tests', 'data', 'README.md'))
     molecules = [
         {'antechamber': {'charge_method': 'bcc'}},
         {'filepath': paths['wrongformat']},

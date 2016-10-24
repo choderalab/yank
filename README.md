@@ -14,6 +14,11 @@ Documentation
 
 Documentation and examples can be found at [getyank.org](http://getyank.org)
 
+Examples
+--------
+
+Examples are made available through [their own repository](http://github.com/choderalab/yank-examples).
+
 Maintainers
 -----------
 
@@ -31,7 +36,6 @@ Contributors
 * Patrick B. Grinaway (MSKCC)
 * Christoph Klein (University of Virginia)
 * Rosa Luirink (VU Amsterdam)
-* Levi Naden (University of Virginia)
 * Daniel L. Parton (MSKCC)
 * Randy Radmer (Stanford)
 * Arien Sebastian Rustenburg (MSKCC)

@@ -25,7 +25,7 @@ from yank import version, utils
 # UNIT TESTS
 #=============================================================================================
 
-def test_prepare_amber_implicit(verbose=False):
+def notest_prepare_amber_implicit(verbose=False):
     store_directory = tempfile.mkdtemp()
     examples_path = utils.get_data_filename("../examples/benzene-toluene-implicit/setup/")  # Could only figure out how to install things like yank.egg/examples/, rather than yank.egg/yank/examples/
     command = 'yank prepare binding amber --setupdir=%(examples_path)s --store=%(store_directory)s --iterations=1 --restraints=Harmonic --gbsa=OBC2 --temperature=300*kelvin' % vars()
@@ -38,7 +38,7 @@ def test_prepare_amber_implicit(verbose=False):
 
 
 @attr('slow')  # Skip on Travis-CI
-def test_prepare_amber_explicit(verbose=False):
+def notest_prepare_amber_explicit(verbose=False):
     store_directory = tempfile.mkdtemp()
     examples_path = utils.get_data_filename("../examples/benzene-toluene-explicit/setup/")  # Could only figure out how to install things like yank.egg/examples/, rather than yank.egg/yank/examples/
     command = 'yank prepare binding amber --setupdir=%(examples_path)s --store=%(store_directory)s --iterations=1 --nbmethod=CutoffPeriodic --temperature=300*kelvin --pressure=1*atmospheres' % vars()
@@ -51,7 +51,7 @@ def test_prepare_amber_explicit(verbose=False):
 
 
 @attr('slow')  # Skip on Travis-CI
-def test_prepare_gromacs_explicit(verbose=False):
+def notest_prepare_gromacs_explicit(verbose=False):
     store_directory = tempfile.mkdtemp()
     examples_path = utils.get_data_filename("../examples/p-xylene-gromacs-example/setup/")
     command = 'yank prepare binding gromacs --setupdir=%(examples_path)s --store=%(store_directory)s --iterations=1 --nbmethod=CutoffPeriodic --temperature=300*kelvin --pressure=1*atmospheres --cutoff=1*nanometer' % vars()
@@ -69,4 +69,4 @@ def test_prepare_gromacs_explicit(verbose=False):
 if __name__ == '__main__':
     #test_prepare_amber_implicit(verbose=True)
     #test_prepare_amber_explicit(verbose=True)
-    test_prepare_gromacs_explicit(verbose=True)
+    notest_prepare_gromacs_explicit(verbose=True)
