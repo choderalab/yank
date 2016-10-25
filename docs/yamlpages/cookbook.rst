@@ -185,10 +185,10 @@ repo.
 Raw YAML File Examples
 ======================
 
-.. literalinclude:: ../../examples/yank-yaml-cookbook/all-options.yaml
+.. literalinclude:: ../yank-yaml-cookbook/all-options.yaml
       :language: yaml
 
 |
 
-.. literalinclude:: ../../examples/yank-yaml-cookbook/combinatorial-experiment.yaml
+.. literalinclude:: ../yank-yaml-cookbook/combinatorial-experiment.yaml
       :language: yaml
