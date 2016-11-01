@@ -1,3 +1,5 @@
+.. _yaml_head:
+
 YAML Files for Simulation
 #########################
 
