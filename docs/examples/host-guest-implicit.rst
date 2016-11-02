@@ -7,7 +7,7 @@ This example illustrates the computation of the binding free energy of B2 guest 
 NVT non-periodic system of implicit water. From description, we will craft the settings, molecules, and simulations in YANK.
 This example will be less detailed than the :doc:`full detailed example of p-xylene and T4 Lysozyme <p-xylene-explicit>`
 
-This example resides in ``{PYTHON SOURCE DIR}/share/yank/examples/p-xylene-explicit``. The rest of the example here
+This example resides in ``{PYTHON SOURCE DIR}/share/yank/examples/binding/host-guest``. The rest of the example here
 assumes you are in this directory.
 
 Examining YAML file

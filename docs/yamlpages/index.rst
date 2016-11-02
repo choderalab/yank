@@ -90,7 +90,7 @@ Detailed Options List
     * :ref:`strip_protons <yaml_molecules_strip_protons>`
     * :ref:`select <yaml_molecules_select>`
   
-  * :ref:`Assigning Partial Charges <yaml_molecules_assign_charges>`
+  * :ref:`Assigning Missing Parameters <yaml_molecules_assign_charges>`
 
     * :ref:`antechamber <yaml_molecules_antechamber>`
     * :ref:`openeye <yaml_molecules_openeye>`

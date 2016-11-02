@@ -119,8 +119,8 @@ Valid Options: [all]/<Integer>/<List of ints>
 
 .. _yaml_molecules_assign_charges:
 
-Assigning Parital Charges
-=========================
+Assigning Missing Parameters
+============================
 
 .. _yaml_molecules_antechamber:
 
@@ -134,13 +134,22 @@ antechamber
        antechamber:
          charge_method: bcc
 
-Pass the molecule through AmberTools ANTECHAMBER to assign changes and parameters. Fine grain control is handled through the ``charge_method`` argument which accepts either a known ANTECHAMBER method or ``null`` for none. 
+Pass the molecule through AmberTools ANTECHAMBER to assign missing parameters such as torsions and angle terms.
 
-Primarially used to assign charges to small molecules
+``charge_method`` is a required sub-directive which allows assigning missing charges to the molecule. It is either given
+a known charge method to ANTECHAMBER method or ``null`` to skip assigning charges. The later is helpful when you
+already have the charges, but are missing other parameters.
 
-**MANDATORY** but exclusive with :ref:`openeye <yaml_molecules_openeye>` but...
+**OPTIONAL**
 
-**OPTIONALLY SUPERSEDED** by :ref:`leap <yaml_molecules_leap>` if pre-processed partial charge data is avilalble for small molecules OR if the partial charge data is included as part of the protein force feild used to buld the :ref:`leap argument in systems <yaml_systems_leap>`.
+**PARTIALLY EXCLUSIVE** If you have acess to the OpenEye toolkits and want to use them to **assign partial charges**
+to the atoms through the :ref:`openeye <yaml_molecules_openeye>` command, then you should set ``charge_method`` to ``null``.
+ANTECHAMBER can still get the other missing parameters such as torsions and angles.
+
+**OPTIONALLY SUPERSEDED** by :ref:`leap <yaml_molecules_leap>` or the :ref:`leap argument in systems <yaml_systems_leap>`.
+If the parameter files you feed into either ``leap`` argument have the charges and molecular parameters already
+ included (such as standard protein residues in many force fields), then there is no need to invoke this command. If the
+force fields you give to the ``leap`` commands are missing parameters though, you should call this.
 
 
 .. _yaml_molecules_openeye:
@@ -156,15 +165,19 @@ openeye
          quacpac: am1-bcc
 
 Use the OpenEye Toolkits if installed to determine molecular charge.
-Only the current options as shown are permitted and must be specified as shown. 
-Specifying this method is preferred over :ref:`antechamber <yaml_molecules_antechamber>` if available.
+Only the current options as shown are permitted and must be specified as shown.
 
-**MANDATORY** but exclusive with :ref:`antechamber <yaml_molecules_antechamber>` *for assigning charges*. `antechamber: null` *must still be set* to get the missing atomic parameters from GAFF. However...
+**OPTIONAL**
 
-**OPTIONALLY SUPERSEDED** by :ref:`leap <yaml_molecules_leap>` 
-if pre-processed partial charge data is available for small molecules OR 
-if the partial charge data is included as part of the protein 
-force feild used to build the :ref:`leap argument in systems <yaml_systems_leap>`.
+**PARTIALLY EXCLUSIVE** If you want to use :ref:`antechamber <yaml_molecules_antechamber>` to assign partial charges,
+do not use this command. However, if you want to use :ref:`antechamber <yaml_molecules_antechamber>` to only get other
+missing parameters such as torsions and angles, use this command but set ``charge_method`` to ``null`` in
+:ref:`antechamber <yaml_molecules_antechamber>`
+
+**OPTIONALLY SUPERSEDED** by :ref:`leap <yaml_molecules_leap>` or the :ref:`leap argument in systems <yaml_systems_leap>`.
+If the parameter files you feed into either ``leap`` argument have the charges and molecular parameters already
+ included (such as standard protein residues in many force fields), then there is no need to invoke this command. If the
+force fields you give to the ``leap`` commands are missing partial charges though, you should call this.
 
 |
 
