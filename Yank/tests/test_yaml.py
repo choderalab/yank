@@ -355,14 +355,14 @@ def test_validation_wrong_molecules():
         {'filepath': 'nonexistentfile.pdb', 'leap': {'parameters': 'leaprc.ff14SB'}},
         {'filepath': paths['toluene'], 'smiles': 'Cc1ccccc1'},
         {'filepath': paths['toluene'], 'strip_protons': True},
-        {'filepath': paths['abl'], 'leap': {'parameters': 'leaprc.ff14SB'}, 'epik': 0},
+        {'filepath': paths['abl'], 'leap': {'parameters': 'oldff/leaprc.ff14SB'}, 'epik': 0},
         {'name': 'toluene', 'epik': {'tautomerize': 6}},
         {'name': 'toluene', 'epik': {'extract_range': 1}},
         {'name': 'toluene', 'smiles': 'Cc1ccccc1'},
         {'name': 3},
         {'smiles': 'Cc1ccccc1', 'select': 1},
         {'name': 'Cc1ccccc1', 'select': 1},
-        {'filepath': paths['abl'], 'leap': {'parameters': 'leaprc.ff14SB'}, 'select': 'notanoption'},
+        {'filepath': paths['abl'], 'leap': {'parameters': 'oldff/leaprc.ff14SB'}, 'select': 'notanoption'},
     ]
     for molecule in molecules:
         yield assert_raises, YamlParseError, YamlBuilder._validate_molecules, {'mol': molecule}
