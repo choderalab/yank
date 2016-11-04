@@ -34,7 +34,8 @@ script:
   - conda config --add channels https://conda.anaconda.org/omnia/label/dev
   # Install OpenEye toolkit
   - conda install --yes --quiet pip
-  - pip install $OPENEYE_CHANNEL openeye-toolkits && python -c "import openeye; print(openeye.__version__)"
+  # TODO: UNPIN VERSION WHEN 2016.10.1 BUG IS FIXED
+  - pip install $OPENEYE_CHANNEL openeye-toolkits==2016.6.1 && python -c "import openeye; print(openeye.__version__)"
   # Build the recipe
   - conda build devtools/conda-recipe
   # Install the package
@@ -55,7 +56,7 @@ env:
     - PACKAGENAME="yank"
     # OpenEye toolkit
     - OE_LICENSE="$HOME/oe_license.txt"
-    - OPENEYE_CHANNEL="-i https://pypi.anaconda.org/openeye/label/main/simple/"
+      - OPENEYE_CHANNEL="-i https://pypi.anaconda.org/openeye/label/main/simple/"
     # encrypted BINSTAR_TOKEN for push of dev package to binstar
     - secure: "iGrY1Jrr6ZvxtvjnTBVLFIPQBaalzkZX+DJWFZuk6j8igjDrlEVE2iGmpx5Akb7/H5/rRPI1GcnYy0e2OXSVHyxwcn2I6TXia3g6K95yxH43xOaTEfiFGfxSgP6M5OZSJjlLUmv3cpnJ66r6kYjQgTn9djY2iLsGKkFdR8pn6gQ="
     # encrypted AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
