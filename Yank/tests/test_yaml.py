@@ -1282,7 +1282,7 @@ def test_setup_implicit_system_leap():
 
             with open(pdb_path, 'r') as f:
                 for line in f:
-                    if len(line) > 10:
+                    if len(line) > 10 and line[:5] != 'CRYST':
                         found_resnames.add(line[17:20])
 
             assert os.path.exists(prmtop_path)
@@ -1318,8 +1318,8 @@ def test_setup_explicit_system_leap():
 
             with open(pdb_path, 'r') as f:
                 for line in f:
-                    if len(line) > 10:
-                        found_resnames.add(line[17:20])
+                    if len(line) > 10 and line[:5] != 'CRYST':
+                        found_resnames .add(line[17:20])
 
             assert os.path.exists(prmtop_path)
             assert os.path.exists(inpcrd_path)
@@ -1342,7 +1342,7 @@ def test_neutralize_system():
         found_resnames = set()
         with open(os.path.join(output_dir, 'complex.pdb'), 'r') as f:
             for line in f:
-                if len(line) > 10:
+                if len(line) > 10 and line[:5] != 'CRYST':
                     found_resnames.add(line[17:20])
         assert set(['MOL', 'WAT', 'Cl-']) <= found_resnames
 
@@ -1404,7 +1404,7 @@ def test_charged_ligand():
                 output_dir = os.path.dirname(system_files_paths[0].position_path)
                 with open(os.path.join(output_dir, phase_name + '.pdb'), 'r') as f:
                     for line in f:
-                        if len(line) > 10:
+                        if len(line) > 10 and line[:5] != 'CRYST':
                             found_resnames.add(line[17:20])
                 if phase_name == 'complex':
                     assert set(['Na+', 'Cl-']) <= found_resnames
@@ -1435,7 +1435,7 @@ def test_setup_explicit_solvation_system():
 
             with open(pdb_path, 'r') as f:
                 for line in f:
-                    if len(line) > 10:
+                    if len(line) > 10 and line[:5] != 'CRYST':
                         found_resnames.add(line[17:20])
 
             assert os.path.exists(prmtop_path)
