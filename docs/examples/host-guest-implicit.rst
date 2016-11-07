@@ -44,10 +44,11 @@ host. It loosely follows this equation:
 
 .. math::
 
-  U_{\text{restraint}}(r) = \begin{cases}
-    0 & \,\text{if}\, r \le r_{\text{cutoff} \\
-    K \cdot \left(r-r_{\text{cutoff} \right)^2 & \,\text{if}\, r > r_{\text{cutoff}
-  \end{cases}
+
+  U_{\text{restraint}}(r) =  \begin{cases}
+                                               0 & \,\text{if}\, r \le r_{\text{cutoff}} \\
+      K \cdot \left(r-r_{\text{cutoff}} \right)^2 & \,\text{if}\, r > r_{\text{cutoff}}
+      \end{cases}
 
 The Flat Bottom restraint has another advnatage on this system in particluar. The symmetric host molecule is known to
 have multiple binding sites that are hard to locate in normal simulation time lengths. The ``FlatBottom`` restraint allows
@@ -62,7 +63,7 @@ output directory called ``hgoutput``. Note that this folder is relative to the `
 Molecules Heading
 ^^^^^^^^^^^^^^^^^
 
-.. code-block::
+.. code-block:: yaml
 
     molecules:
       cucurbit:
@@ -92,7 +93,7 @@ The guest molecule, B2, is identical to earlier examples and no further options 
 Solvents Heading
 ^^^^^^^^^^^^^^^^
 
-.. code-block::
+.. code-block:: yaml
 
     solvents:
       GBSA:

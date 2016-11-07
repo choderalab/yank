@@ -32,12 +32,14 @@ program's install location, then ``./share/yank/examples``.
 
 Uninstalling this program will also remove the files.
 
+|
+
 .. toctree::
    :maxdepth: 1
 
    Example 1: Absolute Binding of para-Xylene to T4-Lysozyme in Explicit Solvent <p-xylene-explicit>
    Example 2: Absolute Binding of Host cucurbit[7]uril with Guest molecule B2 in Implicit Solvent <host-guest-implicit>
    Example 3: Hydration Free energy of Phenol in Explicit Solvent <hydration-phenol-explicit>
-   Example 4: Binding Free Energy of a large set of ligands for T4-Lysozyme, split by ``!Combinatorial`` argument <all-ligand-explicit>
+   Example 4: Binding Free Energy of a large set of ligands for T4-Lysozyme, split by "!Combinatorial" <all-ligand-explicit>
 
 

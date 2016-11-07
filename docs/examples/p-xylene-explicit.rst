@@ -201,8 +201,8 @@ Free energy calculations are computationally difficult to compute because in a p
 in and out of the binding pocket. This action happens on the order of milliseconds to seconds, which are simulation
 times that are very difficult to achive with direct simulation. Instead, we use a computationally efficient thermodynamic
 cycle along efficient thermodynamic paths to mimic the end states (bound ligand in solvent box -> ligand in solvent
-+ receptor in solvent). For more reading, please see the alchemistry.org page on `the thermodynamic cycle <http://www.alchemistry.org/wiki/Thermodynamic_Cycle>`
-and on `choosing intermediate states <http://www.alchemistry.org/wiki/Constructing_a_Pathway_of_Intermediate_States>`
++ receptor in solvent). For more reading, please see the alchemistry.org page on `the thermodynamic cycle <http://www.alchemistry.org/wiki/Thermodynamic_Cycle>`_
+and on `choosing intermediate states <http://www.alchemistry.org/wiki/Constructing_a_Pathway_of_Intermediate_States>`_
 for more details.
 
 This header controls how many states you will sample, and which values along the thermodynamic paths to sample in each
