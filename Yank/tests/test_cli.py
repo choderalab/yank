@@ -105,7 +105,7 @@ def test_script_yaml():
                 ligand: p-xylene
                 solvent: vacuum
                 leap:
-                    parameters: [leaprc.gaff, leaprc.ff14SB]
+                    parameters: [leaprc.gaff, oldff/leaprc.ff14SB]
         experiments:
             system: system
             protocol: absolute-binding

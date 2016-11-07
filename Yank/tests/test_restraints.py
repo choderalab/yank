@@ -133,7 +133,7 @@ systems:
     ligand: p-xylene
     solvent: vacuum
     leap:
-      parameters: [leaprc.ff14SB, leaprc.gaff]
+      parameters: [oldff/leaprc.ff14SB, leaprc.gaff]
 
 protocols:
   absolute-binding:
