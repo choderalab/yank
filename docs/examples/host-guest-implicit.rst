@@ -116,3 +116,9 @@ Reamining Headings
 The remaining headings: ``systems``, ``protocols``, and ``experiments`` are strait forward. Please see the more
 :doc:`detailed p-xylene in T4 Lysozyme example <p-xylene-explicit>` for more information on these sections.
 
+
+Running and Analyzing the Simulation
+------------------------------------
+
+The execution and analysis of the simulation are handled the same as
+:doc:`in the T4 Lysozyme binding example <p-xylene-explicit>`. Please see the documentation on that page for more information.

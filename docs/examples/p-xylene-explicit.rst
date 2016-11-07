@@ -23,6 +23,8 @@ and valid values.
 This example goes through all the options we choose and why in explicit detail, future examples will not cover every
 option, but instead just the changes.
 
+.. _hydration_phenol_explicit_options:
+
 Options Heading
 ^^^^^^^^^^^^^^^
 The ``options`` heading is where the general simulation settings are chosen. These are experiment wide settings that will
@@ -66,6 +68,7 @@ This option sets the pressure of our system. YANK uses OpenMM's Monte Carlo Baro
 pressure is set to 1 atmosphere anyways, we explicitly set it here for this example. If you wanted to instead do NVT
 simulations, you would need to explicitly set this option to ``null``.
 
+.. _hydration_phenol_explicit_molecules:
 
 Molecules Heading
 ^^^^^^^^^^^^^^^^^

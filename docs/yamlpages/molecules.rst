@@ -102,18 +102,23 @@ select
    molecules:
      {UserDefinedMolecule}:
        filepath: clinical-kinase-inhibitors.csv
-       parameter: antechamber
-       select: [0, 3]
+       antechamber:
+           charge_method: bcc
+       select: !Combinatorial [0, 3]
        
 The "select" keyword works the same way if you specify a 
-pdb, mol2, sdf, or cvs file containing multiple structures. 
-You can alternatively specify ``select: all`` which includes 
-all the molecules in the given file. 
+pdb, mol2, sdf, or cvs file containing multiple structures.
+``select`` has 3 modes:
+
+1. ``select: all`` includes all the molecules in the given file.
+2. ``select: <Integer>`` picks the molecule in the file with index ``<Integer>``
+3. ``select: !Combinatorial: <List of Ints>`` pick specific indices in the file. See :doc:`Combinatorial <combinatorial>` options for more information.
+
 Indexing starts at 0.
 
 **OPTIONAL** with default value of ``all``
 
-Valid Options: [all]/<Integer>/<List of ints>
+Valid Options: [all]/<Integer>/<Combinatorial List of ints>
 
 |
 
