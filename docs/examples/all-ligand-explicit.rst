@@ -153,3 +153,8 @@ for every combination of options. Right now YANK will only tell you the free ene
 It will be up to you to trap this information and split it into each simulation.
 
 Future versions of YANK will generate more helpful output for ``!Combinatorial`` simulations.
+
+Other Files in this Example
+---------------------------
+
+We also provide inputs for running implicit simulation of the same problem.

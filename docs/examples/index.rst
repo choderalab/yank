@@ -39,8 +39,5 @@ Uninstalling this program will also remove the files.
    Example 2: Absolute Binding of Host cucurbit[7]uril with Guest molecule B2 in Implicit Solvent <host-guest-implicit>
    Example 3: Hydration Free energy of Phenol in Explicit Solvent <hydration-phenol-explicit>
    Example 4: Binding Free Energy of a large set of ligands for T4-Lysozyme, split by ``!Combinatorial`` argument <all-ligand-explicit>
-   benzene-toluene-implicit
-   benzene-toluene-explicit
-   p-xylene-implicit
 
 
