@@ -854,15 +854,10 @@ class SetupDatabase:
                 epik_mol2_file = epik_base_path + 'mol2'
                 epik_sdf_file = epik_base_path + 'sdf'
 
-                # The 'epik' keyword can contain both a dictionary with the
-                # arguments to pass to run_epik(), or just the index
-                epik_args = mol_descr['epik']
-                if not isinstance(epik_args, dict):
-                    epik_args = {'extract_range': epik_args, 'tautomerize': False}
-
                 # Run epik and convert from maestro to both mol2 and sdf
                 # to not lose neither the penalties nor the residue name
-                omt.schrodinger.run_epik(mol_descr['filepath'], epik_mae_file, **epik_args)
+                epik_kwargs = mol_descr['epik']
+                omt.schrodinger.run_epik(mol_descr['filepath'], epik_mae_file, **epik_kwargs)
                 omt.schrodinger.run_structconvert(epik_mae_file, epik_sdf_file)
                 omt.schrodinger.run_structconvert(epik_mae_file, epik_mol2_file)
 
@@ -1530,9 +1525,9 @@ class YamlBuilder:
         validated_molecules = molecules_description.copy()
 
         # Define molecules Schema
-        epik_schema = Or(int, utils.generate_signature_schema(omt.schrodinger.run_epik,
-                                                              update_keys={'select': int},
-                                                              exclude_keys=['extract_range']))
+        epik_schema = utils.generate_signature_schema(omt.schrodinger.run_epik,
+                                                      update_keys={'select': int},
+                                                      exclude_keys=['extract_range'])
 
         parameters_schema = {  # simple strings are converted to list of strings
             'parameters': And(Use(lambda p: [p] if isinstance(p, str) else p), [str])}

@@ -95,7 +95,8 @@ def get_template_script(output_dir='.'):
             antechamber: {{charge_method: bcc}}
         benzene-epik0:
             filepath: {benzene_path}
-            epik: 0
+            epik:
+                select: 0
             antechamber: {{charge_method: bcc}}
         benzene-epikcustom:
             filepath: {benzene_path}
@@ -322,18 +323,17 @@ def test_validation_correct_molecules():
         {'name': 'p-xylene', 'antechamber': {'charge_method': 'bcc'}},
         {'smiles': 'Cc1ccccc1', 'openeye': {'quacpac': 'am1-bcc'},
             'antechamber': {'charge_method': None}},
-        {'name': 'p-xylene', 'antechamber': {'charge_method': 'bcc'},  'epik': 0},
         {'name': 'p-xylene', 'antechamber': {'charge_method': 'bcc'},
             'epik': {'ph': 7.6, 'ph_tolerance': 0.7, 'tautomerize': False, 'select': 0}},
         {'smiles': 'Cc1ccccc1', 'openeye': {'quacpac': 'am1-bcc'},
-            'antechamber': {'charge_method': None}, 'epik': 1},
+            'antechamber': {'charge_method': None}, 'epik': {'select': 1}},
 
         {'filepath': paths['abl']},
         {'filepath': paths['abl'], 'leap': {'parameters': 'leaprc.ff99SBildn'}},
         {'filepath': paths['abl'], 'leap': {'parameters': 'leaprc.ff99SBildn'}, 'select': 1},
         {'filepath': paths['abl'], 'select': 'all'},
         {'filepath': paths['toluene'], 'leap': {'parameters': 'leaprc.gaff'}},
-        {'filepath': paths['benzene'], 'epik': 1}
+        {'filepath': paths['benzene'], 'epik': {'select': 1, 'tautomerize': False}}
     ]
     for molecule in molecules:
         yield YamlBuilder._validate_molecules, {'mol': molecule}
@@ -355,7 +355,8 @@ def test_validation_wrong_molecules():
         {'filepath': 'nonexistentfile.pdb', 'leap': {'parameters': 'leaprc.ff14SB'}},
         {'filepath': paths['toluene'], 'smiles': 'Cc1ccccc1'},
         {'filepath': paths['toluene'], 'strip_protons': True},
-        {'filepath': paths['abl'], 'leap': {'parameters': 'oldff/leaprc.ff14SB'}, 'epik': 0},
+        {'filepath': paths['abl'], 'leap': {'parameters': 'oldff/leaprc.ff14SB'}, 'epik': {'select': 0}},
+        {'name': 'toluene', 'epik': 0},
         {'name': 'toluene', 'epik': {'tautomerize': 6}},
         {'name': 'toluene', 'epik': {'extract_range': 1}},
         {'name': 'toluene', 'smiles': 'Cc1ccccc1'},
@@ -880,7 +881,7 @@ class TestMultiMoleculeFiles():
             lig:
                 name: !Combinatorial [iupac1, iupac2]
                 leap: {{parameters: leaprc.gaff}}
-                epik: !Combinatorial [0, 2]
+                epik: !Combinatorial [{select: 0}, {select: 2}]
             multi:
                 filepath: {}
                 leap: {{parameters: oldff/leaprc.ff14SB}}
@@ -930,19 +931,19 @@ class TestMultiMoleculeFiles():
             lig_0_iupac1:
                 name: iupac1
                 leap: {{parameters: leaprc.gaff}}
-                epik: 0
+                epik: {select: 0}
             lig_2_iupac1:
                 name: iupac1
                 leap: {{parameters: leaprc.gaff}}
-                epik: 2
+                epik: {select: 2}
             lig_0_iupac2:
                 name: iupac2
                 leap: {{parameters: leaprc.gaff}}
-                epik: 0
+                epik: {select: 0}
             lig_2_iupac2:
                 name: iupac2
                 leap: {{parameters: leaprc.gaff}}
-                epik: 2
+                epik: {select: 2}
             multi_0:
                 filepath: {}
                 leap: {{parameters: oldff/leaprc.ff14SB}}
