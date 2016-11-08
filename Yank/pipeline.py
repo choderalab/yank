@@ -281,7 +281,7 @@ def prepare_phase(positions_file_path, topology_file_path, ligand_dsl, system_op
             err_msg = 'Found periodic box in inpcrd file but nonbondedMethod is NoCutoff'
     else:
         if system_options['nonbondedMethod'] != openmm.app.NoCutoff:
-            err_msg = 'nonbondedMethod is NoCutoff but could not find periodic box in inpcrd.'
+            err_msg = 'nonbondedMethod has cutoff but could not find periodic box in inpcrd.'
     if len(err_msg) != 0:
         logger.error(err_msg)
         raise RuntimeError(err_msg)
