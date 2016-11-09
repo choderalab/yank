@@ -182,8 +182,6 @@ def initialize_mpi():
         sys.stderr.flush()
         if mpicomm.size > 1:
             mpicomm.Abort(1)
-    # Store old exception handler
-    sys.__excepthook__ = sys.excepthook
     # Use our eception handler
     sys.excepthook = mpi_excepthook
 
