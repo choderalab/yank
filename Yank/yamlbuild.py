@@ -1812,9 +1812,13 @@ class YamlBuilder:
             self._experiments = {}
             return
 
+        # Restraint schema
+        restraint_schema = {'type': str}
+
         # Define experiment Schema
         experiment_schema = Schema({'system': is_known_system, 'protocol': is_known_protocol,
-                                    Optional('options'): Use(YamlBuilder._validate_options)})
+                                    Optional('options'): Use(YamlBuilder._validate_options),
+                                    Optional('restraint'): restraint_schema})
 
         # Schema validation
         for experiment_id, experiment_descr in self._expand_experiments():
@@ -2383,8 +2387,14 @@ class YamlBuilder:
                 thermodynamic_state = ThermodynamicState(temperature=exp_opts['temperature'],
                                                          pressure=exp_opts['pressure'])
 
+                # Determine restraint
+                try:
+                    restraint_type = experiment['restraint']['type']
+                except (KeyError, TypeError):  # restraint unspecified or None
+                    restraint_type = None
+
                 # Create new simulation
-                yank.create(thermodynamic_state, *phases)
+                yank.create(thermodynamic_state, *phases, restraint_type=restraint_type)
 
             # Run the simulation
             if self._mpicomm:  # wait for the simulation to be prepared

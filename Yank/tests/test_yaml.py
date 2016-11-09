@@ -262,7 +262,6 @@ def test_yaml_parsing():
         pressure: null
         constraints: AllBonds
         hydrogen_mass: 2*amus
-        restraint_type: Harmonic
         randomize_ligand: yes
         randomize_ligand_sigma_multiplier: 2.0
         randomize_ligand_close_cutoff: 1.5 * angstrom
@@ -287,8 +286,8 @@ def test_yaml_parsing():
     """
 
     yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
-    assert len(yaml_builder.options) == 35
-    assert len(yaml_builder.yank_options) == 23
+    assert len(yaml_builder.options) == 34
+    assert len(yaml_builder.yank_options) == 22
 
     # Check correct types
     assert yaml_builder.options['pressure'] is None
@@ -1763,6 +1762,8 @@ def test_run_experiment():
                 setup_dir: ''
                 experiments_dir: ''
             protocol: absolute-binding
+            restraint:
+                type: FlatBottom
         """.format(examples_paths()['lysozyme'], examples_paths()['p-xylene'],
                    indent(standard_protocol), tmp_dir)
 
