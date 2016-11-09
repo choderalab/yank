@@ -1,16 +1,8 @@
-language: c
+os:
+ - osx
+ - linux
+
 sudo: false
-addons:
-  apt:
-    sources:
-    - ubuntu-toolchain-r-test
-    packages:
-      - g++
-      - gfortran
-      - valgrind
-      - csh
-      - g++-multilib
-      - gcc-multilib
 
 branches:
   only:
