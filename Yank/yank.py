@@ -424,7 +424,7 @@ class Yank(object):
 
         # Construct thermodynamic states
         reference_state = copy.deepcopy(thermodynamic_state)
-        reference_state.system = reference_system
+        reference_state.system = copy.deepcopy(reference_system)
         reference_LJ_state = copy.deepcopy(thermodynamic_state)
         reference_LJ_expanded_state = copy.deepcopy(thermodynamic_state)
         reference_LJ_state.system = reference_system_LJ
