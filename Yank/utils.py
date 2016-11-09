@@ -194,6 +194,16 @@ def initialize_mpi():
 
     return mpicomm
 
+def sync_file_buffers():
+    """Cause the OS to sync any file buffers, if available."""
+    if hasattr(os, 'sync'):
+        sync = os.sync
+    else:
+        import ctypes
+        libc = ctypes.CDLL("libc.so.6")
+        def sync():
+            libc.sync()
+    sync()
 
 @contextmanager
 def delay_termination():
