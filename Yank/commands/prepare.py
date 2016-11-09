@@ -71,7 +71,7 @@ Simulation options:
   --platform=PLATFORM           OpenMM Platform to use (Reference, CPU, OpenCL, CUDA)
   --precision=PRECISION         OpenMM Platform precision model to use (for CUDA or OpenCL only, one of {mixed, double, single})
   --pressure=PRESSURE           Pressure for simulation (in atm, or simtk.unit readable string) [default: 1*atmospheres]
-  --restraints=TYPE             Restraint type to add between protein and ligand in implicit solvent (harmonic, flat-bottom) [default: flat-bottom]
+  --restraints=TYPE             Restraint type to add between protein and ligand in implicit solvent (Harmonic, FlatBottom)
   --temperature=TEMPERATURE     Temperature for simulation (in K, or simtk.unit readable string) [default: 298*kelvin]
 
 
@@ -357,8 +357,6 @@ def dispatch_binding(args):
         options['number_of_equilibration_iterations'] = int(args['--equilibrate'])
     if args['--online-analysis']:
         options['online_analysis'] = True
-    if args['--restraints']:
-        options['restraint_type'] = args['--restraints']
     if args['--randomize-ligand']:
         options['randomize_ligand'] = True
     if args['--minimize']:
@@ -396,7 +394,9 @@ def dispatch_binding(args):
 
     # Create new simulation.
     yank = Yank(store_dir, **options)
-    yank.create(thermodynamic_state, *alchemical_phases)
+    if args['--restraints']:
+        restraint_type = args['--restraints']
+    yank.create(thermodynamic_state, *alchemical_phases, restraint_type)
 
     # Dump analysis object
     analysis = [[alchemical_phases[0].name, 1], [alchemical_phases[1].name, -1]]

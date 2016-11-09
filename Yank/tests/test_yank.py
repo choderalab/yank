@@ -50,7 +50,7 @@ def test_parameters():
     """Test Yank parameters initialization."""
 
     # Check that both Yank and Repex parameters are accepted
-    Yank(store_directory='test', restraint_type='harmonic', nsteps_per_iteration=1)
+    Yank(store_directory='test', randomize_ligand=True, nsteps_per_iteration=1)
 
 @tools.raises(TypeError)
 def test_unknown_parameters():
@@ -148,7 +148,6 @@ def notest_LennardJonesPair(box_width_nsigma=6.0):
 
     # Initialize YANK object.
     options = dict()
-    options['restraint_type'] = None
     options['number_of_iterations'] = 10
     options['platform'] = openmm.Platform.getPlatformByName("Reference") # use Reference platform for speed
     options['mc_rotation'] = False
