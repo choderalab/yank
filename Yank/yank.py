@@ -363,31 +363,39 @@ class Yank(object):
         metadata['reference_system'] = openmm.XmlSerializer.serialize(reference_system)
         metadata['topology'] = utils.serialize_topology(alchemical_phase.reference_topology)
 
-        # Create a copy of the system for which the fully-interacting energy is to be computed.
-        # For explicit solvent calculations, an enlarged cutoff is used to account for the anisotropic dispersion correction.
+        # For explicit solvent calculations, we create a copy of the system for
+        # which the fully-interacting energy is to be computed. An enlarged cutoff
+        # is used to account for the anisotropic dispersion correction. This must
+        # be done BEFORE adding the restraint to reference_system.
+        if not is_periodic:
+            reference_state = None
+            reference_LJ_state = None
+            reference_LJ_expanded_state = None
+        else:
+            # Create system with only LJ forces.
+            reference_system_LJ = copy.deepcopy(reference_system)
+            forces_to_remove = []
+            for forceIndex in range(reference_system_LJ.getNumForces()):
+                force = reference_system_LJ.getForce(forceIndex)
+                if isinstance(force, openmm.NonbondedForce):
+                    # Turn off electrostatics.
+                    for particle in range(force.getNumParticles()):
+                        q, sigma, epsilon = force.getParticleParameters(particle)
+                        force.setParticleParameters(particle, 0, sigma, epsilon)
+                    for exception in range(force.getNumExceptions()):
+                        particle1, particle2, chargeprod, epsilon, sigma = force.getExceptionParameters(exception)
+                        force.setExceptionParameters(exception, particle1, particle2, 0, sigma, epsilon)
+                else:
+                    # Queue force to remove if not a NB fore.
+                    forces_to_remove.append(forceIndex)
+            # Remove all but NonbondedForce. If done in previous loop, number of
+            # forces change so indices change.
+            for forceIndex in forces_to_remove[::-1]:
+                reference_system_LJ.removeForce(forceIndex)
 
-        # fully_interacting_system = copy.deepcopy(reference_system)
-        reference_system_LJ = copy.deepcopy(reference_system)
-        forces_to_remove = []
-        for forceIndex in range(reference_system_LJ.getNumForces()):
-            force = reference_system_LJ.getForce(forceIndex)
-            if isinstance(force, openmm.NonbondedForce):
-                for particle in range(force.getNumParticles()):
-                    q, sigma, epsilon = force.getParticleParameters(particle)
-                    force.setParticleParameters(particle, 0, sigma, epsilon)
-                for exception in range(force.getNumExceptions()):
-                    particle1, particle2, chargeprod, epsilon, sigma = force.getExceptionParameters(exception)
-                    force.setExceptionParameters(exception, particle1, particle2, 0, sigma, epsilon)
-            else:
-                # Queue force to remove if not a NB fore
-                forces_to_remove.append(forceIndex)
-        # Remove all but NonbondedForce
-        # If done in preveious loop, nuber of forces change so indices change
-        for forceIndex in forces_to_remove[::-1]:
-            reference_system_LJ.removeForce(forceIndex)
+            # Create system with only LJ forces with an expanded cutoff.
+            reference_system_LJ_expanded = copy.deepcopy(reference_system_LJ)
 
-        reference_system_LJ_expanded = copy.deepcopy(reference_system_LJ)
-        if is_periodic:
             # Determine minimum box side dimension
             box_vectors = reference_system_LJ_expanded.getDefaultPeriodicBoxVectors()
             min_box_dimension = min([max(vector) for vector in box_vectors])
@@ -403,7 +411,8 @@ class Yank(object):
                 raise RuntimeError('Barostated box sides must be at least 36 Angstroms '
                                    'to correct for missing dispersion interactions')
 
-            logger.debug('Setting cutoff for fully interacting system to maximum allowed (%s)' % str(max_allowed_cutoff))
+            logger.debug('Setting cutoff for fully interacting system to maximum '
+                         'allowed {}'.format(str(max_allowed_cutoff)))
 
             # Expanded cutoff LJ system if needed
             # We don't want to reduce the cutoff if its already large
@@ -414,21 +423,21 @@ class Yank(object):
                         # Set switch distance
                         # We don't need to check if we are using a switch since there is a setting for that.
                         force.setSwitchingDistance(max_switching_distance)
-                except:
+                except Exception:
                     pass
                 try:
                     if force.getCutoff() < max_allowed_cutoff:
                         force.setCutoff(max_allowed_cutoff)
-                except:
+                except Exception:
                     pass
 
-        # Construct thermodynamic states
-        reference_state = copy.deepcopy(thermodynamic_state)
-        reference_state.system = copy.deepcopy(reference_system)
-        reference_LJ_state = copy.deepcopy(thermodynamic_state)
-        reference_LJ_expanded_state = copy.deepcopy(thermodynamic_state)
-        reference_LJ_state.system = reference_system_LJ
-        reference_LJ_expanded_state.system = reference_system_LJ_expanded
+            # Construct thermodynamic states
+            reference_state = copy.deepcopy(thermodynamic_state)
+            reference_state.system = copy.deepcopy(reference_system)
+            reference_LJ_state = copy.deepcopy(thermodynamic_state)
+            reference_LJ_expanded_state = copy.deepcopy(thermodynamic_state)
+            reference_LJ_state.system = reference_system_LJ
+            reference_LJ_expanded_state.system = reference_system_LJ_expanded
 
         # Compute standard state corrections for complex phase.
         metadata['standard_state_correction'] = 0.0
