@@ -178,8 +178,13 @@ def initialize_mpi():
     # Override sys.excepthook to abort MPI on exception
     def mpi_excepthook(type, value, traceback):
         sys.__excepthook__(type, value, traceback)
+        sys.stdout.flush()
+        sys.stderr.flush()
         if mpicomm.size > 1:
             mpicomm.Abort(1)
+    # Store old exception handler
+    sys.__excepthook__ = sys.excepthook
+    # Use our eception handler
     sys.excepthook = mpi_excepthook
 
     # Catch sigterm signals
@@ -872,7 +877,7 @@ def quantity_from_string(quantity_str):
     ----------
     quantity_str : string
         A string containing a value with a unit of measure
-    
+
     Returns
     -------
     quantity : simtk.unit.Quantity
@@ -894,7 +899,7 @@ def quantity_from_string(quantity_str):
     Quanity(value=1, unit=joule/second)
 
     """
-   
+
     # Strip out (possible) surrounding quotes
     quote_pattern = '[^\'"]+'
     try:
@@ -910,7 +915,7 @@ def quantity_from_string(quantity_str):
                break
         return i
 
-        
+
     def nested_string(passed_str):
         def exponent_unit(passed_str):
             # Attempt to cast argument as an exponenet
@@ -989,9 +994,9 @@ def quantity_from_string(quantity_str):
                     count_indices += 1 # add 1 more to offset the '(' itself
                 elif next_operator == ')':
                     paren_closed = True
-            else: 
+            else:
                 # Case of no found operators
-                next_operator = None 
+                next_operator = None
             # Handle the conditions
             if (last_operator is None):
                 if (final_quantity is None) and (arg_type is 'None') and (augment is None):
@@ -1023,15 +1028,15 @@ def quantity_from_string(quantity_str):
                     if passed_str[last_char_loop:last_char_loop+2] == '**':
                         exponent, exponent_offset = exponent_unit(passed_str[last_char_loop+2:])
                         final_quantity **= exponent
-                        last_char_loop += exponent_offset 
+                        last_char_loop += exponent_offset
                 except:
                     pass
                 break
         return final_quantity, final_type, last_char_loop
-    
+
     quantity, final_type, x = nested_string(quantity_str)
     return quantity
-     
+
 
 def process_unit_bearing_str(quantity_str, compatible_units):
     """
@@ -1606,7 +1611,7 @@ class TLeap:
 # Python 2/3 compatability
 #=============================================================================================
 
-""" 
+"""
 Generate same behavior for dict.item in both versions of Python
 Avoids external dependancies on future.utils or six
 
