@@ -11,14 +11,38 @@ We take advantage of three features of YANK in this example we have not done in 
 2. YANK's ability to run multiple ligands through the same commands
 3. YANK's ability to run ``Combinatorial`` options.
 
-This example resides in ``{PYTHON SOURCE DIR}/share/binding/all-ligands``.
+This example resides in ``{PYTHON SOURCE DIR}/share/binding/t4-lysozyme``.
 
 Original source ligands collected by the `Shoichet Lab <http://shoichetlab.compbio.ucsf.edu/take-away.php>`_.
+
+Disclaimer on this Example
+--------------------------
+
+This example runs many simulations due to the large library of binders and non-binders. You may find it helpful to
+change the following lines in the YAML file
+
+.. code-block:: yaml
+
+    binders:
+        select: all
+    non-binders:
+        select: !Combinatorial [...]
+
+to
+
+.. code-block:: yaml
+
+    binders:
+        select: <Integer>
+    non-binders:
+        select: <Integer>
+
+where ``<Integer>`` is a single integer representing a line in the corresponding file.
 
 Examining YAML file
 -------------------
 
-Here we look at the ``explicit.yaml`` file in this example, highlighting the differences between this file and similar
+Here we look at the ``all-ligands-explicit.yaml`` file in this example, highlighting the differences between this file and similar
 files in other examples.
 
 Options Header

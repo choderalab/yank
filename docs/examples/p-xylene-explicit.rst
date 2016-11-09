@@ -14,7 +14,7 @@ assumes you are in this directory.
 Examining YAML file
 -------------------
 
-We start this example by looking at the YAML file which controls all of the setting for YANK, ``explicit.yaml``. This file
+We start this example by looking at the YAML file which controls all of the setting for YANK, ``p-xylene-explicit.yaml``. This file
 is what YANK uses to define all simulation parameters, and actually run the experiments. The file is broken down into 6
 sections: ``options``, ``molecules``, ``solvents``, ``systems``, ``protocols`` and ``experiments``. We'll go through each of those here
 as they pertain to the example, but please see the :ref:`detailed YAML documentation: <yaml_head>` for all possible options
@@ -82,7 +82,7 @@ Let us look at the receptor, T4-Lysozyme. We'll look at the whole code block for
 
    molecules:
      t4-lysozyme:
-       filepath: setup/receptor.pdbfixer.pdb
+       filepath: input/receptor.pdbfixer.pdb
        leap:
          parameters: oldff/leaprc.ff14SB
 
@@ -102,7 +102,7 @@ Now let us look at the ligand molecule, para-xylene
 
    molecules:
     p-xylene:
-      filepath: setup/ligand.tripos.mol2
+      filepath: input/ligand.tripos.mol2
       antechamber:
         charge_method: bcc
 
@@ -262,7 +262,7 @@ simulation, issue the following command:
 
 .. code-block:: bash
 
- $ yank script --yaml=explicit.yaml
+ $ yank script --yaml=p-xylene-explicit.yaml
 
 and let the simulation take care of the rest. What happens next is YANK will set up the files as we have specified,
 in this running the ligand through ANTECHAMBER, take the prepped ligand and receptor to make a solvated complex, and run
@@ -287,7 +287,7 @@ Once both phases of the simulation run, we can compute the final binding free en
 
 .. code-block:: bash
 
- $ yank analyze --store=output
+ $ yank analyze --store=p-xylene-out
 
 This complex and solvent phase will be automatically loaded in, decorrelated, and analyzed to get the free energy. We
 use the energies from a simulation box with expanded cutoff radius to reduce the impact a cutoff has from anisotropic
@@ -312,5 +312,5 @@ Other Files in this Example
 In this example, we also include an alternate YAML file called ``implicit.yaml`` which uses an implicit solvent instead
 of explicit solvent. The other main difference is that this is effectively NVT ensemble since NPT ensemble makes no
 sense in implicit solvent. It the execution and analysis of this system are identical, but replace the script target
-in command line with ``--yaml=implicit.yaml``. We cover more details of the setup of an implicit solvent system
+in command line with ``--yaml=p-xylene-implicit.yaml``. We cover more details of the setup of an implicit solvent system
 in the next example involving :doc:`a Host Guest System <host-guest-implicit>`.
