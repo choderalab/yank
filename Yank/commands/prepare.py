@@ -396,7 +396,7 @@ def dispatch_binding(args):
     yank = Yank(store_dir, **options)
     if args['--restraints']:
         restraint_type = args['--restraints']
-    yank.create(thermodynamic_state, *alchemical_phases, restraint_type)
+    yank.create(thermodynamic_state, *alchemical_phases, restraint_type=restraint_type)
 
     # Dump analysis object
     analysis = [[alchemical_phases[0].name, 1], [alchemical_phases[1].name, -1]]
