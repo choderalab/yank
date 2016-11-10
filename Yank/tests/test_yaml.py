@@ -1498,7 +1498,6 @@ def test_select_fastest_platform():
     assert platform.getName() == fastest_platform
 
 
-@attr('temp')
 def test_platform_precision_configuration():
     """Test that the precision for platform is configured correctly."""
     available_platforms = [openmm.Platform.getPlatform(i).getName()
@@ -1530,6 +1529,7 @@ def test_platform_precision_configuration():
                     assert_raises(RuntimeError, yaml_builder._configure_platform, platform_name, precision)
 
 
+@attr('temp')
 def test_default_platform_precision():
     """Test that the precision for platform is set to mixed by default."""
     available_platforms = [openmm.Platform.getPlatform(i).getName()
