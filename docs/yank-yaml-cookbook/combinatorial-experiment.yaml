@@ -215,8 +215,11 @@ protocols:
 experiments:
   system: kinase-inhibitor
   protocol: absolute-binding
-  options:                                                  # All options that can be specified in the "options"
-    restraint_type: !Combinatorial [Harmonic, FlatBottom]   # section can be included here.
+  restraint:                                                 # Optionally, apply a restrain to the ligand to keep
+    type: !Combinatorial [Harmonic, FlatBottom]              # it close to the receptor. Possible types are null,
+                                                             # Harmonic, FlatBottom, and Boresch.
+  options:                                                   # All options that can be specified in the "options"
+    temperature: !Combinatorial [298.0*kelvin, 307.0*kelvin] # section can be included here.
 
 
 # It is also possible to specify a sequence of experiments with the syntax
