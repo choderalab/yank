@@ -164,3 +164,5 @@ Detailed Options List
     * :ref:`restraint <yaml_experiments_syntax>`
 
   * :ref:`Running Multiple Experiments <yaml_experiments_syntax>`
+
+* :doc:`version <version>`
