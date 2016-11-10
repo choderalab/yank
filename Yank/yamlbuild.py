@@ -2046,9 +2046,13 @@ class YamlBuilder:
         system.addParticle(1.0 * unit.amu)  # system needs at least 1 particle
         integrator = openmm.VerletIntegrator(1.0 * unit.femtoseconds)
         try:
+            print('Create context with precision {}'.format(precision_model))
+            print('opencl_platform OpencCLPrecision: {}'.format(opencl_platform.getPropertyDefaultValue('OpenCLPrecision')))
             context = openmm.Context(system, integrator, opencl_platform)
+            print('Context successfully created!')
             is_supported = True
         except Exception:
+            print('Context creation raised Exception!')
             is_supported = False
         else:
             del context
