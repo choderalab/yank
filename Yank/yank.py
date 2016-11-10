@@ -251,7 +251,7 @@ class Yank(object):
 
         """
         # Get kwargs
-        restraint_type = kwargs.pop('restraint_type')
+        restraint_type = kwargs.pop('restraint_type', None)
         if len(kwargs) != 0:
             raise TypeError('got unexpected keyword arguments {}'.format(kwargs))
 
