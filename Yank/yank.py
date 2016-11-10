@@ -28,7 +28,7 @@ import simtk.openmm as openmm
 
 from alchemy import AbsoluteAlchemicalFactory
 from .sampling import ModifiedHamiltonianExchange
-from .restraints import create_restraints
+from .restraints import create_restraints, V0
 
 from . import utils
 
@@ -124,7 +124,6 @@ class Yank(object):
     """
 
     default_parameters = {
-        'restraint_type': 'FlatBottom',
         'randomize_ligand': False,
         'randomize_ligand_sigma_multiplier': 2.0,
         'randomize_ligand_close_cutoff': 1.5 * unit.angstrom,
@@ -144,10 +143,6 @@ class Yank(object):
         platform : simtk.openmm.Platform, optional
             Platform to use for execution. If None, the fastest available platform
             is used (default: None).
-        restraint_type : str, optional
-           Restraint type to add between protein and ligand.
-           Supported types are 'FlatBottom' and 'Harmonic'
-           The second one is available only in implicit solvent (default: 'FlatBottom').
         randomize_ligand : bool, optional
            Randomize ligand position when True. Not available in explicit solvent
            (default: False).
@@ -239,7 +234,7 @@ class Yank(object):
 
         return
 
-    def create(self, thermodynamic_state, *alchemical_phases):
+    def create(self, thermodynamic_state, *alchemical_phases, **kwargs):
         """
         Set up a new set of alchemical free energy calculations for the specified phases.
 
@@ -249,8 +244,17 @@ class Yank(object):
             Thermodynamic state from which reference temperature and pressure are to be taken.
         *alchemical_phases :
             Variable list of AlchemicalPhase objects to create.
+        restraint_type : str, optional
+           Restraint type to add between protein and ligand. Supported
+           types are 'FlatBottom' and 'Harmonic'. The second one is
+           available only in implicit solvent (default: None).
 
         """
+        # Get kwargs
+        restraint_type = kwargs.pop('restraint_type', None)
+        if len(kwargs) != 0:
+            raise TypeError('got unexpected keyword arguments {}'.format(kwargs))
+
         # Make a deep copy of thermodynamic state.
         thermodynamic_state = copy.deepcopy(thermodynamic_state)
 
@@ -274,14 +278,14 @@ class Yank(object):
 
         # Create new repex simulations.
         for phase in alchemical_phases:
-            self._create_phase(thermodynamic_state, phase)
+            self._create_phase(thermodynamic_state, phase, restraint_type)
 
         # Record that we are now initialized.
         self._initialized = True
 
         return
 
-    def _create_phase(self, thermodynamic_state, alchemical_phase):
+    def _create_phase(self, thermodynamic_state, alchemical_phase, restraint_type):
         """
         Create a repex object for a specified phase.
 
@@ -291,6 +295,10 @@ class Yank(object):
             Thermodynamic state from which reference temperature and pressure are to be taken.
         alchemical_phase : AlchemicalPhase
            The alchemical phase to be created.
+        restraint_type : str or None
+           Restraint type to add between protein and ligand. Supported
+           types are 'FlatBottom' and 'Harmonic'. The second one is
+           available only in implicit solvent.
 
         """
         # We add default repex options only on creation, on resume repex will pick them from the store file
@@ -327,8 +335,9 @@ class Yank(object):
 
         # TODO: Use more general approach to determine whether system is periodic.
         is_periodic = reference_system.usesPeriodicBoundaryConditions()
-        is_complex_explicit = len(atom_indices['receptor']) > 0 and is_periodic
-        is_complex_implicit = len(atom_indices['receptor']) > 0 and not is_periodic
+        is_complex = len(atom_indices['receptor']) > 0
+        is_complex_explicit = is_complex and is_periodic
+        is_complex_implicit = is_complex and not is_periodic
 
         # Make sure pressure is None if not periodic.
         if not is_periodic:
@@ -359,31 +368,39 @@ class Yank(object):
         metadata['reference_system'] = openmm.XmlSerializer.serialize(reference_system)
         metadata['topology'] = utils.serialize_topology(alchemical_phase.reference_topology)
 
-        # Create a copy of the system for which the fully-interacting energy is to be computed.
-        # For explicit solvent calculations, an enlarged cutoff is used to account for the anisotropic dispersion correction.
+        # For explicit solvent calculations, we create a copy of the system for
+        # which the fully-interacting energy is to be computed. An enlarged cutoff
+        # is used to account for the anisotropic dispersion correction. This must
+        # be done BEFORE adding the restraint to reference_system.
+        if not is_periodic:
+            reference_state = None
+            reference_LJ_state = None
+            reference_LJ_expanded_state = None
+        else:
+            # Create system with only LJ forces.
+            reference_system_LJ = copy.deepcopy(reference_system)
+            forces_to_remove = []
+            for forceIndex in range(reference_system_LJ.getNumForces()):
+                force = reference_system_LJ.getForce(forceIndex)
+                if isinstance(force, openmm.NonbondedForce):
+                    # Turn off electrostatics.
+                    for particle in range(force.getNumParticles()):
+                        q, sigma, epsilon = force.getParticleParameters(particle)
+                        force.setParticleParameters(particle, 0, sigma, epsilon)
+                    for exception in range(force.getNumExceptions()):
+                        particle1, particle2, chargeprod, epsilon, sigma = force.getExceptionParameters(exception)
+                        force.setExceptionParameters(exception, particle1, particle2, 0, sigma, epsilon)
+                else:
+                    # Queue force to remove if not a NB fore.
+                    forces_to_remove.append(forceIndex)
+            # Remove all but NonbondedForce. If done in previous loop, number of
+            # forces change so indices change.
+            for forceIndex in forces_to_remove[::-1]:
+                reference_system_LJ.removeForce(forceIndex)
 
-        # fully_interacting_system = copy.deepcopy(reference_system)
-        reference_system_LJ = copy.deepcopy(reference_system)
-        forces_to_remove = []
-        for forceIndex in range(reference_system_LJ.getNumForces()):
-            force = reference_system_LJ.getForce(forceIndex)
-            if isinstance(force, openmm.NonbondedForce):
-                for particle in range(force.getNumParticles()):
-                    q, sigma, epsilon = force.getParticleParameters(particle)
-                    force.setParticleParameters(particle, 0, sigma, epsilon)
-                for exception in range(force.getNumExceptions()):
-                    particle1, particle2, chargeprod, epsilon, sigma = force.getExceptionParameters(exception)
-                    force.setExceptionParameters(exception, particle1, particle2, 0, sigma, epsilon)
-            else:
-                # Queue force to remove if not a NB fore
-                forces_to_remove.append(forceIndex)
-        # Remove all but NonbondedForce
-        # If done in preveious loop, nuber of forces change so indices change
-        for forceIndex in forces_to_remove[::-1]:
-            reference_system_LJ.removeForce(forceIndex)
+            # Create system with only LJ forces with an expanded cutoff.
+            reference_system_LJ_expanded = copy.deepcopy(reference_system_LJ)
 
-        reference_system_LJ_expanded = copy.deepcopy(reference_system_LJ)
-        if is_periodic:
             # Determine minimum box side dimension
             box_vectors = reference_system_LJ_expanded.getDefaultPeriodicBoxVectors()
             min_box_dimension = min([max(vector) for vector in box_vectors])
@@ -399,7 +416,8 @@ class Yank(object):
                 raise RuntimeError('Barostated box sides must be at least 36 Angstroms '
                                    'to correct for missing dispersion interactions')
 
-            logger.debug('Setting cutoff for fully interacting system to maximum allowed (%s)' % str(max_allowed_cutoff))
+            logger.debug('Setting cutoff for fully interacting system to maximum '
+                         'allowed {}'.format(str(max_allowed_cutoff)))
 
             # Expanded cutoff LJ system if needed
             # We don't want to reduce the cutoff if its already large
@@ -410,41 +428,46 @@ class Yank(object):
                         # Set switch distance
                         # We don't need to check if we are using a switch since there is a setting for that.
                         force.setSwitchingDistance(max_switching_distance)
-                except:
+                except Exception:
                     pass
                 try:
                     if force.getCutoff() < max_allowed_cutoff:
                         force.setCutoff(max_allowed_cutoff)
-                except:
+                except Exception:
                     pass
 
-        # Construct thermodynamic states
-        reference_state = copy.deepcopy(thermodynamic_state)
-        reference_state.system = reference_system
-        reference_LJ_state = copy.deepcopy(thermodynamic_state)
-        reference_LJ_expanded_state = copy.deepcopy(thermodynamic_state)
-        reference_LJ_state.system = reference_system_LJ
-        reference_LJ_expanded_state.system = reference_system_LJ_expanded
+            # Construct thermodynamic states
+            reference_state = copy.deepcopy(thermodynamic_state)
+            reference_state.system = copy.deepcopy(reference_system)
+            reference_LJ_state = copy.deepcopy(thermodynamic_state)
+            reference_LJ_expanded_state = copy.deepcopy(thermodynamic_state)
+            reference_LJ_state.system = reference_system_LJ
+            reference_LJ_expanded_state.system = reference_system_LJ_expanded
 
         # Compute standard state corrections for complex phase.
         metadata['standard_state_correction'] = 0.0
         # TODO: Do we need to include a standard state correction for other phases in periodic boxes?
-        if is_complex_implicit:
-            # Impose restraints for complex system in implicit solvent to keep ligand from drifting too far away from receptor.
+        if is_complex and restraint_type is not None:
             logger.debug("Creating receptor-ligand restraints...")
             reference_positions = positions[0]
-            restraints = create_restraints(self._restraint_type,
-                alchemical_phase.reference_topology, thermodynamic_state, reference_system, reference_positions, atom_indices['receptor'], atom_indices['ligand'])
-            force = restraints.get_restraint_force() # Get Force object incorporating restraints
+            restraints = create_restraints(restraint_type, alchemical_phase.reference_topology,
+                                           thermodynamic_state, reference_system, reference_positions,
+                                           atom_indices['receptor'], atom_indices['ligand'])
+            force = restraints.get_restraint_force()  # Get Force object incorporating restraints.
             reference_system.addForce(force)
-            metadata['standard_state_correction'] = restraints.get_standard_state_correction() # standard state correction in kT
+            metadata['standard_state_correction'] = restraints.get_standard_state_correction()  # in kT
         elif is_complex_explicit:
-            # For periodic systems, we do not use a restraint, but must add a standard state correction for the box volume.
+            # For periodic systems, we must still add a standard state
+            # correction for the box volume.
             # TODO: What if the box volume fluctuates during the simulation?
             box_vectors = reference_system.getDefaultPeriodicBoxVectors()
             box_volume = thermodynamic_state._volume(box_vectors)
-            STANDARD_STATE_VOLUME = 1660.53928 * unit.angstrom**3
-            metadata['standard_state_correction'] = - np.log(STANDARD_STATE_VOLUME / box_volume)
+            metadata['standard_state_correction'] = - np.log(V0 / box_volume)
+        elif is_complex_implicit:
+            # For implicit solvent/vacuum complex systems, we require a restraint
+            # to keep the ligand from drifting too far away from receptor.
+            raise ValueError('A receptor-ligand system in implicit solvent or '
+                             'vacuum requires a restraint.')
 
         # Create alchemically-modified states using alchemical factory.
         logger.debug("Creating alchemically-modified states...")

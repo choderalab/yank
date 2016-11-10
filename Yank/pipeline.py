@@ -274,14 +274,18 @@ def prepare_phase(positions_file_path, topology_file_path, ligand_dsl, system_op
     # Check for solvent configuration inconsistencies
     # TODO: Check to make sure both files agree on explicit/implicit.
     err_msg = ''
+    nonbonded_method = system_options['nonbondedMethod']
+    nonperiodic_nonbonded_methods = [openmm.app.NoCutoff, openmm.app.CutoffNonPeriodic]
     if is_periodic:
         if 'implicitSolvent' in system_options:
             err_msg = 'Found periodic box in inpcrd file and implicitSolvent specified.'
-        if system_options['nonbondedMethod'] == openmm.app.NoCutoff:
-            err_msg = 'Found periodic box in inpcrd file but nonbondedMethod is NoCutoff'
+        if nonbonded_method in nonperiodic_nonbonded_methods:
+            err_msg = ('Found periodic box in inpcrd file but '
+                       'nonbondedMethod is {}'.format(nonbonded_method))
     else:
-        if system_options['nonbondedMethod'] != openmm.app.NoCutoff:
-            err_msg = 'nonbondedMethod is NoCutoff but could not find periodic box in inpcrd.'
+        if nonbonded_method not in nonperiodic_nonbonded_methods:
+            err_msg = ('nonbondedMethod {} is periodic but could not '
+                       'find periodic box in inpcrd.'.format(nonbonded_method))
     if len(err_msg) != 0:
         logger.error(err_msg)
         raise RuntimeError(err_msg)

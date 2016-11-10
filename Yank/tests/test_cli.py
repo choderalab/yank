@@ -109,6 +109,8 @@ def test_script_yaml():
         experiments:
             system: system
             protocol: absolute-binding
+            restraint:
+                type: FlatBottom
         """.format(lysozyme_path, pxylene_path)
 
         yaml_file_path = os.path.join(tmp_dir, 'yank.yaml')
