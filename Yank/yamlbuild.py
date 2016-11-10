@@ -2017,13 +2017,6 @@ class YamlBuilder:
             debug_msg = 'Node {}/{}: MPI barrier'.format(self._mpicomm.rank,
                                                          self._mpicomm.size)
             logger.debug(debug_msg + ' - signal completed setup.')
-            # Ensure we sync file buffers
-            from yank.utils import sync_file_buffers
-            sync_file_buffers()
-            # This is a hack to ensure that the files just written have time to sync to
-            # the metadata server before another MPI process tries to read them.
-            import time
-            time.sleep(5)
             # Proceed through barrier where other MPI processes are blocking.
             self._mpicomm.barrier()
 
