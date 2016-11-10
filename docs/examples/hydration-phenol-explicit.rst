@@ -9,6 +9,9 @@ generally it is solvation free energies, but TIP3P water is the only explicit wa
 This example resides in ``{PYTHON SOURCE DIR}/share/yank/examples/hydration/phenol``. The rest of the example here
 assumes you are in this directory.
 
+This example can actually be considered a subset of the :doc:`FreeSolv database example <freesolv-imp-exp>`, however,
+describes in more detail how to set up a hydraiton free energy calculation.
+
 Examining YAML File
 -------------------
 

@@ -6,11 +6,19 @@ Absolute Binding of Binders and Non-binders to T4 lysozyme L99A in Explicit Solv
 This example performs absolute binding free energy calculations for a series of small molecules that contain known
 binders and nonbinders to the T4 Lysozyme L99A protein.
 
-We take advantage of three features of YANK in this example we have not done in others thus far:
+We take advantage of three advanced features of YANK in this example (please see the
+:doc:`basic tutorial for the YAML sections and binding free energy calculation <p-xylene-explicit>`
+for learning how to set up basic YANK simulations):
 
 1. YANK's ability to build out small molecules from SMILES strings (through OpenEye Toolkit)
+
+   * Please see the `OpenEye Install Instructions <http://docs.eyesopen.com/toolkits/python/quickstart-python/install.html>`_ for installing these tool kits
+
 2. YANK's ability to run multiple ligands through the same commands
-3. YANK's ability to run ``Combinatorial`` options.
+3. YANK's ability to run ``Combinatorial`` options
+
+   * See :ref:`the section below <yank_example_combo>` or the :ref:`full documentation page <yaml_combinatorial_head>` for more information on ``!Combinatorial``
+
 
 This example resides in ``{PYTHON SOURCE DIR}/share/binding/t4-lysozyme``.
 
@@ -183,3 +191,7 @@ Other Files in this Example
 ---------------------------
 
 We also provide inputs for running implicit simulation of the same problem.
+
+* ``all-ligands-implicit.yaml`` - YAML file for running implcit solvent
+* ``run-all-ligands-implicit.sh`` - Shell script for serial running of the implicit all-ligands example
+* ``run-torque-all-ligands-implicit.sh`` - Shell script for parallel/cluster running of the implicit all-ligands example

@@ -114,7 +114,7 @@ defaults to the dielectric for TIP3P water.
 Reamining Headings
 ^^^^^^^^^^^^^^^^^^
 
-The remaining headings: ``systems``, ``protocols``, and ``experiments`` are strait forward. Please see the more
+The remaining headings: ``systems``, ``protocols``, and ``experiments`` are straightforward. Please see the more
 :doc:`detailed p-xylene in T4 Lysozyme example <p-xylene-explicit>` for more information on these sections.
 
 

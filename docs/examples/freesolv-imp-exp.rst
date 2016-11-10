@@ -1,13 +1,13 @@
 .. _freesolv-imp-exp:
 
-Hydration Free Energy of part of the FreeSolv Database in Implicit and Explicit Solvent
-=======================================================================================
+Calculation of Absolute Hydration Free Energies from the FreeSolv Database
+==========================================================================
 
-This example looks at a the hydration free energy of a subset of the
+This example computes absolute hydration free energies of a subset of the
 `FreeSolv <http://link.springer.com/article/10.1007%2Fs10822-014-9747-x>`_
 `database <https://github.com/MobleyLab/FreeSolv>`_ in both implicit and explicit solvent.
 
-This example showcases how easy it is to compute the free energy of a large dataset from a single input file, and how
+This example showcases how easy it is to set up and run free energy calculations for a large dataset from a single input file, and how
 easy it is to set up that file. Here we combine everything we learned from the previous examples into one. If any of the
 following ideas are unfamiliar, please see the linked examples.
 
