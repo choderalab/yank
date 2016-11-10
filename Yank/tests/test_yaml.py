@@ -1610,6 +1610,7 @@ def test_yaml_creation():
         # left untouched
         expected_yaml_content = textwrap.dedent("""
         ---
+        version: '{}'
         options:
             experiments_dir: .
             output_dir: .
@@ -1622,7 +1623,7 @@ def test_yaml_creation():
         systems:{}
         protocols:{}
         experiments:{}
-        """.format(molecules, os.path.relpath(ligand_path, tmp_dir),
+        """.format(HIGHEST_VERSION, molecules, os.path.relpath(ligand_path, tmp_dir),
                    solvent, system, protocol, experiment))
         expected_yaml_content = expected_yaml_content[1:]  # remove first '\n'
 

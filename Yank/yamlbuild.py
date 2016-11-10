@@ -37,6 +37,13 @@ from .repex import ReplicaExchange, ThermodynamicState
 from .sampling import ModifiedHamiltonianExchange
 
 
+# =============================================================================
+# CONSTANTS
+# =============================================================================
+
+HIGHEST_VERSION = '1.0'  # highest version of YAML syntax
+
+
 #=============================================================================================
 # UTILITY FUNCTIONS
 #=============================================================================================
@@ -1186,6 +1193,7 @@ class YamlBuilder:
         """
         self.options = self.DEFAULT_OPTIONS.copy()  # General options (not experiment-specific)
 
+        self._version = None
         self._script_dir = os.getcwd()  # basic dir for relative paths
         self._db = None  # Database containing molecules created in parse()
         self._mpicomm = None  # MPI communicator
@@ -1231,6 +1239,15 @@ class YamlBuilder:
             raise YamlParseError('The YAML file is empty!')
         if not isinstance(yaml_content, dict):
             raise YamlParseError('Cannot load YAML from source: {}'.format(yaml_source))
+
+        # Check version (currently there's only one)
+        try:
+            self._version = yaml_content['version']
+        except KeyError:
+            self._version = HIGHEST_VERSION
+        else:
+            if self._version != HIGHEST_VERSION:
+                raise ValueError('Unsupported syntax version {}'.format(self._version))
 
         # Expand combinatorial molecules and systems
         yaml_content = self._expand_molecules(yaml_content)
@@ -2233,7 +2250,8 @@ class YamlBuilder:
 
         # Create YAML with the sections in order
         dump_options = {'Dumper': YankDumper, 'line_break': '\n', 'indent': 4}
-        yaml_content = yaml.dump({'options': opt_section}, explicit_start=True, **dump_options)
+        yaml_content = yaml.dump({'version': self._version}, explicit_start=True, **dump_options)
+        yaml_content += yaml.dump({'options': opt_section}, **dump_options)
         if mol_section:
             yaml_content += yaml.dump({'molecules': mol_section},  **dump_options)
         yaml_content += yaml.dump({'solvents': sol_section},  **dump_options)
