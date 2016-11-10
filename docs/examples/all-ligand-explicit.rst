@@ -3,7 +3,8 @@
 Absolute Binding of Binders and Non-binders to T4 lysozyme L99A in Explicit Solvent with Combinatorial Options
 ==============================================================================================================
 
-This example looks at the absolute binding of a series of binders and non-binder to the T4 Lysozyme L99A protein.
+This example performs absolute binding free energy calculations for a series of small molecules that contain known
+binders and nonbinders to the T4 Lysozyme L99A protein.
 
 We take advantage of three features of YANK in this example we have not done in others thus far:
 
