@@ -880,7 +880,8 @@ class TestMultiMoleculeFiles():
             lig:
                 name: !Combinatorial [iupac1, iupac2]
                 leap: {{parameters: leaprc.gaff}}
-                epik: !Combinatorial [{select: 0}, {select: 2}]
+                epik:
+                    select: !Combinatorial [0, 2]
             multi:
                 filepath: {}
                 leap: {{parameters: oldff/leaprc.ff14SB}}
@@ -930,19 +931,19 @@ class TestMultiMoleculeFiles():
             lig_0_iupac1:
                 name: iupac1
                 leap: {{parameters: leaprc.gaff}}
-                epik: {select: 0}
+                epik: {{select: 0}}
             lig_2_iupac1:
                 name: iupac1
                 leap: {{parameters: leaprc.gaff}}
-                epik: {select: 2}
+                epik: {{select: 2}}
             lig_0_iupac2:
                 name: iupac2
                 leap: {{parameters: leaprc.gaff}}
-                epik: {select: 0}
+                epik: {{select: 0}}
             lig_2_iupac2:
                 name: iupac2
                 leap: {{parameters: leaprc.gaff}}
-                epik: {select: 2}
+                epik: {{select: 2}}
             multi_0:
                 filepath: {}
                 leap: {{parameters: oldff/leaprc.ff14SB}}
