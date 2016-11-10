@@ -21,7 +21,7 @@ requirements:
     - mdtraj >=1.7.2
     - openmmtools
     - pymbar
-    - ambermini >=15.0.4
+    - ambermini >=16.16.0
     - docopt
     - openmoltools
     - sphinxcontrib-bibtex
@@ -41,7 +41,7 @@ requirements:
     - mdtraj >=1.7.2
     - openmmtools
     - pymbar
-    - ambermini >=15.0.4
+    - ambermini >=16.16.0
     - docopt
     - openmoltools
     - mpi4py
