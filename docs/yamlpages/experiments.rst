@@ -19,13 +19,17 @@ Experiments Syntax
    experiments:
      system: {UserDefinedSystem}
      protocol: {UserDefinedProtocol}
+     restraint:
+       type: FlatBottom
      options:
        {Any Valid Option}
        {Any Valid Option}
        ...
 
-This is the structure of an ``experimenet``. 
+This is the structure of an ``experiment``.
 It takes a ``{UserDefinedSystem}`` (see :doc:`systems <systems>`) and a ``{UserDefinedProtocol}`` (see :doc:`protocols <protocols>`)  to create the experiment.
+
+The ``restraint`` is an optional keyword that applies a restraint to the ligand to keep it close to the receptor. Valid types are: FlatBottom/Harmonic/Boresch/null.
 
 The ``options`` directive lets you overwrite :doc:`any global setting <options>` specified in the header ``options`` for this specific experiment.
 

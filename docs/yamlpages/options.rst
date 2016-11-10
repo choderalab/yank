@@ -235,20 +235,6 @@ Constrain bond lengths and angles. See OpenMM ``createSystem()`` documentation f
 
 Valid options: [Hbonds]/AllBonds/HAngles
 
-
-.. _yaml_options_restraint_type:
-
-restraint_type
---------------
-.. code-block:: yaml
-
-   options:
-     restraint_type: FlatBottom
-
-Apply a restraint to the ligand to keep it close to the receptor. This only works in Implicit Solvent. ``null`` option means no restraint.
-
-Valid options: [FlatBottom]/Harmonic/null
-
 |
 
 .. _yaml_options_simulation_parameters:

@@ -111,7 +111,6 @@ options:
   output_dir: %(output_directory)s
   number_of_iterations: 2
   nsteps_per_iteration: 10
-  restraint_type: %(restraint_type)s
   temperature: 300*kelvin
   softcore_beta: 0.0
 
@@ -150,6 +149,8 @@ protocols:
 experiments:
   system: lys-pxyl
   protocol: absolute-binding
+  restraint:
+    type: %(restraint_type)s
 """
     # Test all possible restraint types.
     available_restraint_types = yank.restraints.available_restraint_types()

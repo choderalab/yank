@@ -49,7 +49,6 @@ In this example:
     output_dir: output
     experiments_dir: experiments
     randomize_ligand: yes
-    restraint_type: flat-bottom
     minimize: yes
     number_of_iterations: 2000
     temperature: 300*kelvin
@@ -92,6 +91,8 @@ In this example:
   experiments:
     system: T4-xylene-complex
     protocol: absolute-binding
+    restraint:
+      type: FlatBottom
                 
 After this is all setup, simply run: ``yank script --yaml={ThisScriptName.yaml}`` and YANK will take care of the rest for you.
 
@@ -124,7 +125,6 @@ In this Example:
      verbose: yes
      output_dir: .
      number_of_iterations: 2000
-     restraint_type: harmonic
      temperature: 300*kelvin
      pressure: 1*atmosphere
 
@@ -168,6 +168,8 @@ In this Example:
   experiments:
     system: t4-xylene-explicit
     protocol: absolute-binding
+    restraint:
+      type: Harmonic
 
 Now run: 
 

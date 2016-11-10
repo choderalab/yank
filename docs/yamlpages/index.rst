@@ -44,7 +44,6 @@ Detailed Options List
     * :ref:`pressure <yaml_options_pressure>`
     * :ref:`hydrogen_mass <yaml_options_hydrogen_mass>`
     * :ref:`constraints <yaml_options_constraints>`
-    * :ref:`restraint_type <yaml_options_restraint_type>`
 
   * :ref:`Simulation Parameters: <yaml_options_simulation_parameters>`
 
@@ -162,5 +161,8 @@ Detailed Options List
     * :ref:`system <yaml_experiments_syntax>`
     * :ref:`protocol <yaml_experiments_syntax>`
     * :ref:`options <yaml_experiments_syntax>`
+    * :ref:`restraint <yaml_experiments_syntax>`
 
   * :ref:`Running Multiple Experiments <yaml_experiments_syntax>`
+
+* :doc:`version <version>`

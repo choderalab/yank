@@ -37,6 +37,13 @@ from .repex import ReplicaExchange, ThermodynamicState
 from .sampling import ModifiedHamiltonianExchange
 
 
+# =============================================================================
+# CONSTANTS
+# =============================================================================
+
+HIGHEST_VERSION = '1.0'  # highest version of YAML syntax
+
+
 #=============================================================================================
 # UTILITY FUNCTIONS
 #=============================================================================================
@@ -854,15 +861,10 @@ class SetupDatabase:
                 epik_mol2_file = epik_base_path + 'mol2'
                 epik_sdf_file = epik_base_path + 'sdf'
 
-                # The 'epik' keyword can contain both a dictionary with the
-                # arguments to pass to run_epik(), or just the index
-                epik_args = mol_descr['epik']
-                if not isinstance(epik_args, dict):
-                    epik_args = {'extract_range': epik_args, 'tautomerize': False}
-
                 # Run epik and convert from maestro to both mol2 and sdf
                 # to not lose neither the penalties nor the residue name
-                omt.schrodinger.run_epik(mol_descr['filepath'], epik_mae_file, **epik_args)
+                epik_kwargs = mol_descr['epik']
+                omt.schrodinger.run_epik(mol_descr['filepath'], epik_mae_file, **epik_kwargs)
                 omt.schrodinger.run_structconvert(epik_mae_file, epik_sdf_file)
                 omt.schrodinger.run_structconvert(epik_mae_file, epik_mol2_file)
 
@@ -1191,6 +1193,7 @@ class YamlBuilder:
         """
         self.options = self.DEFAULT_OPTIONS.copy()  # General options (not experiment-specific)
 
+        self._version = None
         self._script_dir = os.getcwd()  # basic dir for relative paths
         self._db = None  # Database containing molecules created in parse()
         self._mpicomm = None  # MPI communicator
@@ -1236,6 +1239,15 @@ class YamlBuilder:
             raise YamlParseError('The YAML file is empty!')
         if not isinstance(yaml_content, dict):
             raise YamlParseError('Cannot load YAML from source: {}'.format(yaml_source))
+
+        # Check version (currently there's only one)
+        try:
+            self._version = yaml_content['version']
+        except KeyError:
+            self._version = HIGHEST_VERSION
+        else:
+            if self._version != HIGHEST_VERSION:
+                raise ValueError('Unsupported syntax version {}'.format(self._version))
 
         # Expand combinatorial molecules and systems
         yaml_content = self._expand_molecules(yaml_content)
@@ -1530,9 +1542,9 @@ class YamlBuilder:
         validated_molecules = molecules_description.copy()
 
         # Define molecules Schema
-        epik_schema = Or(int, utils.generate_signature_schema(omt.schrodinger.run_epik,
-                                                              update_keys={'select': int},
-                                                              exclude_keys=['extract_range']))
+        epik_schema = utils.generate_signature_schema(omt.schrodinger.run_epik,
+                                                      update_keys={'select': int},
+                                                      exclude_keys=['extract_range'])
 
         parameters_schema = {  # simple strings are converted to list of strings
             'parameters': And(Use(lambda p: [p] if isinstance(p, str) else p), [str])}
@@ -1817,9 +1829,13 @@ class YamlBuilder:
             self._experiments = {}
             return
 
+        # Restraint schema
+        restraint_schema = {'type': str}
+
         # Define experiment Schema
         experiment_schema = Schema({'system': is_known_system, 'protocol': is_known_protocol,
-                                    Optional('options'): Use(YamlBuilder._validate_options)})
+                                    Optional('options'): Use(YamlBuilder._validate_options),
+                                    Optional('restraint'): restraint_schema})
 
         # Schema validation
         for experiment_id, experiment_descr in self._expand_experiments():
@@ -2234,7 +2250,8 @@ class YamlBuilder:
 
         # Create YAML with the sections in order
         dump_options = {'Dumper': YankDumper, 'line_break': '\n', 'indent': 4}
-        yaml_content = yaml.dump({'options': opt_section}, explicit_start=True, **dump_options)
+        yaml_content = yaml.dump({'version': self._version}, explicit_start=True, **dump_options)
+        yaml_content += yaml.dump({'options': opt_section}, **dump_options)
         if mol_section:
             yaml_content += yaml.dump({'molecules': mol_section},  **dump_options)
         yaml_content += yaml.dump({'solvents': sol_section},  **dump_options)
@@ -2388,8 +2405,14 @@ class YamlBuilder:
                 thermodynamic_state = ThermodynamicState(temperature=exp_opts['temperature'],
                                                          pressure=exp_opts['pressure'])
 
+                # Determine restraint
+                try:
+                    restraint_type = experiment['restraint']['type']
+                except (KeyError, TypeError):  # restraint unspecified or None
+                    restraint_type = None
+
                 # Create new simulation
-                yank.create(thermodynamic_state, *phases)
+                yank.create(thermodynamic_state, *phases, restraint_type=restraint_type)
 
             # Run the simulation
             if self._mpicomm:  # wait for the simulation to be prepared

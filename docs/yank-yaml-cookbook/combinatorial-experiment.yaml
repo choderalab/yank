@@ -89,20 +89,12 @@ molecules:
                                                     # Notice that charge_method is set to null to keep the
                                                     # partial charges determined by openeye.
                                                     #
-    epik: 0                                         # Run Schrodinger's tool Epik with default parameters and
-                                                    # select the most likely protonation state for the molecule
-                                                    # (in solution). More control over epik parameters is possible
-                                                    #
-                                                    # molecules:
-                                                    #   imatinib:
-                                                    #     filepath: imatinib.mol2
-                                                    #     antechamber:
-                                                    #       charge_method: bcc
-                                                    #     epik:
-                                                    #       select: 0
-                                                    #       ph: 7.6
-                                                    #       ph_tolerance: 0.7
-                                                    #       tautomerize: no
+    epik:                                           # Run Schrodinger's tool Epik with default parameters and
+      select: 0                                     # select the most likely protonation state for the molecule
+      tautomerize: no                               # (in solution). More control over epik parameters is
+      ph: 7.6                                       # possible (see YAML documentation).
+      ph_tolerance: 0.7
+
   bosutinib:
     filepath: molecule_dir/bosutinib.mol2
     leap:                                           # It is possible to optionally include molecule-specific
@@ -223,8 +215,11 @@ protocols:
 experiments:
   system: kinase-inhibitor
   protocol: absolute-binding
-  options:                                                  # All options that can be specified in the "options"
-    restraint_type: !Combinatorial [Harmonic, FlatBottom]   # section can be included here.
+  restraint:                                                 # Optionally, apply a restrain to the ligand to keep
+    type: !Combinatorial [Harmonic, FlatBottom]              # it close to the receptor. Possible types are null,
+                                                             # Harmonic, FlatBottom, and Boresch.
+  options:                                                   # All options that can be specified in the "options"
+    temperature: !Combinatorial [298.0*kelvin, 307.0*kelvin] # section can be included here.
 
 
 # It is also possible to specify a sequence of experiments with the syntax
