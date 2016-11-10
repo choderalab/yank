@@ -234,7 +234,7 @@ class Yank(object):
 
         return
 
-    def create(self, thermodynamic_state, *alchemical_phases, restraint_type=None):
+    def create(self, thermodynamic_state, *alchemical_phases, **kwargs):
         """
         Set up a new set of alchemical free energy calculations for the specified phases.
 
@@ -250,6 +250,11 @@ class Yank(object):
            available only in implicit solvent (default: None).
 
         """
+        # Get kwargs
+        restraint_type = kwargs.pop('restraint_type')
+        if len(kwargs) != 0:
+            raise TypeError('got unexpected keyword arguments {}'.format(kwargs))
+
         # Make a deep copy of thermodynamic state.
         thermodynamic_state = copy.deepcopy(thermodynamic_state)
 
