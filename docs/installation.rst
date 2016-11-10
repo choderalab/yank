@@ -167,14 +167,15 @@ Supported platforms and environments
 Software
 --------
 
-YANK runs on Python 2.7.
-Support for Python 3.x is planned for a future release.
+YANK runs on Python 2.7, Python 3.4, and Python 3.5
 
 Dependencies
 ++++++++++++
 
-YANK uses a number of tools in order to allow the developers to focus on developing efficient algorithms involved in alchemical free energy calculations, rather than reinventing basic software, numerical, and molecular simulation infrastructure.
-Installation of these prerequisites by hand is not recommended---all required dependencies can be installed via the `conda <http://www.continuum.io/blog/conda>`_  package manager.
+YANK uses a number of tools in order to allow the developers to focus on developing efficient algorithms involved in
+alchemical free energy calculations, rather than reinventing basic software, numerical, and molecular simulation infrastructure.
+Installation of these prerequisites by hand is not recommended---all required dependencies can be installed via the
+`conda <http://www.continuum.io/blog/conda>`_  package manager.
 
 Required
 ^^^^^^^^
@@ -212,17 +213,24 @@ Required
 * `AmberTools <http://ambermd.org/#AmberTools>`_ is needed for setting up protein-ligand systems using LEaP.
   https://github.com/choderalab/ambertools
 
+  * We also provide a minimal set of the AmberTools in our repo `AmberMini <https://github.com/choderalab/ambermini>`_
+    which is also available through conda
+
 Optional
 ^^^^^^^^
 
 * `mpi4py <http://mpi4py.scipy.org/>`_ is needed if `MPI support <https://de.wikipedia.org/wiki/Message_Passing_Interface>`_ is desired.
 
-.. note:: The ``mpi4py`` installation must be compiled against the system-installed MPI implementation used to launch jobs. Using the ``conda`` version of ``mpi4py`` together with the ``conda``-provided ``mpirun`` is the simplest way to avoid any issues.
+.. note:: The ``mpi4py`` installation must be compiled against the system-installed MPI implementation used to launch jobs.
+Using the ``conda`` version of ``mpi4py`` together with the ``conda``-provided ``mpirun`` is the simplest way to avoid any issues.
 
-* The `OpenEye toolkit and Python wrappers <http://www.eyesopen.com/toolkits>`_ can be used to enable free energy calculations to be set up directly from multiple supported OpenEye formats, including Tripos mol2, PDB, SMILES, and IUPAC names (requires academic or commercial license).
-Note that PDB and mol2 are supported through the pure AmberTools pipeline as well, though this does not provide access to the OpenEye AM1-BCC charging pipeline.
+* The `OpenEye toolkit and Python wrappers <http://www.eyesopen.com/toolkits>`_ can be used to enable free energy
+calculations to be set up directly from multiple supported OpenEye formats, including Tripos mol2, PDB, SMILES, and
+IUPAC names (requires academic or commercial license).
+Note that PDB and mol2 are supported through the pure AmberTools pipeline as well, though this does not provide access
+to the OpenEye AM1-BCC charging pipeline.
 
-* `scipy.weave <http://docs.scipy.org/doc/scipy-0.14.0/reference/tutorial/weave.html>`_ is an optional dependency for the replica-exchange code, though this functionality will be migrated to `cython <http://cython.org>`_ in future revisions.
+* `cython <http://cython.org>`_ optional dependency for the replica-exchange code.
 
 Hardware
 --------
@@ -230,22 +238,29 @@ Hardware
 Supported hardware
 ++++++++++++++++++
 
-YANK makes use of `openmm <http://www.openmm.org>`_, a GPU-accelerated framework for molecular simulation.
+YANK makes use of `OpenMM <http://www.openmm.org>`_, a GPU-accelerated framework for molecular simulation.
 This allows the calculations to take advantage of hardware that supports CUDA (such as NVIDIA GPUs) or OpenCL (NVIDIA and ATI GPUs, as well as some processors).
 OpenMM also supports a multithreaded CPU platform which can be used if no CUDA or OpenCL resources are available.
+
+OpenMM requires that AMD cards can support the most recent Catalyst drivers, and NVIDIA cards can support at least CUDA
+7.5.
 
 Recommended hardware
 ++++++++++++++++++++
 
-We have found the best price/performance results are currently obtained with NVIDIA GTX-class consumer-grade cards, such as the GTX-680, GTX-780, and GTX-Titan cards.
+We have found the best price/performance results are currently obtained with NVIDIA GTX-class consumer-grade cards,
+such as the GTX-780, GTX-980, GTX-1080, and GTX-Titan cards.
 You can find some benchmarks for OpenMM on several classes of recent GPUs at `openmm.org <http://openmm.org/about.html#benchmarks>`_.
 
-Ross Walker and the Amber GPU developers maintain a set of `excellent pages with good inexpensive GPU hardware recommendations <http://ambermd.org/gpus/recommended_hardware.htm>`_ that will also work well with OpenMM and YANK.
+Ross Walker and the Amber GPU developers maintain a set of
+`excellent pages with good inexpensive GPU hardware recommendations <http://ambermd.org/gpus/recommended_hardware.htm>`_
+that will also work well with OpenMM and YANK.
 
 Installing from source
 ======================
 
-.. note:: We recommend only developers wanting to modify the YANK code should install from source. Users who want to use the latest development version are advised to install the :ref:`Development build conda package <yank-dev-conda-package>` instead.
+.. note:: We recommend only developers wanting to modify the YANK code should install from source. Users who want to use
+the latest development version are advised to install the :ref:`Development build conda package <yank-dev-conda-package>` instead.
 
 Installing from the GitHub source repository
 --------------------------------------------
