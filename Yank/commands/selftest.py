@@ -66,18 +66,18 @@ def dispatch(args):
     print("Yank Version %s \n" % version.version)
 
     # OpenMM Platforms
-    if not (args['platforms'] > 0): # Don't need to check for --skip since invalid without argument
+    if not (args['platforms'] > 0):  # Don't need to check for --skip since invalid without argument
         platforms.dispatch(None)
         # Errors
         platform_errors = mm.Platform.getPluginLoadFailures()
-        if len(platform_errors) > 0: # This check only required to make header
-            print(  "************************************************")
+        if len(platform_errors) > 0:  # This check only required to make header
+            print("************************************************")
             print("\nWarning! There were OpenMM Platform Load Errors!")
-            print(  "************************************************")
+            print("************************************************")
             for e in platform_errors:
                 print(e)
-            print(  "************************************************")
-            print(  "************************************************")
+            print("************************************************")
+            print("************************************************")
     else:
         print("Skipped OpenMM Platform Test")
 
@@ -109,7 +109,7 @@ def dispatch(args):
         card_modes = []
         split_nvidia_output = nvidia_output.split('\n')
         for line in split_nvidia_output:
-            match = re.search('(?:Compute[^:]*:\s+)(\w+)',line)
+            match = re.search('(?:Compute[^:]*:\s+)(\w+)', line)
             if match:
                 n_cards += 1
                 card_modes.append(match.group(1))
@@ -122,7 +122,7 @@ def dispatch(args):
 
     # Run nosetests
     # Note: These will not run during standard nosetests because they must be explicitly called
-    # i.e. no infinite nosetest loop
+    # i.e. no infinite nosetests loop
     if args['--nosetests']:
         # Clear some lines
         print("\n")
@@ -131,10 +131,10 @@ def dispatch(args):
         print("Nosetests invoked! This will take a while!")
         print("******************************************")
         import nose
-        try: # Check for timer install
-            result = nose.run(argv=['yank', '--nocapture', '--verbosity=%d'%verbosity, '--with-timer', '-a', '!slow'] )
+        try:  # Check for timer install
+            result = nose.run(argv=['yank', '--nocapture', '--verbosity=%d' % verbosity, '--with-timer', '-a', '!slow'])
         except:
-            result = nose.run(argv=['yank', '--nocapture', '--verbosity=%d'%verbosity, '-a', '!slow'] )
+            result = nose.run(argv=['yank', '--nocapture', '--verbosity=%d' % verbosity, '-a', '!slow'])
         print("\n")
 
     # Doctests
@@ -144,7 +144,7 @@ def dispatch(args):
         print("Doctests invoked! This will take a while!")
         print("*****************************************")
         # Run tests on main module.
-        import yank # NOT "from .. import yank" since we want to run on the hwole module
+        import yank  # NOT "from .. import yank" since we want to run on the whole module
         if verbosity > 1:
             verbose = True
         else:

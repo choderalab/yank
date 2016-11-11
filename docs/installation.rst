@@ -136,7 +136,7 @@ file to avoid setting this every time. If ``nvcc`` is installed in a different f
 correct path for your system.
 
 
-.. shared-excluded-cuda:
+.. _shared-excluded-cuda:
 
 Configuring Your CUDA Devices
 -----------------------------
@@ -171,7 +171,9 @@ The ``Compute M.`` on the right side should be set to ``Default`` for your devic
 mode with the following: ``nvidia-smi -i <List of Dev IDs> -c 0`` where ``<List of Dev IDs>`` is a comma separated list
 of GPU indices no spaces. For this case, you can write:  ``nvidia-smi -i 0,1,2,3 -c 0``.
 
-YANK also has the ability to check this status for you through ``yank selftest``
+YANK also has the ability to check this status for you through ``yank selftest``. Part of the command will attempt to run
+``nvidia-smi`` and infer what the Compute Mode is of any CUDA capable GPU detected. The command tries to infer this
+information from parsing the output so it may not be exact. Please double check this yourself.
 
 |
 
