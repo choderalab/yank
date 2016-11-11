@@ -134,11 +134,13 @@ implicit_solvent
      {UserDefinedSolvent}:
        implicit_solvent: OBC2
 
-Specify an implicit solvent model. Please check the OpenMM documentation on each option to see the differences in the models. 
+Specify an implicit solvent model. Please check the OpenMM documentation on each option to see the differences in the models.
+
+When not specified, no implicit solvent is set.
 
 Nonbonded Methods: ``NoCutoff``, ``CutoffNonPeriodic``
 
-Valid Options: [None] / HCT / OBC1 / OBC2 / GBn / GBn2
+Valid Options: HCT / OBC1 / OBC2 / GBn / GBn2
 
 
 .. _yaml_options_implicit_solvent_salt_conc:
