@@ -269,18 +269,25 @@ Optional
 * `mpi4py <http://mpi4py.scipy.org/>`_ is needed if `MPI support <https://de.wikipedia.org/wiki/Message_Passing_Interface>`_ is desired.
 
 .. note:: The ``mpi4py`` installation must be compiled against the system-installed MPI implementation used to launch jobs.
-Using the ``conda`` version of ``mpi4py`` together with the ``conda``-provided ``mpirun`` is the simplest way to avoid any issues.
+    Using the ``conda`` version of ``mpi4py`` together with the ``conda``-provided ``mpirun`` is the simplest way to avoid any issues.
 
-* The `OpenEye toolkit and Python wrappers <http://www.eyesopen.com/toolkits>`_ can be used to enable free energy
-calculations to be set up directly from multiple supported OpenEye formats, including Tripos mol2, PDB, SMILES, and
-IUPAC names (requires academic or commercial license).
-Note that PDB and mol2 are supported through the pure AmberTools pipeline as well, though this does not provide access
-to the OpenEye AM1-BCC charging pipeline.
+.. In order to get stuff aligned up in this long bullet and be human readable, I used a sub. Hyperlink needed double _ to parse right
+
+* |OEBullet|
+
+.. |OEBullet| replace::
+    The `OpenEye toolkit and Python wrappers <http://www.eyesopen.com/toolkits>`__ can be used to enable free energy
+    calculations to be set up directly from multiple supported OpenEye formats, including Tripos mol2, PDB, SMILES, and
+    IUPAC names (requires academic or commercial license).
+    Note that PDB and mol2 are supported through the pure AmberTools pipeline as well, though this does not provide access
+    to the OpenEye AM1-BCC charging pipeline.
 
 * `cython <http://cython.org>`_ optional dependency for the replica-exchange code.
 
 Hardware
 --------
+
+.. _supported_hardware:
 
 Supported hardware
 ++++++++++++++++++
@@ -307,7 +314,7 @@ Installing from source
 ======================
 
 .. note:: We recommend only developers wanting to modify the YANK code should install from source. Users who want to use
-the latest development version are advised to install the :ref:`Development build conda package <yank-dev-conda-package>` instead.
+    the latest development version are advised to install the :ref:`Development build conda package <yank-dev-conda-package>` instead.
 
 Installing from the GitHub source repository
 --------------------------------------------

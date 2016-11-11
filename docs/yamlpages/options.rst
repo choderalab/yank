@@ -142,7 +142,7 @@ System and Simulation Prepartion:
 .. _yaml_options_randomize_ligand:
 
 randomize_ligand
----------------
+----------------
 .. code-block:: yaml
 
    options:
@@ -475,7 +475,7 @@ Valid Options (1.0e-6): <Scientific Notation Float>
 .. _yaml_options_mc_displacement_sigma:
 
 mc_displacement_sigma
---------------------
+---------------------
 .. code-block:: yaml
 
    options:

@@ -11,7 +11,7 @@ Running on GPUs
 
 YANK uses `OpenMM <http://openmm.org>`_ as its simulation engine, which runs fastest on modern GPUs using either the ``CUDA` or ``OpenCL`` platforms.
 Modern GTX-class hardware, such as the `GTX-1080 <http://www.geforce.com/hardware/10series/geforce-gtx-1080>`_ or `GTX-TITAN-X <http://www.geforce.com/hardware/desktop-gpus/geforce-gtx-titan-x>`_, should work very well.
-See `Supported hardware`_ for more information about supported and recommended hardware.
+See :ref:`Supported hardware <supported_hardware>` for more information about supported and recommended hardware.
 
 Running on the CPU
 """"""""""""""""""
@@ -51,11 +51,15 @@ Multi-GPU and multi-node systems require masking the GPUs so YANK only sees the 
 to set the ``CUDA_VISIBLE_DEVICES`` variables on each process to mask all but the 1 card you want to use. We cannot provide
 a universal solution as systems will differ, but we can provide some general rules of thumb.
 
-* `torque` or `PBS` cluster - Install the `clusterutils <https://github.com/choderalab/clusterutils>`_ module (automatic when YANK
-is installed from CONDA). Run the ``build_mpirun_configfile "yank --script=yank.yaml"`` targeting your YAML file.
-The command works by targeting the cluster's ``$PBS_GPUFILE`` to determine device IDs as the cluster sees them.
-* `SLURM` cluster - SLURM should automatically handle the GPU ``CUDA_VISIBLE_DEVICES`` variable for you. You will still
-need to set the number of processes to run in MPI mode.
+* |torquepbs|
+
+.. |torquepbs| replace::
+    ``torque`` or ``PBS`` cluster - Install the `clusterutils <https://github.com/choderalab/clusterutils>`__ module (automatic when YANK
+    is installed from CONDA). Run the ``build_mpirun_configfile "yank --script=yank.yaml"`` targeting your YAML file.
+    The command works by targeting the cluster's ``$PBS_GPUFILE`` to determine device IDs as the cluster sees them.
+
+
+* ``SLURM`` cluster - SLURM should automatically handle the GPU ``CUDA_VISIBLE_DEVICES`` variable for you. You will still need to set the number of processes to run in MPI mode.
 
 We recommend running YANK with an MPI configfile. You can specify all of these sets to ``CUDA_VISIBLE_DEVICES`` by hand,
 but it will make for a long command line. Creating a configfile to feed into MPI is the preferred option for this reason.
