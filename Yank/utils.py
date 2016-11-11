@@ -237,9 +237,6 @@ class CombinatorialLeaf(list):
     """List type that can be expanded combinatorially in CombinatorialTree."""
     def __repr__(self):
         return "Combinatorial({})".format(super(CombinatorialLeaf, self).__repr__())
-    def __eq__(self, other):
-        # Order does not mater, so comparisons should not rely on them
-        return collections.Counter(self) == collections.Counter(other)
 
 
 class CombinatorialTree(collections.MutableMapping):
