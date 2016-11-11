@@ -52,6 +52,7 @@ Requirements
 
 **Minimum GPU Requirements**
 * NVIDIA GPU with CUDA 7.5 or greater ability, and most recent NVIDIA drivers
+    - Note: NVIDIA GPUs must be in `shared`/`Default` Compute Mode for YANK to use them.
 * AMD Cards with latest Catalyst drivers
 
 

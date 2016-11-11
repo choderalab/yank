@@ -110,7 +110,9 @@ You should see an output that looks like the following:
     2 CUDA
     3 OpenCL
 
-If your output is missing on option you expect, such as CUDA on Nvidia GPUs, then please check that you have correct drivers for your GPU installed. Non-standard CUDA installations require setting specific environment variables; please see the :ref:`appropriate section <non-standard-cuda>` for setting these variables.
+If your output is missing on option you expect, such as CUDA on Nvidia GPUs, then please check that you have correct
+drivers for your GPU installed. Non-standard CUDA installations require setting specific environment variables;
+please see the :ref:`appropriate section <non-standard-cuda>` for setting these variables.
 
 |
 
@@ -119,14 +121,57 @@ If your output is missing on option you expect, such as CUDA on Nvidia GPUs, the
 Configuring Non-Standard CUDA Install Locations
 -----------------------------------------------
 
-Multiple versions of CUDA can be installed on a single machine, such as on shared clusters. If this is the case, it may be necessary to set environment variables to make sure that the right version of CUDA is being used for YANK. You will need to know the full ``<path_to_cuda_install>`` and the location of that installation's ``nvcc`` program is (by default it is at ``<path_to_cuda_install>/bin/nvcc``). Then run the following lines to set the correct variables:
+Multiple versions of CUDA can be installed on a single machine, such as on shared clusters. If this is the case, it may
+be necessary to set environment variables to make sure that the right version of CUDA is being used for YANK. You will
+need to know the full ``<path_to_cuda_install>`` and the location of that installation's ``nvcc`` program is (by
+default it is at ``<path_to_cuda_install>/bin/nvcc``). Then run the following lines to set the correct variables:
 
 .. code-block:: bash
 
    export OPENMM_CUDA_COMPILER=<path_to_cuda_install>/bin/nvcc
    export LD_LIBRARY_PATH=<path_to_cuda_install>/lib64:$LD_LIBRARY_PATH
 
-You may want to add the new ``$OPENMM_CUDA_COMPILER`` variable and ``$LD_LIBRARY_PATH`` extension to you ``~/.bashrc`` file to avoid setting this every time. If ``nvcc`` is installed in a different folder than the example, please use the correct path for your system.
+You may want to add the new ``$OPENMM_CUDA_COMPILER`` variable and ``$LD_LIBRARY_PATH`` extension to you ``~/.bashrc``
+file to avoid setting this every time. If ``nvcc`` is installed in a different folder than the example, please use the
+correct path for your system.
+
+
+.. shared-excluded-cuda:
+
+Configuring Your CUDA Devices
+-----------------------------
+
+You will need to configure your CUDA devices to run in ``shared``/``Default`` Compute Mode
+if you have CUDA based cards, especially if you plan to run MPU on multiple CUDA cards.
+
+If you run ``nvidia-smi`` on your device, you will see a sample output that looks like this:
+
+.. code-block:: bash
+
+    +-----------------------------------------------------------------------------+
+    | NVIDIA-SMI 367.48                 Driver Version: 367.48                    |
+    |-------------------------------+----------------------+----------------------+
+    | GPU  Name        Persistence-M| Bus-Id        Disp.A | Volatile Uncorr. ECC |
+    | Fan  Temp  Perf  Pwr:Usage/Cap|         Memory-Usage | GPU-Util  Compute M. |
+    |===============================+======================+======================|
+    |   0  GeForce GTX 680     Off  | 0000:03:00.0     N/A |                  N/A |
+    | 30%   33C    P8    N/A /  N/A |      0MiB /  4036MiB |     N/A      Default |
+    +-------------------------------+----------------------+----------------------+
+    |   1  GeForce GTX 680     Off  | 0000:04:00.0     N/A |                  N/A |
+    | 30%   32C    P8    N/A /  N/A |      0MiB /  4036MiB |     N/A      Default |
+    +-------------------------------+----------------------+----------------------+
+    |   2  GeForce GTX 680     Off  | 0000:83:00.0     N/A |                  N/A |
+    | 30%   33C    P8    N/A /  N/A |      0MiB /  4036MiB |     N/A      Default |
+    +-------------------------------+----------------------+----------------------+
+    |   3  GeForce GTX 680     Off  | 0000:84:00.0     N/A |                  N/A |
+    | 30%   33C    P8    N/A /  N/A |      0MiB /  4036MiB |     N/A      Default |
+    +-------------------------------+----------------------+----------------------+
+
+The ``Compute M.`` on the right side should be set to ``Default`` for your device(s). If not, you can set the card(s)
+mode with the following: ``nvidia-smi -i <List of Dev IDs> -c 0`` where ``<List of Dev IDs>`` is a comma separated list
+of GPU indices no spaces. For this case, you can write:  ``nvidia-smi -i 0,1,2,3 -c 0``.
+
+YANK also has the ability to check this status for you through ``yank selftest``
 
 |
 
