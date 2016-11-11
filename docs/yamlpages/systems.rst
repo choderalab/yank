@@ -4,9 +4,9 @@ Systems Header for YAML Files
 *****************************
 
 The ``systems`` header is where we combine :doc:`molecules <molecules>` and 
-:doc:`solvents <solvents>` together with molecular forcefields and general 
+:doc:`solvents <solvents>` together with molecular force fields and general
 options to create the environment we want to simulation.
-There are several ways we can construct a sysem based on what type of free 
+There are several ways we can construct a system based on what type of free
 energy calculation we want to run and on if you want YANK to handle combining receptors and ligands.
 
 Just like in :doc:`molecules <molecules>`, the solvents can have arbitrary, user defined names.

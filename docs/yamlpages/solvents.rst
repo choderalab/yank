@@ -10,7 +10,8 @@ In the examples, these user defined names are marked as ``{UserDefinedSolvent}``
 
 You can define as many ``{UserDefinedSolvent}`` as you like. These solvents will be used in other YAML headers.
 
-Most of the solvent options are tied directly to OpenMM options of the same name in the primary function ``simtk.openmm.app.amberprmtopfile.AmberPrmtopFile.createSystem()``, however, there are other options tied to LEaP preparation instructions.
+Most of the solvent options are tied directly to OpenMM options of the same name in the primary function
+``simtk.openmm.app.amberprmtopfile.AmberPrmtopFile.createSystem()``, however, there are other options tied to LEaP preparation instructions.
 Similarly, the ``solvents`` section is where you specify Periodic Boundary Conditions (PBC) and long range electrostatic treatments.
 Each of the arguments in this category is optional and the default option will be assumed if not specified.
 
@@ -46,7 +47,7 @@ Because each option has very different behavior, we list each of them here and s
 * ``PME``: Specifies a periodic system with a cutoff scheme and Particle Mesh Ewald (PME) decomposed electrostatics. 
   Currently support by YANK, however, there is a small error introduced by YANK due to the inability efficiently treat long range alchemical PME electrostatics during simulation.
   We partially correct for this error by computing it at run-time at the cost of a bit of computational overhead.
-  **This is YANK's currently prefered mode for explicit solvent.**
+  **This is YANK's currently preferred mode for explicit solvent.**
 
 
 .. _yaml_solvents_nonbonded_cutoff:
@@ -59,7 +60,7 @@ nonbonded_cutoff
      {UserDefinedSolvent}:
        nonbonded_cutoff: 1 * nanometer
 
-Specify the cutoff radius for the ``nonbonded_method``\s which rely on it. 
+Specify the cutoff radius for the ``nonbonded_method``'s which rely on it.
 What happens beyond this cutoff depends both on the ``nonbonded_method`` and the ``switch_distance``.
 
 Nonbonded Methods: ``CutoffPeriodic``, ``Ewald``, ``PME``
@@ -73,7 +74,7 @@ switch_distance
 ---------------
 .. code-block:: yaml
 
-   solents:
+   solvents:
       {UserDefinedSolvent}:
          switch_distance: 0.9 * nanometer
 
@@ -98,7 +99,8 @@ constraints
 
 .. todo:: Figure out which ``constraints`` option overwrites the other.
 
-Specify constraints over the entire system. This option is redundant with the general options for :ref:`constraints <yaml_options_constraints>` and should almost never be set here unless you want to specify two solvents with different constraints.
+Specify constraints over the entire system. This option is redundant with the general options for
+:ref:`constraints <yaml_options_constraints>` and should almost never be set here unless you want to specify two solvents with different constraints.
 
 Nonbonded Methods: All
 
@@ -151,7 +153,7 @@ implicit_solvent_salt_concentration
 
    solvents:
      {UserDefinedSolvent}:
-       implicit_solvent_salt_concentratio: 1.0 * moles / liter
+       implicit_solvent_salt_concentration: 1.0 * moles / liter
 
 Specify the salt concentration of the implicit model. Requires that ``implicit_solvent != None``. 
 

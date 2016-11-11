@@ -178,7 +178,7 @@ Now run:
   build_mpirun_configfile "yank script --yaml=yank.yaml"
   mpiexec -configfile configfile
 
-The ``build_mpirun_configfile`` is a command available if you have installed YANK through conda, and though the ``clustertools``
+The ``build_mpirun_configfile`` is a command available if you have installed YANK through conda, and though the ``clusterutils``
 repo.
 
 

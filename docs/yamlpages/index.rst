@@ -62,7 +62,7 @@ Detailed Options List
     * :ref:`replica_mixing_scheme <yaml_options_replica_mixing_scheme>`
     * :ref:`collision_rate <yaml_options_collision_rate>`
     * :ref:`constraint_tolerance <yaml_options_constraint_tolerance>`
-    * :ref:`mc_displacemnt_sigma <yaml_options_mc_displacemnt_sigma>`
+    * :ref:`mc_displacement_sigma <yaml_options_mc_displacement_sigma>`
 
   * :ref:`Alchemy Parameters <yaml_options_alchemy_parameters>`
 

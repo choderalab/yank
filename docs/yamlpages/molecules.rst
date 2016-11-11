@@ -134,7 +134,7 @@ antechamber
        antechamber:
          charge_method: bcc
 
-Pass the molecule through AmberTools ANTECHAMBER to assign changes and parameters. Fine grain control is handled through the ``charge_method`` argument which accepts either a known ANTECHAMBER method or ``null`` for none. 
+Pass the molecule through AmberTools ANTECHAMBER to assign changes and parameters. Fine grain control is handled through the ``charge_method`` argument which accepts either a known ANTECHAMBER method or ``null`` for none.
 
 Primarially used to assign charges to small molecules
 
