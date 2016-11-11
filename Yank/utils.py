@@ -178,8 +178,11 @@ def initialize_mpi():
     # Override sys.excepthook to abort MPI on exception
     def mpi_excepthook(type, value, traceback):
         sys.__excepthook__(type, value, traceback)
+        sys.stdout.flush()
+        sys.stderr.flush()
         if mpicomm.size > 1:
             mpicomm.Abort(1)
+    # Use our eception handler
     sys.excepthook = mpi_excepthook
 
     # Catch sigterm signals
@@ -190,7 +193,6 @@ def initialize_mpi():
         signal.signal(sig, handle_signal)
 
     return mpicomm
-
 
 @contextmanager
 def delay_termination():
@@ -235,9 +237,6 @@ class CombinatorialLeaf(list):
     """List type that can be expanded combinatorially in CombinatorialTree."""
     def __repr__(self):
         return "Combinatorial({})".format(super(CombinatorialLeaf, self).__repr__())
-    def __eq__(self, other):
-        # Order does not mater, so comparisons should not rely on them
-        return collections.Counter(self) == collections.Counter(other)
 
 
 class CombinatorialTree(collections.MutableMapping):
@@ -449,7 +448,7 @@ class CombinatorialTree(collections.MutableMapping):
         expanded_tree = copy.deepcopy(self)
         combinatorial_id_nodes = {}  # map combinatorial_id -> list of combination_ids
 
-        for id_node_key, id_node_val in listitems(self.__getitem__(id_nodes_path)):
+        for id_node_key, id_node_val in self.__getitem__(id_nodes_path).items():
             # Find all combinations and expand them
             id_node_val = CombinatorialTree(id_node_val)
             combinations = {id_node_key + '_' + name: comb for name, comb
@@ -459,7 +458,10 @@ class CombinatorialTree(collections.MutableMapping):
                 # Substitute combinatorial node with all combinations
                 del expanded_tree[id_nodes_path][id_node_key]
                 expanded_tree[id_nodes_path].update(combinations)
-                combinatorial_id_nodes[id_node_key] = combinations.keys()
+                # We need the combinatorial_id_nodes substituted to an id_node_key
+                # to have a deterministic value or MPI parallel processes will
+                # iterate over combinations in different orders
+                combinatorial_id_nodes[id_node_key] = sorted(combinations.keys())
 
         # Update ids in the rest of the tree
         for update_path in update_nodes_paths:
@@ -492,13 +494,9 @@ class CombinatorialTree(collections.MutableMapping):
         The value contained in the node pointed by the path.
 
         """
-        # TODO: Make sure this is working
-        # Converted from old py 2.X `reduce` function
-        function = lambda d,k: d[k]
-        it = iter(path)
         accum_value = d
-        for x in it:
-            accum_value = function(accum_value, x)
+        for node_key in path:
+            accum_value = accum_value[node_key]
         return accum_value
 
     @staticmethod
@@ -619,10 +617,8 @@ class CombinatorialTree(collections.MutableMapping):
         """
         template_tree = CombinatorialTree(self._d)
 
-        # itertools.product takes only iterables so we need to convert single values
-        for i, leaf_val in enumerate(leaf_vals):
-            if not is_iterable_container(leaf_val):
-                leaf_vals[i] = [leaf_val]
+        # All leaf values must be CombinatorialLeafs at this point
+        assert all(isinstance(leaf_val, CombinatorialLeaf) for leaf_val in leaf_vals)
 
         # generating all combinations
         for combination in itertools.product(*leaf_vals):
@@ -872,7 +868,7 @@ def quantity_from_string(quantity_str):
     ----------
     quantity_str : string
         A string containing a value with a unit of measure
-    
+
     Returns
     -------
     quantity : simtk.unit.Quantity
@@ -894,7 +890,7 @@ def quantity_from_string(quantity_str):
     Quanity(value=1, unit=joule/second)
 
     """
-   
+
     # Strip out (possible) surrounding quotes
     quote_pattern = '[^\'"]+'
     try:
@@ -910,7 +906,7 @@ def quantity_from_string(quantity_str):
                break
         return i
 
-        
+
     def nested_string(passed_str):
         def exponent_unit(passed_str):
             # Attempt to cast argument as an exponenet
@@ -989,9 +985,9 @@ def quantity_from_string(quantity_str):
                     count_indices += 1 # add 1 more to offset the '(' itself
                 elif next_operator == ')':
                     paren_closed = True
-            else: 
+            else:
                 # Case of no found operators
-                next_operator = None 
+                next_operator = None
             # Handle the conditions
             if (last_operator is None):
                 if (final_quantity is None) and (arg_type is 'None') and (augment is None):
@@ -1023,15 +1019,15 @@ def quantity_from_string(quantity_str):
                     if passed_str[last_char_loop:last_char_loop+2] == '**':
                         exponent, exponent_offset = exponent_unit(passed_str[last_char_loop+2:])
                         final_quantity **= exponent
-                        last_char_loop += exponent_offset 
+                        last_char_loop += exponent_offset
                 except:
                     pass
                 break
         return final_quantity, final_type, last_char_loop
-    
+
     quantity, final_type, x = nested_string(quantity_str)
     return quantity
-     
+
 
 def process_unit_bearing_str(quantity_str, compatible_units):
     """
@@ -1606,7 +1602,7 @@ class TLeap:
 # Python 2/3 compatability
 #=============================================================================================
 
-""" 
+"""
 Generate same behavior for dict.item in both versions of Python
 Avoids external dependancies on future.utils or six
 

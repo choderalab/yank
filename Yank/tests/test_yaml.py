@@ -14,6 +14,7 @@ Test YAML functions.
 #=============================================================================================
 
 import time
+import yaml
 import shutil
 import textwrap
 import unittest
@@ -862,12 +863,10 @@ class TestMultiMoleculeFiles():
             utils.write_oe_molecule(oe_benzene, cls.sdf_path)
             utils.write_oe_molecule(oe_benzene, cls.mol2_path, mol2_resname='MOL')
 
-
     @classmethod
     def teardown_class(cls):
         shutil.rmtree(cls.tmp_dir)
 
-    # TODO: Fix this test to not be literal check. Py3 causes the combined litteral names to not always be the same
     @unittest.skipIf(not utils.is_openeye_installed(), 'This test requires OpenEye installed.')
     def test_expand_molecules(self):
         """Check that combinatorial molecules are handled correctly."""
@@ -986,8 +985,8 @@ class TestMultiMoleculeFiles():
         protocols:{}
         systems:
             sys:
-                receptor: !Combinatorial [rec_multisdf, rec_multimol2, multi_1, multi_0]
-                ligand: !Combinatorial [lig_0_iupac2, lig_2_iupac1, lig_2_iupac2, lig_0_iupac1]
+                receptor: !Combinatorial [rec_multimol2, rec_multisdf, multi_0, multi_1]
+                ligand: !Combinatorial [lig_0_iupac1, lig_0_iupac2, lig_2_iupac1, lig_2_iupac2]
                 solvent: !Combinatorial [solv1, solv2]
         experiments:
             system: sys
@@ -999,7 +998,9 @@ class TestMultiMoleculeFiles():
 
         raw = yank_load(yaml_content)
         expanded = YamlBuilder(yaml_content)._expand_molecules(raw)
-        assert expanded == yank_load(expected_content)
+        expected = yank_load(expected_content)
+        assert expanded == expected, 'Expected:\n{}\n\nExpanded:\n{}'.format(
+            expected['systems'], expanded['systems'])
 
     def test_select_pdb_conformation(self):
         """Check that frame selection in multi-model PDB files works."""
