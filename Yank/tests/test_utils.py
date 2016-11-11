@@ -128,8 +128,8 @@ def test_expand_id_nodes():
     t = CombinatorialTree(d).expand_id_nodes('molecules', [('systems', '*', 'molecules')])
     assert t['molecules'] == {'mol1_1': {'mol_value': 1}, 'mol1_2': {'mol_value': 2},
                               'mol2_3': {'mol_value': 3}, 'mol2_4': {'mol_value': 4}}
-    assert t['systems'] == {'sys1': {'molecules': CombinatorialLeaf(['mol1_2', 'mol1_1'])},
-                            'sys2': {'molecules': CombinatorialLeaf(['mol1_2', 'mol1_1', 'mol2_3', 'mol2_4'])},
+    assert t['systems'] == {'sys1': {'molecules': CombinatorialLeaf(['mol1_1', 'mol1_2'])},
+                            'sys2': {'molecules': CombinatorialLeaf(['mol1_1', 'mol1_2', 'mol2_3', 'mol2_4'])},
                             'sys3': {'prmtopfile': 'mysystem.prmtop'}}
 
 

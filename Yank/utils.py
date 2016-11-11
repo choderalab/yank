@@ -448,7 +448,7 @@ class CombinatorialTree(collections.MutableMapping):
         expanded_tree = copy.deepcopy(self)
         combinatorial_id_nodes = {}  # map combinatorial_id -> list of combination_ids
 
-        for id_node_key, id_node_val in listitems(self.__getitem__(id_nodes_path)):
+        for id_node_key, id_node_val in self.__getitem__(id_nodes_path).items():
             # Find all combinations and expand them
             id_node_val = CombinatorialTree(id_node_val)
             combinations = {id_node_key + '_' + name: comb for name, comb
@@ -458,7 +458,10 @@ class CombinatorialTree(collections.MutableMapping):
                 # Substitute combinatorial node with all combinations
                 del expanded_tree[id_nodes_path][id_node_key]
                 expanded_tree[id_nodes_path].update(combinations)
-                combinatorial_id_nodes[id_node_key] = combinations.keys()
+                # We need the combinatorial_id_nodes substituted to an id_node_key
+                # to have a deterministic value or MPI parallel processes will
+                # iterate over combinations in different orders
+                combinatorial_id_nodes[id_node_key] = sorted(combinations.keys())
 
         # Update ids in the rest of the tree
         for update_path in update_nodes_paths:
@@ -491,13 +494,9 @@ class CombinatorialTree(collections.MutableMapping):
         The value contained in the node pointed by the path.
 
         """
-        # TODO: Make sure this is working
-        # Converted from old py 2.X `reduce` function
-        function = lambda d,k: d[k]
-        it = iter(path)
         accum_value = d
-        for x in it:
-            accum_value = function(accum_value, x)
+        for node_key in path:
+            accum_value = accum_value[node_key]
         return accum_value
 
     @staticmethod
@@ -618,10 +617,8 @@ class CombinatorialTree(collections.MutableMapping):
         """
         template_tree = CombinatorialTree(self._d)
 
-        # itertools.product takes only iterables so we need to convert single values
-        for i, leaf_val in enumerate(leaf_vals):
-            if not is_iterable_container(leaf_val):
-                leaf_vals[i] = [leaf_val]
+        # All leaf values must be CombinatorialLeafs at this point
+        assert all(isinstance(leaf_val, CombinatorialLeaf) for leaf_val in leaf_vals)
 
         # generating all combinations
         for combination in itertools.product(*leaf_vals):
