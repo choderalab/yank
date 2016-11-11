@@ -14,6 +14,7 @@ Test YAML functions.
 #=============================================================================================
 
 import time
+import yaml
 import shutil
 import textwrap
 import unittest
@@ -998,7 +999,8 @@ class TestMultiMoleculeFiles():
 
         raw = yank_load(yaml_content)
         expanded = YamlBuilder(yaml_content)._expand_molecules(raw)
-        assert expanded == yank_load(expected_content)
+        expected = yank_load(expected_content)
+        assert expanded == expected, "Expected:\n%s\nExpanded:\n%s\n" % (yaml.dump(expected), yaml.dump(expanded))
 
     def test_select_pdb_conformation(self):
         """Check that frame selection in multi-model PDB files works."""
