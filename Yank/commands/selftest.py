@@ -1,29 +1,31 @@
 #!/usr/local/bin/env python
 
-#=============================================================================================
+# =============================================================================================
 # MODULE DOCSTRING
-#=============================================================================================
+# =============================================================================================
 
 """
 Run YANK self tests after installation.
 
 """
 
-#=============================================================================================
+# =============================================================================================
 # MODULE IMPORTS
-#=============================================================================================
+# =============================================================================================
 
 import doctest
 import pkgutil
+import subprocess
+import re
 
 from .. import version
 from . import platforms
 import simtk.openmm as mm
 
 
-#=============================================================================================
+# =============================================================================================
 # COMMAND-LINE INTERFACE
-#=============================================================================================
+# =============================================================================================
 usage = """
 YANK selftest
 
@@ -42,9 +44,10 @@ General Options:
                                 May be specified multiple times, once per TEST
 
 """
-#=============================================================================================
+# =============================================================================================
 # COMMAND DISPATCH
-#=============================================================================================
+# =============================================================================================
+
 
 def dispatch(args):
 
@@ -52,31 +55,35 @@ def dispatch(args):
     # TODO: Figure out how to get -v back in to command and allow -vv and -vvv
     # nosetests: -v == --verbosity=2
     # Assuming that verbosity = 1 (or no -v) is no verbosity for doctests
-    #verbosity = max(args['-v'] + 1, int(args['--verbosity']))
+    # verbosity = max(args['-v'] + 1, int(args['--verbosity']))
     verbosity = int(args['--verbosity'])
     # Header
     print("\n")
     print("YANK Selftest")
     print("-------------")
+
     # Yank Version
     print("Yank Version %s \n" % version.version)
+
     # OpenMM Platforms
-    if not (args['platforms'] > 0): # Dont need to check for --skip since invalid without argument
+    if not (args['platforms'] > 0):  # Don't need to check for --skip since invalid without argument
         platforms.dispatch(None)
         # Errors
         platform_errors = mm.Platform.getPluginLoadFailures()
-        if len(platform_errors) > 0: # This check only required to make header
-            print(  "************************************************")
+        if len(platform_errors) > 0:  # This check only required to make header
+            print("************************************************")
             print("\nWarning! There were OpenMM Platform Load Errors!")
-            print(  "************************************************")
+            print("************************************************")
             for e in platform_errors:
                 print(e)
-            print(  "************************************************")
-            print(  "************************************************")
+            print("************************************************")
+            print("************************************************")
     else:
         print("Skipped OpenMM Platform Test")
+
     # Space out tests
     print("\n")
+
     # OpenEye checks
     if not (args['openeye'] > 0):
         try:
@@ -90,9 +97,32 @@ def dispatch(args):
     else:
         print("Skipped OpenEye Tests")
     print("\n")
+
+    # NVIDIA-SMI calls
+    print("Checking GPU Computed Mode (if present)...")
+    try:
+        nvidia_output = subprocess.check_output('nvidia-smi -q -d COMPUTE', shell=True)
+    except subprocess.CalledProcessError as e:
+        print("nvidia-smi had an issue, could not find CUDA cards, however this may be expected on your system.")
+    else:
+        n_cards = 0
+        card_modes = []
+        split_nvidia_output = nvidia_output.split('\n')
+        for line in split_nvidia_output:
+            match = re.search('(?:Compute[^:]*:\s+)(\w+)', line)
+            if match:
+                n_cards += 1
+                card_modes.append(match.group(1))
+        if n_cards == 0:
+            print("nvidia-smi returned 'Compute' search, but no cards matched query pattern.\n"
+                  "Please run `nvidia-smi` yourself to confirm the Compute Mode is in shared/Default")
+        else:
+            print("Found {} NVIDIA GPUs in the following modes: [".format(n_cards) + ', '.join(card_modes) + "]\n"
+                  "These should all be in shared/Default mode for YANK to use them")
+
     # Run nosetests
     # Note: These will not run during standard nosetests because they must be explicitly called
-    # i.e. no infinite nosetest loop
+    # i.e. no infinite nosetests loop
     if args['--nosetests']:
         # Clear some lines
         print("\n")
@@ -101,18 +131,20 @@ def dispatch(args):
         print("Nosetests invoked! This will take a while!")
         print("******************************************")
         import nose
-        try: #Check for timer install
-            result = nose.run(argv=['yank', '--nocapture', '--verbosity=%d'%verbosity, '--with-timer', '-a', '!slow'] )
+        try:  # Check for timer install
+            result = nose.run(argv=['yank', '--nocapture', '--verbosity=%d' % verbosity, '--with-timer', '-a', '!slow'])
         except:
-            result = nose.run(argv=['yank', '--nocapture', '--verbosity=%d'%verbosity, '-a', '!slow'] )
+            result = nose.run(argv=['yank', '--nocapture', '--verbosity=%d' % verbosity, '-a', '!slow'])
         print("\n")
+
+    # Doctests
     if args['--doctests']:
         # Alert User
         print("*****************************************")
         print("Doctests invoked! This will take a while!")
         print("*****************************************")
         # Run tests on main module.
-        import yank # NOT "from .. import yank" since we want to run on the hwole module
+        import yank  # NOT "from .. import yank" since we want to run on the whole module
         if verbosity > 1:
             verbose = True
         else:

@@ -129,8 +129,8 @@ Electrostatics treatment
 OpenMM supports several electrostatics models for the periodic simulation boxes used with explicit solvent calculations, all of which are accessible in YANK:
 
 * ``PME`` - **Particle mesh Ewald (PME)** :cite:`Essmann1995,Toukmaji1996` is the "gold standard" for accurate long-range treatment of electrostatics in periodic solvated systems.
-.. warning:: YANK currently has some difficulty with alchemical transformations involving PME because of the inability to represent the reciprocal-space contribution of the alchemically modified ligand, so phase space overlap with the endpoints can be poorer than with other methods.
-.. todo:: Levi Naden has a trick we can use to fix this issue.
+    .. warning:: YANK currently has some difficulty with alchemical transformations involving PME because of the inability to represent the reciprocal-space contribution of the alchemically modified ligand, so phase space overlap with the endpoints can be poorer than with other methods.
+    .. todo:: Levi Naden has a trick we can use to fix this issue.
 
 * ``CutoffPeriodic`` - **Reaction field electrostatics** :cite:`Tironi1995` is a faster, less accurate methods for treating electrostatics in solvated systems that assumes a uniform dielectric outside the nonbonded cutoff distance.
 

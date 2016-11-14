@@ -3,9 +3,10 @@
 Options for YAML files
 **********************
 
-These are all the simulation, alchemy, and file I/O options controlled by the ``options`` header in the YAML files for YANK. We have subdivided the categories below, but all settings on this page go under the ``options`` header in the YAML file:
+These are all the simulation, alchemy, and file I/O options controlled by the ``options`` header in the YAML files for
+YANK. We have subdivided the categories below, but all settings on this page go under the ``options`` header in the YAML file:
 
-* :ref:`General Options: <yaml-options-options>`
+* :ref:`General Options: <yaml_options_options>`
 * :ref:`System and Simulation Prep <yaml_options_sys_and_sim_prep>`
 * :ref:`Simulation Parameters: <yaml_options_simulation_parameters>`
 * :ref:`Alchemy Parameters <yaml_options_alchemy_parameters>`
@@ -40,7 +41,8 @@ resume_setup
    options:
      resume_setup: no
 
-Choose to resume a setup procedure. YANK will raise an error when it detects that it will overwrite an existing file in the directory specified by :ref:`setup_dir <yaml_options_setup_dir>`.
+Choose to resume a setup procedure. YANK will raise an error when it detects that it will overwrite an existing file in
+the directory specified by :ref:`setup_dir <yaml_options_setup_dir>`.
 
 Valid Options: [no]/yes
 
@@ -54,7 +56,8 @@ resume_simulation
    options:
      resume_simulation: no
 
-Choose to resume simulations. YANK will raise an error when it detects that it will overwrite an existing file in the directory specified by :ref:`experiments_dir <yaml_options_experiments_dir>`.
+Choose to resume simulations. YANK will raise an error when it detects that it will overwrite an existing file in the
+directory specified by :ref:`experiments_dir <yaml_options_experiments_dir>`.
 
 Valid Options: [no]/yes
 
@@ -95,7 +98,8 @@ experiments_dir
    options:
      experiments_dir: experiments
 
-The folder where all generate simulation setup files are stored. A folder will be created if none exists. Path is relative to to the :ref:`output_dir <yaml_options_output_dir>` folder.
+The folder where all generate simulation setup files are stored. A folder will be created if none exists. Path is
+relative to to the :ref:`output_dir <yaml_options_output_dir>` folder.
 
 Valid Options (experiments): <Path String>
 
@@ -109,7 +113,8 @@ platform
    options:
      platform: fastest
 
-The OpenMM platform used to run the calculations. The default value (``fastest``) automatically selects the fastest available platform. Some platforms (especially ``CUDA`` and ``OpenCL``) may not be available on all systems.
+The OpenMM platform used to run the calculations. The default value (``fastest``) automatically selects the fastest
+available platform. Some platforms (especially ``CUDA`` and ``OpenCL``) may not be available on all systems.
 
 Valid options: [fastest]/CUDA/OpenCL/CPU/Reference
 
@@ -122,7 +127,8 @@ precision
    options:
      precision: auto
 
-Floating point precision to use during the simulation. It can be set for OpenCL and CUDA platforms only. The default value (``auto``) is equivalent to ``mixed`` when the device support this precision, and ``single`` otherwise.
+Floating point precision to use during the simulation. It can be set for OpenCL and CUDA platforms only. The default
+value (``auto``) is equivalent to ``mixed`` when the device support this precision, and ``single`` otherwise.
 
 Valid options: [auto]/double/mixed/single
 
@@ -135,12 +141,12 @@ System and Simulation Prepartion:
 
 .. _yaml_options_randomize_ligand:
 
-randomize_liand
----------------
+randomize_ligand
+----------------
 .. code-block:: yaml
 
    options:
-     randomize_liand: no
+     randomize_ligand: no
 
 Randomize the position of the ligand before starting the simulation.
 Only works in Implicit Solvent. The ligand will be randomly rotated and displaced by
@@ -294,7 +300,8 @@ show_mixing_statistics
    options:
      show_mixing_statistics: yes
 
-If ``yes``, will print the Hamiltonian Replica Exchange swapping statistics at each iteration. This process adds a small amount of overhead to each iteration.
+If ``yes``, will print the Hamiltonian Replica Exchange swapping statistics at each iteration. This process adds a small
+amount of overhead to each iteration.
 
 Valid options: [yes]/no
 
@@ -308,7 +315,8 @@ minimize
    options:
      minimize: yes
 
-Minimize the input configuration before starting simulation. Highly recommended if a pre-minimized structure is provided, or if explicit solvent generation is left to YANK.
+Minimize the input configuration before starting simulation. Highly recommended if a pre-minimized structure is provided,
+or if explicit solvent generation is left to YANK.
 
 Valid Options: [yes]/no
 
@@ -337,7 +345,8 @@ minimize_tolerance
    options:
      minimize_tolerance: 1.0 * kilojoules_per_mole / nanometers
 
-Set the tolerance of the :ref:`energy minimization process <yaml_options_minimize>`. System is considered minimized when the energy does not change by the given tolerance in subsequent iterations.
+Set the tolerance of the :ref:`energy minimization process <yaml_options_minimize>`. System is considered minimized when
+the energy does not change by the given tolerance in subsequent iterations.
 
 Valid Options (1.0 * kilojoules_per_mole / nanometers): <Quantity (Molar Energy)/(Length)> [1]_
 
@@ -379,7 +388,8 @@ number_of_iterations
    options:
      number_of_iterations: 1
 
-Number of iterations for production simulation. Note: If :ref:`resume_simulation <yaml_options_resume_simulation>` is set, this option can be used to extend previous simulations past their original number of iterations.
+Number of iterations for production simulation. Note: If :ref:`resume_simulation <yaml_options_resume_simulation>` is
+set, this option can be used to extend previous simulations past their original number of iterations.
 
 Valid Options (1): <Integer>
 
@@ -393,7 +403,8 @@ nsteps_per_iteration
    options:
      nsteps_per_iteration: 500
 
-Number of timesteps between each iteration. We highly recommend using a number greater than 1 to improve decorrelation between iterations. Hamiltonian Replica Exchange swaps are attempted after each iteration.
+Number of timesteps between each iteration. We highly recommend using a number greater than 1 to improve decorrelation
+between iterations. Hamiltonian Replica Exchange swaps are attempted after each iteration.
 
 Valid Options (500): <Integer>
 
@@ -422,7 +433,8 @@ replica_mixing_scheme
      replica_mixing_scheme: swap-all
 
 Specifies how the Hamiltonian Replica Exchange attempts swaps between replicas.
-``swap-all`` will attempt to exchange every state with every other state. ``swap-neighbors``  will attempt only exchanges between adjacent states.
+``swap-all`` will attempt to exchange every state with every other state. ``swap-neighbors``  will attempt only
+exchanges between adjacent states.
 
 Valid Options: [swap-all]/swap-neighbors
 
@@ -436,9 +448,12 @@ collision_rate
    options:
      collision_rate: 5.0 / picosecond
 
-The collision rate used for Langevin dynamics. Default quantity of 5.0/picosecond works well for explicit solvent. Implicit solvent will require a different collision rate, e.g. 91 / picosecond works well for TIP3P water.
+The collision rate used for Langevin dynamics. Default quantity of 5.0 / picosecond works well for explicit solvent.
+Implicit solvent will require a different collision rate, e.g. 91 / picosecond works well for TIP3P water.
 
-Collision rates (or friction coefficients) appear in the Langevin dynamics equation as either inverse time, or one over some time constant, :math:`1/\tau`.  When comparing collision rates, double check if the collision rate is in units of inverse time, or just time. For example: a collision rate of 5.0/ps -> :math:`\tau = 0.2 \, ps`.
+Collision rates (or friction coefficients) appear in the Langevin dynamics equation as either inverse time, or one over
+some time constant, :math:`1/\tau`.  When comparing collision rates, double check if the collision rate is in units of
+inverse time, or just time. For example: a collision rate of 5.0/ps -> :math:`\tau = 0.2 \, ps`.
 
 Valid Options (5.0 / picosecond): <Quantity Inverse Time> [1]_
 
@@ -457,14 +472,14 @@ Relative tolerance on the :ref:`constraints <yaml_options_constraints>` of the s
 Valid Options (1.0e-6): <Scientific Notation Float>
 
 
-.. _yaml_options_mc_displacemnt_sigma:
+.. _yaml_options_mc_displacement_sigma:
 
-mc_displacemnt_sigma
---------------------
+mc_displacement_sigma
+---------------------
 .. code-block:: yaml
 
    options:
-     mc_displacemnt_sigma: 10.0 * angstroms
+     mc_displacement_sigma: 10.0 * angstroms
 
 YANK will augment Langevin dynamics with MC moves rotating and displacing the ligand. This parameter controls the size of the displacement
 
@@ -487,7 +502,8 @@ annihilate_electrostatics
    options:
      annihilate_electrostatics: yes
 
-Annihilate electrostatics rather than decouple them. This means that ligand-ligand (alchemical-alchemical) nonbonded electrostatics will be turned off as well as ligand-nonligand nonbonded electrostatics.
+Annihilate electrostatics rather than decouple them. This means that ligand-ligand (alchemical-alchemical) nonbonded
+electrostatics will be turned off as well as ligand-nonligand nonbonded electrostatics.
 
 Valid Options: [yes]/no
 
@@ -501,7 +517,9 @@ annihilate_sterics
    options:
      annihilate_sterics: no
 
-Annihilate sterics (Lennad-Jones or Halgren potential) rather than decouple them. This means that ligand-ligand (alchemical-alchemical) nonbonded sterics will be turned off as well as ligand-nonligand nonbonded sterics. **WARNING:** Do *not* set this option if ``annihilate_electrostatics`` is "no".
+Annihilate sterics (Lennad-Jones or Halgren potential) rather than decouple them. This means that ligand-ligand
+(alchemical-alchemical) nonbonded sterics will be turned off as well as ligand-nonligand nonbonded sterics.
+**WARNING:** Do *not* set this option if ``annihilate_electrostatics`` is "no".
 
 Valid Options: [no]/yes
 
@@ -518,7 +536,8 @@ Steric Alchemical Options
      softcore_b: 1
      softcore_c: 6
 
-The options that control the soft core energy function for decoupling/annihilating steric interactions. Setting ``softcore_alpha = 0`` with ``softcore_a = 1`` gives linear scaling of the Lennard-Jones energy function.
+The options that control the soft core energy function for decoupling/annihilating steric interactions. Setting
+``softcore_alpha = 0`` with ``softcore_a = 1`` gives linear scaling of the Lennard-Jones energy function.
 
 Valid Options for ``softcore_alpha`` (0.5): <Float>
 
@@ -537,7 +556,8 @@ Electrostatic Alchemical Options
      softcore_e: 1
      softcore_f: 2
 
-The options that control the soft core energy functnon for decoupling/annihilating electrostatic interactions. Setting ``softcore_beta = 0`` with ``softcore_d = 1`` gives linear scaling of Coulomb's law.
+The options that control the soft core energy functnon for decoupling/annihilating electrostatic interactions.
+Setting ``softcore_beta = 0`` with ``softcore_d = 1`` gives linear scaling of Coulomb's law.
 
 Valid Options for ``softcore_beta`` (1.0): <Float>
 

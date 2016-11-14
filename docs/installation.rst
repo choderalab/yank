@@ -32,6 +32,8 @@ On ``osx``, you want to use the ```osx`` binary
 You may want to add the new ```$PATH`` extension to your ``~/.bashrc`` file to ensure Anaconda Python is used by default.
 Note that YANK will be installed into this local Python installation, so that you will not need to worry about disrupting existing Python installations.
 
+.. note:: ``conda`` installation is the preferred method since all dependencies are automatically fetched and installed for you.
+
 |
 
 Release build
@@ -85,7 +87,8 @@ Test your YANK installation to make sure everything is behaving properly on your
 
    $ yank selftest
 
-This will not only check that installation paths are correct, but also run a battery of tests that ensure any automatically detected GPU hardware is behaving as expected.
+This will not only check that installation paths are correct, but also run a battery of tests that ensure any
+automatically detected GPU hardware is behaving as expected.
 
 |
 
@@ -94,7 +97,9 @@ This will not only check that installation paths are correct, but also run a bat
 Testing Available Platforms
 ---------------------------
 
-You will want to make sure that all GPU accelerated platforms available on your hardware are accessible to YANK. The simulation library that YANK runs on, OpenMM, can run on CPU, CUDA, and OpenCL platforms. The following command will check which platforms are available:
+You will want to make sure that all GPU accelerated platforms available on your hardware are accessible to YANK. The
+simulation library that YANK runs on, OpenMM, can run on CPU, CUDA, and OpenCL platforms. The following command will
+check which platforms are available:
 
 .. code-block:: bash
 
@@ -110,7 +115,9 @@ You should see an output that looks like the following:
     2 CUDA
     3 OpenCL
 
-If your output is missing on option you expect, such as CUDA on Nvidia GPUs, then please check that you have correct drivers for your GPU installed. Non-standard CUDA installations require setting specific environment variables; please see the :ref:`appropriate section <non-standard-cuda>` for setting these variables.
+If your output is missing on option you expect, such as CUDA on Nvidia GPUs, then please check that you have correct
+drivers for your GPU installed. Non-standard CUDA installations require setting specific environment variables;
+please see the :ref:`appropriate section <non-standard-cuda>` for setting these variables.
 
 |
 
@@ -119,16 +126,63 @@ If your output is missing on option you expect, such as CUDA on Nvidia GPUs, the
 Configuring Non-Standard CUDA Install Locations
 -----------------------------------------------
 
-Multiple versions of CUDA can be installed on a single machine, such as on shared clusters. If this is the case, it may be necessary to set environment variables to make sure that the right version of CUDA is being used for YANK. You will need to know the full ``<path_to_cuda_install>`` and the location of that installation's ``nvcc`` program is (by default it is at ``<path_to_cuda_install>/bin/nvcc``). Then run the following lines to set the correct variables:
+Multiple versions of CUDA can be installed on a single machine, such as on shared clusters. If this is the case, it may
+be necessary to set environment variables to make sure that the right version of CUDA is being used for YANK. You will
+need to know the full ``<path_to_cuda_install>`` and the location of that installation's ``nvcc`` program is (by
+default it is at ``<path_to_cuda_install>/bin/nvcc``). Then run the following lines to set the correct variables:
 
 .. code-block:: bash
 
    export OPENMM_CUDA_COMPILER=<path_to_cuda_install>/bin/nvcc
    export LD_LIBRARY_PATH=<path_to_cuda_install>/lib64:$LD_LIBRARY_PATH
 
-You may want to add the new ``$OPENMM_CUDA_COMPILER`` variable and ``$LD_LIBRARY_PATH`` extension to you ``~/.bashrc`` file to avoid setting this every time. If ``nvcc`` is installed in a different folder than the example, please use the correct path for your system.
+You may want to add the new ``$OPENMM_CUDA_COMPILER`` variable and ``$LD_LIBRARY_PATH`` extension to you ``~/.bashrc``
+file to avoid setting this every time. If ``nvcc`` is installed in a different folder than the example, please use the
+correct path for your system.
+
+
+.. _shared-excluded-cuda:
+
+Configuring Your CUDA Devices
+-----------------------------
+
+You will need to configure your CUDA devices to run in ``shared``/``Default`` Compute Mode
+if you have CUDA based cards, especially if you plan to run MPU on multiple CUDA cards.
+
+If you run ``nvidia-smi`` on your device, you will see a sample output that looks like this:
+
+.. code-block:: bash
+
+    +-----------------------------------------------------------------------------+
+    | NVIDIA-SMI 367.48                 Driver Version: 367.48                    |
+    |-------------------------------+----------------------+----------------------+
+    | GPU  Name        Persistence-M| Bus-Id        Disp.A | Volatile Uncorr. ECC |
+    | Fan  Temp  Perf  Pwr:Usage/Cap|         Memory-Usage | GPU-Util  Compute M. |
+    |===============================+======================+======================|
+    |   0  GeForce GTX 680     Off  | 0000:03:00.0     N/A |                  N/A |
+    | 30%   33C    P8    N/A /  N/A |      0MiB /  4036MiB |     N/A      Default |
+    +-------------------------------+----------------------+----------------------+
+    |   1  GeForce GTX 680     Off  | 0000:04:00.0     N/A |                  N/A |
+    | 30%   32C    P8    N/A /  N/A |      0MiB /  4036MiB |     N/A      Default |
+    +-------------------------------+----------------------+----------------------+
+    |   2  GeForce GTX 680     Off  | 0000:83:00.0     N/A |                  N/A |
+    | 30%   33C    P8    N/A /  N/A |      0MiB /  4036MiB |     N/A      Default |
+    +-------------------------------+----------------------+----------------------+
+    |   3  GeForce GTX 680     Off  | 0000:84:00.0     N/A |                  N/A |
+    | 30%   33C    P8    N/A /  N/A |      0MiB /  4036MiB |     N/A      Default |
+    +-------------------------------+----------------------+----------------------+
+
+The ``Compute M.`` on the right side should be set to ``Default`` for your device(s). If not, you can set the card(s)
+mode with the following: ``nvidia-smi -i <List of Dev IDs> -c 0`` where ``<List of Dev IDs>`` is a comma separated list
+of GPU indices no spaces. For this case, you can write:  ``nvidia-smi -i 0,1,2,3 -c 0``.
+
+YANK also has the ability to check this status for you through ``yank selftest``. Part of the command will attempt to run
+``nvidia-smi`` and infer what the Compute Mode is of any CUDA capable GPU detected. The command tries to infer this
+information from parsing the output so it may not be exact. Please double check this yourself.
 
 |
+
+.. _optional_tools:
 
 Optional Tools
 --------------
@@ -167,87 +221,78 @@ Supported platforms and environments
 Software
 --------
 
-YANK runs on Python 2.7.
-Support for Python 3.x is planned for a future release.
+YANK runs on Python 2.7, Python 3.4, and Python 3.5
 
 Dependencies
 ++++++++++++
 
-YANK uses a number of tools in order to allow the developers to focus on developing efficient algorithms involved in alchemical free energy calculations, rather than reinventing basic software, numerical, and molecular simulation infrastructure.
-Installation of these prerequisites by hand is not recommended---all required dependencies can be installed via the `conda <http://www.continuum.io/blog/conda>`_  package manager.
+YANK uses a number of tools in order to allow the developers to focus on developing efficient algorithms involved in
+alchemical free energy calculations, rather than reinventing basic software, numerical, and molecular simulation infrastructure.
 
-Required
-^^^^^^^^
+.. warning:: Installation of these prerequisites by hand is not recommended---all required dependencies can be installed via the `conda <http://www.continuum.io/blog/conda>`_  package manager.
 
-* OpenMM with Python wrappers compiled:
-  http://openmm.org
+.. note:: This list is taken directly from YANK's `conda-recipe/meta.yaml <https://github.com/choderalab/yank/blob/master/devtools/conda-recipe/meta.yaml>`_ to provide a singular source for dependencies
 
-* Python 2.7 or later:
-  http://www.python.org
 
-* NetCDF (compiled with netcdf4 support):
-  http://www.unidata.ucar.edu/software/netcdf/
-
-* HDF5 (required by NetCDF4):
-  http://www.hdfgroup.org/HDF5/
-
-* ``netcdf4-python`` (a Python interface for netcdf4):
-  http://code.google.com/p/netcdf4-python/
-
-* ``numpy`` and ``scipy``:
-  http://www.scipy.org/
-
-* ``docopt``:
-  http://docopt.org/
-
-* ``alchemy``
-  https://github.com/choderalab/alchemy
-
-* ``pymbar``
-  https://github.com/choderalab/pymbar
-
-* ``schema``
-  https://pypi.python.org/pypi/schema
-
-* `AmberTools <http://ambermd.org/#AmberTools>`_ is needed for setting up protein-ligand systems using LEaP.
-  https://github.com/choderalab/ambertools
+.. literalinclude:: ../devtools/conda-recipe/meta.yaml
+    :language: yaml
+    :start-after: requirements:
+    :end-before: test:
 
 Optional
 ^^^^^^^^
 
 * `mpi4py <http://mpi4py.scipy.org/>`_ is needed if `MPI support <https://de.wikipedia.org/wiki/Message_Passing_Interface>`_ is desired.
 
-.. note:: The ``mpi4py`` installation must be compiled against the system-installed MPI implementation used to launch jobs. Using the ``conda`` version of ``mpi4py`` together with the ``conda``-provided ``mpirun`` is the simplest way to avoid any issues.
+.. note:: The ``mpi4py`` installation must be compiled against the system-installed MPI implementation used to launch jobs.
+    Using the ``conda`` version of ``mpi4py`` together with the ``conda``-provided ``mpirun`` is the simplest way to avoid any issues.
 
-* The `OpenEye toolkit and Python wrappers <http://www.eyesopen.com/toolkits>`_ can be used to enable free energy calculations to be set up directly from multiple supported OpenEye formats, including Tripos mol2, PDB, SMILES, and IUPAC names (requires academic or commercial license).
-Note that PDB and mol2 are supported through the pure AmberTools pipeline as well, though this does not provide access to the OpenEye AM1-BCC charging pipeline.
+.. In order to get stuff aligned up in this long bullet and be human readable, I used a sub. Hyperlink needed double _ to parse right
 
-* `scipy.weave <http://docs.scipy.org/doc/scipy-0.14.0/reference/tutorial/weave.html>`_ is an optional dependency for the replica-exchange code, though this functionality will be migrated to `cython <http://cython.org>`_ in future revisions.
+* |OEBullet|
+
+.. |OEBullet| replace::
+    The `OpenEye toolkit and Python wrappers <http://www.eyesopen.com/toolkits>`__ can be used to enable free energy
+    calculations to be set up directly from multiple supported OpenEye formats, including Tripos mol2, PDB, SMILES, and
+    IUPAC names (requires academic or commercial license).
+    Note that PDB and mol2 are supported through the pure AmberTools pipeline as well, though this does not provide access
+    to the OpenEye AM1-BCC charging pipeline.
+
+* `cython <http://cython.org>`_ optional dependency for the replica-exchange code.
 
 Hardware
 --------
 
+.. _supported_hardware:
+
 Supported hardware
 ++++++++++++++++++
 
-YANK makes use of `openmm <http://www.openmm.org>`_, a GPU-accelerated framework for molecular simulation.
+YANK makes use of `OpenMM <http://www.openmm.org>`_, a GPU-accelerated framework for molecular simulation.
 This allows the calculations to take advantage of hardware that supports CUDA (such as NVIDIA GPUs) or OpenCL (NVIDIA and ATI GPUs, as well as some processors).
 OpenMM also supports a multithreaded CPU platform which can be used if no CUDA or OpenCL resources are available.
 
-Recommended hardware
+OpenMM requires that AMD cards can support the most recent Catalyst drivers, and NVIDIA cards can support at least CUDA
+7.5.
+
+Recommended Hardware
 ++++++++++++++++++++
 
-We have found the best price/performance results are currently obtained with NVIDIA GTX-class consumer-grade cards, such as the GTX-680, GTX-780, and GTX-Titan cards.
+We have found the best price/performance results are currently obtained with NVIDIA GTX-class consumer-grade cards,
+such as the GTX-780, GTX-980, GTX-1080, and GTX-Titan cards.
 You can find some benchmarks for OpenMM on several classes of recent GPUs at `openmm.org <http://openmm.org/about.html#benchmarks>`_.
 
-Ross Walker and the Amber GPU developers maintain a set of `excellent pages with good inexpensive GPU hardware recommendations <http://ambermd.org/gpus/recommended_hardware.htm>`_ that will also work well with OpenMM and YANK.
+Ross Walker and the Amber GPU developers maintain a set of
+`excellent pages with good inexpensive GPU hardware recommendations <http://ambermd.org/gpus/recommended_hardware.htm>`_
+that will also work well with OpenMM and YANK.
 
-Installing from source
+Installing from Source
 ======================
 
-.. note:: We recommend only developers wanting to modify the YANK code should install from source. Users who want to use the latest development version are advised to install the :ref:`Development build conda package <yank-dev-conda-package>` instead.
+.. note:: We recommend only developers wanting to modify the YANK code should install from source. Users who want to use
+    the latest development version are advised to install the :ref:`Development build conda package <yank-dev-conda-package>` instead.
 
-Installing from the GitHub source repository
+Installing from the GitHub Source Repository
 --------------------------------------------
 
 Installing from source is only recommended for developers that wish to modify YANK or the algorithms it uses.
@@ -270,7 +315,7 @@ If you wish to install into a different path (often preferred for development), 
 ``setup.py`` will try to install some of the dependencies, or at least check that you have them installed and throw an error.
 Note that not all dependencies can be installed via ``pip``, so you will have to install dependencies if installation fails due to unmet dependencies.
 
-Testing your installation
+Testing your Installation
 -------------------------
 
 Test your YANK installation to make sure everything is behaving properly on your machine:
@@ -279,13 +324,19 @@ Test your YANK installation to make sure everything is behaving properly on your
 
    $ yank selftest
 
-This will not only check that installation paths are correct, but also run a battery of tests that ensure any automatically detected GPU hardware is behaving as expected. Please also check that YANK has access to the :ref:`expected platforms <yank-platforms>` and the :ref:`correct CUDA version <non-standard-cuda>` if CUDA is installed in a non-standard location.
+This will not only check that installation paths are correct, but also run a battery of tests that ensure any automatically
+detected GPU hardware is behaving as expected. Please also check that YANK has access to the
+:ref:`expected platforms <yank-platforms>` and the :ref:`correct CUDA version <non-standard-cuda>` if CUDA is installed
+in a non-standard location.
 
-Running on the cloud
+Running on the Cloud
 --------------------
 
-Amazon EC2 now provides `Linux GPU instances <http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/using_cluster_computing.html>`_ with high-performance GPUs and inexpensive on-demand and `spot pricing <http://aws.amazon.com/ec2/purchasing-options/spot-instances/>`_ (g2.2xlarge).
+Amazon EC2 now provides
+`Linux GPU instances <http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/using_cluster_computing.html>`_ with
+high-performance GPUs and inexpensive on-demand and
+`spot pricing <http://aws.amazon.com/ec2/purchasing-options/spot-instances/>`_ (g2.2xlarge).
 We will soon provide ready-to-use images to let you quickly get started on EC2.
 
-We are also exploring building `Docker containers <https://hub.docker.com/>`_ for rapid, reproducible, portable deployment of YANK to new compute environments.
-Stay tuned!
+We are also exploring building `Docker containers <https://hub.docker.com/>`_ for rapid, reproducible, portable
+deployment of YANK to new compute environments. Stay tuned!

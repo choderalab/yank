@@ -1,4 +1,4 @@
-.. _yank
+.. _yank:
 
 #############
 API Reference
