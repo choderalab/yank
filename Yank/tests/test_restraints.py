@@ -112,7 +112,6 @@ options:
   number_of_iterations: 2
   nsteps_per_iteration: 10
   temperature: 300*kelvin
-  softcore_beta: 0.0
 
 molecules:
   T4lysozyme:
