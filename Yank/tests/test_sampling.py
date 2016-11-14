@@ -25,8 +25,7 @@ def test_resuming():
     toluene_test = testsystems.TolueneImplicit()
     ligand_atoms = range(15)
     alchemical_factory = AbsoluteAlchemicalFactory(toluene_test.system,
-                                                   ligand_atoms=ligand_atoms,
-                                                   softcore_beta=0.0)
+                                                   ligand_atoms=ligand_atoms)
 
     base_state = ThermodynamicState(temperature=300.0*unit.kelvin)
     base_state.system = alchemical_factory.alchemically_modified_system

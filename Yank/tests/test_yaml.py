@@ -89,7 +89,6 @@ def get_template_script(output_dir='.'):
         number_of_iterations: 1
         temperature: 300*kelvin
         pressure: 1*atmosphere
-        softcore_beta: 0.0
     molecules:
         benzene:
             filepath: {benzene_path}
