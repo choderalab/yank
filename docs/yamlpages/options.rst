@@ -541,7 +541,7 @@ The options that control the soft core energy function for decoupling/annihilati
 
 Valid Options for ``softcore_alpha`` (0.5): <Float>
 
-Valid Options for ``softcore_[a,b,c]`` (1,1,6): <Integer prefered, Float accepted>
+Valid Options for ``softcore_[a,b,c]`` (1,1,6): <Integer preferred, Float accepted>
 
 
 .. _yaml_options_alchemical_electrostatics:
@@ -551,7 +551,7 @@ Electrostatic Alchemical Options
 .. code-block:: yaml
 
    options:
-     softcore_beta: 1.0
+     softcore_beta: 0.0
      softcore_d: 1
      softcore_e: 1
      softcore_f: 2
@@ -559,9 +559,9 @@ Electrostatic Alchemical Options
 The options that control the soft core energy functnon for decoupling/annihilating electrostatic interactions.
 Setting ``softcore_beta = 0`` with ``softcore_d = 1`` gives linear scaling of Coulomb's law.
 
-Valid Options for ``softcore_beta`` (1.0): <Float>
+Valid Options for ``softcore_beta`` (0.0): <Float>
 
-Valid Options for ``softcore_[d,e,f]`` (1,1,2): <Integer prefered, Float accepted>
+Valid Options for ``softcore_[d,e,f]`` (1,1,2): <Integer preferred, Float accepted>
 
 
 .. [1] Quantity strings are of the format: ``<float> * <unit>`` where ``<unit>`` is any valid unit specified in the "Valid Options" for an option. e.g. "<Quantity Length>" indicates any measure of length may be used for <unit> such as nanometer or angstrom.

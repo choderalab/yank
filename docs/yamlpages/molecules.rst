@@ -33,7 +33,9 @@ filepath
       {UserDefinedMolecule}:
         filepath: benzene.pdb
 
-Filepath of the molecule. Path is relative to the directory the YAML script is in. Depending on what type of molecule you pass in (ligand vs. protein) will determine what mandatory arguments are required. For small molecules, you need a way to specify the charges, proteins however can rely on built in force field parameters. 
+Filepath of the molecule. Path is relative to the directory the YAML script is in. Depending on what type of molecule
+you pass in (ligand vs. protein) will determine what mandatory arguments are required. For small molecules, you need a
+way to specify the charges, proteins however can rely on built in force field parameters.
 
 **MANDATORY** but exclusive with :ref:`smiles <yaml_molecules_smiles>` and :ref:`name <yaml_molecules_name>`
 

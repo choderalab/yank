@@ -3,7 +3,10 @@
 YAML Files for Simulation
 #########################
 
-YANK now supports setting up entire simulations with easy to read and write `YAML files <http://www.yaml.org/about.html>`. No longer do you need to remember long command line arguments with many ``--`` flags, you can just write a ``yank.yaml`` file and call ``yank script --yaml=yank.yaml`` to carry out all your preparation and simulations. Below are the valid YAML options. We also have example YANK simulations which use YAML files to run.
+YANK now supports setting up entire simulations with easy to read and write `YAML files <http://www.yaml.org/about.html>`_.
+No longer do you need to remember long command line arguments with many ``--`` flags, you can just write a
+``yank.yaml`` file and call ``yank script --yaml=yank.yaml`` to carry out all your preparation and simulations.
+Below are the valid YAML options. We also have example YANK simulations which use YAML files to run.
 
 To see examples and some of the recommended stock settings, check out the :doc:`cookbook`! To see *all* options available to the YAML scripts: check out the detailed list below.
 
@@ -106,7 +109,6 @@ Detailed Options List
     * :ref:`nonbonded_method <yaml_solvents_nonbonded_method>`
     * :ref:`nonbonded_cutoff <yaml_solvents_nonbonded_cutoff>`
     * :ref:`switch_distance <yaml_solvents_switch_distance>`
-    * :ref:`constraints <yaml_solvents_constraints>`
     * :ref:`rigid_water <yaml_solvents_rigid_water>`
     * :ref:`implicit_solvent <yaml_solvents_implicit_solvent>`
     * :ref:`implicit_solvent_salt_concentration <yaml_options_implicit_solvent_salt_conc>`

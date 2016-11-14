@@ -86,27 +86,6 @@ Nonbonded Methods: ``CutoffPeriodic``, ``Ewald``, ``PME``
 
 Valid Options (0 * nanometer) <Quantity Length> [1]_
 
-
-.. _yaml_solvents_constraints:
-
-constraints
------------
-.. code-block:: yaml
-
-   solvents:
-     {UserDefinedSolvent}:
-       constraints: Hbonds
-
-.. todo:: Figure out which ``constraints`` option overwrites the other.
-
-Specify constraints over the entire system. This option is redundant with the general options for
-:ref:`constraints <yaml_options_constraints>` and should almost never be set here unless you want to specify two solvents with different constraints.
-
-Nonbonded Methods: All
-
-Valid Options: [None] / Hbonds / AllBonds / HAngles
-
-
 .. _yaml_solvents_rigid_water:
 
 rigid_water
@@ -117,9 +96,7 @@ rigid_water
      {UserDefinedSolvent}:
        rigid_water: True
 
-.. todo:: Check if this is True/False or yrs/no
-
-If True, the water molecules will be fully rigid, regardless of the settings in ``constraints``.
+If True, the water molecules will be fully rigid, regardless of the settings in :ref:`yaml_options_constraints`.
 
 Nonbonded Methods: All
 
@@ -155,14 +132,14 @@ implicit_solvent_salt_concentration
      {UserDefinedSolvent}:
        implicit_solvent_salt_concentration: 1.0 * moles / liter
 
-Specify the salt concentration of the implicit model. Requires that ``implicit_solvent != None``. 
+Specify the salt concentration of the implicit model. Requires an ``implicit_solvent``.
 
 You may also specify a Debye length ``temperature`` parameter which accepts <Quantity Temperature> [1]_ as an argument, default ``300 * kelvin``.
 *Note*: This is NOT the temperature for the system as a whole.
 
 Nonbonded Methods: ``NoCutoff``, ``CutoffNonPeriodic``
 
-Valid Options (0.0 * moles / liter): <Quantity Moles / Volume> [1]_
+Valid Options (0.0 * moles / liter): <Quantity Moles / Volume> OR <Quantity Temperature> [1]_
 
 
 .. _yaml_options_solute_dielectric:
@@ -190,7 +167,7 @@ solvent_dielectric
    
    solvents:
      {UserDefinedSolvent}:
-       solvent_dielectric: 1.5
+       solvent_dielectric: 78.5
 
 Specify the dielectric of the implcit solvent models
 
@@ -258,7 +235,8 @@ positive_ion
 
 Specifies the positive counter ions that will be added as needed.
 
-No positive counter ions will be added if this option is not specified.
+No positive counter ions will be added if this option is not specified. Note that the name must match a known atom type
+in LEaP based on the parameter files you specified to load.
 
 Nonbonded Methods: ``CuttoffPeriodic``, ``Ewald``, ``PME``
 
@@ -277,7 +255,8 @@ negative_ion
 
 Specifies the negative counter ions that will be added as needed.
 
-No negative counter ions will be added if this option is not specified.
+No negative counter ions will be added if this option is not specified. Note that the name must match a known atom type
+in LEaP based on the parameter files you specified to load.
 
 Nonbonded Methods: ``CuttoffPeriodic``, ``Ewald``, ``PME``
 
