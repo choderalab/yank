@@ -153,7 +153,7 @@ ANTECHAMBER can still get the other missing parameters such as torsions and angl
 
 **OPTIONALLY SUPERSEDED** by :ref:`leap <yaml_molecules_leap>` or the :ref:`leap argument in systems <yaml_systems_leap>`.
 If the parameter files you feed into either ``leap`` argument have the charges and molecular parameters already
- included (such as standard protein residues in many force fields), then there is no need to invoke this command. If the
+included (such as standard protein residues in many force fields), then there is no need to invoke this command. If the
 force fields you give to the ``leap`` commands are missing parameters though, you should call this.
 
 
@@ -181,7 +181,7 @@ missing parameters such as torsions and angles, use this command but set ``charg
 
 **OPTIONALLY SUPERSEDED** by :ref:`leap <yaml_molecules_leap>` or the :ref:`leap argument in systems <yaml_systems_leap>`.
 If the parameter files you feed into either ``leap`` argument have the charges and molecular parameters already
- included (such as standard protein residues in many force fields), then there is no need to invoke this command. If the
+included (such as standard protein residues in many force fields), then there is no need to invoke this command. If the
 force fields you give to the ``leap`` commands are missing partial charges though, you should call this.
 
 |

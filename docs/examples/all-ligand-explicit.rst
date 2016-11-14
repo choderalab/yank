@@ -12,10 +12,11 @@ for learning how to set up basic YANK simulations):
 
 1. YANK's ability to build out small molecules from SMILES strings (through OpenEye Toolkit)
 
-   * Please see the `OpenEye Install Instructions <http://docs.eyesopen.com/toolkits/python/quickstart-python/install.html>`_ for installing these tool kits
+   * Please see our :ref:`OpenEye Install Instructions <optional_tools>` for installing these tools
+   * Alternately see `OpenEye's Instructions <http://docs.eyesopen.com/toolkits/python/quickstart-python/install.html>`_ for additional help
 
-2. YANK's ability to run multiple ligands through the same commands
-3. YANK's ability to run ``Combinatorial`` options
+2. YANK's ability to run :ref:`multiple ligands <yaml_molecules_specifiy_names>` through the same commands
+3. YANK's ability to run :ref:`Combinatorial <yaml_combinatorial_head>` options
 
    * See :ref:`the section below <yank_example_combo>` or the :ref:`full documentation page <yaml_combinatorial_head>` for more information on ``!Combinatorial``
 

@@ -169,7 +169,7 @@ use the names we set up in the ``molecules`` and ``solvents`` section, hence why
 
 This block is very strait forward.
 
-.. code-block::
+.. code-block:: yaml
 
    systems:
      t4-xylene:

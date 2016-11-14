@@ -10,6 +10,8 @@ This example will be less detailed than the :doc:`full detailed example of p-xyl
 This example resides in ``{PYTHON SOURCE DIR}/share/yank/examples/binding/host-guest``. The rest of the example here
 assumes you are in this directory.
 
+This example and files are based on `this AMBER tutorial <http://ambermd.org/tutorials/advanced/tutorial21/>`_. 
+
 Examining YAML file
 -------------------
 
