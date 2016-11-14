@@ -2033,6 +2033,7 @@ class YamlBuilder:
             debug_msg = 'Node {}/{}: MPI barrier'.format(self._mpicomm.rank,
                                                          self._mpicomm.size)
             logger.debug(debug_msg + ' - signal completed setup.')
+            # Proceed through barrier where other MPI processes are blocking.
             self._mpicomm.barrier()
 
     @staticmethod

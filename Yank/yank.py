@@ -218,7 +218,7 @@ class Yank(object):
         # If no phases specified, construct a list of phases from the filename prefixes in the store directory.
         if phases is None:
             phases = utils.find_phases_in_store_directory(self._store_directory)
-        self._phases = phases.keys()
+        self._phases = sorted(phases.keys())  # sorting ensures all MPI processes run the same phase
 
         # Construct store filenames.
         self._store_filenames = { phase : os.path.join(self._store_directory, phase + '.nc') for phase in self._phases }
@@ -543,6 +543,7 @@ class Yank(object):
 
         # Add to list of phases that have been set up.
         self._phases.append(alchemical_phase.name)
+        self._phases.sort()  # sorting ensures all MPI processes run the same phase
 
         return
 
