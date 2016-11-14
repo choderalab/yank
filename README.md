@@ -25,37 +25,6 @@ Examples are available in the [`yank-examples` repository](http://github.com/cho
 git clone https://github.com/choderalab/yank-examples.git
 ```
 
-Requirements
-------------
-
-**Operating System**
-* Linux - 64bit (Ubuntu 12.04+, RHEL 6+, etc) 
-* OS X 10.7 or later (10.10.3 or later for OpenCL)
-
-**Python Requirements (installed automatically through conda**
-* Python 2.7, Python 3.4, Python 3.5
-* Cython
-* NumPy
-* SciPy
-* setuptools
-* netCDF4
-* OpenMM 7.0.1 or later
-* mdtraj 1.7.2 or later
-* OpenMMTools
-* pymbar
-* ambermini 16.16.0 or later
-* docopt
-* openmoltools
-* sphinxcontrib-bibtex
-* alchemy
-* schema 0.6.2 or later
-
-**Minimum GPU Requirements**
-* NVIDIA GPU with CUDA 7.5 or greater ability, and most recent NVIDIA drivers
-    - Note: NVIDIA GPUs must be in `shared`/`Default` Compute Mode for YANK to use them.
-* AMD Cards with latest Catalyst drivers
-
-
 Maintainers
 -----------
 
