@@ -16,7 +16,6 @@ options:
   constraints: HBonds
   number_of_iterations: 200
   minimize: yes
-  softcore_beta: 0.0
 
 
 # In the "molecules" section we specify how we want to our molecules

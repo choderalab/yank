@@ -559,7 +559,7 @@ Electrostatic Alchemical Options
 The options that control the soft core energy functnon for decoupling/annihilating electrostatic interactions.
 Setting ``softcore_beta = 0`` with ``softcore_d = 1`` gives linear scaling of Coulomb's law.
 
-Valid Options for ``softcore_beta`` (1.0): <Float>
+Valid Options for ``softcore_beta`` (0.0): <Float>
 
 Valid Options for ``softcore_[d,e,f]`` (1,1,2): <Integer prefered, Float accepted>
 

@@ -67,7 +67,7 @@ options:
   annihilate_sterics: no                    # If set, sterics (Lennard-Jones or Halgren potential) is annihilated,
                                             # rather than decoupled.
   softcore_alpha: 0.5                       # Alchemical softcore parameter for Lennard-Jones.
-  softcore_beta: 1.0                        # Alchemical softcore parameter for electrostatics. Set this to zero
+  softcore_beta: 0.0                        # Alchemical softcore parameter for electrostatics.
                                             # to recover standard electrostatic scaling.
   softcore_a: 1                             # Parameters modifying softcore Lennard-Jones form.
   softcore_b: 1
