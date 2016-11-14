@@ -87,7 +87,8 @@ Test your YANK installation to make sure everything is behaving properly on your
 
    $ yank selftest
 
-This will not only check that installation paths are correct, but also run a battery of tests that ensure any automatically detected GPU hardware is behaving as expected.
+This will not only check that installation paths are correct, but also run a battery of tests that ensure any
+automatically detected GPU hardware is behaving as expected.
 
 |
 
@@ -96,7 +97,9 @@ This will not only check that installation paths are correct, but also run a bat
 Testing Available Platforms
 ---------------------------
 
-You will want to make sure that all GPU accelerated platforms available on your hardware are accessible to YANK. The simulation library that YANK runs on, OpenMM, can run on CPU, CUDA, and OpenCL platforms. The following command will check which platforms are available:
+You will want to make sure that all GPU accelerated platforms available on your hardware are accessible to YANK. The
+simulation library that YANK runs on, OpenMM, can run on CPU, CUDA, and OpenCL platforms. The following command will
+check which platforms are available:
 
 .. code-block:: bash
 
@@ -179,6 +182,8 @@ information from parsing the output so it may not be exact. Please double check 
 
 |
 
+.. _optional_tools:
+
 Optional Tools
 --------------
 
@@ -226,44 +231,13 @@ alchemical free energy calculations, rather than reinventing basic software, num
 
 .. warning:: Installation of these prerequisites by hand is not recommended---all required dependencies can be installed via the `conda <http://www.continuum.io/blog/conda>`_  package manager.
 
-Required
-^^^^^^^^
+.. note:: This list is taken directly from YANK's `conda-recipe/meta.yaml <https://github.com/choderalab/yank/blob/master/devtools/conda-recipe/meta.yaml>`_ to provide a singular source for dependencies
 
-* OpenMM with Python wrappers compiled:
-  http://openmm.org
 
-* Python 2.7 or later:
-  http://www.python.org
-
-* NetCDF (compiled with netcdf4 support):
-  http://www.unidata.ucar.edu/software/netcdf/
-
-* HDF5 (required by NetCDF4):
-  http://www.hdfgroup.org/HDF5/
-
-* ``netcdf4-python`` (a Python interface for netcdf4):
-  http://code.google.com/p/netcdf4-python/
-
-* ``numpy`` and ``scipy``:
-  http://www.scipy.org/
-
-* ``docopt``:
-  http://docopt.org/
-
-* ``alchemy``
-  https://github.com/choderalab/alchemy
-
-* ``pymbar``
-  https://github.com/choderalab/pymbar
-
-* ``schema``
-  https://pypi.python.org/pypi/schema
-
-* `AmberTools <http://ambermd.org/#AmberTools>`_ is needed for setting up protein-ligand systems using LEaP.
-  https://github.com/choderalab/ambertools
-
-  * We also provide a minimal set of the AmberTools in our repo `AmberMini <https://github.com/choderalab/ambermini>`_
-    which is also available through conda
+.. literalinclude:: ../devtools/conda-recipe/meta.yaml
+    :language: yaml
+    :start-after: requirements:
+    :end-before: test:
 
 Optional
 ^^^^^^^^
@@ -301,7 +275,7 @@ OpenMM also supports a multithreaded CPU platform which can be used if no CUDA o
 OpenMM requires that AMD cards can support the most recent Catalyst drivers, and NVIDIA cards can support at least CUDA
 7.5.
 
-Recommended hardware
+Recommended Hardware
 ++++++++++++++++++++
 
 We have found the best price/performance results are currently obtained with NVIDIA GTX-class consumer-grade cards,
@@ -312,13 +286,13 @@ Ross Walker and the Amber GPU developers maintain a set of
 `excellent pages with good inexpensive GPU hardware recommendations <http://ambermd.org/gpus/recommended_hardware.htm>`_
 that will also work well with OpenMM and YANK.
 
-Installing from source
+Installing from Source
 ======================
 
 .. note:: We recommend only developers wanting to modify the YANK code should install from source. Users who want to use
     the latest development version are advised to install the :ref:`Development build conda package <yank-dev-conda-package>` instead.
 
-Installing from the GitHub source repository
+Installing from the GitHub Source Repository
 --------------------------------------------
 
 Installing from source is only recommended for developers that wish to modify YANK or the algorithms it uses.
@@ -341,7 +315,7 @@ If you wish to install into a different path (often preferred for development), 
 ``setup.py`` will try to install some of the dependencies, or at least check that you have them installed and throw an error.
 Note that not all dependencies can be installed via ``pip``, so you will have to install dependencies if installation fails due to unmet dependencies.
 
-Testing your installation
+Testing your Installation
 -------------------------
 
 Test your YANK installation to make sure everything is behaving properly on your machine:
@@ -350,13 +324,19 @@ Test your YANK installation to make sure everything is behaving properly on your
 
    $ yank selftest
 
-This will not only check that installation paths are correct, but also run a battery of tests that ensure any automatically detected GPU hardware is behaving as expected. Please also check that YANK has access to the :ref:`expected platforms <yank-platforms>` and the :ref:`correct CUDA version <non-standard-cuda>` if CUDA is installed in a non-standard location.
+This will not only check that installation paths are correct, but also run a battery of tests that ensure any automatically
+detected GPU hardware is behaving as expected. Please also check that YANK has access to the
+:ref:`expected platforms <yank-platforms>` and the :ref:`correct CUDA version <non-standard-cuda>` if CUDA is installed
+in a non-standard location.
 
-Running on the cloud
+Running on the Cloud
 --------------------
 
-Amazon EC2 now provides `Linux GPU instances <http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/using_cluster_computing.html>`_ with high-performance GPUs and inexpensive on-demand and `spot pricing <http://aws.amazon.com/ec2/purchasing-options/spot-instances/>`_ (g2.2xlarge).
+Amazon EC2 now provides
+`Linux GPU instances <http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/using_cluster_computing.html>`_ with
+high-performance GPUs and inexpensive on-demand and
+`spot pricing <http://aws.amazon.com/ec2/purchasing-options/spot-instances/>`_ (g2.2xlarge).
 We will soon provide ready-to-use images to let you quickly get started on EC2.
 
-We are also exploring building `Docker containers <https://hub.docker.com/>`_ for rapid, reproducible, portable deployment of YANK to new compute environments.
-Stay tuned!
+We are also exploring building `Docker containers <https://hub.docker.com/>`_ for rapid, reproducible, portable
+deployment of YANK to new compute environments. Stay tuned!

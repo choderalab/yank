@@ -6,7 +6,7 @@ Options for YAML files
 These are all the simulation, alchemy, and file I/O options controlled by the ``options`` header in the YAML files for
 YANK. We have subdivided the categories below, but all settings on this page go under the ``options`` header in the YAML file:
 
-* :ref:`General Options: <yaml-options-options>`
+* :ref:`General Options: <yaml_options_options>`
 * :ref:`System and Simulation Prep <yaml_options_sys_and_sim_prep>`
 * :ref:`Simulation Parameters: <yaml_options_simulation_parameters>`
 * :ref:`Alchemy Parameters <yaml_options_alchemy_parameters>`

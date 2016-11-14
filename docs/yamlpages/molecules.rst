@@ -151,7 +151,7 @@ already have the charges, but are missing other parameters.
 to the atoms through the :ref:`openeye <yaml_molecules_openeye>` command, then you should set ``charge_method`` to ``null``.
 ANTECHAMBER can still get the other missing parameters such as torsions and angles.
 
-**OPTIONALLY SUPERSEDED** by :ref:`leap <yaml_molecules_leap>` or the :ref:`leap argument in systems <yaml_systems_leap>`.
+**OPTIONALLY SUPERSEDED** by :ref:`leap <yaml_molecules_leap>` or the :ref:`leap argument in systems <yaml_systems_head>`.
 If the parameter files you feed into either ``leap`` argument have the charges and molecular parameters already
 included (such as standard protein residues in many force fields), then there is no need to invoke this command. If the
 force fields you give to the ``leap`` commands are missing parameters though, you should call this.
@@ -179,7 +179,7 @@ do not use this command. However, if you want to use :ref:`antechamber <yaml_mol
 missing parameters such as torsions and angles, use this command but set ``charge_method`` to ``null`` in
 :ref:`antechamber <yaml_molecules_antechamber>`
 
-**OPTIONALLY SUPERSEDED** by :ref:`leap <yaml_molecules_leap>` or the :ref:`leap argument in systems <yaml_systems_leap>`.
+**OPTIONALLY SUPERSEDED** by :ref:`leap <yaml_molecules_leap>` or the :ref:`leap argument in systems <yaml_systems_head>`.
 If the parameter files you feed into either ``leap`` argument have the charges and molecular parameters already
 included (such as standard protein residues in many force fields), then there is no need to invoke this command. If the
 force fields you give to the ``leap`` commands are missing partial charges though, you should call this.
@@ -214,7 +214,7 @@ which can accept both single files as a string,
 or can accept a comma separated list of files enclosed by [ ]. 
 Filepaths are relative to either the AmberTools default paths or to the folder the YAML script is in. 
 
-*Note*: Protiens do not necessarily   need this command if the force fields given to the :ref:`leap argument in systems <yaml_systems_leap>` will fully describe them.
+*Note*: Proteins do not necessarily   need this command if the force fields given to the :ref:`leap argument in systems <yaml_systems_head>` will fully describe them.
 
 **OPTIONAL**
 
