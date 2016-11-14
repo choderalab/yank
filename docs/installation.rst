@@ -32,6 +32,8 @@ On ``osx``, you want to use the ```osx`` binary
 You may want to add the new ```$PATH`` extension to your ``~/.bashrc`` file to ensure Anaconda Python is used by default.
 Note that YANK will be installed into this local Python installation, so that you will not need to worry about disrupting existing Python installations.
 
+.. note:: ``conda`` installation is the preferred method since all dependencies are automatically fetched and installed for you.
+
 |
 
 Release build
@@ -221,8 +223,8 @@ Dependencies
 
 YANK uses a number of tools in order to allow the developers to focus on developing efficient algorithms involved in
 alchemical free energy calculations, rather than reinventing basic software, numerical, and molecular simulation infrastructure.
-Installation of these prerequisites by hand is not recommended---all required dependencies can be installed via the
-`conda <http://www.continuum.io/blog/conda>`_  package manager.
+
+.. warning:: Installation of these prerequisites by hand is not recommended---all required dependencies can be installed via the `conda <http://www.continuum.io/blog/conda>`_  package manager.
 
 Required
 ^^^^^^^^
