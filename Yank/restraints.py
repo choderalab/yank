@@ -1,8 +1,8 @@
 #!/usr/local/bin/env python
 #
-#=============================================================================================
+# =============================================================================================
 # FILE DOCSTRING
-#=============================================================================================
+# =============================================================================================
 
 """
 
@@ -11,9 +11,9 @@ free energy calculations, along with computation of the standard state correctio
 
 """
 
-#=============================================================================================
+# =============================================================================================
 # GLOBAL IMPORTS
-#=============================================================================================
+# =============================================================================================
 
 import copy
 import math
@@ -33,16 +33,17 @@ import inspect
 import logging
 logger = logging.getLogger(__name__)
 
-#=============================================================================================
+# =============================================================================================
 # MODULE CONSTANTS
-#=============================================================================================
+# =============================================================================================
 
-kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA # Boltzmann constant
-V0 = 1660.0*unit.angstroms**3 # standard state volume
+kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA  # Boltzmann constant
+V0 = 1660.0*unit.angstroms**3  # standard state volume
 
-#=============================================================================================
+# =============================================================================================
 # Dispatch appropriate restraint type from registered restraint classes
-#=============================================================================================
+# =============================================================================================
+
 
 def available_restraint_classes():
     """
@@ -72,12 +73,13 @@ def available_restraint_classes():
         if inspect.isabstract(cls):
             # Skip abstract base classes
             pass
-        elif (classname in available_restraints):
+        elif classname in available_restraints:
             raise ValueError("More than one restraint subclass has the name '%s'." % classname)
         else:
             available_restraints[classname] = cls
 
     return available_restraints
+
 
 def available_restraint_types():
     """
@@ -92,6 +94,7 @@ def available_restraint_types():
     available_restraints = available_restraint_classes()
     return available_restraints.keys()
 
+
 def create_restraints(restraint_type, topology, state, system, positions, receptor_atoms, ligand_atoms):
     """
     Initialize a receptor-ligand restraint class matching the specified restraint type name.
@@ -102,6 +105,8 @@ def create_restraints(restraint_type, topology, state, system, positions, recept
         Restraint type name matching a register (imported) subclass of ReceptorLigandRestraint.
     topology : openmm.app.Topology
         Reference topology for the complex
+    system : openmm.System
+        System containing all the forces and atoms that restraint will be added to
     state : thermodynamics.ThermodynamicState
         The thermodynamic state specifying temperature, pressure, etc. to which restraints are to be added
     positions : simtk.unit.Quantity of natoms x 3 with units compatible with nanometers
@@ -118,11 +123,12 @@ def create_restraints(restraint_type, topology, state, system, positions, recept
     cls = available_restraints[restraint_type]
     return cls(topology, state, system, positions, receptor_atoms, ligand_atoms)
 
-#=============================================================================================
+# =============================================================================================
 # Base class for receptor-ligand restraints.
-#=============================================================================================
+# =============================================================================================
 
 ABC = abc.ABCMeta('ABC', (object,), {}) # compatible with Python 2 *and* 3
+
 
 class ReceptorLigandRestraint(ABC):
     """
@@ -225,9 +231,10 @@ class ReceptorLigandRestraint(ABC):
         """
         raise NotImplementedError('getStandardStateCorrection not implemented')
 
-#=============================================================================================
+# =============================================================================================
 # Base class for radially-symmetric receptor-ligand restraints.
-#=============================================================================================
+# =============================================================================================
+
 
 class RadiallySymmetricRestraint(ReceptorLigandRestraint):
     """
@@ -359,6 +366,7 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
         """
         force = openmm.CustomBondForce(self._energy_function)
         force.addGlobalParameter('lambda_restraints', 1.0)
+        force.setUsesPeriodicBoundaryConditions(True)
         for parameter in self._bond_parameter_names:
             force.addPerBondParameter(parameter)
         try:
@@ -506,9 +514,10 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
 
         return closest_atom
 
-#=============================================================================================
+# =============================================================================================
 # Harmonic protein-ligand restraint.
-#=============================================================================================
+# =============================================================================================
+
 
 class Harmonic(RadiallySymmetricRestraint):
     """
@@ -587,9 +596,10 @@ class Harmonic(RadiallySymmetricRestraint):
 
         return bond_parameters
 
-#=============================================================================================
+# =============================================================================================
 # Flat-bottom protein-ligand restraint.
-#=============================================================================================
+# =============================================================================================
+
 
 class FlatBottom(RadiallySymmetricRestraint):
     """
@@ -682,9 +692,10 @@ class FlatBottom(RadiallySymmetricRestraint):
         return bond_parameters
 
 
-#=============================================================================================
+# =============================================================================================
 # Base class for orientation-dependent receptor-ligand restraints.
-#=============================================================================================
+# =============================================================================================
+
 
 class OrientationDependentRestraint(ReceptorLigandRestraint):
     """
@@ -714,6 +725,7 @@ class OrientationDependentRestraint(ReceptorLigandRestraint):
 
         """
         super(OrientationDependentRestraint, self).__init__(topology, state, system, positions, receptor_atoms, ligand_atoms)
+
 
 class Boresch(OrientationDependentRestraint):
     """
@@ -920,6 +932,7 @@ class Boresch(OrientationDependentRestraint):
         force = openmm.CustomCompoundBondForce(nparticles, energy_function)
         force.addGlobalParameter('lambda_restraints', 1.0)
         force.addBond(self._restraint_atoms, [])
+        force.setUsesPeriodicBoundaryConditions(True)
         return force
 
     def get_standard_state_correction(self):
