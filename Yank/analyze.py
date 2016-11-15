@@ -612,10 +612,12 @@ def extract_trajectory(output_path, nc_path, state_index=None, replica_index=Non
         from simtk import openmm
         reference_system = openmm.XmlSerializer.deserialize(str(serialized_system))
         is_periodic = reference_system.usesPeriodicBoundaryConditions()
+        logger.info('Detected periodic boundary conditions: {}'.format(is_periodic))
 
         # Get dimensions
         n_iterations = nc_file.variables['positions'].shape[0]
         n_atoms = nc_file.variables['positions'].shape[2]
+        logger.info('Number of iterations: {}, atoms: {}'.format(n_iterations, n_atoms))
 
         # Determine frames to extract
         if start_frame <= 0:
@@ -626,6 +628,8 @@ def extract_trajectory(output_path, nc_path, state_index=None, replica_index=Non
         frame_indices = range(start_frame, end_frame, skip_frame)
         if len(frame_indices) == 0:
             raise ValueError('No frames selected')
+        logger.info('Extracting frames from {} to {} every {}'.format(
+            start_frame, end_frame, skip_frame))
 
         # Discard equilibration samples
         if discard_equilibration:
@@ -640,6 +644,8 @@ def extract_trajectory(output_path, nc_path, state_index=None, replica_index=Non
         if is_periodic:
             box_vectors = np.zeros((len(frame_indices), 3, 3))
         if state_index is not None:
+            logger.info('Extracting positions of state {}...'.format(state_index))
+
             # Deconvolute state indices
             state_indices = np.zeros(len(frame_indices))
             for i, iteration in enumerate(frame_indices):
@@ -654,6 +660,8 @@ def extract_trajectory(output_path, nc_path, state_index=None, replica_index=Non
                     box_vectors[i, :, :] = nc_file.variables['box_vectors'][iteration, replica_index, :, :].astype(np.float32)
 
         else:  # Extract replica positions and box vectors
+            logger.info('Extracting positions of replica {}...'.format(replica_index))
+
             for i, iteration in enumerate(frame_indices):
                 positions[i, :, :] = nc_file.variables['positions'][iteration, replica_index, :, :].astype(np.float32)
                 if is_periodic:
@@ -662,15 +670,18 @@ def extract_trajectory(output_path, nc_path, state_index=None, replica_index=Non
         nc_file.close()
 
     # Create trajectory object
+    logger.info('Creating trajectory object...')
     topology = utils.deserialize_topology(serialized_topology)
     trajectory = mdtraj.Trajectory(positions, topology)
 
     # Force periodic boundary conditions to molecules positions
     if image_molecules:
+        logger.info('Applying periodic boundary conditions to molecules positions...')
         trajectory.image_molecules(inplace=True)
 
     # Remove solvent
     if not keep_solvent:
+        logger.info('Removing solvent molecules...')
         trajectory = trajectory.remove_solvent()
 
     # Detect format
@@ -681,6 +692,7 @@ def extract_trajectory(output_path, nc_path, state_index=None, replica_index=Non
         raise ValueError('Cannot detect format from extension of file {}'.format(output_path))
 
     # Create output directory and save trajectory
+    logger.info('Creating trajectory file: {}'.format(output_path))
     output_dir = os.path.dirname(output_path)
     if output_dir != '' and not os.path.isdir(output_dir):
         os.makedirs(output_dir)
