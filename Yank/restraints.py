@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================================
 
 kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA  # Boltzmann constant
-V0 = 1660.0*unit.angstroms**3  # standard state volume
+V0 = 1660.53928 * unit.angstroms**3  # standard state volume
 
 # =============================================================================================
 # Dispatch appropriate restraint type from registered restraint classes
