@@ -561,7 +561,7 @@ def analyze(source_directory):
 
 def extract_trajectory(output_path, nc_path, state_index=None, replica_index=None,
                        start_frame=0, end_frame=-1, skip_frame=1, keep_solvent=True,
-                       discard_equilibration=False):
+                       discard_equilibration=False, image_molecules=False):
     """Extract phase trajectory from the NetCDF4 file.
 
     Parameters
@@ -604,6 +604,15 @@ def extract_trajectory(output_path, nc_path, state_index=None, replica_index=Non
     try:
         nc_file = netcdf.Dataset(nc_path, 'r')
 
+        # Extract topology and system serialization
+        serialized_system = nc_file.groups['metadata'].variables['reference_system'][0]
+        serialized_topology = nc_file.groups['metadata'].variables['topology'][0]
+
+        # Determine if system is periodic
+        from simtk import openmm
+        reference_system = openmm.XmlSerializer.deserialize(str(serialized_system))
+        is_periodic = reference_system.usesPeriodicBoundaryConditions()
+
         # Get dimensions
         n_iterations = nc_file.variables['positions'].shape[0]
         n_atoms = nc_file.variables['positions'].shape[2]
@@ -626,8 +635,10 @@ def extract_trajectory(output_path, nc_path, state_index=None, replica_index=Non
                          "effectively uncorrelated samples)...").format(n_equil, n_eff))
             frame_indices = frame_indices[n_equil:-1]
 
-        # Extract state positions
+        # Extract state positions and box vectors
         positions = np.zeros((len(frame_indices), n_atoms, 3))
+        if is_periodic:
+            box_vectors = np.zeros((len(frame_indices), 3, 3))
         if state_index is not None:
             # Deconvolute state indices
             state_indices = np.zeros(len(frame_indices))
@@ -635,24 +646,28 @@ def extract_trajectory(output_path, nc_path, state_index=None, replica_index=Non
                 replica_indices = nc_file.variables['states'][iteration, :]
                 state_indices[i] = np.where(replica_indices == state_index)[0][0]
 
-            # Extract positions
+            # Extract state positions and box vectors
             for i, iteration in enumerate(frame_indices):
                 replica_index = state_indices[i]
-                positions[i, :, :] = nc_file.variables['positions'][iteration, replica_index, :, :]
+                positions[i, :, :] = nc_file.variables['positions'][iteration, replica_index, :, :].astype(np.float32)
+                if is_periodic:
+                    box_vectors[i, :, :] = nc_file.variables['box_vectors'][iteration, replica_index, :, :].astype(np.float32)
 
-        # Extract replica positions
-        else:
+        else:  # Extract replica positions and box vectors
             for i, iteration in enumerate(frame_indices):
-                positions[i, :, :] = nc_file.variables['positions'][iteration, replica_index, :, :]
-
-        # Extract topology
-        serialized_topology = nc_file.groups['metadata'].variables['topology'][0]
+                positions[i, :, :] = nc_file.variables['positions'][iteration, replica_index, :, :].astype(np.float32)
+                if is_periodic:
+                    box_vectors[i, :, :] = nc_file.variables['box_vectors'][iteration, replica_index, :, :].astype(np.float32)
     finally:
         nc_file.close()
 
     # Create trajectory object
     topology = utils.deserialize_topology(serialized_topology)
     trajectory = mdtraj.Trajectory(positions, topology)
+
+    # Force periodic boundary conditions to molecules positions
+    if image_molecules:
+        trajectory.image_molecules(inplace=True)
 
     # Remove solvent
     if not keep_solvent:

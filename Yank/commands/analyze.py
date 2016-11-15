@@ -24,7 +24,7 @@ YANK analyze
 
 Usage:
   yank analyze (-s STORE | --store=STORE) [-v | --verbose]
-  yank analyze extract-trajectory --netcdf=FILEPATH (--state=STATE | --replica=REPLICA) --trajectory=FILEPATH [--start=START_FRAME] [--skip=SKIP_FRAME] [--end=END_FRAME] [--nosolvent] [--discardequil] [-v | --verbose]
+  yank analyze extract-trajectory --netcdf=FILEPATH (--state=STATE | --replica=REPLICA) --trajectory=FILEPATH [--start=START_FRAME] [--skip=SKIP_FRAME] [--end=END_FRAME] [--nosolvent] [--discardequil] [--imagemol] [-v | --verbose]
 
 Description:
   Analyze the data to compute Free Energies OR extract the trajectory from the NetCDF file into a common fortmat.
@@ -44,6 +44,7 @@ Extract Trajectory Options:
   --skip=SKIP_FRAME             Extract one frame every SKIP_FRAME
   --nosolvent                   Do not extract solvent
   --discardequil                Detect and discard equilibration frames
+  --imagemol                    Reprocess trajectory to enforce periodic boundary conditions to molecules positions
 
 General Options:
   -v, --verbose                 Print verbose output
@@ -88,6 +89,8 @@ def dispatch_extract_trajectory(args):
         kwargs['keep_solvent'] = False
     if args['--discardequil']:
         kwargs['discard_equilibration'] = True
+    if args['--imagemol']:
+        kwargs['image_molecules'] = True
 
     # Extract trajectory
     analyze.extract_trajectory(output_path, nc_path, **kwargs)
