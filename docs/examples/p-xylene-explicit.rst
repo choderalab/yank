@@ -189,17 +189,17 @@ Then we specify the ligand with ``ligand``. Note that this points to our arbitra
 Then comes the solvent with ``solvent``. Note this points at the arbitrary named "pme" from before.
 
 Lastly, we need to define where to get parameters for the atoms with the ``leap`` and subsequent ``parameters`` directives.
-Even if you specify all the atom parameters for every molecule in ``molecules``, you will still need to sepcify this
+Even if you specify all the atom parameters for every molecule in ``molecules``, you will still need to specify this
 pair of options to parametrize the explicit water. Note that multiple files can be specified as a comma separated list so
 long as they are enclosed by brackets, ``[  ]``.
 
 
 Protocols Heading
 ^^^^^^^^^^^^^^^^^
-The ``protocols`` heading and its options will be the most foregin to those not familiar with alchemical simulations.
+The ``protocols`` heading and its options will be the most foreign to those not familiar with alchemical simulations.
 Free energy calculations are computationally difficult to compute because in a physical since, the ligand needs to drift
 in and out of the binding pocket. This action happens on the order of milliseconds to seconds, which are simulation
-times that are very difficult to achive with direct simulation. Instead, we use a computationally efficient thermodynamic
+times that are very difficult to achieve with direct simulation. Instead, we use a computationally efficient thermodynamic
 cycle along efficient thermodynamic paths to mimic the end states (bound ligand in solvent box -> ligand in solvent
 + receptor in solvent). For more reading, please see the alchemistry.org page on `the thermodynamic cycle <http://www.alchemistry.org/wiki/Thermodynamic_Cycle>`_
 and on `choosing intermediate states <http://www.alchemistry.org/wiki/Constructing_a_Pathway_of_Intermediate_States>`_
@@ -214,8 +214,9 @@ phase.
      absolute-binding:
        complex:
          alchemical_path:
-           lambda_electrostatics: [1.00, 0.90, 0.80, 0.70, 0.60, 0.50, 0.40, 0.30, 0.20, 0.10, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00]
-           lambda_sterics:        [1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 0.90, 0.80, 0.70, 0.60, 0.50, 0.40, 0.30, 0.20, 0.10, 0.00]
+           lambda_electrostatics: [1.00, 1.00, 1.00, 1.00, 1.00, 0.90, 0.80, 0.70, 0.60, 0.50, 0.40, 0.30, 0.20, 0.10, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00]
+           lambda_sterics:        [1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 0.90, 0.80, 0.70, 0.60, 0.50, 0.40, 0.30, 0.20, 0.10, 0.00]
+           lambda_restraints:     [0.00, 0.25, 0.50, 0.75, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00]
        solvent:
          alchemical_path:
            lambda_electrostatics: [1.00, 0.90, 0.80, 0.70, 0.60, 0.50, 0.40, 0.30, 0.20, 0.10, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00]
@@ -225,15 +226,26 @@ We first defined a name for our protocol. The name is arbitrary and we choose ``
 
 Next we define what happens in the ``complex`` phase. Note that the name ``complex`` is semi-arbitrary. It can be called
 whatever you would like so long as it contains the string "complex" in it. ``alchemical_path`` is a required argument
-as is ``lambda_electrostatics`` and ``lambda_sterics``.
+as is ``lambda_electrostatics`` and ``lambda_sterics``. We will discuss the optional ``lambda_restraints`` momentarily,
+first lets look at the syntax of these arguments.
 
-Each of the ``lambda_...`` arguments takes a list of lamba values where each index corresponds with a single state. E.g.
+Each of the ``lambda_...`` arguments takes a list of lambda values where each index corresponds with a single state. E.g.
 index 0 (the first entry) of ``lambda_electrostatics`` is the value the electrostatic lambda will take in the first
 state. At the same time, index 0 of the ``lambda_sterics`` is what value the sterics lambda will take in the first state.
 This also means that both directives must have the same number of values.
 
+The optional ``lambda_restraints`` tells the restraints which we specify in ``experiments`` how coupled they should be
+in each state. We will specify a ``Harmonic`` restraint which will keep the ligand close to the centroid of the receptor
+through a weak harmonic biasing potential. However, we only want this restraint on when the ligand is decoupled to
+prevent it from drifting too far away, so its lambda values actually are coupled, whereas the nonbonded lambdas are
+decoupled. Also note how only one phase has ``lambda_restraints`` specified. This is because the restraint only makes
+sense in the ``complex`` phase as we actually do want the ligand to explore the other phase.
+
 Lastly, we define what happens in the ``solvent`` phase. This again is a semi-arbitrary name and can be whatever you
-want, so long as it contains the string "solvent".
+want, so long as it contains the string "solvent". In `the thermodynamic cycle <http://www.alchemistry.org/wiki/Thermodynamic_Cycle>`_
+for this process, we have to account for the free energy of removing the harmonic restraints and then transferring the
+ligand to a standard state ``solvent`` box. YANK automatically accounts for this free energy for you which is part of
+the reason ``lambda_restraints`` do not appear in the ``solvent`` phase.
 
 
 Experiments Heading
@@ -276,7 +288,7 @@ simulation, we'll run through them here:
 #. A Hamiltonian Replica Exchange simulation is run
 #. The process is repeated for the solvent simulation
 
-During the simulation you will see that one iteration propogates, then YANK attempts Hamiltonian replica exchange which
+During the simulation you will see that one iteration propagates, then YANK attempts Hamiltonian replica exchange which
 you see as a large table of energies. The swap statistics are then shown showing how many times two replicas exchanged
 with one another and finally some timing information (how much longer we expect the simulation to take and so on).
 
