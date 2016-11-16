@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================================
 
 kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA  # Boltzmann constant
-V0 = 1660.0*unit.angstroms**3  # standard state volume
+V0 = 1660.53928 * unit.angstroms**3  # standard state volume
 
 # =============================================================================================
 # Dispatch appropriate restraint type from registered restraint classes
@@ -366,7 +366,8 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
         """
         force = openmm.CustomBondForce(self._energy_function)
         force.addGlobalParameter('lambda_restraints', 1.0)
-        force.setUsesPeriodicBoundaryConditions(True)
+        is_periodic = self._system.usesPeriodicBoundaryConditions()
+        force.setUsesPeriodicBoundaryConditions(is_periodic)
         for parameter in self._bond_parameter_names:
             force.addPerBondParameter(parameter)
         try:
@@ -932,7 +933,8 @@ class Boresch(OrientationDependentRestraint):
         force = openmm.CustomCompoundBondForce(nparticles, energy_function)
         force.addGlobalParameter('lambda_restraints', 1.0)
         force.addBond(self._restraint_atoms, [])
-        force.setUsesPeriodicBoundaryConditions(True)
+        is_periodic = self._system.usesPeriodicBoundaryConditions()
+        force.setUsesPeriodicBoundaryConditions(is_periodic)
         return force
 
     def get_standard_state_correction(self):

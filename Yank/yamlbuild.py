@@ -1830,7 +1830,7 @@ class YamlBuilder:
             return
 
         # Restraint schema
-        restraint_schema = {'type': str}
+        restraint_schema = {'type': Or(str, None)}
 
         # Define experiment Schema
         experiment_schema = Schema({'system': is_known_system, 'protocol': is_known_protocol,

@@ -610,7 +610,9 @@ def test_validation_correct_experiments():
     basic_script = yank_load(basic_script)
 
     experiments = [
-        {'system': 'sys', 'protocol': 'absolute-binding'}
+        {'system': 'sys', 'protocol': 'absolute-binding'},
+        {'system': 'sys', 'protocol': 'absolute-binding', 'restraint': {'type': 'Harmonic'}},
+        {'system': 'sys', 'protocol': 'absolute-binding', 'restraint': {'type': None}}
     ]
     for experiment in experiments:
         modified_script = basic_script.copy()
