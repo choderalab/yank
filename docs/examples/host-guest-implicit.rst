@@ -134,8 +134,11 @@ have multiple binding sites that are hard to locate in normal simulation time le
 the guest to explore more of the space around the host relative to the other restraint type ``Harmonic``.
 
 The ``Harmonic``
-restraint type would keep the ligand close to **a** binding site, but not both. It should be noted though, that if you
-want to keep the close to a known binding site, the ``Harmonic`` restraint may be a better option.
+restraint type would keep the ligand close to the centroid of the host, which may only favor one of the bindning sites.
+It should be noted though, that if you want to keep the close to a the centroid, the ``Harmonic``
+restraint may be a better option. We do this in the :doc:`p-xylene binding example <p-xylene-explicit>` since the binding
+site is close to the centroid of the receptor and the ``Harmonic`` restraint is not so strong as to overcome
+natural kinetic barriers.
 
 We also note that we did not specify ``lambda_restraints`` because we want every state to take the same and default
 value of ``1.0``. This differs from the :doc:`p-xylene binding example <p-xylene-explicit>` because we **want** the ligand

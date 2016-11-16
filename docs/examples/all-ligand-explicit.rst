@@ -152,8 +152,7 @@ Systems Header
           parameters: [oldff/leaprc.ff14SB, leaprc.gaff2, frcmod.ionsjc_tip3p]
         pack: yes
 
-The output we would expect from this is a unique simulation with every binder and non-binder in both
-files.
+The output we would expect from this is a unique simulation with every binder in the file.
 
 ``pack: yes`` pulls the ligand close to the receptor ensuring that your solvation box won't be too big. This is highly
 recommended when ligands are generated from SMILES they have a random position.
