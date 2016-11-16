@@ -673,6 +673,8 @@ def extract_trajectory(output_path, nc_path, state_index=None, replica_index=Non
     logger.info('Creating trajectory object...')
     topology = utils.deserialize_topology(serialized_topology)
     trajectory = mdtraj.Trajectory(positions, topology)
+    if is_periodic:
+        trajectory.unitcell_vectors = box_vectors
 
     # Force periodic boundary conditions to molecules positions
     if image_molecules:
