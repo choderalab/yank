@@ -1,10 +1,10 @@
 .. _all-ligand-explicit:
 
-Absolute Binding of Binders and Non-binders to T4 lysozyme L99A in Explicit Solvent with Combinatorial Options
-==============================================================================================================
+Absolute Binding of Binders to T4 lysozyme L99A in Explicit Solvent with Combinatorial Options
+==============================================================================================
 
 This example performs absolute binding free energy calculations for a series of small molecules that contain known
-binders and nonbinders to the T4 Lysozyme L99A protein.
+binders to the T4 Lysozyme L99A protein.
 
 We take advantage of three advanced features of YANK in this example (please see the
 :doc:`basic tutorial for the YAML sections and binding free energy calculation <p-xylene-explicit>`
@@ -28,23 +28,19 @@ Original source ligands collected by the `Shoichet Lab <http://shoichetlab.compb
 Disclaimer on this Example
 --------------------------
 
-This example runs many simulations due to the large library of binders and non-binders. You may find it helpful to
+This example runs many simulations due to the library of binders. You may find it helpful to
 change the following lines in the YAML file
 
 .. code-block:: yaml
 
     binders:
         select: all
-    non-binders:
-        select: !Combinatorial [...]
 
 to
 
 .. code-block:: yaml
 
     binders:
-        select: <Integer>
-    non-binders:
         select: <Integer>
 
 where ``<Integer>`` is a single integer representing a line in the corresponding file.
@@ -68,28 +64,21 @@ Molecules Header
     molecules:
       t4-lysozyme:
         filepath: input/receptor.pdbfixer.pdb
-        leap:
-          parameters: oldff/leaprc.ff14SB
+      # Define our ligands
       binders:
         filepath: input/L99A-binders.csv
         antechamber:
           charge_method: bcc
         select: all
-      non-binders:
-        filepath: input/L99A-non-binders.csv
-        antechamber:
-          charge_method: bcc
-        select: !Combinatorial [4,5,6,7,10,11,12,13,14,15,18,19,28,29,30,31,32,33,34,35,36,37,41,42,43,48,49,50,56,58,59]
 
-The molecules header has quite a number of differences from the other examples. First, there is one receptor, ``t4-lysozyme``,
-and two "ligands", which are actually (semi)comma separated value files, ``.csv`` with multiple ligands per file.
+The ``molecules`` header has quite a number of differences from the other examples. First, there is one receptor, ``t4-lysozyme``,
+and one "ligand", which is actually a (semi)comma separated value file, ``.csv`` with multiple ligands per file.
 Further, there is the ``select`` command with different arguments. Let's break down each part of these ligands one at time
 
-First we look at the CSV file itself. The two files under the ``binders`` and ``non-binders`` headers are formatted the
-same way. Each line is a molecule where the second column (semicolon separated) is the SMILES string of that molecule.
-The remaining columns do not mater for YANK, so long as the 2nd column is the SMILES string. These files also take
-commas as the delimiter. We could have easily made these one file, but kept them split up for the example, and so you
-can differentiate between the binder and non-binder set.
+First we look at the CSV file itself. The file under the ``binders`` header is formatted as such.
+Each line is a molecule where the second column (semicolon separated) is the SMILES string of that molecule.
+The remaining columns do not mater for YANK, so long as the 2nd column is the SMILES string. This file alsos take
+commas as the delimiter.
 
 When YANK reads a SMILES string, it passes that string off to the OpenEye Toolkit to generate a ligand with all atom
 types and coordinates that will be used in YANK. Because the structure it generates is in no way optimized, it is
@@ -102,6 +91,8 @@ to set the option in the ``binders`` molecule, but we explicitly set it so you c
 
 The ``select`` option could also accept an integer to choose a single molecule from your CSV file, where the index
 starts at 0. e.g. ``select: 0`` chooses the first molecule in the list, after any leading commented lines.
+
+Alternately, we could have ``select: !Combinatorial [0,1,2,3]`` and gotten the same result as ``select: all`` for this example
 
 Let us now look at one of YANK's most powerful features the ``!Combinatorial`` options.
 
@@ -132,10 +123,13 @@ option in two separate molecules, they will not necessarily run every combinatio
 is a system that uses both molecules. It will run a simulation for every option in a given molecule's ``!Combinatorial``
 option, but will not cross them unless there is system which combines both.
 
-In this example, the ``!Combinatorial <List of Ints>`` called in the ``non-binders`` molecule selects the indices of
-molecules which have an oxygen in them. There is no reason for this list other than we can for this example.
+In this example, the ``!Combinatorial <List of Ints>`` could have been called instead of ``select: all`` to select the indices of
+all molecules in the file. There is no reason for this list other than we can for this example.
 The ``select: all`` is a shortcut in this option for ``select: !Combinatorial [0, 1, 2, 3, 4, 5, ... N]`` where ``N``
 is number of molecules in the file.
+
+The ``all-ligands-implicit.yaml`` file in this same example directory shows the ``select: !Combinatorial [...]`` in
+action.
 
 
 Solvents Header
@@ -152,15 +146,17 @@ Systems Header
     systems:
       t4-ligand:
         receptor: t4-lysozyme
-        ligand: !Combinatorial [binders, non-binders]
+        ligand: binders
         solvent: pme
         leap:
           parameters: [oldff/leaprc.ff14SB, leaprc.gaff2, frcmod.ionsjc_tip3p]
+        pack: yes
 
-Here we choose to use the ``!Combinatorial`` syntax again to specify that we want to try both sets of molecules as our
-``ligand``. The output we would expect from this is a unique simulation with every binder and non-binder in both
-files. This is a common type of use for ``!Combinatorial`` since you can specify multiple molecules to run in a single
-YAML file and compare results when done.
+The output we would expect from this is a unique simulation with every binder in the file.
+
+``pack: yes`` pulls the ligand close to the receptor ensuring that your solvation box won't be too big. This is highly
+recommended when ligands are generated from SMILES they have a random position.
+
 
 Other Headers
 ^^^^^^^^^^^^^
@@ -175,7 +171,8 @@ Running the simulation is the same as the other examples where you can either ru
 by running ``yank script --yaml=explicit.yaml``. For running on multiple nodes, use ``run-torque-explicit.sh`` and
 adapt it to your parallel platform.
 
-The output of this run will be different from simulations where ``!Combinatorial`` is not invoked. First, YANK figures
+The output of this run will be different from simulations where ``!Combinatorial`` is not invoked (or in this case
+``select: all``. First, YANK figures
 out all the combinations this run will generate. Next it pre-constructs all the molecules and system files before it
 runs any of them. Finally, each simulation is run one after another.
 
