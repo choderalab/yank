@@ -21,7 +21,7 @@ import numpy as np
 from nose.plugins.attrib import attr
 
 import yank.restraints
-from openmmtools.testsystems import ThermodynamicState
+from yank.repex import ThermodynamicState
 
 from simtk import unit, openmm
 from openmmtools import testsystems
