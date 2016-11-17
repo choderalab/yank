@@ -591,7 +591,7 @@ class Harmonic(RadiallySymmetricRestraint):
 
         # Compute std dev of distances from restrained atom.
         sigma = distances.std() * unit
-        logger.debug("Spring Constant Sigma, s = %.3f nm" % (sigma / unit.nanometer))
+        logger.debug("Spring Constant Sigma, s = %.3f nm" % (sigma / unit.nanometers))
 
         # Compute corresponding spring constant.
         K = self.kT / sigma**2
