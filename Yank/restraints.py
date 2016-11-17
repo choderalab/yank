@@ -575,13 +575,13 @@ class Harmonic(RadiallySymmetricRestraint):
 
         """
 
-        unit = self._positions.unit
+        carried_unit = self._positions.unit
 
         # Get dimensionless receptor positions.
-        x = self._positions[self._receptor_atoms,:] / unit
+        x = self._positions[self._receptor_atoms,:] / carried_unit
 
         # Get dimensionless restrained atom coordinate.
-        xref = self._positions[self._restrained_receptor_atom, :] / unit  # (3,) array
+        xref = self._positions[self._restrained_receptor_atom, :] / carried_unit  # (3,) array
         xref = np.reshape(xref, (1,3)) # (1,3) array
 
         # Compute distances from restrained atom.
@@ -590,7 +590,7 @@ class Harmonic(RadiallySymmetricRestraint):
         distances = np.sqrt(((x - np.tile(xref, (natoms, 1)))**2).sum(1))
 
         # Compute std dev of distances from restrained atom.
-        sigma = distances.std() * unit
+        sigma = distances.std() * carried_unit
         logger.debug("Spring Constant Sigma, s = %.3f nm" % (sigma / unit.nanometers))
 
         # Compute corresponding spring constant.
