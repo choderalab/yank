@@ -451,6 +451,7 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
         logger.debug("shell_volume = %f nm^3" % (shell_volume / unit.nanometers**3))
 
         # Compute standard-state volume for a single molecule in a box of size (1 L) / (avogadros number)
+        # Should also generate constant V0
         liter = 1000.0 * unit.centimeters**3  # one liter
         box_volume = liter / (unit.AVOGADRO_CONSTANT_NA*unit.mole) # standard state volume
         logger.debug("box_volume = %f nm^3" % (box_volume / unit.nanometers**3))

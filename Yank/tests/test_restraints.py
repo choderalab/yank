@@ -16,7 +16,7 @@ Test restraints module.
 import tempfile
 import shutil
 import math
-import unittest
+import numpy as np
 
 from nose.plugins.attrib import attr
 
@@ -73,10 +73,14 @@ expected_restraints = {
 
 
 def test_harmonic_standard_state():
-    """Test that the expected harmonic standard state correction is close to our approximation"""
+    """
+    Test that the expected harmonic standard state correction is close to our approximation
+
+    Also ensures that PBC bonds are being computed and disabled correctly as expected
+    """
     LJ_fluid = testsystems.LennardJonesFluid()
-    receptor_atoms = [0]
-    ligand_atoms =  [1, 2, 3]
+    receptor_atoms = [0, 1, 2]
+    ligand_atoms = [3, 4, 5]
     thermodynamic_state = ThermodynamicState(temperature=300.0 * unit.kelvin)
     restraint = yank.restraints.create_restraints('Harmonic', LJ_fluid.topology, thermodynamic_state, LJ_fluid.system,
                                                   LJ_fluid.positions, receptor_atoms, ligand_atoms)
@@ -87,7 +91,7 @@ def test_harmonic_standard_state():
     analytical_shell_volume = (2 * math.pi / (spring_constant * restraint.beta))**(3.0/2)
     analytical_standard_state_G = - math.log(box_volume / analytical_shell_volume)
     restraint_standard_state_G = restraint.get_standard_state_correction()
-    unittest.assertAlmostEqual(analytical_standard_state_G, restraint_standard_state_G)
+    np.testing.assert_allclose(analytical_standard_state_G, restraint_standard_state_G)
 
 
 def test_available_restraint_classes():
