@@ -340,7 +340,7 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
 
         # Compute distances from restrained atom.
         natoms = x.shape[0]
-        distances = np.sqrt(((x - np.tile(xref, (natoms, 1)))**2).sum(1)) # distances[i] is the distance from the centroid to particle i
+        distances = np.sqrt(((x - np.tile(xref, (natoms, 1)))**2).sum(1)) #  distances[i] is the distance from the centroid to particle i
 
         # Compute std dev of distances from restrained atom.
         radius_of_gyration = distances.std() * unit
@@ -411,6 +411,8 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
         system.addParticle(1.0 * unit.amu)
         system.addParticle(1.0 * unit.amu)
         force = self._create_restraint_force(0, 1)
+        # Disable the PBC if on for this approximation of the analytical solution
+        force.setUsesPeriodicBoundaryConditions(False)
         system.addForce(force)
 
         # Create a Reference context to evaluate energies on the CPU.
@@ -449,6 +451,7 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
         logger.debug("shell_volume = %f nm^3" % (shell_volume / unit.nanometers**3))
 
         # Compute standard-state volume for a single molecule in a box of size (1 L) / (avogadros number)
+        # Should also generate constant V0
         liter = 1000.0 * unit.centimeters**3  # one liter
         box_volume = liter / (unit.AVOGADRO_CONSTANT_NA*unit.mole) # standard state volume
         logger.debug("box_volume = %f nm^3" % (box_volume / unit.nanometers**3))
@@ -572,13 +575,13 @@ class Harmonic(RadiallySymmetricRestraint):
 
         """
 
-        unit = self._positions.unit
+        carried_unit = self._positions.unit
 
         # Get dimensionless receptor positions.
-        x = self._positions[self._receptor_atoms,:] / unit
+        x = self._positions[self._receptor_atoms,:] / carried_unit
 
         # Get dimensionless restrained atom coordinate.
-        xref = self._positions[self._restrained_receptor_atom,:] / unit # (3,) array
+        xref = self._positions[self._restrained_receptor_atom, :] / carried_unit  # (3,) array
         xref = np.reshape(xref, (1,3)) # (1,3) array
 
         # Compute distances from restrained atom.
@@ -587,7 +590,8 @@ class Harmonic(RadiallySymmetricRestraint):
         distances = np.sqrt(((x - np.tile(xref, (natoms, 1)))**2).sum(1))
 
         # Compute std dev of distances from restrained atom.
-        sigma = distances.std() * unit
+        sigma = distances.std() * carried_unit
+        logger.debug("Spring Constant Sigma, s = %.3f nm" % (sigma / unit.nanometers))
 
         # Compute corresponding spring constant.
         K = self.kT / sigma**2
@@ -658,13 +662,14 @@ class FlatBottom(RadiallySymmetricRestraint):
 
         if (natoms > 3):
             # Check that restrained receptor atom is in expected range.
-            if (self._restrained_receptor_atom > natoms):
+            if self._restrained_receptor_atom > natoms:
                 raise ValueError('Receptor atom %d was selected for restraint, but system only has %d atoms.' % (self._restrained_receptor_atom, natoms))
 
             # Compute median absolute distance to central atom.
             # (Working in non-unit-bearing floats for speed.)
-            xref = np.reshape(x[self._restrained_receptor_atom,:], (1,3)) # (1,3) array
-            distances = np.sqrt(((x - np.tile(xref, (natoms, 1)))**2).sum(1)) # distances[i] is the distance from the centroid to particle i
+            xref = np.reshape(x[self._restrained_receptor_atom, :], (1,3))  # (1,3) array
+            # distances[i] is the distance from the centroid to particle i
+            distances = np.sqrt(((x - np.tile(xref, (natoms, 1)))**2).sum(1))
             median_absolute_distance = np.median(abs(distances))
 
             # Convert back to unit-bearing quantity.
@@ -683,7 +688,7 @@ class FlatBottom(RadiallySymmetricRestraint):
         logger.debug("restraint distance r0 = %.1f A" % (r0 / unit.angstroms))
 
         # Set spring constant/
-        #K = (2.0 * 0.0083144621 * 5.0 * 298.0 * 100) * unit.kilojoules_per_mole/unit.nanometers**2
+        # K = (2.0 * 0.0083144621 * 5.0 * 298.0 * 100) * unit.kilojoules_per_mole/unit.nanometers**2
         K = 0.6 * unit.kilocalories_per_mole / unit.angstroms**2
         logger.debug("K = %.1f kcal/mol/A^2" % (K / (unit.kilocalories_per_mole / unit.angstroms**2)))
 
