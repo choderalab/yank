@@ -466,20 +466,9 @@ class Yank(object):
         else:
             # Create the system for noninteracting
             noninteracting_expanded_system = copy.deepcopy(alchemical_system)
-            # Set all USED alchemical interactions to 0
-            # Determine which parameters were used
-            alchemical_parameters = alchemical_states[0].keys()
-            # Set the default parameter values
-            # We dont know which force has which variable, so try all
-            for force in noninteracting_expanded_system.getForces():
-                try:
-                    number_global = force.getNumGlobalParameters()
-                    for parameter_index in range(number_global):
-                        global_name = force.getGlobalParameterName(parameter_index)
-                        if global_name in alchemical_parameters:
-                            force.setGlobalParameterDefaultValue(parameter_index, 0)
-                except:
-                    pass
+            # Set all USED alchemical interactions to the decoupled state
+            alchemical_state = alchemical_states[-1]
+            AbsoluteAlchemicalFactory.perturbSystem(noninteracting_expanded_system, alchemical_state)
             # Expand Cutoff
             expand_cutoff(noninteracting_expanded_system)
 
