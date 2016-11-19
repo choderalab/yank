@@ -179,28 +179,34 @@ def extract_ncfile_energies(ncfile, ndiscard=0, nuse=None, g=None):
     logger.info(N_k)
     logger.info("")
 
-    # Check for the fully interacting state, and subsamble as needed
+    # Check for the expanded cutoff states, and subsamble as needed
     try:
-        u_ln_raw = ncfile.variables['fully_interacting_energies'][:].T #Its stored as nl, need in ln
-        fully_interacting_u_ln = np.zeros(u_ln_raw.shape)
+        u_ln_full_raw = ncfile.variables['fully_interacting_expanded_cutoff_energies'][:].T #Its stored as nl, need in ln
+        u_ln_non_raw = ncfile.variables['noninteracting_expanded_cutoff_energies'][:].T 
+        fully_interacting_u_ln = np.zeros(u_ln_full_raw.shape)
+        noninteracting_u_ln = np.zeros(u_ln_non_raw.shape)
         # Deconvolute the fully interacting state
         for iteration in range(niterations):
             state_indices = ncfile.variables['states'][iteration,:]
-            fully_interacting_u_ln[state_indices,iteration] = u_ln_raw[:,iteration]
+            fully_interacting_u_ln[state_indices,iteration] = u_ln_full_raw[:,iteration]
+            noninteracting_u_ln[state_indices,iteration] = u_ln_non_raw[:,iteration]
         # Discard non-equilibrated samples
         fully_interacting_u_ln = fully_interacting_u_ln[:,ndiscard:]
         fully_interacting_u_ln = fully_interacting_u_ln[:,indices]
+        noninteracting_u_ln = noninteracting_u_ln[:,ndiscard:]
+        noninteracting_u_ln = noninteracting_u_ln[:,indices]
         # Augment u_kln to accept the new state
-        u_kln_new = np.zeros([nstates + 1, nstates + 1, N], np.float64)
-        N_k_new = np.zeros(nstates + 1, np.int32)
+        u_kln_new = np.zeros([nstates + 2, nstates + 2, N], np.float64)
+        N_k_new = np.zeros(nstates + 2, np.int32)
         # Insert energies
-        u_kln_new[1:,0,:] = fully_interacting_u_ln
+        u_kln_new[1:-1,0,:] = fully_interacting_u_ln
+        u_kln_new[1:-1,-1,:] = noninteracting_u_ln
         # Fill in other energies
-        u_kln_new[1:,1:,:] = u_kln 
-        N_k_new[1:] = N_k
+        u_kln_new[1:-1,1:-1,:] = u_kln 
+        N_k_new[1:-1] = N_k
         # Notify users
-        logger.info("Found a fully interacting state in the energies!")
-        logger.info("Free energies will be reported relative to it instead!")
+        logger.info("Found expanded cutoff states in the energies!")
+        logger.info("Free energies will be reported relative to them instead!")
         # Reset values, last step in case something went wrong so we dont overwrite u_kln on accident
         u_kln = u_kln_new
         N_k = N_k_new
