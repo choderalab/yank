@@ -372,44 +372,18 @@ class Yank(object):
         # which the fully-interacting energy is to be computed. An enlarged cutoff
         # is used to account for the anisotropic dispersion correction. This must
         # be done BEFORE adding the restraint to reference_system.
-        if not is_periodic:
-            reference_state = None
-            reference_LJ_state = None
-            reference_LJ_expanded_state = None
-        else:
-            # Create system with only LJ forces.
-            reference_system_LJ = copy.deepcopy(reference_system)
-            forces_to_remove = []
-            for forceIndex in range(reference_system_LJ.getNumForces()):
-                force = reference_system_LJ.getForce(forceIndex)
-                if isinstance(force, openmm.NonbondedForce):
-                    # Turn off electrostatics.
-                    for particle in range(force.getNumParticles()):
-                        q, sigma, epsilon = force.getParticleParameters(particle)
-                        force.setParticleParameters(particle, 0, sigma, epsilon)
-                    for exception in range(force.getNumExceptions()):
-                        particle1, particle2, chargeprod, epsilon, sigma = force.getExceptionParameters(exception)
-                        force.setExceptionParameters(exception, particle1, particle2, 0, sigma, epsilon)
-                else:
-                    # Queue force to remove if not a NB fore.
-                    forces_to_remove.append(forceIndex)
-            # Remove all but NonbondedForce. If done in previous loop, number of
-            # forces change so indices change.
-            for forceIndex in forces_to_remove[::-1]:
-                reference_system_LJ.removeForce(forceIndex)
+        # We dont care about restraint in decoupled state (although we will set to 0) since we will
+        # account for that by hand.
 
-            # Create system with only LJ forces with an expanded cutoff.
-            reference_system_LJ_expanded = copy.deepcopy(reference_system_LJ)
-
+        # Helper function for expanded cutoff
+        def expand_cutoff(passed_system, max_allowed_cutoff = 16 * unit.angstroms):
             # Determine minimum box side dimension
-            box_vectors = reference_system_LJ_expanded.getDefaultPeriodicBoxVectors()
+            box_vectors = passed_system.getDefaultPeriodicBoxVectors()
             min_box_dimension = min([max(vector) for vector in box_vectors])
-
             # Expand cutoff to minimize artifact and verify that box is big enough.
             # If we use a barostat we leave more room for volume fluctuations or
             # we risk fatal errors. If we don't use a barostat, OpenMM will raise
             # the appropriate exception on context creation.
-            max_allowed_cutoff = 16 * unit.angstroms
             max_switching_distance = max_allowed_cutoff - (1 * unit.angstrom)
             # TODO: Make max_allowed_cutoff an option
             if thermodynamic_state.pressure and min_box_dimension < 2.25 * max_allowed_cutoff:
@@ -419,9 +393,9 @@ class Yank(object):
             logger.debug('Setting cutoff for fully interacting system to maximum '
                          'allowed {}'.format(str(max_allowed_cutoff)))
 
-            # Expanded cutoff LJ system if needed
+            # Expanded cutoff system if needed
             # We don't want to reduce the cutoff if its already large
-            for force in reference_system_LJ_expanded.getForces():
+            for force in passed_system.getForces():
                 try:
                     if force.getCutoffDistance() < max_allowed_cutoff:
                         force.setCutoffDistance(max_allowed_cutoff)
@@ -436,13 +410,19 @@ class Yank(object):
                 except Exception:
                     pass
 
+        # Set the fully-interacting expanded cutoff state here
+        if not is_periodic:
+            fully_interacting_expanded_state = None
+        else:
+            # Create the fully interacting system
+            fully_interacting_expanded_system = copy.deepcopy(reference_system)
+
+            # Expand Cutoff
+            expand_cutoff(fully_interacting_expanded_system)
+
             # Construct thermodynamic states
-            reference_state = copy.deepcopy(thermodynamic_state)
-            reference_state.system = copy.deepcopy(reference_system)
-            reference_LJ_state = copy.deepcopy(thermodynamic_state)
-            reference_LJ_expanded_state = copy.deepcopy(thermodynamic_state)
-            reference_LJ_state.system = reference_system_LJ
-            reference_LJ_expanded_state.system = reference_system_LJ_expanded
+            fully_interacting_expanded_state = copy.deepcopy(thermodynamic_state)
+            fully_interacting_expanded_state.system = fully_interacting_expanded_system
 
         # Compute standard state corrections for complex phase.
         metadata['standard_state_correction'] = 0.0
@@ -479,6 +459,22 @@ class Yank(object):
                                             **self._alchemy_parameters)
         alchemical_system = factory.alchemically_modified_system
         thermodynamic_state.system = alchemical_system
+
+        # Create the expanded cutoff decoupled state
+        if fully_interacting_expanded_state is None:
+            noninteracting_expanded_state = None
+        else:
+            # Create the system for noninteracting
+            noninteracting_expanded_system = copy.deepcopy(alchemical_system)
+            # Set all USED alchemical interactions to the decoupled state
+            alchemical_state = alchemical_states[-1]
+            AbsoluteAlchemicalFactory.perturbSystem(noninteracting_expanded_system, alchemical_state)
+            # Expand Cutoff
+            expand_cutoff(noninteracting_expanded_system)
+
+            # Construct thermodynamic states
+            noninteracting_expanded_state = copy.deepcopy(thermodynamic_state)
+            noninteracting_expanded_state.system = noninteracting_expanded_system
 
         # Check systems for finite energies.
         # TODO: Refactor this into another function.
@@ -529,9 +525,8 @@ class Yank(object):
         simulation.create(thermodynamic_state, alchemical_states, positions,
                           displacement_sigma=self._mc_displacement_sigma, mc_atoms=mc_atoms,
                           options=repex_parameters, metadata=metadata,
-                          reference_state = reference_state,
-                          reference_LJ_state = reference_LJ_state,
-                          reference_LJ_expanded_state = reference_LJ_expanded_state)
+                          fully_interacting_expanded_state = fully_interacting_expanded_state,
+                          noninteracting_expanded_state = noninteracting_expanded_state)
 
         # Initialize simulation.
         # TODO: Use the right scheme for initializing the simulation without running.
