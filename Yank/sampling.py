@@ -95,7 +95,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         self._noninteracting_expanded_context = None
         self.noninteracting_expanded_state = None
 
-    def create(self, base_state, alchemical_states, positions, displacement_sigma=None, mc_atoms=None, options=None, metadata=None, fully_interacting_expanded__state=None, noninteracting_expanded_state=None):
+    def create(self, base_state, alchemical_states, positions, displacement_sigma=None, mc_atoms=None, options=None, metadata=None, fully_interacting_expanded_state=None, noninteracting_expanded_state=None):
         """
         Initialize a modified Hamiltonian exchange simulation object.
 
