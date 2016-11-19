@@ -29,7 +29,8 @@ Protocols Syntax
            lambda_electrostatics: [1.00, 0.75, 0.50, 0.25, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00]
            lambda_sterics:        [1.00, 1.00, 1.00, 1.00, 1.00, 0.95, 0.90, 0.85, 0.80, 0.75, 0.70, 0.65, 0.60, 0.50, 0.40, 0.30, 0.20, 0.10, 0.00]
 
-This is the only valid format for the protocols header and consistes of multiple parts which we break down here.
+This is the only valid format for the protocols header (unless :ref:`restraints are specified <yaml_protocols_alchemical_path>`)
+and consists of multiple parts which we break down here.
 
 The ``{PhaseName1}`` and ``{PhaseName2}`` headers are ``system`` dependent headers. 
 The ``{UserDefinedSystem`` and ``{UserDefinedProtocol}`` are combined in the ``experiements`` header to make on object.
@@ -78,13 +79,21 @@ Here is an example:
 
 .. _yaml_protocols_alchemical_path:
 
-alchemical_path, lambda_electrostatics, and lambda_sterics
-----------------------------------------------------------
+alchemical_path, lambda_electrostatics, lambda_sterics, and lambda_restraints
+-----------------------------------------------------------------------------
 
-The ``lambda_electrostatics`` and ``lambda_sterics`` directives define the alchemical states that YANK will sample at. 
+The ``lambda_electrostatics``, ``lambda_sterics``, and ``lambda_restraints`` directives define the alchemical states that YANK will sample at.
 Each directive accepts an equal sized list of floats as arguments and each index of the list corresponds to what value of lambda those interactions will be controlled by at that state.
 The index can be thought of as the column if the lists were stacked as a 2D array, and the state is fully described by the column, not a single row by itself.
 
 Syntax is identical to the example above.
+
+Only ``lambda_restraints`` are optional and do not need to be specified for each phase and system. Further, the directive
+only applies if ``restraint`` :ref:`in experiments is specified <yaml_experiments_syntax>`. How and where the
+``lambda_restraints`` should be will be up to the user. To see use cases of this directive, please see any of the following:
+
+* :ref:`The Harmonic restraint in our detailed binding free energy tutorial <p-xylene-explicit>`
+* :ref:`The FlatBottom restraint in our host-guest binding free energy tutorial <host_guest_implicit>`
+* `The Boresh restraint in our YANK GitHub Examples <https://github.com/choderalab/yank-examples/tree/master/examples/binding/abl-imatinib>`_
 
 Valid Arguments: <Identical Sized List of Floats>

@@ -36,26 +36,23 @@ def test_resuming():
 
     positions = toluene_test.positions
 
-    # We pass as reference_LJ_state and reference_LJ_state the normal
+    # We pass as fully_interacting_expanded_state and noninteracting_expanded_state the normal
     # reference state as we just want to check that they are correctly
     # set on resume
-    reference_state = ThermodynamicState(temperature=300.0*unit.kelvin)
-    reference_state.system = toluene_test.system
-    reference_LJ_state = copy.deepcopy(base_state)
-    reference_LJ_expanded_state = copy.deepcopy(base_state)
+    fully_interacting_expanded_state = ThermodynamicState(temperature=300.0*unit.kelvin)
+    fully_interacting_expanded_state.system = toluene_test.system
+    noninteracting_expanded_state = copy.deepcopy(base_state)
 
     with enter_temp_directory():
         store_file_name = 'simulation.nc'
         simulation = ModifiedHamiltonianExchange(store_file_name)
         simulation.create(base_state, alchemical_states, positions, mc_atoms=ligand_atoms,
-                          reference_state=reference_state,
-                          reference_LJ_state=reference_LJ_state,
-                          reference_LJ_expanded_state=reference_LJ_expanded_state)
+                          fully_interacting_expanded_state=fully_interacting_expanded_state,
+                          noninteracting_expanded_state = noninteracting_expanded_state)
 
         # Clean up simulation and resume
         del simulation
         simulation = ModifiedHamiltonianExchange(store_file_name)
         simulation.resume()
-        assert simulation.reference_state is not None
-        assert simulation.reference_LJ_state is not None
-        assert simulation.reference_LJ_expanded_state is not None
+        assert simulation.fully_interacting_expanded_state is not None
+        assert simulation.noninteracting_expanded_state is not None
