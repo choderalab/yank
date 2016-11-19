@@ -90,14 +90,12 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
 
         """
         super(ModifiedHamiltonianExchange, self).__init__(store_filename, **kwargs)
-        self._reference_context = None
-        self.reference_state = None
-        self.reference_LJ_state = None
-        self._reference_LJ_context = None
-        self.reference_LJ_expanded_state = None
-        self._reference_LJ_expanded_context = None
+        self._fully_interacting_expanded_context = None
+        self.fully_interacting_expanded_state = None
+        self._noninteracting_expanded_context = None
+        self.noninteracting_expanded_state = None
 
-    def create(self, base_state, alchemical_states, positions, displacement_sigma=None, mc_atoms=None, options=None, metadata=None, reference_state=None, reference_LJ_state=None, reference_LJ_expanded_state=None):
+    def create(self, base_state, alchemical_states, positions, displacement_sigma=None, mc_atoms=None, options=None, metadata=None, fully_interacting_expanded__state=None, noninteracting_expanded_state=None):
         """
         Initialize a modified Hamiltonian exchange simulation object.
 
@@ -117,12 +115,10 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
            Optional dict to use for specifying simulation options. Provided keywords will be matched to object variables to replace defaults.
         metadata : dict, optional, default=None
            metadata to store in a 'metadata' group in store file
-        reference_state : ThermodynamicState
-           Thermodynamic reference state with all interactions
-        reference_LJ_state : ThermodynamicState
-           Thermodynamic reference state for only Lennard-Jones interactions
-        reference_LJ_expanded_state : ThermodynamicState
-           Thermodynamic reference state with expanded cutoff radius for only Lennard-Jones interactions
+        fully_interacting_expanded_state : ThermodynamicState
+           Thermodynamic reference state with all interactins in an expanded cutoff radius
+        noninteracting_expanded_state : ThermodynamicState
+           Thermodynamic reference state with no alchemical interactins in an expanded cutoff radius
 
         """
 
@@ -152,10 +148,9 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         self.base_state = copy.deepcopy(base_state)
         self.base_system = self.base_state.system
 
-        # Store Lennard-Jones states which will be used to create a more accurate fully-interacting energy
-        self.reference_state = copy.deepcopy(reference_state)
-        self.reference_LJ_state = copy.deepcopy(reference_LJ_state)
-        self.reference_LJ_expanded_state = copy.deepcopy(reference_LJ_expanded_state)
+        # Store expanded cutoff states which will be used to create a more accurate energy
+        self.fully_interacting_expanded_state = copy.deepcopy(fully_interacting_expanded_state)
+        self.noninteracting_expanded_state = copy.deepcopy(noninteracting_expanded_state)
 
         # TODO: Form metadata dict.
 
@@ -261,9 +256,9 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         setattr(ncvar_serialized_base_system, 'long_name', "baseline is the serialized OpenMM System corresponding to the reference System object")
         ncvar_serialized_base_system[0] = self.base_system.__getstate__() # serialize reference system.
 
-        # Fully interacting state
-        if (self.reference_LJ_state is not None) and (self.reference_LJ_expanded_state is not None) and (self.reference_state is not None):
-            ncgrp_stateinfo = ncfile.createGroup('fully_interacting_states')
+        # Expanded cutoffs
+        if (self.fully_interacting_expanded_state is not None) and (self.noninteracting_expanded_state is not None):
+            ncgrp_stateinfo = ncfile.createGroup('expanded_cutoff_states')
             # Temperatures.
             ncvar_temperatures = ncgrp_stateinfo.createVariable('temperatures', 'f', ('scalar',))
             setattr(ncvar_temperatures, 'units', 'K')
@@ -278,15 +273,12 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
                     ncvar_pressures[0] = self.reference_state.pressure / pressure_unit
             # System
             logger.debug("Serializing systems...")
-            ncvar_serialized_reference_system = ncgrp_stateinfo.createVariable('reference_system', str, ('scalar',), zlib=True)
-            ncvar_serialized_LJ_only_system = ncgrp_stateinfo.createVariable('LJ_only_system', str, ('scalar',), zlib=True)
-            ncvar_serialized_LJ_only_expanded_system = ncgrp_stateinfo.createVariable('LJ_only_expanded_system', str, ('scalar',), zlib=True)
-            setattr(ncvar_serialized_reference_system, 'long_name', "the serialized OpenMM System corresponding to the all forces reference state")
-            setattr(ncvar_serialized_LJ_only_system, 'long_name', "the serialized OpenMM System corresponding to the Lennard-Jones only reference state")
-            setattr(ncvar_serialized_LJ_only_expanded_system, 'long_name', "the serialized OpenMM System corresponding to the expanded cutoff Lennard-Jones only reference state")
-            ncvar_serialized_reference_system[0] = self.reference_state.system.__getstate__()
-            ncvar_serialized_LJ_only_system[0] = self.reference_LJ_state.system.__getstate__()
-            ncvar_serialized_LJ_only_expanded_system[0] = self.reference_LJ_expanded_state.system.__getstate__()
+            ncvar_serialized_fully_interacting_expanded_system = ncgrp_stateinfo.createVariable('fully_interacting_expanded_system', str, ('scalar',), zlib=True)
+            ncvar_serialized_noninteracting_expanded_system = ncgrp_stateinfo.createVariable('noninteracting_expanded_system', str, ('scalar',), zlib=True)
+            setattr(ncvar_serialized_fully_interacting_expanded_system, 'long_name', "the serialized OpenMM System corresponding to the all forces reference state with expanded cutoff")
+            setattr(ncvar_serialized_noninteracting_expanded_system, 'long_name', "the serialized OpenMM System corresponding to the no alchemical forces reference state with expanded cutoff")
+            ncvar_serialized_fully_interacting_expanded_system[0] = self.fully_interacting_expanded_state.system.__getstate__()
+            ncvar_serialized_noninteracting_expanded_system[0] = self.noninteracting_expanded_state.system.__getstate__()
 
         # Report timing information.
         final_time = time.time()
@@ -341,28 +333,28 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
             # Store state.
             self.states.append(state)
 
-        # Fully interacting state
-        if 'fully_interacting_states' in ncfile.groups:
-            ncgrp_stateinfo = ncfile.groups['fully_interacting_states']
+        # expanded cutoff states
+        if 'expanded_cutoff_states' in ncfile.groups:
+            ncgrp_stateinfo = ncfile.groups['expanded_cutoff_states']
             # Populate a new ThermodynamicState object
-            reference_state = ThermodynamicState()
+            fully_interacting_expanded_state = ThermodynamicState()
+            noninteracting_expanded_state = ThermodynamicState()
             # Read temperature.
-            reference_state.temperature = float(ncgrp_stateinfo.variables['temperatures'][0]) * temperature_unit
+            fully_interacting_expanded_state.temperature = float(ncgrp_stateinfo.variables['temperatures'][0]) * temperature_unit
+            noninteracting_expanded_state.temperature = float(ncgrp_stateinfo.variables['temperatures'][0]) * temperature_unit
             # Read pressure, if present.
             if 'pressures' in ncgrp_stateinfo.variables:
-                reference_state.pressure = float(ncgrp_stateinfo.variables['pressures'][0]) * pressure_unit
-            reference_LJ_state = copy.deepcopy(reference_state)
-            reference_LJ_expanded_state = copy.deepcopy(reference_state)
+                 fully_interacting_expanded_state.pressure = float(ncgrp_stateinfo.variables['pressures'][0]) * pressure_unit
+                 noninteracting_expanded_state.pressure = float(ncgrp_stateinfo.variables['pressures'][0]) * pressure_unit
             # Set System object
-            reference_state.system = self.mm.System()
-            reference_LJ_state.system = self.mm.System()
-            reference_LJ_expanded_state.system = self.mm.System()
-            reference_state.system.__setstate__(str(ncgrp_stateinfo.variables['reference_system'][0]))
-            reference_LJ_state.system.__setstate__(str(ncgrp_stateinfo.variables['LJ_only_system'][0]))
-            reference_LJ_expanded_state.system.__setstate__(str(ncgrp_stateinfo.variables['LJ_only_expanded_system'][0]))
-            self.reference_state = reference_state
-            self.reference_LJ_state = reference_LJ_state
-            self.reference_LJ_expanded_state = reference_LJ_expanded_state
+            fully_interacting_expanded_state.system = self.mm.System()
+            noninteracting_expanded_state.system = self.mm.System()
+
+            fully_interacting_expanded_state.system.__setstate__(str(ncgrp_stateinfo.variables['fully_interacting_expanded_system'][0]))
+            noninteracting_expanded_state.system.__setstate__(str(ncgrp_stateinfo.variables['noninteracting_expanded_system'][0]))
+
+            self.fully_interacting_expanded_state = fully_interacting_expanded_state
+            self.noninteracting_expanded_state = fully_interacting_expanded_state
 
         final_time = time.time()
         elapsed_time = final_time - initial_time
@@ -387,29 +379,24 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         elapsed_time = final_time - initial_time
         logger.debug("Context creation took %.3f s." % elapsed_time)
 
-        # Create Contexts to compute fully interacting state
-        # Expanding LJ cutoff to account for anisotropic dispersion correction
-        if (self.reference_LJ_state is not None) and (self.reference_LJ_expanded_state is not None) and (self.reference_state is not None):
+        # Create Contexts to compute expanded cutoff states
+        if (self.fully_interacting_expanded_state is not None) and (self.noninteracting_expanded_state is not None):
             initial_time = time.time()
             logger.debug("Creating and caching Contexts and Integrators for to compute fully interacting state.")
-            reference_state = self.reference_state
-            reference_LJ_state = self.reference_LJ_state
-            reference_LJ_expanded_state = self.reference_LJ_expanded_state
+            fully_interacting_expanded_state = self.fully_interacting_expanded_state
+            noninteracting_expanded_state = self.noninteracting_expanded_state
 
-            reference_state_integrator = openmm.VerletIntegrator(self.timestep)
-            reference_LJ_state_integrator = openmm.VerletIntegrator(self.timestep)
-            reference_LJ_expanded_state_integrator = openmm.VerletIntegrator(self.timestep)
+            fully_interacting_expanded_state_integrator = openmm.VerletIntegrator(self.timestep)
+            noninteracting_expanded_state_integrator = openmm.VerletIntegrator(self.timestep)
 
-            self._reference_context = self._create_context(reference_state.system,
-                                                           reference_state_integrator)
-            self._reference_LJ_context = self._create_context(reference_LJ_state.system,
-                                                              reference_LJ_state_integrator)
-            self._reference_LJ_expanded_context = self._create_context(reference_LJ_expanded_state.system,
-                                                                       reference_LJ_expanded_state_integrator)
+            self._fully_interacting_expanded_context = self._create_context(fully_interacting_expanded_state.system,
+                                                                            fully_interacting_expanded_state_integrator)
+            self._noninteracting_expanded_context = self._create_context(noninteracting_expanded_state.system,
+                                                                            noninteracting_expanded_state_integrator)
 
             final_time = time.time()
             elapsed_time = final_time - initial_time
-            logger.debug("Fully interacting Contexts creation took %.3f s." % elapsed_time)
+            logger.debug("Expanded cutoff Contexts creation took %.3f s." % elapsed_time)
 
         return
 
@@ -847,20 +834,30 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         return
 
     def _initialize_create(self):
-        self.u_k = np.zeros([len(self.states)], np.float64)
+        self.u_k_full = np.zeros([len(self.states)], np.float64)
+        self.u_k_non = np.zeros([len(self.states)], np.float64)
         super(ModifiedHamiltonianExchange, self)._initialize_create()
 
     def _initialize_netcdf(self):
         super(ModifiedHamiltonianExchange, self)._initialize_netcdf()
-        if (self.reference_LJ_state is not None) and (self.reference_LJ_expanded_state is not None) and (self.reference_state is not None):
-            ncvar_energies = self.ncfile.createVariable('fully_interacting_energies', 'f8',
+        if (self.fully_interacting_expanded_state is not None) and (self.noninteracting_expanded_state is not None):
+            ncvar_full_energies = self.ncfile.createVariable('fully_interacting_expanded_cutoff_energies', 'f8',
                                                         ('iteration', 'replica'), zlib=False,
                                                         chunksizes=(1, self.nreplicas))
-            setattr(ncvar_energies, 'units', 'kT')
-            setattr(ncvar_energies, 'long_name', "energies[iteration][replica] is the reduced "
-                                                 "(unitless) energy of replica 'replica' from "
-                                                 "iteration 'iteration' evaluated at the "
-                                                 "effctively fully interacting state.")
+            setattr(ncvar_full_energies, 'units', 'kT')
+            setattr(ncvar_full_energies, 'long_name', "energies[iteration][replica] is the reduced "
+                                                      "(unitless) energy of replica 'replica' from "
+                                                      "iteration 'iteration' evaluated at the "
+                                                      "effctively fully interacting state at expanded cutoff")
+            ncvar_non_energies = self.ncfile.createVariable('noninteracting_expanded_cutoff_energies', 'f8',
+                                                        ('iteration', 'replica'), zlib=False,
+                                                        chunksizes=(1, self.nreplicas))
+            setattr(ncvar_non_energies, 'units', 'kT')
+            setattr(ncvar_non_energies, 'long_name', "energies[iteration][replica] is the reduced "
+                                                     "(unitless) energy of replica 'replica' from "
+                                                     "iteration 'iteration' evaluated at the "
+                                                     "effctively non interacting state at expanded cutoff")
+
         self.ncfile.sync()
 
     def _write_iteration_netcdf(self):
@@ -870,8 +867,9 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         if self.mpicomm is not None and self.mpicomm.rank != 0:
             return
 
-        if (self.reference_LJ_state is not None) and (self.reference_LJ_expanded_state is not None) and (self.reference_state is not None):
-            self.ncfile.variables['fully_interacting_energies'][self.iteration, :] = self.u_k[:]
+        if (self.fully_interacting_expanded_state is not None) and (self.noninteracting_expanded_state is not None):
+            self.ncfile.variables['fully_interacting_expanded_cutoff_energies'][self.iteration, :] = self.u_k_full[:]
+            self.ncfile.variables['noninteracting_expanded_cutoff_energies'][self.iteration, :] = self.u_k_non[:]
             self.ncfile.sync()
 
     def _resume_from_netcdf(self, ncfile):
@@ -933,42 +931,34 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
                      "energy calculation).".format(elapsed_time, time_per_energy))
 
         #
-        # Compute energies for fully interacting state
+        # Compute energies for expanded cutoff state
         #
-        if (self.reference_LJ_state is not None) and (self.reference_LJ_expanded_state is not None) and (self.reference_state is not None):
-            logger.debug("Computing energies for fully interacting state...")
+        if (self.fully_interacting_expanded_state is not None) and (self.noninteracting_expanded_state is not None):
+            logger.debug("Computing energies for expanded state...")
             start_time = time.time()
-            reference_context = self._reference_context
-            reference_LJ_context = self._reference_LJ_context
-            reference_LJ_expanded_context = self._reference_LJ_expanded_context
+            fully_interacting_expanded_context = self._fully_interacting_expanded_context
+            noninteracting_expanded_context = self._noninteracting_expanded_context
 
-            # Fully Interacting Energy = reference - LJ_only + LJ_expanded
-            # Gets the correct long-range electrostatics from reference,
-            # Removes the LJ contribution to the energy
-            # Adds back in expanded cutoff LJ energy to compensate for anisotropic dispersion
             if self.mpicomm:
                 # MPI version.
 
                 # Compute energies for this node's replicas.
                 for replica_index in range(self.mpicomm.rank, self.nstates, self.mpicomm.size):
-                    reference_energy = self.reference_state.reduced_potential(self.replica_positions[replica_index], box_vectors=self.replica_box_vectors[replica_index], context=reference_context)
-                    reference_LJ_energy = self.reference_LJ_state.reduced_potential(self.replica_positions[replica_index], box_vectors=self.replica_box_vectors[replica_index], context=reference_LJ_context)
-                    reference_LJ_expanded_energy = self.reference_LJ_expanded_state.reduced_potential(self.replica_positions[replica_index], box_vectors=self.replica_box_vectors[replica_index], context=reference_LJ_expanded_context)
-                    self.u_k[replica_index] = reference_energy - reference_LJ_energy + reference_LJ_expanded_energy
+                    self.u_k_full[replica_index] = self.fully_interacting_expanded_state.reduced_potential(self.replica_positions[replica_index], box_vectors=self.replica_box_vectors[replica_index], context=fully_interacting_expanded_context)
+                    self.u_k_non[replica_index] = self.noninteracting_expanded_state.reduced_potential(self.replica_positions[replica_index], box_vectors=self.replica_box_vectors[replica_index], context=noninteracting_expanded_context)
 
                 # Send final energies to all nodes.
                 energies_gather = self.mpicomm.allgather(self.u_k[self.mpicomm.rank:self.nstates:self.mpicomm.size])
                 for replica_index in range(self.nstates):
                     source = replica_index % self.mpicomm.size # node with data
                     index = replica_index // self.mpicomm.size # index within batch
-                    self.u_k[replica_index] = energies_gather[source][index]
+                    self.u_k_full[replica_index] = energies_gather[source][index]
+                    self.u_k_non[replica_index] = energies_gather[source][index]
             else:
                 # Serial version.
                 for replica_index in range(self.nstates):
-                    reference_energy = self.reference_state.reduced_potential(self.replica_positions[replica_index], box_vectors=self.replica_box_vectors[replica_index], context=reference_context)
-                    reference_LJ_energy = self.reference_LJ_state.reduced_potential(self.replica_positions[replica_index], box_vectors=self.replica_box_vectors[replica_index], context=reference_LJ_context)
-                    reference_LJ_expanded_energy = self.reference_LJ_expanded_state.reduced_potential(self.replica_positions[replica_index], box_vectors=self.replica_box_vectors[replica_index], context=reference_LJ_expanded_context)
-                    self.u_k[replica_index] = reference_energy - reference_LJ_energy + reference_LJ_expanded_energy
+                    self.u_k_full[replica_index] = self.fully_interacting_expanded_state.reduced_potential(self.replica_positions[replica_index], box_vectors=self.replica_box_vectors[replica_index], context=fully_interacting_expanded_context)
+                    self.u_k_non[replica_index] = self.noninteracting_expanded_state.reduced_potential(self.replica_positions[replica_index], box_vectors=self.replica_box_vectors[replica_index], context=noninteracting_expanded_context)
 
             end_time = time.time()
             elapsed_time = end_time - start_time
