@@ -263,7 +263,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
             ncvar_temperatures = ncgrp_stateinfo.createVariable('temperatures', 'f', ('scalar',))
             setattr(ncvar_temperatures, 'units', 'K')
             setattr(ncvar_temperatures, 'long_name', "temperatures[state] is the temperature of thermodynamic state 'state'")
-            ncvar_temperatures[0] = self.reference_state.temperature / temperature_unit
+            ncvar_temperatures[0] = self.fully_interacting_expanded_state.temperature / temperature_unit
             # Pressures
             if self.reference_state.pressure is not None:
                 ncvar_pressures = ncgrp_stateinfo.createVariable('pressures', 'f', ('scalar',))
