@@ -949,12 +949,14 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
                     self.u_k_non[replica_index] = self.noninteracting_expanded_state.reduced_potential(self.replica_positions[replica_index], box_vectors=self.replica_box_vectors[replica_index], context=noninteracting_expanded_context)
 
                 # Send final energies to all nodes.
-                energies_gather = self.mpicomm.allgather(self.u_k[self.mpicomm.rank:self.nstates:self.mpicomm.size])
+                energies_gather_full = self.mpicomm.allgather(self.u_k_full[self.mpicomm.rank:self.nstates:self.mpicomm.size])
+                energies_gather_non = self.mpicomm.allgather(self.u_k_non[self.mpicomm.rank:self.nstates:self.mpicomm.size])
                 for replica_index in range(self.nstates):
                     source = replica_index % self.mpicomm.size # node with data
                     index = replica_index // self.mpicomm.size # index within batch
-                    self.u_k_full[replica_index] = energies_gather[source][index]
-                    self.u_k_non[replica_index] = energies_gather[source][index]
+                    self.u_k_full[replica_index] = energies_gather_full[source][index]
+                    self.u_k_non[replica_index] = energies_gather_non[source][index]
+
             else:
                 # Serial version.
                 for replica_index in range(self.nstates):
