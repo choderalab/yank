@@ -875,8 +875,9 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
     def _resume_from_netcdf(self, ncfile):
         super(ModifiedHamiltonianExchange, self)._resume_from_netcdf(ncfile)
         # Restore fully interacting energies
-        if 'fully_interacting_energies' in ncfile.variables:
-            self.u_k = ncfile.variables['fully_interacting_energies'][self.iteration, :].copy()
+        if 'fully_interacting_expanded_cutoff_energies' in ncfile.variables:
+            self.u_k_full = ncfile.variables['fully_interacting_expanded_cutoff_energies'][self.iteration, :].copy()
+            self.u_k_non = ncfile.variables['noninteracting_expanded_cutoff_energies'][self.iteration, :].copy()
 
     def _compute_energies(self):
         """
