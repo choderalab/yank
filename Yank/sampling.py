@@ -265,12 +265,12 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
             setattr(ncvar_temperatures, 'long_name', "temperatures[state] is the temperature of thermodynamic state 'state'")
             ncvar_temperatures[0] = self.fully_interacting_expanded_state.temperature / temperature_unit
             # Pressures
-            if self.reference_state.pressure is not None:
+            if self..fully_interacting_expanded_state.pressure is not None:
                 ncvar_pressures = ncgrp_stateinfo.createVariable('pressures', 'f', ('scalar',))
                 setattr(ncvar_pressures, 'units', 'atm')
                 setattr(ncvar_pressures, 'long_name', "pressures[state] is the external pressure of thermodynamic state 'state'")
                 for state_index in range(self.nstates):
-                    ncvar_pressures[0] = self.reference_state.pressure / pressure_unit
+                    ncvar_pressures[0] = self..fully_interacting_expanded_state.pressure / pressure_unit
             # System
             logger.debug("Serializing systems...")
             ncvar_serialized_fully_interacting_expanded_system = ncgrp_stateinfo.createVariable('fully_interacting_expanded_system', str, ('scalar',), zlib=True)
