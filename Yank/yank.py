@@ -465,12 +465,13 @@ class Yank(object):
             noninteracting_expanded_state = None
         else:
             # Create the system for noninteracting
-            noninteracting_expanded_system = copy.deepcopy(alchemical_system)
+            expanded_factory = AbsoluteAlchemicalFactory(fully_interacting_expanded_state.system,
+                                                         ligand_atoms=alchemical_indices,
+                                                         **self._alchemy_parameters)
+            noninteracting_expanded_system = expanded_factory.alchemically_modified_system
             # Set all USED alchemical interactions to the decoupled state
             alchemical_state = alchemical_states[-1]
             AbsoluteAlchemicalFactory.perturbSystem(noninteracting_expanded_system, alchemical_state)
-            # Expand Cutoff
-            expand_cutoff(noninteracting_expanded_system)
 
             # Construct thermodynamic states
             noninteracting_expanded_state = copy.deepcopy(thermodynamic_state)
