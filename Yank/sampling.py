@@ -354,7 +354,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
             noninteracting_expanded_state.system.__setstate__(str(ncgrp_stateinfo.variables['noninteracting_expanded_system'][0]))
 
             self.fully_interacting_expanded_state = fully_interacting_expanded_state
-            self.noninteracting_expanded_state = fully_interacting_expanded_state
+            self.noninteracting_expanded_state = noninteracting_expanded_state
 
         final_time = time.time()
         elapsed_time = final_time - initial_time

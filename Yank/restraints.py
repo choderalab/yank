@@ -367,7 +367,10 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
         force = openmm.CustomBondForce(self._energy_function)
         force.addGlobalParameter('lambda_restraints', 1.0)
         is_periodic = self._system.usesPeriodicBoundaryConditions()
-        force.setUsesPeriodicBoundaryConditions(is_periodic)
+        try:  # This was added in OpenMM 7.1
+            force.setUsesPeriodicBoundaryConditions(is_periodic)
+        except AttributeError:
+            pass
         for parameter in self._bond_parameter_names:
             force.addPerBondParameter(parameter)
         try:
@@ -412,7 +415,10 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
         system.addParticle(1.0 * unit.amu)
         force = self._create_restraint_force(0, 1)
         # Disable the PBC if on for this approximation of the analytical solution
-        force.setUsesPeriodicBoundaryConditions(False)
+        try:  # This was added in OpenMM 7.1
+            force.setUsesPeriodicBoundaryConditions(False)
+        except AttributeError:
+            pass
         system.addForce(force)
 
         # Create a Reference context to evaluate energies on the CPU.
@@ -939,7 +945,10 @@ class Boresch(OrientationDependentRestraint):
         force.addGlobalParameter('lambda_restraints', 1.0)
         force.addBond(self._restraint_atoms, [])
         is_periodic = self._system.usesPeriodicBoundaryConditions()
-        force.setUsesPeriodicBoundaryConditions(is_periodic)
+        try:  # This was added in OpenMM 7.1
+            force.setUsesPeriodicBoundaryConditions(is_periodic)
+        except AttributeError:
+            pass
         return force
 
     def get_standard_state_correction(self):
