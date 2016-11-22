@@ -86,10 +86,11 @@ options:
   temperature: 300*kelvin
   pressure: null
   anisotropic_dispersion_correction: no
+  platform: OpenCL
 
 molecules:
   benzene-rec:
-    filepath: data/benzene-toluene-standard-state/standard_state_benzene.inpcrd
+    filepath: data/benzene-toluene-standard-state/standard_state_benzene.pdb
     leap:
         parameters: data/benzene-toluene-standard-state/standard_state_benzene.prmtop
   toluene-lig:
@@ -103,8 +104,8 @@ solvents:
 
 systems:
   ship:
-    receptor: anchor
-    ligand: vessel
+    receptor: benzene-rec
+    ligand: toluene-lig
     solvent: vacuum
     leap:
       parameters: leaprc.gaff
@@ -136,6 +137,7 @@ def general_restraint_test(options):
     options : Dict. A dictionary of substitutions for restraint_test_yaml
     """
     output_directory = tempfile.mkdtemp()
+    options['output_directory'] = output_directory
     # run both setup and experiment
     yaml_builder = YamlBuilder(restraint_test_yaml % options)
     yaml_builder.build_experiments()
@@ -147,8 +149,8 @@ def test_harmonic_free_energy():
     """
     Test that the harmonic restraint simulated free energy equals the standard state correction
     """
-    options = {'number_of_iter' : '500',
-               'restraint_type)' : 'Harmonic'}
+    options = {'number_of_iter': '500',
+               'restraint_type': 'Harmonic'}
     general_restraint_test(options)
 
 

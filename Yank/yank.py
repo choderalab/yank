@@ -128,7 +128,7 @@ class Yank(object):
         'randomize_ligand_sigma_multiplier': 2.0,
         'randomize_ligand_close_cutoff': 1.5 * unit.angstrom,
         'mc_displacement_sigma': 10.0 * unit.angstroms,
-        'anisotropic dispersion correction': True
+        'anisotropic_dispersion_correction': True
     }
 
     def __init__(self, store_directory, mpicomm=None, platform=None, **kwargs):
