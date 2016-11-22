@@ -453,7 +453,7 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
             dI = 4.0 * math.pi * r**2 * math.exp(-beta * potential)
             return dI
 
-        (shell_volume, shell_volume_error) = scipy.integrate.quad(lambda r : integrand(r), r_min / unit.nanometers, r_max / unit.nanometers) * unit.nanometers**3 # integrate shell volume
+        (shell_volume, shell_volume_error) = scipy.integrate.quad(lambda r : integrand(r), r_min / unit.nanometers, r_max / unit.nanometers) * unit.nanometers**3  # integrate shell volume
         logger.debug("shell_volume = %f nm^3" % (shell_volume / unit.nanometers**3))
 
         # Compute standard-state volume for a single molecule in a box of size (1 L) / (avogadros number)

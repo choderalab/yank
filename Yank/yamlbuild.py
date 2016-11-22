@@ -1,27 +1,24 @@
 #!/usr/bin/env python
 
-#=============================================================================================
+# =============================================================================================
 # MODULE DOCSTRING
-#=============================================================================================
+# =============================================================================================
 
 """
 Tools to build Yank experiments from a YAML configuration file.
 
 """
 
-#=============================================================================================
+# =============================================================================================
 # GLOBAL IMPORTS
-#=============================================================================================
+# =============================================================================================
 
 import os
 import re
-import csv
 import copy
 import yaml
 import logging
 import collections
-
-logger = logging.getLogger(__name__)
 
 import numpy as np
 import openmoltools as omt
@@ -36,17 +33,18 @@ from .yank import Yank
 from .repex import ReplicaExchange, ThermodynamicState
 from .sampling import ModifiedHamiltonianExchange
 
+logger = logging.getLogger(__name__)
 
 # =============================================================================
 # CONSTANTS
 # =============================================================================
 
-HIGHEST_VERSION = '1.0'  # highest version of YAML syntax
+HIGHEST_VERSION = '1.1'  # highest version of YAML syntax
 
 
-#=============================================================================================
+# =============================================================================================
 # UTILITY FUNCTIONS
-#=============================================================================================
+# =============================================================================================
 
 def compute_min_dist(mol_positions, *args):
     """Compute the minimum distance between a molecule and a set of other molecules.
@@ -84,6 +82,7 @@ def compute_min_dist(mol_positions, *args):
         except UnboundLocalError:
             min_dist = np.sqrt(distances2[min_idx])
     return min_dist
+
 
 def compute_dist_bound(mol_positions, *args):
     """Compute minimum and maximum distances between a molecule and a set of
@@ -143,6 +142,7 @@ def compute_dist_bound(mol_positions, *args):
 
     return min_dist, max_dist
 
+
 def remove_overlap(mol_positions, *args, **kwargs):
     """Remove any eventual overlap between a molecule and a set of others.
 
@@ -194,6 +194,7 @@ def remove_overlap(mol_positions, *args, **kwargs):
         x += sigma * np.random.randn(3)
 
     return x
+
 
 def pack_transformation(mol1_pos, mol2_pos, min_distance, max_distance):
     """Compute an affine transformation that solve clashes and fit mol2 in the box.
@@ -268,6 +269,7 @@ def pack_transformation(mol1_pos, mol2_pos, min_distance, max_distance):
         transformation = transl_to_x0.dot(rot_transl_matrix.dot(transl_to_origin))
 
     return transformation
+
 
 def pull_close(fixed_mol_pos, translated_mol_pos, min_bound, max_bound):
     """Heuristic algorithm to quickly translate the ligand close to the receptor.
@@ -351,9 +353,9 @@ def strip_protons(input_file_path, output_file_path):
     output_file.close()
 
 
-def to_openmm_app(str):
+def to_openmm_app(input_string):
     """Converter function to be used with validate_parameters()."""
-    return getattr(openmm.app, str)
+    return getattr(openmm.app, input_string)
 
 
 # ============================================================================================
@@ -1174,7 +1176,7 @@ class YamlBuilder:
         'temperature': 298 * unit.kelvin,
         'pressure': 1 * unit.atmosphere,
         'constraints': openmm.app.HBonds,
-        'hydrogen_mass': 1 * unit.amu
+        'hydrogen_mass': 1 * unit.amu,
     }
 
     @property

@@ -127,7 +127,8 @@ class Yank(object):
         'randomize_ligand': False,
         'randomize_ligand_sigma_multiplier': 2.0,
         'randomize_ligand_close_cutoff': 1.5 * unit.angstrom,
-        'mc_displacement_sigma': 10.0 * unit.angstroms
+        'mc_displacement_sigma': 10.0 * unit.angstroms,
+        'anisotropic dispersion correction': True
     }
 
     def __init__(self, store_directory, mpicomm=None, platform=None, **kwargs):
@@ -153,6 +154,10 @@ class Yank(object):
         mc_displacement_sigma : simtk.unit.Quantity (units: length), optional
            Maximum displacement for Monte Carlo moves that augment Langevin dynamics
            (default: 10.0*unit.angstrom).
+        anisotropic_dispersion_correction : bool, optional
+           Correct for anisotropic dispersion effects by generating 2 additional
+           states with expanded long-range cutoff distances to estimate energies
+           at. These states are not simulated. (default: True)
 
         Other Parameters
         ----------------
@@ -340,7 +345,7 @@ class Yank(object):
         is_complex_implicit = is_complex and not is_periodic
 
         # Make sure pressure is None if not periodic.
-        if not is_periodic:
+        if not is_periodic and not self._anisotropic_dispersion_correction:
             thermodynamic_state.pressure = None
         # If temperature and pressure are specified, make sure MonteCarloBarostat is attached.
         elif thermodynamic_state.temperature and thermodynamic_state.pressure:

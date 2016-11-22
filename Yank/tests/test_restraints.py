@@ -22,9 +22,13 @@ from nose.plugins.attrib import attr
 
 import yank.restraints
 from yank.repex import ThermodynamicState
+from yank.yamlbuild import YamlBuilder
+from yank.utils import get_data_filename
 
-from simtk import unit, openmm
+from simtk import unit
 from openmmtools import testsystems
+import openmoltools as omt
+
 
 # =============================================================================================
 # UNIT TESTS
@@ -70,6 +74,82 @@ expected_restraints = {
     'FlatBottom' : yank.restraints.FlatBottom,
     'Boresch' : yank.restraints.Boresch,
 }
+
+restraint_test_yaml = """
+---
+options:
+  minimize: no
+  verbose: no
+  output_dir: %(output_directory)s
+  number_of_iterations: %(number_of_iter)s
+  nsteps_per_iteration: 10
+  temperature: 300*kelvin
+  pressure: null
+  anisotropic_dispersion_correction: no
+
+molecules:
+  benzene-rec:
+    filepath: data/benzene-toluene-standard-state/standard_state_benzene.inpcrd
+    leap:
+        parameters: data/benzene-toluene-standard-state/standard_state_benzene.prmtop
+  toluene-lig:
+    filepath: data/benzene-toluene-standard-state/toluene.inpcrd
+    leap:
+        parameters: data/benzene-toluene-standard-state/toluene.prmtop
+
+solvents:
+  vacuum:
+    nonbonded_method: PME
+
+systems:
+  ship:
+    receptor: anchor
+    ligand: vessel
+    solvent: vacuum
+    leap:
+      parameters: leaprc.gaff
+
+protocols:
+  absolute-binding:
+    complex:
+      alchemical_path:
+        lambda_restraints:     [0.0, 0.25, 0.5, 0.75, 1.0]
+        lambda_electrostatics: [1.0, 1.00, 1.0  1.00, 1.0]
+        lambda_sterics:        [1.0, 1.00, 1.0, 1.00, 1.0]
+    solvent:
+      alchemical_path:
+        lambda_electrostatics: [1.0, 1.0]
+        lambda_sterics:        [1.0, 1.0]
+
+experiments:
+  system: ship
+  protocol: absolute-binding
+  restraint:
+    type: %(restraint_type)s
+"""
+
+
+def general_restraint_test(options):
+    """
+    Generalized restraint simulation run to test free energy = standard state correction.
+
+    options : Dict. A dictionary of substitutions for restraint_test_yaml
+    """
+    output_directory = tempfile.mkdtemp()
+    # run both setup and experiment
+    yaml_builder = YamlBuilder(restraint_test_yaml % options)
+    yaml_builder.build_experiments()
+    # Clean up
+    shutil.rmtree(output_directory)
+
+
+def test_harmonic_free_energy():
+    """
+    Test that the harmonic restraint simulated free energy equals the standard state correction
+    """
+    options = {'number_of_iter' : '500',
+               'restraint_type)' : 'Harmonic'}
+    general_restraint_test(options)
 
 
 def test_harmonic_standard_state():
@@ -129,8 +209,6 @@ def test_restraint_dispatch():
 def test_protein_ligand_restraints():
     """Test the restraints in a protein:ligand system.
     """
-    from yank.yamlbuild import YamlBuilder
-    from yank.utils import get_data_filename
 
     yaml_script = """
 ---
