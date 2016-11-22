@@ -94,7 +94,7 @@ molecules:
     leap:
         parameters: data/benzene-toluene-standard-state/standard_state_benzene.prmtop
   toluene-lig:
-    filepath: data/benzene-toluene-standard-state/toluene.inpcrd
+    filepath: data/benzene-toluene-standard-state/toluene.pdb
     leap:
         parameters: data/benzene-toluene-standard-state/toluene.prmtop
 
