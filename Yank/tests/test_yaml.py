@@ -413,6 +413,7 @@ def test_validation_correct_systems():
         lig: {{name: lig, leap: {{parameters: leaprc.gaff}}}}
     solvents:
         solv: {{nonbonded_method: NoCutoff}}
+        solv2: {{nonbonded_method: NoCutoff, implicit_solvent: OBC2}}
     """.format(data_paths['lysozyme'])
     basic_script = yaml.load(textwrap.dedent(basic_script))
 
@@ -425,6 +426,10 @@ def test_validation_correct_systems():
         {'phase1_path': data_paths['bentol-complex'],
          'phase2_path': data_paths['bentol-solvent'],
          'ligand_dsl': 'resname BEN', 'solvent': 'solv'},
+        {'phase1_path': data_paths['bentol-complex'],
+         'phase2_path': data_paths['bentol-solvent'],
+         'ligand_dsl': 'resname BEN', 'solvent1': 'solv',
+         'solvent2': 'solv2'},
 
         {'phase1_path': data_paths['pxylene-complex'],
          'phase2_path': data_paths['pxylene-solvent'],
@@ -450,6 +455,7 @@ def test_validation_correct_systems():
 
 def test_validation_wrong_systems():
     """YAML validation raises exception with wrong experiments specification."""
+    data_paths = examples_paths()
     yaml_builder = YamlBuilder()
     basic_script = """
     ---
@@ -458,7 +464,8 @@ def test_validation_wrong_systems():
         lig: {{name: lig, leap: {{parameters: leaprc.gaff}}}}
     solvents:
         solv: {{nonbonded_method: NoCutoff}}
-    """.format(examples_paths()['lysozyme'])
+        solv2: {{nonbonded_method: NoCutoff, implicit_solvent: OBC2}}
+    """.format(data_paths['lysozyme'])
     basic_script = yaml.load(textwrap.dedent(basic_script))
 
     systems = [
@@ -469,26 +476,27 @@ def test_validation_wrong_systems():
         {'receptor': 'rec', 'ligand': 'lig', 'solvent': 'solv',
             'parameters': 'leaprc.ff14SB'},
 
-        {'phase1_path': examples_paths()['bentol-complex'][0],
-         'phase2_path': examples_paths()['bentol-solvent'],
+        {'phase1_path': data_paths['bentol-complex'][0],
+         'phase2_path': data_paths['bentol-solvent'],
          'ligand_dsl': 'resname BEN', 'solvent': 'solv'},
         {'phase1_path': ['nonexistingpath.prmtop', 'nonexistingpath.inpcrd'],
-         'phase2_path': examples_paths()['bentol-solvent'],
+         'phase2_path': data_paths['bentol-solvent'],
          'ligand_dsl': 'resname BEN', 'solvent': 'solv'},
-        {'phase1_path': examples_paths()['bentol-complex'],
-         'phase2_path': examples_paths()['bentol-solvent'],
+        {'phase1_path': data_paths['bentol-complex'],
+         'phase2_path': data_paths['bentol-solvent'],
          'ligand_dsl': 3.4, 'solvent': 'solv'},
-        {'phase1_path': examples_paths()['bentol-complex'],
-         'phase2_path': examples_paths()['bentol-solvent'],
-         'ligand_dsl': 'resname TOL', 'solvent': 'unknown'},
+        {'phase1_path': data_paths['bentol-complex'],
+         'phase2_path': data_paths['bentol-solvent'],
+         'ligand_dsl': 'resname BEN', 'solvent1': 'unknown',
+         'solvent2': 'solv2'},
 
-        {'phase1_path': examples_paths()['bentol-complex'],
-         'phase2_path': examples_paths()['pxylene-solvent'],
+        {'phase1_path': data_paths['bentol-complex'],
+         'phase2_path': data_paths['pxylene-solvent'],
          'ligand_dsl': 'resname p-xylene', 'solvent': 'solv',
-         'gromacs_include_dir': examples_paths()['pxylene-gro-include']},
+         'gromacs_include_dir': data_paths['pxylene-gro-include']},
 
-        {'phase1_path': examples_paths()['toluene-solvent'],
-         'phase2_path': examples_paths()['toluene-vacuum'],
+        {'phase1_path': data_paths['toluene-solvent'],
+         'phase2_path': data_paths['toluene-vacuum'],
          'ligand_dsl': 'resname TOL', 'solvent': 'cantbespecified'},
 
         {'receptor': 'rec', 'solute': 'lig', 'solvent1': 'solv', 'solvent2': 'solv'},
