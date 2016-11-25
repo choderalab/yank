@@ -1547,6 +1547,7 @@ def test_platform_precision_configuration():
                     assert_raises(RuntimeError, yaml_builder._configure_platform, platform_name, precision)
 
 
+@attr('temp')
 def test_default_platform_precision():
     """Test that the precision for platform is set to mixed by default."""
     available_platforms = [openmm.Platform.getPlatform(i).getName()
@@ -1567,9 +1568,9 @@ def test_default_platform_precision():
             assert platform.getPropertyDefaultValue('CudaPrecision') == 'mixed'
         elif platform_name == 'OpenCL':
             if opencl_support_double:
-                assert platform.getPropertyDefaultValue('OpenCLPrecision') == 'mixed'
+                assert platform.getPropertyDefaultValue('Precision') == 'mixed'
             else:
-                assert platform.getPropertyDefaultValue('OpenCLPrecision') == 'single'
+                assert platform.getPropertyDefaultValue('Precision') == 'single'
 
 
 # ==============================================================================

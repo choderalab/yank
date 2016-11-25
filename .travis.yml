@@ -1,27 +1,24 @@
-language: c
+os:
+ - osx
+ - linux
+
 sudo: false
-addons:
-  apt:
-    sources:
-    - ubuntu-toolchain-r-test
-    packages:
-      - g++
-      - gfortran
-      - valgrind
-      - csh
-      - g++-multilib
-      - gcc-multilib
 
 branches:
   only:
     - master
 
 install:
-  - source devtools/travis-ci/install.sh
-  - export PYTHONUNBUFFERED=true
+  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew install md5sha1sum; fi
+  - source devtools/travis-ci/install_miniconda.sh
+  - conda config --add channels omnia
   # Unpack encrypted OpenEye license file
   - if [ "$TRAVIS_SECURE_ENV_VARS" == true ]; then openssl aes-256-cbc -K $encrypted_348f443ff0b5_key -iv $encrypted_348f443ff0b5_iv -in "devtools/travis-ci/oe_license.txt.enc" -out "$OE_LICENSE" -d; fi
   - if [ "$TRAVIS_SECURE_ENV_VARS" == false ]; then echo "OpenEye license will not be installed in forks."; fi
+
+script:
+  conda build --quiet devtools/conda-recipe
+  && devtools/travis-ci/build_docs.sh
 
 script:
   # Create a test environment
@@ -42,7 +39,7 @@ script:
   # Install testing dependencies
   - conda install --yes --quiet nose nose-timer
   # Test the package
-  - cd devtools && nosetests $PACKAGENAME --nocapture --verbosity=2 --with-timer -a '!slow' && cd ..
+  - cd devtools && nosetests $PACKAGENAME --nocapture --verbosity=2 --with-timer -s -a 'temp' && cd ..
 
 env:
   matrix:

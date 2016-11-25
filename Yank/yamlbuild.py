@@ -2060,24 +2060,28 @@ class YamlBuilder:
 
         # Platforms are singleton so we need to store
         # the old precision model before modifying it
-        old_precision = opencl_platform.getPropertyDefaultValue('OpenCLPrecision')
+        old_precision = opencl_platform.getPropertyDefaultValue('Precision')
 
         # Test support by creating a toy context
-        opencl_platform.setPropertyDefaultValue('OpenCLPrecision', precision_model)
+        opencl_platform.setPropertyDefaultValue('Precision', precision_model)
         system = openmm.System()
         system.addParticle(1.0 * unit.amu)  # system needs at least 1 particle
         integrator = openmm.VerletIntegrator(1.0 * unit.femtoseconds)
         try:
+            print('Create context with precision {}'.format(precision_model))
+            print('opencl_platform OpencCLPrecision: {}'.format(opencl_platform.getPropertyDefaultValue('Precision')))
             context = openmm.Context(system, integrator, opencl_platform)
+            print('Context successfully created!')
             is_supported = True
         except Exception:
+            print('Context creation raised Exception!')
             is_supported = False
         else:
             del context
         del integrator
 
         # Restore old precision
-        opencl_platform.setPropertyDefaultValue('OpenCLPrecision', old_precision)
+        opencl_platform.setPropertyDefaultValue('Precision', old_precision)
 
         return is_supported
 
@@ -2164,7 +2168,7 @@ class YamlBuilder:
             elif platform_name == 'OpenCL':
                 # Some OpenCL devices do not support double precision so we need to test it
                 if self._opencl_device_support_precision(platform_precision):
-                    platform.setPropertyDefaultValue('OpenCLPrecision', platform_precision)
+                    platform.setPropertyDefaultValue('Precision', platform_precision)
                 else:
                     raise RuntimeError('This device does not support double precision for OpenCL.')
             elif platform_name == 'Reference':
