@@ -73,10 +73,10 @@ def examples_paths():
     paths['pxylene-solvent'] = [os.path.join(p_xylene_gro_dir, 'solvent.top'),
                                 os.path.join(p_xylene_gro_dir, 'solvent.gro')]
     paths['pxylene-gro-include'] = os.path.join(p_xylene_gro_dir, 'top')
-    paths['toluene-solvent1'] = [os.path.join(tol_dir, 'solvent1.pdb'),
-                                 os.path.join(tol_dir, 'solvent1.xml')]
-    paths['toluene-solvent2'] = [os.path.join(tol_dir, 'solvent2.pdb'),
-                                 os.path.join(tol_dir, 'solvent2.xml')]
+    paths['toluene-solvent'] = [os.path.join(tol_dir, 'solvent.pdb'),
+                                os.path.join(tol_dir, 'solvent.xml')]
+    paths['toluene-vacuum'] = [os.path.join(tol_dir, 'vacuum.pdb'),
+                               os.path.join(tol_dir, 'vacuum.xml')]
     return paths
 
 
@@ -434,9 +434,9 @@ def test_validation_correct_systems():
          'phase2_path': data_paths['pxylene-solvent'],
          'ligand_dsl': 'resname p-xylene', 'solvent': 'solv'},
 
-        {'phase1_path': data_paths['toluene-solvent1'],
-         'phase2_path': data_paths['toluene-solvent2'],
-         'ligand_dsl': 'resname TOL', 'solvent': 'solv'},
+        {'phase1_path': data_paths['toluene-solvent'],
+         'phase2_path': data_paths['toluene-vacuum'],
+         'ligand_dsl': 'resname TOL'},
 
         {'solute': 'lig', 'solvent1': 'solv', 'solvent2': 'solv'},
         {'solute': 'lig', 'solvent1': 'solv', 'solvent2': 'solv',
@@ -478,15 +478,18 @@ def test_validation_wrong_systems():
         {'phase1_path': examples_paths()['bentol-complex'],
          'phase2_path': examples_paths()['bentol-solvent'],
          'ligand_dsl': 3.4, 'solvent': 'solv'},
-
-        {'phase1_path': examples_paths()['toluene-solvent1'],
-         'phase2_path': examples_paths()['toluene-solvent2'],
+        {'phase1_path': examples_paths()['bentol-complex'],
+         'phase2_path': examples_paths()['bentol-solvent'],
          'ligand_dsl': 'resname TOL', 'solvent': 'unknown'},
 
         {'phase1_path': examples_paths()['bentol-complex'],
          'phase2_path': examples_paths()['pxylene-solvent'],
          'ligand_dsl': 'resname p-xylene', 'solvent': 'solv',
          'gromacs_include_dir': examples_paths()['pxylene-gro-include']},
+
+        {'phase1_path': examples_paths()['toluene-solvent'],
+         'phase2_path': examples_paths()['toluene-vacuum'],
+         'ligand_dsl': 'resname TOL', 'solvent': 'cantbespecified'},
 
         {'receptor': 'rec', 'solute': 'lig', 'solvent1': 'solv', 'solvent2': 'solv'},
         {'ligand': 'lig', 'solute': 'lig', 'solvent1': 'solv', 'solvent2': 'solv'},
