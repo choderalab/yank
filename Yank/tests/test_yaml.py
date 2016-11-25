@@ -1833,7 +1833,7 @@ def test_run_experiment():
         # Same thing with a system
         err_msg = ''
         system_dir = os.path.dirname(
-            yaml_builder._db.get_system('system_vacuum')[0].position_path)
+            yaml_builder._db.get_system('system_GBSAOBC2')[0].position_path)
         try:
             yaml_builder.build_experiments()
         except YamlParseError as e:
