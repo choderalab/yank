@@ -1550,9 +1550,9 @@ def test_default_platform_precision():
             assert platform.getPropertyDefaultValue('CudaPrecision') == 'mixed'
         elif platform_name == 'OpenCL':
             if opencl_support_double:
-                assert platform.getPropertyDefaultValue('OpenCLPrecision') == 'mixed'
+                assert platform.getPropertyDefaultValue('Precision') == 'mixed'
             else:
-                assert platform.getPropertyDefaultValue('OpenCLPrecision') == 'single'
+                assert platform.getPropertyDefaultValue('Precision') == 'single'
 
 
 # ==============================================================================
