@@ -201,16 +201,16 @@ def get_leap_recommended_pbradii(implicit_solvent):
         raise ValueError('Implicit solvent {} is not supported.'.format(implicit_solvent))
 
 
-def prepare_phase(positions_file_path, topology_file_path, ligand_dsl, system_options,
+def prepare_phase(positions_file_path, parameters_file_path, ligand_dsl, system_options,
                   gromacs_include_dir=None, verbose=False):
     """Create a Yank arguments for a phase from system files.
 
     Parameters
     ----------
     positions_file_path : str
-        Path to system position file (e.g. 'complex.inpcrd' or 'complex.gro').
-    topology_file_path : str
-        Path to system topology file (e.g. 'complex.prmtop' or 'complex.top').
+        Path to system position file (e.g. 'complex.inpcrd/.gro/.pdb').
+    parameters_file_path : str
+        Path to system parameters file (e.g. 'complex.prmtop/.top/.xml').
     ligand_dsl : str
         MDTraj DSL string that specify the ligand atoms.
     system_options : dict
@@ -227,24 +227,24 @@ def prepare_phase(positions_file_path, topology_file_path, ligand_dsl, system_op
 
     """
     # Load system files
-    if os.path.splitext(topology_file_path)[1] == '.prmtop':
+    if os.path.splitext(parameters_file_path)[1] == '.prmtop':
         # Read Amber prmtop and inpcrd files
         if verbose:
-            logger.info("prmtop: %s" % topology_file_path)
+            logger.info("prmtop: %s" % parameters_file_path)
             logger.info("inpcrd: %s" % positions_file_path)
-        topology_file = openmm.app.AmberPrmtopFile(topology_file_path)
+        parameters_file = openmm.app.AmberPrmtopFile(parameters_file_path)
         positions_file = openmm.app.AmberInpcrdFile(positions_file_path)
         box_vectors = positions_file.boxVectors
         create_system_args = set(inspect.getargspec(openmm.app.AmberPrmtopFile.createSystem).args)
     else:
         # Read Gromacs top and gro files
         if verbose:
-            logger.info("top: %s" % topology_file_path)
+            logger.info("top: %s" % parameters_file_path)
             logger.info("gro: %s" % positions_file_path)
 
         positions_file = openmm.app.GromacsGroFile(positions_file_path)
         box_vectors = positions_file.getPeriodicBoxVectors()
-        topology_file = openmm.app.GromacsTopFile(topology_file_path,
+        parameters_file = openmm.app.GromacsTopFile(parameters_file_path,
                                                   periodicBoxVectors=box_vectors,
                                                   includeDir=gromacs_include_dir)
         create_system_args = set(inspect.getargspec(openmm.app.GromacsTopFile.createSystem).args)
@@ -291,7 +291,7 @@ def prepare_phase(positions_file_path, topology_file_path, ligand_dsl, system_op
         raise RuntimeError(err_msg)
 
     # Create system and update box vectors (if needed)
-    system = topology_file.createSystem(removeCMMotion=False, **system_options)
+    system = parameters_file.createSystem(removeCMMotion=False, **system_options)
     if is_periodic:
         system.setDefaultPeriodicBoxVectors(*box_vectors)
 
@@ -299,18 +299,18 @@ def prepare_phase(positions_file_path, topology_file_path, ligand_dsl, system_op
     positions = positions_file.getPositions(asNumpy=True)
 
     # Check to make sure number of atoms match between prmtop and inpcrd.
-    topology_natoms = system.getNumParticles()
+    system_natoms = system.getNumParticles()
     positions_natoms = positions.shape[0]
-    if topology_natoms != positions_natoms:
+    if system_natoms != positions_natoms:
         err_msg = "Atom number mismatch: {} has {} atoms; {} has {} atoms.".format(
-            topology_file_path, topology_natoms, positions_file_path, positions_natoms)
+            parameters_file_path, system_natoms, positions_file_path, positions_natoms)
         logger.error(err_msg)
         raise RuntimeError(err_msg)
 
     # Find ligand atoms and receptor atoms
-    atom_indices = find_components(system, topology_file.topology, ligand_dsl)
+    atom_indices = find_components(system, parameters_file.topology, ligand_dsl)
 
-    alchemical_phase = AlchemicalPhase('', system, topology_file.topology,
+    alchemical_phase = AlchemicalPhase('', system, parameters_file.topology,
                                        positions, atom_indices, None)
     return alchemical_phase
 

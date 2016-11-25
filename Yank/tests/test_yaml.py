@@ -1397,7 +1397,7 @@ def test_charged_ligand():
             system_files_paths = yaml_builder._db.get_system('explicit-system_' + receptor)
             for i, phase_name in enumerate(['complex', 'solvent']):
                 inpcrd_file_path = system_files_paths[i].position_path
-                prmtop_file_path = system_files_paths[i].topology_path
+                prmtop_file_path = system_files_paths[i].parameters_path
                 phase = pipeline.prepare_phase(inpcrd_file_path, prmtop_file_path, 'resname MOL',
                                                {'nonbondedMethod': openmm.app.PME})
 
@@ -1488,9 +1488,9 @@ def test_setup_multiple_parameters_system():
 
         # Check that output exist:
         for phase in system_files_path:
-            assert os.path.exists(phase.topology_path)
+            assert os.path.exists(phase.parameters_path)
             assert os.path.exists(phase.position_path)
-            assert os.path.getsize(phase.topology_path) > 0
+            assert os.path.getsize(phase.parameters_path) > 0
             assert os.path.getsize(phase.position_path) > 0
 
 
