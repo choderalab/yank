@@ -2042,6 +2042,18 @@ class YamlBuilder:
             self._mpicomm.barrier()
 
     @staticmethod
+    def _set_gpu_precision(platform, precision_model):
+        """Temporary work-around for OpenMM7.1 issue #1676."""
+        try:  # TODO we could remove this when openmm#1676 gets fixed
+            platform.setPropertyDefaultValue('Precision', precision_model)
+        except Exception:  # TODO we can remove this when we stop support for OpenMM 7.0
+            platform_name = platform.getName()
+            if platform_name == 'CUDA':
+                platform_name = 'Cuda'
+            property_name = platform_name + 'Precision'
+            platform.setPropertyDefaultValue(property_name, precision_model)
+
+    @staticmethod
     def _opencl_device_support_precision(precision_model):
         """
         Check if this device supports the given precision model for OpenCL platform.
@@ -2063,7 +2075,7 @@ class YamlBuilder:
         old_precision = opencl_platform.getPropertyDefaultValue('OpenCLPrecision')
 
         # Test support by creating a toy context
-        opencl_platform.setPropertyDefaultValue('OpenCLPrecision', precision_model)
+        YamlBuilder._set_gpu_precision(opencl_platform, precision_model)
         system = openmm.System()
         system.addParticle(1.0 * unit.amu)  # system needs at least 1 particle
         integrator = openmm.VerletIntegrator(1.0 * unit.femtoseconds)
@@ -2077,7 +2089,7 @@ class YamlBuilder:
         del integrator
 
         # Restore old precision
-        opencl_platform.setPropertyDefaultValue('OpenCLPrecision', old_precision)
+        YamlBuilder._set_gpu_precision(opencl_platform, old_precision)
 
         return is_supported
 
@@ -2160,11 +2172,11 @@ class YamlBuilder:
             logger.info("Setting {} platform to use precision model "
                         "'{}'.".format(platform_name, platform_precision))
             if platform_name == 'CUDA':
-                platform.setPropertyDefaultValue('CudaPrecision', platform_precision)
+                YamlBuilder._set_gpu_precision(platform, platform_precision)
             elif platform_name == 'OpenCL':
                 # Some OpenCL devices do not support double precision so we need to test it
                 if self._opencl_device_support_precision(platform_precision):
-                    platform.setPropertyDefaultValue('OpenCLPrecision', platform_precision)
+                    YamlBuilder._set_gpu_precision(platform, platform_precision)
                 else:
                     raise RuntimeError('This device does not support double precision for OpenCL.')
             elif platform_name == 'Reference':
