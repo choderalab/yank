@@ -50,12 +50,14 @@ def indent(str):
 
 def examples_paths():
     """Return the absolute path to the Yank examples relevant to tests."""
-    paths = {}
     data_dir = utils.get_data_filename(os.path.join('tests', 'data'))
     p_xylene_dir = os.path.join(data_dir, 'p-xylene-implicit')
     p_xylene_gro_dir = os.path.join(data_dir, 'p-xylene-gromacs-example')
     ben_tol_dir = os.path.join(data_dir, 'benzene-toluene-explicit')
     abl_imatinib_dir = os.path.join(data_dir, 'abl-imatinib-explicit')
+    tol_dir = os.path.join(data_dir, 'toluene-explicit')
+
+    paths = dict()
     paths['lysozyme'] = os.path.join(p_xylene_dir, '181L-pdbfixer.pdb')
     paths['p-xylene'] = os.path.join(p_xylene_dir, 'p-xylene.mol2')
     paths['benzene'] = os.path.join(ben_tol_dir, 'benzene.tripos.mol2')
@@ -71,6 +73,10 @@ def examples_paths():
     paths['pxylene-solvent'] = [os.path.join(p_xylene_gro_dir, 'solvent.top'),
                                 os.path.join(p_xylene_gro_dir, 'solvent.gro')]
     paths['pxylene-gro-include'] = os.path.join(p_xylene_gro_dir, 'top')
+    paths['toluene-solvent'] = [os.path.join(tol_dir, 'solvent.pdb'),
+                                os.path.join(tol_dir, 'solvent.xml')]
+    paths['toluene-vacuum'] = [os.path.join(tol_dir, 'vacuum.pdb'),
+                               os.path.join(tol_dir, 'vacuum.xml')]
     return paths
 
 
@@ -398,6 +404,7 @@ def test_validation_wrong_solvents():
 
 def test_validation_correct_systems():
     """Correct systems YAML validation."""
+    data_paths = examples_paths()
     yaml_builder = YamlBuilder()
     basic_script = """
     ---
@@ -406,7 +413,7 @@ def test_validation_correct_systems():
         lig: {{name: lig, leap: {{parameters: leaprc.gaff}}}}
     solvents:
         solv: {{nonbonded_method: NoCutoff}}
-    """.format(examples_paths()['lysozyme'])
+    """.format(data_paths['lysozyme'])
     basic_script = yaml.load(textwrap.dedent(basic_script))
 
     systems = [
@@ -415,17 +422,21 @@ def test_validation_correct_systems():
         {'receptor': 'rec', 'ligand': 'lig', 'solvent': 'solv',
             'leap': {'parameters': ['leaprc.gaff', 'leaprc.ff14SB']}},
 
-        {'phase1_path': examples_paths()['bentol-complex'],
-         'phase2_path': examples_paths()['bentol-solvent'],
+        {'phase1_path': data_paths['bentol-complex'],
+         'phase2_path': data_paths['bentol-solvent'],
          'ligand_dsl': 'resname BEN', 'solvent': 'solv'},
 
-        {'phase1_path': examples_paths()['pxylene-complex'],
-         'phase2_path': examples_paths()['pxylene-solvent'],
+        {'phase1_path': data_paths['pxylene-complex'],
+         'phase2_path': data_paths['pxylene-solvent'],
          'ligand_dsl': 'resname p-xylene', 'solvent': 'solv',
-         'gromacs_include_dir': examples_paths()['pxylene-gro-include']},
-        {'phase1_path': examples_paths()['pxylene-complex'],
-         'phase2_path': examples_paths()['pxylene-solvent'],
+         'gromacs_include_dir': data_paths['pxylene-gro-include']},
+        {'phase1_path': data_paths['pxylene-complex'],
+         'phase2_path': data_paths['pxylene-solvent'],
          'ligand_dsl': 'resname p-xylene', 'solvent': 'solv'},
+
+        {'phase1_path': data_paths['toluene-solvent'],
+         'phase2_path': data_paths['toluene-vacuum'],
+         'ligand_dsl': 'resname TOL'},
 
         {'solute': 'lig', 'solvent1': 'solv', 'solvent2': 'solv'},
         {'solute': 'lig', 'solvent1': 'solv', 'solvent2': 'solv',
@@ -469,12 +480,16 @@ def test_validation_wrong_systems():
          'ligand_dsl': 3.4, 'solvent': 'solv'},
         {'phase1_path': examples_paths()['bentol-complex'],
          'phase2_path': examples_paths()['bentol-solvent'],
-         'ligand_dsl': 'resname BEN', 'solvent': 'unknown'},
+         'ligand_dsl': 'resname TOL', 'solvent': 'unknown'},
 
         {'phase1_path': examples_paths()['bentol-complex'],
          'phase2_path': examples_paths()['pxylene-solvent'],
          'ligand_dsl': 'resname p-xylene', 'solvent': 'solv',
          'gromacs_include_dir': examples_paths()['pxylene-gro-include']},
+
+        {'phase1_path': examples_paths()['toluene-solvent'],
+         'phase2_path': examples_paths()['toluene-vacuum'],
+         'ligand_dsl': 'resname TOL', 'solvent': 'cantbespecified'},
 
         {'receptor': 'rec', 'solute': 'lig', 'solvent1': 'solv', 'solvent2': 'solv'},
         {'ligand': 'lig', 'solute': 'lig', 'solvent1': 'solv', 'solvent2': 'solv'},
@@ -1385,7 +1400,7 @@ def test_charged_ligand():
             system_files_paths = yaml_builder._db.get_system('explicit-system_' + receptor)
             for i, phase_name in enumerate(['complex', 'solvent']):
                 inpcrd_file_path = system_files_paths[i].position_path
-                prmtop_file_path = system_files_paths[i].topology_path
+                prmtop_file_path = system_files_paths[i].parameters_path
                 phase = pipeline.prepare_phase(inpcrd_file_path, prmtop_file_path, 'resname MOL',
                                                {'nonbondedMethod': openmm.app.PME})
 
@@ -1476,9 +1491,9 @@ def test_setup_multiple_parameters_system():
 
         # Check that output exist:
         for phase in system_files_path:
-            assert os.path.exists(phase.topology_path)
+            assert os.path.exists(phase.parameters_path)
             assert os.path.exists(phase.position_path)
-            assert os.path.getsize(phase.topology_path) > 0
+            assert os.path.getsize(phase.parameters_path) > 0
             assert os.path.getsize(phase.position_path) > 0
 
 
@@ -1707,6 +1722,36 @@ def test_run_experiment_from_gromacs_files():
                  'ligand_dsl': 'resname "p-xylene"', 'solvent': 'PME',
                  'gromacs_include_dir': include_path}}
         yaml_script['experiments']['system'] = 'explicit-system'
+
+        yaml_builder = YamlBuilder(yaml_script)
+        yaml_builder._check_resume()  # check_resume should not raise exceptions
+        yaml_builder.build_experiments()
+
+        # The experiments folders are correctly named and positioned
+        output_dir = yaml_builder._get_experiment_dir(yaml_builder.options, '')
+        assert os.path.isdir(output_dir)
+        assert os.path.isfile(os.path.join(output_dir, 'complex.nc'))
+        assert os.path.isfile(os.path.join(output_dir, 'solvent.nc'))
+        assert os.path.isfile(os.path.join(output_dir, 'experiments.yaml'))
+        assert os.path.isfile(os.path.join(output_dir, 'experiments.log'))
+
+        # Analysis script is correct
+        analysis_script_path = os.path.join(output_dir, 'analysis.yaml')
+        with open(analysis_script_path, 'r') as f:
+            assert yaml.load(f) == [['complex', 1], ['solvent', -1]]
+
+
+@attr('slow')  # Skip on Travis-CI
+def test_run_experiment_from_xml_files():
+    """Test hydration experiment run from pdb/xml files."""
+    solvent_path = examples_paths()['toluene-solvent']
+    vacuum_path = examples_paths()['toluene-vacuum']
+    with omt.utils.temporary_directory() as tmp_dir:
+        yaml_script = get_template_script(tmp_dir)
+        del yaml_script['molecules']  # we shouldn't need any molecule
+        yaml_script['systems'] = {'explicit-system':
+                {'phase1_path': solvent_path, 'phase2_path': vacuum_path,
+                 'ligand_dsl': 'resname TOL'}}
 
         yaml_builder = YamlBuilder(yaml_script)
         yaml_builder._check_resume()  # check_resume should not raise exceptions

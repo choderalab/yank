@@ -482,31 +482,31 @@ class SetupDatabase:
         system_files_paths : list of namedtuple
             Elements of the list contain the paths to the system files for
             each phase. Each namedtuple contains the fields position_path (e.g.
-            inpcrd or gro) and topology_path (e.g. prmtop or top).
+            inpcrd, gro, or pdb) and parameters_path (e.g. prmtop, top, or xml).
 
         """
-        Paths = collections.namedtuple('Paths', ['position_path', 'topology_path'])
+        Paths = collections.namedtuple('Paths', ['position_path', 'parameters_path'])
         system_dir = os.path.join(self.setup_dir, self.SYSTEMS_DIR, system_id)
         if 'receptor' in self.systems[system_id]:
             system_files_paths = [
                 Paths(position_path=os.path.join(system_dir, 'complex.inpcrd'),
-                      topology_path=os.path.join(system_dir, 'complex.prmtop')),
+                      parameters_path=os.path.join(system_dir, 'complex.prmtop')),
                 Paths(position_path=os.path.join(system_dir, 'solvent.inpcrd'),
-                      topology_path=os.path.join(system_dir, 'solvent.prmtop'))
+                      parameters_path=os.path.join(system_dir, 'solvent.prmtop'))
             ]
         elif 'solute' in self.systems[system_id]:
             system_files_paths = [
                 Paths(position_path=os.path.join(system_dir, 'solvent1.inpcrd'),
-                      topology_path=os.path.join(system_dir, 'solvent1.prmtop')),
+                      parameters_path=os.path.join(system_dir, 'solvent1.prmtop')),
                 Paths(position_path=os.path.join(system_dir, 'solvent2.inpcrd'),
-                      topology_path=os.path.join(system_dir, 'solvent2.prmtop'))
+                      parameters_path=os.path.join(system_dir, 'solvent2.prmtop'))
             ]
         else:
             system_files_paths = [
                 Paths(position_path=self.systems[system_id]['phase1_path'][0],
-                      topology_path=self.systems[system_id]['phase1_path'][1]),
+                      parameters_path=self.systems[system_id]['phase1_path'][1]),
                 Paths(position_path=self.systems[system_id]['phase2_path'][0],
-                      topology_path=self.systems[system_id]['phase2_path'][1])
+                      parameters_path=self.systems[system_id]['phase2_path'][1])
             ]
 
         return system_files_paths
@@ -618,9 +618,9 @@ class SetupDatabase:
         if 'ligand' in self.systems[system_id] or 'solute' in self.systems[system_id]:
             system_files_paths = self.get_system_files_paths(system_id)
             is_setup = (os.path.exists(system_files_paths[0].position_path) and
-                        os.path.exists(system_files_paths[0].topology_path) and
+                        os.path.exists(system_files_paths[0].parameters_path) and
                         os.path.exists(system_files_paths[1].position_path) and
-                        os.path.exists(system_files_paths[1].topology_path))
+                        os.path.exists(system_files_paths[1].parameters_path))
             return is_setup, is_setup
         else:
             return True, False
@@ -642,7 +642,7 @@ class SetupDatabase:
         system_files_paths : list of namedtuple
             Elements of the list contain the paths to the system files for
             each phase. Each namedtuple contains the fields position_path (e.g.
-            inpcrd or gro) and topology_path (e.g. prmtop or top).
+            inpcrd, gro, or pdb) and parameters_path (e.g. prmtop, top, or xml).
 
         """
         # Check if system has been already processed
@@ -1741,14 +1741,16 @@ class YamlBuilder:
 
         def system_files(type):
             def _system_files(files):
-                """Paths to amber/gromacs files. Return them in alphabetical
-                order of extension [*.inpcrd/gro, *.prmtop/top]."""
+                """Paths to amber/gromacs/xml files. Return them in alphabetical
+                order of extension [*.inpcrd/gro/pdb, *.prmtop/top/xml]."""
                 extensions = [os.path.splitext(filepath)[1][1:] for filepath in files]
                 correct_type = False
                 if type == 'amber':
                     correct_type = sorted(extensions) == ['inpcrd', 'prmtop']
                 elif type == 'gromacs':
                     correct_type = sorted(extensions) == ['gro', 'top']
+                elif type == 'openmm':
+                    correct_type = sorted(extensions) == ['pdb', 'xml']
                 if not correct_type:
                     raise RuntimeError('Wrong system files type.')
                 for filepath in files:
@@ -1773,7 +1775,10 @@ class YamlBuilder:
              'ligand_dsl': str, 'solvent': is_known_solvent},
 
             {'phase1_path': Use(system_files('gromacs')), 'phase2_path': Use(system_files('gromacs')),
-             'ligand_dsl': str, 'solvent': is_known_solvent, Optional('gromacs_include_dir'): os.path.isdir}
+             'ligand_dsl': str, 'solvent': is_known_solvent, Optional('gromacs_include_dir'): os.path.isdir},
+
+            {'phase1_path': Use(system_files('openmm')), 'phase2_path': Use(system_files('openmm')),
+             'ligand_dsl': str}
         ))
 
         # Schema validation
@@ -2207,7 +2212,11 @@ class YamlBuilder:
         try:  # binding free energy
             solvent_ids = [sys_descr['solvent']]
         except KeyError:  # partition/solvation free energy
-            solvent_ids = [sys_descr['solvent1'], sys_descr['solvent2']]
+            try:
+                solvent_ids = [sys_descr['solvent1'], sys_descr['solvent2']]
+            except KeyError:  # from xml/pdb system files
+                assert 'phase1_path' in sys_descr
+                solvent_ids = []
         sol_section = {sol_id: self._raw_yaml['solvents'][sol_id]
                        for sol_id in solvent_ids}
 
@@ -2255,7 +2264,8 @@ class YamlBuilder:
         yaml_content += yaml.dump({'options': opt_section}, **dump_options)
         if mol_section:
             yaml_content += yaml.dump({'molecules': mol_section},  **dump_options)
-        yaml_content += yaml.dump({'solvents': sol_section},  **dump_options)
+        if sol_section:
+            yaml_content += yaml.dump({'solvents': sol_section},  **dump_options)
         yaml_content += yaml.dump({'systems': sys_section},  **dump_options)
         yaml_content += yaml.dump({'protocols': prot_section},  **dump_options)
         yaml_content += yaml.dump({'experiments': exp_section},  **dump_options)
@@ -2367,8 +2377,12 @@ class YamlBuilder:
                     solvent_ids = [self._db.systems[system_id]['solvent'],
                                    self._db.systems[system_id]['solvent']]
                 except KeyError:  # partition/solvation free energy calculations
-                    solvent_ids = [self._db.systems[system_id]['solvent1'],
-                                   self._db.systems[system_id]['solvent2']]
+                    try:
+                        solvent_ids = [self._db.systems[system_id]['solvent1'],
+                                       self._db.systems[system_id]['solvent2']]
+                    except KeyError:  # from xml/pdb system files
+                        assert 'phase1_path' in self._db.systems[system_id]
+                        solvent_ids = [None, None]
 
                 # Get protocols as list of AlchemicalStates
                 alchemical_paths = self._get_alchemical_paths(protocol_id)
@@ -2382,11 +2396,13 @@ class YamlBuilder:
                     # correct order (e.g. [complex, solvent] or [solvent1, solvent2])
                     solvent_id = solvent_ids[i]
                     positions_file_path = system_files_paths[i].position_path
-                    topology_file_path = system_files_paths[i].topology_path
-                    system_options = utils.merge_dict(self._db.solvents[solvent_id], exp_opts)
-
+                    parameters_file_path = system_files_paths[i].parameters_path
+                    if solvent_id is None:
+                        system_options = None
+                    else:
+                        system_options = utils.merge_dict(self._db.solvents[solvent_id], exp_opts)
                     logger.info("Reading phase {}".format(phase_name))
-                    phases[i] = pipeline.prepare_phase(positions_file_path, topology_file_path, ligand_dsl,
+                    phases[i] = pipeline.prepare_phase(positions_file_path, parameters_file_path, ligand_dsl,
                                                        system_options, gromacs_include_dir=gromacs_include_dir)
                     phases[i].name = phase_name
                     phases[i].protocol = alchemical_paths[phase_name]
