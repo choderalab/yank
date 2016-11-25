@@ -1742,6 +1742,36 @@ def test_run_experiment_from_gromacs_files():
 
 
 @attr('slow')  # Skip on Travis-CI
+def test_run_experiment_from_xml_files():
+    """Test hydration experiment run from pdb/xml files."""
+    solvent_path = examples_paths()['toluene-solvent']
+    vacuum_path = examples_paths()['toluene-vacuum']
+    with omt.utils.temporary_directory() as tmp_dir:
+        yaml_script = get_template_script(tmp_dir)
+        del yaml_script['molecules']  # we shouldn't need any molecule
+        yaml_script['systems'] = {'explicit-system':
+                {'phase1_path': solvent_path, 'phase2_path': vacuum_path,
+                 'ligand_dsl': 'resname TOL'}}
+
+        yaml_builder = YamlBuilder(yaml_script)
+        yaml_builder._check_resume()  # check_resume should not raise exceptions
+        yaml_builder.build_experiments()
+
+        # The experiments folders are correctly named and positioned
+        output_dir = yaml_builder._get_experiment_dir(yaml_builder.options, '')
+        assert os.path.isdir(output_dir)
+        assert os.path.isfile(os.path.join(output_dir, 'complex.nc'))
+        assert os.path.isfile(os.path.join(output_dir, 'solvent.nc'))
+        assert os.path.isfile(os.path.join(output_dir, 'experiments.yaml'))
+        assert os.path.isfile(os.path.join(output_dir, 'experiments.log'))
+
+        # Analysis script is correct
+        analysis_script_path = os.path.join(output_dir, 'analysis.yaml')
+        with open(analysis_script_path, 'r') as f:
+            assert yaml.load(f) == [['complex', 1], ['solvent', -1]]
+
+
+@attr('slow')  # Skip on Travis-CI
 def test_run_experiment():
     """Test experiment run and resuming."""
     with omt.utils.temporary_directory() as tmp_dir:

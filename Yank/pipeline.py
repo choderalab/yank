@@ -201,54 +201,26 @@ def get_leap_recommended_pbradii(implicit_solvent):
         raise ValueError('Implicit solvent {} is not supported.'.format(implicit_solvent))
 
 
-def prepare_phase(positions_file_path, parameters_file_path, ligand_dsl, system_options,
-                  gromacs_include_dir=None, verbose=False):
-    """Create a Yank arguments for a phase from system files.
+def create_system(parameters_file, box_vectors, create_system_args, system_options):
+    """Create and return an OpenMM system.
 
     Parameters
     ----------
-    positions_file_path : str
-        Path to system position file (e.g. 'complex.inpcrd/.gro/.pdb').
-    parameters_file_path : str
-        Path to system parameters file (e.g. 'complex.prmtop/.top/.xml').
-    ligand_dsl : str
-        MDTraj DSL string that specify the ligand atoms.
+    parameters_file : simtk.openmm.app.AmberPrmtopFile or GromacsTopFile
+        The file used to create they system.
+    box_vectors : list of Vec3
+        The default box vectors of the system will be set to this value.
+    create_system_args : dict of str
+        The kwargs accepted by the createSystem() function of the file.
     system_options : dict
-        system_options[phase] is a a dictionary containing options to pass to createSystem().
-    gromacs_include_dir : str, optional
-        Path to directory in which to look for other files included from the gromacs top file.
-    verbose : bool
-        Whether or not to log information (default is False).
+        The kwargs to forward to createSystem().
 
     Returns
     -------
-    alchemical_phase : AlchemicalPhase
-        The alchemical phase for Yank calculation with unspecified name, and protocol.
+    system : simtk.openmm.System
+        The system created.
 
     """
-    # Load system files
-    if os.path.splitext(parameters_file_path)[1] == '.prmtop':
-        # Read Amber prmtop and inpcrd files
-        if verbose:
-            logger.info("prmtop: %s" % parameters_file_path)
-            logger.info("inpcrd: %s" % positions_file_path)
-        parameters_file = openmm.app.AmberPrmtopFile(parameters_file_path)
-        positions_file = openmm.app.AmberInpcrdFile(positions_file_path)
-        box_vectors = positions_file.boxVectors
-        create_system_args = set(inspect.getargspec(openmm.app.AmberPrmtopFile.createSystem).args)
-    else:
-        # Read Gromacs top and gro files
-        if verbose:
-            logger.info("top: %s" % parameters_file_path)
-            logger.info("gro: %s" % positions_file_path)
-
-        positions_file = openmm.app.GromacsGroFile(positions_file_path)
-        box_vectors = positions_file.getPeriodicBoxVectors()
-        parameters_file = openmm.app.GromacsTopFile(parameters_file_path,
-                                                  periodicBoxVectors=box_vectors,
-                                                  includeDir=gromacs_include_dir)
-        create_system_args = set(inspect.getargspec(openmm.app.GromacsTopFile.createSystem).args)
-
     # Prepare createSystem() options
     # OpenMM adopts camel case convention so we need to change the options format.
     # Then we filter system options according to specific createSystem() args
@@ -294,6 +266,72 @@ def prepare_phase(positions_file_path, parameters_file_path, ligand_dsl, system_
     system = parameters_file.createSystem(removeCMMotion=False, **system_options)
     if is_periodic:
         system.setDefaultPeriodicBoxVectors(*box_vectors)
+
+    return system
+
+
+def prepare_phase(positions_file_path, parameters_file_path, ligand_dsl, system_options,
+                  gromacs_include_dir=None, verbose=False):
+    """Create a Yank arguments for a phase from system files.
+
+    Parameters
+    ----------
+    positions_file_path : str
+        Path to system position file (e.g. 'complex.inpcrd/.gro/.pdb').
+    parameters_file_path : str
+        Path to system parameters file (e.g. 'complex.prmtop/.top/.xml').
+    ligand_dsl : str
+        MDTraj DSL string that specify the ligand atoms.
+    system_options : dict
+        system_options[phase] is a a dictionary containing options to
+        pass to createSystem(). If the parameters file is an OpenMM
+        system in XML format, this will be ignored.
+    gromacs_include_dir : str, optional
+        Path to directory in which to look for other files included
+        from the gromacs top file.
+    verbose : bool
+        Whether or not to log information (default is False).
+
+    Returns
+    -------
+    alchemical_phase : AlchemicalPhase
+        The alchemical phase for Yank calculation with unspecified name, and protocol.
+
+    """
+    # Load system files
+    if os.path.splitext(parameters_file_path)[1] == '.xml':
+        # Read Amber prmtop and inpcrd files
+        if verbose:
+            logger.info("xml: %s" % parameters_file_path)
+            logger.info("pdb: %s" % positions_file_path)
+        with open(parameters_file_path, 'r') as f:
+            serialized_system = f.read()
+        system = openmm.XmlSerializer.deserialize(serialized_system)
+        positions_file = openmm.app.PDBFile(positions_file_path)
+        parameters_file = positions_file  # needed for topology
+    else:
+        if os.path.splitext(parameters_file_path)[1] == '.prmtop':
+            # Read Amber prmtop and inpcrd files
+            if verbose:
+                logger.info("prmtop: %s" % parameters_file_path)
+                logger.info("inpcrd: %s" % positions_file_path)
+            parameters_file = openmm.app.AmberPrmtopFile(parameters_file_path)
+            positions_file = openmm.app.AmberInpcrdFile(positions_file_path)
+            box_vectors = positions_file.boxVectors
+            create_system_args = set(inspect.getargspec(openmm.app.AmberPrmtopFile.createSystem).args)
+        else:
+            # Read Gromacs top and gro files
+            if verbose:
+                logger.info("top: %s" % parameters_file_path)
+                logger.info("gro: %s" % positions_file_path)
+
+            positions_file = openmm.app.GromacsGroFile(positions_file_path)
+            box_vectors = positions_file.getPeriodicBoxVectors()
+            parameters_file = openmm.app.GromacsTopFile(parameters_file_path,
+                                                        periodicBoxVectors=box_vectors,
+                                                        includeDir=gromacs_include_dir)
+            create_system_args = set(inspect.getargspec(openmm.app.GromacsTopFile.createSystem).args)
+        system = create_system(parameters_file, box_vectors, create_system_args, system_options)
 
     # Store numpy positions
     positions = positions_file.getPositions(asNumpy=True)

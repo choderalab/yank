@@ -2212,7 +2212,11 @@ class YamlBuilder:
         try:  # binding free energy
             solvent_ids = [sys_descr['solvent']]
         except KeyError:  # partition/solvation free energy
-            solvent_ids = [sys_descr['solvent1'], sys_descr['solvent2']]
+            try:
+                solvent_ids = [sys_descr['solvent1'], sys_descr['solvent2']]
+            except KeyError:  # from xml/pdb system files
+                assert 'phase1_path' in sys_descr
+                solvent_ids = []
         sol_section = {sol_id: self._raw_yaml['solvents'][sol_id]
                        for sol_id in solvent_ids}
 
@@ -2260,7 +2264,8 @@ class YamlBuilder:
         yaml_content += yaml.dump({'options': opt_section}, **dump_options)
         if mol_section:
             yaml_content += yaml.dump({'molecules': mol_section},  **dump_options)
-        yaml_content += yaml.dump({'solvents': sol_section},  **dump_options)
+        if sol_section:
+            yaml_content += yaml.dump({'solvents': sol_section},  **dump_options)
         yaml_content += yaml.dump({'systems': sys_section},  **dump_options)
         yaml_content += yaml.dump({'protocols': prot_section},  **dump_options)
         yaml_content += yaml.dump({'experiments': exp_section},  **dump_options)
@@ -2372,8 +2377,12 @@ class YamlBuilder:
                     solvent_ids = [self._db.systems[system_id]['solvent'],
                                    self._db.systems[system_id]['solvent']]
                 except KeyError:  # partition/solvation free energy calculations
-                    solvent_ids = [self._db.systems[system_id]['solvent1'],
-                                   self._db.systems[system_id]['solvent2']]
+                    try:
+                        solvent_ids = [self._db.systems[system_id]['solvent1'],
+                                       self._db.systems[system_id]['solvent2']]
+                    except KeyError:  # from xml/pdb system files
+                        assert 'phase1_path' in self._db.systems[system_id]
+                        solvent_ids = [None, None]
 
                 # Get protocols as list of AlchemicalStates
                 alchemical_paths = self._get_alchemical_paths(protocol_id)
@@ -2388,8 +2397,10 @@ class YamlBuilder:
                     solvent_id = solvent_ids[i]
                     positions_file_path = system_files_paths[i].position_path
                     parameters_file_path = system_files_paths[i].parameters_path
-                    system_options = utils.merge_dict(self._db.solvents[solvent_id], exp_opts)
-
+                    if solvent_id is None:
+                        system_options = None
+                    else:
+                        system_options = utils.merge_dict(self._db.solvents[solvent_id], exp_opts)
                     logger.info("Reading phase {}".format(phase_name))
                     phases[i] = pipeline.prepare_phase(positions_file_path, parameters_file_path, ligand_dsl,
                                                        system_options, gromacs_include_dir=gromacs_include_dir)
