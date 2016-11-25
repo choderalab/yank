@@ -299,7 +299,8 @@ def prepare_phase(positions_file_path, parameters_file_path, ligand_dsl, system_
 
     """
     # Load system files
-    if os.path.splitext(parameters_file_path)[1] == '.xml':
+    parameters_file_extension = os.path.splitext(parameters_file_path)[1]
+    if parameters_file_extension == '.xml':
         # Read Amber prmtop and inpcrd files
         if verbose:
             logger.info("xml: %s" % parameters_file_path)
@@ -309,29 +310,31 @@ def prepare_phase(positions_file_path, parameters_file_path, ligand_dsl, system_
         system = openmm.XmlSerializer.deserialize(serialized_system)
         positions_file = openmm.app.PDBFile(positions_file_path)
         parameters_file = positions_file  # needed for topology
-    else:
-        if os.path.splitext(parameters_file_path)[1] == '.prmtop':
-            # Read Amber prmtop and inpcrd files
-            if verbose:
-                logger.info("prmtop: %s" % parameters_file_path)
-                logger.info("inpcrd: %s" % positions_file_path)
-            parameters_file = openmm.app.AmberPrmtopFile(parameters_file_path)
-            positions_file = openmm.app.AmberInpcrdFile(positions_file_path)
-            box_vectors = positions_file.boxVectors
-            create_system_args = set(inspect.getargspec(openmm.app.AmberPrmtopFile.createSystem).args)
-        else:
-            # Read Gromacs top and gro files
-            if verbose:
-                logger.info("top: %s" % parameters_file_path)
-                logger.info("gro: %s" % positions_file_path)
-
-            positions_file = openmm.app.GromacsGroFile(positions_file_path)
-            box_vectors = positions_file.getPeriodicBoxVectors()
-            parameters_file = openmm.app.GromacsTopFile(parameters_file_path,
-                                                        periodicBoxVectors=box_vectors,
-                                                        includeDir=gromacs_include_dir)
-            create_system_args = set(inspect.getargspec(openmm.app.GromacsTopFile.createSystem).args)
+    elif parameters_file_extension == '.prmtop':
+        # Read Amber prmtop and inpcrd files
+        if verbose:
+            logger.info("prmtop: %s" % parameters_file_path)
+            logger.info("inpcrd: %s" % positions_file_path)
+        parameters_file = openmm.app.AmberPrmtopFile(parameters_file_path)
+        positions_file = openmm.app.AmberInpcrdFile(positions_file_path)
+        box_vectors = positions_file.boxVectors
+        create_system_args = set(inspect.getargspec(openmm.app.AmberPrmtopFile.createSystem).args)
         system = create_system(parameters_file, box_vectors, create_system_args, system_options)
+    elif parameters_file_extension == '.top':
+        # Read Gromacs top and gro files
+        if verbose:
+            logger.info("top: %s" % parameters_file_path)
+            logger.info("gro: %s" % positions_file_path)
+
+        positions_file = openmm.app.GromacsGroFile(positions_file_path)
+        box_vectors = positions_file.getPeriodicBoxVectors()
+        parameters_file = openmm.app.GromacsTopFile(parameters_file_path,
+                                                    periodicBoxVectors=box_vectors,
+                                                    includeDir=gromacs_include_dir)
+        create_system_args = set(inspect.getargspec(openmm.app.GromacsTopFile.createSystem).args)
+        system = create_system(parameters_file, box_vectors, create_system_args, system_options)
+    else:
+        raise ValueError('Unsupported format for parameter file {}'.format(parameters_file_extension))
 
     # Store numpy positions
     positions = positions_file.getPositions(asNumpy=True)
