@@ -92,13 +92,16 @@ Arbitrary Phase Free Energies Setup by User
        gromacs_include_dir: include/
 
 YANK will allow users to specify arbitrary free energy calculations with systems they have prepared themselves.
-Both Amber and GROMACS input file types are accepted.
+Both Amber and GROMACS input file types are accepted. It is also possible to specify a pair of ``[*.pdb, *.xml]
+files for each phase, where the XML contains a serialized OpenMM system.
 MDTraj is required to use this options since picking the ligand out of the files is done with an MDTraj DSL.
 
 * ``phase1_path``: The set of files which fully describe the first phase of the free energy simulation you want to run.
 * ``phase2_path``: The set of files which fully describe the second phase of the free energy simulation you want to run.
 * ``lidand_dsl``: An MDTraj DSL string which identifies the ligand in the files provided by ``phase1_path`` and ``phase2_path``. 
-* ``solvent``: A ``{UserDefinedSolvent}`` to put the two phases in. Only one solvent is allowed for this calculation. 
+* ``solvent``: A ``{UserDefinedSolvent}`` to put the two phases in. Only one solvent is allowed for this calculation.
+  This option must be omitted if using XML/PDB files, since the solvent options are inherently specified in the XML
+  definition of the system.
 * ``gromacs_include_dir``: *Optional*, Tells YANK where the GROMACS include directory is to pull files and parameters from.
   This is particularly helpful if your topology file does not contain all parameters.
   Path is relative to the YAML script.
