@@ -1741,12 +1741,13 @@ class YamlBuilder:
 
         def system_files(type):
             def _system_files(files):
-                """Paths to amber/gromacs files. Return them in alphabetical
+                """Paths to amber/gromacs/xml files. Return them in alphabetical
                 order of extension [*.inpcrd/gro, *.prmtop/top]."""
                 extensions = [os.path.splitext(filepath)[1][1:] for filepath in files]
                 correct_type = False
-                if type == 'amber':
+                if type == 'other':
                     correct_type = sorted(extensions) == ['inpcrd', 'prmtop']
+                    correct_type = correct_type or sorted(extensions) == ['pdb', 'xml']
                 elif type == 'gromacs':
                     correct_type = sorted(extensions) == ['gro', 'top']
                 if not correct_type:
@@ -1769,7 +1770,7 @@ class YamlBuilder:
             {'solute': is_known_molecule, 'solvent1': is_known_solvent,
              'solvent2': is_known_solvent, Optional('leap'): parameters_schema},
 
-            {'phase1_path': Use(system_files('amber')), 'phase2_path': Use(system_files('amber')),
+            {'phase1_path': Use(system_files('other')), 'phase2_path': Use(system_files('other')),
              'ligand_dsl': str, 'solvent': is_known_solvent},
 
             {'phase1_path': Use(system_files('gromacs')), 'phase2_path': Use(system_files('gromacs')),
