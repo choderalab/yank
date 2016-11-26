@@ -632,6 +632,23 @@ class CombinatorialTree(collections.MutableMapping):
 # Miscellaneous functions
 #========================================================================================
 
+def serialize_openmm_object_to_file(filename, openmm_object):
+    """Serialize an OpenMM System, State, or Integrator to specified file.
+    
+    Parameters
+    ----------
+    filename : str
+        The file to write to
+    openmm_object : System, State, or Integrator
+        The OpenMM object to serialize
+
+    """
+    from simtk.openmm import XmlSerializer
+    serialized_object = XmlSerializer.serialize(openmm_object)
+    outfile = open(filename, 'w')
+    outfile.write(serialized_object)
+    outfile.close
+
 def get_data_filename(relative_path):
     """Get the full path to one of the reference files shipped for testing
 

@@ -749,6 +749,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
                 setpositions_end_time = time.time()
                 # Assign Maxwell-Boltzmann velocities.
                 context.setVelocitiesToTemperature(state.temperature, int(np.random.randint(0, MAX_SEED)))
+                velocities = context.getState(getVelocities=True).getVelocities(asNumpy=True) # get velocities in case we have to record them on NaN
                 setvelocities_end_time = time.time()
                 # Check if initial potential energy is NaN.
                 if np.isnan(context.getState(getEnergy=True).getPotentialEnergy() / state.kT):
@@ -781,6 +782,18 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
                             msg += ' (MPI process %d / %d)' % (self.mpicomm.rank, self.mpicomm.size)
                         raise Exception(msg)
                     logger.info('NaN detected in replica %d. Retrying (%d / %d).' % (replica_index, nan_counter, MAX_NAN_RETRIES))
+                    # Serialize to XML
+                    from yank.utils import serialize_openmm_object_to_file
+                    context.setPeriodicBoxVectors(box_vectors[0,:], box_vectors[1,:], box_vectors[2,:])
+                    context.setPositions(positions)
+                    context.setVelocities(velocities)
+                    openmm_state = context.getState(getPositions=True, getVelocities=True, getEnergy=True, getForces=True, getParameters=True)
+                    prefix = 'iteration%d-replica%d-state%d-nan%d' % (self.iteration, replica_index, state_index, nan_counter)
+                    serialize_openmm_object_to_file(prefix + '.system.xml', context.getSystem())
+                    serialize_openmm_object_to_file(prefix + '.integrator.xml', context.getIntegrator())
+                    serialize_openmm_object_to_file(prefix + '.state.xml', openmm_state)
+                    logger.info('Serialized initial System, State, and Integrator to %s.*' % (prefix))
+                    del openmm_state
                 else:
                     # It's not an exception we recognize, so re-raise it
                     raise e
