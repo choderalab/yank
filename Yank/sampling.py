@@ -776,7 +776,10 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
                     # If it's a NaN, increment the NaN counter and try again
                     nan_counter += 1
                     if nan_counter >= MAX_NAN_RETRIES:
-                        raise Exception('Maximum number of NAN retries (%d) exceeded.' % MAX_NAN_RETRIES)
+                        msg = 'Maximum number of NAN retries (%d) exceeded.' % MAX_NAN_RETRIES
+                        if self.mpicomm:
+                            msg += ' (MPI process %d / %d)' % (self.mpicomm.rank, self.mpicomm.size)
+                        raise Exception(msg)
                     logger.info('NaN detected in replica %d. Retrying (%d / %d).' % (replica_index, nan_counter, MAX_NAN_RETRIES))
                 else:
                     # It's not an exception we recognize, so re-raise it
