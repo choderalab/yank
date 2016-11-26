@@ -1774,8 +1774,15 @@ class YamlBuilder:
             {'phase1_path': Use(system_files('amber')), 'phase2_path': Use(system_files('amber')),
              'ligand_dsl': str, 'solvent': is_known_solvent},
 
+            {'phase1_path': Use(system_files('amber')), 'phase2_path': Use(system_files('amber')),
+             'ligand_dsl': str, 'solvent1': is_known_solvent, 'solvent2': is_known_solvent},
+
             {'phase1_path': Use(system_files('gromacs')), 'phase2_path': Use(system_files('gromacs')),
              'ligand_dsl': str, 'solvent': is_known_solvent, Optional('gromacs_include_dir'): os.path.isdir},
+
+            {'phase1_path': Use(system_files('gromacs')), 'phase2_path': Use(system_files('gromacs')),
+             'ligand_dsl': str, 'solvent1': is_known_solvent, 'solvent2': is_known_solvent,
+             Optional('gromacs_include_dir'): os.path.isdir},
 
             {'phase1_path': Use(system_files('openmm')), 'phase2_path': Use(system_files('openmm')),
              'ligand_dsl': str}
