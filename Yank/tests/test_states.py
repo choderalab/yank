@@ -117,18 +117,19 @@ class TestThermodynamicState(object):
         pressure = self.pressure + 0.2*unit.atmosphere
         state = InconsistentThermodynamicState(barostated_system, temperature, pressure)
 
-        state._configure_barostat(barostated_system)
-        barostat = state._find_barostat(barostated_system)
+        state._configure_barostat()
+        barostat = state._find_barostat(state.system)
         assert state._is_barostat_consistent(barostat)
 
     def test_method_add_barostat(self):
         """ThermodynamicState._add_barostat() method."""
-        toluene_system = copy.deepcopy(self.toluene_vacuum)
-        state = InconsistentThermodynamicState(temperature=self.temperature, pressure=self.pressure)
-        assert state._find_barostat(toluene_system) is None  # Test pre-condition
+        state = InconsistentThermodynamicState(system=copy.deepcopy(self.toluene_vacuum),
+                                               temperature=self.temperature,
+                                               pressure=self.pressure)
+        assert state._find_barostat(state.system) is None  # Test pre-condition
 
-        state._add_barostat(toluene_system)
-        barostat = state._find_barostat(toluene_system)
+        state._add_barostat()
+        barostat = state._find_barostat(state.system)
         assert isinstance(barostat, openmm.MonteCarloBarostat)
         assert state._is_barostat_consistent(barostat)
 
@@ -159,7 +160,7 @@ class TestThermodynamicState(object):
                                        pressure=self.pressure, force_system_state=True)
 
             # The new system has now a compatible barostat.
-            barostat = ThermodynamicState._find_barostat(state.system)
+            barostat = state._find_barostat(state.system)
             assert isinstance(barostat, openmm.MonteCarloBarostat)
             assert state._is_barostat_consistent(barostat)
 
