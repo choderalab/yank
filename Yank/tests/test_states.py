@@ -82,18 +82,17 @@ class TestThermodynamicState(object):
 
     def test_method_find_barostat(self):
         """ThermodynamicState._find_barostat() method."""
-        barostated_system = copy.deepcopy(self.barostated_toluene)
-        barostat = ThermodynamicState._find_barostat(barostated_system)
+        barostat = ThermodynamicState._find_barostat(self.barostated_toluene)
         assert isinstance(barostat, openmm.MonteCarloBarostat)
 
         # Raise exception if multiple or unsupported barostats found
         multiple_system = self.multiple_barostat_toluene
         unsupported_system = self.unsupported_barostat_toluene
 
-        test_cases = [(multiple_system, ThermodynamicsException.MULTIPLE_BAROSTATS),
-                      (unsupported_system, ThermodynamicsException.UNSUPPORTED_BAROSTAT)]
+        test_cases = [(multiple_system, ThermodynamicsError.MULTIPLE_BAROSTATS),
+                      (unsupported_system, ThermodynamicsError.UNSUPPORTED_BAROSTAT)]
         for system, err_code in test_cases:
-            with nose.tools.assert_raises(ThermodynamicsException) as cm:
+            with nose.tools.assert_raises(ThermodynamicsError) as cm:
                 ThermodynamicState._find_barostat(system)
             assert cm.exception.code == err_code
 
@@ -118,24 +117,23 @@ class TestThermodynamicState(object):
         state = InconsistentThermodynamicState(barostated_system, temperature, pressure)
 
         state._configure_barostat()
-        barostat = state._find_barostat(state.system)
-        assert state._is_barostat_consistent(barostat)
+        assert state._is_barostat_consistent(state._barostat)
 
     def test_method_add_barostat(self):
         """ThermodynamicState._add_barostat() method."""
         state = InconsistentThermodynamicState(system=copy.deepcopy(self.toluene_vacuum),
                                                temperature=self.temperature,
                                                pressure=self.pressure)
-        assert state._find_barostat(state.system) is None  # Test pre-condition
+        assert state._barostat is None  # Test pre-condition
 
         state._add_barostat()
-        barostat = state._find_barostat(state.system)
+        barostat = state._barostat
         assert isinstance(barostat, openmm.MonteCarloBarostat)
         assert state._is_barostat_consistent(barostat)
 
     def test_constructor_npt_incompatible_systems(self):
         """Exception is raised on construction with NPT-incompatible systems."""
-        TE = ThermodynamicsException  # shortcut
+        TE = ThermodynamicsError  # shortcut
         test_cases = [(self.toluene_vacuum, TE.NO_BAROSTAT),
                       (self.multiple_barostat_toluene, TE.MULTIPLE_BAROSTATS),
                       (self.unsupported_barostat_toluene, TE.UNSUPPORTED_BAROSTAT),
@@ -148,22 +146,22 @@ class TestThermodynamicState(object):
             assert cm.exception.code == err_code
 
     def test_constructor_force_barostat(self):
+        """The system barostat is properly configured on construction."""
         test_cases = [self.toluene_vacuum,
                       self.incompatible_pressure_barostat_toluene,
                       self.incompatible_temperature_barostat_toluene]
 
         for system in test_cases:
-            old_hash = openmm.XmlSerializer.serialize(system).__hash__()
+            old_serialization = openmm.XmlSerializer.serialize(system)
 
             # Force ThermodynamicState to add a barostat.
             state = ThermodynamicState(system=system, temperature=self.temperature,
                                        pressure=self.pressure, force_system_state=True)
 
             # The new system has now a compatible barostat.
-            barostat = state._find_barostat(state.system)
-            assert isinstance(barostat, openmm.MonteCarloBarostat)
-            assert state._is_barostat_consistent(barostat)
+            assert isinstance(state._barostat, openmm.MonteCarloBarostat)
+            assert state._is_barostat_consistent(state._barostat)
 
             # The original system is unaltered.
-            new_hash = openmm.XmlSerializer.serialize(system).__hash__()
-            assert new_hash == old_hash
+            new_serialization = openmm.XmlSerializer.serialize(system)
+            assert new_serialization == old_serialization
