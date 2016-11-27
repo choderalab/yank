@@ -1682,7 +1682,7 @@ def test_get_alchemical_path():
     assert isinstance(complex_path[0], AlchemicalState)
     assert complex_path[3]['lambda_electrostatics'] == 0.6
     assert complex_path[4]['lambda_sterics'] == 0.4
-    assert complex_path[5]['lambda_restraints'] == 0.0
+    assert complex_path[5]['lambda_restraints'] == 1.0
     assert len(complex_path) == 7
 
 
