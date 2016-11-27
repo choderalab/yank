@@ -33,7 +33,6 @@ class InconsistentThermodynamicState(ThermodynamicState):
     def __init__(self, system=None, temperature=None, pressure=None):
         self._system = system
         self._temperature = temperature
-        self._pressure = pressure
 
 
 # =============================================================================
@@ -48,6 +47,8 @@ class TestThermodynamicState(object):
         cls.temperature = 300*unit.kelvin
         cls.pressure = 1.0*unit.atmosphere
         cls.toluene_vacuum = testsystems.TolueneVacuum().system
+        cls.toluene_implicit = testsystems.TolueneImplicit().system
+        cls.alanine_explicit = testsystems.AlanineDipeptideExplicit().system
 
         # A system correctly barostated
         cls.barostated_toluene = copy.deepcopy(cls.toluene_vacuum)
@@ -70,14 +71,14 @@ class TestThermodynamicState(object):
 
         # A system a barostated at the incorrect temperature
         cls.incompatible_pressure_barostat_toluene = copy.deepcopy(cls.toluene_vacuum)
-        barostat = openmm.MonteCarloBarostat(cls.pressure,
-                                             cls.temperature + 1*unit.kelvin)
+        barostat = openmm.MonteCarloBarostat(cls.pressure + 0.1*unit.atmosphere,
+                                             cls.temperature)
         cls.incompatible_pressure_barostat_toluene.addForce(barostat)
 
         # A system a barostat at the incorrect pressure
         cls.incompatible_temperature_barostat_toluene = copy.deepcopy(cls.toluene_vacuum)
-        barostat = openmm.MonteCarloBarostat(cls.pressure + 0.1*unit.atmosphere,
-                                             cls.temperature)
+        barostat = openmm.MonteCarloBarostat(cls.pressure,
+                                             cls.temperature + 1*unit.kelvin)
         cls.incompatible_temperature_barostat_toluene.addForce(barostat)
 
     def test_method_find_barostat(self):
@@ -100,7 +101,7 @@ class TestThermodynamicState(object):
         """ThermodynamicState._is_barostat_consistent() method."""
         temperature = 300*unit.kelvin
         pressure = 1.0*unit.atmosphere
-        state = InconsistentThermodynamicState(None, temperature, pressure)
+        state = InconsistentThermodynamicState(self.barostated_toluene, temperature)
 
         barostat = openmm.MonteCarloBarostat(pressure, temperature)
         assert state._is_barostat_consistent(barostat)
@@ -114,22 +115,62 @@ class TestThermodynamicState(object):
         barostated_system = copy.deepcopy(self.barostated_toluene)
         temperature = self.temperature + 10.0*unit.kelvin
         pressure = self.pressure + 0.2*unit.atmosphere
-        state = InconsistentThermodynamicState(barostated_system, temperature, pressure)
+        state = InconsistentThermodynamicState(barostated_system, temperature)
 
-        state._configure_barostat()
+        state._configure_barostat(pressure)
         assert state._is_barostat_consistent(state._barostat)
 
     def test_method_add_barostat(self):
         """ThermodynamicState._add_barostat() method."""
         state = InconsistentThermodynamicState(system=copy.deepcopy(self.toluene_vacuum),
-                                               temperature=self.temperature,
-                                               pressure=self.pressure)
+                                               temperature=self.temperature)
         assert state._barostat is None  # Test pre-condition
 
-        state._add_barostat()
+        state._add_barostat(self.pressure)
         barostat = state._barostat
         assert isinstance(barostat, openmm.MonteCarloBarostat)
         assert state._is_barostat_consistent(barostat)
+
+    def test_property_pressure(self):
+        """ThermodynamicState.pressure property."""
+        # Vacuum and implicit system are read with no pressure
+        nonperiodic_testcases = [self.toluene_vacuum, self.toluene_implicit]
+        for system in nonperiodic_testcases:
+            state = ThermodynamicState(system, self.temperature)
+            assert state.pressure is None
+
+            # We can't set the pressure on non-periodic systems
+            with nose.tools.assert_raises(ThermodynamicsError) as cm:
+                state.pressure = 1*unit.atmosphere
+            assert cm.exception.code == ThermodynamicsError.BAROSTATED_NONPERIODIC
+
+        # Correctly reads and set system pressures
+        periodic_testcases = [self.alanine_explicit]
+        for system in periodic_testcases:
+            state = ThermodynamicState(system, self.temperature)
+            assert state.pressure is None
+            assert state._barostat is None
+
+            # Setting pressure adds a barostat
+            state.pressure = self.pressure
+            assert state.pressure == self.pressure
+            barostat = state._barostat
+            assert barostat.getDefaultPressure() == self.pressure
+            try:
+                assert barostat.getDefaultTemperature() == self.temperature
+            except AttributeError:  # versions previous to OpenMM 7.1
+                assert barostat.getTemperature() == self.temperature
+
+            # Setting new pressure changes the barostat parameters
+            new_pressure = self.pressure + 1.0*unit.atmosphere
+            state.pressure = new_pressure
+            assert state.pressure == new_pressure
+            barostat = state._barostat
+            assert barostat.getDefaultPressure() == new_pressure
+            try:
+                assert barostat.getDefaultTemperature() == self.temperature
+            except AttributeError:  # versions previous to OpenMM 7.1
+                assert barostat.getTemperature() == self.temperature
 
     def test_constructor_npt_incompatible_systems(self):
         """Exception is raised on construction with NPT-incompatible systems."""
@@ -137,7 +178,7 @@ class TestThermodynamicState(object):
         test_cases = [(self.toluene_vacuum, TE.NO_BAROSTAT),
                       (self.multiple_barostat_toluene, TE.MULTIPLE_BAROSTATS),
                       (self.unsupported_barostat_toluene, TE.UNSUPPORTED_BAROSTAT),
-                      (self.incompatible_pressure_barostat_toluene, TE.INCONSISTENT_BAROSTAT),
+                      #(self.incompatible_pressure_barostat_toluene, TE.INCONSISTENT_BAROSTAT),
                       (self.incompatible_temperature_barostat_toluene, TE.INCONSISTENT_BAROSTAT)]
         for system, err_code in test_cases:
             with nose.tools.assert_raises(TE) as cm:
