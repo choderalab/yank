@@ -214,9 +214,12 @@ The edge of the solvation box will be at ``clearance`` distance away from any at
 This method is a way to solvate without explicitly defining solvent atoms.
 We highly recommend  having a 
 :ref:`number of equilibration iterations <yaml_options_number_of_equilibration_iterations>` 
-if this option is invoked.
+when this option is invoked.
 
-If not specified, this process is not carried out. 
+If not specified, this process is not carried out and no solvent will be added to the systems. Because this is a rare
+scenario, YANK warns the user that no solvent will be added. It is up to the user to provide input files with appropriate
+Periodic Boundary Conditions. Please see :ref:`the documentation for providing your own phases <yaml_systems_user_defined>`
+for this scenario.
 
 Nonbonded Methods: ``CuttoffPeriodic``, ``Ewald``, ``PME``
 
