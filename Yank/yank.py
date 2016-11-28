@@ -416,7 +416,7 @@ class Yank(object):
                     pass
 
         # Set the fully-interacting expanded cutoff state here
-        if not is_periodic or not anisotropic_dispersion_correction:
+        if not is_periodic or not self._anisotropic_dispersion_correction:
             fully_interacting_expanded_state = None
         else:
             # Create the fully interacting system

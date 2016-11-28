@@ -1667,7 +1667,7 @@ class YamlBuilder:
                 # Confirm schema is valid
                 pass_check = warn_solvent_skipped_pbc_schema.validate(solvent_descr)
                 del pass_check
-                warnings.warn("********************************************************************************"
+                warnings.warn("\n********************************************************************************\n"
                               "Solvent {} has a periodic `nonbonded_method`, but no solvent will be added since\n"
                               "`clearance` was not also set. Ensure you have specified PBC in your input files!\n"
                               "********************************************************************************".format(solvent_id),
