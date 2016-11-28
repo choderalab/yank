@@ -345,7 +345,7 @@ class Yank(object):
         is_complex_implicit = is_complex and not is_periodic
 
         # Make sure pressure is None if not periodic.
-        if not is_periodic and not self._anisotropic_dispersion_correction:
+        if not is_periodic:
             thermodynamic_state.pressure = None
         # If temperature and pressure are specified, make sure MonteCarloBarostat is attached.
         elif thermodynamic_state.temperature and thermodynamic_state.pressure:
@@ -416,7 +416,7 @@ class Yank(object):
                     pass
 
         # Set the fully-interacting expanded cutoff state here
-        if not is_periodic:
+        if not is_periodic or not anisotropic_dispersion_correction:
             fully_interacting_expanded_state = None
         else:
             # Create the fully interacting system

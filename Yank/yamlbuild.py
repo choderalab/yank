@@ -1629,7 +1629,7 @@ class YamlBuilder:
         def to_PBC(nonbonded_method_str):
             """Check OpenMM periodic system"""
             openmm_app = to_openmm_app(nonbonded_method_str)
-            if openmm_app == openmm.app.NoCutoff or openmm_app != openmm.app.CutoffNonPeriodic:
+            if openmm_app == openmm.app.NoCutoff or openmm_app == openmm.app.CutoffNonPeriodic:
                 raise ValueError('Nonbonded method must be PME or CutoffPeriodic')
             return openmm_app
 
@@ -1662,7 +1662,7 @@ class YamlBuilder:
 
         # Warning Catches
         warn_solvent_skipped_pbc_schema = Schema(solvent_skipped_pbc_schema)
-        for solvent_id, solvent_descr in utils.listitems(validated_solvents):
+        for solvent_id, solvent_descr in utils.listitems(solvents_description):
             try:
                 # Confirm schema is valid
                 pass_check = warn_solvent_skipped_pbc_schema.validate(solvent_descr)
