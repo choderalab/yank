@@ -14,9 +14,11 @@ Test restraints module.
 # =============================================================================================
 
 import tempfile
+import os
 import shutil
 import math
 import numpy as np
+import netCDF4 as netcdf
 
 from nose.plugins.attrib import attr
 
@@ -24,6 +26,7 @@ import yank.restraints
 from yank.repex import ThermodynamicState
 from yank.yamlbuild import YamlBuilder
 from yank.utils import get_data_filename
+from yank import analyze
 
 from simtk import unit
 from openmmtools import testsystems
@@ -79,7 +82,7 @@ restraint_test_yaml = """
 ---
 options:
   minimize: no
-  verbose: no
+  verbose: yes
   output_dir: %(output_directory)s
   number_of_iterations: %(number_of_iter)s
   nsteps_per_iteration: 10
@@ -91,31 +94,27 @@ options:
 molecules:
   benzene-rec:
     filepath: data/benzene-toluene-standard-state/standard_state_benzene.pdb
-    leap:
-        parameters: data/benzene-toluene-standard-state/standard_state_benzene.prmtop
   toluene-lig:
     filepath: data/benzene-toluene-standard-state/toluene.pdb
-    leap:
-        parameters: data/benzene-toluene-standard-state/toluene.prmtop
 
 solvents:
   vacuum:
     nonbonded_method: PME
+    nonbonded_cutoff: 0.59 * nanometer
 
 systems:
   ship:
-    receptor: benzene-rec
-    ligand: toluene-lig
+    phase1_path: [data/benzene-toluene-standard-state/standard_state_complex.inpcrd, data/benzene-toluene-standard-state/standard_state_complex.prmtop]
+    phase2_path: [data/benzene-toluene-standard-state/standard_state_complex.inpcrd, data/benzene-toluene-standard-state/standard_state_complex.prmtop]
+    ligand_dsl: resname ene
     solvent: vacuum
-    leap:
-      parameters: leaprc.gaff
 
 protocols:
   absolute-binding:
     complex:
       alchemical_path:
         lambda_restraints:     [0.0, 0.25, 0.5, 0.75, 1.0]
-        lambda_electrostatics: [1.0, 1.00, 1.0  1.00, 1.0]
+        lambda_electrostatics: [1.0, 1.00, 1.0, 1.00, 1.0]
         lambda_sterics:        [1.0, 1.00, 1.0, 1.00, 1.0]
     solvent:
       alchemical_path:
@@ -141,8 +140,18 @@ def general_restraint_test(options):
     # run both setup and experiment
     yaml_builder = YamlBuilder(restraint_test_yaml % options)
     yaml_builder.build_experiments()
+    # Estimate Free Energies
+    ncfile_path = os.path.join(output_directory, 'experiments', 'complex.nc')
+    ncfile = netcdf.Dataset(ncfile_path, 'r')
+    (Deltaf_ij, dDeltaf_ij) = analyze.estimate_free_energies(ncfile)
+    DeltaF_simulated = Deltaf_ij[0, -1]
+    dDeltaF_simulated = dDeltaf_ij[0, -1]
+    DeltaF_restraints = ncfile.groups['metadata'].variables['standard_state_correction'][0]
+    ncfile.close()
     # Clean up
     shutil.rmtree(output_directory)
+    # Check if they are close
+    assert np.allclose(DeltaF_restraints, DeltaF_simulated, rtol=dDeltaF_simulated)
 
 
 def test_harmonic_free_energy():
