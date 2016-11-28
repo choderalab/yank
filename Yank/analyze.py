@@ -492,7 +492,7 @@ def analyze(source_directory):
                 nequil += 1 # account for initial frame of zero energies
                 logger.info([nequil, Neff_max])
             else:
-                nequil = 1 # discard first frame
+                nequil = 1  # discard first frame
                 g_t = 1
                 Neff_max = niterations
 
@@ -500,16 +500,16 @@ def analyze(source_directory):
             show_mixing_statistics(ncfile, cutoff=0.05, nequil=nequil)
 
             # Extract equilibrated, decorrelated energies, check for fully interacting state
-            (u_kln, N_k, u_n) = extract_ncfile_energies(ncfile, ndiscard = nequil, g=g_t)
+            (u_kln, N_k, u_n) = extract_ncfile_energies(ncfile, ndiscard=nequil, g=g_t)
 
             # Create MBAR object to use for free energy and entropy states
             mbar = initialize_MBAR(ncfile, u_kln=u_kln, N_k=N_k)
 
             # Estimate free energies, use fully interacting state if present
-            (Deltaf_ij, dDeltaf_ij) = estimate_free_energies(ncfile, mbar = mbar)
+            (Deltaf_ij, dDeltaf_ij) = estimate_free_energies(ncfile, mbar=mbar)
 
             # Estimate average enthalpies
-            (DeltaH_i, dDeltaH_i) = estimate_enthalpies(ncfile, mbar = mbar)
+            (DeltaH_i, dDeltaH_i) = estimate_enthalpies(ncfile, mbar=mbar)
 
             # Accumulate free energy differences
             entry = dict()

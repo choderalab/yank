@@ -30,8 +30,6 @@ from yank import analyze
 
 from simtk import unit
 from openmmtools import testsystems
-import openmoltools as omt
-
 
 # =============================================================================================
 # UNIT TESTS
@@ -144,8 +142,9 @@ def general_restraint_test(options):
     ncfile_path = os.path.join(output_directory, 'experiments', 'complex.nc')
     ncfile = netcdf.Dataset(ncfile_path, 'r')
     (Deltaf_ij, dDeltaf_ij) = analyze.estimate_free_energies(ncfile)
-    DeltaF_simulated = Deltaf_ij[0, -1]
-    dDeltaF_simulated = dDeltaf_ij[0, -1]
+    # Correct the sign for the fact that we are adding vs removing the restraints
+    DeltaF_simulated = Deltaf_ij[-1, 0]
+    dDeltaF_simulated = dDeltaf_ij[-1, 0]
     DeltaF_restraints = ncfile.groups['metadata'].variables['standard_state_correction'][0]
     ncfile.close()
     # Clean up
@@ -154,12 +153,33 @@ def general_restraint_test(options):
     assert np.allclose(DeltaF_restraints, DeltaF_simulated, rtol=dDeltaF_simulated)
 
 
+@attr('slow')  # Skip on Travis-CI
 def test_harmonic_free_energy():
     """
     Test that the harmonic restraint simulated free energy equals the standard state correction
     """
     options = {'number_of_iter': '500',
                'restraint_type': 'Harmonic'}
+    general_restraint_test(options)
+
+
+@attr('slow')  # Skip on Travis-CI
+def test_flat_bottom_free_energy():
+    """
+    Test that the harmonic restraint simulated free energy equals the standard state correction
+    """
+    options = {'number_of_iter': '500',
+               'restraint_type': 'FlatBottom'}
+    general_restraint_test(options)
+
+
+@attr('slow')  # Skip on Travis-CI
+def test_Boresch_free_energy():
+    """
+    Test that the harmonic restraint simulated free energy equals the standard state correction
+    """
+    options = {'number_of_iter': '500',
+               'restraint_type': 'Boresch'}
     general_restraint_test(options)
 
 
