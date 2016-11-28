@@ -373,6 +373,9 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         logger.debug("Creating and caching Context and Integrator.")
         state = self.states[0]
         self._integrator = openmm.LangevinIntegrator(state.temperature, self.collision_rate, self.timestep)
+        #from openmmtools.integrators import GHMCIntegrator # DEBUG JDC
+        #self._integrator = GHMCIntegrator(state.temperature, self.collision_rate, self.timestep) # DEBUG JDC
+        #self._integrator.setConstraintTolerance(1.0e-6) # DEBUG JDC
         self._integrator.setRandomNumberSeed(int(np.random.randint(0, MAX_SEED)))
         self._context = self._create_context(state.system, self._integrator)
         final_time = time.time()
@@ -757,16 +760,27 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
                 # Run dynamics.
                 integrator.step(self.nsteps_per_iteration)
                 integrator_end_time = time.time()
+                # DEBUG GHMC
+                #naccept = integrator.getGlobalVariableByName('naccept')
+                #ntrials = integrator.getGlobalVariableByName('ntrials')
+                #logger.debug('replica %5d : GHMC accepted %d / %d (%.3f %%)' % (replica_index, naccept, ntrials, float(naccept) / float(ntrials) * 100.0))
+                #integrator.resetStatistics()
+                #potential_before = context.getState(getEnergy=True).getPotentialEnergy()
+                #context.setPositions( context.getState(getPositions=True, enforcePeriodicBox=state.system.usesPeriodicBoundaryConditions()).getPositions() )
+                #potential_after = context.getState(getEnergy=True).getPotentialEnergy()               
+                #delta_energy = (potential_after - potential_before)
+                #logger.debug('replica %d : change in energy from periodic box enforcement = %8.3f kT' % (replica_index, delta_energy/state.kT))
                 # Get final positions
                 getstate_start_time = time.time()
-                openmm_state = context.getState(getPositions=True, enforcePeriodicBox=state.system.usesPeriodicBoundaryConditions())
+                #openmm_state = context.getState(getPositions=True, enforcePeriodicBox=state.system.usesPeriodicBoundaryConditions())
+                openmm_state = context.getState(getPositions=True, enforcePeriodicBox=False) # DEBUG
                 getstate_end_time = time.time()
                 # Check if final positions are NaN.
-                positions = openmm_state.getPositions(asNumpy=True)
-                if np.any(np.isnan(positions / unit.angstroms)):
+                final_positions = openmm_state.getPositions(asNumpy=True)
+                if np.any(np.isnan(final_positions / unit.angstroms)):
                     raise Exception('Particle coordinate is nan')
                 # Get box vectors
-                box_vectors = openmm_state.getPeriodicBoxVectors(asNumpy=True)
+                final_box_vectors = openmm_state.getPeriodicBoxVectors(asNumpy=True)
                 # Check if final potential energy is NaN.
                 if np.isnan(context.getState(getEnergy=True).getPotentialEnergy() / state.kT):
                     raise Exception('Potential for replica %d is NaN after dynamics' % replica_index)
@@ -799,9 +813,9 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
                     raise e
 
         # Store box vectors.
-        self.replica_box_vectors[replica_index] = box_vectors
+        self.replica_box_vectors[replica_index] = final_box_vectors
         # Store final positions
-        self.replica_positions[replica_index] = positions
+        self.replica_positions[replica_index] = final_positions
 
         # Compute timing.
         end_time = time.time()
