@@ -471,9 +471,11 @@ def analyze(source_directory):
             nstates = ncfile.variables['positions'].shape[1]
             logger.info("Read %(niterations)d iterations, %(nstates)d states" % vars())
 
-            # Read phase direction and standard state correction free energy.
-            # Yank sets correction to 0 if there are no restraints
-            DeltaF_restraints = ncfile.groups['metadata'].variables['standard_state_correction'][0]
+            DeltaF_restraints = 0.0
+            if 'metadata' in ncfile.groups:
+                # Read phase direction and standard state correction free energy.
+                # Yank sets correction to 0 if there are no restraints
+                DeltaF_restraints = ncfile.groups['metadata'].variables['standard_state_correction'][0]
 
             # Choose number of samples to discard to equilibration
             MIN_ITERATIONS = 10 # minimum number of iterations to use automatic detection
