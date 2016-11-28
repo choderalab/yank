@@ -26,7 +26,7 @@ from yank.states import *
 
 def get_barostat_temperature(barostat):
     """Backward-compatibly get barostat's temperature"""
-    try:
+    try:  # TODO drop this when we stop openmm7.0 support
         return barostat.getDefaultTemperature()
     except AttributeError:  # versions previous to OpenMM 7.1
         return barostat.setTemperature()
@@ -113,18 +113,6 @@ class TestThermodynamicState(object):
         assert not state._is_barostat_consistent(barostat)
         barostat = openmm.MonteCarloBarostat(pressure, temperature + 10*unit.kelvin)
         assert not state._is_barostat_consistent(barostat)
-
-    def test_method_add_barostat(self):
-        """ThermodynamicState._add_barostat() method."""
-        state = InconsistentThermodynamicState(system=copy.deepcopy(self.toluene_vacuum),
-                                               temperature=self.temperature)
-        assert state._barostat is None  # Test pre-condition
-
-        state._add_barostat(self.pressure)
-        barostat = state._barostat
-        assert isinstance(barostat, openmm.MonteCarloBarostat)
-        assert barostat.getDefaultPressure() == self.pressure
-        assert get_barostat_temperature(barostat) == self.temperature
 
     def test_property_temperature(self):
         """ThermodynamicState.temperature property."""
