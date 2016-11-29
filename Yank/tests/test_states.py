@@ -160,6 +160,10 @@ class TestThermodynamicState(object):
             assert barostat.getDefaultPressure() == new_pressure
             assert get_barostat_temperature(barostat) == self.temperature
 
+            # Setting pressure to None removes barostat
+            state.pressure = None
+            assert state._barostat is None
+
     def test_constructor_unsupported_barostat(self):
         """Exception is raised on construction with unsupported barostats."""
         TE = ThermodynamicsError  # shortcut
