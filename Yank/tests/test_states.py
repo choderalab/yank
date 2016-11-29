@@ -164,6 +164,23 @@ class TestThermodynamicState(object):
             state.pressure = None
             assert state._barostat is None
 
+    def test_property_volume(self):
+        """Check that volume is computed correctly."""
+        # For volume-fluctuating systems volume is None.
+        state = ThermodynamicState(self.barostated_alanine, self.temperature)
+        assert state.volume is None
+
+        # For periodic systems in NVT, volume is correctly computed.
+        system = self.alanine_explicit
+        box_vectors = system.getDefaultPeriodicBoxVectors()
+        volume = box_vectors[0][0] * box_vectors[1][1] * box_vectors[2][2]
+        state = ThermodynamicState(system, self.temperature)
+        assert state.volume == volume
+
+        # For non-periodic systems, volume is None.
+        state = ThermodynamicState(self.toluene_vacuum, self.temperature)
+        assert state.volume is None
+
     def test_constructor_unsupported_barostat(self):
         """Exception is raised on construction with unsupported barostats."""
         TE = ThermodynamicsError  # shortcut
