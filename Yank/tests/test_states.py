@@ -86,6 +86,17 @@ class TestThermodynamicState(object):
                                                         cls.temperature)
         cls.unsupported_barostat_alanine.addForce(barostat)
 
+        # A system with an inconsistent pressure in the barostat.
+        cls.inconsistent_pressure_alanine = copy.deepcopy(cls.alanine_explicit)
+        barostat = openmm.MonteCarloBarostat(cls.pressure + 0.2*unit.atmosphere,
+                                             cls.temperature)
+        cls.inconsistent_pressure_alanine.addForce(barostat)
+
+        # A system with an inconsistent temperature in the barostat.
+        cls.inconsistent_temperature_alanine = copy.deepcopy(cls.alanine_explicit)
+        barostat = openmm.MonteCarloBarostat(cls.pressure,
+                                             cls.temperature + 1.0*unit.kelvin)
+        cls.inconsistent_temperature_alanine.addForce(barostat)
 
     def test_method_find_barostat(self):
         """ThermodynamicState._find_barostat() method."""
@@ -181,6 +192,30 @@ class TestThermodynamicState(object):
         state = ThermodynamicState(self.toluene_vacuum, self.temperature)
         assert state.volume is None
 
+    def test_property_system(self):
+        """Cannot set a system with an incompatible barostat."""
+        state = ThermodynamicState(self.barostated_alanine, self.temperature)
+        assert state.pressure == self.pressure  # pre-condition
+
+        TE = ThermodynamicsError  # shortcut
+        test_cases = [(self.barostated_toluene, TE.BAROSTATED_NONPERIODIC),
+                      (self.multiple_barostat_alanine, TE.MULTIPLE_BAROSTATS),
+                      (self.inconsistent_pressure_alanine, TE.INCONSISTENT_BAROSTAT),
+                      (self.inconsistent_temperature_alanine, TE.INCONSISTENT_BAROSTAT)]
+        for system, error_code in test_cases:
+            with nose.tools.assert_raises(ThermodynamicsError) as cm:
+                state.system = system
+            assert cm.exception.code == error_code
+
+        # It is possible to set an inconsistent system
+        # if thermodynamic state is changed first.
+        inconsistent_system = self.inconsistent_pressure_alanine
+        state.pressure = self.pressure + 0.2*unit.atmosphere
+        state.system = self.inconsistent_pressure_alanine
+        state_system_str = openmm.XmlSerializer.serialize(state.system)
+        inconsistent_system_str = openmm.XmlSerializer.serialize(inconsistent_system)
+        assert state_system_str == inconsistent_system_str
+
     def test_constructor_unsupported_barostat(self):
         """Exception is raised on construction with unsupported barostats."""
         TE = ThermodynamicsError  # shortcut
@@ -208,19 +243,13 @@ class TestThermodynamicState(object):
         assert state._barostat is not None
 
         # If we feed a barostat with an inconsistent temperature, it's fixed.
-        barostat = openmm.MonteCarloBarostat(self.pressure,
-                                             self.temperature + 1.0*unit.kelvin)
-        copied_system = copy.deepcopy(system)
-        copied_system.addForce(barostat)
-        state = ThermodynamicState(copied_system, temperature=self.temperature)
+        state = ThermodynamicState(self.inconsistent_temperature_alanine,
+                                   temperature=self.temperature)
         assert state._is_barostat_consistent(state._barostat)
 
         # If we feed a barostat with an inconsistent pressure, it's fixed.
-        barostat = openmm.MonteCarloBarostat(self.pressure + 0.2*unit.atmosphere,
-                                             self.temperature + 1.0*unit.kelvin)
-        copied_system = copy.deepcopy(system)
-        copied_system.addForce(barostat)
-        state = ThermodynamicState(copied_system, temperature=self.temperature,
+        state = ThermodynamicState(self.inconsistent_pressure_alanine,
+                                   temperature=self.temperature,
                                    pressure=self.pressure)
         assert state.pressure == self.pressure
 
