@@ -87,13 +87,7 @@ options:
   temperature: 300*kelvin
   pressure: null
   anisotropic_dispersion_correction: no
-  platform: OpenCL
-
-molecules:
-  benzene-rec:
-    filepath: data/benzene-toluene-standard-state/standard_state_benzene.pdb
-  toluene-lig:
-    filepath: data/benzene-toluene-standard-state/toluene.pdb
+  platform: Reference
 
 solvents:
   vacuum:
@@ -112,8 +106,8 @@ protocols:
     complex:
       alchemical_path:
         lambda_restraints:     [0.0, 0.25, 0.5, 0.75, 1.0]
-        lambda_electrostatics: [1.0, 1.00, 1.0, 1.00, 1.0]
-        lambda_sterics:        [1.0, 1.00, 1.0, 1.00, 1.0]
+        lambda_electrostatics: [0.0, 0.00, 0.0, 0.00, 0.0]
+        lambda_sterics:        [0.0, 0.00, 0.0, 0.00, 0.0]
     solvent:
       alchemical_path:
         lambda_electrostatics: [1.0, 1.0]
