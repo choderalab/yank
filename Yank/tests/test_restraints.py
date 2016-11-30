@@ -87,7 +87,7 @@ options:
   temperature: 300*kelvin
   pressure: null
   anisotropic_dispersion_correction: no
-  platform: Reference
+  platform: OpenCL
 
 solvents:
   vacuum:
@@ -121,7 +121,7 @@ experiments:
 """
 
 
-def general_restraint_test(options):
+def general_restraint_run(options):
     """
     Generalized restraint simulation run to test free energy = standard state correction.
 
@@ -154,7 +154,7 @@ def test_harmonic_free_energy():
     """
     options = {'number_of_iter': '500',
                'restraint_type': 'Harmonic'}
-    general_restraint_test(options)
+    general_restraint_run(options)
 
 
 @attr('slow')  # Skip on Travis-CI
@@ -164,7 +164,7 @@ def test_flat_bottom_free_energy():
     """
     options = {'number_of_iter': '500',
                'restraint_type': 'FlatBottom'}
-    general_restraint_test(options)
+    general_restraint_run(options)
 
 
 @attr('slow')  # Skip on Travis-CI
@@ -174,7 +174,7 @@ def test_Boresch_free_energy():
     """
     options = {'number_of_iter': '500',
                'restraint_type': 'Boresch'}
-    general_restraint_test(options)
+    general_restraint_run(options)
 
 
 def test_harmonic_standard_state():
