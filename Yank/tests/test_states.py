@@ -256,3 +256,60 @@ class TestThermodynamicState(object):
         # The original system is unaltered.
         new_serialization = openmm.XmlSerializer.serialize(system)
         assert new_serialization == old_serialization
+
+    def test_method_is_integrator_consistent(self):
+        """The integrator must have the same temperature of the state."""
+        inconsistent_temperature = self.temperature + 1.0*unit.kelvin
+        friction = 5.0/unit.picosecond
+        time_step = 2.0*unit.femtosecond
+        state = ThermodynamicState(self.toluene_vacuum, self.temperature)
+
+        compound = openmm.CompoundIntegrator()
+        compound.addIntegrator(openmm.VerletIntegrator(time_step))
+        compound.addIntegrator(openmm.LangevinIntegrator(self.temperature,
+                                                         friction, time_step))
+        compound.addIntegrator(openmm.LangevinIntegrator(inconsistent_temperature,
+                                                         friction, time_step))
+
+        test_cases = [
+            (True, openmm.LangevinIntegrator(self.temperature,
+                                             friction, time_step)),
+            (False, openmm.LangevinIntegrator(inconsistent_temperature,
+                                              friction, time_step)),
+            (False, openmm.BrownianIntegrator(inconsistent_temperature,
+                                              friction, time_step)),
+            (True, 0), (True, 1), (False, 2)  # Compound integrator
+        ]
+        for consistent, integrator in test_cases:
+            if isinstance(integrator, int):
+                compound.setCurrentIntegrator(integrator)
+                integrator = compound
+            assert state._is_integrator_consistent(integrator) is consistent
+
+            # create_context() should perform the same check.
+            if not consistent:
+                with nose.tools.assert_raises(ThermodynamicsError) as cm:
+                    state.create_context(integrator)
+                assert cm.exception.code == ThermodynamicsError.INCONSISTENT_INTEGRATOR
+
+    def test_method_create_context(self):
+        """ThermodynamicState.create_context() method."""
+        state = ThermodynamicState(self.toluene_vacuum, self.temperature)
+        toluene_str = openmm.XmlSerializer.serialize(self.toluene_vacuum)
+
+        test_cases = [
+            (None, openmm.VerletIntegrator(1.0*unit.femtosecond)),
+            (
+                openmm.Platform.getPlatformByName('Reference'),
+                openmm.LangevinIntegrator(self.temperature, 5.0/unit.picosecond,
+                                          2.0*unit.femtosecond)
+            )
+        ]
+
+        for platform, integrator in test_cases:
+            context = state.create_context(integrator, platform)
+            system_str = openmm.XmlSerializer.serialize(context.getSystem())
+            assert system_str == toluene_str
+            assert isinstance(context.getIntegrator(), integrator.__class__)
+            if platform is not None:
+                assert platform.getName() == context.getPlatform().getName()
