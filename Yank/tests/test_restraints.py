@@ -87,7 +87,7 @@ options:
   temperature: 300*kelvin
   pressure: null
   anisotropic_dispersion_correction: no
-  platform: OpenCL
+  platform: Reference
 
 solvents:
   vacuum:
