@@ -787,11 +787,55 @@ class Boresch(OrientationDependentRestraint):
         """
         super(Boresch, self).__init__(topology, state, system, positions, receptor_atoms, ligand_atoms)
 
-        # Select atoms to be used in restraint.
-        self._restraint_atoms = self._select_restraint_atoms(positions, receptor_atoms, ligand_atoms)
+        self._automatic_parameter_selection(positions, receptor_atoms, ligand_atoms)
 
-        # Determine restraint parameters
-        self._determine_restraint_parameters()
+    def _automatic_parameter_selection(self, positions, receptor_atoms, ligand_atoms):
+        """
+        Determine parameters and restrained atoms automatically, rejecting choices where standard state correction will be incorrectly computed.
+
+        Parameters
+        ----------
+        positions : simtk.unit.Quantity of natoms x 3 with units compatible with nanometers
+            Reference positions to use for imposing restraints
+        receptor_atoms : list of int
+            A complete list of receptor atoms
+        ligand_atoms : list of int
+            A complete list of ligand atoms
+        """
+        NSIGMA = 4
+        temperature = 300 * unit.kelvin
+        kT = kB * temperature
+        attempt = 0
+        MAX_ATTEMPTS = 100
+        reject = True
+        logger.debug('Automatically selecting restraint atoms and parameters:')
+        while (reject and (attempt < MAX_ATTEMPTS)):
+            logger.debug('Attempt %d / %d at automatically selecting atoms and restraint parameters...' % (attempt, MAX_ATTEMPTS))
+
+            # Select atoms to be used in restraint.
+            self._restraint_atoms = self._select_restraint_atoms(positions, receptor_atoms, ligand_atoms)
+
+            # Determine restraint parameters
+            self._determine_restraint_parameters()
+
+            # Terminate if we satisfy criteria
+            reject = False
+            for name in ['A', 'B']:
+                theta0 = self._parameters['theta_' + name + '0']
+                K = self._parameters['K_theta' + name]
+                sigma = unit.sqrt(NSIGMA * kT / (K/2.))
+                if (theta0 < sigma) or (theta0 > (np.pi*unit.radians - sigma)):
+                    logger.debug('Reject because theta_' + name + '0 is too close to 0 or pi for standard state correction to be accurate.')
+                    reject = True
+
+            r0 = self._parameters['r_aA0']
+            K = self._parameters['K_r']
+            sigma = unit.sqrt(NSIGMA * kT / (K/2.))
+            if (r0 < sigma):
+                logger.debug('Reject because r_aA0 is too close to 0 for standard state correction to be accurate.')
+                reject = True
+
+            attempt += 1
 
     def _is_collinear(self, positions, atoms, threshold=0.9):
         """Report whether any sequential vectors in a sequence of atoms are collinear to within a given dot product threshold.
@@ -895,7 +939,7 @@ class Boresch(OrientationDependentRestraint):
         t = md.Trajectory(self._positions / unit.nanometers, self._topology)
 
         distances = md.geometry.compute_distances(t, [self._restraint_atoms[2:4]], periodic=False)
-        self._parameters['r_aA0'] = distances[0] * unit.nanometers
+        self._parameters['r_aA0'] = distances[0][0] * unit.nanometers
 
         angles = md.geometry.compute_angles(t, [self._restraint_atoms[i:(i+3)] for i in range(1,3)], periodic=False)
         for (name, angle) in zip(['theta_A0', 'theta_B0'], angles[0]):
@@ -904,6 +948,12 @@ class Boresch(OrientationDependentRestraint):
         dihedrals = md.geometry.compute_dihedrals(t, [self._restraint_atoms[i:(i+4)] for i in range(3)], periodic=False)
         for (name, angle) in zip(['phi_A0', 'phi_B0', 'phi_C0'], dihedrals[0]):
             self._parameters[name] = angle * unit.radians
+
+        # Write restraint parameters
+        msg = 'restraint parameters:\n'
+        for name in ['K_r', 'r_aA0', 'K_thetaA', 'theta_A0', 'K_thetaB', 'theta_B0', 'K_phiA', 'phi_A0', 'K_phiB', 'phi_B0', 'K_phiC', 'phi_C0']:
+            msg += '%24s : %s\n' % (name, str(self._parameters[name]))
+        logger.debug(msg)
 
     def get_restraint_force(self):
         """
