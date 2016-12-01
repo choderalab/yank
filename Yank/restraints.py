@@ -896,7 +896,7 @@ class Boresch(OrientationDependentRestraint):
         md_top = md.Topology.from_openmm(self._topology)
         t = md.Trajectory(self._positions / unit.nanometers, md_top)
         # Determine heavy atoms. Using sets since lists should be unique anyways
-        heavy_atoms = set(md_top.select('heavy'))
+        heavy_atoms = set(md_top.select('not element H'))
         # Intersect heavy atoms with receptor/ligand atoms (s1&s2 is intersect)
         heavy_ligand_atoms = set(ligand_atoms) & heavy_atoms
         heavy_receptor_atoms = set(receptor_atoms) & heavy_atoms
@@ -917,7 +917,7 @@ class Boresch(OrientationDependentRestraint):
         accepted = False
         while not accepted:
             # Select a receptor/ligand atom in range of each other
-            raA_atoms = list(all_pairs[random.sample(index_of_in_range_atoms, 1)])
+            raA_atoms = all_pairs[random.sample(index_of_in_range_atoms, 1)[0]].tolist()
             # Cast to set for easy comparison operations
             raA_set = set(raA_atoms)
             # Select two additional random atoms from the receptor and ligand
