@@ -83,7 +83,7 @@ options:
   verbose: yes
   output_dir: %(output_directory)s
   number_of_iterations: %(number_of_iter)s
-  nsteps_per_iteration: 10
+  nsteps_per_iteration: 100
   temperature: 300*kelvin
   pressure: null
   anisotropic_dispersion_correction: no
