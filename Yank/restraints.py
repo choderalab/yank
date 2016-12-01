@@ -19,6 +19,7 @@ import copy
 import math
 import time
 import random
+import itertools
 
 import numpy as np
 import scipy.integrate
@@ -809,7 +810,7 @@ class Boresch(OrientationDependentRestraint):
         MAX_ATTEMPTS = 100
         reject = True
         logger.debug('Automatically selecting restraint atoms and parameters:')
-        while (reject and (attempt < MAX_ATTEMPTS)):
+        while reject and attempt < MAX_ATTEMPTS:
             logger.debug('Attempt %d / %d at automatically selecting atoms and restraint parameters...' % (attempt, MAX_ATTEMPTS))
 
             # Select atoms to be used in restraint.
@@ -891,14 +892,36 @@ class Boresch(OrientationDependentRestraint):
         this algorithm.
 
         """
-        if (len(receptor_atoms) < 3) or (len(ligand_atoms) < 3):
-            raise ValueError('Both receptor_atoms (len %d) and ligand_atoms (len %d) must contain at least three atoms.' % (len(receptor_atoms), len(ligand_atoms)))
 
+        md_top = md.Topology.from_openmm(self._topology)
+        t = md.Trajectory(self._positions / unit.nanometers, md_top)
+        # Determine heavy atoms. Using sets since lists should be unique anyways
+        heavy_atoms = set(md_top.select('heavy'))
+        # Intersect heavy atoms with receptor/ligand atoms (s1&s2 is intersect)
+        heavy_ligand_atoms = set(ligand_atoms) & heavy_atoms
+        heavy_receptor_atoms = set(receptor_atoms) & heavy_atoms
+        if (len(heavy_receptor_atoms) < 3) or (len(heavy_ligand_atoms) < 3):
+            raise ValueError('There must be at least three heavy atoms in receptor_atoms (# heavy %d) and ligand_atoms (# heavy %d).' % (len(heavy_receptor_atoms), len(heavy_ligand_atoms)))
+        # Find valid pairs of ligand/receptor atoms within a cutoff
+        max_distance = 4 * unit.angstrom/unit.nanometer
+        min_distance = 1 * unit.angstrom/unit.nanometer
+        # TODO: Cast itertools generator to np array more efficiently
+        all_pairs = np.array(list(itertools.product(heavy_receptor_atoms, heavy_ligand_atoms)))
+        distances = md.geometry.compute_distances(t, all_pairs)[0]
+        index_of_in_range_atoms = np.where(np.logical_and(distances > min_distance, distances <= max_distance))[0]
+        if len(index_of_in_range_atoms) == 0:
+            error_string = 'There are no heavy ligand atoms within the range of [{},{}] nm heavy receptor atoms!\n'
+            error_string += 'Please Check your input files or try another restraint class'
+            raise ValueError(error_string.format(min_distance, max_distance))
         # Iterate until we have found a set of non-collinear atoms.
         accepted = False
-        while (not accepted):
-            # Select three random atoms from the receptor and ligand
-            restraint_atoms = random.sample(receptor_atoms, 3) + random.sample(ligand_atoms, 3)
+        while not accepted:
+            # Select a receptor/ligand atom in range of each other
+            raA_atoms = list(all_pairs[random.sample(index_of_in_range_atoms, 1)])
+            # Cast to set for easy comparison operations
+            raA_set = set(raA_atoms)
+            # Select two additional random atoms from the receptor and ligand
+            restraint_atoms = random.sample(heavy_receptor_atoms-raA_set, 2) + raA_atoms + random.sample(heavy_ligand_atoms-raA_set, 2)
             # Reject collinear sets of atoms.
             accepted = not self._is_collinear(positions, restraint_atoms)
 
