@@ -87,7 +87,7 @@ options:
   temperature: 300*kelvin
   pressure: null
   anisotropic_dispersion_correction: no
-  platform: Reference
+  platform: OpenCL
 
 solvents:
   vacuum:
@@ -172,7 +172,8 @@ def test_Boresch_free_energy():
     """
     Test that the harmonic restraint simulated free energy equals the standard state correction
     """
-    options = {'number_of_iter': '500',
+    # These need more samples to converge
+    options = {'number_of_iter': '1000',
                'restraint_type': 'Boresch'}
     general_restraint_run(options)
 
