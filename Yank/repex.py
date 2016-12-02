@@ -2278,14 +2278,25 @@ class ReplicaExchange(object):
         # Restore energies.
         self.u_kl = ncfile.variables['energies'][self.iteration,:,:].copy()
 
-    def _show_energies(self):
+    def _show_energies(self, u_kl=None, title=None):
         """
         Show energies (in units of kT) for all replicas at all states.
+
+        Parameters
+        ----------
+        u_kl : numpy.array with dimensions (nstates,nstates), optional, default=None
+            If None, will use self.u_kl
 
         """
 
         if not logger.isEnabledFor(logging.DEBUG):
             return
+
+        if u_kl is None:
+            u_kl = self.u_kl
+
+        if title is not None:
+            logger.debug(title)
 
         # print header
         str_row = "%-24s %16s" % ("reduced potential (kT)", "current state")
@@ -2297,7 +2308,7 @@ class ReplicaExchange(object):
         for replica_index in range(self.nstates):
             str_row = "replica %-16d %16d" % (replica_index, self.replica_states[replica_index])
             for state_index in range(self.nstates):
-                u = self.u_kl[replica_index,state_index]
+                u = u_kl[replica_index,state_index]
                 if (u > 1e6):
                     str_row += "%10.3e" % u
                 else:

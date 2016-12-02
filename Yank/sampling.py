@@ -772,8 +772,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
                 #logger.debug('replica %d : change in energy from periodic box enforcement = %8.3f kT' % (replica_index, delta_energy/state.kT))
                 # Get final positions
                 getstate_start_time = time.time()
-                #openmm_state = context.getState(getPositions=True, enforcePeriodicBox=state.system.usesPeriodicBoundaryConditions())
-                openmm_state = context.getState(getPositions=True, enforcePeriodicBox=False) # DEBUG
+                openmm_state = context.getState(getPositions=True, enforcePeriodicBox=state.system.usesPeriodicBoundaryConditions())
                 getstate_end_time = time.time()
                 # Check if final positions are NaN.
                 final_positions = openmm_state.getPositions(asNumpy=True)
@@ -784,8 +783,15 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
                 # Check if final potential energy is NaN.
                 if np.isnan(context.getState(getEnergy=True).getPotentialEnergy() / state.kT):
                     raise Exception('Potential for replica %d is NaN after dynamics' % replica_index)
+
+                # Check energy
+                final_potential_1 = context.getState(getEnergy=True).getPotentialEnergy() / state.kT
+                context.setPositions(final_positions)
+                final_potential_2 = context.getState(getEnergy=True).getPotentialEnergy() / state.kT
+                if(abs(final_potential_1 - final_potential_2) > 0.05):
+                    raise Exception('Final potential before setting periodic conditions (%f) differs from after (%f) : %f' % (final_potential_1, final_potential_2, final_potential_2-final_potential_1))
                 # Signal completion
-                completed = True
+                completed = True                
             except Exception as e:
                 if str(e) == 'Particle coordinate is nan':
                     # If it's a NaN, increment the NaN counter and try again
@@ -947,6 +953,29 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
                 index = state_index // self.mpicomm.size # index within trajectory batch
                 self.u_kl[:,state_index] = energies_gather[source][:,index]
 
+
+            # DEBUG
+            new_integrator = openmm.VerletIntegrator(self._integrator.getStepSize())
+            new_context = self._create_context(self.base_system, new_integrator)
+            new_u_kl = np.zeros(self.u_kl.shape, dtype=self.u_kl.dtype)
+            # Compute energies for this node's share of states.
+            for replica_index in range(self.mpicomm.rank, self.nstates, self.mpicomm.size):
+                for state_index in range(self.nstates):
+                    # Set alchemical state.
+                    AbsoluteAlchemicalFactory.perturbContext(new_context, self.states[state_index].alchemical_state)
+                    new_u_kl[replica_index,state_index] = self.states[state_index].reduced_potential(self.replica_positions[replica_index], box_vectors=self.replica_box_vectors[replica_index], context=new_context)
+            del new_context, new_integrator
+            # Send final energies to all nodes.
+            energies_gather = self.mpicomm.allgather(new_u_kl[self.mpicomm.rank:self.nstates:self.mpicomm.size,:])
+            for replica_index in range(self.nstates):
+                source = replica_index % self.mpicomm.size # node with trajectory data
+                index = replica_index // self.mpicomm.size # index within trajectory batch
+                new_u_kl[replica_index,:] = energies_gather[source][index,:]
+            if self.mpicomm.rank==0:
+                self._show_energies(title='computed energies')
+                self._show_energies(new_u_kl, title='computed energies using new Context')
+                self._show_energies(new_u_kl - self.u_kl, title='energy discrepancies')
+
         else:
             # Serial version.
             for state_index in range(self.nstates):
@@ -954,6 +983,25 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
                 AbsoluteAlchemicalFactory.perturbContext(context, self.states[state_index].alchemical_state)
                 for replica_index in range(self.nstates):
                     self.u_kl[replica_index,state_index] = self.states[state_index].reduced_potential(self.replica_positions[replica_index], box_vectors=self.replica_box_vectors[replica_index], context=context)
+
+            # DEBUG: Check energies
+            new_integrator = openmm.LangevinIntegrator(self._integrator.getTemperature(), self._integrator.getFriction(), self._integrator.getStepSize())
+            new_context = self._create_context(self.base_system, new_integrator)
+            new_u_kl = np.zeros(self.u_kl.shape, dtype=self.u_kl.dtype)
+            for replica_index in range(self.nstates):
+                for state_index in range(self.nstates):
+                    # Set alchemical state.
+                    AbsoluteAlchemicalFactory.perturbContext(new_context, self.states[state_index].alchemical_state)
+                    new_u_kl[replica_index,state_index] = self.states[state_index].reduced_potential(self.replica_positions[replica_index], box_vectors=self.replica_box_vectors[replica_index], context=new_context)
+            del new_integrator, new_context
+
+            print('old energies:')
+            self._show_energies()
+            print('new energies:')
+            self._show_energies(new_u_kl)
+            print('errors in energies:')
+            self._show_energies(new_u_kl - self.u_kl)
+            print('max error: %f' % (abs(new_u_kl - self.u_kl).max()))
 
         end_time = time.time()
         elapsed_time = end_time - start_time
