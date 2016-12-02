@@ -1036,6 +1036,8 @@ class Boresch(OrientationDependentRestraint):
         Notes
         -----
         Uses analytical approach from [1], but this approach is known to be inexact.
+        This approach breaks down when the equilibrium restraint angles are near the limits of their domains and when
+        equilibrium distance is near 0.
 
         """
 
@@ -1043,7 +1045,7 @@ class Boresch(OrientationDependentRestraint):
         return DeltaG
 
     @staticmethod
-    def get_standard_state_correction_static(method='analytical', **kwargs):
+    def get_standard_state_correction_static(method='numerical', **kwargs):
         """
         Compute the standard state correction for the arbitrary restraint energy function.
 
@@ -1063,7 +1065,7 @@ class Boresch(OrientationDependentRestraint):
             """Make a dict accessible via an object accessor"""
             def __init__(self, adict):
                 self.__dict__.update(adict)
-                
+
         def strip(passed_unit):
             """Cast the passed_unit into md unit system for integrand lambda functions"""
             return passed_unit.value_in_unit_system(unit.md_unit_system)
