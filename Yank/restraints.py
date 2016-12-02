@@ -1063,6 +1063,10 @@ class Boresch(OrientationDependentRestraint):
             """Make a dict accessible via an object accessor"""
             def __init__(self, adict):
                 self.__dict__.update(adict)
+                
+        def strip(passed_unit):
+            """Cast the passed_unit into md unit system for integrand lambda functions"""
+            return passed_unit.value_in_unit_system(unit.md_unit_system)
 
         all_valid_keys = ['kT', 'parameters']
         for key in all_valid_keys:
@@ -1073,37 +1077,39 @@ class Boresch(OrientationDependentRestraint):
         p = Bunch(kwargs['parameters'])
         DeltaG = 0
 
+        # Multiply by unit.radian**5 to remove the expected unit value
+        # radians is a soft unit in this case, it cancels in the math, but not in the equations here.
         if method is 'analytical':
             # Eq 32 of Ref [1]
             DeltaG += -np.log( \
                 (8. * pi ** 2 * V0) / (p.r_aA0 ** 2 * unit.sin(p.theta_A0) * unit.sin(p.theta_B0)) \
                 * unit.sqrt(p.K_r * p.K_thetaA * p.K_thetaB * p.K_phiA * p.K_phiB * p.K_phiC) / (2 * pi * kT) ** 3 \
-                )
+                * unit.radian**5)
         elif method is 'numerical':
             # Radial
             sigma = 1 / unit.sqrt(p.K_r / kT)
-            rmin = np.min(0, p.r_aA0 - 8 * sigma)
+            rmin = min(0*unit.angstrom, p.r_aA0 - 8 * sigma)
             rmax = p.r_aA0 + 8 * sigma
-            I = lambda r: r ** 2 * exp(-p.K_r / (2 * kT) * (r - p.r_aA0) ** 2)
-            DGIntegral, dDGIntegral = scipy.integrate.quad(I, rmin / unit.nanometer, rmax / unit.nanometer) * unit.nanometer**3
+            I = lambda r: r ** 2 * np.exp(-strip(p.K_r) / (2 * strip(kT)) * (r - strip(p.r_aA0)) ** 2)
+            DGIntegral, dDGIntegral = scipy.integrate.quad(I, strip(rmin), strip(rmax)) * unit.nanometer**3
             ExpDeltaG = DGIntegral
             # Angular
             for name in ['A', 'B']:
                 theta0 = getattr(p, 'theta_' + name + '0')
                 K_theta = getattr(p, 'K_theta' + name)
-                I = lambda theta: np.sin(theta) * exp(-K_theta / (2 * kT) * (theta - theta0) ** 2)
+                I = lambda theta: np.sin(theta) * np.exp(-strip(K_theta) / (2 * strip(kT)) * (theta - strip(theta0)) ** 2)
                 DGIntegral, dDGIntegral = scipy.integrate.quad(I, 0, pi)
-                ExpDeltag *= DGIntegral
+                ExpDeltaG *= DGIntegral
             # Torsion
             for name in ['A', 'B', 'C']:
                 phi0 = getattr(p, 'phi_' + name + '0')
                 K_phi = getattr(p, 'K_phi' + name)
-                kshort = K_phi/kT
+                kshort = strip(K_phi/kT)
                 ExpDeltaG *= math.sqrt(pi/2.0) * (
-                    math.erf((phi0+pi)*unit.sqrt(kshort)/math.sqrt(2)) -
-                    math.erf((phi0-pi)*unit.sqrt(kshort)/math.sqrt(2))
+                    math.erf((strip(phi0)+pi)*unit.sqrt(kshort)/math.sqrt(2)) -
+                    math.erf((strip(phi0)-pi)*unit.sqrt(kshort)/math.sqrt(2))
                 ) / unit.sqrt(kshort)
-                DeltaG += -np.log(8 * pi**2 * V0 / ExpDeltaG)
+            DeltaG += -np.log(8 * pi**2 * V0 / ExpDeltaG)
         else:
             raise ValueError('"method" must be "analytical" or "numerical"')
 
