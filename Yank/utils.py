@@ -684,18 +684,6 @@ def find_phases_in_store_directory(store_directory):
     return phases
 
 
-def is_iterable_container(value):
-    """Check whether the given value is a list-like object or not.
-
-    Returns
-    -------
-    Flase if value is a string or not iterable, True otherwise.
-
-    """
-    # strings are iterable too so we have to treat them as a special case
-    return not isinstance(value, str) and isinstance(value, collections.Iterable)
-
-
 # ==============================================================================
 # Conversion utilities
 # ==============================================================================

@@ -23,14 +23,6 @@ from yank.utils import *
 # TESTING FUNCTIONS
 #=============================================================================================
 
-def test_is_iterable_container():
-    """Test utility function not_iterable_container()."""
-    assert is_iterable_container(3) == False
-    assert is_iterable_container('ciao') == False
-    assert is_iterable_container([1, 2, 3]) == True
-    assert is_iterable_container(CombinatorialLeaf([1, 2, 3])) == True
-
-
 def test_set_tree_path():
     """Test getting and setting of CombinatorialTree paths."""
     test = CombinatorialTree({'a': 2})
