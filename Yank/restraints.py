@@ -1038,20 +1038,74 @@ class Boresch(OrientationDependentRestraint):
         Uses analytical approach from [1], but this approach is known to be inexact.
 
         """
+
+        DeltaG = self.get_standard_state_correction_static('analytical', kT=self.kT, parameters=self._parameters)
+        return DeltaG
+
+    @staticmethod
+    def get_standard_state_correction_static(method='analytical', **kwargs):
+        """
+        Compute the standard state correction for the arbitrary restraint energy function.
+
+        Returns
+        -------
+        DeltaG : float
+            Computed standard-state correction in dimensionless units (kT)
+
+        Notes
+        -----
+        'analytical' uses analytical approach from [1], but this approach is known to be inexact.
+        'numerical' uses numerical integral to the partition function contriubtions for r and theta, analytical for phi
+
+        """
+
         class Bunch(object):
             """Make a dict accessible via an object accessor"""
             def __init__(self, adict):
                 self.__dict__.update(adict)
 
-        # Retrieve constants for convenience.
-        p = Bunch(self._parameters)
-        kT = self.kT
+        all_valid_keys = ['kT', 'parameters']
+        for key in all_valid_keys:
+            if key not in kwargs:
+                raise KeyError('Missing {} from input arguments!'.format(key))
+        kT = kwargs['kT']
         pi = np.pi
+        p = Bunch(kwargs['parameters'])
+        DeltaG = 0
 
-        # Eq 32 of Ref [1]
-        DeltaG = -np.log( \
-            (8. * pi**2 * V0) / (p.r_aA0**2 * unit.sin(p.theta_A0) * unit.sin(p.theta_B0)) \
-            * unit.sqrt(p.K_r * p.K_thetaA * p.K_thetaB * p.K_phiA * p.K_phiB * p.K_phiC) / (2 * pi * kT)**3 \
-            )
-        # Return standard state correction (in kT).
+        if method is 'analytical':
+            # Eq 32 of Ref [1]
+            DeltaG += -np.log( \
+                (8. * pi ** 2 * V0) / (p.r_aA0 ** 2 * unit.sin(p.theta_A0) * unit.sin(p.theta_B0)) \
+                * unit.sqrt(p.K_r * p.K_thetaA * p.K_thetaB * p.K_phiA * p.K_phiB * p.K_phiC) / (2 * pi * kT) ** 3 \
+                )
+        elif method is 'numerical':
+            # Radial
+            sigma = 1 / unit.sqrt(p.K_r / kT)
+            rmin = np.min(0, p.r_aA0 - 8 * sigma)
+            rmax = p.r_aA0 + 8 * sigma
+            I = lambda r: r ** 2 * exp(-p.K_r / (2 * kT) * (r - p.r_aA0) ** 2)
+            DGIntegral, dDGIntegral = scipy.integrate.quad(I, rmin / unit.nanometer, rmax / unit.nanometer) * unit.nanometer**3
+            ExpDeltaG = DGIntegral
+            # Angular
+            for name in ['A', 'B']:
+                theta0 = getattr(p, 'theta_' + name + '0')
+                K_theta = getattr(p, 'K_theta' + name)
+                I = lambda theta: np.sin(theta) * exp(-K_theta / (2 * kT) * (theta - theta0) ** 2)
+                DGIntegral, dDGIntegral = scipy.integrate.quad(I, 0, pi)
+                ExpDeltag *= DGIntegral
+            # Torsion
+            for name in ['A', 'B', 'C']:
+                phi0 = getattr(p, 'phi_' + name + '0')
+                K_phi = getattr(p, 'K_phi' + name)
+                kshort = K_phi/kT
+                ExpDeltaG *= math.sqrt(pi/2.0) * (
+                    math.erf((phi0+pi)*unit.sqrt(kshort)/math.sqrt(2)) -
+                    math.erf((phi0-pi)*unit.sqrt(kshort)/math.sqrt(2))
+                ) / unit.sqrt(kshort)
+                DeltaG += -np.log(8 * pi**2 * V0 / ExpDeltaG)
+        else:
+            raise ValueError('"method" must be "analytical" or "numerical"')
+
         return DeltaG
+
