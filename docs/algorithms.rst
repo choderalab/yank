@@ -88,7 +88,8 @@ where :math:`\theta`\ (\ *r*\ ) is a step function that excludes the interior of
 The alchemically-modified surface area potential term is a modified form of the term given by :cite:`Schaefer1998`\ :cite:`Ponder`
 
 .. math::
-   U_{SA}(x;\lambda) = \epsilon_{SA} \cdot 4\pi \sum_{i} s_i(\lambda,\eta) {\left({r}_{i}+{r}_{\mathit{solvent}}\right)}^{2}{\left(\frac{{r}_{i}}{{R}_{i}}\right)}^{6}
+   U_{SA}(x;\lambda) = \epsilon_{SA} \cdot 4\pi erically
+   \sum_{i} s_i(\lambda,\eta) {\left({r}_{i}+{r}_{\mathit{solvent}}\right)}^{2}{\left(\frac{{r}_{i}}{{R}_{i}}\right)}^{6}
 
 where :math:`\epsilon_{SA}` is the surface area energy penalty, :math:`r_i` is the atomic radius of particle *i*\ , :math:`r_i` is its atomic radius, and :math:`r_\mathit{solvent}` is the solvent radius, which is taken to be 0.14 nm.
 The default value for the surface area penalty :math:`\epsilon_{SA}` is 2.25936 kJ/mol/nm\ :sup:`2`\ .
@@ -154,16 +155,18 @@ To correct for this, we utilize the **anisotropic long-range dispersion correcti
 Because this contribution is only accumulated when configurations are written to disk, the additional computational overhead is small.
 The largest allowable cutoff (slightly smaller than one-half the smallest box edge) is automatically selected for this purpose.
 
-Restraint potential and standard state correction
-=================================================
+Restraints and standard state correction
+========================================
 
 Restraints between receptor and ligand are used for two purposes:
+
 * **Defining the bound species**: The theoretical framework for alchemical free energy calculations requires that the bound receptor-ligand complex be defined in some way.
-While this can be done by an indicator function that assumes the value of unity of the receptor and ligand are bound otherwise, it is difficult to restrict the bound complex integral to this region within the context of a molecular dynamics simulation.
-Instead, a fuzzy indicator function that can assume continuous values is equivalent to imposing a restraint that restricts the ligand to be near the receptor to define the bound complex and restrict the configuration integral.
+  While this can be done by an indicator function that assumes the value of unity of the receptor and ligand are bound otherwise, it is difficult to restrict the bound complex integral to this region within the context of a molecular dynamics simulation.
+  Instead, a fuzzy indicator function that can assume continuous values is equivalent to imposing a restraint that restricts the ligand to be near the receptor to define the bound complex and restrict the configuration integral.
+
 * **Reducing accessible ligand conformations during intermediate alchemical states**: Another function of restraints is to restrict the region of conformation space that must be integrated in the majority of the alchemical states, speeding convergence.
-For example, orientational restraints greatly restrict the number of orientations or binding modes the ligand must visit during intermediate alchemical states, greatly accelerating convergence.
-On the other hand, if multiple orientations are relevant but cannot be sampled during the imposition of additional restraints, this can cause the resulting free energy estimate to be heavily biased.
+  For example, orientational restraints greatly restrict the number of orientations or binding modes the ligand must visit during intermediate alchemical states, greatly accelerating convergence.
+  On the other hand, if multiple orientations are relevant but cannot be sampled during the imposition of additional restraints, this can cause the resulting free energy estimate to be heavily biased.
 
 In principle, both types of restraints would be used in tandem: One restraint would define the bound complex, while another restraint would be turned to reduce the amount of sampling required to evaluate alchemical free energy differences.
 In the current version of YANK, only one restraint can be used at a time.
@@ -173,7 +176,7 @@ Standard state correction
 -------------------------
 
 Since the restraint defines the bound complex, in order to report a standard state binding free energy, we must compute the free energy of releasing the restraint into a volume ``V0`` representing the *standard state volume* to achieve a standard state concentration of 1 Molar.
-More detail of how this free energy fits into the thermodynamic cycle can be found in `theory <theory>`_.
+More detail of how this free energy fits into the thermodynamic cycle can be found in `theory <theory.html>`_.
 
 Restraint types
 ---------------
@@ -189,8 +192,8 @@ Note that this is not recommended for explicit solvent, since there is a signifi
 Spherically symmetric restraints
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-``Harmonic``
-""""""""""""
+Harmonic resstraints (``Harmonic``)
+"""""""""""""""""""""""""""""""""""
 
 A harmonic potential is imposed between the closest atom to the center of the receptor and the closest atom to the center of the ligand, given the initial geometry.
 The equilibrium distance is zero, while the spring constant is selected such the potential reaches ``kT`` at one radius of gyration.
@@ -198,15 +201,19 @@ This allows the ligand to explore multiple binding sites---including internal si
 For implicit and explicit solvent calculations, harmonic restraints should be imposed and at full strength and retained throughout all alchemical states to define the bound complex.
 Since the harmonic restraint is significant at the periphery of the receptor, it can lead to bias in estimates of binding affinities on the surface of receptors.
 
-``FlatBottom``
-""""""""""""""
+The standard-state correction is computed via numerical quadrature.
+
+Flat-bottom restraints (``FlatBottom``)
+"""""""""""""""""""""""""""""""""""""""
 
 A variant of ``Harmonic`` where the restraint potential is zero in the central region and grows as a half-harmonic potential outside of this region.
 A lengthscale ``sigma`` is computed from the median absolute distance from the central receptor atom to all atoms, multiplied by 1.4826.
 The transition from flat to harmonic occurs at ``r0 = 2*sigma + 5*angstroms``.
 A spring constant of ``K = 0.6 * kilocalories_per_mole / angstroms**2`` is used.
-This restraint is described in detail in [3].
+This restraint is described in detail in :cite:`Shirts2013:yank`.
 For implicit and explicit solvent calculations, flat-bottom restraints should be imposed and at full strength and retained throughout all alchemical states to define the bound complex.
+
+The standard-state correction is computed via numerical quadrature.
 
 Orientational restraints
 ^^^^^^^^^^^^^^^^^^^^^^^^
@@ -215,36 +222,32 @@ Orientational restraints are used to confine the ligand to a single binding pose
 
 .. warning:: Because the ligand is highly restrained orientationally, the initial configuration should have the ligand well-placed in the binding site; errors in initial pose cannot be easily recovered from.
 
-``Boresch``
-"""""""""""
+Boresch restraints (``Boresch``)
+""""""""""""""""""""""""""""""""
 
-A common type of **orientational restraints** between receptor and ligand [1].
+A common type of **orientational restraints** between receptor and ligand :cite:`Boresch2003`.
 These restrain a distance, two angles, and three torsions in an attempt to keep the ligand in a specific relative binding pose.
 Default spring constants used in [1] are used, and a set of atoms is automatically chosen (three each in the ligand and receptor) to ensure that the distance (``r_aA0``) is within [1,4] Angstroms and the angles (``theta_A0``, ``theta_B0``) is several standard deviations away from 0 and ``pi``.
-Because the analytical standard state correction described in Eq. 32 of [1] is inaccurate in certain regimes, the integral is solved using a combination of numerical and analytical one-dimensional integrals.
 
 Standard use of Boresch restraints is to turn on the restraints over several alchemical states and keep the restraints active while discharging followed by Lennard-Jones decoupling.
 This assumes the ligand is already effectively confined to its bound state even when the restraint is off such that imposing the restraint measures the free energy of additionally confining the *bound* ligand; if this is not the case, it could lead to problematic free energy estimates.
 
-.. warning:: Symmetry corrections for symmetric ligands are **not** automatically applied; see Ref [1] and [2] for more information on correcting for ligand symmetry.
+The standard state correction is computed by evaluating using a combination of numerical and analytical one-dimensional integrals from Eq. 12 of :cite:`Boresch2003`.
+Note that the analytical standard state correction described in Eq. 32 of :cite:`Boresch2003` is inaccurate (up to several ``kT``) in certain regimes (near ``r_aA0 = 0`` and ``theta_A0, theta_B0`` near 0 or ``pi``) and should be avoided.
+
+.. warning:: Symmetry corrections for symmetric ligands are **not** automatically applied; see Ref :cite:`Boresch2003` and :cite:`Mobley2006:orientational-restraints` for more information on correcting for ligand symmetry.
 
 Adding new restraints
 ---------------------
 
 ``YANK`` also makes it easy to add new types of restraints by subclassing the ``yank.restraints.ReceptorLigandRestraint`` class.
 Simply subclassing this class (an abstract base class) and implementing the following methods will allow this restraint type to be specified via its classname.
-* ``__init__(self, topology, state, system, positions, receptor_atoms, ligand_atoms):``
-* ``get_restraint_force(self):``
-* ``get_standard_state_correction(self):``
 
-References
-----------
-* [1] Boresch S, Tettinger F, Leitgeb M, Karplus M. J Phys Chem B. 107:9535, 2003.
-http://dx.doi.org/10.1021/jp0217839
-* [2] Mobley DL, Chodera JD, and Dill KA. J Chem Phys 125:084902, 2006.
-https://dx.doi.org/10.1063%2F1.2221683
-* [3] Kai Wang K, John D. Chodera, Yanzhi Yang, and Michael R. Shirts. J. Comput. Aid. Mol. Des. 27:989, 2013
-http://dx.doi.org/10.1007/s10822-013-9689-8
+* ``__init__(self, topology, state, system, positions, receptor_atoms, ligand_atoms):``
+
+* ``get_restraint_force(self):``
+
+* ``get_standard_state_correction(self):``
 
 Alchemical intermediates
 ========================
