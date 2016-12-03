@@ -292,6 +292,31 @@ class TestThermodynamicState(object):
                     state.create_context(integrator)
                 assert cm.exception.code == ThermodynamicsError.INCONSISTENT_INTEGRATOR
 
+    def test_method_set_integrator_temperature(self):
+        """ThermodynamicState._set_integrator_temperature() method."""
+        temperature = self.temperature + 1.0*unit.kelvin
+        friction = 5.0/unit.picosecond
+        time_step = 2.0*unit.femtosecond
+        state = ThermodynamicState(self.toluene_vacuum, self.temperature)
+
+        integrator = openmm.LangevinIntegrator(temperature, friction, time_step)
+        state._set_integrator_temperature(integrator)
+        assert integrator.getTemperature() == self.temperature
+
+        # It doesn't explode with integrators not coupled to a heat bath
+        integrator = openmm.VerletIntegrator(time_step)
+        state._set_integrator_temperature(integrator)
+
+    def test_method_get_standard_system(self):
+        """ThermodynamicState._turn_to_standard_system() class method."""
+        system = copy.deepcopy(self.barostated_alanine)
+
+        standard_system = ThermodynamicState._get_standard_system(system)
+        assert ThermodynamicState._find_barostat(standard_system) is None
+
+        # The original system is left untouched.
+        assert ThermodynamicState._find_barostat(system) is not None
+
     def test_method_create_context(self):
         """ThermodynamicState.create_context() method."""
         state = ThermodynamicState(self.toluene_vacuum, self.temperature)
@@ -313,3 +338,34 @@ class TestThermodynamicState(object):
             assert isinstance(context.getIntegrator(), integrator.__class__)
             if platform is not None:
                 assert platform.getName() == context.getPlatform().getName()
+
+    def test_method_is_compatible(self):
+        """ThermodynamicState context and state compatibility methods."""
+        def check_compatibility(state1, state2, is_compatible):
+            assert state1.is_state_compatible(state2) is is_compatible
+            assert state2.is_state_compatible(state1) is is_compatible
+            time_step = 1.0*unit.femtosecond
+            integrator1 = openmm.VerletIntegrator(time_step)
+            integrator2 = openmm.VerletIntegrator(time_step)
+            context1 = state1.create_context(integrator1)
+            context2 = state2.create_context(integrator2)
+            assert state1.is_context_compatible(context2) is is_compatible
+            assert state2.is_context_compatible(context1) is is_compatible
+
+        toluene_vacuum = ThermodynamicState(self.toluene_vacuum, self.temperature)
+        toluene_implicit = ThermodynamicState(self.toluene_implicit, self.temperature)
+        alanine_explicit = ThermodynamicState(self.alanine_explicit, self.temperature)
+        barostated_alanine = ThermodynamicState(self.barostated_alanine, self.temperature)
+
+        check_compatibility(toluene_vacuum, toluene_vacuum, True)
+        check_compatibility(toluene_vacuum, toluene_implicit, False)
+        check_compatibility(toluene_implicit, alanine_explicit, False)
+
+        # When we set the system, cached values are updated correctly.
+        toluene_implicit.system = self.toluene_vacuum
+        check_compatibility(toluene_vacuum, toluene_implicit, True)
+
+        # Different values of temperature/pressure do not affect compatibility.
+        toluene_implicit.temperature = self.temperature + 1.0*unit.kelvin
+        check_compatibility(toluene_vacuum, toluene_implicit, True)
+        check_compatibility(alanine_explicit, barostated_alanine, True)
