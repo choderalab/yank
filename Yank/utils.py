@@ -650,6 +650,21 @@ def with_metaclass(metaclass, *bases):
     return type.__new__(Metaclass, 'temporary_class', (), {})
 
 
+class SubhookedABCMeta(with_metaclass(abc.ABCMeta)):
+    """Abstract class with an implementation of __subclasshook__.
+
+    The __subclasshook__ method checks that the instance implement the
+    abstract properties and methods defined by the abstract class.
+
+    """
+    @classmethod
+    def __subclasshook__(cls, subclass):
+        for abstract_method in cls.__abstractmethods__:
+            if not any(abstract_method in C.__dict__ for C in subclass.__mro__):
+                return False
+        return True
+
+
 #========================================================================================
 # Miscellaneous functions
 #========================================================================================
