@@ -1,5 +1,6 @@
 import os
 import re
+import abc
 import sys
 import copy
 import glob
@@ -626,6 +627,27 @@ class CombinatorialTree(collections.MutableMapping):
             for leaf_path, leaf_val in zip(leaf_paths, combination):
                 template_tree[leaf_path] = leaf_val
             yield copy.deepcopy(template_tree._d)
+
+
+# =============================================================================
+# METACLASS UTILITIES
+# =============================================================================
+
+# TODO Remove this when we drop Python 2 support.
+def with_metaclass(metaclass, *bases):
+    """Create a base class with a metaclass.
+
+    Imported from six (MIT license): https://pypi.python.org/pypi/six.
+    Provide a Python2/3 compatible way to create an metaclass.
+
+    """
+    # This requires a bit of explanation: the basic idea is to make a dummy
+    # metaclass for one level of class instantiation that replaces itself with
+    # the actual metaclass.
+    class Metaclass(metaclass):
+        def __new__(cls, name, this_bases, d):
+            return metaclass(name, bases, d)
+    return type.__new__(Metaclass, 'temporary_class', (), {})
 
 
 #========================================================================================
