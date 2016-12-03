@@ -231,82 +231,9 @@ def test_restraint_dispatch():
         assert(restraint.__class__.__name__ == restraint_type)
         assert(restraint.__class__ == restraint_class)
 
-
-def test_protein_ligand_restraints():
-    """Test the restraints in a protein:ligand system.
-    """
-
-    yaml_script = """
----
-options:
-  minimize: no
-  verbose: no
-  output_dir: %(output_directory)s
-  number_of_iterations: 2
-  nsteps_per_iteration: 10
-  temperature: 300*kelvin
-
-molecules:
-  T4lysozyme:
-    filepath: %(receptor_filepath)s
-  p-xylene:
-    filepath: %(ligand_filepath)s
-    antechamber:
-      charge_method: bcc
-
-solvents:
-  vacuum:
-    nonbonded_method: NoCutoff
-
-systems:
-  lys-pxyl:
-    receptor: T4lysozyme
-    ligand: p-xylene
-    solvent: vacuum
-    leap:
-      parameters: [oldff/leaprc.ff14SB, leaprc.gaff]
-
-protocols:
-  absolute-binding:
-    complex:
-      alchemical_path:
-        lambda_restraints:     [0.0, 0.5, 1.0]
-        lambda_electrostatics: [1.0, 1.0, 1.0]
-        lambda_sterics:        [1.0, 1.0, 1.0]
-    solvent:
-      alchemical_path:
-        lambda_electrostatics: [1.0, 1.0, 1.0]
-        lambda_sterics:        [1.0, 1.0, 1.0]
-
-experiments:
-  system: lys-pxyl
-  protocol: absolute-binding
-  restraint:
-    type: %(restraint_type)s
-"""
-    # Test all possible restraint types.
-    available_restraint_types = yank.restraints.available_restraint_types()
-    for restraint_type in available_restraint_types:
-        print('***********************************')
-        print('Testing %s restraints...' % restraint_type)
-        print('***********************************')
-        output_directory = tempfile.mkdtemp()
-        data = {
-            'output_directory' : output_directory,
-            'restraint_type' : restraint_type,
-            'receptor_filepath' : get_data_filename('tests/data/p-xylene-implicit/181L-pdbfixer.pdb'),
-            'ligand_filepath'   : get_data_filename('tests/data/p-xylene-implicit/p-xylene.mol2'),
-        }
-        # run both setup and experiment
-        yaml_builder = YamlBuilder(yaml_script % data)
-        yaml_builder.build_experiments()
-        # Clean up
-        shutil.rmtree(output_directory)
-
 # =============================================================================================
 # MAIN
 # =============================================================================================
 
 if __name__ == '__main__':
-    test_available_restraint_classes()
     test_restraint_dispatch()
