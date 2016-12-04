@@ -654,7 +654,19 @@ class SubhookedABCMeta(with_metaclass(abc.ABCMeta)):
     """Abstract class with an implementation of __subclasshook__.
 
     The __subclasshook__ method checks that the instance implement the
-    abstract properties and methods defined by the abstract class.
+    abstract properties and methods defined by the abstract class. This
+    allow classes to implement an abstraction without explicitly
+    subclassing.
+
+    Examples
+    --------
+    >>> class MyInterface(SubhookedABCMeta):
+    ...     @abc.abstractmethod
+    ...     def my_method(self): pass
+    >>> class Implementation(object):
+    ...     def my_method(self): return True
+    >>> isinstance(Implementation(), MyInterface)
+    True
 
     """
     @classmethod
