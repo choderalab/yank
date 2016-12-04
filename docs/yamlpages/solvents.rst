@@ -216,12 +216,10 @@ We highly recommend  having a
 :ref:`number of equilibration iterations <yaml_options_number_of_equilibration_iterations>` 
 when this option is invoked.
 
-If not specified, this process is not carried out and no solvent will be added to the systems. Because this is a rare
-scenario, YANK warns the user that no solvent will be added. It is up to the user to provide input files with appropriate
-Periodic Boundary Conditions. Please see :ref:`the documentation for providing your own phases <yaml_systems_user_defined>`
-for this scenario.
+This option is mandatory only for systems that need to go through the automatic preparation pipeline, and it is ignored
+for systems :ref:`defined by Amber, GROMACS, or OpenMM files <yaml_systems_user_defined>`.
 
-Nonbonded Methods: ``CuttoffPeriodic``, ``Ewald``, ``PME``
+Nonbonded Methods: ``CuttoffNonPeriodic``, ``CuttoffPeriodic``, ``Ewald``, ``PME``
 
 Valid Options: <Quantity Length> [1]_
 
