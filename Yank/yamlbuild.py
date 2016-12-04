@@ -1630,7 +1630,7 @@ class YamlBuilder:
         explicit_schema = utils.generate_signature_schema(AmberPrmtopFile.createSystem,
                                 update_keys={'nonbonded_method': Use(to_explicit_solvent)},
                                 exclude_keys=['implicit_solvent'])
-        explicit_schema.update({'clearance': Use(utils.to_unit_validator(unit.angstrom)),
+        explicit_schema.update({Optional('clearance'): Use(utils.to_unit_validator(unit.angstrom)),
                                 Optional('positive_ion'): str, Optional('negative_ion'): str})
         implicit_schema = utils.generate_signature_schema(AmberPrmtopFile.createSystem,
                                 update_keys={'implicit_solvent': Use(to_openmm_app),
@@ -1741,6 +1741,15 @@ class YamlBuilder:
                 return True
             raise YamlParseError('Solvent ' + solvent_id + ' is unknown.')
 
+        def is_pipeline_solvent(solvent_id):
+            is_known_solvent(solvent_id)
+            solvent = self._db.solvents[solvent_id]
+            if (solvent['nonbonded_method'] != openmm.app.NoCutoff and
+                    'clearance' not in solvent):
+                raise YamlParseError('Explicit solvent {} does not specify '
+                                     'clearance.'.format(solvent_id))
+            return True
+
         def system_files(type):
             def _system_files(files):
                 """Paths to amber/gromacs/xml files. Return them in alphabetical
@@ -1767,11 +1776,11 @@ class YamlBuilder:
             'parameters': And(Use(lambda p: [p] if isinstance(p, str) else p), [str])}
         system_schema = Schema(Or(
             {'receptor': is_known_molecule, 'ligand': is_known_molecule,
-             'solvent': is_known_solvent, Optional('pack', default=False): bool,
+             'solvent': is_pipeline_solvent, Optional('pack', default=False): bool,
              Optional('leap'): parameters_schema},
 
-            {'solute': is_known_molecule, 'solvent1': is_known_solvent,
-             'solvent2': is_known_solvent, Optional('leap'): parameters_schema},
+            {'solute': is_known_molecule, 'solvent1': is_pipeline_solvent,
+             'solvent2': is_pipeline_solvent, Optional('leap'): parameters_schema},
 
             {'phase1_path': Use(system_files('amber')), 'phase2_path': Use(system_files('amber')),
              'ligand_dsl': str, 'solvent': is_known_solvent},
