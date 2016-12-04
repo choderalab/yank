@@ -19,7 +19,6 @@ import copy
 import yaml
 import logging
 import collections
-import warnings
 
 import numpy as np
 import openmoltools as omt
@@ -1056,9 +1055,8 @@ class SetupDatabase:
                 tleap.add_ions(unit=unit_to_solvate, ion=solvent['negative_ion'])
 
             # Solvate unit
-            if 'clearance' in solvent:
-                clearance = float(solvent['clearance'].value_in_unit(unit.angstroms))
-                tleap.solvate(group=unit_to_solvate, water_model='TIP3PBOX', clearance=clearance)
+            clearance = float(solvent['clearance'].value_in_unit(unit.angstroms))
+            tleap.solvate(group=unit_to_solvate, water_model='TIP3PBOX', clearance=clearance)
 
         # Check charge
         tleap.new_section('Check charge')
@@ -1626,13 +1624,6 @@ class YamlBuilder:
                 raise ValueError('Nonbonded method must be NoCutoff.')
             return openmm_app
 
-        def to_PBC(nonbonded_method_str):
-            """Check OpenMM periodic system"""
-            openmm_app = to_openmm_app(nonbonded_method_str)
-            if openmm_app == openmm.app.NoCutoff or openmm_app == openmm.app.CutoffNonPeriodic:
-                raise ValueError('Nonbonded method must be PME or CutoffPeriodic')
-            return openmm_app
-
         validated_solvents = solvents_description.copy()
 
         # Define solvents Schema
@@ -1648,10 +1639,7 @@ class YamlBuilder:
         vacuum_schema = utils.generate_signature_schema(AmberPrmtopFile.createSystem,
                                 update_keys={'nonbonded_method': Use(to_no_cutoff)},
                                 exclude_keys=['rigid_water', 'implicit_solvent'])
-        solvent_skipped_pbc_schema = utils.generate_signature_schema(AmberPrmtopFile.createSystem,
-                                update_keys={'nonbonded_method': Use(to_PBC)},
-                                exclude_keys=['rigid_water', 'implicit_solvent'])
-        solvent_schema = Schema(Or(explicit_schema, implicit_schema, vacuum_schema, solvent_skipped_pbc_schema))
+        solvent_schema = Schema(Or(explicit_schema, implicit_schema, vacuum_schema))
 
         # Schema validation
         for solvent_id, solvent_descr in utils.listitems(solvents_description):
@@ -1659,21 +1647,6 @@ class YamlBuilder:
                 validated_solvents[solvent_id] = solvent_schema.validate(solvent_descr)
             except SchemaError as e:
                 raise YamlParseError('Solvent {}: {}'.format(solvent_id, e.autos[-1]))
-
-        # Warning Catches
-        warn_solvent_skipped_pbc_schema = Schema(solvent_skipped_pbc_schema)
-        for solvent_id, solvent_descr in utils.listitems(solvents_description):
-            try:
-                # Confirm schema is valid
-                pass_check = warn_solvent_skipped_pbc_schema.validate(solvent_descr)
-                del pass_check
-                warnings.warn("\n********************************************************************************\n"
-                              "Solvent {} has a periodic `nonbonded_method`, but no solvent will be added since\n"
-                              "`clearance` was not also set. Ensure you have specified PBC in your input files!\n"
-                              "********************************************************************************".format(solvent_id),
-                              UserWarning)
-            except SchemaError:
-                pass
 
         return validated_solvents
 
