@@ -19,6 +19,7 @@ import copy
 import math
 import time
 import random
+import itertools
 
 import numpy as np
 import scipy.integrate
@@ -453,7 +454,7 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
             dI = 4.0 * math.pi * r**2 * math.exp(-beta * potential)
             return dI
 
-        (shell_volume, shell_volume_error) = scipy.integrate.quad(lambda r : integrand(r), r_min / unit.nanometers, r_max / unit.nanometers) * unit.nanometers**3 # integrate shell volume
+        (shell_volume, shell_volume_error) = scipy.integrate.quad(lambda r : integrand(r), r_min / unit.nanometers, r_max / unit.nanometers) * unit.nanometers**3  # integrate shell volume
         logger.debug("shell_volume = %f nm^3" % (shell_volume / unit.nanometers**3))
 
         # Compute standard-state volume for a single molecule in a box of size (1 L) / (avogadros number)
@@ -787,11 +788,55 @@ class Boresch(OrientationDependentRestraint):
         """
         super(Boresch, self).__init__(topology, state, system, positions, receptor_atoms, ligand_atoms)
 
-        # Select atoms to be used in restraint.
-        self._restraint_atoms = self._select_restraint_atoms(positions, receptor_atoms, ligand_atoms)
+        self._automatic_parameter_selection(positions, receptor_atoms, ligand_atoms)
 
-        # Determine restraint parameters
-        self._determine_restraint_parameters()
+    def _automatic_parameter_selection(self, positions, receptor_atoms, ligand_atoms):
+        """
+        Determine parameters and restrained atoms automatically, rejecting choices where standard state correction will be incorrectly computed.
+
+        Parameters
+        ----------
+        positions : simtk.unit.Quantity of natoms x 3 with units compatible with nanometers
+            Reference positions to use for imposing restraints
+        receptor_atoms : list of int
+            A complete list of receptor atoms
+        ligand_atoms : list of int
+            A complete list of ligand atoms
+        """
+        NSIGMA = 4
+        temperature = 300 * unit.kelvin
+        kT = kB * temperature
+        attempt = 0
+        MAX_ATTEMPTS = 100
+        reject = True
+        logger.debug('Automatically selecting restraint atoms and parameters:')
+        while reject and attempt < MAX_ATTEMPTS:
+            logger.debug('Attempt %d / %d at automatically selecting atoms and restraint parameters...' % (attempt, MAX_ATTEMPTS))
+
+            # Select atoms to be used in restraint.
+            self._restraint_atoms = self._select_restraint_atoms(positions, receptor_atoms, ligand_atoms)
+
+            # Determine restraint parameters
+            self._determine_restraint_parameters()
+
+            # Terminate if we satisfy criteria
+            reject = False
+            for name in ['A', 'B']:
+                theta0 = self._parameters['theta_' + name + '0']
+                K = self._parameters['K_theta' + name]
+                sigma = unit.sqrt(NSIGMA * kT / (K/2.))
+                if (theta0 < sigma) or (theta0 > (np.pi*unit.radians - sigma)):
+                    logger.debug('Reject because theta_' + name + '0 is too close to 0 or pi for standard state correction to be accurate.')
+                    reject = True
+
+            r0 = self._parameters['r_aA0']
+            K = self._parameters['K_r']
+            sigma = unit.sqrt(NSIGMA * kT / (K/2.))
+            if (r0 < sigma):
+                logger.debug('Reject because r_aA0 is too close to 0 for standard state correction to be accurate.')
+                reject = True
+
+            attempt += 1
 
     def _is_collinear(self, positions, atoms, threshold=0.9):
         """Report whether any sequential vectors in a sequence of atoms are collinear to within a given dot product threshold.
@@ -847,14 +892,36 @@ class Boresch(OrientationDependentRestraint):
         this algorithm.
 
         """
-        if (len(receptor_atoms) < 3) or (len(ligand_atoms) < 3):
-            raise ValueError('Both receptor_atoms (len %d) and ligand_atoms (len %d) must contain at least three atoms.' % (len(receptor_atoms), len(ligand_atoms)))
 
+        md_top = md.Topology.from_openmm(self._topology)
+        t = md.Trajectory(self._positions / unit.nanometers, md_top)
+        # Determine heavy atoms. Using sets since lists should be unique anyways
+        heavy_atoms = set(md_top.select('not element H'))
+        # Intersect heavy atoms with receptor/ligand atoms (s1&s2 is intersect)
+        heavy_ligand_atoms = set(ligand_atoms) & heavy_atoms
+        heavy_receptor_atoms = set(receptor_atoms) & heavy_atoms
+        if (len(heavy_receptor_atoms) < 3) or (len(heavy_ligand_atoms) < 3):
+            raise ValueError('There must be at least three heavy atoms in receptor_atoms (# heavy %d) and ligand_atoms (# heavy %d).' % (len(heavy_receptor_atoms), len(heavy_ligand_atoms)))
+        # Find valid pairs of ligand/receptor atoms within a cutoff
+        max_distance = 4 * unit.angstrom/unit.nanometer
+        min_distance = 1 * unit.angstrom/unit.nanometer
+        # TODO: Cast itertools generator to np array more efficiently
+        all_pairs = np.array(list(itertools.product(heavy_receptor_atoms, heavy_ligand_atoms)))
+        distances = md.geometry.compute_distances(t, all_pairs)[0]
+        index_of_in_range_atoms = np.where(np.logical_and(distances > min_distance, distances <= max_distance))[0]
+        if len(index_of_in_range_atoms) == 0:
+            error_string = 'There are no heavy ligand atoms within the range of [{},{}] nm heavy receptor atoms!\n'
+            error_string += 'Please Check your input files or try another restraint class'
+            raise ValueError(error_string.format(min_distance, max_distance))
         # Iterate until we have found a set of non-collinear atoms.
         accepted = False
-        while (not accepted):
-            # Select three random atoms from the receptor and ligand
-            restraint_atoms = random.sample(receptor_atoms, 3) + random.sample(ligand_atoms, 3)
+        while not accepted:
+            # Select a receptor/ligand atom in range of each other
+            raA_atoms = all_pairs[random.sample(list(index_of_in_range_atoms), 1)[0]].tolist()
+            # Cast to set for easy comparison operations
+            raA_set = set(raA_atoms)
+            # Select two additional random atoms from the receptor and ligand
+            restraint_atoms = random.sample(heavy_receptor_atoms-raA_set, 2) + raA_atoms + random.sample(heavy_ligand_atoms-raA_set, 2)
             # Reject collinear sets of atoms.
             accepted = not self._is_collinear(positions, restraint_atoms)
 
@@ -895,7 +962,7 @@ class Boresch(OrientationDependentRestraint):
         t = md.Trajectory(self._positions / unit.nanometers, self._topology)
 
         distances = md.geometry.compute_distances(t, [self._restraint_atoms[2:4]], periodic=False)
-        self._parameters['r_aA0'] = distances[0] * unit.nanometers
+        self._parameters['r_aA0'] = distances[0][0] * unit.nanometers
 
         angles = md.geometry.compute_angles(t, [self._restraint_atoms[i:(i+3)] for i in range(1,3)], periodic=False)
         for (name, angle) in zip(['theta_A0', 'theta_B0'], angles[0]):
@@ -904,6 +971,12 @@ class Boresch(OrientationDependentRestraint):
         dihedrals = md.geometry.compute_dihedrals(t, [self._restraint_atoms[i:(i+4)] for i in range(3)], periodic=False)
         for (name, angle) in zip(['phi_A0', 'phi_B0', 'phi_C0'], dihedrals[0]):
             self._parameters[name] = angle * unit.radians
+
+        # Write restraint parameters
+        msg = 'restraint parameters:\n'
+        for name in ['K_r', 'r_aA0', 'K_thetaA', 'theta_A0', 'K_thetaB', 'theta_B0', 'K_phiA', 'phi_A0', 'K_phiB', 'phi_B0', 'K_phiC', 'phi_C0']:
+            msg += '%24s : %s\n' % (name, str(self._parameters[name]))
+        logger.debug(msg)
 
     def get_restraint_force(self):
         """
@@ -963,22 +1036,84 @@ class Boresch(OrientationDependentRestraint):
         Notes
         -----
         Uses analytical approach from [1], but this approach is known to be inexact.
+        This approach breaks down when the equilibrium restraint angles are near the limits of their domains and when
+        equilibrium distance is near 0.
 
         """
+
+        DeltaG = self.get_standard_state_correction_static('analytical', kT=self.kT, parameters=self._parameters)
+        return DeltaG
+
+    @staticmethod
+    def get_standard_state_correction_static(method='numerical', **kwargs):
+        """
+        Compute the standard state correction for the arbitrary restraint energy function.
+
+        Returns
+        -------
+        DeltaG : float
+            Computed standard-state correction in dimensionless units (kT)
+
+        Notes
+        -----
+        'analytical' uses analytical approach from [1], but this approach is known to be inexact.
+        'numerical' uses numerical integral to the partition function contriubtions for r and theta, analytical for phi
+
+        """
+
         class Bunch(object):
             """Make a dict accessible via an object accessor"""
             def __init__(self, adict):
                 self.__dict__.update(adict)
 
-        # Retrieve constants for convenience.
-        p = Bunch(self._parameters)
-        kT = self.kT
-        pi = np.pi
+        def strip(passed_unit):
+            """Cast the passed_unit into md unit system for integrand lambda functions"""
+            return passed_unit.value_in_unit_system(unit.md_unit_system)
 
-        # Eq 32 of Ref [1]
-        DeltaG = -np.log( \
-            (8. * pi**2 * V0) / (p.r_aA0**2 * unit.sin(p.theta_A0) * unit.sin(p.theta_B0)) \
-            * unit.sqrt(p.K_r * p.K_thetaA * p.K_thetaB * p.K_phiA * p.K_phiB * p.K_phiC) / (2 * pi * kT)**3 \
-            )
-        # Return standard state correction (in kT).
+        all_valid_keys = ['kT', 'parameters']
+        for key in all_valid_keys:
+            if key not in kwargs:
+                raise KeyError('Missing {} from input arguments!'.format(key))
+        kT = kwargs['kT']
+        pi = np.pi
+        p = Bunch(kwargs['parameters'])
+        DeltaG = 0
+
+        # Multiply by unit.radian**5 to remove the expected unit value
+        # radians is a soft unit in this case, it cancels in the math, but not in the equations here.
+        if method is 'analytical':
+            # Eq 32 of Ref [1]
+            DeltaG += -np.log( \
+                (8. * pi ** 2 * V0) / (p.r_aA0 ** 2 * unit.sin(p.theta_A0) * unit.sin(p.theta_B0)) \
+                * unit.sqrt(p.K_r * p.K_thetaA * p.K_thetaB * p.K_phiA * p.K_phiB * p.K_phiC) / (2 * pi * kT) ** 3 \
+                * unit.radian**5)
+        elif method is 'numerical':
+            # Radial
+            sigma = 1 / unit.sqrt(p.K_r / kT)
+            rmin = min(0*unit.angstrom, p.r_aA0 - 8 * sigma)
+            rmax = p.r_aA0 + 8 * sigma
+            I = lambda r: r ** 2 * np.exp(-strip(p.K_r) / (2 * strip(kT)) * (r - strip(p.r_aA0)) ** 2)
+            DGIntegral, dDGIntegral = scipy.integrate.quad(I, strip(rmin), strip(rmax)) * unit.nanometer**3
+            ExpDeltaG = DGIntegral
+            # Angular
+            for name in ['A', 'B']:
+                theta0 = getattr(p, 'theta_' + name + '0')
+                K_theta = getattr(p, 'K_theta' + name)
+                I = lambda theta: np.sin(theta) * np.exp(-strip(K_theta) / (2 * strip(kT)) * (theta - strip(theta0)) ** 2)
+                DGIntegral, dDGIntegral = scipy.integrate.quad(I, 0, pi)
+                ExpDeltaG *= DGIntegral
+            # Torsion
+            for name in ['A', 'B', 'C']:
+                phi0 = getattr(p, 'phi_' + name + '0')
+                K_phi = getattr(p, 'K_phi' + name)
+                kshort = strip(K_phi/kT)
+                ExpDeltaG *= math.sqrt(pi/2.0) * (
+                    math.erf((strip(phi0)+pi)*unit.sqrt(kshort)/math.sqrt(2)) -
+                    math.erf((strip(phi0)-pi)*unit.sqrt(kshort)/math.sqrt(2))
+                ) / unit.sqrt(kshort)
+            DeltaG += -np.log(8 * pi**2 * V0 / ExpDeltaG)
+        else:
+            raise ValueError('"method" must be "analytical" or "numerical"')
+
         return DeltaG
+

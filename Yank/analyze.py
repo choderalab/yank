@@ -1,17 +1,17 @@
 #!/usr/local/bin/env python
 
-#=============================================================================================
+# =============================================================================================
 # Analyze datafiles produced by YANK.
-#=============================================================================================
+# =============================================================================================
 
-#=============================================================================================
+# =============================================================================================
 # REQUIREMENTS
 #
 # The netcdf4-python module is now used to provide netCDF v4 support:
 # http://code.google.com/p/netcdf4-python/
 #
 # This requires NetCDF with version 4 and multithreading support, as well as HDF5.
-#=============================================================================================
+# =============================================================================================
 
 import os
 import os.path
@@ -19,10 +19,10 @@ import os.path
 import yaml
 import numpy as np
 
-import netCDF4 as netcdf # netcdf4-python
+import netCDF4 as netcdf  # netcdf4-python
 
-from pymbar import MBAR # multistate Bennett acceptance ratio
-from pymbar import timeseries # for statistical inefficiency analysis
+from pymbar import MBAR  # multistate Bennett acceptance ratio
+from pymbar import timeseries  # for statistical inefficiency analysis
 
 import mdtraj
 import simtk.unit as units
@@ -32,15 +32,15 @@ from . import utils
 import logging
 logger = logging.getLogger(__name__)
 
-#=============================================================================================
+# =============================================================================================
 # PARAMETERS
-#=============================================================================================
+# =============================================================================================
 
 kB = units.BOLTZMANN_CONSTANT_kB * units.AVOGADRO_CONSTANT_NA
 
-#=============================================================================================
+# =============================================================================================
 # SUBROUTINES
-#=============================================================================================
+# =============================================================================================
 
 
 def show_mixing_statistics(ncfile, cutoff=0.05, nequil=0):
@@ -109,6 +109,7 @@ def show_mixing_statistics(ncfile, cutoff=0.05, nequil=0):
         logger.info("Perron eigenvalue is %9.5f; state equilibration timescale is ~ %.1f iterations" % (mu[1], 1.0 / (1.0 - mu[1])))
 
     return
+
 
 def extract_ncfile_energies(ncfile, ndiscard=0, nuse=None, g=None):
     """
@@ -213,7 +214,8 @@ def extract_ncfile_energies(ncfile, ndiscard=0, nuse=None, g=None):
     except:
         pass
 
-    return (u_kln, N_k, u_n)
+    return u_kln, N_k, u_n
+
 
 def initialize_MBAR(ncfile, u_kln=None, N_k=None):
     """
@@ -317,7 +319,8 @@ def estimate_enthalpies(ncfile, mbar=None):
     # Compute average enthalpies
     (f_k, df_k, H_k, dH_k, S_k, dS_k) = mbar.computeEntropyAndEnthalpy()
 
-    return (H_k, dH_k)
+    return H_k, dH_k
+
 
 def extract_u_n(ncfile):
     """
@@ -373,9 +376,10 @@ def extract_u_n(ncfile):
 
     return u_n
 
-#=============================================================================================
+# =============================================================================================
 # SHOW STATUS OF STORE FILES
-#=============================================================================================
+# =============================================================================================
+
 
 def print_status(store_directory):
     """
@@ -427,9 +431,10 @@ def print_status(store_directory):
 
     return True
 
-#=============================================================================================
+# =============================================================================================
 # ANALYZE STORE FILES
-#=============================================================================================
+# =============================================================================================
+
 
 def analyze(source_directory):
     """
@@ -487,7 +492,7 @@ def analyze(source_directory):
                 nequil += 1 # account for initial frame of zero energies
                 logger.info([nequil, Neff_max])
             else:
-                nequil = 1 # discard first frame
+                nequil = 1  # discard first frame
                 g_t = 1
                 Neff_max = niterations
 
@@ -495,16 +500,16 @@ def analyze(source_directory):
             show_mixing_statistics(ncfile, cutoff=0.05, nequil=nequil)
 
             # Extract equilibrated, decorrelated energies, check for fully interacting state
-            (u_kln, N_k, u_n) = extract_ncfile_energies(ncfile, ndiscard = nequil, g=g_t)
+            (u_kln, N_k, u_n) = extract_ncfile_energies(ncfile, ndiscard=nequil, g=g_t)
 
             # Create MBAR object to use for free energy and entropy states
             mbar = initialize_MBAR(ncfile, u_kln=u_kln, N_k=N_k)
 
             # Estimate free energies, use fully interacting state if present
-            (Deltaf_ij, dDeltaf_ij) = estimate_free_energies(ncfile, mbar = mbar)
+            (Deltaf_ij, dDeltaf_ij) = estimate_free_energies(ncfile, mbar=mbar)
 
             # Estimate average enthalpies
-            (DeltaH_i, dDeltaH_i) = estimate_enthalpies(ncfile, mbar = mbar)
+            (DeltaH_i, dDeltaH_i) = estimate_enthalpies(ncfile, mbar=mbar)
 
             # Accumulate free energy differences
             entry = dict()

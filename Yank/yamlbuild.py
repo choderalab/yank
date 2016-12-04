@@ -1,27 +1,25 @@
 #!/usr/bin/env python
 
-#=============================================================================================
+# =============================================================================================
 # MODULE DOCSTRING
-#=============================================================================================
+# =============================================================================================
 
 """
 Tools to build Yank experiments from a YAML configuration file.
 
 """
 
-#=============================================================================================
+# =============================================================================================
 # GLOBAL IMPORTS
-#=============================================================================================
+# =============================================================================================
 
 import os
 import re
-import csv
 import copy
 import yaml
 import logging
 import collections
-
-logger = logging.getLogger(__name__)
+import warnings
 
 import numpy as np
 import openmoltools as omt
@@ -36,6 +34,7 @@ from .yank import Yank
 from .repex import ReplicaExchange, ThermodynamicState
 from .sampling import ModifiedHamiltonianExchange
 
+logger = logging.getLogger(__name__)
 
 # =============================================================================
 # CONSTANTS
@@ -44,9 +43,9 @@ from .sampling import ModifiedHamiltonianExchange
 HIGHEST_VERSION = '1.0'  # highest version of YAML syntax
 
 
-#=============================================================================================
+# =============================================================================================
 # UTILITY FUNCTIONS
-#=============================================================================================
+# =============================================================================================
 
 def compute_min_dist(mol_positions, *args):
     """Compute the minimum distance between a molecule and a set of other molecules.
@@ -84,6 +83,7 @@ def compute_min_dist(mol_positions, *args):
         except UnboundLocalError:
             min_dist = np.sqrt(distances2[min_idx])
     return min_dist
+
 
 def compute_dist_bound(mol_positions, *args):
     """Compute minimum and maximum distances between a molecule and a set of
@@ -143,6 +143,7 @@ def compute_dist_bound(mol_positions, *args):
 
     return min_dist, max_dist
 
+
 def remove_overlap(mol_positions, *args, **kwargs):
     """Remove any eventual overlap between a molecule and a set of others.
 
@@ -194,6 +195,7 @@ def remove_overlap(mol_positions, *args, **kwargs):
         x += sigma * np.random.randn(3)
 
     return x
+
 
 def pack_transformation(mol1_pos, mol2_pos, min_distance, max_distance):
     """Compute an affine transformation that solve clashes and fit mol2 in the box.
@@ -268,6 +270,7 @@ def pack_transformation(mol1_pos, mol2_pos, min_distance, max_distance):
         transformation = transl_to_x0.dot(rot_transl_matrix.dot(transl_to_origin))
 
     return transformation
+
 
 def pull_close(fixed_mol_pos, translated_mol_pos, min_bound, max_bound):
     """Heuristic algorithm to quickly translate the ligand close to the receptor.
@@ -351,9 +354,9 @@ def strip_protons(input_file_path, output_file_path):
     output_file.close()
 
 
-def to_openmm_app(str):
+def to_openmm_app(input_string):
     """Converter function to be used with validate_parameters()."""
-    return getattr(openmm.app, str)
+    return getattr(openmm.app, input_string)
 
 
 # ============================================================================================
@@ -1053,8 +1056,9 @@ class SetupDatabase:
                 tleap.add_ions(unit=unit_to_solvate, ion=solvent['negative_ion'])
 
             # Solvate unit
-            clearance = float(solvent['clearance'].value_in_unit(unit.angstroms))
-            tleap.solvate(group=unit_to_solvate, water_model='TIP3PBOX', clearance=clearance)
+            if 'clearance' in solvent:
+                clearance = float(solvent['clearance'].value_in_unit(unit.angstroms))
+                tleap.solvate(group=unit_to_solvate, water_model='TIP3PBOX', clearance=clearance)
 
         # Check charge
         tleap.new_section('Check charge')
@@ -1174,7 +1178,7 @@ class YamlBuilder:
         'temperature': 298 * unit.kelvin,
         'pressure': 1 * unit.atmosphere,
         'constraints': openmm.app.HBonds,
-        'hydrogen_mass': 1 * unit.amu
+        'hydrogen_mass': 1 * unit.amu,
     }
 
     @property
@@ -1608,18 +1612,25 @@ class YamlBuilder:
             If the syntax for any solvent is not valid.
 
         """
-        def to_explicit_solvent(str):
+        def to_explicit_solvent(nonbonded_method_str):
             """Check OpenMM explicit solvent."""
-            openmm_app = to_openmm_app(str)
+            openmm_app = to_openmm_app(nonbonded_method_str)
             if openmm_app == openmm.app.NoCutoff:
                 raise ValueError('Nonbonded method cannot be NoCutoff.')
             return openmm_app
 
-        def to_no_cutoff(str):
+        def to_no_cutoff(nonbonded_method_str):
             """Check OpenMM implicit solvent or vacuum."""
-            openmm_app = to_openmm_app(str)
+            openmm_app = to_openmm_app(nonbonded_method_str)
             if openmm_app != openmm.app.NoCutoff:
                 raise ValueError('Nonbonded method must be NoCutoff.')
+            return openmm_app
+
+        def to_PBC(nonbonded_method_str):
+            """Check OpenMM periodic system"""
+            openmm_app = to_openmm_app(nonbonded_method_str)
+            if openmm_app == openmm.app.NoCutoff or openmm_app == openmm.app.CutoffNonPeriodic:
+                raise ValueError('Nonbonded method must be PME or CutoffPeriodic')
             return openmm_app
 
         validated_solvents = solvents_description.copy()
@@ -1637,7 +1648,10 @@ class YamlBuilder:
         vacuum_schema = utils.generate_signature_schema(AmberPrmtopFile.createSystem,
                                 update_keys={'nonbonded_method': Use(to_no_cutoff)},
                                 exclude_keys=['rigid_water', 'implicit_solvent'])
-        solvent_schema = Schema(Or(explicit_schema, implicit_schema, vacuum_schema))
+        solvent_skipped_pbc_schema = utils.generate_signature_schema(AmberPrmtopFile.createSystem,
+                                update_keys={'nonbonded_method': Use(to_PBC)},
+                                exclude_keys=['rigid_water', 'implicit_solvent'])
+        solvent_schema = Schema(Or(explicit_schema, implicit_schema, vacuum_schema, solvent_skipped_pbc_schema))
 
         # Schema validation
         for solvent_id, solvent_descr in utils.listitems(solvents_description):
@@ -1645,6 +1659,21 @@ class YamlBuilder:
                 validated_solvents[solvent_id] = solvent_schema.validate(solvent_descr)
             except SchemaError as e:
                 raise YamlParseError('Solvent {}: {}'.format(solvent_id, e.autos[-1]))
+
+        # Warning Catches
+        warn_solvent_skipped_pbc_schema = Schema(solvent_skipped_pbc_schema)
+        for solvent_id, solvent_descr in utils.listitems(solvents_description):
+            try:
+                # Confirm schema is valid
+                pass_check = warn_solvent_skipped_pbc_schema.validate(solvent_descr)
+                del pass_check
+                warnings.warn("\n********************************************************************************\n"
+                              "Solvent {} has a periodic `nonbonded_method`, but no solvent will be added since\n"
+                              "`clearance` was not also set. Ensure you have specified PBC in your input files!\n"
+                              "********************************************************************************".format(solvent_id),
+                              UserWarning)
+            except SchemaError:
+                pass
 
         return validated_solvents
 

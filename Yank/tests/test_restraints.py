@@ -14,16 +14,21 @@ Test restraints module.
 # =============================================================================================
 
 import tempfile
+import os
 import shutil
 import math
 import numpy as np
+import netCDF4 as netcdf
 
 from nose.plugins.attrib import attr
 
 import yank.restraints
 from yank.repex import ThermodynamicState
+from yank.yamlbuild import YamlBuilder
+from yank.utils import get_data_filename
+from yank import analyze
 
-from simtk import unit, openmm
+from simtk import unit
 from openmmtools import testsystems
 
 # =============================================================================================
@@ -70,6 +75,107 @@ expected_restraints = {
     'FlatBottom' : yank.restraints.FlatBottom,
     'Boresch' : yank.restraints.Boresch,
 }
+
+restraint_test_yaml = """
+---
+options:
+  minimize: no
+  verbose: yes
+  output_dir: %(output_directory)s
+  number_of_iterations: %(number_of_iter)s
+  nsteps_per_iteration: 100
+  temperature: 300*kelvin
+  pressure: null
+  anisotropic_dispersion_correction: no
+  platform: OpenCL
+
+solvents:
+  vacuum:
+    nonbonded_method: PME
+    nonbonded_cutoff: 0.59 * nanometer
+
+systems:
+  ship:
+    phase1_path: [data/benzene-toluene-standard-state/standard_state_complex.inpcrd, data/benzene-toluene-standard-state/standard_state_complex.prmtop]
+    phase2_path: [data/benzene-toluene-standard-state/standard_state_complex.inpcrd, data/benzene-toluene-standard-state/standard_state_complex.prmtop]
+    ligand_dsl: resname ene
+    solvent: vacuum
+
+protocols:
+  absolute-binding:
+    complex:
+      alchemical_path:
+        lambda_restraints:     [0.0, 0.25, 0.5, 0.75, 1.0]
+        lambda_electrostatics: [0.0, 0.00, 0.0, 0.00, 0.0]
+        lambda_sterics:        [0.0, 0.00, 0.0, 0.00, 0.0]
+    solvent:
+      alchemical_path:
+        lambda_electrostatics: [1.0, 1.0]
+        lambda_sterics:        [1.0, 1.0]
+
+experiments:
+  system: ship
+  protocol: absolute-binding
+  restraint:
+    type: %(restraint_type)s
+"""
+
+
+def general_restraint_run(options):
+    """
+    Generalized restraint simulation run to test free energy = standard state correction.
+
+    options : Dict. A dictionary of substitutions for restraint_test_yaml
+    """
+    output_directory = tempfile.mkdtemp()
+    options['output_directory'] = output_directory
+    # run both setup and experiment
+    yaml_builder = YamlBuilder(restraint_test_yaml % options)
+    yaml_builder.build_experiments()
+    # Estimate Free Energies
+    ncfile_path = os.path.join(output_directory, 'experiments', 'complex.nc')
+    ncfile = netcdf.Dataset(ncfile_path, 'r')
+    (Deltaf_ij, dDeltaf_ij) = analyze.estimate_free_energies(ncfile)
+    # Correct the sign for the fact that we are adding vs removing the restraints
+    DeltaF_simulated = Deltaf_ij[-1, 0]
+    dDeltaF_simulated = dDeltaf_ij[-1, 0]
+    DeltaF_restraints = ncfile.groups['metadata'].variables['standard_state_correction'][0]
+    ncfile.close()
+    # Clean up
+    shutil.rmtree(output_directory)
+    # Check if they are close
+    assert np.allclose(DeltaF_restraints, DeltaF_simulated, rtol=dDeltaF_simulated)
+
+
+@attr('slow')  # Skip on Travis-CI
+def test_harmonic_free_energy():
+    """
+    Test that the harmonic restraint simulated free energy equals the standard state correction
+    """
+    options = {'number_of_iter': '500',
+               'restraint_type': 'Harmonic'}
+    general_restraint_run(options)
+
+
+@attr('slow')  # Skip on Travis-CI
+def test_flat_bottom_free_energy():
+    """
+    Test that the harmonic restraint simulated free energy equals the standard state correction
+    """
+    options = {'number_of_iter': '500',
+               'restraint_type': 'FlatBottom'}
+    general_restraint_run(options)
+
+
+@attr('slow')  # Skip on Travis-CI
+def test_Boresch_free_energy():
+    """
+    Test that the harmonic restraint simulated free energy equals the standard state correction
+    """
+    # These need more samples to converge
+    options = {'number_of_iter': '1000',
+               'restraint_type': 'Boresch'}
+    general_restraint_run(options)
 
 
 def test_harmonic_standard_state():
@@ -125,84 +231,9 @@ def test_restraint_dispatch():
         assert(restraint.__class__.__name__ == restraint_type)
         assert(restraint.__class__ == restraint_class)
 
-
-def test_protein_ligand_restraints():
-    """Test the restraints in a protein:ligand system.
-    """
-    from yank.yamlbuild import YamlBuilder
-    from yank.utils import get_data_filename
-
-    yaml_script = """
----
-options:
-  minimize: no
-  verbose: no
-  output_dir: %(output_directory)s
-  number_of_iterations: 2
-  nsteps_per_iteration: 10
-  temperature: 300*kelvin
-
-molecules:
-  T4lysozyme:
-    filepath: %(receptor_filepath)s
-  p-xylene:
-    filepath: %(ligand_filepath)s
-    antechamber:
-      charge_method: bcc
-
-solvents:
-  vacuum:
-    nonbonded_method: NoCutoff
-
-systems:
-  lys-pxyl:
-    receptor: T4lysozyme
-    ligand: p-xylene
-    solvent: vacuum
-    leap:
-      parameters: [oldff/leaprc.ff14SB, leaprc.gaff]
-
-protocols:
-  absolute-binding:
-    complex:
-      alchemical_path:
-        lambda_restraints:     [0.0, 0.5, 1.0]
-        lambda_electrostatics: [1.0, 1.0, 1.0]
-        lambda_sterics:        [1.0, 1.0, 1.0]
-    solvent:
-      alchemical_path:
-        lambda_electrostatics: [1.0, 1.0, 1.0]
-        lambda_sterics:        [1.0, 1.0, 1.0]
-
-experiments:
-  system: lys-pxyl
-  protocol: absolute-binding
-  restraint:
-    type: %(restraint_type)s
-"""
-    # Test all possible restraint types.
-    available_restraint_types = yank.restraints.available_restraint_types()
-    for restraint_type in available_restraint_types:
-        print('***********************************')
-        print('Testing %s restraints...' % restraint_type)
-        print('***********************************')
-        output_directory = tempfile.mkdtemp()
-        data = {
-            'output_directory' : output_directory,
-            'restraint_type' : restraint_type,
-            'receptor_filepath' : get_data_filename('tests/data/p-xylene-implicit/181L-pdbfixer.pdb'),
-            'ligand_filepath'   : get_data_filename('tests/data/p-xylene-implicit/p-xylene.mol2'),
-        }
-        # run both setup and experiment
-        yaml_builder = YamlBuilder(yaml_script % data)
-        yaml_builder.build_experiments()
-        # Clean up
-        shutil.rmtree(output_directory)
-
 # =============================================================================================
 # MAIN
 # =============================================================================================
 
 if __name__ == '__main__':
-    test_available_restraint_classes()
     test_restraint_dispatch()
