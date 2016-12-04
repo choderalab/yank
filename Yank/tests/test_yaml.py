@@ -272,6 +272,7 @@ def test_yaml_parsing():
         randomize_ligand_sigma_multiplier: 2.0
         randomize_ligand_close_cutoff: 1.5 * angstrom
         mc_displacement_sigma: 10.0 * angstroms
+        anisotropic_dispersion_correction: no
         collision_rate: 5.0 / picosecond
         constraint_tolerance: 1.0e-6
         timestep: 2.0 * femtosecond
@@ -292,8 +293,8 @@ def test_yaml_parsing():
     """
 
     yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
-    assert len(yaml_builder.options) == 34
-    assert len(yaml_builder.yank_options) == 22
+    assert len(yaml_builder.options) == 35
+    assert len(yaml_builder.yank_options) == 23
 
     # Check correct types
     assert yaml_builder.options['pressure'] is None
@@ -1693,6 +1694,7 @@ def test_run_experiment_from_amber_files():
     solvent_path = examples_paths()['bentol-solvent']
     with omt.utils.temporary_directory() as tmp_dir:
         yaml_script = get_template_script(tmp_dir)
+        yaml_script['options']['anisotropic_dispersion_correction'] = False
         del yaml_script['molecules']  # we shouldn't need any molecule
         yaml_script['systems'] = {'explicit-system':
                 {'phase1_path': complex_path, 'phase2_path': solvent_path,
@@ -1724,6 +1726,7 @@ def test_run_experiment_from_gromacs_files():
     include_path = examples_paths()['pxylene-gro-include']
     with omt.utils.temporary_directory() as tmp_dir:
         yaml_script = get_template_script(tmp_dir)
+        yaml_script['options']['anisotropic_dispersion_correction'] = False
         del yaml_script['molecules']  # we shouldn't need any molecule
         yaml_script['systems'] = {'explicit-system':
                 {'phase1_path': complex_path, 'phase2_path': solvent_path,
