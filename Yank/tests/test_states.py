@@ -60,7 +60,10 @@ class TestThermodynamicState(object):
         cls.pressure = 1.01325*unit.bar
         cls.toluene_vacuum = testsystems.TolueneVacuum().system
         cls.toluene_implicit = testsystems.TolueneImplicit().system
-        cls.alanine_explicit = testsystems.AlanineDipeptideExplicit().system
+
+        alanine_explicit = testsystems.AlanineDipeptideExplicit()
+        cls.alanine_explicit = alanine_explicit.system
+        cls.alanine_positions = alanine_explicit.positions
 
         # A system correctly barostated
         cls.barostated_alanine = copy.deepcopy(cls.alanine_explicit)
@@ -125,6 +128,18 @@ class TestThermodynamicState(object):
         barostat = openmm.MonteCarloBarostat(pressure, temperature + 10*unit.kelvin)
         assert not state._is_barostat_consistent(barostat)
 
+    def test_method_set_barostat_temperature(self):
+        """ThermodynamicState._set_barostat_temperature() method."""
+        state = ThermodynamicState(self.barostated_alanine, self.temperature)
+        new_temperature = self.temperature + 10*unit.kelvin
+        state._temperature = new_temperature
+
+        barostat = state._barostat
+        assert get_barostat_temperature(barostat) == self.temperature
+        assert state._set_barostat_temperature(barostat)
+        assert get_barostat_temperature(barostat) == new_temperature
+        assert not state._set_barostat_temperature(barostat)
+
     def test_property_temperature(self):
         """ThermodynamicState.temperature property."""
         state = ThermodynamicState(self.barostated_alanine,
@@ -135,6 +150,13 @@ class TestThermodynamicState(object):
         state.temperature = temperature
         assert state.temperature == temperature
         assert get_barostat_temperature(state._barostat) == temperature
+
+    def test_method_set_system_pressure(self):
+        """ThermodynamicState._set_system_pressure() method."""
+        state = ThermodynamicState(self.alanine_explicit, self.temperature)
+        assert not state._set_system_pressure(state._system, None)
+        assert state._set_system_pressure(state._system, self.pressure)
+        assert not state._set_system_pressure(state._system, self.pressure)
 
     def test_property_pressure(self):
         """ThermodynamicState.pressure property."""
@@ -300,12 +322,13 @@ class TestThermodynamicState(object):
         state = ThermodynamicState(self.toluene_vacuum, self.temperature)
 
         integrator = openmm.LangevinIntegrator(temperature, friction, time_step)
-        state._set_integrator_temperature(integrator)
+        assert state._set_integrator_temperature(integrator)
         assert integrator.getTemperature() == self.temperature
+        assert not state._set_integrator_temperature(integrator)
 
         # It doesn't explode with integrators not coupled to a heat bath
         integrator = openmm.VerletIntegrator(time_step)
-        state._set_integrator_temperature(integrator)
+        assert not state._set_integrator_temperature(integrator)
 
     def test_method_get_standard_system(self):
         """ThermodynamicState._turn_to_standard_system() class method."""
@@ -369,3 +392,38 @@ class TestThermodynamicState(object):
         toluene_implicit.temperature = self.temperature + 1.0*unit.kelvin
         check_compatibility(toluene_vacuum, toluene_implicit, True)
         check_compatibility(alanine_explicit, barostated_alanine, True)
+
+    def test_method_apply_to_context(self):
+        """ThermodynamicState.apply_to_context() method."""
+        friction = 5.0/unit.picosecond
+        time_step = 2.0*unit.femtosecond
+        integrator = openmm.LangevinIntegrator(self.temperature, friction, time_step)
+        state0 = ThermodynamicState(self.alanine_explicit, self.temperature)
+        context = state0.create_context(integrator)
+
+        # Convert context to constant pressure.
+        state1 = ThermodynamicState(self.barostated_alanine, self.temperature)
+        state1.apply_to_context(context)
+        context.setPositions(self.alanine_positions)
+        barostat = ThermodynamicState._find_barostat(context.getSystem())
+        assert barostat.getDefaultPressure() == self.pressure
+
+        # The cached parameters on the context must be updated.
+        old_box_vectors = context.getState(getPositions=True).getPeriodicBoxVectors(asNumpy=True)
+        integrator.step(100)
+        new_box_vectors = context.getState(getPositions=True).getPeriodicBoxVectors(asNumpy=True)
+        assert not np.allclose(old_box_vectors, new_box_vectors)
+
+        # Switch to different pressure and temperature.
+        pressure = self.pressure + 1.0*unit.bar
+        temperature = self.temperature + 10.0*unit.kelvin
+        state2 = ThermodynamicState(self.barostated_alanine, temperature, pressure)
+        state2.apply_to_context(context)
+        barostat = ThermodynamicState._find_barostat(context.getSystem())
+        assert barostat.getDefaultPressure() == pressure
+        assert get_barostat_temperature(barostat) == temperature
+        assert context.getIntegrator().getTemperature() == temperature
+
+        # Now switch back to constant volume.
+        state0.apply_to_context(context)
+        assert ThermodynamicState._find_barostat(context.getSystem()) is None
