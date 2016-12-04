@@ -272,6 +272,7 @@ def test_yaml_parsing():
         randomize_ligand_sigma_multiplier: 2.0
         randomize_ligand_close_cutoff: 1.5 * angstrom
         mc_displacement_sigma: 10.0 * angstroms
+        anisotropic_dispersion_correction: no
         collision_rate: 5.0 / picosecond
         constraint_tolerance: 1.0e-6
         timestep: 2.0 * femtosecond
@@ -292,8 +293,8 @@ def test_yaml_parsing():
     """
 
     yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
-    assert len(yaml_builder.options) == 34
-    assert len(yaml_builder.yank_options) == 22
+    assert len(yaml_builder.options) == 35
+    assert len(yaml_builder.yank_options) == 23
 
     # Check correct types
     assert yaml_builder.options['pressure'] is None
@@ -379,6 +380,7 @@ def test_validation_correct_solvents():
     solvents = [
         {'nonbonded_method': 'NoCutoff', 'nonbonded_cutoff': '3*nanometers'},
         {'nonbonded_method': 'PME', 'clearance': '3*angstroms'},
+        {'nonbonded_method': 'PME'},
         {'nonbonded_method': 'NoCutoff', 'implicit_solvent': 'OBC2'},
         {'nonbonded_method': 'CutoffPeriodic', 'nonbonded_cutoff': '9*angstroms',
          'clearance': '9*angstroms', 'positive_ion': 'Na+', 'negative_ion': 'Cl-'},
@@ -414,13 +416,15 @@ def test_validation_correct_systems():
     solvents:
         solv: {{nonbonded_method: NoCutoff}}
         solv2: {{nonbonded_method: NoCutoff, implicit_solvent: OBC2}}
+        solv3: {{nonbonded_method: PME, clearance: 10*angstroms}}
+        solv4: {{nonbonded_method: PME}}
     """.format(data_paths['lysozyme'])
     basic_script = yaml.load(textwrap.dedent(basic_script))
 
     systems = [
         {'receptor': 'rec', 'ligand': 'lig', 'solvent': 'solv'},
         {'receptor': 'rec', 'ligand': 'lig', 'solvent': 'solv', 'pack': True},
-        {'receptor': 'rec', 'ligand': 'lig', 'solvent': 'solv',
+        {'receptor': 'rec', 'ligand': 'lig', 'solvent': 'solv3',
             'leap': {'parameters': ['leaprc.gaff', 'leaprc.ff14SB']}},
 
         {'phase1_path': data_paths['bentol-complex'],
@@ -428,7 +432,10 @@ def test_validation_correct_systems():
          'ligand_dsl': 'resname BEN', 'solvent': 'solv'},
         {'phase1_path': data_paths['bentol-complex'],
          'phase2_path': data_paths['bentol-solvent'],
-         'ligand_dsl': 'resname BEN', 'solvent1': 'solv',
+         'ligand_dsl': 'resname BEN', 'solvent': 'solv4'},
+        {'phase1_path': data_paths['bentol-complex'],
+         'phase2_path': data_paths['bentol-solvent'],
+         'ligand_dsl': 'resname BEN', 'solvent1': 'solv3',
          'solvent2': 'solv2'},
 
         {'phase1_path': data_paths['pxylene-complex'],
@@ -465,6 +472,8 @@ def test_validation_wrong_systems():
     solvents:
         solv: {{nonbonded_method: NoCutoff}}
         solv2: {{nonbonded_method: NoCutoff, implicit_solvent: OBC2}}
+        solv3: {{nonbonded_method: PME, clearance: 10*angstroms}}
+        solv4: {{nonbonded_method: PME}}
     """.format(data_paths['lysozyme'])
     basic_script = yaml.load(textwrap.dedent(basic_script))
 
@@ -473,7 +482,9 @@ def test_validation_wrong_systems():
         {'receptor': 'rec', 'ligand': 1, 'solvent': 'solv'},
         {'receptor': 'rec', 'ligand': 'lig', 'solvent': ['solv', 'solv']},
         {'receptor': 'rec', 'ligand': 'lig', 'solvent': 'unknown'},
-        {'receptor': 'rec', 'ligand': 'lig', 'solvent': 'solv',
+        {'receptor': 'rec', 'ligand': 'lig', 'solvent': 'solv4',
+            'leap': {'parameters': ['leaprc.gaff', 'leaprc.ff14SB']}},
+        {'receptor': 'rec', 'ligand': 'lig', 'solvent': 'solv3',
             'parameters': 'leaprc.ff14SB'},
 
         {'phase1_path': data_paths['bentol-complex'][0],
@@ -1693,7 +1704,9 @@ def test_run_experiment_from_amber_files():
     solvent_path = examples_paths()['bentol-solvent']
     with omt.utils.temporary_directory() as tmp_dir:
         yaml_script = get_template_script(tmp_dir)
+        yaml_script['options']['anisotropic_dispersion_correction'] = False
         del yaml_script['molecules']  # we shouldn't need any molecule
+        del yaml_script['solvents']['PME']['clearance']  # we shouldn't need this
         yaml_script['systems'] = {'explicit-system':
                 {'phase1_path': complex_path, 'phase2_path': solvent_path,
                  'ligand_dsl': 'resname TOL', 'solvent': 'PME'}}
@@ -1724,6 +1737,7 @@ def test_run_experiment_from_gromacs_files():
     include_path = examples_paths()['pxylene-gro-include']
     with omt.utils.temporary_directory() as tmp_dir:
         yaml_script = get_template_script(tmp_dir)
+        yaml_script['options']['anisotropic_dispersion_correction'] = False
         del yaml_script['molecules']  # we shouldn't need any molecule
         yaml_script['systems'] = {'explicit-system':
                 {'phase1_path': complex_path, 'phase2_path': solvent_path,

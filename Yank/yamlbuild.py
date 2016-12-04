@@ -19,7 +19,6 @@ import copy
 import yaml
 import logging
 import collections
-import warnings
 
 import numpy as np
 import openmoltools as omt
@@ -1056,9 +1055,8 @@ class SetupDatabase:
                 tleap.add_ions(unit=unit_to_solvate, ion=solvent['negative_ion'])
 
             # Solvate unit
-            if 'clearance' in solvent:
-                clearance = float(solvent['clearance'].value_in_unit(unit.angstroms))
-                tleap.solvate(group=unit_to_solvate, water_model='TIP3PBOX', clearance=clearance)
+            clearance = float(solvent['clearance'].value_in_unit(unit.angstroms))
+            tleap.solvate(group=unit_to_solvate, water_model='TIP3PBOX', clearance=clearance)
 
         # Check charge
         tleap.new_section('Check charge')
@@ -1626,20 +1624,13 @@ class YamlBuilder:
                 raise ValueError('Nonbonded method must be NoCutoff.')
             return openmm_app
 
-        def to_PBC(nonbonded_method_str):
-            """Check OpenMM periodic system"""
-            openmm_app = to_openmm_app(nonbonded_method_str)
-            if openmm_app == openmm.app.NoCutoff or openmm_app == openmm.app.CutoffNonPeriodic:
-                raise ValueError('Nonbonded method must be PME or CutoffPeriodic')
-            return openmm_app
-
         validated_solvents = solvents_description.copy()
 
         # Define solvents Schema
         explicit_schema = utils.generate_signature_schema(AmberPrmtopFile.createSystem,
                                 update_keys={'nonbonded_method': Use(to_explicit_solvent)},
                                 exclude_keys=['implicit_solvent'])
-        explicit_schema.update({'clearance': Use(utils.to_unit_validator(unit.angstrom)),
+        explicit_schema.update({Optional('clearance'): Use(utils.to_unit_validator(unit.angstrom)),
                                 Optional('positive_ion'): str, Optional('negative_ion'): str})
         implicit_schema = utils.generate_signature_schema(AmberPrmtopFile.createSystem,
                                 update_keys={'implicit_solvent': Use(to_openmm_app),
@@ -1648,10 +1639,7 @@ class YamlBuilder:
         vacuum_schema = utils.generate_signature_schema(AmberPrmtopFile.createSystem,
                                 update_keys={'nonbonded_method': Use(to_no_cutoff)},
                                 exclude_keys=['rigid_water', 'implicit_solvent'])
-        solvent_skipped_pbc_schema = utils.generate_signature_schema(AmberPrmtopFile.createSystem,
-                                update_keys={'nonbonded_method': Use(to_PBC)},
-                                exclude_keys=['rigid_water', 'implicit_solvent'])
-        solvent_schema = Schema(Or(explicit_schema, implicit_schema, vacuum_schema, solvent_skipped_pbc_schema))
+        solvent_schema = Schema(Or(explicit_schema, implicit_schema, vacuum_schema))
 
         # Schema validation
         for solvent_id, solvent_descr in utils.listitems(solvents_description):
@@ -1659,21 +1647,6 @@ class YamlBuilder:
                 validated_solvents[solvent_id] = solvent_schema.validate(solvent_descr)
             except SchemaError as e:
                 raise YamlParseError('Solvent {}: {}'.format(solvent_id, e.autos[-1]))
-
-        # Warning Catches
-        warn_solvent_skipped_pbc_schema = Schema(solvent_skipped_pbc_schema)
-        for solvent_id, solvent_descr in utils.listitems(solvents_description):
-            try:
-                # Confirm schema is valid
-                pass_check = warn_solvent_skipped_pbc_schema.validate(solvent_descr)
-                del pass_check
-                warnings.warn("\n********************************************************************************\n"
-                              "Solvent {} has a periodic `nonbonded_method`, but no solvent will be added since\n"
-                              "`clearance` was not also set. Ensure you have specified PBC in your input files!\n"
-                              "********************************************************************************".format(solvent_id),
-                              UserWarning)
-            except SchemaError:
-                pass
 
         return validated_solvents
 
@@ -1768,6 +1741,15 @@ class YamlBuilder:
                 return True
             raise YamlParseError('Solvent ' + solvent_id + ' is unknown.')
 
+        def is_pipeline_solvent(solvent_id):
+            is_known_solvent(solvent_id)
+            solvent = self._db.solvents[solvent_id]
+            if (solvent['nonbonded_method'] != openmm.app.NoCutoff and
+                    'clearance' not in solvent):
+                raise YamlParseError('Explicit solvent {} does not specify '
+                                     'clearance.'.format(solvent_id))
+            return True
+
         def system_files(type):
             def _system_files(files):
                 """Paths to amber/gromacs/xml files. Return them in alphabetical
@@ -1794,11 +1776,11 @@ class YamlBuilder:
             'parameters': And(Use(lambda p: [p] if isinstance(p, str) else p), [str])}
         system_schema = Schema(Or(
             {'receptor': is_known_molecule, 'ligand': is_known_molecule,
-             'solvent': is_known_solvent, Optional('pack', default=False): bool,
+             'solvent': is_pipeline_solvent, Optional('pack', default=False): bool,
              Optional('leap'): parameters_schema},
 
-            {'solute': is_known_molecule, 'solvent1': is_known_solvent,
-             'solvent2': is_known_solvent, Optional('leap'): parameters_schema},
+            {'solute': is_known_molecule, 'solvent1': is_pipeline_solvent,
+             'solvent2': is_pipeline_solvent, Optional('leap'): parameters_schema},
 
             {'phase1_path': Use(system_files('amber')), 'phase2_path': Use(system_files('amber')),
              'ligand_dsl': str, 'solvent': is_known_solvent},
