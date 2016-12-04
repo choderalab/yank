@@ -917,7 +917,7 @@ class Boresch(OrientationDependentRestraint):
         accepted = False
         while not accepted:
             # Select a receptor/ligand atom in range of each other
-            raA_atoms = all_pairs[random.sample(index_of_in_range_atoms, 1)[0]].tolist()
+            raA_atoms = all_pairs[random.sample(list(index_of_in_range_atoms), 1)[0]].tolist()
             # Cast to set for easy comparison operations
             raA_set = set(raA_atoms)
             # Select two additional random atoms from the receptor and ligand

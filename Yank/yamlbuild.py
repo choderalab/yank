@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 # CONSTANTS
 # =============================================================================
 
-HIGHEST_VERSION = '1.1'  # highest version of YAML syntax
+HIGHEST_VERSION = '1.0'  # highest version of YAML syntax
 
 
 # =============================================================================================
