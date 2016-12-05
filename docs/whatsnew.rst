@@ -8,7 +8,10 @@ The full release history can be viewed `at the github yank releases page <https:
 
 0.14.1 Early Access of 1.0 Release
 ----------------------------------
-- Boresch Orientational Restraints fully implemented and doucmented.
+- Initial support for OpenMM XML systems and PDB files
+- Support for separate solvent configurations for the two phases when defined from amber/gromacs/openmm files
+- `clearance` in YAML no mandatory parameter of explicit solvent, but only when molecule setup goes through pipeline
+- Boresch Orientational Restraints fully implemented and documented.
 - Long range anisotropic dispersion correction improved to work on both ends of thermodynamic cycle leg
 - Documentation updated with better algorithms and theory sections.
 - Full walkthroughs of ``yank-examples`` added to online documentation
