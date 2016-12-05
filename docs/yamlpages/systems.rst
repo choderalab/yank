@@ -33,7 +33,7 @@ Ligand/Receptor Free Energies Setup by YANK
        receptor: {UserDefinedMolecule}
        ligand: {UserDefinedMolecule}
        solvent: {UserDefinedSolvent}
-       pack: yes
+       pack: no
        leap:
            parameters: [leaprc.ff14SB, leaprc.gaff]
 
@@ -43,10 +43,10 @@ setup of a Ligand/Receptor system to do binding free energies.
 * ``receptor``: Tells YANK which ``{UserDefinedMolecule}`` to load in as the receptor.
 * ``ligand``: Tells YANK which ``{UserDefinedMolecule}`` to load in as the ligand. This molecule will be alchemically modified to compute the free energy difference.
 * ``solvent``: Tells YANK  which ``{UserDefinedSolvent}`` to surround the ``receptor`` and ``ligand`` in. This must be set even if you want to use a vacuum, which is a type of ``solvent`` you can define.
-* ``pack``: If the ligand is far away from the receptor or if there are clashing atoms 
+* ``pack``: When set to "yes", if the ligand is far away from the receptor or if there are clashing atoms 
   (defined as closer than 1.5 angstroms),  
-  Yank will randomly translate and rotate the ligand until  this is solved. 
-  Set this to "no" if you don't want to  modify the initial position of the ligand as defined in  your input file.
+  Yank will randomly translate and rotate the ligand until  this is solved. Do not set this to "yes" if you
+  want your ligand to start from the positions specified in the original mol2/sdf file.
 * ``leap`` and ``parameters``: Both options must be specified as shown and tell LEaP which parameter files to use.
   Each file can be one native to LEaP, or a custom file relative to the YAML script location. 
   If multiple files are specified, they must be enclosed around square brackets, ``[ ]``.
