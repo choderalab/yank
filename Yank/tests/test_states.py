@@ -33,21 +33,6 @@ def get_barostat_temperature(barostat):
 
 
 # =============================================================================
-# UTILITY CLASSES
-# =============================================================================
-
-class InconsistentThermodynamicState(ThermodynamicState):
-    """ThermodynamicState that does not run consistency checks on init.
-
-    It is useful to test private methods used to check for consistency.
-
-    """
-    def __init__(self, system=None, temperature=None, pressure=None):
-        self._system = copy.deepcopy(system)
-        self._temperature = temperature
-
-
-# =============================================================================
 # TEST THERMODYNAMIC STATE
 # =============================================================================
 
@@ -427,3 +412,115 @@ class TestThermodynamicState(object):
         # Now switch back to constant volume.
         state0.apply_to_context(context)
         assert ThermodynamicState._find_barostat(context.getSystem()) is None
+
+
+# =============================================================================
+# TEST SAMPLER STATE
+# =============================================================================
+
+class TestSamplerState(object):
+
+    @classmethod
+    def setup_class(cls):
+        temperature = 300*unit.kelvin
+        alanine_vacuum = testsystems.AlanineDipeptideVacuum()
+        cls.alanine_vacuum_positions = alanine_vacuum.positions
+        cls.alanine_vacuum_state = ThermodynamicState(alanine_vacuum.system,
+                                                      temperature)
+
+        alanine_explicit = testsystems.AlanineDipeptideExplicit()
+        cls.alanine_explicit_positions = alanine_explicit.positions
+        cls.alanine_explicit_state = ThermodynamicState(alanine_explicit.system,
+                                                        temperature)
+
+    @staticmethod
+    def is_sampler_state_equal_context(sampler_state, context):
+        equal = True
+        openmm_state = context.getState(getPositions=True, getEnergy=True,
+                                        getVelocities=True)
+        equal = equal and np.all(sampler_state.positions == openmm_state.getPositions())
+        equal = equal and np.all(sampler_state.velocities == openmm_state.getVelocities())
+        equal = equal and np.all(sampler_state.box_vectors == openmm_state.getPeriodicBoxVectors())
+        equal = equal and sampler_state.potential_energy == openmm_state.getPotentialEnergy()
+        equal = equal and sampler_state.kinetic_energy == openmm_state.getKineticEnergy()
+        nm3 = unit.nanometers**3
+        equal = equal and np.isclose(sampler_state.volume / nm3, openmm_state.getPeriodicBoxVolume() / nm3)
+        return equal
+
+    def test_inconsistent_velocities(self):
+        """Exception raised with inconsistent velocities."""
+        positions = self.alanine_vacuum_positions
+        sampler_state = SamplerState(positions)
+
+        # If velocities have different length, an error is raised.
+        velocities = [0.0 for _ in range(len(positions) - 1)]
+        with nose.tools.assert_raises(SamplerStateError) as cm:
+            sampler_state.velocities = velocities
+        assert cm.exception.code == SamplerStateError.INCONSISTENT_VELOCITIES
+
+        # The same happens in constructor.
+        with nose.tools.assert_raises(SamplerStateError) as cm:
+            SamplerState(positions, velocities)
+        assert cm.exception.code == SamplerStateError.INCONSISTENT_VELOCITIES
+
+    def test_constructor_from_context(self):
+        """SamplerState.from_context constructor."""
+        integrator = openmm.VerletIntegrator(2.0*unit.femtoseconds)
+        alanine_vacuum_context = self.alanine_vacuum_state.create_context(integrator)
+        alanine_vacuum_context.setPositions(self.alanine_vacuum_positions)
+
+        sampler_state = SamplerState.from_context(alanine_vacuum_context)
+        assert self.is_sampler_state_equal_context(sampler_state, alanine_vacuum_context)
+
+    def test_method_is_context_compatible(self):
+        """SamplerState.is_context_compatible() method."""
+        time_step = 1*unit.femtosecond
+        integrator1 = openmm.VerletIntegrator(time_step)
+        integrator2 = openmm.VerletIntegrator(time_step)
+
+        # Vacuum.
+        alanine_vacuum_context = self.alanine_vacuum_state.create_context(integrator1)
+        vacuum_sampler_state = SamplerState(self.alanine_vacuum_positions)
+
+        # Explicit solvent.
+        alanine_explicit_context = self.alanine_explicit_state.create_context(integrator2)
+        explicit_sampler_state = SamplerState(self.alanine_explicit_positions)
+
+        assert vacuum_sampler_state.is_context_compatible(alanine_vacuum_context)
+        assert not vacuum_sampler_state.is_context_compatible(alanine_explicit_context)
+        assert explicit_sampler_state.is_context_compatible(alanine_explicit_context)
+        assert not explicit_sampler_state.is_context_compatible(alanine_vacuum_context)
+
+    def test_method_update_from_context(self):
+        """SamplerState.update_from_context() method."""
+        time_step = 1*unit.femtosecond
+        integrator1 = openmm.VerletIntegrator(time_step)
+        integrator2 = openmm.VerletIntegrator(time_step)
+        vacuum_context = self.alanine_vacuum_state.create_context(integrator1)
+        explicit_context = self.alanine_explicit_state.create_context(integrator2)
+
+        # Test that the update is successful
+        vacuum_context.setPositions(self.alanine_vacuum_positions)
+        sampler_state = SamplerState.from_context(vacuum_context)
+        integrator1.step(10)
+        assert not self.is_sampler_state_equal_context(sampler_state, vacuum_context)
+        sampler_state.update_from_context(vacuum_context)
+        assert self.is_sampler_state_equal_context(sampler_state, vacuum_context)
+
+        # Trying to update with an inconsistent context raise error.
+        explicit_context.setPositions(self.alanine_explicit_positions)
+        with nose.tools.assert_raises(SamplerStateError) as cm:
+            sampler_state.update_from_context(explicit_context)
+        assert cm.exception.code == SamplerStateError.INCONSISTENT_VELOCITIES
+
+    def test_method_apply_to_context(self):
+        """SamplerState.apply_to_context() method."""
+        integrator = openmm.VerletIntegrator(1*unit.femtosecond)
+        explicit_context = self.alanine_explicit_state.create_context(integrator)
+        explicit_context.setPositions(self.alanine_explicit_positions)
+        sampler_state = SamplerState.from_context(explicit_context)
+
+        integrator.step(10)
+        assert not self.is_sampler_state_equal_context(sampler_state, explicit_context)
+        sampler_state.apply_to_context(explicit_context)
+        assert self.is_sampler_state_equal_context(sampler_state, explicit_context)
