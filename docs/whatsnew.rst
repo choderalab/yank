@@ -8,6 +8,8 @@ The full release history can be viewed `at the github yank releases page <https:
 
 0.14.1 Early Access of 1.0 Release
 ----------------------------------
+- YAML Syntax Structure Frozen. YANK YAML Version 1.0. All YAML scripts from this version will be compatible with future versions until YAML 2.0
+  New features may appear in the time meantime, but scripts will be forwards compatible.
 - Initial support for OpenMM XML systems and PDB files
 - Support for separate solvent configurations for the two phases when defined from amber/gromacs/openmm files
 - `clearance` in YAML no mandatory parameter of explicit solvent, but only when molecule setup goes through pipeline
