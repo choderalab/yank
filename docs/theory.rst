@@ -7,6 +7,8 @@ This section covers the theory of YANK. We focus on the thermodynamics here and 
 specific details. For a more detailed description of the theory behind alchemical free energy calculations,
 see `alchemistry.org <http://alchemistry.org>`_.
 
+.. _yank_cycle:
+
 The Thermodynamic Cycle of YANK
 ===============================
 
