@@ -25,15 +25,15 @@ YANK provides the somewhat unique ability to perform alchemical free energy calc
 Solvent model
 ^^^^^^^^^^^^^
 
-For the ``yank prepare amber`` command that imports AMBER ``prmtop`` files, any of the AMBER implicit solvent models
-available in OpenMM are available for use via the :code:`--gbsa <model>`` argument:
+For the :ref:`implicit solvent models in YANK <yaml_solvents_implicit_solvent>` any of the AMBER implicit solvent models
+available in OpenMM are available for use in the `implicit_solvent` directive:
 
 .. tabularcolumns:: |l|L|
 
 =============  ==================================================================================================================================
 Value          Meaning
 =============  ==================================================================================================================================
-:code:`None`   No implicit solvent is used.
+{Not Set}      No implicit solvent is used when the option is not set.
 :code:`HCT`    Hawkins-Cramer-Truhlar GBSA model\ :cite:`Hawkins1995` (corresponds to igb=1 in AMBER)
 :code:`OBC1`   Onufriev-Bashford-Case GBSA model\ :cite:`Onufriev2004` using the GB\ :sup:`OBC`\ I parameters (corresponds to igb=2 in AMBER).
 :code:`OBC2`   Onufriev-Bashford-Case GBSA model\ :cite:`Onufriev2004` using the GB\ :sup:`OBC`\ II parameters (corresponds to igb=5 in AMBER).
@@ -113,28 +113,30 @@ Explicit solvent
 Solvent model
 ^^^^^^^^^^^^^
 
-Any explicit solvent model that can be constructed via AmberTools or that is distributed along with OpenMM is supported.
+.. warning:: Only TIP3P is supported through the :ref:`YAML method of setting up solvents <yaml_head>` at this moment. We are working on adding back in support for other water models before the YANK 1.0 release, but after the preview build
 
-For the ``yank prepare amber`` command that imports AMBER ``prmtop`` files, any solvent model specified in the ``prmtop`` file is used automatically.
-This method is depreciated however in favor of the :ref:`YAML method of setting up systems <yaml_head>`.
+.. Any explicit solvent model that can be constructed via AmberTools or that is distributed along with OpenMM is supported.
 
-For systems prepared with ``yank prepare systembuilder``, any solvent models available in OpenMM can be specified via the ``--solventmodel <model>`` argument.  Water models available in OpenMM include:
+.. For the ``yank prepare amber`` command that imports AMBER ``prmtop`` files, any solvent model specified in the ``prmtop`` file is used automatically.
+.. This method is depreciated however in favor of the :ref:`YAML method of setting up systems <yaml_head>`.
 
-.. tabularcolumns:: |l|L|
+.. For systems prepared with ``yank prepare systembuilder``, any solvent models available in OpenMM can be specified via the ``--solventmodel <model>`` argument.  Water models available in OpenMM include:
 
-===================  ============================================
-Model                Water Model
-===================  ============================================
-:code:`tip3p`        TIP3P water model :cite:`Jorgensen1983` (older model used in many legacy calculations)
-:code:`tip4pew`      TIP4P-Ew water model :cite:`Horn2004` (recommended)
-:code:`tip3pfb`      TIP3P-FB water model :cite:`Wang2014`
-:code:`tip4pfb`      TIP4P-FB water model :cite:`Wang2014`
-:code:`tip5p`        TIP5P water model :cite:`Mahoney2000`
-:code:`spce`         SPC/E water model :cite:`Berendsen1987`
-:code:`swm4ndp`      SWM4-NDP water model :cite:`Lamoureux2006`
-===================  ============================================
+.. .. tabularcolumns:: |l|L|
 
-.. todo:: What should we recommend for reaction field calculations?  Is there a ForceBalance-parameterized version for use with reaction field?
+.. RemoveMeToUncomment ===================  ============================================
+.. Model                Water Model
+.. RemoveMeToUncomment ===================  ============================================
+.. RemoveMeToUncomment :code:`tip3p`        TIP3P water model :cite:`Jorgensen1983` (older model used in many legacy calculations)
+.. RemoveMeToUncomment :code:`tip4pew`      TIP4P-Ew water model :cite:`Horn2004` (recommended)
+.. RemoveMeToUncomment :code:`tip3pfb`      TIP3P-FB water model :cite:`Wang2014`
+.. RemoveMeToUncomment :code:`tip4pfb`      TIP4P-FB water model :cite:`Wang2014`
+.. RemoveMeToUncomment :code:`tip5p`        TIP5P water model :cite:`Mahoney2000`
+.. RemoveMeToUncomment :code:`spce`         SPC/E water model :cite:`Berendsen1987`
+.. RemoveMeToUncomment :code:`swm4ndp`      SWM4-NDP water model :cite:`Lamoureux2006`
+.. RemoveMeToUncomment ===================  ============================================
+
+.. .. todo:: What should we recommend for reaction field calculations?  Is there a ForceBalance-parameterized version for use with reaction field?
 
 Electrostatics treatment
 ^^^^^^^^^^^^^^^^^^^^^^^^
@@ -142,7 +144,6 @@ Electrostatics treatment
 OpenMM supports several electrostatics models for the periodic simulation boxes used with explicit solvent calculations, all of which are accessible in YANK:
 
 * ``PME`` - **Particle mesh Ewald (PME)** :cite:`Essmann1995,Toukmaji1996` is the "gold standard" for accurate long-range treatment of electrostatics in periodic solvated systems.
-    .. todo:: Levi Naden has a trick we can use to fix this issue.
 
 * ``CutoffPeriodic`` - **Reaction field electrostatics** :cite:`Tironi1995` is a faster, less accurate methods for treating electrostatics in solvated systems that assumes a uniform dielectric outside the nonbonded cutoff distance.
     .. warning:: |EwaldWarn|
