@@ -14,7 +14,6 @@ Test State classes in states.py.
 # =============================================================================
 
 import nose
-from simtk import unit
 from openmmtools import testsystems
 
 from yank.states import *
@@ -413,6 +412,28 @@ class TestThermodynamicState(object):
         state0.apply_to_context(context)
         assert ThermodynamicState._find_barostat(context.getSystem()) is None
 
+    def test_method_reduced_potential(self):
+        """ThermodynamicState.reduced_potential() method."""
+        kJmol = unit.kilojoule_per_mole
+        beta = 1.0 / (unit.MOLAR_GAS_CONSTANT_R * self.temperature)
+        state = ThermodynamicState(self.alanine_explicit, self.temperature)
+        integrator = openmm.VerletIntegrator(1.0*unit.femtosecond)
+        context = state.create_context(integrator)
+        context.setPositions(self.alanine_positions)
+        sampler_state = SamplerState.from_context(context)
+
+        # Compute constant volume reduced potential.
+        reduced_potential = state.reduced_potential(sampler_state)
+        potential_energy = reduced_potential / beta / kJmol
+        assert np.isclose(sampler_state.potential_energy / kJmol, potential_energy)
+
+        # Compute constant pressure reduced potential.
+        state.pressure = self.pressure
+        reduced_potential = state.reduced_potential(sampler_state)
+        pressure_volume_work = (self.pressure * sampler_state.volume *
+                                unit.AVOGADRO_CONSTANT_NA)
+        potential_energy = (reduced_potential / beta - pressure_volume_work) / kJmol
+        assert np.isclose(sampler_state.potential_energy / kJmol, potential_energy)
 
 # =============================================================================
 # TEST SAMPLER STATE
