@@ -17,7 +17,7 @@ DOCLINES = __doc__.split("\n")
 
 ########################
 VERSION = "0.14.1"
-ISRELEASED = True
+ISRELEASED = False
 __version__ = VERSION
 ########################
 CLASSIFIERS = """\
