@@ -34,6 +34,9 @@ Uninstalling this program will also remove the files.
 
 |
 
+List of Examples
+----------------
+
 .. toctree::
    :maxdepth: 1
 

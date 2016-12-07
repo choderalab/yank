@@ -37,7 +37,6 @@ Value          Meaning
 :code:`HCT`    Hawkins-Cramer-Truhlar GBSA model\ :cite:`Hawkins1995` (corresponds to igb=1 in AMBER)
 :code:`OBC1`   Onufriev-Bashford-Case GBSA model\ :cite:`Onufriev2004` using the GB\ :sup:`OBC`\ I parameters (corresponds to igb=2 in AMBER).
 :code:`OBC2`   Onufriev-Bashford-Case GBSA model\ :cite:`Onufriev2004` using the GB\ :sup:`OBC`\ II parameters (corresponds to igb=5 in AMBER).
-               This is the same model used by the GBSA-OBC files described in Section :ref:`force-fields`.
 :code:`GBn`    GBn solvation model\ :cite:`Mongan2007` (corresponds to igb=7 in AMBER).
 :code:`GBn2`   GBn2 solvation model\ :cite:`Nguyen2013` (corresponds to igb=8 in AMBER).
 =============  ==================================================================================================================================
@@ -307,7 +306,7 @@ Alchemical protocol
 
 A number of rules of thumb are followed when choosing what order to carry out alchemical intermediates,
 examples of which can be found in the
-:doc:`Examples Documentation <examples/index>`.
+:doc:`Examples Documentation <examples/examples>`.
 
 #. Couple restraints before any other alchemical changes
 #. Decouple electrostatics first and separate from all other alchemical changes=

@@ -15,10 +15,8 @@ import sys
 import os
 
 sys.path.insert(0, os.path.abspath('sphinxext'))
-sys.path.insert(0, os.path.abspath('themes/sphinx_rtd_theme-0.1.5'))
 import sphinx_rtd_theme
 
-import yank
 import yank.version
 
 # DEBUG: Include TODO lists for now.
@@ -87,7 +85,7 @@ source_suffix = '.rst'
 #source_encoding = 'utf-8-sig'
 
 # The master toctree document.
-master_doc = 'index'
+master_doc = 'home'
 
 # General information about the project.
 project = u'YANK'
@@ -146,10 +144,12 @@ html_theme = "sphinx_rtd_theme"
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
 # documentation.
-#html_theme_options = {}
+html_theme_options = {
+    'display_version': True,
+    'collapse_navigation': True
+}
 
 # Add any paths that contain custom themes here, relative to this directory.
-#html_theme_path = []
 html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
 
 
