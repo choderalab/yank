@@ -1,5 +1,4 @@
 matplotlib
-sphinx=1.4.8
 boto
 ipython-notebook
 jinja2
@@ -7,4 +6,4 @@ runipy
 openmm
 pytables
 scikit-learn
-sphinx_rtd_theme
+

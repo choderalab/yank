@@ -18,6 +18,7 @@ branches:
 
 install:
   - source devtools/travis-ci/install.sh
+  - conda config --add channels {ORGNAME}
   - export PYTHONUNBUFFERED=true
   # Unpack encrypted OpenEye license file
   - if [ "$TRAVIS_SECURE_ENV_VARS" == true ]; then openssl aes-256-cbc -K $encrypted_348f443ff0b5_key -iv $encrypted_348f443ff0b5_iv -in "devtools/travis-ci/oe_license.txt.enc" -out "$OE_LICENSE" -d; fi
@@ -28,8 +29,6 @@ script:
   - conda create --yes -n test python=$python
   # Activate the test environment
   - source activate test
-  # Add org channel
-  - conda config --add channels ${ORGNAME}
   # Add omnia dev channels
   - conda config --add channels https://conda.anaconda.org/omnia/label/dev
   # Install OpenEye toolkit
@@ -42,7 +41,7 @@ script:
   # Install testing dependencies
   - conda install --yes --quiet nose nose-timer
   # Test the package
-  - cd devtools && nosetests $PACKAGENAME --nocapture --verbosity=2 --with-timer -a '!slow' && cd ..
+  - cd devtools && nosetests $PACKAGENAME --nocapture --verbosity=2 --with-timer -a '!slow' && cd .. && if [[ $CONDA_PY = 3.5 ]]; then devtools/travis-ci/build_docs.sh; fi
 
 env:
   matrix:
@@ -64,6 +63,19 @@ env:
     - secure: "SrSd1JoI8dBXQxDAX0xBTYBinTusRBQoPETnxHrBAgKdoty1pkzaghTKNMsrGsk78iwkkj1hAyttIY9trdFQkmx+OTx0fLKFmDHsMkgko4RzTtrgLgoxuRIs/gruID2cN1XKEbxlhRmQF14+q8/X1q6iGGdYMrxo51JcYPuEOSo="
     - secure: "br6QRMYXhHltYTEh/d+zejxcunT3GsqwQvxxLmqnLxi+LIxX4j7eymR6p4fPBd5mCRxyvkQEjnSZxF6e7JlEKxWVcMG28I/dBWzVIRW3EKQQNRmyI+JL1dfNaqj68kHJD+FknBwHK9LD238JPcyqXPdVrm9iPkDijPczvPBxvDs="
 
-after_success:
-  - echo "after_success"
-  - if [ "$TRAVIS_SECURE_ENV_VARS" == true ]; then ./devtools/travis-ci/after_success.sh; fi
+deploy:
+    - provider: s3
+      access_key_id:
+          secure: "SrSd1JoI8dBXQxDAX0xBTYBinTusRBQoPETnxHrBAgKdoty1pkzaghTKNMsrGsk78iwkkj1hAyttIY9trdFQkmx+OTx0fLKFmDHsMkgko4RzTtrgLgoxuRIs/gruID2cN1XKEbxlhRmQF14+q8/X1q6iGGdYMrxo51JcYPuEOSo="
+      secret_access_key:
+          secure: "br6QRMYXhHltYTEh/d+zejxcunT3GsqwQvxxLmqnLxi+LIxX4j7eymR6p4fPBd5mCRxyvkQEjnSZxF6e7JlEKxWVcMG28I/dBWzVIRW3EKQQNRmyI+JL1dfNaqj68kHJD+FknBwHK9LD238JPcyqXPdVrm9iPkDijPczvPBxvDs="
+      bucket: "get_yank.org"
+      skip_cleanup: true
+      local_dir: docs/_deplot
+      on:
+          branch: master
+          condition: "$CONDA_PY = 3.5"
+
+# after_success:
+#  - echo "after_success"
+#  - if [ "$TRAVIS_SECURE_ENV_VARS" == true ]; then ./devtools/travis-ci/after_success.sh; fi
