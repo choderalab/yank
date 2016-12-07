@@ -8,7 +8,12 @@ YANK
 
 .. TODO: Refine this description
 
-.. warning:: YANK is still undergoing major changes prior to a 1.0 release (anticipated in Sep 2016), and has not yet been extensively validated. Use at your own risk!
+.. note:: |IntroNoteText|
+
+.. |IntroNoteText| replace::
+    YANK is now in Early Access for its 1.0 release!
+    YAML syntax should be fully operational while we prepare the underlying Python API.
+    The program has not yet been extensively validated. Use at your own risk!
 
 Features
 --------
@@ -34,8 +39,10 @@ Get involved
 
 --------------------------------------------------------------------------------
 
-Documentation
--------------
+.. Special TOC so people can always get home
+
+Getting YANK Up and Running
+---------------------------
 
 .. toctree::
    :maxdepth: 3
@@ -43,17 +50,30 @@ Documentation
    quickstart
    installation
    running
-   yamlpages/index
+   yamlpages/yaml
+   whatsnew
+   examples/examples
+   faq
+
+The Science Behind YANK
+-----------------------
+
+.. toctree::
+   :maxdepth: 3
+
    theory
    algorithms
    analysis
    benchmarks
+
+Citations and Thanks
+--------------------
+
+.. toctree::
+   :maxdepth: 1
+
    references
    acknowledgments
-   examples/index
-   whatsnew
-   faq
-   zbibliography
 
 API Reference
 -------------
