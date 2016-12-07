@@ -28,5 +28,5 @@ Now, go back to the docs subdirectory in the main repository. The documentation 
     cd docs
     make html
 
-To view the output of your build, go into the ``docs/_build`` directory and open up ``home.html`` to see how it rendered
+To view the output of your build, go into the ``docs/_build`` directory and open up ``index.html`` to see how it rendered
 in your local browser.
