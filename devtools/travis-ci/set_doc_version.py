@@ -8,5 +8,5 @@ else:
     docversion = 'latest'
 
 os.mkdir("docs/_deploy")
-shutil.copytree("docs/_build/html", "docs/_deploy/{docversion}"
+shutil.copytree("docs/_build", "docs/_deploy/{docversion}"
                 .format(docversion=docversion))
