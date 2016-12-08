@@ -18,7 +18,6 @@ branches:
 
 install:
   - source devtools/travis-ci/install.sh
-  - conda config --add channels {ORGNAME}
   - export PYTHONUNBUFFERED=true
   # Unpack encrypted OpenEye license file
   - if [ "$TRAVIS_SECURE_ENV_VARS" == true ]; then openssl aes-256-cbc -K $encrypted_348f443ff0b5_key -iv $encrypted_348f443ff0b5_iv -in "devtools/travis-ci/oe_license.txt.enc" -out "$OE_LICENSE" -d; fi
@@ -29,6 +28,8 @@ script:
   - conda create --yes -n test python=$python
   # Activate the test environment
   - source activate test
+  # Add org channel
+  - conda config --add channels {ORGNAME}
   # Add omnia dev channels
   - conda config --add channels https://conda.anaconda.org/omnia/label/dev
   # Install OpenEye toolkit
