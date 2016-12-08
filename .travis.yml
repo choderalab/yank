@@ -32,22 +32,21 @@ script:
   - source activate test
   # Add omnia dev channels
   - conda config --add channels https://conda.anaconda.org/omnia/label/dev
+  # Install extras for OpenEye and testing
+  - conda install --yes --quiet pip nose nose-timer
   # Install OpenEye toolkit
-  - conda install --yes --quiet pip
   - pip install $OPENEYE_CHANNEL openeye-toolkits && python -c "import openeye; print(openeye.__version__)"
   # Build the recipe
   - conda build devtools/conda-recipe
   # Install the package
   - conda install --yes --use-local ${PACKAGENAME}-dev
-  # Install testing dependencies
-  - conda install --yes --quiet nose nose-timer
   # Test the package
-  - cd devtools && nosetests $PACKAGENAME --nocapture --verbosity=2 --with-timer -a '!slow' && cd .. && if [[ $CONDA_PY = 3.5 ]]; then devtools/travis-ci/build_docs.sh; fi
+  - cd devtools && nosetests $PACKAGENAME --nocapture --verbosity=2 --with-timer -a '!slow' && cd .. && if [[ $CONDA_PY = 35 ]]; then devtools/travis-ci/build_docs.sh; fi
 
 env:
   matrix:
-    - python=2.7  CONDA_PY=27
-    - python=3.4  CONDA_PY=34
+    #- python=2.7  CONDA_PY=27
+    #- python=3.4  CONDA_PY=34
     - python=3.5  CONDA_PY=35
 
   global:
@@ -63,6 +62,7 @@ env:
     # encrypted AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
     - secure: "SrSd1JoI8dBXQxDAX0xBTYBinTusRBQoPETnxHrBAgKdoty1pkzaghTKNMsrGsk78iwkkj1hAyttIY9trdFQkmx+OTx0fLKFmDHsMkgko4RzTtrgLgoxuRIs/gruID2cN1XKEbxlhRmQF14+q8/X1q6iGGdYMrxo51JcYPuEOSo="
     - secure: "br6QRMYXhHltYTEh/d+zejxcunT3GsqwQvxxLmqnLxi+LIxX4j7eymR6p4fPBd5mCRxyvkQEjnSZxF6e7JlEKxWVcMG28I/dBWzVIRW3EKQQNRmyI+JL1dfNaqj68kHJD+FknBwHK9LD238JPcyqXPdVrm9iPkDijPczvPBxvDs="
+    - force_deployment:
 
 deploy:
     - provider: s3
@@ -70,12 +70,12 @@ deploy:
           secure: "SrSd1JoI8dBXQxDAX0xBTYBinTusRBQoPETnxHrBAgKdoty1pkzaghTKNMsrGsk78iwkkj1hAyttIY9trdFQkmx+OTx0fLKFmDHsMkgko4RzTtrgLgoxuRIs/gruID2cN1XKEbxlhRmQF14+q8/X1q6iGGdYMrxo51JcYPuEOSo="
       secret_access_key:
           secure: "br6QRMYXhHltYTEh/d+zejxcunT3GsqwQvxxLmqnLxi+LIxX4j7eymR6p4fPBd5mCRxyvkQEjnSZxF6e7JlEKxWVcMG28I/dBWzVIRW3EKQQNRmyI+JL1dfNaqj68kHJD+FknBwHK9LD238JPcyqXPdVrm9iPkDijPczvPBxvDs="
-      bucket: "get_yank.org"
+      bucket: "getyank.org"
       skip_cleanup: true
-      local_dir: docs/_deplot
+      local_dir: docs/_deploy
       on:
-          branch: master
-          condition: "$CONDA_PY = 3.5"
+          branch: SphinxUpdate # Temporary to test deplotment
+          condition: "$CONDA_PY = 35"
 
 # after_success:
 #  - echo "after_success"
