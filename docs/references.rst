@@ -1,8 +1,8 @@
 .. _references:
 
-************
-Referenences
-************
+**********
+References
+**********
 
 Here are a list of references for the various components and algorithms used in YANK.
 
