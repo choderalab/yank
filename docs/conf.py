@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# MDTraj documentation build configuration file, created by
+# YANK documentation build configuration file, created by templating the MDTraj config file from
 # sphinx-quickstart on Tue Jun 11 21:23:28 2013.
 #
 # This file is execfile()d with the current directory set to its containing dir.
@@ -34,38 +34,15 @@ todo_include_todos = True
 
 # Add any Sphinx extension module names here, as strings. They can be extensions
 # coming with Sphinx (named 'sphinx.ext.*') or your custom ones.
-
-# This is the compete set of extensions MDTraj uses
-#extensions = ['sphinx.ext.mathjax', 'sphinx.ext.ifconfig', 'sphinx.ext.autosummary',
-#              'sphinx.ext.viewcode', 'sphinx.ext.autodoc', 'numpydoc',
-#              'sphinx.ext.intersphinx', 'sphinx.ext.viewcode',
-#              'IPython.sphinxext.ipython_console_highlighting',
-#              'IPython.sphinxext.ipython_directive',
-#              'matplotlib.sphinxext.plot_directive']
-
-# Pared-down set (for now) for Yank
 extensions = ['sphinx.ext.mathjax', 'sphinx.ext.ifconfig', 'sphinx.ext.autosummary',
               'sphinx.ext.viewcode', 'sphinx.ext.autodoc', 'sphinx.ext.viewcode',
               'numpydoc', 'sphinx.ext.todo', 'sphinxcontrib.bibtex']
-
-# Napoleon settings
-napoleon_google_docstring = False
-napoleon_numpy_docstring = True
-napoleon_include_private_with_doc = False
-napoleon_include_special_with_doc = True
-napoleon_use_admonition_for_examples = False
-napoleon_use_admonition_for_notes = False
-napoleon_use_admonition_for_references = False
-napoleon_use_ivar = False
-napoleon_use_param = True
-napoleon_use_rtype = True
 
 autosummary_generate = True
 autodoc_default_flags = ['members', 'inherited-members']
 
 
 extensions.append('notebook_sphinxext')
-extensions.append('notebookcell_sphinxext')
 
 _python_doc_base = 'http://docs.python.org/2.7'
 intersphinx_mapping = {
@@ -85,11 +62,11 @@ source_suffix = '.rst'
 #source_encoding = 'utf-8-sig'
 
 # The master toctree document.
-master_doc = 'index'
+master_doc = 'home'
 
 # General information about the project.
 project = u'YANK'
-copyright = u'2014, Copyright Stanford University, University of California Berkeley, Sloan Kettering Institute, and the authors'
+copyright = u'2014-2016, Copyright Stanford University, University of California Berkeley, Sloan Kettering Institute, and the authors'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -152,6 +129,10 @@ html_theme_options = {
 # Add any paths that contain custom themes here, relative to this directory.
 html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
 
+# Context is a dictionary passed to the templating engine.
+html_context = {
+    'versions_json_url': 'http://getyank.org/versions.json'
+}
 
 # The name for this set of Sphinx documents.  If None, it defaults to
 # "<project> v<release> documentation".

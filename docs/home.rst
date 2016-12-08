@@ -101,5 +101,5 @@ Developing
 
 License
 -------
-YANK is licensed under the Lesser GNU General Public License (LGPL v2.1+).
+YANK is licensed under the MIT License.
 See the `LICENSE` file distributed with YANK for more details.
