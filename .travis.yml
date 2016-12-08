@@ -41,14 +41,14 @@ script:
   # Install the package
   - conda install --yes --use-local ${PACKAGENAME}-dev
   # Test the package
-  #- cd devtools && nosetests $PACKAGENAME --nocapture --verbosity=2 --with-timer -a '!slow' && cd .. &&
-  - if [[ $CONDA_PY = 35 ]]; then devtools/travis-ci/build_docs.sh; fi
+  #- cd devtools && nosetests $PACKAGENAME --nocapture --verbosity=2 --with-timer -a '!slow' && cd .. && if [[ $CONDA_PY = 3.5 ]]; then devtools/travis-ci/build_docs.sh; fi
+  - if [[ $CONDA_PY = 35 ]]; then devtools/travis-ci/build_docs.sh; fi # Delete this line when done
 
 env:
   matrix:
-    #- python=2.7  CONDA_PY=27
-    #- python=3.4  CONDA_PY=34
-    - python=3.5  CONDA_PY=35
+    #- python=2.7  CONDA_PY=2.7
+    #- python=3.4  CONDA_PY=3.4
+    - python=3.5  CONDA_PY=3.5
 
   global:
     - ORGNAME="omnia"
@@ -75,8 +75,9 @@ deploy:
       skip_cleanup: true
       local_dir: docs/_deploy
       on:
-          branch: SphinxUpdate # Temporary to test deplotment
-          condition: "$CONDA_PY = 35"
+          #branch: master
+          branch: SphinxUpdate # Temporary to test deplotment, delete this when done
+          condition: "$CONDA_PY = 3.5"
 
 # after_success:
 #  - echo "after_success"
