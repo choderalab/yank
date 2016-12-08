@@ -314,15 +314,12 @@ class TestThermodynamicState(object):
         integrator = openmm.VerletIntegrator(time_step)
         assert not state._set_integrator_temperature(integrator)
 
-    def test_method_get_standard_system(self):
+    def test_method_turn_to_standard_system(self):
         """ThermodynamicState._turn_to_standard_system() class method."""
         system = copy.deepcopy(self.barostated_alanine)
 
-        standard_system = ThermodynamicState._get_standard_system(system)
-        assert ThermodynamicState._find_barostat(standard_system) is None
-
-        # The original system is left untouched.
-        assert ThermodynamicState._find_barostat(system) is not None
+        ThermodynamicState.turn_to_standard_system(system)
+        assert ThermodynamicState._find_barostat(system) is None
 
     def test_method_create_context(self):
         """ThermodynamicState.create_context() method."""
@@ -435,6 +432,7 @@ class TestThermodynamicState(object):
         potential_energy = (reduced_potential / beta - pressure_volume_work) / kJmol
         assert np.isclose(sampler_state.potential_energy / kJmol, potential_energy)
 
+
 # =============================================================================
 # TEST SAMPLER STATE
 # =============================================================================
@@ -545,3 +543,195 @@ class TestSamplerState(object):
         assert not self.is_sampler_state_equal_context(sampler_state, explicit_context)
         sampler_state.apply_to_context(explicit_context)
         assert self.is_sampler_state_equal_context(sampler_state, explicit_context)
+
+
+# =============================================================================
+# TEST COMPOUND STATE
+# =============================================================================
+
+class TestCompoundThermodynamicState(object):
+
+    class DummyState(object):
+        """A state that keeps track of a useless system parameter."""
+
+        standard_dummy_parameter = 1.0
+
+        def __init__(self, dummy_parameter):
+            self._dummy_parameter = dummy_parameter
+
+        @property
+        def dummy_parameter(self):
+            return self._dummy_parameter
+
+        @dummy_parameter.setter
+        def dummy_parameter(self, value):
+            self._dummy_parameter = value
+
+        @classmethod
+        def turn_to_standard_system(cls, system):
+            try:
+                cls.set_dummy_parameter(system, cls.standard_dummy_parameter)
+            except TypeError:  # No parameter to set.
+                pass
+
+        def set_system_state(self, system):
+            self.set_dummy_parameter(system, self.dummy_parameter)
+
+        def check_system_consistency(self, system):
+            dummy_parameter = TestCompoundThermodynamicState.get_dummy_parameter(system)
+            if dummy_parameter != self.dummy_parameter:
+                raise ValueError
+
+        @staticmethod
+        def is_context_compatible(context):
+            parameters = context.getState(getParameters=True).getParameters()
+            if 'dummy_parameters' in parameters.keys():
+                return True
+            else:
+                return False
+
+        def apply_to_context(self, context):
+            context.setParameter('dummy_parameter', self.dummy_parameter)
+
+        @classmethod
+        def add_dummy_parameter(cls, system):
+            """Add to system a CustomBondForce with a dummy parameter."""
+            force = openmm.CustomBondForce('dummy_parameter')
+            force.addGlobalParameter('dummy_parameter', cls.standard_dummy_parameter)
+            system.addForce(force)
+
+        @staticmethod
+        def _find_dummy_force(system):
+            for force in system.getForces():
+                if isinstance(force, openmm.CustomBondForce):
+                    for parameter_id in range(force.getNumGlobalParameters()):
+                        parameter_name = force.getGlobalParameterName(parameter_id)
+                        if parameter_name == 'dummy_parameter':
+                            return force, parameter_id
+
+        @classmethod
+        def set_dummy_parameter(cls, system, value):
+            force, parameter_id = cls._find_dummy_force(system)
+            force.setGlobalParameterDefaultValue(parameter_id, value)
+
+    @classmethod
+    def get_dummy_parameter(cls, system):
+        force, parameter_id = cls.DummyState._find_dummy_force(system)
+        return force.getGlobalParameterDefaultValue(parameter_id)
+
+    @classmethod
+    def setup_class(cls):
+        cls.pressure = 1.01325*unit.bars
+        cls.temperature = 300*unit.kelvin
+
+        cls.dummy_parameter = cls.DummyState.standard_dummy_parameter + 1.0
+        cls.dummy_state = cls.DummyState(cls.dummy_parameter)
+
+        alanine_explicit = testsystems.AlanineDipeptideExplicit().system
+        cls.DummyState.add_dummy_parameter(alanine_explicit)
+        cls.alanine_explicit = alanine_explicit
+
+    def test_dynamic_inheritance(self):
+        """ThermodynamicState is inherited dinamically."""
+        thermodynamic_state = ThermodynamicState(self.alanine_explicit,
+                                                 self.temperature)
+        compound_state = CompoundThermodynamicState(thermodynamic_state, [])
+
+        assert isinstance(compound_state, ThermodynamicState)
+
+        # Attributes are correctly read.
+        assert hasattr(compound_state, 'pressure')
+        assert compound_state.pressure is None
+        assert hasattr(compound_state, 'temperature')
+        assert compound_state.temperature == self.temperature
+
+        # Properties and attributes are correctly set.
+        new_temperature = self.temperature + 1.0*unit.kelvin
+        compound_state.pressure = self.pressure
+        compound_state._temperature = new_temperature
+        assert compound_state._barostat.getDefaultPressure() == self.pressure
+        assert compound_state.temperature == new_temperature
+
+    def test_constructor_set_state(self):
+        thermodynamic_state = ThermodynamicState(self.alanine_explicit, self.temperature)
+
+        assert self.get_dummy_parameter(thermodynamic_state.system) != self.dummy_parameter
+        compound_state = CompoundThermodynamicState(thermodynamic_state, [self.dummy_state])
+        assert self.get_dummy_parameter(compound_state.system) == self.dummy_parameter
+
+    def test_property_forwarding(self):
+        """Forward properties to IComposableStates and update system."""
+        dummy_state = self.DummyState(self.dummy_parameter + 1.0)
+        thermodynamic_state = ThermodynamicState(self.alanine_explicit, self.temperature)
+        compound_state = CompoundThermodynamicState(thermodynamic_state, [dummy_state])
+
+        # Properties are correctly read and set, and
+        # the system is updated to the new value.
+        assert compound_state.dummy_parameter != self.dummy_parameter
+        assert self.get_dummy_parameter(compound_state.system) != self.dummy_parameter
+        compound_state.dummy_parameter = self.dummy_parameter
+        assert compound_state.dummy_parameter == self.dummy_parameter
+        assert self.get_dummy_parameter(compound_state.system) == self.dummy_parameter
+
+        # Default behavior for attribute error and monkey patching.
+        with nose.tools.assert_raises(AttributeError):
+            compound_state.temp
+        compound_state.temp = 0
+        assert 'temp' in compound_state.__dict__
+
+    def test_property_system(self):
+        """CompoundThermodynamicState.system setting."""
+        thermodynamic_state = ThermodynamicState(self.alanine_explicit, self.temperature)
+        compound_state = CompoundThermodynamicState(thermodynamic_state, [self.dummy_state])
+
+        # Setting an inconsistent system for the dummy raises an error.
+        system = compound_state.system
+        self.DummyState.set_dummy_parameter(system, self.dummy_parameter + 1.0)
+        with nose.tools.assert_raises(ValueError):
+            compound_state.system = system
+
+    def test_method_turn_to_standard_system(self):
+        """CompoundThermodynamicState.turn_to_standard_system method."""
+        alanine_explicit = copy.deepcopy(self.alanine_explicit)
+        thermodynamic_state = ThermodynamicState(alanine_explicit, self.temperature)
+        thermodynamic_state.pressure = self.pressure
+        compound_state = CompoundThermodynamicState(thermodynamic_state, [self.dummy_state])
+
+        system = thermodynamic_state.system
+        assert ThermodynamicState._find_barostat(system) is not None
+        assert self.get_dummy_parameter(system) == self.dummy_parameter
+        compound_state.turn_to_standard_system(system)
+        assert ThermodynamicState._find_barostat(system) is None
+        assert self.get_dummy_parameter(system) == self.DummyState.standard_dummy_parameter
+
+        # We still haven't computed the ThermodynamicState system hash
+        # (pre-condition). Check that the standard system hash is correct.
+        assert thermodynamic_state._cached_standard_system_hash is None
+        standard_hash = openmm.XmlSerializer.serialize(system).__hash__()
+        assert standard_hash == compound_state._standard_system_hash
+
+        # Check that is_state_compatible work.
+        undummied_alanine = testsystems.AlanineDipeptideExplicit().system
+        incompatible_state = ThermodynamicState(undummied_alanine, self.temperature)
+        assert not compound_state.is_state_compatible(incompatible_state)
+
+        integrator = openmm.VerletIntegrator(2.0*unit.femtoseconds)
+        context = incompatible_state.create_context(integrator)
+        assert not compound_state.is_context_compatible(context)
+
+    def test_method_apply_to_context(self):
+        """CompoundThermodynamicState.apply_to_context() method."""
+        dummy_parameter = self.DummyState.standard_dummy_parameter
+        thermodynamic_state = ThermodynamicState(self.alanine_explicit, self.temperature)
+        self.DummyState.set_dummy_parameter(thermodynamic_state.system, dummy_parameter)
+
+        integrator = openmm.VerletIntegrator(2.0*unit.femtoseconds)
+        context = thermodynamic_state.create_context(integrator)
+        assert context.getParameter('dummy_parameter') == dummy_parameter
+        assert ThermodynamicState._find_barostat(context.getSystem()) is None
+
+        compound_state = CompoundThermodynamicState(thermodynamic_state, [self.dummy_state])
+        compound_state.pressure = 1.0*unit.atmosphere  # Add barostat.
+        compound_state.apply_to_context(context)
+        assert context.getParameter('dummy_parameter') == self.dummy_parameter
+        assert ThermodynamicState._find_barostat(context.getSystem()) is not None
