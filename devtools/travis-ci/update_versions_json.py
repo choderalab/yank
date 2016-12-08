@@ -7,9 +7,9 @@ except ImportError:
     from urllib2 import urlopen
 from yank import version
 
-if not version.release:
-    print("This is not a release.")
-    exit(0)
+#if not version.release:
+#   print("This is not a release.")
+#    exit(0)
 
 URL = 'http://www.getyank.org'
 try:
