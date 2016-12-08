@@ -14,8 +14,16 @@ URL = 'http://www.getyank.org'
 try:
     data = urlopen(URL + '/versions.json').read().decode()
 except:
-    data = ''
+    data = '[\n]\n'
 versions = json.loads(data)
+
+# Debug lines
+# import pdb
+# sd = urlopen('http://mdtraj.org' + '/versions.json').read().decode()
+# sv = json.loads(sd)
+
+# Sort the list so the versions are in the right order online
+versions = sorted(versions, key=lambda k: k['version'])
 
 # new release so all the others are now old
 for i in range(len(versions)):
