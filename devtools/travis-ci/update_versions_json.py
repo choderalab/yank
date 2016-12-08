@@ -1,6 +1,7 @@
 import json
 
 try:
+    # Only works in Python 3.5
     from urllib.request import urlopen
 except ImportError:
     from urllib2 import urlopen
@@ -13,9 +14,16 @@ if not version.release:
 URL = 'http://www.getyank.org'
 try:
     data = urlopen(URL + '/versions.json').read().decode()
+    versions = json.loads(data)
 except:
-    data = '[\n]\n'
-versions = json.loads(data)
+    # Initial population
+    versions = [
+        {'version': "0.14.1",
+         'display': "0.14.1",
+         'url': "{base}/{version}".format(base=URL, version="0.14.1"),
+         'latest': False
+        }
+    ]
 
 # Debug lines
 # import pdb
