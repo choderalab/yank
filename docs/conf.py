@@ -65,7 +65,6 @@ autodoc_default_flags = ['members', 'inherited-members']
 
 
 extensions.append('notebook_sphinxext')
-extensions.append('notebookcell_sphinxext')
 
 _python_doc_base = 'http://docs.python.org/2.7'
 intersphinx_mapping = {
@@ -85,7 +84,7 @@ source_suffix = '.rst'
 #source_encoding = 'utf-8-sig'
 
 # The master toctree document.
-master_doc = 'index'
+master_doc = 'home'
 
 # General information about the project.
 project = u'YANK'
@@ -152,6 +151,10 @@ html_theme_options = {
 # Add any paths that contain custom themes here, relative to this directory.
 html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
 
+# Context is a dictionary passed to the templating engine.
+html_context = {
+    'versions_json_url': 'http://getyank.org/versions.json'
+}
 
 # The name for this set of Sphinx documents.  If None, it defaults to
 # "<project> v<release> documentation".

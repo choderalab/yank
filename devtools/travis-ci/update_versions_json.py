@@ -1,34 +1,19 @@
 import json
 
 try:
-    # Only works in Python 3.5
+    # Only works in Python 3
     from urllib.request import urlopen
 except ImportError:
     from urllib2 import urlopen
 from yank import version
 
-#if not version.release:
-#   print("This is not a release.")
-#    exit(0)
+if not version.release:
+    print("This is not a release.")
+    exit(0)
 
 URL = 'http://www.getyank.org'
-try:
-    data = urlopen(URL + '/versions.json').read().decode()
-    versions = json.loads(data)
-except:
-    # Initial population
-    versions = [
-        {'version': "0.14.1",
-         'display': "0.14.1",
-         'url': "{base}/{version}".format(base=URL, version="0.14.1"),
-         'latest': False
-        }
-    ]
-
-# Debug lines
-# import pdb
-# sd = urlopen('http://mdtraj.org' + '/versions.json').read().decode()
-# sv = json.loads(sd)
+data = urlopen(URL + '/versions.json').read().decode()
+versions = json.loads(data)
 
 # Sort the list so the versions are in the right order online
 versions = sorted(versions, key=lambda k: k['version'])

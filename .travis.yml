@@ -15,7 +15,7 @@ addons:
 branches:
   only:
     - master
-    - SphinxUpdate # Delete when done
+    - SphinxUpdate
 
 install:
   - source devtools/travis-ci/install.sh
@@ -43,12 +43,12 @@ script:
   - conda install --yes --use-local ${PACKAGENAME}-dev
   # Test the package
   #- cd devtools && nosetests $PACKAGENAME --nocapture --verbosity=2 --with-timer -a '!slow' && cd .. && if [[ $CONDA_PY = 3.5 ]]; then devtools/travis-ci/build_docs.sh; fi
-  - if [[ $CONDA_PY = 3.5 ]]; then devtools/travis-ci/build_docs.sh; fi # Delete this line when done
+  - if [[ $CONDA_PY = 3.5 ]]; then devtools/travis-ci/build_docs.sh; fi
 
 env:
   matrix:
-    #- python=2.7  CONDA_PY=2.7
-    #- python=3.4  CONDA_PY=3.4
+    - python=2.7  CONDA_PY=2.7
+    - python=3.4  CONDA_PY=3.4
     - python=3.5  CONDA_PY=3.5
 
   global:
@@ -61,17 +61,14 @@ env:
     - OPENEYE_CHANNEL="-i https://pypi.anaconda.org/OpenEye/simple/"
     # encrypted BINSTAR_TOKEN for push of dev package to binstar
     - secure: "iGrY1Jrr6ZvxtvjnTBVLFIPQBaalzkZX+DJWFZuk6j8igjDrlEVE2iGmpx5Akb7/H5/rRPI1GcnYy0e2OXSVHyxwcn2I6TXia3g6K95yxH43xOaTEfiFGfxSgP6M5OZSJjlLUmv3cpnJ66r6kYjQgTn9djY2iLsGKkFdR8pn6gQ="
-    # encrypted AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
+    # encrypted AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY. Decrpyts to VARIABLE=KEY
     - secure: "SrSd1JoI8dBXQxDAX0xBTYBinTusRBQoPETnxHrBAgKdoty1pkzaghTKNMsrGsk78iwkkj1hAyttIY9trdFQkmx+OTx0fLKFmDHsMkgko4RzTtrgLgoxuRIs/gruID2cN1XKEbxlhRmQF14+q8/X1q6iGGdYMrxo51JcYPuEOSo="
     - secure: "br6QRMYXhHltYTEh/d+zejxcunT3GsqwQvxxLmqnLxi+LIxX4j7eymR6p4fPBd5mCRxyvkQEjnSZxF6e7JlEKxWVcMG28I/dBWzVIRW3EKQQNRmyI+JL1dfNaqj68kHJD+FknBwHK9LD238JPcyqXPdVrm9iPkDijPczvPBxvDs="
-    - force_deployment:
 
 deploy:
     - provider: s3
       access_key_id: ${AWS_ACCESS_KEY_ID}
-      #    secure: "SrSd1JoI8dBXQxDAX0xBTYBinTusRBQoPETnxHrBAgKdoty1pkzaghTKNMsrGsk78iwkkj1hAyttIY9trdFQkmx+OTx0fLKFmDHsMkgko4RzTtrgLgoxuRIs/gruID2cN1XKEbxlhRmQF14+q8/X1q6iGGdYMrxo51JcYPuEOSo="
       secret_access_key: ${AWS_SECRET_ACCESS_KEY}
-      #    secure: "br6QRMYXhHltYTEh/d+zejxcunT3GsqwQvxxLmqnLxi+LIxX4j7eymR6p4fPBd5mCRxyvkQEjnSZxF6e7JlEKxWVcMG28I/dBWzVIRW3EKQQNRmyI+JL1dfNaqj68kHJD+FknBwHK9LD238JPcyqXPdVrm9iPkDijPczvPBxvDs="
       bucket: "getyank.org"
       skip_cleanup: true
       local_dir: docs/_deploy
@@ -79,7 +76,3 @@ deploy:
           #branch: master
           branch: SphinxUpdate # Temporary to test deplotment, delete this when done
           condition: "$CONDA_PY = 3.5"
-
-# after_success:
-#  - echo "after_success"
-#  - if [ "$TRAVIS_SECURE_ENV_VARS" == true ]; then ./devtools/travis-ci/after_success.sh; fi
