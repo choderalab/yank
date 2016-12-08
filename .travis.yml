@@ -15,6 +15,7 @@ addons:
 branches:
   only:
     - master
+    - SphinxUpdate # Delete when done
 
 install:
   - source devtools/travis-ci/install.sh
