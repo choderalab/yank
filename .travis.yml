@@ -41,7 +41,8 @@ script:
   # Install the package
   - conda install --yes --use-local ${PACKAGENAME}-dev
   # Test the package
-  - cd devtools && nosetests $PACKAGENAME --nocapture --verbosity=2 --with-timer -a '!slow' && cd .. && if [[ $CONDA_PY = 35 ]]; then devtools/travis-ci/build_docs.sh; fi
+  #- cd devtools && nosetests $PACKAGENAME --nocapture --verbosity=2 --with-timer -a '!slow' && cd .. &&
+  - if [[ $CONDA_PY = 35 ]]; then devtools/travis-ci/build_docs.sh; fi
 
 env:
   matrix:
