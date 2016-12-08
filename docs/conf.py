@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# MDTraj documentation build configuration file, created by
+# YANK documentation build configuration file, created by templating the MDTraj config file from
 # sphinx-quickstart on Tue Jun 11 21:23:28 2013.
 #
 # This file is execfile()d with the current directory set to its containing dir.
@@ -34,31 +34,9 @@ todo_include_todos = True
 
 # Add any Sphinx extension module names here, as strings. They can be extensions
 # coming with Sphinx (named 'sphinx.ext.*') or your custom ones.
-
-# This is the compete set of extensions MDTraj uses
-#extensions = ['sphinx.ext.mathjax', 'sphinx.ext.ifconfig', 'sphinx.ext.autosummary',
-#              'sphinx.ext.viewcode', 'sphinx.ext.autodoc', 'numpydoc',
-#              'sphinx.ext.intersphinx', 'sphinx.ext.viewcode',
-#              'IPython.sphinxext.ipython_console_highlighting',
-#              'IPython.sphinxext.ipython_directive',
-#              'matplotlib.sphinxext.plot_directive']
-
-# Pared-down set (for now) for Yank
 extensions = ['sphinx.ext.mathjax', 'sphinx.ext.ifconfig', 'sphinx.ext.autosummary',
               'sphinx.ext.viewcode', 'sphinx.ext.autodoc', 'sphinx.ext.viewcode',
               'numpydoc', 'sphinx.ext.todo', 'sphinxcontrib.bibtex']
-
-# Napoleon settings
-napoleon_google_docstring = False
-napoleon_numpy_docstring = True
-napoleon_include_private_with_doc = False
-napoleon_include_special_with_doc = True
-napoleon_use_admonition_for_examples = False
-napoleon_use_admonition_for_notes = False
-napoleon_use_admonition_for_references = False
-napoleon_use_ivar = False
-napoleon_use_param = True
-napoleon_use_rtype = True
 
 autosummary_generate = True
 autodoc_default_flags = ['members', 'inherited-members']
@@ -88,7 +66,7 @@ master_doc = 'home'
 
 # General information about the project.
 project = u'YANK'
-copyright = u'2014, Copyright Stanford University, University of California Berkeley, Sloan Kettering Institute, and the authors'
+copyright = u'2014-2016, Copyright Stanford University, University of California Berkeley, Sloan Kettering Institute, and the authors'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the

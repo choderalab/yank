@@ -15,7 +15,6 @@ addons:
 branches:
   only:
     - master
-    - SphinxUpdate
 
 install:
   - source devtools/travis-ci/install.sh
@@ -42,8 +41,7 @@ script:
   # Install the package
   - conda install --yes --use-local ${PACKAGENAME}-dev
   # Test the package
-  #- cd devtools && nosetests $PACKAGENAME --nocapture --verbosity=2 --with-timer -a '!slow' && cd .. && if [[ $CONDA_PY = 3.5 ]]; then devtools/travis-ci/build_docs.sh; fi
-  - if [[ $CONDA_PY = 3.5 ]]; then devtools/travis-ci/build_docs.sh; fi
+  - cd devtools && nosetests $PACKAGENAME --nocapture --verbosity=2 --with-timer -a '!slow' && cd .. && if [[ $CONDA_PY = 3.5 ]]; then devtools/travis-ci/build_docs.sh; fi
 
 env:
   matrix:
@@ -73,6 +71,5 @@ deploy:
       skip_cleanup: true
       local_dir: docs/_deploy
       on:
-          #branch: master
-          branch: SphinxUpdate # Temporary to test deplotment, delete this when done
+          branch: master
           condition: "$CONDA_PY = 3.5"
