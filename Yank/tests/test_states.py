@@ -204,7 +204,8 @@ class TestThermodynamicState(object):
         assert state.pressure == self.pressure  # pre-condition
 
         TE = ThermodynamicsError  # shortcut
-        test_cases = [(self.barostated_toluene, TE.BAROSTATED_NONPERIODIC),
+        test_cases = [(self.toluene_vacuum, TE.BAROSTATED_NONPERIODIC),
+                      (self.barostated_toluene, TE.BAROSTATED_NONPERIODIC),
                       (self.multiple_barostat_alanine, TE.MULTIPLE_BAROSTATS),
                       (self.inconsistent_pressure_alanine, TE.INCONSISTENT_BAROSTAT),
                       (self.inconsistent_temperature_alanine, TE.INCONSISTENT_BAROSTAT)]
@@ -315,7 +316,7 @@ class TestThermodynamicState(object):
         assert not state._set_integrator_temperature(integrator)
 
     def test_method_turn_to_standard_system(self):
-        """ThermodynamicState._turn_to_standard_system() class method."""
+        """ThermodynamicState.turn_to_standard_system() class method."""
         system = copy.deepcopy(self.barostated_alanine)
 
         ThermodynamicState.turn_to_standard_system(system)
