@@ -315,11 +315,11 @@ class TestThermodynamicState(object):
         integrator = openmm.VerletIntegrator(time_step)
         assert not state._set_integrator_temperature(integrator)
 
-    def test_method_turn_to_standard_system(self):
-        """ThermodynamicState.turn_to_standard_system() class method."""
+    def test_method_standardize_system(self):
+        """ThermodynamicState._standardize_system() class method."""
         system = copy.deepcopy(self.barostated_alanine)
 
-        ThermodynamicState.turn_to_standard_system(system)
+        ThermodynamicState._standardize_system(system)
         assert ThermodynamicState._find_barostat(system) is None
 
     def test_method_create_context(self):
@@ -432,6 +432,13 @@ class TestThermodynamicState(object):
                                 unit.AVOGADRO_CONSTANT_NA)
         potential_energy = (reduced_potential / beta - pressure_volume_work) / kJmol
         assert np.isclose(sampler_state.potential_energy / kJmol, potential_energy)
+
+        # Raise error if SamplerState is not compatible.
+        sampler_state.positions = sampler_state.positions[:-1]
+        sampler_state.velocities = sampler_state.velocities[:-1]
+        with nose.tools.assert_raises(ThermodynamicsError) as cm:
+            state.reduced_potential(sampler_state)
+        assert cm.exception.code == ThermodynamicsError.INCOMPATIBLE_SAMPLER_STATE
 
 
 # =============================================================================
@@ -569,11 +576,11 @@ class TestCompoundThermodynamicState(object):
             self._dummy_parameter = value
 
         @classmethod
-        def turn_to_standard_system(cls, system):
+        def standardize_system(cls, system):
             try:
                 cls.set_dummy_parameter(system, cls.standard_dummy_parameter)
             except TypeError:  # No parameter to set.
-                pass
+                raise ValueError
 
         def set_system_state(self, system):
             self.set_dummy_parameter(system, self.dummy_parameter)
@@ -691,8 +698,8 @@ class TestCompoundThermodynamicState(object):
         with nose.tools.assert_raises(ValueError):
             compound_state.system = system
 
-    def test_method_turn_to_standard_system(self):
-        """CompoundThermodynamicState.turn_to_standard_system method."""
+    def test_method_standardize_system(self):
+        """CompoundThermodynamicState._standardize_system method."""
         alanine_explicit = copy.deepcopy(self.alanine_explicit)
         thermodynamic_state = ThermodynamicState(alanine_explicit, self.temperature)
         thermodynamic_state.pressure = self.pressure
@@ -701,7 +708,7 @@ class TestCompoundThermodynamicState(object):
         system = thermodynamic_state.system
         assert ThermodynamicState._find_barostat(system) is not None
         assert self.get_dummy_parameter(system) == self.dummy_parameter
-        compound_state.turn_to_standard_system(system)
+        compound_state._standardize_system(system)
         assert ThermodynamicState._find_barostat(system) is None
         assert self.get_dummy_parameter(system) == self.DummyState.standard_dummy_parameter
 
