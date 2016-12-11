@@ -434,8 +434,8 @@ class TestThermodynamicState(object):
         assert np.isclose(sampler_state.potential_energy / kJmol, potential_energy)
 
         # Raise error if SamplerState is not compatible.
-        sampler_state.positions = sampler_state.positions[:-1]
-        sampler_state.velocities = sampler_state.velocities[:-1]
+        sampler_state._positions = sampler_state.positions[:-1]
+        sampler_state._velocities = sampler_state.velocities[:-1]
         with nose.tools.assert_raises(ThermodynamicsError) as cm:
             state.reduced_potential(sampler_state)
         assert cm.exception.code == ThermodynamicsError.INCOMPATIBLE_SAMPLER_STATE
@@ -474,8 +474,8 @@ class TestSamplerState(object):
         equal = equal and np.isclose(sampler_state.volume / nm3, openmm_state.getPeriodicBoxVolume() / nm3)
         return equal
 
-    def test_inconsistent_velocities(self):
-        """Exception raised with inconsistent velocities."""
+    def test_inconsistent_n_particles(self):
+        """Exception raised with inconsistent positions and velocities."""
         positions = self.alanine_vacuum_positions
         sampler_state = SamplerState(positions)
 
@@ -489,6 +489,16 @@ class TestSamplerState(object):
         with nose.tools.assert_raises(SamplerStateError) as cm:
             SamplerState(positions, velocities)
         assert cm.exception.code == SamplerStateError.INCONSISTENT_VELOCITIES
+
+        # The same happens if we update positions.
+        with nose.tools.assert_raises(SamplerStateError) as cm:
+            sampler_state.positions = positions[:-1]
+        assert cm.exception.code == SamplerStateError.INCONSISTENT_POSITIONS
+
+        # We cannot set positions to None.
+        with nose.tools.assert_raises(SamplerStateError) as cm:
+            sampler_state.positions = None
+        assert cm.exception.code == SamplerStateError.INCONSISTENT_POSITIONS
 
     def test_constructor_from_context(self):
         """SamplerState.from_context constructor."""
@@ -538,7 +548,7 @@ class TestSamplerState(object):
         explicit_context.setPositions(self.alanine_explicit_positions)
         with nose.tools.assert_raises(SamplerStateError) as cm:
             sampler_state.update_from_context(explicit_context)
-        assert cm.exception.code == SamplerStateError.INCONSISTENT_VELOCITIES
+        assert cm.exception.code == SamplerStateError.INCONSISTENT_POSITIONS
 
     def test_method_apply_to_context(self):
         """SamplerState.apply_to_context() method."""
