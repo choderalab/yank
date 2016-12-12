@@ -36,6 +36,7 @@ def get_barostat_temperature(barostat):
 # =============================================================================
 
 class TestThermodynamicState(object):
+    """Test suite for states.ThermodynamicState class."""
 
     @classmethod
     def setup_class(cls):
@@ -412,7 +413,7 @@ class TestThermodynamicState(object):
 
     def test_method_reduced_potential(self):
         """ThermodynamicState.reduced_potential() method."""
-        kJmol = unit.kilojoule_per_mole
+        kj_mol = unit.kilojoule_per_mole
         beta = 1.0 / (unit.MOLAR_GAS_CONSTANT_R * self.temperature)
         state = ThermodynamicState(self.alanine_explicit, self.temperature)
         integrator = openmm.VerletIntegrator(1.0*unit.femtosecond)
@@ -422,16 +423,16 @@ class TestThermodynamicState(object):
 
         # Compute constant volume reduced potential.
         reduced_potential = state.reduced_potential(sampler_state)
-        potential_energy = reduced_potential / beta / kJmol
-        assert np.isclose(sampler_state.potential_energy / kJmol, potential_energy)
+        potential_energy = reduced_potential / beta / kj_mol
+        assert np.isclose(sampler_state.potential_energy / kj_mol, potential_energy)
 
         # Compute constant pressure reduced potential.
         state.pressure = self.pressure
         reduced_potential = state.reduced_potential(sampler_state)
         pressure_volume_work = (self.pressure * sampler_state.volume *
                                 unit.AVOGADRO_CONSTANT_NA)
-        potential_energy = (reduced_potential / beta - pressure_volume_work) / kJmol
-        assert np.isclose(sampler_state.potential_energy / kJmol, potential_energy)
+        potential_energy = (reduced_potential / beta - pressure_volume_work) / kj_mol
+        assert np.isclose(sampler_state.potential_energy / kj_mol, potential_energy)
 
         # Raise error if SamplerState is not compatible.
         incompatible_sampler_state = sampler_state[:-1]
@@ -445,9 +446,11 @@ class TestThermodynamicState(object):
 # =============================================================================
 
 class TestSamplerState(object):
+    """Test suite for states.SamplerState class."""
 
     @classmethod
     def setup_class(cls):
+        """Create various variables shared by tests in suite."""
         temperature = 300*unit.kelvin
         alanine_vacuum = testsystems.AlanineDipeptideVacuum()
         cls.alanine_vacuum_positions = alanine_vacuum.positions
@@ -461,6 +464,7 @@ class TestSamplerState(object):
 
     @staticmethod
     def is_sampler_state_equal_context(sampler_state, context):
+        """Check sampler and openmm states in context are equal."""
         equal = True
         ss = sampler_state  # Shortcut.
         os = context.getState(getPositions=True, getEnergy=True,
@@ -630,6 +634,7 @@ class TestSamplerState(object):
 # =============================================================================
 
 class TestCompoundThermodynamicState(object):
+    """Test suite for states.CompoundThermodynamicState class."""
 
     class DummyState(object):
         """A state that keeps track of a useless system parameter."""
@@ -701,6 +706,7 @@ class TestCompoundThermodynamicState(object):
 
     @classmethod
     def setup_class(cls):
+        """Create various variables shared by tests in suite."""
         cls.pressure = 1.01325*unit.bars
         cls.temperature = 300*unit.kelvin
 
@@ -733,6 +739,7 @@ class TestCompoundThermodynamicState(object):
         assert compound_state.temperature == new_temperature
 
     def test_constructor_set_state(self):
+        """IComposableState.set_state is called on construction."""
         thermodynamic_state = ThermodynamicState(self.alanine_explicit, self.temperature)
 
         assert self.get_dummy_parameter(thermodynamic_state.system) != self.dummy_parameter
