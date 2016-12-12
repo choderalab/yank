@@ -462,15 +462,21 @@ class TestSamplerState(object):
     @staticmethod
     def is_sampler_state_equal_context(sampler_state, context):
         equal = True
-        openmm_state = context.getState(getPositions=True, getEnergy=True,
-                                        getVelocities=True)
-        equal = equal and np.all(sampler_state.positions == openmm_state.getPositions())
-        equal = equal and np.all(sampler_state.velocities == openmm_state.getVelocities())
-        equal = equal and np.all(sampler_state.box_vectors == openmm_state.getPeriodicBoxVectors())
-        equal = equal and sampler_state.potential_energy == openmm_state.getPotentialEnergy()
-        equal = equal and sampler_state.kinetic_energy == openmm_state.getKineticEnergy()
-        nm3 = unit.nanometers**3
-        equal = equal and np.isclose(sampler_state.volume / nm3, openmm_state.getPeriodicBoxVolume() / nm3)
+        ss = sampler_state  # Shortcut.
+        os = context.getState(getPositions=True, getEnergy=True,
+                              getVelocities=True)
+        equal = equal and np.allclose(ss.positions.value_in_unit(ss.positions.unit),
+                                      os.getPositions().value_in_unit(ss.positions.unit))
+        equal = equal and np.allclose(ss.velocities.value_in_unit(ss.velocities.unit),
+                                      os.getVelocities().value_in_unit(ss.velocities.unit))
+        equal = equal and np.allclose(ss.box_vectors.value_in_unit(ss.box_vectors.unit),
+                                      os.getPeriodicBoxVectors().value_in_unit(ss.box_vectors.unit))
+        equal = equal and np.isclose(ss.potential_energy.value_in_unit(ss.potential_energy.unit),
+                                     os.getPotentialEnergy().value_in_unit(ss.potential_energy.unit))
+        equal = equal and np.isclose(ss.kinetic_energy.value_in_unit(ss.kinetic_energy.unit),
+                                     os.getKineticEnergy().value_in_unit(ss.kinetic_energy.unit))
+        equal = equal and np.isclose(ss.volume.value_in_unit(ss.volume.unit),
+                                     os.getPeriodicBoxVolume().value_in_unit(ss.volume.unit))
         return equal
 
     @staticmethod
