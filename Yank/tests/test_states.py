@@ -434,10 +434,9 @@ class TestThermodynamicState(object):
         assert np.isclose(sampler_state.potential_energy / kJmol, potential_energy)
 
         # Raise error if SamplerState is not compatible.
-        sampler_state._positions = sampler_state.positions[:-1]
-        sampler_state._velocities = sampler_state.velocities[:-1]
+        incompatible_sampler_state = sampler_state[:-1]
         with nose.tools.assert_raises(ThermodynamicsError) as cm:
-            state.reduced_potential(sampler_state)
+            state.reduced_potential(incompatible_sampler_state)
         assert cm.exception.code == ThermodynamicsError.INCOMPATIBLE_SAMPLER_STATE
 
 
@@ -561,6 +560,35 @@ class TestSamplerState(object):
         assert not self.is_sampler_state_equal_context(sampler_state, explicit_context)
         sampler_state.apply_to_context(explicit_context)
         assert self.is_sampler_state_equal_context(sampler_state, explicit_context)
+
+    def test_operator_getitem(self):
+        """SamplerState.__getitem__() method."""
+        integrator = openmm.VerletIntegrator(1*unit.femtosecond)
+        explicit_context = self.alanine_explicit_state.create_context(integrator)
+        explicit_context.setPositions(self.alanine_explicit_positions)
+        sampler_state = SamplerState.from_context(explicit_context)
+
+        sliced_sampler_state = sampler_state[0]
+        assert sliced_sampler_state.n_particles == 1
+        assert len(sliced_sampler_state.velocities) == 1
+        assert np.allclose(sliced_sampler_state.positions[0],
+                           self.alanine_explicit_positions[0])
+
+        sliced_sampler_state = sampler_state[2:10]
+        assert sliced_sampler_state.n_particles == 8
+        assert len(sliced_sampler_state.velocities) == 8
+        assert np.allclose(sliced_sampler_state.positions,
+                           self.alanine_explicit_positions[2:10])
+
+        sliced_sampler_state = sampler_state[2:10:2]
+        assert sliced_sampler_state.n_particles == 4
+        assert len(sliced_sampler_state.velocities) == 4
+        assert np.allclose(sliced_sampler_state.positions,
+                           self.alanine_explicit_positions[2:10:2])
+
+        # The other attributes are copied correctly.
+        assert sliced_sampler_state.volume == sampler_state.volume
+        assert sliced_sampler_state.total_energy == sampler_state.total_energy
 
 
 # =============================================================================
