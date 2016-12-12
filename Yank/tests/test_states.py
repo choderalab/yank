@@ -473,6 +473,11 @@ class TestSamplerState(object):
         equal = equal and np.isclose(sampler_state.volume / nm3, openmm_state.getPeriodicBoxVolume() / nm3)
         return equal
 
+    @staticmethod
+    def create_context(thermodynamic_state):
+        integrator = openmm.VerletIntegrator(1.0*unit.femtoseconds)
+        return thermodynamic_state.create_context(integrator)
+
     def test_inconsistent_n_particles(self):
         """Exception raised with inconsistent positions and velocities."""
         positions = self.alanine_vacuum_positions
@@ -501,8 +506,7 @@ class TestSamplerState(object):
 
     def test_constructor_from_context(self):
         """SamplerState.from_context constructor."""
-        integrator = openmm.VerletIntegrator(2.0*unit.femtoseconds)
-        alanine_vacuum_context = self.alanine_vacuum_state.create_context(integrator)
+        alanine_vacuum_context = self.create_context(self.alanine_vacuum_state)
         alanine_vacuum_context.setPositions(self.alanine_vacuum_positions)
 
         sampler_state = SamplerState.from_context(alanine_vacuum_context)
@@ -510,16 +514,12 @@ class TestSamplerState(object):
 
     def test_method_is_context_compatible(self):
         """SamplerState.is_context_compatible() method."""
-        time_step = 1*unit.femtosecond
-        integrator1 = openmm.VerletIntegrator(time_step)
-        integrator2 = openmm.VerletIntegrator(time_step)
-
         # Vacuum.
-        alanine_vacuum_context = self.alanine_vacuum_state.create_context(integrator1)
+        alanine_vacuum_context = self.create_context(self.alanine_vacuum_state)
         vacuum_sampler_state = SamplerState(self.alanine_vacuum_positions)
 
         # Explicit solvent.
-        alanine_explicit_context = self.alanine_explicit_state.create_context(integrator2)
+        alanine_explicit_context = self.create_context(self.alanine_explicit_state)
         explicit_sampler_state = SamplerState(self.alanine_explicit_positions)
 
         assert vacuum_sampler_state.is_context_compatible(alanine_vacuum_context)
@@ -529,16 +529,13 @@ class TestSamplerState(object):
 
     def test_method_update_from_context(self):
         """SamplerState.update_from_context() method."""
-        time_step = 1*unit.femtosecond
-        integrator1 = openmm.VerletIntegrator(time_step)
-        integrator2 = openmm.VerletIntegrator(time_step)
-        vacuum_context = self.alanine_vacuum_state.create_context(integrator1)
-        explicit_context = self.alanine_explicit_state.create_context(integrator2)
+        vacuum_context = self.create_context(self.alanine_vacuum_state)
+        explicit_context = self.create_context(self.alanine_explicit_state)
 
         # Test that the update is successful
         vacuum_context.setPositions(self.alanine_vacuum_positions)
         sampler_state = SamplerState.from_context(vacuum_context)
-        integrator1.step(10)
+        vacuum_context.getIntegrator().step(10)
         assert not self.is_sampler_state_equal_context(sampler_state, vacuum_context)
         sampler_state.update_from_context(vacuum_context)
         assert self.is_sampler_state_equal_context(sampler_state, vacuum_context)
@@ -551,20 +548,18 @@ class TestSamplerState(object):
 
     def test_method_apply_to_context(self):
         """SamplerState.apply_to_context() method."""
-        integrator = openmm.VerletIntegrator(1*unit.femtosecond)
-        explicit_context = self.alanine_explicit_state.create_context(integrator)
+        explicit_context = self.create_context(self.alanine_explicit_state)
         explicit_context.setPositions(self.alanine_explicit_positions)
         sampler_state = SamplerState.from_context(explicit_context)
 
-        integrator.step(10)
+        explicit_context.getIntegrator().step(10)
         assert not self.is_sampler_state_equal_context(sampler_state, explicit_context)
         sampler_state.apply_to_context(explicit_context)
         assert self.is_sampler_state_equal_context(sampler_state, explicit_context)
 
     def test_operator_getitem(self):
         """SamplerState.__getitem__() method."""
-        integrator = openmm.VerletIntegrator(1*unit.femtosecond)
-        explicit_context = self.alanine_explicit_state.create_context(integrator)
+        explicit_context = self.create_context(self.alanine_explicit_state)
         explicit_context.setPositions(self.alanine_explicit_positions)
         sampler_state = SamplerState.from_context(explicit_context)
 
