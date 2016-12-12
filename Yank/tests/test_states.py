@@ -392,7 +392,7 @@ class TestThermodynamicState(object):
 
         # The cached parameters on the context must be updated.
         old_box_vectors = context.getState(getPositions=True).getPeriodicBoxVectors(asNumpy=True)
-        integrator.step(100)
+        integrator.step(200)
         new_box_vectors = context.getState(getPositions=True).getPeriodicBoxVectors(asNumpy=True)
         assert not np.allclose(old_box_vectors, new_box_vectors)
 
@@ -584,6 +584,39 @@ class TestSamplerState(object):
         # The other attributes are copied correctly.
         assert sliced_sampler_state.volume == sampler_state.volume
         assert sliced_sampler_state.total_energy == sampler_state.total_energy
+
+    def test_cache_positions_velocities_md_units(self):
+        """Test caching positions and velocities in md units."""
+        test_pos = self.alanine_explicit_positions.value_in_unit_system(
+            unit.md_unit_system)
+
+        # Types are correct and cached value is initialized on-demand.
+        sampler_state = SamplerState(self.alanine_explicit_positions)
+        assert sampler_state._cached_positions_in_md_units is None
+        assert np.allclose(sampler_state._positions_in_md_units, test_pos)
+        assert sampler_state._cached_positions_in_md_units is not None
+        assert sampler_state._cached_velocities_in_md_units is None
+
+        # When using update_from_context() or from_context() constructor,
+        # we directly cache the unit-less state.
+        context = self.create_context(self.alanine_explicit_state)
+        sampler_state.apply_to_context(context)  # Set positions.
+
+        sampler_state.update_from_context(context)
+        for state in [SamplerState.from_context(context), sampler_state]:
+            assert state._cached_positions_in_md_units is not None
+            assert state._cached_velocities_in_md_units is not None
+            assert np.allclose(state._positions_in_md_units, test_pos)
+            assert np.allclose(state._velocities_in_md_units,
+                               np.zeros((len(test_pos), 3)))
+
+        # Cache is correctly invalidated on assignment/update.
+        assert sampler_state._cached_positions_in_md_units is not None
+        sampler_state.positions = self.alanine_explicit_positions
+        assert sampler_state._cached_positions_in_md_units is None
+        assert sampler_state._cached_velocities_in_md_units is not None
+        sampler_state.velocities = sampler_state.velocities
+        assert sampler_state._cached_velocities_in_md_units is None
 
 
 # =============================================================================
