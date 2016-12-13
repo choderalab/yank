@@ -41,8 +41,8 @@ class TestThermodynamicState(object):
     @classmethod
     def setup_class(cls):
         """Create the test systems used in the test suite."""
-        cls.pressure = ThermodynamicState._STANDARD_PRESSURE
-        cls.temperature = ThermodynamicState._STANDARD_TEMPERATURE
+        cls.std_pressure = ThermodynamicState._STANDARD_PRESSURE
+        cls.std_temperature = ThermodynamicState._STANDARD_TEMPERATURE
         cls.toluene_vacuum = testsystems.TolueneVacuum().system
         cls.toluene_implicit = testsystems.TolueneImplicit().system
 
@@ -52,38 +52,38 @@ class TestThermodynamicState(object):
 
         # A system correctly barostated
         cls.barostated_alanine = copy.deepcopy(cls.alanine_explicit)
-        barostat = openmm.MonteCarloBarostat(cls.pressure, cls.temperature)
+        barostat = openmm.MonteCarloBarostat(cls.std_pressure, cls.std_temperature)
         cls.barostated_alanine.addForce(barostat)
 
         # A non-periodic system barostated
         cls.barostated_toluene = copy.deepcopy(cls.toluene_vacuum)
-        barostat = openmm.MonteCarloBarostat(cls.pressure, cls.temperature)
+        barostat = openmm.MonteCarloBarostat(cls.std_pressure, cls.std_temperature)
         cls.barostated_toluene.addForce(barostat)
 
         # A system with two identical MonteCarloBarostats
         cls.multiple_barostat_alanine = copy.deepcopy(cls.barostated_alanine)
-        barostat = openmm.MonteCarloBarostat(cls.pressure, cls.temperature)
+        barostat = openmm.MonteCarloBarostat(cls.std_pressure, cls.std_temperature)
         cls.multiple_barostat_alanine.addForce(barostat)
 
         # A system with an unsupported MonteCarloAnisotropicBarostat
         cls.unsupported_barostat_alanine = copy.deepcopy(cls.alanine_explicit)
-        pressure_in_bars = cls.pressure / unit.bar
+        pressure_in_bars = cls.std_pressure / unit.bar
         anisotropic_pressure = openmm.Vec3(pressure_in_bars, pressure_in_bars,
                                            pressure_in_bars)
         barostat = openmm.MonteCarloAnisotropicBarostat(anisotropic_pressure,
-                                                        cls.temperature)
+                                                        cls.std_temperature)
         cls.unsupported_barostat_alanine.addForce(barostat)
 
         # A system with an inconsistent pressure in the barostat.
         cls.inconsistent_pressure_alanine = copy.deepcopy(cls.alanine_explicit)
-        barostat = openmm.MonteCarloBarostat(cls.pressure + 0.2*unit.bar,
-                                             cls.temperature)
+        barostat = openmm.MonteCarloBarostat(cls.std_pressure + 0.2*unit.bar,
+                                             cls.std_temperature)
         cls.inconsistent_pressure_alanine.addForce(barostat)
 
         # A system with an inconsistent temperature in the barostat.
         cls.inconsistent_temperature_alanine = copy.deepcopy(cls.alanine_explicit)
-        barostat = openmm.MonteCarloBarostat(cls.pressure,
-                                             cls.temperature + 1.0*unit.kelvin)
+        barostat = openmm.MonteCarloBarostat(cls.std_pressure,
+                                             cls.std_temperature + 1.0*unit.kelvin)
         cls.inconsistent_temperature_alanine.addForce(barostat)
 
     def test_method_find_barostat(self):
@@ -102,8 +102,8 @@ class TestThermodynamicState(object):
 
     def test_method_is_barostat_consistent(self):
         """ThermodynamicState._is_barostat_consistent() method."""
-        temperature = self.temperature
-        pressure = self.pressure
+        temperature = self.std_temperature
+        pressure = self.std_pressure
         state = ThermodynamicState(self.barostated_alanine, temperature)
 
         barostat = openmm.MonteCarloBarostat(pressure, temperature)
@@ -115,8 +115,8 @@ class TestThermodynamicState(object):
 
     def test_method_set_barostat_temperature(self):
         """ThermodynamicState._set_barostat_temperature() method."""
-        barostat = openmm.MonteCarloBarostat(self.pressure, self.temperature)
-        new_temperature = self.temperature + 10*unit.kelvin
+        barostat = openmm.MonteCarloBarostat(self.std_pressure, self.std_temperature)
+        new_temperature = self.std_temperature + 10*unit.kelvin
 
         assert ThermodynamicState._set_barostat_temperature(barostat, new_temperature)
         assert get_barostat_temperature(barostat) == new_temperature
@@ -125,27 +125,27 @@ class TestThermodynamicState(object):
     def test_property_temperature(self):
         """ThermodynamicState.temperature property."""
         state = ThermodynamicState(self.barostated_alanine,
-                                   self.temperature)
-        assert state.temperature == self.temperature
+                                   self.std_temperature)
+        assert state.temperature == self.std_temperature
 
-        temperature = self.temperature + 10.0*unit.kelvin
+        temperature = self.std_temperature + 10.0*unit.kelvin
         state.temperature = temperature
         assert state.temperature == temperature
         assert get_barostat_temperature(state._barostat) == temperature
 
     def test_method_set_system_pressure(self):
         """ThermodynamicState._set_system_pressure() method."""
-        state = ThermodynamicState(self.alanine_explicit, self.temperature)
+        state = ThermodynamicState(self.alanine_explicit, self.std_temperature)
         assert not state._set_system_pressure(state._system, None)
-        assert state._set_system_pressure(state._system, self.pressure)
-        assert not state._set_system_pressure(state._system, self.pressure)
+        assert state._set_system_pressure(state._system, self.std_pressure)
+        assert not state._set_system_pressure(state._system, self.std_pressure)
 
     def test_property_pressure(self):
         """ThermodynamicState.pressure property."""
         # Vacuum and implicit system are read with no pressure
         nonperiodic_testcases = [self.toluene_vacuum, self.toluene_implicit]
         for system in nonperiodic_testcases:
-            state = ThermodynamicState(system, self.temperature)
+            state = ThermodynamicState(system, self.std_temperature)
             assert state.pressure is None
 
             # We can't set the pressure on non-periodic systems
@@ -156,24 +156,24 @@ class TestThermodynamicState(object):
         # Correctly reads and set system pressures
         periodic_testcases = [self.alanine_explicit]
         for system in periodic_testcases:
-            state = ThermodynamicState(system, self.temperature)
+            state = ThermodynamicState(system, self.std_temperature)
             assert state.pressure is None
             assert state._barostat is None
 
             # Setting pressure adds a barostat
-            state.pressure = self.pressure
-            assert state.pressure == self.pressure
+            state.pressure = self.std_pressure
+            assert state.pressure == self.std_pressure
             barostat = state._barostat
-            assert barostat.getDefaultPressure() == self.pressure
-            assert get_barostat_temperature(barostat) == self.temperature
+            assert barostat.getDefaultPressure() == self.std_pressure
+            assert get_barostat_temperature(barostat) == self.std_temperature
 
             # Setting new pressure changes the barostat parameters
-            new_pressure = self.pressure + 1.0*unit.bar
+            new_pressure = self.std_pressure + 1.0*unit.bar
             state.pressure = new_pressure
             assert state.pressure == new_pressure
             barostat = state._barostat
             assert barostat.getDefaultPressure() == new_pressure
-            assert get_barostat_temperature(barostat) == self.temperature
+            assert get_barostat_temperature(barostat) == self.std_temperature
 
             # Setting pressure to None removes barostat
             state.pressure = None
@@ -182,24 +182,24 @@ class TestThermodynamicState(object):
     def test_property_volume(self):
         """Check that volume is computed correctly."""
         # For volume-fluctuating systems volume is None.
-        state = ThermodynamicState(self.barostated_alanine, self.temperature)
+        state = ThermodynamicState(self.barostated_alanine, self.std_temperature)
         assert state.volume is None
 
         # For periodic systems in NVT, volume is correctly computed.
         system = self.alanine_explicit
         box_vectors = system.getDefaultPeriodicBoxVectors()
         volume = box_vectors[0][0] * box_vectors[1][1] * box_vectors[2][2]
-        state = ThermodynamicState(system, self.temperature)
+        state = ThermodynamicState(system, self.std_temperature)
         assert state.volume == volume
 
         # For non-periodic systems, volume is None.
-        state = ThermodynamicState(self.toluene_vacuum, self.temperature)
+        state = ThermodynamicState(self.toluene_vacuum, self.std_temperature)
         assert state.volume is None
 
     def test_property_system(self):
         """Cannot set a system with an incompatible barostat."""
-        state = ThermodynamicState(self.barostated_alanine, self.temperature)
-        assert state.pressure == self.pressure  # pre-condition
+        state = ThermodynamicState(self.barostated_alanine, self.std_temperature)
+        assert state.pressure == self.std_pressure  # pre-condition
 
         TE = ThermodynamicsError  # shortcut
         test_cases = [(self.toluene_vacuum, TE.BAROSTATED_NONPERIODIC),
@@ -215,7 +215,7 @@ class TestThermodynamicState(object):
         # It is possible to set an inconsistent system
         # if thermodynamic state is changed first.
         inconsistent_system = self.inconsistent_pressure_alanine
-        state.pressure = self.pressure + 0.2*unit.bar
+        state.pressure = self.std_pressure + 0.2*unit.bar
         state.system = self.inconsistent_pressure_alanine
         state_system_str = openmm.XmlSerializer.serialize(state.system)
         inconsistent_system_str = openmm.XmlSerializer.serialize(inconsistent_system)
@@ -229,7 +229,7 @@ class TestThermodynamicState(object):
                       (self.unsupported_barostat_alanine, TE.UNSUPPORTED_BAROSTAT)]
         for i, (system, err_code) in enumerate(test_cases):
             with nose.tools.assert_raises(TE) as cm:
-                ThermodynamicState(system=system, temperature=self.temperature)
+                ThermodynamicState(system=system, temperature=self.std_temperature)
             assert cm.exception.code == err_code
 
     def test_constructor_barostat(self):
@@ -239,24 +239,24 @@ class TestThermodynamicState(object):
         assert ThermodynamicState._find_barostat(system) is None  # test-precondition
 
         # If we don't specify pressure, no barostat is added
-        state = ThermodynamicState(system=system, temperature=self.temperature)
+        state = ThermodynamicState(system=system, temperature=self.std_temperature)
         assert state._barostat is None
 
         # If we specify pressure, barostat is added
-        state = ThermodynamicState(system=system, temperature=self.temperature,
-                                   pressure=self.pressure)
+        state = ThermodynamicState(system=system, temperature=self.std_temperature,
+                                   pressure=self.std_pressure)
         assert state._barostat is not None
 
         # If we feed a barostat with an inconsistent temperature, it's fixed.
         state = ThermodynamicState(self.inconsistent_temperature_alanine,
-                                   temperature=self.temperature)
+                                   temperature=self.std_temperature)
         assert state._is_barostat_consistent(state._barostat)
 
         # If we feed a barostat with an inconsistent pressure, it's fixed.
         state = ThermodynamicState(self.inconsistent_pressure_alanine,
-                                   temperature=self.temperature,
-                                   pressure=self.pressure)
-        assert state.pressure == self.pressure
+                                   temperature=self.std_temperature,
+                                   pressure=self.std_pressure)
+        assert state.pressure == self.std_pressure
 
         # The original system is unaltered.
         new_serialization = openmm.XmlSerializer.serialize(system)
@@ -264,20 +264,20 @@ class TestThermodynamicState(object):
 
     def test_method_is_integrator_consistent(self):
         """The integrator must have the same temperature of the state."""
-        inconsistent_temperature = self.temperature + 1.0*unit.kelvin
+        inconsistent_temperature = self.std_temperature + 1.0*unit.kelvin
         friction = 5.0/unit.picosecond
         time_step = 2.0*unit.femtosecond
-        state = ThermodynamicState(self.toluene_vacuum, self.temperature)
+        state = ThermodynamicState(self.toluene_vacuum, self.std_temperature)
 
         compound = openmm.CompoundIntegrator()
         compound.addIntegrator(openmm.VerletIntegrator(time_step))
-        compound.addIntegrator(openmm.LangevinIntegrator(self.temperature,
+        compound.addIntegrator(openmm.LangevinIntegrator(self.std_temperature,
                                                          friction, time_step))
         compound.addIntegrator(openmm.LangevinIntegrator(inconsistent_temperature,
                                                          friction, time_step))
 
         test_cases = [
-            (True, openmm.LangevinIntegrator(self.temperature,
+            (True, openmm.LangevinIntegrator(self.std_temperature,
                                              friction, time_step)),
             (False, openmm.LangevinIntegrator(inconsistent_temperature,
                                               friction, time_step)),
@@ -299,14 +299,14 @@ class TestThermodynamicState(object):
 
     def test_method_set_integrator_temperature(self):
         """ThermodynamicState._set_integrator_temperature() method."""
-        temperature = self.temperature + 1.0*unit.kelvin
+        temperature = self.std_temperature + 1.0*unit.kelvin
         friction = 5.0/unit.picosecond
         time_step = 2.0*unit.femtosecond
-        state = ThermodynamicState(self.toluene_vacuum, self.temperature)
+        state = ThermodynamicState(self.toluene_vacuum, self.std_temperature)
 
         integrator = openmm.LangevinIntegrator(temperature, friction, time_step)
         assert state._set_integrator_temperature(integrator)
-        assert integrator.getTemperature() == self.temperature
+        assert integrator.getTemperature() == self.std_temperature
         assert not state._set_integrator_temperature(integrator)
 
         # It doesn't explode with integrators not coupled to a heat bath
@@ -322,28 +322,28 @@ class TestThermodynamicState(object):
 
         # Create NPT system in non-standard state.
         npt_state = ThermodynamicState(self.inconsistent_pressure_alanine,
-                                       self.temperature + 1.0*unit.kelvin)
+                                       self.std_temperature + 1.0*unit.kelvin)
         barostat = npt_state._barostat
-        assert barostat.getDefaultPressure() != self.pressure
-        assert get_barostat_temperature(barostat) != self.temperature
+        assert barostat.getDefaultPressure() != self.std_pressure
+        assert get_barostat_temperature(barostat) != self.std_temperature
 
         # With NPT system, the barostat is set to standard.
         npt_system = npt_state.system
         ThermodynamicState._standardize_system(npt_system)
         barostat = ThermodynamicState._find_barostat(npt_system)
-        assert barostat.getDefaultPressure() == self.pressure
-        assert get_barostat_temperature(barostat) == self.temperature
+        assert barostat.getDefaultPressure() == self.std_pressure
+        assert get_barostat_temperature(barostat) == self.std_temperature
 
     def test_method_create_context(self):
         """ThermodynamicState.create_context() method."""
-        state = ThermodynamicState(self.toluene_vacuum, self.temperature)
+        state = ThermodynamicState(self.toluene_vacuum, self.std_temperature)
         toluene_str = openmm.XmlSerializer.serialize(self.toluene_vacuum)
 
         test_cases = [
             (None, openmm.VerletIntegrator(1.0*unit.femtosecond)),
             (
                 openmm.Platform.getPlatformByName('Reference'),
-                openmm.LangevinIntegrator(self.temperature, 5.0/unit.picosecond,
+                openmm.LangevinIntegrator(self.std_temperature, 5.0/unit.picosecond,
                                           2.0*unit.femtosecond)
             )
         ]
@@ -369,10 +369,10 @@ class TestThermodynamicState(object):
             assert state1.is_context_compatible(context2) is is_compatible
             assert state2.is_context_compatible(context1) is is_compatible
 
-        toluene_vacuum = ThermodynamicState(self.toluene_vacuum, self.temperature)
-        toluene_implicit = ThermodynamicState(self.toluene_implicit, self.temperature)
-        alanine_explicit = ThermodynamicState(self.alanine_explicit, self.temperature)
-        barostated_alanine = ThermodynamicState(self.barostated_alanine, self.temperature)
+        toluene_vacuum = ThermodynamicState(self.toluene_vacuum, self.std_temperature)
+        toluene_implicit = ThermodynamicState(self.toluene_implicit, self.std_temperature)
+        alanine_explicit = ThermodynamicState(self.alanine_explicit, self.std_temperature)
+        barostated_alanine = ThermodynamicState(self.barostated_alanine, self.std_temperature)
 
         # Different systems/ensembles are incompatible.
         check_compatibility(toluene_vacuum, toluene_vacuum, True)
@@ -400,29 +400,29 @@ class TestThermodynamicState(object):
         """ThermodynamicState.apply_to_context() method."""
         friction = 5.0/unit.picosecond
         time_step = 2.0*unit.femtosecond
-        integrator = openmm.LangevinIntegrator(self.temperature, friction, time_step)
-        state0 = ThermodynamicState(self.barostated_alanine, self.temperature)
+        integrator = openmm.LangevinIntegrator(self.std_temperature, friction, time_step)
+        state0 = ThermodynamicState(self.barostated_alanine, self.std_temperature)
         context = state0.create_context(integrator)
         barostat = state0._find_barostat(context.getSystem())
 
         # Change context pressure.
-        assert barostat.getDefaultPressure() == self.pressure
-        assert context.getParameter(barostat.Pressure()) == self.pressure / unit.bar
-        new_pressure = self.pressure + 1.0*unit.bars
-        state1 = ThermodynamicState(self.barostated_alanine, self.temperature,
+        assert barostat.getDefaultPressure() == self.std_pressure
+        assert context.getParameter(barostat.Pressure()) == self.std_pressure / unit.bar
+        new_pressure = self.std_pressure + 1.0*unit.bars
+        state1 = ThermodynamicState(self.barostated_alanine, self.std_temperature,
                                     new_pressure)
         state1.apply_to_context(context)
         assert barostat.getDefaultPressure() == new_pressure
         assert context.getParameter(barostat.Pressure()) == new_pressure / unit.bar
 
         # Change context temperature.
-        assert get_barostat_temperature(barostat) == self.temperature
+        assert get_barostat_temperature(barostat) == self.std_temperature
         # TODO remove try except when OpenMM 7.1 works on travis
         try:
-            assert context.getParameter(barostat.Temperature()) == self.temperature / unit.kelvin
+            assert context.getParameter(barostat.Temperature()) == self.std_temperature / unit.kelvin
         except AttributeError:
             pass
-        new_temperature = self.temperature + 10.0*unit.kelvin
+        new_temperature = self.std_temperature + 10.0*unit.kelvin
         state2 = ThermodynamicState(self.barostated_alanine, new_temperature)
         state2.apply_to_context(context)
         assert get_barostat_temperature(barostat) == new_temperature
@@ -448,8 +448,8 @@ class TestThermodynamicState(object):
     def test_method_reduced_potential(self):
         """ThermodynamicState.reduced_potential() method."""
         kj_mol = unit.kilojoule_per_mole
-        beta = 1.0 / (unit.MOLAR_GAS_CONSTANT_R * self.temperature)
-        state = ThermodynamicState(self.alanine_explicit, self.temperature)
+        beta = 1.0 / (unit.MOLAR_GAS_CONSTANT_R * self.std_temperature)
+        state = ThermodynamicState(self.alanine_explicit, self.std_temperature)
         integrator = openmm.VerletIntegrator(1.0*unit.femtosecond)
         context = state.create_context(integrator)
         context.setPositions(self.alanine_positions)
@@ -461,9 +461,9 @@ class TestThermodynamicState(object):
         assert np.isclose(sampler_state.potential_energy / kj_mol, potential_energy)
 
         # Compute constant pressure reduced potential.
-        state.pressure = self.pressure
+        state.pressure = self.std_pressure
         reduced_potential = state.reduced_potential(sampler_state)
-        pressure_volume_work = (self.pressure * sampler_state.volume *
+        pressure_volume_work = (self.std_pressure * sampler_state.volume *
                                 unit.AVOGADRO_CONSTANT_NA)
         potential_energy = (reduced_potential / beta - pressure_volume_work) / kj_mol
         assert np.isclose(sampler_state.potential_energy / kj_mol, potential_energy)
@@ -741,8 +741,8 @@ class TestCompoundThermodynamicState(object):
     @classmethod
     def setup_class(cls):
         """Create various variables shared by tests in suite."""
-        cls.pressure = ThermodynamicState._STANDARD_PRESSURE
-        cls.temperature = ThermodynamicState._STANDARD_TEMPERATURE
+        cls.std_pressure = ThermodynamicState._STANDARD_PRESSURE
+        cls.std_temperature = ThermodynamicState._STANDARD_TEMPERATURE
 
         cls.dummy_parameter = cls.DummyState.standard_dummy_parameter + 1.0
         cls.dummy_state = cls.DummyState(cls.dummy_parameter)
@@ -754,7 +754,7 @@ class TestCompoundThermodynamicState(object):
     def test_dynamic_inheritance(self):
         """ThermodynamicState is inherited dinamically."""
         thermodynamic_state = ThermodynamicState(self.alanine_explicit,
-                                                 self.temperature)
+                                                 self.std_temperature)
         compound_state = CompoundThermodynamicState(thermodynamic_state, [])
 
         assert isinstance(compound_state, ThermodynamicState)
@@ -763,18 +763,18 @@ class TestCompoundThermodynamicState(object):
         assert hasattr(compound_state, 'pressure')
         assert compound_state.pressure is None
         assert hasattr(compound_state, 'temperature')
-        assert compound_state.temperature == self.temperature
+        assert compound_state.temperature == self.std_temperature
 
         # Properties and attributes are correctly set.
-        new_temperature = self.temperature + 1.0*unit.kelvin
-        compound_state.pressure = self.pressure
+        new_temperature = self.std_temperature + 1.0*unit.kelvin
+        compound_state.pressure = self.std_pressure
         compound_state._temperature = new_temperature
-        assert compound_state._barostat.getDefaultPressure() == self.pressure
+        assert compound_state._barostat.getDefaultPressure() == self.std_pressure
         assert compound_state.temperature == new_temperature
 
     def test_constructor_set_state(self):
         """IComposableState.set_state is called on construction."""
-        thermodynamic_state = ThermodynamicState(self.alanine_explicit, self.temperature)
+        thermodynamic_state = ThermodynamicState(self.alanine_explicit, self.std_temperature)
 
         assert self.get_dummy_parameter(thermodynamic_state.system) != self.dummy_parameter
         compound_state = CompoundThermodynamicState(thermodynamic_state, [self.dummy_state])
@@ -783,7 +783,7 @@ class TestCompoundThermodynamicState(object):
     def test_property_forwarding(self):
         """Forward properties to IComposableStates and update system."""
         dummy_state = self.DummyState(self.dummy_parameter + 1.0)
-        thermodynamic_state = ThermodynamicState(self.alanine_explicit, self.temperature)
+        thermodynamic_state = ThermodynamicState(self.alanine_explicit, self.std_temperature)
         compound_state = CompoundThermodynamicState(thermodynamic_state, [dummy_state])
 
         # Properties are correctly read and set, and
@@ -802,7 +802,7 @@ class TestCompoundThermodynamicState(object):
 
     def test_property_system(self):
         """CompoundThermodynamicState.system setting."""
-        thermodynamic_state = ThermodynamicState(self.alanine_explicit, self.temperature)
+        thermodynamic_state = ThermodynamicState(self.alanine_explicit, self.std_temperature)
         compound_state = CompoundThermodynamicState(thermodynamic_state, [self.dummy_state])
 
         # Setting an inconsistent system for the dummy raises an error.
@@ -814,16 +814,16 @@ class TestCompoundThermodynamicState(object):
     def test_method_standardize_system(self):
         """CompoundThermodynamicState._standardize_system method."""
         alanine_explicit = copy.deepcopy(self.alanine_explicit)
-        thermodynamic_state = ThermodynamicState(alanine_explicit, self.temperature)
-        thermodynamic_state.pressure = self.pressure + 1.0*unit.bar
+        thermodynamic_state = ThermodynamicState(alanine_explicit, self.std_temperature)
+        thermodynamic_state.pressure = self.std_pressure + 1.0*unit.bar
         compound_state = CompoundThermodynamicState(thermodynamic_state, [self.dummy_state])
 
         system = thermodynamic_state.system
         barostat = ThermodynamicState._find_barostat(system)
-        assert barostat.getDefaultPressure() != self.pressure
+        assert barostat.getDefaultPressure() != self.std_pressure
         assert self.get_dummy_parameter(system) == self.dummy_parameter
         compound_state._standardize_system(system)
-        assert barostat.getDefaultPressure() == self.pressure
+        assert barostat.getDefaultPressure() == self.std_pressure
         assert self.get_dummy_parameter(system) == self.DummyState.standard_dummy_parameter
 
         # We still haven't computed the ThermodynamicState system hash
@@ -834,7 +834,7 @@ class TestCompoundThermodynamicState(object):
 
         # Check that is_state_compatible work.
         undummied_alanine = testsystems.AlanineDipeptideExplicit().system
-        incompatible_state = ThermodynamicState(undummied_alanine, self.temperature)
+        incompatible_state = ThermodynamicState(undummied_alanine, self.std_temperature)
         assert not compound_state.is_state_compatible(incompatible_state)
 
         integrator = openmm.VerletIntegrator(2.0*unit.femtoseconds)
@@ -844,15 +844,15 @@ class TestCompoundThermodynamicState(object):
     def test_method_apply_to_context(self):
         """CompoundThermodynamicState.apply_to_context() method."""
         dummy_parameter = self.DummyState.standard_dummy_parameter
-        thermodynamic_state = ThermodynamicState(self.alanine_explicit, self.temperature)
-        thermodynamic_state.pressure = self.pressure
+        thermodynamic_state = ThermodynamicState(self.alanine_explicit, self.std_temperature)
+        thermodynamic_state.pressure = self.std_pressure
         self.DummyState.set_dummy_parameter(thermodynamic_state.system, dummy_parameter)
 
         integrator = openmm.VerletIntegrator(2.0*unit.femtoseconds)
         context = thermodynamic_state.create_context(integrator)
         barostat = ThermodynamicState._find_barostat(context.getSystem())
         assert context.getParameter('dummy_parameter') == dummy_parameter
-        assert context.getParameter(barostat.Pressure()) == self.pressure / unit.bar
+        assert context.getParameter(barostat.Pressure()) == self.std_pressure / unit.bar
 
         compound_state = CompoundThermodynamicState(thermodynamic_state, [self.dummy_state])
         new_pressure = thermodynamic_state.pressure + 1.0*unit.bar
