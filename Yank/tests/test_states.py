@@ -599,6 +599,7 @@ class TestThermodynamicState(object):
         reduced_potential = state.reduced_potential(sampler_state)
         potential_energy = reduced_potential / beta / kj_mol
         assert np.isclose(sampler_state.potential_energy / kj_mol, potential_energy)
+        assert reduced_potential == state.reduced_potential(context)
 
         # Compute constant pressure reduced potential.
         state.pressure = self.std_pressure
@@ -607,6 +608,7 @@ class TestThermodynamicState(object):
                                 unit.AVOGADRO_CONSTANT_NA)
         potential_energy = (reduced_potential / beta - pressure_volume_work) / kj_mol
         assert np.isclose(sampler_state.potential_energy / kj_mol, potential_energy)
+        assert reduced_potential == state.reduced_potential(context)
 
         # Raise error if SamplerState is not compatible.
         incompatible_sampler_state = sampler_state[:-1]
