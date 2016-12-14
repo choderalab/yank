@@ -28,7 +28,7 @@ def get_barostat_temperature(barostat):
     try:  # TODO drop this when we stop openmm7.0 support
         return barostat.getDefaultTemperature()
     except AttributeError:  # versions previous to OpenMM 7.1
-        return barostat.setTemperature()
+        return barostat.getTemperature()
 
 
 # =============================================================================
@@ -43,12 +43,20 @@ class TestThermodynamicState(object):
         """Create the test systems used in the test suite."""
         cls.std_pressure = ThermodynamicState._STANDARD_PRESSURE
         cls.std_temperature = ThermodynamicState._STANDARD_TEMPERATURE
-        cls.toluene_vacuum = testsystems.TolueneVacuum().system
-        cls.toluene_implicit = testsystems.TolueneImplicit().system
 
         alanine_explicit = testsystems.AlanineDipeptideExplicit()
-        cls.alanine_explicit = alanine_explicit.system
         cls.alanine_positions = alanine_explicit.positions
+        cls.alanine_no_thermostat = alanine_explicit.system
+
+        cls.toluene_implicit = testsystems.TolueneImplicit().system
+        cls.toluene_vacuum = testsystems.TolueneVacuum().system
+        thermostat = openmm.AndersenThermostat(cls.std_temperature,
+                                               1.0/unit.picosecond)
+        cls.toluene_vacuum.addForce(thermostat)
+        cls.alanine_explicit = copy.deepcopy(cls.alanine_no_thermostat)
+        thermostat = openmm.AndersenThermostat(cls.std_temperature,
+                                               1.0/unit.picosecond)
+        cls.alanine_explicit.addForce(thermostat)
 
         # A system correctly barostated
         cls.barostated_alanine = copy.deepcopy(cls.alanine_explicit)
@@ -81,10 +89,13 @@ class TestThermodynamicState(object):
         cls.inconsistent_pressure_alanine.addForce(barostat)
 
         # A system with an inconsistent temperature in the barostat.
-        cls.inconsistent_temperature_alanine = copy.deepcopy(cls.alanine_explicit)
+        cls.inconsistent_temperature_alanine = copy.deepcopy(cls.alanine_no_thermostat)
         barostat = openmm.MonteCarloBarostat(cls.std_pressure,
                                              cls.std_temperature + 1.0*unit.kelvin)
+        thermostat = openmm.AndersenThermostat(cls.std_temperature + 1.0*unit.kelvin,
+                                               1.0/unit.picosecond)
         cls.inconsistent_temperature_alanine.addForce(barostat)
+        cls.inconsistent_temperature_alanine.addForce(thermostat)
 
     def test_method_find_barostat(self):
         """ThermodynamicState._find_barostat() method."""
@@ -100,6 +111,23 @@ class TestThermodynamicState(object):
                 ThermodynamicState._find_barostat(system)
             assert cm.exception.code == err_code
 
+    def test_method_find_thermostat(self):
+        """ThermodynamicState._find_thermostat() method."""
+        system = copy.deepcopy(self.alanine_no_thermostat)
+        assert ThermodynamicState._find_thermostat(system) is None
+        thermostat = openmm.AndersenThermostat(self.std_temperature,
+                                               1.0/unit.picosecond)
+        system.addForce(thermostat)
+        assert ThermodynamicState._find_thermostat(system) is not None
+
+        # An error is raised with two thermostats.
+        thermostat2 = openmm.AndersenThermostat(self.std_temperature,
+                                                1.0/unit.picosecond)
+        system.addForce(thermostat2)
+        with nose.tools.assert_raises(ThermodynamicsError) as cm:
+            ThermodynamicState._find_thermostat(system)
+        cm.exception.code == ThermodynamicsError.MULTIPLE_THERMOSTATS
+
     def test_method_is_barostat_consistent(self):
         """ThermodynamicState._is_barostat_consistent() method."""
         temperature = self.std_temperature
@@ -113,6 +141,17 @@ class TestThermodynamicState(object):
         barostat = openmm.MonteCarloBarostat(pressure, temperature + 10*unit.kelvin)
         assert not state._is_barostat_consistent(barostat)
 
+    def test_method_is_thermostat_consistent(self):
+        """ThermodynamicState._is_thermostat_consistent() method."""
+        temperature = self.std_temperature
+        collision_freq = 1.0/unit.picosecond
+        state = ThermodynamicState(self.alanine_explicit, temperature)
+
+        thermostat = openmm.AndersenThermostat(temperature, collision_freq)
+        assert state._is_thermostat_consistent(thermostat)
+        thermostat.setDefaultTemperature(temperature + 1.0*unit.kelvin)
+        assert not state._is_thermostat_consistent(thermostat)
+
     def test_method_set_barostat_temperature(self):
         """ThermodynamicState._set_barostat_temperature() method."""
         barostat = openmm.MonteCarloBarostat(self.std_pressure, self.std_temperature)
@@ -121,6 +160,27 @@ class TestThermodynamicState(object):
         assert ThermodynamicState._set_barostat_temperature(barostat, new_temperature)
         assert get_barostat_temperature(barostat) == new_temperature
         assert not ThermodynamicState._set_barostat_temperature(barostat, new_temperature)
+
+    def test_method_set_system_thermostat(self):
+        """ThermodynamicState._set_system_thermostat() method."""
+        system = copy.deepcopy(self.alanine_no_thermostat)
+        assert ThermodynamicState._find_thermostat(system) is None
+
+        # Add a thermostat to the system.
+        assert ThermodynamicState._set_system_thermostat(system, self.std_temperature)
+        thermostat = ThermodynamicState._find_thermostat(system)
+        assert thermostat.getDefaultTemperature() == self.std_temperature
+
+        # Change temperature of existing barostat.
+        new_temperature = self.std_temperature + 1.0*unit.kelvin
+        assert ThermodynamicState._set_system_thermostat(system, new_temperature)
+        assert thermostat.getDefaultTemperature() == new_temperature
+        assert not ThermodynamicState._set_system_thermostat(system, new_temperature)
+
+        # Remove system thermostat.
+        assert ThermodynamicState._set_system_thermostat(system, None)
+        assert ThermodynamicState._find_thermostat(system) is None
+        assert not ThermodynamicState._set_system_thermostat(system, None)
 
     def test_property_temperature(self):
         """ThermodynamicState.temperature property."""
@@ -132,6 +192,11 @@ class TestThermodynamicState(object):
         state.temperature = temperature
         assert state.temperature == temperature
         assert get_barostat_temperature(state._barostat) == temperature
+
+        # Setting temperature to None raise error.
+        with nose.tools.assert_raises(ThermodynamicsError) as cm:
+            state.temperature = None
+        assert cm.exception.code == ThermodynamicsError.NONE_TEMPERATURE
 
     def test_method_set_system_pressure(self):
         """ThermodynamicState._set_system_pressure() method."""
@@ -197,16 +262,21 @@ class TestThermodynamicState(object):
         assert state.volume is None
 
     def test_property_system(self):
-        """Cannot set a system with an incompatible barostat."""
+        """Cannot set a system in a different thermodynamic state."""
         state = ThermodynamicState(self.barostated_alanine, self.std_temperature)
         assert state.pressure == self.std_pressure  # pre-condition
+
+        inconsistent_barostat_temperature = copy.deepcopy(self.inconsistent_temperature_alanine)
+        thermostat = state._find_thermostat(inconsistent_barostat_temperature)
+        thermostat.setDefaultTemperature(self.std_temperature)
 
         TE = ThermodynamicsError  # shortcut
         test_cases = [(self.toluene_vacuum, TE.BAROSTATED_NONPERIODIC),
                       (self.barostated_toluene, TE.BAROSTATED_NONPERIODIC),
                       (self.multiple_barostat_alanine, TE.MULTIPLE_BAROSTATS),
                       (self.inconsistent_pressure_alanine, TE.INCONSISTENT_BAROSTAT),
-                      (self.inconsistent_temperature_alanine, TE.INCONSISTENT_BAROSTAT)]
+                      (self.inconsistent_temperature_alanine, TE.INCONSISTENT_THERMOSTAT),
+                      (inconsistent_barostat_temperature, TE.INCONSISTENT_BAROSTAT)]
         for system, error_code in test_cases:
             with nose.tools.assert_raises(ThermodynamicsError) as cm:
                 state.system = system
@@ -236,7 +306,7 @@ class TestThermodynamicState(object):
         """The system barostat is properly configured on construction."""
         system = self.alanine_explicit
         old_serialization = openmm.XmlSerializer.serialize(system)
-        assert ThermodynamicState._find_barostat(system) is None  # test-precondition
+        assert ThermodynamicState._find_barostat(system) is None  # Test precondition.
 
         # If we don't specify pressure, no barostat is added
         state = ThermodynamicState(system=system, temperature=self.std_temperature)
@@ -262,40 +332,58 @@ class TestThermodynamicState(object):
         new_serialization = openmm.XmlSerializer.serialize(system)
         assert new_serialization == old_serialization
 
-    def test_method_is_integrator_consistent(self):
-        """The integrator must have the same temperature of the state."""
-        inconsistent_temperature = self.std_temperature + 1.0*unit.kelvin
+    def test_constructor_thermostat(self):
+        """The system thermostat is properly configured on construction."""
+        # If we don't specify a temperature without a thermostat, it complains.
+        system = self.alanine_no_thermostat
+        assert ThermodynamicState._find_thermostat(system) is None  # Test precondition.
+        with nose.tools.assert_raises(ThermodynamicsError) as cm:
+            ThermodynamicState(system=system)
+        assert cm.exception.code == ThermodynamicsError.NO_THERMOSTAT
+
+        # With thermostat, temperature is inferred correctly,
+        # and the barostat temperature is set correctly as well.
+        system = copy.deepcopy(self.barostated_alanine)
+        new_temperature = self.std_temperature + 1.0*unit.kelvin
+        barostat = ThermodynamicState._find_barostat(system)
+        assert get_barostat_temperature(barostat) != new_temperature  # Precondition.
+        thermostat = ThermodynamicState._find_thermostat(system)
+        thermostat.setDefaultTemperature(new_temperature)
+        state = ThermodynamicState(system=system)
+        assert state.temperature == new_temperature
+        assert get_barostat_temperature(state._barostat) == new_temperature
+
+        # Specifying temperature overwrite thermostat.
+        state = ThermodynamicState(system=system, temperature=self.std_temperature)
+        assert state.temperature == self.std_temperature
+        assert get_barostat_temperature(state._barostat) == self.std_temperature
+
+    def test_method_is_integrator_thermostated(self):
+        """ThermodynamicState._is_integrator_thermostated method."""
         friction = 5.0/unit.picosecond
         time_step = 2.0*unit.femtosecond
         state = ThermodynamicState(self.toluene_vacuum, self.std_temperature)
 
-        compound = openmm.CompoundIntegrator()
-        compound.addIntegrator(openmm.VerletIntegrator(time_step))
-        compound.addIntegrator(openmm.LangevinIntegrator(self.std_temperature,
-                                                         friction, time_step))
-        compound.addIntegrator(openmm.LangevinIntegrator(inconsistent_temperature,
-                                                         friction, time_step))
+        # If integrator expose a getTemperature method, return True.
+        verlet_integrator = openmm.VerletIntegrator(time_step)
+        langevin_integrator = openmm.LangevinIntegrator(self.std_temperature,
+                                                        friction, time_step)
+        brownian_integrator = openmm.BrownianIntegrator(self.std_temperature,
+                                                        friction, time_step)
 
-        test_cases = [
-            (True, openmm.LangevinIntegrator(self.std_temperature,
-                                             friction, time_step)),
-            (False, openmm.LangevinIntegrator(inconsistent_temperature,
-                                              friction, time_step)),
-            (False, openmm.BrownianIntegrator(inconsistent_temperature,
-                                              friction, time_step)),
-            (True, 0), (True, 1), (False, 2)  # Compound integrator
-        ]
-        for consistent, integrator in test_cases:
-            if isinstance(integrator, int):
-                compound.setCurrentIntegrator(integrator)
-                integrator = compound
-            assert state._is_integrator_consistent(integrator) is consistent
+        test_cases = [(False, verlet_integrator),
+                      (True, langevin_integrator),
+                      (True, brownian_integrator)]
+        for thermostated, integrator in test_cases:
+            assert state._is_integrator_thermostated(integrator) is thermostated
 
-            # create_context() should perform the same check.
-            if not consistent:
-                with nose.tools.assert_raises(ThermodynamicsError) as cm:
-                    state.create_context(integrator)
-                assert cm.exception.code == ThermodynamicsError.INCONSISTENT_INTEGRATOR
+        # If temperature is different, it raises an exception.
+        inconsistent_temperature = self.std_temperature + 1.0*unit.kelvin
+        langevin_integrator = copy.deepcopy(langevin_integrator)
+        langevin_integrator.setTemperature(inconsistent_temperature)
+        with nose.tools.assert_raises(ThermodynamicsError) as cm:
+            state._is_integrator_thermostated(langevin_integrator)
+        assert cm.exception.code == ThermodynamicsError.INCONSISTENT_INTEGRATOR
 
     def test_method_set_integrator_temperature(self):
         """ThermodynamicState._set_integrator_temperature() method."""
@@ -304,57 +392,92 @@ class TestThermodynamicState(object):
         time_step = 2.0*unit.femtosecond
         state = ThermodynamicState(self.toluene_vacuum, self.std_temperature)
 
-        integrator = openmm.LangevinIntegrator(temperature, friction, time_step)
-        assert state._set_integrator_temperature(integrator)
-        assert integrator.getTemperature() == self.std_temperature
-        assert not state._set_integrator_temperature(integrator)
+        langevin = openmm.LangevinIntegrator(temperature, friction, time_step)
+        assert state._set_integrator_temperature(langevin)
+        assert langevin.getTemperature() == self.std_temperature
+        assert not state._set_integrator_temperature(langevin)
 
         # It doesn't explode with integrators not coupled to a heat bath
-        integrator = openmm.VerletIntegrator(time_step)
-        assert not state._set_integrator_temperature(integrator)
+        verlet = openmm.VerletIntegrator(time_step)
+        assert not state._set_integrator_temperature(verlet)
+
+        # It handles CompoundIntegrators well.
+        compound = openmm.CompoundIntegrator()
+        compound.addIntegrator(copy.deepcopy(verlet))
+        langevin.setTemperature(temperature)
+        compound.addIntegrator(copy.deepcopy(langevin))
+        assert state._set_integrator_temperature(compound)
+        assert compound.getIntegrator(1).getTemperature() == self.std_temperature
+        assert not state._set_integrator_temperature(compound)
 
     def test_method_standardize_system(self):
         """ThermodynamicState._standardize_system() class method."""
-        # Nothing happens if the system is NVT.
-        nvt_system = copy.deepcopy(self.alanine_explicit)
+        # Nothing happens if system has neither barostat nor thermostat.
+        nvt_system = copy.deepcopy(self.alanine_no_thermostat)
         ThermodynamicState._standardize_system(nvt_system)
-        assert nvt_system.__getstate__() == self.alanine_explicit.__getstate__()
+        assert nvt_system.__getstate__() == self.alanine_no_thermostat.__getstate__()
 
         # Create NPT system in non-standard state.
         npt_state = ThermodynamicState(self.inconsistent_pressure_alanine,
                                        self.std_temperature + 1.0*unit.kelvin)
         barostat = npt_state._barostat
+        thermostat = npt_state._thermostat
         assert barostat.getDefaultPressure() != self.std_pressure
         assert get_barostat_temperature(barostat) != self.std_temperature
+        assert thermostat.getDefaultTemperature() != self.std_temperature
 
-        # With NPT system, the barostat is set to standard.
+        # With NPT system, the barostat is set to standard
+        # and the thermostat is removed.
         npt_system = npt_state.system
         ThermodynamicState._standardize_system(npt_system)
         barostat = ThermodynamicState._find_barostat(npt_system)
         assert barostat.getDefaultPressure() == self.std_pressure
         assert get_barostat_temperature(barostat) == self.std_temperature
+        assert ThermodynamicState._find_thermostat(npt_system) is None
 
     def test_method_create_context(self):
         """ThermodynamicState.create_context() method."""
         state = ThermodynamicState(self.toluene_vacuum, self.std_temperature)
         toluene_str = openmm.XmlSerializer.serialize(self.toluene_vacuum)
 
-        test_cases = [
-            (None, openmm.VerletIntegrator(1.0*unit.femtosecond)),
-            (
-                openmm.Platform.getPlatformByName('Reference'),
-                openmm.LangevinIntegrator(self.std_temperature, 5.0/unit.picosecond,
-                                          2.0*unit.femtosecond)
-            )
-        ]
+        verlet_integrator = openmm.VerletIntegrator(1.0*unit.femtosecond)
+        verlet_compound = openmm.CompoundIntegrator()
+        verlet_compound.addIntegrator(copy.deepcopy(verlet_integrator))
+        verlet_compound.addIntegrator(copy.deepcopy(verlet_integrator))
 
-        for platform, integrator in test_cases:
-            context = state.create_context(integrator, platform)
-            system_str = openmm.XmlSerializer.serialize(context.getSystem())
-            assert system_str == toluene_str
+        # With a VerletIntegrator, the system has a thermostat.
+        for integrator in [verlet_integrator, verlet_compound]:
+            context = state.create_context(integrator)
+            assert toluene_str == context.getSystem().__getstate__()
             assert isinstance(context.getIntegrator(), integrator.__class__)
-            if platform is not None:
-                assert platform.getName() == context.getPlatform().getName()
+            assert state._find_thermostat(context.getSystem()) is not None
+
+        # With a LangevinIntegrator, the thermostat is removed. With
+        # CompoundIntegrator, at least one must be thermostated.
+        langevin_integrator = openmm.LangevinIntegrator(self.std_temperature,
+                                                        5.0/unit.picosecond,
+                                                        2.0*unit.femtosecond)
+        langevin_compound = openmm.CompoundIntegrator()
+        langevin_compound.addIntegrator(copy.deepcopy(verlet_integrator))
+        langevin_compound.addIntegrator(copy.deepcopy(langevin_integrator))
+
+        platform = openmm.Platform.getPlatformByName('Reference')
+        for integrator in [langevin_integrator, langevin_compound]:
+            context = state.create_context(integrator, platform)
+            assert platform.getName() == context.getPlatform().getName()
+            assert isinstance(context.getIntegrator(), integrator.__class__)
+            assert state._find_thermostat(context.getSystem()) is None
+
+        # create_context complains if integrator is inconsistent
+        new_temperature = self.std_temperature + 1.0*unit.kelvin
+        langevin_integrator = copy.deepcopy(langevin_integrator)
+        langevin_integrator.setTemperature(new_temperature)
+        langevin_compound = copy.deepcopy(langevin_compound)
+        langevin_compound.getIntegrator(1).setTemperature(new_temperature)
+        for integrator in [langevin_integrator, langevin_compound]:
+            with nose.tools.assert_raises(ThermodynamicsError) as cm:
+                state.create_context(integrator)
+            assert cm.exception.code == ThermodynamicsError.INCONSISTENT_INTEGRATOR
 
     def test_method_is_compatible(self):
         """ThermodynamicState context and state compatibility methods."""
@@ -400,12 +523,16 @@ class TestThermodynamicState(object):
         """ThermodynamicState.apply_to_context() method."""
         friction = 5.0/unit.picosecond
         time_step = 2.0*unit.femtosecond
-        integrator = openmm.LangevinIntegrator(self.std_temperature, friction, time_step)
         state0 = ThermodynamicState(self.barostated_alanine, self.std_temperature)
+
+        integrator = openmm.LangevinIntegrator(self.std_temperature, friction, time_step)
         context = state0.create_context(integrator)
-        barostat = state0._find_barostat(context.getSystem())
+
+        integrator = openmm.VerletIntegrator(1.0*unit.femtosecond)
+        thermostated_context = state0.create_context(integrator)
 
         # Change context pressure.
+        barostat = state0._find_barostat(context.getSystem())
         assert barostat.getDefaultPressure() == self.std_pressure
         assert context.getParameter(barostat.Pressure()) == self.std_pressure / unit.bar
         new_pressure = self.std_pressure + 1.0*unit.bars
@@ -416,22 +543,36 @@ class TestThermodynamicState(object):
         assert context.getParameter(barostat.Pressure()) == new_pressure / unit.bar
 
         # Change context temperature.
-        assert get_barostat_temperature(barostat) == self.std_temperature
-        # TODO remove try except when OpenMM 7.1 works on travis
-        try:
-            assert context.getParameter(barostat.Temperature()) == self.std_temperature / unit.kelvin
-        except AttributeError:
-            pass
-        new_temperature = self.std_temperature + 10.0*unit.kelvin
-        state2 = ThermodynamicState(self.barostated_alanine, new_temperature)
-        state2.apply_to_context(context)
-        assert get_barostat_temperature(barostat) == new_temperature
-        # TODO remove try except when OpenMM 7.1 works on travis
-        try:
-            assert context.getParameter(barostat.Temperature()) == new_temperature / unit.kelvin
-        except AttributeError:
-            pass
-        assert context.getIntegrator().getTemperature() == new_temperature
+        for c in [context, thermostated_context]:
+            barostat = state0._find_barostat(c.getSystem())
+            thermostat = state0._find_thermostat(c.getSystem())
+
+            # Pre-conditions.
+            assert get_barostat_temperature(barostat) == self.std_temperature
+            # TODO remove try except when OpenMM 7.1 works on travis
+            try:
+                assert c.getParameter(barostat.Temperature()) == self.std_temperature / unit.kelvin
+            except AttributeError:
+                pass
+            if thermostat is not None:
+                assert c.getParameter(thermostat.Temperature()) == self.std_temperature / unit.kelvin
+            else:
+                assert context.getIntegrator().getTemperature() == self.std_temperature
+
+            new_temperature = self.std_temperature + 10.0*unit.kelvin
+            state2 = ThermodynamicState(self.barostated_alanine, new_temperature)
+            state2.apply_to_context(c)
+
+            assert get_barostat_temperature(barostat) == new_temperature
+            # TODO remove try except when OpenMM 7.1 works on travis
+            try:
+                assert c.getParameter(barostat.Temperature()) == new_temperature / unit.kelvin
+            except AttributeError:
+                pass
+            if thermostat is not None:
+                assert c.getParameter(thermostat.Temperature()) == new_temperature / unit.kelvin
+            else:
+                assert context.getIntegrator().getTemperature() == new_temperature
 
         # Trying to apply to a system in a different ensemble raises an error.
         state2.pressure = None
@@ -443,7 +584,6 @@ class TestThermodynamicState(object):
         with nose.tools.assert_raises(ThermodynamicsError) as cm:
             state1.apply_to_context(nvt_context)
         assert cm.exception.code == ThermodynamicsError.INCOMPATIBLE_ENSEMBLE
-
 
     def test_method_reduced_potential(self):
         """ThermodynamicState.reduced_potential() method."""
@@ -768,9 +908,9 @@ class TestCompoundThermodynamicState(object):
         # Properties and attributes are correctly set.
         new_temperature = self.std_temperature + 1.0*unit.kelvin
         compound_state.pressure = self.std_pressure
-        compound_state._temperature = new_temperature
+        compound_state.temperature = new_temperature
         assert compound_state._barostat.getDefaultPressure() == self.std_pressure
-        assert compound_state.temperature == new_temperature
+        assert compound_state._thermostat.getDefaultTemperature() == new_temperature
 
     def test_constructor_set_state(self):
         """IComposableState.set_state is called on construction."""
