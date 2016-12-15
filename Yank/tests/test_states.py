@@ -201,9 +201,10 @@ class TestThermodynamicState(object):
     def test_method_set_system_pressure(self):
         """ThermodynamicState._set_system_pressure() method."""
         state = ThermodynamicState(self.alanine_explicit, self.std_temperature)
-        assert not state._set_system_pressure(state._system, None)
-        assert state._set_system_pressure(state._system, self.std_pressure)
-        assert not state._set_system_pressure(state._system, self.std_pressure)
+        state._set_system_pressure(state._system, None)
+        assert state._barostat is None
+        state._set_system_pressure(state._system, self.std_pressure)
+        assert state._barostat.getDefaultPressure() == self.std_pressure
 
     def test_property_pressure(self):
         """ThermodynamicState.pressure property."""
