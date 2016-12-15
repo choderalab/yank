@@ -271,13 +271,13 @@ class TestThermodynamicState(object):
         thermostat.setDefaultTemperature(self.std_temperature)
 
         TE = ThermodynamicsError  # shortcut
-        test_cases = [(self.toluene_vacuum, TE.BAROSTATED_NONPERIODIC),
+        test_cases = [(self.toluene_vacuum, TE.NO_BAROSTAT),
                       (self.barostated_toluene, TE.BAROSTATED_NONPERIODIC),
                       (self.multiple_barostat_alanine, TE.MULTIPLE_BAROSTATS),
                       (self.inconsistent_pressure_alanine, TE.INCONSISTENT_BAROSTAT),
                       (self.inconsistent_temperature_alanine, TE.INCONSISTENT_THERMOSTAT),
                       (inconsistent_barostat_temperature, TE.INCONSISTENT_BAROSTAT)]
-        for system, error_code in test_cases:
+        for i, (system, error_code) in enumerate(test_cases):
             with nose.tools.assert_raises(ThermodynamicsError) as cm:
                 state.system = system
             assert cm.exception.code == error_code
@@ -290,6 +290,46 @@ class TestThermodynamicState(object):
         state_system_str = openmm.XmlSerializer.serialize(state.system)
         inconsistent_system_str = openmm.XmlSerializer.serialize(inconsistent_system)
         assert state_system_str == inconsistent_system_str
+
+    def test_method_set_system(self):
+        """ThermodynamicState.set_system() method."""
+        system = copy.deepcopy(self.alanine_no_thermostat)
+        state = ThermodynamicState(system, self.std_temperature)
+
+        # We can't set the system without adding a thermostat.
+        with nose.tools.assert_raises(ThermodynamicsError) as cm:
+            state.set_system(system)
+        assert cm.exception.code == ThermodynamicsError.NO_THERMOSTAT
+
+        state.set_system(system, fix_thermostat=True)
+        assert state._thermostat.getDefaultTemperature() == self.std_temperature
+
+        # In NPT, we can't set the system without adding a barostat.
+        system = state.system  # System with thermostat.
+        state.pressure = self.std_pressure
+        with nose.tools.assert_raises(ThermodynamicsError) as cm:
+            state.set_system(system)
+        assert cm.exception.code == ThermodynamicsError.NO_BAROSTAT
+
+        state.set_system(system, fix_barostat=True)
+        assert state._barostat.getDefaultPressure() == self.std_pressure
+        assert get_barostat_temperature(state._barostat) == self.std_temperature
+
+    def test_method_get_system(self):
+        """ThermodynamicState.get_system() method."""
+        state = ThermodynamicState(self.alanine_explicit, self.std_temperature,
+                                   self.std_pressure)
+
+        # Normally a system has both barostat and thermostat
+        system = state.get_system()
+        assert state._find_barostat(system) is not None
+        assert state._find_thermostat(system) is not None
+
+        # We can request a system without thermostat or barostat.
+        system = state.get_system(remove_thermostat=True)
+        assert state._find_thermostat(system) is None
+        system = state.get_system(remove_barostat=True)
+        assert state._find_barostat(system) is None
 
     def test_constructor_unsupported_barostat(self):
         """Exception is raised on construction with unsupported barostats."""
