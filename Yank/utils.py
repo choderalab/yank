@@ -860,6 +860,7 @@ def camelcase_to_underscore(camelcase_str):
     underscore_str = re.sub(r'([A-Z])', '_\g<1>', camelcase_str)
     return underscore_str.lower()
 
+
 def quantity_from_string(quantity_str):
     """
     Generate a simtk.unit.Quantity object from a string of arbitrary nested strings
@@ -906,10 +907,9 @@ def quantity_from_string(quantity_str):
                break
         return i
 
-
     def nested_string(passed_str):
         def exponent_unit(passed_str):
-            # Attempt to cast argument as an exponenet
+            # Attempt to cast argument as an exponent
             future_operator_loc = find_operator(passed_str)
             future_operator = passed_str[future_operator_loc]
             if future_operator == '(': # This catches things like x**(3*2), rare, but it could happen
@@ -922,16 +922,16 @@ def quantity_from_string(quantity_str):
             else:
                 exponent = passed_str[:future_operator_loc]
                 exp_count_indices = future_operator_loc + 2 # +2 to skip the **
-            exponent = float(exponent) # These should only ever be numbers, not quantities, let error occur if they aren't
-            if exponent.is_integer(): # Method of float
+            exponent = float(exponent)  # These should only ever be numbers, not quantities, error occurs if they aren't
+            if exponent.is_integer():  # Method of float
                 exponent = int(exponent)
             return exponent, exp_count_indices
-        # Loop through a given string level, returns how many indicies of the string it got through
+        # Loop through a given string level, returns how many indices of the string it got through
         last_char_loop = 0
         number_pass_string = len(passed_str)
         last_operator = None
         final_quantity = None
-        # Close Parenthisis flag
+        # Close Parenthesis flag
         paren_closed = False
         while last_char_loop < number_pass_string:
             next_char_loop = find_operator(passed_str[last_char_loop:]) + last_char_loop
@@ -953,12 +953,12 @@ def quantity_from_string(quantity_str):
                 try:
                     arg_unit = float(argument)
                     arg_type = 'float'
-                except: # Usually empty string
+                except:  # Usually empty string
                     if argument == '':
                         arg_unit = None
                         arg_type = 'None'
                     else:
-                        raise e # Raise the syntax error
+                        raise e  # Raise the syntax error
             # See if we are at the end
             augment = None
             count_indices = 1 # How much to offset by to move past operator
@@ -979,7 +979,7 @@ def quantity_from_string(quantity_str):
                             arg_unit **= exponent
                     except:
                         pass
-                # Check for parenthises
+                # Check for parentheses
                 if next_operator == '(':
                     augment, augment_type, count_indices  = nested_string(passed_str[next_char_loop+1:])
                     count_indices += 1 # add 1 more to offset the '(' itself
@@ -989,7 +989,7 @@ def quantity_from_string(quantity_str):
                 # Case of no found operators
                 next_operator = None
             # Handle the conditions
-            if (last_operator is None):
+            if last_operator is None:
                 if (final_quantity is None) and (arg_type is 'None') and (augment is None):
                     raise TypeError("Given Quantity could not be interpreted as presented")
                 elif (final_quantity is None) and (augment is None):

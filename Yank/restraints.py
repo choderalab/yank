@@ -128,7 +128,7 @@ def create_restraints(restraint_type, topology, state, system, positions, recept
 # Base class for receptor-ligand restraints.
 # =============================================================================================
 
-ABC = abc.ABCMeta('ABC', (object,), {}) # compatible with Python 2 *and* 3
+ABC = abc.ABCMeta('ABC', (object,), {})  # compatible with Python 2 *and* 3
 
 
 class ReceptorLigandRestraint(ABC):
