@@ -302,8 +302,9 @@ class TestThermodynamicState(object):
             state.set_system(system)
         assert cm.exception.code == ThermodynamicsError.NO_THERMOSTAT
 
-        state.set_system(system, fix_thermostat=True)
+        state.set_system(system, fix_state=True)
         assert state._thermostat.getDefaultTemperature() == self.std_temperature
+        assert state._barostat is None
 
         # In NPT, we can't set the system without adding a barostat.
         system = state.system  # System with thermostat.
@@ -312,7 +313,7 @@ class TestThermodynamicState(object):
             state.set_system(system)
         assert cm.exception.code == ThermodynamicsError.NO_BAROSTAT
 
-        state.set_system(system, fix_barostat=True)
+        state.set_system(system, fix_state=True)
         assert state._barostat.getDefaultPressure() == self.std_pressure
         assert get_barostat_temperature(state._barostat) == self.std_temperature
 
@@ -983,8 +984,8 @@ class TestCompoundThermodynamicState(object):
         compound_state.temp = 0
         assert 'temp' in compound_state.__dict__
 
-    def test_property_system(self):
-        """CompoundThermodynamicState.system setting."""
+    def test_set_system(self):
+        """CompoundThermodynamicState.system and set_system method."""
         thermodynamic_state = ThermodynamicState(self.alanine_explicit, self.std_temperature)
         compound_state = CompoundThermodynamicState(thermodynamic_state, [self.dummy_state])
 
@@ -993,6 +994,13 @@ class TestCompoundThermodynamicState(object):
         self.DummyState.set_dummy_parameter(system, self.dummy_parameter + 1.0)
         with nose.tools.assert_raises(ValueError):
             compound_state.system = system
+
+        # Same for set_system when called with default arguments.
+        with nose.tools.assert_raises(ValueError):
+            compound_state.set_system(system)
+
+        # This doesn't happen if we fix the state.
+        compound_state.set_system(system, fix_state=True)
 
     def test_method_standardize_system(self):
         """CompoundThermodynamicState._standardize_system method."""
