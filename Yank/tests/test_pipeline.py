@@ -13,6 +13,11 @@ Test pipeline functions in pipeline.py.
 # GLOBAL IMPORTS
 # =============================================================================
 
+import os
+
+from simtk import openmm
+
+from yank import utils
 from yank.pipeline import find_components
 
 
