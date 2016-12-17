@@ -1783,20 +1783,23 @@ class YamlBuilder:
              'solvent2': is_pipeline_solvent, Optional('leap'): parameters_schema},
 
             {'phase1_path': Use(system_files('amber')), 'phase2_path': Use(system_files('amber')),
-             'ligand_dsl': str, 'solvent': is_known_solvent},
+             'ligand_dsl': str, Optional('solvent_dsl'): str, 'solvent': is_known_solvent},
 
             {'phase1_path': Use(system_files('amber')), 'phase2_path': Use(system_files('amber')),
-             'ligand_dsl': str, 'solvent1': is_known_solvent, 'solvent2': is_known_solvent},
+             'ligand_dsl': str, Optional('solvent_dsl'): str,
+             'solvent1': is_known_solvent, 'solvent2': is_known_solvent},
 
             {'phase1_path': Use(system_files('gromacs')), 'phase2_path': Use(system_files('gromacs')),
-             'ligand_dsl': str, 'solvent': is_known_solvent, Optional('gromacs_include_dir'): os.path.isdir},
+             'ligand_dsl': str, Optional('solvent_dsl'): str,
+             'solvent': is_known_solvent, Optional('gromacs_include_dir'): os.path.isdir},
 
             {'phase1_path': Use(system_files('gromacs')), 'phase2_path': Use(system_files('gromacs')),
-             'ligand_dsl': str, 'solvent1': is_known_solvent, 'solvent2': is_known_solvent,
+             'ligand_dsl': str, Optional('solvent_dsl'): str,
+             'solvent1': is_known_solvent, 'solvent2': is_known_solvent,
              Optional('gromacs_include_dir'): os.path.isdir},
 
             {'phase1_path': Use(system_files('openmm')), 'phase2_path': Use(system_files('openmm')),
-             'ligand_dsl': str}
+             'ligand_dsl': str, Optional('solvent_dsl'): str}
         ))
 
         # Schema validation
@@ -2414,6 +2417,12 @@ class YamlBuilder:
                         assert 'phase1_path' in self._db.systems[system_id]
                         solvent_ids = [None, None]
 
+                # Determine solvent DSL.
+                try:
+                    solvent_dsl = self._db.systems[system_id]['solvent_dsl']
+                except KeyError:
+                    solvent_dsl = None
+
                 # Get protocols as list of AlchemicalStates
                 alchemical_paths = self._get_alchemical_paths(protocol_id)
                 system_files_paths = self._db.get_system(system_id)
@@ -2433,7 +2442,8 @@ class YamlBuilder:
                         system_options = utils.merge_dict(self._db.solvents[solvent_id], exp_opts)
                     logger.info("Reading phase {}".format(phase_name))
                     phases[i] = pipeline.prepare_phase(positions_file_path, parameters_file_path, ligand_dsl,
-                                                       system_options, gromacs_include_dir=gromacs_include_dir)
+                                                       system_options, solvent_dsl=solvent_dsl,
+                                                       gromacs_include_dir=gromacs_include_dir)
                     phases[i].name = phase_name
                     phases[i].protocol = alchemical_paths[phase_name]
 

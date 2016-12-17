@@ -84,7 +84,7 @@ _SOLVENT_RESNAMES = frozenset(['118', '119', '1AL', '1CU', '2FK', '2HP', '2OF', 
         'YH', 'YT3', 'ZN', 'ZN2', 'ZN3', 'ZNA', 'ZNO', 'ZO3'])
 
 
-def find_components(system, topology, ligand_dsl, solvent_resnames=_SOLVENT_RESNAMES):
+def find_components(system, topology, ligand_dsl, solvent_dsl=None):
     """Determine the atom indices of the system components.
 
     Ligand atoms are specified through MDTraj domain-specific language (DSL),
@@ -103,9 +103,10 @@ def find_components(system, topology, ligand_dsl, solvent_resnames=_SOLVENT_RESN
         is passed instead this will be converted.
     ligand_dsl : str
         DSL specification of the ligand atoms.
-    solvent_resnames : list of str, optional
-        List of solvent residue names to exclude from receptor definition (default
-        is _SOLVENT_RESNAME).
+    solvent_dsl : str, optional
+        Optional DSL specification of the ligand atoms. If None, a list of
+        common solvent residue names will be used to automatically detect
+        solvent atoms (default is None).
 
     Returns
     -------
@@ -131,8 +132,14 @@ def find_components(system, topology, ligand_dsl, solvent_resnames=_SOLVENT_RESN
     # Determine solvent and receptor atoms
     # I did some benchmarking and this is still faster than a single for loop
     # through all the atoms in mdtraj_top.atoms
-    atom_indices['solvent'] = [atom.index for atom in mdtraj_top.atoms
-                               if atom.residue.name in solvent_resnames]
+    if solvent_dsl is not None:
+        solvent_indices = mdtraj_top.select(solvent_dsl).tolist()
+        solvent_resnames = [mdtraj_top.atom(i).residue.name for i in solvent_indices]
+        atom_indices['solvent'] = solvent_indices
+    else:
+        solvent_resnames = _SOLVENT_RESNAMES
+        atom_indices['solvent'] = [atom.index for atom in mdtraj_top.atoms
+                                   if atom.residue.name in solvent_resnames]
     not_receptor_set = frozenset(atom_indices['ligand'] + atom_indices['solvent'])
     atom_indices['receptor'] = [atom.index for atom in mdtraj_top.atoms
                                 if atom.index not in not_receptor_set]
@@ -142,7 +149,7 @@ def find_components(system, topology, ligand_dsl, solvent_resnames=_SOLVENT_RESN
     ligand_net_charge = compute_net_charge(system, atom_indices['ligand'])
     logger.debug('Ligand net charge: {}'.format(ligand_net_charge))
 
-    # Isolate ligand-neutralizing counterions
+    # Isolate ligand-neutralizing counterions.
     if ligand_net_charge != 0:
         if ligand_net_charge > 0:
             counterions_set = {name for name in solvent_resnames if '-' in name}
@@ -271,7 +278,7 @@ def create_system(parameters_file, box_vectors, create_system_args, system_optio
 
 
 def prepare_phase(positions_file_path, parameters_file_path, ligand_dsl, system_options,
-                  gromacs_include_dir=None, verbose=False):
+                  solvent_dsl=None, gromacs_include_dir=None, verbose=False):
     """Create a Yank arguments for a phase from system files.
 
     Parameters
@@ -286,6 +293,10 @@ def prepare_phase(positions_file_path, parameters_file_path, ligand_dsl, system_
         system_options[phase] is a a dictionary containing options to
         pass to createSystem(). If the parameters file is an OpenMM
         system in XML format, this will be ignored.
+    solvent_dsl : str, optional
+        Optional DSL specification of the ligand atoms. If None, a list of
+        common solvent residue names will be used to automatically detect
+        solvent atoms (default is None).
     gromacs_include_dir : str, optional
         Path to directory in which to look for other files included
         from the gromacs top file.
@@ -349,7 +360,8 @@ def prepare_phase(positions_file_path, parameters_file_path, ligand_dsl, system_
         raise RuntimeError(err_msg)
 
     # Find ligand atoms and receptor atoms
-    atom_indices = find_components(system, parameters_file.topology, ligand_dsl)
+    atom_indices = find_components(system, parameters_file.topology, ligand_dsl,
+                                   solvent_dsl=solvent_dsl)
 
     alchemical_phase = AlchemicalPhase('', system, parameters_file.topology,
                                        positions, atom_indices, None)

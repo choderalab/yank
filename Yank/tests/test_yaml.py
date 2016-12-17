@@ -14,7 +14,6 @@ Test YAML functions.
 #=============================================================================================
 
 import time
-import yaml
 import shutil
 import textwrap
 import unittest
@@ -449,6 +448,9 @@ def test_validation_correct_systems():
         {'phase1_path': data_paths['toluene-solvent'],
          'phase2_path': data_paths['toluene-vacuum'],
          'ligand_dsl': 'resname TOL'},
+        {'phase1_path': data_paths['toluene-solvent'],
+         'phase2_path': data_paths['toluene-vacuum'],
+         'ligand_dsl': 'resname TOL', 'solvent_dsl': 'not resname TOL'},
 
         {'solute': 'lig', 'solvent1': 'solv', 'solvent2': 'solv'},
         {'solute': 'lig', 'solvent1': 'solv', 'solvent2': 'solv',
@@ -1773,7 +1775,7 @@ def test_run_experiment_from_xml_files():
         del yaml_script['molecules']  # we shouldn't need any molecule
         yaml_script['systems'] = {'explicit-system':
                 {'phase1_path': solvent_path, 'phase2_path': vacuum_path,
-                 'ligand_dsl': 'resname TOL'}}
+                 'ligand_dsl': 'resname TOL', 'solvent_dsl': 'not resname TOL'}}
 
         yaml_builder = YamlBuilder(yaml_script)
         yaml_builder._check_resume()  # check_resume should not raise exceptions
