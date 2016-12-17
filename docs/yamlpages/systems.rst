@@ -88,6 +88,7 @@ Arbitrary Phase Free Energies Setup by User
        phase1_path: [complex.prmtop, complex.inpcrd]
        phase2_path: [solvent.top, solvent.gro]
        ligand_dsl: resname MOL
+       solvent_dsl: resname WAT  # optional
        solvent: {UserDefinedSolvent}
        gromacs_include_dir: include/
 
@@ -98,7 +99,10 @@ MDTraj is required to use this options since picking the ligand out of the files
 
 * ``phase1_path``: The set of files which fully describe the first phase of the free energy simulation you want to run.
 * ``phase2_path``: The set of files which fully describe the second phase of the free energy simulation you want to run.
-* ``lidand_dsl``: An MDTraj DSL string which identifies the ligand in the files provided by ``phase1_path`` and ``phase2_path``. 
+* ``ligand_dsl``: An MDTraj DSL string which identifies the ligand in the files provided by ``phase1_path`` and ``phase2_path``.
+* ``solvent_dsl``: An optional MDTraj DSL string which identifies the solvent atoms in the files provided by ``phase1_path``
+and ``phase2_path``. If not specified, a list of common solvent residue names will be used to automatically detect
+solvent atoms.
 * ``solvent``: A ``{UserDefinedSolvent}`` to put the two phases in. Only one solvent is allowed for this calculation.
   This option must be omitted if using XML/PDB files, since the solvent options are inherently specified in the XML
   definition of the system. Finally, if the two phases require two different solvents, it is possible to substitute the
