@@ -334,8 +334,8 @@ class NCVariableTypeHandler(ABC):
             storage_object = self._parent_handler.ncfile
         self._storage_object = storage_object
         self._metadata_buffer = {}
-        self._can_append = False
-        self._can_write = False
+        # Flag for write/append mode
+        self._output_mode = None
 
     @abc.abstractproperty  # TODO: Depreciate when we move to Python 3 fully with @abc.abstractmethod + @property
     def _dtype(self):
@@ -530,6 +530,16 @@ class NCVariableTypeHandler(ABC):
             proper_type = getattr(module, stored_type)
         return proper_type
 
+    def _check_write_append(self):
+        """
+        Set the write and append flags, should only be called from within _bind_write and _bind_append after being bound
+        or within read if not bound.
+        """
+        if self._bound_target.getncattr('IODriver_Appendable'):
+            self._output_mode = 'a'
+        else:
+            self._output_mode = 'r'
+
 # =============================================================================
 # REAL TYPE HANDLERS
 # =============================================================================
@@ -540,6 +550,23 @@ class NCVariableTypeHandler(ABC):
 # Quantity
 # Units?
 # OpenMM System
+
+
+class NCIntWithUnit(NCVariableTypeHandler):
+    """
+    NetCDF handling of integer with the option to handle simtk.Quantities
+    """
+    @property
+    def _dtype(self):
+        return int
+
+    @staticmethod
+    def _dtype_type_string():
+        return "int"
+
+    def read(self):
+        if self._bound_target is None:
+            self._bind_read()
 
 
 class NCString(NCVariableTypeHandler):
@@ -558,6 +585,12 @@ class NCString(NCVariableTypeHandler):
     def read(self):
         if self._bound_target is None:
             self._bind_read()
+        if not self._output_mode:
+            self._check_write_append()
+        if self._bound_target.shape == ():
+            return str(self._bound_target.getValue())
+        else:
+            return self._bound_target[:,0].astype(str)
 
     def write(self, data):
         # Check type
@@ -567,7 +600,7 @@ class NCString(NCVariableTypeHandler):
         if self._bound_target is None:
             self._bind_write(data)
         # Check writeable
-        if not self._can_append:
+        if self._output_mode != 'w':
             raise TypeError("{} at {} was saved as appendable data! Cannot overwrite, must use append()".format(
                 self.type_string, self._target)
             )
@@ -585,7 +618,7 @@ class NCString(NCVariableTypeHandler):
         if self._bound_target is None:
             self._bind_append(data)
         # Can append
-        if not self._can_append:
+        if self._output_mode != 'a':
             raise TypeError("{} at {} was saved as static, non-appendable data! Cannot append, must use write()".format(
                 self.type_string, self._target)
             )
@@ -609,13 +642,7 @@ class NCString(NCVariableTypeHandler):
             self.add_metadata('IODriver_Storage_Type', 'variable')
             self.add_metadata('IODriver_Appendable', 0)
         self._dump_metadata_buffer()
-        if not self._bound_target.getncattr('IODriver_Appendable'):  # Returns integer form of bool
-            # TODO: Make this an overwriteable warning
-            raise TypeError("{} at {} was saved as appendable data! Cannot overwrite, must use append()".format(
-                self.type_string, self._target)
-            )
-        else:
-            self._can_write = True
+        self._check_write_append()
         return
 
     def _bind_read(self):
@@ -641,13 +668,7 @@ class NCString(NCVariableTypeHandler):
             self.add_metadata('IODriver_Storage_Type', 'variable')
             self.add_metadata('IODriver_Appendable', 1)
         self._dump_metadata_buffer()
-        if self._bound_target.getncattr('IODriver_Appendable'):  # Returns integer form of bool
-            # TODO: Make this an overwriteable warning
-            raise TypeError("{} at {} was saved as static, non-appendable data! Cannot append, must use write()".format(
-                self.type_string, self._target)
-            )
-        else:
-            self._can_append = True
+        self._check_write_append()
         return
 
 
