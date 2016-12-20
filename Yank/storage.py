@@ -21,6 +21,7 @@ import numpy as np
 from simtk import openmm, unit
 
 from . import utils
+from .storage_handlers import *
 
 ABC = abc.ABCMeta('ABC', (object,), {})  # compatible with Python 2 *and* 3
 
