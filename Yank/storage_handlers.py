@@ -38,9 +38,6 @@ ABC = abc.ABCMeta('ABC', (object,), {})  # compatible with Python 2 *and* 3
 # MODULE VARIABLES
 # =============================================================================
 
-all_handlers = []
-known_types = {handler.type_string: handler for handler in all_handlers}
-
 # =============================================================================
 # MODULE FUNCTIONS
 # =============================================================================
@@ -48,7 +45,7 @@ known_types = {handler.type_string: handler for handler in all_handlers}
 
 def decompose_path(path):
     """
-
+    Break a path down into individual parts
     Parameters
     ----------
     path : string
@@ -56,10 +53,31 @@ def decompose_path(path):
 
     Returns
     -------
-    structure : tuple
+    structure : tuple of strings
         Tuple of split apart path
     """
     return tuple((path_entry for path_entry in path.split('/') if path_entry != ''))
+
+
+def normalize_path(path):
+    """
+    Remove trailing/leading slashes from each part of the path and combine them into a clean, normalized path
+    Similar to os.path.normpath, but just its own function
+
+    Parameters
+    ----------
+    path : string
+        Path variable to normalize
+
+    Returns
+    -------
+    normalized_path : string
+        Normalized path as a single string
+
+    """
+    split_path = decompose_path(path)
+    return '/'.join([path_part.strip('/ ') for path_part in split_path if path_part is not ''])
+
 
 # =============================================================================
 # CUSTOM EXCEPTIONS
@@ -151,6 +169,7 @@ class NetCDFIODriver(StorageIODriver):
             Group object requested from file. All subsequent groups are created on the way down and can be accessed
             the same way.
         """
+        path = normalize_path(path)
         try:
             group = self._groups[path]
         except KeyError:
@@ -173,6 +192,7 @@ class NetCDFIODriver(StorageIODriver):
             The handler tied to a specific variable and bound to it on the disk
 
         """
+        path = normalize_path(path)
         try:
             # Check if the handler is already known to this instance
             handler = self._variables[path]
@@ -191,7 +211,7 @@ class NetCDFIODriver(StorageIODriver):
                     try:
                         obj = head_group.groups[split_path[-1]]
                         store_type = obj.getncattr('IODriver_Storage_Type')
-                        if store_type == 'group':
+                        if store_type == 'groups':
                             variable = obj
                             is_group = True
                     except AttributeError:  # Trap the case of no group name in head_group, non-fatal
@@ -204,12 +224,15 @@ class NetCDFIODriver(StorageIODriver):
             try:
                 # Bind to the storage type by mapping IODriver_Type -> Known TypeHandler
                 data_type = variable.getncattr('IODriver_Type')
-                head_path = '/' + '/'.join(split_path[:-1])
+                head_path = '/'.join(split_path[:-1])
                 target_name = split_path[-1]
                 # Remember the group for the future while also getting storage binder
-                group = self._bind_group(head_path)
+                if head_path == '':
+                    storage_object = self.ncfile
+                else:
+                    storage_object = self._bind_group(head_path)
                 uninstanced_handler = self._IOMetaDataReaders[data_type]
-                self._variables[path] = uninstanced_handler(self, target_name, storage_object=group)
+                self._variables[path] = uninstanced_handler(self, target_name, storage_object=storage_object)
                 handler = self._variables[path]
             except AttributeError:
                 raise AttributeError("Cannot auto-detect variable type, ensure that 'IODriver_Type' is a set ncattr")
@@ -218,17 +241,20 @@ class NetCDFIODriver(StorageIODriver):
         return handler
 
     def create_storage_variable(self, path, type_key):
+        path = normalize_path(path)
         try:
             handler = self._type_maps[type_key]
         except KeyError:
             raise KeyError("No known Type Handler for given type!")
         split_path = decompose_path(path)
         # Bind groups as needed, splitting off the last entry
-        # Ensure the head path has at least a '/' at the start
-        head_path = '/' + '/'.join(split_path[:-1])
+        head_path = '/'.join(split_path[:-1])
         target_name = split_path[-1]
-        group = self._bind_group(head_path)
-        self._variables[path] = handler(self, target_name, storage_object=group)
+        if head_path == '':
+            storage_object = self.ncfile
+        else:
+            storage_object = self._bind_group(head_path)
+        self._variables[path] = handler(self, target_name, storage_object=storage_object)
         return self._variables[path]
 
     @staticmethod
@@ -289,6 +315,7 @@ class NetCDFIODriver(StorageIODriver):
             Path to the object to assign metadata. If the object does not exist, an error is raised
             Not passing a path in attaches the data to the top level file
         """
+        path = normalize_path(path)
         split_path = decompose_path(path)
         if len(split_path) == 0:
             self.ncfile.setncattr(name, value)
@@ -320,8 +347,17 @@ class NetCDFIODriver(StorageIODriver):
         """
         # NetCDF4 creates the cascade of groups automatically or returns the group if already present
         # To simplify code, the cascade of groups is not stored in this class until called
+        path = normalize_path(path)
         self._groups[path] = self.ncfile.createGroup(path)
         return self._groups[path]
+
+    def sync(self):
+        self.ncfile.sync()
+
+    def close_down(self):
+        # Ensure the netcdf file closes down
+        self.sync()
+        self.ncfile.close()
 
     def __init__(self, file_name, access_mode='w'):
         super(NetCDFIODriver, self).__init__(file_name, access_mode=access_mode)
@@ -339,7 +375,7 @@ class NetCDFIODriver(StorageIODriver):
         self.add_deencoder(np.ndarray, NCArray)  # Array
         self.add_deencoder(unit.Quantity, NCQuantity)  # Quantity
         # Bind the metadata reader types based on the dtype string of each class
-        self._IOMetaDataReaders = {self._type_maps[key].type_string(): self._type_maps[key] for key in self._type_maps}
+        self._IOMetaDataReaders = {self._type_maps[key]._dtype_type_string(): self._type_maps[key] for key in self._type_maps}
 
 
 # =============================================================================
@@ -522,7 +558,37 @@ class NCVariableTypeHandler(ABC):
         -------
 
         """
-        raise NotImplementedError("Writing Python data to NetCDF data has not been implemented!")
+        raise NotImplementedError("Appending Python data to NetCDF data has not been implemented!")
+
+    @abc.abstractproperty
+    def _storage_type(self):
+        """
+        Tell the handler what NetCDF storage type this handler treats the data as.
+        This is explicitly either 'variables' or 'groups' so the handler knows which property to call on the NetCDF
+        storage object
+
+        Returns
+        -------
+        storage_type: string of either 'variables' or 'groups'
+
+        """
+        raise NotImplementedError("I have not been set to 'variables' or 'groups'")
+
+    @property
+    def storage_type(self):
+        """
+        Returns if this is handler stores its information as variables or as groups
+
+        Returns
+        -------
+        storage_type: string of either 'variables' or 'groups'
+
+        """
+        storage_type = self._storage_type
+        if storage_type != 'variables' and storage_type != 'groups':
+            raise ValueError('storage_type must be "variables" or "groups", it is instead {}! '
+                             'Check handler implementation'.format(storage_type))
+        return storage_type
 
     def add_metadata(self, name, value):
         """
@@ -545,7 +611,7 @@ class NCVariableTypeHandler(ABC):
         """
         Dump the metadata buffer to file
         """
-        if not self._bound_target:
+        if self._bound_target is None:
             raise UnboundLocalError("Cannot dump the metadata buffer to target since no target exists!")
         self._bound_target.setncatts(self._metadata_buffer)
         self._metadata_buffer = {}
@@ -588,7 +654,7 @@ class NCVariableTypeHandler(ABC):
         if self._bound_target.getncattr('IODriver_Appendable'):
             self._output_mode = 'a'
         else:
-            self._output_mode = 'r'
+            self._output_mode = 'w'
 
     def _attempt_storage_read(self):
         """
@@ -599,7 +665,7 @@ class NCVariableTypeHandler(ABC):
         -------
         None, but should try to set _bound_target from disk
         """
-        self._bound_target = self._storage_object[self._target]
+        self._bound_target = getattr(self._storage_object, self.storage_type)[self._target]
         # Ensure that the target we bind to matches the type of driver
         try:
             if self._bound_target.getncattr('IODriver_Type') != self.type_string:
@@ -620,8 +686,10 @@ class NCVariableTypeHandler(ABC):
 def NCStringDecoder(nc_variable):
     if nc_variable.shape == ():
         return str(nc_variable.getValue())
+    elif nc_variable.shape == (1,):
+        return str(nc_variable[0])
     else:
-        return nc_variable[:, 0].astype(str)
+        return nc_variable[:].astype(str)
 
 
 def NCStringEncoder(data):
@@ -631,7 +699,12 @@ def NCStringEncoder(data):
 
 
 def NCIntDecoder(nc_variable):
-    return nc_variable[:].astype(int)
+    data = nc_variable[:]
+    if data.shape == (1,):
+        data = int(data[0])
+    else:
+        data = data.astype(int)
+    return data
 
 
 def NCIntEncoder(data):
@@ -639,7 +712,12 @@ def NCIntEncoder(data):
 
 
 def NCFloatDecoder(nc_variable):
-    return nc_variable[:].astype(float)
+    data = nc_variable[:]
+    if data.shape == (1,):
+        data = float(data[0])
+    else:
+        data = data.astype(float)
+    return data
 
 
 def NCFloatEncoder(data):
@@ -672,10 +750,7 @@ def NCIterableDecoder(nc_variable):
 
 
 def NCIterableEncoder(data):
-    nelements = len(data)
-    element_type = type(data[0])
-    element_type_name = typename(element_type)
-    return nelements, element_type, element_type_name
+    return data
 
 
 # =============================================================================
@@ -720,15 +795,16 @@ class NCArray(NCVariableTypeHandler):
                 dims.append('iterable{}'.format(length))
             self._bound_target = self._storage_object.createVariable(self._target, data_base_type,
                                                                      dimensions=dims,
-                                                                     chunksize=data_shape)
+                                                                     chunksizes=data_shape)
             # Specify a way for the IO Driver stores data
             self.add_metadata('IODriver_Type', self.type_string)
             self.add_metadata('type', str(data_base_type))
             self._unit = 'NoneType'
             self.add_metadata('IODriver_Unit', self._unit)
             # Specify the type of storage object this should tie to
-            self.add_metadata('IODriver_Storage_Type', 'variable')
+            self.add_metadata('IODriver_Storage_Type', self.storage_type)
             self.add_metadata('IODriver_Appendable', 0)
+            self._save_shape = data_shape
         self._dump_metadata_buffer()
         self._check_write_append()
 
@@ -744,15 +820,16 @@ class NCArray(NCVariableTypeHandler):
                 dims.append('iterable{}'.format(length))
             self._bound_target = self._storage_object.createVariable(self._target, data_base_type,
                                                                      dimensions=dims,
-                                                                     chunksize=(1,) + data_shape)
+                                                                     chunksizes=(1,) + data_shape)
             # Specify a way for the IO Driver stores data
             self.add_metadata('IODriver_Type', self.type_string)
             self.add_metadata('type', str(data_base_type))
             self._unit = 'NoneType'
             self.add_metadata('IODriver_Unit', self._unit)
             # Specify the type of storage object this should tie to
-            self.add_metadata('IODriver_Storage_Type', 'variable')
+            self.add_metadata('IODriver_Storage_Type', self.storage_type)
             self.add_metadata('IODriver_Appendable', 1)
+            self._save_shape = data_shape
         self._dump_metadata_buffer()
         self._check_write_append()
 
@@ -765,7 +842,7 @@ class NCArray(NCVariableTypeHandler):
 
     def write(self, data):
         # Check type
-        if not isinstance(type(data), self._dtype):
+        if type(data) is not self._dtype:
             raise TypeError("Invalid data type on variable {}.".format(self._target))
         # Bind
         if self._bound_target is None:
@@ -775,7 +852,7 @@ class NCArray(NCVariableTypeHandler):
             raise TypeError("{} at {} was saved as appendable data! Cannot overwrite, must use append()".format(
                 self.type_string, self._target)
             )
-        if self._save_shape != self._compare_shape(data):
+        if self._save_shape != data.shape:
             raise ValueError("Input data must be of shape {} but is instead of shape {}!".format(
                 self._compare_shape(data), self._save_shape)
             )
@@ -786,7 +863,7 @@ class NCArray(NCVariableTypeHandler):
 
     def append(self, data):
         # Check type
-        if not isinstance(type(data), self._dtype):
+        if type(data) is not self._dtype:
             raise TypeError("Invalid data type on variable {}.".format(self._target))
         # Bind
         if self._bound_target is None:
@@ -796,7 +873,7 @@ class NCArray(NCVariableTypeHandler):
             raise TypeError("{} at {} was saved as appendable data! Cannot overwrite, must use append()".format(
                 self.type_string, self._target)
             )
-        if self._save_shape != self._compare_shape(data):
+        if self._save_shape != data.shape:
             raise ValueError("Input data must be of shape {} but is instead of shape {}!".format(
                 self._compare_shape(data), self._save_shape)
             )
@@ -806,7 +883,6 @@ class NCArray(NCVariableTypeHandler):
         length = self._bound_target.shape[0]
         self._bound_target[length, :] = packaged_data
 
-
     @staticmethod
     def _determine_data_information(data):
         # Make common _bind functions a single function
@@ -814,6 +890,10 @@ class NCArray(NCVariableTypeHandler):
         data_base_type = data.dtype
         data_type_name = typename(type(data))
         return data_shape, data_base_type, data_type_name
+
+    @property
+    def _storage_type(self):
+        return 'variables'
 
 
 class NCFloat(NCVariableTypeHandler):
@@ -848,14 +928,14 @@ class NCFloat(NCVariableTypeHandler):
             NetCDFIODriver.check_scalar_dimension(self._parent_handler.ncfile)
             self._bound_target = self._storage_object.createVariable(self._target, float,
                                                                      dimensions='scalar',
-                                                                     chunksize=(1,))
+                                                                     chunksizes=(1,))
             # Specify a way for the IO Driver stores data
             self.add_metadata('IODriver_Type', self.type_string)
             self.add_metadata('type', 'float')
             self._unit = 'NoneType'
             self.add_metadata('IODriver_Unit', self._unit)
             # Specify the type of storage object this should tie to
-            self.add_metadata('IODriver_Storage_Type', 'variable')
+            self.add_metadata('IODriver_Storage_Type', self.storage_type)
             self.add_metadata('IODriver_Appendable', 0)
         self._dump_metadata_buffer()
         self._check_write_append()
@@ -868,14 +948,14 @@ class NCFloat(NCVariableTypeHandler):
             NetCDFIODriver.check_infinite_dimension(self._parent_handler.ncfile)
             self._bound_target = self._storage_object.createVariable(self._target, float,
                                                                      dimensions=['iteration', 'scalar'],
-                                                                     chunksize=(1, 1))
+                                                                     chunksizes=(1, 1))
             # Specify a way for the IO Driver stores data
             self.add_metadata('IODriver_Type', self.type_string)
             self.add_metadata('type', 'float')
             self._unit = 'NoneType'
             self.add_metadata('IODriver_Unit', self._unit)
             # Specify the type of storage object this should tie to
-            self.add_metadata('IODriver_Storage_Type', 'variable')
+            self.add_metadata('IODriver_Storage_Type', self.storage_type)
             self.add_metadata('IODriver_Appendable', 1)
         self._dump_metadata_buffer()
         self._check_write_append()
@@ -921,6 +1001,10 @@ class NCFloat(NCVariableTypeHandler):
         # Save data
         self._bound_target[length, :] = NCFloatEncoder(data)
 
+    @property
+    def _storage_type(self):
+        return 'variables'
+
 
 class NCInt(NCVariableTypeHandler):
     """
@@ -944,7 +1028,7 @@ class NCInt(NCVariableTypeHandler):
                 self._save_shape = self._bound_target.shape[1:]
             else:
                 self._save_shape = self._bound_target.shape
-        except KeyError as e:
+        except (KeyError, IndexError) as e:
             raise e
 
     def _bind_write(self, data):
@@ -954,14 +1038,14 @@ class NCInt(NCVariableTypeHandler):
             NetCDFIODriver.check_scalar_dimension(self._parent_handler.ncfile)
             self._bound_target = self._storage_object.createVariable(self._target, int,
                                                                      dimensions='scalar',
-                                                                     chunksize=(1,))
+                                                                     chunksizes=(1,))
             # Specify a way for the IO Driver stores data
             self.add_metadata('IODriver_Type', self.type_string)
             self.add_metadata('type', 'int')
             self._unit = 'NoneType'
             self.add_metadata('IODriver_Unit', self._unit)
             # Specify the type of storage object this should tie to
-            self.add_metadata('IODriver_Storage_Type', 'variable')
+            self.add_metadata('IODriver_Storage_Type', self.storage_type)
             self.add_metadata('IODriver_Appendable', 0)
         self._dump_metadata_buffer()
         self._check_write_append()
@@ -974,14 +1058,14 @@ class NCInt(NCVariableTypeHandler):
             NetCDFIODriver.check_infinite_dimension(self._parent_handler.ncfile)
             self._bound_target = self._storage_object.createVariable(self._target, int,
                                                                      dimensions=['iteration', 'scalar'],
-                                                                     chunksize=(1, 1))
+                                                                     chunksizes=(1, 1))
             # Specify a way for the IO Driver stores data
             self.add_metadata('IODriver_Type', self.type_string)
             self.add_metadata('type', 'int')
             self._unit = 'NoneType'
             self.add_metadata('IODriver_Unit', self._unit)
             # Specify the type of storage object this should tie to
-            self.add_metadata('IODriver_Storage_Type', 'variable')
+            self.add_metadata('IODriver_Storage_Type', self.storage_type)
             self.add_metadata('IODriver_Appendable', 1)
         self._dump_metadata_buffer()
         self._check_write_append()
@@ -1027,6 +1111,10 @@ class NCInt(NCVariableTypeHandler):
         # Save data
         self._bound_target[length, :] = NCIntEncoder(data)
 
+    @property
+    def _storage_type(self):
+        return 'variables'
+
 
 class NCIterable(NCVariableTypeHandler):
     """
@@ -1061,14 +1149,14 @@ class NCIterable(NCVariableTypeHandler):
             NetCDFIODriver.check_iterable_dimension(self._parent_handler.ncfile, length=data_shape)
             self._bound_target = self._storage_object.createVariable(self._target, data_base_type,
                                                                      dimensions='iterable{}'.format(data_shape),
-                                                                     chunksize=(data_shape,))
+                                                                     chunksizes=(data_shape,))
             # Specify a way for the IO Driver stores data
             self.add_metadata('IODriver_Type', self.type_string)
             self.add_metadata('type', data_type_name)
             self._unit = "NoneType"
             self.add_metadata('IODriver_Unit', self._unit)
             # Specify the type of storage object this should tie to
-            self.add_metadata('IODriver_Storage_Type', 'variable')
+            self.add_metadata('IODriver_Storage_Type', self.storage_type)
             self.add_metadata('IODriver_Appendable', 0)
             self._save_shape = data_shape
         self._dump_metadata_buffer()
@@ -1085,14 +1173,14 @@ class NCIterable(NCVariableTypeHandler):
             dims = ['iteration', 'iterable{}'.format(data_shape)]
             self._bound_target = self._storage_object.createVariable(self._target, data_base_type,
                                                                      dimensions=dims,
-                                                                     chunksize=(1, data_shape))
+                                                                     chunksizes=(1, data_shape))
             # Specify a way for the IO Driver stores data
             self.add_metadata('IODriver_Type', self.type_string)
             self.add_metadata('type', data_type_name)
             self._unit = "NoneType"
             self.add_metadata('IODriver_Unit', self._unit)
             # Specify the type of storage object this should tie to
-            self.add_metadata('IODriver_Storage_Type', 'variable')
+            self.add_metadata('IODriver_Storage_Type', self.storage_type)
             self.add_metadata('IODriver_Appendable', 1)
             self._save_shape = data_shape
         self._dump_metadata_buffer()
@@ -1108,7 +1196,7 @@ class NCIterable(NCVariableTypeHandler):
 
     def write(self, data):
         # Check type
-        if not isinstance(type(data), self._dtype):
+        if not isinstance(data, self._dtype):
             raise TypeError("Invalid data type on variable {}.".format(self._target))
         # Bind
         if self._bound_target is None:
@@ -1118,7 +1206,7 @@ class NCIterable(NCVariableTypeHandler):
             raise TypeError("{} at {} was saved as appendable data! Cannot overwrite, must use append()".format(
                 self.type_string, self._target)
             )
-        if self._save_shape != self._compare_shape(data):
+        if self._save_shape != len(data):
             raise ValueError("Input data must be of shape {} but is instead of shape {}!".format(
                 self._compare_shape(data), self._save_shape)
             )
@@ -1129,7 +1217,7 @@ class NCIterable(NCVariableTypeHandler):
 
     def append(self, data):
         # Check type
-        if not isinstance(type(data), self._dtype):
+        if not isinstance(data, self._dtype):
             raise TypeError("Invalid data type on variable {}.".format(self._target))
         # Bind
         if self._bound_target is None:
@@ -1139,7 +1227,7 @@ class NCIterable(NCVariableTypeHandler):
             raise TypeError("{} at {} was saved as appendable data! Cannot overwrite, must use append()".format(
                 self.type_string, self._target)
             )
-        if self._save_shape != self._compare_shape(data):
+        if self._save_shape != len(data):
             raise ValueError("Input data must be of shape {} but is instead of shape {}!".format(
                 self._compare_shape(data), self._save_shape)
             )
@@ -1153,9 +1241,13 @@ class NCIterable(NCVariableTypeHandler):
     def _determine_data_information(data):
         # Make common _bind functions a single function
         data_type_name = typename(type(data))
-        data_base_type = data[0]
+        data_base_type = type(data[0])
         data_shape = len(data)
         return data_shape, data_base_type, data_type_name
+
+    @property
+    def _storage_type(self):
+        return 'variables'
 
 
 class NCQuantity(NCVariableTypeHandler):
@@ -1194,7 +1286,7 @@ class NCQuantity(NCVariableTypeHandler):
                 NetCDFIODriver.check_scalar_dimension(self._parent_handler.ncfile)
                 self._bound_target = self._storage_object.createVariable(self._target, data_base_type,
                                                                          dimensions='scalar',
-                                                                         chunksize=(1,))
+                                                                         chunksizes=(1,))
             else:
                 dims = []
                 for length in data_shape:
@@ -1202,7 +1294,7 @@ class NCQuantity(NCVariableTypeHandler):
                     dims.append('iterable{}'.format(length))
                 self._bound_target = self._storage_object.createVariable(self._target, data_base_type,
                                                                          dimensions=dims,
-                                                                         chunksize=data_shape)
+                                                                         chunksizes=data_shape)
 
             # Specify a way for the IO Driver stores data
             self.add_metadata('IODriver_Type', self.type_string)
@@ -1210,7 +1302,7 @@ class NCQuantity(NCVariableTypeHandler):
             self._unit = str(data.unit)
             self.add_metadata('IODriver_Unit', self._unit)
             # Specify the type of storage object this should tie to
-            self.add_metadata('IODriver_Storage_Type', 'variable')
+            self.add_metadata('IODriver_Storage_Type', self.storage_type)
             self.add_metadata('IODriver_Appendable', 0)
             self._save_shape = data_shape
             self._set_codifiers(data_type_name)
@@ -1228,7 +1320,7 @@ class NCQuantity(NCVariableTypeHandler):
                 NetCDFIODriver.check_scalar_dimension(self._parent_handler.ncfile)
                 self._bound_target = self._storage_object.createVariable(self._target, data_base_type,
                                                                          dimensions=['iteration', 'scalar'],
-                                                                         chunksize=(1, 1))
+                                                                         chunksizes=(1, 1))
             else:
                 dims = ['iteration']
                 for length in data_shape:
@@ -1236,14 +1328,14 @@ class NCQuantity(NCVariableTypeHandler):
                     dims.append('iterable{}'.format(length))
                 self._bound_target = self._storage_object.createVariable(self._target, data_base_type,
                                                                          dimensions=dims,
-                                                                         chunksize=(1,) + data_shape)
+                                                                         chunksizes=(1,) + data_shape)
             # Specify a way for the IO Driver stores data
             self.add_metadata('IODriver_Type', self.type_string)
             self.add_metadata('type', data_type_name)
             self._unit = str(data.unit)
             self.add_metadata('IODriver_Unit', self._unit)
             # Specify the type of storage object this should tie to
-            self.add_metadata('IODriver_Storage_Type', 'variable')
+            self.add_metadata('IODriver_Storage_Type', self.storage_type)
             self.add_metadata('IODriver_Appendable', 1)
             self._save_shape = data_shape
             self._set_codifiers(data_type_name)
@@ -1260,7 +1352,7 @@ class NCQuantity(NCVariableTypeHandler):
         unit_name = self._bound_target.getncattr('IODriver_Unit')
         # Do some things to handle the way quantity_from_string parses units that only have a denominator (e.g. Hz)
         if unit_name[0] == '/':
-            unit_name = "(" + unit_name + ")**-1"
+            unit_name = "(" + unit_name[1:] + ")**(-1)"
         cast_unit = quantity_from_string(unit_name)
         if isinstance(cast_unit, unit.Quantity):
             cast_unit = cast_unit.unit
@@ -1332,9 +1424,9 @@ class NCQuantity(NCVariableTypeHandler):
             self._compare_shape = lambda x: x.shape
         except AttributeError:  # Trap not array
             try:
-                data_shape = tuple(len(data_value))
+                data_shape = (len(data_value),)
                 data_base_type = type(data_value[0])
-                self._compare_shape = lambda x: tuple(len(x))
+                self._compare_shape = lambda x: (len(x),)
             except TypeError:  # Trap not iterable
                 data_shape = 1
                 data_base_type = type(data_value)
@@ -1357,6 +1449,10 @@ class NCQuantity(NCVariableTypeHandler):
             self._decoder = NCNPArrayDecoder
         else:
             raise TypeError("NCQuantity does not know how to handle a quantity of type {}!".format(stype))
+
+    @property
+    def _storage_type(self):
+        return 'variables'
 
 
 class NCString(NCVariableTypeHandler):
@@ -1383,11 +1479,14 @@ class NCString(NCVariableTypeHandler):
             self._bind_read()
         except KeyError:
             NetCDFIODriver.check_scalar_dimension(self._parent_handler.ncfile)
-            self._bound_target = self._storage_object.createVariable(self._target, str, dimensions='scalar', chunksize=(1,))
+            self._bound_target = self._storage_object.createVariable(self._target,
+                                                                     str,
+                                                                     dimensions='scalar',
+                                                                     chunksizes=(1,))
             # Specify a way for the IO Driver stores data
             self.add_metadata('IODriver_Type', self.type_string)
             # Specify the type of storage object this should tie to
-            self.add_metadata('IODriver_Storage_Type', 'variable')
+            self.add_metadata('IODriver_Storage_Type', self.storage_type)
             self.add_metadata('IODriver_Appendable', 0)
         self._dump_metadata_buffer()
         self._check_write_append()
@@ -1403,11 +1502,11 @@ class NCString(NCVariableTypeHandler):
                 self._target,
                 str,
                 dimensions=('iteration', 'scalar'),
-                chunksize=(1, 1))
+                chunksizes=(1, 1))
             # Specify a way for the IO Driver stores data
             self.add_metadata('IODriver_Type', self.type_string)
             # Specify the type of storage object this should tie to
-            self.add_metadata('IODriver_Storage_Type', 'variable')
+            self.add_metadata('IODriver_Storage_Type', self.storage_type)
             self.add_metadata('IODriver_Appendable', 1)
         self._dump_metadata_buffer()
         self._check_write_append()
@@ -1456,6 +1555,10 @@ class NCString(NCVariableTypeHandler):
         self._bound_target[length, :] = storable_data
         return
 
+    @property
+    def _storage_type(self):
+        return 'variables'
+
 
 class NCDict(NCVariableTypeHandler):
     """
@@ -1486,7 +1589,7 @@ class NCDict(NCVariableTypeHandler):
         # Specify a way for the IO Driver stores data
         self.add_metadata('IODriver_Type', self.type_string)
         # Specify the type of storage object this should tie to
-        self.add_metadata('IODriver_Storage_Type', 'group')
+        self.add_metadata('IODriver_Storage_Type', self.storage_type)
         self.add_metadata('IODriver_Appendable', 0)
         self._dump_metadata_buffer()
 
@@ -1547,10 +1650,9 @@ class NCDict(NCVariableTypeHandler):
             if 'units' in output_ncvar.ncattrs():
                 output_unit_name = output_ncvar.getncattr('units')
                 if output_unit_name[0] == '/':
-                    output_value = str(output_value) + output_unit_name
-                else:
-                    output_value = str(output_value) + '*' + output_unit_name
-                output_value = quantity_from_string(output_value)
+                    output_unit_name = '(' + output_unit_name[1:] + ')**(-1)'
+                output_unit = quantity_from_string(output_unit_name)
+                output_value = output_value * output_unit
             # Store output.
             output_dict[output_name] = output_value
 
@@ -1583,25 +1685,60 @@ class NCDict(NCVariableTypeHandler):
                 datum_value = int(datum_value)
             # Store the variable.
             if type(datum_value) == str:
-                ncvar = self._bound_target.createVariable(datum_name, type(datum_value), 'scalar')
+                if datum_name not in self._bound_target.variables:
+                    ncvar = self._bound_target.createVariable(datum_name, str,
+                                                              dimensions='scalar',
+                                                              chunksizes=(1,))
+                else:
+                    ncvar = self._bound_target[datum_name]
                 storable_data = NCStringEncoder(datum_value)
                 ncvar[:] = storable_data
                 ncvar.setncattr('type', datum_type_name)
+            elif type(datum_value) == np.ndarray:
+                shape = datum_value.shape
+                dims = []
+                for dimSize in shape:
+                    dim_name = datum_name + 'DimSz{}'.format(dimSize)
+                    dims.append(dim_name)
+                    if dim_name not in self._bound_target.dimensions:
+                        self._bound_target.createDimension(dim_name, dimSize)
+                if datum_name not in self._bound_target.variables:
+                    ncvar = self._bound_target.createVariable(datum_name, datum_value.dtype, dims)
+                else:
+                    ncvar = self._bound_target.variables[datum_name]
+                ncvar[:] = datum_value
+                ncvar.setncattr('type', datum_type_name)
             elif isinstance(datum_value, collections.Iterable):
-                nelements, element_type, element_type_name = NCIterableEncoder(datum_value)
-                self._bound_target.createDimension(datum_name, nelements)  # unlimited number of iterations
-                ncvar = self._bound_target.createVariable(datum_name, element_type, (datum_name,))
+                nelements = len(datum_value)
+                element_type = type(datum_value[0])
+                element_type_name = typename(element_type)
+                if datum_name not in self._bound_target.dimensions:
+                    self._bound_target.createDimension(datum_name, nelements)  # unlimited number of iterations
+                if datum_name not in self._bound_target.variables:
+                    ncvar = self._bound_target.createVariable(datum_name, element_type, (datum_name,))
+                else:
+                    ncvar = self._bound_target.variables[datum_name]
                 for (i, element) in enumerate(datum_value):
                     ncvar[i] = element
                 ncvar.setncattr('type', element_type_name)
             elif datum_value is None:
-                ncvar = self._bound_target.createVariable(datum_name, int)
+                if datum_name not in self._bound_target.variables:
+                    ncvar = self._bound_target.createVariable(datum_name, int)
+                else:
+                    ncvar = self._bound_target.variables[datum_name]
                 ncvar.assignValue(0)
                 ncvar.setncattr('type', datum_type_name)
             else:
-                ncvar = self._bound_target.createVariable(datum_name, type(datum_value))
+                if datum_name not in self._bound_target.variables:
+                    ncvar = self._bound_target.createVariable(datum_name, type(datum_value))
+                else:
+                    ncvar = self._bound_target.variables[datum_name]
                 ncvar.assignValue(datum_value)
                 ncvar.setncattr('type', datum_type_name)
             if datum_unit:
                 ncvar.setncattr('units', str(datum_unit))
         return
+
+    @property
+    def _storage_type(self):
+        return 'groups'

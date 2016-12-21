@@ -780,7 +780,8 @@ def typename(atype):
     modulename = atype.__module__
     typename = atype.__name__
 
-    if modulename != '__builtin__':
+    # Python 2/3 builtins check
+    if modulename != '__builtin__' and modulename != 'builtins':
         typename = modulename + '.' + typename
 
     return typename
