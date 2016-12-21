@@ -104,7 +104,7 @@ class StorageIODriver(ABC):
         self._type_maps[type_key] = de_encoder
 
     @abc.abstractmethod
-    def create_variable(self, path, type_key):
+    def create_storage_variable(self, path, type_key):
         """
         Create a new variable on the disk and at the path location and store it as the given type.
 
@@ -173,10 +173,12 @@ class NetCDFIODriver(StorageIODriver):
 
         """
         try:
+            # Check if the handler is already known to this instance
             handler = self._variables[path]
         except KeyError:
             try:
                 # Attempt to read the disk and bind to that variable
+                # Navigate the path down from top NC file to last entry
                 head_group = self.ncfile
                 split_path = decompose_path(path)
                 for header in split_path[:-1]:
@@ -184,35 +186,37 @@ class NetCDFIODriver(StorageIODriver):
                 # Check if this is a group type
                 is_group = False
                 if split_path[-1] in head_group.groups:
+                    # Check if storage object IS a group (e.g. dict)
                     try:
                         obj = head_group.groups[split_path[-1]]
                         store_type = obj.getncattr('IODriver_Storage_Type')
                         if store_type == 'group':
                             variable = obj
                             is_group = True
-                    except AttributeError:
+                    except AttributeError:  # Trap the case of no group name in head_group, non-fatal
                         pass
                 if not is_group:
+                    # Bind to the specific variable instead since its not a group
                     variable = head_group.variables[split_path[-1]]
-            except KeyError as e:
+            except KeyError:
                 raise KeyError("No variable found at {} on file!".format(path))
             try:
+                # Bind to the storage type by mapping IODriver_Type -> Known TypeHandler
                 data_type = variable.getncattr('IODriver_Type')
                 head_path = '/' + '/'.join(split_path[:-1])
                 target_name = split_path[-1]
+                # Remember the group for the future while also getting storage binder
                 group = self._bind_group(head_path)
-                handler_unset = self._IOMetaDataReaders[data_type]
-                self._variables[path] = handler_unset(self, target_name, storage_object=group)
+                uninstanced_handler = self._IOMetaDataReaders[data_type]
+                self._variables[path] = uninstanced_handler(self, target_name, storage_object=group)
                 handler = self._variables[path]
-                # Bind the variable since we know its real
-                handler._bind_read()
             except AttributeError:
                 raise AttributeError("Cannot auto-detect variable type, ensure that 'IODriver_Type' is a set ncattr")
             except KeyError:
                 raise KeyError("No mapped type handler known for 'IODriver_Type' = '{}'".format(data_type))
         return handler
 
-    def create_variable(self, path, type_key):
+    def create_storage_variable(self, path, type_key):
         try:
             handler = self._type_maps[type_key]
         except KeyError:
@@ -270,7 +274,7 @@ class NetCDFIODriver(StorageIODriver):
         if name not in ncfile.dimensions:
             ncfile.createDimension(name, length)
 
-    def add_metadata(self, name, value):
+    def add_metadata(self, name, value, path='/'):
         """
         Add metadata to self on disk, extra bits of information that can be used for flags or other variables
 
@@ -280,8 +284,22 @@ class NetCDFIODriver(StorageIODriver):
             Name of the attribute you wish to assign
         value : any, but prefered string
             Extra meta data to add to the variable
+        path : string, optional, Default: '/'
+            Path to the object to assign metadata. If the object does not exist, an error is raised
+            Not passing a path in attaches the data to the top level file
         """
-        self.ncfile.setncattr(name, value)
+        split_path = decompose_path(path)
+        if len(split_path) == 0:
+            self.ncfile.setncattr(name, value)
+        elif split_path[0].strip() == '':  # Split this into its own elif since if the first is true this will fail
+            self.ncfile.setncattr(name, value)
+        elif path in self._groups:
+            self._groups[path].setncattr(name, value)
+        elif path in self._variables:
+            self._variables[path].addmetadata(name, value)
+        else:
+            raise KeyError("Cannot assign metadata at path {} since no known object exists there! "
+                           "Try get_netcdf_group or get_variable_handler first.".format(path))
 
     def _bind_group(self, path):
         """
