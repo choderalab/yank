@@ -20,10 +20,11 @@ THIS IS VERY MUCH A WORK IN PROGRESS AND WILL PROBABLY MOSTLY BE SCRAPPED ON THE
 # =============================================================================
 
 import abc
-import netCDF4 as nc
-import numpy as np
-import collections
 import warnings
+import importlib
+import collections
+import numpy as np
+import netCDF4 as nc
 
 from simtk import unit
 
@@ -552,7 +553,7 @@ class NCVariableTypeHandler(ABC):
     @staticmethod
     def _convert_netcdf_store_type(stored_type):
         """
-        Convert the stored NetCDF datatype from string to type without relying on unsafe eval() function
+        Convert the stored NetCDF data type from string to type without relying on unsafe eval() function
 
         Parameters
         ----------
@@ -565,12 +566,11 @@ class NCVariableTypeHandler(ABC):
             Python or module type
 
         """
-        import importlib
         try:
             # Check if it's a builtin type
             try:  # Python 2
                 module = importlib.import_module('__builtin__')
-            except:  # Python 3
+            except ImportError:  # Python 3
                 module = importlib.import_module('builtins')
             proper_type = getattr(module, stored_type)
         except AttributeError:
@@ -615,6 +615,7 @@ class NCVariableTypeHandler(ABC):
 
 # Decoders: Convert from NC variable to python type
 # Encoders: Decompose Python Type into something NC storable data
+
 
 def NCStringDecoder(nc_variable):
     if nc_variable.shape == ():
@@ -789,7 +790,7 @@ class NCArray(NCVariableTypeHandler):
             raise TypeError("Invalid data type on variable {}.".format(self._target))
         # Bind
         if self._bound_target is None:
-            self._bind_write(data)
+            self._bind_append(data)
         # Check writeable
         if self._output_mode != 'a':
             raise TypeError("{} at {} was saved as appendable data! Cannot overwrite, must use append()".format(
@@ -1132,7 +1133,7 @@ class NCIterable(NCVariableTypeHandler):
             raise TypeError("Invalid data type on variable {}.".format(self._target))
         # Bind
         if self._bound_target is None:
-            self._bind_write(data)
+            self._bind_append(data)
         # Check writeable
         if self._output_mode != 'a':
             raise TypeError("{} at {} was saved as appendable data! Cannot overwrite, must use append()".format(
@@ -1212,9 +1213,9 @@ class NCQuantity(NCVariableTypeHandler):
             self.add_metadata('IODriver_Storage_Type', 'variable')
             self.add_metadata('IODriver_Appendable', 0)
             self._save_shape = data_shape
+            self._set_codifiers(data_type_name)
         self._dump_metadata_buffer()
         self._check_write_append()
-        self._set_codifiers(data_type_name)
         return
 
     def _bind_append(self, data):
@@ -1245,9 +1246,9 @@ class NCQuantity(NCVariableTypeHandler):
             self.add_metadata('IODriver_Storage_Type', 'variable')
             self.add_metadata('IODriver_Appendable', 1)
             self._save_shape = data_shape
+            self._set_codifiers(data_type_name)
         self._dump_metadata_buffer()
         self._check_write_append()
-        self._set_codifiers(data_type_name)
         return
 
     def read(self):
@@ -1377,7 +1378,7 @@ class NCString(NCVariableTypeHandler):
         except KeyError as e:
             raise e
 
-    def _bind_write(self):
+    def _bind_write(self, data):
         try:
             self._bind_read()
         except KeyError:
@@ -1392,7 +1393,7 @@ class NCString(NCVariableTypeHandler):
         self._check_write_append()
         return
 
-    def _bind_append(self, infinite_dimension='iteration'):
+    def _bind_append(self, data):
         try:
             self._bind_read()
         except KeyError:
@@ -1401,7 +1402,7 @@ class NCString(NCVariableTypeHandler):
             self._bound_target = self._storage_object.createVariable(
                 self._target,
                 str,
-                dimensions=(infinite_dimension, 'scalar'),
+                dimensions=('iteration', 'scalar'),
                 chunksize=(1, 1))
             # Specify a way for the IO Driver stores data
             self.add_metadata('IODriver_Type', self.type_string)
@@ -1425,15 +1426,15 @@ class NCString(NCVariableTypeHandler):
             raise TypeError("Invalid data type on variable {}.".format(self._target))
         # Bind
         if self._bound_target is None:
-            self._bind_write()
+            self._bind_write(data)
         # Check writeable
         if self._output_mode != 'w':
             raise TypeError("{} at {} was saved as appendable data! Cannot overwrite, must use append()".format(
                 self.type_string, self._target)
             )
         # Save data
-        storeable_data = NCStringEncoder(data)
-        self._bound_target[:] = storeable_data
+        storable_data = NCStringEncoder(data)
+        self._bound_target[:] = storable_data
         return
 
     def append(self, data):
@@ -1442,7 +1443,7 @@ class NCString(NCVariableTypeHandler):
             raise TypeError("Invalid data type on variable {}.".format(self._target))
         # Bind
         if self._bound_target is None:
-            self._bind_append()
+            self._bind_append(data)
         # Can append
         if self._output_mode != 'a':
             raise TypeError("{} at {} was saved as static, non-appendable data! Cannot append, must use write()".format(
@@ -1475,7 +1476,7 @@ class NCDict(NCVariableTypeHandler):
         except KeyError as e:
             raise e
 
-    def _bind_write(self):
+    def _bind_write(self, data):
         # Because the _bound_target in this case is a NetCDF group, no initial data is writen.
         # The write() function handles that though
         try:
@@ -1489,7 +1490,7 @@ class NCDict(NCVariableTypeHandler):
         self.add_metadata('IODriver_Appendable', 0)
         self._dump_metadata_buffer()
 
-    def _bind_append(self):
+    def _bind_append(self, data):
         # TODO: Determine how to do this eventually
         raise NotImplementedError("Dictionaries cannot be appended to!")
 
@@ -1499,12 +1500,16 @@ class NCDict(NCVariableTypeHandler):
         return self._decode_dict()
 
     def write(self, data):
+        # Check type
+        if type(data) is not self._dtype:
+            raise TypeError("Invalid data type on variable {}.".format(self._target))
+        # Bind
         if self._bound_target is None:
-            self._bind_write()
+            self._bind_write(data)
         self._encode_dict(data)
 
     def append(self, data):
-        self._bind_append()
+        self._bind_append(data)
 
     def _decode_dict(self):
         """
@@ -1584,7 +1589,7 @@ class NCDict(NCVariableTypeHandler):
                 ncvar.setncattr('type', datum_type_name)
             elif isinstance(datum_value, collections.Iterable):
                 nelements, element_type, element_type_name = NCIterableEncoder(datum_value)
-                self._bound_target.createDimension(datum_name, nelements) # unlimited number of iterations
+                self._bound_target.createDimension(datum_name, nelements)  # unlimited number of iterations
                 ncvar = self._bound_target.createVariable(datum_name, element_type, (datum_name,))
                 for (i, element) in enumerate(datum_value):
                     ncvar[i] = element
@@ -1600,87 +1605,3 @@ class NCDict(NCVariableTypeHandler):
             if datum_unit:
                 ncvar.setncattr('units', str(datum_unit))
         return
-
-
-# =============================================================================
-# LOGIC TIME!
-# =============================================================================
-
-"""
-Storage Interface (SI) passes down a name of file and instantiates a Storage Handler (SH) instance
-SI Directory/Variable (SIDV) objects send and request data down
-SH Binds to a file (if present) and waits for next instructions, all logic follows instructions from SI => SH
-
-From the SIDV:
-SIDV.{write/append/fetch}
-    If not VARIABLE:
-        SH.bind_variable(PATH, MODE?)
-    VARIABLE.{write/fetch/append}
-
-
-SI.write_metadata(NAME, DATA):
-    Add NAME as a metadata entry with DATA attached:
-        *def write_metadata(NAME, DATA)*
-SIDV.{write/append/fetch} initiate a BIND event, cascading up
-    PATH will be generated from the SIDV and passed down
-    Convert PATH to groups and variable
-    Bind .{write/append}
-        Check if PATH in FILE
-            Yes?
-                Fetch STORAGEOBJECT (SO), TYPE
-                Bind (D)E(N)CODER (denC) based on TYPE
-                Bind UNIT to denC
-                Bind SO to denC
-                Return denC to SIDV
-            No?
-
-
-
-SIDV.{fetch}
-    PATH passed down by the SIDV
-    If PATH not in BOUNDSET:
-        If not on_file(PATH):
-            Raise Error
-        else:
-            Fetch STORAGEOBJECT, TYPE, UNIT from FILE at PATH
-            BOUNDSET[PATH] = denC(STORAGEOBJECT, TYPE, UNIT)
-    denC = BOUNDSET[PATH]
-    denC.
-
-
-
-BOUNDSET is a dict of objects which point to different denC's with keywords as fed PATHs from SIDV
-Needed Functions of SH:
-    write_metadata(NAME, DATA)
-        Returns None
-    on_file(PATH)
-        Returns Bool
-    read_file(PATH)     Might combine with on_file
-        Returns STORAGEOBJECT, TYPE, UNIT
-Needed Functions of denC:
-    unit
-        Property, returns units of the bound STORAGEOBJECT
-
-
-
-
-
-
-
-
-
-Write Bound Present
-Write Unbound Present
-Append Bound Present
-append Unbound Present
-Fetch Bound Present
-Fetch Unbound Present
-Write Bound NotPresent
-Write Unbound NotPresent
-Append Bound NotPresent
-append Unbound NotPresent
-
-{Fetch Bound NotPresent
-Fetch Unbound NotPresent}
-    Raise Error
-"""
