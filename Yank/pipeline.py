@@ -83,6 +83,8 @@ _SOLVENT_RESNAMES = frozenset(['118', '119', '1AL', '1CU', '2FK', '2HP', '2OF', 
         'TRA', 'UNX', 'V', 'V2+', 'VN3', 'VO4', 'W', 'WO5', 'Y1', 'YB', 'YB2',
         'YH', 'YT3', 'ZN', 'ZN2', 'ZN3', 'ZNA', 'ZNO', 'ZO3'])
 
+_NONPERIODIC_NONBONDED_METHODS = [openmm.app.NoCutoff, openmm.app.CutoffNonPeriodic]
+
 
 def find_components(system, topology, ligand_dsl, solvent_dsl=None):
     """Determine the atom indices of the system components.
@@ -254,17 +256,16 @@ def create_system(parameters_file, box_vectors, create_system_args, system_optio
     # TODO: Check to make sure both files agree on explicit/implicit.
     err_msg = ''
     nonbonded_method = system_options['nonbondedMethod']
-    nonperiodic_nonbonded_methods = [openmm.app.NoCutoff, openmm.app.CutoffNonPeriodic]
     if is_periodic:
         if 'implicitSolvent' in system_options:
-            err_msg = 'Found periodic box in inpcrd file and implicitSolvent specified.'
-        if nonbonded_method in nonperiodic_nonbonded_methods:
-            err_msg = ('Found periodic box in inpcrd file but '
+            err_msg = 'Found periodic box in positions file and implicitSolvent specified.'
+        if nonbonded_method in _NONPERIODIC_NONBONDED_METHODS:
+            err_msg = ('Found periodic box in positions file but '
                        'nonbondedMethod is {}'.format(nonbonded_method))
     else:
-        if nonbonded_method not in nonperiodic_nonbonded_methods:
+        if nonbonded_method not in _NONPERIODIC_NONBONDED_METHODS:
             err_msg = ('nonbondedMethod {} is periodic but could not '
-                       'find periodic box in inpcrd.'.format(nonbonded_method))
+                       'find periodic box in positions file.'.format(nonbonded_method))
     if len(err_msg) != 0:
         logger.error(err_msg)
         raise RuntimeError(err_msg)
@@ -338,6 +339,12 @@ def prepare_phase(positions_file_path, parameters_file_path, ligand_dsl, system_
             logger.info("gro: %s" % positions_file_path)
 
         positions_file = openmm.app.GromacsGroFile(positions_file_path)
+        if ('nonbonded_method' in system_options) and (system_options['nonbonded_method'] in _NONPERIODIC_NONBONDED_METHODS):
+            # gro files must contain box vectors, so we must determine whether system is non-periodic or not from provided nonbonded options
+            # WARNING: This uses the private API for GromacsGroFile, and may break.
+            logger.info('nonbonded_method = %s, so removing periodic box vectors from gro file' % system_options['nonbonded_method'])
+            for (frame, box_vectors) in enumerate(positions_file._periodicBoxVectors):
+                positions_file._periodicBoxVectors[frame] = None
         box_vectors = positions_file.getPeriodicBoxVectors()
         parameters_file = openmm.app.GromacsTopFile(parameters_file_path,
                                                     periodicBoxVectors=box_vectors,
