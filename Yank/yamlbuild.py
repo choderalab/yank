@@ -1754,20 +1754,24 @@ class YamlBuilder:
             def _system_files(files):
                 """Paths to amber/gromacs/xml files. Return them in alphabetical
                 order of extension [*.inpcrd/gro/pdb, *.prmtop/top/xml]."""
-                extensions = [os.path.splitext(filepath)[1][1:] for filepath in files]
-                correct_type = False
+                provided_extensions = [os.path.splitext(filepath)[1][1:] for filepath in files]
                 if type == 'amber':
-                    correct_type = sorted(extensions) == ['inpcrd', 'prmtop']
+                    expected_extensions = ['inpcrd', 'prmtop']
                 elif type == 'gromacs':
-                    correct_type = sorted(extensions) == ['gro', 'top']
+                    expected_extensions = ['gro', 'top']
                 elif type == 'openmm':
-                    correct_type = sorted(extensions) == ['pdb', 'xml']
+                    expected_extensions = ['pdb', 'xml']
+
+                correct_type = sorted(provided_extensions) == sorted(expected_extensions)
                 if not correct_type:
-                    raise RuntimeError('Wrong system files type.')
+                    msg = 'Wrong system file types provided.\n'
+                    msg += 'Extensions provided: %s\n' % sorted(provided_extensions)
+                    msg += 'Expected extensions: %s\n' % sorted(expected_extensions)
+                    raise RuntimeError(msg)
                 for filepath in files:
                     if not os.path.isfile(filepath):
                         raise YamlParseError('File path {} does not exist.'.format(filepath))
-                return [filepath for (ext, filepath) in sorted(zip(extensions, files))]
+                return [filepath for (ext, filepath) in sorted(zip(provided_extensions, files))]
             return _system_files
 
         # Define experiment Schema
