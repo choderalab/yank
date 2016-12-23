@@ -1767,9 +1767,13 @@ class YamlBuilder:
                     msg = 'Wrong system file types provided.\n'
                     msg += 'Extensions provided: %s\n' % sorted(provided_extensions)
                     msg += 'Expected extensions: %s\n' % sorted(expected_extensions)
+                    print(msg)
                     raise RuntimeError(msg)
+                else:
+                    print('Correctly recognized files %s as %s' % (files, expected_extensions))
                 for filepath in files:
                     if not os.path.isfile(filepath):
+                        pritn('os.path.isfile(%s) is False' % filepath)
                         raise YamlParseError('File path {} does not exist.'.format(filepath))
                 return [filepath for (ext, filepath) in sorted(zip(provided_extensions, files))]
             return _system_files
@@ -1796,6 +1800,10 @@ class YamlBuilder:
             {'phase1_path': Use(system_files('gromacs')), 'phase2_path': Use(system_files('gromacs')),
              'ligand_dsl': str, Optional('solvent_dsl'): str,
              'solvent': is_known_solvent, Optional('gromacs_include_dir'): os.path.isdir},
+
+            {'phase1_path': Use(system_files('gromacs')), 'phase2_path': Use(system_files('gromacs')),
+             'ligand_dsl': str, Optional('solvent_dsl'): str,
+             'solvent1': is_known_solvent, 'solvent2': is_known_solvent, Optional('gromacs_include_dir'): os.path.isdir},
 
             {'phase1_path': Use(system_files('gromacs')), 'phase2_path': Use(system_files('gromacs')),
              'ligand_dsl': str, Optional('solvent_dsl'): str,
