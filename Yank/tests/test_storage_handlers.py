@@ -27,8 +27,8 @@ def test_netcdf_driver_group_manipulation():
     """Test that the NetCDFIODriver can create groups, rebind to groups, and that they are on the file"""
     with omt.utils.temporary_directory() as tmp_dir:
         nc_io_driver = NetCDFIODriver(tmp_dir + 'test.nc')
-        group2 = nc_io_driver.get_netcdf_group('group1/group2')
-        group1 = nc_io_driver.get_netcdf_group('group1')
+        group2 = nc_io_driver.get_directory('group1/group2')
+        group1 = nc_io_driver.get_directory('group1')
         ncfile = nc_io_driver.ncfile
         ncgroup1 = ncfile.groups['group1']
         ncgroup2 = ncfile.groups['group1'].groups['group2']
@@ -52,7 +52,7 @@ def test_netcdf_driver_metadata_creation():
     with omt.utils.temporary_directory() as tmp_dir:
         nc_io_driver = NetCDFIODriver(tmp_dir + '/test.nc')
         ncfile = nc_io_driver.ncfile
-        group1 = nc_io_driver.get_netcdf_group('group1')
+        group1 = nc_io_driver.get_directory('group1')
         nc_io_driver.add_metadata('root_metadata', 'IAm(G)Root!')
         nc_io_driver.add_metadata('group_metadata', 'group1_metadata', path='/group1')
         nc_metadata = ncfile.getncattr('root_metadata')

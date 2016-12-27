@@ -13,6 +13,7 @@ Testing the storage handlers themselves should be left to the test_storage_handl
 # =============================================================================================
 
 import numpy as np
+from simtk import unit
 import openmoltools as omt
 
 from nose import tools
