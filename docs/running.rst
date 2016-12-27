@@ -32,6 +32,8 @@ In :ref:`serial mode <serial-mode>`, a single simulation is run at a time, eithe
 For replica-exchange calculations, this means that each replica is run serially, and then exchanges between replicas are allowed to occur.
 This is useful if you are testing YANK, or running a large number of free energy calculations where speed is not a major concern.
 
+.. _mpi_notes:
+
 MPI mode
 """"""""
 
@@ -126,19 +128,25 @@ Alternatively, to run the simulation in MPI mode:
 
 .. code-block:: none
 
-   $ yank script --yaml=yank.yaml
+   $ mpirun -n # yank script --yaml=yank.yaml
+
+where ``#`` is the number of parallel instances of YANK you want to run with. Keep in mind your system may have a
+different MPI executable name and/or syntax.
 
 On systems with multiple NVIDIA GPUs per node, it is necessary to perform masking using ``CUDA_VISIBLE_DEVICES``.
 
 On systems using the conda-installed ``mpi4py`` package, the `MPICH2 hydra mpirun <https://wiki.mpich.org/mpich/index.php/Using_the_Hydra_Process_Manager>`_ will be automatically installed for you.
-You can use the cluster utility script `build-mpirun-configfile.py <https://github.com/choderalab/clusterutils/blob/master/scripts/build-mpirun-configfile.py>`_ available in our `clusterutils <https://github.com/choderalab/clusterutils>`_ tools to generate an appropriate ``configfile``:
+You can use the cluster utility script
+`build-mpirun-configfile.py <https://github.com/choderalab/clusterutils/blob/master/clusterutils/build_mpirun_configfile.py>`_
+available in our `clusterutils <https://github.com/choderalab/clusterutils>`_ tools to generate an appropriate ``configfile``:
 
 .. code-block:: none
 
   $ build-mpirun-configfile "yank script --yaml=yank.yaml"
   $ mpirun -configfile configfile
 
-``build-mpirun-configfile`` is automatically installed with YANK when you use the ``conda`` installation route.
+``build-mpirun-configfile`` is automatically installed with YANK when you use the ``conda`` installation route. Please
+see our :ref:`notes from above <mpi_notes>` about this script's applicability on torque, PBS, and SLURM clusters.
 
 |
 

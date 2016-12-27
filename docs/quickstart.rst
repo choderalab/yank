@@ -23,7 +23,7 @@ Run an alchemical free energy calculation (in serial mode) using the parameters 
 
    $ yank script --yaml=yank.yaml
 
-Alternatively, the simulation can be `run in MPI mode <running>`_ if you have multiple GPUs available.
+Alternatively, the simulation can be :doc:`run in MPI mode <running>` if you have multiple GPUs available.
 
 Analyze the simulation data:
 
