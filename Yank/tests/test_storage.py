@@ -18,7 +18,7 @@ import openmoltools as omt
 
 from nose import tools
 
-from yank.storage import *
+from yank.storage import StorageInterface
 
 # =============================================================================================
 # NETCDFIODRIVER TESTING FUNCTIONS

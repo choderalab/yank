@@ -9,14 +9,13 @@ Test storage_handlers.py facility.
 # GLOBAL IMPORTS
 # =============================================================================================
 
-import tempfile
 import numpy as np
 from simtk import unit
 import openmoltools as omt
 
 from nose import tools
 
-from yank.storage_handlers import *
+from yank.storage_handlers import NetCDFIODriver
 
 # =============================================================================================
 # NETCDFIODRIVER TESTING FUNCTIONS
@@ -32,7 +31,8 @@ def test_netcdf_driver_group_manipulation():
         ncfile = nc_io_driver.ncfile
         ncgroup1 = ncfile.groups['group1']
         ncgroup2 = ncfile.groups['group1'].groups['group2']
-        assert (group1 is ncgroup1) and (group2 is ncgroup2)
+        assert group1 is ncgroup1
+        assert group2 is ncgroup2
 
 
 def test_netcdf_driver_dimension_manipulation():
@@ -44,7 +44,9 @@ def test_netcdf_driver_dimension_manipulation():
         NetCDFIODriver.check_iterable_dimension(ncfile, length=4)
         NetCDFIODriver.check_infinite_dimension(ncfile)
         dims = ncfile.dimensions
-        assert ('scalar' in dims) and ('iterable4' in dims) and ('iteration' in dims)
+        assert 'scalar' in dims
+        assert 'iterable4' in dims
+        assert 'iteration' in dims
 
 
 def test_netcdf_driver_metadata_creation():
@@ -57,7 +59,8 @@ def test_netcdf_driver_metadata_creation():
         nc_io_driver.add_metadata('group_metadata', 'group1_metadata', path='/group1')
         nc_metadata = ncfile.getncattr('root_metadata')
         group_metadata = group1.getncattr('group_metadata')
-        assert (nc_metadata == 'IAm(G)Root!') and (group_metadata == 'group1_metadata')
+        assert nc_metadata == 'IAm(G)Root!'
+        assert group_metadata == 'group1_metadata'
 
 
 # =============================================================================================
@@ -97,11 +100,11 @@ def generic_type_handler_check(input_data, with_append=True):
         if with_append:
             try:
                 for key in data_write_out.keys():
-                    assert np.all(data_append_out[0][key] == input_data[key]) and np.all(
-                        data_append_out[1][key] == input_data[key])
+                    assert np.all(data_append_out[0][key] == input_data[key])
+                    assert np.all(data_append_out[1][key] == input_data[key])
             except AttributeError:
-                np.all(data_append_out[0] == input_data) and np.all(
-                    data_append_out[1] == input_data)
+                assert np.all(data_append_out[0] == input_data)
+                assert np.all(data_append_out[1] == input_data)
         # Delete the IO driver (and close the ncfile in the process)
         nc_io_driver.close_down()
         del data_write, data_write_out
@@ -124,11 +127,11 @@ def generic_type_handler_check(input_data, with_append=True):
         if with_append:
             try:
                 for key in data_write_out.keys():
-                    assert np.all(data_append_out[0][key] == input_data[key]) and np.all(
-                        data_append_out[1][key] == input_data[key])
+                    assert np.all(data_append_out[0][key] == input_data[key])
+                    assert np.all(data_append_out[1][key] == input_data[key])
             except AttributeError:
-                np.all(data_append_out[0] == input_data) and np.all(
-                    data_append_out[1] == input_data)
+                assert np.all(data_append_out[0] == input_data)
+                assert np.all(data_append_out[1] == input_data)
 
 
 def test_netcdf_int_type_handler():

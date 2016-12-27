@@ -399,11 +399,12 @@ class StorageInterfaceDirVar(object):
 
 
 class StorageInterface(object):
+    """
+    This class holds what folders and variables are known to the file on the disk, or dynamically
+    creates them on the fly. See StorageInterfaceVarDir for how the dynamic interfacing works
+    """
     def __init__(self, file_name, storage_system=NetCDFIODriver):
         """
-        Initialize the class, set the file save location and what type of output is expected.
-        The class itself simply holds what folders and variables are known to the file on the disk, or dynamically
-        creates them on the fly. See StorageInterfaceVarDir for how this works.
 
         Parameters
         ----------
