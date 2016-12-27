@@ -10,9 +10,6 @@ Module which houses all the handling instructions for reading and writing to net
 This exists as its own module to keep the main storage module file smaller since any number of types may need to be
 saved which special instructions for each.
 
-====== WARNING ========
-THIS IS VERY MUCH A WORK IN PROGRESS AND WILL PROBABLY MOSTLY BE SCRAPPED ON THE WAY
-
 """
 
 # =============================================================================
@@ -143,6 +140,67 @@ class StorageIODriver(ABC):
         """
         raise NotImplementedError("create_variable has not been implemented!")
 
+    @abc.abstractmethod
+    def get_variable_handler(self, path):
+        """
+        Get a variable IO object from disk at path. Raises a KeyError or AttributeError if no storage object exists at
+        that level
+
+        Parameters
+        ----------
+        path : string
+            Path to the variable/storage object on disk
+
+        Returns
+        -------
+        handler : DeEnCoder object to interface with the variable on disk
+
+        """
+        raise NotImplementedError("get_variable_handler has not been implemented!")
+
+    @abc.abstractmethod
+    def get_directory(self, path, create=True):
+        """
+        Get a directory-like object located at path from disk.
+
+        Parameters
+        ----------
+        path : string
+            Path to directory-like object on disk
+        create: boolean, default: True
+            Should create the stack of directories on the way down, similar function to `mkdir -p` in shell
+
+        Returns
+        -------
+        directory_handler : directory object as its stored on disk
+
+        """
+        raise NotImplementedError("get_directory method has not been implemented!")
+
+    @abc.abstractmethod
+    def close_down(self):
+        """
+        Instruct how to safely close down the file.
+
+        """
+        raise NotImplementedError("close_down method has not been implemented!")
+
+    @abc.abstractmethod
+    def add_metadata(self, name, value):
+        """
+        Function to add metadata to the file. This can be treated as optional and can simply be a `pass` if you do not
+        want your storage system to handle additional metadata
+
+        Parameters
+        ----------
+        name : string
+            Name of the attribute you wish to assign
+        value : any, but prefered string
+            Extra meta data to add to the variable
+
+        """
+        raise NotImplementedError("add_metadata has not been implemented!")
+
 
 # =============================================================================
 # NetCDF IO Driver
@@ -154,14 +212,17 @@ class NetCDFIODriver(StorageIODriver):
     Driver to handle all NetCDF IO operations, variable creation, and other operations.
     Can be extended to add new or modified type handlers
     """
-    def get_netcdf_group(self, path):
+    def get_directory(self, path, create=True):
         """
-        Get the top level group on the NetCDF file, create the full path if not present
+        Get the group (directory) on the NetCDF file, create the full path if not present
 
         Parameters
         ----------
         path : string
             Path to group on the disk
+        create: boolean, default: True
+            Should create the directory/ies on the way down, similar function to `mkdir -p` in shell
+            If False, raise KeyError if not in the stack
 
         Returns
         -------
@@ -173,7 +234,15 @@ class NetCDFIODriver(StorageIODriver):
         try:
             group = self._groups[path]
         except KeyError:
-            group = self._bind_group(path)
+            if create:
+                group = self._bind_group(path)
+            else:
+                split_path = decompose_path(path)
+                target = self.ncfile
+                for index, fragment in enumerate(split_path):
+                    target = target.groups[fragment]
+                # Do a proper bind group now since all other fragments now exist
+                group = self._bind_group(path)
         finally:
             return group
 
@@ -327,7 +396,7 @@ class NetCDFIODriver(StorageIODriver):
             self._variables[path].addmetadata(name, value)
         else:
             raise KeyError("Cannot assign metadata at path {} since no known object exists there! "
-                           "Try get_netcdf_group or get_variable_handler first.".format(path))
+                           "Try get_directory or get_variable_handler first.".format(path))
 
     def _bind_group(self, path):
         """
@@ -605,7 +674,7 @@ class NCVariableTypeHandler(ABC):
         if not self._bound_target:
             self._metadata_buffer[name] = value
         else:
-            self._bound_target.setncattr(name,value)
+            self._bound_target.setncattr(name, value)
 
     def _dump_metadata_buffer(self):
         """
@@ -672,8 +741,8 @@ class NCVariableTypeHandler(ABC):
                 raise TypeError("Storage target on NetCDF file is of type {} but this driver is designed to handle "
                                 "type {}!".foramt(self._bound_target.getncattr('IODriver_Type'), self.type_string))
         except AttributeError:
-            warnings.warn("This TypeHandler cannot detect storage type for {}. .write() and .append() operations "
-                          "will not work and .read() operations may work", RuntimeWarning)
+            warnings.warn("This TypeHandler cannot detect storage type from on-disk variable. .write() and .append() "
+                          "operations will not work and .read() operations may work", RuntimeWarning)
 
 # =============================================================================
 # NETCDF NON-COMPOUND TYPE CODERS

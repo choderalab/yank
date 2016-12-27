@@ -38,7 +38,7 @@ def test_netcdf_driver_group_manipulation():
 def test_netcdf_driver_dimension_manipulation():
     """Test that the NetCDFIODriver can check and create dimensions"""
     with omt.utils.temporary_directory() as tmp_dir:
-        nc_io_driver = NetCDFIODriver(tmp_dir + 'test.nc')
+        nc_io_driver = NetCDFIODriver(tmp_dir + '/test.nc')
         ncfile = nc_io_driver.ncfile
         NetCDFIODriver.check_scalar_dimension(ncfile)
         NetCDFIODriver.check_iterable_dimension(ncfile, length=4)
@@ -50,7 +50,7 @@ def test_netcdf_driver_dimension_manipulation():
 def test_netcdf_driver_metadata_creation():
     """Test that the NetCDFIODriver can create metadata on different objects"""
     with omt.utils.temporary_directory() as tmp_dir:
-        nc_io_driver = NetCDFIODriver(tmp_dir + 'test.nc')
+        nc_io_driver = NetCDFIODriver(tmp_dir + '/test.nc')
         ncfile = nc_io_driver.ncfile
         group1 = nc_io_driver.get_netcdf_group('group1')
         nc_io_driver.add_metadata('root_metadata', 'IAm(G)Root!')
@@ -97,8 +97,8 @@ def generic_type_handler_check(input_data, with_append=True):
         if with_append:
             try:
                 for key in data_write_out.keys():
-                    assert np.all(data_append_out[key][0] == input_data[key]) and np.all(
-                        data_append_out[key][1] == input_data[key])
+                    assert np.all(data_append_out[0][key] == input_data[key]) and np.all(
+                        data_append_out[1][key] == input_data[key])
             except AttributeError:
                 np.all(data_append_out[0] == input_data) and np.all(
                     data_append_out[1] == input_data)
@@ -124,8 +124,8 @@ def generic_type_handler_check(input_data, with_append=True):
         if with_append:
             try:
                 for key in data_write_out.keys():
-                    assert np.all(data_append_out[key][0] == input_data[key]) and np.all(
-                        data_append_out[key][1] == input_data[key])
+                    assert np.all(data_append_out[0][key] == input_data[key]) and np.all(
+                        data_append_out[1][key] == input_data[key])
             except AttributeError:
                 np.all(data_append_out[0] == input_data) and np.all(
                     data_append_out[1] == input_data)
