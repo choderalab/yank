@@ -1,17 +1,17 @@
 #!/usr/bin/env python
 
-#=============================================================================================
+# =============================================================================================
 # MODULE DOCSTRING
-#=============================================================================================
+# =============================================================================================
 
 """
 Test YAML functions.
 
 """
 
-#=============================================================================================
+# =============================================================================================
 # GLOBAL IMPORTS
-#=============================================================================================
+# =============================================================================================
 
 import time
 import shutil
@@ -178,12 +178,14 @@ def get_template_script(output_dir='.'):
 # YamlBuild utility functions
 # ==============================================================================
 
+
 def test_compute_min_dist():
     """Test computation of minimum distance between two molecules"""
     mol1_pos = np.array([[-1, -1, -1], [1, 1, 1]], np.float)
     mol2_pos = np.array([[3, 3, 3], [3, 4, 5]], np.float)
     mol3_pos = np.array([[2, 2, 2], [2, 4, 5]], np.float)
     assert compute_min_dist(mol1_pos, mol2_pos, mol3_pos) == np.sqrt(3)
+
 
 def test_compute_dist_bound():
     """Test compute_dist_bound() function."""
@@ -194,6 +196,7 @@ def test_compute_dist_bound():
     assert min_dist == np.linalg.norm(mol1_pos[1] - mol2_pos[0])
     assert max_dist == np.linalg.norm(mol1_pos[1] - mol3_pos[1])
 
+
 def test_remove_overlap():
     """Test function remove_overlap()."""
     mol1_pos = np.array([[-1, -1, -1], [1, 1, 1]], np.float)
@@ -202,6 +205,7 @@ def test_remove_overlap():
     assert compute_min_dist(mol1_pos, mol2_pos, mol3_pos) < 0.1
     mol1_pos = remove_overlap(mol1_pos, mol2_pos, mol3_pos, min_distance=0.1, sigma=2.0)
     assert compute_min_dist(mol1_pos, mol2_pos, mol3_pos) >= 0.1
+
 
 def test_pull_close():
     """Test function pull_close()."""
@@ -213,6 +217,7 @@ def test_pull_close():
     assert isinstance(translation2, np.ndarray)
     assert 1.5 <= compute_min_dist(mol1_pos, mol2_pos + translation2) <= 5
     assert 1.5 <= compute_min_dist(mol1_pos, mol3_pos + translation3) <= 5
+
 
 def test_pack_transformation():
     """Test function pack_transformation()."""
@@ -1366,6 +1371,7 @@ def test_setup_explicit_system_leap():
             assert os.path.getsize(inpcrd_path) > 0
             assert found_resnames == expected_resnames[phase]
 
+
 def test_neutralize_system():
     """Test whether the system charge is neutralized correctly."""
     with omt.utils.temporary_directory() as tmp_dir:
@@ -1482,6 +1488,7 @@ def test_setup_explicit_solvation_system():
             assert os.path.getsize(prmtop_path) > 0
             assert os.path.getsize(inpcrd_path) > 0
             assert found_resnames == expected_resnames[phase]
+
 
 def test_setup_multiple_parameters_system():
     """Set up system with molecule that needs many parameter files."""
@@ -1672,6 +1679,97 @@ def test_yaml_creation():
         experiment_dict = yaml.load(experiment)
         yaml_builder._db.get_system(experiment_dict['system'])
 
+        generated_yaml_path = os.path.join(tmp_dir, 'experiment.yaml')
+        yaml_builder._generate_yaml(experiment_dict, generated_yaml_path)
+        with open(generated_yaml_path, 'r') as f:
+            assert yaml.load(f) == yank_load(expected_yaml_content)
+
+
+def test_yaml_extension():
+    """Test that extending a yaml content with additional data produces the correct fusion"""
+    ligand_path = examples_paths()['p-xylene']
+    toluene_path = examples_paths()['toluene']
+    with omt.utils.temporary_directory() as tmp_dir:
+        molecules = """
+            T4lysozyme:
+                filepath: {}
+                leap: {{parameters: oldff/leaprc.ff14SB}}""".format(examples_paths()['lysozyme'])
+        solvent = """
+            vacuum:
+                nonbonded_method: NoCutoff"""
+        protocol = indent(standard_protocol)
+        system = """
+            system:
+                ligand: p-xylene
+                receptor: T4lysozyme
+                solvent: vacuum"""
+        experiment = """
+            protocol: absolute-binding
+            system: system"""
+        num_iterations = 5
+        replacement_solvent = "HTC"
+
+
+        yaml_content = """
+        ---
+        options:
+            output_dir: {}
+        molecules:{}
+            p-xylene:
+                filepath: {}
+                antechamber: {{charge_method: bcc}}
+                leap: {{parameters: leaprc.gaff}}
+            benzene:
+                filepath: {}
+                antechamber: {{charge_method: bcc}}
+                leap: {{parameters: leaprc.gaff}}
+        solvents:{}
+            GBSA-OBC2:
+                nonbonded_method: NoCutoff
+                implicit_solvent: OBC2
+        systems:{}
+        protocols:{}
+        experiments:{}
+        """.format(os.path.relpath(tmp_dir), molecules,
+                   os.path.relpath(ligand_path), toluene_path,
+                   solvent, system, protocol, experiment)
+
+        yaml_extension = """
+        options:
+            number_of_iterations: {}
+        solvents:
+            GBSA-OBC2:
+                implicit_solvent: HCT
+        """.format(num_iterations, replacement_solvent)
+
+        # We need to check whether the relative paths to the output directory and
+        # for p-xylene are handled correctly while absolute paths (T4lysozyme) are
+        # left untouched
+        expected_yaml_content = textwrap.dedent("""
+        ---
+        version: '{}'
+        options:
+            experiments_dir: .
+            output_dir: .
+            number_of_iterations: {}
+        molecules:{}
+            p-xylene:
+                filepath: {}
+                antechamber: {{charge_method: bcc}}
+                leap: {{parameters: leaprc.gaff}}
+        solvents:{}
+        systems:{}
+        protocols:{}
+        experiments:{}
+        """.format(HIGHEST_VERSION, num_iterations, molecules, os.path.relpath(ligand_path, tmp_dir),
+                   solvent, system, protocol, experiment))
+        expected_yaml_content = expected_yaml_content[1:]  # remove first '\n'
+        yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
+        yaml_builder.update_yaml(yaml_extension)
+        # during setup we can modify molecule's fields, so we need
+        # to check that it doesn't affect the YAML file exported
+        experiment_dict = yaml.load(experiment)
+        yaml_builder._db.get_system(experiment_dict['system'])
         generated_yaml_path = os.path.join(tmp_dir, 'experiment.yaml')
         yaml_builder._generate_yaml(experiment_dict, generated_yaml_path)
         with open(generated_yaml_path, 'r') as f:

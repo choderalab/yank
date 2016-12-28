@@ -358,6 +358,18 @@ def to_openmm_app(input_string):
     return getattr(openmm.app, input_string)
 
 
+def update_nested_dict(original, updated):
+    """Return a copy of a (possibly) nested dict of arbitrary depth"""
+    new = original.copy()
+    for key, value in updated.items():
+        if isinstance(value, collections.Mapping):
+            replacement = update_nested_dict(new.get(key, {}), value)
+            new[key] = replacement
+        else:
+            new[key] = updated[key]
+    return new
+
+
 # ============================================================================================
 # UTILITY CLASSES
 # ============================================================================================
@@ -1199,13 +1211,34 @@ class YamlBuilder:
         self._script_dir = os.getcwd()  # basic dir for relative paths
         self._db = None  # Database containing molecules created in parse()
         self._mpicomm = None  # MPI communicator
-        self._raw_yaml = {}  # Unconverted input YAML script
+        self._raw_yaml = {}  # Unconverted input YAML script, helpful for
+        self._categorized_raw_yaml = {}  # Raw YAML with selective keys chosen and blank dictionaries for missing keys
         self._protocols = {}  # Alchemical protocols description
         self._experiments = {}  # Experiments description
 
         # Parse YAML script
         if yaml_source is not None:
             self.parse(yaml_source)
+
+    def update_yaml(self, yaml_source):
+        """
+        Update the current yaml content and reparse it
+
+        Parameters
+        ----------
+        yaml_source
+
+        """
+        current_content = self._raw_yaml
+        try:
+            with open(yaml_source, 'r') as f:
+                new_content = yaml.load(f, Loader=YankLoader)
+        except IOError:  # string
+            new_content = yaml.load(yaml_source, Loader=YankLoader)
+        except TypeError:  # dict
+            new_content = yaml_source.copy()
+        combined_content = update_nested_dict(current_content, new_content)
+        self.parse(combined_content)
 
     def parse(self, yaml_source):
         """Parse the given YAML configuration file.
@@ -1236,6 +1269,8 @@ class YamlBuilder:
         except TypeError:  # dict
             yaml_content = yaml_source.copy()
 
+        self._raw_yaml = yaml_content.copy()
+
         # Check that YAML loading was successful
         if yaml_content is None:
             raise YamlParseError('The YAML file is empty!')
@@ -1256,7 +1291,7 @@ class YamlBuilder:
         yaml_content = self._expand_systems(yaml_content)
 
         # Save raw YAML content that will be needed when generating the YAML files
-        self._raw_yaml = copy.deepcopy({key: yaml_content.get(key, {})
+        self._categorized_raw_yaml = copy.deepcopy({key: yaml_content.get(key, {})
                                         for key in ['options', 'molecules', 'solvents',
                                                     'systems', 'protocols']})
 
@@ -2245,10 +2280,10 @@ class YamlBuilder:
                 molecule_ids = [sys_descr['receptor'], sys_descr['ligand']]
             except KeyError:  # partition/solvation free energy
                 molecule_ids = [sys_descr['solute']]
-            mol_section = {mol_id: self._raw_yaml['molecules'][mol_id]
+            mol_section = {mol_id: self._categorized_raw_yaml['molecules'][mol_id]
                            for mol_id in molecule_ids}
 
-            # Copy to avoid modifying _raw_yaml when updating paths
+            # Copy to avoid modifying _categorized_raw_yaml when updating paths
             mol_section = copy.deepcopy(mol_section)
         except KeyError:  # user provided directly system files
             mol_section = {}
@@ -2262,20 +2297,20 @@ class YamlBuilder:
             except KeyError:  # from xml/pdb system files
                 assert 'phase1_path' in sys_descr
                 solvent_ids = []
-        sol_section = {sol_id: self._raw_yaml['solvents'][sol_id]
+        sol_section = {sol_id: self._categorized_raw_yaml['solvents'][sol_id]
                        for sol_id in solvent_ids}
 
         # Systems section data
         system_id = experiment['system']
-        sys_section = {system_id: copy.deepcopy(self._raw_yaml['systems'][system_id])}
+        sys_section = {system_id: copy.deepcopy(self._categorized_raw_yaml['systems'][system_id])}
 
         # Protocols section data
         protocol_id = experiment['protocol']
-        prot_section = {protocol_id: self._raw_yaml['protocols'][protocol_id]}
+        prot_section = {protocol_id: self._categorized_raw_yaml['protocols'][protocol_id]}
 
         # We pop the options section in experiment and merge it to the general one
         exp_section = experiment.copy()
-        opt_section = self._raw_yaml['options'].copy()
+        opt_section = self._categorized_raw_yaml['options'].copy()
         opt_section.update(exp_section.pop('options', {}))
 
         # Convert relative paths to new script directory

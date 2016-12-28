@@ -394,6 +394,30 @@ set, this option can be used to extend previous simulations past their original 
 Valid Options (1): <Integer>
 
 
+.. _yaml_options_number_of_extension_iterations:
+
+number_of_extension_iterations
+------------------------------
+.. code-block:: yaml
+
+    options:
+      number_of_extension_iterations: 0
+
+Special override of :ref:`yaml_options_number_of_iterations` which allows extending a simulation by an arbitrary number
+of iterations. The simulation will run the additional specified number of iterations, even if a simulation already has
+run for a length of time. For fresh simulations, the resulting simulation is identical to specifying
+:ref:`yaml_options_number_of_iterations` of the same length.
+
+This is helpful for running consecutive batches of simulations for time lengths that are unknown.
+
+*Recommended*: Also set :ref:`resume_setup <yaml_options_resume_setup>` and
+:ref:`resume_simulation <yaml_options_resume_simulation>` to allow resuming simulations.
+
+**OPTIONAL** and **SUPERSEDES** :ref:`yaml_options_number_of_iterations`
+
+Valid Options (0): <Integer>
+
+
 .. _yaml_options_nsteps_per_iteration:
 
 nsteps_per_iteration

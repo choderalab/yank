@@ -9,9 +9,9 @@ TODO
 
 """
 
-#=============================================================================================
+# =============================================================================================
 # GLOBAL IMPORTS
-#=============================================================================================
+# =============================================================================================
 
 import sys
 
@@ -30,15 +30,16 @@ from openmmtools import testsystems
 from yank import utils
 from yank.repex import ThermodynamicState, ReplicaExchange, HamiltonianExchange, ParallelTempering
 
-#=============================================================================================
+# =============================================================================================
 # MODULE CONSTANTS
-#=============================================================================================
+# =============================================================================================
 
 kB = units.BOLTZMANN_CONSTANT_kB * units.AVOGADRO_CONSTANT_NA # Boltzmann constant
 
-#=============================================================================================
+# =============================================================================================
 # SUBROUTINES
-#=============================================================================================
+# =============================================================================================
+
 
 def computeHarmonicOscillatorExpectations(K, mass, temperature):
     """
@@ -69,14 +70,14 @@ def computeHarmonicOscillatorExpectations(K, mass, temperature):
 
     # Compute thermal energy and inverse temperature from specified temperature.
     kB = units.BOLTZMANN_CONSTANT_kB * units.AVOGADRO_CONSTANT_NA
-    kT = kB * temperature # thermal energy
-    beta = 1.0 / kT # inverse temperature
+    kT = kB * temperature  # thermal energy
+    beta = 1.0 / kT  # inverse temperature
 
     # Compute standard deviation along one dimension.
     sigma = 1.0 / units.sqrt(beta * K)
 
     # Define limits of integration along r.
-    r_min = 0.0 * units.nanometers # initial value for integration
+    r_min = 0.0 * units.nanometers  # initial value for integration
     r_max = 10.0 * sigma      # maximum radius to integrate to
 
     # Compute mean and std dev of potential energy.
@@ -102,7 +103,8 @@ def computeHarmonicOscillatorExpectations(K, mass, temperature):
 
     return values
 
-def test_replica_exchange(mpicomm=None, verbose=True):
+
+def test_replica_exchange(mpicomm=None, verbose=True, verbose_simulation=False):
     """
     Test that free energies and average potential energies of a 3D harmonic oscillator are correctly computed by parallel tempering.
 
@@ -148,20 +150,20 @@ def test_replica_exchange(mpicomm=None, verbose=True):
     f_i_analytical = numpy.array(f_i_analytical)
     u_i_analytical = numpy.array(u_i_analytical)
     s_i_analytical = u_i_analytical - f_i_analytical
-    Delta_f_ij_analytical = numpy.zeros([nstates,nstates], numpy.float64)
-    Delta_u_ij_analytical = numpy.zeros([nstates,nstates], numpy.float64)
-    Delta_s_ij_analytical = numpy.zeros([nstates,nstates], numpy.float64)
+    Delta_f_ij_analytical = numpy.zeros([nstates, nstates], numpy.float64)
+    Delta_u_ij_analytical = numpy.zeros([nstates, nstates], numpy.float64)
+    Delta_s_ij_analytical = numpy.zeros([nstates, nstates], numpy.float64)
     for i in range(nstates):
         for j in range(nstates):
-            Delta_f_ij_analytical[i,j] = f_i_analytical[j] - f_i_analytical[i]
-            Delta_u_ij_analytical[i,j] = u_i_analytical[j] - u_i_analytical[i]
-            Delta_s_ij_analytical[i,j] = s_i_analytical[j] - s_i_analytical[i]
+            Delta_f_ij_analytical[i, j] = f_i_analytical[j] - f_i_analytical[i]
+            Delta_u_ij_analytical[i, j] = u_i_analytical[j] - u_i_analytical[i]
+            Delta_s_ij_analytical[i, j] = s_i_analytical[j] - s_i_analytical[i]
 
     # Define file for temporary storage.
     import tempfile # use a temporary file
     file = tempfile.NamedTemporaryFile(delete=False)
     store_filename = file.name
-    #print("node %d : Storing data in temporary file: %s" % (mpicomm.rank, str(store_filename))) # DEBUG
+    # print("node %d : Storing data in temporary file: %s" % (mpicomm.rank, str(store_filename))) # DEBUG
 
     # Create and configure simulation object.
     simulation = ReplicaExchange(store_filename, mpicomm=mpicomm)
@@ -172,13 +174,17 @@ def test_replica_exchange(mpicomm=None, verbose=True):
     simulation.nsteps_per_iteration = 500
     simulation.timestep = 2.0 * units.femtoseconds
     simulation.collision_rate = 20.0 / units.picosecond
-    simulation.verbose = False
+    simulation.verbose = verbose_simulation
     simulation.show_mixing_statistics = False
     simulation.online_analysis = True
 
     # Run simulation.
     utils.config_root_logger(False)
-    simulation.run() # run the simulation
+    simulation.run()  # run the simulation
+
+    # Run an extension simulation
+    simulation.number_of_extension_iterations = 1
+    simulation.run()
     utils.config_root_logger(True)
 
     # Stop here if not root node.
@@ -248,8 +254,10 @@ def test_replica_exchange(mpicomm=None, verbose=True):
     # Clean up.
     del simulation
 
-    if verbose: print("PASSED.")
+    if verbose:
+        print("PASSED.")
     return
+
 
 def notest_hamiltonian_exchange(mpicomm=None, verbose=True):
     """
@@ -390,20 +398,22 @@ def notest_hamiltonian_exchange(mpicomm=None, verbose=True):
     if verbose: print("PASSED.")
     return
 
+
 def test_parameters():
     """Test ReplicaExchange parameters initialization."""
     repex = ReplicaExchange(store_filename='test', nsteps_per_iteration=1e6)
     assert repex.nsteps_per_iteration == 1000000
     assert repex.collision_rate == repex.default_parameters['collision_rate']
 
+
 @tools.raises(TypeError)
 def test_unknown_parameters():
     """Test ReplicaExchange raises exception on wrong initialization."""
     ReplicaExchange(store_filename='test', wrong_parameter=False)
 
-#=============================================================================================
+# =============================================================================================
 # MAIN AND TESTS
-#=============================================================================================
+# =============================================================================================
 
 if __name__ == "__main__":
     # Configure logger.
