@@ -89,7 +89,7 @@ def dispatch(args):
         try:
             import openeye
             import openeye.examples.openeye_tests as OETests
-            print("OpenEye version %s Found! Checking install..." % openeye.__version__)
+            print("OpenEye version {} Found! Checking install...".format(openeye.__version__))
             OETests.run_test_suite()
         except:
             print("Valid OpenEye install not found")
@@ -132,9 +132,10 @@ def dispatch(args):
         print("******************************************")
         import nose
         try:  # Check for timer install
-            result = nose.run(argv=['yank', '--nocapture', '--verbosity=%d' % verbosity, '--with-timer', '-a', '!slow'])
+            result = nose.run(argv=['yank', '--nocapture', '--verbosity={}'.format(verbosity),
+                                    '--with-timer', '-a', '!slow'])
         except:
-            result = nose.run(argv=['yank', '--nocapture', '--verbosity=%d' % verbosity, '-a', '!slow'])
+            result = nose.run(argv=['yank', '--nocapture', '--verbosity={}'.format(verbosity), '-a', '!slow'])
         print("\n")
 
     # Doctests
@@ -163,7 +164,7 @@ def dispatch(args):
         if failure_count == 0:
             print("All doctests pass.")
         else:
-            print("WARNING: There were %d doctest failures." % failure_count)
+            print("WARNING: There were {} doctest failures.".format(failure_count))
         print("\n")
 
     # Helpful end test

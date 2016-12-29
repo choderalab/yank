@@ -102,6 +102,7 @@ if not release:
 # USEFUL SUBROUTINES
 ################################################################################
 
+
 def find_package_data(data_root, package_root):
     files = []
     for root, dirnames, filenames in os.walk(data_root):
@@ -124,7 +125,7 @@ setup(
     description=DOCLINES[0],
     long_description="\n".join(DOCLINES[2:]),
     version=__version__,
-    license='LGPL',
+    license='MIT',
     url='https://github.com/choderalab/yank',
     platforms=['Linux', 'Mac OS-X', 'Unix', 'Windows'],
     classifiers=CLASSIFIERS.splitlines(),

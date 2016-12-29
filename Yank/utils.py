@@ -1615,12 +1615,17 @@ except AttributeError:
         return list(d.values())
     def listitems(d):
         return list(d.items())
+    def dictiter(d):
+        return d.items()
+
 else:
     # Python 2
     def listvalues(d):
         return d.values()
     def listitems(d):
         return d.items()
+    def dictiter(d):
+        return d.iteritems()
 
 #=============================================================================================
 # Main and tests
