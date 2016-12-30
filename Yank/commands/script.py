@@ -25,7 +25,7 @@ usage = """
 YANK script
 
 Usage:
-  yank script (-y FILEPATH | --yaml=FILEPATH) [--platform=PLATFORM] [-o OVERRIDE]...
+  yank script (-y FILEPATH | --yaml=FILEPATH) [-o OVERRIDE]...
 
 Description:
   Set up and run free energy calculations from a YAML script. All options can be specified in the YAML script.
@@ -34,9 +34,6 @@ Required Arguments:
   -y, --yaml=FILEPATH           Path to the YAML script specifying options and/or how to set up and run the experiment.
 
 Optional Arguments:
-  --platform=PLATFORM           Choose a specific hardware platform to run on based on OpenMM types.
-                                Valid options are: Reference, CPU, OpenCL, CUDA, Fastest.
-                                Defaults to Fastest when not chosen.
 
   -o, --override=OVERRIDE       Override a single option in the script file. May be specified multiple times.
                                 Specified as a nested dictionary of the form:

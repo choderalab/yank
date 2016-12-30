@@ -901,7 +901,8 @@ class Boresch(OrientationDependentRestraint):
         heavy_ligand_atoms = set(ligand_atoms) & heavy_atoms
         heavy_receptor_atoms = set(receptor_atoms) & heavy_atoms
         if (len(heavy_receptor_atoms) < 3) or (len(heavy_ligand_atoms) < 3):
-            raise ValueError('There must be at least three heavy atoms in receptor_atoms (# heavy %d) and ligand_atoms (# heavy %d).' % (len(heavy_receptor_atoms), len(heavy_ligand_atoms)))
+            raise ValueError('There must be at least three heavy atoms in receptor_atoms (# heavy %d) and ligand_atoms '
+                             '(# heavy %d).' % (len(heavy_receptor_atoms), len(heavy_ligand_atoms)))
         # Find valid pairs of ligand/receptor atoms within a cutoff
         max_distance = 4 * unit.angstrom/unit.nanometer
         min_distance = 1 * unit.angstrom/unit.nanometer
@@ -924,6 +925,8 @@ class Boresch(OrientationDependentRestraint):
             restraint_atoms = random.sample(heavy_receptor_atoms-raA_set, 2) + raA_atoms + random.sample(heavy_ligand_atoms-raA_set, 2)
             # Reject collinear sets of atoms.
             accepted = not self._is_collinear(positions, restraint_atoms)
+        # Cast to Python ints to avoid type issues when passing to OpenMM
+        restraint_atoms = [int(i) for i in restraint_atoms]
 
         return restraint_atoms
 
