@@ -1,10 +1,10 @@
 #!/usr/local/bin/env python
 
 """
-Test storage.py facility.
+Test storageinterface.py facility.
 
 The tests are written around the netcdf storage handler for its asserts (its default)
-Testing the storage handlers themselves should be left to the test_storage_handlers.py file
+Testing the storage handlers themselves should be left to the test_storage_iodrivers.py file
 
 """
 

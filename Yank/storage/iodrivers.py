@@ -25,7 +25,7 @@ import netCDF4 as nc
 
 from simtk import unit
 
-from .utils import typename, quantity_from_string
+from ..utils import typename, quantity_from_string
 
 # TODO: Use the `with_metaclass` from yank.utils when we merge it in
 ABC = abc.ABCMeta('ABC', (object,), {})  # compatible with Python 2 *and* 3
@@ -378,7 +378,7 @@ class NetCDFIODriver(StorageIODriver):
         ----------
         name : string
             Name of the attribute you wish to assign
-        value : any, but prefered string
+        value : any, but preferred string
             Extra meta data to add to the variable
         path : string, optional, Default: '/'
             Path to the object to assign metadata. If the object does not exist, an error is raised
@@ -739,7 +739,7 @@ class NCVariableTypeHandler(ABC):
         try:
             if self._bound_target.getncattr('IODriver_Type') != self.type_string:
                 raise TypeError("Storage target on NetCDF file is of type {} but this driver is designed to handle "
-                                "type {}!".foramt(self._bound_target.getncattr('IODriver_Type'), self.type_string))
+                                "type {}!".format(self._bound_target.getncattr('IODriver_Type'), self.type_string))
         except AttributeError:
             warnings.warn("This TypeHandler cannot detect storage type from on-disk variable. .write() and .append() "
                           "operations will not work and .read() operations may work", RuntimeWarning)

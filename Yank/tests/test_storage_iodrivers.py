@@ -1,7 +1,7 @@
 #!/usr/local/bin/env python
 
 """
-Test storage_handlers.py facility.
+Test iodrivers.py facility.
 
 """
 

@@ -17,7 +17,7 @@ import os
 import abc
 import warnings
 
-from .storage_handlers import NetCDFIODriver
+from .iodrivers import NetCDFIODriver
 
 ABC = abc.ABCMeta('ABC', (object,), {})  # compatible with Python 2 *and* 3
 
@@ -40,29 +40,9 @@ class StorageInterfaceDirVar(object):
     This class is never meant to be used as its own object and should never be invoked by itself. The class is currently
     housed outside of the main StorageInterface class to show the API to users.
 
+    Examples are located in the StorageInterface main class
+
     TODO: Move this class as an internal class of StorageInterface (NOT a subclass)
-
-    == Examples ==
-
-    Create a basic storage system and write new DATA to disk
-    >>> my_storage = StorageInterface('my_store.nc')
-    >>> my_storage.my_variable.write(DATA)
-
-    Create a folder called "vardir" with two variables in it, "var1" and "var2" holding DATA1 and DATA2 respectively
-    >>> my_storage = StorageInterface('my_store.nc')
-    >>> my_storage.vardir.var1.write(DATA1)
-    >>> my_storage.vardir.var2.write(DATA2)
-
-    Fetch data from the same folders and variables as above
-    >>> my_storage = StorageInterface('my_store.nc')
-    >>> var1 = my_storage.vardir.var1.fetch()
-    >>> var2 = my_storage.vardir.var2.fetch()
-
-    Run some_function() to generate data over an iteration, store each value in a dynamically sized var called "looper"
-    >>> my_storage = StorageInterface('my_store.nc')
-    >>> for i in range(10):
-    >>>     mydata = some_function()
-    >>>     my_storage.looper.append(mydata)
 
     """
 
@@ -120,7 +100,7 @@ class StorageInterfaceDirVar(object):
 
         """
         self._bind_write_append()
-        writeable = False
+        previously_written = True  # Assume this is true until proven otherwise
         if not self._variable:
             path = self.path
             # Try to get already on disk variable
@@ -128,12 +108,11 @@ class StorageInterfaceDirVar(object):
                 self._variable = self._storage_driver.get_variable_handler(path)
             except KeyError:  # Trap the "not present" case, AttributeErrors are larger problems
                 self._variable = self._storage_driver.create_storage_variable(path, type(data))
-                writeable  = True
+                previously_written = False
             self._directory = False
             self._dump_metadata_buffer()
-            if self.predecessor:
-                self.predecessor._write_append_directory()
-        if not writeable and protected_write:
+        # Protect variable if already written
+        if previously_written and protected_write:
             # Lock ability to protect the variable
             raise IOError("Cannot write to protected object on disk! Set 'protected_write = False` to overwrite "
                           "this protection.")
@@ -141,7 +120,7 @@ class StorageInterfaceDirVar(object):
 
     def append(self, data):
         """
-        Write data to a variable who's size changes every time this function is called. The first dimension of the
+        Write data to a variable whose size changes every time this function is called. The first dimension of the
         variable on disk will be appended with data after checking the size. If no variable exists, one is created with
         a dynamic variable size for its first dimension, then the other dimensions are inferred from the data.
 
@@ -164,8 +143,6 @@ class StorageInterfaceDirVar(object):
                 self._variable = self._storage_driver.create_storage_variable(path, type(data))
             self._directory = False
             self._dump_metadata_buffer()
-            if self.predecessor:
-                self.predecessor._write_append_directory()
         self._variable.append(data)
 
     def read(self):
@@ -190,8 +167,6 @@ class StorageInterfaceDirVar(object):
             except KeyError as e:
                 raise e
             self._directory = False
-            if self.predecessor:
-                self.predecessor._read_directory()
         return self._variable.read()
 
     def add_metadata(self, name, data):
@@ -400,8 +375,38 @@ class StorageInterfaceDirVar(object):
 
 class StorageInterface(object):
     """
-    This class holds what folders and variables are known to the file on the disk, or dynamically
-    creates them on the fly. See StorageInterfaceVarDir for how the dynamic interfacing works
+    This class holds what folders and variables are known to the file on the disk, and dynamically
+    creates them on the fly. Any attempt to reference a property which is not explicitly listed below implies that you
+    wish to define either a storage directory or variable, and creates a new StorageInterfaceVarDir (SIVD) with that
+    name. The SIVD is what handles the read/write operations on this disk by interfacing with the uninstanced
+    StorageIODriver you provide to storage_system keyword in StorageInterface class's __init__.
+
+    See StorageInterfaceVarDir for how the dynamic interfacing works.
+
+    Examples
+    --------
+
+    Create a basic storage system and write new my_data to disk
+    >>> my_data = [4,2,1,6]
+    >>> my_storage = StorageInterface('my_store.nc')
+    >>> my_storage.my_variable.write(my_data)
+
+    Create a folder called "vardir" with two variables in it, "var1" and "var2" holding DATA1 and DATA2 respectively
+    Then, fetch data from the same folders and variables as above
+    >>> DATA1 = "some string"
+    >>> DATA2 = (4.5, 7.0, -23.1)
+    >>> my_storage = StorageInterface('my_store.nc')
+    >>> my_storage.vardir.var1.write(DATA1)
+    >>> my_storage.vardir.var2.write(DATA2)
+    >>> var1 = my_storage.vardir.var1.fetch()
+    >>> var2 = my_storage.vardir.var2.fetch()
+
+    Run some_function() to generate data over an iteration, store each value in a dynamically sized var called "looper"
+    >>> mydata = [-1, 24, 5]
+    >>> my_storage = StorageInterface('my_store.nc')
+    >>> for i in range(10):
+    >>>     mydata = some_function()
+    >>>     my_storage.looper.append(mydata)
     """
     def __init__(self, file_name, storage_system=NetCDFIODriver):
         """
