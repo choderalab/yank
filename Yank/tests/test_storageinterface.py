@@ -63,6 +63,16 @@ def test_variable_append_read():
         assert np.all(output_data[1] == input_data)
 
 
+@tools.raises(Exception)
+def test_write_protect():
+    """Test that writing twice without removing protection raises an error"""
+    with omt.utils.temporary_directory() as tmp_dir:
+        si = StorageInterface(tmp_dir + '/teststore.nc')
+        input_data = 4
+        si.four.write(input_data)
+        si.four.write(input_data)
+
+
 def test_unbound_read():
     """Test that a variable can read from the file without previous binding"""
     with omt.utils.temporary_directory() as tmp_dir:
@@ -113,3 +123,17 @@ def test_multi_variable_creation():
         app_data = si.dir0.var1.read()
         assert app_data[0] == input_data
         assert app_data[1] == input_data
+
+
+def test_metadata_creation():
+    """Test that metadata can be added to variables and directories"""
+    with omt.utils.temporary_directory() as tmp_dir:
+        si = StorageInterface(tmp_dir + '/teststore.nc')
+        input_data = 4
+        si.dir0.var1.write(input_data)
+        si.dir0.add_metadata('AmIAGroup', 'yes')
+        si.dir0.var1.add_metadata('AmIAGroup', 'no')
+        dir0 = si._storage_system.ncfile.groups['dir0']
+        var1 = dir0.variables['var1']
+        assert dir0.getncattr('AmIAGroup') == 'yes'
+        assert var1.getncattr('AmIAGroup') == 'no'
