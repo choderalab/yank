@@ -15,7 +15,7 @@ import openmoltools as omt
 
 from nose import tools
 
-from yank.storage_handlers import NetCDFIODriver
+from yank.storage import NetCDFIODriver
 
 # =============================================================================================
 # NETCDFIODRIVER TESTING FUNCTIONS
