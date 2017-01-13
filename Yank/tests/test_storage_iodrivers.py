@@ -39,10 +39,10 @@ def test_netcdf_driver_dimension_manipulation():
     """Test that the NetCDFIODriver can check and create dimensions"""
     with omt.utils.temporary_directory() as tmp_dir:
         nc_io_driver = NetCDFIODriver(tmp_dir + '/test.nc')
+        NetCDFIODriver.check_scalar_dimension(nc_io_driver)
+        NetCDFIODriver.check_iterable_dimension(nc_io_driver, length=4)
+        NetCDFIODriver.check_infinite_dimension(nc_io_driver)
         ncfile = nc_io_driver.ncfile
-        NetCDFIODriver.check_scalar_dimension(ncfile)
-        NetCDFIODriver.check_iterable_dimension(ncfile, length=4)
-        NetCDFIODriver.check_infinite_dimension(ncfile)
         dims = ncfile.dimensions
         assert 'scalar' in dims
         assert 'iterable4' in dims
@@ -53,10 +53,10 @@ def test_netcdf_driver_metadata_creation():
     """Test that the NetCDFIODriver can create metadata on different objects"""
     with omt.utils.temporary_directory() as tmp_dir:
         nc_io_driver = NetCDFIODriver(tmp_dir + '/test.nc')
-        ncfile = nc_io_driver.ncfile
         group1 = nc_io_driver.get_directory('group1')
         nc_io_driver.add_metadata('root_metadata', 'IAm(G)Root!')
         nc_io_driver.add_metadata('group_metadata', 'group1_metadata', path='/group1')
+        ncfile = nc_io_driver.ncfile
         nc_metadata = ncfile.getncattr('root_metadata')
         group_metadata = group1.getncattr('group_metadata')
         assert nc_metadata == 'IAm(G)Root!'
