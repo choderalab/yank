@@ -62,7 +62,7 @@ Detailed Options List
     * :ref:`number_of_equilibration_iterations <yaml_options_number_of_equilibration_iterations>`
     * :ref:`equilibration_timestep <yaml_options_equilibration_timestep>`
     * :ref:`number_of_iterations <yaml_options_number_of_iterations>`
-    * :ref:`number_of_extension_iterations <yaml_options_number_of_extension_iterations>`
+    * :ref:`extension_simulation <yaml_options_extension_simulation>`
     * :ref:`nsteps_per_iteration <yaml_options_nsteps_per_iteration>`
     * :ref:`timestep <yaml_options_timestep>`
     * :ref:`replica_mixing_scheme <yaml_options_replica_mixing_scheme>`

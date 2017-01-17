@@ -554,7 +554,7 @@ class ReplicaExchange(object):
                           'timestep': 2.0 * unit.femtosecond,
                           'nsteps_per_iteration': 500,
                           'number_of_iterations': 1,
-                          'number_of_extension_iterations': 0,  # Do not save this option as its an on-the-fly setting
+                          'extension_simulation': False,  # Do not save this option as its an on-the-fly setting
                           'equilibration_timestep': 1.0 * unit.femtosecond,
                           'number_of_equilibration_iterations': 1,
                           'title': 'Replica-exchange simulation created using ReplicaExchange class of repex.py on %s' % time.asctime(time.localtime()),
@@ -770,8 +770,8 @@ class ReplicaExchange(object):
         r += "timestep: {:s}\n".format(self.timestep)
         r += "number of steps/iteration: {:d}\n".format(self.nsteps_per_iteration)
         r += "number of iterations: {:d}\n".format(self.number_of_iterations)
-        if self.number_of_extension_iterations > 0:
-            r += "extended by {:d}\n".format(self.number_of_extension_iterations)
+        if self.extension_simulation:
+            r += "Iterations extending existing data.\n"
         r += "equilibration timestep: {:s}\n".format(self.equilibration_timestep)
         r += "number of equilibration iterations: {:d}\n".format(self.number_of_equilibration_iterations)
         r += "\n"
@@ -860,10 +860,9 @@ class ReplicaExchange(object):
         # Main loop
         run_start_time = time.time()
         run_start_iteration = self.iteration
-        if self.number_of_extension_iterations > 0:
-            default_iteration_limit = self.iteration + self.number_of_extension_iterations
-        else:
-            default_iteration_limit = self.number_of_iterations
+        default_iteration_limit = self.number_of_iterations
+        if self.extension_simulation:
+            default_iteration_limit += self.iteration
         if niterations_to_run:
             iteration_limit = min(self.iteration + niterations_to_run, default_iteration_limit)
         else:
@@ -924,7 +923,7 @@ class ReplicaExchange(object):
         """
 
         if self._initialized:
-            raise Error("Simulation has already been initialized.")
+            raise Exception("Simulation has already been initialized.")
 
         # Extract a representative system.
         representative_system = self.states[0].system
