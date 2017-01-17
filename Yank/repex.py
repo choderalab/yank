@@ -554,6 +554,7 @@ class ReplicaExchange(object):
                           'timestep': 2.0 * unit.femtosecond,
                           'nsteps_per_iteration': 500,
                           'number_of_iterations': 1,
+                          'number_of_extension_iterations': 0,  # Do not save this option as its an on-the-fly setting
                           'equilibration_timestep': 1.0 * unit.femtosecond,
                           'number_of_equilibration_iterations': 1,
                           'title': 'Replica-exchange simulation created using ReplicaExchange class of repex.py on %s' % time.asctime(time.localtime()),
@@ -568,7 +569,9 @@ class ReplicaExchange(object):
                           }
 
     # Options to store.
-    options_to_store = ['collision_rate', 'constraint_tolerance', 'timestep', 'nsteps_per_iteration', 'number_of_iterations', 'equilibration_timestep', 'number_of_equilibration_iterations', 'title', 'minimize', 'replica_mixing_scheme', 'online_analysis', 'show_mixing_statistics']
+    options_to_store = ['collision_rate', 'constraint_tolerance', 'timestep', 'nsteps_per_iteration',
+                        'number_of_iterations', 'equilibration_timestep', 'number_of_equilibration_iterations', 'title',
+                        'minimize', 'replica_mixing_scheme', 'online_analysis', 'show_mixing_statistics']
 
     def __init__(self, store_filename, mpicomm=None, platform=None, mm=None, **kwargs):
         """
@@ -756,19 +759,21 @@ class ReplicaExchange(object):
         r =  ""
         r += "Replica-exchange simulation\n"
         r += "\n"
-        r += "%d replicas\n" % str(self.nreplicas)
-        r += "%d coordinate sets provided\n" % len(self.provided_positions)
-        r += "file store: %s\n" % str(self.store_filename)
-        r += "initialized: %s\n" % str(self._initialized)
+        r += "{:d} replicas\n".format(self.nreplicas)
+        r += "{:d} coordinate sets provided\n".format(len(self.provided_positions))
+        r += "file store: {:s}\n".format(self.store_filename)
+        r += "initialized: {:s}\n".format(self._initialized)
         r += "\n"
         r += "PARAMETERS\n"
-        r += "collision rate: %s\n" % str(self.collision_rate)
-        r += "relative constraint tolerance: %s\n" % str(self.constraint_tolerance)
-        r += "timestep: %s\n" % str(self.timestep)
-        r += "number of steps/iteration: %s\n" % str(self.nsteps_per_iteration)
-        r += "number of iterations: %s\n" % str(self.number_of_iterations)
-        r += "equilibration timestep: %s\n" % str(self.equilibration_timestep)
-        r += "number of equilibration iterations: %s\n" % str(self.number_of_equilibration_iterations)
+        r += "collision rate: {:s}\n".format(self.collision_rate)
+        r += "relative constraint tolerance: {:s}\n".format(self.constraint_tolerance)
+        r += "timestep: {:s}\n".format(self.timestep)
+        r += "number of steps/iteration: {:d}\n".format(self.nsteps_per_iteration)
+        r += "number of iterations: {:d}\n".format(self.number_of_iterations)
+        if self.number_of_extension_iterations > 0:
+            r += "extended by {:d}\n".format(self.number_of_extension_iterations)
+        r += "equilibration timestep: {:s}\n".format(self.equilibration_timestep)
+        r += "number of equilibration iterations: {:d}\n".format(self.number_of_equilibration_iterations)
         r += "\n"
 
         return r
@@ -855,11 +860,16 @@ class ReplicaExchange(object):
         # Main loop
         run_start_time = time.time()
         run_start_iteration = self.iteration
-        iteration_limit = self.number_of_iterations
+        if self.number_of_extension_iterations > 0:
+            default_iteration_limit = self.iteration + self.number_of_extension_iterations
+        else:
+            default_iteration_limit = self.number_of_iterations
         if niterations_to_run:
-            iteration_limit = min(self.iteration + niterations_to_run, iteration_limit)
+            iteration_limit = min(self.iteration + niterations_to_run, default_iteration_limit)
+        else:
+            iteration_limit = default_iteration_limit
         while (self.iteration < iteration_limit):
-            logger.debug("\nIteration %d / %d" % (self.iteration+1, self.number_of_iterations))
+            logger.debug("\nIteration %d / %d" % (self.iteration+1, iteration_limit))
             initial_time = time.time()
 
             # Attempt replica swaps to sample from equilibrium permuation of states associated with replicas.
@@ -893,8 +903,8 @@ class ReplicaExchange(object):
             if logger.isEnabledFor(logging.DEBUG):
                 final_time = time.time()
                 elapsed_time = final_time - initial_time
-                estimated_time_remaining = (final_time - run_start_time) / (self.iteration - run_start_iteration) * (self.number_of_iterations - self.iteration)
-                estimated_total_time = (final_time - run_start_time) / (self.iteration - run_start_iteration) * (self.number_of_iterations)
+                estimated_time_remaining = (final_time - run_start_time) / (self.iteration - run_start_iteration) * (iteration_limit - self.iteration)
+                estimated_total_time = (final_time - run_start_time) / (self.iteration - run_start_iteration) * (iteration_limit)
                 estimated_finish_time = final_time + estimated_time_remaining
                 logger.debug("Iteration took %.3f s." % elapsed_time)
                 logger.debug("Estimated completion in %s, at %s (consuming total wall clock time %s)." % (str(datetime.timedelta(seconds=estimated_time_remaining)), time.ctime(estimated_finish_time), str(datetime.timedelta(seconds=estimated_total_time))))

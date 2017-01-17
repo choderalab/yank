@@ -166,10 +166,15 @@ To see which platforms your current installation supports, you can query the lis
       3 OpenCL
 
 You can either leave the choice of platform up to YANK---in which case it will choose the fastest available platform---or specify
-the desired platform via the ``--platform`` argument to ``yank``.  For example, to force YANK to use the ``OpenCL`` platform:
+the desired platform via the :ref:`platform argument <yaml_options_platform>` in a YAML file.
+
+You can also (*although not recommended*) override the platform selection through the ``yank script -o`` flag.
+For example, to force YANK to use the ``OpenCL`` platform:
 
 .. code-block:: bash
 
-   $ yank script --yaml=yank.yaml --platform=OpenCL
+   $ yank script --yaml=yank.yaml -o options:platform:OpenCL
+
+See the ``yank script`` command line docs for more information on the ``-o`` flag.
 
 .. note:: The ``CPU`` platform will automatically use all available cores/hyperthreads in serial mode, but in MPI mode, will use a single thread to avoid causing problems in queue-regulated parallel systems.  To control the number of threads yourself, set the ``OPENMM_NUM_THREADS`` environment variable to the desired number of threads.

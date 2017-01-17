@@ -24,7 +24,7 @@ CLASSIFIERS = """\
 Development Status :: 3 - Alpha
 Intended Audience :: Science/Research
 Intended Audience :: Developers
-License :: OSI Approved :: Lesser GNU Public License (LGPL)
+License :: OSI Approved :: The MIT License (MIT)
 Programming Language :: Python
 Programming Language :: Python :: 3
 Topic :: Scientific/Engineering :: Bio-Informatics
@@ -102,6 +102,7 @@ if not release:
 # USEFUL SUBROUTINES
 ################################################################################
 
+
 def find_package_data(data_root, package_root):
     files = []
     for root, dirnames, filenames in os.walk(data_root):
@@ -124,7 +125,7 @@ setup(
     description=DOCLINES[0],
     long_description="\n".join(DOCLINES[2:]),
     version=__version__,
-    license='LGPL',
+    license='MIT',
     url='https://github.com/choderalab/yank',
     platforms=['Linux', 'Mac OS-X', 'Unix', 'Windows'],
     classifiers=CLASSIFIERS.splitlines(),
