@@ -670,7 +670,7 @@ class ReplicaExchange(object):
         # Check to make sure all states have the same number of atoms and are in the same thermodynamic ensemble.
         for state in self.states:
             if not state.is_compatible_with(self.states[0]):
-                raise ParameterError("Provided ThermodynamicState states must all be from the same thermodynamic ensemble.")
+                raise ValueError("Provided ThermodynamicState states must all be from the same thermodynamic ensemble.")
 
         # Distribute coordinate information to replicas in a round-robin fashion.
         # We have to explicitly check to see if z is a list or a set here because it turns out that np 2D arrays are iterable as well.
@@ -728,7 +728,7 @@ class ReplicaExchange(object):
         # Check to make sure all states have the same number of atoms and are in the same thermodynamic ensemble.
         for state in self.states:
             if not state.is_compatible_with(self.states[0]):
-                raise ParameterError("Provided ThermodynamicState states must all be from the same thermodynamic ensemble.")
+                raise ValueError("Provided ThermodynamicState states must all be from the same thermodynamic ensemble.")
 
         # Handle provided 'options' dict, replacing any options provided by caller in dictionary.
         # TODO: Check to make sure that only allowed overrides are specified.
@@ -993,7 +993,7 @@ class ReplicaExchange(object):
         """
 
         if self._initialized:
-            raise Error("Simulation has already been initialized.")
+            raise RuntimeError("Simulation has already been initialized.")
 
         # Extract a representative system.
         representative_system = self.states[0].system
@@ -2345,7 +2345,7 @@ class ReplicaExchange(object):
         natoms = self.ncfile.variables['energies'].shape[2]
 
         # Extract energies.
-        energies = ncfile.variables['energies']
+        energies = self.ncfile.variables['energies']
         u_kln_replica = np.zeros([nstates, nstates, niterations], np.float64)
         for n in range(niterations):
             u_kln_replica[:,:,n] = energies[n,:,:]
@@ -2353,7 +2353,7 @@ class ReplicaExchange(object):
         # Deconvolute replicas
         u_kln = np.zeros([nstates, nstates, niterations], np.float64)
         for iteration in range(niterations):
-            state_indices = ncfile.variables['states'][iteration,:]
+            state_indices = self.ncfile.variables['states'][iteration,:]
             u_kln[state_indices,:,iteration] = energies[iteration,:,:]
 
         # Compute total negative log probability over all iterations.
