@@ -183,7 +183,8 @@ def test_replica_exchange(mpicomm=None, verbose=True, verbose_simulation=False):
     simulation.run()  # run the simulation
 
     # Run an extension simulation
-    simulation.number_of_extension_iterations = 1
+    simulation.extend_simulation = True
+    simulation.number_of_iterations = 1
     simulation.run()
     utils.config_root_logger(True)
 
