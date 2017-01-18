@@ -210,3 +210,21 @@ You should also set the following two options as well as :ref:`yaml_options_numb
 YANK to resume simulations if it detects existing setup file or simulation output respectively. YANK will raise an error
 if these are not set and files exist to protect against overwrite. The only reason these are not mandatory is that if
 no files exist (i.e. fresh simulation), then the simulation will run without error once.
+
+
+Extending Previous Simulations from Command Line
+------------------------------------------------
+
+You may already have a simulation that you previously ran, but do not want to modify the YAML to extend the simulation.
+In this case, your YAML file has ``extend_simulation: False`` or is not set, and you only want to interact with the
+simulation through the command line. You can override individual settings from the command line; the settings for
+extending simulation would look like:
+
+.. code-block:: bash
+
+   $ yank script --yaml=yank.yaml -o options:extend_simulation:True -o options:number_of_iterations:X
+
+where ``X`` is the integer number you wish to extend the simulation by. The second option to override
+``number_of_iterations`` is optional if you are happy the existing option in the YAML file.
+
+See the ``yank script`` command line docs for more information on the ``-o`` flag.
