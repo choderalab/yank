@@ -554,7 +554,7 @@ class ReplicaExchange(object):
                           'timestep': 2.0 * unit.femtosecond,
                           'nsteps_per_iteration': 500,
                           'number_of_iterations': 1,
-                          'extension_simulation': False,  # Do not save this option as its an on-the-fly setting
+                          'extend_simulation': False,  # Do not save this option as its an on-the-fly setting
                           'equilibration_timestep': 1.0 * unit.femtosecond,
                           'number_of_equilibration_iterations': 1,
                           'title': 'Replica-exchange simulation created using ReplicaExchange class of repex.py on %s' % time.asctime(time.localtime()),
@@ -770,7 +770,7 @@ class ReplicaExchange(object):
         r += "timestep: {:s}\n".format(self.timestep)
         r += "number of steps/iteration: {:d}\n".format(self.nsteps_per_iteration)
         r += "number of iterations: {:d}\n".format(self.number_of_iterations)
-        if self.extension_simulation:
+        if self.extend_simulation:
             r += "Iterations extending existing data.\n"
         r += "equilibration timestep: {:s}\n".format(self.equilibration_timestep)
         r += "number of equilibration iterations: {:d}\n".format(self.number_of_equilibration_iterations)
@@ -861,7 +861,7 @@ class ReplicaExchange(object):
         run_start_time = time.time()
         run_start_iteration = self.iteration
         default_iteration_limit = self.number_of_iterations
-        if self.extension_simulation:
+        if self.extend_simulation:
             default_iteration_limit += self.iteration
         if niterations_to_run:
             iteration_limit = min(self.iteration + niterations_to_run, default_iteration_limit)
@@ -923,7 +923,7 @@ class ReplicaExchange(object):
         """
 
         if self._initialized:
-            raise Exception("Simulation has already been initialized.")
+            raise RuntimeError("Simulation has already been initialized.")
 
         # Extract a representative system.
         representative_system = self.states[0].system

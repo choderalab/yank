@@ -185,21 +185,21 @@ In order to extend simulations, set the following options in a YAML fie:
 .. code-block:: yaml
 
   number_of_iterations: <Integer>
-  extension_simulation: True
+  extend_simulation: True
 
 First you set :ref:`yaml_options_number_of_iterations` to an integer number of iterations you wish to extend the
 simulation. If no simulation has been run yet, then one will be run for the number of iterations.
-Setting :ref:`yaml_options_extension_simulation` to ``True`` modifies the behavior of
+Setting :ref:`yaml_options_extend_simulation` to ``True`` modifies the behavior of
 :ref:`yaml_options_number_of_iterations` to extend the simulation by the specified number, adding on to what is already
 on the file.
 
 One could optionally just increase :ref:`yaml_options_number_of_iterations`, but then you have to change
-the YAML file every time you want to extend the run. Setting :ref:`yaml_options_extension_simulation` allows you to run
+the YAML file every time you want to extend the run. Setting :ref:`yaml_options_extend_simulation` allows you to run
 the same YAML file without modification to do the same thing.
 
 
 You should also set the following two options as well as :ref:`yaml_options_number_of_iterations` and
-:ref:`yaml_options_extension_simulation`:
+:ref:`yaml_options_extend_simulation`:
 
 .. code-block:: yaml
 
