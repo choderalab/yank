@@ -213,7 +213,7 @@ no files exist (i.e. fresh simulation), then the simulation will run without err
 
 
 Extending Previous Simulations from Command Line
-------------------------------------------------
+""""""""""""""""""""""""""""""""""""""""""""""""
 
 You may already have a simulation that you previously ran, but do not want to modify the YAML to extend the simulation.
 In this case, your YAML file has ``extend_simulation: False`` or is not set, and you only want to interact with the
