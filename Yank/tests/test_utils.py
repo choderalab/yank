@@ -23,14 +23,6 @@ from yank.utils import *
 # TESTING FUNCTIONS
 #=============================================================================================
 
-def test_is_iterable_container():
-    """Test utility function not_iterable_container()."""
-    assert is_iterable_container(3) == False
-    assert is_iterable_container('ciao') == False
-    assert is_iterable_container([1, 2, 3]) == True
-    assert is_iterable_container(CombinatorialLeaf([1, 2, 3])) == True
-
-
 def test_set_tree_path():
     """Test getting and setting of CombinatorialTree paths."""
     test = CombinatorialTree({'a': 2})
@@ -331,3 +323,36 @@ def test_TLeap_export_run():
         assert os.path.getsize(output_path + '.inpcrd') > 0
         assert os.path.isfile(os.path.join(tmp_dir, 'benzene.leap.log'))
 
+
+def test_subhooked_abcmeta():
+    """Test class SubhookedABCMeta."""
+    # Define an interface
+    class IInterface(SubhookedABCMeta):
+        @abc.abstractmethod
+        def my_method(self): pass
+
+        @abc.abstractproperty
+        def my_property(self): pass
+
+        @staticmethod
+        @abc.abstractmethod
+        def my_static_method(): pass
+
+    # Define object implementing the interface with duck typing
+    class InterfaceImplementation(object):
+        def my_method(self): pass
+
+        def my_property(self): pass
+
+        @staticmethod
+        def my_static_method(): pass
+
+    implementation_instance = InterfaceImplementation()
+    assert isinstance(implementation_instance, IInterface)
+
+    # Define incomplete implementation
+    class WrongInterfaceImplementation(object):
+        def my_method(self): pass
+
+    implementation_instance = WrongInterfaceImplementation()
+    assert not isinstance(implementation_instance, IInterface)
