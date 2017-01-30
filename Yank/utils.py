@@ -21,6 +21,7 @@ import parmed
 import numpy as np
 from simtk import unit
 from schema import Optional, Use
+from simtk.openmm import XmlSerializer
 
 from openmoltools.utils import wraps_py2, unwrap_py2  # Shortcuts for other modules
 
@@ -628,9 +629,9 @@ class CombinatorialTree(collections.MutableMapping):
             yield copy.deepcopy(template_tree._d)
 
 
-#========================================================================================
+# ========================================================================================
 # Miscellaneous functions
-#========================================================================================
+# ========================================================================================
 
 def serialize_openmm_object_to_file(filename, openmm_object):
     """Serialize an OpenMM System, State, or Integrator to specified file.
@@ -642,11 +643,11 @@ def serialize_openmm_object_to_file(filename, openmm_object):
     openmm_object : System, State, or Integrator
         The OpenMM object to serialize
     """
-    from simtk.openmm import XmlSerializer
     serialized_object = XmlSerializer.serialize(openmm_object)
     outfile = open(filename, 'w')
     outfile.write(serialized_object)
-    outfile.close
+    outfile.close()
+
 
 def get_data_filename(relative_path):
     """Get the full path to one of the reference files shipped for testing
@@ -657,7 +658,7 @@ def get_data_filename(relative_path):
 
     Parameters
     ----------
-    name : str
+    relative_path : str
         Name of the file to load, with respect to the yank egg folder which
         is typically located at something like
         ~/anaconda/lib/python2.7/site-packages/yank-*.egg/examples/

@@ -16,8 +16,8 @@ from Cython.Build import cythonize
 DOCLINES = __doc__.split("\n")
 
 ########################
-VERSION = "0.15.0dev0"
-ISRELEASED = False
+VERSION = "0.15.0"
+ISRELEASED = True
 __version__ = VERSION
 ########################
 CLASSIFIERS = """\
@@ -38,6 +38,7 @@ Operating System :: MacOS
 ################################################################################
 # Writing version control information to the module
 ################################################################################
+
 
 def git_version():
     # Return the git revision as a string
