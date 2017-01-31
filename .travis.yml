@@ -41,7 +41,7 @@ script:
   # Install the package
   - conda install --yes --use-local ${PACKAGENAME}-dev
   # Test the package
-  #- if [[ $CONDA_PY = 3.5 ]]; then devtools/travis-ci/build_docs.sh; fi
+  - if [[ $CONDA_PY = 3.5 ]]; then devtools/travis-ci/build_docs.sh; fi
 
 env:
   matrix:
