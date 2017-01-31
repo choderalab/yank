@@ -306,7 +306,7 @@ Alchemical protocol
 
 A number of rules of thumb are followed when choosing what order to carry out alchemical intermediates,
 examples of which can be found in the
-:doc:`Examples Documentation <examples/examples>`.
+:doc:`Examples Documentation <examples/index>`.
 
 #. Couple restraints before any other alchemical changes
 #. Decouple electrostatics first and separate from all other alchemical changes=

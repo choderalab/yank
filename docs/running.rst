@@ -179,7 +179,7 @@ One common operation when running simulations is to collect additional samples f
 better statistics. Alternately, when running on shared resources, you may need to break up long simulations into smaller
 simulations run in series. YANK provides a way to run its simulations in this manner by extending its simulations.
 
-YANK's :doc:`YAML <yamlpages/yaml>` files have two main options that work together to extend simulations.
+YANK's :doc:`YAML <yamlpages/index>` files have two main options that work together to extend simulations.
 In order to extend simulations, set the following options in a YAML fie:
 
 .. code-block:: yaml
