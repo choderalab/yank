@@ -21,4 +21,4 @@ cd docs && make html && cd -
 python devtools/travis-ci/set_doc_version.py
 
 # Prepare versions.json
-python devtools/travis-ci/update_versions_json.py
+#python devtools/travis-ci/update_versions_json.py
