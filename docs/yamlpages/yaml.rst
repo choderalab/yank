@@ -23,6 +23,7 @@ All Pages
    protocols <protocols>
    experiments <experiments>
    Combinatorial Options <combinatorial>
+   YAML Versions <version>
    cookbook
 
 Detailed Options List
@@ -147,7 +148,7 @@ Detailed Options List
     * :ref:`phase1_path <yaml_systems_user_defined>`
     * :ref:`phase2_path <yaml_systems_user_defined>`
     * :ref:`ligand_dsl <yaml_systems_user_defined>`
-    * :ref:`solvent_dsl` <yaml_systems_user_defined>`
+    * :ref:`solvent_dsl <yaml_systems_user_defined>`
     * :ref:`solvent <yaml_systems_user_defined>`
     * :ref:`gromacs_include_dir <yaml_systems_user_defined>`
 

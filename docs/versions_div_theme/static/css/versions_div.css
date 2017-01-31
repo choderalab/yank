@@ -1,0 +1,21 @@
+@import 'theme.css';
+
+.wy-side-nav-search > div.version {
+    ;
+}
+
+.wy-table-responsive table td {
+    white-space: normal;
+}
+
+.rst-content .align-right {
+    width: 300px;
+}
+
+.rst-content p.caption {
+    font-size: 100%;
+}
+
+.rst-content .section ol li {
+    margin-bottom: 0.3em;
+}
