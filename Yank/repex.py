@@ -48,7 +48,7 @@ Written by John D. Chodera <jchodera@gmail.com> while at the University of Calif
 
 LICENSE
 
-This code is licensed under the latest available version of the GNU General Public License.
+This code is licensed under the latest available version of the MIT License.
 
 """
 

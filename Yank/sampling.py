@@ -718,7 +718,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
             if (not np.isnan(u_new)) and ((du <= 0.0) or (np.random.rand() < np.exp(-du))):
                 self.rotation_trials_accepted += 1
                 self.replica_positions[replica_index] = perturbed_positions
-            #print("rotation du = %f (%d)" % (du, self.rotation_trials_accepted))
+            # print("rotation du = %f (%d)" % (du, self.rotation_trials_accepted))
             # Accumulate timing information.
             final_time = time.time()
             elapsed_time = final_time - initial_time
@@ -734,7 +734,7 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
         MAX_NAN_RETRIES = 6
         nan_counter = 0
         completed = False
-        while (not completed):
+        while not completed:
             try:
                 # Set box vectors.
                 box_vectors = self.replica_box_vectors[replica_index]
@@ -744,11 +744,12 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
                 if np.any(np.isnan(positions / unit.angstroms)):
                     raise Exception('Initial particle positions for replica %d before propagation are NaN' % replica_index)
                 # Set positions.
-                positions = self.replica_positions[replica_index]
                 context.setPositions(positions)
                 setpositions_end_time = time.time()
                 # Assign Maxwell-Boltzmann velocities.
                 context.setVelocitiesToTemperature(state.temperature, int(np.random.randint(0, MAX_SEED)))
+                # Get velocities in case we have to record them on NaN
+                velocities = context.getState(getVelocities=True).getVelocities(asNumpy=True)
                 setvelocities_end_time = time.time()
                 # Check if initial potential energy is NaN.
                 if np.isnan(context.getState(getEnergy=True).getPotentialEnergy() / state.kT):
@@ -777,7 +778,25 @@ class ModifiedHamiltonianExchange(ReplicaExchange):
                     nan_counter += 1
                     if nan_counter >= MAX_NAN_RETRIES:
                         raise Exception('Maximum number of NAN retries (%d) exceeded.' % MAX_NAN_RETRIES)
-                    logger.info('NaN detected in replica %d. Retrying (%d / %d).' % (replica_index, nan_counter, MAX_NAN_RETRIES))
+                    logger.info('NaN detected in replica %d. Retrying (%d / %d).' % (replica_index, nan_counter,
+                                                                                     MAX_NAN_RETRIES))
+                    # Serialize to XML
+                    from yank.utils import serialize_openmm_object_to_file
+                    positions = self.replica_positions[replica_index]
+                    box_vectors = self.replica_box_vectors[replica_index]
+                    context.setPeriodicBoxVectors(box_vectors[0, :], box_vectors[1, :], box_vectors[2, :])
+                    context.setPositions(positions)
+                    context.setVelocities(velocities)
+                    openmm_state = context.getState(getPositions=True, getVelocities=True, getEnergy=True,
+                                                    getForces=True, getParameters=True)
+                    prefix = 'iteration%d-replica%d-state%d-nan%d' % (self.iteration, replica_index, state_index,
+                                                                      nan_counter)
+                    serialize_openmm_object_to_file(prefix + '.system.xml', context.getSystem())
+                    serialize_openmm_object_to_file(prefix + '.integrator.xml', context.getIntegrator())
+                    serialize_openmm_object_to_file(prefix + '.state.xml', openmm_state)
+                    logger.info('Serialized initial System, State, and Integrator to %s.*' % prefix)
+                    del openmm_state
+
                 else:
                     # It's not an exception we recognize, so re-raise it
                     raise e

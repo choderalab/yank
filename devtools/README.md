@@ -28,7 +28,7 @@ Checklist for all Updates
 Checklist for Major Revisions (YANK X.Y+1.0)
 ------------------------------------------
 - [ ] Make sure all issues related to the milestone will be closed by this commit or moved to future releases
-- [ ] Update `docs/changelog.rst`
+- [ ] Update `docs/whatsnew.rst`
 - [ ] Update `setup.py` with version number and `ISRELEASED` to `True`
 - [ ] Do the steps for All Upates
 - [ ] Create a new release on GitHub, reference the tag and copy the changes in `docs/whatsnew.rst`
