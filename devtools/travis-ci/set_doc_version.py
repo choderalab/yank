@@ -14,7 +14,7 @@ shutil.copytree("docs/_build", "docs/_deploy/{docversion}"
 if version.release:
     # Update the "latest" index file
     base_index_string = """<html><head><meta http-equiv="refresh" content="0;URL='/{WHEREISLATEST}'"/></head></html>"""
-    index_html = base_index_string.format(docversion)
+    index_html = base_index_string.format(WHEREISLATEST=docversion)
     try:
         os.mkdir("docs/_deploy/latest")
     except:
