@@ -68,7 +68,7 @@ deploy:
       bucket: "getyank.org"
       skip_cleanup: true
       #local_dir: docs/_deploy
-      file: versions.json
+      file: "versions.json"
       on:
           branch: hardfixdocs
           condition: "$CONDA_PY = 3.5"
