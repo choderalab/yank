@@ -14,7 +14,7 @@ addons:
 
 branches:
   only:
-    - master
+    - hardfixdocs
 
 install:
   - source devtools/travis-ci/install.sh
@@ -27,26 +27,24 @@ install:
 
 script:
   # Create a test environment
-  - conda create --yes -n test python=$python
+  #- conda create --yes -n test python=$python
   # Activate the test environment
-  - source activate test
+  #- source activate test
   # Add omnia dev channels
-  - conda config --add channels https://conda.anaconda.org/omnia/label/dev
+  #- conda config --add channels https://conda.anaconda.org/omnia/label/dev
   # Install extras for OpenEye and testing
-  - conda install --yes --quiet pip nose nose-timer
+  #- conda install --yes --quiet pip nose nose-timer
   # Install OpenEye toolkit
-  - pip install $OPENEYE_CHANNEL openeye-toolkits && python -c "import openeye; print(openeye.__version__)"
+  #- pip install $OPENEYE_CHANNEL openeye-toolkits && python -c "import openeye; print(openeye.__version__)"
   # Build the recipe
-  - conda build devtools/conda-recipe
+  #- conda build devtools/conda-recipe
   # Install the package
-  - conda install --yes --use-local ${PACKAGENAME}-dev
+  #- conda install --yes --use-local ${PACKAGENAME}-dev
   # Test the package
-  - cd devtools && nosetests $PACKAGENAME --nocapture --verbosity=2 --with-timer -a '!slow' && cd .. && if [[ $CONDA_PY = 3.5 ]]; then devtools/travis-ci/build_docs.sh; fi
+  #- if [[ $CONDA_PY = 3.5 ]]; then devtools/travis-ci/build_docs.sh; fi
 
 env:
   matrix:
-    - python=2.7  CONDA_PY=2.7
-    - python=3.4  CONDA_PY=3.4
     - python=3.5  CONDA_PY=3.5
 
   global:
@@ -69,7 +67,8 @@ deploy:
       secret_access_key: ${AWS_SECRET_ACCESS_KEY}
       bucket: "getyank.org"
       skip_cleanup: true
-      local_dir: docs/_deploy
+      #local_dir: docs/_deploy
+      file: versions.json
       on:
-          branch: master
+          branch: hardfixdocs
           condition: "$CONDA_PY = 3.5"

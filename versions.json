@@ -1,0 +1,20 @@
+[
+  {
+    "version": "Development",
+    "url": "http://get.org/development/",
+    "display": "Development",
+    "latest": false
+  },
+  {
+    "latest": false,
+    "display": "0.14.1",
+    "url": "http://www.getyank.org/0.14.1/home.html",
+    "version": "0.14.1"
+  },
+  {
+    "version": "0.15.0",
+    "display": "0.15.0",
+    "latest": true,
+    "url": "http://www.getyank.org/0.15.0/home.html"
+  }
+]
