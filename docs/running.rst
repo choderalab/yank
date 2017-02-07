@@ -9,8 +9,8 @@ Hardware
 Running on GPUs
 """""""""""""""
 
-YANK uses `OpenMM <http://openmm.org>`_ as its simulation engine, which runs fastest on modern GPUs using either the ``CUDA` or ``OpenCL`` platforms.
-Modern GTX-class hardware, such as the `GTX-1080 <http://www.geforce.com/hardware/10series/geforce-gtx-1080>`_ or `GTX-TITAN-X <http://www.geforce.com/hardware/desktop-gpus/geforce-gtx-titan-x>`_, should work very well.
+YANK uses `OpenMM <http://openmm.org>`_ as its simulation engine, which runs fastest on modern GPUs using either the ``CUDA`` or ``OpenCL`` platforms.
+Modern GTX-class hardware, such as the `GTX-1080 <http://www.geforce.com/hardware/10series/geforce-gtx-1080>`_ or `GTX-TITAN-X (Maxwell) <http://www.geforce.com/hardware/desktop-gpus/geforce-gtx-titan-x>`_, should work very well.
 See :ref:`Supported hardware <supported_hardware>` for more information about supported and recommended hardware.
 
 Running on the CPU
@@ -41,15 +41,16 @@ We utilize the widely-supported
 `Message Passing Interface (MPI) standard <http://www.mcs.anl.gov/research/projects/mpi/standard.html>`_ for parallelization.
 All simulations are run using the same OpenMM ``Platform`` choice (``CUDA``, ``OpenCL``, ``CPU``, or ``Reference``)
 
-- Cuda visible devices
-- Config thing
-- SLURM
+.. todo::
+   - ``$CUDA_VISIBLE_DEVICES``
+   - MPI ``configfile``s
+   - SLURM
 
 No GPU management is needed on single GPU/node systems.
 
-Multi-GPU and multi-node systems require masking the GPUs so YANK only sees the one its suppose to. Effectively you need
-to set the ``CUDA_VISIBLE_DEVICES`` variables on each process to mask all but the 1 card you want to use. We cannot provide
-a universal solution as systems will differ, but we can provide some general rules of thumb.
+Multi-GPU and multi-node systems require masking the GPUs so YANK only sees the one its suppose to.
+You will need to set the ``CUDA_VISIBLE_DEVICES`` environment variables on each process to mask all but the card you intend to use.
+We cannot provide a universal solution as systems will differ, but we can provide some general rules of thumb.
 
 * |torquepbs|
 
