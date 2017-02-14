@@ -117,7 +117,6 @@ def dispatch_report(args):
         print("Rendering this notebook requires the following packages:\n"
               " - matplotlib\n"
               "These are not required to generate the notebook however")
-        return False
     store = args['--store']
     output = args['--output']
     template_path = pkg_resources.resource_filename('yank', 'reports/YANK_Health_Report_Template.ipynb')
