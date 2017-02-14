@@ -2117,7 +2117,6 @@ class ReplicaExchange(object):
         """
         options = dict()
 
-        import numpy
         from .utils import quantity_from_string
         for option_name in ncgrp.variables.keys():
             # Get NetCDF variable.
