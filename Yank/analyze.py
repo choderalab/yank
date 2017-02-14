@@ -43,9 +43,59 @@ kB = units.BOLTZMANN_CONSTANT_kB * units.AVOGADRO_CONSTANT_NA
 # =============================================================================================
 
 
+def generate_mixing_statistics(ncfile, nequil=0):
+    """
+    Generate the mixing statistics
+
+    Parameters
+    ----------
+    ncfile : netCDF4.Dataset
+       NetCDF file
+    nequil : int, optional, default=0
+       If specified, only samples nequil:end will be used in analysis
+
+    Returns
+    -------
+    mixing_stats : np.array of shape [nstates, nstates]
+        Transition matrix estimate
+    mu : np.array
+        Eigenvalues of the Transition matrix sorted in descending order
+    """
+
+    # Get dimensions.
+    niterations = ncfile.variables['states'].shape[0]
+    nstates = ncfile.variables['states'].shape[1]
+
+    # Compute empirical transition count matrix.
+    Nij = np.zeros([nstates, nstates], np.float64)
+    for iteration in range(nequil, niterations-1):
+        for ireplica in range(nstates):
+            istate = ncfile.variables['states'][iteration, ireplica]
+            jstate = ncfile.variables['states'][iteration+1, ireplica]
+            Nij[istate, jstate] += 1
+
+    # Compute transition matrix estimate.
+    # TODO: Replace with maximum likelihood reversible count estimator from msmbuilder or pyemma.
+    Tij = np.zeros([nstates,nstates], np.float64)
+    for istate in range(nstates):
+        denom = (Nij[istate,:].sum() + Nij[:,istate].sum())
+        if denom > 0:
+            for jstate in range(nstates):
+                Tij[istate, jstate] = (Nij[istate, jstate] + Nij[jstate, istate]) / denom
+        else:
+            Tij[istate, istate] = 1.0
+
+    # Estimate eigenvalues
+    mu = np.linalg.eigvals(Tij)
+    mu = -np.sort(-mu)  # Sort in descending order
+
+    return Tij, mu
+
+
 def show_mixing_statistics(ncfile, cutoff=0.05, nequil=0):
     """
-    Print summary of mixing statistics.
+    Print summary of mixing statistics. Passes information off to generate_mixing_statistics then prints it out to
+    the logger
 
     Parameters
     ----------
@@ -59,30 +109,10 @@ def show_mixing_statistics(ncfile, cutoff=0.05, nequil=0):
 
     """
 
-    # Get dimensions.
-    niterations = ncfile.variables['states'].shape[0]
-    nstates = ncfile.variables['states'].shape[1]
-
-    # Compute empirical transition count matrix.
-    Nij = np.zeros([nstates,nstates], np.float64)
-    for iteration in range(nequil, niterations-1):
-        for ireplica in range(nstates):
-            istate = ncfile.variables['states'][iteration,ireplica]
-            jstate = ncfile.variables['states'][iteration+1,ireplica]
-            Nij[istate,jstate] += 1
-
-    # Compute transition matrix estimate.
-    # TODO: Replace with maximum likelihood reversible count estimator from msmbuilder or pyemma.
-    Tij = np.zeros([nstates,nstates], np.float64)
-    for istate in range(nstates):
-        denom = (Nij[istate,:].sum() + Nij[:,istate].sum())
-        if (denom > 0):
-            for jstate in range(nstates):
-                Tij[istate,jstate] = (Nij[istate,jstate] + Nij[jstate,istate]) / denom
-        else:
-            Tij[istate,istate] = 1.0
+    Tij, mu = generate_mixing_statistics(ncfile, nequil=nequil)
 
     # Print observed transition probabilities.
+    nstates = ncfile.variables['states'].shape[1]
     logger.info("Cumulative symmetrized state mixing transition matrix:")
     str_row = "%6s" % ""
     for jstate in range(nstates):
@@ -94,19 +124,19 @@ def show_mixing_statistics(ncfile, cutoff=0.05, nequil=0):
         str_row += "%-6d" % istate
         for jstate in range(nstates):
             P = Tij[istate,jstate]
-            if (P >= cutoff):
+            if P >= cutoff:
                 str_row += "%6.3f" % P
             else:
                 str_row += "%6s" % ""
         logger.info(str_row)
 
     # Estimate second eigenvalue and equilibration time.
-    mu = np.linalg.eigvals(Tij)
-    mu = -np.sort(-mu) # sort in descending order
-    if (mu[1] >= 1):
+    if mu[1] >= 1:
         logger.info("Perron eigenvalue is unity; Markov chain is decomposable.")
     else:
-        logger.info("Perron eigenvalue is %9.5f; state equilibration timescale is ~ %.1f iterations" % (mu[1], 1.0 / (1.0 - mu[1])))
+        logger.info("Perron eigenvalue is {0:9.5f}; state equilibration timescale is ~ {1:.1f} iterations".format(
+            mu[1], 1.0 / (1.0 - mu[1]))
+        )
 
     return
 
