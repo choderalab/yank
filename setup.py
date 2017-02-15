@@ -16,7 +16,7 @@ from Cython.Build import cythonize
 DOCLINES = __doc__.split("\n")
 
 ########################
-VERSION = "0.15.0"  # Primary base version of the build
+VERSION = "0.15.1"  # Primary base version of the build
 DEVBUILD = "0"      # Dev build status, Either None or Integer as string
 ISRELEASED = False  # Are we releasing this as a full cut?
 __version__ = VERSION
@@ -136,8 +136,9 @@ setup(
     platforms=['Linux', 'Mac OS-X', 'Unix', 'Windows'],
     classifiers=CLASSIFIERS.splitlines(),
     package_dir={'yank': 'Yank'},
-    packages=['yank', "yank.tests", "yank.tests.data", "yank.commands", "yank.mixing"] + ['yank.%s' % package for package in find_packages('yank')],
-    package_data={'yank' : find_package_data('Yank/tests/data', 'yank')},  # NOTE: examples installs to yank.egg/examples/, NOT yank.egg/yank/examples/.  You need to do utils.get_data_filename("../examples/*/setup/").
+    packages=['yank', "yank.tests", "yank.tests.data", "yank.commands", "yank.mixing"] + ['yank.{}'.format(package) for package in find_packages('yank')],
+    package_data={'yank': find_package_data('Yank/tests/data', 'yank') + ['reports/*.ipynb'],
+                  },
     zip_safe=False,
     install_requires=[
         'numpy',
