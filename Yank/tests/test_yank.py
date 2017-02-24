@@ -120,6 +120,41 @@ def test_phase_creation():
         assert deserialized_topology == mdtraj.Topology.from_openmm(toluene.topology)
 
 
+def test_expanded_cutoff_creation():
+    """Test Anisotropic Dispersion Correction expanded cutoff states are created"""
+    phase_name = 'my-explicit-phase'
+    alanine = testsystems.AlanineDipeptideExplicit()
+    protocol = AbsoluteAlchemicalFactory.defaultSolventProtocolExplicit()
+    atom_indices = find_components(alanine.system, alanine.topology, 'not water')
+    phase = AlchemicalPhase(phase_name, alanine.system, alanine.topology,
+                            alanine.positions, atom_indices, protocol)
+    thermodynamic_state = ThermodynamicState(temperature=300.0 * unit.kelvin)
+
+    # Create new simulation.
+    with enter_temp_directory():
+        output_dir = 'output'
+        utils.config_root_logger(verbose=False)
+        yank = Yank(store_directory=output_dir, anisotropic_dispersion_correction=True)
+        yank.create(thermodynamic_state, phase)
+        default_expanded_cutoff = Yank.default_parameters['anisotropic_dispersion_cutoff']
+
+        # Test that the expanded cutoff systems were created
+        nc_path = os.path.join(output_dir, phase_name + '.nc')
+
+        # Read data
+        nc_file = netcdf.Dataset(nc_path, mode='r')
+        expanded_cutoff_group = nc_file.groups['expanded_cutoff_states']
+        fully_interacting_serial_state = expanded_cutoff_group.variables['fully_interacting_expanded_system'][0]
+        noninteracting_serial_state = expanded_cutoff_group.variables['noninteracting_expanded_system'][0]
+        nc_file.close()
+
+        for serial_system in [fully_interacting_serial_state, noninteracting_serial_state]:
+            system = openmm.XmlSerializer.deserialize(str(serial_system))
+            forces = {system.getForce(index).__class__.__name__: system.getForce(index) for index in
+                      range(system.getNumForces())}
+            assert forces['NonbondedForce'].getCutoffDistance() == default_expanded_cutoff
+
+
 def notest_LennardJonesPair(box_width_nsigma=6.0):
     """
     Compute binding free energy of two Lennard-Jones particles and compare to numerical result.

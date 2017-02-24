@@ -241,10 +241,51 @@ Constrain bond lengths and angles. See OpenMM ``createSystem()`` documentation f
 
 Valid options: [Hbonds]/AllBonds/HAngles
 
+
+.. _yaml_options_anisotropic_dispersion_correction:
+
+anisotropic_dispersion_correction
+---------------------------------
+.. code-block:: yaml
+
+   options:
+     anisotropic_dispersion_correction: yes
+
+Tell YANK to compute anisotropic dispersion corrections for long-range interactions. YANK accounts for these effects
+by creating two additional thermodynamic states at either end of the :ref:`thermodynamic cycle <yank_cycle>` with
+larger long-range cutoffs to remove errors introduced from treating long-range interactions as a homogenous, equal
+density medium. We estimate the free energy relative to these expanded cutoff states. No simulation is actually carried
+out at these states but energies from simulations are evaluated at them.
+
+This option only applies if you have specified a
+:ref:`system with periodic boundary conditions <yaml_solvents_nonbonded_method>`. You set the size of these expanded
+cutoffs through the :ref:`yaml_options_anisotropic_dispersion_cutoff` option.
+
+We put this option in the general options category instead of the :doc:`solvents <solvents>` section since these
+additional states are unique to YANK's setup.
+
+Valid options: [yes]/no
+
+
+.. _yaml_options_anisotropic_dispersion_cutoff:
+
+anisotropic_dispersion_cutoff
+-----------------------------
+.. code-block:: yaml
+
+   options:
+     anisotropic_dispersion_cutoff: 16.0 * angstrom
+
+Specify the expanded cutoff distance for YANK's :ref:`yaml_options_anisotropic_dispersion_correction` setting.
+Please see the main :ref:`yaml_options_anisotropic_dispersion_correction` option for details/
+
+Valid options (16 * angstrom): <Quantity Length> [1]_
+
+.. note:: This will be combined with :ref:`yaml_options_anisotropic_dispersion_correction` in our version 2.0 of our YAML code.
+
 |
 
 .. _yaml_options_simulation_parameters:
-
 
 Simulation Parameters
 =====================

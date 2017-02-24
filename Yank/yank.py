@@ -128,7 +128,9 @@ class Yank(object):
         'randomize_ligand_sigma_multiplier': 2.0,
         'randomize_ligand_close_cutoff': 1.5 * unit.angstrom,
         'mc_displacement_sigma': 10.0 * unit.angstroms,
-        'anisotropic_dispersion_correction': True
+        'anisotropic_dispersion_correction': True,
+        'anisotropic_dispersion_cutoff': 16 * unit.angstroms
+
     }
 
     def __init__(self, store_directory, mpicomm=None, platform=None, **kwargs):
@@ -381,7 +383,7 @@ class Yank(object):
         # account for that by hand.
 
         # Helper function for expanded cutoff
-        def expand_cutoff(passed_system, max_allowed_cutoff = 16 * unit.angstroms):
+        def expand_cutoff(passed_system, expanded_cutoff_length):
             # Determine minimum box side dimension
             box_vectors = passed_system.getDefaultPeriodicBoxVectors()
             min_box_dimension = min([max(vector) for vector in box_vectors])
@@ -389,29 +391,30 @@ class Yank(object):
             # If we use a barostat we leave more room for volume fluctuations or
             # we risk fatal errors. If we don't use a barostat, OpenMM will raise
             # the appropriate exception on context creation.
-            max_switching_distance = max_allowed_cutoff - (1 * unit.angstrom)
-            # TODO: Make max_allowed_cutoff an option
-            if thermodynamic_state.pressure and min_box_dimension < 2.25 * max_allowed_cutoff:
-                raise RuntimeError('Barostated box sides must be at least 36 Angstroms '
-                                   'to correct for missing dispersion interactions')
+            expanded_switching_distance = expanded_cutoff_length - (1 * unit.angstrom)
+            if thermodynamic_state.pressure and min_box_dimension < 2.25 * expanded_cutoff_length:
+                raise RuntimeError('Barostated box sides must be at least {} Angstroms '
+                                   'to correct for missing dispersion interactions'
+                                   ''.format(expanded_cutoff_length/unit.angstrom * 2))
 
             logger.debug('Setting cutoff for fully interacting system to maximum '
-                         'allowed {}'.format(str(max_allowed_cutoff)))
+                         'allowed {}'.format(str(expanded_cutoff_length)))
 
             # Expanded cutoff system if needed
             # We don't want to reduce the cutoff if its already large
             for force in passed_system.getForces():
                 try:
-                    if force.getCutoffDistance() < max_allowed_cutoff:
-                        force.setCutoffDistance(max_allowed_cutoff)
+                    if force.getCutoffDistance() < expanded_cutoff_length:
+                        force.setCutoffDistance(expanded_cutoff_length)
                         # Set switch distance
                         # We don't need to check if we are using a switch since there is a setting for that.
-                        force.setSwitchingDistance(max_switching_distance)
+                        force.setSwitchingDistance(expanded_switching_distance)
                 except Exception:
                     pass
                 try:
-                    if force.getCutoff() < max_allowed_cutoff:
-                        force.setCutoff(max_allowed_cutoff)
+                    # Check for other types of forces
+                    if force.getCutoff() < expanded_cutoff_length:
+                        force.setCutoff(expanded_cutoff_length)
                 except Exception:
                     pass
 
@@ -423,7 +426,7 @@ class Yank(object):
             fully_interacting_expanded_system = copy.deepcopy(reference_system)
 
             # Expand Cutoff
-            expand_cutoff(fully_interacting_expanded_system)
+            expand_cutoff(fully_interacting_expanded_system, self._anisotropic_dispersion_cutoff)
 
             # Construct thermodynamic states
             fully_interacting_expanded_state = copy.deepcopy(thermodynamic_state)

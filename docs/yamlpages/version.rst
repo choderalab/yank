@@ -9,6 +9,6 @@ The header provides a means to ensure that your YAML file will be supported by t
 
 .. code-block:: yaml
 
-    version: 1.1
+    version: 1.2
 
-Valid Options: [1.0, 1.1]
+Valid Options: [1.0, 1.1, 1.2]
