@@ -43,7 +43,7 @@ All simulations are run using the same OpenMM ``Platform`` choice (``CUDA``, ``O
 
 .. todo::
    - ``$CUDA_VISIBLE_DEVICES``
-   - MPI ``configfile``s
+   - MPI ``configfile``
    - SLURM
 
 No GPU management is needed on single GPU/node systems.
