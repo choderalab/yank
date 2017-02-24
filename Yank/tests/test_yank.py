@@ -129,14 +129,20 @@ def test_expanded_cutoff_creation():
     phase = AlchemicalPhase(phase_name, alanine.system, alanine.topology,
                             alanine.positions, atom_indices, protocol)
     thermodynamic_state = ThermodynamicState(temperature=300.0 * unit.kelvin)
+    # Calculate the max cutoff
+    box_vectors = alanine.system.getDefaultPeriodicBoxVectors()
+    min_box_dimension = min([max(vector) for vector in box_vectors])
+    # Shrink cutoff to just below maximum allowed
+    max_expanded_cutoff = (min_box_dimension / 2.0) * 0.99
 
     # Create new simulation.
     with enter_temp_directory():
         output_dir = 'output'
         utils.config_root_logger(verbose=False)
-        yank = Yank(store_directory=output_dir, anisotropic_dispersion_correction=True)
+        yank = Yank(store_directory=output_dir,
+                    anisotropic_dispersion_correction=True,
+                    anisotropic_dispersion_cutoff=max_expanded_cutoff)
         yank.create(thermodynamic_state, phase)
-        default_expanded_cutoff = Yank.default_parameters['anisotropic_dispersion_cutoff']
 
         # Test that the expanded cutoff systems were created
         nc_path = os.path.join(output_dir, phase_name + '.nc')
@@ -152,7 +158,7 @@ def test_expanded_cutoff_creation():
             system = openmm.XmlSerializer.deserialize(str(serial_system))
             forces = {system.getForce(index).__class__.__name__: system.getForce(index) for index in
                       range(system.getNumForces())}
-            assert forces['NonbondedForce'].getCutoffDistance() == default_expanded_cutoff
+            assert forces['NonbondedForce'].getCutoffDistance() == max_expanded_cutoff
 
 
 def notest_LennardJonesPair(box_width_nsigma=6.0):
