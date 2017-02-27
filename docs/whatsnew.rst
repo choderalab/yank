@@ -6,6 +6,11 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the github yank releases page <https://github.com/choderalab/yank/releases>`_.
 
+0.15.2 Health Report and Anisotropic Dispersion Control
+-------------------------------------------------------
+- Added simulation Health Report through a Jupyter Notebook with CLI support
+- Added ability to control Anisotropic Dispersion Correction through YAML files
+
 0.15.0 Backend and Helpful Debugging Build
 ------------------------------------------
 - Added support for ``solvent_dsl`` in user defined systems of YAML pages
