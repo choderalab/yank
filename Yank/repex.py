@@ -70,7 +70,7 @@ import numpy as np
 import mdtraj as md
 import netCDF4 as netcdf
 
-from .utils import is_terminal_verbose, delayed_termination
+from yank import utils
 
 logger = logging.getLogger(__name__)
 
@@ -231,7 +231,14 @@ class ReplicaExchange(object):
                         'number_of_iterations', 'equilibration_timestep', 'number_of_equilibration_iterations', 'title',
                         'minimize', 'replica_mixing_scheme', 'online_analysis', 'show_mixing_statistics']
 
-    def __init__(self, store_filename, mpicomm=None, platform=None, mm=None, **kwargs):
+    def __init__(self, nsteps_per_iteration=500,
+                 number_of_iterations=1,
+                 replica_mixing_scheme='swap-all',
+                 online_analysis=False,
+                 online_analysis_min_iterations=20,
+                 show_energies=True,
+                 show_mixing_statistics=True,
+                 title=None):
         """
         Initialize replica-exchange simulation facility.
 
@@ -252,39 +259,27 @@ class ReplicaExchange(object):
             Parameters in ReplicaExchange.default_parameters corresponding public attributes.
 
         """
-        # To allow for parameters to be modified after object creation, class is not initialized until a call to self._initialize().
+        if title is None:
+            title = ('Replica-exchange simulation created using ReplicaExchange '
+                     'class of repex.py on {}'.format(time.asctime(time.localtime())))
+
+        # To initialize either call create() or the from_storage() constructor.
         self._initialized = False
 
-        # Select default OpenMM implementation if not specified.
-        self.mm = mm
-        if mm is None: self.mm = openmm
+        # Get MPI communicator, if any.
+        self._mpicomm = utils.get_mpicomm()
 
-        # Set MPI communicator (or None if not used).
-        self.mpicomm = mpicomm
-
-        # Set default options.
-        # These can be changed externally until object is initialized.
-        self.platform = platform
-        self.integrator = None # OpenMM integrator to use for propagating dynamics
-
-        # Initialize keywords parameters and check for unknown keywords parameters
-        for par, default in self.default_parameters.items():
-            setattr(self, par, kwargs.pop(par, default))
-        if kwargs:
-            raise TypeError('got an unexpected keyword arguments {}'.format(
-                ', '.join(kwargs.keys())))
-
-        # Record store file filename
-        self.store_filename = store_filename
-
-        # Check if netcdf file exists, assuming we want to resume if one exists.
-        self._resume = os.path.exists(self.store_filename) and (os.path.getsize(self.store_filename) > 0)
-        if self.mpicomm:
-            logger.debug('Node {}/{}: MPI bcast - sharing self._resume'.format(
-                    self.mpicomm.rank, self.mpicomm.size))
-            self._resume = self.mpicomm.bcast(self._resume, root=0)  # use whatever root node decides
-
-        return
+        # Store constructor parameters. Everything is marked for internal
+        # usage because any change these attribute will imply a change in
+        # the storage file as well, which we don't currently support.
+        self._nsteps_per_iteration = nsteps_per_iteration
+        self._number_of_iterations = number_of_iterations
+        self._replica_mixing_scheme = replica_mixing_scheme
+        self._online_analysis = online_analysis
+        self._online_analysis_min_iterations = online_analysis_min_iterations
+        self._show_energies = show_energies
+        self._show_mixing_statistics = show_mixing_statistics
+        self._title = title
 
     def create(self, states, positions, options=None, metadata=None):
         """
@@ -593,7 +588,7 @@ class ReplicaExchange(object):
             logger.debug("Initialized node %d / %d" % (self.mpicomm.rank, self.mpicomm.size))
 
         # Display papers to be cited.
-        if is_terminal_verbose():
+        if  utils.is_terminal_verbose():
             self._display_citations()
 
         # Determine number of alchemical states.
@@ -663,7 +658,7 @@ class ReplicaExchange(object):
             logger.debug("Initialized node %d / %d" % (self.mpicomm.rank, self.mpicomm.size))
 
         # Display papers to be cited.
-        if is_terminal_verbose():
+        if  utils.is_terminal_verbose():
             self._display_citations()
 
         # Determine number of alchemical states.
@@ -1492,7 +1487,7 @@ class ReplicaExchange(object):
 
         return
 
-    @delayed_termination
+    @ utils.delayed_termination
     def _write_iteration_netcdf(self):
         """
         Write positions, states, and energies of current iteration to NetCDF file.
