@@ -122,6 +122,96 @@ def get_mpicomm():
 get_mpicomm._is_initialized = False  # Static variable
 
 
+def run_single_node(rank, task, *args, **kwargs):
+    """Run task on a single node.
+
+    If MPI is not activated, this simply runs locally.
+
+    Parameters
+    ----------
+    task : callable
+        The task to run on node rank.
+    rank : int
+        The rank of the MPI communicator that must execute the task.
+    broadcast_result : bool, optional
+        If True the result is broadcasted to all nodes. If False,
+        only the node executing the task will receive the return
+        value of the task, and all other nodes will receive None.
+
+    Other Parameters
+    ----------------
+    *args
+        The ordered arguments to pass to task.
+    *kwargs
+        The keyword arguments to pass to task.
+
+    Returns
+    -------
+    result
+        The return value of the task. This will be None on all nodes
+        that is not the rank unless broadcast_result is set to True.
+
+    Examples
+    --------
+    >>> def add(a, b):
+    ...     return a + b
+    >>> # Run 3+4 on node 0.
+    >>> run_single_node(0, task=add, a=3, b=4, broadcast_result=True)
+    7
+
+    """
+    broadcast_result = kwargs.pop('broadcast_result', False)
+    result = None
+    mpicomm = get_mpicomm()
+
+    # Execute the task only on the specified node.
+    if mpicomm is None or mpicomm.rank == rank:
+        result = task(*args, **kwargs)
+
+    # Broadcast the result if required.
+    if mpicomm is not None and broadcast_result:
+        result = mpicomm.bcast(result, rank=rank)
+
+    # Return result.
+    return result
+
+
+def on_single_node(rank, broadcast_result=False):
+    """A decorator version of run_single_node.
+
+    Decorates a function to be always executed with run_single_node.
+
+    Parameters
+    ----------
+    rank : int
+        The rank of the MPI communicator that must execute the task.
+    broadcast_result : bool, optional
+        If True the result is broadcasted to all nodes. If False,
+        only the node executing the function will receive its return
+        value, and all other nodes will receive None.
+
+    See Also
+    --------
+    run_single_node
+
+    Examples
+    --------
+    >>> @on_single_node(rank=0, broadcast_result=True)
+    ... def add(a, b):
+    ...     return a + b
+    >>> add(3, 4)
+    7
+
+    """
+    def _on_single_node(task):
+        @wraps_py2(task)
+        def _wrapper(*args, **kwargs):
+            kwargs['broadcast_result'] = broadcast_result
+            return run_single_node(rank, task, *args, **kwargs)
+        return _wrapper
+    return _on_single_node
+
+
 @contextmanager
 def delay_termination():
     """Context manager to delay handling of termination signals.
@@ -160,3 +250,12 @@ def delayed_termination(func):
         with delay_termination():
             return func(*args, **kwargs)
     return _delayed_termination
+
+
+# ==============================================================================
+# MAIN AND TESTS
+# ==============================================================================
+
+if __name__ == "__main__":
+    import doctest
+    doctest.testmod()
