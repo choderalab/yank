@@ -149,15 +149,30 @@ def config_root_logger(verbose, log_file_path=None, mpicomm=None):
 # MPI utility functions
 # =======================================================================================
 
-def initialize_mpi():
-    """Initialize and configure MPI to handle correctly terminate.
+def get_mpicomm():
+    """Retrieve the MPI communicator for this execution.
+
+    The function automatically detects if the program runs on MPI by checking
+    specific environment variables set by various MPI implementations. On
+    first execution, it modifies sys.excepthook and register a handler for
+    SIGINT, SIGTERM, SIGABRT to call Abort() to correctly terminate all
+    processes.
 
     Returns
     -------
-    mpicomm : mpi4py communicator
-        The communicator for this node.
+    mpicomm : mpi4py communicator or None
+        The communicator for this node, None if the program doesn't run
+        with MPI.
 
     """
+    # If MPI execution is forcefully disabled, return None.
+    if get_mpicomm.disable_mpi:
+        return None
+
+    # If we have already initialized MPI, return the cached MPI communicator.
+    if get_mpicomm.is_initialized:
+        return get_mpicomm._mpicomm
+
     # Check for environment variables set by mpirun. Variables are from
     # http://docs.roguewave.com/threadspotter/2012.1/linux/manual_html/apas03.html
     variables = ['PMI_RANK', 'OMPI_COMM_WORLD_RANK', 'OMPI_MCA_ns_nds_vpid',
@@ -168,8 +183,11 @@ def initialize_mpi():
         if var in os.environ:
             use_mpi = True
             break
+
+    # Return None if we are not running on MPI.
     if not use_mpi:
-        return None
+        get_mpicomm._mpicomm = None
+        return get_mpicomm._mpicomm
 
     # Initialize MPI
     from mpi4py import MPI
@@ -193,7 +211,14 @@ def initialize_mpi():
     for sig in [signal.SIGINT, signal.SIGTERM, signal.SIGABRT]:
         signal.signal(sig, handle_signal)
 
+    # Cache and return the MPI communicator.
+    get_mpicomm.is_initialized = True
+    get_mpicomm._mpicomm = mpicomm
     return mpicomm
+
+get_mpicomm.is_initialized = False
+get_mpicomm.disable_mpi = False
+
 
 @contextmanager
 def delay_termination():
