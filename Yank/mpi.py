@@ -34,6 +34,7 @@ delayed_termination
 
 import os
 import sys
+import math
 import signal
 from contextlib import contextmanager
 
@@ -211,6 +212,82 @@ def on_single_node(rank, broadcast_result=False):
         return _wrapper
     return _on_single_node
 
+
+def distribute(task, all_args, sendto=None):
+    """Map the task on a sequence of arguments to be executed on different nodes.
+
+    Parameters
+    ----------
+    task : callable
+        The task to be distributed among nodes.
+    all_args : iterable
+        The sequence of the parameters to pass to the task.
+    sendto : int or 'all', optional
+        If the string 'all', the result will be sent to all nodes. If an int,
+        the result will be send only to the node with rank sendto. The return
+        value of distribute depends on the value of this parameter.
+
+    Returns
+    -------
+    all_results : list or None
+        If sendto is 'all', this is the list of the results of the function
+        mapped to the given list or input args. If sendto is an int, this is
+        None on all nodes but the node with rank sendto, in which case it is
+        the list of all the results of mapped function. If sendto is unspecified
+        this will be the list of the results computed exclusively by this node.
+
+    Examples
+    --------
+    >>> def square(x):
+    ...     return x**2
+    >>> distribute(square, [1, 2, 3, 4], sendto='all')
+    [1, 4, 9, 16]
+
+    """
+    mpicomm = get_mpicomm()
+    n_jobs = len(all_args)
+
+    # If MPI is not activated, just run serially.
+    if mpicomm is None:
+        return [task(job_args) for job_args in all_args]
+
+    # Compute all the results assigned to this node.
+    results = []
+    for job_id in range(mpicomm.rank, n_jobs, mpicomm.size):
+        results.append(task(all_args[job_id]))
+
+    # Share result as specified.
+    if sendto == 'all':
+        all_results = mpicomm.allgather(results)
+    elif isinstance(sendto, int):
+        all_results = mpicomm.gather(results, root=sendto)
+
+        # If this is not the receiving node, we can safely return.
+        if mpicomm.rank != sendto:
+            return None
+    else:
+        assert sendto is None  # Safety check.
+        return results
+
+    # all_results is a list of list of results. The internal lists of
+    # results are ordered by rank. We need to reorder the results as a
+    # flat list or results ordered by job_id.
+
+    # job_indices[job_id] is the tuple of indices (rank, i). The result
+    # of job_id is stored in all_results[rank][i].
+    job_indices = []
+    max_jobs_per_node = max([len(r) for r in all_results])
+    for i in range(max_jobs_per_node):
+        for rank in range(mpicomm.size):
+            # Not all nodes have executed max_jobs_per_node tasks.
+            if len(all_results[rank]) > i:
+                job_indices.append((rank, i))
+
+    # Reorder the results.
+    all_results = [all_results[rank][i] for rank, i in job_indices]
+
+    # Return result.
+    return all_results
 
 @contextmanager
 def delay_termination():
