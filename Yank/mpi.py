@@ -232,7 +232,7 @@ def on_single_node(rank, broadcast_result=False, sync_nodes=False):
     return _on_single_node
 
 
-def distribute(task, all_args, send_result_to=None, sync_nodes=False):
+def distribute(task, all_args, send_results_to=None, sync_nodes=False):
     """Map the task on a sequence of arguments to be executed on different nodes.
 
     If MPI is not activated, this simply runs serially on this node.
@@ -244,9 +244,9 @@ def distribute(task, all_args, send_result_to=None, sync_nodes=False):
         argument.
     all_args : iterable
         The sequence of the parameters to pass to the task.
-    send_result_to : int or 'all', optional
+    send_results_to : int or 'all', optional
         If the string 'all', the result will be sent to all nodes. If an
-        int, the result will be send only to the node with rank send_result_to.
+        int, the result will be send only to the node with rank send_results_to.
         The return value of distribute depends on the value of this parameter
         (default is None).
     sync_nodes : bool, optional
@@ -257,29 +257,30 @@ def distribute(task, all_args, send_result_to=None, sync_nodes=False):
     Returns
     -------
     all_results : list, tuple or None
-        If send_result_to is 'all', this is the list of the results of the
-        function mapped to the given list or input args. If send_result_to
-        is an int, this is None on all nodes but the node with rank send_result_to,
-        in which case it is the list of all the results of mapped function.
-        If send_result_to is unspecified this will be the a tuple of lists
-        (results, job_ids) containing the results and the indices of the
-        computed exclusively by this node.
+        If send_results_to is 'all', this is the list of the results of the
+        function mapped to the given list or input args. If send_results_to
+        is an int, this is the list of all the results of mapped function
+        only for the node with rank send_results_to, otherwise this is a
+        tuple of lists (results, job_ids) containing the results and the
+        indices of the args processed exclusively by this node. The same
+        tuple is returned if send_results_to is unspecified.
 
     Examples
     --------
     >>> def square(x):
     ...     return x**2
-    >>> distribute(square, [1, 2, 3, 4], send_result_to='all')
+    >>> distribute(square, [1, 2, 3, 4], send_results_to='all')
     [1, 4, 9, 16]
 
     """
     mpicomm = get_mpicomm()
     n_jobs = len(all_args)
-    node_job_ids = range(mpicomm.rank, n_jobs, mpicomm.size)
 
     # If MPI is not activated, just run serially.
     if mpicomm is None:
         return [task(job_args) for job_args in all_args]
+
+    node_job_ids = range(mpicomm.rank, n_jobs, mpicomm.size)
 
     # Compute all the results assigned to this node.
     results = []
@@ -287,16 +288,16 @@ def distribute(task, all_args, send_result_to=None, sync_nodes=False):
         results.append(task(all_args[job_id]))
 
     # Share result as specified.
-    if send_result_to == 'all':
+    if send_results_to == 'all':
         all_results = mpicomm.allgather(results)
-    elif isinstance(send_result_to, int):
-        all_results = mpicomm.gather(results, root=send_result_to)
+    elif isinstance(send_results_to, int):
+        all_results = mpicomm.gather(results, root=send_results_to)
 
         # If this is not the receiving node, we can safely return.
-        if mpicomm.rank != send_result_to:
-            return None
+        if mpicomm.rank != send_results_to:
+            return results, list(node_job_ids)
     else:
-        assert send_result_to is None  # Safety check.
+        assert send_results_to is None  # Safety check.
         if sync_nodes is True:
             mpicomm.barrier()
         return results, list(node_job_ids)
