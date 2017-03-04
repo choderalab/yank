@@ -183,7 +183,7 @@ def run_single_node(rank, task, *args, **kwargs):
     # Broadcast the result if required.
     if mpicomm is not None:
         if broadcast_result:
-            result = mpicomm.bcast(result, rank=rank)
+            result = mpicomm.bcast(result, root=rank)
         elif sync_nodes is True:
             mpicomm.barrier()
 
@@ -256,21 +256,19 @@ def distribute(task, all_args, send_results_to=None, sync_nodes=False):
 
     Returns
     -------
-    all_results : list, tuple or None
-        If send_results_to is 'all', this is the list of the results of the
-        function mapped to the given list or input args. If send_results_to
-        is an int, this is the list of all the results of mapped function
-        only for the node with rank send_results_to, otherwise this is a
-        tuple of lists (results, job_ids) containing the results and the
-        indices of the args processed exclusively by this node. The same
-        tuple is returned if send_results_to is unspecified.
+    all_results : tuple of lists (results, job_ids)
+        A tuple containing two lists (results, job_ids), where results[i) is
+        the list of the return values of task(all_args[job_ids[i]]). This
+        can is the the full list of results for all jobs if send_results_to
+        include the current node, otherwise this includes only the tasks
+        executed exclusively by this node.
 
     Examples
     --------
     >>> def square(x):
     ...     return x**2
     >>> distribute(square, [1, 2, 3, 4], send_results_to='all')
-    [1, 4, 9, 16]
+    ([1, 4, 9, 16], [0, 1, 2, 3])
 
     """
     mpicomm = get_mpicomm()
@@ -278,7 +276,8 @@ def distribute(task, all_args, send_results_to=None, sync_nodes=False):
 
     # If MPI is not activated, just run serially.
     if mpicomm is None:
-        return [task(job_args) for job_args in all_args]
+        all_results = [task(job_args) for job_args in all_args]
+        return all_results, list(range(n_jobs))
 
     node_job_ids = range(mpicomm.rank, n_jobs, mpicomm.size)
 
@@ -320,7 +319,7 @@ def distribute(task, all_args, send_results_to=None, sync_nodes=False):
     all_results = [all_results[rank][i] for rank, i in job_indices]
 
     # Return result.
-    return all_results
+    return all_results, list(range(n_jobs))
 
 
 @contextmanager

@@ -47,7 +47,7 @@ def test_on_single_node():
     mpicomm = get_mpicomm()
     node_executing = 1
 
-    @on_single_node(broadcast_result=False)
+    @on_single_node(rank=node_executing, broadcast_result=False)
     def add(a, b):
         return a + b
     result = add(3, 4)
@@ -56,7 +56,7 @@ def test_on_single_node():
     else:
         assert result == 7
 
-    @on_single_node(broadcast_result=True)
+    @on_single_node(rank=node_executing, broadcast_result=True)
     def add(a, b):
         return a + b
     result = add(3, 4)
@@ -67,22 +67,27 @@ def test_distribute():
     """Test distribute function."""
     def square(x):
         return x**2
+    root_node = 1
     all_args = [1, 2, 3, 4]
-    all_expected_results = [1, 4, 9, 16]
+    all_indices = list(range(len(all_args)))
 
+    # Determining full and partial results.
     mpicomm = get_mpicomm()
     if mpicomm is not None:
         job_indices = list(range(mpicomm.rank, 4, mpicomm.size))
-        partial_expected_results = [all_expected_results[i] for i in job_indices]
+    else:
+        job_indices = all_indices
+    full_expected_results = ([square(x) for x in all_args], all_indices)
+    partial_expected_results = ([full_expected_results[0][i] for i in job_indices], job_indices)
 
-    result = distribute(square, all_args, send_result_to='all')
-    assert result == [1, 4, 9, 16]
+    result = distribute(square, all_args, send_results_to='all')
+    assert result == full_expected_results
 
-    result = distribute(square, all_args, send_result_to=1)
-    if mpicomm is not None and mpicomm.rank != 1:
+    result = distribute(square, all_args, send_results_to=root_node)
+    if mpicomm is not None and mpicomm.rank != root_node:
         assert result == partial_expected_results
     else:
-        assert result == all_expected_results
+        assert result == full_expected_results
 
-    result = distribute(square, all_args, send_result_to=None)
+    result = distribute(square, all_args, send_results_to=None)
     assert result == partial_expected_results
