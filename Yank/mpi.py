@@ -256,18 +256,26 @@ def distribute(task, all_args, send_results_to=None, sync_nodes=False):
 
     Returns
     -------
-    all_results : tuple of lists (results, job_ids)
-        A tuple containing two lists (results, job_ids), where results[i) is
-        the list of the return values of task(all_args[job_ids[i]]). This
-        can is the the full list of results for all jobs if send_results_to
-        include the current node, otherwise this includes only the tasks
-        executed exclusively by this node.
+    all_results : list
+        All the return values for all the arguments if the results where sent
+        to the node, or only the return values of the arguments processed by
+        this node otherwise.
+    arg_indices : list of int, optional
+        This is returned as part of a tuple (all_results, job_indices) only
+        if send_results_to is set to an int or None. In this case all_results[i]
+        is the return value of task(all_args[arg_indices[i]]).
 
     Examples
     --------
     >>> def square(x):
     ...     return x**2
     >>> distribute(square, [1, 2, 3, 4], send_results_to='all')
+    [1, 4, 9, 16]
+
+    When send_results_to is not set to `all`, the return value include also
+    the indices of the arguments associated to the result.
+
+    >>> distribute(square, [1, 2, 3, 4], send_results_to=0)
     ([1, 4, 9, 16], [0, 1, 2, 3])
 
     """
@@ -277,7 +285,10 @@ def distribute(task, all_args, send_results_to=None, sync_nodes=False):
     # If MPI is not activated, just run serially.
     if mpicomm is None:
         all_results = [task(job_args) for job_args in all_args]
-        return all_results, list(range(n_jobs))
+        if send_results_to == 'all':
+            return all_results
+        else:
+            return all_results, list(range(n_jobs))
 
     node_job_ids = range(mpicomm.rank, n_jobs, mpicomm.size)
 
@@ -319,7 +330,10 @@ def distribute(task, all_args, send_results_to=None, sync_nodes=False):
     all_results = [all_results[rank][i] for rank, i in job_indices]
 
     # Return result.
-    return all_results, list(range(n_jobs))
+    if send_results_to == 'all':
+        return all_results
+    else:
+        return all_results, list(range(n_jobs))
 
 
 @contextmanager

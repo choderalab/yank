@@ -69,25 +69,26 @@ def test_distribute():
         return x**2
     root_node = 1
     all_args = [1, 2, 3, 4]
+
     all_indices = list(range(len(all_args)))
+    all_expected_results = [square(x) for x in all_args]
 
     # Determining full and partial results.
     mpicomm = get_mpicomm()
     if mpicomm is not None:
-        job_indices = list(range(mpicomm.rank, 4, mpicomm.size))
+        partial_job_indices = list(range(mpicomm.rank, 4, mpicomm.size))
     else:
-        job_indices = all_indices
-    full_expected_results = ([square(x) for x in all_args], all_indices)
-    partial_expected_results = ([full_expected_results[0][i] for i in job_indices], job_indices)
+        partial_job_indices = all_indices
+    partial_expected_results = [all_expected_results[i] for i in partial_job_indices]
 
     result = distribute(square, all_args, send_results_to='all')
-    assert result == full_expected_results
+    assert result == all_expected_results
 
     result = distribute(square, all_args, send_results_to=root_node)
     if mpicomm is not None and mpicomm.rank != root_node:
-        assert result == partial_expected_results
+        assert result == (partial_expected_results, partial_job_indices)
     else:
-        assert result == full_expected_results
+        assert result == (all_expected_results, all_indices)
 
     result = distribute(square, all_args, send_results_to=None)
-    assert result == partial_expected_results
+    assert result == (partial_expected_results, partial_job_indices)
