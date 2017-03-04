@@ -20,6 +20,12 @@ Routines
 get_mpicomm
     Automatically detect and configure MPI execution and return an
     MPI communicator.
+run_single_node
+    Run a task on a single node.
+on_single_node
+    Decorator version of run_single_node.
+distribute
+    Map a task on a sequence of arguments on all the nodes.
 delay_termination
     A context manager to delay the response to termination signals.
 delayed_termination
@@ -34,7 +40,6 @@ delayed_termination
 
 import os
 import sys
-import math
 import signal
 from contextlib import contextmanager
 
@@ -135,9 +140,14 @@ def run_single_node(rank, task, *args, **kwargs):
     rank : int
         The rank of the MPI communicator that must execute the task.
     broadcast_result : bool, optional
-        If True the result is broadcasted to all nodes. If False,
+        If True, the result is broadcasted to all nodes. If False,
         only the node executing the task will receive the return
-        value of the task, and all other nodes will receive None.
+        value of the task, and all other nodes will receive None
+        (default is False).
+    sync_nodes : bool, optional
+        If True, the nodes will be synchronized at the end of the
+        execution (i.e. the task will be blocking) even if the
+        result is not broadcasted  (default is False).
 
     Other Parameters
     ----------------
@@ -162,6 +172,7 @@ def run_single_node(rank, task, *args, **kwargs):
 
     """
     broadcast_result = kwargs.pop('broadcast_result', False)
+    sync_nodes = kwargs.pop('sync_nodes', False)
     result = None
     mpicomm = get_mpicomm()
 
@@ -170,14 +181,17 @@ def run_single_node(rank, task, *args, **kwargs):
         result = task(*args, **kwargs)
 
     # Broadcast the result if required.
-    if mpicomm is not None and broadcast_result:
-        result = mpicomm.bcast(result, rank=rank)
+    if mpicomm is not None:
+        if broadcast_result:
+            result = mpicomm.bcast(result, rank=rank)
+        elif sync_nodes is True:
+            mpicomm.barrier()
 
     # Return result.
     return result
 
 
-def on_single_node(rank, broadcast_result=False):
+def on_single_node(rank, broadcast_result=False, sync_nodes=False):
     """A decorator version of run_single_node.
 
     Decorates a function to be always executed with run_single_node.
@@ -189,7 +203,11 @@ def on_single_node(rank, broadcast_result=False):
     broadcast_result : bool, optional
         If True the result is broadcasted to all nodes. If False,
         only the node executing the function will receive its return
-        value, and all other nodes will receive None.
+        value, and all other nodes will receive None (default is False).
+    sync_nodes : bool, optional
+        If True, the nodes will be synchronized at the end of the
+        execution (i.e. the task will be blocking) even if the
+        result is not broadcasted (default is False).
 
     See Also
     --------
@@ -208,13 +226,16 @@ def on_single_node(rank, broadcast_result=False):
         @wraps_py2(task)
         def _wrapper(*args, **kwargs):
             kwargs['broadcast_result'] = broadcast_result
+            kwargs['sync_nodes'] = sync_nodes
             return run_single_node(rank, task, *args, **kwargs)
         return _wrapper
     return _on_single_node
 
 
-def distribute(task, all_args, sendto=None):
+def distribute(task, all_args, send_result_to=None, sync_nodes=False):
     """Map the task on a sequence of arguments to be executed on different nodes.
+
+    If MPI is not activated, this simply runs serially on this node.
 
     Parameters
     ----------
@@ -222,25 +243,31 @@ def distribute(task, all_args, sendto=None):
         The task to be distributed among nodes.
     all_args : iterable
         The sequence of the parameters to pass to the task.
-    sendto : int or 'all', optional
-        If the string 'all', the result will be sent to all nodes. If an int,
-        the result will be send only to the node with rank sendto. The return
-        value of distribute depends on the value of this parameter.
+    send_result_to : int or 'all', optional
+        If the string 'all', the result will be sent to all nodes. If an
+        int, the result will be send only to the node with rank send_result_to.
+        The return value of distribute depends on the value of this parameter
+        (default is None).
+    sync_nodes : bool, optional
+        If True, the nodes will be synchronized at the end of the
+        execution (i.e. the task will be blocking) even if the
+        result is not shared (default is False).
 
     Returns
     -------
     all_results : list or None
-        If sendto is 'all', this is the list of the results of the function
-        mapped to the given list or input args. If sendto is an int, this is
-        None on all nodes but the node with rank sendto, in which case it is
-        the list of all the results of mapped function. If sendto is unspecified
-        this will be the list of the results computed exclusively by this node.
+        If send_result_to is 'all', this is the list of the results of the
+        function mapped to the given list or input args. If send_result_to
+        is an int, this is None on all nodes but the node with rank send_result_to,
+        in which case it is the list of all the results of mapped function.
+        If send_result_to is unspecified this will be the list of the results
+        computed exclusively by this node.
 
     Examples
     --------
     >>> def square(x):
     ...     return x**2
-    >>> distribute(square, [1, 2, 3, 4], sendto='all')
+    >>> distribute(square, [1, 2, 3, 4], send_result_to='all')
     [1, 4, 9, 16]
 
     """
@@ -257,16 +284,18 @@ def distribute(task, all_args, sendto=None):
         results.append(task(all_args[job_id]))
 
     # Share result as specified.
-    if sendto == 'all':
+    if send_result_to == 'all':
         all_results = mpicomm.allgather(results)
-    elif isinstance(sendto, int):
-        all_results = mpicomm.gather(results, root=sendto)
+    elif isinstance(send_result_to, int):
+        all_results = mpicomm.gather(results, root=send_result_to)
 
         # If this is not the receiving node, we can safely return.
-        if mpicomm.rank != sendto:
+        if mpicomm.rank != send_result_to:
             return None
     else:
-        assert sendto is None  # Safety check.
+        assert send_result_to is None  # Safety check.
+        if sync_nodes is True:
+            mpicomm.barrier()
         return results
 
     # all_results is a list of list of results. The internal lists of
@@ -288,6 +317,7 @@ def distribute(task, all_args, sendto=None):
 
     # Return result.
     return all_results
+
 
 @contextmanager
 def delay_termination():
