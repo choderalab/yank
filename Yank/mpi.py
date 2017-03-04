@@ -240,7 +240,8 @@ def distribute(task, all_args, send_result_to=None, sync_nodes=False):
     Parameters
     ----------
     task : callable
-        The task to be distributed among nodes.
+        The task to be distributed among nodes. The task must take a single
+        argument.
     all_args : iterable
         The sequence of the parameters to pass to the task.
     send_result_to : int or 'all', optional
@@ -255,12 +256,13 @@ def distribute(task, all_args, send_result_to=None, sync_nodes=False):
 
     Returns
     -------
-    all_results : list or None
+    all_results : list, tuple or None
         If send_result_to is 'all', this is the list of the results of the
         function mapped to the given list or input args. If send_result_to
         is an int, this is None on all nodes but the node with rank send_result_to,
         in which case it is the list of all the results of mapped function.
-        If send_result_to is unspecified this will be the list of the results
+        If send_result_to is unspecified this will be the a tuple of lists
+        (results, job_ids) containing the results and the indices of the
         computed exclusively by this node.
 
     Examples
@@ -273,6 +275,7 @@ def distribute(task, all_args, send_result_to=None, sync_nodes=False):
     """
     mpicomm = get_mpicomm()
     n_jobs = len(all_args)
+    node_job_ids = range(mpicomm.rank, n_jobs, mpicomm.size)
 
     # If MPI is not activated, just run serially.
     if mpicomm is None:
@@ -280,7 +283,7 @@ def distribute(task, all_args, send_result_to=None, sync_nodes=False):
 
     # Compute all the results assigned to this node.
     results = []
-    for job_id in range(mpicomm.rank, n_jobs, mpicomm.size):
+    for job_id in node_job_ids:
         results.append(task(all_args[job_id]))
 
     # Share result as specified.
@@ -296,7 +299,7 @@ def distribute(task, all_args, send_result_to=None, sync_nodes=False):
         assert send_result_to is None  # Safety check.
         if sync_nodes is True:
             mpicomm.barrier()
-        return results
+        return results, list(node_job_ids)
 
     # all_results is a list of list of results. The internal lists of
     # results are ordered by rank. We need to reorder the results as a
