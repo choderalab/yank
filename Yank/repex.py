@@ -96,9 +96,9 @@ class ParameterException(Exception):
     pass
 
 
-#=============================================================================================
-# Replica-exchange simulation
-#=============================================================================================
+# ==============================================================================
+# REPLICA-EXCHANGE SIMULATION
+# ==============================================================================
 
 class ReplicaExchange(object):
     """
@@ -1462,12 +1462,6 @@ class ReplicaExchange(object):
 
         # Create timestamp variable.
         ncvar_timestamp = ncfile.createVariable('timestamp', str, ('iteration',), zlib=False, chunksizes=(1,))
-
-        # Create group for performance statistics.
-        ncgrp_timings = ncfile.createGroup('timings')
-        ncvar_iteration_time = ncgrp_timings.createVariable('iteration', 'f', ('iteration',), zlib=False, chunksizes=(1,)) # total iteration time (seconds)
-        ncvar_iteration_time = ncgrp_timings.createVariable('mixing', 'f', ('iteration',), zlib=False, chunksizes=(1,)) # time for mixing
-        ncvar_iteration_time = ncgrp_timings.createVariable('propagate', 'f', ('iteration','replica'), zlib=False, chunksizes=(1,self.nreplicas)) # total time to propagate each replica
 
         # Store thermodynamic states.
         self._store_thermodynamic_states(ncfile)
