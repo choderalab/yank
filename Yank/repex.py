@@ -70,6 +70,8 @@ import numpy as np
 import mdtraj as md
 import netCDF4 as netcdf
 
+import openmmtools as mmtools
+
 from yank import utils
 
 logger = logging.getLogger(__name__)
@@ -94,6 +96,141 @@ class ParameterException(Exception):
 
     """
     pass
+
+
+# ==============================================================================
+# REPLICA EXCHANGE REPORTER
+# ==============================================================================
+
+class Reporter(object):
+    """Handle storage write/read operations and different format conventions."""
+
+    def __init__(self, storage):
+        self._storage_file_path = storage
+        self._ncfile = None
+
+    def create_storage(self, thermodynamic_states, title=''):
+        """Create a new storage file."""
+        n_replicas = len(thermodynamic_states)
+        n_atoms = thermodynamic_states[0].n_particles
+
+        # Open NetCDF 4 file for writing.
+        ncfile = netcdf.Dataset(self._storage_file_path, 'w', version='NETCDF4')
+
+        # Create dimensions.
+        ncfile.createDimension('scalar', 1)  # Scalar dimension.
+        ncfile.createDimension('iteration', 0)  # Unlimited number of iterations.
+        ncfile.createDimension('replica', n_replicas)  # Number of replicas.
+        ncfile.createDimension('atom', n_atoms)  # Number of atoms in system.
+        ncfile.createDimension('spatial', 3)  # Number of spatial dimensions.
+
+        # Set global attributes.
+        setattr(ncfile, 'title', title)
+        setattr(ncfile, 'application', 'YANK')
+        setattr(ncfile, 'program', 'yank.py')
+        setattr(ncfile, 'programVersion', 'unknown')  # TODO: Include actual version.
+        setattr(ncfile, 'Conventions', 'YANK')
+        setattr(ncfile, 'ConventionVersion', '0.1')
+
+        # Create variables.
+        ncvar_positions = ncfile.createVariable('positions', 'f4', ('iteration', 'replica', 'atom', 'spatial'),
+                                                zlib=True, chunksizes=(1, n_replicas, n_atoms, 3))
+        ncvar_box_vectors = ncfile.createVariable('box_vectors', 'f4', ('iteration', 'replica', 'spatial', 'spatial'),
+                                                  zlib=False, chunksizes=(1, n_replicas, 3, 3))
+        ncvar_volumes = ncfile.createVariable('volumes', 'f8', ('iteration', 'replica'),
+                                              zlib=False, chunksizes=(1, n_replicas))
+        ncvar_energies = ncfile.createVariable('energies', 'f8', ('iteration', 'replica', 'replica'),
+                                               zlib=False, chunksizes=(1, n_replicas, n_replicas))
+        ncvar_states = ncfile.createVariable('states', 'i4', ('iteration', 'replica'),
+                                             zlib=False, chunksizes=(1, n_replicas))
+        ncvar_proposed = ncfile.createVariable('proposed', 'i4', ('iteration', 'replica', 'replica'),
+                                               zlib=False, chunksizes=(1, n_replicas, n_replicas))
+        ncvar_accepted = ncfile.createVariable('accepted', 'i4', ('iteration', 'replica', 'replica'),
+                                               zlib=False, chunksizes=(1, n_replicas, n_replicas))
+
+        # Define units for variables.
+        setattr(ncvar_positions, 'units', 'nm')
+        setattr(ncvar_box_vectors, 'units', 'nm')
+        setattr(ncvar_volumes, 'units', 'nm**3')
+        setattr(ncvar_energies, 'units', 'kT')
+        setattr(ncvar_states, 'units', 'none')
+        setattr(ncvar_proposed, 'units', 'none')
+        setattr(ncvar_accepted, 'units', 'none')
+
+        # Define long (human-readable) names for variables.
+        setattr(ncvar_positions, "long_name", ("positions[iteration][replica][atom][spatial] is position of "
+                                               "coordinate 'spatial' of atom 'atom' from replica 'replica' for "
+                                               "iteration 'iteration'."))
+        setattr(ncvar_states, "long_name", ("states[iteration][replica] is the state index (0..nstates-1) of "
+                                            "replica 'replica' of iteration 'iteration'."))
+        setattr(ncvar_energies, "long_name", ("energies[iteration][replica][state] is the reduced (unitless) "
+                                              "energy of replica 'replica' from iteration 'iteration' evaluated "
+                                              "at state 'state'."))
+        setattr(ncvar_proposed, "long_name", ("proposed[iteration][i][j] is the number of proposed transitions "
+                                              "between states i and j from iteration 'iteration-1'."))
+        setattr(ncvar_accepted, "long_name", ("accepted[iteration][i][j] is the number of proposed transitions "
+                                              "between states i and j from iteration 'iteration-1'."))
+        setattr(ncvar_box_vectors, "long_name", ("box_vectors[iteration][replica][i][j] is dimension j of "
+                                                 "box vector i for replica 'replica' from iteration 'iteration-1'."))
+        setattr(ncvar_volumes, "long_name", ("volume[iteration][replica] is the box volume for replica 'replica' "
+                                             "from iteration 'iteration-1'."))
+
+        # Create timestamp variable.
+        ncfile.createVariable('timestamp', str, ('iteration',), zlib=False, chunksizes=(1,))
+
+        # Save net cdf file.
+        self._ncfile = ncfile
+
+        # Store thermodynamic states.
+        self._write_thermodynamic_states(thermodynamic_states)
+
+    # -------------------------------------------------------------------------
+    # Internal-usage
+    # -------------------------------------------------------------------------
+
+    @mmtools.utils.with_timer('Storing thermodynamic states')
+    def _write_thermodynamic_states(self, thermodynamic_states):
+        """Store all the ThermodynamicStates."""
+        # If we have already stored them, raise exception.
+        if 'thermodynamic_states' in self._ncfile.groups:
+            raise RuntimeError('Thermodynamic states have been already stored.')
+
+        n_states = len(thermodynamic_states)
+        is_barostated = thermodynamic_states[0].pressure is not None
+
+        # Create a group to store state information.
+        ncgrp_states = self._ncfile.createGroup('thermodynamic_states')
+
+        # Store number of states.
+        ncvar_nstates = ncgrp_states.createVariable('nstates', int)
+        ncvar_nstates.assignValue(n_states)
+
+        # Create variables.
+        ncvar_serialized_systems = ncgrp_states.createVariable('systems', str, ('replica',), zlib=True)
+        setattr(ncvar_serialized_systems, 'long_name',
+                "systems[state] is the serialized OpenMM System corresponding to the thermodynamic state 'state'")
+
+        ncvar_temperatures = ncgrp_states.createVariable('temperatures', 'f', ('replica',))
+        setattr(ncvar_temperatures, 'units', 'K')
+        setattr(ncvar_temperatures, 'long_name',
+                "temperatures[state] is the temperature of thermodynamic state 'state'")
+
+        if is_barostated:
+            ncvar_pressures = ncgrp_states.createVariable('pressures', 'f', ('replica',))
+            setattr(ncvar_pressures, 'units', 'atm')
+            setattr(ncvar_pressures, 'long_name',
+                    "pressures[state] is the external pressure of thermodynamic state 'state'")
+
+        # Store all thermodynamic states
+        for state_id, thermodynamic_state in enumerate(thermodynamic_states):
+            serialized = thermodynamic_state.system.__getstate__()
+            logger.debug("Serialized state {} is  {}B | {:.3f}KB | {:.3f}MB".format(
+                state_id, len(serialized), len(serialized) / 1024.0, len(serialized) / 1024.0 / 1024.0))
+            ncvar_serialized_systems[state_id] = serialized
+
+            ncvar_temperatures[state_id] = thermodynamic_state.temperature / unit.kelvin
+            if is_barostated:
+                ncvar_pressures[state_id] = thermodynamic_state.pressure / unit.atmospheres
 
 
 # ==============================================================================
