@@ -13,28 +13,25 @@ TODO
 # GLOBAL IMPORTS
 # =============================================================================================
 
+import os
 import sys
-
-import math
+import contextlib
 
 import numpy
 import scipy.integrate
 
-import simtk.openmm as openmm
-import simtk.unit as units
-
 from nose import tools
 
+import openmoltools as moltools
 from openmmtools import testsystems
 
-from yank import utils
-from yank.repex import ThermodynamicState, ReplicaExchange, HamiltonianExchange, ParallelTempering
+from yank.repex import *
 
 # =============================================================================================
 # MODULE CONSTANTS
 # =============================================================================================
 
-kB = units.BOLTZMANN_CONSTANT_kB * units.AVOGADRO_CONSTANT_NA # Boltzmann constant
+kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA # Boltzmann constant
 
 # =============================================================================================
 # SUBROUTINES
@@ -69,26 +66,26 @@ def computeHarmonicOscillatorExpectations(K, mass, temperature):
     values = dict()
 
     # Compute thermal energy and inverse temperature from specified temperature.
-    kB = units.BOLTZMANN_CONSTANT_kB * units.AVOGADRO_CONSTANT_NA
+    kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA
     kT = kB * temperature  # thermal energy
     beta = 1.0 / kT  # inverse temperature
 
     # Compute standard deviation along one dimension.
-    sigma = 1.0 / units.sqrt(beta * K)
+    sigma = 1.0 / unit.sqrt(beta * K)
 
     # Define limits of integration along r.
-    r_min = 0.0 * units.nanometers  # initial value for integration
+    r_min = 0.0 * unit.nanometers  # initial value for integration
     r_max = 10.0 * sigma      # maximum radius to integrate to
 
     # Compute mean and std dev of potential energy.
-    V = lambda r : (K/2.0) * (r*units.nanometers)**2 / units.kilojoules_per_mole # potential in kJ/mol, where r in nm
-    q = lambda r : 4.0 * math.pi * r**2 * math.exp(-beta * (K/2.0) * (r*units.nanometers)**2) # q(r), where r in nm
-    (IqV2, dIqV2) = scipy.integrate.quad(lambda r : q(r) * V(r)**2, r_min / units.nanometers, r_max / units.nanometers)
-    (IqV, dIqV)   = scipy.integrate.quad(lambda r : q(r) * V(r), r_min / units.nanometers, r_max / units.nanometers)
-    (Iq, dIq)     = scipy.integrate.quad(lambda r : q(r), r_min / units.nanometers, r_max / units.nanometers)
+    V = lambda r : (K/2.0) * (r*unit.nanometers)**2 / unit.kilojoules_per_mole # potential in kJ/mol, where r in nm
+    q = lambda r : 4.0 * math.pi * r**2 * math.exp(-beta * (K/2.0) * (r*unit.nanometers)**2) # q(r), where r in nm
+    (IqV2, dIqV2) = scipy.integrate.quad(lambda r : q(r) * V(r)**2, r_min / unit.nanometers, r_max / unit.nanometers)
+    (IqV, dIqV)   = scipy.integrate.quad(lambda r : q(r) * V(r), r_min / unit.nanometers, r_max / unit.nanometers)
+    (Iq, dIq)     = scipy.integrate.quad(lambda r : q(r), r_min / unit.nanometers, r_max / unit.nanometers)
     values['potential'] = dict()
-    values['potential']['mean'] = (IqV / Iq) * units.kilojoules_per_mole
-    values['potential']['stddev'] = (IqV2 / Iq) * units.kilojoules_per_mole
+    values['potential']['mean'] = (IqV / Iq) * unit.kilojoules_per_mole
+    values['potential']['stddev'] = (IqV2 / Iq) * unit.kilojoules_per_mole
 
     # Compute mean and std dev of kinetic energy.
     values['kinetic'] = dict()
@@ -99,7 +96,7 @@ def computeHarmonicOscillatorExpectations(K, mass, temperature):
     # f = - \ln \int_{-\infty}^{+\infty} \exp[-\beta K x^2 / 2]
     #   = - \ln \int_{-\infty}^{+\infty} \exp[-x^2 / 2 \sigma^2]
     #   = - \ln [\sqrt{2 \pi} \sigma]
-    values['f'] = - numpy.log(2 * numpy.pi * (sigma / units.angstroms)**2) * (3.0/2.0)
+    values['f'] = - numpy.log(2 * numpy.pi * (sigma / unit.angstroms)**2) * (3.0/2.0)
 
     return values
 
@@ -118,12 +115,12 @@ def test_replica_exchange(mpicomm=None, verbose=True, verbose_simulation=False):
     if verbose and ((not mpicomm) or (mpicomm.rank==0)): sys.stdout.write("Testing replica exchange facility with harmonic oscillators: ")
 
     # Define mass of carbon atom.
-    mass = 12.0 * units.amu
+    mass = 12.0 * unit.amu
 
     # Define thermodynamic states.
     states = list() # thermodynamic states
-    Ks = [500.00, 400.0, 300.0] * units.kilocalories_per_mole / units.angstroms**2 # spring constants
-    temperatures = [300.0, 350.0, 400.0] * units.kelvin # temperatures
+    Ks = [500.00, 400.0, 300.0] * unit.kilocalories_per_mole / unit.angstroms**2 # spring constants
+    temperatures = [300.0, 350.0, 400.0] * unit.kelvin # temperatures
     seed_positions = list()
     analytical_results = list()
     f_i_analytical = list() # dimensionless free energies
@@ -172,8 +169,8 @@ def test_replica_exchange(mpicomm=None, verbose=True, verbose_simulation=False):
     simulation.minimize = False
     simulation.number_of_iterations = 200
     simulation.nsteps_per_iteration = 500
-    simulation.timestep = 2.0 * units.femtoseconds
-    simulation.collision_rate = 20.0 / units.picosecond
+    simulation.timestep = 2.0 * unit.femtoseconds
+    simulation.collision_rate = 20.0 / unit.picosecond
     simulation.verbose = verbose_simulation
     simulation.show_mixing_statistics = False
     simulation.online_analysis = True
@@ -278,11 +275,11 @@ def notest_hamiltonian_exchange(mpicomm=None, verbose=True):
     [system, coordinates] = [testsystem.system, testsystem.positions]
 
     # Define mass of carbon atom.
-    mass = 12.0 * units.amu
+    mass = 12.0 * unit.amu
 
     # Define thermodynamic states.
-    sigmas = [0.2, 0.3, 0.4] * units.angstroms # standard deviations: beta K = 1/sigma^2 so K = 1/(beta sigma^2)
-    temperature = 300.0 * units.kelvin # temperatures
+    sigmas = [0.2, 0.3, 0.4] * unit.angstroms # standard deviations: beta K = 1/sigma^2 so K = 1/(beta sigma^2)
+    temperature = 300.0 * unit.kelvin # temperatures
     seed_positions = list()
     analytical_results = list()
     f_i_analytical = list() # dimensionless free energies
@@ -290,7 +287,7 @@ def notest_hamiltonian_exchange(mpicomm=None, verbose=True):
     systems = list() # Systems list for HamiltonianExchange
     for sigma in sigmas:
         # Compute corresponding spring constant.
-        kB = units.BOLTZMANN_CONSTANT_kB * units.AVOGADRO_CONSTANT_NA
+        kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA
         kT = kB * temperature # thermal energy
         beta = 1.0 / kT # inverse temperature
         K = 1.0 / (beta * sigma**2)
@@ -344,9 +341,9 @@ def notest_hamiltonian_exchange(mpicomm=None, verbose=True):
     simulation.create(reference_state, systems, seed_positions)
     simulation.platform = openmm.Platform.getPlatformByName('Reference')
     simulation.number_of_iterations = 200
-    simulation.timestep = 2.0 * units.femtoseconds
+    simulation.timestep = 2.0 * unit.femtoseconds
     simulation.nsteps_per_iteration = 500
-    simulation.collision_rate = 9.2 / units.picosecond
+    simulation.collision_rate = 9.2 / unit.picosecond
     simulation.verbose = False
     simulation.show_mixing_statistics = False
 
@@ -400,6 +397,69 @@ def notest_hamiltonian_exchange(mpicomm=None, verbose=True):
     return
 
 
+# ==============================================================================
+# TEST REPORTER
+# ==============================================================================
+
+@contextlib.contextmanager
+def temporary_reporter(file_name='test_storage.nc'):
+    """Create and initialize a reporter in a temporary directory."""
+    with moltools.utils.temporary_directory() as tmp_dir_path:
+        storage_file_path = os.path.join(tmp_dir_path, file_name)
+        reporter = Reporter(storage=storage_file_path)
+        reporter.initialize_storage()
+        yield reporter
+
+
+def test_storage_initialization():
+    """Check that storage file is initialized correctly."""
+    with moltools.utils.temporary_directory() as tmp_dir_path:
+        storage_file_path = os.path.join(tmp_dir_path, 'test_storage.nc')
+        reporter = Reporter(storage=storage_file_path)
+        storage_file_path = reporter._storage_file_path
+        assert not os.path.isfile(storage_file_path)
+        reporter.initialize_storage()
+        assert os.path.isfile(storage_file_path)
+
+
+def test_store_thermodynamic_states():
+    """Check correct storage of thermodynamic states."""
+    with temporary_reporter() as reporter:
+        # Create thermodynamic states.
+        temperature = 300*unit.kelvin
+        alanine_system = testsystems.AlanineDipeptideExplicit().system
+        thermodynamic_state_nvt = mmtools.states.ThermodynamicState(alanine_system, temperature)
+        thermodynamic_state_npt = mmtools.states.ThermodynamicState(alanine_system, temperature,
+                                                                    1.0*unit.atmosphere)
+        thermodynamic_states = [thermodynamic_state_nvt, thermodynamic_state_npt]
+
+        # Check that after writing and reading, states are identical.
+        reporter.write_thermodynamic_states(thermodynamic_states)
+        restored_thermodynamic_states = reporter.read_thermodynamic_states()
+        for state, restored_state in zip(thermodynamic_states, restored_thermodynamic_states):
+            assert state.system.__getstate__() == restored_state.system.__getstate__()
+            assert state.temperature == restored_state.temperature
+            assert state.pressure == restored_state.pressure
+
+
+def test_store_sampler_states():
+    """Check correct storage of thermodynamic states."""
+    with temporary_reporter() as reporter:
+        # Create sampler states.
+        alanine_test = testsystems.AlanineDipeptideVacuum()
+        positions = alanine_test.positions
+        box_vectors = alanine_test.system.getDefaultPeriodicBoxVectors()
+        sampler_states = [mmtools.states.SamplerState(positions=positions, box_vectors=box_vectors)
+                          for _ in range(2)]
+
+        # Check that after writing and reading, states are identical.
+        reporter.write_sampler_states(sampler_states, iteration=0)
+        restored_sampler_states = reporter.read_sampler_states(iteration=0)
+        for state, restored_state in zip(sampler_states, restored_sampler_states):
+            assert np.allclose(state.positions, restored_state.positions)
+            assert np.allclose(state.box_vectors / unit.nanometer, restored_state.box_vectors / unit.nanometer)
+
+
 def test_parameters():
     """Test ReplicaExchange parameters initialization."""
     repex = ReplicaExchange(store_filename='test', nsteps_per_iteration=1e6)
@@ -412,9 +472,10 @@ def test_unknown_parameters():
     """Test ReplicaExchange raises exception on wrong initialization."""
     ReplicaExchange(store_filename='test', wrong_parameter=False)
 
-# =============================================================================================
+
+# ==============================================================================
 # MAIN AND TESTS
-# =============================================================================================
+# ==============================================================================
 
 if __name__ == "__main__":
     # Configure logger.
