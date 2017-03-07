@@ -1329,14 +1329,28 @@ class Mol2File(object):
 
     @property
     def resname(self):
+        """The name of the first molecule found in the mol2 file."""
         residue = parmed.load_file(self._file_path)
+        if isinstance(residue, parmed.modeller.residue.ResidueTemplateContainer):
+            return residue[0].name
         return residue.name
 
     @resname.setter
     def resname(self, value):
         residue = parmed.load_file(self._file_path)
-        residue.name = value
+        if isinstance(residue, parmed.modeller.residue.ResidueTemplateContainer):
+            residue[0].name = value
+        else:
+            residue.name = value
         parmed.formats.Mol2File.write(residue, self._file_path)
+
+    @property
+    def resnames(self):
+        """The list of the names of all the molecules in the file (read-only)."""
+        residues = parmed.load_file(self._file_path)
+        if isinstance(residues, parmed.modeller.residue.ResidueTemplateContainer):
+            return [residue.name for residue in residues]
+        return [residues.name]
 
     @property
     def net_charge(self):
