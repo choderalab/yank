@@ -110,6 +110,12 @@ class Reporter(object):
         self._storage_file_path = storage
         self._ncfile = None
 
+    def __del__(self):
+        if self._ncfile is not None:
+            self._ncfile.sync()
+            self._ncfile.close()
+            self._ncfile = None
+
     def initialize_storage(self):
         """Create a new storage file."""
         # Open NetCDF 4 file for writing.
@@ -134,19 +140,19 @@ class Reporter(object):
     def read_thermodynamic_states(self):
         # Retrieve group and number of states.
         ncgrp_states = self._ncfile.groups['thermodynamic_states']
-        n_states = self._ncfile.dimensions['replica']
+        n_states = self._ncfile.dimensions['replica'].size
 
         # Read state information.
         thermodynamic_states = list()
         for state_index in range(n_states):
             # Reconstitute System object.
             system = openmm.System()
-            system.__setstate__(str(ncgrp_states.variables['systems'][state_index]))
+            system.__setstate__(ncgrp_states.variables['systems'][state_index])
 
             # Read temperature and pressure (if NPT).
-            temperature = float(ncgrp_states.variables['temperatures'][state_index]) * unit.kelvin
+            temperature = ncgrp_states.variables['temperatures'][state_index] * unit.kelvin
             if 'pressures' in ncgrp_states.variables:
-                pressure = float(ncgrp_states.variables['pressures'][state_index]) * unit.atmospheres
+                pressure = ncgrp_states.variables['pressures'][state_index] * unit.atmospheres
             else:
                 pressure = None
 
@@ -166,7 +172,7 @@ class Reporter(object):
         ncgrp_states = self._ncfile.createGroup('thermodynamic_states')
 
         # Check if replica dimensions exist.
-        if 'replica' in self._ncfile.dimensions:
+        if 'replica' not in self._ncfile.dimensions:
             self._ncfile.createDimension('replica', n_states)
 
         # Store number of states.
@@ -201,7 +207,7 @@ class Reporter(object):
                 ncvar_pressures[state_id] = thermodynamic_state.pressure / unit.atmospheres
 
     def read_sampler_states(self, iteration):
-        n_states = self._ncfile.dimensions['replica']
+        n_states = self._ncfile.dimensions['replica'].size
 
         sampler_states = list()
         for replica_index in range(n_states):
@@ -228,7 +234,7 @@ class Reporter(object):
 
             # Create dimensions. Replica dimension could have been created before.
             self._ncfile.createDimension('atom', n_atoms)
-            if 'replica' in self._ncfile.dimensions:
+            if 'replica' not in self._ncfile.dimensions:
                 self._ncfile.createDimension('replica', n_states)
 
             # Create variables.
