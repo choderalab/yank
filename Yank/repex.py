@@ -71,8 +71,9 @@ import mdtraj as md
 import netCDF4 as netcdf
 
 import openmmtools as mmtools
+from openmmtools.states import ThermodynamicState
 
-from yank import utils
+from yank import utils, mpi
 
 logger = logging.getLogger(__name__)
 
@@ -109,97 +110,38 @@ class Reporter(object):
         self._storage_file_path = storage
         self._ncfile = None
 
-    def create_storage(self, thermodynamic_states, title=''):
+    def initialize_storage(self):
         """Create a new storage file."""
-        n_replicas = len(thermodynamic_states)
-        n_atoms = thermodynamic_states[0].n_particles
-
         # Open NetCDF 4 file for writing.
         ncfile = netcdf.Dataset(self._storage_file_path, 'w', version='NETCDF4')
 
-        # Create dimensions.
+        # Create common dimensions.
         ncfile.createDimension('scalar', 1)  # Scalar dimension.
         ncfile.createDimension('iteration', 0)  # Unlimited number of iterations.
-        ncfile.createDimension('replica', n_replicas)  # Number of replicas.
-        ncfile.createDimension('atom', n_atoms)  # Number of atoms in system.
         ncfile.createDimension('spatial', 3)  # Number of spatial dimensions.
 
         # Set global attributes.
-        setattr(ncfile, 'title', title)
         setattr(ncfile, 'application', 'YANK')
         setattr(ncfile, 'program', 'yank.py')
         setattr(ncfile, 'programVersion', 'unknown')  # TODO: Include actual version.
         setattr(ncfile, 'Conventions', 'YANK')
         setattr(ncfile, 'ConventionVersion', '0.1')
 
-        # Create variables.
-        ncvar_positions = ncfile.createVariable('positions', 'f4', ('iteration', 'replica', 'atom', 'spatial'),
-                                                zlib=True, chunksizes=(1, n_replicas, n_atoms, 3))
-        ncvar_box_vectors = ncfile.createVariable('box_vectors', 'f4', ('iteration', 'replica', 'spatial', 'spatial'),
-                                                  zlib=False, chunksizes=(1, n_replicas, 3, 3))
-        ncvar_volumes = ncfile.createVariable('volumes', 'f8', ('iteration', 'replica'),
-                                              zlib=False, chunksizes=(1, n_replicas))
-        ncvar_energies = ncfile.createVariable('energies', 'f8', ('iteration', 'replica', 'replica'),
-                                               zlib=False, chunksizes=(1, n_replicas, n_replicas))
-        ncvar_states = ncfile.createVariable('states', 'i4', ('iteration', 'replica'),
-                                             zlib=False, chunksizes=(1, n_replicas))
-        ncvar_proposed = ncfile.createVariable('proposed', 'i4', ('iteration', 'replica', 'replica'),
-                                               zlib=False, chunksizes=(1, n_replicas, n_replicas))
-        ncvar_accepted = ncfile.createVariable('accepted', 'i4', ('iteration', 'replica', 'replica'),
-                                               zlib=False, chunksizes=(1, n_replicas, n_replicas))
-
-        # Define units for variables.
-        setattr(ncvar_positions, 'units', 'nm')
-        setattr(ncvar_box_vectors, 'units', 'nm')
-        setattr(ncvar_volumes, 'units', 'nm**3')
-        setattr(ncvar_energies, 'units', 'kT')
-        setattr(ncvar_states, 'units', 'none')
-        setattr(ncvar_proposed, 'units', 'none')
-        setattr(ncvar_accepted, 'units', 'none')
-
-        # Define long (human-readable) names for variables.
-        setattr(ncvar_positions, "long_name", ("positions[iteration][replica][atom][spatial] is position of "
-                                               "coordinate 'spatial' of atom 'atom' from replica 'replica' for "
-                                               "iteration 'iteration'."))
-        setattr(ncvar_states, "long_name", ("states[iteration][replica] is the state index (0..nstates-1) of "
-                                            "replica 'replica' of iteration 'iteration'."))
-        setattr(ncvar_energies, "long_name", ("energies[iteration][replica][state] is the reduced (unitless) "
-                                              "energy of replica 'replica' from iteration 'iteration' evaluated "
-                                              "at state 'state'."))
-        setattr(ncvar_proposed, "long_name", ("proposed[iteration][i][j] is the number of proposed transitions "
-                                              "between states i and j from iteration 'iteration-1'."))
-        setattr(ncvar_accepted, "long_name", ("accepted[iteration][i][j] is the number of proposed transitions "
-                                              "between states i and j from iteration 'iteration-1'."))
-        setattr(ncvar_box_vectors, "long_name", ("box_vectors[iteration][replica][i][j] is dimension j of "
-                                                 "box vector i for replica 'replica' from iteration 'iteration-1'."))
-        setattr(ncvar_volumes, "long_name", ("volume[iteration][replica] is the box volume for replica 'replica' "
-                                             "from iteration 'iteration-1'."))
-
-        # Create timestamp variable.
-        ncfile.createVariable('timestamp', str, ('iteration',), zlib=False, chunksizes=(1,))
-
         # Save net cdf file.
         self._ncfile = ncfile
 
-        # Store thermodynamic states.
-        self._write_thermodynamic_states(thermodynamic_states)
-
-    # -------------------------------------------------------------------------
-    # Internal-usage
-    # -------------------------------------------------------------------------
-
     @mmtools.utils.with_timer('Storing thermodynamic states')
-    def _write_thermodynamic_states(self, thermodynamic_states):
+    def write_thermodynamic_states(self, thermodynamic_states):
         """Store all the ThermodynamicStates."""
-        # If we have already stored them, raise exception.
-        if 'thermodynamic_states' in self._ncfile.groups:
-            raise RuntimeError('Thermodynamic states have been already stored.')
-
         n_states = len(thermodynamic_states)
         is_barostated = thermodynamic_states[0].pressure is not None
 
         # Create a group to store state information.
         ncgrp_states = self._ncfile.createGroup('thermodynamic_states')
+
+        # Check if replica dimensions exist.
+        if 'replica' in self._ncfile.dimensions:
+            self._ncfile.createDimension('replica', n_states)
 
         # Store number of states.
         ncvar_nstates = ncgrp_states.createVariable('nstates', int)
@@ -231,6 +173,120 @@ class Reporter(object):
             ncvar_temperatures[state_id] = thermodynamic_state.temperature / unit.kelvin
             if is_barostated:
                 ncvar_pressures[state_id] = thermodynamic_state.pressure / unit.atmospheres
+
+    @mmtools.utils.with_timer('Storing sampler states')
+    def write_sampler_states(self, sampler_states, iteration):
+        """Store all the SamplerStates for the given iteration."""
+        # Check if the schema must be initialized.
+        if 'positions' not in self._ncfile.variables:
+            n_atoms = sampler_states[0].n_particles
+            n_states = len(sampler_states)
+
+            # Create dimensions. Replica dimension could have been created before.
+            self._ncfile.createDimension('atom', n_atoms)
+            if 'replica' in self._ncfile.dimensions:
+                self._ncfile.createDimension('replica', n_states)
+
+            # Create variables.
+            ncvar_positions = self._ncfile.createVariable('positions', 'f4',
+                                                          ('iteration', 'replica', 'atom', 'spatial'),
+                                                          zlib=True, chunksizes=(1, n_states, n_atoms, 3))
+            ncvar_box_vectors = self._ncfile.createVariable('box_vectors', 'f4',
+                                                            ('iteration', 'replica', 'spatial', 'spatial'),
+                                                            zlib=False, chunksizes=(1, n_states, 3, 3))
+            ncvar_volumes = self._ncfile.createVariable('volumes', 'f8', ('iteration', 'replica'),
+                                                        zlib=False, chunksizes=(1, n_states))
+
+            # Define units for variables.
+            setattr(ncvar_positions, 'units', 'nm')
+            setattr(ncvar_box_vectors, 'units', 'nm')
+            setattr(ncvar_volumes, 'units', 'nm**3')
+
+            # Define long (human-readable) names for variables.
+            setattr(ncvar_positions, "long_name", ("positions[iteration][replica][atom][spatial] is position of "
+                                                   "coordinate 'spatial' of atom 'atom' from replica 'replica' for "
+                                                   "iteration 'iteration'."))
+
+            setattr(ncvar_box_vectors, "long_name", ("box_vectors[iteration][replica][i][j] is dimension j of box "
+                                                     "vector i for replica 'replica' from iteration 'iteration-1'."))
+            setattr(ncvar_volumes, "long_name", ("volume[iteration][replica] is the box volume for replica 'replica' "
+                                                 "from iteration 'iteration-1'."))
+
+        # Store sampler states.
+        for replica_index, sampler_state in enumerate(sampler_states):
+            # Store positions
+            x = sampler_state.positions / unit.nanometers
+            self._ncfile.variables['positions'][iteration, replica_index, :, :] = x[:, :]
+
+            # Store box vectors and volume.
+            for i in range(3):
+                vector_i = sampler_state.box_vectors[i] / unit.nanometers
+                self._ncfile.variables['box_vectors'][iteration, replica_index, i, :] = vector_i
+            self._ncfile.variables['volumes'][iteration, replica_index] = sampler_state.volume / unit.nanometers**3
+
+    def write_replica_thermodynamic_states(self, state_indices):
+        # Initialize schema if needed.
+        if 'states' not in self._ncfile.variables:
+            n_states = len(state_indices)
+
+            # Create dimension if they don't exist.
+            if 'replica' not in self._ncfile.dimensions:
+                self._ncfile.createDimension('replica', n_states)
+
+            # Create variables and attach units and description.
+            ncvar_states = self._ncfile.createVariable('states', 'i4', ('iteration', 'replica'),
+                                                       zlib=False, chunksizes=(1, n_states))
+            setattr(ncvar_states, 'units', 'none')
+            setattr(ncvar_states, "long_name", ("states[iteration][replica] is the thermodynamic state index "
+                                                "(0..nstates-1) of replica 'replica' of iteration 'iteration'."))
+
+        # Store thermodynamic states indices.
+        self._ncfile.variables['states'][self.iteration, :] = self.replica_states[:]
+
+    def write_energies(self, energy_matrix, iteration):
+        # Initialize schema if needed.
+        if 'energies' not in self._ncfile.variables:
+            n_states = len(energy_matrix)
+
+            # Create dimension if it wasn't created by other functions.
+            if 'replica' not in self._ncfile.dimensions:
+                self._ncfile.createDimension('replica', n_states)
+
+            # Create variable with its units and descriptions.
+            ncvar_energies = self._ncfile.createVariable('energies', 'f8', ('iteration', 'replica', 'replica'),
+                                                         zlib=False, chunksizes=(1, n_states, n_states))
+            setattr(ncvar_energies, 'units', 'kT')
+            setattr(ncvar_energies, "long_name", ("energies[iteration][replica][state] is the reduced (unitless) "
+                                                  "energy of replica 'replica' from iteration 'iteration' evaluated "
+                                                  "at state 'state'."))
+
+        # Store energy.
+        self._ncfile.variables['energies'][iteration, :, :] = energy_matrix[:, :]
+
+    def write_mixing_statistics(self, Nij_accepted, Nij_proposed):
+        # Initialize schema if needed.
+        if 'accepted' not in self._ncfile:
+            n_replicas = len(Nij_accepted)
+
+            # Create dimension if it wasn't created in another function
+            if 'replica' not in self._ncfile.dimensions:
+                self._ncfile.createDimension('replica', n_replicas)
+
+            # Create variables and attach units and descriptions.
+            ncvar_proposed = self._ncfile.createVariable('proposed', 'i4', ('iteration', 'replica', 'replica'),
+                                                         zlib=False, chunksizes=(1, n_replicas, n_replicas))
+            ncvar_accepted = self._ncfile.createVariable('accepted', 'i4', ('iteration', 'replica', 'replica'),
+                                                         zlib=False, chunksizes=(1, n_replicas, n_replicas))
+            setattr(ncvar_proposed, 'units', 'none')
+            setattr(ncvar_accepted, 'units', 'none')
+            setattr(ncvar_proposed, "long_name", ("proposed[iteration][i][j] is the number of proposed transitions "
+                                                  "between states i and j from iteration 'iteration-1'."))
+            setattr(ncvar_accepted, "long_name", ("accepted[iteration][i][j] is the number of proposed transitions "
+                                                  "between states i and j from iteration 'iteration-1'."))
+
+        # Store iteration statistics.
+        self._ncfile.variables['accepted'][self.iteration, :, :] = Nij_accepted[:, :]
+        self._ncfile.variables['proposed'][self.iteration, :, :] = Nij_proposed[:, :]
 
 
 # ==============================================================================
@@ -404,7 +460,7 @@ class ReplicaExchange(object):
         self._initialized = False
 
         # Get MPI communicator, if any.
-        self._mpicomm = utils.get_mpicomm()
+        self._mpicomm = mpi.get_mpicomm()
 
         # Store constructor parameters. Everything is marked for internal
         # usage because any change these attribute will imply a change in
@@ -725,7 +781,7 @@ class ReplicaExchange(object):
             logger.debug("Initialized node %d / %d" % (self.mpicomm.rank, self.mpicomm.size))
 
         # Display papers to be cited.
-        if  utils.is_terminal_verbose():
+        if utils.is_terminal_verbose():
             self._display_citations()
 
         # Determine number of alchemical states.
@@ -795,7 +851,7 @@ class ReplicaExchange(object):
             logger.debug("Initialized node %d / %d" % (self.mpicomm.rank, self.mpicomm.size))
 
         # Display papers to be cited.
-        if  utils.is_terminal_verbose():
+        if utils.is_terminal_verbose():
             self._display_citations()
 
         # Determine number of alchemical states.
@@ -1618,7 +1674,7 @@ class ReplicaExchange(object):
 
         return
 
-    @ utils.delayed_termination
+    @mpi.delayed_termination
     def _write_iteration_netcdf(self):
         """
         Write positions, states, and energies of current iteration to NetCDF file.
