@@ -800,7 +800,11 @@ class SetupDatabase:
                         raise RuntimeError('Cannot support {} files selection without OpenEye'.format(
                                 extension[1:]))
                     oe_molecule = utils.read_oe_molecule(mol_descr['filepath'], conformer_idx=model_idx)
-                    utils.write_oe_molecule(oe_molecule, single_file_path)
+                    if extension == '.mol2':
+                        mol_names = utils.Mol2File(mol_descr['filepath']).resnames
+                        utils.write_oe_molecule(oe_molecule, single_file_path, mol2_resname=mol_names[model_idx])
+                    else:
+                        utils.write_oe_molecule(oe_molecule, single_file_path)
                 else:
                     raise RuntimeError('Model selection is not supported for {} files'.format(extension[1:]))
 
@@ -1799,16 +1803,17 @@ class YamlBuilder:
 
                 correct_type = sorted(provided_extensions) == sorted(expected_extensions)
                 if not correct_type:
-                    msg = 'Wrong system file types provided.\n'
-                    msg += 'Extensions provided: %s\n' % sorted(provided_extensions)
-                    msg += 'Expected extensions: %s\n' % sorted(expected_extensions)
-                    print(msg)
-                    raise RuntimeError(msg)
+                    err_msg = ('Wrong system file types provided.\n'
+                               'Extensions provided: {}\n'
+                               'Expected extensions: {}').format(
+                        sorted(provided_extensions), sorted(expected_extensions))
+                    logger.error(err_msg)
+                    raise RuntimeError(err_msg)
                 else:
-                    print('Correctly recognized files %s as %s' % (files, expected_extensions))
+                    logger.debug('Correctly recognized files {} as {}'.format(files, expected_extensions))
                 for filepath in files:
                     if not os.path.isfile(filepath):
-                        pritn('os.path.isfile(%s) is False' % filepath)
+                        logger.error('os.path.isfile({}) is False'.format(filepath))
                         raise YamlParseError('File path {} does not exist.'.format(filepath))
                 return [filepath for (ext, filepath) in sorted(zip(provided_extensions, files))]
             return _system_files
