@@ -460,6 +460,45 @@ def test_store_sampler_states():
             assert np.allclose(state.box_vectors / unit.nanometer, restored_state.box_vectors / unit.nanometer)
 
 
+def test_store_replica_thermodynamic_states():
+    """Check storage of replica thermodynamic states indices."""
+    with temporary_reporter() as reporter:
+        for i, replica_states in enumerate([[2, 1, 0, 3], np.array([3, 1, 0, 2])]):
+            reporter.write_replica_thermodynamic_states(replica_states, iteration=i)
+            restored_replica_states = reporter.read_replica_thermodynamic_states(iteration=i)
+            assert np.all(replica_states == restored_replica_states)
+
+
+def test_store_energies():
+    """Check storage of energies."""
+    with temporary_reporter() as reporter:
+        energy_matrix = np.array([[1, 2, 3], [1, 2, 3], [1, 2, 3]])
+        reporter.write_energies(energy_matrix, iteration=0)
+        restored_energy_matrix = reporter.read_energies(iteration=0)
+        assert np.all(energy_matrix == restored_energy_matrix)
+
+
+def test_store_dict():
+    """Check correct storage and restore of dictionaries."""
+    data = {
+        'mystring': 'test',
+        'myinteger': 3, 'myfloat': 4.0,
+        'mylist': [0, 1, 2, 3], 'mynumpyarray': np.array([2.0, 3, 4]),
+        'mynestednumpyarray': np.array([[1, 2, 3], [4.0, 5, 6]]),
+        'myquantity': 5.0 / unit.femtosecond,
+        'myquantityarray': unit.Quantity(np.array([[1, 2, 3], [4.0, 5, 6]]), unit=unit.angstrom)
+    }
+    with temporary_reporter() as reporter:
+        reporter.write_dict('metadata', data)
+        restored_data = reporter.read_dict('metadata')
+        for key, value in data.items():
+            restored_value = restored_data[key]
+            try:
+                assert value == restored_value, '{}, {}'.format(value, restored_value)
+            except ValueError:  # array
+                assert np.all(value == restored_value)
+
+
 def test_parameters():
     """Test ReplicaExchange parameters initialization."""
     repex = ReplicaExchange(store_filename='test', nsteps_per_iteration=1e6)

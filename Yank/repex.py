@@ -59,12 +59,14 @@ This code is licensed under the latest available version of the MIT License.
 from simtk import openmm
 from simtk import unit
 
-import os, os.path
+import os
 import math
 import copy
 import time
 import datetime
 import logging
+import importlib
+import collections
 
 import numpy as np
 import mdtraj as md
@@ -277,7 +279,7 @@ class Reporter(object):
     def read_replica_thermodynamic_states(self, iteration):
         return self._ncfile.variables['states'][iteration, :].copy()
 
-    def write_replica_thermodynamic_states(self, state_indices):
+    def write_replica_thermodynamic_states(self, state_indices, iteration):
         # Initialize schema if needed.
         if 'states' not in self._ncfile.variables:
             n_states = len(state_indices)
@@ -294,7 +296,7 @@ class Reporter(object):
                                                 "(0..nstates-1) of replica 'replica' of iteration 'iteration'."))
 
         # Store thermodynamic states indices.
-        self._ncfile.variables['states'][self.iteration, :] = self.replica_states[:]
+        self._ncfile.variables['states'][iteration, :] = state_indices[:]
 
     def read_energies(self, iteration):
         return self._ncfile.variables['energies'][iteration, :, :].copy()
@@ -318,6 +320,169 @@ class Reporter(object):
 
         # Store energy.
         self._ncfile.variables['energies'][iteration, :, :] = energy_matrix[:, :]
+
+    def read_dict(self, name):
+        """Restore dict from the storage file.
+
+        Parameters
+        ----------
+        ncgrp : netcdf.Dataset group
+            The NetCDF group to restore from.
+
+        Returns
+        -------
+        data : dict
+            The restored data as a dict.
+
+        """
+        ncgrp = self._ncfile.groups[name]
+        data = dict()
+
+        for key, ncvar in ncgrp.variables.items():
+            type_name = getattr(ncvar, 'type')
+            # TODO: Remove the if/elseif structure into one handy function
+            # Get option value.
+            if type_name == 'NoneType':
+                value = None
+            else:  # Handle all Types not None
+                value_type = self._convert_netcdf_store_type(type_name)
+                if ncvar.shape == ():  # Standard Types
+                    value = value_type(ncvar.getValue())
+                elif ncvar.shape[0] >= 0:  # Array types
+                    value = np.array(ncvar[:], value_type)
+                    # TODO: Deal with values that are actually scalar constants.
+                    # TODO: Cast to appropriate type
+                else:
+                    raise ValueError('Cannot restore type {} with value {}'.format(
+                        value_type, ncvar.getValue()))
+
+            # Log value (truncate if too long but save length)
+            if hasattr(value, '__len__'):
+                try:
+                    value_len = len(value)
+                except TypeError:  # this is a zero-dimensional array
+                    value_len = np.atleast_1d(value)
+                logger.debug("Restoring option: {} -> {} (type: {}, length {})".format(
+                    key, str(value)[:500], type(value), value_len))
+            else:
+                logger.debug("Retoring option: {} -> {} (type: {})".format(
+                    key, value, type(value)))
+
+            # If Quantity, assign unit.
+            if hasattr(ncvar, 'units'):
+                value_unit_name = getattr(ncvar, 'units')
+                if value_unit_name[0] == '/':
+                    value_unit = utils.quantity_from_string(value_unit_name[1:])
+                    value = value / value_unit
+                else:
+                    value_unit = utils.quantity_from_string(value_unit_name)
+                    value = value * value_unit
+
+            # Store option.
+            data[key] = value
+
+        return data
+
+    def write_dict(self, name, data):
+        """Store the contents of a dict.
+
+        Parameters
+        ----------
+        name : str
+            The name of the group in which to store the data.
+        data : dict
+            The dict to store.
+
+        """
+        # Create group.
+        ncgrp = self._ncfile.createGroup(name)
+
+        for key, value in data.items():
+            # If Quantity, strip off units first.
+            value_unit = None
+            if isinstance(value, unit.Quantity):
+                value_unit = value.unit
+                value = value / value_unit
+
+            # Check the Python type.
+            value_type = type(value)
+            value_type_name = utils.typename(value_type)
+
+            # Booleans are converted to integers.
+            if isinstance(value, bool):
+                value = int(value)
+
+            # Store the variable.
+            if isinstance(value, str):
+                ncvar = ncgrp.createVariable(key, value_type, 'scalar')
+                packed_data = np.empty(1, 'O')
+                packed_data[0] = value
+                ncvar[:] = packed_data
+                setattr(ncvar, 'type', value_type_name)
+            elif isinstance(value, collections.Iterable):
+                # Cast as numpy array to check shape and extract the element
+                # type. np.ravel() returns a view, it doesn't allocate memory.
+                value = np.array(value)
+                element_type = type(value.ravel()[0])
+                element_type_name = utils.typename(element_type)
+
+                # Create dimensions and variable.
+                dimensions_names = tuple([key + 'dimension' + str(i) for i in range(len(value.shape))])
+                for name, dimension in zip(dimensions_names, value.shape):
+                    ncgrp.createDimension(name, dimension)
+                ncvar = ncgrp.createVariable(key, element_type, dimensions_names)
+
+                # Store values and element type.
+                ncvar[:] = value[:]
+                setattr(ncvar, 'type', element_type_name)
+            elif value is None:
+                ncvar = ncgrp.createVariable(key, int)
+                ncvar.assignValue(0)
+                setattr(ncvar, 'type', value_type_name)
+            else:
+                ncvar = ncgrp.createVariable(key, value_type)
+                ncvar.assignValue(value)
+                setattr(ncvar, 'type', value_type_name)
+
+            # Log value (truncate if too long but save length)
+            if hasattr(value, '__len__'):
+                logger.debug("Storing option: {} -> {} (type: {}, length {})".format(
+                    key, str(value)[:500], value_type_name, len(value)))
+            else:
+                logger.debug("Storing option: {} -> {} (type: {})".format(
+                    key, value, value_type_name))
+            if value_unit:
+                setattr(ncvar, 'units', str(value_unit))
+
+    @staticmethod
+    def _convert_netcdf_store_type(stored_type):
+        """
+        Convert the stored NetCDF datatype from string to type without relying on unsafe eval() function
+
+        Parameters
+        ----------
+        stored_type : string
+            Read from ncfile.Variable.type stored by repex
+
+        Returns
+        -------
+        proper_type : type
+            Python or module type
+
+        """
+        try:
+            # Check if it's a builtin type
+            try:  # Python 2
+                module = importlib.import_module('__builtin__')
+            except:  # Python 3
+                module = importlib.import_module('builtins')
+            proper_type = getattr(module, stored_type)
+        except AttributeError:
+            # if not, separate module and class
+            module, stored_type = stored_type.rsplit(".", 1)
+            module = importlib.import_module(module)
+            proper_type = getattr(module, stored_type)
+        return proper_type
 
 
 # ==============================================================================
