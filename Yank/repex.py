@@ -214,11 +214,11 @@ class Reporter(object):
         sampler_states = list()
         for replica_index in range(n_states):
             # Restore positions.
-            x = self._ncfile.variables['positions'][iteration, replica_index, :, :].astype(np.float64).copy()
+            x = self._ncfile.variables['positions'][iteration, replica_index, :, :].astype(np.float64)
             positions = unit.Quantity(x, unit.nanometers)
 
             # Restore box vectors.
-            x = self._ncfile.variables['box_vectors'][iteration, replica_index, :, :].astype(np.float64).copy()
+            x = self._ncfile.variables['box_vectors'][iteration, replica_index, :, :].astype(np.float64)
             box_vectors = unit.Quantity(x, unit.nanometers)
 
             # Create SamplerState.
@@ -277,7 +277,7 @@ class Reporter(object):
             self._ncfile.variables['volumes'][iteration, replica_index] = sampler_state.volume / unit.nanometers**3
 
     def read_replica_thermodynamic_states(self, iteration):
-        return self._ncfile.variables['states'][iteration, :].copy()
+        return self._ncfile.variables['states'][iteration]
 
     def write_replica_thermodynamic_states(self, state_indices, iteration):
         # Initialize schema if needed.
@@ -299,7 +299,7 @@ class Reporter(object):
         self._ncfile.variables['states'][iteration, :] = state_indices[:]
 
     def read_energies(self, iteration):
-        return self._ncfile.variables['energies'][iteration, :, :].copy()
+        return self._ncfile.variables['energies'][iteration]
 
     def write_energies(self, energy_matrix, iteration):
         # Initialize schema if needed.
@@ -453,6 +453,49 @@ class Reporter(object):
                     key, value, value_type_name))
             if value_unit:
                 setattr(ncvar, 'units', str(value_unit))
+
+    def read_mixing_statistics(self, iteration):
+        n_accepted_matrix = self._ncfile.variables['accepted'][iteration, :, :]
+        n_proposed_matrix = self._ncfile.variables['proposed'][iteration, :, :]
+        return n_accepted_matrix, n_proposed_matrix
+
+    def write_mixing_statistics(self, n_accepted_matrix, n_proposed_matrix, iteration):
+        # Create schema if necessary.
+        if 'accepted' not in self._ncfile.variables:
+            n_states = len(n_accepted_matrix)
+
+            # Create replica dimension if it wasn't already created.
+            if 'replica' not in self._ncfile.dimensions:
+                self._ncfile.createDimension('replica', n_states)
+
+            # Create variables with units and descriptions.
+            ncvar_accepted = self._ncfile.createVariable('accepted', 'i4', ('iteration', 'replica', 'replica'),
+                                                         zlib=False, chunksizes=(1, n_states, n_states))
+            ncvar_proposed = self._ncfile.createVariable('proposed', 'i4', ('iteration', 'replica', 'replica'),
+                                                         zlib=False, chunksizes=(1, n_states, n_states))
+            setattr(ncvar_accepted, 'units', 'none')
+            setattr(ncvar_proposed, 'units', 'none')
+            setattr(ncvar_accepted, 'long_name', ("accepted[iteration][i][j] is the number of proposed transitions "
+                                                  "between states i and j from iteration 'iteration-1'."))
+            setattr(ncvar_proposed, 'long_name', ("proposed[iteration][i][j] is the number of proposed transitions "
+                                                  "between states i and j from iteration 'iteration-1'."))
+
+        # Store statistics.
+        self._ncfile.variables['accepted'][iteration, :, :] = n_accepted_matrix[:, :]
+        self._ncfile.variables['proposed'][iteration, :, :] = n_proposed_matrix[:, :]
+
+    def read_timestamp(self, iteration):
+        return self._ncfile.variables['timestamp'][iteration]
+
+    def write_timestamp(self, iteration):
+        # Create variable if needed.
+        if 'timestamp' not in self._ncfile.variables:
+            self._ncfile.createVariable('timestamp', str, ('iteration',), zlib=False, chunksizes=(1,))
+        self._ncfile.variables['timestamp'][iteration] = time.ctime()
+
+    # -------------------------------------------------------------------------
+    # Internal-usage
+    # -------------------------------------------------------------------------
 
     @staticmethod
     def _convert_netcdf_store_type(stored_type):
@@ -1688,6 +1731,7 @@ class ReplicaExchange(object):
         logger.debug("Accepted %d / %d attempted swaps (%.1f %%)" % (nswaps_accepted, nswaps_attempted, swap_fraction_accepted * 100.0))
 
         # Estimate cumulative transition probabilities between all states.
+        # TODO don't read ncfile every time, store cumulative
         Nij_accepted = self.ncfile.variables['accepted'][:,:,:].sum(0) + self.Nij_accepted
         Nij_proposed = self.ncfile.variables['proposed'][:,:,:].sum(0) + self.Nij_proposed
         swap_Pij_accepted = np.zeros([self.nstates,self.nstates], np.float64)

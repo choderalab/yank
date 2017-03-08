@@ -499,6 +499,17 @@ def test_store_dict():
                 assert np.all(value == restored_value)
 
 
+def test_store_mixing_statistics():
+    """Check mixing statistics are correctly stored."""
+    n_accepted_matrix = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+    n_proposed_matrix = np.array([[3, 3, 3], [6, 6, 6], [9, 9, 9]])
+    with temporary_reporter() as reporter:
+        reporter.write_mixing_statistics(n_accepted_matrix, n_proposed_matrix, iteration=0)
+        restored_n_accepted, restored_n_proposed = reporter.read_mixing_statistics(iteration=0)
+        assert np.all(n_accepted_matrix == restored_n_accepted)
+        assert np.all(n_proposed_matrix == restored_n_proposed)
+
+
 def test_parameters():
     """Test ReplicaExchange parameters initialization."""
     repex = ReplicaExchange(store_filename='test', nsteps_per_iteration=1e6)
