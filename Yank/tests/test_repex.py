@@ -13,14 +13,12 @@ TODO
 # GLOBAL IMPORTS
 # =============================================================================================
 
-import os
 import sys
+import pickle
 import contextlib
 
 import numpy
 import scipy.integrate
-
-from nose import tools
 
 import openmoltools as moltools
 from openmmtools import testsystems
@@ -401,140 +399,216 @@ def notest_hamiltonian_exchange(mpicomm=None, verbose=True):
 # TEST REPORTER
 # ==============================================================================
 
-@contextlib.contextmanager
-def temporary_reporter(file_name='test_storage.nc'):
-    """Create and initialize a reporter in a temporary directory."""
-    with moltools.utils.temporary_directory() as tmp_dir_path:
-        storage_file_path = os.path.join(tmp_dir_path, file_name)
-        assert not os.path.isfile(storage_file_path)
-        reporter = Reporter(storage=storage_file_path)
-        assert os.path.isfile(storage_file_path)
-        yield reporter
+class TestReporter(object):
+    """Test suite for Reporter class."""
 
+    @staticmethod
+    @contextlib.contextmanager
+    def temporary_reporter(file_name='test_storage.nc'):
+        """Create and initialize a reporter in a temporary directory."""
+        with moltools.utils.temporary_directory() as tmp_dir_path:
+            storage_file_path = os.path.join(tmp_dir_path, file_name)
+            assert not os.path.isfile(storage_file_path)
+            reporter = Reporter(storage=storage_file_path, mode='w')
+            assert os.path.isfile(storage_file_path)
+            yield reporter
 
-def test_store_thermodynamic_states():
-    """Check correct storage of thermodynamic states."""
-    with temporary_reporter() as reporter:
-        # Create thermodynamic states.
-        temperature = 300*unit.kelvin
-        alanine_system = testsystems.AlanineDipeptideExplicit().system
-        thermodynamic_state_nvt = mmtools.states.ThermodynamicState(alanine_system, temperature)
-        thermodynamic_state_npt = mmtools.states.ThermodynamicState(alanine_system, temperature,
-                                                                    1.0*unit.atmosphere)
-        thermodynamic_states = [thermodynamic_state_nvt, thermodynamic_state_npt]
+    def test_store_thermodynamic_states(self):
+        """Check correct storage of thermodynamic states."""
+        with self.temporary_reporter() as reporter:
+            # Create thermodynamic states.
+            temperature = 300*unit.kelvin
+            alanine_system = testsystems.AlanineDipeptideExplicit().system
+            thermodynamic_state_nvt = mmtools.states.ThermodynamicState(alanine_system, temperature)
+            thermodynamic_state_npt = mmtools.states.ThermodynamicState(alanine_system, temperature,
+                                                                        1.0*unit.atmosphere)
+            thermodynamic_states = [thermodynamic_state_nvt, thermodynamic_state_npt]
 
-        # Check that after writing and reading, states are identical.
-        reporter.write_thermodynamic_states(thermodynamic_states)
-        restored_thermodynamic_states = reporter.read_thermodynamic_states()
-        for state, restored_state in zip(thermodynamic_states, restored_thermodynamic_states):
-            assert state.system.__getstate__() == restored_state.system.__getstate__()
-            assert state.temperature == restored_state.temperature
-            assert state.pressure == restored_state.pressure
+            # Check that after writing and reading, states are identical.
+            reporter.write_thermodynamic_states(thermodynamic_states)
+            restored_thermodynamic_states = reporter.read_thermodynamic_states()
+            for state, restored_state in zip(thermodynamic_states, restored_thermodynamic_states):
+                assert state.system.__getstate__() == restored_state.system.__getstate__()
+                assert state.temperature == restored_state.temperature
+                assert state.pressure == restored_state.pressure
 
+    def test_store_sampler_states(self):
+        """Check correct storage of thermodynamic states."""
+        with self.temporary_reporter() as reporter:
+            # Create sampler states.
+            alanine_test = testsystems.AlanineDipeptideVacuum()
+            positions = alanine_test.positions
+            box_vectors = alanine_test.system.getDefaultPeriodicBoxVectors()
+            sampler_states = [mmtools.states.SamplerState(positions=positions, box_vectors=box_vectors)
+                              for _ in range(2)]
 
-def test_store_sampler_states():
-    """Check correct storage of thermodynamic states."""
-    with temporary_reporter() as reporter:
-        # Create sampler states.
-        alanine_test = testsystems.AlanineDipeptideVacuum()
-        positions = alanine_test.positions
-        box_vectors = alanine_test.system.getDefaultPeriodicBoxVectors()
-        sampler_states = [mmtools.states.SamplerState(positions=positions, box_vectors=box_vectors)
-                          for _ in range(2)]
+            # Check that after writing and reading, states are identical.
+            reporter.write_sampler_states(sampler_states, iteration=0)
+            restored_sampler_states = reporter.read_sampler_states(iteration=0)
+            for state, restored_state in zip(sampler_states, restored_sampler_states):
+                assert np.allclose(state.positions, restored_state.positions)
+                assert np.allclose(state.box_vectors / unit.nanometer, restored_state.box_vectors / unit.nanometer)
 
-        # Check that after writing and reading, states are identical.
-        reporter.write_sampler_states(sampler_states, iteration=0)
-        restored_sampler_states = reporter.read_sampler_states(iteration=0)
-        for state, restored_state in zip(sampler_states, restored_sampler_states):
-            assert np.allclose(state.positions, restored_state.positions)
-            assert np.allclose(state.box_vectors / unit.nanometer, restored_state.box_vectors / unit.nanometer)
+    def test_store_replica_thermodynamic_states(self):
+        """Check storage of replica thermodynamic states indices."""
+        with self.temporary_reporter() as reporter:
+            for i, replica_states in enumerate([[2, 1, 0, 3], np.array([3, 1, 0, 2])]):
+                reporter.write_replica_thermodynamic_states(replica_states, iteration=i)
+                restored_replica_states = reporter.read_replica_thermodynamic_states(iteration=i)
+                assert np.all(replica_states == restored_replica_states)
 
+    def test_store_energies(self):
+        """Check storage of energies."""
+        with self.temporary_reporter() as reporter:
+            energy_matrix = np.array([[1, 2, 3], [1, 2, 3], [1, 2, 3]])
+            reporter.write_energies(energy_matrix, iteration=0)
+            restored_energy_matrix = reporter.read_energies(iteration=0)
+            assert np.all(energy_matrix == restored_energy_matrix)
 
-def test_store_replica_thermodynamic_states():
-    """Check storage of replica thermodynamic states indices."""
-    with temporary_reporter() as reporter:
-        for i, replica_states in enumerate([[2, 1, 0, 3], np.array([3, 1, 0, 2])]):
-            reporter.write_replica_thermodynamic_states(replica_states, iteration=i)
-            restored_replica_states = reporter.read_replica_thermodynamic_states(iteration=i)
-            assert np.all(replica_states == restored_replica_states)
+    def test_store_dict(self):
+        """Check correct storage and restore of dictionaries."""
+        data = {
+            'mybool': False,
+            'mystring': 'test',
+            'myinteger': 3, 'myfloat': 4.0,
+            'mylist': [0, 1, 2, 3], 'mynumpyarray': np.array([2.0, 3, 4]),
+            'mynestednumpyarray': np.array([[1, 2, 3], [4.0, 5, 6]]),
+            'myquantity': 5.0 / unit.femtosecond,
+            'myquantityarray': unit.Quantity(np.array([[1, 2, 3], [4.0, 5, 6]]), unit=unit.angstrom)
+        }
+        with self.temporary_reporter() as reporter:
+            reporter.write_dict('metadata', data)
+            restored_data = reporter.read_dict('metadata')
+            for key, value in data.items():
+                restored_value = restored_data[key]
+                err_msg = '{}, {}'.format(value, restored_value)
+                try:
+                    assert value == restored_value, err_msg
+                except ValueError:  # array-like
+                    assert np.all(value == restored_value)
+                else:
+                    assert type(value) == type(restored_value), err_msg
 
-
-def test_store_energies():
-    """Check storage of energies."""
-    with temporary_reporter() as reporter:
-        energy_matrix = np.array([[1, 2, 3], [1, 2, 3], [1, 2, 3]])
-        reporter.write_energies(energy_matrix, iteration=0)
-        restored_energy_matrix = reporter.read_energies(iteration=0)
-        assert np.all(energy_matrix == restored_energy_matrix)
-
-
-def test_store_dict():
-    """Check correct storage and restore of dictionaries."""
-    data = {
-        'mybool': False,
-        'mystring': 'test',
-        'myinteger': 3, 'myfloat': 4.0,
-        'mylist': [0, 1, 2, 3], 'mynumpyarray': np.array([2.0, 3, 4]),
-        'mynestednumpyarray': np.array([[1, 2, 3], [4.0, 5, 6]]),
-        'myquantity': 5.0 / unit.femtosecond,
-        'myquantityarray': unit.Quantity(np.array([[1, 2, 3], [4.0, 5, 6]]), unit=unit.angstrom)
-    }
-    with temporary_reporter() as reporter:
-        reporter.write_dict('metadata', data)
-        restored_data = reporter.read_dict('metadata')
-        for key, value in data.items():
-            restored_value = restored_data[key]
-            try:
-                assert value == restored_value, '{}, {}'.format(value, restored_value)
-            except ValueError:  # array
-                assert np.all(value == restored_value)
-
-
-def test_store_mixing_statistics():
-    """Check mixing statistics are correctly stored."""
-    n_accepted_matrix = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
-    n_proposed_matrix = np.array([[3, 3, 3], [6, 6, 6], [9, 9, 9]])
-    with temporary_reporter() as reporter:
-        reporter.write_mixing_statistics(n_accepted_matrix, n_proposed_matrix, iteration=0)
-        restored_n_accepted, restored_n_proposed = reporter.read_mixing_statistics(iteration=0)
-        assert np.all(n_accepted_matrix == restored_n_accepted)
-        assert np.all(n_proposed_matrix == restored_n_proposed)
+    def test_store_mixing_statistics(self):
+        """Check mixing statistics are correctly stored."""
+        n_accepted_matrix = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+        n_proposed_matrix = np.array([[3, 3, 3], [6, 6, 6], [9, 9, 9]])
+        with self.temporary_reporter() as reporter:
+            reporter.write_mixing_statistics(n_accepted_matrix, n_proposed_matrix, iteration=0)
+            restored_n_accepted, restored_n_proposed = reporter.read_mixing_statistics(iteration=0)
+            assert np.all(n_accepted_matrix == restored_n_accepted)
+            assert np.all(n_proposed_matrix == restored_n_proposed)
 
 
 # ==============================================================================
 # TEST REPLICA EXCHANGE
 # ==============================================================================
 
-def test_repex_create():
-    """Test creation of a new ReplicaExchange simulation."""
-    # TODO test with CompoundState
-    n_states = 3
-    alanine = testsystems.AlanineDipeptideVacuum()
-    sampler_states = [mmtools.states.SamplerState(alanine.positions) for _ in range(n_states-1)]
-    thermodynamic_states = [mmtools.states.ThermodynamicState(alanine.system, 300*unit.kelvin)
-                            for _ in range(n_states)]
+class TestReplicaExchange(object):
+    """Test suite for ReplicaExchange class."""
 
-    repex = ReplicaExchange()
-    with moltools.utils.temporary_directory() as tmp_dir_path:
-        storage_path = os.path.join(tmp_dir_path, 'test_storage.nc')
-        repex.create(thermodynamic_states, sampler_states, storage=storage_path)
+    @classmethod
+    def setup_class(cls):
+        """Shared test cases and variables."""
+        alanine_test = testsystems.AlanineDipeptideVacuum()
+        alanine_sampler_state = mmtools.states.SamplerState(alanine_test.positions)
+        alanine_thermodynamic_state = mmtools.states.ThermodynamicState(alanine_test.system, 300*unit.kelvin)
+        cls.alanine_test = (alanine_thermodynamic_state, alanine_sampler_state)
 
-        # The n_states-1 sampler states have been distributed to n_states replica.
-        assert len(repex._sampler_states) == n_states
-        assert len(repex._reporter.read_sampler_states(iteration=0)) == n_states
+    def test_repex_create(self):
+        """Test creation of a new ReplicaExchange simulation."""
+        # TODO test with CompoundState
+        n_states = 3
+        sampler_states = [copy.deepcopy(self.alanine_test[1]) for _ in range(n_states-1)]
+        thermodynamic_states = [copy.deepcopy(self.alanine_test[0]) for _ in range(n_states)]
 
-        # Options have been stored.
-        option_names, _, _, defaults = inspect.getargspec(repex.__init__)
-        options = repex._reporter.read_dict('options')
-        assert len(options) == len(defaults)
-        for key, value in zip(option_names[1:], defaults):
-            assert options[key] == value
-            assert getattr(repex, '_' + key) == value
+        with moltools.utils.temporary_directory() as tmp_dir_path:
+            repex = ReplicaExchange()
+            storage_path = os.path.join(tmp_dir_path, 'test_storage.nc')
+            repex.create(thermodynamic_states, sampler_states, storage=storage_path)
 
-        # A default title has been added to the stored metadata.
-        metadata = repex._reporter.read_dict('metadata')
-        assert len(metadata) == 1
-        assert 'title' in metadata
+            # Check that reporter has reporter only if rank 0.
+            mpicomm = mpi.get_mpicomm()
+            if mpicomm is None or mpicomm.rank == 0:
+                assert repex._reporter is not None
+            else:
+                assert repex._reporter is None
+
+            # Open reporter to read stored data.
+            reporter = Reporter(storage_path, mode='r')
+
+            # The n_states-1 sampler states have been distributed to n_states replica.
+            restored_sampler_states = reporter.read_sampler_states(iteration=0)
+            assert len(repex._sampler_states) == n_states
+            assert len(restored_sampler_states) == n_states
+            assert np.allclose(restored_sampler_states[0].positions, repex._sampler_states[0].positions)
+
+            # Options have been stored.
+            option_names, _, _, defaults = inspect.getargspec(repex.__init__)
+            options = reporter.read_dict('options')
+            assert len(options) == len(defaults)
+            for key, value in zip(option_names[1:], defaults):
+                assert options[key] == value
+                assert getattr(repex, '_' + key) == value
+
+            # A default title has been added to the stored metadata.
+            metadata = reporter.read_dict('metadata')
+            assert len(metadata) == 1
+            assert 'title' in metadata
+
+    def test_from_storage(self):
+        """Test that from storage completely restore ReplicaExchange."""
+        # TODO test after few iterations
+        sampler_states = [copy.deepcopy(self.alanine_test[1]) for _ in range(2)]
+        thermodynamic_states = [copy.deepcopy(self.alanine_test[0]) for _ in range(2)]
+
+        with moltools.utils.temporary_directory() as tmp_dir_path:
+            storage_path = os.path.join(tmp_dir_path, 'test_storage.nc')
+
+            # Create first repex and store its state (its __dict__).
+            repex = ReplicaExchange()
+            repex.create(thermodynamic_states, sampler_states, storage=storage_path)
+            original_dict = copy.deepcopy(repex.__dict__)
+
+            # Create a new repex from the storage file.
+            repex = ReplicaExchange.from_storage(storage_path)
+            restored_dict = copy.deepcopy(repex.__dict__)
+
+            # Check thermodynamic states.
+            original_ts = original_dict.pop('_thermodynamic_states')
+            restored_ts = restored_dict.pop('_thermodynamic_states')
+            for original, restored in zip(original_ts, restored_ts):
+                assert original.system.__getstate__() == restored.system.__getstate__()
+
+            # Check sampler states.
+            original_ss = original_dict.pop('_sampler_states')
+            restored_ss = restored_dict.pop('_sampler_states')
+            for original, restored in zip(original_ss, restored_ss):
+                assert np.allclose(original.positions, restored.positions)
+                assert np.all(original.box_vectors == restored.box_vectors)
+
+            # Check reporter. The newly created is in 'w' mode, the other in 'a' mode.
+            original_reporter = original_dict.pop('_reporter')
+            restored_reporter = restored_dict.pop('_reporter')
+            mpicomm = mpi.get_mpicomm()
+            if mpicomm is None or mpicomm.rank == 0:
+                assert original_reporter is not None
+                assert restored_reporter is not None
+            else:
+                assert original_reporter is None
+                assert restored_reporter is None
+
+            # Check all arrays. Instantiate list so that we can pop from original_dict.
+            for attr, original_value in list(original_dict.items()):
+                if hasattr(original_value, '__len__'):
+                    original_value = original_dict.pop(attr)
+                    restored_value = restored_dict.pop(attr)
+                    assert np.all(original_value == restored_value)
+
+            # Check everything else as pickle.
+            original_pickle = pickle.dumps(original_dict)
+            restored_pickle = pickle.dumps(restored_dict)
+            assert original_pickle == restored_pickle
 
 
 # ==============================================================================

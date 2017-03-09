@@ -117,24 +117,27 @@ class Reporter(object):
     storage : str
         The path to the file. In the future this will be able to take Storage
         classes as well.
+    mode : str
+        The mode of the file between 'r', 'w', and 'a' (or equivalently 'r+').
 
     """
-
-    def __init__(self, storage):
+    def __init__(self, storage, mode='r'):
         # Open NetCDF 4 file for writing.
-        ncfile = netcdf.Dataset(storage, 'w', version='NETCDF4')
+        ncfile = netcdf.Dataset(storage, mode, version='NETCDF4')
 
-        # Create common dimensions.
-        ncfile.createDimension('scalar', 1)  # Scalar dimension.
-        ncfile.createDimension('iteration', 0)  # Unlimited number of iterations.
-        ncfile.createDimension('spatial', 3)  # Number of spatial dimensions.
+        # Create header if needed.
+        if 'scalar' not in ncfile.dimensions:
+            # Create common dimensions.
+            ncfile.createDimension('scalar', 1)  # Scalar dimension.
+            ncfile.createDimension('iteration', 0)  # Unlimited number of iterations.
+            ncfile.createDimension('spatial', 3)  # Number of spatial dimensions.
 
-        # Set global attributes.
-        setattr(ncfile, 'application', 'YANK')
-        setattr(ncfile, 'program', 'yank.py')
-        setattr(ncfile, 'programVersion', 'unknown')  # TODO: Include actual version.
-        setattr(ncfile, 'Conventions', 'YANK')
-        setattr(ncfile, 'ConventionVersion', '0.1')
+            # Set global attributes.
+            setattr(ncfile, 'application', 'YANK')
+            setattr(ncfile, 'program', 'yank.py')
+            setattr(ncfile, 'programVersion', 'unknown')  # TODO: Include actual version.
+            setattr(ncfile, 'Conventions', 'YANK')
+            setattr(ncfile, 'ConventionVersion', '0.1')
 
         # Save NetCDF file.
         self._ncfile = ncfile
@@ -142,8 +145,10 @@ class Reporter(object):
     def __del__(self):
         """Synchronize and close the storage."""
         if self._ncfile is not None:
-            self._ncfile.sync()
-            self._ncfile.close()
+            # Don't sync if we don't have write access.
+            if self._ncfile.isopen():
+                self._ncfile.sync()
+                self._ncfile.close()
             self._ncfile = None
 
     def sync(self):
@@ -460,23 +465,11 @@ class Reporter(object):
                     value = value_type(ncvar.getValue())
                 elif ncvar.shape[0] >= 0:  # Array types
                     value = np.array(ncvar[:], value_type)
-                    # TODO: Deal with values that are actually scalar constants.
-                    # TODO: Cast to appropriate type
+                    if issubclass(value_type, str):
+                        value = value_type(value[0])
                 else:
                     raise ValueError('Cannot restore type {} with value {}'.format(
                         value_type, ncvar.getValue()))
-
-            # Log value (truncate if too long but save length)
-            if hasattr(value, '__len__'):
-                try:
-                    value_len = len(value)
-                except TypeError:  # this is a zero-dimensional array
-                    value_len = np.atleast_1d(value)
-                logger.debug("Restoring option: {} -> {} (type: {}, length {})".format(
-                    key, str(value)[:500], type(value), value_len))
-            else:
-                logger.debug("Retoring option: {} -> {} (type: {})".format(
-                    key, value, type(value)))
 
             # If Quantity, assign unit.
             if hasattr(ncvar, 'units'):
@@ -487,6 +480,18 @@ class Reporter(object):
                 else:
                     value_unit = utils.quantity_from_string(value_unit_name)
                     value = value * value_unit
+
+            # Log value (truncate if too long but save length)
+            if hasattr(value, '__len__'):
+                try:
+                    value_len = len(value)
+                except TypeError:  # this is a zero-dimensional array
+                    value_len = np.atleast_1d(value)
+                logger.debug("Restoring option: {} -> {} (type: {}, length {})".format(
+                    key, str(value)[:500], type(value), value_len))
+            else:
+                logger.debug("Restoring option: {} -> {} (type: {})".format(
+                    key, value, type(value)))
 
             # Store option.
             data[key] = value
@@ -513,13 +518,16 @@ class Reporter(object):
             if isinstance(value, unit.Quantity):
                 value_unit = value.unit
                 value = value / value_unit
-            # Booleans are converted to integers.
-            elif isinstance(value, bool):
-                value = int(value)
 
             # Check the Python type.
             value_type = type(value)
             value_type_name = utils.typename(value_type)
+
+            # We store booleans as integers.
+            if isinstance(value, bool):
+                # Keep value_type_name as bool to store original type.
+                value = int(value)
+                value_type = int
 
             # Store the variable.
             if isinstance(value, str):
@@ -855,13 +863,9 @@ class ReplicaExchange(object):
             Parameters in ReplicaExchange.default_parameters corresponding public attributes.
 
         """
-        # To initialize either call create() or the from_storage() constructor.
-        # When this is True, the simulation can be run.
-        self._initialized = False
-
         # Store constructor parameters. Everything is marked for internal
-        # usage because any change these attribute will imply a change in
-        # the storage file as well, which we don't currently support.
+        # usage because any change to these attribute would imply a change
+        # in the storage file as well, which we don't currently support.
         self._nsteps_per_iteration = nsteps_per_iteration
         self._number_of_iterations = number_of_iterations
         self._replica_mixing_scheme = replica_mixing_scheme
@@ -870,8 +874,8 @@ class ReplicaExchange(object):
         self._show_energies = show_energies
         self._show_mixing_statistics = show_mixing_statistics
 
-        # These will be set every time _initialize() is called.
-        # See that function for explanation of single variables.
+        # These will be set on initialization. See function
+        # create() for explanation of single variables.
         self._thermodynamic_states = None
         self._sampler_states = None
         self._replica_thermodynamic_states = None
@@ -880,6 +884,63 @@ class ReplicaExchange(object):
         self._n_accepted_matrix = None
         self._n_proposed_matrix = None
         self._reporter = None  # This is None everywhere but in node 0
+
+    @classmethod
+    def from_storage(cls, storage):
+        """Constructor from an existing storage file.
+
+        Parameters
+        ----------
+        storage : str
+            The path to the storage file. In the future this will be able
+            to take a Reporter or a Storage class as well.
+
+        Returns
+        -------
+        repex : ReplicaExchange
+            A new instance of ReplicaExchange in the same state of the
+            last stored iteration.
+
+        """
+        # Check if netcdf file exists.
+        file_exists = cls._does_file_exist(storage)
+        if not file_exists:
+            raise RuntimeError('Storage file {} does not exists; cannot resume.'.format(storage))
+
+        # Open a reporter to read the data.
+        reporter = Reporter(storage, mode='r')
+
+        # Retrieve options and create new simulation.
+        options = reporter.read_dict('options')
+        repex = ReplicaExchange(**options)
+
+        # Display papers to be cited.
+        repex._display_citations()
+
+        # Retrieve other attributes.
+        logger.debug("Reading storage file {}...".format(storage))
+        thermodynamic_states = reporter.read_thermodynamic_states()
+        sampler_states = reporter.read_sampler_states(iteration=-1)
+        state_indices = reporter.read_replica_thermodynamic_states(iteration=-1)
+        energies = reporter.read_energies(iteration=-1)
+        n_accepted_matrix, n_proposed_matrix = reporter.read_mixing_statistics(iteration=-1)
+
+        # Count timestamps to retrieve the current number of iterations.
+        iteration = len(reporter.read_timestamp(iteration=slice(None))) - 1  # 0-based
+
+        # Assign attributes.
+        repex._thermodynamic_states = thermodynamic_states
+        repex._sampler_states = sampler_states
+        repex._replica_thermodynamic_states = state_indices
+        repex._u_kl = energies
+        repex._n_accepted_matrix = n_accepted_matrix
+        repex._n_proposed_matrix = n_proposed_matrix
+        repex._iteration = iteration
+
+        # We set the reporter in node 0. Will return None if not rank 0.
+        repex._reporter = mpi.run_single_node(0, Reporter, storage, mode='a',
+                                              broadcast_result=False, sync_nodes=False)
+        return repex
 
     @property
     def n_replicas(self):
@@ -919,10 +980,13 @@ class ReplicaExchange(object):
            metadata to store in a 'metadata' group in store file
 
         """
-        # Check if netcdf file exists.
-        file_exists = self._does_file_exist(storage)
+        # Check if netcdf file exists. This is run only on MPI node 0 and
+        # broadcasted. This is to avoid the case in creation where other
+        # nodes arrive to this line after node 0 has already initialized
+        # the storage file, causing an error.
+        file_exists = mpi.run_single_node(0, self._does_file_exist, storage, broadcast_result=True)
         if file_exists:
-            raise RuntimeError("NetCDF file {} already exists; cowardly "
+            raise RuntimeError("Storage file {} already exists; cowardly "
                                "refusing to overwrite.".format(storage))
 
         # Make sure sampler_states is an iterable of SamplerStates for later.
@@ -955,7 +1019,7 @@ class ReplicaExchange(object):
         # and SamplerState sampler_states[i]. During mixing, we exchange the indices
         # of the ThermodynamicState, but we keep the SamplerStates (i.e. positions,
         # velocities, box_vectors) bound to the same replica.
-        self._replica_thermodynamic_states = [i for i in range(self.n_replicas)]
+        self._replica_thermodynamic_states = np.array([i for i in range(self.n_replicas)], np.int32)
 
         # Assign default system box vectors if None has been specified.
         for replica_id, thermodynamic_state_id in enumerate(self._replica_thermodynamic_states):
@@ -971,8 +1035,8 @@ class ReplicaExchange(object):
         # Reset statistics.
         # _n_accepted_matrix[i][j] is the number of swaps proposed between thermodynamic states i and j.
         # _n_proposed_matrix[i][j] is the number of swaps proposed between thermodynamic states i and j.
-        self._n_accepted_matrix = np.zeros([self.n_replicas, self.n_replicas], np.int64)
-        self._n_proposed_matrix = np.zeros([self.n_replicas, self.n_replicas], np.int64)
+        self._n_accepted_matrix = np.zeros([self.n_replicas, self.n_replicas], np.int32)
+        self._n_proposed_matrix = np.zeros([self.n_replicas, self.n_replicas], np.int32)
 
         # Allocate memory for energy matrix.
         # u_kl[k][l] is the reduced potential computed at the positions of SamplerState
@@ -984,54 +1048,6 @@ class ReplicaExchange(object):
 
         # Initialize NetCDF file.
         self._initialize_reporter(storage, metadata)
-
-        # Mark as initialized. Methods like minimize and run can be run now.
-        self._initialized = True
-
-    def resume(self, options=None):
-        """
-        Parameters
-        ----------
-        options : dict, optional, default=None
-           will override any options restored from the store file.
-
-        """
-        self._resume = True
-
-        # Check if netcdf file exists.
-        file_exists = os.path.exists(self.store_filename) and (os.path.getsize(self.store_filename) > 0)
-        if self.mpicomm:
-            logger.debug('Node {}/{}: MPI bcast - sharing file_exists'.format(
-                    self.mpicomm.rank, self.mpicomm.size))
-            file_exists = self.mpicomm.bcast(file_exists, root=0)  # use whatever root node decides
-        if not file_exists:
-            raise Exception("NetCDF file %s does not exist; cannot resume." % self.store_filename)
-
-        # Try to restore thermodynamic states and run options from the NetCDF file.
-        ncfile = netcdf.Dataset(self.store_filename, 'r')
-        self._restore_thermodynamic_states(ncfile)
-        self._restore_options(ncfile)
-        self._restore_metadata(ncfile)
-        ncfile.close()
-
-        # Determine number of replicas from the number of specified thermodynamic states.
-        self.nreplicas = len(self.states)
-
-        # Check to make sure all states have the same number of atoms and are in the same thermodynamic ensemble.
-        for state in self.states:
-            if not state.is_compatible_with(self.states[0]):
-                raise ValueError("Provided ThermodynamicState states must all be from the same thermodynamic ensemble.")
-
-        # Handle provided 'options' dict, replacing any options provided by caller in dictionary.
-        # TODO: Check to make sure that only allowed overrides are specified.
-        if options:
-            for key in options.keys(): # for each provided key
-                if key in vars(self).keys(): # if this is also a simulation parameter
-                    value = options[key]
-                    logger.debug("from options: %s -> %s" % (key, str(value)))
-                    vars(self)[key] = value # replace default simulation parameter with provided parameter
-
-        return
 
     def __repr__(self):
         """
@@ -1155,15 +1171,8 @@ class ReplicaExchange(object):
     # -------------------------------------------------------------------------
 
     @staticmethod
-    @mpi.on_single_node(rank=0, broadcast_result=True)
     def _does_file_exist(file_path):
-        """Check if there is a file at the given path.
-
-        This is run only on MPI node 0 and broadcasted. This is to avoid
-        the case in creation where other nodes arrive to this line after
-        node 0 has already initialized the storage file, causing an error.
-
-        """
+        """Check if there is a file at the given path."""
         return os.path.exists(file_path) and os.path.getsize(file_path) > 0
 
     # -------------------------------------------------------------------------
@@ -1179,7 +1188,7 @@ class ReplicaExchange(object):
         from a file that hasn't been created yet.
 
         """
-        self._reporter = Reporter(storage)
+        self._reporter = Reporter(storage, mode='w')
         self._reporter.write_thermodynamic_states(self._thermodynamic_states)
 
         # Store run metadata and ReplicaExchange options.
@@ -1218,31 +1227,6 @@ class ReplicaExchange(object):
         options_to_store = {parameter_name: getattr(self, '_' + parameter_name)
                             for parameter_name in parameter_names[-len(defaults):]}
         self._reporter.write_dict('options', options_to_store)
-
-    def _restore_options(self, ncfile):
-        """
-        Restore run parameters from NetCDF file.
-
-        """
-
-        logger.debug("Attempting to restore options from NetCDF file...")
-
-        # Make sure this NetCDF file contains option information
-        if not 'options' in ncfile.groups:
-            raise Exception("options not found in NetCDF file.")
-
-        # Find the group.
-        ncgrp_options = ncfile.groups['options']
-
-        # Restore options as dict.
-        options = self._restore_dict_from_netcdf(ncgrp_options)
-
-        # Set these as attributes.
-        for option_name in options.keys():
-            setattr(self, option_name, options[option_name])
-
-        # Signal success.
-        return True
 
     def _store_metadata(self, metadata):
         """Store metadata."""
@@ -2019,46 +2003,6 @@ class ReplicaExchange(object):
                 raise Exception("Aborting.")
 
         return
-
-    def _resume_from_netcdf(self, ncfile):
-        """
-        Resume execution by reading current positions and energies from a NetCDF file.
-
-        Parameters
-        ----------
-        ncfile : netcdf.Dataset
-            The NetCDF file in which metadata is to be stored.
-
-        """
-
-        # TODO: Perform sanity check on file before resuming
-
-        # Get current dimensions.
-        self.iteration = ncfile.variables['positions'].shape[0] - 1
-        self.nstates = ncfile.variables['positions'].shape[1]
-        self.natoms = ncfile.variables['positions'].shape[2]
-        self.nreplicas = self.nstates
-        logger.debug("iteration = %d, nstates = %d, natoms = %d" % (self.iteration, self.nstates, self.natoms))
-
-        # Restore positions.
-        self.replica_positions = list()
-        for replica_index in range(self.nstates):
-            x = ncfile.variables['positions'][self.iteration,replica_index,:,:].astype(np.float64).copy()
-            positions = unit.Quantity(x, unit.nanometers)
-            self.replica_positions.append(positions)
-
-        # Restore box vectors.
-        self.replica_box_vectors = list()
-        for replica_index in range(self.nstates):
-            x = ncfile.variables['box_vectors'][self.iteration,replica_index,:,:].astype(np.float64).copy()
-            box_vectors = unit.Quantity(x, unit.nanometers)
-            self.replica_box_vectors.append(box_vectors)
-
-        # Restore state information.
-        self.replica_states = ncfile.variables['states'][self.iteration,:].copy()
-
-        # Restore energies.
-        self.u_kl = ncfile.variables['energies'][self.iteration,:,:].copy()
 
     def _show_energies(self):
         """
