@@ -41,11 +41,13 @@ delayed_termination
 import os
 import sys
 import signal
+import logging
 from contextlib import contextmanager
 
 # TODO drop this when we drop Python 2 support
 from openmoltools.utils import wraps_py2
 
+logger = logging.getLogger(__name__)
 
 # ==============================================================================
 # GLOBAL VARIABLES
@@ -95,6 +97,7 @@ def get_mpicomm():
 
     # Return None if we are not running on MPI.
     if not use_mpi:
+        logger.debug('Cannot find MPI environment. MPI disabled.')
         get_mpicomm._mpicomm = None
         return get_mpicomm._mpicomm
 
@@ -123,6 +126,10 @@ def get_mpicomm():
     # Cache and return the MPI communicator.
     get_mpicomm._is_initialized = True
     get_mpicomm._mpicomm = mpicomm
+
+    # Report initialization
+    logger.debug("MPI initialized on node {}/{}".format(mpicomm.rank, mpicomm.size))
+
     return mpicomm
 
 get_mpicomm._is_initialized = False  # Static variable
@@ -176,15 +183,23 @@ def run_single_node(rank, task, *args, **kwargs):
     result = None
     mpicomm = get_mpicomm()
 
+    if mpicomm is not None:
+        node_name = 'Node {}/{}'.format(mpicomm.rank, mpicomm.size)
+    else:
+        node_name = 'Single node'
+
     # Execute the task only on the specified node.
     if mpicomm is None or mpicomm.rank == rank:
+        logger.debug('{}: executing {}'.format(node_name, task.__name__))
         result = task(*args, **kwargs)
 
     # Broadcast the result if required.
     if mpicomm is not None:
-        if broadcast_result:
+        if broadcast_result is True:
+            logger.debug('{}: waiting for broadcast of {}'.format(node_name, task.__name__))
             result = mpicomm.bcast(result, root=rank)
         elif sync_nodes is True:
+            logger.debug('{}: waiting for barrier after {}'.format(node_name, task.__name__))
             mpicomm.barrier()
 
     # Return result.
@@ -232,18 +247,21 @@ def on_single_node(rank, broadcast_result=False, sync_nodes=False):
     return _on_single_node
 
 
-def distribute(task, all_args, send_results_to=None, sync_nodes=False):
+def distribute(task, distributed_args, *other_args, **kwargs):
     """Map the task on a sequence of arguments to be executed on different nodes.
 
-    If MPI is not activated, this simply runs serially on this node.
+    If MPI is not activated, this simply runs serially on this node. The
+    algorithm guarantees that each node will be assigned to the same job_id
+    (i.e. the index of the argument in distributed_args) every time.
 
     Parameters
     ----------
     task : callable
-        The task to be distributed among nodes. The task must take a single
-        argument.
-    all_args : iterable
-        The sequence of the parameters to pass to the task.
+        The task to be distributed among nodes. The task will be called as
+        task(distributed_args[job_id], *other_args, **kwargs), so the parameter
+        to be distributed must the the first one.
+    distributed_args : iterable
+        The sequence of the parameters to distribute among nodes.
     send_results_to : int or 'all', optional
         If the string 'all', the result will be sent to all nodes. If an
         int, the result will be send only to the node with rank send_results_to.
@@ -253,6 +271,15 @@ def distribute(task, all_args, send_results_to=None, sync_nodes=False):
         If True, the nodes will be synchronized at the end of the
         execution (i.e. the task will be blocking) even if the
         result is not shared (default is False).
+
+    Other Parameters
+    ----------------
+    *other_args
+        Other parameters to pass to task beside the assigned distributed
+        parameters.
+    **kwargs
+        Keyword arguments to pass to task beside the assigned distributed
+        parameters.
 
     Returns
     -------
@@ -279,12 +306,15 @@ def distribute(task, all_args, send_results_to=None, sync_nodes=False):
     ([1, 4, 9, 16], [0, 1, 2, 3])
 
     """
+    send_results_to = kwargs.pop('send_results_to', None)
+    sync_nodes = kwargs.pop('sync_nodes', False)
     mpicomm = get_mpicomm()
-    n_jobs = len(all_args)
+    n_jobs = len(distributed_args)
 
     # If MPI is not activated, just run serially.
     if mpicomm is None:
-        all_results = [task(job_args) for job_args in all_args]
+        logger.debug('Running {} serially.'.format(task.__name__))
+        all_results = [task(job_args, *other_args, **kwargs) for job_args in distributed_args]
         if send_results_to == 'all':
             return all_results
         else:
@@ -294,13 +324,18 @@ def distribute(task, all_args, send_results_to=None, sync_nodes=False):
 
     # Compute all the results assigned to this node.
     results = []
+    node_name = 'Node {}/{}'.format(mpicomm.rank, mpicomm.size)
     for job_id in node_job_ids:
-        results.append(task(all_args[job_id]))
+        distributed_arg = distributed_args[job_id]
+        logger.debug('{}: execute {}({})'.format(node_name, task.__name__, distributed_arg))
+        results.append(task(distributed_arg, *other_args, **kwargs))
 
     # Share result as specified.
     if send_results_to == 'all':
+        logger.debug('{}: allgather results of {}'.format(node_name, task.__name__))
         all_results = mpicomm.allgather(results)
     elif isinstance(send_results_to, int):
+        logger.debug('{}: gather results of {}'.format(node_name, task.__name__))
         all_results = mpicomm.gather(results, root=send_results_to)
 
         # If this is not the receiving node, we can safely return.
@@ -309,6 +344,7 @@ def distribute(task, all_args, send_results_to=None, sync_nodes=False):
     else:
         assert send_results_to is None  # Safety check.
         if sync_nodes is True:
+            logger.debug('{}: waiting for barrier after {}'.format(node_name, task.__name__))
             mpicomm.barrier()
         return results, list(node_job_ids)
 
