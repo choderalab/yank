@@ -63,6 +63,7 @@ import os
 import math
 import copy
 import time
+import inspect
 import datetime
 import logging
 import importlib
@@ -120,13 +121,8 @@ class Reporter(object):
     """
 
     def __init__(self, storage):
-        self._storage_file_path = storage
-        self._ncfile = None
-
-    def initialize_storage(self):
-        """Creates and open a new storage file."""
         # Open NetCDF 4 file for writing.
-        ncfile = netcdf.Dataset(self._storage_file_path, 'w', version='NETCDF4')
+        ncfile = netcdf.Dataset(storage, 'w', version='NETCDF4')
 
         # Create common dimensions.
         ncfile.createDimension('scalar', 1)  # Scalar dimension.
@@ -140,7 +136,7 @@ class Reporter(object):
         setattr(ncfile, 'Conventions', 'YANK')
         setattr(ncfile, 'ConventionVersion', '0.1')
 
-        # Save net cdf file.
+        # Save NetCDF file.
         self._ncfile = ncfile
 
     def __del__(self):
@@ -149,6 +145,10 @@ class Reporter(object):
             self._ncfile.sync()
             self._ncfile.close()
             self._ncfile = None
+
+    def sync(self):
+        """Force any buffer to be flushed to the file."""
+        self._ncfile.sync()
 
     @mmtools.utils.with_timer('Reading thermodynamic states from storage')
     def read_thermodynamic_states(self):
@@ -481,8 +481,12 @@ class Reporter(object):
             # If Quantity, assign unit.
             if hasattr(ncvar, 'units'):
                 value_unit_name = getattr(ncvar, 'units')
-                value_unit = utils.quantity_from_string(value_unit_name)
-                value = value * value_unit
+                if value_unit_name[0] == '/':
+                    value_unit = utils.quantity_from_string(value_unit_name[1:])
+                    value = value / value_unit
+                else:
+                    value_unit = utils.quantity_from_string(value_unit_name)
+                    value = value * value_unit
 
             # Store option.
             data[key] = value
@@ -509,14 +513,13 @@ class Reporter(object):
             if isinstance(value, unit.Quantity):
                 value_unit = value.unit
                 value = value / value_unit
+            # Booleans are converted to integers.
+            elif isinstance(value, bool):
+                value = int(value)
 
             # Check the Python type.
             value_type = type(value)
             value_type_name = utils.typename(value_type)
-
-            # Booleans are converted to integers.
-            if isinstance(value, bool):
-                value = int(value)
 
             # Store the variable.
             if isinstance(value, str):
@@ -831,8 +834,7 @@ class ReplicaExchange(object):
                  online_analysis=False,
                  online_analysis_min_iterations=20,
                  show_energies=True,
-                 show_mixing_statistics=True,
-                 title=None):
+                 show_mixing_statistics=True):
         """
         Initialize replica-exchange simulation facility.
 
@@ -853,15 +855,9 @@ class ReplicaExchange(object):
             Parameters in ReplicaExchange.default_parameters corresponding public attributes.
 
         """
-        if title is None:
-            title = ('Replica-exchange simulation created using ReplicaExchange '
-                     'class of repex.py on {}'.format(time.asctime(time.localtime())))
-
         # To initialize either call create() or the from_storage() constructor.
+        # When this is True, the simulation can be run.
         self._initialized = False
-
-        # Get MPI communicator, if any.
-        self._mpicomm = mpi.get_mpicomm()
 
         # Store constructor parameters. Everything is marked for internal
         # usage because any change these attribute will imply a change in
@@ -873,9 +869,36 @@ class ReplicaExchange(object):
         self._online_analysis_min_iterations = online_analysis_min_iterations
         self._show_energies = show_energies
         self._show_mixing_statistics = show_mixing_statistics
-        self._title = title
 
-    def create(self, states, positions, options=None, metadata=None):
+        # These will be set every time _initialize() is called.
+        # See that function for explanation of single variables.
+        self._thermodynamic_states = None
+        self._sampler_states = None
+        self._replica_thermodynamic_states = None
+        self._iteration = None
+        self._u_kl = None
+        self._n_accepted_matrix = None
+        self._n_proposed_matrix = None
+        self._reporter = None  # This is None everywhere but in node 0
+
+    @property
+    def n_replicas(self):
+        """The number of replicas (read-only)."""
+        if self._thermodynamic_states is None:
+            return 0
+        else:
+            return len(self._thermodynamic_states)
+
+    @property
+    def iteration(self):
+        """The current iteration of the simulation (read-only).
+
+        If the simulation has not been initialized, this is None.
+
+        """
+        return self._iteration
+
+    def create(self, thermodynamic_states, sampler_states, storage, metadata=None):
         """
         Create new replica-exchange simulation.
 
@@ -896,52 +919,74 @@ class ReplicaExchange(object):
            metadata to store in a 'metadata' group in store file
 
         """
-
         # Check if netcdf file exists.
-        file_exists = os.path.exists(self.store_filename) and (os.path.getsize(self.store_filename) > 0)
-        if self.mpicomm:
-            logger.debug('Node {}/{}: MPI bcast - sharing file_exists'.format(
-                    self.mpicomm.rank, self.mpicomm.size))
-            file_exists = self.mpicomm.bcast(file_exists, root=0)  # use whatever root node decides
+        file_exists = self._does_file_exist(storage)
         if file_exists:
-            raise RuntimeError("NetCDF file %s already exists; cowardly refusing to overwrite." % self.store_filename)
-        self._resume = False
+            raise RuntimeError("NetCDF file {} already exists; cowardly "
+                               "refusing to overwrite.".format(storage))
 
-        # TODO: Make a deep copy of specified states once this is fixed in OpenMM.
-        # self.states = copy.deepcopy(states)
-        self.states = states
+        # Make sure sampler_states is an iterable of SamplerStates for later.
+        if isinstance(sampler_states, mmtools.states.SamplerState):
+            sampler_states = [sampler_states]
 
-        # Determine number of replicas from the number of specified thermodynamic states.
-        self.nreplicas = len(self.states)
+        # Make sure there are no more sampler states than thermodynamic states.
+        if len(sampler_states) > len(thermodynamic_states):
+            raise ValueError('Passed {} SamplerStates but only {} ThermodynamicStates'.format(
+                len(sampler_states), len(thermodynamic_states)))
 
-        # Check to make sure all states have the same number of atoms and are in the same thermodynamic ensemble.
-        for state in self.states:
-            if not state.is_compatible_with(self.states[0]):
-                raise ValueError("Provided ThermodynamicState states must all be from the same thermodynamic ensemble.")
+        # Make sure all states have same number of particles. We don't
+        # currently support writing storage with different n_particles
+        n_particles = thermodynamic_states[0].n_particles
+        for states in [thermodynamic_states, sampler_states]:
+            for state in states:
+                if state.n_particles != n_particles:
+                    raise ValueError('All ThermodynamicStates and SamplerStates must '
+                                     'have the same number of particles')
 
-        # Distribute coordinate information to replicas in a round-robin fashion.
-        # We have to explicitly check to see if z is a list or a set here because it turns out that np 2D arrays are iterable as well.
-        # TODO: Handle case where positions are passed in as a list of tuples, or list of lists, or list of Vec3s, etc.
-        if type(positions) in [type(list()), type(set())]:
-            self.provided_positions = [ unit.Quantity(np.array(coordinate_set / coordinate_set.unit), coordinate_set.unit) for coordinate_set in positions ]
-        else:
-            self.provided_positions = [ unit.Quantity(np.array(positions / positions.unit), positions.unit) ]
+        # Save thermodynamic states. This sets n_replicas.
+        self._thermodynamic_states = copy.deepcopy(thermodynamic_states)
 
-        # Handle provided 'options' dict, replacing any options provided by caller in dictionary.
-        if options is not None:
-            for key in options.keys(): # for each provided key
-                if key in vars(self).keys(): # if this is also a simulation parameter
-                    value = options[key]
-                    logger.debug("from options: %s -> %s" % (key, str(value)))
-                    vars(self)[key] = value # replace default simulation parameter with provided parameter
+        # Distribute sampler states to replicas in a round-robin fashion.
+        self._sampler_states = [copy.deepcopy(sampler_states[i % len(sampler_states)])
+                                for i in range(self.n_replicas)]
 
-        # Store metadata to store in store file.
-        self.metadata = metadata
+        # Map each thermodynamic state to a replica. Replica i at each iteration is
+        # in ThermodynamicState thermodynamic_states[replica_thermodynamic_states[i]]
+        # and SamplerState sampler_states[i]. During mixing, we exchange the indices
+        # of the ThermodynamicState, but we keep the SamplerStates (i.e. positions,
+        # velocities, box_vectors) bound to the same replica.
+        self._replica_thermodynamic_states = [i for i in range(self.n_replicas)]
+
+        # Assign default system box vectors if None has been specified.
+        for replica_id, thermodynamic_state_id in enumerate(self._replica_thermodynamic_states):
+            sampler_state = self._sampler_states[replica_id]
+            if sampler_state.box_vectors is not None:
+                continue
+            thermodynamic_state = self._thermodynamic_states[thermodynamic_state_id]
+            sampler_state.box_vectors = thermodynamic_state.system.getDefaultPeriodicBoxVectors()
+
+        # Reset iteration counter.
+        self._iteration = 0
+
+        # Reset statistics.
+        # _n_accepted_matrix[i][j] is the number of swaps proposed between thermodynamic states i and j.
+        # _n_proposed_matrix[i][j] is the number of swaps proposed between thermodynamic states i and j.
+        self._n_accepted_matrix = np.zeros([self.n_replicas, self.n_replicas], np.int64)
+        self._n_proposed_matrix = np.zeros([self.n_replicas, self.n_replicas], np.int64)
+
+        # Allocate memory for energy matrix.
+        # u_kl[k][l] is the reduced potential computed at the positions of SamplerState
+        # sampler_states[k] and ThermodynamicState thermodynamic_states[l].
+        self._u_kl = np.zeros([self.n_replicas, self.n_replicas], np.float64)
+
+        # Display papers to be cited.
+        self._display_citations()
 
         # Initialize NetCDF file.
-        self._initialize_create()
+        self._initialize_reporter(storage, metadata)
 
-        return
+        # Mark as initialized. Methods like minimize and run can be run now.
+        self._initialized = True
 
     def resume(self, options=None):
         """
@@ -1105,77 +1150,110 @@ class ReplicaExchange(object):
         # Clean up and close storage files.
         self._finalize()
 
-        return
+    # -------------------------------------------------------------------------
+    # Internal-usage: Initialization.
+    # -------------------------------------------------------------------------
 
-    def _initialize_create(self):
+    @staticmethod
+    @mpi.on_single_node(rank=0, broadcast_result=True)
+    def _does_file_exist(file_path):
+        """Check if there is a file at the given path.
+
+        This is run only on MPI node 0 and broadcasted. This is to avoid
+        the case in creation where other nodes arrive to this line after
+        node 0 has already initialized the storage file, causing an error.
+
         """
-        Initialize the simulation and create a storage file, closing it after completion.
+        return os.path.exists(file_path) and os.path.getsize(file_path) > 0
+
+    # -------------------------------------------------------------------------
+    # Internal-usage: Storage utilities.
+    # -------------------------------------------------------------------------
+
+    @mpi.on_single_node(rank=0, broadcast_result=False, sync_nodes=True)
+    def _initialize_reporter(self, storage, metadata):
+        """Initialize the reporter and store initial information.
+
+        This is executed only on MPI node 0 and it is blocking. This is to
+        avoid the case where the other nodes skip ahead and try to read
+        from a file that hasn't been created yet.
+
+        """
+        self._reporter = Reporter(storage)
+        self._reporter.write_thermodynamic_states(self._thermodynamic_states)
+
+        # Store run metadata and ReplicaExchange options.
+        self._store_options()
+        self._store_metadata(metadata)
+
+        # Store initial conditions. This forces the storage to be synchronized.
+        self._report_iteration()
+
+    @mpi.on_single_node(rank=0, broadcast_result=False, sync_nodes=False)
+    @mpi.delayed_termination
+    @mmtools.utils.with_timer('Writing iteration information to storage')
+    def _report_iteration(self):
+        """Store positions, states, and energies of current iteration.
+
+        This is executed only on MPI node 0 and it's not blocking. The
+        termination is delayed so that the file is not written only with
+        partial data if the program gets interrupted.
+
+        """
+        self._reporter.write_sampler_states(self._sampler_states, self._iteration)
+        self._reporter.write_replica_thermodynamic_states(self._replica_thermodynamic_states, self._iteration)
+        self._reporter.write_energies(self._u_kl, self._iteration)
+        self._reporter.write_mixing_statistics(self._n_accepted_matrix, self._n_proposed_matrix, self._iteration)
+        self._reporter.write_timestamp(self._iteration)
+        self._reporter.sync()
+
+    def _store_options(self):
+        """Store __init__ parameters in storage file."""
+        logger.debug("Storing general ReplicaExchange options...")
+
+        # Inspect __init__ parameters to store.
+        parameter_names, _, _, defaults = inspect.getargspec(self.__init__)
+
+        # Retrieve and store options.
+        options_to_store = {parameter_name: getattr(self, '_' + parameter_name)
+                            for parameter_name in parameter_names[-len(defaults):]}
+        self._reporter.write_dict('options', options_to_store)
+
+    def _restore_options(self, ncfile):
+        """
+        Restore run parameters from NetCDF file.
 
         """
 
-        if self._initialized:
-            raise RuntimeError("Simulation has already been initialized.")
+        logger.debug("Attempting to restore options from NetCDF file...")
 
-        # Extract a representative system.
-        representative_system = self.states[0].system
+        # Make sure this NetCDF file contains option information
+        if not 'options' in ncfile.groups:
+            raise Exception("options not found in NetCDF file.")
 
-        # Turn off verbosity if not master node.
-        if self.mpicomm:
-            # Have each node report that it is initialized.
-            # TODO this doesn't work on worker nodes since they report only warning entries and higher
-            logger.debug("Initialized node %d / %d" % (self.mpicomm.rank, self.mpicomm.size))
+        # Find the group.
+        ncgrp_options = ncfile.groups['options']
 
-        # Display papers to be cited.
-        if utils.is_terminal_verbose():
-            self._display_citations()
+        # Restore options as dict.
+        options = self._restore_dict_from_netcdf(ncgrp_options)
 
-        # Determine number of alchemical states.
-        self.nstates = len(self.states)
+        # Set these as attributes.
+        for option_name in options.keys():
+            setattr(self, option_name, options[option_name])
 
-        # Determine number of atoms in systems.
-        self.natoms = representative_system.getNumParticles()
+        # Signal success.
+        return True
 
-        # Allocate storage.
-        self.replica_positions = list() # replica_positions[i] is the configuration currently held in replica i
-        self.replica_box_vectors = list() # replica_box_vectors[i] is the set of box vectors currently held in replica i
-        self.replica_states     = np.zeros([self.nstates], np.int64) # replica_states[i] is the state that replica i is currently at
-        self.u_kl               = np.zeros([self.nstates, self.nstates], np.float64)
-        self.swap_Pij_accepted  = np.zeros([self.nstates, self.nstates], np.float64)
-        self.Nij_proposed       = np.zeros([self.nstates,self.nstates], np.int64) # Nij_proposed[i][j] is the number of swaps proposed between states i and j, prior of 1
-        self.Nij_accepted       = np.zeros([self.nstates,self.nstates], np.int64) # Nij_proposed[i][j] is the number of swaps proposed between states i and j, prior of 1
-
-        # Distribute coordinate information to replicas in a round-robin fashion, making a deep copy.
-        if not self._resume:
-            self.replica_positions = [ copy.deepcopy(self.provided_positions[replica_index % len(self.provided_positions)]) for replica_index in range(self.nstates) ]
-
-        # Assign default box vectors.
-        self.replica_box_vectors = list()
-        for state in self.states:
-            [a,b,c] = state.system.getDefaultPeriodicBoxVectors()
-            box_vectors = unit.Quantity(np.zeros([3,3], np.float32), unit.nanometers)
-            box_vectors[0,:] = a
-            box_vectors[1,:] = b
-            box_vectors[2,:] = c
-            self.replica_box_vectors.append(box_vectors)
-
-        # Assign initial replica states.
-        for replica_index in range(self.nstates):
-            self.replica_states[replica_index] = replica_index
-
-        # Initialize current iteration counter.
-        self.iteration = 0
-
-        # Initialize NetCDF file.
-        self._initialize_netcdf()
-
-        # Store initial state.
-        self._write_iteration_netcdf()
-
-        # Close NetCDF file.
-        self.ncfile.close()
-        self.ncfile = None
-
-        return
+    def _store_metadata(self, metadata):
+        """Store metadata."""
+        # Handle default behavior and add default simulation title.
+        default_title = ('Replica-exchange simulation created using ReplicaExchange class '
+                         'of yank.repex.py on {}'.format(time.asctime(time.localtime())))
+        if metadata is None:
+            metadata = dict(title=default_title)
+        elif 'title' not in metadata:
+            metadata['title'] = default_title
+        self._reporter.write_dict('metadata', metadata)
 
     def _initialize_resume(self):
         """
@@ -1294,39 +1372,6 @@ class ReplicaExchange(object):
 
         return
 
-    def _finalize(self):
-        """
-        Do anything necessary to finish run except close files.
-
-        """
-
-        if self.mpicomm:
-            # Only the root node needs to clean up.
-            if self.mpicomm.rank != 0: return
-
-        if hasattr(self, 'ncfile') and self.ncfile:
-            self.ncfile.sync()
-
-        return
-
-    def __del__(self):
-        """
-        Clean up, closing files.
-
-        """
-        self._finalize()
-
-        if self.mpicomm:
-            # Only the root node needs to clean up.
-            if self.mpicomm.rank != 0: return
-
-        if hasattr(self, 'ncfile'):
-            if self.ncfile is not None:
-                self.ncfile.close()
-                self.ncfile = None
-
-        return
-
     def _display_citations(self):
         """
         Display papers to be cited.
@@ -1353,9 +1398,9 @@ class ReplicaExchange(object):
         print("Please cite the following:")
         print("")
         print(openmm_citations)
-        if self.replica_mixing_scheme == 'swap-all':
+        if self._replica_mixing_scheme == 'swap-all':
             print(gibbs_citations)
-        if self.online_analysis:
+        if self._online_analysis:
             print(mbar_citations)
 
         return
@@ -1945,136 +1990,6 @@ class ReplicaExchange(object):
         else:
             logger.debug("Perron eigenvalue is %9.5f; state equilibration timescale is ~ %.1f iterations" % (mu[1], 1.0 / (1.0 - mu[1])))
 
-    def _initialize_netcdf(self):
-        """
-        Initialize NetCDF file for storage.
-
-        """
-
-        # Only root node should set up NetCDF file.
-        if self.mpicomm:
-            if self.mpicomm.rank != 0: return
-
-        # Open NetCDF 4 file for writing.
-        ncfile = netcdf.Dataset(self.store_filename, 'w', version='NETCDF4')
-
-        # Create dimensions.
-        ncfile.createDimension('iteration', 0) # unlimited number of iterations
-        ncfile.createDimension('replica', self.nreplicas) # number of replicas
-        ncfile.createDimension('atom', self.natoms) # number of atoms in system
-        ncfile.createDimension('spatial', 3) # number of spatial dimensions
-
-        # Set global attributes.
-        setattr(ncfile, 'title', self.title)
-        setattr(ncfile, 'application', 'YANK')
-        setattr(ncfile, 'program', 'yank.py')
-        setattr(ncfile, 'programVersion', 'unknown') # TODO: Include actual version.
-        setattr(ncfile, 'Conventions', 'YANK')
-        setattr(ncfile, 'ConventionVersion', '0.1')
-
-        # Create variables.
-        ncvar_positions = ncfile.createVariable('positions', 'f4', ('iteration','replica','atom','spatial'), zlib=True, chunksizes=(1,self.nreplicas,self.natoms,3))
-        ncvar_states    = ncfile.createVariable('states', 'i4', ('iteration','replica'), zlib=False, chunksizes=(1,self.nreplicas))
-        ncvar_energies  = ncfile.createVariable('energies', 'f8', ('iteration','replica','replica'), zlib=False, chunksizes=(1,self.nreplicas,self.nreplicas))
-        ncvar_proposed  = ncfile.createVariable('proposed', 'i4', ('iteration','replica','replica'), zlib=False, chunksizes=(1,self.nreplicas,self.nreplicas))
-        ncvar_accepted  = ncfile.createVariable('accepted', 'i4', ('iteration','replica','replica'), zlib=False, chunksizes=(1,self.nreplicas,self.nreplicas))
-        ncvar_box_vectors = ncfile.createVariable('box_vectors', 'f4', ('iteration','replica','spatial','spatial'), zlib=False, chunksizes=(1,self.nreplicas,3,3))
-        ncvar_volumes  = ncfile.createVariable('volumes', 'f8', ('iteration','replica'), zlib=False, chunksizes=(1,self.nreplicas))
-
-        # Define units for variables.
-        setattr(ncvar_positions, 'units', 'nm')
-        setattr(ncvar_states,    'units', 'none')
-        setattr(ncvar_energies,  'units', 'kT')
-        setattr(ncvar_proposed,  'units', 'none')
-        setattr(ncvar_accepted,  'units', 'none')
-        setattr(ncvar_box_vectors, 'units', 'nm')
-        setattr(ncvar_volumes, 'units', 'nm**3')
-
-        # Define long (human-readable) names for variables.
-        setattr(ncvar_positions, "long_name", "positions[iteration][replica][atom][spatial] is position of coordinate 'spatial' of atom 'atom' from replica 'replica' for iteration 'iteration'.")
-        setattr(ncvar_states,    "long_name", "states[iteration][replica] is the state index (0..nstates-1) of replica 'replica' of iteration 'iteration'.")
-        setattr(ncvar_energies,  "long_name", "energies[iteration][replica][state] is the reduced (unitless) energy of replica 'replica' from iteration 'iteration' evaluated at state 'state'.")
-        setattr(ncvar_proposed,  "long_name", "proposed[iteration][i][j] is the number of proposed transitions between states i and j from iteration 'iteration-1'.")
-        setattr(ncvar_accepted,  "long_name", "accepted[iteration][i][j] is the number of proposed transitions between states i and j from iteration 'iteration-1'.")
-        setattr(ncvar_box_vectors, "long_name", "box_vectors[iteration][replica][i][j] is dimension j of box vector i for replica 'replica' from iteration 'iteration-1'.")
-        setattr(ncvar_volumes, "long_name", "volume[iteration][replica] is the box volume for replica 'replica' from iteration 'iteration-1'.")
-
-        # Create timestamp variable.
-        ncvar_timestamp = ncfile.createVariable('timestamp', str, ('iteration',), zlib=False, chunksizes=(1,))
-
-        # Store thermodynamic states.
-        self._store_thermodynamic_states(ncfile)
-
-        # Store run options
-        self._store_options(ncfile)
-
-        # Store metadata.
-        if self.metadata:
-            self._store_metadata(ncfile)
-
-        # Force sync to disk to avoid data loss.
-        ncfile.sync()
-
-        # Store netcdf file handle.
-        self.ncfile = ncfile
-
-        return
-
-    @mpi.delayed_termination
-    def _write_iteration_netcdf(self):
-        """
-        Write positions, states, and energies of current iteration to NetCDF file.
-
-        """
-
-        if self.mpicomm:
-            # Only the root node will write data.
-            if self.mpicomm.rank != 0: return
-
-        initial_time = time.time()
-
-        # Store replica positions.
-        for replica_index in range(self.nstates):
-            positions = self.replica_positions[replica_index]
-            x = positions / unit.nanometers
-            self.ncfile.variables['positions'][self.iteration,replica_index,:,:] = x[:,:]
-
-        # Store box vectors and volume.
-        for replica_index in range(self.nstates):
-            state_index = self.replica_states[replica_index]
-            state = self.states[state_index]
-            box_vectors = self.replica_box_vectors[replica_index]
-            for i in range(3):
-                self.ncfile.variables['box_vectors'][self.iteration,replica_index,i,:] = (box_vectors[i] / unit.nanometers)
-            volume = state._volume(box_vectors)
-            self.ncfile.variables['volumes'][self.iteration,replica_index] = volume / (unit.nanometers**3)
-
-        # Store state information.
-        self.ncfile.variables['states'][self.iteration,:] = self.replica_states[:]
-
-        # Store energies.
-        self.ncfile.variables['energies'][self.iteration,:,:] = self.u_kl[:,:]
-
-        # Store mixing statistics.
-        # TODO: Write mixing statistics for this iteration?
-        self.ncfile.variables['proposed'][self.iteration,:,:] = self.Nij_proposed[:,:]
-        self.ncfile.variables['accepted'][self.iteration,:,:] = self.Nij_accepted[:,:]
-
-        # Store timestamp this iteration was written.
-        self.ncfile.variables['timestamp'][self.iteration] = time.ctime()
-
-        # Force sync to disk to avoid data loss.
-        presync_time = time.time()
-        self.ncfile.sync()
-
-        # Print statistics.
-        final_time = time.time()
-        sync_time = final_time - presync_time
-        elapsed_time = final_time - initial_time
-        logger.debug("Writing data to NetCDF file took %.3f s (%.3f s for sync)" % (elapsed_time, sync_time))
-
-        return
-
     def _run_sanity_checks(self):
         """
         Run some checks on current state information to see if something has gone wrong that precludes continuation.
@@ -2103,71 +2018,6 @@ class ReplicaExchange(object):
             else:
                 raise Exception("Aborting.")
 
-        return
-
-    def _store_options(self, ncfile):
-        """
-        Store run parameters in NetCDF file.
-
-        """
-
-        logger.debug("Storing run parameters in NetCDF file...")
-
-        # Create scalar dimension if not already present.
-        if 'scalar' not in ncfile.dimensions:
-            ncfile.createDimension('scalar', 1) # scalar dimension
-
-        # Create a group to store state information.
-        ncgrp_options = ncfile.createGroup('options')
-
-        # Build dict of options to store.
-        options = dict()
-        for option_name in self.options_to_store:
-            option_value = getattr(self, option_name)
-            options[option_name] = option_value
-
-        # Store options.
-        self._store_dict_in_netcdf(ncgrp_options, options)
-
-        return
-
-    def _restore_options(self, ncfile):
-        """
-        Restore run parameters from NetCDF file.
-
-        """
-
-        logger.debug("Attempting to restore options from NetCDF file...")
-
-        # Make sure this NetCDF file contains option information
-        if not 'options' in ncfile.groups:
-            raise Exception("options not found in NetCDF file.")
-
-        # Find the group.
-        ncgrp_options = ncfile.groups['options']
-
-        # Restore options as dict.
-        options = self._restore_dict_from_netcdf(ncgrp_options)
-
-        # Set these as attributes.
-        for option_name in options.keys():
-            setattr(self, option_name, options[option_name])
-
-        # Signal success.
-        return True
-
-    def _store_metadata(self, ncfile):
-        """
-        Store metadata in NetCDF file.
-
-        Parameters
-        ----------
-        ncfile : netcdf.Dataset
-            The NetCDF file in which metadata is to be stored.
-
-        """
-        ncgrp = ncfile.createGroup('metadata')
-        self._store_dict_in_netcdf(ncgrp, self.metadata)
         return
 
     def _resume_from_netcdf(self, ncfile):
