@@ -981,9 +981,9 @@ class ReplicaExchange(object):
 
         """
         # Check if netcdf file exists. This is run only on MPI node 0 and
-        # broadcasted. This is to avoid the case in creation where other
-        # nodes arrive to this line after node 0 has already initialized
-        # the storage file, causing an error.
+        # broadcasted. This is to avoid the case where the other nodes
+        # arrive to this line after node 0 has already created the storage
+        # file, causing an error.
         file_exists = mpi.run_single_node(0, self._does_file_exist, storage, broadcast_result=True)
         if file_exists:
             raise RuntimeError("Storage file {} already exists; cowardly "
@@ -1048,6 +1048,27 @@ class ReplicaExchange(object):
 
         # Initialize NetCDF file.
         self._initialize_reporter(storage, metadata)
+
+    @mmtools.utils.with_timer('Minimizing all replicas')
+    def minimize(self, minimize_tolerance=1.0*unit.kilojoules_per_mole/unit.nanometers,
+                 minimize_max_iterations=0):
+        logger.debug("Minimizing all replicas...")
+
+        # Distribute minimization across nodes. Only node 0 will get all positions.
+        # The other nodes, only need the positions that they use for propagation and
+        # computation of the energies.
+        minimized_positions, sampler_state_ids = mpi.distribute(self._minimize_replica, range(self.n_replicas),
+                                                                minimize_tolerance, minimize_max_iterations,
+                                                                send_results_to=0)
+
+        # Update all sampler states. For non-0 nodes, this will update only the
+        # sampler states associated to the replicas propagated by this node.
+        for sampler_state_id in sampler_state_ids:
+            self._sampler_states[sampler_state_id].positions = minimized_positions[sampler_state_id]
+
+        # Save the stored positions in the storage
+        if self._reporter is not None:
+            mpi.run_single_node(0, self._reporter.write_sampler_states, self._sampler_states, self._iteration)
 
     def __repr__(self):
         """
@@ -1584,31 +1605,37 @@ class ReplicaExchange(object):
 
         return
 
-    def _minimize_replica(self, replica_index):
-        """
-        Minimize the specified replica.
+    def _minimize_replica(self, replica_id, minimize_tolerance, minimize_max_iterations):
+        """Minimize the specified replica."""
+        # Retrieve thermodynamic and sampler states.
+        thermodynamic_state_id = self._replica_thermodynamic_states[replica_id]
+        thermodynamic_state = self._thermodynamic_states[thermodynamic_state_id]
+        sampler_state = self._sampler_states[replica_id]
 
-        """
-        # Retrieve thermodynamic state.
-        state_index = self.replica_states[replica_index] # index of thermodynamic state that current replica is assigned to
-        state = self.states[state_index] # thermodynamic state
-        # Create integrator and context.
-        integrator = self.mm.VerletIntegrator(1.0 * unit.femtoseconds)
-        context = self._create_context(state.system, integrator)
-        # Set box vectors.
-        box_vectors = self.replica_box_vectors[replica_index]
-        context.setPeriodicBoxVectors(box_vectors[0,:], box_vectors[1,:], box_vectors[2,:])
-        # Set positions.
-        positions = self.replica_positions[replica_index]
-        context.setPositions(positions)
+        # Retrieve a context. Any Integrator works.
+        context, integrator = mmtools.cache.global_context_cache.get_context(thermodynamic_state)
+
+        # Set initial positions and box vectors.
+        sampler_state.apply_to_context(context)
+
+        # Compute the initial energy of the system for logging.
+        initial_energy = thermodynamic_state.reduced_potential(context)
+        logger.debug('Replica {}/{}: initial energy {:8.3f}kT'.format(
+            replica_id, self.n_replicas, initial_energy))
+
         # Minimize energy.
-        minimized_positions = self.mm.LocalEnergyMinimizer.minimize(context, self.minimize_tolerance, self.minimize_max_iterations)
-        # Store final positions
-        self.replica_positions[replica_index] = context.getState(getPositions=True, enforcePeriodicBox=state.system.usesPeriodicBoundaryConditions()).getPositions(asNumpy=True)
-        # Clean up.
-        del integrator, context
+        openmm.LocalEnergyMinimizer.minimize(context, minimize_tolerance, minimize_max_iterations)
 
-        return
+        # Get the minimized positions.
+        sampler_state.update_from_context(context)
+
+        # Compute the final energy of the system for logging.
+        final_energy = thermodynamic_state.reduced_potential(sampler_state)
+        logger.debug('Replica {}/{}: final energy {:8.3f}kT'.format(
+            replica_id, self.n_replicas, final_energy))
+
+        # Return minimized positions.
+        return sampler_state.positions
 
     def _minimize_and_equilibrate(self):
         """
@@ -1662,48 +1689,40 @@ class ReplicaExchange(object):
 
         return
 
+    @mmtools.utils.with_timer('Computing energy matrix')
     def _compute_energies(self):
-        """
-        Compute energies of all replicas at all states.
+        """Compute energies of all replicas at all states."""
 
-        TODO
+        # Distribute energy computation across nodes. Only node 0 receives
+        # all the energies since it needs to store them and mix states.
+        new_u_kl, replica_ids = mpi.distribute(self._compute_replica_energies, range(self.n_replicas),
+                                               send_results_to=0)
 
-        * We have to re-order Context initialization if we have variable box volume
-        * Parallel implementation
+        # Update u_kl matrix. Non-0 nodes update only the energies
+        # computed by this replica.
+        for replica_id in replica_ids:
+            self._u_kl[replica_id] = new_u_kl[replica_id]
 
-        """
+    def _compute_replica_energies(self, replica_id):
+        """Compute the energy for the replica in every ThermodynamicState."""
+        # Initialize replica energies for each thermodynamic state.
+        replica_energies = np.zeros(self.n_replicas)
 
-        start_time = time.time()
+        # Retrieve sampler states associated to this replica.
+        sampler_state = self._sampler_states[replica_id]
 
-        logger.debug("Computing energies...")
+        for i, thermodynamic_state in enumerate(self._thermodynamic_states):
+            # Get the context, any Integrator works.
+            context, integrator = mmtools.cache.global_context_cache.get_context(thermodynamic_state)
 
-        if self.mpicomm:
-            # MPI version.
+            # Update positions and box vectors.
+            sampler_state.apply_to_context(context)
 
-            # Compute energies for this node's share of states.
-            for state_index in range(self.mpicomm.rank, self.nstates, self.mpicomm.size):
-                for replica_index in range(self.nstates):
-                    self.u_kl[replica_index,state_index] = self.states[state_index].reduced_potential(self.replica_positions[replica_index], box_vectors=self.replica_box_vectors[replica_index], platform=self.platform)
+            # Compute energy.
+            replica_energies[i] = thermodynamic_state.reduced_potential(context)
 
-            # Send final energies to all nodes.
-            energies_gather = self.mpicomm.allgather(self.u_kl[:,self.mpicomm.rank:self.nstates:self.mpicomm.size])
-            for state_index in range(self.nstates):
-                source = state_index % self.mpicomm.size # node with trajectory data
-                index = state_index // self.mpicomm.size # index within trajectory batch
-                self.u_kl[:,state_index] = energies_gather[source][:,index]
-
-        else:
-            # Serial version.
-            for state_index in range(self.nstates):
-                for replica_index in range(self.nstates):
-                    self.u_kl[replica_index,state_index] = self.states[state_index].reduced_potential(self.replica_positions[replica_index], box_vectors=self.replica_box_vectors[replica_index], platform=self.platform)
-
-        end_time = time.time()
-        elapsed_time = end_time - start_time
-        time_per_energy= elapsed_time / float(self.nstates)**2
-        logger.debug("Time to compute all energies %.3f s (%.3f per energy calculation)." % (elapsed_time, time_per_energy))
-
-        return
+        # Return the new energies.
+        return replica_energies
 
     def _mix_all_replicas(self):
         """

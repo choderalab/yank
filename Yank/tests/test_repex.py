@@ -510,17 +510,26 @@ class TestReplicaExchange(object):
     @classmethod
     def setup_class(cls):
         """Shared test cases and variables."""
+        # Test case with alanine in vacuum at 3 different positions and temperatures.
+        n_states = 3
         alanine_test = testsystems.AlanineDipeptideVacuum()
-        alanine_sampler_state = mmtools.states.SamplerState(alanine_test.positions)
-        alanine_thermodynamic_state = mmtools.states.ThermodynamicState(alanine_test.system, 300*unit.kelvin)
-        cls.alanine_test = (alanine_thermodynamic_state, alanine_sampler_state)
+        # Translate the sampler states to be different one from each other.
+        alanine_sampler_states = [mmtools.states.SamplerState(alanine_test.positions + 10*i*unit.nanometers)
+                                  for i in range(n_states)]
+        # Set increasing temperature.
+        temperatures = [(300 + 10*i) * unit.kelvin for i in range(n_states)]
+        alanine_thermodynamic_states = [mmtools.states.ThermodynamicState(alanine_test.system, temperatures[i])
+                                        for i in range(n_states)]
+        cls.alanine_test = (alanine_thermodynamic_states, alanine_sampler_states)
 
     def test_repex_create(self):
         """Test creation of a new ReplicaExchange simulation."""
         # TODO test with CompoundState
-        n_states = 3
-        sampler_states = [copy.deepcopy(self.alanine_test[1]) for _ in range(n_states-1)]
-        thermodynamic_states = [copy.deepcopy(self.alanine_test[0]) for _ in range(n_states)]
+        thermodynamic_states, sampler_states = copy.deepcopy(self.alanine_test)
+        n_states = len(thermodynamic_states)
+
+        # Remove one sampler state to verify distribution over states.
+        sampler_states = sampler_states[:-1]
 
         with moltools.utils.temporary_directory() as tmp_dir_path:
             repex = ReplicaExchange()
@@ -558,9 +567,8 @@ class TestReplicaExchange(object):
 
     def test_from_storage(self):
         """Test that from storage completely restore ReplicaExchange."""
-        # TODO test after few iterations
-        sampler_states = [copy.deepcopy(self.alanine_test[1]) for _ in range(2)]
-        thermodynamic_states = [copy.deepcopy(self.alanine_test[0]) for _ in range(2)]
+        # TODO test after running few iterations
+        thermodynamic_states, sampler_states = copy.deepcopy(self.alanine_test)
 
         with moltools.utils.temporary_directory() as tmp_dir_path:
             storage_path = os.path.join(tmp_dir_path, 'test_storage.nc')
@@ -609,6 +617,49 @@ class TestReplicaExchange(object):
             original_pickle = pickle.dumps(original_dict)
             restored_pickle = pickle.dumps(restored_dict)
             assert original_pickle == restored_pickle
+
+    def test_minimize(self):
+        """Test ReplicaExchange minimization."""
+        thermodynamic_states, sampler_states = copy.deepcopy(self.alanine_test)
+        n_states = len(thermodynamic_states)
+
+        with moltools.utils.temporary_directory() as tmp_dir_path:
+            storage_path = os.path.join(tmp_dir_path, 'test_storage.nc')
+            repex = ReplicaExchange()
+            repex.create(thermodynamic_states, sampler_states, storage=storage_path)
+
+            # For this test to work, positions should be the same but
+            # translated, so that minimized positions should satisfy
+            # the same condition.
+            original_diffs = [np.average(sampler_states[i].positions - sampler_states[i+1].positions)
+                              for i in range(n_states - 1)]
+
+            # Compute initial energies.
+            repex._compute_energies()
+            original_energies = [repex._u_kl[i, i] for i in range(n_states)]
+
+            # Minimize.
+            repex.minimize()
+
+            # The relative positions between the new sampler states should
+            # be still translated the same way (i.e. we are not assigning
+            # the minimized positions to the incorrect sampler states).
+            new_sampler_states = repex._sampler_states
+            new_diffs = [np.average(new_sampler_states[i].positions - new_sampler_states[i+1].positions)
+                         for i in range(n_states - 1)]
+            assert np.allclose(original_diffs, new_diffs)
+
+            # The energies have been minimized.
+            repex._compute_energies()
+            new_energies = [repex._u_kl[i, i] for i in range(n_states)]
+            for i in range(n_states):
+                assert new_energies[i] < original_energies[i]
+
+            # The storage has been updated.
+            reporter = Reporter(storage_path, mode='r')
+            stored_sampler_states = reporter.read_sampler_states(iteration=0)
+            for new_state, stored_state in zip(new_sampler_states, stored_sampler_states):
+                assert np.allclose(new_state.positions, stored_state.positions)
 
 
 # ==============================================================================
