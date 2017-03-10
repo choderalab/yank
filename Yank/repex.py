@@ -451,8 +451,21 @@ class Reporter(object):
 
         """
         ncgrp = self._ncfile.groups[name]
+        return self._read_dict(ncgrp)
+
+    def _read_dict(self, ncgrp):
+        """Read and return a dictionary.
+
+        Takes a group instead of a name to resolve nested dictionaries.
+
+        """
         data = dict()
 
+        # Restore nested dictionaries.
+        for name, nested_ncgrp in ncgrp.groups.items():
+            data[name] = self._read_dict(nested_ncgrp)
+
+        # Restore variables.
         for key, ncvar in ncgrp.variables.items():
             type_name = getattr(ncvar, 'type')
             # TODO: Remove the if/elseif structure into one handy function
@@ -521,21 +534,25 @@ class Reporter(object):
 
             # Check the Python type.
             value_type = type(value)
-            value_type_name = utils.typename(value_type)
+            stored_type_name = utils.typename(value_type)
 
             # We store booleans as integers.
             if isinstance(value, bool):
-                # Keep value_type_name as bool to store original type.
+                # Keep stored_type_name as bool to store original type.
                 value = int(value)
                 value_type = int
 
             # Store the variable.
-            if isinstance(value, str):
+            if isinstance(value, dict):
+                # Nested dictionary in a subgroup.
+                self.write_dict(name + '/' + key, value)
+                # No need to store ncvar type as this will be marked as group.
+                ncvar = None
+            elif isinstance(value, str):
                 ncvar = ncgrp.createVariable(key, value_type, 'scalar')
                 packed_data = np.empty(1, 'O')
                 packed_data[0] = value
                 ncvar[:] = packed_data
-                setattr(ncvar, 'type', value_type_name)
             elif isinstance(value, collections.Iterable):
                 # Cast as numpy array to check shape and extract the element
                 # type. np.ravel() returns a view, it doesn't allocate memory.
@@ -545,30 +562,32 @@ class Reporter(object):
 
                 # Create dimensions and variable.
                 dimensions_names = tuple([key + 'dimension' + str(i) for i in range(len(value.shape))])
-                for name, dimension in zip(dimensions_names, value.shape):
-                    ncgrp.createDimension(name, dimension)
+                for dimension_name, dimension in zip(dimensions_names, value.shape):
+                    ncgrp.createDimension(dimension_name, dimension)
                 ncvar = ncgrp.createVariable(key, element_type, dimensions_names)
 
                 # Store values and element type.
                 ncvar[:] = value[:]
-                setattr(ncvar, 'type', element_type_name)
+                stored_type_name = element_type_name
             elif value is None:
                 ncvar = ncgrp.createVariable(key, int)
                 ncvar.assignValue(0)
-                setattr(ncvar, 'type', value_type_name)
             else:
                 ncvar = ncgrp.createVariable(key, value_type)
                 ncvar.assignValue(value)
-                setattr(ncvar, 'type', value_type_name)
+
+            # Set the type of the variable if this wasn't a dictionary.
+            if ncvar is not None:
+                setattr(ncvar, 'type', stored_type_name)
 
             # Log value (truncate if too long but save length)
             if hasattr(value, '__len__'):
                 logger.debug("Storing option: {} -> {} (type: {}, length {})".format(
-                    key, str(value)[:500], value_type_name, len(value)))
+                    key, str(value)[:100], stored_type_name, len(value)))
             else:
                 logger.debug("Storing option: {} -> {} (type: {})".format(
-                    key, value, value_type_name))
-            if value_unit:
+                    key, value, stored_type_name))
+            if value_unit is not None:
                 setattr(ncvar, 'units', str(value_unit))
 
     def read_mixing_statistics(self, iteration):

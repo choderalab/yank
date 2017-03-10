@@ -474,7 +474,8 @@ class TestReporter(object):
             'mylist': [0, 1, 2, 3], 'mynumpyarray': np.array([2.0, 3, 4]),
             'mynestednumpyarray': np.array([[1, 2, 3], [4.0, 5, 6]]),
             'myquantity': 5.0 / unit.femtosecond,
-            'myquantityarray': unit.Quantity(np.array([[1, 2, 3], [4.0, 5, 6]]), unit=unit.angstrom)
+            'myquantityarray': unit.Quantity(np.array([[1, 2, 3], [4.0, 5, 6]]), unit=unit.angstrom),
+            'mynesteddict': {'field1': 'string', 'field2': {'field21': 3.0, 'field22': True}}
         }
         with self.temporary_reporter() as reporter:
             reporter.write_dict('metadata', data)
