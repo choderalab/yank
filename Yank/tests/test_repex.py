@@ -555,11 +555,22 @@ class TestReplicaExchange(object):
 
             # Options have been stored.
             option_names, _, _, defaults = inspect.getargspec(repex.__init__)
-            options = reporter.read_dict('options')
+            options = reporter.read_options()
             assert len(options) == len(defaults)
-            for key, value in zip(option_names[1:], defaults):
+
+            # Discard self and propagator that we'll test separately.
+            option_names = option_names[2:]
+            defaults = defaults[1:]
+            for key, value in zip(option_names, defaults):
                 assert options[key] == value
                 assert getattr(repex, '_' + key) == value
+
+            # MCMCMove was stored correctly.
+            restored_move = options['mcmc_move']
+            assert isinstance(restored_move, mmtools.mcmc.LangevinDynamicsMove)
+            repex_move = pickle.dumps(repex._mcmc_move)
+            restored_move = pickle.dumps(options['mcmc_move'])
+            assert repex_move == restored_move
 
             # A default title has been added to the stored metadata.
             metadata = reporter.read_dict('metadata')

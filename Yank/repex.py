@@ -436,6 +436,128 @@ class Reporter(object):
         # Store energy.
         self._ncfile.variables['energies'][iteration, :, :] = energy_matrix[:, :]
 
+    def read_mixing_statistics(self, iteration):
+        """Retrieve the mixing statistics for the given iteration.
+
+        Parameters
+        ----------
+        iteration : int
+            The iteration at which to read the data.
+
+        Returns
+        -------
+        n_accepted_matrix : kxk numpy.ndarray
+            n_accepted_matrix[i][j] is the number of accepted moves from
+            state thermodynamic_states[i] to thermodynamic_states[j] going
+            from iteration-1 to iteration (not cumulative).
+        n_proposed_matrix : kxk numpy.ndarray
+            n_proposed_matrix[i][j] is the number of proposed moves from
+            state thermodynamic_states[i] to thermodynamic_states[j] going
+            from iteration-1 to iteration (not cumulative).
+
+        """
+        n_accepted_matrix = self._ncfile.variables['accepted'][iteration, :, :]
+        n_proposed_matrix = self._ncfile.variables['proposed'][iteration, :, :]
+        return n_accepted_matrix, n_proposed_matrix
+
+    def write_mixing_statistics(self, n_accepted_matrix, n_proposed_matrix, iteration):
+        """Store the mixing statistics for the given iteration.
+
+        Parameters
+        ----------
+        n_accepted_matrix : kxk numpy.ndarray
+            n_accepted_matrix[i][j] is the number of accepted moves from
+            state thermodynamic_states[i] to thermodynamic_states[j] going
+            from iteration-1 to iteration (not cumulative).
+        n_proposed_matrix : kxk numpy.ndarray
+            n_proposed_matrix[i][j] is the number of proposed moves from
+            state thermodynamic_states[i] to thermodynamic_states[j] going
+            from iteration-1 to iteration (not cumulative).
+        iteration : int
+            The iteration at which to store the data.
+
+        """
+        # Create schema if necessary.
+        if 'accepted' not in self._ncfile.variables:
+            n_states = len(n_accepted_matrix)
+
+            # Create replica dimension if it wasn't already created.
+            if 'replica' not in self._ncfile.dimensions:
+                self._ncfile.createDimension('replica', n_states)
+
+            # Create variables with units and descriptions.
+            ncvar_accepted = self._ncfile.createVariable('accepted', 'i4', ('iteration', 'replica', 'replica'),
+                                                         zlib=False, chunksizes=(1, n_states, n_states))
+            ncvar_proposed = self._ncfile.createVariable('proposed', 'i4', ('iteration', 'replica', 'replica'),
+                                                         zlib=False, chunksizes=(1, n_states, n_states))
+            setattr(ncvar_accepted, 'units', 'none')
+            setattr(ncvar_proposed, 'units', 'none')
+            setattr(ncvar_accepted, 'long_name', ("accepted[iteration][i][j] is the number of proposed transitions "
+                                                  "between states i and j from iteration 'iteration-1'."))
+            setattr(ncvar_proposed, 'long_name', ("proposed[iteration][i][j] is the number of proposed transitions "
+                                                  "between states i and j from iteration 'iteration-1'."))
+
+        # Store statistics.
+        self._ncfile.variables['accepted'][iteration, :, :] = n_accepted_matrix[:, :]
+        self._ncfile.variables['proposed'][iteration, :, :] = n_proposed_matrix[:, :]
+
+    def read_options(self):
+        """Return the options of the ReplicaExchange simulation.
+
+        Returns
+        -------
+        options : dict
+            The options as a dictionary.
+
+        """
+        options = self.read_dict('options')
+        # Deserialize MCMCMove.
+        options['mcmc_move'] = mmtools.utils.deserialize(options['mcmc_move'])
+        return options
+
+    def write_options(self, options):
+        """Store the options of the ReplicaExchange simulation.
+
+        Parameters
+        ----------
+        options : dict
+            The options to store.
+
+        """
+        # Serialize the MCMCMove.
+        options['mcmc_move'] = mmtools.utils.serialize(options['mcmc_move'])
+        self.write_dict('options', options)
+
+    def read_timestamp(self, iteration):
+        """Return the timestamp for the given iteration.
+
+        Parameters
+        ----------
+        iteration : int
+            The iteration at which to read the data.
+
+        Returns
+        -------
+        timestamp : str
+            The timestamp at which the iteration was stored.
+
+        """
+        return self._ncfile.variables['timestamp'][iteration]
+
+    def write_timestamp(self, iteration):
+        """Store a timestamp for the given iteration.
+
+        Parameters
+        ----------
+        iteration : int
+            The iteration at which to read the data.
+
+        """
+        # Create variable if needed.
+        if 'timestamp' not in self._ncfile.variables:
+            self._ncfile.createVariable('timestamp', str, ('iteration',), zlib=False, chunksizes=(1,))
+        self._ncfile.variables['timestamp'][iteration] = time.ctime()
+
     def read_dict(self, name):
         """Restore a dictionary from the storage file.
 
@@ -589,101 +711,6 @@ class Reporter(object):
                     key, value, stored_type_name))
             if value_unit is not None:
                 setattr(ncvar, 'units', str(value_unit))
-
-    def read_mixing_statistics(self, iteration):
-        """Retrieve the mixing statistics for the given iteration.
-
-        Parameters
-        ----------
-        iteration : int
-            The iteration at which to read the data.
-
-        Returns
-        -------
-        n_accepted_matrix : kxk numpy.ndarray
-            n_accepted_matrix[i][j] is the number of accepted moves from
-            state thermodynamic_states[i] to thermodynamic_states[j] going
-            from iteration-1 to iteration (not cumulative).
-        n_proposed_matrix : kxk numpy.ndarray
-            n_proposed_matrix[i][j] is the number of proposed moves from
-            state thermodynamic_states[i] to thermodynamic_states[j] going
-            from iteration-1 to iteration (not cumulative).
-
-        """
-        n_accepted_matrix = self._ncfile.variables['accepted'][iteration, :, :]
-        n_proposed_matrix = self._ncfile.variables['proposed'][iteration, :, :]
-        return n_accepted_matrix, n_proposed_matrix
-
-    def write_mixing_statistics(self, n_accepted_matrix, n_proposed_matrix, iteration):
-        """Store the mixing statistics for the given iteration.
-
-        Parameters
-        ----------
-        n_accepted_matrix : kxk numpy.ndarray
-            n_accepted_matrix[i][j] is the number of accepted moves from
-            state thermodynamic_states[i] to thermodynamic_states[j] going
-            from iteration-1 to iteration (not cumulative).
-        n_proposed_matrix : kxk numpy.ndarray
-            n_proposed_matrix[i][j] is the number of proposed moves from
-            state thermodynamic_states[i] to thermodynamic_states[j] going
-            from iteration-1 to iteration (not cumulative).
-        iteration : int
-            The iteration at which to store the data.
-
-        """
-        # Create schema if necessary.
-        if 'accepted' not in self._ncfile.variables:
-            n_states = len(n_accepted_matrix)
-
-            # Create replica dimension if it wasn't already created.
-            if 'replica' not in self._ncfile.dimensions:
-                self._ncfile.createDimension('replica', n_states)
-
-            # Create variables with units and descriptions.
-            ncvar_accepted = self._ncfile.createVariable('accepted', 'i4', ('iteration', 'replica', 'replica'),
-                                                         zlib=False, chunksizes=(1, n_states, n_states))
-            ncvar_proposed = self._ncfile.createVariable('proposed', 'i4', ('iteration', 'replica', 'replica'),
-                                                         zlib=False, chunksizes=(1, n_states, n_states))
-            setattr(ncvar_accepted, 'units', 'none')
-            setattr(ncvar_proposed, 'units', 'none')
-            setattr(ncvar_accepted, 'long_name', ("accepted[iteration][i][j] is the number of proposed transitions "
-                                                  "between states i and j from iteration 'iteration-1'."))
-            setattr(ncvar_proposed, 'long_name', ("proposed[iteration][i][j] is the number of proposed transitions "
-                                                  "between states i and j from iteration 'iteration-1'."))
-
-        # Store statistics.
-        self._ncfile.variables['accepted'][iteration, :, :] = n_accepted_matrix[:, :]
-        self._ncfile.variables['proposed'][iteration, :, :] = n_proposed_matrix[:, :]
-
-    def read_timestamp(self, iteration):
-        """Return the timestamp for the given iteration.
-
-        Parameters
-        ----------
-        iteration : int
-            The iteration at which to read the data.
-
-        Returns
-        -------
-        timestamp : str
-            The timestamp at which the iteration was stored.
-
-        """
-        return self._ncfile.variables['timestamp'][iteration]
-
-    def write_timestamp(self, iteration):
-        """Store a timestamp for the given iteration.
-
-        Parameters
-        ----------
-        iteration : int
-            The iteration at which to read the data.
-
-        """
-        # Create variable if needed.
-        if 'timestamp' not in self._ncfile.variables:
-            self._ncfile.createVariable('timestamp', str, ('iteration',), zlib=False, chunksizes=(1,))
-        self._ncfile.variables['timestamp'][iteration] = time.ctime()
 
     # -------------------------------------------------------------------------
     # Internal-usage
@@ -855,7 +882,7 @@ class ReplicaExchange(object):
                         'number_of_iterations', 'equilibration_timestep', 'number_of_equilibration_iterations', 'title',
                         'minimize', 'replica_mixing_scheme', 'online_analysis', 'show_mixing_statistics']
 
-    def __init__(self, nsteps_per_iteration=500,
+    def __init__(self, mcmc_move=None,
                  number_of_iterations=1,
                  replica_mixing_scheme='swap-all',
                  online_analysis=False,
@@ -882,10 +909,16 @@ class ReplicaExchange(object):
             Parameters in ReplicaExchange.default_parameters corresponding public attributes.
 
         """
+        # Handling default propagator.
+        if mcmc_move is None:
+            mcmc_move = mmtools.mcmc.LangevinDynamicsMove(timestep=2.0*unit.femtosecond,
+                                                          collision_rate=5.0/unit.picosecond,
+                                                          n_steps=500)
+        self._mcmc_move = copy.deepcopy(mcmc_move)
+
         # Store constructor parameters. Everything is marked for internal
         # usage because any change to these attribute would imply a change
         # in the storage file as well, which we don't currently support.
-        self._nsteps_per_iteration = nsteps_per_iteration
         self._number_of_iterations = number_of_iterations
         self._replica_mixing_scheme = replica_mixing_scheme
         self._online_analysis = online_analysis
@@ -930,7 +963,7 @@ class ReplicaExchange(object):
         reporter = Reporter(storage, mode='r')
 
         # Retrieve options and create new simulation.
-        options = reporter.read_dict('options')
+        options = reporter.read_options()
         repex = ReplicaExchange(**options)
 
         # Display papers to be cited.
@@ -1266,7 +1299,7 @@ class ReplicaExchange(object):
         # Retrieve and store options.
         options_to_store = {parameter_name: getattr(self, '_' + parameter_name)
                             for parameter_name in parameter_names[-len(defaults):]}
-        self._reporter.write_dict('options', options_to_store)
+        self._reporter.write_options(options_to_store)
 
     def _store_metadata(self, metadata):
         """Store metadata."""
