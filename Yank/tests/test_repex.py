@@ -457,6 +457,23 @@ class TestReporter(object):
                 restored_replica_states = reporter.read_replica_thermodynamic_states(iteration=i)
                 assert np.all(replica_states == restored_replica_states)
 
+    def test_store_mcmc_moves(self):
+        """Check storage of MCMC moves."""
+        sequence_move = mmtools.mcmc.SequenceMove(move_list=[mmtools.mcmc.LangevinDynamicsMove(),
+                                                             mmtools.mcmc.GHMCMove()],
+                                                  context_cache=mmtools.cache.ContextCache(capacity=1))
+        integrator_move = mmtools.mcmc.IntegratorMove(openmm.VerletIntegrator(1.0*unit.femtosecond),
+                                                      n_steps=100)
+        mcmc_moves = [sequence_move, integrator_move]
+        with self.temporary_reporter() as reporter:
+            reporter.write_mcmc_moves(mcmc_moves)
+            restored_mcmc_moves = reporter.read_mcmc_moves()
+
+            # Check that restored MCMCMoves are exactly the same.
+            original_pickle = pickle.dumps(mcmc_moves)
+            restored_pickle = pickle.dumps(restored_mcmc_moves)
+            assert original_pickle == restored_pickle
+
     def test_store_energies(self):
         """Check storage of energies."""
         with self.temporary_reporter() as reporter:
@@ -553,24 +570,23 @@ class TestReplicaExchange(object):
             assert len(restored_sampler_states) == n_states
             assert np.allclose(restored_sampler_states[0].positions, repex._sampler_states[0].positions)
 
+            # MCMCMove was stored correctly.
+            restored_mcmc_moves = reporter.read_mcmc_moves()
+            assert len(repex._mcmc_moves) == n_states
+            assert len(restored_mcmc_moves) == n_states
+            for repex_move, restored_move in zip(repex._mcmc_moves, restored_mcmc_moves):
+                assert isinstance(repex_move, mmtools.mcmc.LangevinDynamicsMove)
+                assert isinstance(restored_move, mmtools.mcmc.LangevinDynamicsMove)
+
             # Options have been stored.
             option_names, _, _, defaults = inspect.getargspec(repex.__init__)
-            options = reporter.read_options()
+            option_names = option_names[2:]  # Discard 'self' and 'mcmc_moves' arguments.
+            defaults = defaults[1:]  # Discard 'mcmc_moves' default.
+            options = reporter.read_dict('options')
             assert len(options) == len(defaults)
-
-            # Discard self and propagator that we'll test separately.
-            option_names = option_names[2:]
-            defaults = defaults[1:]
             for key, value in zip(option_names, defaults):
                 assert options[key] == value
                 assert getattr(repex, '_' + key) == value
-
-            # MCMCMove was stored correctly.
-            restored_move = options['mcmc_move']
-            assert isinstance(restored_move, mmtools.mcmc.LangevinDynamicsMove)
-            repex_move = pickle.dumps(repex._mcmc_move)
-            restored_move = pickle.dumps(options['mcmc_move'])
-            assert repex_move == restored_move
 
             # A default title has been added to the stored metadata.
             metadata = reporter.read_dict('metadata')
@@ -620,7 +636,7 @@ class TestReplicaExchange(object):
 
             # Check all arrays. Instantiate list so that we can pop from original_dict.
             for attr, original_value in list(original_dict.items()):
-                if hasattr(original_value, '__len__'):
+                if isinstance(original_value, np.ndarray):
                     original_value = original_dict.pop(attr)
                     restored_value = restored_dict.pop(attr)
                     assert np.all(original_value == restored_value)

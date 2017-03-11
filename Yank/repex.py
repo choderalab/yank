@@ -388,6 +388,40 @@ class Reporter(object):
         # Store thermodynamic states indices.
         self._ncfile.variables['states'][iteration, :] = state_indices[:]
 
+    def read_mcmc_moves(self):
+        """Return the MCMCMoves of the ReplicaExchange simulation.
+
+        Returns
+        -------
+        mcmc_moves : list of MCMCMove
+            The MCMCMoves used to propagate the simulation.
+
+        """
+        mcmc_moves = list()
+
+        # Get group storing MCMCMoves.
+        ncgrp = self._ncfile.groups['mcmc_moves']
+
+        # Retrieve all moves in order.
+        for i in range(len(ncgrp.groups)):
+            serialized_move = self._read_dict(ncgrp.groups['move' + str(i)])
+            mcmc_moves.append(mmtools.utils.deserialize(serialized_move))
+        return mcmc_moves
+
+    def write_mcmc_moves(self, mcmc_moves):
+        """Store the MCMCMoves of the ReplicaExchange simulation.
+
+        Parameters
+        ----------
+        mcmc_moves : list of MCMCMove
+            The MCMCMoves used to propagate the simulation.
+
+        """
+        # Serialize and store MCMCMoves.
+        for i, mcmc_move in enumerate(mcmc_moves):
+            serialized_move = mmtools.utils.serialize(mcmc_move)
+            self.write_dict('mcmc_moves/move' + str(i), serialized_move)
+
     def read_energies(self, iteration):
         """Retrieve the energy matrix at the given iteration.
 
@@ -501,33 +535,6 @@ class Reporter(object):
         self._ncfile.variables['accepted'][iteration, :, :] = n_accepted_matrix[:, :]
         self._ncfile.variables['proposed'][iteration, :, :] = n_proposed_matrix[:, :]
 
-    def read_options(self):
-        """Return the options of the ReplicaExchange simulation.
-
-        Returns
-        -------
-        options : dict
-            The options as a dictionary.
-
-        """
-        options = self.read_dict('options')
-        # Deserialize MCMCMove.
-        options['mcmc_move'] = mmtools.utils.deserialize(options['mcmc_move'])
-        return options
-
-    def write_options(self, options):
-        """Store the options of the ReplicaExchange simulation.
-
-        Parameters
-        ----------
-        options : dict
-            The options to store.
-
-        """
-        # Serialize the MCMCMove.
-        options['mcmc_move'] = mmtools.utils.serialize(options['mcmc_move'])
-        self.write_dict('options', options)
-
     def read_timestamp(self, iteration):
         """Return the timestamp for the given iteration.
 
@@ -574,64 +581,6 @@ class Reporter(object):
         """
         ncgrp = self._ncfile.groups[name]
         return self._read_dict(ncgrp)
-
-    def _read_dict(self, ncgrp):
-        """Read and return a dictionary.
-
-        Takes a group instead of a name to resolve nested dictionaries.
-
-        """
-        data = dict()
-
-        # Restore nested dictionaries.
-        for name, nested_ncgrp in ncgrp.groups.items():
-            data[name] = self._read_dict(nested_ncgrp)
-
-        # Restore variables.
-        for key, ncvar in ncgrp.variables.items():
-            type_name = getattr(ncvar, 'type')
-            # TODO: Remove the if/elseif structure into one handy function
-            # Get option value.
-            if type_name == 'NoneType':
-                value = None
-            else:  # Handle all Types not None
-                value_type = self._convert_netcdf_store_type(type_name)
-                if ncvar.shape == ():  # Standard Types
-                    value = value_type(ncvar.getValue())
-                elif ncvar.shape[0] >= 0:  # Array types
-                    value = np.array(ncvar[:], value_type)
-                    if issubclass(value_type, str):
-                        value = value_type(value[0])
-                else:
-                    raise ValueError('Cannot restore type {} with value {}'.format(
-                        value_type, ncvar.getValue()))
-
-            # If Quantity, assign unit.
-            if hasattr(ncvar, 'units'):
-                value_unit_name = getattr(ncvar, 'units')
-                if value_unit_name[0] == '/':
-                    value_unit = utils.quantity_from_string(value_unit_name[1:])
-                    value = value / value_unit
-                else:
-                    value_unit = utils.quantity_from_string(value_unit_name)
-                    value = value * value_unit
-
-            # Log value (truncate if too long but save length)
-            if hasattr(value, '__len__'):
-                try:
-                    value_len = len(value)
-                except TypeError:  # this is a zero-dimensional array
-                    value_len = np.atleast_1d(value)
-                logger.debug("Restoring option: {} -> {} (type: {}, length {})".format(
-                    key, str(value)[:500], type(value), value_len))
-            else:
-                logger.debug("Restoring option: {} -> {} (type: {})".format(
-                    key, value, type(value)))
-
-            # Store option.
-            data[key] = value
-
-        return data
 
     def write_dict(self, name, data):
         """Store the contents of a dict.
@@ -715,6 +664,64 @@ class Reporter(object):
     # -------------------------------------------------------------------------
     # Internal-usage
     # -------------------------------------------------------------------------
+
+    def _read_dict(self, ncgrp):
+        """Read and return a dictionary.
+
+        Takes a group instead of a name to resolve nested dictionaries.
+
+        """
+        data = dict()
+
+        # Restore nested dictionaries.
+        for name, nested_ncgrp in ncgrp.groups.items():
+            data[name] = self._read_dict(nested_ncgrp)
+
+        # Restore variables.
+        for key, ncvar in ncgrp.variables.items():
+            type_name = getattr(ncvar, 'type')
+            # TODO: Remove the if/elseif structure into one handy function
+            # Get option value.
+            if type_name == 'NoneType':
+                value = None
+            else:  # Handle all Types not None
+                value_type = self._convert_netcdf_store_type(type_name)
+                if ncvar.shape == ():  # Standard Types
+                    value = value_type(ncvar.getValue())
+                elif ncvar.shape[0] >= 0:  # Array types
+                    value = np.array(ncvar[:], value_type)
+                    if issubclass(value_type, str):
+                        value = value_type(value[0])
+                else:
+                    raise ValueError('Cannot restore type {} with value {}'.format(
+                        value_type, ncvar.getValue()))
+
+            # If Quantity, assign unit.
+            if hasattr(ncvar, 'units'):
+                value_unit_name = getattr(ncvar, 'units')
+                if value_unit_name[0] == '/':
+                    value_unit = utils.quantity_from_string(value_unit_name[1:])
+                    value = value / value_unit
+                else:
+                    value_unit = utils.quantity_from_string(value_unit_name)
+                    value = value * value_unit
+
+            # Log value (truncate if too long but save length)
+            if hasattr(value, '__len__'):
+                try:
+                    value_len = len(value)
+                except TypeError:  # this is a zero-dimensional array
+                    value_len = np.atleast_1d(value)
+                logger.debug("Restoring option: {} -> {} (type: {}, length {})".format(
+                    key, str(value)[:500], type(value), value_len))
+            else:
+                logger.debug("Restoring option: {} -> {} (type: {})".format(
+                    key, value, type(value)))
+
+            # Store option.
+            data[key] = value
+
+        return data
 
     @staticmethod
     def _convert_netcdf_store_type(stored_type):
@@ -882,7 +889,7 @@ class ReplicaExchange(object):
                         'number_of_iterations', 'equilibration_timestep', 'number_of_equilibration_iterations', 'title',
                         'minimize', 'replica_mixing_scheme', 'online_analysis', 'show_mixing_statistics']
 
-    def __init__(self, mcmc_move=None,
+    def __init__(self, mcmc_moves=None,
                  number_of_iterations=1,
                  replica_mixing_scheme='swap-all',
                  online_analysis=False,
@@ -910,11 +917,12 @@ class ReplicaExchange(object):
 
         """
         # Handling default propagator.
-        if mcmc_move is None:
-            mcmc_move = mmtools.mcmc.LangevinDynamicsMove(timestep=2.0*unit.femtosecond,
-                                                          collision_rate=5.0/unit.picosecond,
-                                                          n_steps=500)
-        self._mcmc_move = copy.deepcopy(mcmc_move)
+        if mcmc_moves is None:
+            # This will be converted to a list in create().
+            mcmc_moves = mmtools.mcmc.LangevinDynamicsMove(timestep=2.0*unit.femtosecond,
+                                                           collision_rate=5.0/unit.picosecond,
+                                                           n_steps=500)
+        self._mcmc_moves = copy.deepcopy(mcmc_moves)
 
         # Store constructor parameters. Everything is marked for internal
         # usage because any change to these attribute would imply a change
@@ -963,7 +971,8 @@ class ReplicaExchange(object):
         reporter = Reporter(storage, mode='r')
 
         # Retrieve options and create new simulation.
-        options = reporter.read_options()
+        options = reporter.read_dict('options')
+        options['mcmc_moves'] = reporter.read_mcmc_moves()
         repex = ReplicaExchange(**options)
 
         # Display papers to be cited.
@@ -1080,6 +1089,13 @@ class ReplicaExchange(object):
                 continue
             thermodynamic_state = self._thermodynamic_states[thermodynamic_state_id]
             sampler_state.box_vectors = thermodynamic_state.system.getDefaultPeriodicBoxVectors()
+
+        # Ensure there is an MCMCMove for each replica.
+        if isinstance(self._mcmc_moves, mmtools.mcmc.MCMCMove):
+            self._mcmc_moves = [copy.deepcopy(self._mcmc_moves) for _ in range(self.n_replicas)]
+        elif len(self._mcmc_moves) != self.n_replicas:
+            raise RuntimeError('The number of MCMCMoves ({}) and ThermodynamicStates ({}) must '
+                               'be the same.'.format(len(self._mcmc_moves), self.n_replicas))
 
         # Reset iteration counter.
         self._iteration = 0
@@ -1263,6 +1279,7 @@ class ReplicaExchange(object):
         """
         self._reporter = Reporter(storage, mode='w')
         self._reporter.write_thermodynamic_states(self._thermodynamic_states)
+        self._reporter.write_mcmc_moves(self._mcmc_moves)
 
         # Store run metadata and ReplicaExchange options.
         self._store_options()
@@ -1299,7 +1316,9 @@ class ReplicaExchange(object):
         # Retrieve and store options.
         options_to_store = {parameter_name: getattr(self, '_' + parameter_name)
                             for parameter_name in parameter_names[-len(defaults):]}
-        self._reporter.write_options(options_to_store)
+        # We store the MCMCMoves separately.
+        options_to_store.pop('mcmc_moves')
+        self._reporter.write_dict('options', options_to_store)
 
     def _store_metadata(self, metadata):
         """Store metadata."""
