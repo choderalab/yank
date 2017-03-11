@@ -541,7 +541,13 @@ class TestReplicaExchange(object):
         cls.alanine_test = (alanine_thermodynamic_states, alanine_sampler_states)
 
     def test_repex_create(self):
-        """Test creation of a new ReplicaExchange simulation."""
+        """Test creation of a new ReplicaExchange simulation.
+
+        Checks that the storage file is correctly initialized with all the
+        information needed. With MPI, this checks that only node 0 has an
+        open Reporter for writing.
+
+        """
         # TODO test with CompoundState
         thermodynamic_states, sampler_states = copy.deepcopy(self.alanine_test)
         n_states = len(thermodynamic_states)
@@ -594,7 +600,13 @@ class TestReplicaExchange(object):
             assert 'title' in metadata
 
     def test_from_storage(self):
-        """Test that from storage completely restore ReplicaExchange."""
+        """Test that from_storage completely restore ReplicaExchange.
+
+        Checks that the static constructor ReplicaExchange.from_storage()
+        restores the simulation object in the exact same state as the last
+        iteration.
+
+        """
         # TODO test after running few iterations
         thermodynamic_states, sampler_states = copy.deepcopy(self.alanine_test)
 
@@ -646,8 +658,53 @@ class TestReplicaExchange(object):
             restored_pickle = pickle.dumps(restored_dict)
             assert original_pickle == restored_pickle
 
+    def test_propagate_replicas(self):
+        """Test method _propagate_replicas from ReplicaExchange.
+
+        The purpose of this test is mainly to make sure that MPI doesn't mix
+        the information of the propagated StateSamplers when it communicates
+        the new positions and box vectors.
+
+        """
+        thermodynamic_states, sampler_states = copy.deepcopy(self.alanine_test)
+        n_states = len(thermodynamic_states)
+
+        with moltools.utils.temporary_directory() as tmp_dir_path:
+            storage_path = os.path.join(tmp_dir_path, 'test_storage.nc')
+
+            # For this test to work, positions should be the same but
+            # translated, so that minimized positions should satisfy
+            # the same condition.
+            original_diffs = [np.average(sampler_states[i].positions - sampler_states[i+1].positions)
+                              for i in range(n_states - 1)]
+            assert not np.allclose(original_diffs, [0 for _ in range(n_states - 1)])
+
+            # Create a replica exchange that propagates only 1 femtosecond
+            # per iteration so that positions won't change much.
+            move = mmtools.mcmc.IntegratorMove(openmm.VerletIntegrator(1.0*unit.femtosecond), n_steps=1)
+            repex = ReplicaExchange(mcmc_moves=move)
+            repex.create(thermodynamic_states, sampler_states, storage=storage_path)
+
+            # Propagate.
+            repex._propagate_replicas()
+
+            # The relative positions between the new sampler states should
+            # be still translated the same way (i.e. we are not assigning
+            # the minimized positions to the incorrect sampler states).
+            new_sampler_states = repex._sampler_states
+            new_diffs = [np.average(new_sampler_states[i].positions - new_sampler_states[i+1].positions)
+                         for i in range(n_states - 1)]
+            assert np.allclose(original_diffs, new_diffs)
+
     def test_minimize(self):
-        """Test ReplicaExchange minimization."""
+        """Test ReplicaExchange minimize method.
+
+        The purpose of this test is mainly to make sure that MPI doesn't mix
+        the information of the minimized StateSamplers when it communicates
+        the new positions. It also checks that the energies are effectively
+        decreased.
+
+        """
         thermodynamic_states, sampler_states = copy.deepcopy(self.alanine_test)
         n_states = len(thermodynamic_states)
 
@@ -661,6 +718,7 @@ class TestReplicaExchange(object):
             # the same condition.
             original_diffs = [np.average(sampler_states[i].positions - sampler_states[i+1].positions)
                               for i in range(n_states - 1)]
+            assert not np.allclose(original_diffs, [0 for _ in range(n_states - 1)])
 
             # Compute initial energies.
             repex._compute_energies()
@@ -689,6 +747,36 @@ class TestReplicaExchange(object):
             for new_state, stored_state in zip(new_sampler_states, stored_sampler_states):
                 assert np.allclose(new_state.positions, stored_state.positions)
 
+    def test_equilibrate(self):
+        """Test equilibration of ReplicaExchange simulation.
+
+        During equilibration, we set temporarily different MCMCMoves. This checks
+        that they are restored correctly. It also checks that the storage has the
+        updated positions.
+
+        """
+        thermodynamic_states, sampler_states = copy.deepcopy(self.alanine_test)
+
+        with moltools.utils.temporary_directory() as tmp_dir_path:
+            storage_path = os.path.join(tmp_dir_path, 'test_storage.nc')
+
+            # We create a ReplicaExchange with a GHMC move but use Langevin for equilibration.
+            repex = ReplicaExchange(mcmc_moves=mmtools.mcmc.GHMCMove())
+            repex.create(thermodynamic_states, sampler_states, storage=storage_path)
+
+            # Minimize.
+            equilibration_move = mmtools.mcmc.LangevinDynamicsMove(n_steps=1)
+            repex.equilibrate(n_iterations=10, mcmc_moves=equilibration_move)
+            assert isinstance(repex._mcmc_moves[0], mmtools.mcmc.GHMCMove)
+
+            # The storage has been updated.
+            reporter = Reporter(storage_path, mode='r')
+            stored_sampler_states = reporter.read_sampler_states(iteration=0)
+            for new_state, stored_state in zip(repex._sampler_states, stored_sampler_states):
+                assert np.allclose(new_state.positions, stored_state.positions)
+
+            # We are still at iteration 0.
+            assert repex._iteration == 0
 
 # ==============================================================================
 # MAIN AND TESTS

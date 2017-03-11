@@ -921,7 +921,7 @@ class ReplicaExchange(object):
             # This will be converted to a list in create().
             mcmc_moves = mmtools.mcmc.LangevinDynamicsMove(timestep=2.0*unit.femtosecond,
                                                            collision_rate=5.0/unit.picosecond,
-                                                           n_steps=500)
+                                                           n_steps=500, reassign_velocities=True)
         self._mcmc_moves = copy.deepcopy(mcmc_moves)
 
         # Store constructor parameters. Everything is marked for internal
@@ -1124,7 +1124,7 @@ class ReplicaExchange(object):
 
         # Distribute minimization across nodes. Only node 0 will get all positions.
         # The other nodes, only need the positions that they use for propagation and
-        # computation of the energies.
+        # computation of the energy matrix entries.
         minimized_positions, sampler_state_ids = mpi.distribute(self._minimize_replica, range(self.n_replicas),
                                                                 minimize_tolerance, minimize_max_iterations,
                                                                 send_results_to=0)
@@ -1135,6 +1135,34 @@ class ReplicaExchange(object):
             self._sampler_states[sampler_state_id].positions = minimized_positions[sampler_state_id]
 
         # Save the stored positions in the storage
+        if self._reporter is not None:
+            mpi.run_single_node(0, self._reporter.write_sampler_states, self._sampler_states, self._iteration)
+
+    def equilibrate(self, n_iterations, mcmc_moves=None):
+        # Handle default MCMCMove used for equilibration.
+        if mcmc_moves is None:
+            mcmc_moves = mmtools.mcmc.LangevinDynamicsMove(timestep=1.0*unit.femtosecond,
+                                                           collision_rate=5.0/unit.picosecond,
+                                                           n_steps=500, reassign_velocities=True)
+
+        # Make sure there is one MCMCMove per state.
+        if isinstance(mcmc_moves, mmtools.mcmc.MCMCMove):
+            mcmc_moves = [copy.deepcopy(mcmc_moves) for _ in range(self.n_replicas)]
+        elif len(mcmc_moves) != self.n_replicas:
+            raise RuntimeError('The number of MCMCMoves ({}) and ThermodynamicStates ({}) must '
+                               'be the same.'.format(len(self._mcmc_moves), self.n_replicas))
+
+        # Temporarily set the equilibration MCMCMoves.
+        production_mcmc_moves = self._mcmc_moves
+        self._mcmc_moves = mcmc_moves
+        for iteration in range(n_iterations):
+            logger.debug("Equilibration iteration {}/{}".format(iteration, n_iterations))
+            self._propagate_replicas()
+
+        # Restore production MCMCMoves.
+        self._mcmc_moves = production_mcmc_moves
+
+        # Update stored positions.
         if self._reporter is not None:
             mpi.run_single_node(0, self._reporter.write_sampler_states, self._sampler_states, self._iteration)
 
@@ -1481,200 +1509,42 @@ class ReplicaExchange(object):
 
         return
 
-    def _create_context(self, system, integrator):
-        """
-        Shortcut to handle creation of a context with or without user-selected
-        platform.
-
-        Parameters
-        ----------
-        system : simtk.openmm.System
-           The system associated to the context.
-        integrator : simtk.openmm.Integrator
-           The integrator to use for Context creation.
-
-        Returns
-        -------
-        context : simtk.openmm.Context
-           The created OpenMM Context object.
-
-        """
-        if self.platform is None:
-            return self.mm.Context(system, integrator)
-        else:
-            return self.mm.Context(system, integrator, self.platform)
-
-    def _propagate_replica(self, replica_index):
-        """
-        Propagate the replica corresponding to the specified replica index.
-        Caching is used.
-
-        ARGUMENTS
-
-        replica_index (int) - the replica to propagate
-
-        RETURNS
-
-        elapsed_time (float) - time (in seconds) to propagate replica
-
-        """
-
-        start_time = time.time()
-
-        # Retrieve state.
-        state_index = self.replica_states[replica_index] # index of thermodynamic state that current replica is assigned to
-        state = self.states[state_index] # thermodynamic state
-
-        # If temperature and pressure are specified, make sure MonteCarloBarostat is attached.
-        if state.temperature and state.pressure:
-            forces = { state.system.getForce(index).__class__.__name__ : state.system.getForce(index) for index in range(state.system.getNumForces()) }
-
-            if 'MonteCarloAnisotropicBarostat' in forces:
-                raise Exception('MonteCarloAnisotropicBarostat is unsupported.')
-
-            if 'MonteCarloBarostat' in forces:
-                barostat = forces['MonteCarloBarostat']
-                # Set temperature and pressure.
-                try:
-                    barostat.setDefaultTemperature(state.temperature)
-                except AttributeError:  # versions previous to OpenMM0.8
-                    barostat.setTemperature(state.temperature)
-                barostat.setDefaultPressure(state.pressure)
-                barostat.setRandomNumberSeed(int(np.random.randint(0, MAX_SEED)))
-            else:
-                # Create barostat and add it to the system if it doesn't have one already.
-                barostat = openmm.MonteCarloBarostat(state.pressure, state.temperature)
-                barostat.setRandomNumberSeed(int(np.random.randint(0, MAX_SEED)))
-                state.system.addForce(barostat)
-
-        # Create Context and integrator.
-        integrator = openmm.LangevinIntegrator(state.temperature, self.collision_rate, self.timestep)
-        integrator.setRandomNumberSeed(int(np.random.randint(0, MAX_SEED)))
-        context = self._create_context(state.system, integrator)
-
-        # Set box vectors.
-        box_vectors = self.replica_box_vectors[replica_index]
-        context.setPeriodicBoxVectors(box_vectors[0,:], box_vectors[1,:], box_vectors[2,:])
-        # Set positions.
-        positions = self.replica_positions[replica_index]
-        context.setPositions(positions)
-        setpositions_end_time = time.time()
-        # Assign Maxwell-Boltzmann velocities.
-        context.setVelocitiesToTemperature(state.temperature, int(np.random.randint(0, MAX_SEED)))
-        setvelocities_end_time = time.time()
-        # Run dynamics.
-        integrator.step(self.nsteps_per_iteration)
-        integrator_end_time = time.time()
-        # Store final positions
-        getstate_start_time = time.time()
-        openmm_state = context.getState(getPositions=True, enforcePeriodicBox=state.system.usesPeriodicBoundaryConditions())
-        getstate_end_time = time.time()
-        self.replica_positions[replica_index] = openmm_state.getPositions(asNumpy=True)
-        # Store box vectors.
-        self.replica_box_vectors[replica_index] = openmm_state.getPeriodicBoxVectors(asNumpy=True)
-
-        # Clean up.
-        del context, integrator
-
-        # Compute timing.
-        end_time = time.time()
-        elapsed_time = end_time - start_time
-        positions_elapsed_time = setpositions_end_time - start_time
-        velocities_elapsed_time = setvelocities_end_time - setpositions_end_time
-        integrator_elapsed_time = integrator_end_time - setvelocities_end_time
-        getstate_elapsed_time = getstate_end_time - integrator_end_time
-        logger.debug("Replica %d/%d: integrator elapsed time %.3f s (positions %.3f s | velocities %.3f s | integrate+getstate %.3f s)." % (replica_index, self.nreplicas, elapsed_time, positions_elapsed_time, velocities_elapsed_time, integrator_elapsed_time+getstate_elapsed_time))
-
-        return elapsed_time
-
-    def _propagate_replicas_mpi(self):
-        """
-        Propagate all replicas using MPI communicator.
-
-        It is presumed all nodes have the correct configurations in the correct replica slots, but that state indices may be unsynchronized.
-
-        TODO
-
-        * Move synchronization of state information to mix_replicas?
-        * Broadcast from root node only?
-
-        """
-
-        # Propagate all replicas.
-        logger.debug("Propagating all replicas for %.3f ps..." % (self.nsteps_per_iteration * self.timestep / unit.picoseconds))
-
-        # Run just this node's share of states.
-        logger.debug("Running trajectories...")
-        start_time = time.time()
-        # replica_lookup = { self.replica_states[replica_index] : replica_index for replica_index in range(self.nstates) } # replica_lookup[state_index] is the replica index currently at state 'state_index' # requires Python 2.7 features
-        replica_lookup = dict( (self.replica_states[replica_index], replica_index) for replica_index in range(self.nstates) ) # replica_lookup[state_index] is the replica index currently at state 'state_index' # Python 2.6 compatible
-        replica_indices = [ replica_lookup[state_index] for state_index in range(self.mpicomm.rank, self.nstates, self.mpicomm.size) ] # list of replica indices for this node to propagate
-        for replica_index in replica_indices:
-            logger.debug("Node %3d/%3d propagating replica %3d state %3d..." % (self.mpicomm.rank, self.mpicomm.size, replica_index, self.replica_states[replica_index]))
-            self._propagate_replica(replica_index)
-        end_time = time.time()
-        elapsed_time = end_time - start_time
-        # Collect elapsed time.
-        node_elapsed_times = self.mpicomm.gather(elapsed_time, root=0) # barrier
-        if self.mpicomm.rank == 0 and logger.isEnabledFor(logging.DEBUG):
-            node_elapsed_times = np.array(node_elapsed_times)
-            end_time = time.time()
-            elapsed_time = end_time - start_time
-            barrier_wait_times = elapsed_time - node_elapsed_times
-            logger.debug("Running trajectories: elapsed time %.3f s (barrier time min %.3f s | max %.3f s | avg %.3f s)" % (elapsed_time, barrier_wait_times.min(), barrier_wait_times.max(), barrier_wait_times.mean()))
-            logger.debug("Total time spent waiting for GPU: %.3f s" % (node_elapsed_times.sum()))
-
-        # Send final configurations and box vectors back to all nodes.
-        logger.debug("Synchronizing trajectories...")
-        start_time = time.time()
-        replica_indices_gather = self.mpicomm.allgather(replica_indices)
-        replica_positions_gather = self.mpicomm.allgather([ self.replica_positions[replica_index] for replica_index in replica_indices ])
-        replica_box_vectors_gather = self.mpicomm.allgather([ self.replica_box_vectors[replica_index] for replica_index in replica_indices ])
-        for (source, replica_indices) in enumerate(replica_indices_gather):
-            for (index, replica_index) in enumerate(replica_indices):
-                self.replica_positions[replica_index] = replica_positions_gather[source][index]
-                self.replica_box_vectors[replica_index] = replica_box_vectors_gather[source][index]
-        end_time = time.time()
-        logger.debug("Synchronizing configurations and box vectors: elapsed time %.3f s" % (end_time - start_time))
-
-        return
-
-    def _propagate_replicas_serial(self):
-        """
-        Propagate all replicas using serial execution.
-
-        """
-
-        # Propagate all replicas.
-        logger.debug("Propagating all replicas for %.3f ps..." % (self.nsteps_per_iteration * self.timestep / unit.picoseconds))
-        for replica_index in range(self.nstates):
-            self._propagate_replica(replica_index)
-
-        return
-
+    @mmtools.utils.with_timer('Propagating all replicas')
     def _propagate_replicas(self):
-        """
-        Propagate all replicas.
+        """Propagate all replicas.
 
         TODO
 
         * Report on efficiency of dyanmics (fraction of time wasted to overhead).
 
         """
-        start_time = time.time()
+        logger.debug("Propagating all replicas...")
 
-        if self.mpicomm:
-            self._propagate_replicas_mpi()
-        else:
-            self._propagate_replicas_serial()
+        # Distribute propagation across nodes. Only node 0 will get all positions
+        # and box vectors. The other nodes, only need the positions that they use
+        # for propagation and computation of the energy matrix entries.
+        propagated_states, replicas_ids = mpi.distribute(self._propagate_replica, range(self.n_replicas),
+                                                         send_results_to=0)
 
-        end_time = time.time()
-        elapsed_time = end_time - start_time
-        time_per_replica = elapsed_time / float(self.nstates)
-        ns_per_day = self.timestep * self.nsteps_per_iteration / time_per_replica * 24*60*60 / unit.nanoseconds
-        logger.debug("Time to propagate all replicas: %.3f s (%.3f per replica, %.3f ns/day)." % (elapsed_time, time_per_replica, ns_per_day))
+        # Update all sampler states. For non-0 nodes, this will update only the
+        # sampler states associated to the replicas propagated by this node.
+        for replicas_id, propagated_state in zip(replicas_ids, propagated_states):
+            propagated_positions, propagated_box_vectors = propagated_state  # Unpack.
+            self._sampler_states[replicas_id].positions = propagated_positions
+            self._sampler_states[replicas_id].box_vectors = propagated_box_vectors
 
-        return
+    def _propagate_replica(self, replica_id):
+        # Retrieve thermodynamic, sampler states, and MCMC move of this replica.
+        thermodynamic_state_id = self._replica_thermodynamic_states[replica_id]
+        thermodynamic_state = self._thermodynamic_states[thermodynamic_state_id]
+        sampler_state = self._sampler_states[replica_id]
+        mcmc_move = self._mcmc_moves[replica_id]
+
+        # Apply MCMC move.
+        mcmc_move.apply(thermodynamic_state, sampler_state)
+
+        # Return new positions and box vectors.
+        return sampler_state.positions, sampler_state.box_vectors
 
     def _minimize_replica(self, replica_id, minimize_tolerance, minimize_max_iterations):
         """Minimize the specified replica."""
