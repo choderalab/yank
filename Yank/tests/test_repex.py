@@ -808,8 +808,8 @@ class TestReplicaExchange(object):
             # We are still at iteration 0.
             assert repex._iteration == 0
 
-    def test_run(self):
-        """Test run method of ReplicaExchange."""
+    def test_run_extend(self):
+        """Test methods run and extend of ReplicaExchange."""
         thermodynamic_states, sampler_states = copy.deepcopy(self.alanine_test)
 
         with moltools.utils.temporary_directory() as tmp_dir_path:
@@ -821,6 +821,10 @@ class TestReplicaExchange(object):
             # ReplicaExchange.run doesn't go past number_of_iterations.
             repex.run(n_iterations=3)
             assert repex.iteration == 2
+
+            # ReplicaExchange.extend does.
+            repex.extend(n_iterations=2)
+            assert repex.iteration == 4
 
 
 # ==============================================================================

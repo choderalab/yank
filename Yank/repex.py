@@ -1230,9 +1230,14 @@ class ReplicaExchange(object):
         timer = mmtools.utils.Timer()
         timer.start('Run ReplicaExchange')
         run_initial_iteration = self._iteration
-        iteration_limit = min(self._iteration + n_iterations, self._number_of_iterations)
 
-        while self.iteration < iteration_limit:
+        # Handle default argument and determine number of iterations to run.
+        if n_iterations is None:
+            iteration_limit = self._number_of_iterations - self._iteration
+        else:
+            iteration_limit = min(self._iteration + n_iterations, self._number_of_iterations)
+
+        while self._iteration < iteration_limit:
             # Increment iteration counter.
             self._iteration += 1
 
@@ -1277,6 +1282,11 @@ class ReplicaExchange(object):
 
             # Perform sanity checks to see if we should terminate here.
             self._run_sanity_checks()
+
+    def extend(self, n_iterations):
+        if self._iteration + n_iterations > self._number_of_iterations:
+            self.number_of_iterations = self._iteration + n_iterations
+        self.run(n_iterations)
 
     def __repr__(self):
         """
