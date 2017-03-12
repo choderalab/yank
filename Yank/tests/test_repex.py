@@ -507,6 +507,14 @@ class TestReporter(object):
                 else:
                     assert type(value) == type(restored_value), err_msg
 
+            # write_dict supports updates.
+            data['mybool'] = True
+            data['mystring'] = 'substituted'
+            reporter.write_dict('metadata', data)
+            restored_data = reporter.read_dict('metadata')
+            assert restored_data['mybool'] is True
+            assert restored_data['mystring'] == 'substituted'
+
     def test_store_mixing_statistics(self):
         """Check mixing statistics are correctly stored."""
         n_accepted_matrix = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
@@ -658,6 +666,28 @@ class TestReplicaExchange(object):
             restored_pickle = pickle.dumps(restored_dict)
             assert original_pickle == restored_pickle
 
+    def test_stored_properties(self):
+        """Test that storage is kept in sync with options."""
+        thermodynamic_states, sampler_states = copy.deepcopy(self.alanine_test)
+
+        with moltools.utils.temporary_directory() as tmp_dir_path:
+            storage_path = os.path.join(tmp_dir_path, 'test_storage.nc')
+            repex = ReplicaExchange()
+            repex.create(thermodynamic_states, sampler_states, storage=storage_path)
+
+            # Get original options.
+            reporter = Reporter(storage_path, mode='r')
+            options = reporter.read_dict('options')
+
+            # Update options and check the storage is synchronized.
+            repex.number_of_iterations = 123
+            repex.replica_mixing_scheme = 'none'
+            repex.online_analysis = not repex.online_analysis
+            changed_options = reporter.read_dict('options')
+            assert changed_options['number_of_iterations'] == 123
+            assert changed_options['replica_mixing_scheme'] == 'none'
+            assert changed_options['online_analysis'] == (not options['online_analysis'])
+
     def test_propagate_replicas(self):
         """Test method _propagate_replicas from ReplicaExchange.
 
@@ -777,6 +807,21 @@ class TestReplicaExchange(object):
 
             # We are still at iteration 0.
             assert repex._iteration == 0
+
+    def test_run(self):
+        """Test run method of ReplicaExchange."""
+        thermodynamic_states, sampler_states = copy.deepcopy(self.alanine_test)
+
+        with moltools.utils.temporary_directory() as tmp_dir_path:
+            storage_path = os.path.join(tmp_dir_path, 'test_storage.nc')
+            repex = ReplicaExchange(show_energies=True, show_mixing_statistics=True,
+                                    number_of_iterations=2)
+            repex.create(thermodynamic_states, sampler_states, storage=storage_path)
+
+            # ReplicaExchange.run doesn't go past number_of_iterations.
+            repex.run(n_iterations=3)
+            assert repex.iteration == 2
+
 
 # ==============================================================================
 # MAIN AND TESTS

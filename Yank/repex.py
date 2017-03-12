@@ -334,7 +334,7 @@ class Reporter(object):
             thermodynamic_states[states_indices[i]].
 
         """
-        return self._ncfile.variables['states'][iteration]
+        return self._ncfile.variables['states'][iteration].astype(np.int64)
 
     def write_replica_thermodynamic_states(self, state_indices, iteration):
         """Store the indices of the ThermodynamicStates for each replica.
@@ -469,8 +469,8 @@ class Reporter(object):
             from iteration-1 to iteration (not cumulative).
 
         """
-        n_accepted_matrix = self._ncfile.variables['accepted'][iteration, :, :]
-        n_proposed_matrix = self._ncfile.variables['proposed'][iteration, :, :]
+        n_accepted_matrix = self._ncfile.variables['accepted'][iteration, :, :].astype(np.int64)
+        n_proposed_matrix = self._ncfile.variables['proposed'][iteration, :, :].astype(np.int64)
         return n_accepted_matrix, n_proposed_matrix
 
     def write_mixing_statistics(self, n_accepted_matrix, n_proposed_matrix, iteration):
@@ -572,8 +572,18 @@ class Reporter(object):
             The dict to store.
 
         """
-        # Create group.
-        ncgrp = self._ncfile.createGroup(name)
+        # Check if this is an update and create a group.
+        # TODO this is a quick and dirty solution for dictionary updates that will be fixed with the storage layer
+        try:
+            # This may be a nested dictionary call.
+            split_path = name.rsplit('/')
+            ncgrp = self._ncfile
+            for group_name in split_path:
+                ncgrp = ncgrp.groups[group_name]
+            is_update = True
+        except KeyError:
+            ncgrp = self._ncfile.createGroup(name)
+            is_update = False
 
         for key, value in data.items():
             # If Quantity, strip off units first.
@@ -599,31 +609,43 @@ class Reporter(object):
                 # No need to store ncvar type as this will be marked as group.
                 ncvar = None
             elif isinstance(value, str):
-                ncvar = ncgrp.createVariable(key, value_type, 'scalar')
+                if is_update:
+                    ncvar = ncgrp.variables[key]
+                else:
+                    ncvar = ncgrp.createVariable(key, value_type, 'scalar')
                 packed_data = np.empty(1, 'O')
                 packed_data[0] = value
                 ncvar[:] = packed_data
             elif isinstance(value, collections.Iterable):
-                # Cast as numpy array to check shape and extract the element
-                # type. np.ravel() returns a view, it doesn't allocate memory.
-                value = np.array(value)
-                element_type = type(value.ravel()[0])
-                element_type_name = utils.typename(element_type)
+                if is_update:
+                    ncvar = ncgrp.variables[key]
+                else:
+                    # Cast as numpy array to check shape and extract the element
+                    # type. np.ravel() returns a view, it doesn't allocate memory.
+                    value = np.array(value)
+                    element_type = type(value.ravel()[0])
+                    element_type_name = utils.typename(element_type)
 
-                # Create dimensions and variable.
-                dimensions_names = tuple([key + 'dimension' + str(i) for i in range(len(value.shape))])
-                for dimension_name, dimension in zip(dimensions_names, value.shape):
-                    ncgrp.createDimension(dimension_name, dimension)
-                ncvar = ncgrp.createVariable(key, element_type, dimensions_names)
+                    # Create dimensions and variable.
+                    dimensions_names = tuple([key + 'dimension' + str(i) for i in range(len(value.shape))])
+                    for dimension_name, dimension in zip(dimensions_names, value.shape):
+                        ncgrp.createDimension(dimension_name, dimension)
+                    ncvar = ncgrp.createVariable(key, element_type, dimensions_names)
 
-                # Store values and element type.
+                    # Store element type instead of array type.
+                    stored_type_name = element_type_name
                 ncvar[:] = value[:]
-                stored_type_name = element_type_name
             elif value is None:
-                ncvar = ncgrp.createVariable(key, int)
+                if is_update:
+                    ncvar = ncgrp.variables[key]
+                else:
+                    ncvar = ncgrp.createVariable(key, int)
                 ncvar.assignValue(0)
             else:
-                ncvar = ncgrp.createVariable(key, value_type)
+                if is_update:
+                    ncvar = ncgrp.variables[key]
+                else:
+                    ncvar = ncgrp.createVariable(key, value_type)
                 ncvar.assignValue(value)
 
             # Set the type of the variable if this wasn't a dictionary.
@@ -844,29 +866,9 @@ class ReplicaExchange(object):
 
     """
 
-    default_parameters = {'collision_rate': 5.0 / unit.picosecond,
-                          'constraint_tolerance': 1.0e-6,
-                          'timestep': 2.0 * unit.femtosecond,
-                          'nsteps_per_iteration': 500,
-                          'number_of_iterations': 1,
-                          'extend_simulation': False,  # Do not save this option as its an on-the-fly setting
-                          'equilibration_timestep': 1.0 * unit.femtosecond,
-                          'number_of_equilibration_iterations': 1,
-                          'title': 'Replica-exchange simulation created using ReplicaExchange class of repex.py on %s' % time.asctime(time.localtime()),
-                          'minimize': True,
-                          'minimize_tolerance': 1.0 * unit.kilojoules_per_mole / unit.nanometers,
-                          'minimize_max_iterations': 0,
-                          'replica_mixing_scheme': 'swap-all',
-                          'online_analysis': False,
-                          'online_analysis_min_iterations': 20,
-                          'show_energies': True,
-                          'show_mixing_statistics': True
-                          }
-
-    # Options to store.
-    options_to_store = ['collision_rate', 'constraint_tolerance', 'timestep', 'nsteps_per_iteration',
-                        'number_of_iterations', 'equilibration_timestep', 'number_of_equilibration_iterations', 'title',
-                        'minimize', 'replica_mixing_scheme', 'online_analysis', 'show_mixing_statistics']
+    # -------------------------------------------------------------------------
+    # Constructors.
+    # -------------------------------------------------------------------------
 
     def __init__(self, mcmc_moves=None,
                  number_of_iterations=1,
@@ -962,30 +964,37 @@ class ReplicaExchange(object):
         # Display papers to be cited.
         repex._display_citations()
 
+        # Count timestamps to retrieve the current number of iterations.
+        # Timestamp is the last thing reported in _report_iteration, so
+        # we are sure that the full iteration information has been stored
+        # and the simulation has not been interrupted during the report.
+        iteration = len(reporter.read_timestamp(iteration=slice(None))) - 1  # 0-based
+
         # Retrieve other attributes.
         logger.debug("Reading storage file {}...".format(storage))
         thermodynamic_states = reporter.read_thermodynamic_states()
-        sampler_states = reporter.read_sampler_states(iteration=-1)
-        state_indices = reporter.read_replica_thermodynamic_states(iteration=-1)
-        energies = reporter.read_energies(iteration=-1)
-        n_accepted_matrix, n_proposed_matrix = reporter.read_mixing_statistics(iteration=-1)
-
-        # Count timestamps to retrieve the current number of iterations.
-        iteration = len(reporter.read_timestamp(iteration=slice(None))) - 1  # 0-based
+        sampler_states = reporter.read_sampler_states(iteration=iteration)
+        state_indices = reporter.read_replica_thermodynamic_states(iteration=iteration)
+        energies = reporter.read_energies(iteration=iteration)
+        n_accepted_matrix, n_proposed_matrix = reporter.read_mixing_statistics(iteration=iteration)
 
         # Assign attributes.
+        repex._iteration = iteration
         repex._thermodynamic_states = thermodynamic_states
         repex._sampler_states = sampler_states
         repex._replica_thermodynamic_states = state_indices
         repex._u_kl = energies
         repex._n_accepted_matrix = n_accepted_matrix
         repex._n_proposed_matrix = n_proposed_matrix
-        repex._iteration = iteration
 
         # We set the reporter in node 0. Will return None if not rank 0.
         repex._reporter = mpi.run_single_node(0, Reporter, storage, mode='a',
                                               broadcast_result=False, sync_nodes=False)
         return repex
+
+    # -------------------------------------------------------------------------
+    # Public properties.
+    # -------------------------------------------------------------------------
 
     @property
     def n_replicas(self):
@@ -999,10 +1008,57 @@ class ReplicaExchange(object):
     def iteration(self):
         """The current iteration of the simulation (read-only).
 
-        If the simulation has not been initialized, this is None.
+        If the simulation has not been created yet, this is None.
 
         """
         return self._iteration
+
+    @property
+    def mcmc_moves(self):
+        """A copy of the MCMCMoves used to propagate the simulation.
+
+        This can be set only before creation.
+
+        """
+        return copy.deepcopy(self._mcmc_moves)
+
+    @mcmc_moves.setter
+    def mcmc_moves(self, new_value):
+        if self._thermodynamic_states is not None:
+            # We can't modify representation of the MCMCMoves because it's
+            # impossible to delete groups/variables from an NetCDF file. We
+            # could support this by JSONizing the dict serialization and
+            # store it as a string instead, if we needed this.
+            raise RuntimeError('Cannot modify MCMCMoves after creation.')
+        # If this is a single MCMCMove, it'll be transformed to a list in create().
+        self._mcmc_moves = new_value
+
+    class _StoredProperty(object):
+        """Descriptor of a property stored as an option."""
+        def __init__(self, option_name):
+            self._option_name = option_name
+
+        def __get__(self, instance, owner_class=None):
+            return getattr(instance, '_' + self._option_name)
+
+        def __set__(self, instance, new_value):
+            if (self._option_name == 'replica_mixing_scheme' and
+                        new_value not in ReplicaExchange._SUPPORTED_MIXING_SCHEMES):
+                raise ValueError(("Unknown replica mixing scheme '{}'. Supported values "
+                                  "are {}.").format(new_value, self._SUPPORTED_MIXING_SCHEMES))
+            setattr(instance, '_' + self._option_name, new_value)
+            instance._store_options()
+
+    number_of_iterations = _StoredProperty('number_of_iterations')
+    replica_mixing_scheme = _StoredProperty('replica_mixing_scheme')
+    online_analysis = _StoredProperty('online_analysis')
+    online_analysis_min_iterations = _StoredProperty('online_analysis_min_iterations')
+    show_energies = _StoredProperty('show_energies')
+    show_mixing_statistics = _StoredProperty('show_mixing_statistics')
+
+    # -------------------------------------------------------------------------
+    # Main public interface.
+    # -------------------------------------------------------------------------
 
     def create(self, thermodynamic_states, sampler_states, storage, metadata=None):
         """
@@ -1064,7 +1120,7 @@ class ReplicaExchange(object):
         # and SamplerState sampler_states[i]. During mixing, we exchange the indices
         # of the ThermodynamicState, but we keep the SamplerStates (i.e. positions,
         # velocities, box_vectors) bound to the same replica.
-        self._replica_thermodynamic_states = np.array([i for i in range(self.n_replicas)], np.int32)
+        self._replica_thermodynamic_states = np.array([i for i in range(self.n_replicas)], np.int64)
 
         # Assign default system box vectors if None has been specified.
         for replica_id, thermodynamic_state_id in enumerate(self._replica_thermodynamic_states):
@@ -1087,8 +1143,8 @@ class ReplicaExchange(object):
         # Reset statistics.
         # _n_accepted_matrix[i][j] is the number of swaps proposed between thermodynamic states i and j.
         # _n_proposed_matrix[i][j] is the number of swaps proposed between thermodynamic states i and j.
-        self._n_accepted_matrix = np.zeros([self.n_replicas, self.n_replicas], np.int32)
-        self._n_proposed_matrix = np.zeros([self.n_replicas, self.n_replicas], np.int32)
+        self._n_accepted_matrix = np.zeros([self.n_replicas, self.n_replicas], np.int64)
+        self._n_proposed_matrix = np.zeros([self.n_replicas, self.n_replicas], np.int64)
 
         # Allocate memory for energy matrix.
         # u_kl[k][l] is the reduced potential computed at the positions of SamplerState
@@ -1197,12 +1253,10 @@ class ReplicaExchange(object):
             self._report_iteration()
 
             # Show energies.
-            if self._show_energies:
-                self._log_energies()
+            self._log_energies()
 
             # Show mixing statistics.
-            if self._show_mixing_statistics:
-                self._log_mixing_statistics()
+            self._log_mixing_statistics()
 
             # Perform online analysis.
             if self._online_analysis:
@@ -1283,7 +1337,7 @@ class ReplicaExchange(object):
 
         # Check energies.
         for replica_id in range(self.n_replicas):
-            if np.any(np.isnan(self.u_kl[replica_id, :])):
+            if np.any(np.isnan(self._u_kl[replica_id, :])):
                 err_msg = "nan encountered in u_kl state energies for replica {}".format(replica_id)
                 logger.error(err_msg)
                 abort_msg += err_msg
@@ -1519,7 +1573,7 @@ class ReplicaExchange(object):
         from .mixing._mix_replicas import _mix_replicas_cython
 
         replica_states = md.utils.ensure_type(self._replica_thermodynamic_states, np.int64, 1, "Replica States")
-        u_kl = md.utils.ensure_type(self.u_kl, np.float64, 2, "Reduced Potentials")
+        u_kl = md.utils.ensure_type(self._u_kl, np.float64, 2, "Reduced Potentials")
         n_proposed_matrix = md.utils.ensure_type(self._n_proposed_matrix, np.int64, 2, "Nij Proposed Swaps")
         n_accepted_matrix = md.utils.ensure_type(self._n_accepted_matrix, np.int64, 2, "Nij Accepted Swaps")
         _mix_replicas_cython(self.n_replicas**4, self.n_replicas, replica_states,
@@ -1568,8 +1622,8 @@ class ReplicaExchange(object):
         replica_j = np.where(self._replica_thermodynamic_states == thermodynamic_state_j)
 
         # Compute log probability of swap.
-        log_p_accept = - (self.u_kl[replica_i, thermodynamic_state_j] + self.u_kl[replica_j, thermodynamic_state_i]) + \
-            self.u_kl[replica_i, thermodynamic_state_i] + self.u_kl[replica_j, thermodynamic_state_j]
+        log_p_accept = - (self._u_kl[replica_i, thermodynamic_state_j] + self._u_kl[replica_j, thermodynamic_state_i]) + \
+            self._u_kl[replica_i, thermodynamic_state_i] + self._u_kl[replica_j, thermodynamic_state_j]
 
         # Record that this move has been proposed.
         self._n_proposed_matrix[thermodynamic_state_i, thermodynamic_state_j] += 1
@@ -1808,7 +1862,7 @@ class ReplicaExchange(object):
 
     @mpi.on_single_node(0, sync_nodes=False)
     def _log_mixing_statistics(self):
-        if self._iteration < 2:
+        if self._iteration < 2 or not self._show_mixing_statistics:
             return
         print_cutoff = 0.001  # Cutoff for displaying fraction of accepted swaps.
 
@@ -1845,20 +1899,20 @@ class ReplicaExchange(object):
         Show energies (in units of kT) for all replicas at all states.
 
         """
-        if not logger.isEnabledFor(logging.DEBUG):
+        if not logger.isEnabledFor(logging.DEBUG) or not self._show_energies:
             return
 
         # print header
         str_row = "%-24s %16s" % ("reduced potential (kT)", "current state")
-        for state_index in range(self.nstates):
+        for state_index in range(self.n_replicas):
             str_row += " state %3d" % state_index
         logger.debug(str_row)
 
         # print energies in kT
         for replica_index in range(self.n_replicas):
-            str_row = "replica %-16d %16d" % (replica_index, self.replica_states[replica_index])
+            str_row = "replica %-16d %16d" % (replica_index, self._replica_thermodynamic_states[replica_index])
             for state_index in range(self.n_replicas):
-                u = self.u_kl[replica_index, state_index]
+                u = self._u_kl[replica_index, state_index]
                 if u > 1e6:
                     str_row += "%10.3e" % u
                 else:
@@ -2034,24 +2088,24 @@ class ParallelTempering(ReplicaExchange):
             integrator = self.mm.VerletIntegrator(self.timestep)
             context = self._create_context(state.system, integrator)
 
-            for replica_index in range(self.mpicomm.rank, self.nstates, self.mpicomm.size):
+            for replica_index in range(self.mpicomm.rank, self.n_replicas, self.mpicomm.size):
                 # Set positions.
                 context.setPositions(self.replica_positions[replica_index])
                 # Compute potential energy.
                 openmm_state = context.getState(getEnergy=True)
                 potential_energy = openmm_state.getPotentialEnergy()
                 # Compute energies at this state for all replicas.
-                for state_index in range(self.nstates):
+                for state_index in range(self.n_replicas):
                     # Compute reduced potential
                     beta = 1.0 / (kB * self.states[state_index].temperature)
-                    self.u_kl[replica_index,state_index] = beta * potential_energy
+                    self._u_kl[replica_index,state_index] = beta * potential_energy
 
             # Gather energies.
-            energies_gather = self.mpicomm.allgather(self.u_kl[self.mpicomm.rank:self.nstates:self.mpicomm.size,:])
-            for replica_index in range(self.nstates):
+            energies_gather = self.mpicomm.allgather(self._u_kl[self.mpicomm.rank:self.n_replicas:self.mpicomm.size,:])
+            for replica_index in range(self.n_replicas):
                 source = replica_index % self.mpicomm.size # node with trajectory data
                 index = replica_index // self.mpicomm.size # index within trajectory batch
-                self.u_kl[replica_index,:] = energies_gather[source][index]
+                self._u_kl[replica_index,:] = energies_gather[source][index]
 
             # Clean up.
             del context, integrator
@@ -2065,24 +2119,24 @@ class ParallelTempering(ReplicaExchange):
             context = self._create_context(state.system, integrator)
 
             # Compute reduced potentials for all configurations in all states.
-            for replica_index in range(self.nstates):
+            for replica_index in range(self.n_replicas):
                 # Set positions.
                 context.setPositions(self.replica_positions[replica_index])
                 # Compute potential energy.
                 openmm_state = context.getState(getEnergy=True)
                 potential_energy = openmm_state.getPotentialEnergy()
                 # Compute energies at this state for all replicas.
-                for state_index in range(self.nstates):
+                for state_index in range(self.n_replicas):
                     # Compute reduced potential
                     beta = 1.0 / (kB * self.states[state_index].temperature)
-                    self.u_kl[replica_index,state_index] = beta * potential_energy
+                    self._u_kl[replica_index,state_index] = beta * potential_energy
 
             # Clean up.
             del context, integrator
 
         end_time = time.time()
         elapsed_time = end_time - start_time
-        time_per_energy = elapsed_time / float(self.nstates)
+        time_per_energy = elapsed_time / float(self.n_replicas)
         logger.debug("Time to compute all energies %.3f s (%.3f per energy calculation).\n" % (elapsed_time, time_per_energy))
 
         return
