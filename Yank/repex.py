@@ -2046,7 +2046,8 @@ class ParallelTempering(ReplicaExchange):
 
     """
 
-    def create(self, system, positions, options=None, Tmin=None, Tmax=None, ntemps=None, temperatures=None, pressure=None, metadata=None):
+    def create(self, thermodynamic_state, sampler_states, storage, min_temperature=None,
+               max_temperature=None, n_temperatures=None, temperatures=None, metadata=None):
         """
         Initialize a parallel tempering simulation object.
 
@@ -2076,96 +2077,70 @@ class ParallelTempering(ReplicaExchange):
         """
         # Create thermodynamic states from temperatures.
         if temperatures is not None:
-            logger.info("Using provided temperatures")
-            self.temperatures = temperatures
-        elif (Tmin is not None) and (Tmax is not None) and (ntemps is not None):
-            self.temperatures = [ Tmin + (Tmax - Tmin) * (math.exp(float(i) / float(ntemps-1)) - 1.0) / (math.e - 1.0) for i in range(ntemps) ]
+            logger.debug("Using provided temperatures")
+        elif min_temperature is not None and max_temperature is not None and n_temperatures is not None:
+            temperatures = [min_temperature + (max_temperature - min_temperature) *
+                            (math.exp(i / float(n_temperatures-1)) - 1.0) / (math.e - 1.0)
+                            for i in range(n_temperatures)]
+            logger.debug('using temperatures {}'.format(temperatures))
         else:
-            raise ValueError("Either 'temperatures' or 'Tmin', 'Tmax', and 'ntemps' must be provided.")
+            raise ValueError("Either 'temperatures' or 'min_temperature', 'max_temperature', "
+                             "and 'n_temperatures' must be provided.")
 
-        states = [ ThermodynamicState(system=system, temperature=self.temperatures[i], pressure=pressure) for i in range(ntemps) ]
+        thermodynamic_states = [copy.deepcopy(thermodynamic_state) for _ in range(n_temperatures)]
+        for state, temperature in zip(thermodynamic_states, temperatures):
+            state.temperature = temperature
+
+        # Override default title.
+        default_title = ('Parallel tempering simulation created using ParallelTempering '
+                         'class of yank.repex.py on {}'.format(time.asctime(time.localtime())))
+        if metadata is None:
+            metadata = dict(title=default_title)
+        elif 'title' not in metadata:
+            metadata['title'] = default_title
 
         # Initialize replica-exchange simlulation.
-        ReplicaExchange.create(self, states, positions, options=options, metadata=metadata)
+        super(ParallelTempering, self).create(self, thermodynamic_states, sampler_states,
+                                              storage=storage, metadata=metadata)
 
-        # Override title.
-        self.title = 'Parallel tempering simulation created using ParallelTempering class of repex.py on %s' % time.asctime(time.localtime())
+    def _compute_replica_energies(self, replica_id):
+        """Compute the energy for the replica at every temperature.
 
-        return
-
-    def _compute_energies(self):
-        """
-        Compute reduced potentials of all replicas at all states (temperatures).
-
-        NOTES
-
-        Because only the temperatures differ among replicas, we replace the generic O(N^2) replica-exchange implementation with an O(N) implementation.
+        Notes
+        -----
+        Because only the temperatures differ among replicas, we replace the generic O(N^2)
+        replica-exchange implementation with an O(N) implementation.
 
         """
+        # Initialize replica energies for each thermodynamic state.
+        replica_energies = np.zeros(self.n_replicas)
 
-        start_time = time.time()
-        logger.debug("Computing energies...")
+        # Retrieve sampler states associated to this replica.
+        sampler_state = self._sampler_states[replica_id]
 
-        if self.mpicomm:
-            # MPI implementation
+        # Thermodynamic state differ only by temperatures.
+        reference_thermodynamic_state = self._thermodynamic_states[0]
 
-            # Create an integrator and context.
-            state = self.states[0]
-            integrator = self.mm.VerletIntegrator(self.timestep)
-            context = self._create_context(state.system, integrator)
+        # Get the context, any Integrator works.
+        context, integrator = mmtools.cache.global_context_cache.get_context(reference_thermodynamic_state)
 
-            for replica_index in range(self.mpicomm.rank, self.n_replicas, self.mpicomm.size):
-                # Set positions.
-                context.setPositions(self.replica_positions[replica_index])
-                # Compute potential energy.
-                openmm_state = context.getState(getEnergy=True)
-                potential_energy = openmm_state.getPotentialEnergy()
-                # Compute energies at this state for all replicas.
-                for state_index in range(self.n_replicas):
-                    # Compute reduced potential
-                    beta = 1.0 / (kB * self.states[state_index].temperature)
-                    self._u_kl[replica_index,state_index] = beta * potential_energy
+        # Update positions and box vectors.
+        sampler_state.apply_to_context(context)
 
-            # Gather energies.
-            energies_gather = self.mpicomm.allgather(self._u_kl[self.mpicomm.rank:self.n_replicas:self.mpicomm.size,:])
-            for replica_index in range(self.n_replicas):
-                source = replica_index % self.mpicomm.size # node with trajectory data
-                index = replica_index // self.mpicomm.size # index within trajectory batch
-                self._u_kl[replica_index,:] = energies_gather[source][index]
+        # Compute energy.
+        reference_reduced_potential = reference_thermodynamic_state.reduced_potential(context)
 
-            # Clean up.
-            del context, integrator
+        # Strip reference potential of reference state's beta.
+        reference_beta = 1.0 / (mmtools.constants.kB * reference_thermodynamic_state.temperature)
+        reference_reduced_potential /= reference_beta
 
-        else:
-            # Serial implementation.
+        # Update potential energy by temperature.
+        for thermodynamic_state_id, thermodynamic_state in enumerate(self._thermodynamic_states):
+            beta = 1.0 / (mmtools.constants.kB * thermodynamic_state.temperature)
+            replica_energies[replica_id, thermodynamic_state_id] = beta * reference_reduced_potential
 
-            # Create an integrator and context.
-            state = self.states[0]
-            integrator = self.mm.VerletIntegrator(self.timestep)
-            context = self._create_context(state.system, integrator)
-
-            # Compute reduced potentials for all configurations in all states.
-            for replica_index in range(self.n_replicas):
-                # Set positions.
-                context.setPositions(self.replica_positions[replica_index])
-                # Compute potential energy.
-                openmm_state = context.getState(getEnergy=True)
-                potential_energy = openmm_state.getPotentialEnergy()
-                # Compute energies at this state for all replicas.
-                for state_index in range(self.n_replicas):
-                    # Compute reduced potential
-                    beta = 1.0 / (kB * self.states[state_index].temperature)
-                    self._u_kl[replica_index,state_index] = beta * potential_energy
-
-            # Clean up.
-            del context, integrator
-
-        end_time = time.time()
-        elapsed_time = end_time - start_time
-        time_per_energy = elapsed_time / float(self.n_replicas)
-        logger.debug("Time to compute all energies %.3f s (%.3f per energy calculation).\n" % (elapsed_time, time_per_energy))
-
-        return
+        # Return the new energies.
+        return replica_energies
 
 
 # ==============================================================================
