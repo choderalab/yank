@@ -905,10 +905,11 @@ class ReplicaExchange(object):
         # Handling default propagator.
         if mcmc_moves is None:
             # This will be converted to a list in create().
-            mcmc_moves = mmtools.mcmc.LangevinDynamicsMove(timestep=2.0*unit.femtosecond,
-                                                           collision_rate=5.0/unit.picosecond,
-                                                           n_steps=500, reassign_velocities=True)
-        self._mcmc_moves = copy.deepcopy(mcmc_moves)
+            self._mcmc_moves = mmtools.mcmc.LangevinDynamicsMove(timestep=2.0*unit.femtosecond,
+                                                                 collision_rate=5.0/unit.picosecond,
+                                                                 n_steps=500, reassign_velocities=True)
+        else:
+            self._mcmc_moves = copy.deepcopy(mcmc_moves)
 
         # Store constructor parameters. Everything is marked for internal
         # usage because any change to these attribute would imply a change
@@ -1031,7 +1032,7 @@ class ReplicaExchange(object):
             # store it as a string instead, if we needed this.
             raise RuntimeError('Cannot modify MCMCMoves after creation.')
         # If this is a single MCMCMove, it'll be transformed to a list in create().
-        self._mcmc_moves = new_value
+        self._mcmc_moves = copy.deepcopy(new_value)
 
     class _StoredProperty(object):
         """Descriptor of a property stored as an option."""
@@ -1130,7 +1131,7 @@ class ReplicaExchange(object):
             thermodynamic_state = self._thermodynamic_states[thermodynamic_state_id]
             sampler_state.box_vectors = thermodynamic_state.system.getDefaultPeriodicBoxVectors()
 
-        # Ensure there is an MCMCMove for each replica.
+        # Ensure there is an MCMCMove for each thermodynamic state.
         if isinstance(self._mcmc_moves, mmtools.mcmc.MCMCMove):
             self._mcmc_moves = [copy.deepcopy(self._mcmc_moves) for _ in range(self.n_replicas)]
         elif len(self._mcmc_moves) != self.n_replicas:
@@ -1185,7 +1186,7 @@ class ReplicaExchange(object):
                                                            collision_rate=5.0/unit.picosecond,
                                                            n_steps=500, reassign_velocities=True)
 
-        # Make sure there is one MCMCMove per state.
+        # Make sure there is one MCMCMove per thermodynamic state.
         if isinstance(mcmc_moves, mmtools.mcmc.MCMCMove):
             mcmc_moves = [copy.deepcopy(mcmc_moves) for _ in range(self.n_replicas)]
         elif len(mcmc_moves) != self.n_replicas:
@@ -1375,7 +1376,6 @@ class ReplicaExchange(object):
         """
         self._reporter = Reporter(storage, mode='w')
         self._reporter.write_thermodynamic_states(self._thermodynamic_states)
-        self._reporter.write_mcmc_moves(self._mcmc_moves)
 
         # Store run metadata and ReplicaExchange options.
         self._store_options()
@@ -1397,6 +1397,7 @@ class ReplicaExchange(object):
         """
         self._reporter.write_sampler_states(self._sampler_states, self._iteration)
         self._reporter.write_replica_thermodynamic_states(self._replica_thermodynamic_states, self._iteration)
+        self._reporter.write_mcmc_moves(self._mcmc_moves)  # MCMCMoves can store internal statistics.
         self._reporter.write_energies(self._u_kl, self._iteration)
         self._reporter.write_mixing_statistics(self._n_accepted_matrix, self._n_proposed_matrix, self._iteration)
         self._reporter.write_timestamp(self._iteration)
@@ -1459,8 +1460,8 @@ class ReplicaExchange(object):
         # Retrieve thermodynamic, sampler states, and MCMC move of this replica.
         thermodynamic_state_id = self._replica_thermodynamic_states[replica_id]
         thermodynamic_state = self._thermodynamic_states[thermodynamic_state_id]
+        mcmc_move = self._mcmc_moves[thermodynamic_state_id]
         sampler_state = self._sampler_states[replica_id]
-        mcmc_move = self._mcmc_moves[replica_id]
 
         # Apply MCMC move.
         mcmc_move.apply(thermodynamic_state, sampler_state)

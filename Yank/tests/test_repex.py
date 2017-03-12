@@ -814,7 +814,8 @@ class TestReplicaExchange(object):
 
         with moltools.utils.temporary_directory() as tmp_dir_path:
             storage_path = os.path.join(tmp_dir_path, 'test_storage.nc')
-            repex = ReplicaExchange(show_energies=True, show_mixing_statistics=True,
+            repex = ReplicaExchange(mcmc_moves=mmtools.mcmc.GHMCMove(n_steps=1),
+                                    show_energies=True, show_mixing_statistics=True,
                                     number_of_iterations=2)
             repex.create(thermodynamic_states, sampler_states, storage=storage_path)
 
@@ -825,6 +826,12 @@ class TestReplicaExchange(object):
             # ReplicaExchange.extend does.
             repex.extend(n_iterations=2)
             assert repex.iteration == 4
+
+            # The MCMCMoves statistics in the storage are updated.
+            reporter = Reporter(storage_path, mode='r')
+            restored_mcmc_moves = reporter.read_mcmc_moves()
+            assert restored_mcmc_moves[0].n_attempted != 0
+
 
 
 # ==============================================================================
