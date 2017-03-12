@@ -409,7 +409,7 @@ class TestReporter(object):
         with moltools.utils.temporary_directory() as tmp_dir_path:
             storage_file_path = os.path.join(tmp_dir_path, file_name)
             assert not os.path.isfile(storage_file_path)
-            reporter = Reporter(storage=storage_file_path, mode='w')
+            reporter = Reporter(storage=storage_file_path, open_mode='w')
             assert os.path.isfile(storage_file_path)
             yield reporter
 
@@ -571,12 +571,12 @@ class TestReplicaExchange(object):
             # Check that reporter has reporter only if rank 0.
             mpicomm = mpi.get_mpicomm()
             if mpicomm is None or mpicomm.rank == 0:
-                assert repex._reporter is not None
+                assert repex._reporter.is_open()
             else:
-                assert repex._reporter is None
+                assert not repex._reporter.is_open()
 
             # Open reporter to read stored data.
-            reporter = Reporter(storage_path, mode='r')
+            reporter = Reporter(storage_path, open_mode='r')
 
             # The n_states-1 sampler states have been distributed to n_states replica.
             restored_sampler_states = reporter.read_sampler_states(iteration=0)
@@ -621,14 +621,15 @@ class TestReplicaExchange(object):
         with moltools.utils.temporary_directory() as tmp_dir_path:
             storage_path = os.path.join(tmp_dir_path, 'test_storage.nc')
 
-            # Create first repex and store its state (its __dict__).
+            # Create first repex and store its state (its __dict__). We leave the
+            # reporter out because when the NetCDF file is copied, it runs into issues.
             repex = ReplicaExchange()
             repex.create(thermodynamic_states, sampler_states, storage=storage_path)
-            original_dict = copy.deepcopy(repex.__dict__)
+            original_dict = copy.deepcopy({k: v for k, v in repex.__dict__.items() if not k == '_reporter'})
 
             # Create a new repex from the storage file.
             repex = ReplicaExchange.from_storage(storage_path)
-            restored_dict = copy.deepcopy(repex.__dict__)
+            restored_dict = copy.deepcopy({k: v for k, v in repex.__dict__.items() if not k == '_reporter'})
 
             # Check thermodynamic states.
             original_ts = original_dict.pop('_thermodynamic_states')
@@ -643,16 +644,12 @@ class TestReplicaExchange(object):
                 assert np.allclose(original.positions, restored.positions)
                 assert np.all(original.box_vectors == restored.box_vectors)
 
-            # Check reporter. The newly created is in 'w' mode, the other in 'a' mode.
-            original_reporter = original_dict.pop('_reporter')
-            restored_reporter = restored_dict.pop('_reporter')
+            # The reporter of the restored simulation must be open only in node 0.
             mpicomm = mpi.get_mpicomm()
             if mpicomm is None or mpicomm.rank == 0:
-                assert original_reporter is not None
-                assert restored_reporter is not None
+                assert repex._reporter.is_open()
             else:
-                assert original_reporter is None
-                assert restored_reporter is None
+                assert not repex._reporter.is_open()
 
             # Check all arrays. Instantiate list so that we can pop from original_dict.
             for attr, original_value in list(original_dict.items()):
@@ -676,7 +673,7 @@ class TestReplicaExchange(object):
             repex.create(thermodynamic_states, sampler_states, storage=storage_path)
 
             # Get original options.
-            reporter = Reporter(storage_path, mode='r')
+            reporter = Reporter(storage_path, open_mode='r')
             options = reporter.read_dict('options')
 
             # Update options and check the storage is synchronized.
@@ -772,7 +769,7 @@ class TestReplicaExchange(object):
                 assert new_energies[i] < original_energies[i]
 
             # The storage has been updated.
-            reporter = Reporter(storage_path, mode='r')
+            reporter = Reporter(storage_path, open_mode='r')
             stored_sampler_states = reporter.read_sampler_states(iteration=0)
             for new_state, stored_state in zip(new_sampler_states, stored_sampler_states):
                 assert np.allclose(new_state.positions, stored_state.positions)
@@ -800,7 +797,7 @@ class TestReplicaExchange(object):
             assert isinstance(repex._mcmc_moves[0], mmtools.mcmc.GHMCMove)
 
             # The storage has been updated.
-            reporter = Reporter(storage_path, mode='r')
+            reporter = Reporter(storage_path, open_mode='r')
             stored_sampler_states = reporter.read_sampler_states(iteration=0)
             for new_state, stored_state in zip(repex._sampler_states, stored_sampler_states):
                 assert np.allclose(new_state.positions, stored_state.positions)
@@ -828,7 +825,7 @@ class TestReplicaExchange(object):
             assert repex.iteration == 4
 
             # The MCMCMoves statistics in the storage are updated.
-            reporter = Reporter(storage_path, mode='r')
+            reporter = Reporter(storage_path, open_mode='r')
             restored_mcmc_moves = reporter.read_mcmc_moves()
             assert restored_mcmc_moves[0].n_attempted != 0
 

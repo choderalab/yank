@@ -100,9 +100,21 @@ class Reporter(object):
         The mode of the file between 'r', 'w', and 'a' (or equivalently 'r+').
 
     """
-    def __init__(self, storage, mode='r'):
+    def __init__(self, storage, open_mode=None):
+        self._storage_file_path = storage
+        if open_mode is not None:
+            self.open(open_mode)
+        else:
+            self._storage = None
+
+    def is_open(self):
+        if self._storage is None:
+            return False
+        return self._storage.isopen()
+
+    def open(self, mode='r'):
         # Open NetCDF 4 file for writing.
-        ncfile = netcdf.Dataset(storage, mode, version='NETCDF4')
+        ncfile = netcdf.Dataset(self._storage_file_path, mode, version='NETCDF4')
 
         # Create header if needed.
         if 'scalar' not in ncfile.dimensions:
@@ -118,21 +130,21 @@ class Reporter(object):
             setattr(ncfile, 'Conventions', 'YANK')
             setattr(ncfile, 'ConventionVersion', '0.1')
 
-        # Save NetCDF file.
-        self._ncfile = ncfile
+        self._storage = ncfile
 
-    def __del__(self):
-        """Synchronize and close the storage."""
-        if self._ncfile is not None:
-            # Don't sync if we don't have write access.
-            if self._ncfile.isopen():
-                self._ncfile.sync()
-                self._ncfile.close()
-            self._ncfile = None
+    def close(self):
+        self._storage.sync()
+        self._storage.close()
+        self._storage = None
 
     def sync(self):
         """Force any buffer to be flushed to the file."""
-        self._ncfile.sync()
+        self._storage.sync()
+
+    def __del__(self):
+        """Synchronize and close the storage."""
+        if self._storage is not None:
+            self.close()
 
     @mmtools.utils.with_timer('Reading thermodynamic states from storage')
     def read_thermodynamic_states(self):
@@ -150,8 +162,8 @@ class Reporter(object):
 
         """
         # Retrieve group and number of states.
-        ncgrp_states = self._ncfile.groups['thermodynamic_states']
-        n_states = self._ncfile.dimensions['replica'].size
+        ncgrp_states = self._storage.groups['thermodynamic_states']
+        n_states = self._storage.dimensions['replica'].size
 
         # Read state information.
         thermodynamic_states = list()
@@ -191,11 +203,11 @@ class Reporter(object):
         is_barostated = thermodynamic_states[0].pressure is not None
 
         # Create a group to store state information.
-        ncgrp_states = self._ncfile.createGroup('thermodynamic_states')
+        ncgrp_states = self._storage.createGroup('thermodynamic_states')
 
         # Check if replica dimensions exist.
-        if 'replica' not in self._ncfile.dimensions:
-            self._ncfile.createDimension('replica', n_states)
+        if 'replica' not in self._storage.dimensions:
+            self._storage.createDimension('replica', n_states)
 
         # Store number of states.
         ncvar_nstates = ncgrp_states.createVariable('nstates', int)
@@ -242,16 +254,16 @@ class Reporter(object):
             The previously stored sampler states for each replica.
 
         """
-        n_states = self._ncfile.dimensions['replica'].size
+        n_states = self._storage.dimensions['replica'].size
 
         sampler_states = list()
         for replica_index in range(n_states):
             # Restore positions.
-            x = self._ncfile.variables['positions'][iteration, replica_index, :, :].astype(np.float64)
+            x = self._storage.variables['positions'][iteration, replica_index, :, :].astype(np.float64)
             positions = unit.Quantity(x, unit.nanometers)
 
             # Restore box vectors.
-            x = self._ncfile.variables['box_vectors'][iteration, replica_index, :, :].astype(np.float64)
+            x = self._storage.variables['box_vectors'][iteration, replica_index, :, :].astype(np.float64)
             box_vectors = unit.Quantity(x, unit.nanometers)
 
             # Create SamplerState.
@@ -272,24 +284,24 @@ class Reporter(object):
 
         """
         # Check if the schema must be initialized.
-        if 'positions' not in self._ncfile.variables:
+        if 'positions' not in self._storage.variables:
             n_atoms = sampler_states[0].n_particles
             n_states = len(sampler_states)
 
             # Create dimensions. Replica dimension could have been created before.
-            self._ncfile.createDimension('atom', n_atoms)
-            if 'replica' not in self._ncfile.dimensions:
-                self._ncfile.createDimension('replica', n_states)
+            self._storage.createDimension('atom', n_atoms)
+            if 'replica' not in self._storage.dimensions:
+                self._storage.createDimension('replica', n_states)
 
             # Create variables.
-            ncvar_positions = self._ncfile.createVariable('positions', 'f4',
-                                                          ('iteration', 'replica', 'atom', 'spatial'),
-                                                          zlib=True, chunksizes=(1, n_states, n_atoms, 3))
-            ncvar_box_vectors = self._ncfile.createVariable('box_vectors', 'f4',
-                                                            ('iteration', 'replica', 'spatial', 'spatial'),
-                                                            zlib=False, chunksizes=(1, n_states, 3, 3))
-            ncvar_volumes = self._ncfile.createVariable('volumes', 'f8', ('iteration', 'replica'),
-                                                        zlib=False, chunksizes=(1, n_states))
+            ncvar_positions = self._storage.createVariable('positions', 'f4',
+                                                           ('iteration', 'replica', 'atom', 'spatial'),
+                                                           zlib=True, chunksizes=(1, n_states, n_atoms, 3))
+            ncvar_box_vectors = self._storage.createVariable('box_vectors', 'f4',
+                                                             ('iteration', 'replica', 'spatial', 'spatial'),
+                                                             zlib=False, chunksizes=(1, n_states, 3, 3))
+            ncvar_volumes = self._storage.createVariable('volumes', 'f8', ('iteration', 'replica'),
+                                                         zlib=False, chunksizes=(1, n_states))
 
             # Define units for variables.
             setattr(ncvar_positions, 'units', 'nm')
@@ -310,13 +322,13 @@ class Reporter(object):
         for replica_index, sampler_state in enumerate(sampler_states):
             # Store positions
             x = sampler_state.positions / unit.nanometers
-            self._ncfile.variables['positions'][iteration, replica_index, :, :] = x[:, :]
+            self._storage.variables['positions'][iteration, replica_index, :, :] = x[:, :]
 
             # Store box vectors and volume.
             for i in range(3):
                 vector_i = sampler_state.box_vectors[i] / unit.nanometers
-                self._ncfile.variables['box_vectors'][iteration, replica_index, i, :] = vector_i
-            self._ncfile.variables['volumes'][iteration, replica_index] = sampler_state.volume / unit.nanometers**3
+                self._storage.variables['box_vectors'][iteration, replica_index, i, :] = vector_i
+            self._storage.variables['volumes'][iteration, replica_index] = sampler_state.volume / unit.nanometers**3
 
     def read_replica_thermodynamic_states(self, iteration):
         """Retrieve the indices of the ThermodynamicStates for each replica.
@@ -334,7 +346,7 @@ class Reporter(object):
             thermodynamic_states[states_indices[i]].
 
         """
-        return self._ncfile.variables['states'][iteration].astype(np.int64)
+        return self._storage.variables['states'][iteration].astype(np.int64)
 
     def write_replica_thermodynamic_states(self, state_indices, iteration):
         """Store the indices of the ThermodynamicStates for each replica.
@@ -350,22 +362,22 @@ class Reporter(object):
 
         """
         # Initialize schema if needed.
-        if 'states' not in self._ncfile.variables:
+        if 'states' not in self._storage.variables:
             n_states = len(state_indices)
 
             # Create dimension if they don't exist.
-            if 'replica' not in self._ncfile.dimensions:
-                self._ncfile.createDimension('replica', n_states)
+            if 'replica' not in self._storage.dimensions:
+                self._storage.createDimension('replica', n_states)
 
             # Create variables and attach units and description.
-            ncvar_states = self._ncfile.createVariable('states', 'i4', ('iteration', 'replica'),
-                                                       zlib=False, chunksizes=(1, n_states))
+            ncvar_states = self._storage.createVariable('states', 'i4', ('iteration', 'replica'),
+                                                        zlib=False, chunksizes=(1, n_states))
             setattr(ncvar_states, 'units', 'none')
             setattr(ncvar_states, "long_name", ("states[iteration][replica] is the thermodynamic state index "
                                                 "(0..nstates-1) of replica 'replica' of iteration 'iteration'."))
 
         # Store thermodynamic states indices.
-        self._ncfile.variables['states'][iteration, :] = state_indices[:]
+        self._storage.variables['states'][iteration, :] = state_indices[:]
 
     def read_mcmc_moves(self):
         """Return the MCMCMoves of the ReplicaExchange simulation.
@@ -379,7 +391,7 @@ class Reporter(object):
         mcmc_moves = list()
 
         # Get group storing MCMCMoves.
-        ncgrp = self._ncfile.groups['mcmc_moves']
+        ncgrp = self._storage.groups['mcmc_moves']
 
         # Retrieve all moves in order.
         for i in range(len(ncgrp.groups)):
@@ -416,7 +428,7 @@ class Reporter(object):
             sampler_states[i] and ThermodynamicState thermodynamic_states[j].
 
         """
-        return self._ncfile.variables['energies'][iteration]
+        return self._storage.variables['energies'][iteration]
 
     def write_energies(self, energy_matrix, iteration):
         """Store the energy matrix at the given iteration.
@@ -431,23 +443,23 @@ class Reporter(object):
 
         """
         # Initialize schema if needed.
-        if 'energies' not in self._ncfile.variables:
+        if 'energies' not in self._storage.variables:
             n_states = len(energy_matrix)
 
             # Create dimension if it wasn't created by other functions.
-            if 'replica' not in self._ncfile.dimensions:
-                self._ncfile.createDimension('replica', n_states)
+            if 'replica' not in self._storage.dimensions:
+                self._storage.createDimension('replica', n_states)
 
             # Create variable with its units and descriptions.
-            ncvar_energies = self._ncfile.createVariable('energies', 'f8', ('iteration', 'replica', 'replica'),
-                                                         zlib=False, chunksizes=(1, n_states, n_states))
+            ncvar_energies = self._storage.createVariable('energies', 'f8', ('iteration', 'replica', 'replica'),
+                                                          zlib=False, chunksizes=(1, n_states, n_states))
             setattr(ncvar_energies, 'units', 'kT')
             setattr(ncvar_energies, "long_name", ("energies[iteration][replica][state] is the reduced (unitless) "
                                                   "energy of replica 'replica' from iteration 'iteration' evaluated "
                                                   "at state 'state'."))
 
         # Store energy.
-        self._ncfile.variables['energies'][iteration, :, :] = energy_matrix[:, :]
+        self._storage.variables['energies'][iteration, :, :] = energy_matrix[:, :]
 
     def read_mixing_statistics(self, iteration):
         """Retrieve the mixing statistics for the given iteration.
@@ -469,8 +481,8 @@ class Reporter(object):
             from iteration-1 to iteration (not cumulative).
 
         """
-        n_accepted_matrix = self._ncfile.variables['accepted'][iteration, :, :].astype(np.int64)
-        n_proposed_matrix = self._ncfile.variables['proposed'][iteration, :, :].astype(np.int64)
+        n_accepted_matrix = self._storage.variables['accepted'][iteration, :, :].astype(np.int64)
+        n_proposed_matrix = self._storage.variables['proposed'][iteration, :, :].astype(np.int64)
         return n_accepted_matrix, n_proposed_matrix
 
     def write_mixing_statistics(self, n_accepted_matrix, n_proposed_matrix, iteration):
@@ -491,18 +503,18 @@ class Reporter(object):
 
         """
         # Create schema if necessary.
-        if 'accepted' not in self._ncfile.variables:
+        if 'accepted' not in self._storage.variables:
             n_states = len(n_accepted_matrix)
 
             # Create replica dimension if it wasn't already created.
-            if 'replica' not in self._ncfile.dimensions:
-                self._ncfile.createDimension('replica', n_states)
+            if 'replica' not in self._storage.dimensions:
+                self._storage.createDimension('replica', n_states)
 
             # Create variables with units and descriptions.
-            ncvar_accepted = self._ncfile.createVariable('accepted', 'i4', ('iteration', 'replica', 'replica'),
-                                                         zlib=False, chunksizes=(1, n_states, n_states))
-            ncvar_proposed = self._ncfile.createVariable('proposed', 'i4', ('iteration', 'replica', 'replica'),
-                                                         zlib=False, chunksizes=(1, n_states, n_states))
+            ncvar_accepted = self._storage.createVariable('accepted', 'i4', ('iteration', 'replica', 'replica'),
+                                                          zlib=False, chunksizes=(1, n_states, n_states))
+            ncvar_proposed = self._storage.createVariable('proposed', 'i4', ('iteration', 'replica', 'replica'),
+                                                          zlib=False, chunksizes=(1, n_states, n_states))
             setattr(ncvar_accepted, 'units', 'none')
             setattr(ncvar_proposed, 'units', 'none')
             setattr(ncvar_accepted, 'long_name', ("accepted[iteration][i][j] is the number of proposed transitions "
@@ -511,8 +523,8 @@ class Reporter(object):
                                                   "between states i and j from iteration 'iteration-1'."))
 
         # Store statistics.
-        self._ncfile.variables['accepted'][iteration, :, :] = n_accepted_matrix[:, :]
-        self._ncfile.variables['proposed'][iteration, :, :] = n_proposed_matrix[:, :]
+        self._storage.variables['accepted'][iteration, :, :] = n_accepted_matrix[:, :]
+        self._storage.variables['proposed'][iteration, :, :] = n_proposed_matrix[:, :]
 
     def read_timestamp(self, iteration):
         """Return the timestamp for the given iteration.
@@ -528,7 +540,7 @@ class Reporter(object):
             The timestamp at which the iteration was stored.
 
         """
-        return self._ncfile.variables['timestamp'][iteration]
+        return self._storage.variables['timestamp'][iteration]
 
     def write_timestamp(self, iteration):
         """Store a timestamp for the given iteration.
@@ -540,9 +552,9 @@ class Reporter(object):
 
         """
         # Create variable if needed.
-        if 'timestamp' not in self._ncfile.variables:
-            self._ncfile.createVariable('timestamp', str, ('iteration',), zlib=False, chunksizes=(1,))
-        self._ncfile.variables['timestamp'][iteration] = time.ctime()
+        if 'timestamp' not in self._storage.variables:
+            self._storage.createVariable('timestamp', str, ('iteration',), zlib=False, chunksizes=(1,))
+        self._storage.variables['timestamp'][iteration] = time.ctime()
 
     def read_dict(self, name):
         """Restore a dictionary from the storage file.
@@ -558,7 +570,7 @@ class Reporter(object):
             The restored data as a dict.
 
         """
-        ncgrp = self._ncfile.groups[name]
+        ncgrp = self._storage.groups[name]
         return self._read_dict(ncgrp)
 
     def write_dict(self, name, data):
@@ -577,12 +589,12 @@ class Reporter(object):
         try:
             # This may be a nested dictionary call.
             split_path = name.rsplit('/')
-            ncgrp = self._ncfile
+            ncgrp = self._storage
             for group_name in split_path:
                 ncgrp = ncgrp.groups[group_name]
             is_update = True
         except KeyError:
-            ncgrp = self._ncfile.createGroup(name)
+            ncgrp = self._storage.createGroup(name)
             is_update = False
 
         for key, value in data.items():
@@ -930,7 +942,7 @@ class ReplicaExchange(object):
         self._u_kl = None
         self._n_accepted_matrix = None
         self._n_proposed_matrix = None
-        self._reporter = None  # This is None everywhere but in node 0
+        self._reporter = None
 
     @classmethod
     def from_storage(cls, storage):
@@ -955,7 +967,7 @@ class ReplicaExchange(object):
             raise RuntimeError('Storage file {} does not exists; cannot resume.'.format(storage))
 
         # Open a reporter to read the data.
-        reporter = Reporter(storage, mode='r')
+        reporter = Reporter(storage, open_mode='r')
 
         # Retrieve options and create new simulation.
         options = reporter.read_dict('options')
@@ -989,7 +1001,7 @@ class ReplicaExchange(object):
         repex._n_proposed_matrix = n_proposed_matrix
 
         # We set the reporter in node 0. Will return None if not rank 0.
-        repex._reporter = mpi.run_single_node(0, Reporter, storage, mode='a',
+        repex._reporter = mpi.run_single_node(0, Reporter, storage, open_mode='a',
                                               broadcast_result=False, sync_nodes=False)
         return repex
 
@@ -1155,8 +1167,9 @@ class ReplicaExchange(object):
         # Display papers to be cited.
         self._display_citations()
 
-        # Initialize NetCDF file.
-        self._initialize_reporter(storage, metadata)
+        # Initialize reporter file.
+        self._reporter = Reporter(storage, open_mode=None)  # This is open only in node 0.
+        self._initialize_reporter(metadata)
 
     @mmtools.utils.with_timer('Minimizing all replicas')
     def minimize(self, minimize_tolerance=1.0*unit.kilojoules_per_mole/unit.nanometers,
@@ -1176,8 +1189,7 @@ class ReplicaExchange(object):
             self._sampler_states[sampler_state_id].positions = minimized_positions[sampler_state_id]
 
         # Save the stored positions in the storage
-        if self._reporter is not None:
-            mpi.run_single_node(0, self._reporter.write_sampler_states, self._sampler_states, self._iteration)
+        mpi.run_single_node(0, self._reporter.write_sampler_states, self._sampler_states, self._iteration)
 
     def equilibrate(self, n_iterations, mcmc_moves=None):
         # Handle default MCMCMove used for equilibration.
@@ -1204,8 +1216,7 @@ class ReplicaExchange(object):
         self._mcmc_moves = production_mcmc_moves
 
         # Update stored positions.
-        if self._reporter is not None:
-            mpi.run_single_node(0, self._reporter.write_sampler_states, self._sampler_states, self._iteration)
+        mpi.run_single_node(0, self._reporter.write_sampler_states, self._sampler_states, self._iteration)
 
     def run(self, n_iterations=None):
         """Run the replica-exchange simulation.
@@ -1224,8 +1235,7 @@ class ReplicaExchange(object):
         # starting energies of the minimized/equilibrated structures.
         if self._iteration == 0:
             self._compute_energies()
-            if self._reporter is not None:
-                mpi.run_single_node(0, self._reporter.write_energies, self._u_kl, self._iteration)
+            mpi.run_single_node(0, self._reporter.write_energies, self._u_kl, self._iteration)
             self._run_sanity_checks()
 
         timer = mmtools.utils.Timer()
@@ -1326,6 +1336,9 @@ class ReplicaExchange(object):
 
         return r
 
+    def __del__(self):
+        mpi.run_single_node(0, self._reporter.close)
+
     # -------------------------------------------------------------------------
     # Internal-usage.
     # -------------------------------------------------------------------------
@@ -1366,7 +1379,7 @@ class ReplicaExchange(object):
         return os.path.exists(file_path) and os.path.getsize(file_path) > 0
 
     @mpi.on_single_node(rank=0, broadcast_result=False, sync_nodes=True)
-    def _initialize_reporter(self, storage, metadata):
+    def _initialize_reporter(self, metadata):
         """Initialize the reporter and store initial information.
 
         This is executed only on MPI node 0 and it is blocking. This is to
@@ -1374,7 +1387,7 @@ class ReplicaExchange(object):
         from a file that hasn't been created yet.
 
         """
-        self._reporter = Reporter(storage, mode='w')
+        self._reporter.open(mode='w')
         self._reporter.write_thermodynamic_states(self._thermodynamic_states)
 
         # Store run metadata and ReplicaExchange options.
@@ -1564,6 +1577,8 @@ class ReplicaExchange(object):
                 except ValueError as e:
                     logger.warning(e.message)
                     self._mix_all_replicas()
+            else:
+                assert self._replica_mixing_scheme == 'none'
 
         # Determine fraction of swaps accepted this iteration.
         n_swaps_proposed = self._n_proposed_matrix.sum()
