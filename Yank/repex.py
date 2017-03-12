@@ -80,27 +80,6 @@ from yank import utils, mpi
 
 logger = logging.getLogger(__name__)
 
-#=============================================================================================
-# MODULE CONSTANTS
-#=============================================================================================
-
-kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA # Boltzmann constant
-
-# TODO: Fix MAX_SEED when we determine what maximum allowed seed is.
-#MAX_SEED = 4294967 # maximum seed for OpenMM setRandomNumberSeed
-MAX_SEED = 2**31 - 1 # maximum seed for OpenMM setRandomNumberSeed
-
-#=============================================================================================
-# Exceptions
-#=============================================================================================
-
-class ParameterException(Exception):
-    """
-    Exception denoting that an incorrect argument has been specified.
-
-    """
-    pass
-
 
 # ==============================================================================
 # REPLICA EXCHANGE REPORTER
@@ -916,6 +895,11 @@ class ReplicaExchange(object):
             Parameters in ReplicaExchange.default_parameters corresponding public attributes.
 
         """
+        # Check argument values.
+        if replica_mixing_scheme not in self._SUPPORTED_MIXING_SCHEMES:
+            raise ValueError("Unknown replica mixing scheme '{}'. Supported values are {}.".format(
+                replica_mixing_scheme, self._SUPPORTED_MIXING_SCHEMES))
+
         # Handling default propagator.
         if mcmc_moves is None:
             # This will be converted to a list in create().
@@ -1166,6 +1150,80 @@ class ReplicaExchange(object):
         if self._reporter is not None:
             mpi.run_single_node(0, self._reporter.write_sampler_states, self._sampler_states, self._iteration)
 
+    def run(self, n_iterations=None):
+        """Run the replica-exchange simulation.
+
+        Any parameter changes (via object attributes) that were made between object creation and calling this method become locked in
+        at this point, and the object will create and bind to the store file.  If the store file already exists, the run will be resumed
+        if possible; otherwise, an exception will be raised.
+
+        Parameters
+        ----------
+        n_iterations : int, optional, default=None
+           If specified, only at most the specified number of iterations will be run.
+
+        """
+        # If this is the first iteration, compute and store the
+        # starting energies of the minimized/equilibrated structures.
+        if self._iteration == 0:
+            self._compute_energies()
+            if self._reporter is not None:
+                mpi.run_single_node(0, self._reporter.write_energies, self._u_kl, self._iteration)
+            self._run_sanity_checks()
+
+        timer = mmtools.utils.Timer()
+        timer.start('Run ReplicaExchange')
+        run_initial_iteration = self._iteration
+        iteration_limit = min(self._iteration + n_iterations, self._number_of_iterations)
+
+        while self.iteration < iteration_limit:
+            # Increment iteration counter.
+            self._iteration += 1
+
+            logger.debug('Iteration {}/{}'.format(self._iteration, iteration_limit))
+            timer.start('Iteration')
+
+            # Attempt replica swaps to sample from equilibrium permuation of
+            # states associated with replicas. This step synchronizes replicas.
+            self._replica_thermodynamic_states = self._mix_replicas()
+
+            # Propagate replicas.
+            self._propagate_replicas()
+
+            # Compute energies of all replicas at all states.
+            self._compute_energies()
+
+            # Write iteration to storage file.
+            self._report_iteration()
+
+            # Show energies.
+            if self._show_energies:
+                self._log_energies()
+
+            # Show mixing statistics.
+            if self._show_mixing_statistics:
+                self._log_mixing_statistics()
+
+            # Perform online analysis.
+            if self._online_analysis:
+                self._analysis()
+
+            # Show timing statistics if debug level is activated.
+            if logger.isEnabledFor(logging.DEBUG):
+                iteration_time = timer.stop('Iteration')
+                partial_total_time = timer.partial('Run ReplicaExchange')
+                time_per_iteration = partial_total_time / (self._iteration - run_initial_iteration)
+                estimated_time_remaining = time_per_iteration * (iteration_limit - self._iteration)
+                estimated_total_time = time_per_iteration * iteration_limit
+                estimated_finish_time = partial_total_time + estimated_time_remaining
+                logger.debug("Iteration took {:.3f}s.".format(iteration_time))
+                logger.debug("Estimated completion in {}, at {} (consuming total wall clock time {}).".format(
+                    str(datetime.timedelta(seconds=estimated_time_remaining)), time.ctime(estimated_finish_time),
+                    str(datetime.timedelta(seconds=estimated_total_time))))
+
+            # Perform sanity checks to see if we should terminate here.
+            self._run_sanity_checks()
+
     def __repr__(self):
         """
         Return a 'formal' representation that can be used to reconstruct the class, if possible.
@@ -1203,98 +1261,44 @@ class ReplicaExchange(object):
 
         return r
 
-    def run(self, niterations_to_run=None):
+    # -------------------------------------------------------------------------
+    # Internal-usage.
+    # -------------------------------------------------------------------------
+
+    def _run_sanity_checks(self):
         """
-        Run the replica-exchange simulation.
-
-        Any parameter changes (via object attributes) that were made between object creation and calling this method become locked in
-        at this point, and the object will create and bind to the store file.  If the store file already exists, the run will be resumed
-        if possible; otherwise, an exception will be raised.
-
-        Parameters
-        ----------
-        niterations_to_run : int, optional, default=None
-           If specfied, only at most the specified number of iterations will be run.
+        Run some checks on current state information to see if something has gone wrong that precludes continuation.
 
         """
-        if not self._initialized:
-            self._initialize_resume()
+        abort_msg = ''
 
-        # Log platform configuration
-        if self.platform is None:
-            logger.info('No user-specified platform found. Will run with OpenMM default.')
-        else:
-            logger.info('Running with platform {}'.format(self.platform.getName()))
+        # Check positions.
+        for replica_id in range(self.n_replicas):
+            positions = self._sampler_states[replica_id].positions
+            x = positions / unit.nanometers
+            if np.any(np.isnan(x)):
+                err_msg = "nan encountered in replica {} positions. ".format(replica_id)
+                logger.error(err_msg)
+                abort_msg += err_msg
 
-        # Main loop
-        run_start_time = time.time()
-        run_start_iteration = self.iteration
-        default_iteration_limit = self.number_of_iterations
-        if self.extend_simulation:
-            default_iteration_limit += self.iteration
-        if niterations_to_run:
-            iteration_limit = min(self.iteration + niterations_to_run, default_iteration_limit)
-        else:
-            iteration_limit = default_iteration_limit
-        while (self.iteration < iteration_limit):
-            logger.debug("\nIteration %d / %d" % (self.iteration+1, iteration_limit))
-            initial_time = time.time()
+        # Check energies.
+        for replica_id in range(self.n_replicas):
+            if np.any(np.isnan(self.u_kl[replica_id, :])):
+                err_msg = "nan encountered in u_kl state energies for replica {}".format(replica_id)
+                logger.error(err_msg)
+                abort_msg += err_msg
 
-            # Attempt replica swaps to sample from equilibrium permuation of states associated with replicas.
-            self._mix_replicas()
-
-            # Propagate replicas.
-            self._propagate_replicas()
-
-            # Compute energies of all replicas at all states.
-            self._compute_energies()
-
-            # Show energies.
-            if self.show_energies:
-                self._show_energies()
-
-            # Write iteration to storage file.
-            self._write_iteration_netcdf()
-
-            # Increment iteration counter.
-            self.iteration += 1
-
-            # Show mixing statistics.
-            if self.show_mixing_statistics:
-                self._show_mixing_statistics()
-
-            # Perform online analysis.
-            if self.online_analysis:
-                self._analysis()
-
-            # Show timing statistics if debug level is activated
-            if logger.isEnabledFor(logging.DEBUG):
-                final_time = time.time()
-                elapsed_time = final_time - initial_time
-                estimated_time_remaining = (final_time - run_start_time) / (self.iteration - run_start_iteration) * (iteration_limit - self.iteration)
-                estimated_total_time = (final_time - run_start_time) / (self.iteration - run_start_iteration) * (iteration_limit)
-                estimated_finish_time = final_time + estimated_time_remaining
-                logger.debug("Iteration took %.3f s." % elapsed_time)
-                logger.debug("Estimated completion in %s, at %s (consuming total wall clock time %s)." % (str(datetime.timedelta(seconds=estimated_time_remaining)), time.ctime(estimated_finish_time), str(datetime.timedelta(seconds=estimated_total_time))))
-
-            # Perform sanity checks to see if we should terminate here.
-            self._run_sanity_checks()
-
-        # Clean up and close storage files.
-        self._finalize()
+        if abort_msg != '':
+            raise RuntimeError(abort_msg)
 
     # -------------------------------------------------------------------------
-    # Internal-usage: Initialization.
+    # Internal-usage: Initialization and storage utilities.
     # -------------------------------------------------------------------------
 
     @staticmethod
     def _does_file_exist(file_path):
         """Check if there is a file at the given path."""
         return os.path.exists(file_path) and os.path.getsize(file_path) > 0
-
-    # -------------------------------------------------------------------------
-    # Internal-usage: Storage utilities.
-    # -------------------------------------------------------------------------
 
     @mpi.on_single_node(rank=0, broadcast_result=False, sync_nodes=True)
     def _initialize_reporter(self, storage, metadata):
@@ -1359,155 +1363,9 @@ class ReplicaExchange(object):
             metadata['title'] = default_title
         self._reporter.write_dict('metadata', metadata)
 
-    def _initialize_resume(self):
-        """
-        Initialize the simulation, and bind to a storage file.
-
-        """
-
-        if self._initialized:
-            raise RuntimeError("Simulation has already been initialized.")
-
-        # Extract a representative system.
-        representative_system = self.states[0].system
-
-        # Turn off verbosity if not master node.
-        if self.mpicomm:
-            # Have each node report that it is initialized.
-            # TODO this doesn't work on worker nodes since they report only warning entries and higher
-            logger.debug("Initialized node %d / %d" % (self.mpicomm.rank, self.mpicomm.size))
-
-        # Display papers to be cited.
-        if utils.is_terminal_verbose():
-            self._display_citations()
-
-        # Determine number of alchemical states.
-        self.nstates = len(self.states)
-
-        # Determine number of atoms in systems.
-        self.natoms = representative_system.getNumParticles()
-
-        # Allocate storage.
-        self.replica_positions = list() # replica_positions[i] is the configuration currently held in replica i
-        self.replica_box_vectors = list() # replica_box_vectors[i] is the set of box vectors currently held in replica i
-        self.replica_states     = np.zeros([self.nstates], np.int32) # replica_states[i] is the state that replica i is currently at
-        self.u_kl               = np.zeros([self.nstates, self.nstates], np.float64)
-        self.swap_Pij_accepted  = np.zeros([self.nstates, self.nstates], np.float64)
-        self.Nij_proposed       = np.zeros([self.nstates,self.nstates], np.int64) # Nij_proposed[i][j] is the number of swaps proposed between states i and j, prior of 1
-        self.Nij_accepted       = np.zeros([self.nstates,self.nstates], np.int64) # Nij_proposed[i][j] is the number of swaps proposed between states i and j, prior of 1
-
-        # Distribute coordinate information to replicas in a round-robin fashion, making a deep copy.
-        if not self._resume:
-            self.replica_positions = [ copy.deepcopy(self.provided_positions[replica_index % len(self.provided_positions)]) for replica_index in range(self.nstates) ]
-
-        # Assign default box vectors.
-        self.replica_box_vectors = list()
-        for state in self.states:
-            [a,b,c] = state.system.getDefaultPeriodicBoxVectors()
-            box_vectors = unit.Quantity(np.zeros([3,3], np.float32), unit.nanometers)
-            box_vectors[0,:] = a
-            box_vectors[1,:] = b
-            box_vectors[2,:] = c
-            self.replica_box_vectors.append(box_vectors)
-
-        # Assign initial replica states.
-        for replica_index in range(self.nstates):
-            self.replica_states[replica_index] = replica_index
-
-        # Check to make sure NetCDF file exists.
-        if not os.path.exists(self.store_filename):
-            raise Exception("Store file %s does not exist." % self.store_filename)
-
-        # Open NetCDF file for reading
-        logger.debug("Reading NetCDF file '%s'..." % self.store_filename)
-        ncfile = netcdf.Dataset(self.store_filename, 'r')
-
-        # Resume from NetCDF file.
-        self._resume_from_netcdf(ncfile)
-
-        # Close NetCDF file.
-        ncfile.close()
-
-        if (self.mpicomm is None) or (self.mpicomm.rank == 0):
-            # Reopen NetCDF file for appending, and maintain handle.
-            self.ncfile = netcdf.Dataset(self.store_filename, 'a')
-        else:
-            self.ncfile = None
-
-        # On first iteration, we need to do some initialization.
-        if self.iteration == 0:
-            # Perform sanity checks to see if we should terminate here.
-            self._run_sanity_checks()
-
-            # Minimize and equilibrate all replicas.
-            self._minimize_and_equilibrate()
-
-            # Compute energies of all alchemical replicas
-            self._compute_energies()
-
-            # Show energies.
-            if self.show_energies:
-                self._show_energies()
-
-            # Re-store initial state.
-            # TODO: Sort this logic out.
-            #self.ncfile = ncfile
-            #self._write_iteration_netcdf()
-            #self.ncfile = None
-
-        # Run sanity checks.
-        # TODO: Refine this.
-        self._run_sanity_checks()
-        #self._compute_energies() # recompute energies?
-        #self._run_sanity_checks()
-
-        # We will work on the next iteration.
-        self.iteration += 1
-
-        # Show energies.
-        if self.show_energies:
-            self._show_energies()
-
-        # Analysis object starts off empty.
-        self.analysis = None
-
-        # Signal that the class has been initialized.
-        self._initialized = True
-
-        return
-
-    def _display_citations(self):
-        """
-        Display papers to be cited.
-
-        TODO:
-
-        * Add original citations for various replica-exchange schemes.
-        * Show subset of OpenMM citations based on what features are being used.
-
-        """
-
-        openmm_citations = """\
-        Friedrichs MS, Eastman P, Vaidyanathan V, Houston M, LeGrand S, Beberg AL, Ensign DL, Bruns CM, and Pande VS. Accelerating molecular dynamic simulations on graphics processing unit. J. Comput. Chem. 30:864, 2009. DOI: 10.1002/jcc.21209
-        Eastman P and Pande VS. OpenMM: A hardware-independent framework for molecular simulations. Comput. Sci. Eng. 12:34, 2010. DOI: 10.1109/MCSE.2010.27
-        Eastman P and Pande VS. Efficient nonbonded interactions for molecular dynamics on a graphics processing unit. J. Comput. Chem. 31:1268, 2010. DOI: 10.1002/jcc.21413
-        Eastman P and Pande VS. Constant constraint matrix approximation: A robust, parallelizable constraint method for molecular simulations. J. Chem. Theor. Comput. 6:434, 2010. DOI: 10.1021/ct900463w"""
-
-        gibbs_citations = """\
-        Chodera JD and Shirts MR. Replica exchange and expanded ensemble simulations as Gibbs sampling: Simple improvements for enhanced mixing. J. Chem. Phys., 135:194110, 2011. DOI:10.1063/1.3660669"""
-
-        mbar_citations = """\
-        Shirts MR and Chodera JD. Statistically optimal analysis of samples from multiple equilibrium states. J. Chem. Phys. 129:124105, 2008. DOI: 10.1063/1.2978177"""
-
-        print("Please cite the following:")
-        print("")
-        print(openmm_citations)
-        if self._replica_mixing_scheme == 'swap-all':
-            print(gibbs_citations)
-        if self._online_analysis:
-            print(mbar_citations)
-
-        return
+    # -------------------------------------------------------------------------
+    # Internal-usage: Distributed tasks.
+    # -------------------------------------------------------------------------
 
     @mmtools.utils.with_timer('Propagating all replicas')
     def _propagate_replicas(self):
@@ -1578,58 +1436,6 @@ class ReplicaExchange(object):
         # Return minimized positions.
         return sampler_state.positions
 
-    def _minimize_and_equilibrate(self):
-        """
-        Minimize and equilibrate all replicas.
-
-        """
-
-        # Minimize
-        if self.minimize:
-            logger.debug("Minimizing all replicas...")
-
-            if self.mpicomm:
-                # MPI implementation.
-                logger.debug("MPI implementation.")
-                # Minimize this node's share of replicas.
-                start_time = time.time()
-                for replica_index in range(self.mpicomm.rank, self.nstates, self.mpicomm.size):
-                    logger.debug("node %d / %d : minimizing replica %d / %d" % (self.mpicomm.rank, self.mpicomm.size, replica_index, self.nstates))
-                    self._minimize_replica(replica_index)
-                end_time = time.time()
-                debug_msg = 'Node {}/{}: MPI barrier'.format(self.mpicomm.rank, self.mpicomm.size)
-                logger.debug(debug_msg + ' - waiting for the minimization to be completed.')
-                self.mpicomm.barrier()
-                logger.debug("Running trajectories: elapsed time %.3f s" % (end_time - start_time))
-
-                # Send final configurations and box vectors back to all nodes.
-                logger.debug("Synchronizing trajectories...")
-                replica_positions_gather = self.mpicomm.allgather(self.replica_positions[self.mpicomm.rank:self.nstates:self.mpicomm.size])
-                replica_box_vectors_gather = self.mpicomm.allgather(self.replica_box_vectors[self.mpicomm.rank:self.nstates:self.mpicomm.size])
-                for replica_index in range(self.nstates):
-                    source = replica_index % self.mpicomm.size # node with trajectory data
-                    index = replica_index // self.mpicomm.size # index within trajectory batch
-                    self.replica_positions[replica_index] = replica_positions_gather[source][index]
-                    self.replica_box_vectors[replica_index] = replica_box_vectors_gather[source][index]
-                logger.debug("Synchronizing configurations and box vectors: elapsed time %.3f s" % (end_time - start_time))
-
-            else:
-                # Serial implementation.
-                logger.debug("Serial implementation.")
-                for replica_index in range(self.nstates):
-                    logger.debug("minimizing replica %d / %d" % (replica_index, self.nstates))
-                    self._minimize_replica(replica_index)
-
-        # Equilibrate: temporarily set timestep to equilibration timestep
-        production_timestep = self.timestep
-        self.timestep = self.equilibration_timestep
-        for iteration in range(self.number_of_equilibration_iterations):
-            logger.debug("equilibration iteration %d / %d" % (iteration, self.number_of_equilibration_iterations))
-            self._propagate_replicas()
-        self.timestep = production_timestep
-
-        return
-
     @mmtools.utils.with_timer('Computing energy matrix')
     def _compute_energies(self):
         """Compute energies of all replicas at all states."""
@@ -1665,6 +1471,64 @@ class ReplicaExchange(object):
         # Return the new energies.
         return replica_energies
 
+    # -------------------------------------------------------------------------
+    # Internal-usage: Replicas mixing.
+    # -------------------------------------------------------------------------
+
+    _SUPPORTED_MIXING_SCHEMES = frozenset(['swap-all', 'swap-neighbors', 'none'])
+
+    @mpi.on_single_node(0, broadcast_result=True)
+    def _mix_replicas(self):
+        """Attempt to swap replicas according to user-specified scheme."""
+        logger.debug("Mixing replicas...")
+
+        # Reset storage to keep track of swap attempts this iteration.
+        self._n_accepted_matrix[:, :] = 0
+        self._n_proposed_matrix[:, :] = 0
+
+        # Perform swap attempts according to requested scheme.
+        assert self._replica_mixing_scheme in self._SUPPORTED_MIXING_SCHEMES
+        with mmtools.utils.time_it('Mixing of replicas'):
+            if self._replica_mixing_scheme == 'swap-neighbors':
+                self._mix_neighboring_replicas()
+            elif self._replica_mixing_scheme == 'swap-all':
+                # Try to use cython-accelerated mixing code if possible,
+                # otherwise fall back to Python-accelerated code.
+                try:
+                    self._mix_all_replicas_cython()
+                except ValueError as e:
+                    logger.warning(e.message)
+                    self._mix_all_replicas()
+
+        # Determine fraction of swaps accepted this iteration.
+        n_swaps_proposed = self._n_proposed_matrix.sum()
+        n_swaps_accepted = self._n_accepted_matrix.sum()
+        swap_fraction_accepted = 0.0
+        if n_swaps_proposed > 0:
+            swap_fraction_accepted = float(n_swaps_accepted) / n_swaps_proposed
+        logger.debug("Accepted {}/{} attempted swaps ({:.1f}%)".format(n_swaps_accepted, n_swaps_proposed,
+                                                                       swap_fraction_accepted * 100.0))
+
+        # Return new states indices for MPI broadcasting.
+        return self._replica_thermodynamic_states
+
+    def _mix_all_replicas_cython(self):
+        """
+        Attempt to exchange all replicas to enhance mixing, calling code written in Cython.
+        """
+        from .mixing._mix_replicas import _mix_replicas_cython
+
+        replica_states = md.utils.ensure_type(self._replica_thermodynamic_states, np.int64, 1, "Replica States")
+        u_kl = md.utils.ensure_type(self.u_kl, np.float64, 2, "Reduced Potentials")
+        n_proposed_matrix = md.utils.ensure_type(self._n_proposed_matrix, np.int64, 2, "Nij Proposed Swaps")
+        n_accepted_matrix = md.utils.ensure_type(self._n_accepted_matrix, np.int64, 2, "Nij Accepted Swaps")
+        _mix_replicas_cython(self.n_replicas**4, self.n_replicas, replica_states,
+                             u_kl, n_proposed_matrix, n_accepted_matrix)
+
+        self._replica_thermodynamic_states = replica_states
+        self._n_proposed_matrix = n_proposed_matrix
+        self._n_accepted_matrix = n_accepted_matrix
+
     def _mix_all_replicas(self):
         """
         Attempt exchanges between all replicas to enhance mixing.
@@ -1674,185 +1538,62 @@ class ReplicaExchange(object):
         * Adjust nswap_attempts based on how many we can afford to do and not have mixing take a substantial fraction of iteration time.
 
         """
-
         # Determine number of swaps to attempt to ensure thorough mixing.
         # TODO: Replace this with analytical result computed to guarantee sufficient mixing.
-        nswap_attempts = self.nstates**5 # number of swaps to attempt (ideal, but too slow!)
-        nswap_attempts = self.nstates**3 # best compromise for pure Python?
+        nswap_attempts = self.n_replicas**5  # Number of swaps to attempt (ideal, but too slow!)
+        nswap_attempts = self.n_replicas**3  # Best compromise for pure Python?
 
         logger.debug("Will attempt to swap all pairs of replicas, using a total of %d attempts." % nswap_attempts)
 
         # Attempt swaps to mix replicas.
         for swap_attempt in range(nswap_attempts):
-            # Choose replicas to attempt to swap.
-            i = np.random.randint(self.nstates) # Choose replica i uniformly from set of replicas.
-            j = np.random.randint(self.nstates) # Choose replica j uniformly from set of replicas.
-
-            # Determine which states these resplicas correspond to.
-            istate = self.replica_states[i] # state in replica slot i
-            jstate = self.replica_states[j] # state in replica slot j
-
-            # Reject swap attempt if any energies are nan.
-            if (np.isnan(self.u_kl[i,jstate]) or np.isnan(self.u_kl[j,istate]) or np.isnan(self.u_kl[i,istate]) or np.isnan(self.u_kl[j,jstate])):
-                continue
-
-            # Compute log probability of swap.
-            log_P_accept = - (self.u_kl[i,jstate] + self.u_kl[j,istate]) + (self.u_kl[i,istate] + self.u_kl[j,jstate])
-
-            #print("replica (%3d,%3d) states (%3d,%3d) energies (%8.1f,%8.1f) %8.1f -> (%8.1f,%8.1f) %8.1f : log_P_accept %8.1f" % (i,j,istate,jstate,self.u_kl[i,istate],self.u_kl[j,jstate],self.u_kl[i,istate]+self.u_kl[j,jstate],self.u_kl[i,jstate],self.u_kl[j,istate],self.u_kl[i,jstate]+self.u_kl[j,istate],log_P_accept))
-
-            # Record that this move has been proposed.
-            self.Nij_proposed[istate,jstate] += 1
-            self.Nij_proposed[jstate,istate] += 1
-
-            # Accept or reject.
-            if (log_P_accept >= 0.0 or (np.random.rand() < math.exp(log_P_accept))):
-                # Swap states in replica slots i and j.
-                (self.replica_states[i], self.replica_states[j]) = (self.replica_states[j], self.replica_states[i])
-                # Accumulate statistics
-                self.Nij_accepted[istate,jstate] += 1
-                self.Nij_accepted[jstate,istate] += 1
-
-        return
-
-    def _mix_all_replicas_cython(self):
-        """
-        Attempt to exchange all replicas to enhance mixing, calling code written in Cython.
-        """
-
-        from .mixing._mix_replicas import _mix_replicas_cython
-
-        replica_states = md.utils.ensure_type(self.replica_states, np.int64, 1, "Replica States")
-        u_kl = md.utils.ensure_type(self.u_kl, np.float64, 2, "Reduced Potentials")
-        Nij_proposed = md.utils.ensure_type(self.Nij_proposed, np.int64, 2, "Nij Proposed")
-        Nij_accepted = md.utils.ensure_type(self.Nij_accepted, np.int64, 2, "Nij accepted")
-        _mix_replicas_cython(self.nstates**4, self.nstates, replica_states, u_kl, Nij_proposed, Nij_accepted)
-
-        #replica_states = np.array(self.replica_states, np.int64)
-        #u_kl = np.array(self.u_kl, np.float64)
-        #Nij_proposed = np.array(self.Nij_proposed, np.int64)
-        #Nij_accepted = np.array(self.Nij_accepted, np.int64)
-        #_mix_replicas._mix_replicas_cython(self.nstates**4, self.nstates, replica_states, u_kl, Nij_proposed, Nij_accepted)
-
-        self.replica_states = replica_states
-        self.Nij_proposed = Nij_proposed
-        self.Nij_accepted = Nij_accepted
+            # Choose random states uniformly to attempt to swap.
+            thermodynamic_state_i = np.random.randint(self.n_replicas)
+            thermodynamic_state_j = np.random.randint(self.n_replicas)
+            self._attempt_swap(thermodynamic_state_i, thermodynamic_state_j)
 
     def _mix_neighboring_replicas(self):
-        """
-        Attempt exchanges between neighboring replicas only.
-
-        """
-
+        """Attempt exchanges between neighboring replicas only."""
         logger.debug("Will attempt to swap only neighboring replicas.")
 
-        # Attempt swaps of pairs of replicas using traditional scheme (e.g. [0,1], [2,3], ...)
-        offset = np.random.randint(2) # offset is 0 or 1
-        for istate in range(offset, self.nstates-1, 2):
-            jstate = istate + 1 # second state to attempt to swap with i
+        # Attempt swaps of pairs of replicas using traditional scheme (e.g. [0,1], [2,3], ...).
+        offset = np.random.randint(2)  # Offset is 0 or 1.
+        for thermodynamic_state_i in range(offset, self.n_replicas-1, 2):
+            thermodynamic_state_j = thermodynamic_state_i + 1  # Neighboring state.
+            self._attempt_swap(thermodynamic_state_i, thermodynamic_state_j)
 
-            # Determine which replicas these states correspond to.
-            i = None
-            j = None
-            for index in range(self.nstates):
-                if self.replica_states[index] == istate: i = index
-                if self.replica_states[index] == jstate: j = index
+    def _attempt_swap(self, thermodynamic_state_i, thermodynamic_state_j):
+        # Determine which replicas these states are associated to.
+        replica_i = np.where(self._replica_thermodynamic_states == thermodynamic_state_i)
+        replica_j = np.where(self._replica_thermodynamic_states == thermodynamic_state_j)
 
-            # Reject swap attempt if any energies are nan.
-            if (np.isnan(self.u_kl[i,jstate]) or np.isnan(self.u_kl[j,istate]) or np.isnan(self.u_kl[i,istate]) or np.isnan(self.u_kl[j,jstate])):
-                continue
+        # Compute log probability of swap.
+        log_p_accept = - (self.u_kl[replica_i, thermodynamic_state_j] + self.u_kl[replica_j, thermodynamic_state_i]) + \
+            self.u_kl[replica_i, thermodynamic_state_i] + self.u_kl[replica_j, thermodynamic_state_j]
 
-            # Compute log probability of swap.
-            log_P_accept = - (self.u_kl[i,jstate] + self.u_kl[j,istate]) + (self.u_kl[i,istate] + self.u_kl[j,jstate])
+        # Record that this move has been proposed.
+        self._n_proposed_matrix[thermodynamic_state_i, thermodynamic_state_j] += 1
+        self._n_proposed_matrix[thermodynamic_state_j, thermodynamic_state_i] += 1
 
-            #print("replica (%3d,%3d) states (%3d,%3d) energies (%8.1f,%8.1f) %8.1f -> (%8.1f,%8.1f) %8.1f : log_P_accept %8.1f" % (i,j,istate,jstate,self.u_kl[i,istate],self.u_kl[j,jstate],self.u_kl[i,istate]+self.u_kl[j,jstate],self.u_kl[i,jstate],self.u_kl[j,istate],self.u_kl[i,jstate]+self.u_kl[j,istate],log_P_accept))
+        # Accept or reject.
+        if log_p_accept >= 0.0 or np.random.rand() < math.exp(log_p_accept):
+            # Swap states in replica slots i and j.
+            self._replica_thermodynamic_states[replica_i] = thermodynamic_state_j
+            self._replica_thermodynamic_states[replica_j] = thermodynamic_state_i
+            # Accumulate statistics.
+            self._n_accepted_matrix[thermodynamic_state_i, thermodynamic_state_j] += 1
+            self._n_accepted_matrix[thermodynamic_state_j, thermodynamic_state_i] += 1
 
-            # Record that this move has been proposed.
-            self.Nij_proposed[istate,jstate] += 1
-            self.Nij_proposed[jstate,istate] += 1
+    # -------------------------------------------------------------------------
+    # Internal-usage: Analysis.
+    # -------------------------------------------------------------------------
 
-            # Accept or reject.
-            if (log_P_accept >= 0.0 or (np.random.rand() < math.exp(log_P_accept))):
-                # Swap states in replica slots i and j.
-                (self.replica_states[i], self.replica_states[j]) = (self.replica_states[j], self.replica_states[i])
-                # Accumulate statistics
-                self.Nij_accepted[istate,jstate] += 1
-                self.Nij_accepted[jstate,istate] += 1
-
-        return
-
-    def _mix_replicas(self):
-        """
-        Attempt to swap replicas according to user-specified scheme.
-
-        """
-
-        if (self.mpicomm) and (self.mpicomm.rank != 0):
-            # Non-root nodes receive state information.
-            logger.debug('Node {}/{}: MPI bcast - sharing replica_states'.format(
-                    self.mpicomm.rank, self.mpicomm.size))
-            self.replica_states = self.mpicomm.bcast(self.replica_states, root=0)
-            return
-
-        logger.debug("Mixing replicas...")
-
-        # Reset storage to keep track of swap attempts this iteration.
-        self.Nij_proposed[:,:] = 0
-        self.Nij_accepted[:,:] = 0
-
-        # Perform swap attempts according to requested scheme.
-        start_time = time.time()
-        if self.replica_mixing_scheme == 'swap-neighbors':
-            self._mix_neighboring_replicas()
-        elif self.replica_mixing_scheme == 'swap-all':
-            # Try to use cython-accelerated mixing code if possible, otherwise fall back to Python-accelerated code.
-            try:
-                self._mix_all_replicas_cython()
-            except ValueError as e:
-                logger.warning(e.message)
-                self._mix_all_replicas()
-        elif self.replica_mixing_scheme == 'none':
-            # Don't mix replicas.
-            pass
-        else:
-            raise ParameterException("Replica mixing scheme '%s' unknown.  Choose valid 'replica_mixing_scheme' parameter." % self.replica_mixing_scheme)
-        end_time = time.time()
-
-        # Determine fraction of swaps accepted this iteration.
-        nswaps_attempted = self.Nij_proposed.sum()
-        nswaps_accepted = self.Nij_accepted.sum()
-        swap_fraction_accepted = 0.0
-        if (nswaps_attempted > 0): swap_fraction_accepted = float(nswaps_accepted) / float(nswaps_attempted);
-        logger.debug("Accepted %d / %d attempted swaps (%.1f %%)" % (nswaps_accepted, nswaps_attempted, swap_fraction_accepted * 100.0))
-
-        # Estimate cumulative transition probabilities between all states.
-        # TODO don't read ncfile every time, store cumulative
-        Nij_accepted = self.ncfile.variables['accepted'][:,:,:].sum(0) + self.Nij_accepted
-        Nij_proposed = self.ncfile.variables['proposed'][:,:,:].sum(0) + self.Nij_proposed
-        swap_Pij_accepted = np.zeros([self.nstates,self.nstates], np.float64)
-        for istate in range(self.nstates):
-            Ni = Nij_proposed[istate,:].sum()
-            if (Ni == 0):
-                swap_Pij_accepted[istate,istate] = 1.0
-            else:
-                swap_Pij_accepted[istate,istate] = 1.0 - float(Nij_accepted[istate,:].sum() - Nij_accepted[istate,istate]) / float(Ni)
-                for jstate in range(self.nstates):
-                    if istate != jstate:
-                        swap_Pij_accepted[istate,jstate] = float(Nij_accepted[istate,jstate]) / float(Ni)
-
-        if self.mpicomm:
-            # Root node will share state information with all replicas.
-            logger.debug('Node {}/{}: MPI bcast - sharing replica_states'.format(
-                    self.mpicomm.rank, self.mpicomm.size))
-            self.replica_states = self.mpicomm.bcast(self.replica_states, root=0)
-
-        # Report on mixing.
-        logger.debug("Mixing of replicas took %.3f s" % (end_time - start_time))
-
-        return
+    # TODO use code in analyze to avoid duplication.
+    # TODO make show_statistics/energy Yank/Logger/Analyzer options instead?
+    # TODO make online_analysis Yank/Analyzer option instead?
 
     def _accumulate_mixing_statistics(self):
-        """Return the mixing transition matrix Tij."""
+        """Return the mixing transition matrix."""
         try:
             return self._accumulate_mixing_statistics_update()
         except AttributeError:
@@ -1864,112 +1605,246 @@ class ReplicaExchange(object):
 
     def _accumulate_mixing_statistics_full(self):
         """Compute statistics of transitions iterating over all iterations of repex."""
-        states = self.ncfile.variables['states']
-        self._Nij = np.zeros([self.nstates, self.nstates], np.float64)
-        for iteration in range(states.shape[0]-1):
-            for ireplica in range(self.nstates):
-                istate = states[iteration, ireplica]
-                jstate = states[iteration + 1, ireplica]
-                self._Nij[istate, jstate] += 0.5
-                self._Nij[jstate, istate] += 0.5
+        states = self._reporter.read_replica_thermodynamic_states(iteration=slice(None))
 
-        Tij = np.zeros([self.nstates, self.nstates], np.float64)
-        for istate in range(self.nstates):
-            Tij[istate] = self._Nij[istate] / self._Nij[istate].sum()
+        # Create a cumulative transition counts matrix and cache last
+        # replica_thermodynamic_states indices to avoid access to storage.
+        self._cached_transition_counts = np.zeros([self.n_replicas, self.n_replicas], np.float64)
+        self._cached_last_replica_thermodynamic_states = self._replica_thermodynamic_states.copy()
 
-        return Tij
+        # Accumulate transition counts.
+        for iteration in range(states.shape[0] - 1):
+            for replica_id in range(self.n_replicas):
+                thermodynamic_state_i = states[iteration, replica_id]
+                thermodynamic_state_j = states[iteration + 1, replica_id]
+                self._cached_transition_counts[thermodynamic_state_i, thermodynamic_state_j] += 0.5
+                self._cached_transition_counts[thermodynamic_state_j, thermodynamic_state_i] += 0.5
+
+        # Normalize to obtain transition matrix. state_n_total_transitions is always
+        # at least one because iteration 0 is just for minimization/equilibration.
+        transition_matrix = np.zeros([self.n_replicas, self.n_replicas], np.float64)
+        for state_id in range(self.n_replicas):
+            state_n_total_transitions = self._cached_transition_counts[state_id].sum()
+            transition_matrix[state_id] = self._cached_transition_counts[state_id] / state_n_total_transitions
+
+        return transition_matrix
 
     def _accumulate_mixing_statistics_update(self):
         """Compute statistics of transitions updating Nij of last iteration of repex."""
+        # Check that we have exactly one new iteration to process.
+        if self._cached_last_iteration_mixing.sum() != (self._iteration - 2) * self.n_replicas:
+            raise RuntimeError("Inconsistent transition count matrix detected. "
+                               "Perhaps you tried updating twice in a row?")
 
-        states = self.ncfile.variables['states']
-        if self._Nij.sum() != (states.shape[0] - 2) * self.nstates:  # n_iter - 2 = (n_iter - 1) - 1.  Meaning that you have exactly one new iteration to process.
-            raise(ValueError("Inconsistent transition count matrix detected.  Perhaps you tried updating twice in a row?"))
+        # Add counts for last iteration.
+        for replica_id in range(self.n_replicas):
+            thermodynamic_state_i = self._cached_last_replica_thermodynamic_states[replica_id]
+            thermodynamic_state_j = self._replica_thermodynamic_states[replica_id]
+            self._cached_transition_counts[thermodynamic_state_i, thermodynamic_state_j] += 0.5
+            self._cached_transition_counts[thermodynamic_state_j, thermodynamic_state_i] += 0.5
 
-        for ireplica in range(self.nstates):
-            istate = states[self.iteration-2, ireplica]
-            jstate = states[self.iteration-1, ireplica]
-            self._Nij[istate, jstate] += 0.5
-            self._Nij[jstate, istate] += 0.5
+        # Normalizing to obtain transition matrix.
+        transition_matrix = np.zeros([self.n_replicas, self.n_replicas], np.float64)
+        for state_id in range(self.n_replicas):
+            state_n_total_transitions = self._cached_transition_counts[state_id].sum()
+            transition_matrix[state_id] = self._cached_transition_counts[state_id] / state_n_total_transitions
 
-        Tij = np.zeros([self.nstates, self.nstates], np.float64)
-        for istate in range(self.nstates):
-            Tij[istate] = self._Nij[istate] / self._Nij[istate].sum()
+        # Updated cached information for next iteration.
+        self._cached_last_replica_thermodynamic_states = self._replica_thermodynamic_states.copy()
 
-        return Tij
+        return transition_matrix
 
-    def _show_mixing_statistics(self):
+    @mpi.on_single_node(0, broadcast_result=True)
+    def _analysis(self):
+        """
+        Perform online analysis each iteration.
 
-        if self.iteration < 2:
+        Every iteration, this will update the estimate of the state relative free energy differences and statistical uncertainties.
+        We can additionally request further analysis.
+
+        """
+        # Determine how many iterations there are data available for.
+        replica_states = self._reporter.read_replica_thermodynamic_states(iteration=slice(None))
+        u_nkl_replica = self._reporter.read_energies(iteration=slice(None))
+
+        # Determine number of iterations completed.
+        number_of_iterations_completed = replica_states.shape[0]
+        nstates = replica_states.shape[1]
+
+        # Online analysis can only be performed after a sufficient quantity of data has been collected.
+        if number_of_iterations_completed < self.online_analysis_min_iterations:
+            logger.debug(("Online analysis will be performed after {} iterations "
+                          "have elapsed.").format(self._online_analysis_min_iterations))
+
+        # Deconvolute replicas and compute total simulation effective self-energy timeseries.
+        u_kln = np.zeros([nstates, nstates, number_of_iterations_completed], np.float32)
+        u_n = np.zeros([number_of_iterations_completed], np.float64)
+        for iteration in range(number_of_iterations_completed):
+            state_indices = replica_states[iteration,:]
+            u_n[iteration] = 0.0
+            for replica_index in range(nstates):
+                state_index = state_indices[replica_index]
+                u_n[iteration] += u_nkl_replica[iteration,replica_index,state_index]
+                u_kln[state_index,:,iteration] = u_nkl_replica[iteration,replica_index,:]
+
+        # Determine optimal equilibration time, statistical inefficiency, and effectively uncorrelated sample indices.
+        from pymbar import timeseries
+        [t0, g, Neff_max] = timeseries.detectEquilibration(u_n)
+        indices = t0 + timeseries.subsampleCorrelatedData(u_n[t0:], g=g)
+        N_k = indices.size * np.ones([nstates], np.int32)
+
+        # Next, analyze with pymbar, initializing with last estimate of free energies.
+        from pymbar import MBAR
+        if hasattr(self, 'f_k'):
+            mbar = MBAR(u_kln[:,:,indices], N_k, initial_f_k=self.f_k)
+        else:
+            mbar = MBAR(u_kln[:,:,indices], N_k)
+
+        # Cache current free energy estimate to save time in future MBAR solutions.
+        self.f_k = mbar.f_k
+
+        # Compute entropy and enthalpy.
+        [Delta_f_ij, dDelta_f_ij, Delta_u_ij, dDelta_u_ij, Delta_s_ij, dDelta_s_ij] = mbar.computeEntropyAndEnthalpy()
+
+        # Store analysis summary.
+        # TODO: Convert this to an object?
+        analysis = dict()
+        analysis['equilibration_end'] = t0
+        analysis['g'] = g
+        analysis['indices'] = indices
+        analysis['Delta_f_ij'] = Delta_f_ij
+        analysis['dDelta_f_ij'] = dDelta_f_ij
+        analysis['Delta_u_ij'] = Delta_u_ij
+        analysis['dDelta_u_ij'] = dDelta_u_ij
+        analysis['Delta_s_ij'] = Delta_s_ij
+        analysis['dDelta_s_ij'] = dDelta_s_ij
+
+        def matrix2str(x):
+            """
+            Return a print-ready string version of a matrix of numbers.
+
+            Parameters
+            ----------
+            x : numpy.array of nrows x ncols matrix
+               Matrix of numbers to print.
+
+            TODO
+            ----
+            * Automatically determine optimal spacing
+
+            """
+            [nrows, ncols] = x.shape
+            str_row = ""
+            for i in range(nrows):
+                for j in range(ncols):
+                    str_row += "%8.3f" % x[i, j]
+                str_row += "\n"
+            return str_row
+
+        # Print estimate
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug("================================================================================")
+            logger.debug("Online analysis estimate of free energies:")
+            logger.debug("  equilibration end: %d iterations" % t0)
+            logger.debug("  statistical inefficiency: %.1f iterations" % g)
+            logger.debug("  effective number of uncorrelated samples: %.1f" % Neff_max)
+            logger.debug("Reduced free energy (f), enthalpy (u), and entropy (s) differences among thermodynamic states:")
+            logger.debug("Delta_f_ij")
+            logger.debug(matrix2str(Delta_f_ij))
+            logger.debug("dDelta_f_ij")
+            logger.debug(matrix2str(dDelta_f_ij))
+            logger.debug("Delta_u_ij")
+            logger.debug(matrix2str(Delta_u_ij))
+            logger.debug("dDelta_u_ij")
+            logger.debug(matrix2str(dDelta_u_ij))
+            logger.debug("Delta_s_ij")
+            logger.debug(matrix2str(Delta_s_ij))
+            logger.debug("dDelta_s_ij")
+            logger.debug(matrix2str(dDelta_s_ij))
+            logger.debug("================================================================================")
+
+        return analysis
+
+    def analyze(self):
+        """
+        Analyze the current simulation and return estimated free energies.
+
+        Returns
+        -------
+        analysis : dict
+           Analysis object containing end of equilibrated region, statistical inefficiency, and free energy differences:
+
+        Keys
+        ----
+        equilibration_end : int
+           The last iteration in the discarded equilibrated region
+        g : float
+           Estimated statistical inefficiency of production region
+        indices : list of int
+           Equilibrated, effectively uncorrelated iteration indices used in analysis
+        Delta_f_ij : numpy array of nstates x nstates
+           Delta_f_ij[i,j] is the free energy difference f_j - f_i in units of kT
+        dDelta_f_ij : numpy array of nstates x nstates
+           dDelta_f_ij[i,j] is estimated standard error of Delta_f_ij[i,j]
+        Delta_u_ij
+           Delta_u_ij[i,j] is the reduced enthalpy difference u_j - u_i in units of kT
+        dDelta_u_ij
+           dDelta_u_ij[i,j] is estimated standard error of Delta_u_ij[i,j]
+        Delta_s_ij
+           Delta_s_ij[i,j] is the reduced entropic contribution to the free energy difference s_j - s_i in units of kT
+        dDelta_s_ij
+           dDelta_s_ij[i,j] is estimated standard error of Delta_s_ij[i,j]
+
+        """
+        # Update analysis on root node.
+        self.analysis = self._analysis()
+
+        # Return analysis object
+        return self.analysis
+
+    # -------------------------------------------------------------------------
+    # Internal-usage: Logging.
+    # -------------------------------------------------------------------------
+
+    @mpi.on_single_node(0, sync_nodes=False)
+    def _log_mixing_statistics(self):
+        if self._iteration < 2:
             return
-        if self.mpicomm and self.mpicomm.rank != 0:
-            return  # only root node have access to ncfile
-        if not logger.isEnabledFor(logging.DEBUG):
-            return
+        print_cutoff = 0.001  # Cutoff for displaying fraction of accepted swaps.
 
-        Tij = self._accumulate_mixing_statistics()
+        transition_matrix = self._accumulate_mixing_statistics()
 
         # Print observed transition probabilities.
-        PRINT_CUTOFF = 0.001 # Cutoff for displaying fraction of accepted swaps.
         logger.debug("Cumulative symmetrized state mixing transition matrix:")
         str_row = "%6s" % ""
-        for jstate in range(self.nstates):
-            str_row += "%6d" % jstate
+        for thermodynamic_state_j in range(self.n_replicas):
+            str_row += "%6d" % thermodynamic_state_j
         logger.debug(str_row)
-        for istate in range(self.nstates):
-            str_row = "%-6d" % istate
-            for jstate in range(self.nstates):
-                P = Tij[istate,jstate]
-                if (P >= PRINT_CUTOFF):
-                    str_row += "%6.3f" % P
+        for thermodynamic_state_i in range(self.n_replicas):
+            str_row = "%-6d" % thermodynamic_state_i
+            for thermodynamic_state_j in range(self.n_replicas):
+                p = transition_matrix[thermodynamic_state_i, thermodynamic_state_j]
+                if p >= print_cutoff:
+                    str_row += "%6.3f" % p
                 else:
                     str_row += "%6s" % ""
             logger.debug(str_row)
 
         # Estimate second eigenvalue and equilibration time.
-        mu = np.linalg.eigvals(Tij)
-        mu = -np.sort(-mu) # sort in descending order
-        if (mu[1] >= 1):
+        mu = np.linalg.eigvals(transition_matrix)
+        mu = -np.sort(-mu)  # Sort in descending order.
+        if mu[1] >= 1:
             logger.debug("Perron eigenvalue is unity; Markov chain is decomposable.")
         else:
-            logger.debug("Perron eigenvalue is %9.5f; state equilibration timescale is ~ %.1f iterations" % (mu[1], 1.0 / (1.0 - mu[1])))
+            logger.debug("Perron eigenvalue is {:9.5f}; state equilibration timescale "
+                         "is ~ {:.1f} iterations".format(mu[1], 1.0 / (1.0 - mu[1])))
 
-    def _run_sanity_checks(self):
-        """
-        Run some checks on current state information to see if something has gone wrong that precludes continuation.
-
-        """
-
-        abort = False
-
-        # Check positions.
-        for replica_index in range(self.nreplicas):
-            positions = self.replica_positions[replica_index]
-            x = positions / unit.nanometers
-            if np.any(np.isnan(x)):
-                logger.warning("nan encountered in replica %d positions." % replica_index)
-                abort = True
-
-        # Check energies.
-        for replica_index in range(self.nreplicas):
-            if np.any(np.isnan(self.u_kl[replica_index,:])):
-                logger.warning("nan encountered in u_kl state energies for replica %d" % replica_index)
-                abort = True
-
-        if abort:
-            if self.mpicomm:
-                self.mpicomm.Abort()
-            else:
-                raise Exception("Aborting.")
-
-        return
-
-    def _show_energies(self):
+    @mpi.on_single_node(0, sync_nodes=False)
+    def _log_energies(self):
         """
         Show energies (in units of kT) for all replicas at all states.
 
         """
-
         if not logger.isEnabledFor(logging.DEBUG):
             return
 
@@ -1980,17 +1855,46 @@ class ReplicaExchange(object):
         logger.debug(str_row)
 
         # print energies in kT
-        for replica_index in range(self.nstates):
+        for replica_index in range(self.n_replicas):
             str_row = "replica %-16d %16d" % (replica_index, self.replica_states[replica_index])
-            for state_index in range(self.nstates):
-                u = self.u_kl[replica_index,state_index]
-                if (u > 1e6):
+            for state_index in range(self.n_replicas):
+                u = self.u_kl[replica_index, state_index]
+                if u > 1e6:
                     str_row += "%10.3e" % u
                 else:
                     str_row += "%10.1f" % u
             logger.debug(str_row)
 
-        return
+    def _display_citations(self):
+        """
+        Display papers to be cited.
+
+        TODO:
+
+        * Add original citations for various replica-exchange schemes.
+        * Show subset of OpenMM citations based on what features are being used.
+
+        """
+
+        openmm_citations = """\
+        Friedrichs MS, Eastman P, Vaidyanathan V, Houston M, LeGrand S, Beberg AL, Ensign DL, Bruns CM, and Pande VS. Accelerating molecular dynamic simulations on graphics processing unit. J. Comput. Chem. 30:864, 2009. DOI: 10.1002/jcc.21209
+        Eastman P and Pande VS. OpenMM: A hardware-independent framework for molecular simulations. Comput. Sci. Eng. 12:34, 2010. DOI: 10.1109/MCSE.2010.27
+        Eastman P and Pande VS. Efficient nonbonded interactions for molecular dynamics on a graphics processing unit. J. Comput. Chem. 31:1268, 2010. DOI: 10.1002/jcc.21413
+        Eastman P and Pande VS. Constant constraint matrix approximation: A robust, parallelizable constraint method for molecular simulations. J. Chem. Theor. Comput. 6:434, 2010. DOI: 10.1021/ct900463w"""
+
+        gibbs_citations = """\
+        Chodera JD and Shirts MR. Replica exchange and expanded ensemble simulations as Gibbs sampling: Simple improvements for enhanced mixing. J. Chem. Phys., 135:194110, 2011. DOI:10.1063/1.3660669"""
+
+        mbar_citations = """\
+        Shirts MR and Chodera JD. Statistically optimal analysis of samples from multiple equilibrium states. J. Chem. Phys. 129:124105, 2008. DOI: 10.1063/1.2978177"""
+
+        print("Please cite the following:")
+        print("")
+        print(openmm_citations)
+        if self._replica_mixing_scheme == 'swap-all':
+            print(gibbs_citations)
+        if self._online_analysis:
+            print(mbar_citations)
 
 
 #=============================================================================================
