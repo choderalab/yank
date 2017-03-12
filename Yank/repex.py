@@ -1,8 +1,8 @@
 #!/usr/local/bin/env python
 
-#=============================================================================================
+# ==============================================================================
 # MODULE DOCSTRING
-#=============================================================================================
+# ==============================================================================
 
 """
 repex
@@ -52,9 +52,9 @@ This code is licensed under the latest available version of the MIT License.
 
 """
 
-#=============================================================================================
+# ==============================================================================
 # GLOBAL IMPORTS
-#=============================================================================================
+# ==============================================================================
 
 from simtk import openmm
 from simtk import unit
@@ -1977,9 +1977,9 @@ class ReplicaExchange(object):
             print(mbar_citations)
 
 
-#=============================================================================================
-# Parallel tempering
-#=============================================================================================
+# ==============================================================================
+# PARALLEL TEMPERING
+# ==============================================================================
 
 class ParallelTempering(ReplicaExchange):
     """
@@ -2167,83 +2167,10 @@ class ParallelTempering(ReplicaExchange):
 
         return
 
-#=============================================================================================
-# Hamiltonian exchange
-#=============================================================================================
 
-class HamiltonianExchange(ReplicaExchange):
-    """
-    Hamiltonian exchange simulation facility.
-
-    DESCRIPTION
-
-    This class provides an implementation of a Hamiltonian exchange simulation based on the ReplicaExchange facility.
-    It provides several convenience classes and efficiency improvements, and should be preferentially used for Hamiltonian
-    exchange simulations over ReplicaExchange when possible.
-
-    EXAMPLES
-
-    >>> # Create baseline system
-    >>> from openmmtools import testsystems
-    >>> testsystem = testsystems.AlanineDipeptideImplicit()
-    >>> [base_system, positions] = [testsystem.system, testsystem.positions]
-    >>> # Copy baseline system.
-    >>> systems = [base_system for index in range(10)]
-    >>> # Create temporary file for storing output.
-    >>> import tempfile
-    >>> file = tempfile.NamedTemporaryFile() # temporary file for testing
-    >>> store_filename = file.name
-    >>> # Create baseline state.
-    >>> base_state = ThermodynamicState(base_system, temperature=298.0*unit.kelvin)
-    >>> # Create simulation.
-    >>> simulation = HamiltonianExchange(store_filename)
-    >>> simulation.create(base_state, systems, positions)
-    >>> simulation.number_of_iterations = 2 # set the simulation to only run 2 iterations
-    >>> simulation.timestep = 2.0 * unit.femtoseconds # set the timestep for integration
-    >>> simulation.nsteps_per_iteration = 50 # run 50 timesteps per iteration
-    >>> simulation.minimize = False
-    >>> # Run simulation.
-    >>> simulation.run() #doctest: +ELLIPSIS
-    ...
-
-    """
-
-    def create(self, base_state, systems, positions, options=None, metadata=None):
-        """
-        Initialize a Hamiltonian exchange simulation object.
-
-        Parameters
-        ----------
-        base_state : ThermodynamicState
-           baseline state containing all thermodynamic parameters except the system, which will be replaced by 'systems'
-        systems : list of simtk.openmm.System
-           list of systems to simulate (one per replica)
-        positions : simtk.unit.Quantity of np natoms x 3 with units compatible with nanometers
-           positions (or a list of positions objects) for initial assignment of replicas (will be used in round-robin assignment)
-        options : dict, optional, default=None
-           Optional dict to use for specifying simulation protocol. Provided keywords will be matched to object variables to replace defaults.
-        metadata : dict, optional, default=None
-           metadata to store in a 'metadata' group in store file
-
-        """
-
-        if systems is None:
-            states = None
-        else:
-            # Create thermodynamic states from systems.
-            states = [ ThermodynamicState(system=system, temperature=base_state.temperature, pressure=base_state.pressure) for system in systems ]
-
-        # Initialize replica-exchange simlulation.
-        ReplicaExchange.create(self, states, positions, options=options, metadata=metadata)
-
-        # Override title.
-        self.title = 'Hamiltonian exchange simulation created using HamiltonianExchange class of repex.py on %s' % time.asctime(time.localtime())
-
-        return
-
-#=============================================================================================
+# ==============================================================================
 # MAIN AND TESTS
-#=============================================================================================
+# ==============================================================================
 
 if __name__ == "__main__":
     import doctest
