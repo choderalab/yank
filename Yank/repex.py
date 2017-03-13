@@ -1719,10 +1719,10 @@ class ReplicaExchange(object):
 
         # Attempt swaps to mix replicas.
         for swap_attempt in range(nswap_attempts):
-            # Choose random states uniformly to attempt to swap.
-            thermodynamic_state_i = np.random.randint(self.n_replicas)
-            thermodynamic_state_j = np.random.randint(self.n_replicas)
-            self._attempt_swap(thermodynamic_state_i, thermodynamic_state_j)
+            # Choose random replicas uniformly to attempt to swap.
+            replica_i = np.random.randint(self.n_replicas)
+            replica_j = np.random.randint(self.n_replicas)
+            self._attempt_swap(replica_i, replica_j)
 
     def _mix_neighboring_replicas(self):
         """Attempt exchanges between neighboring replicas only."""
@@ -1732,12 +1732,16 @@ class ReplicaExchange(object):
         offset = np.random.randint(2)  # Offset is 0 or 1.
         for thermodynamic_state_i in range(offset, self.n_replicas-1, 2):
             thermodynamic_state_j = thermodynamic_state_i + 1  # Neighboring state.
-            self._attempt_swap(thermodynamic_state_i, thermodynamic_state_j)
 
-    def _attempt_swap(self, thermodynamic_state_i, thermodynamic_state_j):
-        # Determine which replicas these states are associated to.
-        replica_i = np.where(self._replica_thermodynamic_states == thermodynamic_state_i)
-        replica_j = np.where(self._replica_thermodynamic_states == thermodynamic_state_j)
+            # Determine which replicas currently hold the thermodynamic states.
+            replica_i = np.where(self._replica_thermodynamic_states == thermodynamic_state_i)
+            replica_j = np.where(self._replica_thermodynamic_states == thermodynamic_state_j)
+            self._attempt_swap(replica_i, replica_j)
+
+    def _attempt_swap(self, replica_i, replica_j):
+        # Determine the thermodynamic states associated to these replicas.
+        thermodynamic_state_i = self._replica_thermodynamic_states[replica_i]
+        thermodynamic_state_j = self._replica_thermodynamic_states[replica_j]
 
         # Compute log probability of swap.
         log_p_accept = - (self._u_kl[replica_i, thermodynamic_state_j] + self._u_kl[replica_j, thermodynamic_state_i]) + \
