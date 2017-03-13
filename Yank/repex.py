@@ -411,7 +411,7 @@ class Reporter(object):
             move = mmtools.mcmc.LangevinDynamicsMove(timestep=2.0*unit.femtosecond,
                                                      collision_rate=5.0/unit.picosecond,
                                                      n_steps=500, reassign_velocities=True)
-            return [copy.deepcopy(move) for _ in range(self._storage.dimensions['replica'])]
+            return [copy.deepcopy(move) for _ in range(self._storage.dimensions['replica'].size)]
 
         # Get group storing MCMCMoves.
         ncgrp = self._storage.groups['mcmc_moves']
@@ -840,6 +840,18 @@ class Reporter(object):
 
     def _read_thermodynamic_states_0_1(self):
         """Retrieve the stored thermodynamic states with conventions 0.1."""
+        try:
+            return self._read_thermodynamic_states_rex_0_1()
+        except KeyError:
+            return self._read_thermodynamic_states_mhrex_0_1()
+
+    def _read_thermodynamic_states_rex_0_1(self):
+        """Retrieve the stored thermodynamic states with conventions 0.1.
+
+        This is for the conventions used in ReplicaExchange.
+
+        """
+        logger.debug('Attempt to read thermodynamic states with ReplicaExchange reader version 0.1.')
         ncgrp_states = self._storage.groups['thermodynamic_states']
         n_states = self._storage.dimensions['replica'].size
         thermodynamic_states = list()
@@ -856,6 +868,41 @@ class Reporter(object):
             # Create ThermodynamicState.
             thermodynamic_states.append(mmtools.states.ThermodynamicState(system=system, temperature=temperature,
                                                                           pressure=pressure))
+        return thermodynamic_states
+
+    def _read_thermodynamic_states_mhrex_0_1(self):
+        """Retrieve the stored thermodynamic states with conventions 0.1.
+
+        This is for the conventions used in ModifiedHamiltonianReplicaExchange.
+
+        """
+        logger.debug('Attempt to read thermodynamic states with '
+                     'ModifiedHamiltonianReplicaExchange reader version 0.1.')
+        ncgrp_states = self._storage.groups['thermodynamic_states']
+        ncgrp_alchemical = self._storage.groups['alchemical_states']
+        # Read reference system
+        base_system = openmm.System()
+        base_system.__setstate__(str(ncgrp_states.variables['base_system'][0]))
+        # Read other parameters.
+        thermodynamic_states = list()
+        n_states = self._storage.dimensions['replica'].size
+        for state_index in range(n_states):
+            # Create thermodynamic state.
+            temperature = float(ncgrp_states.variables['temperatures'][state_index]) * unit.kelvin
+            if 'pressures' in ncgrp_states.variables:
+                pressure = float(ncgrp_states.variables['pressures'][state_index]) * unit.atmosphere
+            else:
+                pressure = None
+            thermodynamic_state = mmtools.states.ThermodynamicState(base_system, temperature, pressure)
+            # Create alchemical state.
+            alchemical_state = mmtools.alchemy.AlchemicalState.from_system(base_system)
+            for parameter_name, ncvar_parameter in ncgrp_alchemical.variables.items():
+                if getattr(alchemical_state, parameter_name) is not None:
+                    parameter_value = float(ncvar_parameter[state_index])
+                    setattr(alchemical_state, parameter_name, parameter_value)
+            # Create compound state.
+            thermodynamic_states.append(mmtools.states.CompoundThermodynamicState(thermodynamic_state,
+                                                                                  [alchemical_state]))
         return thermodynamic_states
 
 
