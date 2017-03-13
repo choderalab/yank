@@ -399,15 +399,41 @@ def notest_hamiltonian_exchange(mpicomm=None, verbose=True):
 # TEST REPORTER
 # ==============================================================================
 
+def write_thermodynamic_states_0_1(reporter, thermodynamic_states):
+    """Simulate ThermodynamicStates stored with Conventions 0.1.
+
+    This is for testing backwards compatibility.
+
+    """
+    setattr(reporter._storage, 'ConventionVersion', '0.1')
+
+    n_states = len(thermodynamic_states)
+    is_barostated = thermodynamic_states[0].pressure is not None
+
+    ncgrp_states = reporter._storage.createGroup('thermodynamic_states')
+    reporter._storage.createDimension('replica', n_states)
+    ncvar_serialized_systems = ncgrp_states.createVariable('systems', str, ('replica',), zlib=True)
+    ncvar_temperatures = ncgrp_states.createVariable('temperatures', 'f', ('replica',))
+    if is_barostated:
+        ncvar_pressures = ncgrp_states.createVariable('pressures', 'f', ('replica',))
+
+    for state_id, thermodynamic_state in enumerate(thermodynamic_states):
+        serialized_system = thermodynamic_state.system.__getstate__()
+        ncvar_serialized_systems[state_id] = serialized_system
+        ncvar_temperatures[state_id] = thermodynamic_state.temperature / unit.kelvin
+        if is_barostated:
+            ncvar_pressures[state_id] = thermodynamic_state.pressure / unit.atmospheres
+
+
 class TestReporter(object):
     """Test suite for Reporter class."""
 
     @staticmethod
     @contextlib.contextmanager
-    def temporary_reporter(file_name='test_storage.nc'):
+    def temporary_reporter():
         """Create and initialize a reporter in a temporary directory."""
         with moltools.utils.temporary_directory() as tmp_dir_path:
-            storage_file_path = os.path.join(tmp_dir_path, file_name)
+            storage_file_path = os.path.join(tmp_dir_path, 'test_storage.nc')
             assert not os.path.isfile(storage_file_path)
             reporter = Reporter(storage=storage_file_path, open_mode='w')
             assert os.path.isfile(storage_file_path)
@@ -415,22 +441,62 @@ class TestReporter(object):
 
     def test_store_thermodynamic_states(self):
         """Check correct storage of thermodynamic states."""
-        with self.temporary_reporter() as reporter:
-            # Create thermodynamic states.
-            temperature = 300*unit.kelvin
-            alanine_system = testsystems.AlanineDipeptideExplicit().system
-            thermodynamic_state_nvt = mmtools.states.ThermodynamicState(alanine_system, temperature)
-            thermodynamic_state_npt = mmtools.states.ThermodynamicState(alanine_system, temperature,
-                                                                        1.0*unit.atmosphere)
-            thermodynamic_states = [thermodynamic_state_nvt, thermodynamic_state_npt]
+        # Create thermodynamic states.
+        temperature = 300*unit.kelvin
+        alanine_system = testsystems.AlanineDipeptideImplicit().system
+        alanine_explicit_system = testsystems.AlanineDipeptideExplicit().system
+        thermodynamic_state_nvt = mmtools.states.ThermodynamicState(alanine_system, temperature)
+        thermodynamic_state_nvt_compatible = mmtools.states.ThermodynamicState(alanine_system,
+                                                                               temperature + 20*unit.kelvin)
+        thermodynamic_state_npt = mmtools.states.ThermodynamicState(alanine_explicit_system,
+                                                                    temperature, 1.0*unit.atmosphere)
 
-            # Check that after writing and reading, states are identical.
-            reporter.write_thermodynamic_states(thermodynamic_states)
-            restored_thermodynamic_states = reporter.read_thermodynamic_states()
-            for state, restored_state in zip(thermodynamic_states, restored_thermodynamic_states):
-                assert state.system.__getstate__() == restored_state.system.__getstate__()
-                assert state.temperature == restored_state.temperature
-                assert state.pressure == restored_state.pressure
+        # Create compound states.
+        factory = mmtools.alchemy.AlchemicalFactory()
+        alchemical_region = mmtools.alchemy.AlchemicalRegion(alchemical_atoms=range(22))
+        alanine_alchemical = factory.create_alchemical_system(alanine_system, alchemical_region)
+        alchemical_state_interacting = mmtools.alchemy.AlchemicalState.from_system(alanine_alchemical)
+        alchemical_state_noninteracting = copy.deepcopy(alchemical_state_interacting)
+        alchemical_state_noninteracting.set_alchemical_parameters(0.0)
+        compound_state_interacting = mmtools.states.CompoundThermodynamicState(
+            thermodynamic_state=mmtools.states.ThermodynamicState(alanine_alchemical, temperature),
+            composable_states=[alchemical_state_interacting]
+        )
+        compound_state_noninteracting = mmtools.states.CompoundThermodynamicState(
+            thermodynamic_state=mmtools.states.ThermodynamicState(alanine_alchemical, temperature),
+            composable_states=[alchemical_state_noninteracting]
+        )
+
+        # Check all conventions.
+        thermodynamic_states = [thermodynamic_state_nvt, thermodynamic_state_nvt_compatible,
+                                thermodynamic_state_npt, compound_state_interacting,
+                                compound_state_noninteracting]
+        writers = [
+            Reporter.write_thermodynamic_states,  # latest
+            write_thermodynamic_states_0_1
+        ]
+        for writer in writers:
+            with self.temporary_reporter() as reporter:
+                thermodynamic_states = copy.deepcopy(thermodynamic_states)
+
+                # Check that after writing and reading, states are identical.
+                writer(reporter, thermodynamic_states)
+                restored_thermodynamic_states = reporter.read_thermodynamic_states()
+                for state, restored_state in zip(thermodynamic_states, restored_thermodynamic_states):
+                    assert state.system.__getstate__() == restored_state.system.__getstate__()
+                    assert state.temperature == restored_state.temperature
+                    assert state.pressure == restored_state.pressure
+
+                # The latest writer only stores one full serialization per compatible state.
+                if writer != write_thermodynamic_states_0_1:
+                    ncgrp_states = reporter._storage.groups['thermodynamic_states']
+                    assert isinstance(ncgrp_states.groups['state0'].variables['standard_system'][0], str)
+                    assert 'standard_system' not in ncgrp_states.groups['state1'].variables
+                    assert ncgrp_states.groups['state1'].variables['_Reporter__standard_system_id'].getValue() == 0
+                    assert 'standard_system' in ncgrp_states.groups['state2'].variables
+                    assert 'standard_system' in ncgrp_states.groups['state3'].groups['thermodynamic_state'].variables
+                    ncgrp_state4 = ncgrp_states.groups['state4'].groups['thermodynamic_state']
+                    assert ncgrp_state4.variables['_Reporter__standard_system_id'].getValue() == 3
 
     def test_store_sampler_states(self):
         """Check correct storage of thermodynamic states."""
@@ -495,8 +561,8 @@ class TestReporter(object):
             'mynesteddict': {'field1': 'string', 'field2': {'field21': 3.0, 'field22': True}}
         }
         with self.temporary_reporter() as reporter:
-            reporter.write_dict('metadata', data)
-            restored_data = reporter.read_dict('metadata')
+            reporter.write_dict('testdict', data)
+            restored_data = reporter.read_dict('testdict')
             for key, value in data.items():
                 restored_value = restored_data[key]
                 err_msg = '{}, {}'.format(value, restored_value)
@@ -510,8 +576,8 @@ class TestReporter(object):
             # write_dict supports updates.
             data['mybool'] = True
             data['mystring'] = 'substituted'
-            reporter.write_dict('metadata', data)
-            restored_data = reporter.read_dict('metadata')
+            reporter.write_dict('testdict', data)
+            restored_data = reporter.read_dict('testdict')
             assert restored_data['mybool'] is True
             assert restored_data['mystring'] == 'substituted'
 

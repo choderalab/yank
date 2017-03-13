@@ -68,6 +68,7 @@ import datetime
 import logging
 import importlib
 import collections
+from distutils.version import StrictVersion
 
 import numpy as np
 import mdtraj as md
@@ -76,7 +77,7 @@ import netCDF4 as netcdf
 import openmmtools as mmtools
 from openmmtools.states import ThermodynamicState
 
-from yank import utils, mpi
+from yank import utils, mpi, version
 
 logger = logging.getLogger(__name__)
 
@@ -124,11 +125,11 @@ class Reporter(object):
             ncfile.createDimension('spatial', 3)  # Number of spatial dimensions.
 
             # Set global attributes.
-            setattr(ncfile, 'application', 'YANK')
-            setattr(ncfile, 'program', 'yank.py')
-            setattr(ncfile, 'programVersion', 'unknown')  # TODO: Include actual version.
-            setattr(ncfile, 'Conventions', 'YANK')
-            setattr(ncfile, 'ConventionVersion', '0.1')
+            ncfile.application = 'YANK'
+            ncfile.program = 'yank.py'
+            ncfile.programVersion = version.short_version
+            ncfile.Conventions = 'ReplicaExchange'
+            ncfile.ConventionVersion = str(self._LATEST_CONVENTION_VERSION)
 
         self._storage = ncfile
 
@@ -161,27 +162,42 @@ class Reporter(object):
         read_replica_thermodynamic_states
 
         """
+        # Handle previous versions of the conventions.
+        convention_version = StrictVersion(getattr(self._storage, 'ConventionVersion'))
+        if convention_version <= StrictVersion('0.1'):
+            return self._read_thermodynamic_states_0_1()
+        elif convention_version != self._LATEST_CONVENTION_VERSION:
+            raise ValueError('Unsupported storage convention version {}'.format(convention_version))
+
         # Retrieve group and number of states.
         ncgrp_states = self._storage.groups['thermodynamic_states']
         n_states = self._storage.dimensions['replica'].size
 
         # Read state information.
         thermodynamic_states = list()
-        for state_index in range(n_states):
-            # Reconstitute System object.
-            system = openmm.System()
-            system.__setstate__(ncgrp_states.variables['systems'][state_index])
+        for state_id in range(n_states):
+            serialized_state = self._read_dict(ncgrp_states.groups['state' + str(state_id)])
 
-            # Read temperature and pressure (if NPT).
-            temperature = ncgrp_states.variables['temperatures'][state_index] * unit.kelvin
-            if 'pressures' in ncgrp_states.variables:
-                pressure = ncgrp_states.variables['pressures'][state_index] * unit.atmospheres
+            # Find the thermodynamic state representation.
+            try:  # CompoundThermodynamicState.
+                serialized_thermodynamic_state = serialized_state['thermodynamic_state']
+            except KeyError:  # ThermodynamicState.
+                serialized_thermodynamic_state = serialized_state
+
+            # Check if the standard state is in a previous state.
+            try:
+                standard_system_id = serialized_thermodynamic_state.pop('_Reporter__standard_system_id')
+            except KeyError:
+                # We have stored the full standard system serialization.
+                pass
             else:
-                pressure = None
+                # The system serialization can be retrieved from another state.
+                compatible_thermodynamic_state = thermodynamic_states[standard_system_id]
+                serialized_system = openmm.XmlSerializer.serialize(compatible_thermodynamic_state.system)
+                serialized_thermodynamic_state['standard_system'] = serialized_system
 
-            # Create ThermodynamicState.
-            thermodynamic_states.append(mmtools.states.ThermodynamicState(system=system, temperature=temperature,
-                                                                          pressure=pressure))
+            # Create ThermodynamicState object.
+            thermodynamic_states.append(mmtools.utils.deserialize(serialized_state))
 
         return thermodynamic_states
 
@@ -199,46 +215,42 @@ class Reporter(object):
         write_replica_thermodynamic_states
 
         """
-        n_states = len(thermodynamic_states)
-        is_barostated = thermodynamic_states[0].pressure is not None
-
-        # Create a group to store state information.
-        ncgrp_states = self._storage.createGroup('thermodynamic_states')
+        self._check_version_compatibility()
 
         # Check if replica dimensions exist.
         if 'replica' not in self._storage.dimensions:
-            self._storage.createDimension('replica', n_states)
+            self._storage.createDimension('replica', len(thermodynamic_states))
 
-        # Store number of states.
-        ncvar_nstates = ncgrp_states.createVariable('nstates', int)
-        ncvar_nstates.assignValue(n_states)
-
-        # Create variables.
-        ncvar_serialized_systems = ncgrp_states.createVariable('systems', str, ('replica',), zlib=True)
-        setattr(ncvar_serialized_systems, 'long_name',
-                "systems[state] is the serialized OpenMM System corresponding to the thermodynamic state 'state'")
-
-        ncvar_temperatures = ncgrp_states.createVariable('temperatures', 'f', ('replica',))
-        setattr(ncvar_temperatures, 'units', 'K')
-        setattr(ncvar_temperatures, 'long_name',
-                "temperatures[state] is the temperature of thermodynamic state 'state'")
-
-        if is_barostated:
-            ncvar_pressures = ncgrp_states.createVariable('pressures', 'f', ('replica',))
-            setattr(ncvar_pressures, 'units', 'atm')
-            setattr(ncvar_pressures, 'long_name',
-                    "pressures[state] is the external pressure of thermodynamic state 'state'")
-
-        # Store all thermodynamic states
+        # Store all thermodynamic states as serialized dictionaries.
+        compatible_states_hashes = dict()
         for state_id, thermodynamic_state in enumerate(thermodynamic_states):
-            serialized = thermodynamic_state.system.__getstate__()
-            logger.debug("Serialized state {} is  {}B | {:.3f}KB | {:.3f}MB".format(
-                state_id, len(serialized), len(serialized) / 1024.0, len(serialized) / 1024.0 / 1024.0))
-            ncvar_serialized_systems[state_id] = serialized
+            serialized_state = mmtools.utils.serialize(thermodynamic_state)
 
-            ncvar_temperatures[state_id] = thermodynamic_state.temperature / unit.kelvin
-            if is_barostated:
-                ncvar_pressures[state_id] = thermodynamic_state.pressure / unit.atmospheres
+            # Find the serialized standard system.
+            try:  # CompoundThermodynamicState.
+                serialized_thermodynamic_state = serialized_state['thermodynamic_state']
+            except KeyError:  # ThermodynamicState.
+                serialized_thermodynamic_state = serialized_state
+            serialized_standard_system = serialized_thermodynamic_state['standard_system']
+
+            # We store the full standard system serialization only if we haven't
+            # store it yet, otherwise we just write a reference to state containing
+            # the full system. We normally expect all the ThermodynamicStates to be
+            # compatible, which means we'll store only a single system in most cases.
+            standard_system_hash = serialized_standard_system.__hash__()
+            try:
+                serialized_state_id, len_serialization = compatible_states_hashes[standard_system_hash]
+            except KeyError:
+                len_serialization = len(serialized_standard_system)
+                compatible_states_hashes[standard_system_hash] = state_id, len_serialization
+                logger.debug("Serialized state {} is  {}B | {:.3f}KB | {:.3f}MB".format(
+                    state_id, len_serialization, len_serialization/1024.0, len_serialization/1024.0/1024.0))
+            else:
+                serialized_thermodynamic_state.pop('standard_system')
+                serialized_thermodynamic_state['_Reporter__standard_system_id'] = serialized_state_id
+
+            # Write state as dictionary.
+            self.write_dict('thermodynamic_states/state' + str(state_id), serialized_state)
 
     def read_sampler_states(self, iteration):
         """Retrieve the stored sampler states.
@@ -283,6 +295,8 @@ class Reporter(object):
             The iteration at which to store the data.
 
         """
+        self._check_version_compatibility()
+
         # Check if the schema must be initialized.
         if 'positions' not in self._storage.variables:
             n_atoms = sampler_states[0].n_particles
@@ -361,6 +375,8 @@ class Reporter(object):
             The iteration at which to store the data.
 
         """
+        self._check_version_compatibility()
+
         # Initialize schema if needed.
         if 'states' not in self._storage.variables:
             n_states = len(state_indices)
@@ -388,12 +404,20 @@ class Reporter(object):
             The MCMCMoves used to propagate the simulation.
 
         """
-        mcmc_moves = list()
+        # Handle previous convention versions.
+        convention_version = StrictVersion(getattr(self._storage, 'ConventionVersion'))
+        if convention_version <= StrictVersion('0.1'):
+            # With 0.1, only LangevinIntegration was possible.
+            move = mmtools.mcmc.LangevinDynamicsMove(timestep=2.0*unit.femtosecond,
+                                                     collision_rate=5.0/unit.picosecond,
+                                                     n_steps=500, reassign_velocities=True)
+            return [copy.deepcopy(move) for _ in range(self._storage.dimensions['replica'])]
 
         # Get group storing MCMCMoves.
         ncgrp = self._storage.groups['mcmc_moves']
 
         # Retrieve all moves in order.
+        mcmc_moves = list()
         for i in range(len(ncgrp.groups)):
             serialized_move = self._read_dict(ncgrp.groups['move' + str(i)])
             mcmc_moves.append(mmtools.utils.deserialize(serialized_move))
@@ -408,6 +432,8 @@ class Reporter(object):
             The MCMCMoves used to propagate the simulation.
 
         """
+        self._check_version_compatibility()
+
         # Serialize and store MCMCMoves.
         for i, mcmc_move in enumerate(mcmc_moves):
             serialized_move = mmtools.utils.serialize(mcmc_move)
@@ -442,6 +468,8 @@ class Reporter(object):
             The iteration at which to store the data.
 
         """
+        self._check_version_compatibility()
+
         # Initialize schema if needed.
         if 'energies' not in self._storage.variables:
             n_states = len(energy_matrix)
@@ -502,6 +530,8 @@ class Reporter(object):
             The iteration at which to store the data.
 
         """
+        self._check_version_compatibility()
+
         # Create schema if necessary.
         if 'accepted' not in self._storage.variables:
             n_states = len(n_accepted_matrix)
@@ -551,6 +581,8 @@ class Reporter(object):
             The iteration at which to read the data.
 
         """
+        self._check_version_compatibility()
+
         # Create variable if needed.
         if 'timestamp' not in self._storage.variables:
             self._storage.createVariable('timestamp', str, ('iteration',), zlib=False, chunksizes=(1,))
@@ -571,7 +603,12 @@ class Reporter(object):
 
         """
         ncgrp = self._storage.groups[name]
-        return self._read_dict(ncgrp)
+        data = self._read_dict(ncgrp)
+
+        # Restore the title in the metadata.
+        if name == 'metadata':
+            data['title'] = self._storage.title
+        return data
 
     def write_dict(self, name, data):
         """Store the contents of a dict.
@@ -584,6 +621,15 @@ class Reporter(object):
             The dict to store.
 
         """
+        self._check_version_compatibility()
+
+        # General NetCDF conventions assume the title of the dataset to be
+        # specified as a global attribute, but the user can specify their
+        # own titles only in metadata.
+        if name == 'metadata':
+            data = copy.deepcopy(data)
+            self._storage.title = data.pop('title')
+
         # Check if this is an update and create a group.
         # TODO this is a quick and dirty solution for dictionary updates that will be fixed with the storage layer
         try:
@@ -765,6 +811,52 @@ class Reporter(object):
             module = importlib.import_module(module)
             proper_type = getattr(module, stored_type)
         return proper_type
+
+    # -------------------------------------------------------------------------
+    # Internal-usage: Backward compatibility.
+    # -------------------------------------------------------------------------
+
+    _LATEST_CONVENTION_VERSION = StrictVersion('0.2')
+
+    # Dict storage_conventions: last_compatible_YANK_version.
+    _LAST_COMPATIBLE_YANK_VERSIONS = {'0.1': '0.15.2'}
+
+    def _check_version_compatibility(self):
+        """Raise an error if storage conventions are not supported.
+
+        We generally support reading so that analysis on old datasets will still
+        be available with a recent version of Yank, but we don't support writing
+        new data in an old format.
+
+        """
+        # Raise an error if ConventionVersion is not the latest.
+        convention_version = StrictVersion(getattr(self._storage, 'ConventionVersion'))
+        if convention_version != self._LATEST_CONVENTION_VERSION:
+            yank_version = self._LAST_COMPATIBLE_YANK_VERSIONS[str(convention_version)]
+            raise RuntimeError('These storage conventions are deprecated. Reading data is'
+                               ' still supported for analysis, but writing could corrupt'
+                               ' the dataset. The last version of the program supporting '
+                               'writing for these conventions is {}'.format(yank_version))
+
+    def _read_thermodynamic_states_0_1(self):
+        """Retrieve the stored thermodynamic states with conventions 0.1."""
+        ncgrp_states = self._storage.groups['thermodynamic_states']
+        n_states = self._storage.dimensions['replica'].size
+        thermodynamic_states = list()
+        for state_index in range(n_states):
+            # Reconstitute System object.
+            system = openmm.System()
+            system.__setstate__(ncgrp_states.variables['systems'][state_index])
+            # Read temperature and pressure (if NPT).
+            temperature = ncgrp_states.variables['temperatures'][state_index] * unit.kelvin
+            if 'pressures' in ncgrp_states.variables:
+                pressure = ncgrp_states.variables['pressures'][state_index] * unit.atmospheres
+            else:
+                pressure = None
+            # Create ThermodynamicState.
+            thermodynamic_states.append(mmtools.states.ThermodynamicState(system=system, temperature=temperature,
+                                                                          pressure=pressure))
+        return thermodynamic_states
 
 
 # ==============================================================================
