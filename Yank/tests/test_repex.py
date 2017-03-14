@@ -399,7 +399,7 @@ def notest_hamiltonian_exchange(mpicomm=None, verbose=True):
 # TEST REPORTER
 # ==============================================================================
 
-def write_thermodynamic_states_rex_0_1(reporter, thermodynamic_states):
+def write_thermodynamic_states_rex_0_1(reporter, thermodynamic_states, unused_unsampled_states):
     """Simulate ThermodynamicStates stored with Conventions 0.1 and ReplicaExchange.
 
     This is for testing backwards compatibility.
@@ -423,7 +423,7 @@ def write_thermodynamic_states_rex_0_1(reporter, thermodynamic_states):
             ncvar_pressures[state_id] = thermodynamic_state.pressure / unit.atmospheres
 
 
-def write_thermodynamic_states_mhrex_0_1(reporter, thermodynamic_states):
+def write_thermodynamic_states_mhrex_0_1(reporter, thermodynamic_states, expanded_states):
     """Simulate ThermodynamicStates stored with Conventions 0.1 and ModifiedHamiltonianReplicaExchange.
 
     This is for testing backwards compatibility.
@@ -433,6 +433,7 @@ def write_thermodynamic_states_mhrex_0_1(reporter, thermodynamic_states):
     reporter._storage.createDimension('replica', len(thermodynamic_states))
     is_barostated = thermodynamic_states[0].pressure is not None
 
+    # Write basic thermodynamic state.
     ncgrp_states = reporter._storage.createGroup('thermodynamic_states')
     ncvar_serialized_base_system = ncgrp_states.createVariable('base_system', str, ('scalar',), zlib=True)
     ncvar_temperatures = ncgrp_states.createVariable('temperatures', 'f', ('replica',))
@@ -445,6 +446,7 @@ def write_thermodynamic_states_mhrex_0_1(reporter, thermodynamic_states):
         if is_barostated:
             ncvar_pressures[state_id] = thermodynamic_state.pressure / unit.atmosphere
 
+    # Write alchemical states.
     ncgrp_alchemical = reporter._storage.createGroup('alchemical_states')
     alchemical_parameters = thermodynamic_states[0]._composable_states[0]._get_supported_parameters()
     for alchemical_parameter in alchemical_parameters:
@@ -454,6 +456,25 @@ def write_thermodynamic_states_mhrex_0_1(reporter, thermodynamic_states):
             if parameter_value is None:
                 parameter_value = 1.0  # The default for all parameters was 1.0 even if they weren't actually set.
             ncvar_parameter[state_id] = parameter_value
+
+    # Write fully interacting states. The old MHREX writer only supported
+    # 2 expanded thermodynamic states at the end points of the alchemical path.
+    assert len(expanded_states) == 2
+    is_barostated = expanded_states[0].pressure is not None
+    ncgrp_expanded = reporter._storage.createGroup('expanded_cutoff_states')
+    ncvar_interacting_system = ncgrp_expanded.createVariable('fully_interacting_expanded_system', str,
+                                                             ('scalar',), zlib=True)
+    ncvar_noninteracting_system = ncgrp_expanded.createVariable('noninteracting_expanded_system', str,
+                                                                ('scalar',), zlib=True)
+    ncvar_temperature = ncgrp_expanded.createVariable('temperatures', 'f', ('scalar',))
+    if is_barostated:
+        ncvar_pressure = ncgrp_expanded.createVariable('pressures', 'f', ('scalar',))
+
+    ncvar_interacting_system[0] = expanded_states[0].system.__getstate__()
+    ncvar_noninteracting_system[0] = expanded_states[1].system.__getstate__()
+    ncvar_temperature[0] = expanded_states[0].temperature / unit.kelvin
+    if is_barostated:
+        ncvar_pressure[0] = expanded_states[0].pressure / unit.atmosphere
 
 
 class TestReporter(object):
@@ -470,9 +491,24 @@ class TestReporter(object):
             assert os.path.isfile(storage_file_path)
             yield reporter
 
+    @staticmethod
+    def check_thermodynamic_states(original_states, restored_states):
+        """Check that the thermodynamic states are equivalent."""
+        assert len(original_states) == len(restored_states), '{}, {}'.format(
+            len(original_states), len(restored_states))
+
+        for original_state, restored_state in zip(original_states, restored_states):
+            assert original_state.system.__getstate__() == restored_state.system.__getstate__()
+            assert original_state.temperature == restored_state.temperature
+            assert original_state.pressure == restored_state.pressure
+
+            if isinstance(original_state, mmtools.states.CompoundThermodynamicState):
+                assert original_state.lambda_sterics == restored_state.lambda_sterics
+                assert original_state.lambda_electrostatics == restored_state.lambda_electrostatics
+
     def test_store_thermodynamic_states(self):
         """Check correct storage of thermodynamic states."""
-        # Create thermodynamic states.
+        # Thermodynamic states.
         temperature = 300*unit.kelvin
         alanine_system = testsystems.AlanineDipeptideImplicit().system
         alanine_explicit_system = testsystems.AlanineDipeptideExplicit().system
@@ -484,7 +520,7 @@ class TestReporter(object):
         thermodynamic_states = [thermodynamic_state_nvt, thermodynamic_state_nvt_compatible,
                                 thermodynamic_state_npt]
 
-        # Create compound states.
+        # Compound states.
         factory = mmtools.alchemy.AlchemicalFactory()
         alchemical_region = mmtools.alchemy.AlchemicalRegion(alchemical_atoms=range(22))
         alanine_alchemical = factory.create_alchemical_system(alanine_system, alchemical_region)
@@ -501,6 +537,12 @@ class TestReporter(object):
         )
         compound_states = [compound_state_interacting, compound_state_noninteracting]
 
+        # Unsampled thermodynamic states.
+        toluene_system = testsystems.TolueneVacuum().system
+        toluene_state = mmtools.states.ThermodynamicState(toluene_system, temperature)
+        unsampled_states = [copy.deepcopy(toluene_state), copy.deepcopy(toluene_state),
+                            copy.deepcopy(compound_state_interacting)]
+
         # Check all conventions.
         writers = [
             Reporter.write_thermodynamic_states,  # latest
@@ -509,33 +551,52 @@ class TestReporter(object):
         ]
         for writer in writers:
             with self.temporary_reporter() as reporter:
-                # HREX writer can handle only compound states.
-                states = copy.deepcopy(compound_states)
-                if writer != write_thermodynamic_states_mhrex_0_1:
-                    states.extend(copy.deepcopy(thermodynamic_states))
+                # Old MHREX writer can handle only alchemically modified systems.
+                if writer == write_thermodynamic_states_mhrex_0_1:
+                    states = copy.deepcopy(compound_states)
+                    unsampled = copy.deepcopy(unsampled_states[:2])
+                # Old REX writer can handle only thermodynamic states.
+                elif writer == write_thermodynamic_states_rex_0_1:
+                    states = copy.deepcopy(thermodynamic_states)
+                    unsampled = []
+                else:
+                    states = copy.deepcopy(thermodynamic_states + compound_states)
+                    unsampled = copy.deepcopy(unsampled_states)
 
                 # Check that after writing and reading, states are identical.
-                writer(reporter, states)
-                restored_states = reporter.read_thermodynamic_states()
-                for state, restored_state in zip(states, restored_states):
-                    assert state.system.__getstate__() == restored_state.system.__getstate__()
-                    assert state.temperature == restored_state.temperature
-                    assert state.pressure == restored_state.pressure
+                writer(reporter, states, unsampled)
+                restored_states, restored_unsampled = reporter.read_thermodynamic_states()
+                self.check_thermodynamic_states(states, restored_states)
+                self.check_thermodynamic_states(unsampled, restored_unsampled)
 
+                # TODO Check unsampled states are correctly restored and serialized only if needed.
                 # The latest writer only stores one full serialization per compatible state.
                 if writer == Reporter.write_thermodynamic_states:
                     ncgrp_states = reporter._storage.groups['thermodynamic_states']
-
-                    # The two CompoundThermodynamicStates are compatible.
-                    assert 'standard_system' in ncgrp_states.groups['state0'].groups['thermodynamic_state'].variables
-                    ncgrp_state4 = ncgrp_states.groups['state1'].groups['thermodynamic_state']
-                    assert ncgrp_state4.variables['_Reporter__standard_system_id'].getValue() == 0
+                    ncgrp_unsampled = reporter._storage.groups['unsampled_states']
 
                     # Two of the three ThermodynamicStates are compatible.
-                    assert isinstance(ncgrp_states.groups['state2'].variables['standard_system'][0], str)
-                    assert 'standard_system' not in ncgrp_states.groups['state3'].variables
-                    assert ncgrp_states.groups['state3'].variables['_Reporter__standard_system_id'].getValue() == 2
-                    assert 'standard_system' in ncgrp_states.groups['state4'].variables
+                    assert isinstance(ncgrp_states.groups['state0'].variables['standard_system'][0], str)
+                    assert 'standard_system' not in ncgrp_states.groups['state1'].variables
+                    state_compatible_to_1 = ncgrp_states.groups['state1'].variables['_Reporter__compatible_state'][0]
+                    assert state_compatible_to_1 == 'thermodynamic_states/0'
+                    assert 'standard_system' in ncgrp_states.groups['state2'].variables
+
+                    # The two CompoundThermodynamicStates are compatible.
+                    assert 'standard_system' in ncgrp_states.groups['state3'].groups['thermodynamic_state'].variables
+                    thermodynamic_state_4 = ncgrp_states.groups['state4'].groups['thermodynamic_state']
+                    state_compatible_to_4 = thermodynamic_state_4.variables['_Reporter__compatible_state'][0]
+                    assert state_compatible_to_4 == 'thermodynamic_states/3'
+
+                    # The first two unsampled states are incompatible with everything else
+                    # but compatible to each other, while the third unsampled state is
+                    # compatible with the alchemical states.
+                    assert 'standard_system' in ncgrp_unsampled.groups['state0'].variables
+                    state_compatible_to_1 = ncgrp_unsampled.groups['state1'].variables['_Reporter__compatible_state'][0]
+                    assert state_compatible_to_1 == 'unsampled_states/0'
+                    thermodynamic_state_2 = ncgrp_unsampled.groups['state2'].groups['thermodynamic_state']
+                    state_compatible_to_2 = thermodynamic_state_2.variables['_Reporter__compatible_state'][0]
+                    assert state_compatible_to_2 == 'thermodynamic_states/3'
 
     def test_store_sampler_states(self):
         """Check correct storage of thermodynamic states."""
@@ -641,17 +702,52 @@ class TestReplicaExchange(object):
     @classmethod
     def setup_class(cls):
         """Shared test cases and variables."""
-        # Test case with alanine in vacuum at 3 different positions and temperatures.
         n_states = 3
+
+        # Test case with alanine in vacuum at 3 different positions and temperatures.
+        # ---------------------------------------------------------------------------
         alanine_test = testsystems.AlanineDipeptideVacuum()
+
         # Translate the sampler states to be different one from each other.
         alanine_sampler_states = [mmtools.states.SamplerState(alanine_test.positions + 10*i*unit.nanometers)
                                   for i in range(n_states)]
+
         # Set increasing temperature.
         temperatures = [(300 + 10*i) * unit.kelvin for i in range(n_states)]
         alanine_thermodynamic_states = [mmtools.states.ThermodynamicState(alanine_test.system, temperatures[i])
                                         for i in range(n_states)]
         cls.alanine_test = (alanine_thermodynamic_states, alanine_sampler_states)
+
+        # Test case with host guest in implicit at 3 different positions and alchemical parameters.
+        # -----------------------------------------------------------------------------------------
+        hostguest_test = testsystems.HostGuestVacuum()
+        factory = mmtools.alchemy.AlchemicalFactory()
+        alchemical_region = mmtools.alchemy.AlchemicalRegion(alchemical_atoms=range(126, 156))
+        hostguest_alchemical = factory.create_alchemical_system(hostguest_test.system, alchemical_region)
+
+        # Translate the sampler states to be different one from each other.
+        hostguest_sampler_states = [mmtools.states.SamplerState(hostguest_test.positions + 10*i*unit.nanometers)
+                                    for i in range(n_states)]
+
+        # Create the three basic thermodynamic states.
+        temperatures = [(300 + 10*i) * unit.kelvin for i in range(n_states)]
+        hostguest_thermodynamic_states = [mmtools.states.ThermodynamicState(hostguest_alchemical, temperatures[i])
+                                          for i in range(n_states)]
+
+        # Create alchemical states at different parameter values.
+        alchemical_states = [mmtools.alchemy.AlchemicalState.from_system(hostguest_alchemical)
+                             for _ in range(n_states)]
+        for i, alchemical_state in enumerate(alchemical_states):
+            alchemical_state.set_alchemical_parameters(float(i) / (n_states - 1))
+
+        # Create compound states.
+        hostguest_compound_states = list()
+        for i in range(n_states):
+            hostguest_compound_states.append(
+                mmtools.states.CompoundThermodynamicState(thermodynamic_state=hostguest_thermodynamic_states[i],
+                                                          composable_states=[alchemical_states[i]])
+            )
+        cls.hostguest_test = (hostguest_compound_states, hostguest_sampler_states)
 
     def test_repex_create(self):
         """Test creation of a new ReplicaExchange simulation.
@@ -661,7 +757,6 @@ class TestReplicaExchange(object):
         open Reporter for writing.
 
         """
-        # TODO test with CompoundState
         thermodynamic_states, sampler_states = copy.deepcopy(self.alanine_test)
         n_states = len(thermodynamic_states)
 
@@ -720,53 +815,69 @@ class TestReplicaExchange(object):
         iteration.
 
         """
-        # TODO test after running few iterations
         thermodynamic_states, sampler_states = copy.deepcopy(self.alanine_test)
 
         with moltools.utils.temporary_directory() as tmp_dir_path:
             storage_path = os.path.join(tmp_dir_path, 'test_storage.nc')
 
-            # Create first repex and store its state (its __dict__). We leave the
-            # reporter out because when the NetCDF file is copied, it runs into issues.
-            repex = ReplicaExchange()
+            number_of_iterations = 3
+            move = mmtools.mcmc.LangevinDynamicsMove(n_steps=1)
+            repex = ReplicaExchange(mcmc_moves=move, number_of_iterations=number_of_iterations)
             repex.create(thermodynamic_states, sampler_states, storage=storage_path)
-            original_dict = copy.deepcopy({k: v for k, v in repex.__dict__.items() if not k == '_reporter'})
 
-            # Create a new repex from the storage file.
-            repex = ReplicaExchange.from_storage(storage_path)
-            restored_dict = copy.deepcopy({k: v for k, v in repex.__dict__.items() if not k == '_reporter'})
+            # Test at the beginning and after few iterations.
+            for _ in range(2):
+                # Store the state of the initial repex object (its __dict__). We leave the
+                # reporter out because when the NetCDF file is copied, it runs into issues.
+                original_dict = copy.deepcopy({k: v for k, v in repex.__dict__.items() if not k == '_reporter'})
 
-            # Check thermodynamic states.
-            original_ts = original_dict.pop('_thermodynamic_states')
-            restored_ts = restored_dict.pop('_thermodynamic_states')
-            for original, restored in zip(original_ts, restored_ts):
-                assert original.system.__getstate__() == restored.system.__getstate__()
+                # Delete repex to close reporter before creating a new one
+                # to avoid weird issues with multiple NetCDF files open.
+                del repex
+                repex = ReplicaExchange.from_storage(storage_path)
+                restored_dict = copy.deepcopy({k: v for k, v in repex.__dict__.items() if not k == '_reporter'})
 
-            # Check sampler states.
-            original_ss = original_dict.pop('_sampler_states')
-            restored_ss = restored_dict.pop('_sampler_states')
-            for original, restored in zip(original_ss, restored_ss):
-                assert np.allclose(original.positions, restored.positions)
-                assert np.all(original.box_vectors == restored.box_vectors)
+                # Check thermodynamic states.
+                original_ts = original_dict.pop('_thermodynamic_states')
+                restored_ts = restored_dict.pop('_thermodynamic_states')
+                for original, restored in zip(original_ts, restored_ts):
+                    assert original.system.__getstate__() == restored.system.__getstate__()
 
-            # The reporter of the restored simulation must be open only in node 0.
-            mpicomm = mpi.get_mpicomm()
-            if mpicomm is None or mpicomm.rank == 0:
-                assert repex._reporter.is_open()
-            else:
-                assert not repex._reporter.is_open()
+                # Check sampler states.
+                original_ss = original_dict.pop('_sampler_states')
+                restored_ss = restored_dict.pop('_sampler_states')
+                for original, restored in zip(original_ss, restored_ss):
+                    assert np.allclose(original.positions, restored.positions)
+                    assert np.all(original.box_vectors == restored.box_vectors)
 
-            # Check all arrays. Instantiate list so that we can pop from original_dict.
-            for attr, original_value in list(original_dict.items()):
-                if isinstance(original_value, np.ndarray):
-                    original_value = original_dict.pop(attr)
-                    restored_value = restored_dict.pop(attr)
-                    assert np.all(original_value == restored_value)
+                # The reporter of the restored simulation must be open only in node 0.
+                mpicomm = mpi.get_mpicomm()
+                if mpicomm is None or mpicomm.rank == 0:
+                    assert repex._reporter.is_open()
+                else:
+                    assert not repex._reporter.is_open()
 
-            # Check everything else as pickle.
-            original_pickle = pickle.dumps(original_dict)
-            restored_pickle = pickle.dumps(restored_dict)
-            assert original_pickle == restored_pickle
+                # Remove cached values that are not stored.
+                original_dict.pop('_cached_transition_counts', None)
+                original_dict.pop('_cached_last_replica_thermodynamic_states', None)
+
+                # Check all arrays. Instantiate list so that we can pop from original_dict.
+                for attr, original_value in list(original_dict.items()):
+                    if isinstance(original_value, np.ndarray):
+                        original_value = original_dict.pop(attr)
+                        restored_value = restored_dict.pop(attr)
+                        assert np.all(original_value == restored_value)
+
+                # Test mcmc moves with pickle.
+                original_mcmc_moves = original_dict.pop('_mcmc_moves')
+                restored_mcmc_moves = restored_dict.pop('_mcmc_moves')
+                assert pickle.dumps(original_mcmc_moves) == pickle.dumps(restored_mcmc_moves)
+
+                # Everything else should be a dict of builtins.
+                assert original_dict == restored_dict
+
+                # Run few iterations to see that we restore also after a while.
+                repex.run(number_of_iterations)
 
     def test_stored_properties(self):
         """Test that storage is kept in sync with options."""
@@ -912,28 +1023,30 @@ class TestReplicaExchange(object):
 
     def test_run_extend(self):
         """Test methods run and extend of ReplicaExchange."""
-        thermodynamic_states, sampler_states = copy.deepcopy(self.alanine_test)
+        test_cases = [self.alanine_test, self.hostguest_test]
 
-        with moltools.utils.temporary_directory() as tmp_dir_path:
-            storage_path = os.path.join(tmp_dir_path, 'test_storage.nc')
-            repex = ReplicaExchange(mcmc_moves=mmtools.mcmc.GHMCMove(n_steps=1),
-                                    show_energies=True, show_mixing_statistics=True,
-                                    number_of_iterations=2)
-            repex.create(thermodynamic_states, sampler_states, storage=storage_path)
+        for test_case in test_cases:
+            thermodynamic_states, sampler_states = copy.deepcopy(test_case)
 
-            # ReplicaExchange.run doesn't go past number_of_iterations.
-            repex.run(n_iterations=3)
-            assert repex.iteration == 2
+            with moltools.utils.temporary_directory() as tmp_dir_path:
+                storage_path = os.path.join(tmp_dir_path, 'test_storage.nc')
+                repex = ReplicaExchange(mcmc_moves=mmtools.mcmc.GHMCMove(n_steps=1),
+                                        show_energies=True, show_mixing_statistics=True,
+                                        number_of_iterations=2)
+                repex.create(thermodynamic_states, sampler_states, storage=storage_path)
 
-            # ReplicaExchange.extend does.
-            repex.extend(n_iterations=2)
-            assert repex.iteration == 4
+                # ReplicaExchange.run doesn't go past number_of_iterations.
+                repex.run(n_iterations=3)
+                assert repex.iteration == 2
 
-            # The MCMCMoves statistics in the storage are updated.
-            reporter = Reporter(storage_path, open_mode='r')
-            restored_mcmc_moves = reporter.read_mcmc_moves()
-            assert restored_mcmc_moves[0].n_attempted != 0
+                # ReplicaExchange.extend does.
+                repex.extend(n_iterations=2)
+                assert repex.iteration == 4
 
+                # The MCMCMoves statistics in the storage are updated.
+                reporter = Reporter(storage_path, open_mode='r')
+                restored_mcmc_moves = reporter.read_mcmc_moves()
+                assert restored_mcmc_moves[0].n_attempted != 0
 
 
 # ==============================================================================

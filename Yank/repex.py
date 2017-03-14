@@ -156,6 +156,8 @@ class Reporter(object):
         thermodynamic_states : list of ThermodynamicStates
             The previously stored thermodynamic states. During the simulation
             these are swapped among replicas.
+        unsampled_states : list of ThermodynamicState
+            The previously stored unsampled thermodynamic states.
 
         See Also
         --------
@@ -169,46 +171,65 @@ class Reporter(object):
         elif convention_version != self._LATEST_CONVENTION_VERSION:
             raise ValueError('Unsupported storage convention version {}'.format(convention_version))
 
-        # Retrieve group and number of states.
-        ncgrp_states = self._storage.groups['thermodynamic_states']
-        n_states = self._storage.dimensions['replica'].size
+        # We have to parse the thermodynamic states first because the
+        # unsampled states may refer to them for the serialized system.
+        states = collections.OrderedDict([('thermodynamic_states', list()),
+                                          ('unsampled_states', list())])
 
         # Read state information.
-        thermodynamic_states = list()
-        for state_id in range(n_states):
-            serialized_state = self._read_dict(ncgrp_states.groups['state' + str(state_id)])
-
-            # Find the thermodynamic state representation.
-            try:  # CompoundThermodynamicState.
-                serialized_thermodynamic_state = serialized_state['thermodynamic_state']
-            except KeyError:  # ThermodynamicState.
-                serialized_thermodynamic_state = serialized_state
-
-            # Check if the standard state is in a previous state.
+        for state_type, state_list in states.items():
+            # Retrieve the group storing the states.
             try:
-                standard_system_id = serialized_thermodynamic_state.pop('_Reporter__standard_system_id')
+                ncgrp_states = self._storage.groups[state_type]
             except KeyError:
-                # We have stored the full standard system serialization.
-                pass
-            else:
-                # The system serialization can be retrieved from another state.
-                compatible_thermodynamic_state = thermodynamic_states[standard_system_id]
-                serialized_system = openmm.XmlSerializer.serialize(compatible_thermodynamic_state.system)
-                serialized_thermodynamic_state['standard_system'] = serialized_system
+                # There may not be unsampled states.
+                assert state_type == 'unsampled_states'
+                continue
 
-            # Create ThermodynamicState object.
-            thermodynamic_states.append(mmtools.utils.deserialize(serialized_state))
+            # We keep looking for states until we can't find them anymore.
+            state_id = 0
+            while True:
+                try:
+                    serialized_state = self._read_dict(ncgrp_states.groups['state' + str(state_id)])
+                except KeyError:
+                    # There are no more stored states.
+                    break
 
-        return thermodynamic_states
+                # Find the thermodynamic state representation.
+                try:  # CompoundThermodynamicState.
+                    serialized_thermodynamic_state = serialized_state['thermodynamic_state']
+                except KeyError:  # ThermodynamicState.
+                    serialized_thermodynamic_state = serialized_state
+
+                # Check if the standard state is in a previous state.
+                try:
+                    standard_system_name = serialized_thermodynamic_state.pop('_Reporter__compatible_state')
+                except KeyError:
+                    # We have stored the full standard system serialization.
+                    pass
+                else:
+                    # The system serialization can be retrieved from another state.
+                    reference_state_type, reference_system_id = standard_system_name.split('/')
+                    compatible_thermodynamic_state = states[reference_state_type][int(reference_system_id)]
+                    serialized_system = openmm.XmlSerializer.serialize(compatible_thermodynamic_state.system)
+                    serialized_thermodynamic_state['standard_system'] = serialized_system
+
+                # Create ThermodynamicState object.
+                states[state_type].append(mmtools.utils.deserialize(serialized_state))
+                state_id += 1
+
+        return [states['thermodynamic_states'], states['unsampled_states']]
 
     @mmtools.utils.with_timer('Storing thermodynamic states')
-    def write_thermodynamic_states(self, thermodynamic_states):
+    def write_thermodynamic_states(self, thermodynamic_states, unsampled_states):
         """Store all the ThermodynamicStates.
 
         Parameters
         ----------
         thermodynamic_states : list of ThermodynamicState
             The thermodynamic states to store.
+        unsampled_states : list of ThermodynamicState
+            The unsampled thermodynamic states to store.
 
         See Also
         --------
@@ -217,40 +238,41 @@ class Reporter(object):
         """
         self._check_version_compatibility()
 
-        # Check if replica dimensions exist.
-        if 'replica' not in self._storage.dimensions:
-            self._storage.createDimension('replica', len(thermodynamic_states))
-
         # Store all thermodynamic states as serialized dictionaries.
         compatible_states_hashes = dict()
-        for state_id, thermodynamic_state in enumerate(thermodynamic_states):
-            serialized_state = mmtools.utils.serialize(thermodynamic_state)
+        for state_type, states in [('thermodynamic_states', thermodynamic_states),
+                                  ('unsampled_states', unsampled_states)]:
+            for state_id, thermodynamic_state in enumerate(states):
+                serialized_state = mmtools.utils.serialize(thermodynamic_state)
 
-            # Find the serialized standard system.
-            try:  # CompoundThermodynamicState.
-                serialized_thermodynamic_state = serialized_state['thermodynamic_state']
-            except KeyError:  # ThermodynamicState.
-                serialized_thermodynamic_state = serialized_state
-            serialized_standard_system = serialized_thermodynamic_state['standard_system']
+                # Find the serialized standard system.
+                try:  # CompoundThermodynamicState.
+                    serialized_thermodynamic_state = serialized_state['thermodynamic_state']
+                except KeyError:  # ThermodynamicState.
+                    serialized_thermodynamic_state = serialized_state
+                serialized_standard_system = serialized_thermodynamic_state['standard_system']
 
-            # We store the full standard system serialization only if we haven't
-            # store it yet, otherwise we just write a reference to state containing
-            # the full system. We normally expect all the ThermodynamicStates to be
-            # compatible, which means we'll store only a single system in most cases.
-            standard_system_hash = serialized_standard_system.__hash__()
-            try:
-                serialized_state_id, len_serialization = compatible_states_hashes[standard_system_hash]
-            except KeyError:
-                len_serialization = len(serialized_standard_system)
-                compatible_states_hashes[standard_system_hash] = state_id, len_serialization
-                logger.debug("Serialized state {} is  {}B | {:.3f}KB | {:.3f}MB".format(
-                    state_id, len_serialization, len_serialization/1024.0, len_serialization/1024.0/1024.0))
-            else:
-                serialized_thermodynamic_state.pop('standard_system')
-                serialized_thermodynamic_state['_Reporter__standard_system_id'] = serialized_state_id
+                # We store the full standard system serialization only if we haven't
+                # store it yet, otherwise we just write a reference to a state containing
+                # the full system. We normally expect all the ThermodynamicStates to be
+                # compatible, which means we'll store only a single system in most cases.
+                standard_system_hash = serialized_standard_system.__hash__()
+                try:
+                    reference_state_name, len_serialization = compatible_states_hashes[standard_system_hash]
+                except KeyError:
+                    reference_state_name = '{}/{}'.format(state_type, state_id)
+                    len_serialization = len(serialized_standard_system)
+                    compatible_states_hashes[standard_system_hash] = reference_state_name, len_serialization
 
-            # Write state as dictionary.
-            self.write_dict('thermodynamic_states/state' + str(state_id), serialized_state)
+                    logger.debug("Serialized state {} is  {}B | {:.3f}KB | {:.3f}MB".format(
+                        reference_state_name, len_serialization, len_serialization/1024.0,
+                        len_serialization/1024.0/1024.0))
+                else:
+                    serialized_thermodynamic_state.pop('standard_system')
+                    serialized_thermodynamic_state['_Reporter__compatible_state'] = reference_state_name
+
+                # Write state as dictionary.
+                self.write_dict('{}/state{}'.format(state_type, state_id), serialized_state)
 
     def read_sampler_states(self, iteration):
         """Retrieve the stored sampler states.
@@ -852,6 +874,7 @@ class Reporter(object):
 
         """
         logger.debug('Attempt to read thermodynamic states with ReplicaExchange reader version 0.1.')
+
         ncgrp_states = self._storage.groups['thermodynamic_states']
         n_states = self._storage.dimensions['replica'].size
         thermodynamic_states = list()
@@ -868,7 +891,7 @@ class Reporter(object):
             # Create ThermodynamicState.
             thermodynamic_states.append(mmtools.states.ThermodynamicState(system=system, temperature=temperature,
                                                                           pressure=pressure))
-        return thermodynamic_states
+        return thermodynamic_states, []
 
     def _read_thermodynamic_states_mhrex_0_1(self):
         """Retrieve the stored thermodynamic states with conventions 0.1.
@@ -878,6 +901,7 @@ class Reporter(object):
         """
         logger.debug('Attempt to read thermodynamic states with '
                      'ModifiedHamiltonianReplicaExchange reader version 0.1.')
+
         ncgrp_states = self._storage.groups['thermodynamic_states']
         ncgrp_alchemical = self._storage.groups['alchemical_states']
         # Read reference system
@@ -903,7 +927,22 @@ class Reporter(object):
             # Create compound state.
             thermodynamic_states.append(mmtools.states.CompoundThermodynamicState(thermodynamic_state,
                                                                                   [alchemical_state]))
-        return thermodynamic_states
+
+        unsampled_states = list()
+        if 'expanded_cutoff_states' in self._storage.groups:
+            ncgrp_expanded = self._storage.groups['expanded_cutoff_states']
+            temperature = float(ncgrp_expanded.variables['temperatures'][0]) * unit.kelvin
+            try:
+                pressure = float(ncgrp_expanded.variables['pressures'][0]) * unit.atmosphere
+            except KeyError:
+                pressure = None
+            for variable_name in ['fully_interacting_expanded_system', 'noninteracting_expanded_system']:
+                ncvar_serialized_system = ncgrp_expanded.variables[variable_name]
+                expanded_system = openmm.System()
+                expanded_system.__setstate__(str(ncvar_serialized_system[0]))
+                unsampled_states.append(mmtools.states.ThermodynamicState(expanded_system, temperature, pressure))
+
+        return thermodynamic_states, unsampled_states
 
 
 # ==============================================================================
@@ -1129,6 +1168,9 @@ class ReplicaExchange(object):
         state_indices = reporter.read_replica_thermodynamic_states(iteration=iteration)
         energies = reporter.read_energies(iteration=iteration)
         n_accepted_matrix, n_proposed_matrix = reporter.read_mixing_statistics(iteration=iteration)
+
+        # Close reading reporter.
+        reporter.close()
 
         # Assign attributes.
         repex._iteration = iteration
