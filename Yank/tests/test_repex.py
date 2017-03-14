@@ -414,82 +414,111 @@ def notest_hamiltonian_exchange(mpicomm=None, verbose=True):
 # TEST REPORTER
 # ==============================================================================
 
-def write_thermodynamic_states_rex_0_1(reporter, thermodynamic_states, unused_unsampled_states):
-    """Simulate ThermodynamicStates stored with Conventions 0.1 and ReplicaExchange.
+class ArchiveWriters(object):
+    """Keep writer functions for old conventions for backward compatibility tests."""
 
-    This is for testing backwards compatibility.
+    @staticmethod
+    def write_thermodynamic_states_rex_0_1(reporter, thermodynamic_states, unused_unsampled_states):
+        """Simulate ThermodynamicStates stored with Conventions 0.1 and ReplicaExchange.
 
-    """
-    setattr(reporter._storage, 'ConventionVersion', '0.1')
-    reporter._storage.createDimension('replica', len(thermodynamic_states))
-    is_barostated = thermodynamic_states[0].pressure is not None
+        This is for testing backwards compatibility.
 
-    ncgrp_states = reporter._storage.createGroup('thermodynamic_states')
-    ncvar_serialized_systems = ncgrp_states.createVariable('systems', str, ('replica',), zlib=True)
-    ncvar_temperatures = ncgrp_states.createVariable('temperatures', 'f', ('replica',))
-    if is_barostated:
-        ncvar_pressures = ncgrp_states.createVariable('pressures', 'f', ('replica',))
+        """
+        setattr(reporter._storage, 'ConventionVersion', '0.1')
+        reporter._storage.createDimension('replica', len(thermodynamic_states))
+        is_barostated = thermodynamic_states[0].pressure is not None
 
-    for state_id, thermodynamic_state in enumerate(thermodynamic_states):
-        serialized_system = thermodynamic_state.system.__getstate__()
-        ncvar_serialized_systems[state_id] = serialized_system
-        ncvar_temperatures[state_id] = thermodynamic_state.temperature / unit.kelvin
+        ncgrp_states = reporter._storage.createGroup('thermodynamic_states')
+        ncvar_serialized_systems = ncgrp_states.createVariable('systems', str, ('replica',), zlib=True)
+        ncvar_temperatures = ncgrp_states.createVariable('temperatures', 'f', ('replica',))
         if is_barostated:
-            ncvar_pressures[state_id] = thermodynamic_state.pressure / unit.atmospheres
+            ncvar_pressures = ncgrp_states.createVariable('pressures', 'f', ('replica',))
 
-
-def write_thermodynamic_states_mhrex_0_1(reporter, thermodynamic_states, expanded_states):
-    """Simulate ThermodynamicStates stored with Conventions 0.1 and ModifiedHamiltonianReplicaExchange.
-
-    This is for testing backwards compatibility.
-
-    """
-    setattr(reporter._storage, 'ConventionVersion', '0.1')
-    reporter._storage.createDimension('replica', len(thermodynamic_states))
-    is_barostated = thermodynamic_states[0].pressure is not None
-
-    # Write basic thermodynamic state.
-    ncgrp_states = reporter._storage.createGroup('thermodynamic_states')
-    ncvar_serialized_base_system = ncgrp_states.createVariable('base_system', str, ('scalar',), zlib=True)
-    ncvar_temperatures = ncgrp_states.createVariable('temperatures', 'f', ('replica',))
-    if is_barostated:
-        ncvar_pressures = ncgrp_states.createVariable('pressures', 'f', ('replica',))
-
-    ncvar_serialized_base_system[0] = thermodynamic_states[0].system.__getstate__()
-    for state_id, thermodynamic_state in enumerate(thermodynamic_states):
-        ncvar_temperatures[state_id] = thermodynamic_state.temperature / unit.kelvin
-        if is_barostated:
-            ncvar_pressures[state_id] = thermodynamic_state.pressure / unit.atmosphere
-
-    # Write alchemical states.
-    ncgrp_alchemical = reporter._storage.createGroup('alchemical_states')
-    alchemical_parameters = thermodynamic_states[0]._composable_states[0]._get_supported_parameters()
-    for alchemical_parameter in alchemical_parameters:
-        ncvar_parameter = ncgrp_alchemical.createVariable(alchemical_parameter, 'f', ('replica',))
         for state_id, thermodynamic_state in enumerate(thermodynamic_states):
-            parameter_value = getattr(thermodynamic_state, alchemical_parameter)
-            if parameter_value is None:
-                parameter_value = 1.0  # The default for all parameters was 1.0 even if they weren't actually set.
-            ncvar_parameter[state_id] = parameter_value
+            serialized_system = thermodynamic_state.system.__getstate__()
+            ncvar_serialized_systems[state_id] = serialized_system
+            ncvar_temperatures[state_id] = thermodynamic_state.temperature / unit.kelvin
+            if is_barostated:
+                ncvar_pressures[state_id] = thermodynamic_state.pressure / unit.atmospheres
 
-    # Write fully interacting states. The old MHREX writer only supported
-    # 2 expanded thermodynamic states at the end points of the alchemical path.
-    assert len(expanded_states) == 2
-    is_barostated = expanded_states[0].pressure is not None
-    ncgrp_expanded = reporter._storage.createGroup('expanded_cutoff_states')
-    ncvar_interacting_system = ncgrp_expanded.createVariable('fully_interacting_expanded_system', str,
-                                                             ('scalar',), zlib=True)
-    ncvar_noninteracting_system = ncgrp_expanded.createVariable('noninteracting_expanded_system', str,
-                                                                ('scalar',), zlib=True)
-    ncvar_temperature = ncgrp_expanded.createVariable('temperatures', 'f', ('scalar',))
-    if is_barostated:
-        ncvar_pressure = ncgrp_expanded.createVariable('pressures', 'f', ('scalar',))
+    @staticmethod
+    def write_thermodynamic_states_mhrex_0_1(reporter, thermodynamic_states, expanded_states):
+        """Simulate ThermodynamicStates stored with Conventions 0.1 and ModifiedHamiltonianReplicaExchange.
 
-    ncvar_interacting_system[0] = expanded_states[0].system.__getstate__()
-    ncvar_noninteracting_system[0] = expanded_states[1].system.__getstate__()
-    ncvar_temperature[0] = expanded_states[0].temperature / unit.kelvin
-    if is_barostated:
-        ncvar_pressure[0] = expanded_states[0].pressure / unit.atmosphere
+        This is for testing backwards compatibility.
+
+        """
+        setattr(reporter._storage, 'ConventionVersion', '0.1')
+        reporter._storage.createDimension('replica', len(thermodynamic_states))
+        is_barostated = thermodynamic_states[0].pressure is not None
+
+        # Write basic thermodynamic state.
+        ncgrp_states = reporter._storage.createGroup('thermodynamic_states')
+        ncvar_serialized_base_system = ncgrp_states.createVariable('base_system', str, ('scalar',), zlib=True)
+        ncvar_temperatures = ncgrp_states.createVariable('temperatures', 'f', ('replica',))
+        if is_barostated:
+            ncvar_pressures = ncgrp_states.createVariable('pressures', 'f', ('replica',))
+
+        ncvar_serialized_base_system[0] = thermodynamic_states[0].system.__getstate__()
+        for state_id, thermodynamic_state in enumerate(thermodynamic_states):
+            ncvar_temperatures[state_id] = thermodynamic_state.temperature / unit.kelvin
+            if is_barostated:
+                ncvar_pressures[state_id] = thermodynamic_state.pressure / unit.atmosphere
+
+        # Write alchemical states.
+        ncgrp_alchemical = reporter._storage.createGroup('alchemical_states')
+        alchemical_parameters = thermodynamic_states[0]._composable_states[0]._get_supported_parameters()
+        for alchemical_parameter in alchemical_parameters:
+            ncvar_parameter = ncgrp_alchemical.createVariable(alchemical_parameter, 'f', ('replica',))
+            for state_id, thermodynamic_state in enumerate(thermodynamic_states):
+                parameter_value = getattr(thermodynamic_state, alchemical_parameter)
+                if parameter_value is None:
+                    parameter_value = 1.0  # The default for all parameters was 1.0 even if they weren't actually set.
+                ncvar_parameter[state_id] = parameter_value
+
+        # Write fully interacting states. The old MHREX writer only supported
+        # 2 expanded thermodynamic states at the end points of the alchemical path.
+        assert len(expanded_states) == 2
+        is_barostated = expanded_states[0].pressure is not None
+        ncgrp_expanded = reporter._storage.createGroup('expanded_cutoff_states')
+        ncvar_interacting_system = ncgrp_expanded.createVariable('fully_interacting_expanded_system', str,
+                                                                 ('scalar',), zlib=True)
+        ncvar_noninteracting_system = ncgrp_expanded.createVariable('noninteracting_expanded_system', str,
+                                                                    ('scalar',), zlib=True)
+        ncvar_temperature = ncgrp_expanded.createVariable('temperatures', 'f', ('scalar',))
+        if is_barostated:
+            ncvar_pressure = ncgrp_expanded.createVariable('pressures', 'f', ('scalar',))
+
+        ncvar_interacting_system[0] = expanded_states[0].system.__getstate__()
+        ncvar_noninteracting_system[0] = expanded_states[1].system.__getstate__()
+        ncvar_temperature[0] = expanded_states[0].temperature / unit.kelvin
+        if is_barostated:
+            ncvar_pressure[0] = expanded_states[0].pressure / unit.atmosphere
+
+    @staticmethod
+    def write_energies_mhrex_0_1(reporter, energy_thermodynamic_states, energy_expanded_states, iteration):
+        """Simulate storing energies with ModifiedHamiltonianReplicaExchanged and conventions 0.1."""
+        setattr(reporter._storage, 'ConventionVersion', '0.1')
+        n_replicas = len(energy_thermodynamic_states)
+
+        # Old MHREX class supported only 2 unsampled states with expanded cutoff.
+        assert len(energy_expanded_states[0]) == 2, len(energy_expanded_states)
+        energy_expanded_full = [energy[0] for energy in energy_expanded_states]
+        energy_expanded_non = [energy[1] for energy in energy_expanded_states]
+
+        reporter._storage.createDimension('replica', n_replicas)
+        ncvar_energies = reporter._storage.createVariable('energies', 'f8', ('iteration', 'replica', 'replica'),
+                                                          zlib=False, chunksizes=(1, n_replicas, n_replicas))
+        ncvar_full_energies = reporter._storage.createVariable('fully_interacting_expanded_cutoff_energies', 'f8',
+                                                               ('iteration', 'replica'), zlib=False,
+                                                               chunksizes=(1, n_replicas))
+        ncvar_non_energies = reporter._storage.createVariable('noninteracting_expanded_cutoff_energies', 'f8',
+                                                              ('iteration', 'replica'), zlib=False,
+                                                              chunksizes=(1, n_replicas))
+
+        ncvar_energies[iteration, :, :] = energy_thermodynamic_states[:, :]
+        ncvar_full_energies[iteration, :] = energy_expanded_full
+        ncvar_non_energies[iteration, :] = energy_expanded_non
 
 
 class TestReporter(object):
@@ -546,8 +575,8 @@ class TestReporter(object):
         # Check all conventions.
         writers = [
             Reporter.write_thermodynamic_states,  # latest
-            write_thermodynamic_states_rex_0_1,
-            write_thermodynamic_states_mhrex_0_1
+            ArchiveWriters.write_thermodynamic_states_rex_0_1,
+            ArchiveWriters.write_thermodynamic_states_mhrex_0_1
         ]
         for writer in writers:
             with self.temporary_reporter() as reporter:
@@ -642,11 +671,22 @@ class TestReporter(object):
 
     def test_store_energies(self):
         """Check storage of energies."""
-        with self.temporary_reporter() as reporter:
-            energy_matrix = np.array([[1, 2, 3], [1, 2, 3], [1, 2, 3]])
-            reporter.write_energies(energy_matrix, iteration=0)
-            restored_energy_matrix = reporter.read_energies(iteration=0)
-            assert np.all(energy_matrix == restored_energy_matrix)
+        thermodynamic_states_energies = np.array([[1, 2, 3], [1, 2, 3], [1, 2, 3]])
+        unsampled_states_energies = np.array([[1, 2], [2, 3.0], [3, 9.0]])
+        # Test all conventions
+        writers = [
+            Reporter.write_energies,
+            ArchiveWriters.write_energies_mhrex_0_1
+        ]
+        for writer in writers:
+            with self.temporary_reporter() as reporter:
+                writer(reporter, thermodynamic_states_energies, unsampled_states_energies, iteration=0)
+                restored_ts, restored_us = reporter.read_energies(iteration=0)
+                assert np.all(thermodynamic_states_energies == restored_ts)
+                print(writer)
+                print(unsampled_states_energies)
+                print(restored_us)
+                assert np.all(unsampled_states_energies == restored_us)
 
     def test_store_dict(self):
         """Check correct storage and restore of dictionaries."""

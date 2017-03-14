@@ -168,8 +168,6 @@ class Reporter(object):
         convention_version = StrictVersion(getattr(self._storage, 'ConventionVersion'))
         if convention_version <= StrictVersion('0.1'):
             return self._read_thermodynamic_states_0_1()
-        elif convention_version != self._LATEST_CONVENTION_VERSION:
-            raise ValueError('Unsupported storage convention version {}'.format(convention_version))
 
         # We have to parse the thermodynamic states first because the
         # unsampled states may refer to them for the serialized system.
@@ -471,21 +469,34 @@ class Reporter(object):
 
         Returns
         -------
-        energy_matrix : kxk numpy.ndarray
-            energy_matrix[i][j] is the reduced potential computed at SamplerState
-            sampler_states[i] and ThermodynamicState thermodynamic_states[j].
+        energy_thermodynamic_states : n_replicas x n_replicas numpy.ndarray
+            energy_thermodynamic_states[i][j] is the reduced potential computed at
+            SamplerState sampler_states[i] and ThermodynamicState thermodynamic_states[j].
+        energy_unsampled_states : n_replicas x n_unsampled_states numpy.ndarray
+            energy_unsampled_states[i][j] is the reduced potential computed at SamplerState
+            sampler_states[i] and ThermodynamicState unsampled_thermodynamic_states[j].
 
         """
-        return self._storage.variables['energies'][iteration]
+        # Handle previous versions of the conventions.
+        convention_version = StrictVersion(getattr(self._storage, 'ConventionVersion'))
+        if convention_version == StrictVersion('0.1'):
+            return self._read_energies_0_1(iteration)
 
-    def write_energies(self, energy_matrix, iteration):
+        energy_thermodynamic_states = self._storage.variables['energies'][iteration]
+        energy_unsampled_states = self._storage.variables['unsampled_energies'][iteration]
+        return energy_thermodynamic_states, energy_unsampled_states
+
+    def write_energies(self, energy_thermodynamic_states, energy_unsampled_states, iteration):
         """Store the energy matrix at the given iteration.
 
         Parameters
         ----------
-        energy_matrix : kxk numpy.ndarray
-            energy_matrix[i][j] is the reduced potential computed at SamplerState
-            sampler_states[i] and ThermodynamicState thermodynamic_states[j].
+        energy_thermodynamic_states : n_replicas x n_replicas numpy.ndarray
+            energy_thermodynamic_states[i][j] is the reduced potential computed at
+            SamplerState sampler_states[i] and ThermodynamicState thermodynamic_states[j].
+        energy_unsampled_states : n_replicas x n_unsampled_states numpy.ndarray
+            energy_unsampled_states[i][j] is the reduced potential computed at SamplerState
+            sampler_states[i] and ThermodynamicState unsampled_thermodynamic_states[j].
         iteration : int
             The iteration at which to store the data.
 
@@ -494,22 +505,39 @@ class Reporter(object):
 
         # Initialize schema if needed.
         if 'energies' not in self._storage.variables:
-            n_states = len(energy_matrix)
+            n_replicas = len(energy_thermodynamic_states)
 
-            # Create dimension if it wasn't created by other functions.
+            # Create replica dimension if it wasn't created by other functions.
             if 'replica' not in self._storage.dimensions:
-                self._storage.createDimension('replica', n_states)
+                self._storage.createDimension('replica', n_replicas)
 
-            # Create variable with its units and descriptions.
+            # Create variable for thermodynamic state energies with units and descriptions.
             ncvar_energies = self._storage.createVariable('energies', 'f8', ('iteration', 'replica', 'replica'),
-                                                          zlib=False, chunksizes=(1, n_states, n_states))
-            setattr(ncvar_energies, 'units', 'kT')
-            setattr(ncvar_energies, "long_name", ("energies[iteration][replica][state] is the reduced (unitless) "
-                                                  "energy of replica 'replica' from iteration 'iteration' evaluated "
-                                                  "at state 'state'."))
+                                                          zlib=False, chunksizes=(1, n_replicas, n_replicas))
+            ncvar_energies.units = 'kT'
+            ncvar_energies.long_name = ("energies[iteration][replica][state] is the reduced (unitless) "
+                                        "energy of replica 'replica' from iteration 'iteration' evaluated "
+                                        "at the thermodynamic state 'state'.")
+
+            if len(energy_unsampled_states) > 0:
+                n_unsampled_states = len(energy_unsampled_states[0])
+
+                # Create replica dimension if it wasn't created by other functions.
+                if 'unsampled' not in self._storage.dimensions:
+                    self._storage.createDimension('unsampled', n_unsampled_states)
+
+                # Create variable for thermodynamic state energies with units and descriptions.
+                ncvar_unsampled = self._storage.createVariable('unsampled_energies', 'f8',
+                                                               ('iteration', 'replica', 'unsampled'), zlib=False,
+                                                               chunksizes=(1, n_unsampled_states, n_unsampled_states))
+                ncvar_unsampled.units = 'kT'
+                ncvar_unsampled.long_name = ("unsampled_energies[iteration][replica][state] is the reduced (unitless) "
+                                             "energy of replica 'replica' from iteration 'iteration' evaluated "
+                                             "at unsampled thermodynamic state 'state'.")
 
         # Store energy.
-        self._storage.variables['energies'][iteration, :, :] = energy_matrix[:, :]
+        self._storage.variables['energies'][iteration, :, :] = energy_thermodynamic_states[:, :]
+        self._storage.variables['unsampled_energies'][iteration, :, :] = energy_unsampled_states[:, :]
 
     def read_mixing_statistics(self, iteration):
         """Retrieve the mixing statistics for the given iteration.
@@ -943,6 +971,17 @@ class Reporter(object):
                 unsampled_states.append(mmtools.states.ThermodynamicState(expanded_system, temperature, pressure))
 
         return thermodynamic_states, unsampled_states
+
+    def _read_energies_0_1(self, iteration):
+        """Retrieve the energy matrices with conventions 0.1."""
+        energy_thermodynamic_states = self._storage.variables['energies'][iteration]
+        if 'noninteracting_expanded_cutoff_energies' in self._storage.variables:
+            u_k_full = self._storage.variables['fully_interacting_expanded_cutoff_energies'][iteration]
+            u_k_non = self._storage.variables['noninteracting_expanded_cutoff_energies'][iteration]
+            energy_unsampled_states = np.array([u_k_full, u_k_non]).T
+        else:
+            energy_unsampled_states = np.array([])
+        return energy_thermodynamic_states, energy_unsampled_states
 
 
 # ==============================================================================
