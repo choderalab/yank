@@ -581,11 +581,11 @@ class TestReporter(object):
         for writer in writers:
             with self.temporary_reporter() as reporter:
                 # Old MHREX writer can handle only alchemically modified systems.
-                if writer == write_thermodynamic_states_mhrex_0_1:
+                if writer == ArchiveWriters.write_thermodynamic_states_mhrex_0_1:
                     states = copy.deepcopy(compound_states)
                     unsampled = copy.deepcopy(unsampled_states[:2])
                 # Old REX writer can handle only thermodynamic states.
-                elif writer == write_thermodynamic_states_rex_0_1:
+                elif writer == ArchiveWriters.write_thermodynamic_states_rex_0_1:
                     states = copy.deepcopy(thermodynamic_states)
                     unsampled = []
                 else:
@@ -919,7 +919,8 @@ class TestReplicaExchange(object):
                     if isinstance(original_value, np.ndarray):
                         original_value = original_dict.pop(attr)
                         restored_value = restored_dict.pop(attr)
-                        assert np.all(original_value == restored_value)
+                        assert np.all(original_value == restored_value), '{}: {}\t{}'.format(
+                            attr, original_value, restored_value)
 
                 # Test mcmc moves with pickle.
                 original_mcmc_moves = original_dict.pop('_mcmc_moves')
@@ -994,6 +995,43 @@ class TestReplicaExchange(object):
                          for i in range(n_states - 1)]
             assert np.allclose(original_diffs, new_diffs)
 
+    def test_compute_energies(self):
+        """Test method _compute_energies from ReplicaExchange.
+
+        The purpose of this test is mainly to make sure that MPI doesn't mix
+        the information of the thermodynamics and unsampled ThermodynamicStates
+        when it communicates them to the other nodes.
+
+        """
+        thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(self.hostguest_test)
+        n_replicas = len(thermodynamic_states)
+
+        with moltools.utils.temporary_directory() as tmp_dir_path:
+            storage_path = os.path.join(tmp_dir_path, 'test_storage.nc')
+            repex = ReplicaExchange()
+            repex.create(thermodynamic_states, sampler_states, storage=storage_path,
+                         unsampled_thermodynamic_states=unsampled_states)
+
+            # Let ReplicaExchange distribute the computation of energies among nodes.
+            repex._compute_energies()
+
+            # Compute the energies independently.
+            energy_thermodynamic_states = np.zeros((n_replicas, n_replicas))
+            energy_unsampled_states = np.zeros((n_replicas, len(unsampled_states)))
+            for energies, states in [(energy_thermodynamic_states, thermodynamic_states),
+                                     (energy_unsampled_states, unsampled_states)]:
+                for i, sampler_state in enumerate(sampler_states):
+                    for j, state in enumerate(states):
+                        context, integrator = mmtools.cache.global_context_cache.get_context(state)
+                        sampler_state.apply_to_context(context)
+                        energies[i][j] = state.reduced_potential(context)
+
+            # Only node 0 has all the energies.
+            mpicomm = mpi.get_mpicomm()
+            if mpicomm is None or mpicomm.rank == 0:
+                assert np.allclose(repex._energy_thermodynamic_states, energy_thermodynamic_states)
+                assert np.allclose(repex._energy_unsampled_states, energy_unsampled_states)
+
     def test_minimize(self):
         """Test ReplicaExchange minimize method.
 
@@ -1021,7 +1059,7 @@ class TestReplicaExchange(object):
 
             # Compute initial energies.
             repex._compute_energies()
-            original_energies = [repex._u_kl[i, i] for i in range(n_states)]
+            original_energies = [repex._energy_thermodynamic_states[i, i] for i in range(n_states)]
 
             # Minimize.
             repex.minimize()
@@ -1036,7 +1074,7 @@ class TestReplicaExchange(object):
 
             # The energies have been minimized.
             repex._compute_energies()
-            new_energies = [repex._u_kl[i, i] for i in range(n_states)]
+            new_energies = [repex._energy_thermodynamic_states[i, i] for i in range(n_states)]
             for i in range(n_states):
                 assert new_energies[i] < original_energies[i]
 

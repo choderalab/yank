@@ -482,8 +482,12 @@ class Reporter(object):
         if convention_version == StrictVersion('0.1'):
             return self._read_energies_0_1(iteration)
 
-        energy_thermodynamic_states = self._storage.variables['energies'][iteration]
-        energy_unsampled_states = self._storage.variables['unsampled_energies'][iteration]
+        energy_thermodynamic_states = self._storage.variables['energies'][iteration, :, :]
+        try:
+            energy_unsampled_states = self._storage.variables['unsampled_energies'][iteration, :, :]
+        except KeyError:
+            # There are no unsampled thermodynamic states.
+            energy_unsampled_states = np.zeros((len(energy_thermodynamic_states), 0))
         return energy_thermodynamic_states, energy_unsampled_states
 
     def write_energies(self, energy_thermodynamic_states, energy_unsampled_states, iteration):
@@ -519,25 +523,28 @@ class Reporter(object):
                                         "energy of replica 'replica' from iteration 'iteration' evaluated "
                                         "at the thermodynamic state 'state'.")
 
-            if len(energy_unsampled_states) > 0:
-                n_unsampled_states = len(energy_unsampled_states[0])
+            # Check if we have unsampled states.
+            if energy_unsampled_states.shape[1] > 0:
+                if 'unsampled_energies' not in self._storage.variables:
+                    n_unsampled_states = len(energy_unsampled_states[0])
 
-                # Create replica dimension if it wasn't created by other functions.
-                if 'unsampled' not in self._storage.dimensions:
-                    self._storage.createDimension('unsampled', n_unsampled_states)
+                    # Create replica dimension if it wasn't created by other functions.
+                    if 'unsampled' not in self._storage.dimensions:
+                        self._storage.createDimension('unsampled', n_unsampled_states)
 
-                # Create variable for thermodynamic state energies with units and descriptions.
-                ncvar_unsampled = self._storage.createVariable('unsampled_energies', 'f8',
-                                                               ('iteration', 'replica', 'unsampled'), zlib=False,
-                                                               chunksizes=(1, n_unsampled_states, n_unsampled_states))
-                ncvar_unsampled.units = 'kT'
-                ncvar_unsampled.long_name = ("unsampled_energies[iteration][replica][state] is the reduced (unitless) "
-                                             "energy of replica 'replica' from iteration 'iteration' evaluated "
-                                             "at unsampled thermodynamic state 'state'.")
+                    # Create variable for thermodynamic state energies with units and descriptions.
+                    ncvar_unsampled = self._storage.createVariable('unsampled_energies', 'f8',
+                                                                   ('iteration', 'replica', 'unsampled'), zlib=False,
+                                                                   chunksizes=(1, n_replicas, n_unsampled_states))
+                    ncvar_unsampled.units = 'kT'
+                    ncvar_unsampled.long_name = ("unsampled_energies[iteration][replica][state] is the reduced "
+                                                 "(unitless) energy of replica 'replica' from iteration 'iteration' "
+                                                 "evaluated at unsampled thermodynamic state 'state'.")
 
-        # Store energy.
+        # Store states energy.
         self._storage.variables['energies'][iteration, :, :] = energy_thermodynamic_states[:, :]
-        self._storage.variables['unsampled_energies'][iteration, :, :] = energy_unsampled_states[:, :]
+        if energy_unsampled_states.shape[1] > 0:
+            self._storage.variables['unsampled_energies'][iteration, :, :] = energy_unsampled_states[:, :]
 
     def read_mixing_statistics(self, iteration):
         """Retrieve the mixing statistics for the given iteration.
@@ -980,7 +987,7 @@ class Reporter(object):
             u_k_non = self._storage.variables['noninteracting_expanded_cutoff_energies'][iteration]
             energy_unsampled_states = np.array([u_k_full, u_k_non]).T
         else:
-            energy_unsampled_states = np.array([])
+            energy_unsampled_states = np.zeros((len(energy_thermodynamic_states), 0))
         return energy_thermodynamic_states, energy_unsampled_states
 
 
@@ -1157,7 +1164,8 @@ class ReplicaExchange(object):
         self._sampler_states = None
         self._replica_thermodynamic_states = None
         self._iteration = None
-        self._u_kl = None
+        self._energy_thermodynamic_states = None
+        self._energy_unsampled_states = None
         self._n_accepted_matrix = None
         self._n_proposed_matrix = None
         self._reporter = None
@@ -1206,7 +1214,7 @@ class ReplicaExchange(object):
         thermodynamic_states, unsampled_states = reporter.read_thermodynamic_states()
         sampler_states = reporter.read_sampler_states(iteration=iteration)
         state_indices = reporter.read_replica_thermodynamic_states(iteration=iteration)
-        energies = reporter.read_energies(iteration=iteration)
+        energy_thermodynamic_states, energy_unsampled_states = reporter.read_energies(iteration=iteration)
         n_accepted_matrix, n_proposed_matrix = reporter.read_mixing_statistics(iteration=iteration)
 
         # Close reading reporter.
@@ -1218,7 +1226,8 @@ class ReplicaExchange(object):
         repex._unsampled_states = unsampled_states
         repex._sampler_states = sampler_states
         repex._replica_thermodynamic_states = state_indices
-        repex._u_kl = energies
+        repex._energy_thermodynamic_states = energy_thermodynamic_states
+        repex._energy_unsampled_states = energy_unsampled_states
         repex._n_accepted_matrix = n_accepted_matrix
         repex._n_proposed_matrix = n_proposed_matrix
 
@@ -1388,10 +1397,11 @@ class ReplicaExchange(object):
         self._n_accepted_matrix = np.zeros([self.n_replicas, self.n_replicas], np.int64)
         self._n_proposed_matrix = np.zeros([self.n_replicas, self.n_replicas], np.int64)
 
-        # Allocate memory for energy matrix.
-        # u_kl[k][l] is the reduced potential computed at the positions of SamplerState
-        # sampler_states[k] and ThermodynamicState thermodynamic_states[l].
-        self._u_kl = np.zeros([self.n_replicas, self.n_replicas], np.float64)
+        # Allocate memory for energy matrix. energy_thermodynamic/unsampled_states[k][l]
+        # is the reduced potential computed at the positions of SamplerState sampler_states[k]
+        # and ThermodynamicState thermodynamic/unsampled_states[l].
+        self._energy_thermodynamic_states = np.zeros([self.n_replicas, self.n_replicas], np.float64)
+        self._energy_unsampled_states = np.zeros([self.n_replicas, len(self._unsampled_states)], np.float64)
 
         # Display papers to be cited.
         self._display_citations()
@@ -1464,7 +1474,8 @@ class ReplicaExchange(object):
         # starting energies of the minimized/equilibrated structures.
         if self._iteration == 0:
             self._compute_energies()
-            mpi.run_single_node(0, self._reporter.write_energies, self._u_kl, self._iteration)
+            mpi.run_single_node(0, self._reporter.write_energies, self._energy_thermodynamic_states,
+                                self._energy_unsampled_states, self._iteration)
             self._run_sanity_checks()
 
         timer = mmtools.utils.Timer()
@@ -1590,8 +1601,8 @@ class ReplicaExchange(object):
 
         # Check energies.
         for replica_id in range(self.n_replicas):
-            if np.any(np.isnan(self._u_kl[replica_id, :])):
-                err_msg = "nan encountered in u_kl state energies for replica {}".format(replica_id)
+            if np.any(np.isnan(self._energy_thermodynamic_states[replica_id, :])):
+                err_msg = "nan encountered in thermodynamic state energies for replica {}".format(replica_id)
                 logger.error(err_msg)
                 abort_msg += err_msg
 
@@ -1641,7 +1652,8 @@ class ReplicaExchange(object):
         self._reporter.write_sampler_states(self._sampler_states, self._iteration)
         self._reporter.write_replica_thermodynamic_states(self._replica_thermodynamic_states, self._iteration)
         self._reporter.write_mcmc_moves(self._mcmc_moves)  # MCMCMoves can store internal statistics.
-        self._reporter.write_energies(self._u_kl, self._iteration)
+        self._reporter.write_energies(self._energy_thermodynamic_states, self._energy_unsampled_states,
+                                      self._iteration)
         self._reporter.write_mixing_statistics(self._n_accepted_matrix, self._n_proposed_matrix, self._iteration)
         self._reporter.write_timestamp(self._iteration)
         self._reporter.sync()
@@ -1689,15 +1701,15 @@ class ReplicaExchange(object):
         # Distribute propagation across nodes. Only node 0 will get all positions
         # and box vectors. The other nodes, only need the positions that they use
         # for propagation and computation of the energy matrix entries.
-        propagated_states, replicas_ids = mpi.distribute(self._propagate_replica, range(self.n_replicas),
-                                                         send_results_to=0)
+        propagated_states, replica_ids = mpi.distribute(self._propagate_replica, range(self.n_replicas),
+                                                        send_results_to=0)
 
         # Update all sampler states. For non-0 nodes, this will update only the
         # sampler states associated to the replicas propagated by this node.
-        for replicas_id, propagated_state in zip(replicas_ids, propagated_states):
+        for replica_id, propagated_state in zip(replica_ids, propagated_states):
             propagated_positions, propagated_box_vectors = propagated_state  # Unpack.
-            self._sampler_states[replicas_id].positions = propagated_positions
-            self._sampler_states[replicas_id].box_vectors = propagated_box_vectors
+            self._sampler_states[replica_id].positions = propagated_positions
+            self._sampler_states[replica_id].box_vectors = propagated_box_vectors
 
     def _propagate_replica(self, replica_id):
         # Retrieve thermodynamic, sampler states, and MCMC move of this replica.
@@ -1750,34 +1762,39 @@ class ReplicaExchange(object):
 
         # Distribute energy computation across nodes. Only node 0 receives
         # all the energies since it needs to store them and mix states.
-        new_u_kl, replica_ids = mpi.distribute(self._compute_replica_energies, range(self.n_replicas),
-                                               send_results_to=0)
+        new_energies, replica_ids = mpi.distribute(self._compute_replica_energies, range(self.n_replicas),
+                                                   send_results_to=0)
 
-        # Update u_kl matrix. Non-0 nodes update only the energies
-        # computed by this replica.
-        for replica_id in replica_ids:
-            self._u_kl[replica_id] = new_u_kl[replica_id]
+        # Update energy matrices. Non-0 nodes update only the energies computed by this replica.
+        for energies, replica_id in zip(new_energies, replica_ids):
+            energy_thermodynamic_states, energy_unsampled_states = energies  # Unpack.
+            self._energy_thermodynamic_states[replica_id] = energy_thermodynamic_states
+            self._energy_unsampled_states[replica_id] = energy_unsampled_states
 
     def _compute_replica_energies(self, replica_id):
         """Compute the energy for the replica in every ThermodynamicState."""
         # Initialize replica energies for each thermodynamic state.
-        replica_energies = np.zeros(self.n_replicas)
+        energy_thermodynamic_states = np.zeros(self.n_replicas)
+        energy_unsampled_states = np.zeros(len(self._unsampled_states))
 
-        # Retrieve sampler states associated to this replica.
+        # Retrieve sampler state associated to this replica.
         sampler_state = self._sampler_states[replica_id]
 
-        for i, thermodynamic_state in enumerate(self._thermodynamic_states):
-            # Get the context, any Integrator works.
-            context, integrator = mmtools.cache.global_context_cache.get_context(thermodynamic_state)
+        # Compute energy for all thermodynamic states.
+        for energies, states in [(energy_thermodynamic_states, self._thermodynamic_states),
+                                 (energy_unsampled_states, self._unsampled_states)]:
+            for i, state in enumerate(states):
+                # Get the context, any Integrator works.
+                context, integrator = mmtools.cache.global_context_cache.get_context(state)
 
-            # Update positions and box vectors.
-            sampler_state.apply_to_context(context)
+                # Update positions and box vectors.
+                sampler_state.apply_to_context(context)
 
-            # Compute energy.
-            replica_energies[i] = thermodynamic_state.reduced_potential(context)
+                # Compute energy.
+                energies[i] = state.reduced_potential(context)
 
         # Return the new energies.
-        return replica_energies
+        return energy_thermodynamic_states, energy_unsampled_states
 
     # -------------------------------------------------------------------------
     # Internal-usage: Replicas mixing.
@@ -1829,7 +1846,7 @@ class ReplicaExchange(object):
         from .mixing._mix_replicas import _mix_replicas_cython
 
         replica_states = md.utils.ensure_type(self._replica_thermodynamic_states, np.int64, 1, "Replica States")
-        u_kl = md.utils.ensure_type(self._u_kl, np.float64, 2, "Reduced Potentials")
+        u_kl = md.utils.ensure_type(self._energy_thermodynamic_states, np.float64, 2, "Reduced Potentials")
         n_proposed_matrix = md.utils.ensure_type(self._n_proposed_matrix, np.int64, 2, "Nij Proposed Swaps")
         n_accepted_matrix = md.utils.ensure_type(self._n_accepted_matrix, np.int64, 2, "Nij Accepted Swaps")
         _mix_replicas_cython(self.n_replicas**4, self.n_replicas, replica_states,
@@ -1882,8 +1899,11 @@ class ReplicaExchange(object):
         thermodynamic_state_j = self._replica_thermodynamic_states[replica_j]
 
         # Compute log probability of swap.
-        log_p_accept = - (self._u_kl[replica_i, thermodynamic_state_j] + self._u_kl[replica_j, thermodynamic_state_i]) + \
-            self._u_kl[replica_i, thermodynamic_state_i] + self._u_kl[replica_j, thermodynamic_state_j]
+        energy_ij = self._energy_thermodynamic_states[replica_i, thermodynamic_state_j]
+        energy_ji = self._energy_thermodynamic_states[replica_j, thermodynamic_state_i]
+        energy_ii = self._energy_thermodynamic_states[replica_i, thermodynamic_state_i]
+        energy_jj = self._energy_thermodynamic_states[replica_j, thermodynamic_state_j]
+        log_p_accept = - (energy_ij + energy_ji) + energy_ii + energy_jj
 
         # Record that this move has been proposed.
         self._n_proposed_matrix[thermodynamic_state_i, thermodynamic_state_j] += 1
@@ -2172,7 +2192,7 @@ class ReplicaExchange(object):
         for replica_index in range(self.n_replicas):
             str_row = "replica %-16d %16d" % (replica_index, self._replica_thermodynamic_states[replica_index])
             for state_index in range(self.n_replicas):
-                u = self._u_kl[replica_index, state_index]
+                u = self._energy_thermodynamic_states[replica_index, state_index]
                 if u > 1e6:
                     str_row += "%10.3e" % u
                 else:
