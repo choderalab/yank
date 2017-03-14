@@ -25,15 +25,30 @@ from openmmtools import testsystems
 
 from yank.repex import *
 
-# =============================================================================================
+# ==============================================================================
 # MODULE CONSTANTS
-# =============================================================================================
+# ==============================================================================
 
 kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA # Boltzmann constant
 
-# =============================================================================================
+
+# ==============================================================================
 # SUBROUTINES
-# =============================================================================================
+# ==============================================================================
+
+def check_thermodynamic_states_equality(original_states, restored_states):
+    """Check that the thermodynamic states are equivalent."""
+    assert len(original_states) == len(restored_states), '{}, {}'.format(
+        len(original_states), len(restored_states))
+
+    for original_state, restored_state in zip(original_states, restored_states):
+        assert original_state.system.__getstate__() == restored_state.system.__getstate__()
+        assert original_state.temperature == restored_state.temperature
+        assert original_state.pressure == restored_state.pressure
+
+        if isinstance(original_state, mmtools.states.CompoundThermodynamicState):
+            assert original_state.lambda_sterics == restored_state.lambda_sterics
+            assert original_state.lambda_electrostatics == restored_state.lambda_electrostatics
 
 
 def computeHarmonicOscillatorExpectations(K, mass, temperature):
@@ -491,21 +506,6 @@ class TestReporter(object):
             assert os.path.isfile(storage_file_path)
             yield reporter
 
-    @staticmethod
-    def check_thermodynamic_states(original_states, restored_states):
-        """Check that the thermodynamic states are equivalent."""
-        assert len(original_states) == len(restored_states), '{}, {}'.format(
-            len(original_states), len(restored_states))
-
-        for original_state, restored_state in zip(original_states, restored_states):
-            assert original_state.system.__getstate__() == restored_state.system.__getstate__()
-            assert original_state.temperature == restored_state.temperature
-            assert original_state.pressure == restored_state.pressure
-
-            if isinstance(original_state, mmtools.states.CompoundThermodynamicState):
-                assert original_state.lambda_sterics == restored_state.lambda_sterics
-                assert original_state.lambda_electrostatics == restored_state.lambda_electrostatics
-
     def test_store_thermodynamic_states(self):
         """Check correct storage of thermodynamic states."""
         # Thermodynamic states.
@@ -566,8 +566,8 @@ class TestReporter(object):
                 # Check that after writing and reading, states are identical.
                 writer(reporter, states, unsampled)
                 restored_states, restored_unsampled = reporter.read_thermodynamic_states()
-                self.check_thermodynamic_states(states, restored_states)
-                self.check_thermodynamic_states(unsampled, restored_unsampled)
+                check_thermodynamic_states_equality(states, restored_states)
+                check_thermodynamic_states_equality(unsampled, restored_unsampled)
 
                 # TODO Check unsampled states are correctly restored and serialized only if needed.
                 # The latest writer only stores one full serialization per compatible state.
@@ -716,7 +716,9 @@ class TestReplicaExchange(object):
         temperatures = [(300 + 10*i) * unit.kelvin for i in range(n_states)]
         alanine_thermodynamic_states = [mmtools.states.ThermodynamicState(alanine_test.system, temperatures[i])
                                         for i in range(n_states)]
-        cls.alanine_test = (alanine_thermodynamic_states, alanine_sampler_states)
+
+        # No unsampled states for this test.
+        cls.alanine_test = (alanine_thermodynamic_states, alanine_sampler_states, [])
 
         # Test case with host guest in implicit at 3 different positions and alchemical parameters.
         # -----------------------------------------------------------------------------------------
@@ -747,7 +749,12 @@ class TestReplicaExchange(object):
                 mmtools.states.CompoundThermodynamicState(thermodynamic_state=hostguest_thermodynamic_states[i],
                                                           composable_states=[alchemical_states[i]])
             )
-        cls.hostguest_test = (hostguest_compound_states, hostguest_sampler_states)
+
+        # Unsampled states.
+        nonalchemical_state = mmtools.states.ThermodynamicState(hostguest_test.system, temperatures[0])
+        hostguest_unsampled_states = [copy.deepcopy(nonalchemical_state)]
+
+        cls.hostguest_test = (hostguest_compound_states, hostguest_sampler_states, hostguest_unsampled_states)
 
     def test_repex_create(self):
         """Test creation of a new ReplicaExchange simulation.
@@ -757,7 +764,7 @@ class TestReplicaExchange(object):
         open Reporter for writing.
 
         """
-        thermodynamic_states, sampler_states = copy.deepcopy(self.alanine_test)
+        thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(self.alanine_test)
         n_states = len(thermodynamic_states)
 
         # Remove one sampler state to verify distribution over states.
@@ -766,7 +773,8 @@ class TestReplicaExchange(object):
         with moltools.utils.temporary_directory() as tmp_dir_path:
             repex = ReplicaExchange()
             storage_path = os.path.join(tmp_dir_path, 'test_storage.nc')
-            repex.create(thermodynamic_states, sampler_states, storage=storage_path)
+            repex.create(thermodynamic_states, sampler_states, storage=storage_path,
+                         unsampled_thermodynamic_states=unsampled_states)
 
             # Check that reporter has reporter only if rank 0.
             mpicomm = mpi.get_mpicomm()
@@ -815,7 +823,7 @@ class TestReplicaExchange(object):
         iteration.
 
         """
-        thermodynamic_states, sampler_states = copy.deepcopy(self.alanine_test)
+        thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(self.hostguest_test)
 
         with moltools.utils.temporary_directory() as tmp_dir_path:
             storage_path = os.path.join(tmp_dir_path, 'test_storage.nc')
@@ -823,7 +831,8 @@ class TestReplicaExchange(object):
             number_of_iterations = 3
             move = mmtools.mcmc.LangevinDynamicsMove(n_steps=1)
             repex = ReplicaExchange(mcmc_moves=move, number_of_iterations=number_of_iterations)
-            repex.create(thermodynamic_states, sampler_states, storage=storage_path)
+            repex.create(thermodynamic_states, sampler_states, storage=storage_path,
+                         unsampled_thermodynamic_states=unsampled_states)
 
             # Test at the beginning and after few iterations.
             for _ in range(2):
@@ -840,8 +849,12 @@ class TestReplicaExchange(object):
                 # Check thermodynamic states.
                 original_ts = original_dict.pop('_thermodynamic_states')
                 restored_ts = restored_dict.pop('_thermodynamic_states')
-                for original, restored in zip(original_ts, restored_ts):
-                    assert original.system.__getstate__() == restored.system.__getstate__()
+                check_thermodynamic_states_equality(original_ts, restored_ts)
+
+                # Check unsampled thermodynamic states.
+                original_us = original_dict.pop('_unsampled_states')
+                restored_us = restored_dict.pop('_unsampled_states')
+                check_thermodynamic_states_equality(original_us, restored_us)
 
                 # Check sampler states.
                 original_ss = original_dict.pop('_sampler_states')
@@ -881,12 +894,13 @@ class TestReplicaExchange(object):
 
     def test_stored_properties(self):
         """Test that storage is kept in sync with options."""
-        thermodynamic_states, sampler_states = copy.deepcopy(self.alanine_test)
+        thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(self.alanine_test)
 
         with moltools.utils.temporary_directory() as tmp_dir_path:
             storage_path = os.path.join(tmp_dir_path, 'test_storage.nc')
             repex = ReplicaExchange()
-            repex.create(thermodynamic_states, sampler_states, storage=storage_path)
+            repex.create(thermodynamic_states, sampler_states, storage=storage_path,
+                         unsampled_thermodynamic_states=unsampled_states)
 
             # Get original options.
             reporter = Reporter(storage_path, open_mode='r')
@@ -909,7 +923,7 @@ class TestReplicaExchange(object):
         the new positions and box vectors.
 
         """
-        thermodynamic_states, sampler_states = copy.deepcopy(self.alanine_test)
+        thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(self.alanine_test)
         n_states = len(thermodynamic_states)
 
         with moltools.utils.temporary_directory() as tmp_dir_path:
@@ -926,7 +940,8 @@ class TestReplicaExchange(object):
             # per iteration so that positions won't change much.
             move = mmtools.mcmc.IntegratorMove(openmm.VerletIntegrator(1.0*unit.femtosecond), n_steps=1)
             repex = ReplicaExchange(mcmc_moves=move)
-            repex.create(thermodynamic_states, sampler_states, storage=storage_path)
+            repex.create(thermodynamic_states, sampler_states, storage=storage_path,
+                         unsampled_thermodynamic_states=unsampled_states)
 
             # Propagate.
             repex._propagate_replicas()
@@ -948,13 +963,14 @@ class TestReplicaExchange(object):
         decreased.
 
         """
-        thermodynamic_states, sampler_states = copy.deepcopy(self.alanine_test)
+        thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(self.alanine_test)
         n_states = len(thermodynamic_states)
 
         with moltools.utils.temporary_directory() as tmp_dir_path:
             storage_path = os.path.join(tmp_dir_path, 'test_storage.nc')
             repex = ReplicaExchange()
-            repex.create(thermodynamic_states, sampler_states, storage=storage_path)
+            repex.create(thermodynamic_states, sampler_states, storage=storage_path,
+                         unsampled_thermodynamic_states=unsampled_states)
 
             # For this test to work, positions should be the same but
             # translated, so that minimized positions should satisfy
@@ -998,14 +1014,15 @@ class TestReplicaExchange(object):
         updated positions.
 
         """
-        thermodynamic_states, sampler_states = copy.deepcopy(self.alanine_test)
+        thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(self.alanine_test)
 
         with moltools.utils.temporary_directory() as tmp_dir_path:
             storage_path = os.path.join(tmp_dir_path, 'test_storage.nc')
 
             # We create a ReplicaExchange with a GHMC move but use Langevin for equilibration.
             repex = ReplicaExchange(mcmc_moves=mmtools.mcmc.GHMCMove())
-            repex.create(thermodynamic_states, sampler_states, storage=storage_path)
+            repex.create(thermodynamic_states, sampler_states, storage=storage_path,
+                         unsampled_thermodynamic_states=unsampled_states)
 
             # Minimize.
             equilibration_move = mmtools.mcmc.LangevinDynamicsMove(n_steps=1)
@@ -1026,14 +1043,15 @@ class TestReplicaExchange(object):
         test_cases = [self.alanine_test, self.hostguest_test]
 
         for test_case in test_cases:
-            thermodynamic_states, sampler_states = copy.deepcopy(test_case)
+            thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(test_case)
 
             with moltools.utils.temporary_directory() as tmp_dir_path:
                 storage_path = os.path.join(tmp_dir_path, 'test_storage.nc')
                 repex = ReplicaExchange(mcmc_moves=mmtools.mcmc.GHMCMove(n_steps=1),
                                         show_energies=True, show_mixing_statistics=True,
                                         number_of_iterations=2)
-                repex.create(thermodynamic_states, sampler_states, storage=storage_path)
+                repex.create(thermodynamic_states, sampler_states, storage=storage_path,
+                             unsampled_thermodynamic_states=unsampled_states)
 
                 # ReplicaExchange.run doesn't go past number_of_iterations.
                 repex.run(n_iterations=3)

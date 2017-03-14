@@ -1114,6 +1114,7 @@ class ReplicaExchange(object):
         # These will be set on initialization. See function
         # create() for explanation of single variables.
         self._thermodynamic_states = None
+        self._unsampled_states = None
         self._sampler_states = None
         self._replica_thermodynamic_states = None
         self._iteration = None
@@ -1163,7 +1164,7 @@ class ReplicaExchange(object):
 
         # Retrieve other attributes.
         logger.debug("Reading storage file {}...".format(storage))
-        thermodynamic_states = reporter.read_thermodynamic_states()
+        thermodynamic_states, unsampled_states = reporter.read_thermodynamic_states()
         sampler_states = reporter.read_sampler_states(iteration=iteration)
         state_indices = reporter.read_replica_thermodynamic_states(iteration=iteration)
         energies = reporter.read_energies(iteration=iteration)
@@ -1175,6 +1176,7 @@ class ReplicaExchange(object):
         # Assign attributes.
         repex._iteration = iteration
         repex._thermodynamic_states = thermodynamic_states
+        repex._unsampled_states = unsampled_states
         repex._sampler_states = sampler_states
         repex._replica_thermodynamic_states = state_indices
         repex._u_kl = energies
@@ -1254,7 +1256,8 @@ class ReplicaExchange(object):
     # Main public interface.
     # -------------------------------------------------------------------------
 
-    def create(self, thermodynamic_states, sampler_states, storage, metadata=None):
+    def create(self, thermodynamic_states, sampler_states, storage,
+               unsampled_thermodynamic_states=None, metadata=None):
         """
         Create new replica-exchange simulation.
 
@@ -1304,6 +1307,12 @@ class ReplicaExchange(object):
 
         # Save thermodynamic states. This sets n_replicas.
         self._thermodynamic_states = copy.deepcopy(thermodynamic_states)
+
+        # Handle default unsampled thermodynamic states.
+        if unsampled_thermodynamic_states is None:
+            self._unsampled_states = []
+        else:
+            self._unsampled_states = copy.deepcopy(unsampled_thermodynamic_states)
 
         # Distribute sampler states to replicas in a round-robin fashion.
         self._sampler_states = [copy.deepcopy(sampler_states[i % len(sampler_states)])
@@ -1569,7 +1578,8 @@ class ReplicaExchange(object):
 
         """
         self._reporter.open(mode='w')
-        self._reporter.write_thermodynamic_states(self._thermodynamic_states)
+        self._reporter.write_thermodynamic_states(self._thermodynamic_states,
+                                                  self._unsampled_states)
 
         # Store run metadata and ReplicaExchange options.
         self._store_options()
