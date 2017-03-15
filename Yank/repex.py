@@ -430,7 +430,8 @@ class Reporter(object):
             # With 0.1, only LangevinIntegration was possible.
             move = mmtools.mcmc.LangevinDynamicsMove(timestep=2.0*unit.femtosecond,
                                                      collision_rate=5.0/unit.picosecond,
-                                                     n_steps=500, reassign_velocities=True)
+                                                     n_steps=500, reassign_velocities=True,
+                                                     n_restart_attempts=6)
             return [copy.deepcopy(move) for _ in range(self._storage.dimensions['replica'].size)]
 
         # Get group storing MCMCMoves.
@@ -1143,7 +1144,8 @@ class ReplicaExchange(object):
             # This will be converted to a list in create().
             self._mcmc_moves = mmtools.mcmc.LangevinDynamicsMove(timestep=2.0*unit.femtosecond,
                                                                  collision_rate=5.0/unit.picosecond,
-                                                                 n_steps=500, reassign_velocities=True)
+                                                                 n_steps=500, reassign_velocities=True,
+                                                                 n_restart_attempts=6)
         else:
             self._mcmc_moves = copy.deepcopy(mcmc_moves)
 
@@ -1435,7 +1437,8 @@ class ReplicaExchange(object):
         if mcmc_moves is None:
             mcmc_moves = mmtools.mcmc.LangevinDynamicsMove(timestep=1.0*unit.femtosecond,
                                                            collision_rate=5.0/unit.picosecond,
-                                                           n_steps=500, reassign_velocities=True)
+                                                           n_steps=500, reassign_velocities=True,
+                                                           n_restart_attempts=6)
 
         # Make sure there is one MCMCMove per thermodynamic state.
         if isinstance(mcmc_moves, mmtools.mcmc.MCMCMove):
@@ -1476,7 +1479,7 @@ class ReplicaExchange(object):
             self._compute_energies()
             mpi.run_single_node(0, self._reporter.write_energies, self._energy_thermodynamic_states,
                                 self._energy_unsampled_states, self._iteration)
-            self._run_sanity_checks()
+            self._check_nan_energy()
 
         timer = mmtools.utils.Timer()
         timer.start('Run ReplicaExchange')
@@ -1532,7 +1535,7 @@ class ReplicaExchange(object):
                     str(datetime.timedelta(seconds=estimated_total_time))))
 
             # Perform sanity checks to see if we should terminate here.
-            self._run_sanity_checks()
+            self._check_nan_energy()
 
     def extend(self, n_iterations):
         if self._iteration + n_iterations > self._number_of_iterations:
@@ -1583,31 +1586,30 @@ class ReplicaExchange(object):
     # Internal-usage.
     # -------------------------------------------------------------------------
 
-    def _run_sanity_checks(self):
-        """
-        Run some checks on current state information to see if something has gone wrong that precludes continuation.
+    def _check_nan_energy(self):
+        """Checks that energies are finite and abort otherwise."""
+        # Check thermodynamic state energies.
+        if np.any(np.isnan(self._energy_thermodynamic_states)) or np.any(np.isnan(self._energy_unsampled_states)):
+            # Find faulty replicas to create error message.
+            faulty_replicas = set()
 
-        """
-        abort_msg = ''
+            # Check sampled thermodynamic states first.
+            state_type = 'thermodynamic state'
+            for replica_id in range(self.n_replicas):
+                if np.any(np.isnan(self._energy_thermodynamic_states[replica_id])):
+                    faulty_replicas.add(replica_id)
 
-        # Check positions.
-        for replica_id in range(self.n_replicas):
-            positions = self._sampler_states[replica_id].positions
-            x = positions / unit.nanometers
-            if np.any(np.isnan(x)):
-                err_msg = "nan encountered in replica {} positions. ".format(replica_id)
-                logger.error(err_msg)
-                abort_msg += err_msg
+            # If there are no NaNs in energies, the problem is in the unsampled states.
+            if len(faulty_replicas) == 0:
+                state_type = 'unsampled thermodynamic state'
+                for replica_id in range(self.n_replicas):
+                    if np.any(np.isnan(self._unsampled_states[replica_id])):
+                        faulty_replicas.add(replica_id)
 
-        # Check energies.
-        for replica_id in range(self.n_replicas):
-            if np.any(np.isnan(self._energy_thermodynamic_states[replica_id, :])):
-                err_msg = "nan encountered in thermodynamic state energies for replica {}".format(replica_id)
-                logger.error(err_msg)
-                abort_msg += err_msg
-
-        if abort_msg != '':
-            raise RuntimeError(abort_msg)
+            # Raise exception.
+            err_msg = "NaN encountered in {} energies for replicas {}".format(state_type, faulty_replicas)
+            logger.error(err_msg)
+            raise RuntimeError(err_msg)
 
     # -------------------------------------------------------------------------
     # Internal-usage: Initialization and storage utilities.
@@ -1719,7 +1721,14 @@ class ReplicaExchange(object):
         sampler_state = self._sampler_states[replica_id]
 
         # Apply MCMC move.
-        mcmc_move.apply(thermodynamic_state, sampler_state)
+        try:
+            mcmc_move.apply(thermodynamic_state, sampler_state)
+        except mmtools.mcmc.IntegratorMoveError as e:
+            # Save NaNnig context and MCMove before aborting.
+            prefix = 'nan-error-logs/iteration{}-replica{}-state{}'.format(
+                self._iteration, replica_id, thermodynamic_state_id)
+            e.serialize_error(prefix)
+            raise
 
         # Return new positions and box vectors.
         return sampler_state.positions, sampler_state.box_vectors
