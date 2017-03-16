@@ -1,18 +1,15 @@
 import os
 import re
-import sys
 import copy
 import glob
 import json
 import shutil
-import signal
 import pandas
 import inspect
 import logging
 import itertools
 import subprocess
 import collections
-from contextlib import contextmanager
 
 from pkg_resources import resource_filename
 
@@ -21,9 +18,9 @@ import parmed
 import numpy as np
 from simtk import unit
 from schema import Optional, Use
-from simtk.openmm import XmlSerializer
 
-from openmoltools.utils import wraps_py2, unwrap_py2  # Shortcuts for other modules
+from openmoltools.utils import unwrap_py2  # Shortcuts for other modules
+
 
 #========================================================================================
 # Logging functions
@@ -143,116 +140,6 @@ def config_root_logger(verbose, log_file_path=None, mpicomm=None):
         logging.root.setLevel(logging.DEBUG)
     else:
         logging.root.setLevel(terminal_handler.level)
-
-
-# =======================================================================================
-# MPI utility functions
-# =======================================================================================
-
-def get_mpicomm():
-    """Retrieve the MPI communicator for this execution.
-
-    The function automatically detects if the program runs on MPI by checking
-    specific environment variables set by various MPI implementations. On
-    first execution, it modifies sys.excepthook and register a handler for
-    SIGINT, SIGTERM, SIGABRT to call Abort() to correctly terminate all
-    processes.
-
-    Returns
-    -------
-    mpicomm : mpi4py communicator or None
-        The communicator for this node, None if the program doesn't run
-        with MPI.
-
-    """
-    # If MPI execution is forcefully disabled, return None.
-    if get_mpicomm.disable_mpi:
-        return None
-
-    # If we have already initialized MPI, return the cached MPI communicator.
-    if get_mpicomm.is_initialized:
-        return get_mpicomm._mpicomm
-
-    # Check for environment variables set by mpirun. Variables are from
-    # http://docs.roguewave.com/threadspotter/2012.1/linux/manual_html/apas03.html
-    variables = ['PMI_RANK', 'OMPI_COMM_WORLD_RANK', 'OMPI_MCA_ns_nds_vpid',
-                 'PMI_ID', 'SLURM_PROCID', 'LAMRANK', 'MPI_RANKID',
-                 'MP_CHILD', 'MP_RANK', 'MPIRUN_RANK']
-    use_mpi = False
-    for var in variables:
-        if var in os.environ:
-            use_mpi = True
-            break
-
-    # Return None if we are not running on MPI.
-    if not use_mpi:
-        get_mpicomm._mpicomm = None
-        return get_mpicomm._mpicomm
-
-    # Initialize MPI
-    from mpi4py import MPI
-    MPI.COMM_WORLD.barrier()
-    mpicomm = MPI.COMM_WORLD
-
-    # Override sys.excepthook to abort MPI on exception
-    def mpi_excepthook(type, value, traceback):
-        sys.__excepthook__(type, value, traceback)
-        sys.stdout.flush()
-        sys.stderr.flush()
-        if mpicomm.size > 1:
-            mpicomm.Abort(1)
-    # Use our eception handler
-    sys.excepthook = mpi_excepthook
-
-    # Catch sigterm signals
-    def handle_signal(signal, frame):
-        if mpicomm.size > 1:
-            mpicomm.Abort(1)
-    for sig in [signal.SIGINT, signal.SIGTERM, signal.SIGABRT]:
-        signal.signal(sig, handle_signal)
-
-    # Cache and return the MPI communicator.
-    get_mpicomm.is_initialized = True
-    get_mpicomm._mpicomm = mpicomm
-    return mpicomm
-
-get_mpicomm.is_initialized = False
-get_mpicomm.disable_mpi = False
-
-
-@contextmanager
-def delay_termination():
-    """Context manager to delay handling of termination signals."""
-    signals_to_catch = [signal.SIGINT, signal.SIGTERM, signal.SIGABRT]
-    old_handlers = {signum: signal.getsignal(signum) for signum in signals_to_catch}
-    signals_received = {signum: None for signum in signals_to_catch}
-
-    def delay_handler(signum, frame):
-        signals_received[signum] = (signum, frame)
-
-    # Set handlers fot delay
-    for signum in signals_to_catch:
-        signal.signal(signum, delay_handler)
-
-    yield  # Resume program
-
-    # Restore old handlers
-    for signum, handler in listitems(old_handlers):
-        signal.signal(signum, handler)
-
-    # Fire delayed signals
-    for signum, s in listitems(signals_received):
-        if s is not None:
-            old_handlers[signum](*s)
-
-
-def delayed_termination(func):
-    """Decorator to delay handling of termination signals during function execution."""
-    @wraps_py2(func)
-    def _delayed_termination(*args, **kwargs):
-        with delay_termination():
-            return func(*args, **kwargs)
-    return _delayed_termination
 
 
 # =======================================================================================
@@ -658,22 +545,6 @@ class CombinatorialTree(collections.MutableMapping):
 # Miscellaneous functions
 # ========================================================================================
 
-def serialize_openmm_object_to_file(filename, openmm_object):
-    """Serialize an OpenMM System, State, or Integrator to specified file.
-    
-    Parameters
-    ----------
-    filename : str
-        The file to write to
-    openmm_object : System, State, or Integrator
-        The OpenMM object to serialize
-    """
-    serialized_object = XmlSerializer.serialize(openmm_object)
-    outfile = open(filename, 'w')
-    outfile.write(serialized_object)
-    outfile.close()
-
-
 def get_data_filename(relative_path):
     """Get the full path to one of the reference files shipped for testing
 
@@ -822,7 +693,9 @@ def typename(atype):
     modulename = atype.__module__
     typename = atype.__name__
 
-    if modulename != '__builtin__':
+    # TODO remove __builtin__ when we drop Python 2 support.
+    # TODO use openmmtools.utils.typename when it'll get merged.
+    if modulename != '__builtin__' and modulename != 'builtins':
         typename = modulename + '.' + typename
 
     return typename
