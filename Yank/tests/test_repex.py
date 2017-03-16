@@ -51,24 +51,24 @@ def check_thermodynamic_states_equality(original_states, restored_states):
             assert original_state.lambda_electrostatics == restored_state.lambda_electrostatics
 
 
-def computeHarmonicOscillatorExpectations(K, mass, temperature):
-    """
-    Compute mean and variance of potential and kinetic energies for a 3D harmonic oscillator.
+def compute_harmonic_oscillator_expectations(K, temperature):
+    """Compute mean and variance of potential and kinetic energies for a 3D harmonic oscillator.
 
-    NOTES
-
+    Notes
+    -----
     Numerical quadrature is used to compute the mean and standard deviation of the potential energy.
     Mean and standard deviation of the kinetic energy, as well as the absolute free energy, is computed analytically.
 
-    ARGUMENTS
+    Parameters
+    ----------
+    K : simtk.unit.Quantity
+        Spring constant.
+    temperature : simtk.unit.Quantity
+        Temperature.
 
-    K (simtk.unit.Quantity) - spring constant
-    mass (simtk.unit.Quantity) - mass of particle
-    temperature (simtk.unit.Quantity) - temperature
-
-    RETURNS
-
-    values (dict)
+    Returns
+    -------
+    values : dict
 
     TODO
 
@@ -114,45 +114,38 @@ def computeHarmonicOscillatorExpectations(K, mass, temperature):
     return values
 
 
-def test_replica_exchange(mpicomm=None, verbose=True, verbose_simulation=False):
-    """
-    Test that free energies and average potential energies of a 3D harmonic oscillator are correctly computed by parallel tempering.
+# ==============================================================================
+# TEST ANALYSIS REPLICA EXCHANGE
+# ==============================================================================
 
-    TODO
-
-    * Test ParallelTempering and HamiltonianExchange subclasses as well.
-    * Test with different combinations of input parameters.
-
-    """
-
-    if verbose and ((not mpicomm) or (mpicomm.rank==0)): sys.stdout.write("Testing replica exchange facility with harmonic oscillators: ")
-
+def test_replica_exchange(verbose=False, verbose_simulation=False):
+    """Free energies and average potential energies of a 3D harmonic oscillator are correctly computed."""
     # Define mass of carbon atom.
     mass = 12.0 * unit.amu
 
-    # Define thermodynamic states.
-    states = list() # thermodynamic states
-    Ks = [500.00, 400.0, 300.0] * unit.kilocalories_per_mole / unit.angstroms**2 # spring constants
-    temperatures = [300.0, 350.0, 400.0] * unit.kelvin # temperatures
-    seed_positions = list()
+    sampler_states = list()
+    thermodynamic_states = list()
     analytical_results = list()
-    f_i_analytical = list() # dimensionless free energies
-    u_i_analytical = list() # reduced potential
+    f_i_analytical = list()  # Dimensionless free energies.
+    u_i_analytical = list()  # Reduced potentials.
+
+    # Define thermodynamic states.
+    Ks = [500.00, 400.0, 300.0] * unit.kilocalories_per_mole / unit.angstroms**2  # Spring constants.
+    temperatures = [300.0, 350.0, 400.0] * unit.kelvin  # Temperatures.
     for (K, temperature) in zip(Ks, temperatures):
         # Create harmonic oscillator system.
         testsystem = testsystems.HarmonicOscillator(K=K, mass=mass, mm=openmm)
-        [system, positions] = [testsystem.system, testsystem.positions]
-        # Create thermodynamic state.
-        state = ThermodynamicState(system=system, temperature=temperature)
-        # Append thermodynamic state and positions.
-        states.append(state)
-        seed_positions.append(positions)
+
+        # Create thermodynamic state and save positions.
+        system, positions = [testsystem.system, testsystem.positions]
+        sampler_states.append(mmtools.states.SamplerState(positions))
+        thermodynamic_states.append(mmtools.states.ThermodynamicState(system=system, temperature=temperature))
+
         # Store analytical results.
-        results = computeHarmonicOscillatorExpectations(K, mass, temperature)
+        results = compute_harmonic_oscillator_expectations(K, temperature)
         analytical_results.append(results)
         f_i_analytical.append(results['f'])
-        kT = kB * temperature # thermal energy
-        reduced_potential = results['potential']['mean'] / kT
+        reduced_potential = results['potential']['mean'] / (kB * temperature)
         u_i_analytical.append(reduced_potential)
 
     # Compute analytical Delta_f_ij
@@ -169,245 +162,89 @@ def test_replica_exchange(mpicomm=None, verbose=True, verbose_simulation=False):
             Delta_u_ij_analytical[i, j] = u_i_analytical[j] - u_i_analytical[i]
             Delta_s_ij_analytical[i, j] = s_i_analytical[j] - s_i_analytical[i]
 
-    # Define file for temporary storage.
-    import tempfile # use a temporary file
-    file = tempfile.NamedTemporaryFile(delete=False)
-    store_filename = file.name
-    # print("node %d : Storing data in temporary file: %s" % (mpicomm.rank, str(store_filename))) # DEBUG
-
     # Create and configure simulation object.
-    simulation = ReplicaExchange(store_filename, mpicomm=mpicomm)
-    simulation.create(states, seed_positions)
-    simulation.platform = openmm.Platform.getPlatformByName('Reference')
-    simulation.minimize = False
-    simulation.number_of_iterations = 200
-    simulation.nsteps_per_iteration = 500
-    simulation.timestep = 2.0 * unit.femtoseconds
-    simulation.collision_rate = 20.0 / unit.picosecond
-    simulation.verbose = verbose_simulation
-    simulation.show_mixing_statistics = False
-    simulation.online_analysis = True
+    move = mmtools.mcmc.LangevinDynamicsMove(timestep=2.0*unit.femtoseconds,
+                                             collision_rate=20.0/unit.picosecond,
+                                             n_steps=500, reassign_velocities=True)
+    simulation = ReplicaExchange(mcmc_moves=move, number_of_iterations=200,
+                                 show_mixing_statistics=False, online_analysis=True)
 
-    # Run simulation.
-    utils.config_root_logger(False)
-    simulation.run()  # run the simulation
+    # Define file for temporary storage.
+    with mmtools.utils.temporary_directory() as tmp_dir:
+        storage_path = os.path.join(tmp_dir, 'test_storage.nc')
+        simulation.create(thermodynamic_states, sampler_states, storage_path)
 
-    # Run an extension simulation
-    simulation.extend_simulation = True
-    simulation.number_of_iterations = 1
-    simulation.run()
-    utils.config_root_logger(True)
+        # Run simulation we keep the debug info off during the simulation
+        # to not clog the output, and reactivate it for analysis.
+        utils.config_root_logger(verbose_simulation)
+        simulation.run()
 
-    # Stop here if not root node.
-    if mpicomm and (mpicomm.rank != 0): return
+        # Retrieve extant analysis object.
+        online_analysis = simulation.analysis
 
-    # Retrieve extant analysis object.
-    online_analysis = simulation.analysis
+        # Analyze simulation to compute free energies.
+        analysis = simulation.analyze()
 
-    # Analyze simulation to compute free energies.
-    analysis = simulation.analyze()
+        # Check if online analysis is close to final analysis.
+        error = numpy.abs(online_analysis['Delta_f_ij'] - analysis['Delta_f_ij'])
+        derror = (online_analysis['dDelta_f_ij']**2 + analysis['dDelta_f_ij']**2)
+        indices = numpy.where(derror > 0.0)
+        nsigma = numpy.zeros([nstates,nstates], numpy.float32)
+        nsigma[indices] = error[indices] / derror[indices]
+        MAX_SIGMA = 6.0 # maximum allowed number of standard errors
+        if numpy.any(nsigma > MAX_SIGMA):
+            print("Delta_f_ij from online analysis")
+            print(online_analysis['Delta_f_ij'])
+            print("Delta_f_ij from final analysis")
+            print(analysis['Delta_f_ij'])
+            print("error")
+            print(error)
+            print("derror")
+            print(derror)
+            print("nsigma")
+            print(nsigma)
+            raise Exception("Dimensionless free energy differences between online and final analysis exceeds MAX_SIGMA of %.1f" % MAX_SIGMA)
 
-    # Check if online analysis is close to final analysis.
-    error = numpy.abs(online_analysis['Delta_f_ij'] - analysis['Delta_f_ij'])
-    derror = (online_analysis['dDelta_f_ij']**2 + analysis['dDelta_f_ij']**2)
-    indices = numpy.where(derror > 0.0)
-    nsigma = numpy.zeros([nstates,nstates], numpy.float32)
-    nsigma[indices] = error[indices] / derror[indices]
-    MAX_SIGMA = 6.0 # maximum allowed number of standard errors
-    if numpy.any(nsigma > MAX_SIGMA):
-        print("Delta_f_ij from online analysis")
-        print(online_analysis['Delta_f_ij'])
-        print("Delta_f_ij from final analysis")
-        print(analysis['Delta_f_ij'])
-        print("error")
-        print(error)
-        print("derror")
-        print(derror)
-        print("nsigma")
-        print(nsigma)
-        raise Exception("Dimensionless free energy differences between online and final analysis exceeds MAX_SIGMA of %.1f" % MAX_SIGMA)
+        # TODO: Check if deviations exceed tolerance.
+        Delta_f_ij = analysis['Delta_f_ij']
+        dDelta_f_ij = analysis['dDelta_f_ij']
+        error = numpy.abs(Delta_f_ij - Delta_f_ij_analytical)
+        indices = numpy.where(dDelta_f_ij > 0.0)
+        nsigma = numpy.zeros([nstates,nstates], numpy.float32)
+        nsigma[indices] = error[indices] / dDelta_f_ij[indices]
+        MAX_SIGMA = 6.0 # maximum allowed number of standard errors
+        if numpy.any(nsigma > MAX_SIGMA):
+            print("Delta_f_ij")
+            print(Delta_f_ij)
+            print("Delta_f_ij_analytical")
+            print(Delta_f_ij_analytical)
+            print("error")
+            print(error)
+            print("stderr")
+            print(dDelta_f_ij)
+            print("nsigma")
+            print(nsigma)
+            raise Exception("Dimensionless free energy difference exceeds MAX_SIGMA of %.1f" % MAX_SIGMA)
 
-    # TODO: Check if deviations exceed tolerance.
-    Delta_f_ij = analysis['Delta_f_ij']
-    dDelta_f_ij = analysis['dDelta_f_ij']
-    error = numpy.abs(Delta_f_ij - Delta_f_ij_analytical)
-    indices = numpy.where(dDelta_f_ij > 0.0)
-    nsigma = numpy.zeros([nstates,nstates], numpy.float32)
-    nsigma[indices] = error[indices] / dDelta_f_ij[indices]
-    MAX_SIGMA = 6.0 # maximum allowed number of standard errors
-    if numpy.any(nsigma > MAX_SIGMA):
-        print("Delta_f_ij")
-        print(Delta_f_ij)
-        print("Delta_f_ij_analytical")
-        print(Delta_f_ij_analytical)
-        print("error")
-        print(error)
-        print("stderr")
-        print(dDelta_f_ij)
-        print("nsigma")
-        print(nsigma)
-        raise Exception("Dimensionless free energy difference exceeds MAX_SIGMA of %.1f" % MAX_SIGMA)
+        error = analysis['Delta_u_ij'] - Delta_u_ij_analytical
+        nsigma = numpy.zeros([nstates,nstates], numpy.float32)
+        nsigma[indices] = error[indices] / dDelta_f_ij[indices]
+        if numpy.any(nsigma > MAX_SIGMA):
+            print("Delta_u_ij")
+            print(analysis['Delta_u_ij'])
+            print("Delta_u_ij_analytical")
+            print(Delta_u_ij_analytical)
+            print("error")
+            print(error)
+            print("nsigma")
+            print(nsigma)
+            raise Exception("Dimensionless potential energy difference exceeds MAX_SIGMA of %.1f" % MAX_SIGMA)
 
-    error = analysis['Delta_u_ij'] - Delta_u_ij_analytical
-    nsigma = numpy.zeros([nstates,nstates], numpy.float32)
-    nsigma[indices] = error[indices] / dDelta_f_ij[indices]
-    if numpy.any(nsigma > MAX_SIGMA):
-        print("Delta_u_ij")
-        print(analysis['Delta_u_ij'])
-        print("Delta_u_ij_analytical")
-        print(Delta_u_ij_analytical)
-        print("error")
-        print(error)
-        print("nsigma")
-        print(nsigma)
-        raise Exception("Dimensionless potential energy difference exceeds MAX_SIGMA of %.1f" % MAX_SIGMA)
-
-    # Clean up.
-    del simulation
+        # Clean up.
+        del simulation
 
     if verbose:
         print("PASSED.")
-    return
-
-
-def notest_hamiltonian_exchange(mpicomm=None, verbose=True):
-    """
-    Test that free energies and average potential energies of a 3D harmonic oscillator are correctly computed when running HamiltonianExchange.
-
-    TODO
-
-    * Integrate with test_replica_exchange.
-    * Test with different combinations of input parameters.
-
-    """
-
-    if verbose and ((not mpicomm) or (mpicomm.rank==0)): sys.stdout.write("Testing Hamiltonian exchange facility with harmonic oscillators: ")
-
-    # Create test system of harmonic oscillators
-    testsystem = testsystems.HarmonicOscillatorArray()
-    [system, coordinates] = [testsystem.system, testsystem.positions]
-
-    # Define mass of carbon atom.
-    mass = 12.0 * unit.amu
-
-    # Define thermodynamic states.
-    sigmas = [0.2, 0.3, 0.4] * unit.angstroms # standard deviations: beta K = 1/sigma^2 so K = 1/(beta sigma^2)
-    temperature = 300.0 * unit.kelvin # temperatures
-    seed_positions = list()
-    analytical_results = list()
-    f_i_analytical = list() # dimensionless free energies
-    u_i_analytical = list() # reduced potential
-    systems = list() # Systems list for HamiltonianExchange
-    for sigma in sigmas:
-        # Compute corresponding spring constant.
-        kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA
-        kT = kB * temperature # thermal energy
-        beta = 1.0 / kT # inverse temperature
-        K = 1.0 / (beta * sigma**2)
-        # Create harmonic oscillator system.
-        testsystem = testsystems.HarmonicOscillator(K=K, mass=mass, mm=openmm)
-        [system, positions] = [testsystem.system, testsystem.positions]
-        # Append to systems list.
-        systems.append(system)
-        # Append positions.
-        seed_positions.append(positions)
-        # Store analytical results.
-        results = computeHarmonicOscillatorExpectations(K, mass, temperature)
-        analytical_results.append(results)
-        f_i_analytical.append(results['f'])
-        reduced_potential = results['potential']['mean'] / kT
-        u_i_analytical.append(reduced_potential)
-
-    # DEBUG
-    print("")
-    print(seed_positions)
-    print(analytical_results)
-    print(u_i_analytical)
-    print(f_i_analytical)
-    print("")
-
-    # Compute analytical Delta_f_ij
-    nstates = len(f_i_analytical)
-    f_i_analytical = numpy.array(f_i_analytical)
-    u_i_analytical = numpy.array(u_i_analytical)
-    s_i_analytical = u_i_analytical - f_i_analytical
-    Delta_f_ij_analytical = numpy.zeros([nstates,nstates], numpy.float64)
-    Delta_u_ij_analytical = numpy.zeros([nstates,nstates], numpy.float64)
-    Delta_s_ij_analytical = numpy.zeros([nstates,nstates], numpy.float64)
-    for i in range(nstates):
-        for j in range(nstates):
-            Delta_f_ij_analytical[i,j] = f_i_analytical[j] - f_i_analytical[i]
-            Delta_u_ij_analytical[i,j] = u_i_analytical[j] - u_i_analytical[i]
-            Delta_s_ij_analytical[i,j] = s_i_analytical[j] - s_i_analytical[i]
-
-    # Define file for temporary storage.
-    import tempfile # use a temporary file
-    file = tempfile.NamedTemporaryFile(delete=False)
-    store_filename = file.name
-    #print("Storing data in temporary file: %s" % str(store_filename))
-
-    # Create reference thermodynamic state.
-    reference_state = ThermodynamicState(systems[0], temperature=temperature)
-
-    # Create and configure simulation object.
-    simulation = HamiltonianExchange(store_filename, mpicomm=mpicomm)
-    simulation.create(reference_state, systems, seed_positions)
-    simulation.platform = openmm.Platform.getPlatformByName('Reference')
-    simulation.number_of_iterations = 200
-    simulation.timestep = 2.0 * unit.femtoseconds
-    simulation.nsteps_per_iteration = 500
-    simulation.collision_rate = 9.2 / unit.picosecond
-    simulation.verbose = False
-    simulation.show_mixing_statistics = False
-
-    # Run simulation.
-    utils.config_root_logger(True)
-    simulation.run() # run the simulation
-    utils.config_root_logger(False)
-
-    # Stop here if not root node.
-    if mpicomm and (mpicomm.rank != 0): return
-
-    # Analyze simulation to compute free energies.
-    analysis = simulation.analyze()
-
-    # TODO: Check if deviations exceed tolerance.
-    Delta_f_ij = analysis['Delta_f_ij']
-    dDelta_f_ij = analysis['dDelta_f_ij']
-    error = Delta_f_ij - Delta_f_ij_analytical
-    indices = numpy.where(dDelta_f_ij > 0.0)
-    nsigma = numpy.zeros([nstates,nstates], numpy.float32)
-    nsigma[indices] = error[indices] / dDelta_f_ij[indices]
-    MAX_SIGMA = 6.0 # maximum allowed number of standard errors
-    if numpy.any(nsigma > MAX_SIGMA):
-        print("Delta_f_ij")
-        print(Delta_f_ij)
-        print("Delta_f_ij_analytical")
-        print(Delta_f_ij_analytical)
-        print("error")
-        print(error)
-        print("stderr")
-        print(dDelta_f_ij)
-        print("nsigma")
-        print(nsigma)
-        raise Exception("Dimensionless free energy difference exceeds MAX_SIGMA of %.1f" % MAX_SIGMA)
-
-    error = analysis['Delta_u_ij'] - Delta_u_ij_analytical
-    nsigma = numpy.zeros([nstates,nstates], numpy.float32)
-    nsigma[indices] = error[indices] / dDelta_f_ij[indices]
-    if numpy.any(nsigma > MAX_SIGMA):
-        print("Delta_u_ij")
-        print(analysis['Delta_u_ij'])
-        print("Delta_u_ij_analytical")
-        print(Delta_u_ij_analytical)
-        print("error")
-        print(error)
-        print("nsigma")
-        print(nsigma)
-        raise Exception("Dimensionless potential energy difference exceeds MAX_SIGMA of %.1f" % MAX_SIGMA)
-
-    if verbose: print("PASSED.")
-    return
 
 
 # ==============================================================================
@@ -442,8 +279,8 @@ class ArchiveWriters(object):
                 ncvar_pressures[state_id] = thermodynamic_state.pressure / unit.atmospheres
 
     @staticmethod
-    def write_thermodynamic_states_mhrex_0_1(reporter, thermodynamic_states, expanded_states):
-        """Simulate ThermodynamicStates stored with Conventions 0.1 and ModifiedHamiltonianReplicaExchange.
+    def write_thermodynamic_states_mhex_0_1(reporter, thermodynamic_states, expanded_states):
+        """Simulate ThermodynamicStates stored with Conventions 0.1 and ModifiedHamiltonianExchange.
 
         This is for testing backwards compatibility.
 
@@ -476,7 +313,7 @@ class ArchiveWriters(object):
                     parameter_value = 1.0  # The default for all parameters was 1.0 even if they weren't actually set.
                 ncvar_parameter[state_id] = parameter_value
 
-        # Write fully interacting states. The old MHREX writer only supported
+        # Write fully interacting states. The old MHEX writer only supported
         # 2 expanded thermodynamic states at the end points of the alchemical path.
         assert len(expanded_states) == 2
         is_barostated = expanded_states[0].pressure is not None
@@ -496,12 +333,12 @@ class ArchiveWriters(object):
             ncvar_pressure[0] = expanded_states[0].pressure / unit.atmosphere
 
     @staticmethod
-    def write_energies_mhrex_0_1(reporter, energy_thermodynamic_states, energy_expanded_states, iteration):
-        """Simulate storing energies with ModifiedHamiltonianReplicaExchanged and conventions 0.1."""
+    def write_energies_mhex_0_1(reporter, energy_thermodynamic_states, energy_expanded_states, iteration):
+        """Simulate storing energies with ModifiedHamiltonianExchanged and conventions 0.1."""
         setattr(reporter._storage, 'ConventionVersion', '0.1')
         n_replicas = len(energy_thermodynamic_states)
 
-        # Old MHREX class supported only 2 unsampled states with expanded cutoff.
+        # Old MHEX class supported only 2 unsampled states with expanded cutoff.
         assert len(energy_expanded_states[0]) == 2, len(energy_expanded_states)
         energy_expanded_full = [energy[0] for energy in energy_expanded_states]
         energy_expanded_non = [energy[1] for energy in energy_expanded_states]
@@ -576,12 +413,12 @@ class TestReporter(object):
         writers = [
             Reporter.write_thermodynamic_states,  # latest
             ArchiveWriters.write_thermodynamic_states_rex_0_1,
-            ArchiveWriters.write_thermodynamic_states_mhrex_0_1
+            ArchiveWriters.write_thermodynamic_states_mhex_0_1
         ]
         for writer in writers:
             with self.temporary_reporter() as reporter:
-                # Old MHREX writer can handle only alchemically modified systems.
-                if writer == ArchiveWriters.write_thermodynamic_states_mhrex_0_1:
+                # Old MHEX writer can handle only alchemically modified systems.
+                if writer == ArchiveWriters.write_thermodynamic_states_mhex_0_1:
                     states = copy.deepcopy(compound_states)
                     unsampled = copy.deepcopy(unsampled_states[:2])
                 # Old REX writer can handle only thermodynamic states.
@@ -676,7 +513,7 @@ class TestReporter(object):
         # Test all conventions
         writers = [
             Reporter.write_energies,
-            ArchiveWriters.write_energies_mhrex_0_1
+            ArchiveWriters.write_energies_mhex_0_1
         ]
         for writer in writers:
             with self.temporary_reporter() as reporter:
@@ -967,7 +804,7 @@ class TestReplicaExchange(object):
         thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(self.alanine_test)
         n_states = len(thermodynamic_states)
 
-        with moltools.utils.temporary_directory() as tmp_dir_path:
+        with mmtools.utils.temporary_directory() as tmp_dir_path:
             storage_path = os.path.join(tmp_dir_path, 'test_storage.nc')
 
             # For this test to work, positions should be the same but
@@ -1006,7 +843,7 @@ class TestReplicaExchange(object):
         thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(self.hostguest_test)
         n_replicas = len(thermodynamic_states)
 
-        with moltools.utils.temporary_directory() as tmp_dir_path:
+        with mmtools.utils.temporary_directory() as tmp_dir_path:
             storage_path = os.path.join(tmp_dir_path, 'test_storage.nc')
             repex = ReplicaExchange()
             repex.create(thermodynamic_states, sampler_states, storage=storage_path,
@@ -1044,7 +881,7 @@ class TestReplicaExchange(object):
         thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(self.alanine_test)
         n_states = len(thermodynamic_states)
 
-        with moltools.utils.temporary_directory() as tmp_dir_path:
+        with mmtools.utils.temporary_directory() as tmp_dir_path:
             storage_path = os.path.join(tmp_dir_path, 'test_storage.nc')
             repex = ReplicaExchange()
             repex.create(thermodynamic_states, sampler_states, storage=storage_path,
@@ -1094,7 +931,7 @@ class TestReplicaExchange(object):
         """
         thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(self.alanine_test)
 
-        with moltools.utils.temporary_directory() as tmp_dir_path:
+        with mmtools.utils.temporary_directory() as tmp_dir_path:
             storage_path = os.path.join(tmp_dir_path, 'test_storage.nc')
 
             # We create a ReplicaExchange with a GHMC move but use Langevin for equilibration.
@@ -1123,11 +960,15 @@ class TestReplicaExchange(object):
         for test_case in test_cases:
             thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(test_case)
 
-            with moltools.utils.temporary_directory() as tmp_dir_path:
+            with mmtools.utils.temporary_directory() as tmp_dir_path:
                 storage_path = os.path.join(tmp_dir_path, 'test_storage.nc')
-                repex = ReplicaExchange(mcmc_moves=mmtools.mcmc.GHMCMove(n_steps=1),
-                                        show_energies=True, show_mixing_statistics=True,
-                                        number_of_iterations=2)
+                moves = mmtools.mcmc.SequenceMove([
+                    mmtools.mcmc.MCDisplacementMove(),
+                    mmtools.mcmc.MCRotationMove(),
+                    mmtools.mcmc.GHMCMove(n_steps=1)
+                ])
+                repex = ReplicaExchange(mcmc_moves=moves, show_energies=True,
+                                        show_mixing_statistics=True, number_of_iterations=2)
                 repex.create(thermodynamic_states, sampler_states, storage=storage_path,
                              unsampled_thermodynamic_states=unsampled_states)
 
@@ -1142,7 +983,7 @@ class TestReplicaExchange(object):
                 # The MCMCMoves statistics in the storage are updated.
                 reporter = Reporter(storage_path, open_mode='r')
                 restored_mcmc_moves = reporter.read_mcmc_moves()
-                assert restored_mcmc_moves[0].n_attempted != 0
+                assert restored_mcmc_moves[0].move_list[0].n_proposed == 4
 
 
 # ==============================================================================

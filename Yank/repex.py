@@ -901,7 +901,7 @@ class Reporter(object):
         try:
             return self._read_thermodynamic_states_rex_0_1()
         except KeyError:
-            return self._read_thermodynamic_states_mhrex_0_1()
+            return self._read_thermodynamic_states_mhex_0_1()
 
     def _read_thermodynamic_states_rex_0_1(self):
         """Retrieve the stored thermodynamic states with conventions 0.1.
@@ -929,14 +929,14 @@ class Reporter(object):
                                                                           pressure=pressure))
         return thermodynamic_states, []
 
-    def _read_thermodynamic_states_mhrex_0_1(self):
+    def _read_thermodynamic_states_mhex_0_1(self):
         """Retrieve the stored thermodynamic states with conventions 0.1.
 
-        This is for the conventions used in ModifiedHamiltonianReplicaExchange.
+        This is for the conventions used in ModifiedHamiltonianExchange.
 
         """
         logger.debug('Attempt to read thermodynamic states with '
-                     'ModifiedHamiltonianReplicaExchange reader version 0.1.')
+                     'ModifiedHamiltonianExchange reader version 0.1.')
 
         ncgrp_states = self._storage.groups['thermodynamic_states']
         ncgrp_alchemical = self._storage.groups['alchemical_states']
@@ -1796,8 +1796,9 @@ class ReplicaExchange(object):
                 # Get the context, any Integrator works.
                 context, integrator = mmtools.cache.global_context_cache.get_context(state)
 
-                # Update positions and box vectors.
-                sampler_state.apply_to_context(context)
+                # Update positions and box vectors. We don't need
+                # to set Context velocities for the potential.
+                sampler_state.apply_to_context(context, ignore_velocities=True)
 
                 # Compute energy.
                 energies[i] = state.reduced_potential(context)
@@ -2008,7 +2009,7 @@ class ReplicaExchange(object):
         """
         # Determine how many iterations there are data available for.
         replica_states = self._reporter.read_replica_thermodynamic_states(iteration=slice(None))
-        u_nkl_replica = self._reporter.read_energies(iteration=slice(None))
+        u_nkl_replica, u_unsampled = self._reporter.read_energies(iteration=slice(None))
 
         # Determine number of iterations completed.
         number_of_iterations_completed = replica_states.shape[0]
@@ -2027,8 +2028,8 @@ class ReplicaExchange(object):
             u_n[iteration] = 0.0
             for replica_index in range(nstates):
                 state_index = state_indices[replica_index]
-                u_n[iteration] += u_nkl_replica[iteration,replica_index,state_index]
-                u_kln[state_index,:,iteration] = u_nkl_replica[iteration,replica_index,:]
+                u_n[iteration] += u_nkl_replica[iteration, replica_index, state_index]
+                u_kln[state_index, :, iteration] = u_nkl_replica[iteration, replica_index, :]
 
         # Determine optimal equilibration time, statistical inefficiency, and effectively uncorrelated sample indices.
         from pymbar import timeseries
@@ -2039,9 +2040,9 @@ class ReplicaExchange(object):
         # Next, analyze with pymbar, initializing with last estimate of free energies.
         from pymbar import MBAR
         if hasattr(self, 'f_k'):
-            mbar = MBAR(u_kln[:,:,indices], N_k, initial_f_k=self.f_k)
+            mbar = MBAR(u_kln[:, :, indices], N_k, initial_f_k=self.f_k)
         else:
-            mbar = MBAR(u_kln[:,:,indices], N_k)
+            mbar = MBAR(u_kln[:, :, indices], N_k)
 
         # Cache current free energy estimate to save time in future MBAR solutions.
         self.f_k = mbar.f_k
