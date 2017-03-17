@@ -4,47 +4,24 @@
 # MODULE DOCSTRING
 # ==============================================================================
 
-"""
-repex
-=====
+"""Replica-exchange simulation algorithms and specific variants.
 
-Replica-exchange simulation algorithms and specific variants.
-
-DESCRIPTION
-
-This module provides a general facility for running replica-exchange simulations, as well as
-derived classes for special cases such as parallel tempering (in which the states differ only
-in temperature) and Hamiltonian exchange (in which the state differ only by potential function).
+This module provides a general facility for running replica-exchange simulations,
+as well as derived classes for special cases such as parallel tempering (in which
+the states differ only in temperature).
 
 Provided classes include:
 
-* ReplicaExchange - Base class for general replica-exchange simulations among specified ThermodynamicState objects
-* ParallelTempering - Convenience subclass of ReplicaExchange for parallel tempering simulations (one System object, many temperatures/pressures)
-* HamiltonianExchange - Convenience subclass of ReplicaExchange for Hamiltonian exchange simulations (many System objects, same temperature/pressure)
-
-TODO
-
-* Add analysis facility accessible by user.
-* Give up on Context caching and revert to serial Context creation/destruction if we run out of GPU memory (issuing an alert).
-* Store replica self-energies and/or -ln q(x) for simulation (for analyzing correlation times).
-* Add analysis facility.
-* Allow user to call initialize() externally and get the NetCDF file handle to add additional data?
-* Store / restore parameters and System objects from NetCDF file for resuming and later analysis.
-* Sampling support:
-  * Short-term: Add support for user to specify a callback to create the Integrator to use ('integrator_factory' or 'integrator_callback').
-  * Longer-term: Allow a more complex MCMC sampling scheme consisting of one or more moves to be specified through mcmc.py facility.
-* Allow different choices of temperature handling during exchange attempts:
-  * scale velocities (exchanging only on potential energies) - make this the default?
-  * randomize velocities (exchanging only on potential energies)
-  * exchange on total energies, preserving velocities (requires more replicas)
-* Add control over number of times swaps are attempted when mixing replicas, or compute best guess automatically
-* Add another layer of abstraction so that the base class uses generic log probabilities, rather than reduced potentials?
-* Use interface-based checking of arguments so that different implementations of the OpenMM API (such as pyopenmm) can be used.
-* Eliminate file closures in favor of syncs to avoid closing temporary files in the middle of a run.
+- ReplicaExchange
+    Base class for general replica-exchange simulations.
+- ParallelTempering
+    Convenience subclass of ReplicaExchange for parallel tempering simulations
+    (one System object, many temperatures).
 
 COPYRIGHT
 
-Written by John D. Chodera <jchodera@gmail.com> while at the University of California Berkeley.
+Written by John D. Chodera <jchodera@gmail.com> while at the University of
+California Berkeley.
 
 LICENSE
 
@@ -97,8 +74,10 @@ class Reporter(object):
     storage : str
         The path to the file. In the future this will be able to take Storage
         classes as well.
-    mode : str
+    open_mode : str or None
         The mode of the file between 'r', 'w', and 'a' (or equivalently 'r+').
+        If None, the storage file won't be open on construction, and a call to
+        Reporter.open() will be needed before attempting read/write operations.
 
     """
     def __init__(self, storage, open_mode=None):
@@ -109,11 +88,27 @@ class Reporter(object):
             self._storage = None
 
     def is_open(self):
+        """Return True if the Reporter is ready to read/write."""
         if self._storage is None:
             return False
         return self._storage.isopen()
 
     def open(self, mode='r'):
+        """Open the storage file for reading/writing.
+
+        This is not necessary if you have indicated in the constructor to open.
+
+        Parameters
+        ----------
+        mode : str
+            The mode of the file between 'r', 'w', and 'a' (or equivalently 'r+').
+
+        """
+        # Ensure we don't have already another file
+        # open (possibly in a different mode).
+        if self._storage is not None:
+            self.close()
+
         # Open NetCDF 4 file for writing.
         ncfile = netcdf.Dataset(self._storage_file_path, mode, version='NETCDF4')
 
@@ -134,6 +129,7 @@ class Reporter(object):
         self._storage = ncfile
 
     def close(self):
+        """Close the storage file."""
         self._storage.sync()
         self._storage.close()
         self._storage = None
@@ -689,7 +685,8 @@ class Reporter(object):
             self._storage.title = data.pop('title')
 
         # Check if this is an update and create a group.
-        # TODO this is a quick and dirty solution for dictionary updates that will be fixed with the storage layer
+        # TODO: this is a quick and dirty solution for dictionary updates that
+        # TODO:     will be fixed with the storage layer.
         try:
             # This may be a nested dictionary call.
             split_path = name.rsplit('/')
@@ -925,8 +922,8 @@ class Reporter(object):
             else:
                 pressure = None
             # Create ThermodynamicState.
-            thermodynamic_states.append(mmtools.states.ThermodynamicState(system=system, temperature=temperature,
-                                                                          pressure=pressure))
+            thermodynamic_states.append(ThermodynamicState(system=system, temperature=temperature,
+                                                           pressure=pressure))
         return thermodynamic_states, []
 
     def _read_thermodynamic_states_mhex_0_1(self):
@@ -953,7 +950,7 @@ class Reporter(object):
                 pressure = float(ncgrp_states.variables['pressures'][state_index]) * unit.atmosphere
             else:
                 pressure = None
-            thermodynamic_state = mmtools.states.ThermodynamicState(base_system, temperature, pressure)
+            thermodynamic_state = ThermodynamicState(base_system, temperature, pressure)
             # Create alchemical state.
             alchemical_state = mmtools.alchemy.AlchemicalState.from_system(base_system)
             for parameter_name, ncvar_parameter in ncgrp_alchemical.variables.items():
@@ -976,7 +973,7 @@ class Reporter(object):
                 ncvar_serialized_system = ncgrp_expanded.variables[variable_name]
                 expanded_system = openmm.System()
                 expanded_system.__setstate__(str(ncvar_serialized_system[0]))
-                unsampled_states.append(mmtools.states.ThermodynamicState(expanded_system, temperature, pressure))
+                unsampled_states.append(ThermodynamicState(expanded_system, temperature, pressure))
 
         return thermodynamic_states, unsampled_states
 
@@ -997,109 +994,119 @@ class Reporter(object):
 # ==============================================================================
 
 class ReplicaExchange(object):
-    """
-    Replica-exchange simulation facility.
+    """Replica-exchange simulation facility.
 
-    This base class provides a general replica-exchange simulation facility, allowing any set of thermodynamic states
-    to be specified, along with a set of initial positions to be assigned to the replicas in a round-robin fashion.
-    No distinction is made between one-dimensional and multidimensional replica layout; by default, the replica mixing
-    scheme attempts to mix *all* replicas to minimize slow diffusion normally found in multidimensional replica exchange
-    simulations.  (Modification of the 'replica_mixing_scheme' setting will allow the tranditional 'neighbor swaps only'
-    scheme to be used.)
+    This base class provides a general replica-exchange simulation facility,
+    allowing any set of thermodynamic states to be specified, along with a
+    set of initial positions to be assigned to the replicas in a round-robin
+    fashion.
 
-    While this base class is fully functional, it does not make use of the special structure of parallel tempering or
-    Hamiltonian exchange variants of replica exchange.  The ParallelTempering and HamiltonianExchange classes should
-    therefore be used for these algorithms, since they are more efficient and provide more convenient ways to initialize
-    the simulation classes.
+    No distinction is made between one-dimensional and multidimensional replica
+    layout. By default, the replica mixing scheme attempts to mix *all* replicas
+    to minimize slow diffusion normally found in multidimensional replica exchange
+    simulations (Modification of the 'replica_mixing_scheme' setting will allow
+    the traditional 'neighbor swaps only' scheme to be used.)
 
-    Stored configurations, energies, swaps, and restart information are all written to a single output file using
-    the platform portable, robust, and efficient NetCDF4 library.  Plans for future HDF5 support are pending.
+    Stored configurations, energies, swaps, and restart information are all written
+    to a single output file using the platform portable, robust, and efficient
+    NetCDF4 library.
+
+    Parameters
+    ----------
+    mcmc_moves : MCMCMove or list of MCMCMove, optional
+        The MCMCMove used to propagate the states. If a list of MCMCMoves,
+        they will be assigned to the correspondent thermodynamic state on
+        creation. If None is provided, Langevin dynamics with 2fm timestep,
+        5.0/ps collision rate, and 500 steps per iteration will be used.
+    number_of_iterations : int, optional
+        The number of iterations to perform (default is 1).
+    replica_mixing_scheme : 'swap-all', 'swap-neighbors' or 'none'
+        The scheme used to swap thermodynamic states between replicas
+        (default is 'swap-all').
+    online_analysis : bool, optional
+        If True, analysis will occur each iteration (default is False).
+    online_analysis_min_iterations : int, optional
+        Minimum number of iterations needed to begin online analysis
+        (default is 20).
+    show_energies : bool, optional
+       If True, will print energies at each iteration (default is True).
+    show_mixing_statistics : bool, optional
+       If True, will show mixing statistics at each iteration (default is True).
 
     Attributes
     ----------
-    The following parameters (attributes) can be set after the object has been created, but before it has been
-    initialized by a call to run():
-
-    collision_rate : simtk.unit.Quantity (units: 1/time)
-       The collision rate used for Langevin dynamics (default: 90 ps^-1)
-    constraint_tolerance : float
-       Relative constraint tolerance (default: 1e-6)
-    timestep : simtk.unit.Quantity (units: time)
-       Timestep for Langevin dyanmics (default: 2 fs)
-    nsteps_per_iteration : int
-       Number of timesteps per iteration (default: 500)
-    number_of_iterations : int
-       Number of replica-exchange iterations to simulate (default: 100)
-    number_of_equilibration_iterations : int
-       Number of equilibration iterations before beginning exchanges (default: 0)
-    equilibration_timestep : simtk.unit.Quantity (units: time)
-       Timestep for use in equilibration (default: 2 fs)
-    title : str
-       Title for the simulation.
-    minimize : bool
-       Minimize configurations before running the simulation (default: True)
-    minimize_tolerance : simtk.unit.Quantity (units: energy/mole/length)
-       Set minimization tolerance (default: 1.0 * unit.kilojoules_per_mole / unit.nanometers).
-    minimize_max_iterations : int
-       Maximum number of iterations for minimization.
-    replica_mixing_scheme : str
-       Specify how to mix replicas. Supported schemes are 'swap-neighbors' and
-       'swap-all' (default: 'swap-all').
-    online_analysis : bool
-       If True, analysis will occur each iteration (default: False).
-    online_analysis_min_iterations : int
-       Minimum number of iterations needed to begin online analysis (default: 20).
-    show_energies : bool
-       If True, will print energies at each iteration (default: True).
-    show_mixing_statistics : bool
-       If True, will show mixing statistics at each iteration (default: True).
-
-    TODO
-    ----
-    * Replace hard-coded Langevin dynamics with general MCMC moves.
-    * Allow parallel resource to be used, if available (likely via Parallel Python).
-    * Add support for and autodetection of other NetCDF4 interfaces.
-    * Add HDF5 support.
+    mcmc_moves
+    number_of_iterations
+    replica_mixing_scheme
+    online_analysis
+    online_analysis_min_iterations
+    show_energies
+    show_mixing_statistics
 
     Examples
     --------
-    Parallel tempering simulation of alanine dipeptide in implicit solvent (replica exchange among temperatures)
-    (This is just an illustrative example; use ParallelTempering class for actual production parallel tempering simulations.)
+    Parallel tempering simulation of alanine dipeptide in implicit solvent (replica
+    exchange among temperatures). This is just an illustrative example; use ParallelTempering
+    class for actual production parallel tempering simulations.
 
-    >>> # Create test system.
-    >>> from openmmtools import testsystems
-    >>> testsystem = testsystems.AlanineDipeptideImplicit()
-    >>> [system, positions] = [testsystem.system, testsystem.positions]
-    >>> # Create thermodynamic states for parallel tempering with exponentially-spaced schedule.
-    >>> from simtk import unit
+    Create the system.
+
     >>> import math
-    >>> nreplicas = 3 # number of temperature replicas
-    >>> T_min = 298.0 * unit.kelvin # minimum temperature
-    >>> T_max = 600.0 * unit.kelvin # maximum temperature
-    >>> T_i = [ T_min + (T_max - T_min) * (math.exp(float(i) / float(nreplicas-1)) - 1.0) / (math.e - 1.0) for i in range(nreplicas) ]
-    >>> states = [ ThermodynamicState(system=system, temperature=T_i[i]) for i in range(nreplicas) ]
-    >>> import tempfile
-    >>> store_filename = tempfile.NamedTemporaryFile(delete=False).name + '.nc'
-    >>> # Create simulation.
-    >>> simulation = ReplicaExchange(store_filename)
-    >>> simulation.create(states, positions) # initialize the replica-exchange simulation
-    >>> simulation.minimize = False
-    >>> simulation.number_of_iterations = 2 # set the simulation to only run 2 iterations
-    >>> simulation.timestep = 2.0 * unit.femtoseconds # set the timestep for integration
-    >>> simulation.nsteps_per_iteration = 50 # run 50 timesteps per iteration
-    >>> simulation.run() # run the simulation
-    >>> del simulation # clean up
+    >>> from simtk import unit
+    >>> from openmmtools import testsystems, states, mcmc
+    >>> testsystem = testsystems.AlanineDipeptideImplicit()
 
-    Extend the simulation
+    Create thermodynamic states for parallel tempering with exponentially-spaced schedule.
 
-    >>> simulation = ReplicaExchange(store_filename)
-    >>> simulation.resume()
-    >>> simulation.number_of_iterations = 4 # extend
-    >>> simulation.run()
+    >>> n_replicas = 3  # Number of temperature replicas.
+    >>> T_min = 298.0 * unit.kelvin  # Minimum temperature.
+    >>> T_max = 600.0 * unit.kelvin  # Maximum temperature.
+    >>> temperatures = [T_min + (T_max - T_min) * (math.exp(float(i) / float(nreplicas-1)) - 1.0) / (math.e - 1.0)
+    ...                 for i in range(n_replicas)]
+    >>> thermodynamic_states = [states.ThermodynamicState(system=testsystem.system, temperature=T)
+    ...                         for T in temperatures]
+
+    Initialize simulation object with options. Run with a GHMC integrator.
+
+    >>> move = mcmc.GHMCMove(timestep=2.0*unit.femtoseconds, n_steps=50)
+    >>> simulation = ReplicaExchange(mcmc_moves=move, number_of_iterations=2)
+
+    Create simulation with its storage file (in a temporary directory) and run.
+
+    >>> storage_path = tempfile.NamedTemporaryFile(delete=False).name + '.nc'
+    >>> simulation.create(thermodynamic_states=thermodynamic_states,
+    >>>                   sampler_states=states.SamplerState(testsystem.positions),
+    >>>                   storage=storage_path)
+    >>> simulation.run()  # This runs for a maximum of 2 iterations.
+    >>> simulation.iteration
+    2
+    >>> simulation.run(n_iterations=1)
+    >>> simulation.iteration
+    2
+
+    To resume a simulation from an existing storage file and extend it beyond
+    the original number of iterations.
+
+    >>> del simulation
+    >>> simulation = ReplicaExchange.from_storage(storage_path)
+    >>> simulation.extend(n_iterations=1)
+    >>> simulation.iteration
+    3
+
+    You can extract several information from the NetCDF file using the Reporter
+    class while the simulation is running. This reads the SamplerStates of every
+    run iteration.
+
+    >>> reporter = Reporter(storage=storage_path, open_mode='r')
+    >>> sampler_states = reporter.read_sampler_states(iteration=range(1, 4))
+    >>> len(sampler_states)
+    3
+    >>> sampler_states[-1].positions.shape  # Alanine dipeptide has 22 atoms.
+    (22, 3)
 
     Clean up.
 
-    >>> os.remove(store_filename)
+    >>> os.remove(storage_path)
 
     """
 
@@ -1114,26 +1121,7 @@ class ReplicaExchange(object):
                  online_analysis_min_iterations=20,
                  show_energies=True,
                  show_mixing_statistics=True):
-        """
-        Initialize replica-exchange simulation facility.
 
-        Parameters
-        ----------
-        store_filename : string
-           Name of file to bind simulation to use as storage for checkpointing and storage of results.
-        mm : implementation of simtk.openmm, optional, default=simtk.openmm
-           OpenMM API implementation to use
-        mpicomm : mpi4py communicator, optional, default=None
-           MPI communicator, if parallel execution is desired
-        platform : simtk.openmm.Platform, optional, default=None
-            Platform to use for execution. If None, the fastest available platform is used.
-
-        Other Parameters
-        ----------------
-        **kwargs
-            Parameters in ReplicaExchange.default_parameters corresponding public attributes.
-
-        """
         # Check argument values.
         if replica_mixing_scheme not in self._SUPPORTED_MIXING_SCHEMES:
             raise ValueError("Unknown replica mixing scheme '{}'. Supported values are {}.".format(
@@ -1308,24 +1296,26 @@ class ReplicaExchange(object):
 
     def create(self, thermodynamic_states, sampler_states, storage,
                unsampled_thermodynamic_states=None, metadata=None):
-        """
-        Create new replica-exchange simulation.
+        """Create new replica-exchange simulation.
 
         Parameters
         ----------
-        states : list of ThermodynamicState
-           Thermodynamic states to simulate, where one replica is allocated per state.
-           Each state must have a system with the same number of atoms, and the same
-           thermodynamic ensemble (combination of temperature, pressure, pH, etc.) must
-           be defined for each.
-        positions : Coordinate object or iterable container of Coordinate objects)
-           One or more sets of initial positions
-           to be initially assigned to replicas in a round-robin fashion, provided simulation is not resumed from store file.
-           Currently, positions must be specified as a list of simtk.unit.Quantity-wrapped np arrays.
-        options : dict, optional, default=None
-           Optional dict to use for specifying simulation options. Provided keywords will be matched to object variables to replace defaults.
-        metadata : dict, optional, default=None
-           metadata to store in a 'metadata' group in store file
+        thermodynamic_states : list of openmmtools.states.ThermodynamicState
+            Thermodynamic states to simulate, where one replica is allocated per state.
+            Each state must have a system with the same number of atoms.
+        sampler_states : openmmtools.states.SamplerState or list
+            One or more sets of initial sampler states. If a list of SamplerStates,
+            they will be assigned to replicas in a round-robin fashion.
+        storage : str
+            The path to the storage file. In the future this will be able
+            to take a Reporter or a Storage class as well.
+        unsampled_thermodynamic_states : list of openmmtools.states.ThermodynamicState, optional
+            These are ThermodynamicStates that are not propagated, but their
+            reduced potential is computed at each iteration for each replica.
+            These energy can be used as data for reweighting schemes (default
+            is None).
+        metadata : dict, optional
+           Simulation metadata to be stored in the file.
 
         """
         # Check if netcdf file exists. This is run only on MPI node 0 and
@@ -1415,6 +1405,24 @@ class ReplicaExchange(object):
     @mmtools.utils.with_timer('Minimizing all replicas')
     def minimize(self, minimize_tolerance=1.0*unit.kilojoules_per_mole/unit.nanometers,
                  minimize_max_iterations=0):
+        """Minimize all replicas.
+
+        Minimized positions are stored at the end.
+
+        Parameters
+        ----------
+        minimize_tolerance : simtk.unit.Quantity, optional
+            Minimization tolerance (units of energy/mole/length, default is
+            1.0 * unit.kilojoules_per_mole / unit.nanometers).
+        minimize_max_iterations : int, optional
+            Maximum number of iterations for minimization. If 0, minimization
+            continues until converged.
+
+        """
+        # Check that simulation has been created.
+        if self.n_replicas == 0:
+            raise RuntimeError('Cannot minimize replicas. The simulation must be created first.')
+
         logger.debug("Minimizing all replicas...")
 
         # Distribute minimization across nodes. Only node 0 will get all positions.
@@ -1433,19 +1441,34 @@ class ReplicaExchange(object):
         mpi.run_single_node(0, self._reporter.write_sampler_states, self._sampler_states, self._iteration)
 
     def equilibrate(self, n_iterations, mcmc_moves=None):
-        # Handle default MCMCMove used for equilibration.
+        """Equilibrate all replicas.
+
+        This does not increase the iteration counter. The equilibrated
+        positions are stored at the end.
+
+        Parameters
+        ----------
+        n_iterations : int
+            Number of equilibration iterations.
+        mcmc_moves : MCMCMove or list of MCMCMove, optional
+            Optionally, the MCMCMoves to use for equilibration can be
+            different from the ones used in production.
+
+        """
+        # Check that simulation has been created.
+        if self.n_replicas == 0:
+            raise RuntimeError('Cannot minimize replicas. The simulation must be created first.')
+
+        # If no MCMCMove is specified, use the ones for production.
         if mcmc_moves is None:
-            mcmc_moves = mmtools.mcmc.LangevinDynamicsMove(timestep=1.0*unit.femtosecond,
-                                                           collision_rate=5.0/unit.picosecond,
-                                                           n_steps=500, reassign_velocities=True,
-                                                           n_restart_attempts=6)
+            mcmc_moves = self._mcmc_moves
 
         # Make sure there is one MCMCMove per thermodynamic state.
         if isinstance(mcmc_moves, mmtools.mcmc.MCMCMove):
             mcmc_moves = [copy.deepcopy(mcmc_moves) for _ in range(self.n_replicas)]
         elif len(mcmc_moves) != self.n_replicas:
-            raise RuntimeError('The number of MCMCMoves ({}) and ThermodynamicStates ({}) must '
-                               'be the same.'.format(len(self._mcmc_moves), self.n_replicas))
+            raise RuntimeError('The number of MCMCMoves ({}) and ThermodynamicStates ({}) for equilibration'
+                               ' must be the same.'.format(len(self._mcmc_moves), self.n_replicas))
 
         # Temporarily set the equilibration MCMCMoves.
         production_mcmc_moves = self._mcmc_moves
@@ -1463,14 +1486,14 @@ class ReplicaExchange(object):
     def run(self, n_iterations=None):
         """Run the replica-exchange simulation.
 
-        Any parameter changes (via object attributes) that were made between object creation and calling this method become locked in
-        at this point, and the object will create and bind to the store file.  If the store file already exists, the run will be resumed
-        if possible; otherwise, an exception will be raised.
+        This runs at most `number_of_iterations` iterations. Use `extend()`
+        to pass the limit.
 
         Parameters
         ----------
-        n_iterations : int, optional, default=None
-           If specified, only at most the specified number of iterations will be run.
+        n_iterations : int, optional
+           If specified, only at most the specified number of iterations
+           will be run (default is None).
 
         """
         # If this is the first iteration, compute and store the
@@ -1538,16 +1561,18 @@ class ReplicaExchange(object):
             self._check_nan_energy()
 
     def extend(self, n_iterations):
+        """Extend the simulation by the given number of iterations.
+
+        Contrarily to `run()`, this will extend the number of iterations past
+        `number_of_iteration` if requested.
+
+        """
         if self._iteration + n_iterations > self._number_of_iterations:
             self.number_of_iterations = self._iteration + n_iterations
         self.run(n_iterations)
 
     def __repr__(self):
-        """
-        Return a 'formal' representation that can be used to reconstruct the class, if possible.
-
-        """
-
+        """Return a 'formal' representation that can be used to reconstruct the class, if possible."""
         # TODO: Can we make this a more useful expression?
         return "<instance of ReplicaExchange>"
 
@@ -1556,9 +1581,7 @@ class ReplicaExchange(object):
         Show an 'informal' human-readable representation of the replica-exchange simulation.
 
         """
-
-        r =  ""
-        r += "Replica-exchange simulation\n"
+        r = "Replica-exchange simulation\n"
         r += "\n"
         r += "{:d} replicas\n".format(self.nreplicas)
         r += "{:d} coordinate sets provided\n".format(len(self.provided_positions))
@@ -1587,7 +1610,11 @@ class ReplicaExchange(object):
     # -------------------------------------------------------------------------
 
     def _check_nan_energy(self):
-        """Checks that energies are finite and abort otherwise."""
+        """Checks that energies are finite and abort otherwise.
+
+        Checks both sampled and unsampled thermodynamic states.
+
+        """
         # Check thermodynamic state energies.
         if np.any(np.isnan(self._energy_thermodynamic_states)) or np.any(np.isnan(self._energy_unsampled_states)):
             # Find faulty replicas to create error message.
@@ -1661,7 +1688,7 @@ class ReplicaExchange(object):
         self._reporter.sync()
 
     def _store_options(self):
-        """Store __init__ parameters in storage file."""
+        """Store __init__ parameters (beside MCMCMoves) in storage file."""
         logger.debug("Storing general ReplicaExchange options...")
 
         # Inspect __init__ parameters to store.
@@ -1675,7 +1702,11 @@ class ReplicaExchange(object):
         self._reporter.write_dict('options', options_to_store)
 
     def _store_metadata(self, metadata):
-        """Store metadata."""
+        """Store metadata.
+
+        Adds a default title if not specified.
+
+        """
         # Handle default behavior and add default simulation title.
         default_title = ('Replica-exchange simulation created using ReplicaExchange class '
                          'of yank.repex.py on {}'.format(time.asctime(time.localtime())))
@@ -1691,13 +1722,8 @@ class ReplicaExchange(object):
 
     @mmtools.utils.with_timer('Propagating all replicas')
     def _propagate_replicas(self):
-        """Propagate all replicas.
-
-        TODO
-
-        * Report on efficiency of dyanmics (fraction of time wasted to overhead).
-
-        """
+        """Propagate all replicas."""
+        # TODO  Report on efficiency of dyanmics (fraction of time wasted to overhead).
         logger.debug("Propagating all replicas...")
 
         # Distribute propagation across nodes. Only node 0 will get all positions
@@ -1714,6 +1740,7 @@ class ReplicaExchange(object):
             self._sampler_states[replica_id].box_vectors = propagated_box_vectors
 
     def _propagate_replica(self, replica_id):
+        """Propagate thermodynamic state associated to the given replica."""
         # Retrieve thermodynamic, sampler states, and MCMC move of this replica.
         thermodynamic_state_id = self._replica_thermodynamic_states[replica_id]
         thermodynamic_state = self._thermodynamic_states[thermodynamic_state_id]
@@ -1850,9 +1877,7 @@ class ReplicaExchange(object):
         return self._replica_thermodynamic_states
 
     def _mix_all_replicas_cython(self):
-        """
-        Attempt to exchange all replicas to enhance mixing, calling code written in Cython.
-        """
+        """Exchange all replicas with Cython-accelerated code."""
         from .mixing._mix_replicas import _mix_replicas_cython
 
         replica_states = md.utils.ensure_type(self._replica_thermodynamic_states, np.int64, 1, "Replica States")
@@ -1867,16 +1892,11 @@ class ReplicaExchange(object):
         self._n_accepted_matrix = n_accepted_matrix
 
     def _mix_all_replicas(self):
-        """
-        Attempt exchanges between all replicas to enhance mixing.
-
-        TODO
-
-        * Adjust nswap_attempts based on how many we can afford to do and not have mixing take a substantial fraction of iteration time.
-
-        """
+        """Exchange all replicas with Python."""
         # Determine number of swaps to attempt to ensure thorough mixing.
-        # TODO: Replace this with analytical result computed to guarantee sufficient mixing.
+        # TODO: Replace this with analytical result computed to guarantee sufficient mixing, or
+        # TODO:     adjust it  based on how many we can afford to do and not have mixing take a
+        # TODO:     substantial fraction of iteration time.
         nswap_attempts = self.n_replicas**5  # Number of swaps to attempt (ideal, but too slow!)
         nswap_attempts = self.n_replicas**3  # Best compromise for pure Python?
 
@@ -1904,6 +1924,7 @@ class ReplicaExchange(object):
             self._attempt_swap(replica_i, replica_j)
 
     def _attempt_swap(self, replica_i, replica_j):
+        """Attempt a single exchange between two replicas."""
         # Determine the thermodynamic states associated to these replicas.
         thermodynamic_state_i = self._replica_thermodynamic_states[replica_i]
         thermodynamic_state_j = self._replica_thermodynamic_states[replica_j]
@@ -2000,11 +2021,11 @@ class ReplicaExchange(object):
 
     @mpi.on_single_node(0, broadcast_result=True)
     def _analysis(self):
-        """
-        Perform online analysis each iteration.
+        """Perform online analysis.
 
-        Every iteration, this will update the estimate of the state relative free energy differences and statistical uncertainties.
-        We can additionally request further analysis.
+        Every iteration, this will update the estimate of the state relative
+        free energy differences and statistical uncertainties. We can additionally
+        request further analysis.
 
         """
         # Determine how many iterations there are data available for.
@@ -2072,11 +2093,8 @@ class ReplicaExchange(object):
             x : numpy.array of nrows x ncols matrix
                Matrix of numbers to print.
 
-            TODO
-            ----
-            * Automatically determine optimal spacing
-
             """
+            # TODO Automatically determine optimal spacing
             [nrows, ncols] = x.shape
             str_row = ""
             for i in range(nrows):
@@ -2116,28 +2134,30 @@ class ReplicaExchange(object):
         Returns
         -------
         analysis : dict
-           Analysis object containing end of equilibrated region, statistical inefficiency, and free energy differences:
+           Analysis object containing end of equilibrated region, statistical
+           inefficiency, and free energy differences.
 
         Keys
         ----
         equilibration_end : int
-           The last iteration in the discarded equilibrated region
+           The last iteration in the discarded equilibrated region.
         g : float
-           Estimated statistical inefficiency of production region
+           Estimated statistical inefficiency of production region.
         indices : list of int
-           Equilibrated, effectively uncorrelated iteration indices used in analysis
+           Equilibrated, effectively uncorrelated iteration indices used in analysis.
         Delta_f_ij : numpy array of nstates x nstates
-           Delta_f_ij[i,j] is the free energy difference f_j - f_i in units of kT
+           Delta_f_ij[i,j] is the free energy difference f_j - f_i in units of kT.
         dDelta_f_ij : numpy array of nstates x nstates
-           dDelta_f_ij[i,j] is estimated standard error of Delta_f_ij[i,j]
+           dDelta_f_ij[i,j] is estimated standard error of Delta_f_ij[i,j].
         Delta_u_ij
-           Delta_u_ij[i,j] is the reduced enthalpy difference u_j - u_i in units of kT
+           Delta_u_ij[i,j] is the reduced enthalpy difference u_j - u_i in units of kT.
         dDelta_u_ij
-           dDelta_u_ij[i,j] is estimated standard error of Delta_u_ij[i,j]
+           dDelta_u_ij[i,j] is estimated standard error of Delta_u_ij[i,j].
         Delta_s_ij
-           Delta_s_ij[i,j] is the reduced entropic contribution to the free energy difference s_j - s_i in units of kT
+           Delta_s_ij[i,j] is the reduced entropic contribution to the free energy.
+           difference s_j - s_i in units of kT
         dDelta_s_ij
-           dDelta_s_ij[i,j] is estimated standard error of Delta_s_ij[i,j]
+           dDelta_s_ij[i,j] is estimated standard error of Delta_s_ij[i,j].
 
         """
         # Update analysis on root node.
@@ -2152,6 +2172,7 @@ class ReplicaExchange(object):
 
     @mpi.on_single_node(0, sync_nodes=False)
     def _log_mixing_statistics(self):
+        """Log mixing statistics."""
         if self._iteration < 2 or not self._show_mixing_statistics:
             return
         print_cutoff = 0.001  # Cutoff for displaying fraction of accepted swaps.
@@ -2185,10 +2206,7 @@ class ReplicaExchange(object):
 
     @mpi.on_single_node(0, sync_nodes=False)
     def _log_energies(self):
-        """
-        Show energies (in units of kT) for all replicas at all states.
-
-        """
+        """Log energies (in units of kT) for all replicas at all states."""
         if not logger.isEnabledFor(logging.DEBUG) or not self._show_energies:
             return
 
@@ -2210,16 +2228,9 @@ class ReplicaExchange(object):
             logger.debug(str_row)
 
     def _display_citations(self):
-        """
-        Display papers to be cited.
-
-        TODO:
-
-        * Add original citations for various replica-exchange schemes.
-        * Show subset of OpenMM citations based on what features are being used.
-
-        """
-
+        """Display papers to be cited."""
+        # TODO Add original citations for various replica-exchange schemes.
+        # TODO Show subset of OpenMM citations based on what features are being used.
         openmm_citations = """\
         Friedrichs MS, Eastman P, Vaidyanathan V, Houston M, LeGrand S, Beberg AL, Ensign DL, Bruns CM, and Pande VS. Accelerating molecular dynamic simulations on graphics processing unit. J. Comput. Chem. 30:864, 2009. DOI: 10.1002/jcc.21209
         Eastman P and Pande VS. OpenMM: A hardware-independent framework for molecular simulations. Comput. Sci. Eng. 12:34, 2010. DOI: 10.1109/MCSE.2010.27
@@ -2246,97 +2257,83 @@ class ReplicaExchange(object):
 # ==============================================================================
 
 class ParallelTempering(ReplicaExchange):
-    """
-    Parallel tempering simulation facility.
+    """Parallel tempering simulation facility.
 
-    DESCRIPTION
+    This class provides a facility for parallel tempering simulations. It
+    is a subclass of ReplicaExchange, but provides efficiency improvements
+    for parallel tempering simulations, so should be preferred for this type
+    of simulation. In particular, this makes use of the fact that the reduced
+    potentials are linear in inverse temperature.
 
-    This class provides a facility for parallel tempering simulations.  It is a subclass of ReplicaExchange, but provides
-    various convenience methods and efficiency improvements for parallel tempering simulations, so should be preferred for
-    this type of simulation.  In particular, the System only need be specified once, while the temperatures (or a temperature
-    range) is used to automatically build a set of ThermodynamicState objects for replica-exchange.  Efficiency improvements
-    make use of the fact that the reduced potentials are linear in inverse temperature.
+    Examples
+    --------
 
-    EXAMPLES
+    Create the system.
 
-    Parallel tempering of alanine dipeptide in implicit solvent.
-
-    >>> # Create alanine dipeptide test system.
-    >>> from openmmtools import testsystems
+    >>> from simtk import unit
+    >>> from openmmtools import testsystems, states, mcmc
     >>> testsystem = testsystems.AlanineDipeptideImplicit()
-    >>> [system, positions] = [testsystem.system, testsystem.positions]
-    >>> # Create temporary file for storing output.
-    >>> import tempfile
-    >>> file = tempfile.NamedTemporaryFile() # temporary file for testing
-    >>> store_filename = file.name
-    >>> # Initialize parallel tempering on an exponentially-spaced scale
-    >>> Tmin = 298.0 * unit.kelvin
-    >>> Tmax = 600.0 * unit.kelvin
-    >>> nreplicas = 3
-    >>> simulation = ParallelTempering(store_filename)
-    >>> simulation.create(system, positions, Tmin=Tmin, Tmax=Tmax, ntemps=nreplicas)
-    >>> simulation.number_of_iterations = 2 # set the simulation to only run 10 iterations
-    >>> simulation.timestep = 2.0 * unit.femtoseconds # set the timestep for integration
-    >>> simulation.minimize = False
-    >>> simulation.nsteps_per_iteration = 50 # run 50 timesteps per iteration
-    >>> # Run simulation.
-    >>> simulation.run() # run the simulation
 
-    Parallel tempering of alanine dipeptide in explicit solvent at 1 atm.
+    Create thermodynamic states for parallel tempering with exponentially-spaced schedule.
 
-    >>> # Create alanine dipeptide system
-    >>> from openmmtools import testsystems
-    >>> testsystem = testsystems.AlanineDipeptideExplicit()
-    >>> [system, positions] = [testsystem.system, testsystem.positions]
-    >>> # Add Monte Carlo barsostat to system (must be same pressure as simulation).
-    >>> import simtk.openmm as openmm
-    >>> pressure = 1.0 * unit.atmosphere
-    >>> # Create temporary file for storing output.
-    >>> import tempfile
-    >>> file = tempfile.NamedTemporaryFile() # temporary file for testing
-    >>> store_filename = file.name
-    >>> # Initialize parallel tempering on an exponentially-spaced scale
-    >>> Tmin = 298.0 * unit.kelvin
-    >>> Tmax = 600.0 * unit.kelvin
-    >>> nreplicas = 3
-    >>> simulation = ParallelTempering(store_filename)
-    >>> simulation.create(system, positions, Tmin=Tmin, Tmax=Tmax, pressure=pressure, ntemps=nreplicas)
-    >>> simulation.number_of_iterations = 2 # set the simulation to only run 10 iterations
-    >>> simulation.timestep = 2.0 * unit.femtoseconds # set the timestep for integration
-    >>> simulation.nsteps_per_iteration = 50 # run 50 timesteps per iteration
-    >>> simulation.minimize = False # don't minimize first
-    >>> # Run simulation.
-    >>> simulation.run() # run the simulation
+    >>> n_replicas = 3  # Number of temperature replicas.
+    >>> T_min = 298.0 * unit.kelvin  # Minimum temperature.
+    >>> T_max = 600.0 * unit.kelvin  # Maximum temperature.
+    >>> reference_state = states.ThermodynamicState(system=testsystem.system, temperature=T_min)
+
+    Initialize simulation object with options. Run with a GHMC integrator.
+
+    >>> move = mcmc.GHMCMove(timestep=2.0*unit.femtoseconds, n_steps=50)
+    >>> simulation = ParallelTempering(mcmc_moves=move, number_of_iterations=2)
+
+    Create simulation with its storage file (in a temporary directory) and run.
+
+    >>> storage_path = tempfile.NamedTemporaryFile(delete=False).name + '.nc'
+    >>> simulation.create(thermodynamic_states=thermodynamic_states,
+    >>>                   sampler_states=states.SamplerState(testsystem.positions),
+    ...                   storage=storage_path, min_temperature=T_min,
+    ...                   max_temperature=T_max, n_temperatures=n_replicas)
+    >>> simulation.run(n_iterations=1)
+
+    Clean up.
+
+    >>> os.remove(storage_path)
 
     """
 
     def create(self, thermodynamic_state, sampler_states, storage, min_temperature=None,
                max_temperature=None, n_temperatures=None, temperatures=None, metadata=None):
-        """
-        Initialize a parallel tempering simulation object.
+        """Initialize a parallel tempering simulation object.
 
         Parameters
         ----------
-        system : simtk.openmm.System
-           the system to simulate
-        positions : simtk.unit.Quantity of np natoms x 3 array of units length, or list
-           coordinate set(s) for one or more replicas, assigned in a round-robin fashion
-        Tmin : simtk.unit.Quantity with units compatible with kelvin, optional, default=None
-           min temperature
-        Tmax : simtk.unit.Quantity with units compatible with kelvin, optional, default=None
-           max temperature
-        ntemps : int, optional, default=None
-           number of exponentially-spaced temperatures between Tmin and Tmax
-        temperatures : list of simtk.unit.Quantity with units compatible with kelvin, optional, default=None
-           if specified, this list of temperatures will be used instead of (Tmin, Tmax, ntemps)
-        pressure : simtk.unit.Quantity with units compatible with atmospheres, optional, default=None
-           if specified, a MonteCarloBarostat will be added (or modified) to perform NPT simulations
-        options : dict, optional, default=None
-           Options to use for specifying simulation protocol.  Provided keywords will be matched to object variables to replace defaults.
+        thermodynamic_state : openmmtools.states.ThermodynamicState
+            Reference thermodynamic state that will be simulated at the given
+            temperatures.
+        sampler_states : openmmtools.states.SamplerState or list
+            One or more sets of initial sampler states. If a list of SamplerStates,
+            they will be assigned to replicas in a round-robin fashion.
+        storage : str
+            The path to the storage file. In the future this will be able
+            to take a Reporter or a Storage class as well.
+        min_temperature : simtk.unit.Quantity, optional
+           Minimum temperature (units of temperature, default is None).
+        max_temperature : simtk.unit.Quantity, optional
+           Maximum temperature (units of temperature, default is None).
+        n_temperatures : int, optional
+           Number of exponentially-spaced temperatures between min_temperature
+           and max_temperature (default is None).
+        temperatures : list of simtk.unit.Quantity, optional
+           If specified, this list of temperatures will be used instead of
+           min_temperature, max_temperature, and n_temperatures (units of temeprature,
+           default is None).
+        metadata : dict, optional
+           Simulation metadata to be stored in the file.
 
         Notes
         -----
-        Either (Tmin, Tmax, ntempts) must all be specified or the list of 'temperatures' must be specified.
+        Either (min_temperature, max_temperature, n_temperatures) must all be
+        specified or the list of 'temperatures' must be specified.
 
         """
         # Create thermodynamic states from temperatures.
@@ -2370,8 +2367,6 @@ class ParallelTempering(ReplicaExchange):
     def _compute_replica_energies(self, replica_id):
         """Compute the energy for the replica at every temperature.
 
-        Notes
-        -----
         Because only the temperatures differ among replicas, we replace the generic O(N^2)
         replica-exchange implementation with an O(N) implementation.
 
