@@ -82,10 +82,9 @@ class Reporter(object):
     """
     def __init__(self, storage, open_mode=None):
         self._storage_file_path = storage
+        self._storage = None
         if open_mode is not None:
             self.open(open_mode)
-        else:
-            self._storage = None
 
     def is_open(self):
         """Return True if the Reporter is ready to read/write."""
@@ -190,10 +189,10 @@ class Reporter(object):
                     break
 
                 # Find the thermodynamic state representation.
-                try:  # CompoundThermodynamicState.
+                serialized_thermodynamic_state = serialized_state
+                while 'thermodynamic_state' in serialized_thermodynamic_state:
+                    # The while loop is necessary for nested CompoundThermodynamicStates.
                     serialized_thermodynamic_state = serialized_state['thermodynamic_state']
-                except KeyError:  # ThermodynamicState.
-                    serialized_thermodynamic_state = serialized_state
 
                 # Check if the standard state is in a previous state.
                 try:
@@ -240,10 +239,10 @@ class Reporter(object):
                 serialized_state = mmtools.utils.serialize(thermodynamic_state)
 
                 # Find the serialized standard system.
-                try:  # CompoundThermodynamicState.
+                serialized_thermodynamic_state = serialized_state
+                while 'thermodynamic_state' in serialized_thermodynamic_state:
+                    # The while loop is necessary for nested CompoundThermodynamicStates.
                     serialized_thermodynamic_state = serialized_state['thermodynamic_state']
-                except KeyError:  # ThermodynamicState.
-                    serialized_thermodynamic_state = serialized_state
                 serialized_standard_system = serialized_thermodynamic_state['standard_system']
 
                 # We store the full standard system serialization only if we haven't
@@ -1221,9 +1220,10 @@ class ReplicaExchange(object):
         repex._n_accepted_matrix = n_accepted_matrix
         repex._n_proposed_matrix = n_proposed_matrix
 
-        # We set the reporter in node 0. Will return None if not rank 0.
-        repex._reporter = mpi.run_single_node(0, Reporter, storage, open_mode='a',
-                                              broadcast_result=False, sync_nodes=False)
+        # We open the reporter only in node 0.
+        repex._reporter = Reporter(storage, open_mode=None)
+        mpi.run_single_node(0, repex._reporter.open, mode='a',
+                            broadcast_result=False, sync_nodes=False)
         return repex
 
     # -------------------------------------------------------------------------
@@ -1281,7 +1281,7 @@ class ReplicaExchange(object):
                 raise ValueError(("Unknown replica mixing scheme '{}'. Supported values "
                                   "are {}.").format(new_value, self._SUPPORTED_MIXING_SCHEMES))
             setattr(instance, '_' + self._option_name, new_value)
-            instance._store_options()
+            mpi.run_single_node(0, instance._store_options)
 
     number_of_iterations = _StoredProperty('number_of_iterations')
     replica_mixing_scheme = _StoredProperty('replica_mixing_scheme')
@@ -1434,8 +1434,8 @@ class ReplicaExchange(object):
 
         # Update all sampler states. For non-0 nodes, this will update only the
         # sampler states associated to the replicas propagated by this node.
-        for sampler_state_id in sampler_state_ids:
-            self._sampler_states[sampler_state_id].positions = minimized_positions[sampler_state_id]
+        for sampler_state_id, minimized_pos in zip(sampler_state_ids, minimized_positions):
+            self._sampler_states[sampler_state_id].positions = minimized_pos
 
         # Save the stored positions in the storage
         mpi.run_single_node(0, self._reporter.write_sampler_states, self._sampler_states, self._iteration)
@@ -1739,6 +1739,15 @@ class ReplicaExchange(object):
             self._sampler_states[replica_id].positions = propagated_positions
             self._sampler_states[replica_id].box_vectors = propagated_box_vectors
 
+        # Gather all MCMCMoves statistics. All nodes must have these up-to-date
+        # since they are tied to the ThermodynamicState, not the replica.
+        all_statistics = mpi.distribute(self._get_replica_move_statistics, range(self.n_replicas),
+                                        send_results_to='all')
+        for replica_id in range(self.n_replicas):
+            if len(all_statistics[replica_id]) > 0:
+                thermodynamic_state_id = self._replica_thermodynamic_states[replica_id]
+                self._mcmc_moves[thermodynamic_state_id].statistics = all_statistics[replica_id]
+
     def _propagate_replica(self, replica_id):
         """Propagate thermodynamic state associated to the given replica."""
         # Retrieve thermodynamic, sampler states, and MCMC move of this replica.
@@ -1759,6 +1768,18 @@ class ReplicaExchange(object):
 
         # Return new positions and box vectors.
         return sampler_state.positions, sampler_state.box_vectors
+
+    def _get_replica_move_statistics(self, replica_id):
+        """Return the statistics of the MCMCMove currently associated to this replica."""
+        thermodynamic_state_id = self._replica_thermodynamic_states[replica_id]
+        mcmc_move = self._mcmc_moves[thermodynamic_state_id]
+
+        try:
+            move_statistics = mcmc_move.statistics
+        except AttributeError:
+            move_statistics = {}
+
+        return move_statistics
 
     def _minimize_replica(self, replica_id, minimize_tolerance, minimize_max_iterations):
         """Minimize the specified replica."""
@@ -1802,7 +1823,7 @@ class ReplicaExchange(object):
                                                    send_results_to=0)
 
         # Update energy matrices. Non-0 nodes update only the energies computed by this replica.
-        for energies, replica_id in zip(new_energies, replica_ids):
+        for replica_id, energies in zip(replica_ids, new_energies):
             energy_thermodynamic_states, energy_unsampled_states = energies  # Unpack.
             self._energy_thermodynamic_states[replica_id] = energy_thermodynamic_states
             self._energy_unsampled_states[replica_id] = energy_unsampled_states
@@ -1869,6 +1890,7 @@ class ReplicaExchange(object):
         n_swaps_accepted = self._n_accepted_matrix.sum()
         swap_fraction_accepted = 0.0
         if n_swaps_proposed > 0:
+            # TODO drop casting to float when dropping Python 2 support.
             swap_fraction_accepted = float(n_swaps_accepted) / n_swaps_proposed
         logger.debug("Accepted {}/{} attempted swaps ({:.1f}%)".format(n_swaps_accepted, n_swaps_proposed,
                                                                        swap_fraction_accepted * 100.0))
@@ -2340,6 +2362,7 @@ class ParallelTempering(ReplicaExchange):
         if temperatures is not None:
             logger.debug("Using provided temperatures")
         elif min_temperature is not None and max_temperature is not None and n_temperatures is not None:
+            # TODO drop casting to float when dropping Python 2 support.
             temperatures = [min_temperature + (max_temperature - min_temperature) *
                             (math.exp(i / float(n_temperatures-1)) - 1.0) / (math.e - 1.0)
                             for i in range(n_temperatures)]

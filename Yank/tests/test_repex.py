@@ -520,9 +520,6 @@ class TestReporter(object):
                 writer(reporter, thermodynamic_states_energies, unsampled_states_energies, iteration=0)
                 restored_ts, restored_us = reporter.read_energies(iteration=0)
                 assert np.all(thermodynamic_states_energies == restored_ts)
-                print(writer)
-                print(unsampled_states_energies)
-                print(restored_us)
                 assert np.all(unsampled_states_energies == restored_us)
 
     def test_store_dict(self):
@@ -633,6 +630,30 @@ class TestReplicaExchange(object):
 
         cls.hostguest_test = (hostguest_compound_states, hostguest_sampler_states, hostguest_unsampled_states)
 
+    @staticmethod
+    @contextlib.contextmanager
+    def temporary_storage_path():
+        """Generate a storage path in a temporary folder and share it.
+
+        It makes it possible to run tests on multiple nodes with MPI.
+
+        """
+        mpicomm = mpi.get_mpicomm()
+        with moltools.utils.temporary_directory() as tmp_dir_path:
+            storage_file_path = os.path.join(tmp_dir_path, 'test_storage.nc')
+            if mpicomm is not None:
+                storage_file_path = mpicomm.bcast(storage_file_path, root=0)
+            yield storage_file_path
+
+    @staticmethod
+    def get_node_replica_ids(tot_n_replicas):
+        """Return the indices of the replicas that this node is responsible for."""
+        mpicomm = mpi.get_mpicomm()
+        if mpicomm is None or mpicomm.rank == 0:
+            return set(range(tot_n_replicas))
+        else:
+            return set(range(mpicomm.rank, tot_n_replicas, mpicomm.size))
+
     def test_repex_create(self):
         """Test creation of a new ReplicaExchange simulation.
 
@@ -647,9 +668,10 @@ class TestReplicaExchange(object):
         # Remove one sampler state to verify distribution over states.
         sampler_states = sampler_states[:-1]
 
-        with moltools.utils.temporary_directory() as tmp_dir_path:
+        with self.temporary_storage_path() as storage_path:
             repex = ReplicaExchange()
-            storage_path = os.path.join(tmp_dir_path, 'test_storage.nc')
+
+            # Create simulation and storage file.
             repex.create(thermodynamic_states, sampler_states, storage=storage_path,
                          unsampled_thermodynamic_states=unsampled_states)
 
@@ -701,10 +723,9 @@ class TestReplicaExchange(object):
 
         """
         thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(self.hostguest_test)
+        n_replicas = len(thermodynamic_states)
 
-        with moltools.utils.temporary_directory() as tmp_dir_path:
-            storage_path = os.path.join(tmp_dir_path, 'test_storage.nc')
-
+        with self.temporary_storage_path() as storage_path:
             number_of_iterations = 3
             move = mmtools.mcmc.LangevinDynamicsMove(n_steps=1)
             repex = ReplicaExchange(mcmc_moves=move, number_of_iterations=number_of_iterations)
@@ -712,7 +733,7 @@ class TestReplicaExchange(object):
                          unsampled_thermodynamic_states=unsampled_states)
 
             # Test at the beginning and after few iterations.
-            for _ in range(2):
+            for iteration in range(2):
                 # Store the state of the initial repex object (its __dict__). We leave the
                 # reporter out because when the NetCDF file is copied, it runs into issues.
                 original_dict = copy.deepcopy({k: v for k, v in repex.__dict__.items() if not k == '_reporter'})
@@ -733,13 +754,6 @@ class TestReplicaExchange(object):
                 restored_us = restored_dict.pop('_unsampled_states')
                 check_thermodynamic_states_equality(original_us, restored_us)
 
-                # Check sampler states.
-                original_ss = original_dict.pop('_sampler_states')
-                restored_ss = restored_dict.pop('_sampler_states')
-                for original, restored in zip(original_ss, restored_ss):
-                    assert np.allclose(original.positions, restored.positions)
-                    assert np.all(original.box_vectors == restored.box_vectors)
-
                 # The reporter of the restored simulation must be open only in node 0.
                 mpicomm = mpi.get_mpicomm()
                 if mpicomm is None or mpicomm.rank == 0:
@@ -747,11 +761,48 @@ class TestReplicaExchange(object):
                 else:
                     assert not repex._reporter.is_open()
 
-                # Remove cached values that are not stored.
+                # Each replica keeps only the info for the replicas it is
+                # responsible for to minimize network traffic.
+                node_replica_ids = self.get_node_replica_ids(n_replicas)
+
+                # Check sampler states. Non 0 nodes only hold their positions.
+                original_ss = original_dict.pop('_sampler_states')
+                restored_ss = restored_dict.pop('_sampler_states')
+                for replica_id, (original, restored) in enumerate(zip(original_ss, restored_ss)):
+                    if replica_id in node_replica_ids:
+                        assert np.allclose(original.positions, restored.positions)
+                        assert np.all(original.box_vectors == restored.box_vectors)
+
+                # Check energies. Non 0 nodes only hold their energies.
+                original_ets = original_dict.pop('_energy_thermodynamic_states')
+                restored_ets = restored_dict.pop('_energy_thermodynamic_states')
+                original_eus = original_dict.pop('_energy_unsampled_states')
+                restored_eus = restored_dict.pop('_energy_unsampled_states')
+                for replica_id in range(n_replicas):
+                    if replica_id in node_replica_ids:
+                        assert np.allclose(original_ets[replica_id], restored_ets[replica_id])
+                        assert np.allclose(original_eus[replica_id], restored_eus[replica_id])
+
+                # Only node 0 has updated accepted and proposed exchanges.
+                original_accepted = original_dict.pop('_n_accepted_matrix')
+                restored_accepted = restored_dict.pop('_n_accepted_matrix')
+                original_proposed = original_dict.pop('_n_proposed_matrix')
+                restored_proposed = restored_dict.pop('_n_proposed_matrix')
+                if len(node_replica_ids) == n_replicas:
+                    assert np.all(original_accepted == restored_accepted)
+                    assert np.all(original_proposed == restored_proposed)
+
+                # Test mcmc moves with pickle.
+                original_mcmc_moves = original_dict.pop('_mcmc_moves')
+                restored_mcmc_moves = restored_dict.pop('_mcmc_moves')
+                if len(node_replica_ids) == n_replicas:
+                    assert pickle.dumps(original_mcmc_moves) == pickle.dumps(restored_mcmc_moves)
+
+                # Remove cached values that are not resumed.
                 original_dict.pop('_cached_transition_counts', None)
                 original_dict.pop('_cached_last_replica_thermodynamic_states', None)
 
-                # Check all arrays. Instantiate list so that we can pop from original_dict.
+                # Check all other arrays. Instantiate list so that we can pop from original_dict.
                 for attr, original_value in list(original_dict.items()):
                     if isinstance(original_value, np.ndarray):
                         original_value = original_dict.pop(attr)
@@ -759,28 +810,23 @@ class TestReplicaExchange(object):
                         assert np.all(original_value == restored_value), '{}: {}\t{}'.format(
                             attr, original_value, restored_value)
 
-                # Test mcmc moves with pickle.
-                original_mcmc_moves = original_dict.pop('_mcmc_moves')
-                restored_mcmc_moves = restored_dict.pop('_mcmc_moves')
-                assert pickle.dumps(original_mcmc_moves) == pickle.dumps(restored_mcmc_moves)
-
                 # Everything else should be a dict of builtins.
                 assert original_dict == restored_dict
 
                 # Run few iterations to see that we restore also after a while.
-                repex.run(number_of_iterations)
+                if iteration == 0:
+                    repex.run(number_of_iterations)
 
     def test_stored_properties(self):
         """Test that storage is kept in sync with options."""
         thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(self.alanine_test)
 
-        with moltools.utils.temporary_directory() as tmp_dir_path:
-            storage_path = os.path.join(tmp_dir_path, 'test_storage.nc')
+        with self.temporary_storage_path() as storage_path:
             repex = ReplicaExchange()
             repex.create(thermodynamic_states, sampler_states, storage=storage_path,
                          unsampled_thermodynamic_states=unsampled_states)
 
-            # Get original options.
+            # Save original options.
             reporter = Reporter(storage_path, open_mode='r')
             options = reporter.read_dict('options')
 
@@ -788,10 +834,13 @@ class TestReplicaExchange(object):
             repex.number_of_iterations = 123
             repex.replica_mixing_scheme = 'none'
             repex.online_analysis = not repex.online_analysis
-            changed_options = reporter.read_dict('options')
-            assert changed_options['number_of_iterations'] == 123
-            assert changed_options['replica_mixing_scheme'] == 'none'
-            assert changed_options['online_analysis'] == (not options['online_analysis'])
+
+            mpicomm = mpi.get_mpicomm()
+            if mpicomm is None or mpicomm.rank == 0:
+                changed_options = reporter.read_dict('options')
+                assert changed_options['number_of_iterations'] == 123
+                assert changed_options['replica_mixing_scheme'] == 'none'
+                assert changed_options['online_analysis'] == (not options['online_analysis'])
 
     def test_propagate_replicas(self):
         """Test method _propagate_replicas from ReplicaExchange.
@@ -804,9 +853,7 @@ class TestReplicaExchange(object):
         thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(self.alanine_test)
         n_states = len(thermodynamic_states)
 
-        with mmtools.utils.temporary_directory() as tmp_dir_path:
-            storage_path = os.path.join(tmp_dir_path, 'test_storage.nc')
-
+        with self.temporary_storage_path() as storage_path:
             # For this test to work, positions should be the same but
             # translated, so that minimized positions should satisfy
             # the same condition.
@@ -843,8 +890,7 @@ class TestReplicaExchange(object):
         thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(self.hostguest_test)
         n_replicas = len(thermodynamic_states)
 
-        with mmtools.utils.temporary_directory() as tmp_dir_path:
-            storage_path = os.path.join(tmp_dir_path, 'test_storage.nc')
+        with self.temporary_storage_path() as storage_path:
             repex = ReplicaExchange()
             repex.create(thermodynamic_states, sampler_states, storage=storage_path,
                          unsampled_thermodynamic_states=unsampled_states)
@@ -881,8 +927,7 @@ class TestReplicaExchange(object):
         thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(self.alanine_test)
         n_states = len(thermodynamic_states)
 
-        with mmtools.utils.temporary_directory() as tmp_dir_path:
-            storage_path = os.path.join(tmp_dir_path, 'test_storage.nc')
+        with self.temporary_storage_path() as storage_path:
             repex = ReplicaExchange()
             repex.create(thermodynamic_states, sampler_states, storage=storage_path,
                          unsampled_thermodynamic_states=unsampled_states)
@@ -909,17 +954,21 @@ class TestReplicaExchange(object):
                          for i in range(n_states - 1)]
             assert np.allclose(original_diffs, new_diffs)
 
+            # Each replica keeps only the info for the replicas it is
+            # responsible for to minimize network traffic.
+            node_replica_ids = self.get_node_replica_ids(n_states)
+
             # The energies have been minimized.
             repex._compute_energies()
-            new_energies = [repex._energy_thermodynamic_states[i, i] for i in range(n_states)]
-            for i in range(n_states):
-                assert new_energies[i] < original_energies[i]
+            for i in node_replica_ids:
+                assert repex._energy_thermodynamic_states[i, i] < original_energies[i]
 
             # The storage has been updated.
-            reporter = Reporter(storage_path, open_mode='r')
-            stored_sampler_states = reporter.read_sampler_states(iteration=0)
-            for new_state, stored_state in zip(new_sampler_states, stored_sampler_states):
-                assert np.allclose(new_state.positions, stored_state.positions)
+            if len(node_replica_ids) == n_states:
+                reporter = Reporter(storage_path, open_mode='r')
+                stored_sampler_states = reporter.read_sampler_states(iteration=0)
+                for new_state, stored_state in zip(new_sampler_states, stored_sampler_states):
+                    assert np.allclose(new_state.positions, stored_state.positions)
 
     def test_equilibrate(self):
         """Test equilibration of ReplicaExchange simulation.
@@ -930,25 +979,29 @@ class TestReplicaExchange(object):
 
         """
         thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(self.alanine_test)
+        n_states = len(thermodynamic_states)
 
-        with mmtools.utils.temporary_directory() as tmp_dir_path:
-            storage_path = os.path.join(tmp_dir_path, 'test_storage.nc')
-
+        with self.temporary_storage_path() as storage_path:
             # We create a ReplicaExchange with a GHMC move but use Langevin for equilibration.
             repex = ReplicaExchange(mcmc_moves=mmtools.mcmc.GHMCMove())
             repex.create(thermodynamic_states, sampler_states, storage=storage_path,
                          unsampled_thermodynamic_states=unsampled_states)
 
-            # Minimize.
+            # Equilibrate.
             equilibration_move = mmtools.mcmc.LangevinDynamicsMove(n_steps=1)
             repex.equilibrate(n_iterations=10, mcmc_moves=equilibration_move)
             assert isinstance(repex._mcmc_moves[0], mmtools.mcmc.GHMCMove)
 
+            # Each replica keeps only the info for the replicas it is
+            # responsible for to minimize network traffic.
+            node_replica_ids = self.get_node_replica_ids(n_states)
+
             # The storage has been updated.
-            reporter = Reporter(storage_path, open_mode='r')
-            stored_sampler_states = reporter.read_sampler_states(iteration=0)
-            for new_state, stored_state in zip(repex._sampler_states, stored_sampler_states):
-                assert np.allclose(new_state.positions, stored_state.positions)
+            if len(node_replica_ids) == n_states:
+                reporter = Reporter(storage_path, open_mode='r')
+                stored_sampler_states = reporter.read_sampler_states(iteration=0)
+                for new_state, stored_state in zip(repex._sampler_states, stored_sampler_states):
+                    assert np.allclose(new_state.positions, stored_state.positions)
 
             # We are still at iteration 0.
             assert repex._iteration == 0
@@ -960,10 +1013,9 @@ class TestReplicaExchange(object):
         for test_case in test_cases:
             thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(test_case)
 
-            with mmtools.utils.temporary_directory() as tmp_dir_path:
-                storage_path = os.path.join(tmp_dir_path, 'test_storage.nc')
+            with self.temporary_storage_path() as storage_path:
                 moves = mmtools.mcmc.SequenceMove([
-                    mmtools.mcmc.MCDisplacementMove(),
+                    mmtools.mcmc.LangevinDynamicsMove(n_steps=1),
                     mmtools.mcmc.MCRotationMove(),
                     mmtools.mcmc.GHMCMove(n_steps=1)
                 ])
@@ -980,10 +1032,21 @@ class TestReplicaExchange(object):
                 repex.extend(n_iterations=2)
                 assert repex.iteration == 4
 
+                # All replicas must have moves with updated statistics.
+                for sequence_move in repex._mcmc_moves:
+                    # LangevinDynamicsMove doesn't have statistics.
+                    for move_id in range(1, 2):
+                        assert sequence_move.move_list[move_id].n_proposed == 4
+
                 # The MCMCMoves statistics in the storage are updated.
-                reporter = Reporter(storage_path, open_mode='r')
-                restored_mcmc_moves = reporter.read_mcmc_moves()
-                assert restored_mcmc_moves[0].move_list[0].n_proposed == 4
+                mpicomm = mpi.get_mpicomm()
+                if mpicomm is None or mpicomm.rank == 0:
+                    reporter = Reporter(storage_path, open_mode='r')
+                    restored_mcmc_moves = reporter.read_mcmc_moves()
+                    for sequence_move in restored_mcmc_moves:
+                        # LangevinDynamicsMove doesn't have statistics.
+                        for move_id in range(1, 2):
+                            assert sequence_move.move_list[move_id].n_proposed == 4
 
 
 # ==============================================================================
