@@ -128,7 +128,7 @@ def get_mpicomm():
     get_mpicomm._mpicomm = mpicomm
 
     # Report initialization
-    logger.debug("MPI initialized on node {}/{}".format(mpicomm.rank, mpicomm.size))
+    logger.debug("MPI initialized on node {}/{}".format(mpicomm.rank+1, mpicomm.size))
 
     return mpicomm
 
@@ -184,22 +184,22 @@ def run_single_node(rank, task, *args, **kwargs):
     mpicomm = get_mpicomm()
 
     if mpicomm is not None:
-        node_name = 'Node {}/{}'.format(mpicomm.rank, mpicomm.size)
+        node_name = 'Node {}/{}'.format(mpicomm.rank+1, mpicomm.size)
     else:
         node_name = 'Single node'
 
     # Execute the task only on the specified node.
     if mpicomm is None or mpicomm.rank == rank:
-        logger.debug('{}: executing {}'.format(node_name, task.__name__))
+        logger.debug('{}: executing {}'.format(node_name, task))
         result = task(*args, **kwargs)
 
     # Broadcast the result if required.
     if mpicomm is not None:
         if broadcast_result is True:
-            logger.debug('{}: waiting for broadcast of {}'.format(node_name, task.__name__))
+            logger.debug('{}: waiting for broadcast of {}'.format(node_name, task))
             result = mpicomm.bcast(result, root=rank)
         elif sync_nodes is True:
-            logger.debug('{}: waiting for barrier after {}'.format(node_name, task.__name__))
+            logger.debug('{}: waiting for barrier after {}'.format(node_name, task))
             mpicomm.barrier()
 
     # Return result.
@@ -324,7 +324,7 @@ def distribute(task, distributed_args, *other_args, **kwargs):
 
     # Compute all the results assigned to this node.
     results = []
-    node_name = 'Node {}/{}'.format(mpicomm.rank, mpicomm.size)
+    node_name = 'Node {}/{}'.format(mpicomm.rank+1, mpicomm.size)
     for job_id in node_job_ids:
         distributed_arg = distributed_args[job_id]
         logger.debug('{}: execute {}({})'.format(node_name, task.__name__, distributed_arg))

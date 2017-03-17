@@ -166,7 +166,7 @@ def test_distribute():
     mpicomm = get_mpicomm()
     my_instance = MyClass(4)
 
-    # Testcase: (function, all_args)
+    # Testcase: (function, distributed_args)
     test_cases = [
         (square, [1, 2, 3]),
         (MyClass.square_static, [1, 2, 3, 4]),
@@ -179,25 +179,25 @@ def test_distribute():
                                        unit.Quantity(np.array([5, 6]), unit=unit.angstrom)]),
     ]
 
-    for task, all_args in test_cases:
-        all_indices = list(range(len(all_args)))
-        all_expected_results = [task(x) for x in all_args]
+    for task, distributed_args in test_cases:
+        all_indices = list(range(len(distributed_args)))
+        all_expected_results = [task(x) for x in distributed_args]
 
         # Determining full and partial results.
         if mpicomm is not None:
-            partial_job_indices = list(range(mpicomm.rank, len(all_args), mpicomm.size))
+            partial_job_indices = list(range(mpicomm.rank, len(distributed_args), mpicomm.size))
         else:
             partial_job_indices = all_indices
         partial_expected_results = [all_expected_results[i] for i in partial_job_indices]
 
-        result = distribute(task, all_args, send_results_to='all')
+        result = distribute(task, distributed_args, send_results_to='all')
         assert_is_equal(result, all_expected_results)
 
-        result = distribute(task, all_args, send_results_to=NODE_RANK)
+        result = distribute(task, distributed_args, send_results_to=NODE_RANK)
         if mpicomm is not None and mpicomm.rank != NODE_RANK:
             assert_is_equal(result, (partial_expected_results, partial_job_indices))
         else:
             assert_is_equal(result, (all_expected_results, all_indices))
 
-        result = distribute(task, all_args, send_results_to=None)
+        result = distribute(task, distributed_args, send_results_to=None)
         assert_is_equal(result, (partial_expected_results, partial_job_indices))
