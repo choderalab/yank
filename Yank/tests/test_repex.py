@@ -166,8 +166,7 @@ def test_replica_exchange(verbose=False, verbose_simulation=False):
     move = mmtools.mcmc.LangevinDynamicsMove(timestep=2.0*unit.femtoseconds,
                                              collision_rate=20.0/unit.picosecond,
                                              n_steps=500, reassign_velocities=True)
-    simulation = ReplicaExchange(mcmc_moves=move, number_of_iterations=200,
-                                 show_mixing_statistics=False, online_analysis=True)
+    simulation = ReplicaExchange(mcmc_moves=move, number_of_iterations=200)
 
     # Define file for temporary storage.
     with mmtools.utils.temporary_directory() as tmp_dir:
@@ -180,6 +179,7 @@ def test_replica_exchange(verbose=False, verbose_simulation=False):
         simulation.run()
 
         # Retrieve extant analysis object.
+        # TODO refactor here with new analysis code.
         online_analysis = simulation.analysis
 
         # Analyze simulation to compute free energies.
@@ -833,14 +833,12 @@ class TestReplicaExchange(object):
             # Update options and check the storage is synchronized.
             repex.number_of_iterations = 123
             repex.replica_mixing_scheme = 'none'
-            repex.online_analysis = not repex.online_analysis
 
             mpicomm = mpi.get_mpicomm()
             if mpicomm is None or mpicomm.rank == 0:
                 changed_options = reporter.read_dict('options')
                 assert changed_options['number_of_iterations'] == 123
                 assert changed_options['replica_mixing_scheme'] == 'none'
-                assert changed_options['online_analysis'] == (not options['online_analysis'])
 
     def test_propagate_replicas(self):
         """Test method _propagate_replicas from ReplicaExchange.
@@ -1019,8 +1017,7 @@ class TestReplicaExchange(object):
                     mmtools.mcmc.MCRotationMove(),
                     mmtools.mcmc.GHMCMove(n_steps=1)
                 ])
-                repex = ReplicaExchange(mcmc_moves=moves, show_energies=True,
-                                        show_mixing_statistics=True, number_of_iterations=2)
+                repex = ReplicaExchange(mcmc_moves=moves, number_of_iterations=2)
                 repex.create(thermodynamic_states, sampler_states, storage=storage_path,
                              unsampled_thermodynamic_states=unsampled_states)
 

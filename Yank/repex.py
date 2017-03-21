@@ -1022,25 +1022,12 @@ class ReplicaExchange(object):
     replica_mixing_scheme : 'swap-all', 'swap-neighbors' or 'none'
         The scheme used to swap thermodynamic states between replicas
         (default is 'swap-all').
-    online_analysis : bool, optional
-        If True, analysis will occur each iteration (default is False).
-    online_analysis_min_iterations : int, optional
-        Minimum number of iterations needed to begin online analysis
-        (default is 20).
-    show_energies : bool, optional
-       If True, will print energies at each iteration (default is True).
-    show_mixing_statistics : bool, optional
-       If True, will show mixing statistics at each iteration (default is True).
 
     Attributes
     ----------
     mcmc_moves
     number_of_iterations
     replica_mixing_scheme
-    online_analysis
-    online_analysis_min_iterations
-    show_energies
-    show_mixing_statistics
 
     Examples
     --------
@@ -1113,13 +1100,7 @@ class ReplicaExchange(object):
     # Constructors.
     # -------------------------------------------------------------------------
 
-    def __init__(self, mcmc_moves=None,
-                 number_of_iterations=1,
-                 replica_mixing_scheme='swap-all',
-                 online_analysis=False,
-                 online_analysis_min_iterations=20,
-                 show_energies=True,
-                 show_mixing_statistics=True):
+    def __init__(self, mcmc_moves=None, number_of_iterations=1, replica_mixing_scheme='swap-all'):
 
         # Check argument values.
         if replica_mixing_scheme not in self._SUPPORTED_MIXING_SCHEMES:
@@ -1137,14 +1118,10 @@ class ReplicaExchange(object):
             self._mcmc_moves = copy.deepcopy(mcmc_moves)
 
         # Store constructor parameters. Everything is marked for internal
-        # usage because any change to these attribute would imply a change
-        # in the storage file as well, which we don't currently support.
+        # usage because any change to these attribute implies a change
+        # in the storage file as well.
         self._number_of_iterations = number_of_iterations
         self._replica_mixing_scheme = replica_mixing_scheme
-        self._online_analysis = online_analysis
-        self._online_analysis_min_iterations = online_analysis_min_iterations
-        self._show_energies = show_energies
-        self._show_mixing_statistics = show_mixing_statistics
 
         # These will be set on initialization. See function
         # create() for explanation of single variables.
@@ -1285,10 +1262,6 @@ class ReplicaExchange(object):
 
     number_of_iterations = _StoredProperty('number_of_iterations')
     replica_mixing_scheme = _StoredProperty('replica_mixing_scheme')
-    online_analysis = _StoredProperty('online_analysis')
-    online_analysis_min_iterations = _StoredProperty('online_analysis_min_iterations')
-    show_energies = _StoredProperty('show_energies')
-    show_mixing_statistics = _StoredProperty('show_mixing_statistics')
 
     # -------------------------------------------------------------------------
     # Main public interface.
@@ -1534,16 +1507,6 @@ class ReplicaExchange(object):
             # Write iteration to storage file.
             self._report_iteration()
 
-            # Show energies.
-            self._log_energies()
-
-            # Show mixing statistics.
-            self._log_mixing_statistics()
-
-            # Perform online analysis.
-            if self._online_analysis:
-                self._analysis()
-
             # Show timing statistics if debug level is activated.
             if logger.isEnabledFor(logging.DEBUG):
                 iteration_time = timer.stop('Iteration')
@@ -1637,6 +1600,28 @@ class ReplicaExchange(object):
             err_msg = "NaN encountered in {} energies for replicas {}".format(state_type, faulty_replicas)
             logger.error(err_msg)
             raise RuntimeError(err_msg)
+
+    def _display_citations(self):
+        """Display papers to be cited."""
+        # TODO Add original citations for various replica-exchange schemes.
+        # TODO Show subset of OpenMM citations based on what features are being used.
+        openmm_citations = """\
+        Friedrichs MS, Eastman P, Vaidyanathan V, Houston M, LeGrand S, Beberg AL, Ensign DL, Bruns CM, and Pande VS. Accelerating molecular dynamic simulations on graphics processing unit. J. Comput. Chem. 30:864, 2009. DOI: 10.1002/jcc.21209
+        Eastman P and Pande VS. OpenMM: A hardware-independent framework for molecular simulations. Comput. Sci. Eng. 12:34, 2010. DOI: 10.1109/MCSE.2010.27
+        Eastman P and Pande VS. Efficient nonbonded interactions for molecular dynamics on a graphics processing unit. J. Comput. Chem. 31:1268, 2010. DOI: 10.1002/jcc.21413
+        Eastman P and Pande VS. Constant constraint matrix approximation: A robust, parallelizable constraint method for molecular simulations. J. Chem. Theor. Comput. 6:434, 2010. DOI: 10.1021/ct900463w"""
+
+        gibbs_citations = """\
+        Chodera JD and Shirts MR. Replica exchange and expanded ensemble simulations as Gibbs sampling: Simple improvements for enhanced mixing. J. Chem. Phys., 135:194110, 2011. DOI:10.1063/1.3660669"""
+
+        mbar_citations = """\
+        Shirts MR and Chodera JD. Statistically optimal analysis of samples from multiple equilibrium states. J. Chem. Phys. 129:124105, 2008. DOI: 10.1063/1.2978177"""
+
+        print("Please cite the following:")
+        print("")
+        print(openmm_citations)
+        if self._replica_mixing_scheme == 'swap-all':
+            print(gibbs_citations)
 
     # -------------------------------------------------------------------------
     # Internal-usage: Initialization and storage utilities.
@@ -1970,308 +1955,6 @@ class ReplicaExchange(object):
             # Accumulate statistics.
             self._n_accepted_matrix[thermodynamic_state_i, thermodynamic_state_j] += 1
             self._n_accepted_matrix[thermodynamic_state_j, thermodynamic_state_i] += 1
-
-    # -------------------------------------------------------------------------
-    # Internal-usage: Analysis.
-    # -------------------------------------------------------------------------
-
-    # TODO use code in analyze to avoid duplication.
-    # TODO make show_statistics/energy Yank/Logger/Analyzer options instead?
-    # TODO make online_analysis Yank/Analyzer option instead?
-
-    def _accumulate_mixing_statistics(self):
-        """Return the mixing transition matrix."""
-        try:
-            return self._accumulate_mixing_statistics_update()
-        except AttributeError:
-            pass
-        except ValueError:
-            logger.info("Inconsistent transition count matrix detected, recalculating from scratch.")
-
-        return self._accumulate_mixing_statistics_full()
-
-    def _accumulate_mixing_statistics_full(self):
-        """Compute statistics of transitions iterating over all iterations of repex."""
-        states = self._reporter.read_replica_thermodynamic_states(iteration=slice(None))
-
-        # Create a cumulative transition counts matrix and cache last
-        # replica_thermodynamic_states indices to avoid access to storage.
-        self._cached_transition_counts = np.zeros([self.n_replicas, self.n_replicas], np.float64)
-        self._cached_last_replica_thermodynamic_states = self._replica_thermodynamic_states.copy()
-
-        # Accumulate transition counts.
-        for iteration in range(states.shape[0] - 1):
-            for replica_id in range(self.n_replicas):
-                thermodynamic_state_i = states[iteration, replica_id]
-                thermodynamic_state_j = states[iteration + 1, replica_id]
-                self._cached_transition_counts[thermodynamic_state_i, thermodynamic_state_j] += 0.5
-                self._cached_transition_counts[thermodynamic_state_j, thermodynamic_state_i] += 0.5
-
-        # Normalize to obtain transition matrix. state_n_total_transitions is always
-        # at least one because iteration 0 is just for minimization/equilibration.
-        transition_matrix = np.zeros([self.n_replicas, self.n_replicas], np.float64)
-        for state_id in range(self.n_replicas):
-            state_n_total_transitions = self._cached_transition_counts[state_id].sum()
-            transition_matrix[state_id] = self._cached_transition_counts[state_id] / state_n_total_transitions
-
-        return transition_matrix
-
-    def _accumulate_mixing_statistics_update(self):
-        """Compute statistics of transitions updating Nij of last iteration of repex."""
-        # Check that we have exactly one new iteration to process.
-        if self._cached_last_iteration_mixing.sum() != (self._iteration - 2) * self.n_replicas:
-            raise RuntimeError("Inconsistent transition count matrix detected. "
-                               "Perhaps you tried updating twice in a row?")
-
-        # Add counts for last iteration.
-        for replica_id in range(self.n_replicas):
-            thermodynamic_state_i = self._cached_last_replica_thermodynamic_states[replica_id]
-            thermodynamic_state_j = self._replica_thermodynamic_states[replica_id]
-            self._cached_transition_counts[thermodynamic_state_i, thermodynamic_state_j] += 0.5
-            self._cached_transition_counts[thermodynamic_state_j, thermodynamic_state_i] += 0.5
-
-        # Normalizing to obtain transition matrix.
-        transition_matrix = np.zeros([self.n_replicas, self.n_replicas], np.float64)
-        for state_id in range(self.n_replicas):
-            state_n_total_transitions = self._cached_transition_counts[state_id].sum()
-            transition_matrix[state_id] = self._cached_transition_counts[state_id] / state_n_total_transitions
-
-        # Updated cached information for next iteration.
-        self._cached_last_replica_thermodynamic_states = self._replica_thermodynamic_states.copy()
-
-        return transition_matrix
-
-    @mpi.on_single_node(0, broadcast_result=True)
-    def _analysis(self):
-        """Perform online analysis.
-
-        Every iteration, this will update the estimate of the state relative
-        free energy differences and statistical uncertainties. We can additionally
-        request further analysis.
-
-        """
-        # Determine how many iterations there are data available for.
-        replica_states = self._reporter.read_replica_thermodynamic_states(iteration=slice(None))
-        u_nkl_replica, u_unsampled = self._reporter.read_energies(iteration=slice(None))
-
-        # Determine number of iterations completed.
-        number_of_iterations_completed = replica_states.shape[0]
-        nstates = replica_states.shape[1]
-
-        # Online analysis can only be performed after a sufficient quantity of data has been collected.
-        if number_of_iterations_completed < self.online_analysis_min_iterations:
-            logger.debug(("Online analysis will be performed after {} iterations "
-                          "have elapsed.").format(self._online_analysis_min_iterations))
-
-        # Deconvolute replicas and compute total simulation effective self-energy timeseries.
-        u_kln = np.zeros([nstates, nstates, number_of_iterations_completed], np.float32)
-        u_n = np.zeros([number_of_iterations_completed], np.float64)
-        for iteration in range(number_of_iterations_completed):
-            state_indices = replica_states[iteration,:]
-            u_n[iteration] = 0.0
-            for replica_index in range(nstates):
-                state_index = state_indices[replica_index]
-                u_n[iteration] += u_nkl_replica[iteration, replica_index, state_index]
-                u_kln[state_index, :, iteration] = u_nkl_replica[iteration, replica_index, :]
-
-        # Determine optimal equilibration time, statistical inefficiency, and effectively uncorrelated sample indices.
-        from pymbar import timeseries
-        [t0, g, Neff_max] = timeseries.detectEquilibration(u_n)
-        indices = t0 + timeseries.subsampleCorrelatedData(u_n[t0:], g=g)
-        N_k = indices.size * np.ones([nstates], np.int32)
-
-        # Next, analyze with pymbar, initializing with last estimate of free energies.
-        from pymbar import MBAR
-        if hasattr(self, 'f_k'):
-            mbar = MBAR(u_kln[:, :, indices], N_k, initial_f_k=self.f_k)
-        else:
-            mbar = MBAR(u_kln[:, :, indices], N_k)
-
-        # Cache current free energy estimate to save time in future MBAR solutions.
-        self.f_k = mbar.f_k
-
-        # Compute entropy and enthalpy.
-        [Delta_f_ij, dDelta_f_ij, Delta_u_ij, dDelta_u_ij, Delta_s_ij, dDelta_s_ij] = mbar.computeEntropyAndEnthalpy()
-
-        # Store analysis summary.
-        # TODO: Convert this to an object?
-        analysis = dict()
-        analysis['equilibration_end'] = t0
-        analysis['g'] = g
-        analysis['indices'] = indices
-        analysis['Delta_f_ij'] = Delta_f_ij
-        analysis['dDelta_f_ij'] = dDelta_f_ij
-        analysis['Delta_u_ij'] = Delta_u_ij
-        analysis['dDelta_u_ij'] = dDelta_u_ij
-        analysis['Delta_s_ij'] = Delta_s_ij
-        analysis['dDelta_s_ij'] = dDelta_s_ij
-
-        def matrix2str(x):
-            """
-            Return a print-ready string version of a matrix of numbers.
-
-            Parameters
-            ----------
-            x : numpy.array of nrows x ncols matrix
-               Matrix of numbers to print.
-
-            """
-            # TODO Automatically determine optimal spacing
-            [nrows, ncols] = x.shape
-            str_row = ""
-            for i in range(nrows):
-                for j in range(ncols):
-                    str_row += "%8.3f" % x[i, j]
-                str_row += "\n"
-            return str_row
-
-        # Print estimate
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug("================================================================================")
-            logger.debug("Online analysis estimate of free energies:")
-            logger.debug("  equilibration end: %d iterations" % t0)
-            logger.debug("  statistical inefficiency: %.1f iterations" % g)
-            logger.debug("  effective number of uncorrelated samples: %.1f" % Neff_max)
-            logger.debug("Reduced free energy (f), enthalpy (u), and entropy (s) differences among thermodynamic states:")
-            logger.debug("Delta_f_ij")
-            logger.debug(matrix2str(Delta_f_ij))
-            logger.debug("dDelta_f_ij")
-            logger.debug(matrix2str(dDelta_f_ij))
-            logger.debug("Delta_u_ij")
-            logger.debug(matrix2str(Delta_u_ij))
-            logger.debug("dDelta_u_ij")
-            logger.debug(matrix2str(dDelta_u_ij))
-            logger.debug("Delta_s_ij")
-            logger.debug(matrix2str(Delta_s_ij))
-            logger.debug("dDelta_s_ij")
-            logger.debug(matrix2str(dDelta_s_ij))
-            logger.debug("================================================================================")
-
-        return analysis
-
-    def analyze(self):
-        """
-        Analyze the current simulation and return estimated free energies.
-
-        Returns
-        -------
-        analysis : dict
-           Analysis object containing end of equilibrated region, statistical
-           inefficiency, and free energy differences.
-
-        Keys
-        ----
-        equilibration_end : int
-           The last iteration in the discarded equilibrated region.
-        g : float
-           Estimated statistical inefficiency of production region.
-        indices : list of int
-           Equilibrated, effectively uncorrelated iteration indices used in analysis.
-        Delta_f_ij : numpy array of nstates x nstates
-           Delta_f_ij[i,j] is the free energy difference f_j - f_i in units of kT.
-        dDelta_f_ij : numpy array of nstates x nstates
-           dDelta_f_ij[i,j] is estimated standard error of Delta_f_ij[i,j].
-        Delta_u_ij
-           Delta_u_ij[i,j] is the reduced enthalpy difference u_j - u_i in units of kT.
-        dDelta_u_ij
-           dDelta_u_ij[i,j] is estimated standard error of Delta_u_ij[i,j].
-        Delta_s_ij
-           Delta_s_ij[i,j] is the reduced entropic contribution to the free energy.
-           difference s_j - s_i in units of kT
-        dDelta_s_ij
-           dDelta_s_ij[i,j] is estimated standard error of Delta_s_ij[i,j].
-
-        """
-        # Update analysis on root node.
-        self.analysis = self._analysis()
-
-        # Return analysis object
-        return self.analysis
-
-    # -------------------------------------------------------------------------
-    # Internal-usage: Logging.
-    # -------------------------------------------------------------------------
-
-    @mpi.on_single_node(0, sync_nodes=False)
-    def _log_mixing_statistics(self):
-        """Log mixing statistics."""
-        if self._iteration < 2 or not self._show_mixing_statistics:
-            return
-        print_cutoff = 0.001  # Cutoff for displaying fraction of accepted swaps.
-
-        transition_matrix = self._accumulate_mixing_statistics()
-
-        # Print observed transition probabilities.
-        logger.debug("Cumulative symmetrized state mixing transition matrix:")
-        str_row = "%6s" % ""
-        for thermodynamic_state_j in range(self.n_replicas):
-            str_row += "%6d" % thermodynamic_state_j
-        logger.debug(str_row)
-        for thermodynamic_state_i in range(self.n_replicas):
-            str_row = "%-6d" % thermodynamic_state_i
-            for thermodynamic_state_j in range(self.n_replicas):
-                p = transition_matrix[thermodynamic_state_i, thermodynamic_state_j]
-                if p >= print_cutoff:
-                    str_row += "%6.3f" % p
-                else:
-                    str_row += "%6s" % ""
-            logger.debug(str_row)
-
-        # Estimate second eigenvalue and equilibration time.
-        mu = np.linalg.eigvals(transition_matrix)
-        mu = -np.sort(-mu)  # Sort in descending order.
-        if mu[1] >= 1:
-            logger.debug("Perron eigenvalue is unity; Markov chain is decomposable.")
-        else:
-            logger.debug("Perron eigenvalue is {:9.5f}; state equilibration timescale "
-                         "is ~ {:.1f} iterations".format(mu[1], 1.0 / (1.0 - mu[1])))
-
-    @mpi.on_single_node(0, sync_nodes=False)
-    def _log_energies(self):
-        """Log energies (in units of kT) for all replicas at all states."""
-        if not logger.isEnabledFor(logging.DEBUG) or not self._show_energies:
-            return
-
-        # print header
-        str_row = "%-24s %16s" % ("reduced potential (kT)", "current state")
-        for state_index in range(self.n_replicas):
-            str_row += " state %3d" % state_index
-        logger.debug(str_row)
-
-        # print energies in kT
-        for replica_index in range(self.n_replicas):
-            str_row = "replica %-16d %16d" % (replica_index, self._replica_thermodynamic_states[replica_index])
-            for state_index in range(self.n_replicas):
-                u = self._energy_thermodynamic_states[replica_index, state_index]
-                if u > 1e6:
-                    str_row += "%10.3e" % u
-                else:
-                    str_row += "%10.1f" % u
-            logger.debug(str_row)
-
-    def _display_citations(self):
-        """Display papers to be cited."""
-        # TODO Add original citations for various replica-exchange schemes.
-        # TODO Show subset of OpenMM citations based on what features are being used.
-        openmm_citations = """\
-        Friedrichs MS, Eastman P, Vaidyanathan V, Houston M, LeGrand S, Beberg AL, Ensign DL, Bruns CM, and Pande VS. Accelerating molecular dynamic simulations on graphics processing unit. J. Comput. Chem. 30:864, 2009. DOI: 10.1002/jcc.21209
-        Eastman P and Pande VS. OpenMM: A hardware-independent framework for molecular simulations. Comput. Sci. Eng. 12:34, 2010. DOI: 10.1109/MCSE.2010.27
-        Eastman P and Pande VS. Efficient nonbonded interactions for molecular dynamics on a graphics processing unit. J. Comput. Chem. 31:1268, 2010. DOI: 10.1002/jcc.21413
-        Eastman P and Pande VS. Constant constraint matrix approximation: A robust, parallelizable constraint method for molecular simulations. J. Chem. Theor. Comput. 6:434, 2010. DOI: 10.1021/ct900463w"""
-
-        gibbs_citations = """\
-        Chodera JD and Shirts MR. Replica exchange and expanded ensemble simulations as Gibbs sampling: Simple improvements for enhanced mixing. J. Chem. Phys., 135:194110, 2011. DOI:10.1063/1.3660669"""
-
-        mbar_citations = """\
-        Shirts MR and Chodera JD. Statistically optimal analysis of samples from multiple equilibrium states. J. Chem. Phys. 129:124105, 2008. DOI: 10.1063/1.2978177"""
-
-        print("Please cite the following:")
-        print("")
-        print(openmm_citations)
-        if self._replica_mixing_scheme == 'swap-all':
-            print(gibbs_citations)
-        if self._online_analysis:
-            print(mbar_citations)
 
 
 # ==============================================================================
