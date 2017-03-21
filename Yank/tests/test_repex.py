@@ -42,7 +42,7 @@ def check_thermodynamic_states_equality(original_states, restored_states):
         len(original_states), len(restored_states))
 
     for original_state, restored_state in zip(original_states, restored_states):
-        assert original_state.system.__getstate__() == restored_state.system.__getstate__()
+        assert original_state._standard_system_hash == restored_state._standard_system_hash
         assert original_state.temperature == restored_state.temperature
         assert original_state.pressure == restored_state.pressure
 
@@ -251,113 +251,6 @@ def test_replica_exchange(verbose=False, verbose_simulation=False):
 # TEST REPORTER
 # ==============================================================================
 
-class ArchiveWriters(object):
-    """Keep writer functions for old conventions for backward compatibility tests."""
-
-    @staticmethod
-    def write_thermodynamic_states_rex_0_1(reporter, thermodynamic_states, unused_unsampled_states):
-        """Simulate ThermodynamicStates stored with Conventions 0.1 and ReplicaExchange.
-
-        This is for testing backwards compatibility.
-
-        """
-        setattr(reporter._storage, 'ConventionVersion', '0.1')
-        reporter._storage.createDimension('replica', len(thermodynamic_states))
-        is_barostated = thermodynamic_states[0].pressure is not None
-
-        ncgrp_states = reporter._storage.createGroup('thermodynamic_states')
-        ncvar_serialized_systems = ncgrp_states.createVariable('systems', str, ('replica',), zlib=True)
-        ncvar_temperatures = ncgrp_states.createVariable('temperatures', 'f', ('replica',))
-        if is_barostated:
-            ncvar_pressures = ncgrp_states.createVariable('pressures', 'f', ('replica',))
-
-        for state_id, thermodynamic_state in enumerate(thermodynamic_states):
-            serialized_system = thermodynamic_state.system.__getstate__()
-            ncvar_serialized_systems[state_id] = serialized_system
-            ncvar_temperatures[state_id] = thermodynamic_state.temperature / unit.kelvin
-            if is_barostated:
-                ncvar_pressures[state_id] = thermodynamic_state.pressure / unit.atmospheres
-
-    @staticmethod
-    def write_thermodynamic_states_mhex_0_1(reporter, thermodynamic_states, expanded_states):
-        """Simulate ThermodynamicStates stored with Conventions 0.1 and ModifiedHamiltonianExchange.
-
-        This is for testing backwards compatibility.
-
-        """
-        setattr(reporter._storage, 'ConventionVersion', '0.1')
-        reporter._storage.createDimension('replica', len(thermodynamic_states))
-        is_barostated = thermodynamic_states[0].pressure is not None
-
-        # Write basic thermodynamic state.
-        ncgrp_states = reporter._storage.createGroup('thermodynamic_states')
-        ncvar_serialized_base_system = ncgrp_states.createVariable('base_system', str, ('scalar',), zlib=True)
-        ncvar_temperatures = ncgrp_states.createVariable('temperatures', 'f', ('replica',))
-        if is_barostated:
-            ncvar_pressures = ncgrp_states.createVariable('pressures', 'f', ('replica',))
-
-        ncvar_serialized_base_system[0] = thermodynamic_states[0].system.__getstate__()
-        for state_id, thermodynamic_state in enumerate(thermodynamic_states):
-            ncvar_temperatures[state_id] = thermodynamic_state.temperature / unit.kelvin
-            if is_barostated:
-                ncvar_pressures[state_id] = thermodynamic_state.pressure / unit.atmosphere
-
-        # Write alchemical states.
-        ncgrp_alchemical = reporter._storage.createGroup('alchemical_states')
-        alchemical_parameters = thermodynamic_states[0]._composable_states[0]._get_supported_parameters()
-        for alchemical_parameter in alchemical_parameters:
-            ncvar_parameter = ncgrp_alchemical.createVariable(alchemical_parameter, 'f', ('replica',))
-            for state_id, thermodynamic_state in enumerate(thermodynamic_states):
-                parameter_value = getattr(thermodynamic_state, alchemical_parameter)
-                if parameter_value is None:
-                    parameter_value = 1.0  # The default for all parameters was 1.0 even if they weren't actually set.
-                ncvar_parameter[state_id] = parameter_value
-
-        # Write fully interacting states. The old MHEX writer only supported
-        # 2 expanded thermodynamic states at the end points of the alchemical path.
-        assert len(expanded_states) == 2
-        is_barostated = expanded_states[0].pressure is not None
-        ncgrp_expanded = reporter._storage.createGroup('expanded_cutoff_states')
-        ncvar_interacting_system = ncgrp_expanded.createVariable('fully_interacting_expanded_system', str,
-                                                                 ('scalar',), zlib=True)
-        ncvar_noninteracting_system = ncgrp_expanded.createVariable('noninteracting_expanded_system', str,
-                                                                    ('scalar',), zlib=True)
-        ncvar_temperature = ncgrp_expanded.createVariable('temperatures', 'f', ('scalar',))
-        if is_barostated:
-            ncvar_pressure = ncgrp_expanded.createVariable('pressures', 'f', ('scalar',))
-
-        ncvar_interacting_system[0] = expanded_states[0].system.__getstate__()
-        ncvar_noninteracting_system[0] = expanded_states[1].system.__getstate__()
-        ncvar_temperature[0] = expanded_states[0].temperature / unit.kelvin
-        if is_barostated:
-            ncvar_pressure[0] = expanded_states[0].pressure / unit.atmosphere
-
-    @staticmethod
-    def write_energies_mhex_0_1(reporter, energy_thermodynamic_states, energy_expanded_states, iteration):
-        """Simulate storing energies with ModifiedHamiltonianExchanged and conventions 0.1."""
-        setattr(reporter._storage, 'ConventionVersion', '0.1')
-        n_replicas = len(energy_thermodynamic_states)
-
-        # Old MHEX class supported only 2 unsampled states with expanded cutoff.
-        assert len(energy_expanded_states[0]) == 2, len(energy_expanded_states)
-        energy_expanded_full = [energy[0] for energy in energy_expanded_states]
-        energy_expanded_non = [energy[1] for energy in energy_expanded_states]
-
-        reporter._storage.createDimension('replica', n_replicas)
-        ncvar_energies = reporter._storage.createVariable('energies', 'f8', ('iteration', 'replica', 'replica'),
-                                                          zlib=False, chunksizes=(1, n_replicas, n_replicas))
-        ncvar_full_energies = reporter._storage.createVariable('fully_interacting_expanded_cutoff_energies', 'f8',
-                                                               ('iteration', 'replica'), zlib=False,
-                                                               chunksizes=(1, n_replicas))
-        ncvar_non_energies = reporter._storage.createVariable('noninteracting_expanded_cutoff_energies', 'f8',
-                                                              ('iteration', 'replica'), zlib=False,
-                                                              chunksizes=(1, n_replicas))
-
-        ncvar_energies[iteration, :, :] = energy_thermodynamic_states[:, :]
-        ncvar_full_energies[iteration, :] = energy_expanded_full
-        ncvar_non_energies[iteration, :] = energy_expanded_non
-
-
 class TestReporter(object):
     """Test suite for Reporter class."""
 
@@ -383,8 +276,6 @@ class TestReporter(object):
                                                                                temperature + 20*unit.kelvin)
         thermodynamic_state_npt = mmtools.states.ThermodynamicState(alanine_explicit_system,
                                                                     temperature, 1.0*unit.atmosphere)
-        thermodynamic_states = [thermodynamic_state_nvt, thermodynamic_state_nvt_compatible,
-                                thermodynamic_state_npt]
 
         # Compound states.
         factory = mmtools.alchemy.AlchemicalFactory()
@@ -401,7 +292,10 @@ class TestReporter(object):
             thermodynamic_state=mmtools.states.ThermodynamicState(alanine_alchemical, temperature),
             composable_states=[alchemical_state_noninteracting]
         )
-        compound_states = [compound_state_interacting, compound_state_noninteracting]
+
+        thermodynamic_states = [thermodynamic_state_nvt, thermodynamic_state_nvt_compatible,
+                                thermodynamic_state_npt, compound_state_interacting,
+                                compound_state_noninteracting]
 
         # Unsampled thermodynamic states.
         toluene_system = testsystems.TolueneVacuum().system
@@ -409,60 +303,39 @@ class TestReporter(object):
         unsampled_states = [copy.deepcopy(toluene_state), copy.deepcopy(toluene_state),
                             copy.deepcopy(compound_state_interacting)]
 
-        # Check all conventions.
-        writers = [
-            Reporter.write_thermodynamic_states,  # latest
-            ArchiveWriters.write_thermodynamic_states_rex_0_1,
-            ArchiveWriters.write_thermodynamic_states_mhex_0_1
-        ]
-        for writer in writers:
-            with self.temporary_reporter() as reporter:
-                # Old MHEX writer can handle only alchemically modified systems.
-                if writer == ArchiveWriters.write_thermodynamic_states_mhex_0_1:
-                    states = copy.deepcopy(compound_states)
-                    unsampled = copy.deepcopy(unsampled_states[:2])
-                # Old REX writer can handle only thermodynamic states.
-                elif writer == ArchiveWriters.write_thermodynamic_states_rex_0_1:
-                    states = copy.deepcopy(thermodynamic_states)
-                    unsampled = []
-                else:
-                    states = copy.deepcopy(thermodynamic_states + compound_states)
-                    unsampled = copy.deepcopy(unsampled_states)
+        with self.temporary_reporter() as reporter:
+            # Check that after writing and reading, states are identical.
+            reporter.write_thermodynamic_states(thermodynamic_states, unsampled_states)
+            restored_states, restored_unsampled = reporter.read_thermodynamic_states()
+            check_thermodynamic_states_equality(thermodynamic_states, restored_states)
+            check_thermodynamic_states_equality(unsampled_states, restored_unsampled)
 
-                # Check that after writing and reading, states are identical.
-                writer(reporter, states, unsampled)
-                restored_states, restored_unsampled = reporter.read_thermodynamic_states()
-                check_thermodynamic_states_equality(states, restored_states)
-                check_thermodynamic_states_equality(unsampled, restored_unsampled)
+            # The latest writer only stores one full serialization per compatible state.
+            ncgrp_states = reporter._storage.groups['thermodynamic_states']
+            ncgrp_unsampled = reporter._storage.groups['unsampled_states']
 
-                # TODO Check unsampled states are correctly restored and serialized only if needed.
-                # The latest writer only stores one full serialization per compatible state.
-                if writer == Reporter.write_thermodynamic_states:
-                    ncgrp_states = reporter._storage.groups['thermodynamic_states']
-                    ncgrp_unsampled = reporter._storage.groups['unsampled_states']
+            # Two of the three ThermodynamicStates are compatible.
+            assert isinstance(ncgrp_states.groups['state0'].variables['standard_system'][0], str)
+            assert 'standard_system' not in ncgrp_states.groups['state1'].variables
+            state_compatible_to_1 = ncgrp_states.groups['state1'].variables['_Reporter__compatible_state'][0]
+            assert state_compatible_to_1 == 'thermodynamic_states/0'
+            assert 'standard_system' in ncgrp_states.groups['state2'].variables
 
-                    # Two of the three ThermodynamicStates are compatible.
-                    assert isinstance(ncgrp_states.groups['state0'].variables['standard_system'][0], str)
-                    assert 'standard_system' not in ncgrp_states.groups['state1'].variables
-                    state_compatible_to_1 = ncgrp_states.groups['state1'].variables['_Reporter__compatible_state'][0]
-                    assert state_compatible_to_1 == 'thermodynamic_states/0'
-                    assert 'standard_system' in ncgrp_states.groups['state2'].variables
+            # The two CompoundThermodynamicStates are compatible.
+            assert 'standard_system' in ncgrp_states.groups['state3'].groups['thermodynamic_state'].variables
+            thermodynamic_state_4 = ncgrp_states.groups['state4'].groups['thermodynamic_state']
+            state_compatible_to_4 = thermodynamic_state_4.variables['_Reporter__compatible_state'][0]
+            assert state_compatible_to_4 == 'thermodynamic_states/3'
 
-                    # The two CompoundThermodynamicStates are compatible.
-                    assert 'standard_system' in ncgrp_states.groups['state3'].groups['thermodynamic_state'].variables
-                    thermodynamic_state_4 = ncgrp_states.groups['state4'].groups['thermodynamic_state']
-                    state_compatible_to_4 = thermodynamic_state_4.variables['_Reporter__compatible_state'][0]
-                    assert state_compatible_to_4 == 'thermodynamic_states/3'
-
-                    # The first two unsampled states are incompatible with everything else
-                    # but compatible to each other, while the third unsampled state is
-                    # compatible with the alchemical states.
-                    assert 'standard_system' in ncgrp_unsampled.groups['state0'].variables
-                    state_compatible_to_1 = ncgrp_unsampled.groups['state1'].variables['_Reporter__compatible_state'][0]
-                    assert state_compatible_to_1 == 'unsampled_states/0'
-                    thermodynamic_state_2 = ncgrp_unsampled.groups['state2'].groups['thermodynamic_state']
-                    state_compatible_to_2 = thermodynamic_state_2.variables['_Reporter__compatible_state'][0]
-                    assert state_compatible_to_2 == 'thermodynamic_states/3'
+            # The first two unsampled states are incompatible with everything else
+            # but compatible to each other, while the third unsampled state is
+            # compatible with the alchemical states.
+            assert 'standard_system' in ncgrp_unsampled.groups['state0'].variables
+            state_compatible_to_1 = ncgrp_unsampled.groups['state1'].variables['_Reporter__compatible_state'][0]
+            assert state_compatible_to_1 == 'unsampled_states/0'
+            thermodynamic_state_2 = ncgrp_unsampled.groups['state2'].groups['thermodynamic_state']
+            state_compatible_to_2 = thermodynamic_state_2.variables['_Reporter__compatible_state'][0]
+            assert state_compatible_to_2 == 'thermodynamic_states/3'
 
     def test_store_sampler_states(self):
         """Check correct storage of thermodynamic states."""
@@ -510,17 +383,12 @@ class TestReporter(object):
         """Check storage of energies."""
         thermodynamic_states_energies = np.array([[1, 2, 3], [1, 2, 3], [1, 2, 3]])
         unsampled_states_energies = np.array([[1, 2], [2, 3.0], [3, 9.0]])
-        # Test all conventions
-        writers = [
-            Reporter.write_energies,
-            ArchiveWriters.write_energies_mhex_0_1
-        ]
-        for writer in writers:
-            with self.temporary_reporter() as reporter:
-                writer(reporter, thermodynamic_states_energies, unsampled_states_energies, iteration=0)
-                restored_ts, restored_us = reporter.read_energies(iteration=0)
-                assert np.all(thermodynamic_states_energies == restored_ts)
-                assert np.all(unsampled_states_energies == restored_us)
+
+        with self.temporary_reporter() as reporter:
+            reporter.write_energies(thermodynamic_states_energies, unsampled_states_energies, iteration=0)
+            restored_ts, restored_us = reporter.read_energies(iteration=0)
+            assert np.all(thermodynamic_states_energies == restored_ts)
+            assert np.all(unsampled_states_energies == restored_us)
 
     def test_store_dict(self):
         """Check correct storage and restore of dictionaries."""

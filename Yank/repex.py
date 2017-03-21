@@ -45,7 +45,6 @@ import datetime
 import logging
 import importlib
 import collections
-from distutils.version import StrictVersion
 
 import numpy as np
 import mdtraj as md
@@ -123,7 +122,7 @@ class Reporter(object):
             ncfile.program = 'yank.py'
             ncfile.programVersion = version.short_version
             ncfile.Conventions = 'ReplicaExchange'
-            ncfile.ConventionVersion = str(self._LATEST_CONVENTION_VERSION)
+            ncfile.ConventionVersion = '0.2'
 
         self._storage = ncfile
 
@@ -159,11 +158,6 @@ class Reporter(object):
         read_replica_thermodynamic_states
 
         """
-        # Handle previous versions of the conventions.
-        convention_version = StrictVersion(getattr(self._storage, 'ConventionVersion'))
-        if convention_version <= StrictVersion('0.1'):
-            return self._read_thermodynamic_states_0_1()
-
         # We have to parse the thermodynamic states first because the
         # unsampled states may refer to them for the serialized system.
         states = collections.OrderedDict([('thermodynamic_states', list()),
@@ -229,12 +223,10 @@ class Reporter(object):
         write_replica_thermodynamic_states
 
         """
-        self._check_version_compatibility()
-
         # Store all thermodynamic states as serialized dictionaries.
         compatible_states_hashes = dict()
         for state_type, states in [('thermodynamic_states', thermodynamic_states),
-                                  ('unsampled_states', unsampled_states)]:
+                                   ('unsampled_states', unsampled_states)]:
             for state_id, thermodynamic_state in enumerate(states):
                 serialized_state = mmtools.utils.serialize(thermodynamic_state)
 
@@ -310,8 +302,6 @@ class Reporter(object):
             The iteration at which to store the data.
 
         """
-        self._check_version_compatibility()
-
         # Check if the schema must be initialized.
         if 'positions' not in self._storage.variables:
             n_atoms = sampler_states[0].n_particles
@@ -390,8 +380,6 @@ class Reporter(object):
             The iteration at which to store the data.
 
         """
-        self._check_version_compatibility()
-
         # Initialize schema if needed.
         if 'states' not in self._storage.variables:
             n_states = len(state_indices)
@@ -419,16 +407,6 @@ class Reporter(object):
             The MCMCMoves used to propagate the simulation.
 
         """
-        # Handle previous convention versions.
-        convention_version = StrictVersion(getattr(self._storage, 'ConventionVersion'))
-        if convention_version <= StrictVersion('0.1'):
-            # With 0.1, only LangevinIntegration was possible.
-            move = mmtools.mcmc.LangevinDynamicsMove(timestep=2.0*unit.femtosecond,
-                                                     collision_rate=5.0/unit.picosecond,
-                                                     n_steps=500, reassign_velocities=True,
-                                                     n_restart_attempts=6)
-            return [copy.deepcopy(move) for _ in range(self._storage.dimensions['replica'].size)]
-
         # Get group storing MCMCMoves.
         ncgrp = self._storage.groups['mcmc_moves']
 
@@ -448,8 +426,6 @@ class Reporter(object):
             The MCMCMoves used to propagate the simulation.
 
         """
-        self._check_version_compatibility()
-
         # Serialize and store MCMCMoves.
         for i, mcmc_move in enumerate(mcmc_moves):
             serialized_move = mmtools.utils.serialize(mcmc_move)
@@ -473,11 +449,6 @@ class Reporter(object):
             sampler_states[i] and ThermodynamicState unsampled_thermodynamic_states[j].
 
         """
-        # Handle previous versions of the conventions.
-        convention_version = StrictVersion(getattr(self._storage, 'ConventionVersion'))
-        if convention_version == StrictVersion('0.1'):
-            return self._read_energies_0_1(iteration)
-
         energy_thermodynamic_states = self._storage.variables['energies'][iteration, :, :]
         try:
             energy_unsampled_states = self._storage.variables['unsampled_energies'][iteration, :, :]
@@ -501,8 +472,6 @@ class Reporter(object):
             The iteration at which to store the data.
 
         """
-        self._check_version_compatibility()
-
         # Initialize schema if needed.
         if 'energies' not in self._storage.variables:
             n_replicas = len(energy_thermodynamic_states)
@@ -583,8 +552,6 @@ class Reporter(object):
             The iteration at which to store the data.
 
         """
-        self._check_version_compatibility()
-
         # Create schema if necessary.
         if 'accepted' not in self._storage.variables:
             n_states = len(n_accepted_matrix)
@@ -634,8 +601,6 @@ class Reporter(object):
             The iteration at which to read the data.
 
         """
-        self._check_version_compatibility()
-
         # Create variable if needed.
         if 'timestamp' not in self._storage.variables:
             self._storage.createVariable('timestamp', str, ('iteration',), zlib=False, chunksizes=(1,))
@@ -674,8 +639,6 @@ class Reporter(object):
             The dict to store.
 
         """
-        self._check_version_compatibility()
-
         # General NetCDF conventions assume the title of the dataset to be
         # specified as a global attribute, but the user can specify their
         # own titles only in metadata.
@@ -865,127 +828,6 @@ class Reporter(object):
             module = importlib.import_module(module)
             proper_type = getattr(module, stored_type)
         return proper_type
-
-    # -------------------------------------------------------------------------
-    # Internal-usage: Backward compatibility.
-    # -------------------------------------------------------------------------
-
-    _LATEST_CONVENTION_VERSION = StrictVersion('0.2')
-
-    # Dict storage_conventions: last_compatible_YANK_version.
-    _LAST_COMPATIBLE_YANK_VERSIONS = {'0.1': '0.15.2'}
-
-    def _check_version_compatibility(self):
-        """Raise an error if storage conventions are not supported.
-
-        We generally support reading so that analysis on old datasets will still
-        be available with a recent version of Yank, but we don't support writing
-        new data in an old format.
-
-        """
-        # Raise an error if ConventionVersion is not the latest.
-        convention_version = StrictVersion(getattr(self._storage, 'ConventionVersion'))
-        if convention_version != self._LATEST_CONVENTION_VERSION:
-            yank_version = self._LAST_COMPATIBLE_YANK_VERSIONS[str(convention_version)]
-            raise RuntimeError('These storage conventions are deprecated. Reading data is'
-                               ' still supported for analysis, but writing could corrupt'
-                               ' the dataset. The last version of the program supporting '
-                               'writing for these conventions is {}'.format(yank_version))
-
-    def _read_thermodynamic_states_0_1(self):
-        """Retrieve the stored thermodynamic states with conventions 0.1."""
-        try:
-            return self._read_thermodynamic_states_rex_0_1()
-        except KeyError:
-            return self._read_thermodynamic_states_mhex_0_1()
-
-    def _read_thermodynamic_states_rex_0_1(self):
-        """Retrieve the stored thermodynamic states with conventions 0.1.
-
-        This is for the conventions used in ReplicaExchange.
-
-        """
-        logger.debug('Attempt to read thermodynamic states with ReplicaExchange reader version 0.1.')
-
-        ncgrp_states = self._storage.groups['thermodynamic_states']
-        n_states = self._storage.dimensions['replica'].size
-        thermodynamic_states = list()
-        for state_index in range(n_states):
-            # Reconstitute System object.
-            system = openmm.System()
-            system.__setstate__(ncgrp_states.variables['systems'][state_index])
-            # Read temperature and pressure (if NPT).
-            temperature = ncgrp_states.variables['temperatures'][state_index] * unit.kelvin
-            if 'pressures' in ncgrp_states.variables:
-                pressure = ncgrp_states.variables['pressures'][state_index] * unit.atmospheres
-            else:
-                pressure = None
-            # Create ThermodynamicState.
-            thermodynamic_states.append(ThermodynamicState(system=system, temperature=temperature,
-                                                           pressure=pressure))
-        return thermodynamic_states, []
-
-    def _read_thermodynamic_states_mhex_0_1(self):
-        """Retrieve the stored thermodynamic states with conventions 0.1.
-
-        This is for the conventions used in ModifiedHamiltonianExchange.
-
-        """
-        logger.debug('Attempt to read thermodynamic states with '
-                     'ModifiedHamiltonianExchange reader version 0.1.')
-
-        ncgrp_states = self._storage.groups['thermodynamic_states']
-        ncgrp_alchemical = self._storage.groups['alchemical_states']
-        # Read reference system
-        base_system = openmm.System()
-        base_system.__setstate__(str(ncgrp_states.variables['base_system'][0]))
-        # Read other parameters.
-        thermodynamic_states = list()
-        n_states = self._storage.dimensions['replica'].size
-        for state_index in range(n_states):
-            # Create thermodynamic state.
-            temperature = float(ncgrp_states.variables['temperatures'][state_index]) * unit.kelvin
-            if 'pressures' in ncgrp_states.variables:
-                pressure = float(ncgrp_states.variables['pressures'][state_index]) * unit.atmosphere
-            else:
-                pressure = None
-            thermodynamic_state = ThermodynamicState(base_system, temperature, pressure)
-            # Create alchemical state.
-            alchemical_state = mmtools.alchemy.AlchemicalState.from_system(base_system)
-            for parameter_name, ncvar_parameter in ncgrp_alchemical.variables.items():
-                if getattr(alchemical_state, parameter_name) is not None:
-                    parameter_value = float(ncvar_parameter[state_index])
-                    setattr(alchemical_state, parameter_name, parameter_value)
-            # Create compound state.
-            thermodynamic_states.append(mmtools.states.CompoundThermodynamicState(thermodynamic_state,
-                                                                                  [alchemical_state]))
-
-        unsampled_states = list()
-        if 'expanded_cutoff_states' in self._storage.groups:
-            ncgrp_expanded = self._storage.groups['expanded_cutoff_states']
-            temperature = float(ncgrp_expanded.variables['temperatures'][0]) * unit.kelvin
-            try:
-                pressure = float(ncgrp_expanded.variables['pressures'][0]) * unit.atmosphere
-            except KeyError:
-                pressure = None
-            for variable_name in ['fully_interacting_expanded_system', 'noninteracting_expanded_system']:
-                ncvar_serialized_system = ncgrp_expanded.variables[variable_name]
-                expanded_system = openmm.System()
-                expanded_system.__setstate__(str(ncvar_serialized_system[0]))
-                unsampled_states.append(ThermodynamicState(expanded_system, temperature, pressure))
-
-        return thermodynamic_states, unsampled_states
-
-    def _read_energies_0_1(self, iteration):
-        """Retrieve the energy matrices with conventions 0.1."""
-        energy_thermodynamic_states = self._storage.variables['energies'][iteration]
-        if 'noninteracting_expanded_cutoff_energies' in self._storage.variables:
-            u_k_full = self._storage.variables['fully_interacting_expanded_cutoff_energies'][iteration]
-            u_k_non = self._storage.variables['noninteracting_expanded_cutoff_energies'][iteration]
-            energy_unsampled_states = np.array([u_k_full, u_k_non]).T
-        else:
-            energy_unsampled_states = np.zeros((len(energy_thermodynamic_states), 0))
-        return energy_thermodynamic_states, energy_unsampled_states
 
 
 # ==============================================================================
