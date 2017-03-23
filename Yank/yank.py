@@ -74,12 +74,16 @@ class Topography(object):
     ions_atoms
 
     """
-    def __init__(self, topology, ligand_atoms=frozenset(), solvent_atoms='auto'):
+    def __init__(self, topology, ligand_atoms=None, solvent_atoms='auto'):
         # Determine if we need to convert the topology to mdtraj.
         if isinstance(topology, mdtraj.Topology):
             self._topology = topology
         else:
             self._topology = mdtraj.Topology.from_openmm(topology)
+
+        # Handle default ligand atoms.
+        if ligand_atoms is None:
+            ligand_atoms = []
 
         # Determine ligand and solvent atoms. Every other label is implied.
         self.ligand_atoms = ligand_atoms
@@ -114,11 +118,12 @@ class Topography(object):
         """
         # If there's no ligand, there's no receptor.
         if len(self._ligand_atoms) == 0:
-            return frozenset()
+            return []
 
+        # Create a set for fast searching.
+        ligand_atomset = frozenset(self._ligand_atoms)
         # Receptor atoms are all solute atoms that are not ligand.
-        return frozenset([i for i in self.solute_atoms
-                          if i not in self._ligand_atoms])
+        return [i for i in self.solute_atoms if i not in ligand_atomset]
 
     @property
     def solute_atoms(self):
@@ -129,9 +134,10 @@ class Topography(object):
         both the receptor and the ligand.
 
         """
+        # Create a set for fast searching.
+        solvent_atomset = frozenset(self._solvent_atoms)
         # The solute is everything that is not solvent.
-        return frozenset([i for i in range(self._topology.n_atoms)
-                          if i not in self._solvent_atoms])
+        return [i for i in range(self._topology.n_atoms) if i not in solvent_atomset]
 
     @property
     def solvent_atoms(self):
@@ -151,8 +157,8 @@ class Topography(object):
         # we use a default set of resnames in mdtraj.
         if value == 'auto':
             solvent_resnames = mdtraj.core.residue_names._SOLVENT_TYPES
-            self._solvent_atoms = frozenset([atom.index for atom in self._topology.atoms
-                                             if atom.residue.name in solvent_resnames])
+            self._solvent_atoms = [atom.index for atom in self._topology.atoms
+                                   if atom.residue.name in solvent_resnames]
         else:
             self._solvent_atoms = self._resolve_atom_indices(value)
 
@@ -160,9 +166,9 @@ class Topography(object):
     def ions_atoms(self):
         """The indices of all ions atoms in the solvent (read-only)."""
         # Ions are all atoms of the solvent whose residue name show a charge.
-        return frozenset([i for i in self._solvent_atoms
-                          if '-' in self._topology.atom(i).residue.name or
-                          '+' in self._topology.atom(i).residue.name])
+        return [i for i in self._solvent_atoms
+                if '-' in self._topology.atom(i).residue.name or
+                '+' in self._topology.atom(i).residue.name]
 
     # -------------------------------------------------------------------------
     # Internal-usage
@@ -174,7 +180,7 @@ class Topography(object):
             # of int64 that we convert to python integers.
             atoms_description = self._topology.select(atoms_description).tolist()
         # Convert to a frozen set of indices.
-        return frozenset(atoms_description)
+        return atoms_description
 
 
 # ==============================================================================
