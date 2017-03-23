@@ -1,8 +1,8 @@
 #!/usr/local/bin/env python
-#
-# =============================================================================================
+
+# ==============================================================================
 # FILE DOCSTRING
-# =============================================================================================
+# ==============================================================================
 
 """
 
@@ -11,40 +11,45 @@ free energy calculations, along with computation of the standard state correctio
 
 """
 
-# =============================================================================================
+# ==============================================================================
 # GLOBAL IMPORTS
-# =============================================================================================
+# ==============================================================================
 
+import abc
 import copy
 import math
-import time
 import random
+import inspect
+import logging
 import itertools
 
 import numpy as np
 import scipy.integrate
-
+import mdtraj as md
+import openmmtools as mmtools
 from simtk import openmm, unit
 
-import mdtraj as md
-
-import abc
-import inspect
-
-import logging
 logger = logging.getLogger(__name__)
 
-# =============================================================================================
-# MODULE CONSTANTS
-# =============================================================================================
 
-kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA  # Boltzmann constant
+# ==============================================================================
+# MODULE CONSTANTS
+# ==============================================================================
+
 V0 = 1660.53928 * unit.angstroms**3  # standard state volume
 
-# =============================================================================================
-# Dispatch appropriate restraint type from registered restraint classes
-# =============================================================================================
 
+# ==============================================================================
+# CUSTOM EXCEPTIONS
+# ==============================================================================
+
+class RestraintParameterError(Exception):
+    pass
+
+
+# ==============================================================================
+# Dispatch appropriate restraint type from registered restraint classes
+# ==============================================================================
 
 def available_restraint_classes():
     """
@@ -124,11 +129,12 @@ def create_restraints(restraint_type, topology, state, system, positions, recept
     cls = available_restraints[restraint_type]
     return cls(topology, state, system, positions, receptor_atoms, ligand_atoms)
 
+
 # =============================================================================================
 # Base class for receptor-ligand restraints.
 # =============================================================================================
 
-ABC = abc.ABCMeta('ABC', (object,), {}) # compatible with Python 2 *and* 3
+ABC = abc.ABCMeta('ABC', (object,), {})  # compatible with Python 2 *and* 3
 
 
 class ReceptorLigandRestraint(ABC):
@@ -232,183 +238,101 @@ class ReceptorLigandRestraint(ABC):
         """
         raise NotImplementedError('getStandardStateCorrection not implemented')
 
+
 # =============================================================================================
 # Base class for radially-symmetric receptor-ligand restraints.
 # =============================================================================================
 
-
 class RadiallySymmetricRestraint(ReceptorLigandRestraint):
+    """Base class for radially-symmetric restraints between ligand and protein.
+
+    This class is intended to be inherited by Restraints using a `CustomBondForce`.
+    The restraint strength is controlled by a global context parameter called
+    'lambda_restraints'.
+
+    The class allows the restrained atoms to be temporarily, but in this case
+    `determine_missing_parameters()` must be called before using the restraint.
+
+    Parameters
+    ----------
+    restrained_receptor_atom : int, optional
+        The index of the receptor atom to restrain. This can temporarily be left
+        undefined, but in this case `determine_missing_parameters()` must be called
+        before using the Restraint object (default is None).
+    restrained_ligand_atom : int, optional
+        The index of the ligand atom to restrain. This can temporarily be left
+        undefined, but in this case `determine_missing_parameters()` must be called
+        before using the Restraint object (default is None).
+
+    Notes
+    -----
+    To create a subclass, follow these steps:
+    * Implement the property '_energy_function' with the energy function of choice.
+    * Implement the property '_bond_parameters' to return the `_energy_function`
+      parameters as a dict parameter_name: parameter_value.
+    * Optionally, you can overwrite the `_determine_bond_parameters()` member
+      function to automatically determine these parameters from the atoms positions.
+
     """
-    Impose a single radially-symmetric restraint between ligand and protein to prevent ligand from drifting too far
-    from protein in implicit solvent calculations. The restraint is implemented as a `CustomBondForce`.
+    def __init__(self, restrained_receptor_atom=None, restrained_ligand_atom=None):
+        self.restrained_receptor_atom = restrained_receptor_atom
+        self.restrained_ligand_atom = restrained_ligand_atom
 
-    This restraint strength is controlled by a global context parameter called 'lambda_restraints'.
+    def restrain_state(self, thermodynamic_state):
+        """Add the restraining Force(s) to the thermodynamic state's system.
 
-    NOTES
-
-    To create a subclass that uses a different restraint energy function, follow these steps:
-
-    * Redefine class variable 'energy_function' with the energy function of choice.
-    * Redefine class variable 'bond_parameter_names' to list the parameters in 'energy_function'
-      that must be computed for each system.
-    * Redefine the _determineBondParameters() member function to compute these parameters and
-      return them in a list in the same order as 'bond_parameter_names'.
-
-    """
-    _energy_function = ''  # energy function to use in computation of restraint
-    _bond_parameter_names = []  # list of bond parameters that appear in energy function above
-
-    def __init__(self, topology, state, system, positions, receptor_atoms, ligand_atoms):
-        """
-        Initialize a receptor-ligand restraint class.
+        All the parameters must be defined at this point. An exception is
+        raised if they are not.
 
         Parameters
         ----------
-        topology : openmm.app.Topology
-            Reference topology for the complex
-        state : thermodynamics.ThermodynamicState
-           The thermodynamic state specifying temperature, pressure, etc. to which restraints are to be added
-        positions : simtk.unit.Quantity of natoms x 3 with units compatible with nanometers
-           Reference positions to use for imposing restraints
-        receptor_atoms : list of int
-            A complete list of receptor atoms
-        ligand_atoms : list of int
-            A complete list of ligand atoms
+        thermodynamic_state : openmmtools.states.ThermodynamicState
+            The thermodynamic state holding the system to modify.
+
+        Raises
+        ------
+        RestraintParameterError
+            If the restraint has undefined parameters.
 
         """
-        super(RadiallySymmetricRestraint, self).__init__(topology, state, system, positions, receptor_atoms, ligand_atoms)
+        # Check that restrained atoms are defined.
+        if self.restrained_receptor_atom is None or self.restrained_ligand_atom is None:
+            raise RestraintParameterError('Restraint {}: Undefined restrained '
+                                          'atoms.'.format(self.__class__.__name__))
 
-        # Determine atoms closet to centroids on ligand and receptor.
-        self._restrained_receptor_atom = self._closest_atom_to_centroid(self._positions, self._receptor_atoms)
-        self._restrained_ligand_atom = self._closest_atom_to_centroid(self._positions, self._ligand_atoms)
+        # Create restraint force.
+        restraint_force = self._create_restraint_force(self.restrained_receptor_atom,
+                                                       self.restrained_ligand_atom)
 
-        if not (self._restrained_receptor_atom in set(receptor_atoms)):
-            raise ValueError("Restrained receptor atom (%d) not in set of receptor atoms (%s)" % (self._restrained_receptor_atom, str(receptor_atoms)))
-        if not (self._restrained_ligand_atom in set(ligand_atoms)):
-            raise ValueError("Restrained ligand atom (%d) not in set of ligand atoms (%s)" % (self._restrained_ligand_atom, str(ligand_atoms)))
+        # Set periodic conditions on the force if necessary.
+        restraint_force.setUsesPeriodicBoundaryConditions(thermodynamic_state.is_periodic)
 
-        logger.debug("restrained receptor atom: %d" % self._restrained_receptor_atom)
-        logger.debug("restrained ligand atom: %d" % self._restrained_ligand_atom)
+        # Get a copy of the system of the ThermodynamicState, modify it and set it back.
+        system = thermodynamic_state.system
+        system.addForce(restraint_force)
+        thermodynamic_state.system = system
 
-        # Determine radius of gyration of receptor.
-        self._radius_of_gyration = self._compute_radius_of_gyration(self._positions[self._receptor_atoms,:])
-
-        # Determine parameters
-        self._bond_parameters = self._determine_bond_parameters()
-
-    @abc.abstractmethod
-    def _determine_bond_parameters(self):
-        """
-        Determine bond parameters for CustomBondForce between protein and ligand.
-
-        Returns
-        -------
-        parameters : list
-           List of parameters for CustomBondForce
-
-        Notes
-        -----
-        The spring constant is selected to give 1 kT at one standard deviation of receptor atoms about the receptor
-        restrained atom.
-
-        """
-        pass
-
-    def _compute_radius_of_gyration(self, positions):
-        """
-        Compute the radius of gyration of the specified coordinate set.
+    def get_standard_state_correction(self, thermodynamic_state):
+        """Return the standard state correction.
 
         Parameters
         ----------
-        positions : simtk.unit.Quantity with units compatible with angstrom
-           The coordinate set (natoms x 3) for which the radius of gyration is to be computed.
-
-        Returns
-        -------
-        radius_of_gyration : simtk.unit.Quantity with units compatible with angstrom
-           The radius of gyration
-
-        """
-
-        unit = positions.unit
-
-        # Get dimensionless receptor positions.
-        x = positions / unit
-
-        # Get dimensionless restrained atom coordinate.
-        xref = x.mean(0)
-        xref = np.reshape(xref, (1,3)) # (1,3) array
-
-        # Compute distances from restrained atom.
-        natoms = x.shape[0]
-        distances = np.sqrt(((x - np.tile(xref, (natoms, 1)))**2).sum(1)) #  distances[i] is the distance from the centroid to particle i
-
-        # Compute std dev of distances from restrained atom.
-        radius_of_gyration = distances.std() * unit
-
-        return radius_of_gyration
-
-    def _create_restraint_force(self, particle1, particle2):
-        """
-        Create a new restraint force between specified atoms.
-
-        Parameters
-        ----------
-        particle1 : int
-           Index of first atom in restraint
-        particle2 : int
-           Index of second atom in restraint
-
-        Returns
-        -------
-        force : simtk.openmm.CustomBondForce
-           The created restraint force.
-
-        """
-        force = openmm.CustomBondForce(self._energy_function)
-        force.addGlobalParameter('lambda_restraints', 1.0)
-        is_periodic = self._system.usesPeriodicBoundaryConditions()
-        try:  # This was added in OpenMM 7.1
-            force.setUsesPeriodicBoundaryConditions(is_periodic)
-        except AttributeError:
-            pass
-        for parameter in self._bond_parameter_names:
-            force.addPerBondParameter(parameter)
-        try:
-            force.addBond(particle1, particle2, self._bond_parameters)
-        except Exception as e:
-            print('particle1: %s' % str(particle1))
-            print('particle2: %s' % str(particle1))
-            print('bond_parameters: %s' % str(self._bond_parameters))
-            raise(e)
-        return force
-
-    def get_restraint_force(self):
-        """
-        Returns a new Force object that imposes the receptor-ligand restraint.
-
-        Returns
-        -------
-        force : simtk.openmm.CustomBondForce
-           The created restraint force.
-
-        """
-        return self._create_restraint_force(self._restrained_receptor_atom, self._restrained_ligand_atom)
-
-    def get_standard_state_correction(self):
-        """
-        Return the standard state correction.
+        thermodynamic_state : openmmtools.states.ThermodynamicState
+            The thermodynamic state.
 
         Returns
         -------
         correction : float
-           The standard-state correction, in kT
+           The unit-less standard-state correction, in kT (at the
+           temperature of the given thermodynamic state).
 
         """
-        initial_time = time.time()
+        benchmark_id = 'Restraint {}: Computing standard state correction'.format(self.__class__.__name__)
+        timer = mmtools.utils.Timer()
+        timer.start(benchmark_id)
 
         r_min = 0 * unit.nanometers
-        r_max = 100 * unit.nanometers # TODO: Use maximum distance between atoms?
+        r_max = 100 * unit.nanometers  # TODO: Use maximum distance between atoms?
 
         # Create a System object containing two particles connected by the reference force
         system = openmm.System()
@@ -416,10 +340,7 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
         system.addParticle(1.0 * unit.amu)
         force = self._create_restraint_force(0, 1)
         # Disable the PBC if on for this approximation of the analytical solution
-        try:  # This was added in OpenMM 7.1
-            force.setUsesPeriodicBoundaryConditions(False)
-        except AttributeError:
-            pass
+        force.setUsesPeriodicBoundaryConditions(False)
         system.addForce(force)
 
         # Create a Reference context to evaluate energies on the CPU.
@@ -432,7 +353,7 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
         context.setPositions(positions)
 
         # Create a function to compute integrand as a function of interparticle separation.
-        beta = self.beta
+        beta = thermodynamic_state.beta
 
         def integrand(r):
             """
@@ -454,7 +375,9 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
             dI = 4.0 * math.pi * r**2 * math.exp(-beta * potential)
             return dI
 
-        (shell_volume, shell_volume_error) = scipy.integrate.quad(lambda r : integrand(r), r_min / unit.nanometers, r_max / unit.nanometers) * unit.nanometers**3  # integrate shell volume
+        # Integrate shell volume.
+        shell_volume, shell_volume_error = scipy.integrate.quad(lambda r: integrand(r), r_min / unit.nanometers,
+                                                                r_max / unit.nanometers) * unit.nanometers**3
         logger.debug("shell_volume = %f nm^3" % (shell_volume / unit.nanometers**3))
 
         # Compute standard-state volume for a single molecule in a box of size (1 L) / (avogadros number)
@@ -467,14 +390,168 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
         DeltaG = - math.log(box_volume / shell_volume)
         logger.debug("Standard state correction: %.3f kT" % DeltaG)
 
-        final_time = time.time()
-        elapsed_time = final_time - initial_time
-        logger.debug("restraints: _computeStandardStateCorrection: %.3f s elapsed" % elapsed_time)
+        # Report elapsed time.
+        timer.stop(benchmark_id)
+        timer.report_timing()
 
         # Return standard state correction (in kT).
         return DeltaG
 
-    def _closest_atom_to_centroid(self, positions, indices=None, masses=None):
+    def determine_missing_parameters(self, thermodynamic_state, sampler_state, topography):
+        """Automatically determine missing parameters.
+
+        If some parameters have been left undefined (i.e. the atoms to restrain
+        or the restraint force parameters) this attempts to find them using the
+        information in the states and the topography.
+
+        Parameters
+        ----------
+        thermodynamic_state : openmmtools.states.ThermodynamicState
+            The thermodynamic state.
+        sampler_state : openmmtools.states.SamplerState, optional
+            The sampler state holding the positions of all atoms.
+        topography : yank.Topography, optional
+            The topography with labeled receptor and ligand atoms.
+
+        """
+        # Determine restrained atoms, if needed.
+        self._determine_restrained_atoms(sampler_state, topography)
+
+        # Determine missing parameters. This is implemented in the subclass.
+        self._determine_bond_parameters(thermodynamic_state, sampler_state, topography)
+
+    # -------------------------------------------------------------------------
+    # Internal-usage: properties and methods for subclasses.
+    # -------------------------------------------------------------------------
+
+    @abc.abstractproperty
+    def _energy_function(self):
+        """str: energy expression of the restraint force.
+
+        This must be implemented by the inheriting class..
+
+        """
+        pass
+
+    @abc.abstractproperty
+    def _bond_parameters(self):
+        """dict: the bond parameters of the restraint force.
+
+        This is a dictionary parameter_name: parameter_value that
+        will be used to configure the `CustomBondForce` added to
+        the `System`.
+
+        If there are parameters undefined, this must be None.
+
+        """
+        pass
+
+    def _determine_bond_parameters(self, thermodynamic_state, sampler_state, topography):
+        """Determine the missing bond parameters.
+
+        Optionally, a subclass can implement this method to automatically
+        define the bond parameters of the restraints from the information
+        in the given states and topography. The default implementation just
+        raises a NotImplemented error if `_bond_parameters` are undefined.
+
+        Parameters
+        ----------
+        thermodynamic_state : openmmtools.states.ThermodynamicState
+            The thermodynamic state.
+        sampler_state : openmmtools.states.SamplerState
+            The sampler state holding the positions of all atoms.
+        topography : yank.Topography
+            The topography with labeled receptor and ligand atoms.
+
+        """
+        # Raise exception only if the subclass doesn't already defines parameters.
+        if self._bond_parameters is None:
+            raise NotImplemented('Restraint {} cannot automatically determine '
+                                 'bond parameters.'.format(self.__class__.__name__))
+
+    # -------------------------------------------------------------------------
+    # Internal-usage
+    # -------------------------------------------------------------------------
+
+    def _determine_restrained_atoms(self, sampler_state, topography):
+        """Determine the atoms to restrain.
+
+        If the user has explicitly specified which atoms to restrained, this
+        does nothing, otherwise it picks the centroid of the receptor and
+        the centroid of the ligand as the two atoms to restrain.
+
+        Parameters
+        ----------
+        sampler_state : openmmtools.states.SamplerState, optional
+            The sampler state holding the positions of all atoms.
+        topography : yank.Topography, optional
+            The topography with labeled receptor and ligand atoms.
+
+        """
+        debug_msg = ('Restraint {}: Automatically picked restrained '
+                     'receptor atom: {{}}'.format(self.__class__.__name__))
+
+        # Shortcuts
+        positions = sampler_state.positions
+        ligand_atoms = topography.ligand_atoms
+        receptor_atoms = topography.receptor_atoms
+
+        # Automatically determine receptor atom to restrain only
+        # if the user has not defined specific atoms to restrain.
+        if self.restrained_receptor_atom is None:
+            self.restrained_receptor_atom = self._closest_atom_to_centroid(positions, receptor_atoms)
+            logger.debug(debug_msg.format(self.restrained_receptor_atom))
+
+        # Same for ligand atom.
+        if self.restrained_ligand_atom is None:
+            self.restrained_ligand_atom = self._closest_atom_to_centroid(positions, ligand_atoms)
+            logger.debug(debug_msg.format(self.restrained_ligand_atom))
+
+    def _create_restraint_force(self, particle1, particle2):
+        """Create a new restraint force between specified atoms.
+
+        Parameters
+        ----------
+        particle1 : int
+            Index of first atom in restraint
+        particle2 : int
+            Index of second atom in restraint
+
+        Returns
+        -------
+        force : simtk.openmm.CustomBondForce
+           The created restraint force.
+
+        """
+        # Check if parameters have been defined.
+        if self._bond_parameters is None:
+            err_msg = 'Restraint {}: Undefined bond parameters.'.format(self.__class__.__name__)
+            raise RestraintParameterError(err_msg)
+
+        # Unzip bond parameters names and values from dict.
+        parameter_names, parameter_values = zip(*self._bond_parameters.items())
+
+        # Create bond force and lambda_restraints parameter to control it.
+        force = openmm.CustomBondForce('lambda_restraints * ' + self._energy_function)
+        force.addGlobalParameter('lambda_restraints', 1.0)
+
+        # Add all parameters.
+        for parameter in parameter_names:
+            force.addPerBondParameter(parameter)
+
+        # Create restraining bond.
+        try:
+            force.addBond(particle1, particle2, parameter_values)
+        except Exception:
+            err_msg = 'particle1: {}\nparticle2: {}\nbond_parameters: {}'.format(
+                particle1, particle2, self._bond_parameters)
+            logger.error(err_msg)
+            raise
+
+        return force
+
+    @staticmethod
+    def _closest_atom_to_centroid(positions, indices=None, masses=None):
         """
         Identify the closest atom to the centroid of the given coordinate set.
 
@@ -493,9 +570,8 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
            Index of atom closest to centroid of specified atoms.
 
         """
-
         if indices is not None:
-            positions = positions[indices,:]
+            positions = positions[indices, :]
 
         # Get dimensionless positions.
         x_unit = positions.unit
@@ -506,7 +582,7 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
 
         # Compute (natoms,1) array of normalized weights.
         w = np.ones([natoms, 1])
-        if masses:
+        if masses is not None:
             w = masses / masses.unit # (natoms,) array
             w = np.reshape(w, (natoms, 1))  # (natoms,1) array
         w /= w.sum()
@@ -525,158 +601,321 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
 
         return closest_atom
 
-# =============================================================================================
-# Harmonic protein-ligand restraint.
-# =============================================================================================
-
-
-class Harmonic(RadiallySymmetricRestraint):
-    """
-    Impose a single restraint between ligand and protein to prevent ligand from drifting too far
-    from protein in implicit solvent calculations.
-
-    This restraint strength is controlled by a global context parameter called 'lambda_restraints'.
-
-    NOTE
-
-    These restraints should not be used with explicit solvent calculations, since the CustomBondForce
-    does not respect periodic boundary conditions, and the analytical correction term does not include
-    truncation due to a finite simulation box.
-
-    EXAMPLE
-
-    >>> # Create a test system.
-    >>> from openmmtools import testsystems
-    >>> system_container = testsystems.LysozymeImplicit()
-    >>> (system, positions) = system_container.system, system_container.positions
-    >>> # Identify receptor and ligand atoms.
-    >>> receptor_atoms = range(0,2603)
-    >>> ligand_atoms = range(2603,2621)
-    >>> # Construct a reference thermodynamic state.
-    >>> from repex import ThermodynamicState
-    >>> temperature = 298.0 * unit.kelvin
-    >>> state = ThermodynamicState(temperature=temperature)
-    >>> # Create restraints.
-    >>> restraints = Harmonic(state, system, positions, receptor_atoms, ligand_atoms)
-    >>> # Get standard state correction.
-    >>> correction = restraints.getStandardStateCorrection()
-    >>> # Get radius of gyration of receptor.
-    >>> rg = restraints.getReceptorRadiusOfGyration()
-
-    """
-
-    _energy_function = 'lambda_restraints * (K/2)*r^2'  # harmonic restraint
-    _bond_parameter_names = ['K']  # list of bond parameters that appear in energy function above
-
-    def _determine_bond_parameters(self):
+    @staticmethod
+    def _compute_radius_of_gyration(positions):
         """
-        Determine bond parameters for CustomBondForce between protein and ligand.
+        Compute the radius of gyration of the specified coordinate set.
 
-        RETURNS
+        Parameters
+        ----------
+        positions : simtk.unit.Quantity with units compatible with angstrom
+           The coordinate set (natoms x 3) for which the radius of gyration is to be computed.
 
-        parameters (list) - list of parameters for CustomBondForce
-
-        NOTE
-
-        K, the spring constant, is determined from the radius of gyration
+        Returns
+        -------
+        radius_of_gyration : simtk.unit.Quantity with units compatible with angstrom
+           The radius of gyration
 
         """
-
-        carried_unit = self._positions.unit
+        # TODO this is currently unused, move somewhere else? Make it a module function?
+        unit = positions.unit
 
         # Get dimensionless receptor positions.
-        x = self._positions[self._receptor_atoms,:] / carried_unit
+        x = positions / unit
 
         # Get dimensionless restrained atom coordinate.
-        xref = self._positions[self._restrained_receptor_atom, :] / carried_unit  # (3,) array
+        xref = x.mean(0)
         xref = np.reshape(xref, (1,3)) # (1,3) array
 
         # Compute distances from restrained atom.
         natoms = x.shape[0]
-        # distances[i] is the distance from the centroid to particle i
-        distances = np.sqrt(((x - np.tile(xref, (natoms, 1)))**2).sum(1))
+        distances = np.sqrt(((x - np.tile(xref, (natoms, 1)))**2).sum(1)) #  distances[i] is the distance from the centroid to particle i
 
         # Compute std dev of distances from restrained atom.
-        sigma = distances.std() * carried_unit
-        logger.debug("Spring Constant Sigma, s = %.3f nm" % (sigma / unit.nanometers))
+        radius_of_gyration = distances.std() * unit
+
+        return radius_of_gyration
+
+
+# =============================================================================================
+# Harmonic protein-ligand restraint.
+# =============================================================================================
+
+class Harmonic(RadiallySymmetricRestraint):
+    """Impose a single harmonic restraint between ligand and protein.
+
+    This can be used to prevent the ligand from drifting too far from the
+    protein in implicit solvent calculations or to keep the ligand close
+    to the binding pocket in the decoupled states to increase mixing.
+
+    The energy expression of the restraint is given by
+
+        E = lambda_restraints * (K/2)*r^2
+
+    where `K` is the spring constant, `r` is the distance between the
+    restrained atoms, and `lambda_restraints` is a scale factor that
+    can be used to control the strength of the restraint. You can control
+    `lambda_restraints` through `RestraintState` class.
+
+    Parameters
+    ----------
+    spring_constant : simtk.unit.Quantity, optional
+        The spring constant K (see energy expression above) in units compatible
+        with joule/nanometer**2/mole. This can temporarily be left undefined,
+        but in this case `determine_missing_parameters()` must be called before
+        using the Restraint object (default is None).
+    restrained_receptor_atom : int, optional
+        The index of the receptor atom to restrain. This can temporarily
+        be left undefined, but in this case `determine_missing_parameters()`
+        must be called before using the Restraint object (default is None).
+    restrained_ligand_atom : int, optional
+        The index of the ligand atom to restrain. This can temporarily
+        be left undefined, but in this case `determine_missing_parameters()`
+        must be called before using the Restraint object (default is None).
+
+    Examples
+    --------
+    Create the ThermodynamicState.
+
+    >>> from openmmtools import testsystems, states
+    >>> system_container = testsystems.LysozymeImplicit()
+    >>> system, positions = system_container.system, system_container.positions
+    >>> thermodynamic_state = states.ThermodynamicState(system, 300*unit.kelvin)
+    >>> sampler_state = states.SamplerState(positions)
+
+    Identify ligand atoms. Topography automatically identify receptor atoms too.
+
+    >>> from yank.yank import Topography
+    >>> topography = Topography(system_container.topology, ligand_atoms=range(2603, 2621))
+
+    Create a completely defined restraint.
+
+    >>> restraint = Harmonic(spring_constant=8*unit.kilojoule_per_mole/unit.nanometers**2,
+    ...                      restrained_receptor_atom=1644, restrained_ligand_atom=2609)
+
+    Automatically identify parameters and apply the Restraint. When trying
+    to impose a restraint with undefined parameters, RestraintParameterError
+    is raised.
+
+    >>> restraint = Harmonic()
+    >>> try:
+    ...     restraint.restrain_state(thermodynamic_state)
+    ... except RestraintParameterError:
+    ...     print('There are undefined parameters. Choosing restraint parameters automatically.')
+    ...     restraint.determine_missing_parameters(thermodynamic_state, sampler_state, topography)
+    ...     restraint.restrain_state(thermodynamic_state)
+    ...
+    There are undefined parameters. Choosing restraint parameters automatically.
+
+    Get standard state correction.
+
+    >>> correction = restraint.get_standard_state_correction(thermodynamic_state)
+
+    """
+    def __init__(self, spring_constant=None, **kwargs):
+        super(Harmonic, self).__init__(**kwargs)
+        self.spring_constant = spring_constant
+
+    @property
+    def _energy_function(self):
+        """str: energy expression of the restraint force."""
+        return '(K/2)*r^2'
+
+    @property
+    def _bond_parameters(self):
+        """dict: the bond parameters of the restraint force.
+
+        If there are parameters undefined, this is None.
+
+        """
+        if self.spring_constant is None:
+            return None
+        return {'K': self.spring_constant}
+
+    def _determine_bond_parameters(self, thermodynamic_state, sampler_state, topography):
+        """Automatically choose a spring constant for the restraint force.
+
+        The spring constant is selected to give 1 kT at one standard deviation
+        of receptor atoms about the receptor restrained atom.
+
+        Parameters
+        ----------
+        thermodynamic_state : openmmtools.states.ThermodynamicState
+            The thermodynamic state.
+        sampler_state : openmmtools.states.SamplerState
+            The sampler state holding the positions of all atoms.
+        topography : yank.Topography
+            The topography with labeled receptor and ligand atoms.
+
+        """
+        # Do not overwrite parameters that are already defined.
+        if self.spring_constant is not None:
+            return
+
+        x_unit = sampler_state.positions.unit
+
+        # Get dimensionless receptor positions.
+        x = sampler_state.positions[topography.receptor_atoms, :] / x_unit
+
+        # Get dimensionless restrained atom coordinate.
+        xref = sampler_state.positions[self.restrained_receptor_atom, :] / x_unit  # (3,) array
+        xref = np.reshape(xref, (1, 3))  # (1,3) array
+
+        # Compute distances from restrained atom.
+        n_atoms = x.shape[0]
+        # distances[i] is the distance from the centroid to particle i
+        distances = np.sqrt(((x - np.tile(xref, (n_atoms, 1)))**2).sum(1))
+
+        # Compute std dev of distances from restrained atom.
+        sigma = distances.std() * x_unit
+        logger.debug("Spring Constant Sigma, s = {:.3f} nm".format(sigma / unit.nanometers))
 
         # Compute corresponding spring constant.
-        K = self.kT / sigma**2
+        self.spring_constant = thermodynamic_state.kT / sigma**2
 
-        # Assemble parameters.
-        bond_parameters = [K]
-
-        return bond_parameters
 
 # =============================================================================================
 # Flat-bottom protein-ligand restraint.
 # =============================================================================================
 
-
 class FlatBottom(RadiallySymmetricRestraint):
-    """
-    An alternative choice to receptor-ligand restraints that uses a flat potential inside most of the protein volume
-    with harmonic restraining walls outside of this.
+    """A receptor-ligand restraint using a flat potential well with harmonic walls.
+
+    An alternative choice to receptor-ligand restraints that uses a flat
+    potential inside most of the protein volume with harmonic restraining
+    walls outside of this. It can be used to prevent the ligand from
+    drifting too far from protein in implicit solvent calculations while
+    still exploring the surface of the protein for putative binding sites.
+
+    More precisely, the energy expression of the restraint is given by
+
+        E = lambda_restraints * step(r-r0) * (K/2)*(r-r0)^2
+
+    where `K` is the spring constant, `r` is the distance between the
+    restrained atoms, `r0` is another parameter defining the distance
+    at which the harmonic restraint is imposed, and `lambda_restraints`
+    is a scale factor that can be used to control the strength of the
+    restraint. You can control `lambda_restraints` through the class
+    `RestraintState`.
+
+    Parameters
+    ----------
+    spring_constant : simtk.unit.Quantity, optional
+        The spring constant K (see energy expression above) in units compatible
+        with joule/nanometer**2/mole. This can temporarily be left undefined,
+        but in this case `determine_missing_parameters()` must be called before
+        using the Restraint object (default is None).
+    well_radius : simtk.unit.Quantity, optional
+        The distance r0 (see energy expression above) at which the harmonic
+        restraint is imposed in units of distance. This can temporarily be
+        left undefined, but in this case `determine_missing_parameters()`
+        must be called before using the Restraint object (default is None).
+    restrained_receptor_atom : int, optional
+        The index of the receptor atom to restrain. This can temporarily
+        be left undefined, but in this case `determine_missing_parameters()`
+        must be called before using the Restraint object (default is None).
+    restrained_ligand_atom : int, optional
+        The index of the ligand atom to restrain. This can temporarily
+        be left undefined, but in this case `determine_missing_parameters()`
+        must be called before using the Restraint object (default is None).
 
     Examples
     --------
+    Create the ThermodynamicState.
 
-    >>> # Create a test system.
-    >>> from openmmtools import testsystems
+    >>> from openmmtools import testsystems, states
     >>> system_container = testsystems.LysozymeImplicit()
-    >>> (system, positions) = system_container.system, system_container.positions
-    >>> # Identify receptor and ligand atoms.
-    >>> receptor_atoms = range(0,2603)
-    >>> ligand_atoms = range(2603,2621)
-    >>> # Construct a reference thermodynamic state.
-    >>> from repex import ThermodynamicState
-    >>> temperature = 298.0 * unit.kelvin
-    >>> state = ThermodynamicState(temperature=temperature)
-    >>> # Create restraints.
-    >>> restraints = FlatBottom(state, system, positions, receptor_atoms, ligand_atoms)
-    >>> # Get standard state correction.
-    >>> correction = restraints.getStandardStateCorrection()
-    >>> # Get radius of gyration of receptor.
-    >>> rg = restraints.getReceptorRadiusOfGyration()
+    >>> system, positions = system_container.system, system_container.positions
+    >>> thermodynamic_state = states.ThermodynamicState(system, 298*unit.kelvin)
+    >>> sampler_state = states.SamplerState(positions)
+
+    Identify ligand atoms. Topography automatically identify receptor atoms too.
+
+    >>> from yank.yank import Topography
+    >>> topography = Topography(system_container.topology, ligand_atoms=range(2603, 2621))
+
+    Create a completely defined restraint.
+
+    >>> restraint = FlatBottom(spring_constant=0.6*unit.kilocalorie_per_mole/unit.angstroms**2,
+    ...                        well_radius=5.2*unit.nanometers, restrained_receptor_atom=1644,
+    ...                        restrained_ligand_atom=2609)
+
+    Automatically identify parameters and apply the Restraint. When trying
+    to impose a restraint with undefined parameters, RestraintParameterError
+    is raised.
+
+    >>> restraint = FlatBottom()
+    >>> try:
+    ...     restraint.restrain_state(thermodynamic_state)
+    ... except RestraintParameterError:
+    ...     print('There are undefined parameters. Choosing restraint parameters automatically.')
+    ...     restraint.determine_missing_parameters(thermodynamic_state, sampler_state, topography)
+    ...     restraint.restrain_state(thermodynamic_state)
+    ...
+    There are undefined parameters. Choosing restraint parameters automatically.
+
+    Get standard state correction.
+
+    >>> correction = restraint.get_standard_state_correction(thermodynamic_state)
 
     """
+    def __init__(self, spring_constant=None, well_radius=None, **kwargs):
+        super(FlatBottom, self).__init__(**kwargs)
+        self.spring_constant = spring_constant
+        self.well_radius = well_radius
 
-    _energy_function = 'lambda_restraints * step(r-r0) * (K/2)*(r-r0)^2'  # flat-bottom restraint
-    _bond_parameter_names = ['K', 'r0']  # list of bond parameters that appear in energy function above
+    @property
+    def _energy_function(self):
+        """str: energy expression of the restraint force."""
+        return 'step(r-r0) * (K/2)*(r-r0)^2'
 
-    def _determine_bond_parameters(self):
+    @property
+    def _bond_parameters(self):
+        """dict: the bond parameters of the restraint force.
+
+        If there are parameters undefined, this is None.
+
         """
-        Determine bond parameters for CustomBondForce between protein and ligand.
+        if self.spring_constant is None or self.well_radius is None:
+            return None
+        return {'K': self.spring_constant, 'r0': self.well_radius}
 
-        RETURNS
+    def _determine_bond_parameters(self, thermodynamic_state, sampler_state, topography):
+        """Automatically choose a spring constant and well radius.
 
-        parameters (list) - list of parameters for CustomBondForce
+        The spring constant, is set to 5.92 kcal/mol/A**2, the well
+        radius is set at twice the robust estimate of the standard
+        deviation (from mean absolute deviation) plus 5 A.
 
-        NOTE
-
-        r0, the distance at which the harmonic restraint is imposed, is set at twice the robust estimate of the standard deviation (from mean absolute deviation) plus 5 A
-        K, the spring constant, is set to 5.92 kcal/mol/A**2
+        Parameters
+        ----------
+        thermodynamic_state : openmmtools.states.ThermodynamicState
+            The thermodynamic state.
+        sampler_state : openmmtools.states.SamplerState
+            The sampler state holding the positions of all atoms.
+        topography : yank.Topography
+            The topography with labeled receptor and ligand atoms.
 
         """
-
-        x_unit = self._positions.unit
+        x_unit = sampler_state.positions.unit
 
         # Get dimensionless receptor positions.
-        x = self._positions[self._receptor_atoms, :] / x_unit
+        x = sampler_state.positions[topography.receptor_atoms, :] / x_unit
 
         # Determine number of atoms.
-        natoms = x.shape[0]
+        n_atoms = x.shape[0]
 
-        if (natoms > 3):
+        if n_atoms > 3:
             # Check that restrained receptor atom is in expected range.
-            if self._restrained_receptor_atom > natoms:
-                raise ValueError('Receptor atom %d was selected for restraint, but system only has %d atoms.' % (self._restrained_receptor_atom, natoms))
+            if self.restrained_receptor_atom > n_atoms:
+                raise ValueError('Receptor atom {} was selected for restraint, but system '
+                                 'only has {} atoms.'.format(self.restrained_receptor_atom, n_atoms))
 
             # Compute median absolute distance to central atom.
             # (Working in non-unit-bearing floats for speed.)
-            xref = np.reshape(x[self._restrained_receptor_atom, :], (1,3))  # (1,3) array
+            xref = np.reshape(x[self.restrained_receptor_atom, :], (1, 3))  # (1,3) array
             # distances[i] is the distance from the centroid to particle i
-            distances = np.sqrt(((x - np.tile(xref, (natoms, 1)))**2).sum(1))
+            distances = np.sqrt(((x - np.tile(xref, (n_atoms, 1)))**2).sum(1))
             median_absolute_distance = np.median(abs(distances))
 
             # Convert back to unit-bearing quantity.
@@ -689,7 +928,8 @@ class FlatBottom(RadiallySymmetricRestraint):
             r0 = 2*sigma + 5.0 * unit.angstroms
         else:
             DEFAULT_DISTANCE = 15.0 * unit.angstroms
-            logger.warning("Receptor only contains %d atoms; using default distance of %s" % (natoms, str(DEFAULT_DISTANCE)))
+            logger.warning("Receptor only contains {} atoms; using default "
+                           "distance of {}".format(n_atoms, str(DEFAULT_DISTANCE)))
             r0 = DEFAULT_DISTANCE
 
         logger.debug("restraint distance r0 = %.1f A" % (r0 / unit.angstroms))
@@ -699,10 +939,9 @@ class FlatBottom(RadiallySymmetricRestraint):
         K = 0.6 * unit.kilocalories_per_mole / unit.angstroms**2
         logger.debug("K = %.1f kcal/mol/A^2" % (K / (unit.kilocalories_per_mole / unit.angstroms**2)))
 
-        # Assemble parameter vector.
-        bond_parameters = [K, r0]
-
-        return bond_parameters
+        # Store parameters.
+        self.spring_constant = K
+        self.well_radius = r0
 
 
 # =============================================================================================
@@ -1120,3 +1359,8 @@ class Boresch(OrientationDependentRestraint):
 
         return DeltaG
 
+
+if __name__ == '__main__':
+    import doctest
+    doctest.testmod()
+    # doctest.run_docstring_examples(Harmonic, globals())
