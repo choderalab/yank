@@ -387,8 +387,8 @@ class ReceptorLigandRestraint(ABC):
         left undefined in the constructor.
 
         """
-        raise NotImplemented('{} does not support automatic determination of '
-                             'the restraint parameters'.format(self.__class__.__name__))
+        raise NotImplementedError('{} does not support automatic determination of the '
+                                  'restraint parameters'.format(self.__class__.__name__))
 
 
 # ==============================================================================
@@ -618,8 +618,8 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
         """
         # Raise exception only if the subclass doesn't already defines parameters.
         if self._bond_parameters is None:
-            raise NotImplemented('Restraint {} cannot automatically determine '
-                                 'bond parameters.'.format(self.__class__.__name__))
+            raise NotImplementedError('Restraint {} cannot automatically determine '
+                                      'bond parameters.'.format(self.__class__.__name__))
 
     # -------------------------------------------------------------------------
     # Internal-usage
