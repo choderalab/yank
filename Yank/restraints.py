@@ -1081,9 +1081,11 @@ class FlatBottom(RadiallySymmetricRestraint):
         K = 0.6 * unit.kilocalories_per_mole / unit.angstroms**2
         logger.debug("K = %.1f kcal/mol/A^2" % (K / (unit.kilocalories_per_mole / unit.angstroms**2)))
 
-        # Store parameters.
-        self.spring_constant = K
-        self.well_radius = r0
+        # Store parameters if not already defined.
+        if self.spring_constant is None:
+            self.spring_constant = K
+        if self.well_radius is None:
+            self.well_radius = r0
 
 
 # ==============================================================================
@@ -1633,7 +1635,7 @@ class Boresch(ReceptorLigandRestraint):
                 setattr(self, attr_name, attr_value)
 
         # Set spring constants uniformly, as in Ref [1] Table 1 caption.
-        self.K_r = 20.0 * unit.kilocalories_per_mole / unit.angstrom**2
+        _assign_if_undefined('K_r', 20.0 * unit.kilocalories_per_mole / unit.angstrom**2)
         for parameter_name in ['K_thetaA', 'K_thetaB', 'K_phiA', 'K_phiB', 'K_phiC']:
             _assign_if_undefined(parameter_name, 20.0 * unit.kilocalories_per_mole / unit.radian**2)
 

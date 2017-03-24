@@ -203,6 +203,48 @@ def test_harmonic_standard_state():
     np.testing.assert_allclose(analytical_standard_state_G, restraint_standard_state_G)
 
 
+# ==============================================================================
+# RESTRAINT FACTORY FUNCTIONS
+# ==============================================================================
+
+def test_partial_parametrization():
+    """The automatic restraint parametrization doesn't overwrite user values."""
+    # Create states and identify ligand/receptor.
+    test_system = testsystems.HostGuestVacuum()
+    topography = Topography(test_system.topology, ligand_atoms='resname B2')
+    sampler_state = states.SamplerState(positions=test_system.positions)
+    thermodynamic_state = states.ThermodynamicState(test_system.system,
+                                                    temperature=300.0*unit.kelvin)
+
+    # Test case: (restraint_type, constructor_kwargs)
+    test_cases = [
+        ('Harmonic', dict(spring_constant=2.0*unit.kilojoule_per_mole/unit.nanometer**2,
+                          restrained_receptor_atom=5)),
+        ('FlatBottom', dict(well_radius=1.0*unit.angstrom, restrained_ligand_atom=130)),
+        ('Boresch', dict(restrained_atoms=[106, 123, 117, 130, 131, 136],
+                         K_r=1.0*unit.kilojoule_per_mole/unit.angstroms**2))
+    ]
+
+    for restraint_type, kwargs in test_cases:
+        restraint = yank.restraints.create_restraint(restraint_type, **kwargs)
+
+        # Test-precondition: The restraint has undefined parameters.
+        with nose.tools.assert_raises(yank.restraints.RestraintParameterError):
+            restraint.restrain_state(thermodynamic_state)
+
+        # The automatic parametrization maintains user values.
+        restraint.determine_missing_parameters(thermodynamic_state, sampler_state, topography)
+        for parameter_name, parameter_value in kwargs.items():
+            assert getattr(restraint, parameter_name) == parameter_value
+
+        # The rest of the parameters has been determined.
+        restraint.get_standard_state_correction(thermodynamic_state)
+
+
+# ==============================================================================
+# RESTRAINT FACTORY FUNCTIONS
+# ==============================================================================
+
 def test_available_restraint_classes():
     """Test to make sure expected restraint classes are available."""
     available_restraint_classes = yank.restraints.available_restraint_classes()
