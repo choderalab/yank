@@ -43,7 +43,13 @@ V0 = 1660.53928 * unit.angstroms**3  # standard state volume
 # CUSTOM EXCEPTIONS
 # ==============================================================================
 
+class RestraintStateError(mmtools.states.ComposableStateError):
+    """Error raised by an RestraintState."""
+    pass
+
+
 class RestraintParameterError(Exception):
+    """Error raised by a ReceptorLigandRestraint."""
     pass
 
 
@@ -118,6 +124,197 @@ def create_restraint(restraint_type, **kwargs):
             restraint_type, str(available_restraints.keys())))
     cls = available_restraints[restraint_type]
     return cls(**kwargs)
+
+
+# ==============================================================================
+# ComposableState class to control the strength of restraints.
+# ==============================================================================
+
+class RestraintState(object):
+    """The state of a restraint.
+
+    A `ComposableState` controlling the strength of a restraint
+    through its `lambda_restraints` property.
+
+    Parameters
+    ----------
+    lambda_restraints : float
+        The strength of the restraint. Must be between 0 and 1.
+
+    Attributes
+    ----------
+    lambda_restraints
+
+    Examples
+    --------
+    Create a system in a thermodynamic state.
+
+    >>> from openmmtools import testsystems, states
+    >>> system_container = testsystems.LysozymeImplicit()
+    >>> system, positions = system_container.system, system_container.positions
+    >>> thermodynamic_state = states.ThermodynamicState(system, 300*unit.kelvin)
+    >>> sampler_state = states.SamplerState(positions)
+
+    Identify ligand atoms. Topography automatically identify receptor atoms too.
+
+    >>> from yank.yank import Topography
+    >>> topography = Topography(system_container.topology, ligand_atoms=range(2603, 2621))
+
+    Apply a Harmonic restraint between receptor and protein. Let the restraint
+    automatically determine all the parameters.
+
+    >>> restraint = Harmonic()
+    >>> restraint.determine_missing_parameters(thermodynamic_state, sampler_state, topography)
+    >>> restraint.restrain_state(thermodynamic_state)
+
+    Create a `RestraintState` object to control the strength of the restraint.
+
+    >>> restraint_state = RestraintState(lambda_restraints=1.0)
+
+    `RestraintState` implements the IComposableState interface, so it can be
+    used with `CompoundThermodynamicState`.
+
+    >>> compound_state = states.CompoundThermodynamicState(thermodynamic_state=thermodynamic_state,
+    ...                                                    composable_states=[restraint_state])
+    >>> compound_state.lambda_restraints
+    1.0
+    >>> integrator = openmm.VerletIntegrator(1.0*unit.femtosecond)
+    >>> context = compound_state.create_context(integrator)
+    >>> context.getParameter('lambda_restraints')
+    1.0
+
+    You can control the parameters in the OpenMM Context by setting the state's
+    attributes. To To deactivate the restraint, set `lambda_restraints` to 0.0.
+
+    >>> compound_state.lambda_restraints = 0.0
+    >>> compound_state.apply_to_context(context)
+    >>> context.getParameter('lambda_restraints')
+    0.0
+
+    """
+    def __init__(self, lambda_restraints):
+        self.lambda_restraints = lambda_restraints
+
+    @property
+    def lambda_restraints(self):
+        """float: the strength of the applied restraint (between 0 and 1)."""
+        return self._lambda_restraints
+
+    @lambda_restraints.setter
+    def lambda_restraints(self, value):
+        assert 0.0 <= value <= 1.0
+        self._lambda_restraints = float(value)
+
+    def apply_to_system(self, system):
+        """Set the strength of the system's restraint to this.
+
+        Parameters
+        ----------
+        system : simtk.openmm.System
+            The system to modify.
+
+        Raises
+        ------
+        RestraintStateError
+            If the system does not have any `CustomForce` with a
+            `lambda_restraint` global parameter.
+
+        """
+        # Set lambda_restraints in all forces that have it.
+        for force, parameter_id in self._get_system_forces_parameters(system):
+            force.setGlobalParameterDefaultValue(parameter_id, self.lambda_restraints)
+
+    def check_system_consistency(self, system):
+        """Check if the system's restraint is in this restraint state.
+
+        It raises a RestraintStateError if the restraint is not consistent
+        with the state.
+
+        Parameters
+        ----------
+        system : simtk.openmm.System
+            The system with the restraint to test.
+
+        Raises
+        ------
+        RestraintStateError
+            If the system is not consistent with this state.
+
+        """
+        # Set lambda_restraints in all forces that have it.
+        for force, parameter_id in self._get_system_forces_parameters(system):
+            force_lambda = force.getGlobalParameterDefaultValue(parameter_id)
+            if force_lambda != self.lambda_restraints:
+                err_msg = 'Consistency check failed: system {}, state {}'
+                raise RestraintStateError(err_msg.format(force_lambda, self.lambda_restraints))
+
+    def apply_to_context(self, context):
+        """Put the restraint in the `Context` into this state.
+
+        Parameters
+        ----------
+        context : simtk.openmm.Context
+            The context to set.
+
+        Raises
+        ------
+        RestraintStateError
+            If the context does not have the required lambda global variables.
+
+        """
+        try:
+            context.setParameter('lambda_restraints', self.lambda_restraints)
+        except Exception:
+            raise RestraintStateError('The context does not have a restraint.')
+
+    @classmethod
+    def _standardize_system(cls, system):
+        """Standardize the given system.
+
+        Set lambda_restraints of the system to 1.0.
+
+        Parameters
+        ----------
+        system : simtk.openmm.System
+            The system to standardize.
+
+        Raises
+        ------
+        RestraintStateError
+            If the system is not consistent with this state.
+
+        """
+        # Set lambda_restraints to 1.0 in all forces that have it.
+        for force, parameter_id in cls._get_system_forces_parameters(system):
+            force.setGlobalParameterDefaultValue(parameter_id, 1.0)
+
+    @staticmethod
+    def _get_system_forces_parameters(system):
+        """Yields the system's forces having a lambda_restraints parameter.
+
+        Yields
+        ------
+        A tuple force, parameter_index for each force with lambda_restraints.
+
+        """
+        found_restraint = False
+
+        # Retrieve all the forces with global supported parameters.
+        for force_index in range(system.getNumForces()):
+            force = system.getForce(force_index)
+            try:
+                n_global_parameters = force.getNumGlobalParameters()
+            except AttributeError:
+                continue
+            for parameter_id in range(n_global_parameters):
+                parameter_name = force.getGlobalParameterName(parameter_id)
+                if parameter_name == 'lambda_restraints':
+                    found_restraint = True
+                    yield force, parameter_id
+
+        # Raise error if the system doesn't have a restraint.
+        if found_restraint is False:
+            raise RestraintStateError('The system does not have a restraint.')
 
 
 # ==============================================================================
