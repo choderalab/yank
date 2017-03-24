@@ -6,8 +6,9 @@
 
 """
 
-Automated selection and imposition of receptor-ligand restraints for absolute alchemical binding
-free energy calculations, along with computation of the standard state correction.
+Automated selection and imposition of receptor-ligand restraints for absolute
+alchemical binding free energy calculations, along with computation of the
+standard state correction.
 
 """
 
@@ -16,7 +17,6 @@ free energy calculations, along with computation of the standard state correctio
 # ==============================================================================
 
 import abc
-import copy
 import math
 import random
 import inspect
@@ -101,38 +101,28 @@ def available_restraint_types():
     return available_restraints.keys()
 
 
-def create_restraints(restraint_type, topology, state, system, positions, receptor_atoms, ligand_atoms):
-    """
-    Initialize a receptor-ligand restraint class matching the specified restraint type name.
+def create_restraint(restraint_type, **kwargs):
+    """Factory of receptor-ligand restraint objects.
 
     Parameters
     ----------
     restraint_type : str
         Restraint type name matching a register (imported) subclass of ReceptorLigandRestraint.
-    topology : openmm.app.Topology
-        Reference topology for the complex
-    system : openmm.System
-        System containing all the forces and atoms that restraint will be added to
-    state : thermodynamics.ThermodynamicState
-        The thermodynamic state specifying temperature, pressure, etc. to which restraints are to be added
-    positions : simtk.unit.Quantity of natoms x 3 with units compatible with nanometers
-        Reference positions to use for imposing restraints
-    receptor_atoms : list of int
-        A complete list of receptor atoms
-    ligand_atoms : list of int
-        A complete list of ligand atoms
+    **kwargs
+        Parameters to pass to the restraint constructor.
 
     """
     available_restraints = available_restraint_classes()
-    if not (restraint_type in available_restraints):
-        raise ValueError("Restraint type '%s' unknown. Options are: %s" % (restraint_type, str(available_restraints.keys())))
+    if restraint_type not in available_restraints:
+        raise ValueError("Restraint type {} unknown. Options are: {}".format(
+            restraint_type, str(available_restraints.keys())))
     cls = available_restraints[restraint_type]
-    return cls(topology, state, system, positions, receptor_atoms, ligand_atoms)
+    return cls(**kwargs)
 
 
-# =============================================================================================
+# ==============================================================================
 # Base class for receptor-ligand restraints.
-# =============================================================================================
+# ==============================================================================
 
 ABC = abc.ABCMeta('ABC', (object,), {})  # compatible with Python 2 *and* 3
 
@@ -198,9 +188,9 @@ class ReceptorLigandRestraint(ABC):
                              'the restraint parameters'.format(self.__class__.__name__))
 
 
-# =============================================================================================
+# ==============================================================================
 # Base class for radially-symmetric receptor-ligand restraints.
-# =============================================================================================
+# ==============================================================================
 
 class RadiallySymmetricRestraint(ReceptorLigandRestraint):
     """Base class for radially-symmetric restraints between ligand and protein.
@@ -596,9 +586,9 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
         return radius_of_gyration
 
 
-# =============================================================================================
+# ==============================================================================
 # Harmonic protein-ligand restraint.
-# =============================================================================================
+# ==============================================================================
 
 class Harmonic(RadiallySymmetricRestraint):
     """Impose a single harmonic restraint between ligand and protein.
@@ -729,9 +719,9 @@ class Harmonic(RadiallySymmetricRestraint):
         self.spring_constant = thermodynamic_state.kT / sigma**2
 
 
-# =============================================================================================
+# ==============================================================================
 # Flat-bottom protein-ligand restraint.
-# =============================================================================================
+# ==============================================================================
 
 class FlatBottom(RadiallySymmetricRestraint):
     """A receptor-ligand restraint using a flat potential well with harmonic walls.
