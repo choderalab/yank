@@ -13,32 +13,25 @@ Test restraints module.
 # GLOBAL IMPORTS
 # =============================================================================================
 
-import tempfile
 import os
-import shutil
 import math
+
 import numpy as np
 import netCDF4 as netcdf
-
+from simtk import unit
+import openmmtools as mmtools
+from openmmtools import testsystems, states
 from nose.plugins.attrib import attr
 
 import yank.restraints
-from yank.repex import ThermodynamicState
-from yank.yamlbuild import YamlBuilder
-from yank.utils import get_data_filename
-from yank import analyze
+from yank import yamlbuild, analyze, Topography
 
-from simtk import unit
-from openmmtools import testsystems
 
 # =============================================================================================
 # UNIT TESTS
 # =============================================================================================
 
-from openmmtools.testsystems import HostGuestVacuum
-
-
-class HostGuestNoninteracting(HostGuestVacuum):
+class HostGuestNoninteracting(testsystems.HostGuestVacuum):
     """CB7:B2 host-guest system in vacuum with no nonbonded interactions.
 
     Parameters
@@ -49,7 +42,7 @@ class HostGuestNoninteracting(HostGuestVacuum):
     --------
     Create host:guest system with no nonbonded interactions.
     >>> testsystem = HostGuestVacuumNoninteracting()
-    >>> (system, positions) = testsystem.system, testsystem.positions
+    >>> system, positions = testsystem.system, testsystem.positions
 
     Properties
     ----------
@@ -63,17 +56,18 @@ class HostGuestNoninteracting(HostGuestVacuum):
         super(HostGuestNoninteracting, self).__init__(**kwargs)
 
         # Store receptor and ligand atom indices
-        self.receptor_atoms = range(0,126)
-        self.ligand_atoms = range(126,156)
+        self.receptor_atoms = range(0, 126)
+        self.ligand_atoms = range(126, 156)
 
         # Remove nonbonded interactions
-        force_indices = { self.system.getForce(index).__class__.__name__ : index for index in range(self.system.getNumForces()) }
+        force_indices = {self.system.getForce(index).__class__.__name__: index
+                         for index in range(self.system.getNumForces())}
         self.system.removeForce(force_indices['NonbondedForce'])
 
 expected_restraints = {
-    'Harmonic' : yank.restraints.Harmonic,
-    'FlatBottom' : yank.restraints.FlatBottom,
-    'Boresch' : yank.restraints.Boresch,
+    'Harmonic': yank.restraints.Harmonic,
+    'FlatBottom': yank.restraints.FlatBottom,
+    'Boresch': yank.restraints.Boresch,
 }
 
 restraint_test_yaml = """
@@ -127,22 +121,22 @@ def general_restraint_run(options):
 
     options : Dict. A dictionary of substitutions for restraint_test_yaml
     """
-    output_directory = tempfile.mkdtemp()
-    options['output_directory'] = output_directory
-    # run both setup and experiment
-    yaml_builder = YamlBuilder(restraint_test_yaml % options)
-    yaml_builder.build_experiments()
-    # Estimate Free Energies
-    ncfile_path = os.path.join(output_directory, 'experiments', 'complex.nc')
-    ncfile = netcdf.Dataset(ncfile_path, 'r')
-    (Deltaf_ij, dDeltaf_ij) = analyze.estimate_free_energies(ncfile)
-    # Correct the sign for the fact that we are adding vs removing the restraints
-    DeltaF_simulated = Deltaf_ij[-1, 0]
-    dDeltaF_simulated = dDeltaf_ij[-1, 0]
-    DeltaF_restraints = ncfile.groups['metadata'].variables['standard_state_correction'][0]
-    ncfile.close()
-    # Clean up
-    shutil.rmtree(output_directory)
+    with mmtools.utils.temporary_directory() as output_directory:
+        # TODO refactor this to use AlchemicalPhase API rather than a YAML script.
+        options['output_directory'] = output_directory
+        # run both setup and experiment
+        yaml_builder = yamlbuild.YamlBuilder(restraint_test_yaml % options)
+        yaml_builder.build_experiments()
+        # Estimate Free Energies
+        ncfile_path = os.path.join(output_directory, 'experiments', 'complex.nc')
+        ncfile = netcdf.Dataset(ncfile_path, 'r')
+        Deltaf_ij, dDeltaf_ij = analyze.estimate_free_energies(ncfile)
+        # Correct the sign for the fact that we are adding vs removing the restraints
+        DeltaF_simulated = Deltaf_ij[-1, 0]
+        dDeltaF_simulated = dDeltaf_ij[-1, 0]
+        DeltaF_restraints = ncfile.groups['metadata'].variables['standard_state_correction'][0]
+        ncfile.close()
+
     # Check if they are close
     assert np.allclose(DeltaF_restraints, DeltaF_simulated, rtol=dDeltaF_simulated)
 
@@ -185,18 +179,25 @@ def test_harmonic_standard_state():
     Also ensures that PBC bonds are being computed and disabled correctly as expected
     """
     LJ_fluid = testsystems.LennardJonesFluid()
-    receptor_atoms = [0, 1, 2]
+
+    # Create Harmonic restraint.
+    restraint = yank.restraints.create_restraint('Harmonic', restrained_receptor_atom=1)
+
+    # Determine other parameters.
     ligand_atoms = [3, 4, 5]
-    thermodynamic_state = ThermodynamicState(temperature=300.0 * unit.kelvin)
-    restraint = yank.restraints.create_restraints('Harmonic', LJ_fluid.topology, thermodynamic_state, LJ_fluid.system,
-                                                  LJ_fluid.positions, receptor_atoms, ligand_atoms)
-    spring_constant = restraint._determine_bond_parameters()[0]
+    topography = Topography(LJ_fluid.topology, ligand_atoms=ligand_atoms)
+    sampler_state = states.SamplerState(positions=LJ_fluid.positions)
+    thermodynamic_state = states.ThermodynamicState(system=LJ_fluid.system,
+                                                    temperature=300.0 * unit.kelvin)
+    restraint.determine_missing_parameters(thermodynamic_state, sampler_state, topography)
+    spring_constant = restraint.spring_constant
+
     # Compute standard-state volume for a single molecule in a box of size (1 L) / (avogadros number)
     liter = 1000.0 * unit.centimeters ** 3  # one liter
     box_volume = liter / (unit.AVOGADRO_CONSTANT_NA * unit.mole)  # standard state volume
-    analytical_shell_volume = (2 * math.pi / (spring_constant * restraint.beta))**(3.0/2)
+    analytical_shell_volume = (2 * math.pi / (spring_constant * thermodynamic_state.beta))**(3.0/2)
     analytical_standard_state_G = - math.log(box_volume / analytical_shell_volume)
-    restraint_standard_state_G = restraint.get_standard_state_correction()
+    restraint_standard_state_G = restraint.get_standard_state_correction(thermodynamic_state)
     np.testing.assert_allclose(analytical_standard_state_G, restraint_standard_state_G)
 
 
@@ -207,29 +208,34 @@ def test_available_restraint_classes():
     available_restraint_types = yank.restraints.available_restraint_types()
 
     # We shouldn't have `None` (from the base class) as an available type
-    assert(None not in available_restraint_classes)
-    assert(None not in available_restraint_types)
+    assert None not in available_restraint_classes
+    assert None not in available_restraint_types
 
-    for (restraint_type, restraint_class) in expected_restraints.items():
+    for restraint_type, restraint_class in expected_restraints.items():
         msg = "Failed comparing restraint type '%s' with %s" % (restraint_type, str(available_restraint_classes))
-        assert(restraint_type in available_restraint_classes), msg
-        assert(available_restraint_classes[restraint_type] is restraint_class), msg
-        assert(restraint_type in available_restraint_types), msg
+        assert restraint_type in available_restraint_classes, msg
+        assert available_restraint_classes[restraint_type] is restraint_class, msg
+        assert restraint_type in available_restraint_types, msg
 
 
 def test_restraint_dispatch():
-    """Test dispatch of various restraint types.
-    """
-    for (restraint_type, restraint_class) in expected_restraints.items():
+    """Test dispatch of various restraint types."""
+    for restraint_type, restraint_class in expected_restraints.items():
         # Create a test system
         t = HostGuestNoninteracting()
-        # Create a thermodynamic state encoding temperature
-        thermodynamic_state = ThermodynamicState(temperature=300.0*unit.kelvin)
-        # Add restraints
-        restraint = yank.restraints.create_restraints(restraint_type, t.topology, thermodynamic_state, t.system, t.positions, t.receptor_atoms, t.ligand_atoms)
-        # Check that we got the right restraint class
-        assert(restraint.__class__.__name__ == restraint_type)
-        assert(restraint.__class__ == restraint_class)
+
+        # Create states and topography encoding the info to determine the parameters.
+        topography = Topography(t.topology, ligand_atoms='resname B2')
+        sampler_state = states.SamplerState(positions=t.positions)
+        thermodynamic_state = states.ThermodynamicState(system=t.system, temperature=300.0*unit.kelvin)
+
+        # Add restraints and determine parameters.
+        restraint = yank.restraints.create_restraint(restraint_type)
+        restraint.determine_missing_parameters(thermodynamic_state, sampler_state, topography)
+
+        # Check that we got the right restraint class.
+        assert restraint.__class__.__name__ == restraint_type
+        assert restraint.__class__ is restraint_class
 
 # =============================================================================================
 # MAIN
