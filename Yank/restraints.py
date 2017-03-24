@@ -316,6 +316,12 @@ class RestraintState(object):
         if found_restraint is False:
             raise RestraintStateError('The system does not have a restraint.')
 
+    def __getstate__(self):
+        return dict(lambda_restraints=self.lambda_restraints)
+
+    def __setstate__(self, serialization):
+        self.lambda_restraints = serialization['lambda_restraints']
+
 
 # ==============================================================================
 # Base class for receptor-ligand restraints.

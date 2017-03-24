@@ -15,12 +15,14 @@ Test restraints module.
 
 import os
 import math
+import copy
 
 import numpy as np
 import netCDF4 as netcdf
-from simtk import unit
+from simtk import openmm, unit
 import openmmtools as mmtools
 from openmmtools import testsystems, states
+import nose
 from nose.plugins.attrib import attr
 
 import yank.restraints
@@ -202,8 +204,7 @@ def test_harmonic_standard_state():
 
 
 def test_available_restraint_classes():
-    """Test to make sure expected restraint classes are available.
-    """
+    """Test to make sure expected restraint classes are available."""
     available_restraint_classes = yank.restraints.available_restraint_classes()
     available_restraint_types = yank.restraints.available_restraint_types()
 
@@ -237,9 +238,82 @@ def test_restraint_dispatch():
         assert restraint.__class__.__name__ == restraint_type
         assert restraint.__class__ is restraint_class
 
-# =============================================================================================
+
+# ==============================================================================
+# RESTRAINT STATE
+# ==============================================================================
+
+class TestRestraintState(object):
+    """Test class RestraintState."""
+
+    @classmethod
+    def setup_class(cls):
+        lysozyme = testsystems.LysozymeImplicit()
+        system, positions = lysozyme.system, lysozyme.positions
+        thermodynamic_state = states.ThermodynamicState(system, 300*unit.kelvin)
+        sampler_state = states.SamplerState(positions)
+        topography = Topography(lysozyme.topology, ligand_atoms='resname TMP')
+        cls.lysozyme_test_case = (thermodynamic_state, sampler_state, topography)
+
+    def get_restraint_cases(self):
+        for cls_name, cls in yank.restraints.available_restraint_classes().items():
+            # Create restraint and automatically determine parameters.
+            restraint = cls()
+            thermodynamic_state, sampler_state, topography = copy.deepcopy(self.lysozyme_test_case)
+            restraint.determine_missing_parameters(thermodynamic_state, sampler_state, topography)
+
+            # Apply restraint.
+            restraint.restrain_state(thermodynamic_state)
+
+            # Create compound state to control the strength of the restraint.
+            restraint_state = yank.restraints.RestraintState(lambda_restraints=1.0)
+            compound_state = states.CompoundThermodynamicState(thermodynamic_state=thermodynamic_state,
+                                                               composable_states=[restraint_state])
+            yield compound_state
+
+    def test_apply_to_system(self):
+        """The System parameters are updated when lambda_restraints is set on the compound state."""
+        for compound_state in self.get_restraint_cases():
+            # Test pre-condition.
+            assert compound_state.lambda_restraints == 1.0
+
+            # Changing the attribute changes the internal representation of a system.
+            compound_state.lambda_restraints = 0.5
+            for force, parameter_id in compound_state._get_system_forces_parameters(compound_state.system):
+                assert force.getGlobalParameterDefaultValue(parameter_id) == 0.5
+
+    def test_apply_to_context(self):
+        """The Context parameters are updated when the compound state is applied."""
+        for compound_state in self.get_restraint_cases():
+            compound_state.lambda_restraints = 0.5
+
+            integrator = openmm.VerletIntegrator(1.0*unit.femtosecond)
+            context = compound_state.create_context(integrator)
+            assert context.getParameter('lambda_restraints') == 0.5
+
+            compound_state.lambda_restraints = 0.0
+            compound_state.apply_to_context(context)
+            assert context.getParameter('lambda_restraints') == 0.0
+            del context, integrator
+
+    def test_compatibility(self):
+        """States differing only by the strength of the restraint are compatible."""
+        unrestrained_system = self.lysozyme_test_case[0].system
+
+        for compound_state in self.get_restraint_cases():
+            compound_state.lambda_restraints = 1.0
+            compatible_state = copy.deepcopy(compound_state)
+            compatible_state.lambda_restraints = 0.0
+            assert compound_state.is_state_compatible(compatible_state)
+
+            # Trying to assign a System without a Restraint raises an error.
+            with nose.tools.assert_raises(yank.restraints.RestraintStateError):
+                compound_state.system = unrestrained_system
+
+
+# ==============================================================================
 # MAIN
-# =============================================================================================
+# ==============================================================================
 
 if __name__ == '__main__':
     test_restraint_dispatch()
