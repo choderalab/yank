@@ -29,7 +29,7 @@ import simtk.openmm as openmm
 
 from alchemy import AbsoluteAlchemicalFactory
 from .sampling import ModifiedHamiltonianExchange
-from .restraints import create_restraints, V0
+from .restraints import create_restraint, V0
 
 from . import utils
 
@@ -88,6 +88,11 @@ class Topography(object):
         # Determine ligand and solvent atoms. Every other label is implied.
         self.ligand_atoms = ligand_atoms
         self.solvent_atoms = solvent_atoms
+
+    @property
+    def topology(self):
+        """mdtraj.Topology: A copy of the topology (read-only)."""
+        return copy.deepcopy(self._topology)
 
     @property
     def ligand_atoms(self):
@@ -587,9 +592,9 @@ class Yank(object):
         if is_complex and restraint_type is not None:
             logger.debug("Creating receptor-ligand restraints...")
             reference_positions = positions[0]
-            restraints = create_restraints(restraint_type, alchemical_phase.reference_topology,
-                                           thermodynamic_state, reference_system, reference_positions,
-                                           atom_indices['receptor'], atom_indices['ligand'])
+            restraints = create_restraint(restraint_type, alchemical_phase.reference_topology,
+                                          thermodynamic_state, reference_system, reference_positions,
+                                          atom_indices['receptor'], atom_indices['ligand'])
             force = restraints.get_restraint_force()  # Get Force object incorporating restraints.
             reference_system.addForce(force)
             metadata['standard_state_correction'] = restraints.get_standard_state_correction()  # in kT
