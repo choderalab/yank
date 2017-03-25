@@ -22,6 +22,7 @@ This code is licensed under the latest available version of the MIT License.
 # ==============================================================================
 
 
+import openmmtools as mmtools
 from openmmtools import testsystems
 from mdtraj.utils import enter_temp_directory
 
@@ -63,6 +64,17 @@ def test_topography():
     assert topography.solute_atoms == list(range(156))
     assert topography.solvent_atoms == list(range(156, host_guest_explicit.system.getNumParticles()))
     assert len(topography.ions_atoms) == 0
+
+
+def test_topography_serialization():
+    """Correct serialization of Topography objects."""
+    test_system = testsystems.AlanineDipeptideImplicit()
+    topography = Topography(test_system.topology)
+    serialized_topography = mmtools.utils.serialize(topography)
+    restored_topography = mmtools.utils.deserialize(serialized_topography)
+    assert topography.topology == restored_topography.topology
+    assert topography.ligand_atoms == restored_topography.ligand_atoms
+    assert topography.solvent_atoms == restored_topography.solvent_atoms
 
 
 # ==============================================================================

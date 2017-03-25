@@ -17,19 +17,18 @@ Interface for automated free energy calculations.
 # ==============================================================================
 
 import os
-import os.path
 import copy
 import inspect
 import logging
-import numpy as np
 
 import mdtraj
+import pandas
+import numpy as np
 import simtk.unit as unit
 import simtk.openmm as openmm
 
 from alchemy import AbsoluteAlchemicalFactory
-from .sampling import ModifiedHamiltonianExchange
-from .restraints import create_restraint, V0
+from yank.restraints import create_restraint, V0
 
 from . import utils
 
@@ -174,6 +173,30 @@ class Topography(object):
         return [i for i in self._solvent_atoms
                 if '-' in self._topology.atom(i).residue.name or
                 '+' in self._topology.atom(i).residue.name]
+
+    # -------------------------------------------------------------------------
+    # Serialization
+    # -------------------------------------------------------------------------
+
+    def __getstate__(self):
+        # We serialize the MDTraj Topology through a pandas dataframe because
+        # it doesn't implement __getstate__ and __setstate__ methods that
+        # guarantee future-compatibility. This serialization protocol will be
+        # compatible at least until the Topology API is broken.
+        atoms, bonds = self._topology.to_dataframe()
+        serialized_topology = {'atoms': atoms.to_json(orient='records'),
+                               'bonds': bonds.tolist()}
+        return dict(topology=serialized_topology,
+                    ligand_atoms=self._ligand_atoms,
+                    solvent_atoms=self._solvent_atoms)
+
+    def __setstate__(self, serialization):
+        topology_dict = serialization['topology']
+        atoms = pandas.read_json(topology_dict['atoms'], orient='records')
+        bonds = np.array(topology_dict['bonds'])
+        self._topology = mdtraj.Topology.from_dataframe(atoms, bonds)
+        self._ligand_atoms = serialization['ligand_atoms']
+        self._solvent_atoms = serialization['solvent_atoms']
 
     # -------------------------------------------------------------------------
     # Internal-usage
