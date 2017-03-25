@@ -17,13 +17,12 @@ This code is licensed under the latest available version of the MIT License.
 
 """
 
-#=============================================================================================
+# ==============================================================================
 # GLOBAL IMPORTS
-#=============================================================================================
+# ==============================================================================
 
 
 from openmmtools import testsystems
-import mdtraj
 from mdtraj.utils import enter_temp_directory
 
 from nose import tools
@@ -35,16 +34,40 @@ from yank.pipeline import find_components
 
 from yank.yank import *
 
-#=============================================================================================
+# ==============================================================================
 # MODULE CONSTANTS
-#=============================================================================================
+# ==============================================================================
 
 from simtk import unit
 kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA # Boltzmann constant
 
-#=============================================================================================
+
+# ==============================================================================
+# TEST TOPOLOGY OBJECT
+# ==============================================================================
+
+def test_topography():
+    """Test that topology components are isolated correctly by Topography."""
+    toluene_vacuum = testsystems.TolueneVacuum()
+    topography = Topography(toluene_vacuum.topology)
+    assert len(topography.ligand_atoms) == 0
+    assert len(topography.receptor_atoms) == 0
+    assert topography.solute_atoms == list(range(toluene_vacuum.system.getNumParticles()))
+    assert len(topography.solvent_atoms) == 0
+    assert len(topography.ions_atoms) == 0
+
+    host_guest_explicit = testsystems.HostGuestExplicit()
+    topography = Topography(host_guest_explicit.topology, ligand_atoms='resname B2')
+    assert topography.ligand_atoms == list(range(126, 156))
+    assert topography.receptor_atoms == list(range(126))
+    assert topography.solute_atoms == list(range(156))
+    assert topography.solvent_atoms == list(range(156, host_guest_explicit.system.getNumParticles()))
+    assert len(topography.ions_atoms) == 0
+
+
+# ==============================================================================
 # MAIN AND TESTS
-#=============================================================================================
+# ==============================================================================
 
 def test_parameters():
     """Test Yank parameters initialization."""

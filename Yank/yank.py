@@ -1,8 +1,8 @@
 #!/usr/local/bin/env python
 
-# =============================================================================================
+# ==============================================================================
 # MODULE DOCSTRING
-# =============================================================================================
+# ==============================================================================
 
 """
 Yank
@@ -12,9 +12,9 @@ Interface for automated free energy calculations.
 
 """
 
-# =============================================================================================
+# ==============================================================================
 # GLOBAL IMPORTS
-# =============================================================================================
+# ==============================================================================
 
 import os
 import os.path
@@ -23,16 +23,170 @@ import inspect
 import logging
 import numpy as np
 
+import mdtraj
 import simtk.unit as unit
 import simtk.openmm as openmm
 
 from alchemy import AbsoluteAlchemicalFactory
 from .sampling import ModifiedHamiltonianExchange
-from .restraints import create_restraints, V0
+from .restraints import create_restraint, V0
 
 from . import utils
 
 logger = logging.getLogger(__name__)
+
+
+# ==============================================================================
+# TOPOGRAPHY
+# ==============================================================================
+
+class Topography(object):
+    """A class mapping and labelling the different components of a system.
+
+    The object holds the topology of a system and offers convenience functions
+    to identify its various parts such as solvent, receptor, ions and ligand
+    atoms.
+
+    A molecule should be labeled as a ligand, only if there is also a receptor.
+    If there is only a single molecule its atom indices can be obtained from
+    solute_atoms instead. In ligand-receptor system, solute_atoms provides the
+    atom indices for both molecules.
+
+    Parameters
+    ----------
+    topology : mdtraj.Topology or simtk.openmm.app.Topology
+        The topology object specifying the system.
+    ligand_atoms : iterable of int or str, optional
+        The atom indices of the ligand. A string is interpreted as an mdtraj
+        DSL specification of the ligand atoms.
+    solvent_atoms : iterable of int or str, optional
+        The atom indices of the solvent. A string is interpreted as an mdtraj
+        DSL specification of the solvent atoms. If 'auto', a list of common
+        solvent residue names will be used to automatically detect solvent
+        atoms (default is 'auto').
+
+    Attributes
+    ----------
+    ligand_atoms
+    receptor_atoms
+    solute_atoms
+    solvent_atoms
+    ions_atoms
+
+    """
+    def __init__(self, topology, ligand_atoms=None, solvent_atoms='auto'):
+        # Determine if we need to convert the topology to mdtraj.
+        if isinstance(topology, mdtraj.Topology):
+            self._topology = topology
+        else:
+            self._topology = mdtraj.Topology.from_openmm(topology)
+
+        # Handle default ligand atoms.
+        if ligand_atoms is None:
+            ligand_atoms = []
+
+        # Determine ligand and solvent atoms. Every other label is implied.
+        self.ligand_atoms = ligand_atoms
+        self.solvent_atoms = solvent_atoms
+
+    @property
+    def topology(self):
+        """mdtraj.Topology: A copy of the topology (read-only)."""
+        return copy.deepcopy(self._topology)
+
+    @property
+    def ligand_atoms(self):
+        """The atom indices of the ligand.
+
+        This can be empty if this Topography doesn't represent a receptor-ligand
+        system. Use solute_atoms to obtain the atom indices of the molecule if
+        this is the case.
+
+        If assigned to a string, it will be interpreted as an mdtraj DSL specification
+        of the atom indices.
+
+        """
+        return self._ligand_atoms
+
+    @ligand_atoms.setter
+    def ligand_atoms(self, value):
+        self._ligand_atoms = self._resolve_atom_indices(value)
+
+    @property
+    def receptor_atoms(self):
+        """The atom indices of the receptor (read-only).
+
+        This can be empty if this Topography doesn't represent a receptor-ligand
+        system. Use solute_atoms to obtain the atom indices of the molecule if
+        this is the case.
+
+        """
+        # If there's no ligand, there's no receptor.
+        if len(self._ligand_atoms) == 0:
+            return []
+
+        # Create a set for fast searching.
+        ligand_atomset = frozenset(self._ligand_atoms)
+        # Receptor atoms are all solute atoms that are not ligand.
+        return [i for i in self.solute_atoms if i not in ligand_atomset]
+
+    @property
+    def solute_atoms(self):
+        """The atom indices of the non-solvent molecule(s) (read-only).
+
+        Practically, this are all the indices of the atoms that are not considered
+        solvent. In a receptor-ligand system, this includes the atom indices of
+        both the receptor and the ligand.
+
+        """
+        # Create a set for fast searching.
+        solvent_atomset = frozenset(self._solvent_atoms)
+        # The solute is everything that is not solvent.
+        return [i for i in range(self._topology.n_atoms) if i not in solvent_atomset]
+
+    @property
+    def solvent_atoms(self):
+        """The atom indices of the solvent molecules.
+
+        This includes eventual ions. If assigned to a string, it will be
+        interpreted as an mdtraj DSL specification of the atom indices. If
+        assigned to 'auto', a set of solvent auto indices is automatically
+        built from common solvent residue names.
+
+        """
+        return self._solvent_atoms
+
+    @solvent_atoms.setter
+    def solvent_atoms(self, value):
+        # If the user doesn't provide a solvent description,
+        # we use a default set of resnames in mdtraj.
+        if value == 'auto':
+            solvent_resnames = mdtraj.core.residue_names._SOLVENT_TYPES
+            self._solvent_atoms = [atom.index for atom in self._topology.atoms
+                                   if atom.residue.name in solvent_resnames]
+        else:
+            self._solvent_atoms = self._resolve_atom_indices(value)
+
+    @property
+    def ions_atoms(self):
+        """The indices of all ions atoms in the solvent (read-only)."""
+        # Ions are all atoms of the solvent whose residue name show a charge.
+        return [i for i in self._solvent_atoms
+                if '-' in self._topology.atom(i).residue.name or
+                '+' in self._topology.atom(i).residue.name]
+
+    # -------------------------------------------------------------------------
+    # Internal-usage
+    # -------------------------------------------------------------------------
+
+    def _resolve_atom_indices(self, atoms_description):
+        if isinstance(atoms_description, str):
+            # Assume this is DSL selection. select() returns a numpy array
+            # of int64 that we convert to python integers.
+            atoms_description = self._topology.select(atoms_description).tolist()
+        # Convert to a frozen set of indices.
+        return atoms_description
+
 
 # ==============================================================================
 # Class that define a single thermodynamic leg (phase) of the calculation
@@ -438,9 +592,9 @@ class Yank(object):
         if is_complex and restraint_type is not None:
             logger.debug("Creating receptor-ligand restraints...")
             reference_positions = positions[0]
-            restraints = create_restraints(restraint_type, alchemical_phase.reference_topology,
-                                           thermodynamic_state, reference_system, reference_positions,
-                                           atom_indices['receptor'], atom_indices['ligand'])
+            restraints = create_restraint(restraint_type, alchemical_phase.reference_topology,
+                                          thermodynamic_state, reference_system, reference_positions,
+                                          atom_indices['receptor'], atom_indices['ligand'])
             force = restraints.get_restraint_force()  # Get Force object incorporating restraints.
             reference_system.addForce(force)
             metadata['standard_state_correction'] = restraints.get_standard_state_correction()  # in kT
