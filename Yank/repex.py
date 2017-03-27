@@ -983,6 +983,7 @@ class ReplicaExchange(object):
         self._n_accepted_matrix = None
         self._n_proposed_matrix = None
         self._reporter = None
+        self._metadata = None
 
     @classmethod
     def from_storage(cls, storage):
@@ -1030,6 +1031,7 @@ class ReplicaExchange(object):
         state_indices = reporter.read_replica_thermodynamic_states(iteration=iteration)
         energy_thermodynamic_states, energy_unsampled_states = reporter.read_energies(iteration=iteration)
         n_accepted_matrix, n_proposed_matrix = reporter.read_mixing_statistics(iteration=iteration)
+        metadata = reporter.read_dict('metadata')
 
         # Close reading reporter.
         reporter.close()
@@ -1044,6 +1046,7 @@ class ReplicaExchange(object):
         repex._energy_unsampled_states = energy_unsampled_states
         repex._n_accepted_matrix = n_accepted_matrix
         repex._n_proposed_matrix = n_proposed_matrix
+        repex._metadata = metadata
 
         # We open the reporter only in node 0.
         repex._reporter = Reporter(storage, open_mode=None)
@@ -1092,6 +1095,28 @@ class ReplicaExchange(object):
         # If this is a single MCMCMove, it'll be transformed to a list in create().
         self._mcmc_moves = copy.deepcopy(new_value)
 
+    @property
+    def sampler_states(self):
+        """A copy of the sampler states at the current iteration.
+
+        This can be set only before running.
+        """
+        return copy.deepcopy(self._sampler_states)
+
+    @sampler_states.setter
+    def sampler_states(self, value):
+        if self._iteration != 0:
+            raise RuntimeError('Sampler states can be assigned only between '
+                               'create() and run().')
+        if len(value) != self.n_replicas:
+            raise ValueError('Passed {} sampler states for {} replicas'.format(
+                len(value), self.n_replicas))
+
+        # Update sampler state in the object and on storage.
+        self._sampler_states = copy.deepcopy(value)
+        mpi.run_single_node(0, self._reporter.write_sampler_states,
+                            self._sampler_states, self._iteration)
+
     class _StoredProperty(object):
         """Descriptor of a property stored as an option."""
         def __init__(self, option_name):
@@ -1110,6 +1135,11 @@ class ReplicaExchange(object):
 
     number_of_iterations = _StoredProperty('number_of_iterations')
     replica_mixing_scheme = _StoredProperty('replica_mixing_scheme')
+
+    @property
+    def metadata(self):
+        """A copy of the metadata passed on creation (read-only)."""
+        return copy.deepcopy(self._metadata)
 
     # -------------------------------------------------------------------------
     # Main public interface.
@@ -1166,6 +1196,15 @@ class ReplicaExchange(object):
                     raise ValueError('All ThermodynamicStates and SamplerStates must '
                                      'have the same number of particles')
 
+        # Handle default argument for metadata and add default simulation title.
+        default_title = ('Replica-exchange simulation created using ReplicaExchange class '
+                         'of yank.repex.py on {}'.format(time.asctime(time.localtime())))
+        if metadata is None:
+            metadata = dict(title=default_title)
+        elif 'title' not in metadata:
+            metadata['title'] = default_title
+        self._metadata = metadata
+
         # Save thermodynamic states. This sets n_replicas.
         self._thermodynamic_states = copy.deepcopy(thermodynamic_states)
 
@@ -1221,7 +1260,7 @@ class ReplicaExchange(object):
 
         # Initialize reporter file.
         self._reporter = Reporter(storage, open_mode=None)  # This is open only in node 0.
-        self._initialize_reporter(metadata)
+        self._initialize_reporter()
 
     @mmtools.utils.with_timer('Minimizing all replicas')
     def minimize(self, tolerance=1.0*unit.kilojoules_per_mole/unit.nanometers,
@@ -1481,7 +1520,7 @@ class ReplicaExchange(object):
         return os.path.exists(file_path) and os.path.getsize(file_path) > 0
 
     @mpi.on_single_node(rank=0, broadcast_result=False, sync_nodes=True)
-    def _initialize_reporter(self, metadata):
+    def _initialize_reporter(self):
         """Initialize the reporter and store initial information.
 
         This is executed only on MPI node 0 and it is blocking. This is to
@@ -1495,7 +1534,7 @@ class ReplicaExchange(object):
 
         # Store run metadata and ReplicaExchange options.
         self._store_options()
-        self._store_metadata(metadata)
+        self._reporter.write_dict('metadata', self._metadata)
 
         # Store initial conditions. This forces the storage to be synchronized.
         self._report_iteration()
@@ -1533,21 +1572,6 @@ class ReplicaExchange(object):
         # We store the MCMCMoves separately.
         options_to_store.pop('mcmc_moves')
         self._reporter.write_dict('options', options_to_store)
-
-    def _store_metadata(self, metadata):
-        """Store metadata.
-
-        Adds a default title if not specified.
-
-        """
-        # Handle default behavior and add default simulation title.
-        default_title = ('Replica-exchange simulation created using ReplicaExchange class '
-                         'of yank.repex.py on {}'.format(time.asctime(time.localtime())))
-        if metadata is None:
-            metadata = dict(title=default_title)
-        elif 'title' not in metadata:
-            metadata['title'] = default_title
-        self._reporter.write_dict('metadata', metadata)
 
     # -------------------------------------------------------------------------
     # Internal-usage: Distributed tasks.

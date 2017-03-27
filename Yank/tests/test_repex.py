@@ -580,7 +580,7 @@ class TestReplicaExchange(object):
             # A default title has been added to the stored metadata.
             metadata = reporter.read_dict('metadata')
             assert len(metadata) == 1
-            assert 'title' in metadata
+            assert repex.metadata['title'] == metadata['title']
 
     def test_from_storage(self):
         """Test that from_storage completely restore ReplicaExchange.
@@ -702,11 +702,22 @@ class TestReplicaExchange(object):
             repex.number_of_iterations = 123
             repex.replica_mixing_scheme = 'none'
 
+            # Displace positions of the first sampler state.
+            sampler_states = repex.sampler_states
+            original_positions = copy.deepcopy(sampler_states[0].positions)
+            displacement_vector = np.ones(3) * unit.angstroms
+            sampler_states[0].positions += displacement_vector
+            repex.sampler_states = sampler_states
+
             mpicomm = mpi.get_mpicomm()
             if mpicomm is None or mpicomm.rank == 0:
-                changed_options = reporter.read_dict('options')
-                assert changed_options['number_of_iterations'] == 123
-                assert changed_options['replica_mixing_scheme'] == 'none'
+                restored_options = reporter.read_dict('options')
+                assert restored_options['number_of_iterations'] == 123
+                assert restored_options['replica_mixing_scheme'] == 'none'
+
+                restored_sampler_states = reporter.read_sampler_states(iteration=0)
+                assert np.allclose(restored_sampler_states[0].positions,
+                                   original_positions + displacement_vector)
 
     def test_propagate_replicas(self):
         """Test method _propagate_replicas from ReplicaExchange.
