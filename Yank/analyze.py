@@ -19,6 +19,7 @@ import os.path
 import yaml
 import numpy as np
 
+from .repex import Reporter
 import netCDF4 as netcdf  # netcdf4-python
 
 from pymbar import MBAR  # multistate Bennett acceptance ratio
@@ -27,16 +28,391 @@ from pymbar import timeseries  # for statistical inefficiency analysis
 import mdtraj
 import simtk.unit as units
 
+import abc
+
 from . import utils
 
 import logging
 logger = logging.getLogger(__name__)
+
+ABC = abc.ABCMeta('ABC', (object,), {})  # compatible with Python 2 *and* 3
 
 # =============================================================================================
 # PARAMETERS
 # =============================================================================================
 
 kB = units.BOLTZMANN_CONSTANT_kB * units.AVOGADRO_CONSTANT_NA
+
+
+class ObservablesRegitry(object):
+    def __init__(self):
+
+    @staticmethod
+    def observables():
+        return 'entropy', 'enthalpy', 'free_energy', 'restraints'
+
+    @staticmethod
+    def observables_with_error():
+        return 'entropy', 'enthalpy', 'free_energy'
+
+# Convert this to a compound phase analyzer
+
+def not_implemented_method(func):
+    """
+    Wrapper to provide optionally implemented functions in a class. Different from abc.abstractmethod since its optional
+
+    Creates a probable attribute that the single phase analyzer can wrap functions in which are not implemented
+    """
+    # Create a probable static property, value does not mater
+    func.yank_implemented_flag = NotImplemented
+    return func
+
+class YankPhaseAnalyzer(ABC):
+    def __init__(self, reporter, name=None, sign=None):
+        if not reporter.is_open():
+            reporter.open(mode='r')
+        self._reporter = reporter
+        self._observables = []
+        # Auto-determine the computable observables by inspection of non-flagged methods
+        # We determine valid observables by negation instead of just having each child implement the method to enforce
+        # uniform function naming conventions.
+        for observable in ObservablesRegitry.observables():
+            observable_method = getattr(self, "get_" + observable)
+            if not hasattr(observable_method, 'yank_implemented_flag'):
+                self._observables.append(observable)
+        # Internal properties
+        self._name = name
+        self._sign = sign
+        # External properties
+        self.mbar = None
+
+    @staticmethod
+    def _check_sign(value):
+        plus_set = ['+', 'plus', 'add', 'positive']
+        minus_set = ['-', 'minus', 'subtract', 'negative']
+        if value in plus_set:
+            output = '+'
+        elif value in minus_set:
+            output = '-'
+        else:
+            raise ValueError("Please use one of the following for 'sign': {}".format(plus_set + minus_set))
+        return output
+
+    # Property management
+    @property
+    def sign(self):
+        return self._sign
+
+    @sign.setter
+    def sign(self, value):
+        self._sign = self._check_sign(value)
+
+    @property
+    def name(self):
+        return self._name
+
+    @name.setter
+    def name(self, value):
+        self._name = value
+
+    @property
+    def observables(self):
+        return self._observables
+
+    # Optional observable implementation
+    @not_implemented_method
+    def get_free_energy(self, mbar=None):
+        raise NotImplementedError("This Phase's simulation type does not support the free_energy observable")
+
+    @not_implemented_method
+    def get_enthalpy(self, mbar=None):
+        raise NotImplementedError("This Phase's simulation type does not support the enthalpy observable")
+
+    @not_implemented_method
+    def get_entropy(self, mbar=None):
+        raise NotImplementedError("This Phase's simulation type does not support the entropy observable")
+
+    @not_implemented_method
+    def get_restraints(self):
+        raise NotImplementedError("This Phase's simulation type does not support the restraints observable")
+
+    # Abstract methods
+    @abc.abstractmethod
+    def analyze_phase(self, phase_name):
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def extract_energies(self):
+        """ Extract the energies needed for MBAR analaysis from file, should return a u_kln, u_k, and a u_n"""
+        raise NotImplementedError()
+
+    # Shared methods
+    def initialize_MBAR(self, u_kln=None, N_k=None):
+        """
+        Initialize MBAR for Free Energy and Enthalpy estimates, this may take a while.
+
+        u_kln : array of numpy.float64, optional, default=None
+           Reduced potential energies of the replicas; if None, will be extracted from the ncfile
+        N_k : array of ints, optional, default=None
+           Number of samples drawn from each kth replica; if None, will be extracted from the ncfile
+
+        TODO
+        ----
+        * Ensure that the u_kln and N_k are decorrelated if not provided in this function
+
+        """
+
+        if u_kln is None or N_k is None:
+            (u_kln, N_k, u_n) = self.extract_ncfile_energies()
+
+        # Initialize MBAR (computing free energy estimates, which may take a while)
+        logger.info("Computing free energy differences...")
+        mbar = MBAR(u_kln, N_k)
+
+        self.mbar = mbar
+
+        return mbar
+
+
+class RepexPhase(YankPhaseAnalyzer):
+
+    def generate_mixing_statistics(self, nequil=0):
+        """
+        Generate the mixing statistics
+
+        Parameters
+        ----------
+        nequil : int, optional, default=0
+           If specified, only samples nequil:end will be used in analysis
+
+        Returns
+        -------
+        mixing_stats : np.array of shape [nstates, nstates]
+            Transition matrix estimate
+        mu : np.array
+            Eigenvalues of the Transition matrix sorted in descending order
+        """
+
+        # Get dimensions.
+        niterations = ncfile.variables['states'].shape[0]
+        nstates = ncfile.variables['states'].shape[1]
+
+        # Compute empirical transition count matrix.
+        Nij = np.zeros([nstates, nstates], np.float64)
+        for iteration in range(nequil, niterations - 1):
+            for ireplica in range(nstates):
+                istate = ncfile.variables['states'][iteration, ireplica]
+                jstate = ncfile.variables['states'][iteration + 1, ireplica]
+                Nij[istate, jstate] += 1
+
+        # Compute transition matrix estimate.
+        # TODO: Replace with maximum likelihood reversible count estimator from msmbuilder or pyemma.
+        Tij = np.zeros([nstates, nstates], np.float64)
+        for istate in range(nstates):
+            denom = (Nij[istate, :].sum() + Nij[:, istate].sum())
+            if denom > 0:
+                for jstate in range(nstates):
+                    Tij[istate, jstate] = (Nij[istate, jstate] + Nij[jstate, istate]) / denom
+            else:
+                Tij[istate, istate] = 1.0
+
+        # Estimate eigenvalues
+        mu = np.linalg.eigvals(Tij)
+        mu = -np.sort(-mu)  # Sort in descending order
+
+        return Tij, mu
+
+    def analyze_phase(self):
+
+            ncfile_path = os.path.join(source_directory, phase + '.nc')
+
+            # Open NetCDF file for reading.
+            logger.info("Opening NetCDF trajectory file %(ncfile_path)s for reading..." % vars())
+            try:
+                ncfile = netcdf.Dataset(ncfile_path, 'r')
+
+                logger.debug("dimensions:")
+                for dimension_name in ncfile.dimensions.keys():
+                    logger.debug("%16s %8d" % (dimension_name, len(ncfile.dimensions[dimension_name])))
+
+                # Read dimensions.
+                niterations = ncfile.variables['positions'].shape[0]
+                nstates = ncfile.variables['positions'].shape[1]
+                logger.info("Read %(niterations)d iterations, %(nstates)d states" % vars())
+
+                DeltaF_restraints = 0.0
+                if 'metadata' in ncfile.groups:
+                    # Read phase direction and standard state correction free energy.
+                    # Yank sets correction to 0 if there are no restraints
+                    DeltaF_restraints = ncfile.groups['metadata'].variables['standard_state_correction'][0]
+
+                # Choose number of samples to discard to equilibration
+                MIN_ITERATIONS = 10  # minimum number of iterations to use automatic detection
+                if niterations > MIN_ITERATIONS:
+                    from pymbar import timeseries
+                    u_n = extract_u_n(ncfile)
+                    u_n = u_n[
+                          1:]  # discard initial frame of zero energies TODO: Get rid of initial frame of zero energies
+                    [nequil, g_t, Neff_max] = timeseries.detectEquilibration(u_n)
+                    nequil += 1  # account for initial frame of zero energies
+                    logger.info([nequil, Neff_max])
+                else:
+                    nequil = 1  # discard first frame
+                    g_t = 1
+                    Neff_max = niterations
+
+                # Examine acceptance probabilities.
+                show_mixing_statistics(ncfile, cutoff=0.05, nequil=nequil)
+
+                # Extract equilibrated, decorrelated energies, check for fully interacting state
+                (u_kln, N_k, u_n) = extract_ncfile_energies(ncfile, ndiscard=nequil, g=g_t)
+
+                # Create MBAR object to use for free energy and entropy states
+                mbar = initialize_MBAR(ncfile, u_kln=u_kln, N_k=N_k)
+
+                # Estimate free energies, use fully interacting state if present
+                (Deltaf_ij, dDeltaf_ij) = estimate_free_energies(ncfile, mbar=mbar)
+
+                # Estimate average enthalpies
+                (DeltaH_i, dDeltaH_i) = estimate_enthalpies(ncfile, mbar=mbar)
+
+                # Accumulate free energy differences
+                entry = dict()
+                entry['DeltaF'] = Deltaf_ij[0, -1]
+                entry['dDeltaF'] = dDeltaf_ij[0, -1]
+                entry['DeltaH'] = DeltaH_i[0, -1]
+                entry['dDeltaH'] = dDeltaH_i[0, -1]
+                entry['DeltaF_restraints'] = DeltaF_restraints
+                data[phase] = entry
+
+                # Get temperatures.
+                ncvar = ncfile.groups['thermodynamic_states'].variables['temperatures']
+                temperature = ncvar[0] * units.kelvin
+                kT = kB * temperature
+
+            finally:
+                ncfile.close()
+
+
+# https://choderalab.slack.com/files/levi.naden/F4G6L9X8S/quick_diagram.png
+
+class YankAnalysis(object):
+
+    class _PhaseProperties(object):
+        def __init__(self, name, reporter, sign):
+            plus_set = ['+', 'plus', 'add', 'positive']
+            minus_set = ['-', 'minus', 'subtract', 'negative']
+            self.phase_name = name
+            self.reporter = reporter
+            if sign in plus_set:
+                self.sign = '+'
+            elif sign in minus_set:
+                self.sign = '-'
+            else:
+                raise AttributeError("Please use one of the following for 'sign': {}".format(plus_set + minus_set))
+            self.sign = sign
+            self._computed_observables = {
+                'enthalpy': False,
+                'entropy': False,
+                'free_energy': False,
+                'restraints': False
+            }
+
+        @property
+        def storage_convention(self):
+            return self._reporter.Conventions
+
+    def __init__(self, source_directory=None, **kwargs):
+        """
+        Auto-detects the analysis from the source_directory
+        Accepts a set of kwargs where each kwarg is phase_name:(reporter, sign)
+        """
+        self._phases = {}
+        if source_directory is not None:
+            try:
+                analysis_script_path = os.path.join(source_directory, 'analysis.yaml')
+                with open(analysis_script_path, 'r') as f:
+                    analysis_phases = yaml.load(f)
+            except IOError:
+                err_msg = 'Cannot find analysis.yaml script in {}'.format(source_directory)
+                logger.error(err_msg)
+                raise RuntimeError(err_msg)
+            for phase_name, sign in analysis_phases:
+                ncfile_path = os.path.join(source_directory, phase_name + '.nc')
+                reporter = Reporter(ncfile_path, open_mode='r')
+                self._phases[phase_name] = self._PhaseProperties(phase_name, reporter, sign)
+        for phase in kwargs.keys():
+            if phase in self.phases:
+                raise KeyError("Cannot use phase already defined by the analysis.yaml file in the source_directory!"
+                               "This would lead to ambiguous behavior, failing instead!")
+            self._phases[phase] = self._PhaseProperties(phase, reporter, sign)
+
+        self._analyzers = {}
+        for key in self.phases:
+            phase = self._phases[key]
+            if phase.storage_convetion == "ReplicaExchange":
+                self._analyzers[key] = RepexAnalyzer(reporter)
+
+    @property
+    def phases(self):
+        return self._phases.keys()
+
+    def analyze(self):
+
+        # Storage for different phases.
+
+        data = dict()
+
+        for phase in phases:
+            data[phase] = self.analyze_phase(phase)
+
+        # Process each netcdf file.
+        # Compute free energy and enthalpy
+        DeltaF = 0.0
+        dDeltaF = 0.0
+        DeltaH = 0.0
+        dDeltaH = 0.0
+        for phase, sign in analysis:
+            DeltaF -= sign * (data[phase]['DeltaF'] + data[phase]['DeltaF_restraints'])
+            dDeltaF += data[phase]['dDeltaF'] ** 2
+            DeltaH -= sign * (data[phase]['DeltaH'] + data[phase]['DeltaF_restraints'])
+            dDeltaH += data[phase]['dDeltaH'] ** 2
+        dDeltaF = np.sqrt(dDeltaF)
+        dDeltaH = np.sqrt(dDeltaH)
+
+        # Attempt to guess type of calculation
+        calculation_type = ''
+        for phase in phases:
+            if 'complex' in phase:
+                calculation_type = ' of binding'
+            elif 'solvent1' in phase:
+                calculation_type = ' of solvation'
+
+        # Print energies
+        logger.info("")
+        logger.info("Free energy{}: {:16.3f} +- {:.3f} kT ({:16.3f} +- {:.3f} kcal/mol)".format(
+            calculation_type, DeltaF, dDeltaF, DeltaF * kT / units.kilocalories_per_mole,
+                                               dDeltaF * kT / units.kilocalories_per_mole))
+        logger.info("")
+
+        for phase in phases:
+            logger.info("DeltaG {:<25} : {:16.3f} +- {:.3f} kT".format(phase, data[phase]['DeltaF'],
+                                                                       data[phase]['dDeltaF']))
+            if data[phase]['DeltaF_restraints'] != 0.0:
+                logger.info("DeltaG {:<25} : {:25.3f} kT".format('restraint',
+                                                                 data[phase]['DeltaF_restraints']))
+        logger.info("")
+        logger.info("Enthalpy{}: {:16.3f} +- {:.3f} kT ({:16.3f} +- {:.3f} kcal/mol)".format(
+            calculation_type, DeltaH, dDeltaH, DeltaH * kT / units.kilocalories_per_mole,
+                                               dDeltaH * kT / units.kilocalories_per_mole))
+
+
+
+
+
+
+
+
 
 # =============================================================================================
 # SUBROUTINES
