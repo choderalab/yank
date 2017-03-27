@@ -1012,7 +1012,7 @@ class ReplicaExchange(object):
         # Retrieve options and create new simulation.
         options = reporter.read_dict('options')
         options['mcmc_moves'] = reporter.read_mcmc_moves()
-        repex = ReplicaExchange(**options)
+        repex = cls(**options)
 
         # Display papers to be cited.
         repex._display_citations()
