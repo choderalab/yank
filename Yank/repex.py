@@ -107,6 +107,12 @@ class Reporter(object):
         if self._storage is not None:
             self.close()
 
+        # Create directory if we want to write.
+        if mode != 'r':
+            storage_dir = os.path.dirname(self._storage_file_path)
+            if not os.path.exists(storage_dir):
+                os.makedirs(storage_dir)
+
         # Open NetCDF 4 file for writing.
         ncfile = netcdf.Dataset(self._storage_file_path, mode, version='NETCDF4')
 
@@ -1218,18 +1224,18 @@ class ReplicaExchange(object):
         self._initialize_reporter(metadata)
 
     @mmtools.utils.with_timer('Minimizing all replicas')
-    def minimize(self, minimize_tolerance=1.0*unit.kilojoules_per_mole/unit.nanometers,
-                 minimize_max_iterations=0):
+    def minimize(self, tolerance=1.0*unit.kilojoules_per_mole/unit.nanometers,
+                 max_iterations=0):
         """Minimize all replicas.
 
         Minimized positions are stored at the end.
 
         Parameters
         ----------
-        minimize_tolerance : simtk.unit.Quantity, optional
+        tolerance : simtk.unit.Quantity, optional
             Minimization tolerance (units of energy/mole/length, default is
             1.0 * unit.kilojoules_per_mole / unit.nanometers).
-        minimize_max_iterations : int, optional
+        max_iterations : int, optional
             Maximum number of iterations for minimization. If 0, minimization
             continues until converged.
 
@@ -1244,7 +1250,7 @@ class ReplicaExchange(object):
         # The other nodes, only need the positions that they use for propagation and
         # computation of the energy matrix entries.
         minimized_positions, sampler_state_ids = mpi.distribute(self._minimize_replica, range(self.n_replicas),
-                                                                minimize_tolerance, minimize_max_iterations,
+                                                                tolerance, max_iterations,
                                                                 send_results_to=0)
 
         # Update all sampler states. For non-0 nodes, this will update only the
@@ -1608,7 +1614,7 @@ class ReplicaExchange(object):
 
         return move_statistics
 
-    def _minimize_replica(self, replica_id, minimize_tolerance, minimize_max_iterations):
+    def _minimize_replica(self, replica_id, tolerance, max_iterations):
         """Minimize the specified replica."""
         # Retrieve thermodynamic and sampler states.
         thermodynamic_state_id = self._replica_thermodynamic_states[replica_id]
@@ -1627,7 +1633,7 @@ class ReplicaExchange(object):
             replica_id, self.n_replicas, initial_energy))
 
         # Minimize energy.
-        openmm.LocalEnergyMinimizer.minimize(context, minimize_tolerance, minimize_max_iterations)
+        openmm.LocalEnergyMinimizer.minimize(context, tolerance, max_iterations)
 
         # Get the minimized positions.
         sampler_state.update_from_context(context)

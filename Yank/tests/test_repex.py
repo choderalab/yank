@@ -259,7 +259,7 @@ class TestReporter(object):
     def temporary_reporter():
         """Create and initialize a reporter in a temporary directory."""
         with moltools.utils.temporary_directory() as tmp_dir_path:
-            storage_file_path = os.path.join(tmp_dir_path, 'test_storage.nc')
+            storage_file_path = os.path.join(tmp_dir_path, 'temp_dir/test_storage.nc')
             assert not os.path.isfile(storage_file_path)
             reporter = Reporter(storage=storage_file_path, open_mode='w')
             assert os.path.isfile(storage_file_path)
