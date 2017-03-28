@@ -44,22 +44,79 @@ ABC = abc.ABCMeta('ABC', (object,), {})  # compatible with Python 2 *and* 3
 kB = units.BOLTZMANN_CONSTANT_kB * units.AVOGADRO_CONSTANT_NA
 
 
+def generate_phase_name(current_name, name_list):
+    base_name = 'phase{}'
+    counter = 0
+    if current_name is None:
+        name = base_name.format(counter)
+        while name in name_list:
+            counter += 1
+            name = base_name.format(counter)
+    elif current_name in name_list:
+        name = current_name + str(counter)
+        while name in name_list:
+            counter +=1
+            name = current_name + str(counter)
+    else:
+        name = current_name
+    return name
+
+
 class ObservablesRegitry(object):
     """
     Registry of computable observables.
     """
-    def __init__(self):
-        # Check that observables_with_error is a subset of observbles
-        if not set(self.observables_with_error()).issubset(self.observables()):
-            raise ValueError("observables_with_error is not a subset of observables!")
-
     @staticmethod
     def observables():
-        return 'entropy', 'enthalpy', 'free_energy', 'restraints'
+        """
+        Set of observables which are derived from the subsets below
+        """
+        observables = set()
+        for subset in (ObservablesRegitry.observables_defined_by_two_states(),
+                       ObservablesRegitry.observables_defined_by_single_state(),
+                       ObservablesRegitry.observables_defined_by_phase()):
+            observables = observables.union(set(subset))
+        return tuple(observables)
 
+    # Non-exclusive properties
     @staticmethod
     def observables_with_error():
+        observables = set()
+        for subset in (ObservablesRegitry.observables_with_error_adding_quadrature(),
+                       ObservablesRegitry.observables_with_error_adding_linear()):
+            observables = observables.union(set(subset))
+        return tuple(observables)
+
+    @staticmethod
+    def observables_with_error_adding_quadrature():
         return 'entropy', 'enthalpy', 'free_energy'
+
+    @staticmethod
+    def observables_with_error_adding_linear():
+        return tuple()
+
+    # Exclusive observables
+    @staticmethod
+    def observables_defined_by_two_states():
+        """
+        Observables that require an i and a j state to define the observable accurately between phases
+        """
+        return 'entropy', 'enthalpy', 'free_energy'
+
+    @staticmethod
+    def observables_defined_by_single_state():
+        """
+        Defined observables which are fully defined by a single state, and not by multiple states such as differences
+        """
+        return tuple()
+
+    @staticmethod
+    def observables_defined_by_phase():
+        """
+        Observables which are defined by the phase as a whole, and not defined by any 1 or more states
+        e.g. Standard State Correction
+        """
+        return 'restraints'
 
 
 class YankPhaseAnalyzer(ABC):
@@ -102,23 +159,26 @@ class YankPhaseAnalyzer(ABC):
         if not reporter.is_open():
             reporter.open(mode='r')
         self._reporter = reporter
-        self._observables = []
+        observables = []
         # Auto-determine the computable observables by inspection of non-flagged methods
         # We determine valid observables by negation instead of just having each child implement the method to enforce
         # uniform function naming conventions.
         self._computed_observables = {}  # Cache of observables so the phase can be retrieved once computed
         for observable in ObservablesRegitry.observables():
             if hasattr(self, "get_" + observable):
-                self._observables.append(observable)
+                observables.append(observable)
                 self._computed_observables[observable] = None
+        # Cast observables to an immutable
+        self._observables = tuple(observable)
         # Internal properties
         self._name = name
         if sign is not None:
             sign = self._check_sign(sign)
         self._sign = sign
+        self._equilibration_data = None  # Internal tracker so the functions can get this data without recalculating it
+        # External properties
         self.delta_state_i = delta_state_i
         self.delta_state_j = delta_state_j
-        # External properties
         self.mbar = None
 
     @staticmethod
@@ -159,7 +219,24 @@ class YankPhaseAnalyzer(ABC):
 
     # Abstract methods
     @abc.abstractmethod
-    def analyze_phase(self, phase_name):
+    def analyze_phase(self, *args, **kwargs):
+        """
+        Function which broadly handles "auto-analysis" for those that do not wish to call all the methods on their own.
+        This should be have like the old "analyze" function from versions of YANK pre-1.0.
+
+        Returns a dictionary of analysis objects
+        """
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def create_MBAR_from_scratch(self):
+        """
+        This method should automatically do everything needed to make the MBAR object from file. It should make all
+        the assumptions needed to make the MBAR object.  Typically alot of these functions will be needed for the
+        analyze_phase function,
+
+        Returns nothing, but the self.mbar object should be set after this
+        """
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -219,6 +296,7 @@ class YankPhaseAnalyzer(ABC):
         """
         raise NotImplementedError()
 
+
     # Shared methods
     def create_MBAR(self, u_kln, N_k):
         """
@@ -244,6 +322,63 @@ class YankPhaseAnalyzer(ABC):
         mbar = MBAR(u_kln, N_k)
 
         self.mbar = mbar
+
+    def _combine_phases(self, other, operator='+'):
+        phases = [self]
+        names = []
+        signs = []
+        if self.name is None:
+            names.append(generate_phase_name(self, []))
+        if self.sign is None:
+            signs.append('+')
+        else:
+            signs.append(self.sign)
+        if isinstance(other, CompoundPhase):
+            new_phases = other.phases
+            new_signs = other.signs
+            new_names = other.names
+            final_new_names = []
+            for name in new_names:
+                other_names = [n for n in new_names if n != name]
+                final_new_names.append(generate_phase_name(name, other_names + names))
+            names.extend(final_new_names)
+            for new_sign in new_signs:
+                if operator != '+' and new_sign == '+':
+                    signs.append('-')
+                else:
+                    signs.append('+')
+            phases.extend(new_phases)
+        elif isinstance(other, YankPhaseAnalyzer):
+            names.append(generate_phase_name(other.name, names))
+            if other.sign is None:
+                if operator == '+':
+                    signs.append('+')
+                else:
+                    signs.append('-')
+            else:
+                if operator == '+':
+                    signs.append(other.sign)
+                elif operator == '-' and other.sign == '+':
+                    signs.append('-')
+                else:
+                    signs.append('+')
+            phases.append(other)
+        else:
+            baseerr = "cannot {} 'CompoundPhase' and '{}' objects"
+            if operator == '+':
+                err = baseerr.format('add', type(other))
+            else:
+                err = baseerr.format('subtract', type(other))
+            raise TypeError(err)
+        phase_pass = {'phases': phases, 'signs': signs, 'names': names}
+        return CompoundPhase(phase_pass)
+
+    def __add__(self, other):
+        return self._combine_phases(other, operator='+')
+
+    def __sub__(self, other):
+        return self._combine_phases(other, operator='-')
+
 
     # Static methods
     @staticmethod
@@ -525,7 +660,6 @@ class RepexPhase(YankPhaseAnalyzer):
         self._computed_observables['enthalpy'] = enthalpy
         self._computed_observables['entropy'] = entropy
 
-
     def get_enthalpy(self):
         """
         Return the difference in enthalpy and error in that estimate from the MBAR object
@@ -559,11 +693,11 @@ class RepexPhase(YankPhaseAnalyzer):
             self._computed_observables['restraints'] = None # TODO: Do something here
         return self._computed_observables['restraints']
 
-    def analyze_phase(self, cutoff=0.05):
-
+    def create_MBAR_from_scratch(self):
         u_kln, unsampled_u_kln = self.extract_energies()
         u_n = self.get_timeseries(u_kln)
         nequil, g_t, Neff_max = self.get_equilibration_data(u_n)
+        self._equilbration_data = nequil, g_t, Neff_max
         self.show_mixing_statistics(cutoff=cutoff, nequil=nequil)
         u_kln = self.remove_unequilibrated_data(u_kln, nequil, -1)
         unsampled_u_kln = self.remove_unequilibrated_data(unsampled_u_kln, nequil, -1)
@@ -571,6 +705,12 @@ class RepexPhase(YankPhaseAnalyzer):
         unsampled_u_kln = self.decorrelate_data(unsampled_u_kln, g_t, -1)
         mbar_ukln, mbar_N_k = self.prepare_MBAR_input_data(u_kln, unsampled_u_kln)
         self.create_MBAR(mbar_ukln, mbar_N_k)
+
+    def analyze_phase(self, cutoff=0.05):
+        if self.mbar is None:
+            self.create_MBAR_from_scratch()
+        nequil, g_t, _ = self._equilibration_data
+        self.show_mixing_statistics(cutoff=cutoff, nequil=nequil)
         data = {}
         # Accumulate free energy differences
         Deltaf_ij, dDeltaf_ij = self.get_free_energy()
@@ -584,6 +724,7 @@ class RepexPhase(YankPhaseAnalyzer):
         # Do something to get temperatures here
         return data  #, kT?
 
+
 def get_analyzer(reporter):
     """
     Utility function to convert Reporter to Analyzer by reading the data on file
@@ -594,6 +735,7 @@ def get_analyzer(reporter):
         raise RuntimeError("Cannot automatically determine analyzer for Reporter: {}".format(Reporter))
     return analyzer
 
+
 # https://choderalab.slack.com/files/levi.naden/F4G6L9X8S/quick_diagram.png
 
 class CompoundPhase(object):
@@ -601,96 +743,185 @@ class CompoundPhase(object):
     Combined Phase creator, not to be directly called itself, but instead called by adding or subtracting different
     Phases or CompoundPhases's
     """
-    def __init__(self, phase1, phase1sign, phase2, phase2sign):
+    def __init__(self, phases):
         """
-        Auto-combine phases which have the same estimators
+        Create the compound phase which is any combination of phases to generate a new compound phase.
+        Parameters
+        ----------
+        phases: dict
+            has keys "phases", "names", and "signs" which control the signs
         """
-        self._phases = {}
-        if source_directory is not None:
-            try:
-                analysis_script_path = os.path.join(source_directory, 'analysis.yaml')
-                with open(analysis_script_path, 'r') as f:
-                    analysis_phases = yaml.load(f)
-            except IOError:
-                err_msg = 'Cannot find analysis.yaml script in {}'.format(source_directory)
-                logger.error(err_msg)
-                raise RuntimeError(err_msg)
-            for phase_name, sign in analysis_phases:
-                ncfile_path = os.path.join(source_directory, phase_name + '.nc')
-                reporter = Reporter(ncfile_path, open_mode='r')
-                self._phases[phase_name] = self._PhaseProperties(phase_name, reporter, sign)
-        for phase in kwargs.keys():
-            if phase in self.phases:
-                raise KeyError("Cannot use phase already defined by the analysis.yaml file in the source_directory!"
-                               "This would lead to ambiguous behavior, failing instead!")
-            self._phases[phase] = self._PhaseProperties(phase, reporter, sign)
+        # Determine
+        observables = []
+        for observable in ObservablesRegitry.observables():
+            shared_observable = True
+            for phase in phases['phases']:
+                if observable not in phase.observables:
+                    shared_observable = False
+                    break
+            if shared_observable:
+                observables.append(observable)
+        self._observables = tuple(observables)
+        self._phases = phases['phases']
+        self._names = phases['names']
+        self._signs = phases['signs']
+        # Set the methods shared between both objects
+        for observable in self.observables:
+            setattr(self, "get_" + observable, lambda: self._compute_observable(observable))
 
-        self._analyzers = {}
-        for key in self.phases:
-            phase = self._phases[key]
-            if phase.storage_convetion == "ReplicaExchange":
-                self._analyzers[key] = RepexAnalyzer(reporter)
+    @property
+    def observables(self):
+        return self._observables
 
     @property
     def phases(self):
-        return self._phases.keys()
+        return self._phases
 
-    def analyze(self):
+    @property
+    def names(self):
+        return self._names
 
-        # Storage for different phases.
+    @property
+    def signs(self):
+        return self._signs
 
-        data = dict()
+    def _combine_phases(self, other, operator='+'):
+        phases = []
+        names = []
+        signs = []
+        # create copies
+        for phase in self.phases:
+            phases.append(phase)
+        for name in self.names:
+            names.append(name)
+        for sign in self.signs:
+            signs.append(sign)
+        if isinstance(other, CompoundPhase):
+            new_phases = other.phases
+            new_signs = other.signs
+            new_names = other.names
+            final_new_names = []
+            for name in new_names:
+                other_names = [n for n in new_names if n != name]
+                final_new_names.append(generate_phase_name(name, other_names + names))
+            names.extend(final_new_names)
+            for new_sign in new_signs:
+                if operator != '+' and new_sign == '+':
+                    signs.append('-')
+                else:
+                    signs.append('+')
+            signs.extend(new_signs)
+            phases.extend(new_phases)
+        elif isinstance(other, YankPhaseAnalyzer):
+            names.append(generate_phase_name(other.name, names))
+            if other.sign is None:
+                if operator == '+':
+                    signs.append('+')
+                else:
+                    signs.append('-')
+            else:
+                if operator == '+':
+                    signs.append(other.sign)
+                elif operator == '-' and other.sign == '+':
+                    signs.append('-')
+                else:
+                    signs.append('+')
+            phases.append(other)
+        else:
+            baseerr = "cannot {} 'CompoundPhase' and '{}' objects"
+            if operator == '+':
+                err = baseerr.format('add', type(other))
+            else:
+                err = baseerr.format('subtract', type(other))
+            raise TypeError(err)
+        phase_pass = {'phases': phases, 'signs': signs, 'names': names}
+        return CompoundPhase(phase_pass)
 
-        for phase in phases:
-            data[phase] = self.analyze_phase(phase)
+    def __add__(self, other):
+        return self._combine_phases(other, operator='+')
 
-        # Process each netcdf file.
-        # Compute free energy and enthalpy
-        DeltaF = 0.0
-        dDeltaF = 0.0
-        DeltaH = 0.0
-        dDeltaH = 0.0
-        for phase, sign in analysis:
-            DeltaF -= sign * (data[phase]['DeltaF'] + data[phase]['DeltaF_restraints'])
-            dDeltaF += data[phase]['dDeltaF'] ** 2
-            DeltaH -= sign * (data[phase]['DeltaH'] + data[phase]['DeltaF_restraints'])
-            dDeltaH += data[phase]['dDeltaH'] ** 2
-        dDeltaF = np.sqrt(dDeltaF)
-        dDeltaH = np.sqrt(dDeltaH)
+    def __sub__(self, other):
+        return self._combine_phases(other, operator='-')
 
-        # Attempt to guess type of calculation
-        calculation_type = ''
-        for phase in phases:
-            if 'complex' in phase:
-                calculation_type = ' of binding'
-            elif 'solvent1' in phase:
-                calculation_type = ' of solvation'
+    def _compute_observable(self, observable_name):
+        """
+        Helper function to compute arbitrary observable in both phases
 
-        # Print energies
-        logger.info("")
-        logger.info("Free energy{}: {:16.3f} +- {:.3f} kT ({:16.3f} +- {:.3f} kcal/mol)".format(
-            calculation_type, DeltaF, dDeltaF, DeltaF * kT / units.kilocalories_per_mole,
-                                               dDeltaF * kT / units.kilocalories_per_mole))
-        logger.info("")
+        Parameters
+        ----------
+        observable_name: str
+            Name of the observable as its defined in the ObservablesRegistry
 
-        for phase in phases:
-            logger.info("DeltaG {:<25} : {:16.3f} +- {:.3f} kT".format(phase, data[phase]['DeltaF'],
-                                                                       data[phase]['dDeltaF']))
-            if data[phase]['DeltaF_restraints'] != 0.0:
-                logger.info("DeltaG {:<25} : {:25.3f} kT".format('restraint',
-                                                                 data[phase]['DeltaF_restraints']))
-        logger.info("")
-        logger.info("Enthalpy{}: {:16.3f} +- {:.3f} kT ({:16.3f} +- {:.3f} kcal/mol)".format(
-            calculation_type, DeltaH, dDeltaH, DeltaH * kT / units.kilocalories_per_mole,
-                                               dDeltaH * kT / units.kilocalories_per_mole))
+        Returns
+        -------
+        observable_value
+            The observable as its combined between the two phases
 
+        """
+        def prepare_phase_observable(single_phase):
+            """Helper function to cast the observable in terms of observable's registry"""
+            observable = getattr(single_phase, "get_" + observable_name)()
+            if isinstance(single_phase, CompoundPhase):
+                if observable_name in ObservablesRegitry.observables_with_error():
+                    observable_payload = {}
+                    observable_payload['value'], observable_payload['error'] = observable
+                else:
+                    observable_payload = observable
+            else:
+                raise_registry_error = False
+                if observable_name in ObservablesRegitry.observables_with_error():
+                    observable_payload = {}
+                    if observable_name in ObservablesRegitry.observables_defined_by_phase():
+                        observable_payload['value'], observable_payload['error'] = observable
+                    elif observable_name in ObservablesRegitry.observables_defined_by_single_state():
+                        observable_payload['value'] = observable[0][single_phase.delta_state_i]
+                        observable_payload['error'] = observable[1][single_phase.delta_state_i]
+                    elif observable_name in ObservablesRegitry.observables_defined_by_two_states():
+                        observable_payload['value'] = observable[0][single_phase.delta_state_i,
+                                                                    single_phase.delta_state_j]
+                        observable_payload['error'] = observable[1][single_phase.delta_state_i,
+                                                                    single_phase.delta_state_j]
+                    else:
+                        raise_registry_error = True
+                else:  # No error
+                    if observable_name in ObservablesRegitry.observables_defined_by_phase():
+                        observable_payload = observable
+                    elif observable_name in ObservablesRegitry.observables_defined_by_single_state():
+                        observable_payload = observable[single_phase.delta_state_i]
+                    elif observable_name in ObservablesRegitry.observables_defined_by_two_states():
+                        observable_payload = observable[single_phase.delta_state_i, single_phase.delta_state_j]
+                    else:
+                        raise_registry_error = True
+                if raise_registry_error:
+                    raise RuntimeError("You have requested an observable that is improperly registered in the "
+                                       "ObservablesRegistry!")
+            return observable_payload
 
+        def modify_final_output(passed_output, payload, sign):
+            if observable_name in ObservablesRegitry.observables_with_error():
+                if sign == '+':
+                    passed_output['value'] += payload['value']
+                else:
+                    passed_output['value'] -= payload['value']
+                if observable_name in ObservablesRegitry.observables_with_error_adding_linear():
+                    passed_output['error'] += payload['error']
+                elif observable_name in ObservablesRegitry.observables_with_error_adding_quadrature():
+                    passed_output['error'] += (passed_output['error']**2 + payload['error']**2)**0.5
+            else:
+                if sign == '+':
+                    passed_output += payload
+                else:
+                    passed_output -= payload
+            return passed_output
 
-
-
-
-
-
+        if observable_name in ObservablesRegitry.observables_with_error():
+            final_output = {'value': 0, 'error': 0}
+        else:
+            final_output = 0
+        for phase, phase_sign in zip(self.phases, self.signs):
+            phase_observable = prepare_phase_observable(phase)
+            final_output = modify_final_output(final_output, phase_observable, phase_sign)
+        return final_output
 
 # =============================================================================================
 # SUBROUTINES
