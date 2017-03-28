@@ -356,6 +356,29 @@ class TestAlchemicalPhase(object):
             print(original_diffs, new_diffs)
             assert np.allclose(original_diffs, new_diffs)
 
+    def test_randomize_ligand(self):
+        """Test method AlchemicalPhase.randomize_ligand."""
+        _, thermodynamic_state, sampler_state, topography = self.host_guest_implicit
+        restraint = yank.restraints.Harmonic()
+
+        ligand_atoms, receptor_atoms = topography.ligand_atoms, topography.receptor_atoms
+        ligand_positions = sampler_state.positions[ligand_atoms]
+        receptor_positions = sampler_state.positions[receptor_atoms]
+
+        with self.temporary_storage_path() as storage_path:
+            alchemical_phase = AlchemicalPhase(ReplicaExchange())
+            alchemical_phase.create(thermodynamic_state, sampler_state, topography,
+                                    self.protocol, storage_path, restraint=restraint)
+
+            # Randomize ligand positions.
+            alchemical_phase.randomize_ligand()
+
+            # The new sampler states have the same receptor positions
+            # but different ligand positions.
+            for sampler_state in alchemical_phase._sampler.sampler_states:
+                assert np.allclose(sampler_state.positions[receptor_atoms], receptor_positions)
+                assert not np.allclose(sampler_state.positions[ligand_atoms], ligand_positions)
+
 
 # ==============================================================================
 # MAIN AND TESTS

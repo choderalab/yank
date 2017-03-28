@@ -468,6 +468,39 @@ class AlchemicalPhase(object):
         self._sampler.sampler_states = sampler_states
         self._sampler.minimize(tolerance=tolerance, max_iterations=max_iterations)
 
+    def randomize_ligand(self, sigma_multiplier=2.0, close_cutoff=1.5*unit.angstrom):
+        metadata = self._sampler.metadata
+        serialized_topography = metadata['topography']
+        topography = mmtools.utils.deserialize(serialized_topography)
+
+        # We can randomize the ligand only in implicit solvent.
+        is_complex = len(topography.ligand_atoms) > 0
+        is_explicit = len(topography.solvent_atoms) > 0
+        if not is_complex:
+            raise RuntimeError('Cannot find ligand atoms to randomize.')
+        if is_explicit:
+            raise RuntimeError('Cannot randomize ligand in explict solvent.')
+
+        # Randomize all sampler states.
+        sampler_states = self._sampler.sampler_states
+        ligand_positions = mpi.distribute(self._randomize_ligand, sampler_states, topography,
+                                          sigma_multiplier, close_cutoff, send_results_to='all')
+
+        # Update sampler states with randomized positions.
+        for sampler_state, ligand_pos in zip(sampler_states, ligand_positions):
+            sampler_state.positions[topography.ligand_atoms] = ligand_pos
+
+        self._sampler.sampler_states = sampler_states
+
+    def equilibrate(self, n_iterations, mcmc_moves=None):
+        self._sampler.equilibrate(n_iterations=n_iterations, mcmc_moves=mcmc_moves)
+
+    def run(self, n_iterations=None):
+        self._sampler.run(n_iterations=n_iterations)
+
+    def extend(self, n_iterations):
+        self._sampler.extend(n_iterations)
+
     # -------------------------------------------------------------------------
     # Internal-usage
     # -------------------------------------------------------------------------
@@ -607,6 +640,69 @@ class AlchemicalPhase(object):
 
         # Return minimized positions.
         return sampler_state.positions
+
+    @staticmethod
+    def _randomize_ligand(sampler_state, topography, sigma_multiplier, close_cutoff):
+        """
+        Draw a new ligand position with minimal overlap.
+
+        EXAMPLES
+
+        >>> from openmmtools import testsystems
+        >>> complex = testsystems.LysozymeImplicit()
+        >>> [system, positions] = [complex.system, complex.positions]
+        >>> receptor_atoms = range(0,2603) # T4 lysozyme L99A
+        >>> ligand_atoms = range(2603,2621) # p-xylene
+        >>> sigma = 30.0 * unit.angstroms
+        >>> close_cutoff = 3.0 * unit.angstroms
+        >>> perturbed_positions = ModifiedHamiltonianExchange.randomize_ligand_position(positions, receptor_atoms, ligand_atoms, sigma, close_cutoff)
+
+        """
+        # Shortcut variables.
+        ligand_atoms = topography.ligand_atoms
+        receptor_atoms = topography.receptor_atoms
+
+        # We set the standard deviation of the displacement
+        # proportional to the receptor radius of gyration.
+        radius_of_gyration = pipeline.compute_radius_of_gyration(sampler_state.positions[receptor_atoms])
+        sigma = sigma_multiplier * radius_of_gyration
+
+        # Convert to dimensionless positions.
+        positions_unit = sampler_state.positions.unit
+        x = sampler_state.positions / positions_unit
+        close_cutoff = close_cutoff / positions_unit
+
+        # We work with Quantity only for ligand atoms for readability.
+        ligand_positions = x[ligand_atoms] * positions_unit
+
+        # Try until we have a non-overlapping ligand conformation.
+        max_n_attempts = 5000
+        n_attempts = 0
+        while n_attempts <= max_n_attempts:
+            # Center ligand on a random receptor atom.
+            ligand_positions_mean = ligand_positions.mean(0)
+            receptor_atom_index = receptor_atoms[np.random.randint(0, len(receptor_atoms))]
+            ligand_positions[:] += sampler_state.positions[receptor_atom_index] - ligand_positions_mean
+
+            # Randomize ligand orientation and displace.
+            ligand_positions = mmtools.mcmc.MCRotationMove.rotate_positions(ligand_positions)
+            ligand_positions = mmtools.mcmc.MCDisplacementMove.displace_positions(ligand_positions, sigma)
+
+            # Update array to compute distances.
+            x[ligand_atoms, :] = ligand_positions / positions_unit
+
+            # Check if there's overlap.
+            min_dist = pipeline.compute_min_dist(x[ligand_atoms], x[receptor_atoms])
+            if min_dist >= close_cutoff:
+                break
+            n_attempts += 1
+
+        # Check if we could find a working configuration.
+        if n_attempts > max_n_attempts:
+            raise RuntimeError('Could not randomize ligand after {} attempts'.format(max_n_attempts))
+
+        # We return only the randomized ligand positions to minimize MPI traffic.
+        return ligand_positions
 
 
 class AlchemicalPhaseOld(object):
