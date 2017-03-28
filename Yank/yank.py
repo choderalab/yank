@@ -18,19 +18,18 @@ Interface for automated free energy calculations.
 
 import os
 import copy
+import time
 import inspect
 import logging
 
 import mdtraj
 import pandas
 import numpy as np
-import simtk.unit as unit
-import simtk.openmm as openmm
+import openmmtools as mmtools
+from simtk import unit, openmm
 
-from alchemy import AbsoluteAlchemicalFactory
-from yank.restraints import create_restraint, V0
-
-from . import utils
+from yank import utils, pipeline
+from yank.restraints import RestraintState, RestraintParameterError, V0
 
 logger = logging.getLogger(__name__)
 
@@ -84,9 +83,9 @@ class Topography(object):
         if ligand_atoms is None:
             ligand_atoms = []
 
-        # Determine ligand and solvent atoms. Every other label is implied.
-        self.ligand_atoms = ligand_atoms
+        # Once ligand and solvent atoms are defined, every other region is implied.
         self.solvent_atoms = solvent_atoms
+        self.ligand_atoms = ligand_atoms
 
     @property
     def topology(self):
@@ -110,6 +109,11 @@ class Topography(object):
     @ligand_atoms.setter
     def ligand_atoms(self, value):
         self._ligand_atoms = self._resolve_atom_indices(value)
+
+        # Safety check: with a ligand there should always be a receptor.
+        if len(self._ligand_atoms) > 0 and len(self.receptor_atoms) == 0:
+            raise ValueError('Specified ligand but cannot find '
+                             'receptor atoms. Ligand: {}'.format(value))
 
     @property
     def receptor_atoms(self):
@@ -238,6 +242,284 @@ class AlchemicalPhase(object):
         The alchemical protocol used for the calculation.
 
     """
+    def __init__(self, sampler):
+        self._sampler = sampler
+
+    def create(self, thermodynamic_state, sampler_states, topography, protocol, storage,
+               alchemical_regions=None, alchemical_factory=None, restraint=None,
+               anisotropic_dispersion_cutoff=None, metadata=None):
+        """
+        Create a repex object for a specified phase.
+
+        If `anisotropic_dispersion_cutoff` is different than `None`. The end states
+        of the phase will be reweighted. The fully interacting state accounts for:
+            1. The truncation of nonbonded interactions.
+            2. The reciprocal space which is not modeled in alchemical states if
+               an Ewald method is used for long-range interactions.
+            3. The free energy of removing the restraint if there is a restraint
+               and if the first step of the protocol has `lambda_restraints=1.0`.
+
+        Parameters
+        ----------
+        thermodynamic_state : ThermodynamicState (System need not be defined)
+            Thermodynamic state from which reference temperature and pressure are to be taken.
+        alchemical_phase : AlchemicalPhase
+           The alchemical phase to be created.
+        restraint_type : str or None
+           Restraint type to add between protein and ligand. Supported
+           types are 'FlatBottom' and 'Harmonic'. The second one is
+           available only in implicit solvent.
+
+        """
+        # Do not modify passed thermodynamic state.
+        reference_thermodynamic_state = copy.deepcopy(thermodynamic_state)
+        thermodynamic_state = copy.deepcopy(thermodynamic_state)
+        reference_system = thermodynamic_state.system
+        is_periodic = thermodynamic_state.is_periodic
+        is_complex = len(topography.receptor_atoms) > 0
+
+        # Make sure sampler_states is a list of SamplerStates.
+        if isinstance(sampler_states, mmtools.states.SamplerState):
+            sampler_states = [sampler_states]
+
+        # Initialize metadata storage and handle default argument.
+        # We'll use the sampler full name for resuming, the reference
+        # thermodynamic state for minimization and the topography for
+        # ligand randomization.
+        if metadata is None:
+            metadata = dict()
+        sampler_full_name = utils.typename(self._sampler.__class__)
+        metadata['sampler_full_name'] = sampler_full_name
+        metadata['reference_state'] = mmtools.utils.serialize(thermodynamic_state)
+        metadata['topography'] = mmtools.utils.serialize(topography)
+
+        # Add default title if user hasn't specified.
+        if 'title' not in metadata:
+            default_title = ('Alchemical free energy calculation created '
+                             'using yank.AlchemicalPhase and {} on {}')
+            metadata['title'] = default_title.format(sampler_full_name,
+                                                     time.asctime(time.localtime()))
+
+        # Restraint and standard state correction.
+        # ----------------------------------------
+
+        # Add receptor-ligand restraint and compute standard state corrections.
+        restraint_state = None
+        metadata['standard_state_correction'] = 0.0
+        if is_complex and restraint is not None:
+            logger.debug("Creating receptor-ligand restraints...")
+
+            try:
+                restraint.restrain_state(thermodynamic_state)
+            except RestraintParameterError:
+                logger.debug('There are undefined restraint parameters. '
+                             'Trying automatic parametrization.')
+                restraint.determine_missing_parameters(thermodynamic_state,
+                                                       sampler_states[0], topography)
+                restraint.restrain_state(thermodynamic_state)
+            correction = restraint.get_standard_state_correction(thermodynamic_state)  # in kT
+            metadata['standard_state_correction'] = correction
+
+            # Create restraint state that will be part of composable states.
+            restraint_state = RestraintState(lambda_restraints=1.0)
+
+        # Raise error if we can't find a ligand-receptor to apply the restraint.
+        elif restraint is not None:
+            raise RuntimeError("Cannot apply the restraint. No receptor-ligand "
+                               "complex could be found. ")
+
+        # For not-restrained ligand-receptor periodic systems, we must still
+        # add a standard state correction for the box volume.
+        elif is_complex and is_periodic:
+            # TODO: What if the box volume fluctuates during the simulation?
+            box_vectors = reference_system.getDefaultPeriodicBoxVectors()
+            box_volume = mmtools.states._box_vectors_volume(box_vectors)
+            metadata['standard_state_correction'] = - np.log(V0 / box_volume)
+
+        # For implicit solvent/vacuum complex systems, we require a restraint
+        # to keep the ligand from drifting too far away from receptor.
+        elif is_complex and not is_periodic:
+            raise ValueError('A receptor-ligand system in implicit solvent or '
+                             'vacuum requires a restraint.')
+
+        # Create alchemical states.
+        # -------------------------
+
+        # Handle default alchemical region.
+        if alchemical_regions is None:
+            alchemical_regions = self._build_default_alchemical_region(
+                reference_system, topography, protocol)
+
+        # Check that we have atoms to alchemically modify.
+        if len(alchemical_regions.alchemical_atoms) == 0:
+            raise ValueError("Couldn't find atoms to alchemically modify.")
+
+        # Create alchemically-modified system using alchemical factory.
+        logger.debug("Creating alchemically-modified states...")
+        if alchemical_factory is None:
+            factory = mmtools.alchemy.AlchemicalFactory()
+        alchemical_system = factory.create_alchemical_system(thermodynamic_state.system,
+                                                             alchemical_regions)
+
+        # Create compound alchemically modified state to pass to sampler.
+        thermodynamic_state.system = alchemical_system
+        alchemical_state = mmtools.alchemy.AlchemicalState.from_system(alchemical_system)
+        if restraint_state is not None:
+            composable_states = [alchemical_state, restraint_state]
+        else:
+            composable_states = [alchemical_state]
+        compound_state = mmtools.states.CompoundThermodynamicState(
+            thermodynamic_state=thermodynamic_state, composable_states=composable_states)
+
+        # Create all compound states to pass to sampler.create()
+        # following the requested protocol.
+        compound_states = []
+        protocol_keys, protocol_values = zip(*protocol.items())
+        for state_id, state_values in enumerate(zip(*protocol_values)):
+            compound_states.append(copy.deepcopy(compound_state))
+            for lambda_key, lambda_value in zip(protocol_keys, state_values):
+                if hasattr(compound_state, lambda_key):
+                    setattr(compound_states[state_id], lambda_key, lambda_value)
+                else:
+                    raise AttributeError('CompoundThermodynamicState object does not '
+                                         'have protocol attribute {}'.format(lambda_key))
+
+        # Expanded cutoff unsampled states.
+        # ---------------------------------
+
+        # TODO should we allow expanded states for non-periodic systems?
+        expanded_cutoff_states = []
+        if is_periodic and anisotropic_dispersion_cutoff is not None:
+            # Create non-alchemically modified state with an expanded cutoff.
+            # This must state must not have the restraint.
+            reference_state_expanded = self._expand_state_cutoff(reference_thermodynamic_state,
+                                                                 anisotropic_dispersion_cutoff)
+            # Create the expanded cutoff decoupled state. The free energy
+            # of removing the restraint will be taken into account with
+            # the standard state correction.
+            last_state_expanded = self._expand_state_cutoff(compound_states[-1],
+                                                            anisotropic_dispersion_cutoff)
+            expanded_cutoff_states = [reference_state_expanded, last_state_expanded]
+        elif anisotropic_dispersion_cutoff is not None:
+            logger.warning("The requested anisotropic dispersion correction "
+                           "won't be computed for the non-periodic systems.")
+
+        # Create simulation.
+        # ------------------
+
+        logger.debug("Creating sampler object...")
+        self._sampler.create(compound_states, sampler_states, storage=storage,
+                             unsampled_thermodynamic_states=expanded_cutoff_states,
+                             metadata=metadata)
+
+    # -------------------------------------------------------------------------
+    # Internal-usage
+    # -------------------------------------------------------------------------
+
+    @staticmethod
+    def _expand_state_cutoff(thermodynamic_state, expanded_cutoff_distance):
+        # Do not modify passed thermodynamic state.
+        thermodynamic_state = copy.deepcopy(thermodynamic_state)
+        system = thermodynamic_state.system
+
+        # Determine minimum box side dimension. This assumes
+        # that box vectors are aligned with the axes.
+        box_vectors = system.getDefaultPeriodicBoxVectors()
+        min_box_dimension = min([max(vector) for vector in box_vectors])
+
+        # If we use a barostat we leave more room for volume fluctuations or
+        # we risk fatal errors. If we don't use a barostat, OpenMM will raise
+        # the appropriate exception on context creation.
+        if (thermodynamic_state.pressure is not None and
+                min_box_dimension < 2.25 * expanded_cutoff_distance):
+            raise RuntimeError('Barostated box sides must be at least {} Angstroms '
+                               'to correct for missing dispersion interactions'
+                               ''.format(expanded_cutoff_distance/unit.angstrom * 2))
+
+        logger.debug('Setting cutoff for fully interacting system to maximum '
+                     'allowed {}'.format(expanded_cutoff_distance))
+
+        # Expanded forces cutoff.
+        for force in system.getForces():
+            try:
+                # We don't want to reduce the cutoff if it's already large.
+                if force.getCutoffDistance() < expanded_cutoff_distance:
+                    force.setCutoffDistance(expanded_cutoff_distance)
+
+                    # Set switch distance. We don't need to check if we are
+                    # using a switch since there is a setting for that.
+                    switching_distance = expanded_cutoff_distance - 1.0*unit.angstrom
+                    force.setSwitchingDistance(switching_distance)
+            except AttributeError:
+                pass
+
+        # Return the new thermodynamic state with the expanded cutoff.
+        thermodynamic_state.system = system
+        return thermodynamic_state
+
+    @staticmethod
+    def _build_default_alchemical_region(system, topography, protocol):
+        # TODO: we should probably have a second region that annihilate sterics of counterions.
+        alchemical_region_kwargs = {}
+
+        # Modify ligand if this is a receptor-ligand phase, or
+        # solute if this is a transfer free energy calculation.
+        if len(topography.ligand_atoms) > 0:
+            alchemical_region_name = 'ligand_atoms'
+        else:
+            alchemical_region_name = 'solute_atoms'
+        alchemical_atoms = getattr(topography, alchemical_region_name)
+
+        # In periodic systems, we alchemically modify the ligand/solute
+        # counterions to make sure that the solvation box is always neutral.
+        if system.usesPeriodicBoundaryConditions():
+            alchemical_counterions = pipeline.find_alchemical_counterions(
+                system, topography, alchemical_region_name)
+            alchemical_atoms += alchemical_counterions
+
+            # Sort them by index for safety. We don't want to
+            # accidentally exchange two atoms' positions.
+            alchemical_atoms = sorted(alchemical_atoms)
+
+        alchemical_region_kwargs['alchemical_atoms'] = alchemical_atoms
+
+        # Check if we need to modify bonds/angles/torsions.
+        for element_type in ['bonds', 'angles', 'torsions']:
+            if 'lambda_' + element_type in protocol:
+                modify_it = True
+            else:
+                modify_it = None
+            alchemical_region_kwargs['alchemical_' + element_type] = modify_it
+
+        # Create alchemical region.
+        alchemical_region = mmtools.alchemy.AlchemicalRegion(**alchemical_region_kwargs)
+
+        return alchemical_region
+
+
+class AlchemicalPhaseOld(object):
+    """A single thermodynamic leg (phase) of an alchemical free energy calculation.
+
+    Attributes
+    ----------
+    name : str
+        The name of the alchemical phase.
+    reference_system : simtk.openmm.System
+        The reference system object from which alchemical intermediates are
+        to be constructed.
+    reference_topology : simtk.openmm.app.Topology
+        The topology object for the reference_system.
+    positions : list of simtk.unit.Quantity natoms x 3 array with units of length
+        Atom positions for the system used to seed replicas in a round-robin way.
+    atom_indices : dict of list of int
+        atom_indices[component] is the set of atom indices associated with
+        component, where component is one of ('ligand', 'receptor', 'complex',
+        'solvent', 'ligand_counterions').
+    protocol : list of AlchemicalState
+        The alchemical protocol used for the calculation.
+
+    """
+
     @property
     def positions(self):
         return self._positions
