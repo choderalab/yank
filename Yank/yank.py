@@ -247,6 +247,29 @@ class AlchemicalPhase(object):
     def __init__(self, sampler):
         self._sampler = sampler
 
+    @staticmethod
+    def from_storage(storage):
+        # Check if netcdf file exists.
+        file_exists = os.path.exists(storage) and os.path.getsize(storage) > 0
+        if not file_exists:
+            raise RuntimeError('Storage file {} does not exists; cannot resume.'.format(storage))
+
+        # TODO: this should skip the Reporter and use the Storage to read storage.metadata.
+        # Open Reporter for reading and read metadata.
+        reporter = repex.Reporter(storage, open_mode='r')
+        metadata = reporter.read_dict('metadata')
+        reporter.close()
+
+        # Retrieve the sampler class.
+        sampler_full_name = metadata['sampler_full_name']
+        module_name, cls_name = sampler_full_name.rsplit('.', 1)
+        module = importlib.import_module(module_name)
+        cls = getattr(module, cls_name)
+
+        # Resume sampler and return new AlchemicalPhase.
+        sampler = cls.from_storage(storage)
+        return AlchemicalPhase(sampler)
+
     def create(self, thermodynamic_state, sampler_states, topography, protocol, storage,
                alchemical_regions=None, alchemical_factory=None, restraint=None,
                anisotropic_dispersion_cutoff=None, metadata=None):

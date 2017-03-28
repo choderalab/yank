@@ -286,6 +286,23 @@ class TestAlchemicalPhase(object):
             alchemical_phase.create(thermodynamic_state, sampler_state, topography,
                                     self.protocol, 'not_created.nc', restraint=restraint)
 
+    def test_from_storage(self):
+        """When resuming, the AlchemicalPhase recover the correct sampler."""
+        _, thermodynamic_state, sampler_state, topography = self.host_guest_implicit
+        restraint = yank.restraints.Harmonic()
+
+        with self.temporary_storage_path() as storage_path:
+            alchemical_phase = AlchemicalPhase(ReplicaExchange())
+            alchemical_phase.create(thermodynamic_state, sampler_state, topography,
+                                    self.protocol, storage_path, restraint=restraint)
+
+            # Delete old alchemical phase to close storage file.
+            del alchemical_phase
+
+            # Resume, the sampler has the correct class.
+            alchemical_phase = AlchemicalPhase.from_storage(storage_path)
+            assert isinstance(alchemical_phase._sampler, ReplicaExchange)
+
     @staticmethod
     def test_find_similar_sampler_states():
         """Test helper method AlchemicalPhase._find_similar_sampler_states."""
