@@ -21,6 +21,8 @@ import copy
 import time
 import inspect
 import logging
+import importlib
+import collections
 
 import mdtraj
 import pandas
@@ -28,7 +30,7 @@ import numpy as np
 import openmmtools as mmtools
 from simtk import unit, openmm
 
-from yank import utils, pipeline
+from yank import utils, pipeline, repex, mpi
 from yank.restraints import RestraintState, RestraintParameterError, V0
 
 logger = logging.getLogger(__name__)
@@ -412,6 +414,37 @@ class AlchemicalPhase(object):
                              unsampled_thermodynamic_states=expanded_cutoff_states,
                              metadata=metadata)
 
+    def minimize(self, tolerance=1.0*unit.kilojoules_per_mole/unit.nanometers,
+                 max_iterations=0):
+        metadata = self._sampler.metadata
+        serialized_reference_state = metadata['reference_state']
+        reference_state = mmtools.utils.deserialize(serialized_reference_state)
+        sampler_states = self._sampler.sampler_states
+
+        # We minimize only the sampler states that are in different positions.
+        # This depends on how many sampler states have been passed in create()
+        # and if the ligand has been randomized before calling minimize().
+        similar_sampler_states = self._find_similar_sampler_states(sampler_states)
+
+        logger.debug('Minimizing {} sampler states in the reference '
+                     'thermodynamic state'.format(len(similar_sampler_states)))
+
+        # Distribute minimization across nodes.
+        minimized_sampler_states_ids = similar_sampler_states.keys()
+        minimized_positions = mpi.distribute(self._minimize_sampler_state, minimized_sampler_states_ids,
+                                             sampler_states, reference_state, tolerance, max_iterations,
+                                             send_results_to='all')
+
+        # Update all sampler states.
+        for sampler_state_id, minimized_pos in zip(minimized_sampler_states_ids, minimized_positions):
+            sampler_states[sampler_state_id].positions = minimized_pos
+            for similar_sampler_state_id in similar_sampler_states[sampler_state_id]:
+                sampler_states[similar_sampler_state_id].positions = minimized_pos
+
+        # Update sampler and perform second minimization in alchemically modified states.
+        self._sampler.sampler_states = sampler_states
+        self._sampler.minimize(tolerance=tolerance, max_iterations=max_iterations)
+
     # -------------------------------------------------------------------------
     # Internal-usage
     # -------------------------------------------------------------------------
@@ -495,6 +528,62 @@ class AlchemicalPhase(object):
         alchemical_region = mmtools.alchemy.AlchemicalRegion(**alchemical_region_kwargs)
 
         return alchemical_region
+
+    @staticmethod
+    def _find_similar_sampler_states(sampler_states):
+        # similar_sampler_states is an ordered dict
+        #       sampler_state_index: list of sampler_state_indices with same positions
+        # we run only 1 minimization for each of these entries.
+        similar_sampler_states = collections.OrderedDict()
+
+        # processed_sampler_states_ids is a set containing all the
+        # sampler state indices that have been assigned a minimization.
+        processed_sampler_states_ids = set()
+
+        # Find minimum number of minimizations required.
+        for state_id, sampler_state in enumerate(sampler_states):
+            if state_id in processed_sampler_states_ids:
+                continue
+            similar_sampler_states[state_id] = []
+            processed_sampler_states_ids.add(state_id)
+            for next_state_id in range(state_id+1, len(sampler_states)):
+                next_sampler_state = sampler_states[next_state_id]
+                if np.allclose(sampler_state.positions, next_sampler_state.positions):
+                    similar_sampler_states[state_id].append(next_state_id)
+                    processed_sampler_states_ids.add(next_state_id)
+
+        return similar_sampler_states
+
+    @staticmethod
+    def _minimize_sampler_state(sampler_state_id, sampler_states, thermodynamic_state,
+                                tolerance, max_iterations):
+        """Minimize the specified sampler state at the given thermodynamic state."""
+        sampler_state = sampler_states[sampler_state_id]
+
+        # Retrieve a context. Any Integrator works.
+        context, integrator = mmtools.cache.global_context_cache.get_context(thermodynamic_state)
+
+        # Set initial positions and box vectors.
+        sampler_state.apply_to_context(context)
+
+        # Compute the initial energy of the system for logging.
+        initial_energy = thermodynamic_state.reduced_potential(context)
+        logger.debug('Sampler state {}/{}: initial energy {:8.3f}kT'.format(
+            sampler_state_id + 1, len(sampler_states), initial_energy))
+
+        # Minimize energy.
+        openmm.LocalEnergyMinimizer.minimize(context, tolerance, max_iterations)
+
+        # Get the minimized positions.
+        sampler_state.update_from_context(context)
+
+        # Compute the final energy of the system for logging.
+        final_energy = thermodynamic_state.reduced_potential(sampler_state)
+        logger.debug('Sampler state {}/{}: final energy {:8.3f}kT'.format(
+            sampler_state_id + 1, len(sampler_states), final_energy))
+
+        # Return minimized positions.
+        return sampler_state.positions
 
 
 class AlchemicalPhaseOld(object):

@@ -286,6 +286,59 @@ class TestAlchemicalPhase(object):
             alchemical_phase.create(thermodynamic_state, sampler_state, topography,
                                     self.protocol, 'not_created.nc', restraint=restraint)
 
+    @staticmethod
+    def test_find_similar_sampler_states():
+        """Test helper method AlchemicalPhase._find_similar_sampler_states."""
+        sampler_state1 = states.SamplerState(np.random.rand(100, 3))
+        sampler_state2 = states.SamplerState(np.random.rand(100, 3))
+        sampler_state3 = states.SamplerState(np.random.rand(100, 3))
+
+        sampler_states = [sampler_state1, sampler_state1, sampler_state2,
+                          sampler_state1, sampler_state3, sampler_state2]
+        similar_states = AlchemicalPhase._find_similar_sampler_states(sampler_states)
+        assert similar_states == {0: [1, 3], 2: [5], 4: []}
+
+    def test_minimize(self):
+        """Test AlchemicalPhase minimization of positions in reference state."""
+        # Ligand-receptor in implicit solvent.
+        test_system = testsystems.AlanineDipeptideVacuum()
+        thermodynamic_state = states.ThermodynamicState(test_system.system,
+                                                        temperature=300*unit.kelvin)
+        topography = Topography(test_system.topology)
+
+        # We create 3 different sampler states that will be distributed over
+        # replicas in a round-robin fashion.
+        displacement_vector = np.ones(3) * unit.nanometer
+        positions2 = test_system.positions + displacement_vector
+        positions3 = positions2 + displacement_vector
+        sampler_state1 = states.SamplerState(test_system.positions)
+        sampler_state2 = states.SamplerState(positions2)
+        sampler_state3 = states.SamplerState(positions3)
+        sampler_states = [sampler_state1, sampler_state2, sampler_state3]
+
+        with self.temporary_storage_path() as storage_path:
+            # Create alchemical phase.
+            alchemical_phase = AlchemicalPhase(ReplicaExchange())
+            alchemical_phase.create(thermodynamic_state, sampler_states, topography,
+                                    self.protocol, storage_path)
+
+            # Measure the average distance between positions. This should be
+            # maintained after minimization.
+            sampler_states = alchemical_phase._sampler.sampler_states
+            original_diffs = [np.average(sampler_states[i].positions - sampler_states[i+1].positions)
+                              for i in range(len(sampler_states) - 1)]
+
+            # Minimize.
+            alchemical_phase.minimize()
+
+            # The minimized positions should be still more or less
+            # one displacement vector from each other.
+            sampler_states = alchemical_phase._sampler.sampler_states
+            new_diffs = [np.average(sampler_states[i].positions - sampler_states[i+1].positions)
+                         for i in range(len(sampler_states) - 1)]
+            print(original_diffs, new_diffs)
+            assert np.allclose(original_diffs, new_diffs)
+
 
 # ==============================================================================
 # MAIN AND TESTS
