@@ -17,6 +17,7 @@ Interface for automated free energy calculations.
 # ==============================================================================
 
 import os
+import abc
 import copy
 import time
 import inspect
@@ -221,27 +222,123 @@ class Topography(object):
 # Class that define a single thermodynamic leg (phase) of the calculation
 # ==============================================================================
 
+class IMultiStateSampler(mmtools.utils.SubhookedABCMeta):
+    """A sampler for multiple thermodynamic states.
+
+    This is the interface documents the properties and methods that
+    need to be exposed by the sampler object to be compatible with
+    the class `AlchemicalPhase`.
+
+    """
+
+    @abc.abstractproperty
+    def metadata(self):
+        """dict: a copy of the metadata dictionary passed on creation."""
+        pass
+
+    @abc.abstractproperty
+    def sampler_states(self):
+        """list of SamplerState: the sampler states at the current iteration."""
+        pass
+
+    @abc.abstractmethod
+    def create(self, thermodynamic_state, sampler_states, storage,
+               unsampled_thermodynamic_states, metadata):
+        """Create new simulation and initialize the storage.
+
+        Parameters
+        ----------
+        thermodynamic_state : list of openmmtools.states.ThermodynamicState
+            The thermodynamic states for the simulation.
+        sampler_states : openmmtools.states.SamplerState or list
+            One or more sets of initial sampler states. If a list of SamplerStates,
+            they will be assigned to thermodynamic states in a round-robin fashion.
+        storage : str
+            The path to the storage file. In the future this will be able
+            to take a Reporter or a Storage class as well.
+        unsampled_thermodynamic_states : list of openmmtools.states.ThermodynamicState
+            These are ThermodynamicStates that are not propagated, but their
+            reduced potential is computed at each iteration for each replica.
+            These energy can be used as data for reweighting schemes.
+        metadata : dict
+           Simulation metadata to be stored in the file.
+
+        """
+        pass
+
+    @abc.abstractmethod
+    def minimize(self, tolerance, max_iterations):
+        """Minimize all states.
+
+        Parameters
+        ----------
+        tolerance : simtk.unit.Quantity
+            Minimization tolerance (units of energy/mole/length, default is
+            1.0 * unit.kilojoules_per_mole / unit.nanometers).
+        max_iterations : int
+            Maximum number of iterations for minimization. If 0, minimization
+            continues until converged.
+
+        """
+        pass
+
+    @abc.abstractmethod
+    def equilibrate(self, n_iterations, mcmc_moves=None):
+        """Equilibrate all states.
+
+        Parameters
+        ----------
+        n_iterations : int
+            Number of equilibration iterations.
+        mcmc_moves : MCMCMove or list of MCMCMove, optional
+            Optionally, the MCMCMoves to use for equilibration can be
+            different from the ones used in production (default is None).
+
+        """
+        pass
+
+    @abc.abstractmethod
+    def run(self, n_iterations=None):
+        """Run the simulation.
+
+        This runs at most `number_of_iterations` iterations. Use `extend()`
+        to pass the limit.
+
+        Parameters
+        ----------
+        n_iterations : int, optional
+           If specified, only at most the specified number of iterations
+           will be run (default is None).
+
+        """
+        pass
+
+    @abc.abstractmethod
+    def extend(self, n_iterations):
+        """Extend the simulation by the given number of iterations.
+
+        Contrarily to `run()`, this will extend the number of iterations past
+        `number_of_iteration` if requested.
+
+        Parameters
+        ----------
+        n_iterations : int
+           The number of iterations to run.
+
+        """
+        pass
+
 
 class AlchemicalPhase(object):
     """A single thermodynamic leg (phase) of an alchemical free energy calculation.
 
-    Attributes
+    This class wraps around a general MultiStateSampler and handle the creation
+    of an alchemical free energy calculation.
+
+    Parameters
     ----------
-    name : str
-        The name of the alchemical phase.
-    reference_system : simtk.openmm.System
-        The reference system object from which alchemical intermediates are
-        to be constructed.
-    reference_topology : simtk.openmm.app.Topology
-        The topology object for the reference_system.
-    positions : list of simtk.unit.Quantity natoms x 3 array with units of length
-        Atom positions for the system used to seed replicas in a round-robin way.
-    atom_indices : dict of list of int
-        atom_indices[component] is the set of atom indices associated with
-        component, where component is one of ('ligand', 'receptor', 'complex',
-        'solvent', 'ligand_counterions').
-    protocol : list of AlchemicalState
-        The alchemical protocol used for the calculation.
+    sampler : MultiStateSampler
+        The sampler instance implementing the IMultiStateSampler interface.
 
     """
     def __init__(self, sampler):
@@ -249,6 +346,21 @@ class AlchemicalPhase(object):
 
     @staticmethod
     def from_storage(storage):
+        """Static constructor from an existing storage file.
+
+        Parameters
+        ----------
+        storage : str
+            The path to the storage file. In the future this will be able
+            to take a Reporter or a Storage class as well.
+
+        Returns
+        -------
+        alchemical_phase : AlchemicalPhase
+            A new instance of AlchemicalPhase in the same state of the
+            last stored iteration.
+
+        """
         # Check if netcdf file exists.
         file_exists = os.path.exists(storage) and os.path.getsize(storage) > 0
         if not file_exists:
@@ -271,29 +383,56 @@ class AlchemicalPhase(object):
         return AlchemicalPhase(sampler)
 
     def create(self, thermodynamic_state, sampler_states, topography, protocol, storage,
-               alchemical_regions=None, alchemical_factory=None, restraint=None,
-               anisotropic_dispersion_cutoff=None, metadata=None):
-        """
-        Create a repex object for a specified phase.
+               restraint=None, anisotropic_dispersion_cutoff=None,
+               alchemical_regions=None, alchemical_factory=None, metadata=None):
+        """Create a new AlchemicalPhase calculation for a specified protocol.
 
-        If `anisotropic_dispersion_cutoff` is different than `None`. The end states
-        of the phase will be reweighted. The fully interacting state accounts for:
+        If `anisotropic_dispersion_cutoff` is different than `None`. The
+        end states of the phase will be reweighted. The fully interacting
+        state accounts for:
             1. The truncation of nonbonded interactions.
-            2. The reciprocal space which is not modeled in alchemical states if
-               an Ewald method is used for long-range interactions.
-            3. The free energy of removing the restraint if there is a restraint
-               and if the first step of the protocol has `lambda_restraints=1.0`.
+            2. The reciprocal space which is not modeled in alchemical
+               states if an Ewald method is used for long-range interactions.
+            3. If the system is restrained and the first step of the protocol
+               has `lambda_restraints=1.0`, the reweighting also accounts
+               for the free energy of applying the restraint.
 
         Parameters
         ----------
-        thermodynamic_state : ThermodynamicState (System need not be defined)
-            Thermodynamic state from which reference temperature and pressure are to be taken.
-        alchemical_phase : AlchemicalPhase
-           The alchemical phase to be created.
-        restraint_type : str or None
-           Restraint type to add between protein and ligand. Supported
-           types are 'FlatBottom' and 'Harmonic'. The second one is
-           available only in implicit solvent.
+        thermodynamic_state : openmmtools.states.ThermodynamicState
+            Thermodynamic state holding the reference system, temperature
+            and pressure.
+        sampler_states : openmmtools.states.SamplerState or list
+            One or more sets of initial sampler states. If a list of SamplerStates,
+            they will be assigned to replicas in a round-robin fashion.
+        topography : Topography
+            The object holding the topology and labelling the different
+            components of the system. This is used to discriminate between
+            ligand-receptor and solvation systems.
+        protocol : dict
+            The dictionary parameter_name: list_of_parameter_values defining
+            the protocol. All the parameter values list must have the same
+            number of elements.
+        storage : str
+            The path to the storage file. In the future this will be able
+            to take a Storage class as well.
+        restraint : ReceptorLigandRestraint, optional
+            Restraint to add between protein and ligand. This must be specified
+            for ligand-receptor systems in non-periodic boxes.
+        anisotropic_dispersion_cutoff : simtk.openmm.Quantity, optional
+            If specified, this is the cutoff at which to reweight long range
+            interactions of the end states to correct for anisotropic dispersions.
+            If `None`, the correction won't be applied (units of length, default
+            is None).
+        alchemical_regions : openmmtools.alchemy.AlchemicalRegion, optional
+            If specified, this is the AlchemicalRegion that will be passed
+            to the AlchemicalFactory, otherwise the ligand will be alchemically
+            modified according to the given protocol.
+        alchemical_factory : openmmtools.alchemy.AlchemicalFactory, optional
+            If specified, this AlchemicalFactory will be used instead of
+            the one created with default options.
+        metadata : dict, optional
+            Simulation metadata to be stored in the file.
 
         """
         # Do not modify passed thermodynamic state.
@@ -439,6 +578,23 @@ class AlchemicalPhase(object):
 
     def minimize(self, tolerance=1.0*unit.kilojoules_per_mole/unit.nanometers,
                  max_iterations=0):
+        """Minimize all the states.
+
+        The minimization is performed in two steps. In the first one, the
+        positions are minimized in the reference thermodynamic state (i.e.
+        non alchemically-modified). Only then, the positions are minimized
+        in their alchemically softened state.
+
+        Parameters
+        ----------
+        tolerance : simtk.unit.Quantity, optional
+            Minimization tolerance (units of energy/mole/length, default is
+            1.0 * unit.kilojoules_per_mole / unit.nanometers).
+        max_iterations : int, optional
+            Maximum number of iterations for minimization. If 0, minimization
+            continues until converged.
+
+        """
         metadata = self._sampler.metadata
         serialized_reference_state = metadata['reference_state']
         reference_state = mmtools.utils.deserialize(serialized_reference_state)
@@ -453,7 +609,7 @@ class AlchemicalPhase(object):
                      'thermodynamic state'.format(len(similar_sampler_states)))
 
         # Distribute minimization across nodes.
-        minimized_sampler_states_ids = similar_sampler_states.keys()
+        minimized_sampler_states_ids = list(similar_sampler_states.keys())
         minimized_positions = mpi.distribute(self._minimize_sampler_state, minimized_sampler_states_ids,
                                              sampler_states, reference_state, tolerance, max_iterations,
                                              send_results_to='all')
@@ -469,6 +625,28 @@ class AlchemicalPhase(object):
         self._sampler.minimize(tolerance=tolerance, max_iterations=max_iterations)
 
     def randomize_ligand(self, sigma_multiplier=2.0, close_cutoff=1.5*unit.angstrom):
+        """Randomize the ligand positions in every state.
+
+        The position and orientation of the ligand in each state will
+        be randomized. This works only if the system is a ligand-receptor
+        system.
+
+        If you call this before minimizing, each positions will be minimized
+        separately in the reference state, so you may want to call it
+        afterwards to speed up minimization.
+
+        Parameters
+        ----------
+        sigma_multiplier : float, optional
+            The ligand will be placed close to a random receptor atom at
+            a distance that is normally distributed with standard deviation
+            sigma_multiplier * receptor_radius_of_gyration (default is 2.0).
+        close_cutoff : simtk.unit.Quantity, optional
+            Each random placement proposal will be rejected if the ligand
+            ends up being closer to the receptor than this cutoff (units of
+            length, default is 1.5*unit.angstrom).
+
+        """
         metadata = self._sampler.metadata
         serialized_topography = metadata['topography']
         topography = mmtools.utils.deserialize(serialized_topography)
@@ -493,12 +671,40 @@ class AlchemicalPhase(object):
         self._sampler.sampler_states = sampler_states
 
     def equilibrate(self, n_iterations, mcmc_moves=None):
+        """Equilibrate all states.
+
+        Parameters
+        ----------
+        n_iterations : int
+            Number of equilibration iterations.
+        mcmc_moves : MCMCMove or list of MCMCMove, optional
+            Optionally, the MCMCMoves to use for equilibration can be
+            different from the ones used in production.
+
+        """
         self._sampler.equilibrate(n_iterations=n_iterations, mcmc_moves=mcmc_moves)
 
     def run(self, n_iterations=None):
+        """Run the alchemical phase simulation.
+
+        Parameters
+        ----------
+        n_iterations : int, optional
+           If specified, only at most the specified number of iterations
+           will be run (default is None).
+
+        """
         self._sampler.run(n_iterations=n_iterations)
 
     def extend(self, n_iterations):
+        """Extend the simulation by the given number of iterations.
+
+        Parameters
+        ----------
+        n_iterations : int
+           The number of iterations to run.
+
+        """
         self._sampler.extend(n_iterations)
 
     # -------------------------------------------------------------------------
@@ -507,6 +713,7 @@ class AlchemicalPhase(object):
 
     @staticmethod
     def _expand_state_cutoff(thermodynamic_state, expanded_cutoff_distance):
+        """Expand the thermodynamic state cutoff to the given one."""
         # Do not modify passed thermodynamic state.
         thermodynamic_state = copy.deepcopy(thermodynamic_state)
         system = thermodynamic_state.system
@@ -548,6 +755,7 @@ class AlchemicalPhase(object):
 
     @staticmethod
     def _build_default_alchemical_region(system, topography, protocol):
+        """Create a default AlchemicalRegion if the user hasn't provided one."""
         # TODO: we should probably have a second region that annihilate sterics of counterions.
         alchemical_region_kwargs = {}
 
@@ -587,6 +795,15 @@ class AlchemicalPhase(object):
 
     @staticmethod
     def _find_similar_sampler_states(sampler_states):
+        """Groups SamplerStates that have the same positions.
+
+        Returns
+        -------
+        similar_sampler_states : dict
+            The dict sampler_state_index: list_of_sampler_state_indices
+            with same positions.
+
+        """
         # similar_sampler_states is an ordered dict
         #       sampler_state_index: list of sampler_state_indices with same positions
         # we run only 1 minimization for each of these entries.
@@ -643,21 +860,7 @@ class AlchemicalPhase(object):
 
     @staticmethod
     def _randomize_ligand(sampler_state, topography, sigma_multiplier, close_cutoff):
-        """
-        Draw a new ligand position with minimal overlap.
-
-        EXAMPLES
-
-        >>> from openmmtools import testsystems
-        >>> complex = testsystems.LysozymeImplicit()
-        >>> [system, positions] = [complex.system, complex.positions]
-        >>> receptor_atoms = range(0,2603) # T4 lysozyme L99A
-        >>> ligand_atoms = range(2603,2621) # p-xylene
-        >>> sigma = 30.0 * unit.angstroms
-        >>> close_cutoff = 3.0 * unit.angstroms
-        >>> perturbed_positions = ModifiedHamiltonianExchange.randomize_ligand_position(positions, receptor_atoms, ligand_atoms, sigma, close_cutoff)
-
-        """
+        """Randomize ligand positions of the given sampler state."""
         # Shortcut variables.
         ligand_atoms = topography.ligand_atoms
         receptor_atoms = topography.receptor_atoms
