@@ -17,18 +17,18 @@ import os
 import os.path
 
 import yaml
+import abc
+import copy
 import numpy as np
 
 from .repex import Reporter
 import netCDF4 as netcdf  # netcdf4-python
 
-from pymbar import MBAR  # multistate Bennett acceptance ratio
+from pymbar import MBAR  # multi-state Bennett acceptance ratio
 from pymbar import timeseries  # for statistical inefficiency analysis
 
 import mdtraj
 import simtk.unit as units
-
-import abc
 
 from . import utils
 
@@ -55,14 +55,38 @@ def generate_phase_name(current_name, name_list):
     elif current_name in name_list:
         name = current_name + str(counter)
         while name in name_list:
-            counter +=1
+            counter += 1
             name = current_name + str(counter)
     else:
         name = current_name
     return name
 
 
-class ObservablesRegitry(object):
+def get_analyzer(file_path):
+    """
+    Utility function to convert storage file to a Reporter and Analyzer by reading the data on file
+
+    For now this is mostly placeholder functions, but creates the API for the user to work with.
+    """
+    reporter = Reporter(file_path)  # Eventually extend this to get more reporters, but for now simple placeholder\
+    """
+    storage = infer_storage_format_from_extension('complex.nc')  # This is always going to be nc for now.
+    metadata = storage.metadata
+    sampler_class = metadata['sampler_full_name']
+    module_name, cls_name = sampler_full_name.rsplit('.', 1)
+    module = importlib.import_module(module_name)
+    cls = getattr(module, cls_name)
+    reporter = cls.create_reporter('complex.nc')
+    """
+    # Eventually change this to auto-detect simulation from reporter:
+    if True:
+        analyzer = RepexPhase(reporter)
+    else:
+        raise RuntimeError("Cannot automatically determine analyzer for Reporter: {}".format(reporter))
+    return analyzer
+
+
+class _ObservablesRegistry(object):
     """
     Registry of computable observables.
     """
@@ -72,9 +96,9 @@ class ObservablesRegitry(object):
         Set of observables which are derived from the subsets below
         """
         observables = set()
-        for subset in (ObservablesRegitry.observables_defined_by_two_states(),
-                       ObservablesRegitry.observables_defined_by_single_state(),
-                       ObservablesRegitry.observables_defined_by_phase()):
+        for subset in (_ObservablesRegistry.observables_defined_by_two_states(),
+                       _ObservablesRegistry.observables_defined_by_single_state(),
+                       _ObservablesRegistry.observables_defined_by_phase()):
             observables = observables.union(set(subset))
         return tuple(observables)
 
@@ -82,8 +106,8 @@ class ObservablesRegitry(object):
     @staticmethod
     def observables_with_error():
         observables = set()
-        for subset in (ObservablesRegitry.observables_with_error_adding_quadrature(),
-                       ObservablesRegitry.observables_with_error_adding_linear()):
+        for subset in (_ObservablesRegistry.observables_with_error_adding_quadrature(),
+                       _ObservablesRegistry.observables_with_error_adding_linear()):
             observables = observables.union(set(subset))
         return tuple(observables)
 
@@ -116,7 +140,7 @@ class ObservablesRegitry(object):
         Observables which are defined by the phase as a whole, and not defined by any 1 or more states
         e.g. Standard State Correction
         """
-        return 'restraints'
+        return 'standard_state_correction'
 
 
 class YankPhaseAnalyzer(ABC):
@@ -127,7 +151,7 @@ class YankPhaseAnalyzer(ABC):
     To compute a specific observable, add it to the ObservableRegistry and then implement a "compute_X" where X is the
     name of the observable you want to compute.
     """
-    def __init__(self, reporter, name=None, sign=None, delta_state_i=0, delta_state_j=-1):
+    def __init__(self, reporter, name=None, reference_states=(0, -1)):
         """
         The reporter provides the hook into how to read the data, all other options control where differences are
         measured from and how each phase interfaces with other phases.
@@ -137,19 +161,14 @@ class YankPhaseAnalyzer(ABC):
         reporter : Reporter instance
             Reporter from Repex which ties to the simulation data on disk.
         name : str, Optional
-            Unique name you want to assign this phase, this is the name that will appear in CompoundPhase's. If not
+            Unique name you want to assign this phase, this is the name that will appear in MultiPhaseAnalyzer's. If not
             set, it will be given the arbitrary name "phase#" where # is an integer, chosen in order that it is
-            assigned to the CompoundPhase.
-        sign : str, Optional, default '+'
-            Representation of the operator for combining observables in the CompoundPhase. If no sign is set at the
-            time a CompoundPhase is created, the sign is assumed to be positive. In the CompoundPhase, this sign is
-            tracked internally so this Phase can be used in other CompoundPhases.
-        delta_state_i: int, Optional Default: 0
-        delta_state_j: int, Optional Default: -1
-            Integers of the state that is used for reference in observables, "O". These values are only used when
-            reporting single numbers or combining observables through CompoundPhase (since the number of states between
-            phases can be different). Calls to functions such as `get_free_energy` in a single Phase results in the
-            O being returned for all states.
+            assigned to the MultiPhaseAnalyzer.
+        reference_states: tuple of ints, length 2, Optional, Default: (0,-1)
+            Integers i and j of the state that is used for reference in observables, "O". These values are only used
+            when reporting single numbers or combining observables through MultiPhaseAnalyzer (since the number of states
+            between phases can be different). Calls to functions such as `get_free_energy` in a single Phase results in
+            the O being returned for all states.
             For O completely defined by the state itself (i.e. no differences between states, e.g. Temperature)"
                 O[i] is returned
                 O[j] is not used
@@ -164,46 +183,22 @@ class YankPhaseAnalyzer(ABC):
         # We determine valid observables by negation instead of just having each child implement the method to enforce
         # uniform function naming conventions.
         self._computed_observables = {}  # Cache of observables so the phase can be retrieved once computed
-        for observable in ObservablesRegitry.observables():
+        for observable in _ObservablesRegistry.observables():
             if hasattr(self, "get_" + observable):
                 observables.append(observable)
                 self._computed_observables[observable] = None
         # Cast observables to an immutable
-        self._observables = tuple(observable)
+        self._observables = tuple(observables)
         # Internal properties
         self._name = name
-        if sign is not None:
-            sign = self._check_sign(sign)
-        self._sign = sign
+        # Start as default sign +, handle all sign conversion at peration time
+        self._sign = '+'
         self._equilibration_data = None  # Internal tracker so the functions can get this data without recalculating it
         # External properties
-        self.delta_state_i = delta_state_i
-        self.delta_state_j = delta_state_j
-        self.mbar = None
-
-    @staticmethod
-    def _check_sign(value):
-        """
-        Internal function which validates the sign parameter passed in.
-        """
-        plus_set = ['+', 'plus', 'add', 'positive']
-        minus_set = ['-', 'minus', 'subtract', 'negative']
-        if value in plus_set:
-            output = '+'
-        elif value in minus_set:
-            output = '-'
-        else:
-            raise ValueError("Please use one of the following for 'sign': {}".format(plus_set + minus_set))
-        return output
-
-    # Property management
-    @property
-    def sign(self):
-        return self._sign
-
-    @sign.setter
-    def sign(self, value):
-        self._sign = self._check_sign(value)
+        self._reference_states = None  # initialize the cache object
+        self.reference_states = reference_states
+        self._mbar = None
+        self._kT = None
 
     @property
     def name(self):
@@ -217,6 +212,31 @@ class YankPhaseAnalyzer(ABC):
     def observables(self):
         return self._observables
 
+    @property
+    def mbar(self):
+        if self._mbar is None:
+            self._create_mbar_from_scratch()
+        return self._mbar
+
+    @property
+    def reference_states(self):
+        return self._reference_states
+
+    @reference_states.setter
+    def reference_states(self, value):
+        i, j = value[0], value[1]
+        if type(i) is not int or type(j) is not int:
+            raise ValueError("reference_states must be a length 2 iterable of ints")
+        self._reference_states = (i, j)
+
+    @property
+    def kT(self):
+        if self._kT is None:
+            thermodynamic_states, _ = self._reporter.read_thermodynamic_states()
+            temperature = thermodynamic_states[0].temperature
+            self._kT = kB * temperature
+        return self._kT
+
     # Abstract methods
     @abc.abstractmethod
     def analyze_phase(self, *args, **kwargs):
@@ -229,7 +249,7 @@ class YankPhaseAnalyzer(ABC):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def create_MBAR_from_scratch(self):
+    def _create_mbar_from_scratch(self):
         """
         This method should automatically do everything needed to make the MBAR object from file. It should make all
         the assumptions needed to make the MBAR object.  Typically alot of these functions will be needed for the
@@ -250,21 +270,24 @@ class YankPhaseAnalyzer(ABC):
 
         Returns
         -------
-        u_kln : Deconvoluted energy of sampled states evaluated at other sampled states.
+        sampled_energy_matrix : Deconvoluted energy of sampled states evaluated at other sampled states.
             Has shape (K,K,N) = (number of sampled states, number of sampled states, number of iterations)
             Indexed by [k,l,n]
             where an energy drawn from sampled state [k] is evaluated in sampled state [l] at iteration [n]
-        unsampled_u_kln
+        unsampled_energy_matrix
             Has shape (K, L, N) = (number of sampled states, number of UN-sampled states, number of iterations)
             Indexed by [k,l,n]
             where an energy drawn from sampled state [k] is evaluated in un-sampled state [l] at iteration [n]
         """
         raise NotImplementedError()
 
-    @abc.abstractmethod
-    def get_timeseries(self, u_kln):
+    # This SHOULD be an abstract static method since its related to the analyzer, but could handle any input data
+    # Until we drop Python 2.7, we have to keep this method
+    # @abc.abstractmethod
+    @staticmethod
+    def get_timeseries(passed_timeseries):
         """
-        Generate the timeseries that will be
+        Generate the timeseries that is generated for this function
 
         Returns
         -------
@@ -272,68 +295,70 @@ class YankPhaseAnalyzer(ABC):
             timeseries which can be fed into get_decorrelation_time to get the decorrelation
         """
 
-        raise NotImplementedError
+        raise NotImplementedError("This class has not implemented this function")
 
     @abc.abstractmethod
-    def prepare_MBAR_input_data(self, *args, **kwargs):
+    def _prepare_mbar_input_data(self, *args, **kwargs):
         """
-        Prepare a set of data for MBAR, because each method may need to do something else to prepare for MBAR, it
-        should have its own function to do that with=
+        Prepare a set of data for MBAR, because each analyzer may need to do something else to prepare for MBAR, it
+        should have its own function to do that with.
+
+        This is not a public function
 
         Parameters
         ----------
-        args: whatever is needed to generate the appropriate outputs
+        args, kwargs: whatever is needed to generate the appropriate outputs
 
         Returns
         -------
-        u_kln : energy matrix of shape (K,L,N), indexed by k,l,n
+        energy_matrix : energy matrix of shape (K,L,N), indexed by k,l,n
             K is the total number of sampled states
             L is the total states we want MBAR to analyze
             N is the total number of samples
             The kth sample was drawn from state k at iteration n,
                 the nth configuration of kth state is evaluated in thermodynamic state l
-        N_k: The total number of samples drawn from each lth state
+        samples_per_state: 1-D iterable of shape L
+            The total number of samples drawn from each lth state
         """
         raise NotImplementedError()
 
-
     # Shared methods
-    def create_MBAR(self, u_kln, N_k):
+    def _create_mbar(self, energy_matrix, samples_per_state):
         """
         Initialize MBAR for Free Energy and Enthalpy estimates, this may take a while.
+        This function is helpful for those who want to create a slightly different mbar object with different
+        parameters.
 
-        u_kln : array of numpy.float64, optional, default=None
+        This function is hidden from the user unless they really, really need to create their own mbar object
+
+        energy_matrix : array of numpy.float64, optional, default=None
            Reduced potential energies of the replicas; if None, will be extracted from the ncfile
-        N_k : array of ints, optional, default=None
-           Number of samples drawn from each kth replica; if None, will be extracted from the ncfile
-
-        TODO
-        ----
-        * Ensure that the u_kln and N_k are decorrelated if not provided in this function
+        samples_per_state : array of ints, optional, default=None
+           Number of samples drawn from each kth state; if None, will be extracted from the ncfile
 
         """
 
         # Delete observables cache since we are now resetting the estimator
-        for observable in self.observables():
+        for observable in self.observables:
             self._computed_observables[observable] = None
 
         # Initialize MBAR (computing free energy estimates, which may take a while)
         logger.info("Computing free energy differences...")
-        mbar = MBAR(u_kln, N_k)
+        mbar = MBAR(energy_matrix, samples_per_state)
 
-        self.mbar = mbar
+        self._mbar = mbar
 
     def _combine_phases(self, other, operator='+'):
         phases = [self]
         names = []
-        signs = []
+        signs = [self._sign]
+        # Reset self._sign
+        self._sign = '+'
         if self.name is None:
             names.append(generate_phase_name(self, []))
-        if self.sign is None:
-            signs.append('+')
         else:
-            signs.append(self.sign)
-        if isinstance(other, CompoundPhase):
+            names.append(self.name)
+        if isinstance(other, MultiPhaseAnalyzer):
             new_phases = other.phases
             new_signs = other.signs
             new_names = other.names
@@ -350,28 +375,22 @@ class YankPhaseAnalyzer(ABC):
             phases.extend(new_phases)
         elif isinstance(other, YankPhaseAnalyzer):
             names.append(generate_phase_name(other.name, names))
-            if other.sign is None:
-                if operator == '+':
-                    signs.append('+')
-                else:
-                    signs.append('-')
+            if operator != '+' and other._sign == '+':
+                signs.append('-')
             else:
-                if operator == '+':
-                    signs.append(other.sign)
-                elif operator == '-' and other.sign == '+':
-                    signs.append('-')
-                else:
-                    signs.append('+')
+                signs.append('+')
+            # Reset the other's sign if it got set to negative
+            other._sign = '+'
             phases.append(other)
         else:
-            baseerr = "cannot {} 'CompoundPhase' and '{}' objects"
+            baseerr = "cannot {} 'YankPhaseAnalyzer' and '{}' objects"
             if operator == '+':
                 err = baseerr.format('add', type(other))
             else:
                 err = baseerr.format('subtract', type(other))
             raise TypeError(err)
         phase_pass = {'phases': phases, 'signs': signs, 'names': names}
-        return CompoundPhase(phase_pass)
+        return MultiPhaseAnalyzer(phase_pass)
 
     def __add__(self, other):
         return self._combine_phases(other, operator='+')
@@ -379,6 +398,13 @@ class YankPhaseAnalyzer(ABC):
     def __sub__(self, other):
         return self._combine_phases(other, operator='-')
 
+    def __neg__(self):
+        """Internally handle the internal sign"""
+        if self._sign == '+':
+            self._sign = '-'
+        else:
+            self._sign = '+'
+        return self
 
     # Static methods
     @staticmethod
@@ -387,34 +413,35 @@ class YankPhaseAnalyzer(ABC):
 
     @staticmethod
     def get_equilibration_data(timeseries_to_analyze):
-        [nequil, g_t, Neff_max] = timeseries.detectEquilibration(timeseries_to_analyze)
-        return nequil, g_t, Neff_max
+        [n_equilibration, g_t, n_effective_max] = timeseries.detectEquilibration(timeseries_to_analyze)
+        return n_equilibration, g_t, n_effective_max
 
     @staticmethod
-    def remove_unequilibrated_data(data, nequil, axis):
+    def remove_unumber_equilibratedibrated_data(data, number_equilibrated, axis):
         """
-        Remove the unequilbrated samples from a dataset by discarding nequil number of indices from given axis
+        Remove the unumber_equilibratedbrated samples from a dataset by discarding number_equilibrated number of indices from given 
+        axis
 
 
         Parameters
         ----------
         data: np.array-like of any dimension length
-        nequil: int
-            Number of indices that will be removed from the given axis, i.e. axis will be shorter by nequil
+        number_equilibrated: int
+            Number of indices that will be removed from the given axis, i.e. axis will be shorter by number_equilibrated
         axis: int
             axis index along wich to remove samples from
 
         Returns
         -------
         equilibrated_data: ndarray
-            Data with the nequil number of indices removed from the begining along axis
+            Data with the number_equilibrated number of indices removed from the begining along axis
 
         """
         cast_data = np.asarray(data)
         # Define the sluce along an arbitrary dimension
         slc = [slice(None)] * len(cast_data.shape)
         # Set the dimension we are truncating
-        slc[axis] = slice(nequil, None)
+        slc[axis] = slice(number_equilibrated, None)
         # Slice
         equilibrated_data = cast_data[slc]
         return equilibrated_data
@@ -447,18 +474,16 @@ class YankPhaseAnalyzer(ABC):
         return subsampled_data
 
 
-
-
 class RepexPhase(YankPhaseAnalyzer):
 
-    def generate_mixing_statistics(self, nequil=0):
+    def generate_mixing_statistics(self, number_equilibrated=0):
         """
         Generate the mixing statistics
 
         Parameters
         ----------
-        nequil : int, optional, default=0
-           If specified, only samples nequil:end will be used in analysis
+        number_equilibrated : int, optional, default=0
+           If specified, only samples number_equilibrated:end will be used in analysis
 
         Returns
         -------
@@ -471,18 +496,18 @@ class RepexPhase(YankPhaseAnalyzer):
         # Get mixing stats from reporter
         n_accepted_matrix, n_proposed_matrix = self._reporter.read_mixing_statistics()
         # Add along iteration dim
-        n_accepted_matrix = n_accepted_matrix[nequil:].sum(axis=0).astype(float)  # Ensure float division
-        n_proposed_matrix = n_proposed_matrix[nequil:].sum(axis=0)
+        n_accepted_matrix = n_accepted_matrix[number_equilibrated:].sum(axis=0).astype(float)  # Ensure float division
+        n_proposed_matrix = n_proposed_matrix[number_equilibrated:].sum(axis=0)
         # Compute empirical transition count matrix
-        Tij = 1 - n_accepted_matrix/n_proposed_matrix
+        t_ij = 1 - n_accepted_matrix/n_proposed_matrix
 
         # Estimate eigenvalues
-        mu = np.linalg.eigvals(Tij)
+        mu = np.linalg.eigvals(t_ij)
         mu = -np.sort(-mu)  # Sort in descending order
 
-        return Tij, mu
+        return t_ij, mu
 
-    def show_mixing_statistics(self, cutoff=0.05, nequil=0):
+    def show_mixing_statistics(self, cutoff=0.05, number_equilibrated=0):
         """
         Print summary of mixing statistics. Passes information off to generate_mixing_statistics then prints it out to
         the logger
@@ -492,12 +517,12 @@ class RepexPhase(YankPhaseAnalyzer):
 
         cutoff : float, optional, default=0.05
            Only transition probabilities above 'cutoff' will be printed
-        nequil : int, optional, default=0
-           If specified, only samples nequil:end will be used in analysis
+        number_equilibrated : int, optional, default=0
+           If specified, only samples number_equilibrated:end will be used in analysis
 
         """
 
-        Tij, mu = self.generate_mixing_statistics(nequil=nequil)
+        Tij, mu = self.generate_mixing_statistics(number_equilibrated=number_equilibrated)
 
         # Print observed transition probabilities.
         nstates = Tij.shape[1]
@@ -526,72 +551,79 @@ class RepexPhase(YankPhaseAnalyzer):
                 mu[1], 1.0 / (1.0 - mu[1]))
             )
 
-        return
-
     def extract_energies(self):
         """
-        Extract and decorelate energies from the ncfile to gather energies common data for other functions=
+        Extract and decorelate energies from the ncfile to gather energies common data for other functions
 
         """
         logger.info("Reading energies...")
         energy_thermodynamic_states, energy_unsampled_states = self._reporter.read_energies()
         niterations, nstates, _ = energy_thermodynamic_states.shape
         _, n_unsampled_states, _ = energy_unsampled_states.shape
-        u_kln_replica = np.zeros([nstates, nstates, niterations], np.float64)
-        unsampled_u_kln_replica = np.zeros([nstates, n_unsampled_states, niterations], np.float64)
+        energy_matrix_replica = np.zeros([nstates, nstates, niterations], np.float64)
+        unsampled_energy_matrix_replica = np.zeros([nstates, n_unsampled_states, niterations], np.float64)
         for n in range(niterations):
-            u_kln_replica[:, :, n] = energy_thermodynamic_states[n, :, :]
-            unsampled_u_kln_replica[:, :, n] = energy_unsampled_states[n, :, :]
+            energy_matrix_replica[:, :, n] = energy_thermodynamic_states[n, :, :]
+            unsampled_energy_matrix_replica[:, :, n] = energy_unsampled_states[n, :, :]
         logger.info("Done.")
 
         logger.info("Deconvoluting replicas...")
-        u_kln = np.zeros([nstates, nstates, niterations], np.float64)
-        unsampled_u_kln = np.zeros([nstates, n_unsampled_states, niterations], np.float64)
+        energy_matrix = np.zeros([nstates, nstates, niterations], np.float64)
+        unsampled_energy_matrix = np.zeros([nstates, n_unsampled_states, niterations], np.float64)
         for iteration in range(niterations):
             state_indices = self._reporter.read_replica_thermodynamic_states(iteration)
-            u_kln[state_indices, :, iteration] = u_kln_replica[iteration, :, :]
-            unsampled_u_kln[state_indices, :, iteration] = unsampled_u_kln_replica[iteration, :, :]
+            energy_matrix[state_indices, :, iteration] = energy_matrix_replica[iteration, :, :]
+            unsampled_energy_matrix[state_indices, :, iteration] = unsampled_energy_matrix_replica[iteration, :, :]
         logger.info("Done.")
 
-        return u_kln, unsampled_u_kln
+        return energy_matrix, unsampled_energy_matrix
 
-    def get_timeseries(self, u_kln):
-        niterations = u_kln.shape[-1]
+    @staticmethod
+    def get_timeseries(passed_timeseries):
+        """
+        Parameters
+        ----------
+        passed_timeseries: ndarray of shape (K,L,N), indexed by k,l,n
+            K is the total number of sampled states
+            L is the total states we want MBAR to analyze
+            N is the total number of samples
+            The kth sample was drawn from state k at iteration n,
+                the nth configuration of kth state is evaluated in thermodynamic state l
+        """
+        niterations = passed_timeseries.shape[-1]
         u_n = np.zeros([niterations], np.float64)
         # Compute total negative log probability over all iterations.
         for iteration in range(niterations):
-            u_n[iteration] = np.sum(np.diagonal(u_kln[:, :, iteration]))
+            u_n[iteration] = np.sum(np.diagonal(passed_timeseries[:, :, iteration]))
         return u_n
 
-    def prepare_MBAR_input_data(self, u_kln_sampled, u_kln_unsampled, nuse=0):
-        nstates, _, niterations = u_kln_sampled.shape
-        _, nunsampled, _ = u_kln_sampled.shape
+    def prepare_MBAR_input_data(self, sampled_energy_matrix, unsampled_energy_matrix, nuse=0):
+        nstates, _, niterations = sampled_energy_matrix.shape
+        _, nunsampled, _ = unsampled_energy_matrix.shape
         # Subsample data to obtain uncorrelated samples
         N_k = np.zeros(nstates, np.int32)
-        # print(u_n) # DEBUG
-        # indices = range(0,u_n.size) # DEBUG - assume samples are uncorrelated
         N = len(niterations)  # number of uncorrelated samples
         N_k[:] = N
-        u_kln = u_kln_sampled
+        mbar_ready_energy_matrix = sampled_energy_matrix
         if nunsampled > 0:
-            fully_interacting_u_ln = u_kln_unsampled[:, 0, :]
-            noninteracting_u_ln = u_kln_unsampled[:, 1, :]
+            fully_interacting_u_ln = unsampled_energy_matrix[:, 0, :]
+            noninteracting_u_ln = unsampled_energy_matrix[:, 1, :]
             # Augment u_kln to accept the new state
-            u_kln_new = np.zeros([nstates + 2, nstates + 2, N], np.float64)
+            new_energy_matrix = np.zeros([nstates + 2, nstates + 2, N], np.float64)
             N_k_new = np.zeros(nstates + 2, np.int32)
             # Insert energies
-            u_kln_new[1:-1, 0, :] = fully_interacting_u_ln
-            u_kln_new[1:-1, -1, :] = noninteracting_u_ln
+            new_energy_matrix[1:-1, 0, :] = fully_interacting_u_ln
+            new_energy_matrix[1:-1, -1, :] = noninteracting_u_ln
             # Fill in other energies
-            u_kln_new[1:-1, 1:-1, :] = u_kln_sampled
+            new_energy_matrix[1:-1, 1:-1, :] = sampled_energy_matrix
             N_k_new[1:-1] = N_k
             # Notify users
             logger.info("Found expanded cutoff states in the energies!")
             logger.info("Free energies will be reported relative to them instead!")
             # Reset values, last step in case something went wrong so we dont overwrite u_kln on accident
-            u_kln = u_kln_new
+            mbar_ready_energy_matrix = new_energy_matrix
             N_k = N_k_new
-        return u_kln, N_k
+        return mbar_ready_energy_matrix, N_k
 
     def _compute_free_energy(self):
         """
@@ -602,8 +634,8 @@ class RepexPhase(YankPhaseAnalyzer):
         """
 
         # Create MBAR object if not provided
-        if self.mbar is None:
-            raise RuntimeError("Cannot compute free energy without MBAR object!")
+        if self._mbar is None:
+            self._create_mbar_from_scratch()
 
         nstates = self.mbar.N_k.size
 
@@ -654,6 +686,8 @@ class RepexPhase(YankPhaseAnalyzer):
         return free_energy_dict['value'], free_energy_dict['error']
 
     def _compute_enthalpy_and_entropy(self):
+        if self._mbar is None:
+            self._create_mbar_from_scratch()
         (f_k, df_k, H_k, dH_k, S_k, dS_k) = self.mbar.computeEntropyAndEnthalpy()
         enthalpy = {'value': H_k, 'error': dH_k}
         entropy = {'value': S_k, 'error': dS_k}
@@ -678,70 +712,57 @@ class RepexPhase(YankPhaseAnalyzer):
         entropy_dict = self._computed_observables['entropy']
         return entropy_dict['value'], entropy_dict['error']
 
-    def get_restraints(self):
+    def get_standard_state_correction(self):
         """
-        Compute the restraint free energy associated with the Reporter.
+        Compute the standard state correction free energy associated with the Reporter.
         This usually is just a stored variable, but it may need other calculations
 
         Returns
-        DeltaF_restratints: Free energy contribution from the restraints
+        DeltaF_restratints: Free energy contribution from the standard_state_correction
         -------
 
         """
-        raise NotImplementedError()  #TODO: Figure out how this is brought into the new reporter with the new restraints
-        if self._computed_observables['restraints'] is None:
-            self._computed_observables['restraints'] = None # TODO: Do something here
-        return self._computed_observables['restraints']
+        if self._computed_observables['standard_state_correction'] is None:
+            ssc = self._reporter.get_dict('metadata')['standard_state_correction']
+            self._computed_observables['standard_state_correction'] = ssc
+        return self._computed_observables['standard_state_correction']
 
-    def create_MBAR_from_scratch(self):
+    def _create_mbar_from_scratch(self):
         u_kln, unsampled_u_kln = self.extract_energies()
         u_n = self.get_timeseries(u_kln)
-        nequil, g_t, Neff_max = self.get_equilibration_data(u_n)
-        self._equilbration_data = nequil, g_t, Neff_max
-        self.show_mixing_statistics(cutoff=cutoff, nequil=nequil)
-        u_kln = self.remove_unequilibrated_data(u_kln, nequil, -1)
-        unsampled_u_kln = self.remove_unequilibrated_data(unsampled_u_kln, nequil, -1)
+        number_equilibrated, g_t, Neff_max = self.get_equilibration_data(u_n)
+        self._equilibration_data = number_equilibrated, g_t, Neff_max
+        u_kln = self.remove_unumber_equilibratedibrated_data(u_kln, number_equilibrated, -1)
+        unsampled_u_kln = self.remove_unumber_equilibratedibrated_data(unsampled_u_kln, number_equilibrated, -1)
         u_kln = self.decorrelate_data(u_kln, g_t, -1)
         unsampled_u_kln = self.decorrelate_data(unsampled_u_kln, g_t, -1)
         mbar_ukln, mbar_N_k = self.prepare_MBAR_input_data(u_kln, unsampled_u_kln)
-        self.create_MBAR(mbar_ukln, mbar_N_k)
+        self._create_mbar(mbar_ukln, mbar_N_k)
 
     def analyze_phase(self, cutoff=0.05):
-        if self.mbar is None:
-            self.create_MBAR_from_scratch()
-        nequil, g_t, _ = self._equilibration_data
-        self.show_mixing_statistics(cutoff=cutoff, nequil=nequil)
+        if self._mbar is None:
+            self._create_mbar_from_scratch()
+        number_equilibrated, g_t, _ = self._equilibration_data
+        self.show_mixing_statistics(cutoff=cutoff, number_equilibrated=number_equilibrated)
         data = {}
         # Accumulate free energy differences
         Deltaf_ij, dDeltaf_ij = self.get_free_energy()
         DeltaH_ij, dDeltaH_ij = self.get_enthalpy()
-        data['DeltaF'] = Deltaf_ij[self.delta_state_i, self.delta_state_j]
-        data['dDeltaF'] = dDeltaf_ij[self.delta_state_i, self.delta_state_j]
-        data['DeltaH'] = DeltaH_ij[self.delta_state_i, self.delta_state_j]
-        data['dDeltaH'] = dDeltaH_ij[self.delta_state_i, self.delta_state_j]
-        data['DeltaF_restraints'] = self.get_restraints()
+        data['DeltaF'] = Deltaf_ij[self.reference_states[0], self.reference_states[1]]
+        data['dDeltaF'] = dDeltaf_ij[self.reference_states[0], self.reference_states[1]]
+        data['DeltaH'] = DeltaH_ij[self.reference_states[0], self.reference_states[1]]
+        data['dDeltaH'] = dDeltaH_ij[self.reference_states[0], self.reference_states[1]]
+        data['DeltaF_standard_state_correction'] = self.get_standard_state_correction()
 
-        # Do something to get temperatures here
-        return data  #, kT?
-
-
-def get_analyzer(reporter):
-    """
-    Utility function to convert Reporter to Analyzer by reading the data on file
-    """
-    if reporter.storage_convention == "ReplicaExchange":
-        analyzer = RepexPhase(reporter)
-    else:
-        raise RuntimeError("Cannot automatically determine analyzer for Reporter: {}".format(Reporter))
-    return analyzer
+        return data
 
 
 # https://choderalab.slack.com/files/levi.naden/F4G6L9X8S/quick_diagram.png
 
-class CompoundPhase(object):
+class MultiPhaseAnalyzer(object):
     """
-    Combined Phase creator, not to be directly called itself, but instead called by adding or subtracting different
-    Phases or CompoundPhases's
+    Multiple Phase Analyzer creator, not to be directly called itself, but instead called by adding or subtracting
+    different YankPhaseAnalyzer or MultiPhaseAnalyzers's
     """
     def __init__(self, phases):
         """
@@ -749,11 +770,11 @@ class CompoundPhase(object):
         Parameters
         ----------
         phases: dict
-            has keys "phases", "names", and "signs" which control the signs
+            has keys "phases", "names", and "signs"
         """
         # Determine
         observables = []
-        for observable in ObservablesRegitry.observables():
+        for observable in _ObservablesRegistry.observables():
             shared_observable = True
             for phase in phases['phases']:
                 if observable not in phase.observables:
@@ -761,6 +782,9 @@ class CompoundPhase(object):
                     break
             if shared_observable:
                 observables.append(observable)
+        if len(observables) == 0:
+            raise RuntimeError("There are no shared computable observable between the phases, combining them will do "
+                               "nothing.")
         self._observables = tuple(observables)
         self._phases = phases['phases']
         self._names = phases['names']
@@ -771,32 +795,61 @@ class CompoundPhase(object):
 
     @property
     def observables(self):
+        """List of observables this MultiPhaseAnalyzer can generate"""
         return self._observables
 
     @property
     def phases(self):
+        """List of SinglePhase objects this MultiPhaseAnalyzer is tied to"""
         return self._phases
 
     @property
     def names(self):
+        """
+        Unique list of names identifying this phase. If this MultiPhaseAnalyzer is combined with another,
+        its possible that new names will be generated unique to that MultiPhaseAnalyzer, but will still reference
+        the same phase.
+
+        When in doubt, use .phases to get the actual phase objects.
+        """
         return self._names
 
     @property
     def signs(self):
+        """
+        List of signs that are used by the MultiPhaseAnalyzer to
+        """
         return self._signs
 
     def _combine_phases(self, other, operator='+'):
+        """
+        Function to combine the phases regardless of operator to reduce code duplication. Creates a new
+        MultiPhaseAnalyzer object based on the combined phases of the other. Accepts either a YankPhaseAnalyzer
+        or a MultiPhaseAnalyzer.
+
+        If the names have collision, they are re-named with an extra digit at the end.
+
+        Parameters
+        ----------
+        other: MultiPhaseAnalyzer or YankPhaseAnalyzer
+        operator: sign of the operator connecting the two objects
+
+        Returns
+        -------
+        output: MultiPhaseAnalyzer
+            New MultiPhaseAnalyzer where the phases are the combined list of the individual phases from each component.
+            Because the memory pointers to the individual phases are the same, changing any SinglePhase's
+            reference_state objects updates all MultiPhaseAnalyzer objects they are tied to
+
+        """
         phases = []
         names = []
         signs = []
         # create copies
-        for phase in self.phases:
-            phases.append(phase)
-        for name in self.names:
-            names.append(name)
-        for sign in self.signs:
-            signs.append(sign)
-        if isinstance(other, CompoundPhase):
+        phases.extend(self.phases)
+        names.extend(self.names)
+        signs.extend(self.signs)
+        if isinstance(other, MultiPhaseAnalyzer):
             new_phases = other.phases
             new_signs = other.signs
             new_names = other.names
@@ -806,7 +859,7 @@ class CompoundPhase(object):
                 final_new_names.append(generate_phase_name(name, other_names + names))
             names.extend(final_new_names)
             for new_sign in new_signs:
-                if operator != '+' and new_sign == '+':
+                if (operator == '-' and new_sign == '+') or (operator == '+' and new_sign == '-'):
                     signs.append('-')
                 else:
                     signs.append('+')
@@ -814,34 +867,39 @@ class CompoundPhase(object):
             phases.extend(new_phases)
         elif isinstance(other, YankPhaseAnalyzer):
             names.append(generate_phase_name(other.name, names))
-            if other.sign is None:
-                if operator == '+':
-                    signs.append('+')
-                else:
-                    signs.append('-')
+            if (operator == '-' and other._sign == '+') or (operator == '+' and other._sign == '-'):
+                signs.append('-')
             else:
-                if operator == '+':
-                    signs.append(other.sign)
-                elif operator == '-' and other.sign == '+':
-                    signs.append('-')
-                else:
-                    signs.append('+')
+                signs.append('+')
+            other._sign = '+'  # Recast to positive if negated
             phases.append(other)
         else:
-            baseerr = "cannot {} 'CompoundPhase' and '{}' objects"
+            baseerr = "cannot {} 'MultiPhaseAnalyzer' and '{}' objects"
             if operator == '+':
                 err = baseerr.format('add', type(other))
             else:
                 err = baseerr.format('subtract', type(other))
             raise TypeError(err)
         phase_pass = {'phases': phases, 'signs': signs, 'names': names}
-        return CompoundPhase(phase_pass)
+        return MultiPhaseAnalyzer(phase_pass)
 
     def __add__(self, other):
         return self._combine_phases(other, operator='+')
 
     def __sub__(self, other):
         return self._combine_phases(other, operator='-')
+
+    def __neg__(self):
+        new_signs = []
+        for sign in self._signs:
+            if sign == '+':
+                new_signs.append('-')
+            else:
+                new_signs.append('+')
+        # return a *shallow* copy of self with the signs reversed
+        output = copy.copy(self)
+        output._signs = new_signs
+        return output
 
     def _compute_observable(self, observable_name):
         """
@@ -861,35 +919,36 @@ class CompoundPhase(object):
         def prepare_phase_observable(single_phase):
             """Helper function to cast the observable in terms of observable's registry"""
             observable = getattr(single_phase, "get_" + observable_name)()
-            if isinstance(single_phase, CompoundPhase):
-                if observable_name in ObservablesRegitry.observables_with_error():
+            if isinstance(single_phase, MultiPhaseAnalyzer):
+                if observable_name in _ObservablesRegistry.observables_with_error():
                     observable_payload = {}
                     observable_payload['value'], observable_payload['error'] = observable
                 else:
                     observable_payload = observable
             else:
                 raise_registry_error = False
-                if observable_name in ObservablesRegitry.observables_with_error():
+                if observable_name in _ObservablesRegistry.observables_with_error():
                     observable_payload = {}
-                    if observable_name in ObservablesRegitry.observables_defined_by_phase():
+                    if observable_name in _ObservablesRegistry.observables_defined_by_phase():
                         observable_payload['value'], observable_payload['error'] = observable
-                    elif observable_name in ObservablesRegitry.observables_defined_by_single_state():
-                        observable_payload['value'] = observable[0][single_phase.delta_state_i]
-                        observable_payload['error'] = observable[1][single_phase.delta_state_i]
-                    elif observable_name in ObservablesRegitry.observables_defined_by_two_states():
-                        observable_payload['value'] = observable[0][single_phase.delta_state_i,
-                                                                    single_phase.delta_state_j]
-                        observable_payload['error'] = observable[1][single_phase.delta_state_i,
-                                                                    single_phase.delta_state_j]
+                    elif observable_name in _ObservablesRegistry.observables_defined_by_single_state():
+                        observable_payload['value'] = observable[0][single_phase.reference_states[0]]
+                        observable_payload['error'] = observable[1][single_phase.reference_states[0]]
+                    elif observable_name in _ObservablesRegistry.observables_defined_by_two_states():
+                        observable_payload['value'] = observable[0][single_phase.reference_states[0],
+                                                                    single_phase.reference_states[1]]
+                        observable_payload['error'] = observable[1][single_phase.reference_states[0],
+                                                                    single_phase.reference_states[1]]
                     else:
                         raise_registry_error = True
                 else:  # No error
-                    if observable_name in ObservablesRegitry.observables_defined_by_phase():
+                    if observable_name in _ObservablesRegistry.observables_defined_by_phase():
                         observable_payload = observable
-                    elif observable_name in ObservablesRegitry.observables_defined_by_single_state():
-                        observable_payload = observable[single_phase.delta_state_i]
-                    elif observable_name in ObservablesRegitry.observables_defined_by_two_states():
-                        observable_payload = observable[single_phase.delta_state_i, single_phase.delta_state_j]
+                    elif observable_name in _ObservablesRegistry.observables_defined_by_single_state():
+                        observable_payload = observable[single_phase.reference_states[0]]
+                    elif observable_name in _ObservablesRegistry.observables_defined_by_two_states():
+                        observable_payload = observable[single_phase.reference_states[0],
+                                                        single_phase.reference_states[1]]
                     else:
                         raise_registry_error = True
                 if raise_registry_error:
@@ -898,14 +957,14 @@ class CompoundPhase(object):
             return observable_payload
 
         def modify_final_output(passed_output, payload, sign):
-            if observable_name in ObservablesRegitry.observables_with_error():
+            if observable_name in _ObservablesRegistry.observables_with_error():
                 if sign == '+':
                     passed_output['value'] += payload['value']
                 else:
                     passed_output['value'] -= payload['value']
-                if observable_name in ObservablesRegitry.observables_with_error_adding_linear():
+                if observable_name in _ObservablesRegistry.observables_with_error_adding_linear():
                     passed_output['error'] += payload['error']
-                elif observable_name in ObservablesRegitry.observables_with_error_adding_quadrature():
+                elif observable_name in _ObservablesRegistry.observables_with_error_adding_quadrature():
                     passed_output['error'] += (passed_output['error']**2 + payload['error']**2)**0.5
             else:
                 if sign == '+':
@@ -914,21 +973,113 @@ class CompoundPhase(object):
                     passed_output -= payload
             return passed_output
 
-        if observable_name in ObservablesRegitry.observables_with_error():
+        if observable_name in _ObservablesRegistry.observables_with_error():
             final_output = {'value': 0, 'error': 0}
         else:
             final_output = 0
         for phase, phase_sign in zip(self.phases, self.signs):
             phase_observable = prepare_phase_observable(phase)
             final_output = modify_final_output(final_output, phase_observable, phase_sign)
+        if observable_name in _ObservablesRegistry.observables_with_error():
+            # Cast output to tuple
+            final_output = (final_output['value'], final_output['error'])
         return final_output
+
+
+def analyze_directory(source_directory):
+    """
+    Analyze contents of store files to compute free energy differences.
+
+    This function need
+
+    Parameters
+    ----------
+    source_directory : string
+       The location of the simulation storage files.
+
+    """
+    analysis_script_path = os.path.join(source_directory, 'analysis.yaml')
+    if not os.path.isfile(analysis_script_path):
+        err_msg = 'Cannot find analysis.yaml script in {}'.format(source_directory)
+        logger.error(err_msg)
+        raise RuntimeError(err_msg)
+    with open(analysis_script_path, 'r') as f:
+        analysis = yaml.load(f)
+    final_phase = None
+    init_sign = None
+    phase_names = [phase_name for phase_name, sign in analysis]
+    for phase_name, sign in analysis:
+        phase_path = os.path.join(source_directory, phase_name + '.nc')
+        phase = get_analyzer(phase_path)
+        if final_phase is None:
+            final_phase = phase
+            init_sign = sign
+        else:
+            if init_sign == '-':
+                if sign == '+' :
+                    final_phase = -final_phase + phase
+                else:
+                    final_phase = -final_phase - phase
+                init_sign = None
+            else:
+                if sign == '+':
+                    final_phase = final_phase + phase
+                else:
+                    final_phase = final_phase - phase
+
+    DeltaF, dDeltaF = final_phase.get_free_energy()
+    DeltaH, dDeltaH = final_phase.get_enthalpy()
+    DeltaF += final_phase.get_standard_state_correction()
+    DeltaH += final_phase.get_standard_state_correction()
+    kT = final_phase.phases[0].kT
+
+    # Attempt to guess type of calculation
+    calculation_type = ''
+    for phase in phase_names:
+        if 'complex' in phase:
+            calculation_type = ' of binding'
+        elif 'solvent1' in phase:
+            calculation_type = ' of solvation'
+
+    # Print energies
+    logger.info("")
+    logger.info("Free energy{}: {:16.3f} +- {:.3f} kT ({:16.3f} +- {:.3f} kcal/mol)".format(
+        calculation_type, DeltaF, dDeltaF, DeltaF * kT / units.kilocalories_per_mole,
+        dDeltaF * kT / units.kilocalories_per_mole))
+    logger.info("")
+
+    for phase in final_phase.phases:
+        phase_DeltaF, phase_dDelta_F = phase.get_free_energy()
+        phase_name = phase.name
+        logger.info("DeltaG {:<25} : {:16.3f} +- {:.3f} kT".format(phase_name, phase_DeltaF, phase_dDelta_F))
+        ssc = phase.get_standard_state_correction()
+        if ssc != 0.0:
+            logger.info("DeltaG {:<25} : {:25.3f} kT".format('standard state correction', ssc))
+
+    logger.info("")
+    logger.info("Enthalpy{}: {:16.3f} +- {:.3f} kT ({:16.3f} +- {:.3f} kcal/mol)".format(
+        calculation_type, DeltaH, dDeltaH, DeltaH * kT / units.kilocalories_per_mole,
+        dDeltaH * kT / units.kilocalories_per_mole))
+
+
+"""
+Everything below here is the old code.
+"""
+
+
+
+
+
+
+
+
 
 # =============================================================================================
 # SUBROUTINES
 # =============================================================================================
 
 
-def generate_mixing_statistics(ncfile, nequil=0):
+def generate_mixing_statistics(ncfile, number_equilibrated=0):
     """
     Generate the mixing statistics
 
@@ -936,8 +1087,8 @@ def generate_mixing_statistics(ncfile, nequil=0):
     ----------
     ncfile : netCDF4.Dataset
        NetCDF file
-    nequil : int, optional, default=0
-       If specified, only samples nequil:end will be used in analysis
+    number_equilibrated : int, optional, default=0
+       If specified, only samples number_equilibrated:end will be used in analysis
 
     Returns
     -------
@@ -953,7 +1104,7 @@ def generate_mixing_statistics(ncfile, nequil=0):
 
     # Compute empirical transition count matrix.
     Nij = np.zeros([nstates, nstates], np.float64)
-    for iteration in range(nequil, niterations-1):
+    for iteration in range(number_equilibrated, niterations-1):
         for ireplica in range(nstates):
             istate = ncfile.variables['states'][iteration, ireplica]
             jstate = ncfile.variables['states'][iteration+1, ireplica]
@@ -977,7 +1128,7 @@ def generate_mixing_statistics(ncfile, nequil=0):
     return Tij, mu
 
 
-def show_mixing_statistics(ncfile, cutoff=0.05, nequil=0):
+def show_mixing_statistics(ncfile, cutoff=0.05, number_equilibrated=0):
     """
     Print summary of mixing statistics. Passes information off to generate_mixing_statistics then prints it out to
     the logger
@@ -989,12 +1140,12 @@ def show_mixing_statistics(ncfile, cutoff=0.05, nequil=0):
        NetCDF file
     cutoff : float, optional, default=0.05
        Only transition probabilities above 'cutoff' will be printed
-    nequil : int, optional, default=0
-       If specified, only samples nequil:end will be used in analysis
+    number_equilibrated : int, optional, default=0
+       If specified, only samples number_equilibrated:end will be used in analysis
 
     """
 
-    Tij, mu = generate_mixing_statistics(ncfile, nequil=nequil)
+    Tij, mu = generate_mixing_statistics(ncfile, number_equilibrated=number_equilibrated)
 
     # Print observed transition probabilities.
     nstates = ncfile.variables['states'].shape[1]
@@ -1391,11 +1542,11 @@ def analyze(source_directory):
             nstates = ncfile.variables['positions'].shape[1]
             logger.info("Read %(niterations)d iterations, %(nstates)d states" % vars())
 
-            DeltaF_restraints = 0.0
+            DeltaF_standard_state_correction = 0.0
             if 'metadata' in ncfile.groups:
                 # Read phase direction and standard state correction free energy.
-                # Yank sets correction to 0 if there are no restraints
-                DeltaF_restraints = ncfile.groups['metadata'].variables['standard_state_correction'][0]
+                # Yank sets correction to 0 if there are no standard_state_correction
+                DeltaF_standard_state_correction = ncfile.groups['metadata'].variables['standard_state_correction'][0]
 
             # Choose number of samples to discard to equilibration
             MIN_ITERATIONS = 10 # minimum number of iterations to use automatic detection
@@ -1403,19 +1554,19 @@ def analyze(source_directory):
                 from pymbar import timeseries
                 u_n = extract_u_n(ncfile)
                 u_n = u_n[1:] # discard initial frame of zero energies TODO: Get rid of initial frame of zero energies
-                [nequil, g_t, Neff_max] = timeseries.detectEquilibration(u_n)
-                nequil += 1 # account for initial frame of zero energies
-                logger.info([nequil, Neff_max])
+                [number_equilibrated, g_t, Neff_max] = timeseries.detectEquilibration(u_n)
+                number_equilibrated += 1 # account for initial frame of zero energies
+                logger.info([number_equilibrated, Neff_max])
             else:
-                nequil = 1  # discard first frame
+                number_equilibrated = 1  # discard first frame
                 g_t = 1
                 Neff_max = niterations
 
             # Examine acceptance probabilities.
-            show_mixing_statistics(ncfile, cutoff=0.05, nequil=nequil)
+            show_mixing_statistics(ncfile, cutoff=0.05, number_equilibrated=number_equilibrated)
 
             # Extract equilibrated, decorrelated energies, check for fully interacting state
-            (u_kln, N_k, u_n) = extract_ncfile_energies(ncfile, ndiscard=nequil, g=g_t)
+            (u_kln, N_k, u_n) = extract_ncfile_energies(ncfile, ndiscard=number_equilibrated, g=g_t)
 
             # Create MBAR object to use for free energy and entropy states
             mbar = initialize_MBAR(ncfile, u_kln=u_kln, N_k=N_k)
@@ -1432,7 +1583,7 @@ def analyze(source_directory):
             entry['dDeltaF'] = dDeltaf_ij[0, -1]
             entry['DeltaH'] = DeltaH_i[0, -1]
             entry['dDeltaH'] = dDeltaH_i[0, -1]
-            entry['DeltaF_restraints'] = DeltaF_restraints
+            entry['DeltaF_standard_state_correction'] = DeltaF_standard_state_correction
             data[phase] = entry
 
             # Get temperatures.
@@ -1449,9 +1600,9 @@ def analyze(source_directory):
     DeltaH = 0.0
     dDeltaH = 0.0
     for phase, sign in analysis:
-        DeltaF -= sign * (data[phase]['DeltaF'] + data[phase]['DeltaF_restraints'])
+        DeltaF -= sign * (data[phase]['DeltaF'] + data[phase]['DeltaF_standard_state_correction'])
         dDeltaF += data[phase]['dDeltaF']**2
-        DeltaH -= sign * (data[phase]['DeltaH'] + data[phase]['DeltaF_restraints'])
+        DeltaH -= sign * (data[phase]['DeltaH'] + data[phase]['DeltaF_standard_state_correction'])
         dDeltaH += data[phase]['dDeltaH']**2
     dDeltaF = np.sqrt(dDeltaF)
     dDeltaH = np.sqrt(dDeltaH)
@@ -1474,9 +1625,9 @@ def analyze(source_directory):
     for phase in phases:
         logger.info("DeltaG {:<25} : {:16.3f} +- {:.3f} kT".format(phase, data[phase]['DeltaF'],
                                                                    data[phase]['dDeltaF']))
-        if data[phase]['DeltaF_restraints'] != 0.0:
+        if data[phase]['DeltaF_standard_state_correction'] != 0.0:
             logger.info("DeltaG {:<25} : {:25.3f} kT".format('restraint',
-                                                             data[phase]['DeltaF_restraints']))
+                                                             data[phase]['DeltaF_standard_state_correction']))
     logger.info("")
     logger.info("Enthalpy{}: {:16.3f} +- {:.3f} kT ({:16.3f} +- {:.3f} kcal/mol)".format(
         calculation_type, DeltaH, dDeltaH, DeltaH * kT / units.kilocalories_per_mole,
