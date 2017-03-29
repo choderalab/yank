@@ -45,6 +45,7 @@ kB = units.BOLTZMANN_CONSTANT_kB * units.AVOGADRO_CONSTANT_NA
 
 
 def generate_phase_name(current_name, name_list):
+    """Provide a regular way to generate unique names"""
     base_name = 'phase{}'
     counter = 0
     if current_name is None:
@@ -89,7 +90,16 @@ def get_analyzer(file_path):
 class _ObservablesRegistry(object):
     """
     Registry of computable observables.
+
+    This is a hidden class accessed by the YankPhaseAnalyzer and MultiPhaseAnalyzer objects to check which observables
+    can be computed, and then provide a regular categorization of them. This is a static registry.
+
+    To define your own methods
     """
+
+    ########################
+    # Define the observables
+    ########################
     @staticmethod
     def observables():
         """
@@ -102,24 +112,10 @@ class _ObservablesRegistry(object):
             observables = observables.union(set(subset))
         return tuple(observables)
 
-    # Non-exclusive properties
-    @staticmethod
-    def observables_with_error():
-        observables = set()
-        for subset in (_ObservablesRegistry.observables_with_error_adding_quadrature(),
-                       _ObservablesRegistry.observables_with_error_adding_linear()):
-            observables = observables.union(set(subset))
-        return tuple(observables)
-
-    @staticmethod
-    def observables_with_error_adding_quadrature():
-        return 'entropy', 'enthalpy', 'free_energy'
-
-    @staticmethod
-    def observables_with_error_adding_linear():
-        return tuple()
-
-    # Exclusive observables
+    # ------------------------------------------------
+    # Exclusive Observable categories
+    # The intersection of these should be the null set
+    # ------------------------------------------------
     @staticmethod
     def observables_defined_by_two_states():
         """
@@ -142,6 +138,30 @@ class _ObservablesRegistry(object):
         """
         return 'standard_state_correction'
 
+    ##########################################
+    # Define the observables which carry error
+    # This should be a subset of observables()
+    ##########################################
+    @staticmethod
+    def observables_with_error():
+        observables = set()
+        for subset in (_ObservablesRegistry.observables_with_error_adding_quadrature(),
+                       _ObservablesRegistry.observables_with_error_adding_linear()):
+            observables = observables.union(set(subset))
+        return tuple(observables)
+
+    # ------------------------------------------------
+    # Exclusive Error categories
+    # The intersection of these should be the null set
+    # ------------------------------------------------
+    @staticmethod
+    def observables_with_error_adding_quadrature():
+        return 'entropy', 'enthalpy', 'free_energy'
+
+    @staticmethod
+    def observables_with_error_adding_linear():
+        return tuple()
+
 
 class YankPhaseAnalyzer(ABC):
     """
@@ -150,6 +170,9 @@ class YankPhaseAnalyzer(ABC):
 
     To compute a specific observable, add it to the ObservableRegistry and then implement a "compute_X" where X is the
     name of the observable you want to compute.
+
+    Analyzer works in units of kT unless specifically stated otherwise. To convert back to a unit set, just multiply by
+    the .kT property.
     """
     def __init__(self, reporter, name=None, reference_states=(0, -1)):
         """
@@ -202,6 +225,7 @@ class YankPhaseAnalyzer(ABC):
 
     @property
     def name(self):
+        """User-readable name of the phase"""
         return self._name
 
     @name.setter
@@ -210,20 +234,28 @@ class YankPhaseAnalyzer(ABC):
 
     @property
     def observables(self):
+        """
+        Access the list of observables that the instanced analyzer can compute/fetch.
+
+        This list is automatically compiled upon __init__ based on the functions implemented in the subclass
+        """
         return self._observables
 
     @property
     def mbar(self):
+        """Access the MBAR object tied to this phase"""
         if self._mbar is None:
             self._create_mbar_from_scratch()
         return self._mbar
 
     @property
     def reference_states(self):
+        """Provide a way to access the i,j states"""
         return self._reference_states
 
     @reference_states.setter
     def reference_states(self, value):
+        """Provide a way to re-assign the i,j states in a protected way"""
         i, j = value[0], value[1]
         if type(i) is not int or type(j) is not int:
             raise ValueError("reference_states must be a length 2 iterable of ints")
@@ -231,11 +263,22 @@ class YankPhaseAnalyzer(ABC):
 
     @property
     def kT(self):
+        """Fetch the kT of the phase"""
         if self._kT is None:
             thermodynamic_states, _ = self._reporter.read_thermodynamic_states()
             temperature = thermodynamic_states[0].temperature
             self._kT = kB * temperature
         return self._kT
+
+    @property
+    def reporter(self):
+        """Return the reporter tied to this object..."""
+        return self._reporter
+
+    @reporter.setter
+    def reporter(self, value):
+        """... and then make sure users cannot overwrite it."""
+        raise ValueError("You cannot re-assign the reporter for this analyzer!")
 
     # Abstract methods
     @abc.abstractmethod
@@ -258,10 +301,6 @@ class YankPhaseAnalyzer(ABC):
         Returns nothing, but the self.mbar object should be set after this
         """
         raise NotImplementedError()
-
-    @abc.abstractmethod
-    def get_u_kln(self):
-        """Return the u_kln matrix of energies at sampled """
 
     @abc.abstractmethod
     def extract_energies(self):
@@ -297,6 +336,75 @@ class YankPhaseAnalyzer(ABC):
 
         raise NotImplementedError("This class has not implemented this function")
 
+
+
+    # Static methods
+    @staticmethod
+    def get_decorrelation_time(timeseries_to_analyze):
+        return timeseries.statisticalInefficiency(timeseries_to_analyze)
+
+    @staticmethod
+    def get_equilibration_data(timeseries_to_analyze):
+        [n_equilibration, g_t, n_effective_max] = timeseries.detectEquilibration(timeseries_to_analyze)
+        return n_equilibration, g_t, n_effective_max
+
+    @staticmethod
+    def remove_unequilibrated_data(data, number_equilibrated, axis):
+        """
+        Remove the number_equilibrated samples from a dataset by discarding number_equilibrated number of indices from
+        given axis
+
+        Parameters
+        ----------
+        data: np.array-like of any dimension length
+        number_equilibrated: int
+            Number of indices that will be removed from the given axis, i.e. axis will be shorter by number_equilibrated
+        axis: int
+            axis index along wich to remove samples from
+
+        Returns
+        -------
+        equilibrated_data: ndarray
+            Data with the number_equilibrated number of indices removed from the begining along axis
+
+        """
+        cast_data = np.asarray(data)
+        # Define the slice along an arbitrary dimension
+        slc = [slice(None)] * len(cast_data.shape)
+        # Set the dimension we are truncating
+        slc[axis] = slice(number_equilibrated, None)
+        # Slice
+        equilibrated_data = cast_data[slc]
+        return equilibrated_data
+
+    @staticmethod
+    def decorrelate_data(data, subsample_rate, axis):
+        """
+        Generate a decorrelated version of a given input data and subsample_rate along a single axis.
+
+        Parameters
+        ----------
+        data: np.array-like of any dimension length
+        subsample_rate : float or int
+            Rate at which to draw samples. A sample is considered decorrelated after every ceil(subsample_rate) of
+            indicies along data and the specified axis
+        axis: int
+            axis along which to apply the subsampling
+
+        Returns
+        -------
+        subsampled_data : ndarray of same number of dimensions as data
+            Data will be subsampled along the given axis
+
+        """
+        cast_data = np.asarray(data)
+        data_shape = cast_data.shape
+        # Since we already have g, we can just pass any appropriate shape to the subsample function
+        indices = timeseries.subsampleCorrelatedData(np.zeros(data_shape[axis]), g=subsample_rate)
+        subsampled_data = np.take(cast_data, indices, axis=axis)
+        return subsampled_data
+
+    # Private Class Methods
     @abc.abstractmethod
     def _prepare_mbar_input_data(self, *args, **kwargs):
         """
@@ -405,73 +513,6 @@ class YankPhaseAnalyzer(ABC):
         else:
             self._sign = '+'
         return self
-
-    # Static methods
-    @staticmethod
-    def get_decorrelation_time(timeseries_to_analyze):
-        return timeseries.statisticalInefficiency(timeseries_to_analyze)
-
-    @staticmethod
-    def get_equilibration_data(timeseries_to_analyze):
-        [n_equilibration, g_t, n_effective_max] = timeseries.detectEquilibration(timeseries_to_analyze)
-        return n_equilibration, g_t, n_effective_max
-
-    @staticmethod
-    def remove_unumber_equilibratedibrated_data(data, number_equilibrated, axis):
-        """
-        Remove the unumber_equilibratedbrated samples from a dataset by discarding number_equilibrated number of indices from given 
-        axis
-
-
-        Parameters
-        ----------
-        data: np.array-like of any dimension length
-        number_equilibrated: int
-            Number of indices that will be removed from the given axis, i.e. axis will be shorter by number_equilibrated
-        axis: int
-            axis index along wich to remove samples from
-
-        Returns
-        -------
-        equilibrated_data: ndarray
-            Data with the number_equilibrated number of indices removed from the begining along axis
-
-        """
-        cast_data = np.asarray(data)
-        # Define the sluce along an arbitrary dimension
-        slc = [slice(None)] * len(cast_data.shape)
-        # Set the dimension we are truncating
-        slc[axis] = slice(number_equilibrated, None)
-        # Slice
-        equilibrated_data = cast_data[slc]
-        return equilibrated_data
-
-    @staticmethod
-    def decorrelate_data(data, subsample_rate, axis):
-        """
-        Generate a decorrelated version of a given input data and subsample_rate along a single axis.
-
-        Parameters
-        ----------
-        data: np.array-like of any dimension length
-        subsample_rate : float or int
-            Rate at which to draw samples. A sample is considered decorrelated after every ceil(subsample_rate) of
-            indicies along data and the specified axis
-        axis: int
-            axis along which to apply the subsampling
-
-        Returns
-        -------
-        subsampled_data : ndarray of same number of dimensions as data
-            Data will be subsampled along the given axis
-
-        """
-        cast_data = np.asarray(data)
-        data_shape = cast_data.shape
-        # Since we already have g, we can just pass any appropriate shape to the subsample function
-        indices = timeseries.subsampleCorrelatedData(np.zeros(data_shape[axis]), g=subsample_rate)
-        subsampled_data = np.take(cast_data, indices, axis=axis)
-        return subsampled_data
 
 
 class RepexPhase(YankPhaseAnalyzer):
@@ -628,9 +669,6 @@ class RepexPhase(YankPhaseAnalyzer):
     def _compute_free_energy(self):
         """
         Estimate free energies of all alchemical states.
-
-        Parameters
-        ----------
         """
 
         # Create MBAR object if not provided
@@ -674,11 +712,14 @@ class RepexPhase(YankPhaseAnalyzer):
         """
         Return the free energy and error in free energy from the MBAR object
 
+        Return changes based on if there are expanded cutoff states detected in the sampler
+
         Returns
         -------
-        DeltaF_ij : Free energy from delta_f
-        dDeltaF_ij: Error in the free energy estimate.
-
+        DeltaF_ij : ndarray of floats, shape (K,K) or (K+2, K+2)
+            Difference in free energy from each state relative to each other state
+        dDeltaF_ij: ndarray of floats, shape (K,K) or (K+2, K+2)
+            Error in the difference in free energy from each state relative to each other state
         """
         if self._computed_observables['free_energy'] is None:
             self._compute_free_energy()
@@ -686,6 +727,7 @@ class RepexPhase(YankPhaseAnalyzer):
         return free_energy_dict['value'], free_energy_dict['error']
 
     def _compute_enthalpy_and_entropy(self):
+        """Function to compute the cached values of enthalpy and entropy"""
         if self._mbar is None:
             self._create_mbar_from_scratch()
         (f_k, df_k, H_k, dH_k, S_k, dS_k) = self.mbar.computeEntropyAndEnthalpy()
@@ -696,7 +738,16 @@ class RepexPhase(YankPhaseAnalyzer):
 
     def get_enthalpy(self):
         """
-        Return the difference in enthalpy and error in that estimate from the MBAR object
+        Compute the difference in enthalpy and error in that estimate from the MBAR object
+
+        Return changes based on if there are expanded cutoff states detected in the sampler
+
+        Returns
+        -------
+        DeltaH_ij : ndarray of floats, shape (K,K) or (K+2, K+2)
+            Difference in enthalpy from each state relative to each other state
+        dDeltaH_ij: ndarray of floats, shape (K,K) or (K+2, K+2)
+            Error in the difference in enthalpy from each state relative to each other state
         """
         if self._computed_observables['enthalpy'] is None:
             self._compute_enthalpy_and_entropy()
@@ -705,7 +756,7 @@ class RepexPhase(YankPhaseAnalyzer):
 
     def get_entropy(self):
         """
-        Return the difference in entropy and error in that estimate from the MBAR object]
+        Return the difference in entropy and error in that estimate from the MBAR object
         """
         if self._computed_observables['entropy'] is None:
             self._compute_enthalpy_and_entropy()
@@ -718,8 +769,9 @@ class RepexPhase(YankPhaseAnalyzer):
         This usually is just a stored variable, but it may need other calculations
 
         Returns
-        DeltaF_restratints: Free energy contribution from the standard_state_correction
         -------
+        standard_state_correction: float
+            Free energy contribution from the standard_state_correction
 
         """
         if self._computed_observables['standard_state_correction'] is None:
@@ -732,8 +784,8 @@ class RepexPhase(YankPhaseAnalyzer):
         u_n = self.get_timeseries(u_kln)
         number_equilibrated, g_t, Neff_max = self.get_equilibration_data(u_n)
         self._equilibration_data = number_equilibrated, g_t, Neff_max
-        u_kln = self.remove_unumber_equilibratedibrated_data(u_kln, number_equilibrated, -1)
-        unsampled_u_kln = self.remove_unumber_equilibratedibrated_data(unsampled_u_kln, number_equilibrated, -1)
+        u_kln = self.remove_unequilibrated_data(u_kln, number_equilibrated, -1)
+        unsampled_u_kln = self.remove_unequilibrated_data(unsampled_u_kln, number_equilibrated, -1)
         u_kln = self.decorrelate_data(u_kln, g_t, -1)
         unsampled_u_kln = self.decorrelate_data(unsampled_u_kln, g_t, -1)
         mbar_ukln, mbar_N_k = self.prepare_MBAR_input_data(u_kln, unsampled_u_kln)
@@ -766,7 +818,20 @@ class MultiPhaseAnalyzer(object):
     """
     def __init__(self, phases):
         """
-        Create the compound phase which is any combination of phases to generate a new compound phase.
+        Create the compound phase which is any combination of phases to generate a new MultiPhaseAnalyzer.
+
+        The observables of this phase are determined through inspection of all the passed in phases and only
+        observables which are shared can be computed.
+
+        e.g.
+            PhaseA has .get_free_energy and .get_entropy
+            PhaseB has .get_free_energy and .get_enthalpy
+            Only .get_free_energy will be available to this MultiPhaseAnalyzer
+
+        The user themselves should not attempt to make this class by calling it directly, but instead through doing
+        addition and subtraction of YankPhaseAnalyzer objects and/or other MultiPhaseAnalyzer objects.
+        This class is public to see its API.
+
         Parameters
         ----------
         phases: dict
@@ -890,6 +955,10 @@ class MultiPhaseAnalyzer(object):
         return self._combine_phases(other, operator='-')
 
     def __neg__(self):
+        """
+        Return a SHALLOW copy of self with negated signs so that the phase objects all still point to the same
+        objects
+        """
         new_signs = []
         for sign in self._signs:
             if sign == '+':
@@ -900,6 +969,32 @@ class MultiPhaseAnalyzer(object):
         output = copy.copy(self)
         output._signs = new_signs
         return output
+
+    def __str__(self):
+        """Simplified string output"""
+        header = "MultiPhaseAnalyzer<{}>"
+        output_string = ""
+        for phase_name, sign in zip(self.names, self.signs):
+            if output_string == "" and sign == '-':
+                output_string += '{}{} '.format(sign, phase_name)
+            elif output_string == "":
+                output_string += '{} '.format(phase_name)
+            else:
+                output_string += '{} {} '.format(sign, phase_name)
+        return header.format(output_string)
+
+    def __repr__(self):
+        """Generate a detailed representation of the MultiPhase"""
+        header = "MultiPhaseAnalyzer <\n{}>"
+        output_string = ""
+        for phase, phase_name, sign in zip(self.phases, self.names, self.signs):
+            if output_string == "" and sign == '-':
+                output_string += '{}{} ({})\n'.format(sign, phase_name, phase)
+            elif output_string == "":
+                output_string += '{} ({})\n'.format(phase_name, phase)
+            else:
+                output_string += '    {} {} ({})\n'.format(sign, phase_name, phase)
+        return header.format(output_string)
 
     def _compute_observable(self, observable_name):
         """
@@ -913,7 +1008,7 @@ class MultiPhaseAnalyzer(object):
         Returns
         -------
         observable_value
-            The observable as its combined between the two phases
+            The observable as its combined between all the phases
 
         """
         def prepare_phase_observable(single_phase):
@@ -990,7 +1085,8 @@ def analyze_directory(source_directory):
     """
     Analyze contents of store files to compute free energy differences.
 
-    This function need
+    This function is needed to preserve the old auto-analysis style of YANK. What it exactly does can be refined when
+    more analyzers and simulations are made available. For now this function exposes the API.
 
     Parameters
     ----------
@@ -1005,33 +1101,26 @@ def analyze_directory(source_directory):
         raise RuntimeError(err_msg)
     with open(analysis_script_path, 'r') as f:
         analysis = yaml.load(f)
-    final_phase = None
-    init_sign = None
     phase_names = [phase_name for phase_name, sign in analysis]
+    data = dict()
     for phase_name, sign in analysis:
         phase_path = os.path.join(source_directory, phase_name + '.nc')
         phase = get_analyzer(phase_path)
-        if final_phase is None:
-            final_phase = phase
-            init_sign = sign
-        else:
-            if init_sign == '-':
-                if sign == '+' :
-                    final_phase = -final_phase + phase
-                else:
-                    final_phase = -final_phase - phase
-                init_sign = None
-            else:
-                if sign == '+':
-                    final_phase = final_phase + phase
-                else:
-                    final_phase = final_phase - phase
+        data[phase_name] = phase.analyze_phase()
+        kT = phase.kT
 
-    DeltaF, dDeltaF = final_phase.get_free_energy()
-    DeltaH, dDeltaH = final_phase.get_enthalpy()
-    DeltaF += final_phase.get_standard_state_correction()
-    DeltaH += final_phase.get_standard_state_correction()
-    kT = final_phase.phases[0].kT
+    # Compute free energy and enthalpy
+    DeltaF = 0.0
+    dDeltaF = 0.0
+    DeltaH = 0.0
+    dDeltaH = 0.0
+    for phase_name, sign in analysis:
+        DeltaF -= sign * (data[phase_name]['DeltaF'] + data[phase_name]['DeltaF_standard_state_correction'])
+        dDeltaF += data[phase_name]['dDeltaF']**2
+        DeltaH -= sign * (data[phase_name]['DeltaH'] + data[phase_name]['DeltaF_standard_state_correction'])
+        dDeltaH += data[phase_name]['dDeltaH']**2
+    dDeltaF = np.sqrt(dDeltaF)
+    dDeltaH = np.sqrt(dDeltaH)
 
     # Attempt to guess type of calculation
     calculation_type = ''
@@ -1048,14 +1137,12 @@ def analyze_directory(source_directory):
         dDeltaF * kT / units.kilocalories_per_mole))
     logger.info("")
 
-    for phase in final_phase.phases:
-        phase_DeltaF, phase_dDelta_F = phase.get_free_energy()
-        phase_name = phase.name
-        logger.info("DeltaG {:<25} : {:16.3f} +- {:.3f} kT".format(phase_name, phase_DeltaF, phase_dDelta_F))
-        ssc = phase.get_standard_state_correction()
-        if ssc != 0.0:
-            logger.info("DeltaG {:<25} : {:25.3f} kT".format('standard state correction', ssc))
-
+    for phase in phases:
+        logger.info("DeltaG {:<25} : {:16.3f} +- {:.3f} kT".format(phase, data[phase]['DeltaF'],
+                                                                   data[phase]['dDeltaF']))
+        if data[phase]['DeltaF_standard_state_correction'] != 0.0:
+            logger.info("DeltaG {:<25} : {:25.3f} kT".format('restraint',
+                                                             data[phase]['DeltaF_standard_state_correction']))
     logger.info("")
     logger.info("Enthalpy{}: {:16.3f} +- {:.3f} kT ({:16.3f} +- {:.3f} kcal/mol)".format(
         calculation_type, DeltaH, dDeltaH, DeltaH * kT / units.kilocalories_per_mole,
@@ -1063,7 +1150,7 @@ def analyze_directory(source_directory):
 
 
 """
-Everything below here is the old code.
+Everything below here is the old code. Currently left in for comparison
 """
 
 
