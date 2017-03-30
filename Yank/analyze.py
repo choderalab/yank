@@ -336,8 +336,6 @@ class YankPhaseAnalyzer(ABC):
 
         raise NotImplementedError("This class has not implemented this function")
 
-
-
     # Static methods
     @staticmethod
     def get_decorrelation_time(timeseries_to_analyze):
@@ -638,7 +636,7 @@ class RepexPhase(YankPhaseAnalyzer):
             u_n[iteration] = np.sum(np.diagonal(passed_timeseries[:, :, iteration]))
         return u_n
 
-    def prepare_MBAR_input_data(self, sampled_energy_matrix, unsampled_energy_matrix, nuse=0):
+    def _prepare_mbar_input_data(self, sampled_energy_matrix, unsampled_energy_matrix):
         nstates, _, niterations = sampled_energy_matrix.shape
         _, nunsampled, _ = unsampled_energy_matrix.shape
         # Subsample data to obtain uncorrelated samples
@@ -788,7 +786,7 @@ class RepexPhase(YankPhaseAnalyzer):
         unsampled_u_kln = self.remove_unequilibrated_data(unsampled_u_kln, number_equilibrated, -1)
         u_kln = self.decorrelate_data(u_kln, g_t, -1)
         unsampled_u_kln = self.decorrelate_data(unsampled_u_kln, g_t, -1)
-        mbar_ukln, mbar_N_k = self.prepare_MBAR_input_data(u_kln, unsampled_u_kln)
+        mbar_ukln, mbar_N_k = self._prepare_mbar_input_data(u_kln, unsampled_u_kln)
         self._create_mbar(mbar_ukln, mbar_N_k)
 
     def analyze_phase(self, cutoff=0.05):
