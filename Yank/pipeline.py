@@ -16,26 +16,161 @@ Utility functions to help setting up Yank configurations.
 import os
 import inspect
 import logging
-logger = logging.getLogger(__name__)
+import itertools
 
 import mdtraj
+import numpy as np
+import openmmtools as mmtools
 from simtk import openmm, unit
 
 from . import utils
 from .yank import AlchemicalPhase
+
+logger = logging.getLogger(__name__)
 
 
 # ==============================================================================
 # Utility functions
 # ==============================================================================
 
+def compute_min_dist(mol_positions, *args):
+    """Compute the minimum distance between a molecule and a set of other molecules.
+
+    All the positions must be expressed in the same unit of measure.
+
+    Parameters
+    ----------
+    mol_positions : numpy.ndarray
+        An Nx3 array where, N is the number of atoms, containing the positions of
+        the atoms of the molecule for which we want to compute the minimum distance
+        from the others
+
+    Other parameters
+    ----------------
+    args
+        A series of numpy.ndarrays containing the positions of the atoms of the other
+        molecules
+
+    Returns
+    -------
+    min_dist : float
+        The minimum distance between mol_positions and the other set of positions
+
+    """
+    for pos1 in args:
+        # Compute squared distances
+        # Each row is an array of distances from a mol2 atom to all mol1 atoms
+        distances2 = np.array([((pos1 - pos2)**2).sum(1) for pos2 in mol_positions])
+
+        # Find closest atoms and their distance
+        min_idx = np.unravel_index(distances2.argmin(), distances2.shape)
+        try:
+            min_dist = min(min_dist, np.sqrt(distances2[min_idx]))
+        except UnboundLocalError:
+            min_dist = np.sqrt(distances2[min_idx])
+    return min_dist
+
+
+def compute_min_max_dist(mol_positions, *args):
+    """Compute minimum and maximum distances between a molecule and a set of
+    other molecules.
+
+    All the positions must be expressed in the same unit of measure.
+
+    Parameters
+    ----------
+    mol_positions : numpy.ndarray
+        An Nx3 array where, N is the number of atoms, containing the positions of
+        the atoms of the molecule for which we want to compute the minimum distance
+        from the others
+
+    Other parameters
+    ----------------
+    args
+        A series of numpy.ndarrays containing the positions of the atoms of the other
+        molecules
+
+    Returns
+    -------
+    min_dist : float
+        The minimum distance between mol_positions and the atoms of the other positions
+    max_dist : float
+        The maximum distance between mol_positions and the atoms of the other positions
+
+    Examples
+    --------
+    >>> mol1_pos = np.array([[-1, -1, -1], [1, 1, 1]], np.float)
+    >>> mol2_pos = np.array([[2, 2, 2], [2, 4, 5]], np.float)  # determine min dist
+    >>> mol3_pos = np.array([[3, 3, 3], [3, 4, 5]], np.float)  # determine max dist
+    >>> min_dist, max_dist = compute_min_max_dist(mol1_pos, mol2_pos, mol3_pos)
+    >>> min_dist == np.linalg.norm(mol1_pos[1] - mol2_pos[0])
+    True
+    >>> max_dist == np.linalg.norm(mol1_pos[1] - mol3_pos[1])
+    True
+
+    """
+    min_dist = None
+
+    for arg_pos in args:
+        # Compute squared distances of all atoms. Each row is an array
+        # of distances from an atom in arg_pos to all the atoms in arg_pos
+        distances2 = np.array([((mol_positions - atom)**2).sum(1) for atom in arg_pos])
+
+        # Find distances of each arg_pos atom to mol_positions
+        distances2 = np.amin(distances2, axis=1)
+
+        # Find closest and distant atom
+        if min_dist is None:
+            min_dist = np.sqrt(distances2.min())
+            max_dist = np.sqrt(distances2.max())
+        else:
+            min_dist = min(min_dist, np.sqrt(distances2.min()))
+            max_dist = max(max_dist, np.sqrt(distances2.max()))
+
+    return min_dist, max_dist
+
+
+def compute_radius_of_gyration(positions):
+        """
+        Compute the radius of gyration of the specified coordinate set.
+
+        Parameters
+        ----------
+        positions : simtk.unit.Quantity with units compatible with angstrom
+           The coordinate set (natoms x 3) for which the radius of gyration is to be computed.
+
+        Returns
+        -------
+        radius_of_gyration : simtk.unit.Quantity with units compatible with angstrom
+           The radius of gyration
+
+        """
+        unit = positions.unit
+
+        # Get dimensionless receptor positions.
+        x = positions / unit
+
+        # Get dimensionless restrained atom coordinate.
+        xref = x.mean(0)
+        xref = np.reshape(xref, (1,3)) # (1,3) array
+
+        # Compute distances from restrained atom.
+        natoms = x.shape[0]
+        distances = np.sqrt(((x - np.tile(xref, (natoms, 1)))**2).sum(1)) #  distances[i] is the distance from the centroid to particle i
+
+        # Compute std dev of distances from restrained atom.
+        radius_of_gyration = distances.std() * unit
+
+        return radius_of_gyration
+
+
 def compute_net_charge(system, atom_indices):
     """Compute the total net charge of a subset of atoms in the system.
 
     Parameters
     ----------
-    system : simtk.openmm.app.System
-       The system object containing the atoms of interest.
+    system : simtk.openmm.System
+        The system object containing the atoms of interest.
     atom_indices : list of int
         Indices of the atoms of interest.
 

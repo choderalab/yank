@@ -43,103 +43,6 @@ HIGHEST_VERSION = '1.2'  # highest version of YAML syntax
 # UTILITY FUNCTIONS
 # =============================================================================
 
-def compute_min_dist(mol_positions, *args):
-    """Compute the minimum distance between a molecule and a set of other molecules.
-
-    All the positions must be expressed in the same unit of measure.
-
-    Parameters
-    ----------
-    mol_positions : numpy.ndarray
-        An Nx3 array where, N is the number of atoms, containing the positions of
-        the atoms of the molecule for which we want to compute the minimum distance
-        from the others
-
-    Other parameters
-    ----------------
-    args
-        A series of numpy.ndarrays containing the positions of the atoms of the other
-        molecules
-
-    Returns
-    -------
-    min_dist : float
-        The minimum distance between mol_positions and the other set of positions
-
-    """
-    for pos1 in args:
-        # Compute squared distances
-        # Each row is an array of distances from a mol2 atom to all mol1 atoms
-        distances2 = np.array([((pos1 - pos2)**2).sum(1) for pos2 in mol_positions])
-
-        # Find closest atoms and their distance
-        min_idx = np.unravel_index(distances2.argmin(), distances2.shape)
-        try:
-            min_dist = min(min_dist, np.sqrt(distances2[min_idx]))
-        except UnboundLocalError:
-            min_dist = np.sqrt(distances2[min_idx])
-    return min_dist
-
-
-def compute_min_max_dist(mol_positions, *args):
-    """Compute minimum and maximum distances between a molecule and a set of
-    other molecules.
-
-    All the positions must be expressed in the same unit of measure.
-
-    Parameters
-    ----------
-    mol_positions : numpy.ndarray
-        An Nx3 array where, N is the number of atoms, containing the positions of
-        the atoms of the molecule for which we want to compute the minimum distance
-        from the others
-
-    Other parameters
-    ----------------
-    args
-        A series of numpy.ndarrays containing the positions of the atoms of the other
-        molecules
-
-    Returns
-    -------
-    min_dist : float
-        The minimum distance between mol_positions and the atoms of the other positions
-    max_dist : float
-        The maximum distance between mol_positions and the atoms of the other positions
-
-    Examples
-    --------
-    >>> mol1_pos = np.array([[-1, -1, -1], [1, 1, 1]], np.float)
-    >>> mol2_pos = np.array([[2, 2, 2], [2, 4, 5]], np.float)  # determine min dist
-    >>> mol3_pos = np.array([[3, 3, 3], [3, 4, 5]], np.float)  # determine max dist
-    >>> min_dist, max_dist = compute_min_max_dist(mol1_pos, mol2_pos, mol3_pos)
-    >>> min_dist == np.linalg.norm(mol1_pos[1] - mol2_pos[0])
-    True
-    >>> max_dist == np.linalg.norm(mol1_pos[1] - mol3_pos[1])
-    True
-
-    """
-    min_dist = None
-
-    for arg_pos in args:
-        # Compute squared distances of all atoms. Each row is an array
-        # of distances from an atom in arg_pos to all the atoms in arg_pos
-        distances2 = np.array([((mol_positions - atom)**2).sum(1) for atom in arg_pos])
-
-        # Find distances of each arg_pos atom to mol_positions
-        distances2 = np.amin(distances2, axis=1)
-
-        # Find closest and distant atom
-        if min_dist is None:
-            min_dist = np.sqrt(distances2.min())
-            max_dist = np.sqrt(distances2.max())
-        else:
-            min_dist = min(min_dist, np.sqrt(distances2.min()))
-            max_dist = max(max_dist, np.sqrt(distances2.max()))
-
-    return min_dist, max_dist
-
-
 def remove_overlap(mol_positions, *args, **kwargs):
     """Remove any eventual overlap between a molecule and a set of others.
 
@@ -178,7 +81,7 @@ def remove_overlap(mol_positions, *args, **kwargs):
     min_distance = kwargs.get('min_distance', 1.0)
 
     # Try until we have a non-overlapping conformation w.r.t. all fixed molecules
-    while compute_min_dist(x, *args) <= min_distance:
+    while pipeline.compute_min_dist(x, *args) <= min_distance:
         # Compute center of geometry
         x0 = x.mean(0)
 
@@ -232,7 +135,7 @@ def pack_transformation(mol1_pos, mol2_pos, min_distance, max_distance):
 
     # Try until we have a non-overlapping conformation w.r.t. all fixed molecules
     i = 0
-    min_dist, max_dist = compute_min_max_dist(mol1_pos, mol2_pos)
+    min_dist, max_dist = pipeline.compute_min_max_dist(mol1_pos, mol2_pos)
     while min_dist < min_distance or max_distance <= max_dist:
         # Select random atom of fixed molecule and use it to propose new x0 position
         mol1_atom_idx = np.random.random_integers(0, len(mol1_pos) - 1)
@@ -243,7 +146,7 @@ def pack_transformation(mol1_pos, mol2_pos, min_distance, max_distance):
 
         # Apply random transformation and test
         x = ((Rq * np.matrix(mol2_pos - x0).T).T + x0).A + translation
-        min_dist, max_dist = compute_min_max_dist(mol1_pos, x)
+        min_dist, max_dist = pipeline.compute_min_max_dist(mol1_pos, x)
 
         # Check n iterations
         i += 1
