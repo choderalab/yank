@@ -133,14 +133,6 @@ def test_expand_id_nodes():
                             'sys3': {'prmtopfile': 'mysystem.prmtop'}}
 
 
-def test_topology_serialization():
-    """Correct serialization of Topology objects."""
-    topology = testsystems.AlanineDipeptideImplicit().topology
-    topology_str = serialize_topology(topology)
-    deserialized_topology = deserialize_topology(topology_str)
-    assert mdtraj.Topology.from_openmm(topology) == deserialized_topology
-
-
 def test_generate_signature_schema():
     """Test generate_signature_schema() function."""
     def f(a, b, camelCase=True, none=None, quantity=3.0*unit.angstroms):
