@@ -265,13 +265,15 @@ class Reporter(object):
                 # Write state as dictionary.
                 self.write_dict('{}/state{}'.format(state_type, state_id), serialized_state)
 
-    def read_sampler_states(self, iteration):
+    def read_sampler_states(self, iteration=slice(None)):
         """Retrieve the stored sampler states.
+
+        TODO: Test with the new slice
 
         Parameters
         ----------
-        iteration : int
-            The iteration at which to read the data.
+        iteration : int or slice
+            The iteration(s) at which to read the data. The slice(None) allows fetching all iterations at once.
 
         Returns
         -------
@@ -355,13 +357,13 @@ class Reporter(object):
                 self._storage.variables['box_vectors'][iteration, replica_index, i, :] = vector_i
             self._storage.variables['volumes'][iteration, replica_index] = sampler_state.volume / unit.nanometers**3
 
-    def read_replica_thermodynamic_states(self, iteration):
+    def read_replica_thermodynamic_states(self, iteration=slice(None)):
         """Retrieve the indices of the ThermodynamicStates for each replica.
 
         Parameters
         ----------
-        iteration : int
-            The iteration at which to read the data.
+        iteration : int or slice
+            The iteration(s) at which to read the data. The slice(None) allows fetching all iterations at once.
 
         Returns
         -------
@@ -437,22 +439,22 @@ class Reporter(object):
             serialized_move = mmtools.utils.serialize(mcmc_move)
             self.write_dict('mcmc_moves/move' + str(i), serialized_move)
 
-    def read_energies(self, iteration):
+    def read_energies(self, iteration=slice(None)):
         """Retrieve the energy matrix at the given iteration.
 
         Parameters
         ----------
-        iteration : int
-            The iteration at which to read the data.
+        iteration : int or slice
+            The iteration(s) at which to read the data. The slice(None) allows fetching all iterations at once.
 
         Returns
         -------
         energy_thermodynamic_states : n_replicas x n_replicas numpy.ndarray
-            energy_thermodynamic_states[i][j] is the reduced potential computed at
-            SamplerState sampler_states[i] and ThermodynamicState thermodynamic_states[j].
+            energy_thermodynamic_states[iteration, i, j] is the reduced potential computed at
+            SamplerState sampler_states[iteration, i] and ThermodynamicState thermodynamic_states[iteration, j].
         energy_unsampled_states : n_replicas x n_unsampled_states numpy.ndarray
-            energy_unsampled_states[i][j] is the reduced potential computed at SamplerState
-            sampler_states[i] and ThermodynamicState unsampled_thermodynamic_states[j].
+            energy_unsampled_states[iteration, i, j] is the reduced potential computed at SamplerState
+            sampler_states[iteration, i] and ThermodynamicState unsampled_thermodynamic_states[iteration, j].
 
         """
         energy_thermodynamic_states = self._storage.variables['energies'][iteration, :, :]
@@ -460,7 +462,13 @@ class Reporter(object):
             energy_unsampled_states = self._storage.variables['unsampled_energies'][iteration, :, :]
         except KeyError:
             # There are no unsampled thermodynamic states.
-            energy_unsampled_states = np.zeros((len(energy_thermodynamic_states), 0))
+            if len(energy_thermodynamic_states.shape) == 2:  # Case when iteration is an int
+                energy_unsampled_states = np.zeros((len(energy_thermodynamic_states), 0))
+            else:
+                # Ensure that energy_unsampled_states has the same shape as energy_thermodynamic_states
+                # .shape = (len(iteration slice), n_sampled_states, 0)
+                energy_unsampled_states = np.zeros((energy_thermodynamic_states.shape[0],
+                                                    len(energy_thermodynamic_states), 0))
         return energy_thermodynamic_states, energy_unsampled_states
 
     def write_energies(self, energy_thermodynamic_states, energy_unsampled_states, iteration):
@@ -517,13 +525,13 @@ class Reporter(object):
         if energy_unsampled_states.shape[1] > 0:
             self._storage.variables['unsampled_energies'][iteration, :, :] = energy_unsampled_states[:, :]
 
-    def read_mixing_statistics(self, iteration):
+    def read_mixing_statistics(self, iteration=slice(None)):
         """Retrieve the mixing statistics for the given iteration.
 
         Parameters
         ----------
-        iteration : int
-            The iteration at which to read the data.
+        iteration : int or slice
+            The iteration(s) at which to read the data.
 
         Returns
         -------
@@ -582,13 +590,13 @@ class Reporter(object):
         self._storage.variables['accepted'][iteration, :, :] = n_accepted_matrix[:, :]
         self._storage.variables['proposed'][iteration, :, :] = n_proposed_matrix[:, :]
 
-    def read_timestamp(self, iteration):
+    def read_timestamp(self, iteration=slice(None)):
         """Return the timestamp for the given iteration.
 
         Parameters
         ----------
-        iteration : int
-            The iteration at which to read the data.
+        iteration : int or slice
+            The iteration(s) at which to read the data.
 
         Returns
         -------

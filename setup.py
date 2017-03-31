@@ -152,6 +152,8 @@ setup(
         'alchemy',
         'schema',
         'openmoltools',
+        'mdtraj',
+        'yaml'
         ],
     ext_modules=cythonize(mixing_ext),
     entry_points={'console_scripts': ['yank = yank.cli:main']})

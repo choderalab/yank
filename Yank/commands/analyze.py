@@ -72,7 +72,7 @@ def dispatch(args):
     if args['extract-trajectory']:
         return dispatch_extract_trajectory(args)
 
-    analyze.analyze(args['--store'])
+    analyze.analyze_directory(args['--store'])
     return True
 
 
