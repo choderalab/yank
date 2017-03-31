@@ -91,9 +91,12 @@ def get_template_script(output_dir='.'):
     ---
     options:
         output_dir: {output_dir}
-        number_of_iterations: 1
+        number_of_iterations: 0
         temperature: 300*kelvin
         pressure: 1*atmosphere
+        minimize: no
+        verbose: no
+        nsteps_per_iteration: 1
     molecules:
         benzene:
             filepath: {benzene_path}
@@ -174,37 +177,19 @@ def get_template_script(output_dir='.'):
 
     return yank_load(template_script)
 
+
 # ==============================================================================
 # YamlBuild utility functions
 # ==============================================================================
-
-
-def test_compute_min_dist():
-    """Test computation of minimum distance between two molecules"""
-    mol1_pos = np.array([[-1, -1, -1], [1, 1, 1]], np.float)
-    mol2_pos = np.array([[3, 3, 3], [3, 4, 5]], np.float)
-    mol3_pos = np.array([[2, 2, 2], [2, 4, 5]], np.float)
-    assert compute_min_dist(mol1_pos, mol2_pos, mol3_pos) == np.sqrt(3)
-
-
-def test_compute_dist_bound():
-    """Test compute_dist_bound() function."""
-    mol1_pos = np.array([[-1, -1, -1], [1, 1, 1]])
-    mol2_pos = np.array([[2, 2, 2], [2, 4, 5]])  # determine min dist
-    mol3_pos = np.array([[3, 3, 3], [3, 4, 5]])  # determine max dist
-    min_dist, max_dist = compute_dist_bound(mol1_pos, mol2_pos, mol3_pos)
-    assert min_dist == np.linalg.norm(mol1_pos[1] - mol2_pos[0])
-    assert max_dist == np.linalg.norm(mol1_pos[1] - mol3_pos[1])
-
 
 def test_remove_overlap():
     """Test function remove_overlap()."""
     mol1_pos = np.array([[-1, -1, -1], [1, 1, 1]], np.float)
     mol2_pos = np.array([[1, 1, 1], [3, 4, 5]], np.float)
     mol3_pos = np.array([[2, 2, 2], [2, 4, 5]], np.float)
-    assert compute_min_dist(mol1_pos, mol2_pos, mol3_pos) < 0.1
+    assert pipeline.compute_min_dist(mol1_pos, mol2_pos, mol3_pos) < 0.1
     mol1_pos = remove_overlap(mol1_pos, mol2_pos, mol3_pos, min_distance=0.1, sigma=2.0)
-    assert compute_min_dist(mol1_pos, mol2_pos, mol3_pos) >= 0.1
+    assert pipeline.compute_min_dist(mol1_pos, mol2_pos, mol3_pos) >= 0.1
 
 
 def test_pull_close():
@@ -215,8 +200,8 @@ def test_pull_close():
     translation2 = pull_close(mol1_pos, mol2_pos, 1.5, 5)
     translation3 = pull_close(mol1_pos, mol3_pos, 1.5, 5)
     assert isinstance(translation2, np.ndarray)
-    assert 1.5 <= compute_min_dist(mol1_pos, mol2_pos + translation2) <= 5
-    assert 1.5 <= compute_min_dist(mol1_pos, mol3_pos + translation3) <= 5
+    assert 1.5 <= pipeline.compute_min_dist(mol1_pos, mol2_pos + translation2) <= 5
+    assert 1.5 <= pipeline.compute_min_dist(mol1_pos, mol3_pos + translation3) <= 5
 
 
 def test_pack_transformation():
@@ -233,7 +218,7 @@ def test_pack_transformation():
     for mol, transf in zip(mols_affine, transformations):
         assert isinstance(transf, np.ndarray)
         mol2 = mol.dot(transf.T)[:, :3]  # transform and "de-affine"
-        min_dist, max_dist = compute_dist_bound(mol1, mol2)
+        min_dist, max_dist = pipeline.compute_min_max_dist(mol1, mol2)
         assert CLASH_DIST <= min_dist and max_dist <= BOX_SIZE
 
 
@@ -250,15 +235,13 @@ def test_yaml_parsing():
     test: 2
     """
     yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
-    assert len(yaml_builder.options) == len(yaml_builder.DEFAULT_OPTIONS)
-    assert len(yaml_builder.yank_options) == 0
+    expected_n_options = (len(yaml_builder.GENERAL_DEFAULT_OPTIONS) +
+                          len(yaml_builder.EXPERIMENT_DEFAULT_OPTIONS))
+    assert len(yaml_builder.options) == expected_n_options
 
     # Correct parsing
     yaml_content = """
     ---
-    metadata:
-        title: Test YANK YAML YAY!
-
     options:
         verbose: true
         resume_setup: true
@@ -267,18 +250,20 @@ def test_yaml_parsing():
         setup_dir: /path/to/output/setup/
         experiments_dir: /path/to/output/experiments/
         platform: CPU
-        precision: single
+        precision: mixed
+        switch_experiment_every: -2.0
+        switch_phase_every: 32
         temperature: 300*kelvin
         pressure: null
         constraints: AllBonds
         hydrogen_mass: 2*amus
         randomize_ligand: yes
-        randomize_ligand_sigma_multiplier: 2.0
+        randomize_ligand_sigma_multiplier: 1.0e-2
         randomize_ligand_close_cutoff: 1.5 * angstrom
         mc_displacement_sigma: 10.0 * angstroms
         anisotropic_dispersion_correction: no
+        anisotropic_dispersion_cutoff: 1 * angstrom
         collision_rate: 5.0 / picosecond
-        constraint_tolerance: 1.0e-6
         timestep: 2.0 * femtosecond
         nsteps_per_iteration: 2500
         number_of_iterations: 1000.999
@@ -288,30 +273,24 @@ def test_yaml_parsing():
         minimize_tolerance: 1.0 * kilojoules_per_mole / nanometers
         minimize_max_iterations: 0
         replica_mixing_scheme: swap-all
-        online_analysis: no
-        online_analysis_min_iterations: 20
-        show_energies: True
-        show_mixing_statistics: yes
         annihilate_sterics: no
         annihilate_electrostatics: true
     """
 
     yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
-    assert len(yaml_builder.options) == 35
-    assert len(yaml_builder.yank_options) == 23
+    assert len(yaml_builder.options) == 32
 
     # Check correct types
     assert yaml_builder.options['pressure'] is None
     assert yaml_builder.options['constraints'] == openmm.app.AllBonds
-    assert yaml_builder.yank_options['replica_mixing_scheme'] == 'swap-all'
-    assert yaml_builder.yank_options['timestep'] == 2.0 * unit.femtoseconds
-    assert yaml_builder.yank_options['constraint_tolerance'] == 1.0e-6
-    assert yaml_builder.yank_options['nsteps_per_iteration'] == 2500
-    assert type(yaml_builder.yank_options['nsteps_per_iteration']) is int
-    assert yaml_builder.yank_options['number_of_iterations'] == 1000
-    assert type(yaml_builder.yank_options['number_of_iterations']) is int
-    assert yaml_builder.yank_options['minimize'] is False
-    assert yaml_builder.yank_options['show_mixing_statistics'] is True
+    assert yaml_builder.options['replica_mixing_scheme'] == 'swap-all'
+    assert yaml_builder.options['timestep'] == 2.0 * unit.femtoseconds
+    assert yaml_builder.options['randomize_ligand_sigma_multiplier'] == 1.0e-2
+    assert yaml_builder.options['nsteps_per_iteration'] == 2500
+    assert type(yaml_builder.options['nsteps_per_iteration']) is int
+    assert yaml_builder.options['number_of_iterations'] == 1000
+    assert type(yaml_builder.options['number_of_iterations']) is int
+    assert yaml_builder.options['minimize'] is False
 
 
 def test_validation_wrong_options():
@@ -321,7 +300,7 @@ def test_validation_wrong_options():
         {'minimize': 100}
     ]
     for option in options:
-        yield assert_raises, YamlParseError, YamlBuilder._validate_options, option
+        yield assert_raises, YamlParseError, YamlBuilder._validate_options, option, True
 
 
 def test_validation_correct_molecules():
@@ -773,7 +752,7 @@ def test_clashing_atoms():
         # Sanity check: at the beginning molecules clash
         toluene_pos = utils.get_oe_mol_positions(utils.read_oe_molecule(toluene_path))
         benzene_pos = utils.get_oe_mol_positions(utils.read_oe_molecule(benzene_path))
-        assert compute_min_dist(toluene_pos, benzene_pos) < SetupDatabase.CLASH_THRESHOLD
+        assert pipeline.compute_min_dist(toluene_pos, benzene_pos) < SetupDatabase.CLASH_THRESHOLD
 
         yaml_builder = YamlBuilder(yaml_content)
 
@@ -790,7 +769,7 @@ def test_clashing_atoms():
             toluene_pos2 = positions.take(atom_indices['ligand'], axis=0)
 
             # Test that clashes are resolved in the system
-            min_dist, max_dist = compute_dist_bound(toluene_pos2, benzene_pos2)
+            min_dist, max_dist = pipeline.compute_min_max_dist(toluene_pos2, benzene_pos2)
             assert min_dist >= SetupDatabase.CLASH_THRESHOLD
 
             # For solvent we check that molecule is within the box
@@ -1428,19 +1407,29 @@ def test_charged_ligand():
             for i, phase_name in enumerate(['complex', 'solvent']):
                 inpcrd_file_path = system_files_paths[i].position_path
                 prmtop_file_path = system_files_paths[i].parameters_path
-                phase = pipeline.prepare_phase(inpcrd_file_path, prmtop_file_path, 'resname MOL',
-                                               {'nonbondedMethod': openmm.app.PME})
 
-                # Safety check: receptor must be negatively charged as expected
+                system, topology, _ = pipeline.read_system_files(
+                    inpcrd_file_path, prmtop_file_path, {'nonbondedMethod': openmm.app.PME})
+
+                # Identify components.
                 if phase_name == 'complex':
-                    receptor_net_charge = pipeline.compute_net_charge(phase.reference_system,
-                                                                      phase.atom_indices['receptor'])
-                    assert receptor_net_charge == receptors[receptor]
+                    alchemical_region = 'ligand_atoms'
+                    topography = Topography(topology, ligand_atoms='resname MOL')
 
-                # 'ligand_counterions' component contain one cation
-                assert len(phase.atom_indices['ligand_counterions']) == 1
-                ion_idx = phase.atom_indices['ligand_counterions'][0]
-                ion_atom = next(itertools.islice(phase.reference_topology.atoms(), ion_idx, None))
+                    # Safety check: receptor must be negatively charged as expected
+                    receptor_net_charge = pipeline.compute_net_charge(system,
+                                                                      topography.receptor_atoms)
+                    assert receptor_net_charge == receptors[receptor]
+                else:
+                    alchemical_region = 'solute_atoms'
+                    topography = Topography(topology)
+
+                # There is a single ligand/solute counterion.
+                ligand_counterions = pipeline.find_alchemical_counterions(system, topography,
+                                                                          alchemical_region)
+                assert len(ligand_counterions) == 1
+                ion_idx = ligand_counterions[0]
+                ion_atom = next(itertools.islice(topology.atoms(), ion_idx, None))
                 assert '-' in ion_atom.residue.name
 
                 # In complex, there should be both ions even if the system is globally
@@ -1528,21 +1517,6 @@ def test_setup_multiple_parameters_system():
 # ==============================================================================
 # Platform configuration tests
 # ==============================================================================
-
-def test_select_fastest_platform():
-    """Test that YamlBuilder select the fastest platform available when unspecified."""
-    available_platforms = [openmm.Platform.getPlatform(i).getName()
-                           for i in range(openmm.Platform.getNumPlatforms())]
-    if 'CUDA' in available_platforms:
-        fastest_platform = 'CUDA'
-    elif 'OpenCL' in available_platforms:
-        fastest_platform = 'OpenCL'
-    else:
-        fastest_platform = 'CPU'
-
-    platform = YamlBuilder._determine_fastest_platform()
-    assert platform.getName() == fastest_platform
-
 
 def test_platform_precision_configuration():
     """Test that the precision for platform is configured correctly."""
@@ -1776,27 +1750,6 @@ def test_yaml_extension():
             assert yaml.load(f) == yank_load(expected_yaml_content)
 
 
-def test_get_alchemical_path():
-    """Check that conversion to list of AlchemicalStates is correct."""
-    yaml_content = """
-    ---
-    protocols:{}
-    """.format(standard_protocol)
-    yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
-    alchemical_paths = yaml_builder._get_alchemical_paths('absolute-binding')
-
-    assert len(alchemical_paths) == 2
-    assert 'complex' in alchemical_paths
-    assert 'solvent' in alchemical_paths
-
-    complex_path = alchemical_paths['complex']
-    assert isinstance(complex_path[0], AlchemicalState)
-    assert complex_path[3]['lambda_electrostatics'] == 0.6
-    assert complex_path[4]['lambda_sterics'] == 0.4
-    assert complex_path[5]['lambda_restraints'] == 1.0
-    assert len(complex_path) == 7
-
-
 @attr('slow')  # Skip on Travis-CI
 def test_run_experiment_from_amber_files():
     """Test experiment run from prmtop/inpcrd files."""
@@ -1813,10 +1766,10 @@ def test_run_experiment_from_amber_files():
 
         yaml_builder = YamlBuilder(yaml_script)
         yaml_builder._check_resume()  # check_resume should not raise exceptions
-        yaml_builder.build_experiments()
+        yaml_builder.run_experiments()
 
         # The experiments folders are correctly named and positioned
-        output_dir = yaml_builder._get_experiment_dir(yaml_builder.options, '')
+        output_dir = yaml_builder._get_experiment_dir('')
         assert os.path.isdir(output_dir)
         assert os.path.isfile(os.path.join(output_dir, 'complex.nc'))
         assert os.path.isfile(os.path.join(output_dir, 'solvent.nc'))
@@ -1847,10 +1800,10 @@ def test_run_experiment_from_gromacs_files():
 
         yaml_builder = YamlBuilder(yaml_script)
         yaml_builder._check_resume()  # check_resume should not raise exceptions
-        yaml_builder.build_experiments()
+        yaml_builder.run_experiments()
 
         # The experiments folders are correctly named and positioned
-        output_dir = yaml_builder._get_experiment_dir(yaml_builder.options, '')
+        output_dir = yaml_builder._get_experiment_dir('')
         assert os.path.isdir(output_dir)
         assert os.path.isfile(os.path.join(output_dir, 'complex.nc'))
         assert os.path.isfile(os.path.join(output_dir, 'solvent.nc'))
@@ -1873,14 +1826,14 @@ def test_run_experiment_from_xml_files():
         del yaml_script['molecules']  # we shouldn't need any molecule
         yaml_script['systems'] = {'explicit-system':
                 {'phase1_path': solvent_path, 'phase2_path': vacuum_path,
-                 'ligand_dsl': 'resname TOL', 'solvent_dsl': 'not resname TOL'}}
+                 'solvent_dsl': 'not resname TOL'}}
 
         yaml_builder = YamlBuilder(yaml_script)
         yaml_builder._check_resume()  # check_resume should not raise exceptions
-        yaml_builder.build_experiments()
+        yaml_builder.run_experiments()
 
         # The experiments folders are correctly named and positioned
-        output_dir = yaml_builder._get_experiment_dir(yaml_builder.options, '')
+        output_dir = yaml_builder._get_experiment_dir('')
         assert os.path.isdir(output_dir)
         assert os.path.isfile(os.path.join(output_dir, 'complex.nc'))
         assert os.path.isfile(os.path.join(output_dir, 'solvent.nc'))
@@ -1902,8 +1855,11 @@ def test_run_experiment():
         options:
             resume_setup: no
             resume_simulation: no
-            number_of_iterations: 1
-            output_dir: overwritten
+            number_of_iterations: 0
+            output_dir: {}
+            setup_dir: ''
+            experiments_dir: ''
+            minimize: no
             annihilate_sterics: yes
         molecules:
             T4lysozyme:
@@ -1928,15 +1884,11 @@ def test_run_experiment():
                 solvent: !Combinatorial [vacuum, GBSA-OBC2]
         experiments:
             system: system
-            options:
-                output_dir: {}
-                setup_dir: ''
-                experiments_dir: ''
             protocol: absolute-binding
             restraint:
                 type: FlatBottom
-        """.format(examples_paths()['lysozyme'], examples_paths()['p-xylene'],
-                   indent(standard_protocol), tmp_dir)
+        """.format(tmp_dir, examples_paths()['lysozyme'], examples_paths()['p-xylene'],
+                   indent(standard_protocol))
 
         yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
 
@@ -1947,7 +1899,7 @@ def test_run_experiment():
         err_msg = ''
         yaml_builder._db._setup_molecules('p-xylene')
         try:
-            yaml_builder.build_experiments()
+            yaml_builder.run_experiments()
         except YamlParseError as e:
             err_msg = str(e)
         assert 'molecule' in err_msg
@@ -1957,7 +1909,7 @@ def test_run_experiment():
         system_dir = os.path.dirname(
             yaml_builder._db.get_system('system_GBSAOBC2')[0].position_path)
         try:
-            yaml_builder.build_experiments()
+            yaml_builder.run_experiments()
         except YamlParseError as e:
             err_msg = str(e)
         assert 'system' in err_msg
@@ -1969,7 +1921,7 @@ def test_run_experiment():
         prmtop_file = os.path.join(system_dir, 'complex.prmtop')
         molecule_last_touched = os.stat(frcmod_file).st_mtime
         system_last_touched = os.stat(prmtop_file).st_mtime
-        yaml_builder.build_experiments()
+        yaml_builder.run_experiments()
 
         # Neither the system nor the molecule has been processed again
         assert molecule_last_touched == os.stat(frcmod_file).st_mtime
@@ -1992,14 +1944,14 @@ def test_run_experiment():
 
         # Now we can't run the experiment again with resume_simulation: no
         try:
-            yaml_builder.build_experiments()
+            yaml_builder.run_experiments()
         except YamlParseError as e:
             err_msg = str(e)
         assert 'experiment' in err_msg
 
         # We set resume_simulation: yes and now things work
         yaml_builder.options['resume_simulation'] = True
-        yaml_builder.build_experiments()
+        yaml_builder.run_experiments()
 
 
 def test_run_solvation_experiment():
@@ -2025,10 +1977,10 @@ def test_run_solvation_experiment():
 
         yaml_builder = YamlBuilder(yaml_script)
         yaml_builder._check_resume()  # check_resume should not raise exceptions
-        yaml_builder.build_experiments()
+        yaml_builder.run_experiments()
 
         # The experiments folders are correctly named and positioned
-        output_dir = yaml_builder._get_experiment_dir(yaml_builder.options, '')
+        output_dir = yaml_builder._get_experiment_dir('')
         assert os.path.isdir(output_dir)
         assert os.path.isfile(os.path.join(output_dir, 'solvent1.nc'))
         assert os.path.isfile(os.path.join(output_dir, 'solvent2.nc'))
@@ -2039,19 +1991,6 @@ def test_run_solvation_experiment():
         analysis_script_path = os.path.join(output_dir, 'analysis.yaml')
         with open(analysis_script_path, 'r') as f:
             assert yaml.load(f) == [['solvent1', 1], ['solvent2', -1]]
-
-        # Check that solvated phase has a barostat.
-        from netCDF4 import Dataset
-        ncfile = Dataset(os.path.join(output_dir, 'solvent1.nc'), 'r')
-        ncgrp_stateinfo = ncfile.groups['thermodynamic_states']
-        system = openmm.System()
-        system.__setstate__(str(ncgrp_stateinfo.variables['base_system'][0]))
-        has_barostat = False
-        for force in system.getForces():
-            if force.__class__.__name__ == 'MonteCarloBarostat':
-                has_barostat = True
-        if not has_barostat:
-            raise Exception('Explicit solvent phase of hydration free energy calculation does not have a barostat.')
 
 if __name__ == '__main__':
     test_run_solvation_experiment()

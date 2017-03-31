@@ -21,26 +21,31 @@ This code is licensed under the latest available version of the MIT License.
 # GLOBAL IMPORTS
 # ==============================================================================
 
+import functools
+import contextlib
 
-from openmmtools import testsystems
+from openmmtools.constants import kB
+from openmmtools import testsystems, states
 from mdtraj.utils import enter_temp_directory
 
-from nose import tools
+import nose
 import netCDF4 as netcdf
 
-from yank.repex import ThermodynamicState
-from yank.pipeline import find_components
-
+import yank.restraints
+from yank.repex import ReplicaExchange
 
 from yank.yank import *
 
+
 # ==============================================================================
-# MODULE CONSTANTS
+# TEST UTILITIES
 # ==============================================================================
 
-from simtk import unit
-kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA # Boltzmann constant
-
+def prepare_yield(func, test_case_name, *args):
+    """Create a description for a test function to yield."""
+    f = functools.partial(func, *args)
+    f.description = test_case_name + ': ' + func.__doc__
+    return f
 
 # ==============================================================================
 # TEST TOPOLOGY OBJECT
@@ -65,6 +70,316 @@ def test_topography():
     assert len(topography.ions_atoms) == 0
 
 
+def test_topography_serialization():
+    """Correct serialization of Topography objects."""
+    test_system = testsystems.AlanineDipeptideImplicit()
+    topography = Topography(test_system.topology)
+    serialized_topography = mmtools.utils.serialize(topography)
+    restored_topography = mmtools.utils.deserialize(serialized_topography)
+    assert topography.topology == restored_topography.topology
+    assert topography.ligand_atoms == restored_topography.ligand_atoms
+    assert topography.solvent_atoms == restored_topography.solvent_atoms
+
+
+# ==============================================================================
+# TEST ALCHEMICAL PHASE
+# ==============================================================================
+
+class TestAlchemicalPhase(object):
+    """Test suite for class AlchemicalPhase."""
+
+    @classmethod
+    def setup_class(cls):
+        """Shared test cases for the suite."""
+        temperature = 300 * unit.kelvin
+
+        # Default protocols for tests.
+        cls.protocol = dict(lambda_electrostatics=[1.0, 0.5, 0.0, 0.0, 0.0],
+                            lambda_sterics=[1.0, 1.0, 1.0, 0.5, 0.0])
+        cls.restrained_protocol = dict(lambda_electrostatics=[1.0, 1.0, 0.0, 0.0],
+                                       lambda_sterics=[1.0, 1.0, 1.0, 0.0],
+                                       lambda_restraints=[0.0, 1.0, 1.0, 1.0])
+
+        # Ligand-receptor in implicit solvent.
+        test_system = testsystems.HostGuestImplicit()
+        thermodynamic_state = states.ThermodynamicState(test_system.system,
+                                                        temperature=temperature)
+        sampler_state = states.SamplerState(test_system.positions)
+        topography = Topography(test_system.topology, ligand_atoms='resname B2')
+        cls.host_guest_implicit = ('Host-guest implicit', thermodynamic_state, sampler_state, topography)
+
+        # Ligand-receptor in explicit solvent.
+        test_system = testsystems.HostGuestExplicit()
+        thermodynamic_state = states.ThermodynamicState(test_system.system,
+                                                        temperature=temperature)
+        sampler_state = states.SamplerState(test_system.positions)
+        topography = Topography(test_system.topology, ligand_atoms='resname B2')
+        cls.host_guest_explicit = ('Host-guest explicit', thermodynamic_state, sampler_state, topography)
+
+        # Peptide solvated in explicit solvent.
+        test_system = testsystems.AlanineDipeptideExplicit()
+        thermodynamic_state = states.ThermodynamicState(test_system.system,
+                                                        temperature=temperature)
+        sampler_state = states.SamplerState(test_system.positions)
+        topography = Topography(test_system.topology)
+        cls.alanine_explicit = ('Alanine dipeptide explicit', thermodynamic_state, sampler_state, topography)
+
+        # All test cases
+        cls.all_test_cases = [cls.host_guest_implicit, cls.host_guest_explicit, cls.alanine_explicit]
+
+    @staticmethod
+    @contextlib.contextmanager
+    def temporary_storage_path():
+        """Generate a storage path in a temporary folder and share it.
+
+        It makes it possible to run tests on multiple nodes with MPI.
+
+        """
+        mpicomm = mpi.get_mpicomm()
+        with mmtools.utils.temporary_directory() as tmp_dir_path:
+            storage_file_path = os.path.join(tmp_dir_path, 'test_storage.nc')
+            if mpicomm is not None:
+                storage_file_path = mpicomm.bcast(storage_file_path, root=0)
+            yield storage_file_path
+
+    @staticmethod
+    def check_protocol(alchemical_phase, protocol):
+        """The compound thermodynamic states created follow the requested protocol."""
+        for i, state in enumerate(alchemical_phase._sampler._thermodynamic_states):
+            for protocol_key, protocol_values in protocol.items():
+                assert getattr(state, protocol_key) == protocol_values[i]
+
+    @staticmethod
+    def check_standard_state_correction(alchemical_phase, topography):
+        """AlchemicalPhase carries the correct standard state correction."""
+        is_complex = len(topography.ligand_atoms) > 0
+        metadata = alchemical_phase._sampler.metadata
+        standard_state_correction = metadata['standard_state_correction']
+        if is_complex:
+            assert standard_state_correction != 0
+        else:
+            assert standard_state_correction == 0
+
+    @staticmethod
+    def check_expanded_states(alchemical_phase, protocol, expected_cutoff):
+        """The expanded states have been setup correctly."""
+        cutoff_unit = expected_cutoff.unit
+        thermodynamic_state = alchemical_phase._sampler._thermodynamic_states[0]
+        unsampled_states = alchemical_phase._sampler._unsampled_states
+
+        is_periodic = thermodynamic_state.is_periodic
+
+        # Anisotropic correction is not applied to non-periodic systems.
+        if not is_periodic:
+            assert len(unsampled_states) == 0
+            return
+        assert len(unsampled_states) == 2
+
+        # Find all nonbonded forces and verify their cutoff.
+        for state in unsampled_states:
+            for force in state.system.getForces():
+                try:
+                    cutoff = force.getCutoffDistance()
+                except AttributeError:
+                    continue
+                else:
+                    err_msg = 'obtained {}, expected {}'.format(cutoff, expected_cutoff)
+                    assert np.isclose(cutoff / cutoff_unit, expected_cutoff / cutoff_unit), err_msg
+
+        # The noninteracting state, must be in the same state as the last one.
+        noninteracting_state = unsampled_states[1]
+        for protocol_key, protocol_values in protocol.items():
+            assert getattr(noninteracting_state, protocol_key) == protocol_values[-1]
+
+    def test_create(self):
+        """Alchemical state correctly creates the simulation object."""
+        available_restraints = list(yank.restraints.available_restraint_classes().values())
+        correction_cutoff = 12 * unit.angstroms
+
+        for test_case in self.all_test_cases:
+            test_name, thermodynamic_state, sampler_state, topography = test_case
+
+            # Add random restraint if this is ligand-receptor system in implicit solvent.
+            if len(topography.ligand_atoms) > 0 and not thermodynamic_state.is_periodic:
+                restraint_cls = available_restraints[np.random.randint(0, len(available_restraints))]
+                restraint = restraint_cls()
+                protocol = self.restrained_protocol
+            else:
+                restraint = None
+                protocol = self.protocol
+
+            alchemical_phase = AlchemicalPhase(sampler=ReplicaExchange())
+            with self.temporary_storage_path() as storage_path:
+                alchemical_phase.create(thermodynamic_state, sampler_state, topography,
+                                        protocol, storage_path, restraint=restraint,
+                                        anisotropic_dispersion_cutoff=correction_cutoff)
+
+                yield prepare_yield(self.check_protocol, test_name, alchemical_phase, protocol)
+                yield prepare_yield(self.check_standard_state_correction, test_name,
+                                    alchemical_phase, topography)
+                yield prepare_yield(self.check_expanded_states, test_name, alchemical_phase,
+                                    protocol, correction_cutoff)
+
+    def test_default_alchemical_region(self):
+        """The default alchemical region modify the correct system elements."""
+        # We test two protocols: with and without alchemically
+        # modified bonds, angles and torsions.
+        simple_protocol = dict(lambda_electrostatics=[1.0, 0.5, 0.0, 0.0, 0.0],
+                               lambda_sterics=[1.0, 1.0, 1.0, 0.5, 0.0])
+        full_protocol = dict(lambda_electrostatics=[1.0, 0.5, 0.0, 0.0, 0.0],
+                             lambda_sterics=[1.0, 1.0, 1.0, 0.5, 0.0],
+                             lambda_bonds=[1.0, 1.0, 1.0, 0.5, 0.0],
+                             lambda_angles=[1.0, 1.0, 1.0, 0.5, 0.0],
+                             lambda_torsions=[1.0, 1.0, 1.0, 0.5, 0.0])
+        protocols = [simple_protocol, full_protocol]
+
+        # Create two test systems with a charged solute and counterions.
+        sodium_chloride = testsystems.SodiumChlorideCrystal()
+        negative_solute = Topography(sodium_chloride.topology, solvent_atoms=[0])
+        positive_solute = Topography(sodium_chloride.topology, solvent_atoms=[1])
+
+        # Test case: (system, topography, topography_region)
+        test_cases = [
+            (self.host_guest_implicit[1].system, self.host_guest_implicit[3], 'ligand_atoms'),
+            (self.host_guest_explicit[1].system, self.host_guest_explicit[3], 'ligand_atoms'),
+            (self.alanine_explicit[1].system, self.alanine_explicit[3], 'solute_atoms'),
+            (sodium_chloride.system, negative_solute, 'solute_atoms'),
+            (sodium_chloride.system, positive_solute, 'solute_atoms')
+        ]
+
+        for system, topography, alchemical_region_name in test_cases:
+            expected_alchemical_atoms = getattr(topography, alchemical_region_name)
+
+            # Compute net charge of alchemical atoms.
+            net_charge = pipeline.compute_net_charge(system, expected_alchemical_atoms)
+            if net_charge != 0:
+                # Sodium chloride test systems.
+                expected_alchemical_atoms = [0, 1]
+
+            for protocol in protocols:
+                alchemical_region = AlchemicalPhase._build_default_alchemical_region(
+                    system, topography, protocol)
+                assert alchemical_region.alchemical_atoms == expected_alchemical_atoms
+
+                # The alchemical region must be neutralized.
+                assert pipeline.compute_net_charge(system, expected_alchemical_atoms) == 0
+
+                # We modify elements other than sterics and electrostatics when requested.
+                if 'lambda_bonds' in protocol:
+                    assert alchemical_region.alchemical_bonds is True
+                    assert alchemical_region.alchemical_angles is True
+                    assert alchemical_region.alchemical_torsions is True
+
+    def test_illegal_restraint(self):
+        """Raise an error when restraint is handled incorrectly."""
+        # An error is raised with ligand-receptor systems in implicit without restraint.
+        test_name, thermodynamic_state, sampler_state, topography = self.host_guest_implicit
+        alchemical_phase = AlchemicalPhase(sampler=ReplicaExchange())
+        with nose.tools.assert_raises(ValueError):
+            alchemical_phase.create(thermodynamic_state, sampler_state, topography,
+                                    self.protocol, 'not_created.nc')
+
+        # An error is raised when trying to apply restraint to non ligand-receptor systems.
+        restraint = yank.restraints.Harmonic()
+        test_name, thermodynamic_state, sampler_state, topography = self.alanine_explicit
+        with nose.tools.assert_raises(RuntimeError):
+            alchemical_phase.create(thermodynamic_state, sampler_state, topography,
+                                    self.protocol, 'not_created.nc', restraint=restraint)
+
+    def test_from_storage(self):
+        """When resuming, the AlchemicalPhase recover the correct sampler."""
+        _, thermodynamic_state, sampler_state, topography = self.host_guest_implicit
+        restraint = yank.restraints.Harmonic()
+
+        with self.temporary_storage_path() as storage_path:
+            alchemical_phase = AlchemicalPhase(ReplicaExchange())
+            alchemical_phase.create(thermodynamic_state, sampler_state, topography,
+                                    self.protocol, storage_path, restraint=restraint)
+
+            # Delete old alchemical phase to close storage file.
+            del alchemical_phase
+
+            # Resume, the sampler has the correct class.
+            alchemical_phase = AlchemicalPhase.from_storage(storage_path)
+            assert isinstance(alchemical_phase._sampler, ReplicaExchange)
+
+    @staticmethod
+    def test_find_similar_sampler_states():
+        """Test helper method AlchemicalPhase._find_similar_sampler_states."""
+        sampler_state1 = states.SamplerState(np.random.rand(100, 3))
+        sampler_state2 = states.SamplerState(np.random.rand(100, 3))
+        sampler_state3 = states.SamplerState(np.random.rand(100, 3))
+
+        sampler_states = [sampler_state1, sampler_state1, sampler_state2,
+                          sampler_state1, sampler_state3, sampler_state2]
+        similar_states = AlchemicalPhase._find_similar_sampler_states(sampler_states)
+        assert similar_states == {0: [1, 3], 2: [5], 4: []}
+
+    def test_minimize(self):
+        """Test AlchemicalPhase minimization of positions in reference state."""
+        # Ligand-receptor in implicit solvent.
+        test_system = testsystems.AlanineDipeptideVacuum()
+        thermodynamic_state = states.ThermodynamicState(test_system.system,
+                                                        temperature=300*unit.kelvin)
+        topography = Topography(test_system.topology)
+
+        # We create 3 different sampler states that will be distributed over
+        # replicas in a round-robin fashion.
+        displacement_vector = np.ones(3) * unit.nanometer
+        positions2 = test_system.positions + displacement_vector
+        positions3 = positions2 + displacement_vector
+        sampler_state1 = states.SamplerState(test_system.positions)
+        sampler_state2 = states.SamplerState(positions2)
+        sampler_state3 = states.SamplerState(positions3)
+        sampler_states = [sampler_state1, sampler_state2, sampler_state3]
+
+        with self.temporary_storage_path() as storage_path:
+            # Create alchemical phase.
+            alchemical_phase = AlchemicalPhase(ReplicaExchange())
+            alchemical_phase.create(thermodynamic_state, sampler_states, topography,
+                                    self.protocol, storage_path)
+
+            # Measure the average distance between positions. This should be
+            # maintained after minimization.
+            sampler_states = alchemical_phase._sampler.sampler_states
+            original_diffs = [np.average(sampler_states[i].positions - sampler_states[i+1].positions)
+                              for i in range(len(sampler_states) - 1)]
+
+            # Minimize.
+            alchemical_phase.minimize()
+
+            # The minimized positions should be still more or less
+            # one displacement vector from each other.
+            sampler_states = alchemical_phase._sampler.sampler_states
+            new_diffs = [np.average(sampler_states[i].positions - sampler_states[i+1].positions)
+                         for i in range(len(sampler_states) - 1)]
+            print(original_diffs, new_diffs)
+            assert np.allclose(original_diffs, new_diffs)
+
+    def test_randomize_ligand(self):
+        """Test method AlchemicalPhase.randomize_ligand."""
+        _, thermodynamic_state, sampler_state, topography = self.host_guest_implicit
+        restraint = yank.restraints.Harmonic()
+
+        ligand_atoms, receptor_atoms = topography.ligand_atoms, topography.receptor_atoms
+        ligand_positions = sampler_state.positions[ligand_atoms]
+        receptor_positions = sampler_state.positions[receptor_atoms]
+
+        with self.temporary_storage_path() as storage_path:
+            alchemical_phase = AlchemicalPhase(ReplicaExchange())
+            alchemical_phase.create(thermodynamic_state, sampler_state, topography,
+                                    self.protocol, storage_path, restraint=restraint)
+
+            # Randomize ligand positions.
+            alchemical_phase.randomize_ligand()
+
+            # The new sampler states have the same receptor positions
+            # but different ligand positions.
+            for sampler_state in alchemical_phase._sampler.sampler_states:
+                assert np.allclose(sampler_state.positions[receptor_atoms], receptor_positions)
+                assert not np.allclose(sampler_state.positions[ligand_atoms], ligand_positions)
+
+
 # ==============================================================================
 # MAIN AND TESTS
 # ==============================================================================
@@ -75,13 +390,13 @@ def test_parameters():
     # Check that both Yank and Repex parameters are accepted
     Yank(store_directory='test', randomize_ligand=True, nsteps_per_iteration=1)
 
-@tools.raises(TypeError)
+@nose.tools.raises(TypeError)
 def test_unknown_parameters():
     """Test whether Yank raises exception on wrong initialization."""
     Yank(store_directory='test', wrong_parameter=False)
 
 
-@tools.raises(ValueError)
+@nose.tools.raises(ValueError)
 def test_no_alchemical_atoms():
     """Test whether Yank raises exception when no alchemical atoms are specified."""
     toluene = testsystems.TolueneImplicit()

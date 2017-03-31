@@ -29,6 +29,8 @@ import mdtraj as md
 import openmmtools as mmtools
 from simtk import openmm, unit
 
+from yank import pipeline
+
 logger = logging.getLogger(__name__)
 
 
@@ -753,41 +755,6 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
 
         return closest_atom
 
-    @staticmethod
-    def _compute_radius_of_gyration(positions):
-        """
-        Compute the radius of gyration of the specified coordinate set.
-
-        Parameters
-        ----------
-        positions : simtk.unit.Quantity with units compatible with angstrom
-           The coordinate set (natoms x 3) for which the radius of gyration is to be computed.
-
-        Returns
-        -------
-        radius_of_gyration : simtk.unit.Quantity with units compatible with angstrom
-           The radius of gyration
-
-        """
-        # TODO this is currently unused, move somewhere else? Make it a module function?
-        unit = positions.unit
-
-        # Get dimensionless receptor positions.
-        x = positions / unit
-
-        # Get dimensionless restrained atom coordinate.
-        xref = x.mean(0)
-        xref = np.reshape(xref, (1,3)) # (1,3) array
-
-        # Compute distances from restrained atom.
-        natoms = x.shape[0]
-        distances = np.sqrt(((x - np.tile(xref, (natoms, 1)))**2).sum(1)) #  distances[i] is the distance from the centroid to particle i
-
-        # Compute std dev of distances from restrained atom.
-        radius_of_gyration = distances.std() * unit
-
-        return radius_of_gyration
-
 
 # ==============================================================================
 # Harmonic protein-ligand restraint.
@@ -900,22 +867,8 @@ class Harmonic(RadiallySymmetricRestraint):
         if self.spring_constant is not None:
             return
 
-        x_unit = sampler_state.positions.unit
-
-        # Get dimensionless receptor positions.
-        x = sampler_state.positions[topography.receptor_atoms, :] / x_unit
-
-        # Get dimensionless restrained atom coordinate.
-        xref = sampler_state.positions[self.restrained_receptor_atom, :] / x_unit  # (3,) array
-        xref = np.reshape(xref, (1, 3))  # (1,3) array
-
-        # Compute distances from restrained atom.
-        n_atoms = x.shape[0]
-        # distances[i] is the distance from the centroid to particle i
-        distances = np.sqrt(((x - np.tile(xref, (n_atoms, 1)))**2).sum(1))
-
-        # Compute std dev of distances from restrained atom.
-        sigma = distances.std() * x_unit
+        receptor_positions = sampler_state.positions[topography.receptor_atoms]
+        sigma = pipeline.compute_radius_of_gyration(receptor_positions)
         logger.debug("Spring Constant Sigma, s = {:.3f} nm".format(sigma / unit.nanometers))
 
         # Compute corresponding spring constant.
