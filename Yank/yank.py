@@ -231,6 +231,16 @@ class IMultiStateSampler(mmtools.utils.SubhookedABCMeta):
 
     """
 
+    @property
+    def number_of_iterations(self):
+        """int: the total number of iterations to run."""
+        pass
+
+    @abc.abstractproperty
+    def iteration(self):
+        """int: the current iteration."""
+        pass
+
     @abc.abstractproperty
     def metadata(self):
         """dict: a copy of the metadata dictionary passed on creation."""
@@ -381,6 +391,20 @@ class AlchemicalPhase(object):
         # Resume sampler and return new AlchemicalPhase.
         sampler = cls.from_storage(storage)
         return AlchemicalPhase(sampler)
+
+    @property
+    def iteration(self):
+        """int: the current iteration (read-only)."""
+        return self._sampler.iteration
+
+    @property
+    def number_of_iterations(self):
+        """int: the total number of iterations to run."""
+        return self._sampler.number_of_iterations
+
+    @number_of_iterations.setter
+    def number_of_iterations(self, value):
+        self._sampler.number_of_iterations = value
 
     def create(self, thermodynamic_state, sampler_states, topography, protocol, storage,
                restraint=None, anisotropic_dispersion_cutoff=None,
