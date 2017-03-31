@@ -8,13 +8,11 @@ here.
 
 import os
 import yaml
-import netCDF4 as nc
 import numpy as np
 from scipy import interpolate
 from matplotlib import pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap, NoNorm
 from matplotlib import gridspec
-from pymbar import timeseries
 from simtk import unit as units
 from .. import analyze
 
@@ -41,18 +39,18 @@ class HealthReportData(object):
             raise RuntimeError(err_msg)
         with open(analysis_script_path, 'r') as f:
             analysis = yaml.load(f)
-        phases = []
+        phases_names = []
         signs = {}
-        ncfiles = {}
+        analyzers = {}
         for phase, sign in analysis:
-            phases.append(phase)
+            phases_names.append(phase)
             signs[phase] = sign
-            ncfile_path = os.path.join(store_directory, phase + '.nc')
-            ncfiles[phase] = nc.Dataset(ncfile_path, 'r')
-        self.phases = phases
+            storage_path = os.path.join(store_directory, phase + '.nc')
+            analyzers[phase] = analyze.get_analyzer(storage_path)
+        self.phase_names = phases_names
         self.signs = signs
-        self.ncfiles = ncfiles
-        self.nphases = len(phases)
+        self.analyzers = analyzers
+        self.nphases = len(phases_names)
         # Assign flags for other sections along with their global variables
         # General Data
         self._general_run = False
@@ -79,9 +77,10 @@ class HealthReportData(object):
         iterations = {}
         nstates = {}
         natoms = {}
-        for phase in self.phases:
-            positions = self.ncfiles[phase].variables['positions']
-            iterations[phase], nstates[phase], natoms[phase], spatial = positions.shape
+        for phase_name in self.phase_names:
+            analyzer = self.analyzers[phase_name]
+            positions = analyzer.reporter.read_sampler_states()[0].positions
+            iterations[phase_name], nstates[phase_name], natoms[phase_name], _ = positions.shape
 
         leniter = max(len('Iterations'), *[len(str(i)) for i in iterations.values()]) + 2
         lenstates = max(len('States'), *[len(str(i)) for i in nstates.values()]) + 2
@@ -98,7 +97,7 @@ class HealthReportData(object):
         lenline = len(headstring)
         topdiv = '=' * lenline
         lines.append(topdiv)
-        for phase in self.phases:
+        for phase in self.phase_names:
             phasestring = ''
             phasestring += ('{:^' + '{}'.format(lenleftcol) + '}').format(phase) + '|'
             phasestring += ('{:^' + '{}'.format(leniter) + '}').format(iterations[phase]) + '|'
@@ -129,16 +128,18 @@ class HealthReportData(object):
         equilibration_figure.subplots_adjust(hspace=0.4)
         # Create the matplotlib subplot shorthand keys for placement
         plotkeys = [100 * self.nphases + 10 + (i + 1) for i in range(self.nphases)]
-        for phase, plotid in zip(self.phases, plotkeys):
+        for phase_name, plotid in zip(self.phase_names, plotkeys):
+            analyzer = self.analyzers[phase_name]
             # Attach subplot to figure
             p = equilibration_figure.add_subplot(plotid)
             # Data crunching to get timeseries
-            self.u_ns[phase] = analyze.extract_u_n(self.ncfiles[phase])
-            self.u_ns[phase] = self.u_ns[phase][1:]  # Correction for bug
+            u_kln, _ = analyzer.extract_energies()
+            self.u_ns[phase_name] = analyzer.get_timeseries(u_kln)
             # Timseries statistics
-            self.nequils[phase], self.g_ts[phase], self.Neff_maxs[phase] = timeseries.detectEquilibration(self.u_ns[phase])
+            self.nequils[phase_name], self.g_ts[phase_name], self.Neff_maxs[phase_name] = \
+                analyzer.get_equilibration_data(self.u_ns[phase_name])
             # Data assignment for plot generation
-            y = self.u_ns[phase]
+            y = self.u_ns[phase_name]
             N = y.size
             x = np.arange(N)
             # Scatter plot
@@ -149,17 +150,17 @@ class HealthReportData(object):
             p.plot(x, smoothed, '-r', linewidth=4)
             # Nequil line
             ylim = p.get_ylim()
-            p.vlines(self.nequils[phase], *ylim, colors='b', linewidth=4)
+            p.vlines(self.nequils[phase_name], *ylim, colors='b', linewidth=4)
             p.set_ylim(*ylim)  # Reset limits in case vlines expanded them
             p.set_xlim([0, N])
             # Set text
-            p.set_title(phase + " phase", fontsize=20)
+            p.set_title(phase_name + " phase", fontsize=20)
             p.set_ylabel(r'$\Sigma_n u_n$ in kT', fontsize=20)
             p.set_xlabel('Iteration', fontsize=20)
             # Extra info in text boxes
-            subsample_string = 'Subsample Rate: {0:.2f}\nDecorelated Samples: {1:d}'.format(self.g_ts[phase], int(
-                np.floor(self.Neff_maxs[phase])))
-            if np.mean([0, N]) > self.nequils[phase]:
+            subsample_string = 'Subsample Rate: {0:.2f}\nDecorelated Samples: {1:d}'.format(self.g_ts[phase_name], int(
+                np.floor(self.Neff_maxs[phase_name])))
+            if np.mean([0, N]) > self.nequils[phase_name]:
                 txt_horz = 'right'
                 txt_xcoord = 0.95
             else:
@@ -207,17 +208,18 @@ class HealthReportData(object):
         decorrelation_figure = plt.figure()
         decorrelation_figure.subplots_adjust(wspace=0.2)
         plotkeys = [100 + (10 * self.nphases) + (i + 1) for i in range(self.nphases)]  # Horizonal distribution
-        for phase, plotid in zip(self.phases, plotkeys):
+        for phase_name, plotid in zip(self.phase_names, plotkeys):
             # Create subplot
+            analyzer = self.analyzers[phase_name]
             p = decorrelation_figure.add_subplot(plotid)
             # Determine toal number of iterations
-            N = self.iterations[phase]
+            N = self.iterations[phase_name]
             labels = ['Decorrelated', 'Correlated', 'Equilibration']
             colors = ['#2c7bb6', '#abd0e0', '#fdae61']  # blue, light blue, and orange
             explode = [0, 0, 0.0]
             # Determine the wedges
-            eq = self.nequils[phase]
-            decor = int(np.floor(self.Neff_maxs[phase]))
+            eq = self.nequils[phase_name]
+            decor = int(np.floor(self.Neff_maxs[phase_name]))
             cor = N - eq - decor
             dat = np.array([decor, cor, eq]) / float(N)
             if dat[0] <= decorrelation_threshold:
@@ -236,7 +238,7 @@ class HealthReportData(object):
             for tx in txt:  # This is the only way I have found to adjust the label font size
                 tx.set_fontsize(18)
             p.axis('equal')
-            p.set_title(phase + " phase", fontsize=20, y=1.05)
+            p.set_title(phase_name + " phase", fontsize=20, y=1.05)
             # Generate warning if need be
             if dat[0] <= decorrelation_threshold:
                 p.text(
@@ -306,8 +308,9 @@ class HealthReportData(object):
             cmap = plt.get_cmap("Blues")
         else:
             cmap = LinearSegmentedColormap('BlueWarnRed', cdict)
-        for phase, subplot in zip(self.phases, subplots):
-            mixing_data, mu = analyze.generate_mixing_statistics(self.ncfiles[phase], nequil=self.nequils[phase])
+        for phase_name, subplot in zip(self.phase_names, subplots):
+            analyzer = self.analyzers[phase_name]
+            mixing_data, mu = analyzer.generate_mixing_statistics(number_equilibrated=self.nequils[phase_name])
             # Without vmin/vmax, the image normalizes the values to mixing_data.max which screws up the warning colormap
             # Can also use norm=NoNorm(), but that makes the colorbar manipulation fail
             output_image = subplot.imshow(mixing_data, aspect='equal', cmap=cmap, vmin=0, vmax=1)
@@ -327,7 +330,7 @@ class HealthReportData(object):
             ticks = np.linspace(lbound, ubound, nticks)
             cbar.set_ticks(ticks)
             # Labels
-            title_txt = phase + " phase" + "\n"
+            title_txt = phase_name + " phase" + "\n"
             title_txt += "Perron eigenvalue {0:9.5f}\nState equilibration timescale ~ {1:.1f} iterations".format(
                 mu[1], 1.0 / (1.0 - mu[1]))
             subplot.set_title(title_txt, fontsize=20, y=1.05)
@@ -370,9 +373,10 @@ class HealthReportData(object):
             plot_grid = gridspec.GridSpec(1, 2)
             plt.rcParams['figure.figsize'] = 20, 8 * 3
         replica_figure = plt.figure()
-        for i, phase in enumerate(self.phases):
+        for i, phase_name in enumerate(self.phase_names):
             # Gather state NK
-            state_nk = self.ncfiles[phase].variables['states'][:, :]
+            reporter = self.analyzers[phase_name].reporter
+            state_nk = reporter.read_replica_thermodynamic_states()[:, :]
             N, K = state_nk.shape
             # Create subgrid
             sub_grid = gridspec.GridSpecFromSubplotSpec(K, 1, subplot_spec=plot_grid[i])
@@ -390,7 +394,7 @@ class HealthReportData(object):
                     plot.set_xticks([])
                 plot.set_ylabel('{}'.format(k))
                 if k == 0:  # Title
-                    plot.set_title('{} phase'.format(phase), fontsize=20)
+                    plot.set_title('{} phase'.format(phase_name), fontsize=20)
         self._replica_mixing_run = True
         return replica_figure
 
@@ -399,51 +403,22 @@ class HealthReportData(object):
             raise RuntimeError("Cannot run free energy without first running the equilibration. Please run the "
                                "corresponding function/cell first!")
         data = dict()
-        for phase in self.phases:
-            ncfile = self.ncfiles[phase]
-            DeltaF_restraints = 0.0
-            if 'metadata' in ncfile.groups:
-                # Read phase direction and standard state correction free energy.
-                # Yank sets correction to 0 if there are no restraints
-                DeltaF_restraints = ncfile.groups['metadata'].variables['standard_state_correction'][0]
-
-            # Extract Energies
-            (u_kln, N_k, u_n) = analyze.extract_ncfile_energies(ncfile, ndiscard=self.nequils[phase], g=self.g_ts[phase])
-
-            # Create MBAR object to use for free energy and entropy states
-            mbar = analyze.initialize_MBAR(ncfile, u_kln=u_kln, N_k=N_k)
-
-            # Estimate free energies, use fully interacting state if present
-            (Deltaf_ij, dDeltaf_ij) = analyze.estimate_free_energies(ncfile, mbar=mbar)
-
-            # Estimate average enthalpies
-            (DeltaH_i, dDeltaH_i) = analyze.estimate_enthalpies(ncfile, mbar=mbar)
-
-            # Accumulate free energy differences
-            entry = dict()
-            entry['DeltaF'] = Deltaf_ij[0, -1]
-            entry['dDeltaF'] = dDeltaf_ij[0, -1]
-            entry['DeltaH'] = DeltaH_i[0, -1]
-            entry['dDeltaH'] = dDeltaH_i[0, -1]
-            entry['DeltaF_restraints'] = DeltaF_restraints
-            data[phase] = entry
-
-            # Get temperatures.
-            ncvar = ncfile.groups['thermodynamic_states'].variables['temperatures']
-            temperature = ncvar[0] * units.kelvin
-            kT = kB * temperature
+        for phase_name in self.phase_names:
+            analyzer = self.analyzers[phase_name]
+            data[phase_name] = analyzer.analyze_phase()
+            kT = analyzer.kT
 
         # Compute free energy and enthalpy
         DeltaF = 0.0
         dDeltaF = 0.0
         DeltaH = 0.0
         dDeltaH = 0.0
-        for phase in self.phases:
-            sign = self.signs[phase]
-            DeltaF -= sign * (data[phase]['DeltaF'] + data[phase]['DeltaF_restraints'])
-            dDeltaF += data[phase]['dDeltaF'] ** 2
-            DeltaH -= sign * (data[phase]['DeltaH'] + data[phase]['DeltaF_restraints'])
-            dDeltaH += data[phase]['dDeltaH'] ** 2
+        for phase_name in self.phase_names:
+            sign = self.signs[phase_name]
+            DeltaF -= sign * (data[phase_name]['DeltaF'] + data[phase_name]['DeltaF_restraints'])
+            dDeltaF += data[phase_name]['dDeltaF'] ** 2
+            DeltaH -= sign * (data[phase_name]['DeltaH'] + data[phase_name]['DeltaF_restraints'])
+            dDeltaH += data[phase_name]['dDeltaH'] ** 2
         dDeltaF = np.sqrt(dDeltaF)
         dDeltaH = np.sqrt(dDeltaH)
 
