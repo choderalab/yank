@@ -1416,6 +1416,11 @@ class ReplicaExchange(object):
         Contrarily to `run()`, this will extend the number of iterations past
         `number_of_iteration` if requested.
 
+        Parameters
+        ----------
+        n_iterations : int
+           The number of iterations to run.
+
         """
         if self._iteration + n_iterations > self._number_of_iterations:
             self.number_of_iterations = self._iteration + n_iterations
@@ -1453,7 +1458,9 @@ class ReplicaExchange(object):
         return r
 
     def __del__(self):
-        mpi.run_single_node(0, self._reporter.close)
+        # The reporter could be None if ReplicaExchange was not created.
+        if self._reporter is not None:
+            mpi.run_single_node(0, self._reporter.close)
 
     # -------------------------------------------------------------------------
     # Internal-usage.
@@ -1654,7 +1661,7 @@ class ReplicaExchange(object):
         # Compute the initial energy of the system for logging.
         initial_energy = thermodynamic_state.reduced_potential(context)
         logger.debug('Replica {}/{}: initial energy {:8.3f}kT'.format(
-            replica_id, self.n_replicas, initial_energy))
+            replica_id + 1, self.n_replicas, initial_energy))
 
         # Minimize energy.
         openmm.LocalEnergyMinimizer.minimize(context, tolerance, max_iterations)
@@ -1665,7 +1672,7 @@ class ReplicaExchange(object):
         # Compute the final energy of the system for logging.
         final_energy = thermodynamic_state.reduced_potential(sampler_state)
         logger.debug('Replica {}/{}: final energy {:8.3f}kT'.format(
-            replica_id, self.n_replicas, final_energy))
+            replica_id + 1, self.n_replicas, final_energy))
 
         # Return minimized positions.
         return sampler_state.positions
