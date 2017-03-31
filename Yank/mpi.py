@@ -99,11 +99,11 @@ def get_mpicomm():
     if not use_mpi:
         logger.debug('Cannot find MPI environment. MPI disabled.')
         get_mpicomm._mpicomm = None
+        get_mpicomm._is_initialized = True
         return get_mpicomm._mpicomm
 
     # Initialize MPI
     from mpi4py import MPI
-    MPI.COMM_WORLD.barrier()
     mpicomm = MPI.COMM_WORLD
 
     # Override sys.excepthook to abort MPI on exception
@@ -160,7 +160,7 @@ def run_single_node(rank, task, *args, **kwargs):
     ----------------
     *args
         The ordered arguments to pass to task.
-    *kwargs
+    **kwargs
         The keyword arguments to pass to task.
 
     Returns
