@@ -136,7 +136,7 @@ class _ObservablesRegistry(object):
         Observables which are defined by the phase as a whole, and not defined by any 1 or more states
         e.g. Standard State Correction
         """
-        return 'standard_state_correction'
+        return ('standard_state_correction',)
 
     ##########################################
     # Define the observables which carry error
@@ -597,22 +597,22 @@ class RepexPhase(YankPhaseAnalyzer):
         """
         logger.info("Reading energies...")
         energy_thermodynamic_states, energy_unsampled_states = self._reporter.read_energies()
-        niterations, nstates, _ = energy_thermodynamic_states.shape
-        _, n_unsampled_states, _ = energy_unsampled_states.shape
-        energy_matrix_replica = np.zeros([nstates, nstates, niterations], np.float64)
-        unsampled_energy_matrix_replica = np.zeros([nstates, n_unsampled_states, niterations], np.float64)
-        for n in range(niterations):
+        n_iterations, _, n_states = energy_thermodynamic_states.shape
+        _, _, n_unsampled_states = energy_unsampled_states.shape
+        energy_matrix_replica = np.zeros([n_states, n_states, n_iterations], np.float64)
+        unsampled_energy_matrix_replica = np.zeros([n_states, n_unsampled_states, n_iterations], np.float64)
+        for n in range(n_iterations):
             energy_matrix_replica[:, :, n] = energy_thermodynamic_states[n, :, :]
             unsampled_energy_matrix_replica[:, :, n] = energy_unsampled_states[n, :, :]
         logger.info("Done.")
 
         logger.info("Deconvoluting replicas...")
-        energy_matrix = np.zeros([nstates, nstates, niterations], np.float64)
-        unsampled_energy_matrix = np.zeros([nstates, n_unsampled_states, niterations], np.float64)
-        for iteration in range(niterations):
+        energy_matrix = np.zeros([n_states, n_states, n_iterations], np.float64)
+        unsampled_energy_matrix = np.zeros([n_states, n_unsampled_states, n_iterations], np.float64)
+        for iteration in range(n_iterations):
             state_indices = self._reporter.read_replica_thermodynamic_states(iteration)
-            energy_matrix[state_indices, :, iteration] = energy_matrix_replica[iteration, :, :]
-            unsampled_energy_matrix[state_indices, :, iteration] = unsampled_energy_matrix_replica[iteration, :, :]
+            energy_matrix[state_indices, :, iteration] = energy_matrix_replica[:, :, iteration]
+            unsampled_energy_matrix[state_indices, :, iteration] = unsampled_energy_matrix_replica[:, :, iteration]
         logger.info("Done.")
 
         return energy_matrix, unsampled_energy_matrix
@@ -641,7 +641,7 @@ class RepexPhase(YankPhaseAnalyzer):
         _, nunsampled, _ = unsampled_energy_matrix.shape
         # Subsample data to obtain uncorrelated samples
         N_k = np.zeros(nstates, np.int32)
-        N = len(niterations)  # number of uncorrelated samples
+        N = niterations  # number of uncorrelated samples
         N_k[:] = N
         mbar_ready_energy_matrix = sampled_energy_matrix
         if nunsampled > 0:
@@ -773,7 +773,7 @@ class RepexPhase(YankPhaseAnalyzer):
 
         """
         if self._computed_observables['standard_state_correction'] is None:
-            ssc = self._reporter.get_dict('metadata')['standard_state_correction']
+            ssc = self._reporter.read_dict('metadata')['standard_state_correction']
             self._computed_observables['standard_state_correction'] = ssc
         return self._computed_observables['standard_state_correction']
 
@@ -1135,7 +1135,7 @@ def analyze_directory(source_directory):
         dDeltaF * kT / units.kilocalories_per_mole))
     logger.info("")
 
-    for phase in phases:
+    for phase in phase_names:
         logger.info("DeltaG {:<25} : {:16.3f} +- {:.3f} kT".format(phase, data[phase]['DeltaF'],
                                                                    data[phase]['dDeltaF']))
         if data[phase]['DeltaF_standard_state_correction'] != 0.0:
