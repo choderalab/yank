@@ -2419,6 +2419,20 @@ class YamlBuilder(object):
         with open(analysis_script_path, 'w') as f:
             yaml.dump(analysis, f)
 
+    @mpi.on_single_node(rank=0, sync_nodes=True)
+    def _safe_makedirs(self, directory):
+        """Create directory and avoid race conditions.
+
+        This is executed only on node 0 to avoid race conditions. The
+        processes are synchronized at the end so that the non-0 nodes
+        won't raise an IO error when trying to write a file in a non-
+        existing directory.
+
+        """
+        # TODO when dropping Python 2, remove this and use os.makedirs(, exist_ok=True)
+        if not os.path.isdir(directory):
+            os.makedirs(directory)
+
     def _build_experiment(self, experiment, experiment_dir):
         """Prepare and run a single experiment.
 
@@ -2446,8 +2460,7 @@ class YamlBuilder(object):
 
         # Determine output directory and create it if it doesn't exist.
         results_dir = self._get_experiment_dir(experiment_dir)
-        if not os.path.isdir(results_dir):
-            os.makedirs(results_dir)
+        self._safe_makedirs(results_dir)
 
         # Configure logger file for this experiment.
         utils.config_root_logger(self.options['verbose'],
