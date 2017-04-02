@@ -128,7 +128,7 @@ def general_restraint_run(options):
         options['output_directory'] = output_directory
         # run both setup and experiment
         yaml_builder = yamlbuild.YamlBuilder(restraint_test_yaml % options)
-        yaml_builder.build_experiments()
+        yaml_builder.run_experiments()
         # Estimate Free Energies
         ncfile_path = os.path.join(output_directory, 'experiments', 'complex.nc')
         ncfile = netcdf.Dataset(ncfile_path, 'r')
