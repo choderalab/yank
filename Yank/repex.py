@@ -453,13 +453,8 @@ class Reporter(object):
             energy_unsampled_states = self._storage.variables['unsampled_energies'][iteration, :, :]
         except KeyError:
             # There are no unsampled thermodynamic states.
-            if len(energy_thermodynamic_states.shape) == 2:  # Case when iteration is an int
-                energy_unsampled_states = np.zeros((len(energy_thermodynamic_states), 0))
-            else:
-                # Ensure that energy_unsampled_states has the same shape as energy_thermodynamic_states
-                # .shape = (len(iteration slice), n_sampled_states, 0)
-                energy_unsampled_states = np.zeros((energy_thermodynamic_states.shape[0],
-                                                    len(energy_thermodynamic_states), 0))
+            unsampled_shape = energy_thermodynamic_states.shape[:-1] + (0,)
+            energy_unsampled_states = np.zeros(unsampled_shape)
         return energy_thermodynamic_states, energy_unsampled_states
 
     def write_energies(self, energy_thermodynamic_states, energy_unsampled_states, iteration):
