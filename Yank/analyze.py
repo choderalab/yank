@@ -398,6 +398,7 @@ class YankPhaseAnalyzer(ABC):
         cast_data = np.asarray(data)
         data_shape = cast_data.shape
         # Since we already have g, we can just pass any appropriate shape to the subsample function
+        # TODO: why do we pass an array of zeros to subsampleCorrelatedData?
         indices = timeseries.subsampleCorrelatedData(np.zeros(data_shape[axis]), g=subsample_rate)
         subsampled_data = np.take(cast_data, indices, axis=axis)
         return subsampled_data
@@ -780,12 +781,22 @@ class RepexPhase(YankPhaseAnalyzer):
     def _create_mbar_from_scratch(self):
         u_kln, unsampled_u_kln = self.extract_energies()
         u_n = self.get_timeseries(u_kln)
-        number_equilibrated, g_t, Neff_max = self.get_equilibration_data(u_n)
+
+        # Discard equilibration samples.
+        # TODO: if we include u_n[0] in the equilibration detection, number_equilibrated is 0. Find out why.
+        number_equilibrated, g_t, Neff_max = self.get_equilibration_data(u_n[1:])
         self._equilibration_data = number_equilibrated, g_t, Neff_max
         u_kln = self.remove_unequilibrated_data(u_kln, number_equilibrated, -1)
         unsampled_u_kln = self.remove_unequilibrated_data(unsampled_u_kln, number_equilibrated, -1)
-        u_kln = self.decorrelate_data(u_kln, g_t, -1)
-        unsampled_u_kln = self.decorrelate_data(unsampled_u_kln, g_t, -1)
+        u_n = self.remove_unequilibrated_data(u_n, number_equilibrated, -1)
+
+        # TODO ask Levi: these two lines below are different than what we used to do. For now I replaced them.
+        # u_kln = self.decorrelate_data(u_kln, g_t, -1)
+        # unsampled_u_kln = self.decorrelate_data(unsampled_u_kln, g_t, -1)
+        indices = timeseries.subsampleCorrelatedData(u_n, g=g_t) # indices of uncorrelated samples
+        u_kln = u_kln[:, :, indices]
+        unsampled_u_kln = unsampled_u_kln[:, :, indices]
+
         mbar_ukln, mbar_N_k = self._prepare_mbar_input_data(u_kln, unsampled_u_kln)
         self._create_mbar(mbar_ukln, mbar_N_k)
 
