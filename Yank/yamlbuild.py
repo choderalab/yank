@@ -1347,7 +1347,12 @@ class YamlBuilder(object):
         # the states with expanded cutoff.
         platform = self._configure_platform(self.options['platform'],
                                             self.options['precision'])
-        mmtools.cache.global_context_cache.platform = platform
+        try:
+            mmtools.cache.global_context_cache.platform = platform
+        except RuntimeError:
+            # The cache has been already used. Empty it before switching platform.
+            mmtools.cache.global_context_cache.empty()
+            mmtools.cache.global_context_cache.platform = platform
         mmtools.cache.global_context_cache.capacity = 3
 
         # Initialize and configure database with molecules, solvents and systems
@@ -2197,7 +2202,8 @@ class YamlBuilder(object):
 
         return is_supported
 
-    def _configure_platform(self, platform_name, platform_precision):
+    @classmethod
+    def _configure_platform(cls, platform_name, platform_precision):
         """
         Configure the platform to be used for simulation for the given precision.
 
@@ -2246,7 +2252,7 @@ class YamlBuilder(object):
             if platform_name == 'CUDA':
                 platform_precision = 'mixed'
             elif platform_name == 'OpenCL':
-                if self._opencl_device_support_precision('mixed'):
+                if cls._opencl_device_support_precision('mixed'):
                     platform_precision = 'mixed'
                 else:
                     logger.info("This device does not support double precision for OpenCL. "
@@ -2263,7 +2269,7 @@ class YamlBuilder(object):
                 platform.setPropertyDefaultValue('Precision', platform_precision)
             elif platform_name == 'OpenCL':
                 # Some OpenCL devices do not support double precision so we need to test it
-                if self._opencl_device_support_precision(platform_precision):
+                if cls._opencl_device_support_precision(platform_precision):
                     platform.setPropertyDefaultValue('Precision', platform_precision)
                 else:
                     raise RuntimeError('This device does not support double precision for OpenCL.')
