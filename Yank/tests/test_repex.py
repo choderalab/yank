@@ -689,10 +689,6 @@ class TestReplicaExchange(object):
             repex.create(thermodynamic_states, sampler_states, storage=storage_path,
                          unsampled_thermodynamic_states=unsampled_states)
 
-            # Save original options.
-            reporter = Reporter(storage_path, open_mode='r')
-            options = reporter.read_dict('options')
-
             # Update options and check the storage is synchronized.
             repex.number_of_iterations = 123
             repex.replica_mixing_scheme = 'none'
@@ -706,6 +702,7 @@ class TestReplicaExchange(object):
 
             mpicomm = mpi.get_mpicomm()
             if mpicomm is None or mpicomm.rank == 0:
+                reporter = Reporter(storage_path, open_mode='r')
                 restored_options = reporter.read_dict('options')
                 assert restored_options['number_of_iterations'] == 123
                 assert restored_options['replica_mixing_scheme'] == 'none'
