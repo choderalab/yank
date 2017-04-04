@@ -149,7 +149,6 @@ setup(
         'openmmtools',
         'docopt>=0.6.1',
         'netcdf4',
-        'alchemy',
         'schema',
         'openmoltools',
         'mdtraj',

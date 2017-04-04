@@ -25,7 +25,6 @@ requirements:
     - docopt
     - openmoltools
     - sphinxcontrib-bibtex
-    - alchemy
     - schema >=0.6.2
     #- gcc 4.8.2 # [linux]
     #- gcc 4.8.2 # [osx]
@@ -48,7 +47,6 @@ requirements:
     - pyyaml
     - clusterutils
     - sphinxcontrib-bibtex
-    - alchemy
     - schema >=0.6.2
     #- libgcc
 
