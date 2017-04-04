@@ -28,7 +28,7 @@ from simtk import openmm, unit
 import openmmtools as mmtools
 from openmmtools import testsystems
 
-from yank import mpi, utils
+from yank import mpi, utils, analyze
 from yank.repex import Reporter, ReplicaExchange, _DictYamlLoader
 
 # ==============================================================================
@@ -184,36 +184,11 @@ def test_replica_exchange(verbose=False, verbose_simulation=False):
         utils.config_root_logger(verbose_simulation)
         simulation.run()
 
-        # Retrieve extant analysis object.
-        # TODO refactor here with new analysis code.
-        online_analysis = simulation.analysis
-
-        # Analyze simulation to compute free energies.
-        analysis = simulation.analyze()
-
-        # Check if online analysis is close to final analysis.
-        error = np.abs(online_analysis['Delta_f_ij'] - analysis['Delta_f_ij'])
-        derror = (online_analysis['dDelta_f_ij']**2 + analysis['dDelta_f_ij']**2)
-        indices = np.where(derror > 0.0)
-        nsigma = np.zeros([nstates,nstates], np.float32)
-        nsigma[indices] = error[indices] / derror[indices]
-        MAX_SIGMA = 6.0 # maximum allowed number of standard errors
-        if np.any(nsigma > MAX_SIGMA):
-            print("Delta_f_ij from online analysis")
-            print(online_analysis['Delta_f_ij'])
-            print("Delta_f_ij from final analysis")
-            print(analysis['Delta_f_ij'])
-            print("error")
-            print(error)
-            print("derror")
-            print(derror)
-            print("nsigma")
-            print(nsigma)
-            raise Exception("Dimensionless free energy differences between online and final analysis exceeds MAX_SIGMA of %.1f" % MAX_SIGMA)
+        # Create Analyzer.
+        analyzer = analyze.get_analyzer(storage_path)
 
         # TODO: Check if deviations exceed tolerance.
-        Delta_f_ij = analysis['Delta_f_ij']
-        dDelta_f_ij = analysis['dDelta_f_ij']
+        Delta_f_ij, dDelta_f_ij = analyzer.get_free_energy()
         error = np.abs(Delta_f_ij - Delta_f_ij_analytical)
         indices = np.where(dDelta_f_ij > 0.0)
         nsigma = np.zeros([nstates,nstates], np.float32)
@@ -232,12 +207,13 @@ def test_replica_exchange(verbose=False, verbose_simulation=False):
             print(nsigma)
             raise Exception("Dimensionless free energy difference exceeds MAX_SIGMA of %.1f" % MAX_SIGMA)
 
-        error = analysis['Delta_u_ij'] - Delta_u_ij_analytical
+        Delta_u_ij, dDelta_u_ij = analyzer.get_enthalpy()
+        error = Delta_u_ij - Delta_u_ij_analytical
         nsigma = np.zeros([nstates,nstates], np.float32)
         nsigma[indices] = error[indices] / dDelta_f_ij[indices]
         if np.any(nsigma > MAX_SIGMA):
             print("Delta_u_ij")
-            print(analysis['Delta_u_ij'])
+            print(Delta_u_ij)
             print("Delta_u_ij_analytical")
             print(Delta_u_ij_analytical)
             print("error")
