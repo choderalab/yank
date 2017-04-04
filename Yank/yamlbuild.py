@@ -1044,7 +1044,8 @@ class YamlPhaseFactory(object):
             dispersion_cutoff = self.options['anisotropic_dispersion_cutoff']
         else:
             dispersion_cutoff = None
-        alchemical_phase.create(**create_kwargs, anisotropic_dispersion_cutoff=dispersion_cutoff)
+        alchemical_phase.create(anisotropic_dispersion_cutoff=dispersion_cutoff,
+                                **create_kwargs)
         return alchemical_phase
 
     def initialize_alchemical_phase(self):
