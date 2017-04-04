@@ -24,6 +24,7 @@ import yaml
 import numpy as np
 import scipy.integrate
 from simtk import openmm, unit
+from nose.plugins.attrib import attr
 
 import openmmtools as mmtools
 from openmmtools import testsystems
@@ -124,6 +125,7 @@ def compute_harmonic_oscillator_expectations(K, temperature):
 # TEST ANALYSIS REPLICA EXCHANGE
 # ==============================================================================
 
+@attr('slow')  # Skip on Travis-CI
 def test_replica_exchange(verbose=False, verbose_simulation=False):
     """Free energies and average potential energies of a 3D harmonic oscillator are correctly computed."""
     # Define mass of carbon atom.
