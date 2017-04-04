@@ -27,8 +27,8 @@ from simtk import unit, openmm
 from simtk.openmm.app import PDBFile, AmberPrmtopFile
 from schema import Schema, And, Or, Use, Optional, SchemaError
 
-from yank import utils, pipeline, mpi, restraints, repex
-from yank.yank import AlchemicalPhase, Topography
+from . import utils, pipeline, mpi, restraints, repex
+from .yank import AlchemicalPhase, Topography
 
 logger = logging.getLogger(__name__)
 

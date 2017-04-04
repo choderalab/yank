@@ -26,7 +26,7 @@ from schema import Optional, Use
 import openmmtools as mmtools
 from openmoltools.utils import unwrap_py2  # Shortcuts for other modules
 
-from yank import mpi
+from . import mpi
 
 #========================================================================================
 # Logging functions

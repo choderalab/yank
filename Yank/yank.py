@@ -20,7 +20,6 @@ import os
 import abc
 import copy
 import time
-import inspect
 import logging
 import importlib
 import collections
@@ -31,8 +30,8 @@ import numpy as np
 import openmmtools as mmtools
 from simtk import unit, openmm
 
-from yank import utils, pipeline, repex, mpi
-from yank.restraints import RestraintState, RestraintParameterError, V0
+from . import utils, pipeline, repex, mpi
+from .restraints import RestraintState, RestraintParameterError, V0
 
 logger = logging.getLogger(__name__)
 

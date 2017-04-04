@@ -53,7 +53,7 @@ import netCDF4 as netcdf
 import openmmtools as mmtools
 from openmmtools.states import ThermodynamicState
 
-from yank import utils, mpi, version
+from . import utils, mpi, version
 
 logger = logging.getLogger(__name__)
 
