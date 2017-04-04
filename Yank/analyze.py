@@ -790,7 +790,6 @@ class RepexPhase(YankPhaseAnalyzer):
         self._equilibration_data = number_equilibrated, g_t, Neff_max
         u_kln = self.remove_unequilibrated_data(u_kln, number_equilibrated, -1)
         unsampled_u_kln = self.remove_unequilibrated_data(unsampled_u_kln, number_equilibrated, -1)
-        u_n = self.remove_unequilibrated_data(u_n, number_equilibrated, -1)
 
         # decorrelate_data subsample the energies only based on g_t so both ends up with same indices.
         u_kln = self.decorrelate_data(u_kln, g_t, -1)
