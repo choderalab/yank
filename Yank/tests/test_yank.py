@@ -202,9 +202,11 @@ class TestAlchemicalPhase(object):
                 restraint_cls = available_restraints[np.random.randint(0, len(available_restraints))]
                 restraint = restraint_cls()
                 protocol = self.restrained_protocol
+                test_name += ' with restraint {}'.format(restraint_cls.__name__)
             else:
                 restraint = None
                 protocol = self.protocol
+            print('Testing', test_name)
 
             alchemical_phase = AlchemicalPhase(sampler=ReplicaExchange())
             with self.temporary_storage_path() as storage_path:
@@ -212,11 +214,12 @@ class TestAlchemicalPhase(object):
                                         protocol, storage_path, restraint=restraint,
                                         anisotropic_dispersion_cutoff=correction_cutoff)
 
-                yield prepare_yield(self.check_protocol, test_name, alchemical_phase, protocol)
-                yield prepare_yield(self.check_standard_state_correction, test_name,
-                                    alchemical_phase, topography)
-                yield prepare_yield(self.check_expanded_states, test_name, alchemical_phase,
-                                    protocol, correction_cutoff)
+                self.check_protocol(alchemical_phase, protocol)
+                self.check_standard_state_correction(alchemical_phase, topography)
+                self.check_expanded_states(alchemical_phase, protocol, correction_cutoff)
+
+                # Free memory.
+                del alchemical_phase
 
     def test_default_alchemical_region(self):
         """The default alchemical region modify the correct system elements."""
@@ -351,7 +354,6 @@ class TestAlchemicalPhase(object):
             sampler_states = alchemical_phase._sampler.sampler_states
             new_diffs = [np.average(sampler_states[i].positions - sampler_states[i+1].positions)
                          for i in range(len(sampler_states) - 1)]
-            print(original_diffs, new_diffs)
             assert np.allclose(original_diffs, new_diffs)
 
     def test_randomize_ligand(self):
