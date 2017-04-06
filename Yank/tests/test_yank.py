@@ -175,7 +175,8 @@ class TestAlchemicalPhase(object):
 
         # Find all nonbonded forces and verify their cutoff.
         for state in unsampled_states:
-            for force in state.system.getForces():
+            system = state.system
+            for force in system.getForces():
                 try:
                     cutoff = force.getCutoffDistance()
                 except AttributeError:
@@ -214,9 +215,11 @@ class TestAlchemicalPhase(object):
                                         protocol, storage_path, restraint=restraint,
                                         anisotropic_dispersion_cutoff=correction_cutoff)
 
-                self.check_protocol(alchemical_phase, protocol)
-                self.check_standard_state_correction(alchemical_phase, topography)
-                self.check_expanded_states(alchemical_phase, protocol, correction_cutoff)
+                yield prepare_yield(self.check_protocol, test_name, alchemical_phase, protocol)
+                yield prepare_yield(self.check_standard_state_correction, test_name, alchemical_phase,
+                                    topography)
+                yield prepare_yield(self.check_expanded_states, test_name, alchemical_phase,
+                                    protocol, correction_cutoff)
 
                 # Free memory.
                 del alchemical_phase
