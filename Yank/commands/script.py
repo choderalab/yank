@@ -97,7 +97,7 @@ def dispatch(args):
         yaml_builder = YamlBuilder(yaml_source=yaml_path)
         if override:  # Parse the string present.
             yaml_builder.update_yaml(override)
-        yaml_builder.build_experiments()
+        yaml_builder.run_experiments()
         return True
 
     return False

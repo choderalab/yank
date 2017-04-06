@@ -6,15 +6,14 @@ YANK
 """
 
 # Define global version.
-from . import version #Needed for yank 3.X.
+from . import version  # Needed for yank 3.X.
 __version__ = version.version
 
 # Self module imports
 from . import utils
 from . import repex
-from . import sampling
 from . import restraints
 from . import pipeline
 from . import yamlbuild
 from . import analyze
-from .yank import Yank
+from .yank import Topography, AlchemicalPhase

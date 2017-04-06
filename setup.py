@@ -16,7 +16,7 @@ from Cython.Build import cythonize
 DOCLINES = __doc__.split("\n")
 
 ########################
-VERSION = "0.15.4"  # Primary base version of the build
+VERSION = "0.16.0"  # Primary base version of the build
 DEVBUILD = "0"      # Dev build status, Either None or Integer as string
 ISRELEASED = False  # Are we releasing this as a full cut?
 __version__ = VERSION
@@ -149,9 +149,10 @@ setup(
         'openmmtools',
         'docopt>=0.6.1',
         'netcdf4',
-        'alchemy',
         'schema',
         'openmoltools',
+        'mdtraj',
+        'pyyaml'
         ],
     ext_modules=cythonize(mixing_ext),
     entry_points={'console_scripts': ['yank = yank.cli:main']})

@@ -133,14 +133,6 @@ def test_expand_id_nodes():
                             'sys3': {'prmtopfile': 'mysystem.prmtop'}}
 
 
-def test_topology_serialization():
-    """Correct serialization of Topology objects."""
-    topology = testsystems.AlanineDipeptideImplicit().topology
-    topology_str = serialize_topology(topology)
-    deserialized_topology = deserialize_topology(topology_str)
-    assert mdtraj.Topology.from_openmm(topology) == deserialized_topology
-
-
 def test_generate_signature_schema():
     """Test generate_signature_schema() function."""
     def f(a, b, camelCase=True, none=None, quantity=3.0*unit.angstroms):
@@ -174,6 +166,7 @@ def test_get_keyword_args():
         pass
     expected = {'c': True, 'd': 3.0}
     assert expected == get_keyword_args(f)
+
 
 def test_validate_parameters():
     """Test validate_parameters function."""
@@ -246,6 +239,7 @@ def test_underscore_to_camelcase():
     for exp, case in zip(expected, cases):
         assert exp == underscore_to_camelcase(case)
 
+
 def test_quantity_from_string():
     """Test the quantity from string function to ensure output is as expected"""
     tests = [
@@ -255,9 +249,10 @@ def test_quantity_from_string():
         ('300 * kelvin',                           300*unit.kelvin), # Handle standard Quantity
         ('" 0.3 * kilojoules_per_mole / watt**3"', 0.3*unit.kilojoules_per_mole/unit.watt**3), # Handle division, exponent, nested string
         ('1*meter / (4*second)',                   0.25*unit.meter/unit.second), # Handle compound math and parenthesis
-        ('1 * watt**2 /((1* kelvin)**3 / gram))',  1*(unit.watt**2)*(unit.gram)/(unit.kelvin**3)) #Handle everything
+        ('1 * watt**2 /((1* kelvin)**3 / gram)',   1*(unit.watt**2)*(unit.gram)/(unit.kelvin**3)) #Handle everything
         ]
     assert all(expected == quantity_from_string(passed_string) for passed_string, expected in tests)
+
 
 def test_TLeap_script():
     """Test TLeap script creation."""

@@ -1,17 +1,17 @@
 #!/usr/bin/env python
 
-# =============================================================================================
+# =============================================================================
 # MODULE DOCSTRING
-# =============================================================================================
+# =============================================================================
 
 """
 Tools to build Yank experiments from a YAML configuration file.
 
 """
 
-# =============================================================================================
+# =============================================================================
 # GLOBAL IMPORTS
-# =============================================================================================
+# =============================================================================
 
 import os
 import re
@@ -22,16 +22,13 @@ import collections
 
 import numpy as np
 import openmoltools as omt
+import openmmtools as mmtools
 from simtk import unit, openmm
 from simtk.openmm.app import PDBFile, AmberPrmtopFile
-from alchemy import AlchemicalState, AbsoluteAlchemicalFactory
 from schema import Schema, And, Or, Use, Optional, SchemaError
 
-from . import utils
-from . import pipeline
-from .yank import Yank
-from .repex import ReplicaExchange, ThermodynamicState
-from .sampling import ModifiedHamiltonianExchange
+from . import utils, pipeline, mpi, restraints, repex
+from .yank import AlchemicalPhase, Topography
 
 logger = logging.getLogger(__name__)
 
@@ -42,106 +39,9 @@ logger = logging.getLogger(__name__)
 HIGHEST_VERSION = '1.2'  # highest version of YAML syntax
 
 
-# =============================================================================================
+# =============================================================================
 # UTILITY FUNCTIONS
-# =============================================================================================
-
-def compute_min_dist(mol_positions, *args):
-    """Compute the minimum distance between a molecule and a set of other molecules.
-
-    All the positions must be expressed in the same unit of measure.
-
-    Parameters
-    ----------
-    mol_positions : numpy.ndarray
-        An Nx3 array where, N is the number of atoms, containing the positions of
-        the atoms of the molecule for which we want to compute the minimum distance
-        from the others
-
-    Other parameters
-    ----------------
-    args
-        A series of numpy.ndarrays containing the positions of the atoms of the other
-        molecules
-
-    Returns
-    -------
-    min_dist : float
-        The minimum distance between mol_positions and the other set of positions
-
-    """
-    for pos1 in args:
-        # Compute squared distances
-        # Each row is an array of distances from a mol2 atom to all mol1 atoms
-        distances2 = np.array([((pos1 - pos2)**2).sum(1) for pos2 in mol_positions])
-
-        # Find closest atoms and their distance
-        min_idx = np.unravel_index(distances2.argmin(), distances2.shape)
-        try:
-            min_dist = min(min_dist, np.sqrt(distances2[min_idx]))
-        except UnboundLocalError:
-            min_dist = np.sqrt(distances2[min_idx])
-    return min_dist
-
-
-def compute_dist_bound(mol_positions, *args):
-    """Compute minimum and maximum distances between a molecule and a set of
-    other molecules.
-
-    All the positions must be expressed in the same unit of measure.
-
-    Parameters
-    ----------
-    mol_positions : numpy.ndarray
-        An Nx3 array where, N is the number of atoms, containing the positions of
-        the atoms of the molecule for which we want to compute the minimum distance
-        from the others
-
-    Other parameters
-    ----------------
-    args
-        A series of numpy.ndarrays containing the positions of the atoms of the other
-        molecules
-
-    Returns
-    -------
-    min_dist : float
-        The minimum distance between mol_positions and the atoms of the other positions
-    max_dist : float
-        The maximum distance between mol_positions and the atoms of the other positions
-
-    Examples
-    --------
-    >>> mol1_pos = np.array([[-1, -1, -1], [1, 1, 1]], np.float)
-    >>> mol2_pos = np.array([[2, 2, 2], [2, 4, 5]], np.float)  # determine min dist
-    >>> mol3_pos = np.array([[3, 3, 3], [3, 4, 5]], np.float)  # determine max dist
-    >>> min_dist, max_dist = compute_dist_bound(mol1_pos, mol2_pos, mol3_pos)
-    >>> min_dist == np.linalg.norm(mol1_pos[1] - mol2_pos[0])
-    True
-    >>> max_dist == np.linalg.norm(mol1_pos[1] - mol3_pos[1])
-    True
-
-    """
-    min_dist = None
-
-    for arg_pos in args:
-        # Compute squared distances of all atoms. Each row is an array
-        # of distances from an atom in arg_pos to all the atoms in arg_pos
-        distances2 = np.array([((mol_positions - atom)**2).sum(1) for atom in arg_pos])
-
-        # Find distances of each arg_pos atom to mol_positions
-        distances2 = np.amin(distances2, axis=1)
-
-        # Find closest and distant atom
-        if min_dist is None:
-            min_dist = np.sqrt(distances2.min())
-            max_dist = np.sqrt(distances2.max())
-        else:
-            min_dist = min(min_dist, np.sqrt(distances2.min()))
-            max_dist = max(max_dist, np.sqrt(distances2.max()))
-
-    return min_dist, max_dist
-
+# =============================================================================
 
 def remove_overlap(mol_positions, *args, **kwargs):
     """Remove any eventual overlap between a molecule and a set of others.
@@ -181,13 +81,12 @@ def remove_overlap(mol_positions, *args, **kwargs):
     min_distance = kwargs.get('min_distance', 1.0)
 
     # Try until we have a non-overlapping conformation w.r.t. all fixed molecules
-    while compute_min_dist(x, *args) <= min_distance:
+    while pipeline.compute_min_dist(x, *args) <= min_distance:
         # Compute center of geometry
         x0 = x.mean(0)
 
         # Randomize orientation of ligand.
-        q = ModifiedHamiltonianExchange._generate_uniform_quaternion()
-        Rq = ModifiedHamiltonianExchange._rotation_matrix_from_quaternion(q)
+        Rq = mmtools.mcmc.MCRotationMove.generate_random_rotation_matrix()
         x = ((Rq * np.matrix(x - x0).T).T + x0).A
 
         # Choose a random displacement vector and translate
@@ -236,19 +135,18 @@ def pack_transformation(mol1_pos, mol2_pos, min_distance, max_distance):
 
     # Try until we have a non-overlapping conformation w.r.t. all fixed molecules
     i = 0
-    min_dist, max_dist = compute_dist_bound(mol1_pos, mol2_pos)
+    min_dist, max_dist = pipeline.compute_min_max_dist(mol1_pos, mol2_pos)
     while min_dist < min_distance or max_distance <= max_dist:
         # Select random atom of fixed molecule and use it to propose new x0 position
         mol1_atom_idx = np.random.random_integers(0, len(mol1_pos) - 1)
         translation = mol1_pos[mol1_atom_idx] + max_distance * np.random.randn(3) - x0
 
         # Generate random rotation matrix
-        q = ModifiedHamiltonianExchange._generate_uniform_quaternion()
-        Rq = ModifiedHamiltonianExchange._rotation_matrix_from_quaternion(q)
+        Rq = mmtools.mcmc.MCRotationMove.generate_random_rotation_matrix()
 
         # Apply random transformation and test
         x = ((Rq * np.matrix(mol2_pos - x0).T).T + x0).A + translation
-        min_dist, max_dist = compute_dist_bound(mol1_pos, x)
+        min_dist, max_dist = pipeline.compute_min_max_dist(mol1_pos, x)
 
         # Check n iterations
         i += 1
@@ -370,9 +268,9 @@ def update_nested_dict(original, updated):
     return new
 
 
-# ============================================================================================
+# ==============================================================================
 # UTILITY CLASSES
-# ============================================================================================
+# ==============================================================================
 
 class YamlParseError(Exception):
     """Represent errors occurring during parsing of Yank YAML file."""
@@ -423,6 +321,10 @@ class YankDumper(yaml.Dumper):
         """YAML representer OrderedDict nodes."""
         return dumper.represent_mapping(u'!Ordered', data)
 
+
+# ==============================================================================
+# SETUP DATABASE
+# ==============================================================================
 
 class SetupDatabase:
     """Provide utility functions to set up systems and molecules.
@@ -1102,11 +1004,148 @@ class SetupDatabase:
             logger.warning('TLeap: ' + warning)
 
 
-#=============================================================================================
+# ==============================================================================
 # BUILDER CLASS
-#=============================================================================================
+# ==============================================================================
 
-class YamlBuilder:
+class YamlPhaseFactory(object):
+
+    DEFAULT_OPTIONS = {
+        'anisotropic_dispersion_correction': True,
+        'anisotropic_dispersion_cutoff': 16.0*unit.angstroms,
+        'minimize': True,
+        'minimize_tolerance': 1.0 * unit.kilojoules_per_mole/unit.nanometers,
+        'minimize_max_iterations': 0,
+        'randomize_ligand': False,
+        'randomize_ligand_sigma_multiplier': 2.0,
+        'randomize_ligand_close_cutoff': 1.5 * unit.angstrom,
+        'number_of_equilibration_iterations': 0,
+        'equilibration_timestep': 1.0 * unit.femtosecond,
+    }
+
+    def __init__(self, sampler, thermodynamic_state, sampler_states, topography,
+                 protocol, storage, restraint=None, alchemical_regions=None,
+                 alchemical_factory=None, metadata=None, **options):
+        self.sampler = sampler
+        self.thermodynamic_state = thermodynamic_state
+        self.sampler_states = sampler_states
+        self.topography = topography
+        self.protocol = protocol
+        self.storage = storage
+        self.restraint = restraint
+        self.alchemical_regions = alchemical_regions
+        self.alchemical_factory = alchemical_factory
+        self.metadata = metadata
+        self.options = self.DEFAULT_OPTIONS.copy()
+        self.options.update(options)
+
+    def create_alchemical_phase(self):
+        alchemical_phase = AlchemicalPhase(self.sampler)
+        create_kwargs = self.__dict__.copy()
+        create_kwargs.pop('options')
+        create_kwargs.pop('sampler')
+        if self.options['anisotropic_dispersion_correction'] is True:
+            dispersion_cutoff = self.options['anisotropic_dispersion_cutoff']
+        else:
+            dispersion_cutoff = None
+        alchemical_phase.create(anisotropic_dispersion_cutoff=dispersion_cutoff,
+                                **create_kwargs)
+        return alchemical_phase
+
+    def initialize_alchemical_phase(self):
+        alchemical_phase = self.create_alchemical_phase()
+
+        # Minimize if requested.
+        if self.options['minimize']:
+            tolerance = self.options['minimize_tolerance']
+            max_iterations = self.options['minimize_max_iterations']
+            alchemical_phase.minimize(tolerance=tolerance, max_iterations=max_iterations)
+
+        # Randomize ligand if requested.
+        if self.options['randomize_ligand']:
+            sigma_multiplier = self.options['randomize_ligand_sigma_multiplier']
+            close_cutoff = self.options['randomize_ligand_close_cutoff']
+            alchemical_phase.randomize_ligand(sigma_multiplier=sigma_multiplier,
+                                              close_cutoff=close_cutoff)
+
+        # Equilibrate if requested.
+        if self.options['number_of_equilibration_iterations'] > 0:
+            n_iterations = self.options['number_of_equilibration_iterations']
+            mcmc_move = mmtools.mcmc.LangevinDynamicsMove(timestep=self.options['equilibration_timestep'],
+                                                          collision_rate=90.0/unit.picosecond,
+                                                          n_steps=500, reassign_velocities=True,
+                                                          n_restart_attempts=6)
+            alchemical_phase.equilibrate(n_iterations, mcmc_moves=mcmc_move)
+
+        return alchemical_phase
+
+
+class YamlExperiment(object):
+    """An experiment built by YamlBuilder."""
+    def __init__(self, phases, number_of_iterations, switch_phase_every):
+        self.phases = phases
+        self.number_of_iterations = number_of_iterations
+        self.switch_phase_every = switch_phase_every
+        self._phases_last_iterations = [None, None]
+
+    @property
+    def iteration(self):
+        if None in self._phases_last_iterations:
+            return 0
+        return min(self._phases_last_iterations)
+
+    def run(self, n_iterations=None):
+        # Handle default argument.
+        if n_iterations is None:
+            n_iterations = self.number_of_iterations
+
+        # Handle case in which we don't alternate between phases.
+        if self.switch_phase_every <= 0:
+            switch_phase_every = self.number_of_iterations
+
+        # Count down the iterations to run.
+        iterations_left = [None, None]
+        while iterations_left != [0, 0]:
+
+            # Alternate phases every switch_phase_every iterations.
+            for phase_id, phase in enumerate(self.phases):
+                # Phases may get out of sync if the user delete the storage
+                # file of only one phase and restart. Here we check that the
+                # phase still has iterations to run before creating it.
+                if self._phases_last_iterations[phase_id] == self.number_of_iterations:
+                    iterations_left[phase_id] = 0
+                    continue
+
+                # If this is a new simulation, initialize alchemical phase.
+                if isinstance(phase, YamlPhaseFactory):
+                    alchemical_phase = phase.initialize_alchemical_phase()
+                    self.phases[phase_id] = phase.storage
+                else:  # Resume previous simulation.
+                    alchemical_phase = AlchemicalPhase.from_storage(phase)
+
+                # Update total number of iterations. This may write the new number
+                # of iterations in the storage file so we do it only if necessary.
+                if alchemical_phase.number_of_iterations != self.number_of_iterations:
+                    alchemical_phase.number_of_iterations = self.number_of_iterations
+
+                # Determine number of iterations to run in this function call.
+                if iterations_left[phase_id] is None:
+                    total_iterations_left = self.number_of_iterations - alchemical_phase.iteration
+                    iterations_left[phase_id] = min(n_iterations, total_iterations_left)
+
+                # Run simulation for iterations_left or until we have to switch phase.
+                iterations_to_run = min(iterations_left[phase_id], switch_phase_every)
+                alchemical_phase.run(n_iterations=iterations_to_run)
+
+                # Update phase iteration info.
+                iterations_left[phase_id] -= iterations_to_run
+                self._phases_last_iterations[phase_id] = alchemical_phase.iteration
+
+                # Delete alchemical phase and prepare switching.
+                del alchemical_phase
+
+
+class YamlBuilder(object):
     """Parse YAML configuration file and build the experiment.
 
     The relative paths indicated in the script are assumed to be relative to
@@ -1118,23 +1157,16 @@ class YamlBuilder:
     some files and raises an exception if it finds already existing output folders
     unless the options resume_setup or resume_simulation are True.
 
-    Properties
-    ----------
-    yank_options : dict
-        The options specified in the parsed YAML file that will be passed to Yank.
-        These are not the full range of options specified in the script since some
-        of them are used to configure YamlBuilder and not the Yank object.
-
     Examples
     --------
     >>> import textwrap
-    >>> import openmoltools as omt
-    >>> import utils
-    >>> setup_dir = utils.get_data_filename(os.path.join('..', 'examples',
-    ...                                     'p-xylene-implicit', 'input'))
+    >>> import openmmtools as mmtools
+    >>> import yank.utils
+    >>> setup_dir = yank.utils.get_data_filename(os.path.join('..', 'examples',
+    ...                                          'p-xylene-implicit', 'input'))
     >>> pxylene_path = os.path.join(setup_dir, 'p-xylene.mol2')
     >>> lysozyme_path = os.path.join(setup_dir, '181L-pdbfixer.pdb')
-    >>> with omt.utils.temporary_directory() as tmp_dir:
+    >>> with mmtools.utils.temporary_directory() as tmp_dir:
     ...     yaml_content = '''
     ...     ---
     ...     options:
@@ -1172,7 +1204,7 @@ class YamlBuilder:
     ...       protocol: absolute-binding
     ...     '''.format(tmp_dir, lysozyme_path, pxylene_path)
     >>> yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
-    >>> yaml_builder.build_experiments()
+    >>> yaml_builder.run_experiments()
 
     """
 
@@ -1180,7 +1212,8 @@ class YamlBuilder:
     # Public API
     # --------------------------------------------------------------------------
 
-    DEFAULT_OPTIONS = {
+    # These are options that can be specified only in the main "options" section.
+    GENERAL_DEFAULT_OPTIONS = {
         'verbose': False,
         'resume_setup': False,
         'resume_simulation': False,
@@ -1189,15 +1222,22 @@ class YamlBuilder:
         'experiments_dir': 'experiments',
         'platform': 'fastest',
         'precision': 'auto',
+        'switch_experiment_every': 0,
+    }
+
+    # These options can be overwritten also in the "experiment"
+    # section and they can be thus combinatorially expanded.
+    EXPERIMENT_DEFAULT_OPTIONS = {
+        'switch_phase_every': 0,
         'temperature': 298 * unit.kelvin,
         'pressure': 1 * unit.atmosphere,
         'constraints': openmm.app.HBonds,
         'hydrogen_mass': 1 * unit.amu,
+        'nsteps_per_iteration': 500,
+        'timestep': 2.0 * unit.femtosecond,
+        'collision_rate': 1.0 / unit.picosecond,
+        'mc_displacement_sigma': 10.0 * unit.angstroms
     }
-
-    @property
-    def yank_options(self):
-        return self._isolate_yank_options(self.options)
 
     def __init__(self, yaml_source=None):
         """Constructor.
@@ -1209,14 +1249,14 @@ class YamlBuilder:
             can load it later by using parse() (default is None).
 
         """
-        self.options = self.DEFAULT_OPTIONS.copy()  # General options (not experiment-specific)
+        self.options = self.GENERAL_DEFAULT_OPTIONS.copy()
+        self.options.update(self.EXPERIMENT_DEFAULT_OPTIONS.copy())
 
         self._version = None
         self._script_dir = os.getcwd()  # basic dir for relative paths
         self._db = None  # Database containing molecules created in parse()
-        self._mpicomm = None  # MPI communicator
         self._raw_yaml = {}  # Unconverted input YAML script, helpful for
-        self._categorized_raw_yaml = {}  # Raw YAML with selective keys chosen and blank dictionaries for missing keys
+        self._expanded_raw_yaml = {}  # Raw YAML with selective keys chosen and blank dictionaries for missing keys
         self._protocols = {}  # Alchemical protocols description
         self._experiments = {}  # Experiments description
 
@@ -1295,24 +1335,33 @@ class YamlBuilder:
         yaml_content = self._expand_systems(yaml_content)
 
         # Save raw YAML content that will be needed when generating the YAML files
-        self._categorized_raw_yaml = copy.deepcopy({key: yaml_content.get(key, {})
-                                        for key in ['options', 'molecules', 'solvents',
-                                                    'systems', 'protocols']})
+        self._expanded_raw_yaml = copy.deepcopy({key: yaml_content.get(key, {})
+                                                 for key in ['options', 'molecules', 'solvents',
+                                                             'systems', 'protocols']})
 
         # Validate options and overwrite defaults
-        self.options.update(self._validate_options(utils.merge_dict(yaml_content.get('options', {}),
-                                                                    yaml_content.get('metadata', {}))))
+        self.options.update(self._validate_options(yaml_content.get('options', {}),
+                                                   validate_general_options=True))
 
-        # Setup MPI and general logging
-        self._mpicomm = utils.initialize_mpi()
-        utils.config_root_logger(self.options['verbose'], log_file_path=None, mpicomm=self._mpicomm)
-        if self._mpicomm is None:
-            logger.debug('MPI disabled.')
-        else:
-            logger.debug('MPI enabled.')
+        # Setup general logging
+        utils.config_root_logger(self.options['verbose'], log_file_path=None)
+
+        # Configure ContextCache, platform and precision. A Yank simulation
+        # currently needs 3 contexts: 1 for the alchemical states and 2 for
+        # the states with expanded cutoff.
+        platform = self._configure_platform(self.options['platform'],
+                                            self.options['precision'])
+        try:
+            mmtools.cache.global_context_cache.platform = platform
+        except RuntimeError:
+            # The cache has been already used. Empty it before switching platform.
+            mmtools.cache.global_context_cache.empty()
+            mmtools.cache.global_context_cache.platform = platform
+        mmtools.cache.global_context_cache.capacity = 3
 
         # Initialize and configure database with molecules, solvents and systems
-        self._db = SetupDatabase(setup_dir=self._get_setup_dir(self.options))
+        setup_dir = os.path.join(self.options['output_dir'], self.options['setup_dir'])
+        self._db = SetupDatabase(setup_dir=setup_dir)
         self._db.molecules = self._validate_molecules(yaml_content.get('molecules', {}))
         self._db.solvents = self._validate_solvents(yaml_content.get('solvents', {}))
         self._db.systems = self._validate_systems(yaml_content.get('systems', {}))
@@ -1323,18 +1372,52 @@ class YamlBuilder:
         # Validate experiments
         self._parse_experiments(yaml_content)
 
-    def build_experiments(self):
+    def run_experiments(self):
         """Set up and run all the Yank experiments."""
         # Throw exception if there are no experiments
         if len(self._experiments) == 0:
             raise YamlParseError('No experiments specified!')
 
+        # Handle case where we don't have to switch between experiments.
+        if self.options['switch_experiment_every'] <= 0:
+            # Run YamlExperiment for number_of_iterations.
+            switch_experiment_every = None
+        else:
+            switch_experiment_every = self.options['switch_experiment_every']
+
         # Setup and run all experiments with paths relative to the script directory
         with omt.utils.temporary_cd(self._script_dir):
             self._check_resume()
             self._setup_experiments()
-            for output_dir, combination in self._expand_experiments():
-                self._run_experiment(combination, output_dir)
+
+            # Cycle between experiments every switch_experiment_every iterations
+            # until all of them are done. We don't know how many experiments
+            # there are until after the end of first for-loop.
+            completed = [False]  # There always be at least one experiment.
+            while not all(completed):
+                for experiment_index, experiment in enumerate(self._build_experiments()):
+
+                    experiment.run(n_iterations=switch_experiment_every)
+
+                    # Check if this experiment is done.
+                    is_completed = experiment.iteration == experiment.number_of_iterations
+                    try:
+                        completed[experiment_index] = is_completed
+                    except IndexError:
+                        completed.append(is_completed)
+
+    def build_experiments(self):
+        """Set up, build and iterate over all the Yank experiments."""
+        # Throw exception if there are no experiments
+        if len(self._experiments) == 0:
+            raise YamlParseError('No experiments specified!')
+
+        # Setup and iterate over all experiments with paths relative to the script directory
+        with omt.utils.temporary_cd(self._script_dir):
+            self._check_resume()
+            self._setup_experiments()
+            for experiment in self._build_experiments():
+                yield experiment
 
     def setup_experiments(self):
         """Set up all Yank experiments without running them."""
@@ -1351,16 +1434,12 @@ class YamlBuilder:
     # Options handling
     # --------------------------------------------------------------------------
 
-    def _isolate_yank_options(self, options):
-        """Return the options that do not belong to YamlBuilder."""
-        return {opt: val for opt, val in utils.listitems(options)
-                if opt not in self.DEFAULT_OPTIONS}
-
     def _determine_experiment_options(self, experiment):
-        """Merge the options specified in the experiment section with the general ones.
+        """Determine all the options required to build the experiment.
 
-        Options in the general section have priority. Options in the experiment section
-        are validated.
+        Merge the options specified in the experiment section with the ones
+        in the options section, and divide them into several dictionaries to
+        feed to different main classes necessary to create an AlchemicalPhase.
 
         Parameters
         ----------
@@ -1369,13 +1448,35 @@ class YamlBuilder:
 
         Returns
         -------
-        exp_options : dict
-            A new dictionary containing the all the options that apply for the experiment.
+        experiment_options : dict
+            The YamlBuilder experiment options. This does not contain
+            the general YamlBuilder options that are accessible through
+            self.options.
+        phase_options : dict
+            The options to pass to the YamlPhaseFactory constructor.
+        sampler_options : dict
+            The options to pass to the ReplicaExchange constructor.
+        alchemical_region_options : dict
+            The options to pass to AlchemicalRegion.
 
         """
-        exp_options = self.options.copy()
-        exp_options.update(self._validate_options(experiment.get('options', {})))
-        return exp_options
+        # First discard general options.
+        options = {name: value for name, value in self.options.items()
+                   if name not in self.GENERAL_DEFAULT_OPTIONS}
+
+        # Then update with specific experiment options.
+        options.update(experiment.get('options', {}))
+
+        def _filter_options(reference_options):
+            return {name: value for name, value in options.items()
+                    if name in reference_options}
+
+        experiment_options = _filter_options(self.EXPERIMENT_DEFAULT_OPTIONS)
+        phase_options = _filter_options(YamlPhaseFactory.DEFAULT_OPTIONS)
+        sampler_options = _filter_options(utils.get_keyword_args(repex.ReplicaExchange.__init__))
+        alchemical_region_options = _filter_options(mmtools.alchemy._ALCHEMICAL_REGION_ARGS)
+
+        return experiment_options, phase_options, sampler_options, alchemical_region_options
 
     # --------------------------------------------------------------------------
     # Combinatorial expansion
@@ -1509,13 +1610,16 @@ class YamlBuilder:
     # --------------------------------------------------------------------------
 
     @classmethod
-    def _validate_options(cls, options):
+    def _validate_options(cls, options, validate_general_options):
         """Validate molecules syntax.
 
         Parameters
         ----------
         options : dict
             A dictionary with the options to validate.
+        validate_general_options : bool
+            If False only the options that can be specified in the
+            experiment section are validated.
 
         Returns
         -------
@@ -1528,15 +1632,26 @@ class YamlBuilder:
             If the syntax for any option is not valid.
 
         """
-        template_options = cls.DEFAULT_OPTIONS.copy()
-        template_options.update(Yank.default_parameters)
-        template_options.update(ReplicaExchange.default_parameters)
-        template_options.update(utils.get_keyword_args(AbsoluteAlchemicalFactory.__init__))
-        openmm_app_type = {'constraints': to_openmm_app}
+        template_options = cls.EXPERIMENT_DEFAULT_OPTIONS.copy()
+        template_options.update(YamlPhaseFactory.DEFAULT_OPTIONS)
+        template_options.update(mmtools.alchemy._ALCHEMICAL_REGION_ARGS)
+        template_options.update(utils.get_keyword_args(repex.ReplicaExchange.__init__))
+
+        if validate_general_options is True:
+            template_options.update(cls.GENERAL_DEFAULT_OPTIONS.copy())
+
+        # Remove options that are not supported.
+        template_options.pop('mcmc_moves')  # ReplicaExchange
+        template_options.pop('alchemical_atoms')  # AlchemicalRegion
+        template_options.pop('alchemical_bonds')
+        template_options.pop('alchemical_angles')
+        template_options.pop('alchemical_torsions')
+
+        special_conversions = {'constraints': to_openmm_app}
         try:
             validated_options = utils.validate_parameters(options, template_options, check_unknown=True,
                                                           process_units_str=True, float_to_int=True,
-                                                          special_conversions=openmm_app_type)
+                                                          special_conversions=special_conversions)
         except (TypeError, ValueError) as e:
             raise YamlParseError(str(e))
         return validated_options
@@ -1820,8 +1935,14 @@ class YamlBuilder:
 
         # Define experiment Schema
         validated_systems = systems_description.copy()
-        parameters_schema = {  # simple strings are converted to list of strings
-            'parameters': And(Use(lambda p: [p] if isinstance(p, str) else p), [str])}
+
+        # Schema for leap parameters. Simple strings are converted to list of strings.
+        parameters_schema = {'parameters': And(Use(lambda p: [p] if isinstance(p, str) else p), [str])}
+
+        # Schema for DSL specification with system files.
+        dsl_schema = {Optional('ligand_dsl'): str, Optional('solvent_dsl'): str}
+
+        # System schema.
         system_schema = Schema(Or(
             {'receptor': is_known_molecule, 'ligand': is_known_molecule,
              'solvent': is_pipeline_solvent, Optional('pack', default=False): bool,
@@ -1830,28 +1951,28 @@ class YamlBuilder:
             {'solute': is_known_molecule, 'solvent1': is_pipeline_solvent,
              'solvent2': is_pipeline_solvent, Optional('leap'): parameters_schema},
 
-            {'phase1_path': Use(system_files('amber')), 'phase2_path': Use(system_files('amber')),
-             'ligand_dsl': str, Optional('solvent_dsl'): str, 'solvent': is_known_solvent},
+            utils.merge_dict(dsl_schema, {'phase1_path': Use(system_files('amber')),
+                                          'phase2_path': Use(system_files('amber')),
+                                          'solvent': is_known_solvent}),
 
-            {'phase1_path': Use(system_files('amber')), 'phase2_path': Use(system_files('amber')),
-             'ligand_dsl': str, Optional('solvent_dsl'): str,
-             'solvent1': is_known_solvent, 'solvent2': is_known_solvent},
+            utils.merge_dict(dsl_schema, {'phase1_path': Use(system_files('amber')),
+                                          'phase2_path': Use(system_files('amber')),
+                                          'solvent1': is_known_solvent,
+                                          'solvent2': is_known_solvent}),
 
-            {'phase1_path': Use(system_files('gromacs')), 'phase2_path': Use(system_files('gromacs')),
-             'ligand_dsl': str, Optional('solvent_dsl'): str,
-             'solvent': is_known_solvent, Optional('gromacs_include_dir'): os.path.isdir},
+            utils.merge_dict(dsl_schema, {'phase1_path': Use(system_files('gromacs')),
+                                          'phase2_path': Use(system_files('gromacs')),
+                                          'solvent': is_known_solvent,
+                                          Optional('gromacs_include_dir'): os.path.isdir}),
 
-            {'phase1_path': Use(system_files('gromacs')), 'phase2_path': Use(system_files('gromacs')),
-             'ligand_dsl': str, Optional('solvent_dsl'): str,
-             'solvent1': is_known_solvent, 'solvent2': is_known_solvent, Optional('gromacs_include_dir'): os.path.isdir},
+            utils.merge_dict(dsl_schema, {'phase1_path': Use(system_files('gromacs')),
+                                          'phase2_path': Use(system_files('gromacs')),
+                                          'solvent1': is_known_solvent,
+                                          'solvent2': is_known_solvent,
+                                          Optional('gromacs_include_dir'): os.path.isdir}),
 
-            {'phase1_path': Use(system_files('gromacs')), 'phase2_path': Use(system_files('gromacs')),
-             'ligand_dsl': str, Optional('solvent_dsl'): str,
-             'solvent1': is_known_solvent, 'solvent2': is_known_solvent,
-             Optional('gromacs_include_dir'): os.path.isdir},
-
-            {'phase1_path': Use(system_files('openmm')), 'phase2_path': Use(system_files('openmm')),
-             'ligand_dsl': str, Optional('solvent_dsl'): str}
+            utils.merge_dict(dsl_schema, {'phase1_path': Use(system_files('openmm')),
+                                          'phase2_path': Use(system_files('openmm'))})
         ))
 
         # Schema validation
@@ -1896,6 +2017,9 @@ class YamlBuilder:
                 return True
             raise YamlParseError('Protocol ' + protocol_id + ' is unknown')
 
+        def validate_experiment_options(options):
+            return YamlBuilder._validate_options(options, validate_general_options=False)
+
         # Check if there is a sequence of experiments or a single one
         try:
             if isinstance(yaml_content['experiments'], list):
@@ -1912,7 +2036,7 @@ class YamlBuilder:
 
         # Define experiment Schema
         experiment_schema = Schema({'system': is_known_system, 'protocol': is_known_protocol,
-                                    Optional('options'): Use(YamlBuilder._validate_options),
+                                    Optional('options'): Use(validate_experiment_options),
                                     Optional('restraint'): restraint_schema})
 
         # Schema validation
@@ -1926,37 +2050,19 @@ class YamlBuilder:
     # File paths utilities
     # --------------------------------------------------------------------------
 
-    @staticmethod
-    def _get_setup_dir(experiment_options):
-        """Return the path to the directory where the setup output files
-        should be stored.
-
-        Parameters
-        ----------
-        experiment_options : dict
-            A dictionary containing the validated options that apply to the
-            experiment as obtained by _determine_experiment_options().
-
-        """
-        return os.path.join(experiment_options['output_dir'], experiment_options['setup_dir'])
-
-    @staticmethod
-    def _get_experiment_dir(experiment_options, experiment_subdir):
+    def _get_experiment_dir(self, experiment_subdir):
         """Return the path to the directory where the experiment output files
         should be stored.
 
         Parameters
         ----------
-        experiment_options : dict
-            A dictionary containing the validated options that apply to the
-            experiment as obtained by _determine_experiment_options().
         experiment_subdir : str
             The relative path w.r.t. the main experiments directory (determined
             through the options) of the experiment-specific subfolder.
 
         """
-        return os.path.join(experiment_options['output_dir'],
-                            experiment_options['experiments_dir'], experiment_subdir)
+        return os.path.join(self.options['output_dir'], self.options['experiments_dir'],
+                            experiment_subdir)
 
     # --------------------------------------------------------------------------
     # Resuming
@@ -1988,6 +2094,7 @@ class YamlBuilder:
                 return False
         return True
 
+    @mpi.on_single_node(0, sync_nodes=True)
     def _check_resume(self, check_setup=True, check_experiments=True):
         """Perform dry run to check if we are going to overwrite files.
 
@@ -2012,31 +2119,23 @@ class YamlBuilder:
             If files to write already exist and we resuming options are not set.
 
         """
-        # This is hard disk intensive, only process 0 should do it
-        if self._mpicomm is not None and self._mpicomm.rank != 0:
-            self._mpicomm.barrier()  # Wait for root node to check
-            return
-
         err_msg = ''
 
         for exp_sub_dir, combination in self._expand_experiments():
-            # Determine and validate options
-            exp_options = self._determine_experiment_options(combination)
 
             if check_experiments:
-                resume_sim = exp_options['resume_simulation']
-                experiment_dir = self._get_experiment_dir(exp_options, exp_sub_dir)
+                resume_sim = self.options['resume_simulation']
+                experiment_dir = self._get_experiment_dir(exp_sub_dir)
                 if not resume_sim and self._check_resume_experiment(experiment_dir,
                                                                     combination['protocol']):
                     err_msg = 'experiment files in directory {}'.format(experiment_dir)
                     solving_option = 'resume_simulation'
 
             if check_setup and err_msg == '':
-                resume_setup = exp_options['resume_setup']
+                resume_setup = self.options['resume_setup']
                 system_id = combination['system']
 
                 # Check system and molecule setup dirs
-                self._db.setup_dir = self._get_setup_dir(exp_options)
                 is_sys_setup, is_sys_processed = self._db.is_system_setup(system_id)
                 if is_sys_processed and not resume_setup:
                     system_dir = os.path.dirname(
@@ -2064,67 +2163,9 @@ class YamlBuilder:
                             'directory or set {} options').format(solving_option)
                 raise YamlParseError(err_msg)
 
-        # Signal resume to non-root other nodes
-        if self._mpicomm is not None:
-            self._mpicomm.barrier()
-
     # --------------------------------------------------------------------------
-    # Experiment setup and execution
+    # OpenMM Platform configuration
     # --------------------------------------------------------------------------
-
-    def _setup_experiments(self):
-        """Set up all experiments without running them.
-
-        IMPORTANT: This does not check if we are about to overwrite files, nor it
-        cd into the script directory! Use setup_experiments() for that.
-
-        """
-        # TODO parallelize setup
-        # Only root node performs setup
-        if self._mpicomm is not None and self._mpicomm.rank != 0:
-            debug_msg = 'Node {}/{}: MPI barrier'.format(self._mpicomm.rank,
-                                                         self._mpicomm.size)
-            logger.debug(debug_msg + ' - waiting for the setup to be completed.')
-            self._mpicomm.barrier()
-            return
-
-        for _, experiment in self._expand_experiments():
-            # Set database path
-            exp_opts = self._determine_experiment_options(experiment)
-            self._db.setup_dir = self._get_setup_dir(exp_opts)
-
-            # Force system and molecules setup
-            system_id = experiment['system']
-            sys_descr = self._db.systems[system_id]  # system description
-            try:
-                try:  # binding free energy system
-                    components = (sys_descr['receptor'], sys_descr['ligand'], sys_descr['solvent'])
-                except KeyError:  # partition/solvation free energy system
-                    components = (sys_descr['solute'], sys_descr['solvent1'], sys_descr['solvent2'])
-                logger.info('Setting up the systems for {}, {} and {}'.format(*components))
-                self._db.get_system(system_id)
-            except KeyError:  # system files are given directly by the user
-                pass
-
-        # Signal resume to child nodes
-        if self._mpicomm is not None:
-            debug_msg = 'Node {}/{}: MPI barrier'.format(self._mpicomm.rank,
-                                                         self._mpicomm.size)
-            logger.debug(debug_msg + ' - signal completed setup.')
-            # Proceed through barrier where other MPI processes are blocking.
-            self._mpicomm.barrier()
-
-    @staticmethod
-    def _set_gpu_precision(platform, precision_model):
-        """Temporary work-around for OpenMM7.1 issue #1676."""
-        try:  # TODO we could remove this when openmm#1676 gets fixed
-            platform.setPropertyDefaultValue('Precision', precision_model)
-        except Exception:  # TODO we can remove this when we stop support for OpenMM 7.0
-            platform_name = platform.getName()
-            if platform_name == 'CUDA':
-                platform_name = 'Cuda'
-            property_name = platform_name + 'Precision'
-            platform.setPropertyDefaultValue(property_name, precision_model)
 
     @staticmethod
     def _opencl_device_support_precision(precision_model):
@@ -2148,7 +2189,7 @@ class YamlBuilder:
         old_precision = opencl_platform.getPropertyDefaultValue('OpenCLPrecision')
 
         # Test support by creating a toy context
-        YamlBuilder._set_gpu_precision(opencl_platform, precision_model)
+        opencl_platform.setPropertyDefaultValue('Precision', precision_model)
         system = openmm.System()
         system.addParticle(1.0 * unit.amu)  # system needs at least 1 particle
         integrator = openmm.VerletIntegrator(1.0 * unit.femtoseconds)
@@ -2162,28 +2203,12 @@ class YamlBuilder:
         del integrator
 
         # Restore old precision
-        YamlBuilder._set_gpu_precision(opencl_platform, old_precision)
+        opencl_platform.setPropertyDefaultValue('Precision', old_precision)
 
         return is_supported
 
-    @staticmethod
-    def _determine_fastest_platform():
-        """
-        Return the fastest available platform.
-
-        Returns
-        -------
-        platform : simtk.openmm.Platform
-           The fastest available platform.
-
-        """
-        platform_speeds = np.array([openmm.Platform.getPlatform(i).getSpeed()
-                                    for i in range(openmm.Platform.getNumPlatforms())])
-        fastest_platform_id = int(np.argmax(platform_speeds))
-        platform = openmm.Platform.getPlatform(fastest_platform_id)
-        return platform
-
-    def _configure_platform(self, platform_name, platform_precision):
+    @classmethod
+    def _configure_platform(cls, platform_name, platform_precision):
         """
         Configure the platform to be used for simulation for the given precision.
 
@@ -2214,7 +2239,7 @@ class YamlBuilder:
         """
         # Determine the platform to configure
         if platform_name == 'fastest':
-            platform = self._determine_fastest_platform()
+            platform = mmtools.utils.get_fastest_platform()
             platform_name = platform.getName()
         else:
             platform = openmm.Platform.getPlatformByName(platform_name)
@@ -2222,7 +2247,8 @@ class YamlBuilder:
         # Use only a single CPU thread if we are using the CPU platform.
         # TODO: Since there is an environment variable that can control this,
         # TODO: we may want to avoid doing this.
-        if platform_name == 'CPU' and self._mpicomm is not None:
+        mpicomm = mpi.get_mpicomm()
+        if platform_name == 'CPU' and mpicomm is not None:
             logger.debug("Setting 'CpuThreads' to 1 because MPI is active.")
             platform.setPropertyDefaultValue('CpuThreads', '1')
 
@@ -2231,7 +2257,7 @@ class YamlBuilder:
             if platform_name == 'CUDA':
                 platform_precision = 'mixed'
             elif platform_name == 'OpenCL':
-                if self._opencl_device_support_precision('mixed'):
+                if cls._opencl_device_support_precision('mixed'):
                     platform_precision = 'mixed'
                 else:
                     logger.info("This device does not support double precision for OpenCL. "
@@ -2245,11 +2271,11 @@ class YamlBuilder:
             logger.info("Setting {} platform to use precision model "
                         "'{}'.".format(platform_name, platform_precision))
             if platform_name == 'CUDA':
-                YamlBuilder._set_gpu_precision(platform, platform_precision)
+                platform.setPropertyDefaultValue('Precision', platform_precision)
             elif platform_name == 'OpenCL':
                 # Some OpenCL devices do not support double precision so we need to test it
-                if self._opencl_device_support_precision(platform_precision):
-                    YamlBuilder._set_gpu_precision(platform, platform_precision)
+                if cls._opencl_device_support_precision(platform_precision):
+                    platform.setPropertyDefaultValue('Precision', platform_precision)
                 else:
                     raise RuntimeError('This device does not support double precision for OpenCL.')
             elif platform_name == 'Reference':
@@ -2264,6 +2290,44 @@ class YamlBuilder:
                 raise RuntimeError("Found unknown platform '{}'.".format(platform_name))
 
         return platform
+
+    # --------------------------------------------------------------------------
+    # Experiment setup and execution
+    # --------------------------------------------------------------------------
+
+    def _build_experiments(self):
+        """Set up and build all the Yank experiments.
+
+        IMPORTANT: This does not check if we are about to overwrite files, neither
+        it creates the setup files nor it cds into the script directory! Use
+        build_experiments() for that.
+
+        """
+        for output_dir, combination in self._expand_experiments():
+            yield self._build_experiment(combination, output_dir)
+
+    @mpi.on_single_node(rank=0, sync_nodes=True)
+    def _setup_experiments(self):
+        """Set up all experiments without running them.
+
+        IMPORTANT: This does not check if we are about to overwrite files, nor it
+        cd into the script directory! Use setup_experiments() for that.
+
+        """
+        # TODO parallelize setup
+        for _, experiment in self._expand_experiments():
+            # Force system and molecules setup
+            system_id = experiment['system']
+            sys_descr = self._db.systems[system_id]  # system description
+            try:
+                try:  # binding free energy system
+                    components = (sys_descr['receptor'], sys_descr['ligand'], sys_descr['solvent'])
+                except KeyError:  # partition/solvation free energy system
+                    components = (sys_descr['solute'], sys_descr['solvent1'], sys_descr['solvent2'])
+                logger.info('Setting up the systems for {}, {} and {}'.format(*components))
+                self._db.get_system(system_id)
+            except KeyError:  # system files are given directly by the user
+                pass
 
     def _generate_yaml(self, experiment, file_path):
         """Generate the minimum YAML file needed to reproduce the experiment.
@@ -2285,10 +2349,10 @@ class YamlBuilder:
                 molecule_ids = [sys_descr['receptor'], sys_descr['ligand']]
             except KeyError:  # partition/solvation free energy
                 molecule_ids = [sys_descr['solute']]
-            mol_section = {mol_id: self._categorized_raw_yaml['molecules'][mol_id]
+            mol_section = {mol_id: self._expanded_raw_yaml['molecules'][mol_id]
                            for mol_id in molecule_ids}
 
-            # Copy to avoid modifying _categorized_raw_yaml when updating paths
+            # Copy to avoid modifying _expanded_raw_yaml when updating paths
             mol_section = copy.deepcopy(mol_section)
         except KeyError:  # user provided directly system files
             mol_section = {}
@@ -2302,20 +2366,20 @@ class YamlBuilder:
             except KeyError:  # from xml/pdb system files
                 assert 'phase1_path' in sys_descr
                 solvent_ids = []
-        sol_section = {sol_id: self._categorized_raw_yaml['solvents'][sol_id]
+        sol_section = {sol_id: self._expanded_raw_yaml['solvents'][sol_id]
                        for sol_id in solvent_ids}
 
         # Systems section data
         system_id = experiment['system']
-        sys_section = {system_id: copy.deepcopy(self._categorized_raw_yaml['systems'][system_id])}
+        sys_section = {system_id: copy.deepcopy(self._expanded_raw_yaml['systems'][system_id])}
 
         # Protocols section data
         protocol_id = experiment['protocol']
-        prot_section = {protocol_id: self._categorized_raw_yaml['protocols'][protocol_id]}
+        prot_section = {protocol_id: self._expanded_raw_yaml['protocols'][protocol_id]}
 
         # We pop the options section in experiment and merge it to the general one
         exp_section = experiment.copy()
-        opt_section = self._categorized_raw_yaml['options'].copy()
+        opt_section = self._expanded_raw_yaml['options'].copy()
         opt_section.update(exp_section.pop('options', {}))
 
         # Convert relative paths to new script directory
@@ -2333,14 +2397,14 @@ class YamlBuilder:
         try:  # output directory
             output_dir = opt_section['output_dir']
         except KeyError:
-            output_dir = self.DEFAULT_OPTIONS['output_dir']
+            output_dir = self.GENERAL_DEFAULT_OPTIONS['output_dir']
         if not os.path.isabs(output_dir):
             opt_section['output_dir'] = os.path.relpath(output_dir, yaml_dir)
 
         # If we are converting a combinatorial experiment into a
         # single one we must set the correct experiment directory
         experiment_dir = os.path.relpath(yaml_dir, output_dir)
-        if experiment_dir != self.DEFAULT_OPTIONS['experiments_dir']:
+        if experiment_dir != self.GENERAL_DEFAULT_OPTIONS['experiments_dir']:
             opt_section['experiments_dir'] = experiment_dir
 
         # Create YAML with the sections in order
@@ -2359,35 +2423,29 @@ class YamlBuilder:
         with open(file_path, 'w') as f:
             f.write(yaml_content)
 
-    def _get_alchemical_paths(self, protocol_id):
-        """Return the list of AlchemicalStates specified in the protocol.
+    @staticmethod
+    def _save_analysis_script(results_dir, phase_names):
+        """Store the analysis information about phase signs for analyze."""
+        analysis = [[phase_names[0], 1], [phase_names[1], -1]]
+        analysis_script_path = os.path.join(results_dir, 'analysis.yaml')
+        with open(analysis_script_path, 'w') as f:
+            yaml.dump(analysis, f)
 
-        Parameters
-        ----------
-        protocol_id : str
-            The protocol ID specified in the YAML script.
+    @mpi.on_single_node(rank=0, sync_nodes=True)
+    def _safe_makedirs(self, directory):
+        """Create directory and avoid race conditions.
 
-        Returns
-        -------
-        alchemical_paths : dict of list of AlchemicalState
-            alchemical_paths[phase] is the list of AlchemicalStates specified in the
-            YAML script for protocol 'protocol_id' and phase 'phase'.
+        This is executed only on node 0 to avoid race conditions. The
+        processes are synchronized at the end so that the non-0 nodes
+        won't raise an IO error when trying to write a file in a non-
+        existing directory.
 
         """
-        alchemical_protocol = {}
-        for phase_name, phase in utils.listitems(self._protocols[protocol_id]):
-            # Separate lambda variables names from their associated lists
-            lambdas, values = zip(*utils.listitems(phase['alchemical_path']))
+        # TODO when dropping Python 2, remove this and use os.makedirs(, exist_ok=True)
+        if not os.path.isdir(directory):
+            os.makedirs(directory)
 
-            # Transpose so that each row contains single alchemical state values
-            values = zip(*values)
-
-            alchemical_protocol[phase_name] = [AlchemicalState(
-                                               **{var: val for var, val in zip(lambdas, state_values)}
-                                               ) for state_values in values]
-        return alchemical_protocol
-
-    def _run_experiment(self, experiment, experiment_dir):
+    def _build_experiment(self, experiment, experiment_dir):
         """Prepare and run a single experiment.
 
         Parameters
@@ -2398,139 +2456,172 @@ class YamlBuilder:
             The directory where to store the output files relative to the main
             output directory as specified by the user in the YAML script
 
+        Returns
+        -------
+        yaml_experiment : YamlExperiment
+            A YamlExperiment object.
+
         """
+        system_id = experiment['system']
         protocol_id = experiment['protocol']
         exp_name = 'experiments' if experiment_dir == '' else os.path.basename(experiment_dir)
 
-        # Get and validate experiment sub-options
+        # Get and validate experiment sub-options and divide them by class.
         exp_opts = self._determine_experiment_options(experiment)
-        yank_opts = self._isolate_yank_options(exp_opts)
+        exp_opts, phase_opts, sampler_opts, alchemical_region_opts = exp_opts
 
-        # Set database path
-        self._db.setup_dir = self._get_setup_dir(exp_opts)
+        # Determine output directory and create it if it doesn't exist.
+        results_dir = self._get_experiment_dir(experiment_dir)
+        self._safe_makedirs(results_dir)
 
-        # Create directory and determine if we need to resume the simulation
-        results_dir = self._get_experiment_dir(exp_opts, experiment_dir)
-        resume = os.path.isdir(results_dir)
-        if self._mpicomm is None or self._mpicomm.rank == 0:
-            if not resume:
-                os.makedirs(results_dir)
-            else:
-                resume = self._check_resume_experiment(results_dir, protocol_id)
-        if self._mpicomm:  # process 0 send result to other processes
-            resume = self._mpicomm.bcast(resume, root=0)
+        # Configure logger file for this experiment.
+        utils.config_root_logger(self.options['verbose'],
+                                 os.path.join(results_dir, exp_name + '.log'))
 
-        # Configure logger for this experiment
-        utils.config_root_logger(exp_opts['verbose'], os.path.join(results_dir, exp_name + '.log'),
-                                 self._mpicomm)
+        # Export YAML file for reproducibility
+        mpi.run_single_node(0, self._generate_yaml, experiment,
+                            os.path.join(results_dir, exp_name + '.yaml'))
 
-        # Configure platform and precision
-        platform = self._configure_platform(exp_opts['platform'], exp_opts['precision'])
-
-        # Initialize simulation
-        yank = Yank(results_dir, mpicomm=self._mpicomm, platform=platform, **yank_opts)
-
-        if resume:
-            yank.resume()
+        # Get ligand resname for alchemical atom selection. If we can't
+        # find it, this is a solvation free energy calculation.
+        ligand_dsl = None
+        try:
+            # First try for systems that went through pipeline.
+            ligand_molecule_id = self._db.systems[system_id]['ligand']
+        except KeyError:
+            # Try with system from system files.
+            try:
+                ligand_dsl = self._db.systems[system_id]['ligand_dsl']
+            except KeyError:
+                # This is a solvation free energy.
+                pass
         else:
-            if self._mpicomm is None or self._mpicomm.rank == 0:
-                system_id = experiment['system']
+            # Make sure that molecule filepath points to the mol2 file
+            self._db.is_molecule_setup(ligand_molecule_id)
+            ligand_descr = self._db.molecules[ligand_molecule_id]
+            ligand_resname = utils.Mol2File(ligand_descr['filepath']).resname
+            ligand_dsl = 'resname ' + ligand_resname
 
-                # Export YAML file for reproducibility
-                self._generate_yaml(experiment, os.path.join(results_dir, exp_name + '.yaml'))
+        if ligand_dsl is None:
+            logger.debug('Cannot find ligand specification. '
+                         'Alchemically modifying the whole solute.')
+        else:
+            logger.debug('DSL string for the ligand: "{}"'.format(ligand_dsl))
 
-                # Get molecule resname for alchemical atom selection
-                if self._db.is_system_setup(system_id)[1]:  # system went through pipeline
-                    try:  # binding free energy calculation
-                        alchemical_molecule_id = self._db.systems[system_id]['ligand']
-                    except KeyError:  # partition/solvation free energy calculation
-                        alchemical_molecule_id = self._db.systems[system_id]['solute']
+        # Determine solvent DSL.
+        try:
+            solvent_dsl = self._db.systems[system_id]['solvent_dsl']
+        except KeyError:
+            solvent_dsl = 'auto'  # Topography uses common solvent resnames.
+        logger.debug('DSL string for the solvent: "{}"'.format(solvent_dsl))
 
-                    # Make sure that molecule filepath points to the mol2 file
-                    self._db.is_molecule_setup(alchemical_molecule_id)
-                    ligand_descr = self._db.molecules[alchemical_molecule_id]
-                    ligand_dsl = utils.Mol2File(ligand_descr['filepath']).resname
-                    if ligand_dsl is None:
-                        ligand_dsl = 'MOL'
-                    ligand_dsl = 'resname ' + ligand_dsl
-                else:  # system files given directly by user
-                    ligand_dsl = self._db.systems[system_id]['ligand_dsl']
-                logger.debug('DSL string for the ligand: "{}"'.format(ligand_dsl))
+        # Determine complex and solvent phase solvents
+        try:  # binding free energy calculations
+            solvent_ids = [self._db.systems[system_id]['solvent'],
+                           self._db.systems[system_id]['solvent']]
+        except KeyError:  # partition/solvation free energy calculations
+            try:
+                solvent_ids = [self._db.systems[system_id]['solvent1'],
+                               self._db.systems[system_id]['solvent2']]
+            except KeyError:  # from xml/pdb system files
+                assert 'phase1_path' in self._db.systems[system_id]
+                solvent_ids = [None, None]
 
-                # Determine complex and solvent phase solvents
-                try:  # binding free energy calculations
-                    solvent_ids = [self._db.systems[system_id]['solvent'],
-                                   self._db.systems[system_id]['solvent']]
-                except KeyError:  # partition/solvation free energy calculations
-                    try:
-                        solvent_ids = [self._db.systems[system_id]['solvent1'],
-                                       self._db.systems[system_id]['solvent2']]
-                    except KeyError:  # from xml/pdb system files
-                        assert 'phase1_path' in self._db.systems[system_id]
-                        solvent_ids = [None, None]
+        # Determine restraint
+        try:
+            restraint_type = experiment['restraint']['type']
+        except (KeyError, TypeError):  # restraint unspecified or None
+            restraint_type = None
 
-                # Determine solvent DSL.
-                try:
-                    solvent_dsl = self._db.systems[system_id]['solvent_dsl']
-                except KeyError:
-                    solvent_dsl = None
+        # Get system files.
+        system_files_paths = self._db.get_system(system_id)
+        gromacs_include_dir = self._db.systems[system_id].get('gromacs_include_dir', None)
 
-                # Get protocols as list of AlchemicalStates
-                alchemical_paths = self._get_alchemical_paths(protocol_id)
-                system_files_paths = self._db.get_system(system_id)
-                gromacs_include_dir = self._db.systems[system_id].get('gromacs_include_dir', None)
+        # Prepare Yank arguments
+        phases = [None, None]
+        # self._protocols[protocol_id] is an OrderedDict so phases are in the
+        # correct order (e.g. [complex, solvent] or [solvent1, solvent2])
+        phase_names = list(self._protocols[protocol_id].keys())
+        for i, phase_name in enumerate(phase_names):
+            # Check if we need to resume a phase. If the phase has been
+            # already created, YamlExperiment will resume from the storage.
+            phase_path = os.path.join(results_dir, phase_name + '.nc')
+            if os.path.isfile(phase_path):
+                phases[i] = phase_path
+                continue
 
-                # Prepare Yank arguments
-                phases = [None, None]
-                for i, phase_name in enumerate(self._protocols[protocol_id]):
-                    # self._protocols[protocol_id] is an OrderedDict so phases are in the
-                    # correct order (e.g. [complex, solvent] or [solvent1, solvent2])
-                    solvent_id = solvent_ids[i]
-                    positions_file_path = system_files_paths[i].position_path
-                    parameters_file_path = system_files_paths[i].parameters_path
-                    if solvent_id is None:
-                        system_options = None
-                    else:
-                        system_options = utils.merge_dict(self._db.solvents[solvent_id], exp_opts)
-                    logger.info("Reading phase {}".format(phase_name))
-                    phases[i] = pipeline.prepare_phase(positions_file_path, parameters_file_path, ligand_dsl,
-                                                       system_options, solvent_dsl=solvent_dsl,
-                                                       gromacs_include_dir=gromacs_include_dir)
-                    phases[i].name = phase_name
-                    phases[i].protocol = alchemical_paths[phase_name]
+            # Create system, topology and sampler state from system files.
+            solvent_id = solvent_ids[i]
+            positions_file_path = system_files_paths[i].position_path
+            parameters_file_path = system_files_paths[i].parameters_path
+            if solvent_id is None:
+                system_options = None
+            else:
+                system_options = utils.merge_dict(self._db.solvents[solvent_id], exp_opts)
+            logger.info("Reading phase {}".format(phase_name))
+            system, topology, sampler_state = pipeline.read_system_files(
+                positions_file_path, parameters_file_path, system_options,
+                gromacs_include_dir=gromacs_include_dir)
 
-                for phase in phases:
-                    if len(phase.atom_indices['ligand']) == 0:
-                        raise RuntimeError('DSL string "{}" did not select any atom for '
-                                           'the ligand in phase {}.'.format(ligand_dsl, phase.name))
+            # Identify system components. There is a ligand only in the complex phase.
+            if i == 0:
+                ligand_atoms = ligand_dsl
+            else:
+                ligand_atoms = None
+            topography = Topography(topology, ligand_atoms=ligand_atoms,
+                                    solvent_atoms=solvent_dsl)
 
-                # Dump analysis script
-                analysis = [[phases[0].name, 1], [phases[1].name, -1]]
-                analysis_script_path = os.path.join(results_dir, 'analysis.yaml')
-                with open(analysis_script_path, 'w') as f:
-                    yaml.dump(analysis, f)
+            # Create reference thermodynamic state.
+            if system.usesPeriodicBoundaryConditions():
+                pressure = exp_opts['pressure']
+            else:
+                pressure = None
+            thermodynamic_state = mmtools.states.ThermodynamicState(system, exp_opts['temperature'],
+                                                                    pressure=pressure)
 
-                # Create thermodynamic state
-                thermodynamic_state = ThermodynamicState(temperature=exp_opts['temperature'],
-                                                         pressure=exp_opts['pressure'])
+            # Start from AlchemicalPhase default alchemical region
+            # and modified it according to the user options.
+            phase_protocol = self._protocols[protocol_id][phase_name]['alchemical_path']
+            alchemical_region = AlchemicalPhase._build_default_alchemical_region(system, topography,
+                                                                                 phase_protocol)
+            alchemical_region = alchemical_region._replace(**alchemical_region_opts)
 
-                # Determine restraint
-                try:
-                    restraint_type = experiment['restraint']['type']
-                except (KeyError, TypeError):  # restraint unspecified or None
-                    restraint_type = None
+            # Apply restraint only if this is the first phase. AlchemicalPhase
+            # will take care of raising an error if the phase type does not support it.
+            if i == 0 and restraint_type is not None:
+                restraint = restraints.create_restraint(restraint_type)
+            else:
+                restraint = None
 
-                # Create new simulation
-                yank.create(thermodynamic_state, *phases, restraint_type=restraint_type)
+            # Create MCMC moves and sampler. Apply MC rotation displacement to ligand.
+            if len(topography.ligand_atoms) > 0:
+                move_list = [
+                    mmtools.mcmc.MCDisplacementMove(displacement_sigma=exp_opts['mc_displacement_sigma'],
+                                                    atom_subset=topography.ligand_atoms),
+                    mmtools.mcmc.MCRotationMove(atom_subset=topography.ligand_atoms)
+                ]
+            else:
+                move_list = []
+            move_list.append(mmtools.mcmc.LangevinDynamicsMove(timestep=exp_opts['timestep'],
+                                                               collision_rate=exp_opts['collision_rate'],
+                                                               n_steps=exp_opts['nsteps_per_iteration'],
+                                                               reassign_velocities=True,
+                                                               n_restart_attempts=6))
+            mcmc_move = mmtools.mcmc.SequenceMove(move_list=move_list)
+            sampler = repex.ReplicaExchange(mcmc_moves=mcmc_move, **sampler_opts)
 
-            # Run the simulation
-            if self._mpicomm:  # wait for the simulation to be prepared
-                debug_msg = 'Node {}/{}: MPI barrier'.format(self._mpicomm.rank, self._mpicomm.size)
-                logger.debug(debug_msg + ' - waiting for the simulation to be created.')
-                self._mpicomm.barrier()
-                if self._mpicomm.rank != 0:
-                    yank.resume()  # resume from netcdf file created by root node
-        yank.run()
+            # Create phases.
+            phases[i] = YamlPhaseFactory(sampler, thermodynamic_state, sampler_state,
+                                         topography, phase_protocol, storage=phase_path,
+                                         restraint=restraint, alchemical_regions=alchemical_region,
+                                         **phase_opts)
+
+        # Dump analysis script
+        mpi.run_single_node(0, self._save_analysis_script, results_dir, phase_names)
+
+        # Return new YamlExperiment object.
+        return YamlExperiment(phases, sampler_opts['number_of_iterations'],
+                              exp_opts['switch_phase_every'])
 
 
 if __name__ == "__main__":
