@@ -197,7 +197,7 @@ long as they are enclosed by brackets, ``[  ]``.
 Protocols Heading
 ^^^^^^^^^^^^^^^^^
 The ``protocols`` heading and its options will be the most foreign to those not familiar with alchemical simulations.
-Free energy calculations are computationally difficult to compute because in a physical since, the ligand needs to drift
+Free energy calculations are computationally difficult to compute because in a physical sense, the ligand needs to drift
 in and out of the binding pocket. This action happens on the order of milliseconds to seconds, which are simulation
 times that are very difficult to achieve with direct simulation. Instead, we use a computationally efficient thermodynamic
 cycle along efficient thermodynamic paths to mimic the end states (bound ligand in solvent box -> ligand in solvent

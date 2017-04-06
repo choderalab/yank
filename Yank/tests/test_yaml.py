@@ -842,7 +842,7 @@ def test_strip_protons():
 # Combinatorial expansion
 # ==============================================================================
 
-class TestMultiMoleculeFiles():
+class TestMultiMoleculeFiles(object):
 
     @classmethod
     def setup_class(cls):
@@ -1180,6 +1180,11 @@ class TestMultiMoleculeFiles():
                                                    mol_id, mol_id + '.' + extension)
                     assert os.path.exists(os.path.join(single_mol_path))
                     assert os.path.getsize(os.path.join(single_mol_path)) > 0
+                    if extension == 'mol2':
+                        # OpenEye loses the resname when writing a mol2 file.
+                        mol2_file = utils.Mol2File(single_mol_path)
+                        assert len(mol2_file.resnames) == 1
+                        assert mol2_file.resname != '<0>'
 
                     # sdf files must be converted to mol2 to be fed to antechamber
                     if extension == 'sdf':
