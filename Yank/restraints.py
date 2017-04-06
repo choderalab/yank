@@ -29,7 +29,7 @@ import mdtraj as md
 import openmmtools as mmtools
 from simtk import openmm, unit
 
-from yank import pipeline
+from . import pipeline
 
 logger = logging.getLogger(__name__)
 

@@ -40,10 +40,10 @@ import os
 import math
 import copy
 import time
+import yaml
 import inspect
 import datetime
 import logging
-import importlib
 import collections
 
 import numpy as np
@@ -53,7 +53,7 @@ import netCDF4 as netcdf
 import openmmtools as mmtools
 from openmmtools.states import ThermodynamicState
 
-from yank import utils, mpi, version
+from . import utils, mpi, version
 
 logger = logging.getLogger(__name__)
 
@@ -171,22 +171,15 @@ class Reporter(object):
 
         # Read state information.
         for state_type, state_list in states.items():
-            # Retrieve the group storing the states.
-            try:
-                ncgrp_states = self._storage.groups[state_type]
-            except KeyError:
-                # There may not be unsampled states.
+            # There may not be unsampled states.
+            if state_type not in self._storage.groups:
                 assert state_type == 'unsampled_states'
                 continue
 
             # We keep looking for states until we can't find them anymore.
-            state_id = 0
-            while True:
-                try:
-                    serialized_state = self._read_dict(ncgrp_states.groups['state' + str(state_id)])
-                except KeyError:
-                    # There are no more stored states.
-                    break
+            n_states = len(self._storage.groups[state_type].variables)
+            for state_id in range(n_states):
+                serialized_state = self.read_dict('{}/state{}'.format(state_type, state_id))
 
                 # Find the thermodynamic state representation.
                 serialized_thermodynamic_state = serialized_state
@@ -415,13 +408,12 @@ class Reporter(object):
             The MCMCMoves used to propagate the simulation.
 
         """
-        # Get group storing MCMCMoves.
-        ncgrp = self._storage.groups['mcmc_moves']
+        n_moves = len(self._storage.groups['mcmc_moves'].variables)
 
         # Retrieve all moves in order.
         mcmc_moves = list()
-        for i in range(len(ncgrp.groups)):
-            serialized_move = self._read_dict(ncgrp.groups['move' + str(i)])
+        for move_id in range(n_moves):
+            serialized_move = self.read_dict('mcmc_moves/move{}'.format(move_id))
             mcmc_moves.append(mmtools.utils.deserialize(serialized_move))
         return mcmc_moves
 
@@ -434,10 +426,9 @@ class Reporter(object):
             The MCMCMoves used to propagate the simulation.
 
         """
-        # Serialize and store MCMCMoves.
-        for i, mcmc_move in enumerate(mcmc_moves):
-            serialized_move = mmtools.utils.serialize(mcmc_move)
-            self.write_dict('mcmc_moves/move' + str(i), serialized_move)
+        for move_id, move in enumerate(mcmc_moves):
+            serialized_move = mmtools.utils.serialize(move)
+            self.write_dict('mcmc_moves/move{}'.format(move_id), serialized_move)
 
     def read_energies(self, iteration=slice(None)):
         """Retrieve the energy matrix at the given iteration.
@@ -462,13 +453,8 @@ class Reporter(object):
             energy_unsampled_states = self._storage.variables['unsampled_energies'][iteration, :, :]
         except KeyError:
             # There are no unsampled thermodynamic states.
-            if len(energy_thermodynamic_states.shape) == 2:  # Case when iteration is an int
-                energy_unsampled_states = np.zeros((len(energy_thermodynamic_states), 0))
-            else:
-                # Ensure that energy_unsampled_states has the same shape as energy_thermodynamic_states
-                # .shape = (len(iteration slice), n_sampled_states, 0)
-                energy_unsampled_states = np.zeros((energy_thermodynamic_states.shape[0],
-                                                    len(energy_thermodynamic_states), 0))
+            unsampled_shape = energy_thermodynamic_states.shape[:-1] + (0,)
+            energy_unsampled_states = np.zeros(unsampled_shape)
         return energy_thermodynamic_states, energy_unsampled_states
 
     def write_energies(self, energy_thermodynamic_states, energy_unsampled_states, iteration):
@@ -634,8 +620,10 @@ class Reporter(object):
             The restored data as a dict.
 
         """
-        ncgrp = self._storage.groups[name]
-        data = self._read_dict(ncgrp)
+        # Get NC variable.
+        nc_variable = self._resolve_variable_path(name)
+        data_str = str(nc_variable[0])
+        data = yaml.load(data_str, Loader=_DictYamlLoader)
 
         # Restore the title in the metadata.
         if name == 'metadata':
@@ -660,188 +648,33 @@ class Reporter(object):
             data = copy.deepcopy(data)
             self._storage.title = data.pop('title')
 
-        # Check if this is an update and create a group.
-        # TODO: this is a quick and dirty solution for dictionary updates that
-        # TODO:     will be fixed with the storage layer.
+        # Check if we are updating the dictionary or creating it.
         try:
-            # This may be a nested dictionary call.
-            split_path = name.rsplit('/')
-            ncgrp = self._storage
-            for group_name in split_path:
-                ncgrp = ncgrp.groups[group_name]
-            is_update = True
+            nc_variable = self._resolve_variable_path(name)
         except KeyError:
-            ncgrp = self._storage.createGroup(name)
-            is_update = False
+            nc_variable = self._storage.createVariable(name, str, 'scalar')
 
-        for key, value in data.items():
-            # If Quantity, strip off units first.
-            value_unit = None
-            if isinstance(value, unit.Quantity):
-                value_unit = value.unit
-                value = value / value_unit
-
-            # Check the Python type.
-            value_type = type(value)
-            stored_type_name = utils.typename(value_type)
-
-            # We store booleans as integers.
-            if isinstance(value, bool):
-                # Keep stored_type_name as bool to store original type.
-                value = int(value)
-                value_type = int
-
-            # Store the variable.
-            if isinstance(value, dict):
-                # Nested dictionary in a subgroup.
-                self.write_dict(name + '/' + key, value)
-                # No need to store ncvar type as this will be marked as group.
-                ncvar = None
-            elif isinstance(value, str):
-                if is_update:
-                    ncvar = ncgrp.variables[key]
-                else:
-                    ncvar = ncgrp.createVariable(key, value_type, 'scalar')
-                packed_data = np.empty(1, 'O')
-                packed_data[0] = value
-                ncvar[:] = packed_data
-            elif isinstance(value, collections.Iterable):
-                if is_update:
-                    ncvar = ncgrp.variables[key]
-                else:
-                    # Cast as numpy array to check shape and extract the element
-                    # type. np.ravel() returns a view, it doesn't allocate memory.
-                    value = np.array(value)
-                    element_type = type(value.ravel()[0])
-                    element_type_name = utils.typename(element_type)
-
-                    # Create dimensions and variable.
-                    dimensions_names = tuple([key + 'dimension' + str(i) for i in range(len(value.shape))])
-                    for dimension_name, dimension in zip(dimensions_names, value.shape):
-                        ncgrp.createDimension(dimension_name, dimension)
-                    ncvar = ncgrp.createVariable(key, element_type, dimensions_names)
-
-                    # Store element type instead of array type.
-                    stored_type_name = element_type_name
-                ncvar[:] = value[:]
-            elif value is None:
-                if is_update:
-                    ncvar = ncgrp.variables[key]
-                else:
-                    ncvar = ncgrp.createVariable(key, int)
-                ncvar.assignValue(0)
-            else:
-                if is_update:
-                    ncvar = ncgrp.variables[key]
-                else:
-                    ncvar = ncgrp.createVariable(key, value_type)
-                ncvar.assignValue(value)
-
-            # Set the type of the variable if this wasn't a dictionary.
-            if ncvar is not None:
-                setattr(ncvar, 'type', stored_type_name)
-
-            # Log value (truncate if too long but save length)
-            if hasattr(value, '__len__'):
-                logger.debug("Storing option: {} -> {} (type: {}, length {})".format(
-                    key, str(value)[:100], stored_type_name, len(value)))
-            else:
-                logger.debug("Storing option: {} -> {} (type: {})".format(
-                    key, value, stored_type_name))
-            if value_unit is not None:
-                setattr(ncvar, 'units', str(value_unit))
+        # Activate flow style to save space.
+        data_str = yaml.dump(data, Dumper=_DictYamlDumper)#, default_flow_style=True)
+        packed_data = np.empty(1, 'O')
+        packed_data[0] = data_str
+        nc_variable[:] = packed_data
 
     # -------------------------------------------------------------------------
-    # Internal-usage
+    # Internal-usage.
     # -------------------------------------------------------------------------
 
-    def _read_dict(self, ncgrp):
-        """Read and return a dictionary.
+    def _resolve_variable_path(self, path):
+        """Return the NC variable at the end of the path.
 
-        Takes a group instead of a name to resolve nested dictionaries.
-
-        """
-        data = dict()
-
-        # Restore nested dictionaries.
-        for name, nested_ncgrp in ncgrp.groups.items():
-            data[name] = self._read_dict(nested_ncgrp)
-
-        # Restore variables.
-        for key, ncvar in ncgrp.variables.items():
-            type_name = getattr(ncvar, 'type')
-            # TODO: Remove the if/elseif structure into one handy function
-            # Get option value.
-            if type_name == 'NoneType':
-                value = None
-            else:  # Handle all Types not None
-                value_type = self._convert_netcdf_store_type(type_name)
-                if ncvar.shape == ():  # Standard Types
-                    value = value_type(ncvar.getValue())
-                elif ncvar.shape[0] >= 0:  # Array types
-                    value = np.array(ncvar[:], value_type)
-                    if issubclass(value_type, str):
-                        value = value_type(value[0])
-                else:
-                    raise ValueError('Cannot restore type {} with value {}'.format(
-                        value_type, ncvar.getValue()))
-
-            # If Quantity, assign unit.
-            if hasattr(ncvar, 'units'):
-                value_unit_name = getattr(ncvar, 'units')
-                if value_unit_name[0] == '/':
-                    value_unit = utils.quantity_from_string(value_unit_name[1:])
-                    value = value / value_unit
-                else:
-                    value_unit = utils.quantity_from_string(value_unit_name)
-                    value = value * value_unit
-
-            # Log value (truncate if too long but save length)
-            if hasattr(value, '__len__'):
-                try:
-                    value_len = len(value)
-                except TypeError:  # this is a zero-dimensional array
-                    value_len = np.atleast_1d(value)
-                logger.debug("Restoring option: {} -> {} (type: {}, length {})".format(
-                    key, str(value)[:500], type(value), value_len))
-            else:
-                logger.debug("Restoring option: {} -> {} (type: {})".format(
-                    key, value, type(value)))
-
-            # Store option.
-            data[key] = value
-
-        return data
-
-    @staticmethod
-    def _convert_netcdf_store_type(stored_type):
-        """
-        Convert the stored NetCDF datatype from string to type without relying on unsafe eval() function
-
-        Parameters
-        ----------
-        stored_type : string
-            Read from ncfile.Variable.type stored by repex
-
-        Returns
-        -------
-        proper_type : type
-            Python or module type
+        This can be used to retrieve variables inside one or more groups.
 
         """
-        try:
-            # Check if it's a builtin type
-            try:  # Python 2
-                module = importlib.import_module('__builtin__')
-            except:  # Python 3
-                module = importlib.import_module('builtins')
-            proper_type = getattr(module, stored_type)
-        except AttributeError:
-            # if not, separate module and class
-            module, stored_type = stored_type.rsplit(".", 1)
-            module = importlib.import_module(module)
-            proper_type = getattr(module, stored_type)
-        return proper_type
+        path_split = path.split('/')
+        nc_group = self._storage
+        for group_name in path_split[:-1]:
+            nc_group = nc_group.groups[group_name]
+        return nc_group.variables[path_split[-1]]
 
 
 # ==============================================================================
@@ -1993,6 +1826,61 @@ class ParallelTempering(ReplicaExchange):
 
         # Return the new energies.
         return replica_energies
+
+
+# ==============================================================================
+# MODULE INTERNAL USAGE UTILITIES
+# ==============================================================================
+
+class _DictYamlLoader(yaml.Loader):
+    """PyYAML Loader that reads !Quantity tags."""
+    def __init__(self, *args, **kwargs):
+        super(_DictYamlLoader, self).__init__(*args, **kwargs)
+        self.add_constructor(u'!Quantity', self.quantity_constructor)
+        self.add_constructor(u'!ndarray', self.ndarray_constructor)
+
+    @staticmethod
+    def quantity_constructor(loader, node):
+        loaded_mapping = loader.construct_mapping(node)
+        data_unit = utils.quantity_from_string(loaded_mapping['unit'])
+        data_value = loaded_mapping['value']
+        return data_value * data_unit
+
+    @staticmethod
+    def ndarray_constructor(loader, node):
+        loaded_mapping = loader.construct_mapping(node, deep=True)
+        data_type = np.dtype(loaded_mapping['type'])
+        data_shape = loaded_mapping['shape']
+        data_values = loaded_mapping['values']
+        data = np.ndarray(shape=data_shape, dtype=data_type)
+        if 0 not in data_shape:
+            data[:] = data_values
+        return data
+
+
+class _DictYamlDumper(yaml.Dumper):
+    """PyYAML Dumper that handle simtk Quantities through !Quantity tags."""
+
+    def __init__(self, *args, **kwargs):
+        super(_DictYamlDumper, self).__init__(*args, **kwargs)
+        self.add_representer(unit.Quantity, self.quantity_representer)
+        self.add_representer(np.ndarray, self.ndarray_representer)
+
+    @staticmethod
+    def quantity_representer(dumper, data):
+        data_unit = data.unit
+        data_value = data / data_unit
+        data_dump = dict(unit=str(data_unit), value=data_value)
+        return dumper.represent_mapping(u'!Quantity', data_dump)
+
+    @staticmethod
+    def ndarray_representer(dumper, data):
+        """Convert a numpy array to native Python types."""
+        data_type = str(data.dtype)
+        data_shape = data.shape
+        data_values = data.tolist()
+        data_dump = dict(type=data_type, shape=data_shape, values=data_values)
+        return dumper.represent_mapping(u'!ndarray', data_dump)
 
 
 # ==============================================================================

@@ -367,7 +367,7 @@ def test_validation_correct_solvents():
         {'nonbonded_method': 'NoCutoff', 'implicit_solvent': 'OBC2'},
         {'nonbonded_method': 'CutoffPeriodic', 'nonbonded_cutoff': '9*angstroms',
          'clearance': '9*angstroms', 'positive_ion': 'Na+', 'negative_ion': 'Cl-'},
-        {'implicit_solvent': 'OBC2', 'implicit_solvent_salt_conc': '1.0*(nano*mole)/liter'},
+        {'implicit_solvent': 'OBC2', 'implicit_solvent_salt_conc': '1.0*nanomolar'},
         {'nonbonded_method': 'PME', 'clearance': '3*angstroms', 'ewald_error_tolerance': 0.001},
     ]
     for solvent in solvents:
@@ -764,9 +764,12 @@ def test_clashing_atoms():
             prmtop = openmm.app.AmberPrmtopFile(os.path.join(system_dir, 'complex.prmtop'))
             inpcrd = openmm.app.AmberInpcrdFile(os.path.join(system_dir, 'complex.inpcrd'))
             positions = inpcrd.getPositions(asNumpy=True).value_in_unit(unit.angstrom)
-            atom_indices = pipeline.find_components(prmtop.createSystem(), prmtop.topology, 'resname TOL')
-            benzene_pos2 = positions.take(atom_indices['receptor'], axis=0)
-            toluene_pos2 = positions.take(atom_indices['ligand'], axis=0)
+            topography = Topography(prmtop.topology, ligand_atoms='resname TOL')
+            benzene_pos2 = positions.take(topography.receptor_atoms, axis=0)
+            toluene_pos2 = positions.take(topography.ligand_atoms, axis=0)
+            # atom_indices = pipeline.find_components(prmtop.createSystem(), prmtop.topology, 'resname TOL')
+            # benzene_pos2 = positions.take(atom_indices['receptor'], axis=0)
+            # toluene_pos2 = positions.take(atom_indices['ligand'], axis=0)
 
             # Test that clashes are resolved in the system
             min_dist, max_dist = pipeline.compute_min_max_dist(toluene_pos2, benzene_pos2)

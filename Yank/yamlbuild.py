@@ -27,8 +27,8 @@ from simtk import unit, openmm
 from simtk.openmm.app import PDBFile, AmberPrmtopFile
 from schema import Schema, And, Or, Use, Optional, SchemaError
 
-from yank import utils, pipeline, mpi, restraints, repex
-from yank.yank import AlchemicalPhase, Topography
+from . import utils, pipeline, mpi, restraints, repex
+from .yank import AlchemicalPhase, Topography
 
 logger = logging.getLogger(__name__)
 
@@ -1044,7 +1044,8 @@ class YamlPhaseFactory(object):
             dispersion_cutoff = self.options['anisotropic_dispersion_cutoff']
         else:
             dispersion_cutoff = None
-        alchemical_phase.create(**create_kwargs, anisotropic_dispersion_cutoff=dispersion_cutoff)
+        alchemical_phase.create(anisotropic_dispersion_cutoff=dispersion_cutoff,
+                                **create_kwargs)
         return alchemical_phase
 
     def initialize_alchemical_phase(self):
@@ -1346,7 +1347,12 @@ class YamlBuilder(object):
         # the states with expanded cutoff.
         platform = self._configure_platform(self.options['platform'],
                                             self.options['precision'])
-        mmtools.cache.global_context_cache.platform = platform
+        try:
+            mmtools.cache.global_context_cache.platform = platform
+        except RuntimeError:
+            # The cache has been already used. Empty it before switching platform.
+            mmtools.cache.global_context_cache.empty()
+            mmtools.cache.global_context_cache.platform = platform
         mmtools.cache.global_context_cache.capacity = 3
 
         # Initialize and configure database with molecules, solvents and systems
@@ -2196,7 +2202,8 @@ class YamlBuilder(object):
 
         return is_supported
 
-    def _configure_platform(self, platform_name, platform_precision):
+    @classmethod
+    def _configure_platform(cls, platform_name, platform_precision):
         """
         Configure the platform to be used for simulation for the given precision.
 
@@ -2245,7 +2252,7 @@ class YamlBuilder(object):
             if platform_name == 'CUDA':
                 platform_precision = 'mixed'
             elif platform_name == 'OpenCL':
-                if self._opencl_device_support_precision('mixed'):
+                if cls._opencl_device_support_precision('mixed'):
                     platform_precision = 'mixed'
                 else:
                     logger.info("This device does not support double precision for OpenCL. "
@@ -2262,7 +2269,7 @@ class YamlBuilder(object):
                 platform.setPropertyDefaultValue('Precision', platform_precision)
             elif platform_name == 'OpenCL':
                 # Some OpenCL devices do not support double precision so we need to test it
-                if self._opencl_device_support_precision(platform_precision):
+                if cls._opencl_device_support_precision(platform_precision):
                     platform.setPropertyDefaultValue('Precision', platform_precision)
                 else:
                     raise RuntimeError('This device does not support double precision for OpenCL.')
@@ -2419,6 +2426,20 @@ class YamlBuilder(object):
         with open(analysis_script_path, 'w') as f:
             yaml.dump(analysis, f)
 
+    @mpi.on_single_node(rank=0, sync_nodes=True)
+    def _safe_makedirs(self, directory):
+        """Create directory and avoid race conditions.
+
+        This is executed only on node 0 to avoid race conditions. The
+        processes are synchronized at the end so that the non-0 nodes
+        won't raise an IO error when trying to write a file in a non-
+        existing directory.
+
+        """
+        # TODO when dropping Python 2, remove this and use os.makedirs(, exist_ok=True)
+        if not os.path.isdir(directory):
+            os.makedirs(directory)
+
     def _build_experiment(self, experiment, experiment_dir):
         """Prepare and run a single experiment.
 
@@ -2446,8 +2467,7 @@ class YamlBuilder(object):
 
         # Determine output directory and create it if it doesn't exist.
         results_dir = self._get_experiment_dir(experiment_dir)
-        if not os.path.isdir(results_dir):
-            os.makedirs(results_dir)
+        self._safe_makedirs(results_dir)
 
         # Configure logger file for this experiment.
         utils.config_root_logger(self.options['verbose'],

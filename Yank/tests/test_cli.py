@@ -83,10 +83,11 @@ def test_script_yaml():
     yaml_content = """
         ---
         options:
-            number_of_iterations: 1
+            number_of_iterations: 0
             output_dir: '.'
             resume_setup: yes
             resume_simulation: yes
+            minimize: no
         molecules:
             T4lysozyme:
                 filepath: {}

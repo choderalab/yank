@@ -26,10 +26,8 @@ import contextlib
 
 from openmmtools.constants import kB
 from openmmtools import testsystems, states
-from mdtraj.utils import enter_temp_directory
 
 import nose
-import netCDF4 as netcdf
 
 import yank.restraints
 from yank.repex import ReplicaExchange
@@ -160,14 +158,15 @@ class TestAlchemicalPhase(object):
         else:
             assert standard_state_correction == 0
 
-    @staticmethod
-    def check_expanded_states(alchemical_phase, protocol, expected_cutoff):
+    @classmethod
+    def check_expanded_states(cls, alchemical_phase, protocol, expected_cutoff):
         """The expanded states have been setup correctly."""
         cutoff_unit = expected_cutoff.unit
         thermodynamic_state = alchemical_phase._sampler._thermodynamic_states[0]
         unsampled_states = alchemical_phase._sampler._unsampled_states
 
         is_periodic = thermodynamic_state.is_periodic
+        is_restrained = hasattr(thermodynamic_state, 'lambda_restraints')
 
         # Anisotropic correction is not applied to non-periodic systems.
         if not is_periodic:
@@ -177,7 +176,8 @@ class TestAlchemicalPhase(object):
 
         # Find all nonbonded forces and verify their cutoff.
         for state in unsampled_states:
-            for force in state.system.getForces():
+            system = state.system
+            for force in system.getForces():
                 try:
                     cutoff = force.getCutoffDistance()
                 except AttributeError:
@@ -185,6 +185,11 @@ class TestAlchemicalPhase(object):
                 else:
                     err_msg = 'obtained {}, expected {}'.format(cutoff, expected_cutoff)
                     assert np.isclose(cutoff / cutoff_unit, expected_cutoff / cutoff_unit), err_msg
+
+        # If the thermodynamic systems are restrained, so should be the unsampled ones.
+        if is_restrained:
+            for i, state in zip([0, -1], unsampled_states):
+                assert state.lambda_restraints == cls.restrained_protocol['lambda_restraints'][i]
 
         # The noninteracting state, must be in the same state as the last one.
         noninteracting_state = unsampled_states[1]
@@ -200,10 +205,11 @@ class TestAlchemicalPhase(object):
             test_name, thermodynamic_state, sampler_state, topography = test_case
 
             # Add random restraint if this is ligand-receptor system in implicit solvent.
-            if len(topography.ligand_atoms) > 0 and not thermodynamic_state.is_periodic:
+            if len(topography.ligand_atoms) > 0:
                 restraint_cls = available_restraints[np.random.randint(0, len(available_restraints))]
                 restraint = restraint_cls()
                 protocol = self.restrained_protocol
+                test_name += ' with restraint {}'.format(restraint_cls.__name__)
             else:
                 restraint = None
                 protocol = self.protocol
@@ -215,10 +221,13 @@ class TestAlchemicalPhase(object):
                                         anisotropic_dispersion_cutoff=correction_cutoff)
 
                 yield prepare_yield(self.check_protocol, test_name, alchemical_phase, protocol)
-                yield prepare_yield(self.check_standard_state_correction, test_name,
-                                    alchemical_phase, topography)
+                yield prepare_yield(self.check_standard_state_correction, test_name, alchemical_phase,
+                                    topography)
                 yield prepare_yield(self.check_expanded_states, test_name, alchemical_phase,
                                     protocol, correction_cutoff)
+
+                # Free memory.
+                del alchemical_phase
 
     def test_default_alchemical_region(self):
         """The default alchemical region modify the correct system elements."""
@@ -353,7 +362,6 @@ class TestAlchemicalPhase(object):
             sampler_states = alchemical_phase._sampler.sampler_states
             new_diffs = [np.average(sampler_states[i].positions - sampler_states[i+1].positions)
                          for i in range(len(sampler_states) - 1)]
-            print(original_diffs, new_diffs)
             assert np.allclose(original_diffs, new_diffs)
 
     def test_randomize_ligand(self):
@@ -383,121 +391,6 @@ class TestAlchemicalPhase(object):
 # ==============================================================================
 # MAIN AND TESTS
 # ==============================================================================
-
-def test_parameters():
-    """Test Yank parameters initialization."""
-
-    # Check that both Yank and Repex parameters are accepted
-    Yank(store_directory='test', randomize_ligand=True, nsteps_per_iteration=1)
-
-@nose.tools.raises(TypeError)
-def test_unknown_parameters():
-    """Test whether Yank raises exception on wrong initialization."""
-    Yank(store_directory='test', wrong_parameter=False)
-
-
-@nose.tools.raises(ValueError)
-def test_no_alchemical_atoms():
-    """Test whether Yank raises exception when no alchemical atoms are specified."""
-    toluene = testsystems.TolueneImplicit()
-
-    # Create parameters. With the exception of atom_indices, all other
-    # parameters must be legal, we don't want to catch an exception
-    # different than the one we are testing.
-    phase = AlchemicalPhase(name='solvent-implicit', reference_system=toluene.system,
-                            reference_topology=toluene.topology,
-                            positions=toluene.positions, atom_indices={'ligand': []},
-                            protocol=AbsoluteAlchemicalFactory.defaultSolventProtocolImplicit())
-    thermodynamic_state = ThermodynamicState(temperature=300.0*unit.kelvin)
-
-    # Create new simulation.
-    with enter_temp_directory():
-        yank = Yank(store_directory='output')
-        yank.create(thermodynamic_state, phase)
-
-
-def test_phase_creation():
-    """Phases are initialized correctly by Yank.create()."""
-    phase_name = 'my-solvent-phase'
-    toluene = testsystems.TolueneImplicit()
-    protocol = AbsoluteAlchemicalFactory.defaultSolventProtocolImplicit()
-    atom_indices = find_components(toluene.system, toluene.topology, 'resname TOL')
-
-    phase = AlchemicalPhase(phase_name, toluene.system, toluene.topology,
-                            toluene.positions, atom_indices, protocol)
-    thermodynamic_state = ThermodynamicState(temperature=300.0*unit.kelvin)
-
-    # Create new simulation.
-    with enter_temp_directory():
-        output_dir = 'output'
-        utils.config_root_logger(verbose=False)
-        yank = Yank(store_directory=output_dir)
-        yank.create(thermodynamic_state, phase)
-
-        # Netcdf dataset has been created
-        nc_path = os.path.join(output_dir, phase_name + '.nc')
-        assert os.path.isfile(nc_path)
-
-        # Read data
-        try:
-            nc_file = netcdf.Dataset(nc_path, mode='r')
-            metadata_group = nc_file.groups['metadata']
-            serialized_system = metadata_group.variables['reference_system'][0]
-            serialized_topology = metadata_group.variables['topology'][0]
-        finally:
-            nc_file.close()
-
-        # Yank doesn't add a barostat to implicit systems
-        serialized_system = str(serialized_system)  # convert unicode
-        deserialized_system = openmm.XmlSerializer.deserialize(serialized_system)
-        for force in deserialized_system.getForces():
-            assert 'Barostat' not in force.__class__.__name__
-
-        # Topology has been stored correctly
-        deserialized_topology = utils.deserialize_topology(serialized_topology)
-        assert deserialized_topology == mdtraj.Topology.from_openmm(toluene.topology)
-
-
-def test_expanded_cutoff_creation():
-    """Test Anisotropic Dispersion Correction expanded cutoff states are created"""
-    phase_name = 'my-explicit-phase'
-    alanine = testsystems.AlanineDipeptideExplicit()
-    protocol = AbsoluteAlchemicalFactory.defaultSolventProtocolExplicit()
-    atom_indices = find_components(alanine.system, alanine.topology, 'not water')
-    phase = AlchemicalPhase(phase_name, alanine.system, alanine.topology,
-                            alanine.positions, atom_indices, protocol)
-    thermodynamic_state = ThermodynamicState(temperature=300.0 * unit.kelvin)
-    # Calculate the max cutoff
-    box_vectors = alanine.system.getDefaultPeriodicBoxVectors()
-    min_box_dimension = min([max(vector) for vector in box_vectors])
-    # Shrink cutoff to just below maximum allowed
-    max_expanded_cutoff = (min_box_dimension / 2.0) * 0.99
-
-    # Create new simulation.
-    with enter_temp_directory():
-        output_dir = 'output'
-        utils.config_root_logger(verbose=False)
-        yank = Yank(store_directory=output_dir,
-                    anisotropic_dispersion_correction=True,
-                    anisotropic_dispersion_cutoff=max_expanded_cutoff)
-        yank.create(thermodynamic_state, phase)
-
-        # Test that the expanded cutoff systems were created
-        nc_path = os.path.join(output_dir, phase_name + '.nc')
-
-        # Read data
-        nc_file = netcdf.Dataset(nc_path, mode='r')
-        expanded_cutoff_group = nc_file.groups['expanded_cutoff_states']
-        fully_interacting_serial_state = expanded_cutoff_group.variables['fully_interacting_expanded_system'][0]
-        noninteracting_serial_state = expanded_cutoff_group.variables['noninteracting_expanded_system'][0]
-        nc_file.close()
-
-        for serial_system in [fully_interacting_serial_state, noninteracting_serial_state]:
-            system = openmm.XmlSerializer.deserialize(str(serial_system))
-            forces = {system.getForce(index).__class__.__name__: system.getForce(index) for index in
-                      range(system.getNumForces())}
-            assert forces['NonbondedForce'].getCutoffDistance() == max_expanded_cutoff
-
 
 def notest_LennardJonesPair(box_width_nsigma=6.0):
     """

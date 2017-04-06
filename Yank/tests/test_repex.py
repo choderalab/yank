@@ -13,17 +13,24 @@ TODO
 # GLOBAL IMPORTS
 # =============================================================================================
 
-import sys
+import os
+import math
+import copy
 import pickle
+import inspect
 import contextlib
 
-import numpy
+import yaml
+import numpy as np
 import scipy.integrate
+from simtk import openmm, unit
+from nose.plugins.attrib import attr
 
-import openmoltools as moltools
+import openmmtools as mmtools
 from openmmtools import testsystems
 
-from yank.repex import *
+from yank import mpi, utils, analyze
+from yank.repex import Reporter, ReplicaExchange, _DictYamlLoader
 
 # ==============================================================================
 # MODULE CONSTANTS
@@ -109,7 +116,7 @@ def compute_harmonic_oscillator_expectations(K, temperature):
     # f = - \ln \int_{-\infty}^{+\infty} \exp[-\beta K x^2 / 2]
     #   = - \ln \int_{-\infty}^{+\infty} \exp[-x^2 / 2 \sigma^2]
     #   = - \ln [\sqrt{2 \pi} \sigma]
-    values['f'] = - numpy.log(2 * numpy.pi * (sigma / unit.angstroms)**2) * (3.0/2.0)
+    values['f'] = - np.log(2 * np.pi * (sigma / unit.angstroms)**2) * (3.0/2.0)
 
     return values
 
@@ -118,6 +125,7 @@ def compute_harmonic_oscillator_expectations(K, temperature):
 # TEST ANALYSIS REPLICA EXCHANGE
 # ==============================================================================
 
+@attr('slow')  # Skip on Travis-CI
 def test_replica_exchange(verbose=False, verbose_simulation=False):
     """Free energies and average potential energies of a 3D harmonic oscillator are correctly computed."""
     # Define mass of carbon atom.
@@ -150,12 +158,12 @@ def test_replica_exchange(verbose=False, verbose_simulation=False):
 
     # Compute analytical Delta_f_ij
     nstates = len(f_i_analytical)
-    f_i_analytical = numpy.array(f_i_analytical)
-    u_i_analytical = numpy.array(u_i_analytical)
+    f_i_analytical = np.array(f_i_analytical)
+    u_i_analytical = np.array(u_i_analytical)
     s_i_analytical = u_i_analytical - f_i_analytical
-    Delta_f_ij_analytical = numpy.zeros([nstates, nstates], numpy.float64)
-    Delta_u_ij_analytical = numpy.zeros([nstates, nstates], numpy.float64)
-    Delta_s_ij_analytical = numpy.zeros([nstates, nstates], numpy.float64)
+    Delta_f_ij_analytical = np.zeros([nstates, nstates], np.float64)
+    Delta_u_ij_analytical = np.zeros([nstates, nstates], np.float64)
+    Delta_s_ij_analytical = np.zeros([nstates, nstates], np.float64)
     for i in range(nstates):
         for j in range(nstates):
             Delta_f_ij_analytical[i, j] = f_i_analytical[j] - f_i_analytical[i]
@@ -178,42 +186,17 @@ def test_replica_exchange(verbose=False, verbose_simulation=False):
         utils.config_root_logger(verbose_simulation)
         simulation.run()
 
-        # Retrieve extant analysis object.
-        # TODO refactor here with new analysis code.
-        online_analysis = simulation.analysis
-
-        # Analyze simulation to compute free energies.
-        analysis = simulation.analyze()
-
-        # Check if online analysis is close to final analysis.
-        error = numpy.abs(online_analysis['Delta_f_ij'] - analysis['Delta_f_ij'])
-        derror = (online_analysis['dDelta_f_ij']**2 + analysis['dDelta_f_ij']**2)
-        indices = numpy.where(derror > 0.0)
-        nsigma = numpy.zeros([nstates,nstates], numpy.float32)
-        nsigma[indices] = error[indices] / derror[indices]
-        MAX_SIGMA = 6.0 # maximum allowed number of standard errors
-        if numpy.any(nsigma > MAX_SIGMA):
-            print("Delta_f_ij from online analysis")
-            print(online_analysis['Delta_f_ij'])
-            print("Delta_f_ij from final analysis")
-            print(analysis['Delta_f_ij'])
-            print("error")
-            print(error)
-            print("derror")
-            print(derror)
-            print("nsigma")
-            print(nsigma)
-            raise Exception("Dimensionless free energy differences between online and final analysis exceeds MAX_SIGMA of %.1f" % MAX_SIGMA)
+        # Create Analyzer.
+        analyzer = analyze.get_analyzer(storage_path)
 
         # TODO: Check if deviations exceed tolerance.
-        Delta_f_ij = analysis['Delta_f_ij']
-        dDelta_f_ij = analysis['dDelta_f_ij']
-        error = numpy.abs(Delta_f_ij - Delta_f_ij_analytical)
-        indices = numpy.where(dDelta_f_ij > 0.0)
-        nsigma = numpy.zeros([nstates,nstates], numpy.float32)
+        Delta_f_ij, dDelta_f_ij = analyzer.get_free_energy()
+        error = np.abs(Delta_f_ij - Delta_f_ij_analytical)
+        indices = np.where(dDelta_f_ij > 0.0)
+        nsigma = np.zeros([nstates,nstates], np.float32)
         nsigma[indices] = error[indices] / dDelta_f_ij[indices]
         MAX_SIGMA = 6.0 # maximum allowed number of standard errors
-        if numpy.any(nsigma > MAX_SIGMA):
+        if np.any(nsigma > MAX_SIGMA):
             print("Delta_f_ij")
             print(Delta_f_ij)
             print("Delta_f_ij_analytical")
@@ -226,12 +209,13 @@ def test_replica_exchange(verbose=False, verbose_simulation=False):
             print(nsigma)
             raise Exception("Dimensionless free energy difference exceeds MAX_SIGMA of %.1f" % MAX_SIGMA)
 
-        error = analysis['Delta_u_ij'] - Delta_u_ij_analytical
-        nsigma = numpy.zeros([nstates,nstates], numpy.float32)
+        Delta_u_ij, dDelta_u_ij = analyzer.get_enthalpy()
+        error = Delta_u_ij - Delta_u_ij_analytical
+        nsigma = np.zeros([nstates,nstates], np.float32)
         nsigma[indices] = error[indices] / dDelta_f_ij[indices]
-        if numpy.any(nsigma > MAX_SIGMA):
+        if np.any(nsigma > MAX_SIGMA):
             print("Delta_u_ij")
-            print(analysis['Delta_u_ij'])
+            print(Delta_u_ij)
             print("Delta_u_ij_analytical")
             print(Delta_u_ij_analytical)
             print("error")
@@ -258,7 +242,7 @@ class TestReporter(object):
     @contextlib.contextmanager
     def temporary_reporter():
         """Create and initialize a reporter in a temporary directory."""
-        with moltools.utils.temporary_directory() as tmp_dir_path:
+        with mmtools.utils.temporary_directory() as tmp_dir_path:
             storage_file_path = os.path.join(tmp_dir_path, 'temp_dir/test_storage.nc')
             assert not os.path.isfile(storage_file_path)
             reporter = Reporter(storage=storage_file_path, open_mode='w')
@@ -314,28 +298,39 @@ class TestReporter(object):
             ncgrp_states = reporter._storage.groups['thermodynamic_states']
             ncgrp_unsampled = reporter._storage.groups['unsampled_states']
 
+            # Load representation of the states on the disk. There
+            # should be only one full serialization per compatible state.
+            states_serialized = []
+            for state_id in range(len(thermodynamic_states)):
+                state_str = ncgrp_states.variables['state' + str(state_id)][0]
+                state_dict = yaml.load(state_str, Loader=_DictYamlLoader)
+                states_serialized.append(state_dict)
+            unsampled_serialized = []
+            for state_id in range(len(unsampled_states)):
+                unsampled_str = ncgrp_unsampled.variables['state' + str(state_id)][0]
+                unsampled_dict = yaml.load(unsampled_str, Loader=_DictYamlLoader)
+                unsampled_serialized.append(unsampled_dict)
+
             # Two of the three ThermodynamicStates are compatible.
-            assert isinstance(ncgrp_states.groups['state0'].variables['standard_system'][0], str)
-            assert 'standard_system' not in ncgrp_states.groups['state1'].variables
-            state_compatible_to_1 = ncgrp_states.groups['state1'].variables['_Reporter__compatible_state'][0]
+            assert isinstance(states_serialized[0]['standard_system'], str)
+            assert 'standard_system' not in states_serialized[1]
+            state_compatible_to_1 = states_serialized[1]['_Reporter__compatible_state']
             assert state_compatible_to_1 == 'thermodynamic_states/0'
-            assert 'standard_system' in ncgrp_states.groups['state2'].variables
+            assert 'standard_system' in states_serialized[2]
 
             # The two CompoundThermodynamicStates are compatible.
-            assert 'standard_system' in ncgrp_states.groups['state3'].groups['thermodynamic_state'].variables
-            thermodynamic_state_4 = ncgrp_states.groups['state4'].groups['thermodynamic_state']
-            state_compatible_to_4 = thermodynamic_state_4.variables['_Reporter__compatible_state'][0]
-            assert state_compatible_to_4 == 'thermodynamic_states/3'
+            assert 'standard_system' in states_serialized[3]['thermodynamic_state']
+            thermodynamic_state_4 = states_serialized[4]['thermodynamic_state']
+            assert thermodynamic_state_4['_Reporter__compatible_state'] == 'thermodynamic_states/3'
 
             # The first two unsampled states are incompatible with everything else
             # but compatible to each other, while the third unsampled state is
             # compatible with the alchemical states.
-            assert 'standard_system' in ncgrp_unsampled.groups['state0'].variables
-            state_compatible_to_1 = ncgrp_unsampled.groups['state1'].variables['_Reporter__compatible_state'][0]
+            assert 'standard_system' in unsampled_serialized[0]
+            state_compatible_to_1 = unsampled_serialized[1]['_Reporter__compatible_state']
             assert state_compatible_to_1 == 'unsampled_states/0'
-            thermodynamic_state_2 = ncgrp_unsampled.groups['state2'].groups['thermodynamic_state']
-            state_compatible_to_2 = thermodynamic_state_2.variables['_Reporter__compatible_state'][0]
-            assert state_compatible_to_2 == 'thermodynamic_states/3'
+            thermodynamic_state_2 = unsampled_serialized[2]['thermodynamic_state']
+            assert thermodynamic_state_2['_Reporter__compatible_state'] == 'thermodynamic_states/3'
 
     def test_store_sampler_states(self):
         """Check correct storage of thermodynamic states."""
@@ -507,7 +502,7 @@ class TestReplicaExchange(object):
 
         """
         mpicomm = mpi.get_mpicomm()
-        with moltools.utils.temporary_directory() as tmp_dir_path:
+        with mmtools.utils.temporary_directory() as tmp_dir_path:
             storage_file_path = os.path.join(tmp_dir_path, 'test_storage.nc')
             if mpicomm is not None:
                 storage_file_path = mpicomm.bcast(storage_file_path, root=0)
@@ -694,10 +689,6 @@ class TestReplicaExchange(object):
             repex.create(thermodynamic_states, sampler_states, storage=storage_path,
                          unsampled_thermodynamic_states=unsampled_states)
 
-            # Save original options.
-            reporter = Reporter(storage_path, open_mode='r')
-            options = reporter.read_dict('options')
-
             # Update options and check the storage is synchronized.
             repex.number_of_iterations = 123
             repex.replica_mixing_scheme = 'none'
@@ -711,6 +702,7 @@ class TestReplicaExchange(object):
 
             mpicomm = mpi.get_mpicomm()
             if mpicomm is None or mpicomm.rank == 0:
+                reporter = Reporter(storage_path, open_mode='r')
                 restored_options = reporter.read_dict('options')
                 assert restored_options['number_of_iterations'] == 123
                 assert restored_options['replica_mixing_scheme'] == 'none'
