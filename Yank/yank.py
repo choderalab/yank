@@ -578,14 +578,23 @@ class AlchemicalPhase(object):
         expanded_cutoff_states = []
         if is_periodic and anisotropic_dispersion_cutoff is not None:
             # Create non-alchemically modified state with an expanded cutoff.
-            # This must state must not have the restraint.
             reference_state_expanded = self._expand_state_cutoff(reference_thermodynamic_state,
                                                                  anisotropic_dispersion_cutoff)
-            # Create the expanded cutoff decoupled state. The free energy
-            # of removing the restraint will be taken into account with
-            # the standard state correction.
+
+            # Add the restraint if any. The free energy of removing the restraint
+            # will be taken into account with the standard state correction.
+            if restraint is not None:
+                restraint.restrain_state(reference_state_expanded)
+                # The value of lambda_restraints must be the same as the first state.
+                # TODO: handle case with multiple restraints.
+                restraint_state.lambda_restraints = compound_states[0].lambda_restraints
+                reference_state_expanded = mmtools.states.CompoundThermodynamicState(
+                    thermodynamic_state=reference_state_expanded, composable_states=[restraint_state])
+
+            # Create the expanded cutoff decoupled state.
             last_state_expanded = self._expand_state_cutoff(compound_states[-1],
                                                             anisotropic_dispersion_cutoff)
+
             expanded_cutoff_states = [reference_state_expanded, last_state_expanded]
         elif anisotropic_dispersion_cutoff is not None:
             logger.warning("The requested anisotropic dispersion correction "

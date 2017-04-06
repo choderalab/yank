@@ -158,14 +158,15 @@ class TestAlchemicalPhase(object):
         else:
             assert standard_state_correction == 0
 
-    @staticmethod
-    def check_expanded_states(alchemical_phase, protocol, expected_cutoff):
+    @classmethod
+    def check_expanded_states(cls, alchemical_phase, protocol, expected_cutoff):
         """The expanded states have been setup correctly."""
         cutoff_unit = expected_cutoff.unit
         thermodynamic_state = alchemical_phase._sampler._thermodynamic_states[0]
         unsampled_states = alchemical_phase._sampler._unsampled_states
 
         is_periodic = thermodynamic_state.is_periodic
+        is_restrained = hasattr(thermodynamic_state, 'lambda_restraints')
 
         # Anisotropic correction is not applied to non-periodic systems.
         if not is_periodic:
@@ -185,6 +186,11 @@ class TestAlchemicalPhase(object):
                     err_msg = 'obtained {}, expected {}'.format(cutoff, expected_cutoff)
                     assert np.isclose(cutoff / cutoff_unit, expected_cutoff / cutoff_unit), err_msg
 
+        # If the thermodynamic systems are restrained, so should be the unsampled ones.
+        if is_restrained:
+            for i, state in zip([0, -1], unsampled_states):
+                assert state.lambda_restraints == cls.restrained_protocol['lambda_restraints'][i]
+
         # The noninteracting state, must be in the same state as the last one.
         noninteracting_state = unsampled_states[1]
         for protocol_key, protocol_values in protocol.items():
@@ -199,7 +205,7 @@ class TestAlchemicalPhase(object):
             test_name, thermodynamic_state, sampler_state, topography = test_case
 
             # Add random restraint if this is ligand-receptor system in implicit solvent.
-            if len(topography.ligand_atoms) > 0 and not thermodynamic_state.is_periodic:
+            if len(topography.ligand_atoms) > 0:
                 restraint_cls = available_restraints[np.random.randint(0, len(available_restraints))]
                 restraint = restraint_cls()
                 protocol = self.restrained_protocol
@@ -207,7 +213,6 @@ class TestAlchemicalPhase(object):
             else:
                 restraint = None
                 protocol = self.protocol
-            print('Testing', test_name)
 
             alchemical_phase = AlchemicalPhase(sampler=ReplicaExchange())
             with self.temporary_storage_path() as storage_path:
