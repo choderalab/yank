@@ -725,13 +725,13 @@ class SetupDatabase:
             # we update the 'filepath' key also for OpenEye-generated molecules so
             # we don't need to keep track of the molecules we have already generated
             if extension is None or extension == '.smiles' or extension == '.csv':
-                if not utils.is_openeye_installed(oetools=('oechem','oeiupac','oequacpac')):
+                if not utils.is_openeye_installed(oetools=('oechem', 'oeiupac', 'oequacpac', 'oeomega')):
                     if extension is None:
                         raise RuntimeError('Cannot generate molecule {} without OpenEye licensed with '
-                                           'OEChem, OEIUPAC, and OEQuacPack.'.format(mol_id))
+                                           'OEChem, OEIUPAC, OEOmega, and OEQuacPack.'.format(mol_id))
                     else:
                         raise RuntimeError('Cannot support {} files without OpenEye licensed with '
-                                           'OEChem, OEIUPAC, and OEQuacPack.'.format(extension[1:]))
+                                           'OEChem, OEIUPAC, OEOmega, and OEQuacPack.'.format(extension[1:]))
 
                 # Retrieve the first SMILES string (eventually extracted
                 # while handling of the 'select' keyword above)
@@ -816,7 +816,7 @@ class SetupDatabase:
             if 'antechamber' in mol_descr:
                 # Generate charges with OpenEye if requested
                 if 'openeye' in mol_descr:
-                    if not utils.is_openeye_installed(oetools=('oechem', 'oequacpac')):
+                    if not utils.is_openeye_installed(oetools=('oechem', 'oequacpac', 'oeomega')):
                         err_msg = ('Cannot find OpenEye toolkit with OEChem and OEQuacPac to compute charges '
                                    'for molecule {}').format(mol_id)
                         logger.error(err_msg)

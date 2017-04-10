@@ -1105,7 +1105,8 @@ def is_openeye_installed(oetools=('oechem', 'oequacpac', 'oeiupac', 'oeomega')):
     valid_tool_set = set(tool_keys)
     if tool_set & valid_tool_set == set():
         # Check for empty set intersection
-        raise ValueError
+        raise ValueError("Expected OpenEye tools to have at least of the following {}, "
+                         "but instead got {}".format(tool_keys, oetools))
     try:
         for tool in oetools:
             if tool in tool_keys:
@@ -1114,9 +1115,6 @@ def is_openeye_installed(oetools=('oechem', 'oequacpac', 'oeiupac', 'oeomega')):
                 # Check that we have the license
                 if not getattr(module, tools_license[tool])():
                     raise ImportError
-    except ValueError:
-        raise ValueError("Expected OpenEye tools to have at least of the following {}, "
-                         "but instead got {}".format(tool_keys, oetools))
     except ImportError:
         return False
     return True
