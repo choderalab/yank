@@ -48,6 +48,10 @@ General Options:
 # COMMAND DISPATCH
 # =============================================================================================
 
+class LicenseError(Exception):
+    """Error raised by a missing License."""
+    pass
+
 
 def dispatch(args):
 
@@ -91,7 +95,29 @@ def dispatch(args):
             import openeye.examples.openeye_tests as OETests
             print("OpenEye version {} Found! Checking install...".format(openeye.__version__))
             OETests.run_test_suite()
+            # Check that the required tools work
+            from ..utils import is_openeye_installed
+            complete_tool_set = set('oechem', 'oequacpac', 'oeiupac', 'oeomega')
+            unlicensed_tools = complete_tool_set.copy()
+            for tool in complete_tool_set:
+                if is_openeye_installed(oetools=(tool,)):
+                    unlicensed_tools.remove(tool)
+            # If not the empty set, raise a unique error
+            if unlicensed_tools != set():
+                raise LicenseError
+        except LicenseError:
+            if unlicensed_tools == complete_tool_set:
+                message = "No valid OpenEye licenses were found for the tools YANK uses, despite an OpenEye install " \
+                          "being found.\nPlease check you have at least one " \
+                          "of the following tools to use some of YANK's OpenEye features:\n    " \
+                          "{}"
+            else:
+                message = "OpenEye is missing licenses to some of the tools YANK can use.\n" \
+                          "Some features of the OpenEye features YANK can use will be available, but not all.\n" \
+                          "    Missing Licenses: {}"
+            print(message.format(unlicensed_tools))
         except:
+            # Broad except to trap any thing else that went wrong in the OpenEye test
             print("Valid OpenEye install not found")
             print("Not required, but please check install if you expected it")
     else:
