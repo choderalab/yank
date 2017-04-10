@@ -698,7 +698,7 @@ class SetupDatabase:
                     with open(single_file_path, 'w') as f:
                         f.write(smiles_lines[model_idx])
                 elif extension == '.mol2' or extension == '.sdf':
-                    if not utils.is_openeye_installed():
+                    if not utils.is_openeye_installed(oetools=('oechem',)):
                         raise RuntimeError('Cannot support {} files selection without OpenEye'.format(
                                 extension[1:]))
                     oe_molecule = utils.read_oe_molecule(mol_descr['filepath'], conformer_idx=model_idx)
@@ -725,11 +725,13 @@ class SetupDatabase:
             # we update the 'filepath' key also for OpenEye-generated molecules so
             # we don't need to keep track of the molecules we have already generated
             if extension is None or extension == '.smiles' or extension == '.csv':
-                if not utils.is_openeye_installed():
+                if not utils.is_openeye_installed(oetools=('oechem', 'oeiupac', 'oequacpac', 'oeomega')):
                     if extension is None:
-                        raise RuntimeError('Cannot generate molecule {} without OpenEye'.format(mol_id))
+                        raise RuntimeError('Cannot generate molecule {} without OpenEye licensed with '
+                                           'OEChem, OEIUPAC, OEOmega, and OEQuacPack.'.format(mol_id))
                     else:
-                        raise RuntimeError('Cannot support {} files without OpenEye'.format(extension[1:]))
+                        raise RuntimeError('Cannot support {} files without OpenEye licensed with '
+                                           'OEChem, OEIUPAC, OEOmega, and OEQuacPack.'.format(extension[1:]))
 
                 # Retrieve the first SMILES string (eventually extracted
                 # while handling of the 'select' keyword above)
@@ -797,8 +799,8 @@ class SetupDatabase:
             # Antechamber does not support sdf files so we need to convert them
             extension = os.path.splitext(mol_descr['filepath'])[1]
             if extension == '.sdf':
-                if not utils.is_openeye_installed():
-                    raise RuntimeError('Cannot support sdf files without OpenEye')
+                if not utils.is_openeye_installed(oetools=('oechem',)):
+                    raise RuntimeError('Cannot support sdf files without OpenEye OEChem')
                 mol2_file_path = os.path.join(mol_dir, mol_id + '.mol2')
                 oe_molecule = utils.read_oe_molecule(mol_descr['filepath'])
 
@@ -814,8 +816,8 @@ class SetupDatabase:
             if 'antechamber' in mol_descr:
                 # Generate charges with OpenEye if requested
                 if 'openeye' in mol_descr:
-                    if not utils.is_openeye_installed():
-                        err_msg = ('Cannot find OpenEye toolkit to compute charges '
+                    if not utils.is_openeye_installed(oetools=('oechem', 'oequacpac', 'oeomega')):
+                        err_msg = ('Cannot find OpenEye toolkit with OEChem and OEQuacPac to compute charges '
                                    'for molecule {}').format(mol_id)
                         logger.error(err_msg)
                         raise RuntimeError(err_msg)
@@ -908,7 +910,7 @@ class SetupDatabase:
             # Check that molecules don't have clashing atoms. Also, if the ligand
             # is too far away from the molecule we want to pull it closer
             # TODO this check should be available even without OpenEye
-            if pack and utils.is_openeye_installed():
+            if pack and utils.is_openeye_installed(oetools=('oechem',)):
 
                 # Load atom positions of all molecules
                 positions = [0 for _ in molecule_ids]
@@ -1520,7 +1522,7 @@ class YamlBuilder(object):
                             # TODO: Make sure this is working as expected from Py 3.X conversion
                             n_models = len([line for line in smiles_file.readlines() if bool(line)]) # remove blank lines
                     elif extension == 'sdf' or extension == 'mol2':
-                        if not utils.is_openeye_installed():
+                        if not utils.is_openeye_installed(oetools=('oechem',)):
                             err_msg = 'Molecule {}: Cannot "select" from {} file without OpenEye toolkit'
                             raise RuntimeError(err_msg.format(comb_mol_name, extension))
                         n_models = utils.read_oe_molecule(comb_molecule['filepath']).NumConfs()
