@@ -11,6 +11,7 @@ import glob
 import shutil
 import inspect
 import logging
+import importlib
 import itertools
 import subprocess
 import collections
@@ -1090,16 +1091,24 @@ class Mol2File(object):
 
 # OpenEye functions
 # ------------------
-def is_openeye_installed():
+def is_openeye_installed(oetools=('oechem', 'oequacpac', 'oeiupac', 'oeomega')):
+    # Complete list of module: License check
+    tools_license = {'oechem':'OEChemIsLicensed',
+                     'oequacpac': 'OEQuacPacIsLicensed',
+                     'oeiupac': 'OEIUPACIsLicensed',
+                     'oeomega': 'OEOmegaIsLicensed'}
+    tool_keys = tools_license.keys()
+    # Cast oetools to tuple if its a single string
+    if type(oetools) is str:
+        oetools = (oetools,)
     try:
-        from openeye import oechem
-        from openeye import oequacpac
-        from openeye import oeiupac
-        from openeye import oeomega
-
-        if not (oechem.OEChemIsLicensed() and oequacpac.OEQuacPacIsLicensed()
-                and oeiupac.OEIUPACIsLicensed() and oeomega.OEOmegaIsLicensed()):
-            raise ImportError
+        for tool in oetools:
+            if tool in tool_keys:
+                # Try loading the module
+                module = importlib.import_module('openeye', tool)
+                # Check that we have the license
+                if not getattr(module, tools_license[tool])():
+                    raise ImportError
     except ImportError:
         return False
     return True
