@@ -1,0 +1,268 @@
+log started: Fri Nov 28 23:01:01 2014
+
+Log file: ./leap.log
+>> #
+>> # ----- leaprc for loading the general Amber Force field.
+>> #       This file is mostly for use with Antechamber
+>> #
+>> #	load atom type hybridizations
+>> #
+>> addAtomTypes {
+>> 	{ "h1"  "H" "sp3" }
+>> 	{ "h2"  "H" "sp3" }
+>> 	{ "h3"  "H" "sp3" }
+>> 	{ "h4"  "H" "sp3" }
+>> 	{ "h5"  "H" "sp3" }
+>> 	{ "ha"  "H" "sp3" }
+>> 	{ "hc"  "H" "sp3" }
+>> 	{ "hn"  "H" "sp3" }
+>> 	{ "ho"  "H" "sp3" }
+>> 	{ "hp"  "H" "sp3" }
+>> 	{ "hs"  "H" "sp3" }
+>> 	{ "hw"  "H" "sp3" }
+>> 	{ "hx"  "H" "sp3" }
+>> 	{ "o"  "O" "sp2" }
+>> 	{ "o2"  "O" "sp2" }
+>> 	{ "oh"  "O" "sp3" }
+>> 	{ "os"  "O" "sp3" }
+>> 	{ "ow"  "O" "sp3" }
+>> 	{ "c"  "C" "sp2" }
+>> 	{ "c1"  "C" "sp2" }
+>> 	{ "c2"  "C" "sp2" }
+>> 	{ "c3"  "C" "sp3" }
+>> 	{ "ca"  "C" "sp2" }
+>> 	{ "cc"  "C" "sp2" }
+>> 	{ "cd"  "C" "sp2" }
+>> 	{ "ce"  "C" "sp2" }
+>> 	{ "cf"  "C" "sp2" }
+>> 	{ "cg"  "C" "sp2" }
+>> 	{ "ch"  "C" "sp2" }
+>> 	{ "cp"  "C" "sp2" }
+>> 	{ "cq"  "C" "sp2" }
+>> 	{ "cu"  "C" "sp2" }
+>> 	{ "cv"  "C" "sp2" }
+>> 	{ "cx"  "C" "sp2" }
+>> 	{ "cy"  "C" "sp2" }
+>> 	{ "cz"  "C" "sp2" }
+>> 	{ "n"   "N" "sp2" }
+>> 	{ "n1"  "N" "sp2" }
+>> 	{ "n2"  "N" "sp2" }
+>> 	{ "n3"  "N" "sp3" }
+>> 	{ "n4"  "N" "sp3" }
+>> 	{ "na"  "N" "sp2" }
+>> 	{ "nb"  "N" "sp2" }
+>> 	{ "nc"  "N" "sp2" }
+>> 	{ "nd"  "N" "sp2" }
+>> 	{ "ne"  "N" "sp2" }
+>> 	{ "nf"  "N" "sp2" }
+>> 	{ "nh"  "N" "sp2" }
+>> 	{ "no"  "N" "sp2" }
+>> 	{ "s"   "S" "sp2" }
+>> 	{ "s2"   "S" "sp2" }
+>> 	{ "s3"   "S" "sp3" }
+>> 	{ "s4"   "S" "sp3" }
+>> 	{ "s6"   "S" "sp3" }
+>> 	{ "sh"   "S" "sp3" }
+>> 	{ "ss"   "S" "sp3" }
+>> 	{ "sx"   "S" "sp3" }
+>> 	{ "sy"   "S" "sp3" }
+>> 	{ "p2"   "P" "sp2" }
+>> 	{ "p3"   "P" "sp3" }
+>> 	{ "p4"   "P" "sp3" }
+>> 	{ "p5"   "P" "sp3" }
+>> 	{ "pb"   "P" "sp3" }
+>> 	{ "pc"   "P" "sp3" }
+>> 	{ "pd"   "P" "sp3" }
+>> 	{ "pe"   "P" "sp3" }
+>> 	{ "pf"   "P" "sp3" }
+>> 	{ "px"   "P" "sp3" }
+>> 	{ "py"   "P" "sp3" }
+>> 	{ "f"   "F" "sp3" }
+>> 	{ "cl"  "Cl" "sp3" }
+>> 	{ "br"  "Br" "sp3" }
+>> 	{ "i"   "I"  "sp3" }
+>> }
+>> #
+>> #	Load the general force field parameter set.
+>> #
+>> gaff = loadamberparams gaff.dat
+Loading parameters: /Users/grinawap/anaconda/bin/../dat/leap/parm/gaff.dat
+Reading title:
+AMBER General Force Field for organic molecules (Version 1.7, Nov 2013)
+> 
+> 
+>     # Set GB radii to recommended values for OBC.
+>     set default PBRadii mbondi2
+Using H(N)-modified Bondi radii
+> 
+>     mods2 = loadAmberParams receptor.gaff.frcmod
+Loading parameters: ./receptor.gaff.frcmod
+Reading force field modification type file (frcmod)
+Reading title:
+remark goes here
+> 
+>     loadAmberParams receptor.gaff.frcmod
+Loading parameters: ./receptor.gaff.frcmod
+Reading force field modification type file (frcmod)
+Reading title:
+remark goes here
+> 
+> 
+>     # Load in protein.
+>     receptor = loadMol2 receptor.gaff.mol2
+Loading Mol2 file: ./receptor.gaff.mol2
+Reading MOLECULE named *****
+> 
+>     # Load parameters for ligand.
+>     mods = loadAmberParams ligand.gaff.frcmod
+Loading parameters: ./ligand.gaff.frcmod
+Reading force field modification type file (frcmod)
+Reading title:
+remark goes here
+(UNKNOWN ATOM TYPE: DU)
+> 
+>     # Load parameters for ligand.
+>     loadAmberParams ligand.gaff.frcmod
+Loading parameters: ./ligand.gaff.frcmod
+Reading force field modification type file (frcmod)
+Reading title:
+remark goes here
+(UNKNOWN ATOM TYPE: DU)
+> 
+>     # Load ligand.
+>     ligand = loadMol2 ligand.gaff.mol2
+Loading Mol2 file: ./ligand.gaff.mol2
+Reading MOLECULE named 21
+> 
+>     complex = combine { receptor ligand }
+  Sequence: *****
+  Sequence: 21
+>     
+> 
+>     # Check complex.
+>     check complex
+Checking 'complex'....
+WARNING: The unperturbed charge of the unit: 2.002003 is not zero.
+Warning: Close contact of 1.021625 angstroms between .R<non 2>.A<H12 21> and .R<non 2>.A<N2 9>
+Warning: Close contact of 1.022113 angstroms between .R<non 2>.A<H11 20> and .R<non 2>.A<N2 9>
+Warning: Close contact of 1.021646 angstroms between .R<non 2>.A<H10 19> and .R<non 2>.A<N2 9>
+Warning: Close contact of 1.092614 angstroms between .R<non 2>.A<H9 18> and .R<non 2>.A<C7 8>
+Warning: Close contact of 1.092042 angstroms between .R<non 2>.A<H8 17> and .R<non 2>.A<C7 8>
+Warning: Close contact of 1.020148 angstroms between .R<non 2>.A<H7 16> and .R<non 2>.A<N1 7>
+Warning: Close contact of 1.021396 angstroms between .R<non 2>.A<H6 15> and .R<non 2>.A<N1 7>
+Warning: Close contact of 1.019471 angstroms between .R<non 2>.A<H5 14> and .R<non 2>.A<N1 7>
+Warning: Close contact of 1.023432 angstroms between .R<non 2>.A<H4 13> and .R<non 2>.A<C6 6>
+Warning: Close contact of 1.022984 angstroms between .R<non 2>.A<H3 12> and .R<non 2>.A<C5 5>
+Warning: Close contact of 1.023473 angstroms between .R<non 2>.A<H2 11> and .R<non 2>.A<C3 3>
+Warning: Close contact of 1.021803 angstroms between .R<non 2>.A<H1 10> and .R<non 2>.A<C2 2>
+Warning: Close contact of 1.464416 angstroms between .R<non 2>.A<N2 9> and .R<non 2>.A<C7 8>
+Warning: Close contact of 1.480596 angstroms between .R<non 2>.A<C7 8> and .R<non 2>.A<C4 4>
+Warning: Close contact of 1.394925 angstroms between .R<non 2>.A<N1 7> and .R<non 2>.A<C1 1>
+Warning: Close contact of 1.405813 angstroms between .R<non 2>.A<C6 6> and .R<non 2>.A<C5 5>
+Warning: Close contact of 1.407179 angstroms between .R<non 2>.A<C6 6> and .R<non 2>.A<C1 1>
+Warning: Close contact of 1.415130 angstroms between .R<non 2>.A<C5 5> and .R<non 2>.A<C4 4>
+Warning: Close contact of 1.415216 angstroms between .R<non 2>.A<C4 4> and .R<non 2>.A<C3 3>
+Warning: Close contact of 1.406011 angstroms between .R<non 2>.A<C3 3> and .R<non 2>.A<C2 2>
+Warning: Close contact of 1.408082 angstroms between .R<non 2>.A<C2 2> and .R<non 2>.A<C1 1>
+Checking parameters for unit 'complex'.
+Checking for bond parameters.
+Checking for angle parameters.
+check:  Warnings: 22
+Unit is OK.
+> 
+>     # Report on net charge.
+>     charge complex
+Total unperturbed charge:   2.002003
+Total perturbed charge:     2.002003
+> 
+>     # Write parameters for vacuum
+>     saveAmberParm ligand vacuum.prmtop vacuum.inpcrd
+Checking Unit.
+WARNING: The unperturbed charge of the unit: 2.002003 is not zero.
+
+ -- ignoring the warning.
+
+Building topology.
+Building atom parameters.
+Building bond parameters.
+Building angle parameters.
+Building proper torsion parameters.
+Building improper torsion parameters.
+ total 0 improper torsions applied
+Building H-Bond parameters.
+Incorporating Non-Bonded adjustments.
+Not Marking per-residue atom chain types.
+Marking per-residue atom chain types.
+  (Residues lacking connect0/connect1 - 
+   these don't have chain types marked:
+
+	res	total affected
+
+	non	1
+  )
+ (no restraints)
+>     savepdb ligand vacuum.pdb
+Writing pdb file: vacuum.pdb
+>     
+>     saveAmberParm ligand solvent.prmtop solvent.inpcrd
+Checking Unit.
+WARNING: The unperturbed charge of the unit: 2.002003 is not zero.
+
+ -- ignoring the warning.
+
+Building topology.
+Building atom parameters.
+Building bond parameters.
+Building angle parameters.
+Building proper torsion parameters.
+Building improper torsion parameters.
+ total 0 improper torsions applied
+Building H-Bond parameters.
+Incorporating Non-Bonded adjustments.
+Not Marking per-residue atom chain types.
+Marking per-residue atom chain types.
+  (Residues lacking connect0/connect1 - 
+   these don't have chain types marked:
+
+	res	total affected
+
+	non	1
+  )
+ (no restraints)
+>     saveAmberParm complex complex.prmtop complex.inpcrd
+Checking Unit.
+WARNING: The unperturbed charge of the unit: 2.002003 is not zero.
+
+ -- ignoring the warning.
+
+Building topology.
+Building atom parameters.
+Building bond parameters.
+Building angle parameters.
+Building proper torsion parameters.
+Building improper torsion parameters.
+ total 42 improper torsions applied
+Building H-Bond parameters.
+Incorporating Non-Bonded adjustments.
+Not Marking per-residue atom chain types.
+Marking per-residue atom chain types.
+  (Residues lacking connect0/connect1 - 
+   these don't have chain types marked:
+
+	res	total affected
+
+	LIG	1
+	non	1
+  )
+ (no restraints)
+> 
+>     # Write PDB files
+> 
+>     savepdb ligand solvent.pdb
+Writing pdb file: solvent.pdb
+>     savepdb complex complex.pdb
+Writing pdb file: complex.pdb
+> 
+>     # Exit
+     quit 
+	Quit

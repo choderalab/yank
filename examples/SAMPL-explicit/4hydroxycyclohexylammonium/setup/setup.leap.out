@@ -1,0 +1,265 @@
+-I: Adding /Users/grinawap/anaconda/bin/../dat/leap/prep to search path.
+-I: Adding /Users/grinawap/anaconda/bin/../dat/leap/lib to search path.
+-I: Adding /Users/grinawap/anaconda/bin/../dat/leap/parm to search path.
+-I: Adding /Users/grinawap/anaconda/bin/../dat/leap/cmd to search path.
+-f: Source setup.leap.in.
+
+Welcome to LEaP!
+(no leaprc in search path)
+Sourcing: ./setup.leap.in
+----- Source: /Users/grinawap/anaconda/bin/../dat/leap/cmd/oldff/leaprc.ff99sbildn
+----- Source of /Users/grinawap/anaconda/bin/../dat/leap/cmd/oldff/leaprc.ff99sbildn done
+Log file: ./leap.log
+Loading parameters: /Users/grinawap/anaconda/bin/../dat/leap/parm/parm99.dat
+Reading title:
+PARM99 for DNA,RNA,AA, organic molecules, TIP3P wat. Polariz.& LP incl.02/04/99
+Loading parameters: /Users/grinawap/anaconda/bin/../dat/leap/parm/frcmod.ff99SBildn
+Reading force field modification type file (frcmod)
+Reading title:
+Modification/update of parm99.dat (Hornak & Simmerling) + ILDN corrections
+Loading library: /Users/grinawap/anaconda/bin/../dat/leap/lib/all_nucleic94.lib
+Loading library: /Users/grinawap/anaconda/bin/../dat/leap/lib/all_amino94ildn.lib
+Loading library: /Users/grinawap/anaconda/bin/../dat/leap/lib/all_aminoct94ildn.lib
+Loading library: /Users/grinawap/anaconda/bin/../dat/leap/lib/all_aminont94ildn.lib
+Loading library: /Users/grinawap/anaconda/bin/../dat/leap/lib/ions94.lib
+Loading library: /Users/grinawap/anaconda/bin/../dat/leap/lib/solvents.lib
+----- Source: /Users/grinawap/anaconda/bin/../dat/leap/cmd/leaprc.gaff
+----- Source of /Users/grinawap/anaconda/bin/../dat/leap/cmd/leaprc.gaff done
+Log file: ./leap.log
+Loading parameters: /Users/grinawap/anaconda/bin/../dat/leap/parm/gaff.dat
+Reading title:
+AMBER General Force Field for organic molecules (Version 1.7, Nov 2013)
+Using H(N)-modified Bondi radii
+Loading parameters: ./receptor.gaff.frcmod
+Reading force field modification type file (frcmod)
+Reading title:
+remark goes here
+Loading parameters: ./receptor.gaff.frcmod
+Reading force field modification type file (frcmod)
+Reading title:
+remark goes here
+Loading Mol2 file: ./receptor.gaff.mol2
+Reading MOLECULE named *****
+Loading parameters: ./ligand.gaff.frcmod
+Reading force field modification type file (frcmod)
+Reading title:
+remark goes here
+Loading parameters: ./ligand.gaff.frcmod
+Reading force field modification type file (frcmod)
+Reading title:
+remark goes here
+Loading Mol2 file: ./ligand.gaff.mol2
+Reading MOLECULE named 22
+ (using default radius 1.500000 for H14)
+ (using default radius 1.500000 for H13)
+ (using default radius 1.500000 for H12)
+ (using default radius 1.500000 for H11)
+ (using default radius 1.500000 for H10)
+ (using default radius 1.500000 for H9)
+ (using default radius 1.500000 for H8)
+ (using default radius 1.500000 for H7)
+ (using default radius 1.500000 for H6)
+ (using default radius 1.500000 for H5)
+ (using default radius 1.500000 for H4)
+ (using default radius 1.500000 for H3)
+ (using default radius 1.500000 for H2)
+ (using default radius 1.500000 for H1)
+ (using default radius 1.500000 for N1)
+ (using default radius 1.500000 for C6)
+ (using default radius 1.500000 for C5)
+ (using default radius 1.500000 for C4)
+ (using default radius 1.500000 for C3)
+ (using default radius 1.500000 for C2)
+ (using default radius 1.500000 for C1)
+  Solute vdw bounding box:              16.338 11.625 33.385
+  Total bounding box for atom centers:  53.385 53.385 53.385
+      (box expansion for 'iso' is 148.0%)
+  Solvent unit box:                     18.774 18.774 18.774
+ (using default radius 1.500000 for H14)
+ (using default radius 1.500000 for H13)
+ (using default radius 1.500000 for H12)
+ (using default radius 1.500000 for H11)
+ (using default radius 1.500000 for H10)
+ (using default radius 1.500000 for H9)
+ (using default radius 1.500000 for H8)
+ (using default radius 1.500000 for H7)
+ (using default radius 1.500000 for H6)
+ (using default radius 1.500000 for H5)
+ (using default radius 1.500000 for H4)
+ (using default radius 1.500000 for H3)
+ (using default radius 1.500000 for H2)
+ (using default radius 1.500000 for H1)
+ (using default radius 1.500000 for N1)
+ (using default radius 1.500000 for C6)
+ (using default radius 1.500000 for C5)
+ (using default radius 1.500000 for C4)
+ (using default radius 1.500000 for C3)
+ (using default radius 1.500000 for C2)
+ (using default radius 1.500000 for C1)
+  Volume: 179378.436 A^3 
+  Total mass 84016.604 amu,  Density 0.778 g/cc
+  Added 4598 residues.
+1 Cl- ion required to neutralize.
+Adding 1 counter ions to "complex" using 1A grid
+Grid extends from solute vdw + 2.47  to  8.38
+Resolution:      1.00 Angstrom.
+grid build: 0 sec
+Calculating grid charges
+charges: 45 sec
+Placed Cl- in complex at (-29.12, -21.96, -12.28).
+
+Done adding ions.
+Checking 'complex'....
+Warning: Close contact of 0.981333 angstroms between .R<non 2>.A<H14 22> and .R<non 2>.A<O1 8>
+Warning: Close contact of 1.021548 angstroms between .R<non 2>.A<H13 21> and .R<non 2>.A<N1 7>
+Warning: Close contact of 1.020347 angstroms between .R<non 2>.A<H12 20> and .R<non 2>.A<N1 7>
+Warning: Close contact of 1.021717 angstroms between .R<non 2>.A<H11 19> and .R<non 2>.A<N1 7>
+Warning: Close contact of 1.093506 angstroms between .R<non 2>.A<H10 18> and .R<non 2>.A<C6 6>
+Warning: Close contact of 1.091122 angstroms between .R<non 2>.A<H9 17> and .R<non 2>.A<C6 6>
+Warning: Close contact of 1.093707 angstroms between .R<non 2>.A<H8 16> and .R<non 2>.A<C5 5>
+Warning: Close contact of 1.091863 angstroms between .R<non 2>.A<H7 15> and .R<non 2>.A<C5 5>
+Warning: Close contact of 1.094202 angstroms between .R<non 2>.A<H6 14> and .R<non 2>.A<C4 4>
+Warning: Close contact of 1.092052 angstroms between .R<non 2>.A<H5 13> and .R<non 2>.A<C3 3>
+Warning: Close contact of 1.093557 angstroms between .R<non 2>.A<H4 12> and .R<non 2>.A<C3 3>
+Warning: Close contact of 1.092647 angstroms between .R<non 2>.A<H3 11> and .R<non 2>.A<C2 2>
+Warning: Close contact of 1.093494 angstroms between .R<non 2>.A<H2 10> and .R<non 2>.A<C2 2>
+Warning: Close contact of 1.094989 angstroms between .R<non 2>.A<H1 9> and .R<non 2>.A<C1 1>
+Warning: Close contact of 1.427081 angstroms between .R<non 2>.A<O1 8> and .R<non 2>.A<C4 4>
+Warning: Close contact of 1.469115 angstroms between .R<non 2>.A<N1 7> and .R<non 2>.A<C1 1>
+Checking parameters for unit 'complex'.
+Checking for bond parameters.
+Checking for angle parameters.
+check:  Warnings: 16
+Unit is OK.
+Total unperturbed charge:   0.002002
+Total perturbed charge:     0.002002
+Checking Unit.
+WARNING: The unperturbed charge of the unit: 1.002002 is not zero.
+
+ -- ignoring the warning.
+
+Building topology.
+Building atom parameters.
+Building bond parameters.
+Building angle parameters.
+Building proper torsion parameters.
+Building improper torsion parameters.
+ total 0 improper torsions applied
+Building H-Bond parameters.
+Incorporating Non-Bonded adjustments.
+Not Marking per-residue atom chain types.
+Marking per-residue atom chain types.
+  (Residues lacking connect0/connect1 - 
+   these don't have chain types marked:
+
+	res	total affected
+
+	non	1
+  )
+ (no restraints)
+Writing pdb file: vacuum.pdb
+ (using default radius 1.500000 for C1)
+ (using default radius 1.500000 for C2)
+ (using default radius 1.500000 for C3)
+ (using default radius 1.500000 for C4)
+ (using default radius 1.500000 for C5)
+ (using default radius 1.500000 for C6)
+ (using default radius 1.500000 for N1)
+ (using default radius 1.500000 for H1)
+ (using default radius 1.500000 for H2)
+ (using default radius 1.500000 for H3)
+ (using default radius 1.500000 for H4)
+ (using default radius 1.500000 for H5)
+ (using default radius 1.500000 for H6)
+ (using default radius 1.500000 for H7)
+ (using default radius 1.500000 for H8)
+ (using default radius 1.500000 for H9)
+ (using default radius 1.500000 for H10)
+ (using default radius 1.500000 for H11)
+ (using default radius 1.500000 for H12)
+ (using default radius 1.500000 for H13)
+ (using default radius 1.500000 for H14)
+  Solute vdw bounding box:              5.794 9.667 7.475
+  Total bounding box for atom centers:  29.667 29.667 29.667
+      (box expansion for 'iso' is  24.2%)
+  Solvent unit box:                     18.774 18.774 18.774
+ (using default radius 1.500000 for C1)
+ (using default radius 1.500000 for C2)
+ (using default radius 1.500000 for C3)
+ (using default radius 1.500000 for C4)
+ (using default radius 1.500000 for C5)
+ (using default radius 1.500000 for C6)
+ (using default radius 1.500000 for N1)
+ (using default radius 1.500000 for H1)
+ (using default radius 1.500000 for H2)
+ (using default radius 1.500000 for H3)
+ (using default radius 1.500000 for H4)
+ (using default radius 1.500000 for H5)
+ (using default radius 1.500000 for H6)
+ (using default radius 1.500000 for H7)
+ (using default radius 1.500000 for H8)
+ (using default radius 1.500000 for H9)
+ (using default radius 1.500000 for H10)
+ (using default radius 1.500000 for H11)
+ (using default radius 1.500000 for H12)
+ (using default radius 1.500000 for H13)
+ (using default radius 1.500000 for H14)
+  Volume: 34390.739 A^3 
+  Total mass 13401.888 amu,  Density 0.647 g/cc
+  Added 743 residues.
+1 Cl- ion required to neutralize.
+Adding 1 counter ions to "ligand" using 1A grid
+Grid extends from solute vdw + 2.47  to  8.24
+Resolution:      1.00 Angstrom.
+grid build: 0 sec
+Calculating grid charges
+charges: 1 sec
+Placed Cl- in ligand at (16.85, 1.87, -1.87).
+
+Done adding ions.
+Checking Unit.
+Building topology.
+Building atom parameters.
+Building bond parameters.
+Building angle parameters.
+Building proper torsion parameters.
+Building improper torsion parameters.
+ total 0 improper torsions applied
+Building H-Bond parameters.
+Incorporating Non-Bonded adjustments.
+Not Marking per-residue atom chain types.
+Marking per-residue atom chain types.
+  (Residues lacking connect0/connect1 - 
+   these don't have chain types marked:
+
+	res	total affected
+
+	WAT	743
+	non	1
+  )
+ (no restraints)
+Checking Unit.
+Building topology.
+Building atom parameters.
+Building bond parameters.
+Building angle parameters.
+Building proper torsion parameters.
+Building improper torsion parameters.
+ total 42 improper torsions applied
+Building H-Bond parameters.
+Incorporating Non-Bonded adjustments.
+Not Marking per-residue atom chain types.
+Marking per-residue atom chain types.
+  (Residues lacking connect0/connect1 - 
+   these don't have chain types marked:
+
+	res	total affected
+
+	LIG	1
+	WAT	4598
+	non	1
+  )
+ (no restraints)
+Writing pdb file: solvent.pdb
+Writing pdb file: complex.pdb
+	Quit

@@ -1,0 +1,936 @@
+log started: Sat Nov 29 11:23:22 2014
+
+Log file: ./leap.log
+>> #
+>> # ----- leaprc for loading the ff99SB (Hornak & Simmerling) force field
+>> #       modified for the "ILDN" changes
+>> #
+>> #	load atom type hybridizations
+>> #
+>> addAtomTypes {
+>> 	{ "H"   "H" "sp3" }
+>> 	{ "HO"  "H" "sp3" }
+>> 	{ "HS"  "H" "sp3" }
+>> 	{ "H1"  "H" "sp3" }
+>> 	{ "H2"  "H" "sp3" }
+>> 	{ "H3"  "H" "sp3" }
+>> 	{ "H4"  "H" "sp3" }
+>> 	{ "H5"  "H" "sp3" }
+>> 	{ "HW"  "H" "sp3" }
+>> 	{ "HC"  "H" "sp3" }
+>> 	{ "HA"  "H" "sp3" }
+>> 	{ "HP"  "H" "sp3" }
+>> 	{ "OH"  "O" "sp3" }
+>> 	{ "OS"  "O" "sp3" }
+>> 	{ "O"   "O" "sp2" }
+>> 	{ "O2"  "O" "sp2" }
+>> 	{ "OW"  "O" "sp3" }
+>> 	{ "CT"  "C" "sp3" }
+>> 	{ "CH"  "C" "sp3" }
+>> 	{ "C2"  "C" "sp3" }
+>> 	{ "C3"  "C" "sp3" }
+>> 	{ "C"   "C" "sp2" }
+>> 	{ "C*"  "C" "sp2" }
+>> 	{ "CA"  "C" "sp2" }
+>> 	{ "CB"  "C" "sp2" }
+>> 	{ "CC"  "C" "sp2" }
+>> 	{ "CN"  "C" "sp2" }
+>> 	{ "CM"  "C" "sp2" }
+>> 	{ "CK"  "C" "sp2" }
+>> 	{ "CQ"  "C" "sp2" }
+>> 	{ "CD"  "C" "sp2" }
+>> 	{ "CE"  "C" "sp2" }
+>> 	{ "CF"  "C" "sp2" }
+>> 	{ "CP"  "C" "sp2" }
+>> 	{ "CI"  "C" "sp2" }
+>> 	{ "CJ"  "C" "sp2" }
+>> 	{ "CW"  "C" "sp2" }
+>> 	{ "CV"  "C" "sp2" }
+>> 	{ "CR"  "C" "sp2" }
+>> 	{ "CA"  "C" "sp2" }
+>> 	{ "CY"  "C" "sp2" }
+>> 	{ "C0"  "Ca" "sp3" }
+>> 	{ "MG"  "Mg" "sp3" }
+>> 	{ "N"   "N" "sp2" }
+>> 	{ "NA"  "N" "sp2" }
+>> 	{ "N2"  "N" "sp2" }
+>> 	{ "N*"  "N" "sp2" }
+>> 	{ "NP"  "N" "sp2" }
+>> 	{ "NQ"  "N" "sp2" }
+>> 	{ "NB"  "N" "sp2" }
+>> 	{ "NC"  "N" "sp2" }
+>> 	{ "NT"  "N" "sp3" }
+>> 	{ "N3"  "N" "sp3" }
+>> 	{ "S"   "S" "sp3" }
+>> 	{ "SH"  "S" "sp3" }
+>> 	{ "P"   "P" "sp3" }
+>> 	{ "LP"  ""  "sp3" }
+>> 	{ "F"   "F" "sp3" }
+>> 	{ "CL"  "Cl" "sp3" }
+>> 	{ "BR"  "Br" "sp3" }
+>> 	{ "I"   "I"  "sp3" }
+>> 	{ "FE"  "Fe" "sp3" }
+>> 	{ "EP"  ""  "sp3" }
+>> # glycam
+>> 	{ "OG"  "O" "sp3" }
+>> 	{ "OL"  "O" "sp3" }
+>> 	{ "AC"  "C" "sp3" }
+>> 	{ "EC"  "C" "sp3" }
+>> #ildn
+>> 	{ "C3"  "C" "sp3" }
+>> 	{ "C4"  "C" "sp3" }
+>> 	{ "C5"   "C" "sp2" }
+>> 	{ "C6"   "C" "sp2" }
+>> 	{ "NP"   "N" "sp2" }
+>> 	{ "OM"   "O" "sp2" } # guess!!!
+>> }
+>> #
+>> #	Load the main parameter set.
+>> #
+>> parm99 = loadamberparams parm99.dat
+Loading parameters: /Users/grinawap/anaconda/bin/../dat/leap/parm/parm99.dat
+Reading title:
+PARM99 for DNA,RNA,AA, organic molecules, TIP3P wat. Polariz.& LP incl.02/04/99
+(UNKNOWN ATOM TYPE: HZ)
+(UNKNOWN ATOM TYPE: IM)
+(UNKNOWN ATOM TYPE: Li)
+(UNKNOWN ATOM TYPE: IP)
+(UNKNOWN ATOM TYPE: K)
+(UNKNOWN ATOM TYPE: Rb)
+(UNKNOWN ATOM TYPE: Cs)
+(UNKNOWN ATOM TYPE: Zn)
+(UNKNOWN ATOM TYPE: IB)
+(UNKNOWN ATOM TYPE: LP)
+>> mods = loadamberparams frcmod.ff99SBildn
+Loading parameters: /Users/grinawap/anaconda/bin/../dat/leap/parm/frcmod.ff99SBildn
+Reading force field modification type file (frcmod)
+Reading title:
+Modification/update of parm99.dat (Hornak & Simmerling) + ILDN corrections
+>> #
+>> #	Load DNA/RNA libraries
+>> #
+>> loadOff all_nucleic94.lib
+Loading library: /Users/grinawap/anaconda/bin/../dat/leap/lib/all_nucleic94.lib
+Loading: DA
+Loading: DA3
+Loading: DA5
+Loading: DAN
+Loading: DC
+Loading: DC3
+Loading: DC5
+Loading: DCN
+Loading: DG
+Loading: DG3
+Loading: DG5
+Loading: DGN
+Loading: DT
+Loading: DT3
+Loading: DT5
+Loading: DTN
+Loading: RA
+Loading: RA3
+Loading: RA5
+Loading: RAN
+Loading: RC
+Loading: RC3
+Loading: RC5
+Loading: RCN
+Loading: RG
+Loading: RG3
+Loading: RG5
+Loading: RGN
+Loading: RU
+Loading: RU3
+Loading: RU5
+Loading: RUN
+>> #
+>> #	Load main chain and terminating 
+>> #	amino acid libraries (i.e. ff94 libs)
+>> #
+>> loadOff all_amino94ildn.lib
+Loading library: /Users/grinawap/anaconda/bin/../dat/leap/lib/all_amino94ildn.lib
+Loading: ALA
+Loading: ARG
+Loading: ASH
+Loading: ASN
+Loading: ASP
+Loading: CYM
+Loading: CYS
+Loading: CYX
+Loading: GLH
+Loading: GLN
+Loading: GLU
+Loading: GLY
+Loading: HID
+Loading: HIE
+Loading: HIP
+Loading: ILE
+Loading: LEU
+Loading: LYN
+Loading: LYS
+Loading: MET
+Loading: PHE
+Loading: PRO
+Loading: SER
+Loading: THR
+Loading: TRP
+Loading: TYR
+Loading: VAL
+>> loadOff all_aminoct94ildn.lib
+Loading library: /Users/grinawap/anaconda/bin/../dat/leap/lib/all_aminoct94ildn.lib
+Loading: CALA
+Loading: CARG
+Loading: CASN
+Loading: CASP
+Loading: CCYS
+Loading: CCYX
+Loading: CGLN
+Loading: CGLU
+Loading: CGLY
+Loading: CHID
+Loading: CHIE
+Loading: CHIP
+Loading: CILE
+Loading: CLEU
+Loading: CLYS
+Loading: CMET
+Loading: CPHE
+Loading: CPRO
+Loading: CSER
+Loading: CTHR
+Loading: CTRP
+Loading: CTYR
+Loading: CVAL
+Loading: NHE
+Loading: NME
+>> loadOff all_aminont94ildn.lib
+Loading library: /Users/grinawap/anaconda/bin/../dat/leap/lib/all_aminont94ildn.lib
+Loading: ACE
+Loading: NALA
+Loading: NARG
+Loading: NASN
+Loading: NASP
+Loading: NCYS
+Loading: NCYX
+Loading: NGLN
+Loading: NGLU
+Loading: NGLY
+Loading: NHID
+Loading: NHIE
+Loading: NHIP
+Loading: NILE
+Loading: NLEU
+Loading: NLYS
+Loading: NMET
+Loading: NPHE
+Loading: NPRO
+Loading: NSER
+Loading: NTHR
+Loading: NTRP
+Loading: NTYR
+Loading: NVAL
+>> #
+>> #       Load water and ions
+>> # 
+>> loadOff ions94.lib
+Loading library: /Users/grinawap/anaconda/bin/../dat/leap/lib/ions94.lib
+Loading: CIO
+Loading: Cl-
+Loading: Cs+
+Loading: IB
+Loading: K+
+Loading: Li+
+Loading: MG2
+Loading: Na+
+Loading: Rb+
+>> loadOff solvents.lib
+Loading library: /Users/grinawap/anaconda/bin/../dat/leap/lib/solvents.lib
+Loading: CHCL3BOX
+Loading: DC4
+Loading: MEOHBOX
+Loading: NMABOX
+Loading: OPC
+Loading: OPCBOX
+Loading: PL3
+Loading: POL3BOX
+Loading: QSPCFWBOX
+Loading: SPC
+Loading: SPCBOX
+Loading: SPCFWBOX
+Loading: SPF
+Loading: SPG
+Loading: T4E
+Loading: TIP3PBOX
+Loading: TIP3PFBOX
+Loading: TIP4PBOX
+Loading: TIP4PEWBOX
+Loading: TIP5PBOX
+Loading: TP3
+Loading: TP4
+Loading: TP5
+Loading: TPF
+>> HOH = TP3
+>> WAT = TP3
+>> 
+>> #
+>> #	Define the PDB name map for the amino acids and DNA.
+>> #
+>> addPdbResMap {
+>>   { 0 "ALA" "NALA" } { 1 "ALA" "CALA" }
+>>   { 0 "ARG" "NARG" } { 1 "ARG" "CARG" }
+>>   { 0 "ASN" "NASN" } { 1 "ASN" "CASN" }
+>>   { 0 "ASP" "NASP" } { 1 "ASP" "CASP" }
+>>   { 0 "CYS" "NCYS" } { 1 "CYS" "CCYS" }
+>>   { 0 "CYX" "NCYX" } { 1 "CYX" "CCYX" }
+>>   { 0 "GLN" "NGLN" } { 1 "GLN" "CGLN" }
+>>   { 0 "GLU" "NGLU" } { 1 "GLU" "CGLU" }
+>>   { 0 "GLY" "NGLY" } { 1 "GLY" "CGLY" }
+>>   { 0 "HID" "NHID" } { 1 "HID" "CHID" }
+>>   { 0 "HIE" "NHIE" } { 1 "HIE" "CHIE" }
+>>   { 0 "HIP" "NHIP" } { 1 "HIP" "CHIP" }
+>>   { 0 "ILE" "NILE" } { 1 "ILE" "CILE" }
+>>   { 0 "LEU" "NLEU" } { 1 "LEU" "CLEU" }
+>>   { 0 "LYS" "NLYS" } { 1 "LYS" "CLYS" }
+>>   { 0 "MET" "NMET" } { 1 "MET" "CMET" }
+>>   { 0 "PHE" "NPHE" } { 1 "PHE" "CPHE" }
+>>   { 0 "PRO" "NPRO" } { 1 "PRO" "CPRO" }
+>>   { 0 "SER" "NSER" } { 1 "SER" "CSER" }
+>>   { 0 "THR" "NTHR" } { 1 "THR" "CTHR" }
+>>   { 0 "TRP" "NTRP" } { 1 "TRP" "CTRP" }
+>>   { 0 "TYR" "NTYR" } { 1 "TYR" "CTYR" }
+>>   { 0 "VAL" "NVAL" } { 1 "VAL" "CVAL" }
+>>   { 0 "HIS" "NHIS" } { 1 "HIS" "CHIS" }
+>>   { 0 "GUA" "DG5"  } { 1 "GUA" "DG3"  } { "GUA" "DG" }
+>>   { 0 "ADE" "DA5"  } { 1 "ADE" "DA3"  } { "ADE" "DA" }
+>>   { 0 "CYT" "DC5"  } { 1 "CYT" "DC3"  } { "CYT" "DC" }
+>>   { 0 "THY" "DT5"  } { 1 "THY" "DT3"  } { "THY" "DT" }
+>>   { 0 "G" "RG5"  } { 1 "G" "RG3"  } { "G" "RG" } { "GN" "RGN" }
+>>   { 0 "A" "RA5"  } { 1 "A" "RA3"  } { "A" "RA" } { "AN" "RAN" }
+>>   { 0 "C" "RC5"  } { 1 "C" "RC3"  } { "C" "RC" } { "CN" "RCN" }
+>>   { 0 "U" "RU5"  } { 1 "U" "RU3"  } { "U" "RU" } { "UN" "RUN" }
+>>   { 0 "DG" "DG5"  } { 1 "DG" "DG3"  }  
+>>   { 0 "DA" "DA5"  } { 1 "DA" "DA3"  }  
+>>   { 0 "DC" "DC5"  } { 1 "DC" "DC3"  }  
+>>   { 0 "DT" "DT5"  } { 1 "DT" "DT3"  }
+>> 
+>> }
+>> 
+>> addPdbAtomMap {
+>>   { "O5*" "O5'" }
+>>   { "C5*" "C5'" }
+>>   { "C4*" "C4'" }
+>>   { "O4*" "O4'" }
+>>   { "C3*" "C3'" }
+>>   { "O3*" "O3'" }
+>>   { "C2*" "C2'" }
+>>   { "C1*" "C1'" }
+>>   { "C5M" "C7"  }
+>>   { "O2*" "O2'" }
+>>   { "H1*" "H1'" }
+>>   { "H2*1" "H2'1" }
+>>   { "H2*2" "H2'2" }
+>>   { "H2'"  "H2'1" }
+>>   { "H2''" "H2'2" }
+>>   { "H3*" "H3'" }
+>>   { "H4*" "H4'" }
+>>   { "H5*1" "H5'1" }
+>>   { "H5*2" "H5'2" }
+>>   { "H5'"  "H5'1" }
+>>   { "H5''" "H5'2" }
+>>   { "HO2'" "HO'2" }
+>>   { "HO5'" "H5T" }
+>>   { "HO3'" "H3T" }
+>>   { "O1'" "O4'" }
+>>   { "OA"  "O1P" }
+>>   { "OB"  "O2P" }
+>>   { "OP1" "O1P" }
+>>   { "OP2" "O2P" }
+>> }
+>> 
+>> 
+>> #
+>> # assumed that most often proteins use HIE
+>> #
+>> NHIS = NHIE
+>> HIS = HIE
+>> CHIS = CHIE
+> 
+> 
+>     # Load GAFF parameters.
+>     source leaprc.gaff
+----- Source: /Users/grinawap/anaconda/bin/../dat/leap/cmd/leaprc.gaff
+----- Source of /Users/grinawap/anaconda/bin/../dat/leap/cmd/leaprc.gaff done
+>> logFile leap.log
+log started: Sat Nov 29 11:23:22 2014
+
+Log file: ./leap.log
+>> #
+>> # ----- leaprc for loading the general Amber Force field.
+>> #       This file is mostly for use with Antechamber
+>> #
+>> #	load atom type hybridizations
+>> #
+>> addAtomTypes {
+>> 	{ "h1"  "H" "sp3" }
+>> 	{ "h2"  "H" "sp3" }
+>> 	{ "h3"  "H" "sp3" }
+>> 	{ "h4"  "H" "sp3" }
+>> 	{ "h5"  "H" "sp3" }
+>> 	{ "ha"  "H" "sp3" }
+>> 	{ "hc"  "H" "sp3" }
+>> 	{ "hn"  "H" "sp3" }
+>> 	{ "ho"  "H" "sp3" }
+>> 	{ "hp"  "H" "sp3" }
+>> 	{ "hs"  "H" "sp3" }
+>> 	{ "hw"  "H" "sp3" }
+>> 	{ "hx"  "H" "sp3" }
+>> 	{ "o"  "O" "sp2" }
+>> 	{ "o2"  "O" "sp2" }
+>> 	{ "oh"  "O" "sp3" }
+>> 	{ "os"  "O" "sp3" }
+>> 	{ "ow"  "O" "sp3" }
+>> 	{ "c"  "C" "sp2" }
+>> 	{ "c1"  "C" "sp2" }
+>> 	{ "c2"  "C" "sp2" }
+>> 	{ "c3"  "C" "sp3" }
+>> 	{ "ca"  "C" "sp2" }
+>> 	{ "cc"  "C" "sp2" }
+>> 	{ "cd"  "C" "sp2" }
+>> 	{ "ce"  "C" "sp2" }
+>> 	{ "cf"  "C" "sp2" }
+>> 	{ "cg"  "C" "sp2" }
+>> 	{ "ch"  "C" "sp2" }
+>> 	{ "cp"  "C" "sp2" }
+>> 	{ "cq"  "C" "sp2" }
+>> 	{ "cu"  "C" "sp2" }
+>> 	{ "cv"  "C" "sp2" }
+>> 	{ "cx"  "C" "sp2" }
+>> 	{ "cy"  "C" "sp2" }
+>> 	{ "cz"  "C" "sp2" }
+>> 	{ "n"   "N" "sp2" }
+>> 	{ "n1"  "N" "sp2" }
+>> 	{ "n2"  "N" "sp2" }
+>> 	{ "n3"  "N" "sp3" }
+>> 	{ "n4"  "N" "sp3" }
+>> 	{ "na"  "N" "sp2" }
+>> 	{ "nb"  "N" "sp2" }
+>> 	{ "nc"  "N" "sp2" }
+>> 	{ "nd"  "N" "sp2" }
+>> 	{ "ne"  "N" "sp2" }
+>> 	{ "nf"  "N" "sp2" }
+>> 	{ "nh"  "N" "sp2" }
+>> 	{ "no"  "N" "sp2" }
+>> 	{ "s"   "S" "sp2" }
+>> 	{ "s2"   "S" "sp2" }
+>> 	{ "s3"   "S" "sp3" }
+>> 	{ "s4"   "S" "sp3" }
+>> 	{ "s6"   "S" "sp3" }
+>> 	{ "sh"   "S" "sp3" }
+>> 	{ "ss"   "S" "sp3" }
+>> 	{ "sx"   "S" "sp3" }
+>> 	{ "sy"   "S" "sp3" }
+>> 	{ "p2"   "P" "sp2" }
+>> 	{ "p3"   "P" "sp3" }
+>> 	{ "p4"   "P" "sp3" }
+>> 	{ "p5"   "P" "sp3" }
+>> 	{ "pb"   "P" "sp3" }
+>> 	{ "pc"   "P" "sp3" }
+>> 	{ "pd"   "P" "sp3" }
+>> 	{ "pe"   "P" "sp3" }
+>> 	{ "pf"   "P" "sp3" }
+>> 	{ "px"   "P" "sp3" }
+>> 	{ "py"   "P" "sp3" }
+>> 	{ "f"   "F" "sp3" }
+>> 	{ "cl"  "Cl" "sp3" }
+>> 	{ "br"  "Br" "sp3" }
+>> 	{ "i"   "I"  "sp3" }
+>> }
+>> #
+>> #	Load the general force field parameter set.
+>> #
+>> gaff = loadamberparams gaff.dat
+Loading parameters: /Users/grinawap/anaconda/bin/../dat/leap/parm/gaff.dat
+Reading title:
+AMBER General Force Field for organic molecules (Version 1.7, Nov 2013)
+> 
+> 
+>     # Set GB radii to recommended values for OBC.
+>     set default PBRadii mbondi2
+Using H(N)-modified Bondi radii
+> 
+>     mods2 = loadAmberParams receptor.gaff.frcmod
+Loading parameters: ./receptor.gaff.frcmod
+Reading force field modification type file (frcmod)
+Reading title:
+remark goes here
+> 
+>     loadAmberParams receptor.gaff.frcmod
+Loading parameters: ./receptor.gaff.frcmod
+Reading force field modification type file (frcmod)
+Reading title:
+remark goes here
+> 
+> 
+>     # Load in protein.
+>     receptor = loadMol2 receptor.gaff.mol2
+Loading Mol2 file: ./receptor.gaff.mol2
+Reading MOLECULE named *****
+> 
+>     # Load parameters for ligand.
+>     mods = loadAmberParams ligand.gaff.frcmod
+Loading parameters: ./ligand.gaff.frcmod
+Reading force field modification type file (frcmod)
+Reading title:
+remark goes here
+(UNKNOWN ATOM TYPE: DU)
+> 
+>     # Load parameters for ligand.
+>     loadAmberParams ligand.gaff.frcmod
+Loading parameters: ./ligand.gaff.frcmod
+Reading force field modification type file (frcmod)
+Reading title:
+remark goes here
+(UNKNOWN ATOM TYPE: DU)
+> 
+>     # Load ligand.
+>     ligand = loadMol2 ligand.gaff.mol2
+Loading Mol2 file: ./ligand.gaff.mol2
+Reading MOLECULE named 26
+> 
+>     complex = combine { receptor ligand }
+  Sequence: *****
+  Sequence: 26
+>     
+>         solvatebox complex TIP3PBOX 10.0 iso
+ (using default radius 1.500000 for H18)
+ (using default radius 1.500000 for H17)
+ (using default radius 1.500000 for H16)
+ (using default radius 1.500000 for H15)
+ (using default radius 1.500000 for H14)
+ (using default radius 1.500000 for H13)
+ (using default radius 1.500000 for H12)
+ (using default radius 1.500000 for H11)
+ (using default radius 1.500000 for H10)
+ (using default radius 1.500000 for H9)
+ (using default radius 1.500000 for H8)
+ (using default radius 1.500000 for H7)
+ (using default radius 1.500000 for H6)
+ (using default radius 1.500000 for H5)
+ (using default radius 1.500000 for H4)
+ (using default radius 1.500000 for H3)
+ (using default radius 1.500000 for H2)
+ (using default radius 1.500000 for H1)
+ (using default radius 1.500000 for N2)
+ (using default radius 1.500000 for C6)
+ (using default radius 1.500000 for C5)
+ (using default radius 1.500000 for C4)
+ (using default radius 1.500000 for C3)
+ (using default radius 1.500000 for C2)
+ (using default radius 1.500000 for C1)
+ (using default radius 1.500000 for N1)
+  Solute vdw bounding box:              50.112 13.848 16.173
+  Total bounding box for atom centers:  70.112 70.112 70.112
+      (box expansion for 'iso' is 301.5%)
+  Solvent unit box:                     18.774 18.774 18.774
+The number of boxes:  x= 4  y= 4  z= 4
+Adding box at: x=0  y=0  z=0
+Center of solvent box is: 28.161524, 28.161524, 28.161524
+Adding box at: x=0  y=0  z=1
+Center of solvent box is: 28.161524, 28.161524, 9.387175
+Adding box at: x=0  y=0  z=2
+Center of solvent box is: 28.161524, 28.161524, -9.387175
+Adding box at: x=0  y=0  z=3
+Center of solvent box is: 28.161524, 28.161524, -28.161524
+Adding box at: x=0  y=1  z=0
+Center of solvent box is: 28.161524, 9.387175, 28.161524
+Adding box at: x=0  y=1  z=1
+Center of solvent box is: 28.161524, 9.387175, 9.387175
+Adding box at: x=0  y=1  z=2
+Center of solvent box is: 28.161524, 9.387175, -9.387175
+Adding box at: x=0  y=1  z=3
+Center of solvent box is: 28.161524, 9.387175, -28.161524
+Adding box at: x=0  y=2  z=0
+Center of solvent box is: 28.161524, -9.387175, 28.161524
+Adding box at: x=0  y=2  z=1
+Center of solvent box is: 28.161524, -9.387175, 9.387175
+Adding box at: x=0  y=2  z=2
+Center of solvent box is: 28.161524, -9.387175, -9.387175
+Adding box at: x=0  y=2  z=3
+Center of solvent box is: 28.161524, -9.387175, -28.161524
+Adding box at: x=0  y=3  z=0
+Center of solvent box is: 28.161524, -28.161524, 28.161524
+Adding box at: x=0  y=3  z=1
+Center of solvent box is: 28.161524, -28.161524, 9.387175
+Adding box at: x=0  y=3  z=2
+Center of solvent box is: 28.161524, -28.161524, -9.387175
+Adding box at: x=0  y=3  z=3
+Center of solvent box is: 28.161524, -28.161524, -28.161524
+Adding box at: x=1  y=0  z=0
+Center of solvent box is: 9.387175, 28.161524, 28.161524
+Adding box at: x=1  y=0  z=1
+Center of solvent box is: 9.387175, 28.161524, 9.387175
+Adding box at: x=1  y=0  z=2
+Center of solvent box is: 9.387175, 28.161524, -9.387175
+Adding box at: x=1  y=0  z=3
+Center of solvent box is: 9.387175, 28.161524, -28.161524
+Adding box at: x=1  y=1  z=0
+Center of solvent box is: 9.387175, 9.387175, 28.161524
+Adding box at: x=1  y=1  z=1
+Center of solvent box is: 9.387175, 9.387175, 9.387175
+Adding box at: x=1  y=1  z=2
+Center of solvent box is: 9.387175, 9.387175, -9.387175
+Adding box at: x=1  y=1  z=3
+Center of solvent box is: 9.387175, 9.387175, -28.161524
+Adding box at: x=1  y=2  z=0
+Center of solvent box is: 9.387175, -9.387175, 28.161524
+Adding box at: x=1  y=2  z=1
+Center of solvent box is: 9.387175, -9.387175, 9.387175
+Adding box at: x=1  y=2  z=2
+Center of solvent box is: 9.387175, -9.387175, -9.387175
+Adding box at: x=1  y=2  z=3
+Center of solvent box is: 9.387175, -9.387175, -28.161524
+Adding box at: x=1  y=3  z=0
+Center of solvent box is: 9.387175, -28.161524, 28.161524
+Adding box at: x=1  y=3  z=1
+Center of solvent box is: 9.387175, -28.161524, 9.387175
+Adding box at: x=1  y=3  z=2
+Center of solvent box is: 9.387175, -28.161524, -9.387175
+Adding box at: x=1  y=3  z=3
+Center of solvent box is: 9.387175, -28.161524, -28.161524
+Adding box at: x=2  y=0  z=0
+Center of solvent box is: -9.387175, 28.161524, 28.161524
+Adding box at: x=2  y=0  z=1
+Center of solvent box is: -9.387175, 28.161524, 9.387175
+Adding box at: x=2  y=0  z=2
+Center of solvent box is: -9.387175, 28.161524, -9.387175
+Adding box at: x=2  y=0  z=3
+Center of solvent box is: -9.387175, 28.161524, -28.161524
+Adding box at: x=2  y=1  z=0
+Center of solvent box is: -9.387175, 9.387175, 28.161524
+Adding box at: x=2  y=1  z=1
+Center of solvent box is: -9.387175, 9.387175, 9.387175
+Adding box at: x=2  y=1  z=2
+Center of solvent box is: -9.387175, 9.387175, -9.387175
+Adding box at: x=2  y=1  z=3
+Center of solvent box is: -9.387175, 9.387175, -28.161524
+Adding box at: x=2  y=2  z=0
+Center of solvent box is: -9.387175, -9.387175, 28.161524
+Adding box at: x=2  y=2  z=1
+Center of solvent box is: -9.387175, -9.387175, 9.387175
+Adding box at: x=2  y=2  z=2
+Center of solvent box is: -9.387175, -9.387175, -9.387175
+Adding box at: x=2  y=2  z=3
+Center of solvent box is: -9.387175, -9.387175, -28.161524
+Adding box at: x=2  y=3  z=0
+Center of solvent box is: -9.387175, -28.161524, 28.161524
+Adding box at: x=2  y=3  z=1
+Center of solvent box is: -9.387175, -28.161524, 9.387175
+Adding box at: x=2  y=3  z=2
+Center of solvent box is: -9.387175, -28.161524, -9.387175
+Adding box at: x=2  y=3  z=3
+Center of solvent box is: -9.387175, -28.161524, -28.161524
+Adding box at: x=3  y=0  z=0
+Center of solvent box is: -28.161524, 28.161524, 28.161524
+Adding box at: x=3  y=0  z=1
+Center of solvent box is: -28.161524, 28.161524, 9.387175
+Adding box at: x=3  y=0  z=2
+Center of solvent box is: -28.161524, 28.161524, -9.387175
+Adding box at: x=3  y=0  z=3
+Center of solvent box is: -28.161524, 28.161524, -28.161524
+Adding box at: x=3  y=1  z=0
+Center of solvent box is: -28.161524, 9.387175, 28.161524
+Adding box at: x=3  y=1  z=1
+Center of solvent box is: -28.161524, 9.387175, 9.387175
+Adding box at: x=3  y=1  z=2
+Center of solvent box is: -28.161524, 9.387175, -9.387175
+Adding box at: x=3  y=1  z=3
+Center of solvent box is: -28.161524, 9.387175, -28.161524
+Adding box at: x=3  y=2  z=0
+Center of solvent box is: -28.161524, -9.387175, 28.161524
+Adding box at: x=3  y=2  z=1
+Center of solvent box is: -28.161524, -9.387175, 9.387175
+Adding box at: x=3  y=2  z=2
+Center of solvent box is: -28.161524, -9.387175, -9.387175
+Adding box at: x=3  y=2  z=3
+Center of solvent box is: -28.161524, -9.387175, -28.161524
+Adding box at: x=3  y=3  z=0
+Center of solvent box is: -28.161524, -28.161524, 28.161524
+Adding box at: x=3  y=3  z=1
+Center of solvent box is: -28.161524, -28.161524, 9.387175
+Adding box at: x=3  y=3  z=2
+Center of solvent box is: -28.161524, -28.161524, -9.387175
+Adding box at: x=3  y=3  z=3
+Center of solvent box is: -28.161524, -28.161524, -28.161524
+ (using default radius 1.500000 for H18)
+ (using default radius 1.500000 for H17)
+ (using default radius 1.500000 for H16)
+ (using default radius 1.500000 for H15)
+ (using default radius 1.500000 for H14)
+ (using default radius 1.500000 for H13)
+ (using default radius 1.500000 for H12)
+ (using default radius 1.500000 for H11)
+ (using default radius 1.500000 for H10)
+ (using default radius 1.500000 for H9)
+ (using default radius 1.500000 for H8)
+ (using default radius 1.500000 for H7)
+ (using default radius 1.500000 for H6)
+ (using default radius 1.500000 for H5)
+ (using default radius 1.500000 for H4)
+ (using default radius 1.500000 for H3)
+ (using default radius 1.500000 for H2)
+ (using default radius 1.500000 for H1)
+ (using default radius 1.500000 for N2)
+ (using default radius 1.500000 for C6)
+ (using default radius 1.500000 for C5)
+ (using default radius 1.500000 for C4)
+ (using default radius 1.500000 for C3)
+ (using default radius 1.500000 for C2)
+ (using default radius 1.500000 for C1)
+ (using default radius 1.500000 for N1)
+  Volume: 392595.748 A^3 
+  Total mass 193357.724 amu,  Density 0.818 g/cc
+  Added 10668 residues.
+>         addIons2 complex Cl- 0
+1 Cl- ion required to neutralize.
+Adding 1 counter ions to "complex" using 1A grid
+Total solute charge:   2.00  Max atom radius:   1.91
+Grid extends from solute vdw + 2.47  to  8.38
+Box:
+   enclosing:  -43.33 -43.27 -43.33   43.39 43.48 43.40
+   sized:			      84.67 84.73 84.67
+   edge:        128.00
+Resolution:      1.00 Angstrom.
+Tree depth: 7
+grid build: 1 sec
+Volume =  8.26% of box, grid points 173320
+Calculating grid charges
+charges: 200 sec
+Placed Cl- in complex at (-37.33, -14.27, -31.33).
+
+Done adding ions.
+>         
+> 
+>     # Check complex.
+>     check complex
+Checking 'complex'....
+WARNING: The unperturbed charge of the unit: 0.998000 is not zero.
+Warning: Close contact of 1.022394 angstroms between .R<non 2>.A<H18 26> and .R<non 2>.A<N2 8>
+Warning: Close contact of 1.023236 angstroms between .R<non 2>.A<H17 25> and .R<non 2>.A<N2 8>
+Warning: Close contact of 1.020968 angstroms between .R<non 2>.A<H16 24> and .R<non 2>.A<N2 8>
+Warning: Close contact of 1.092289 angstroms between .R<non 2>.A<H15 23> and .R<non 2>.A<C6 7>
+Warning: Close contact of 1.093494 angstroms between .R<non 2>.A<H14 22> and .R<non 2>.A<C6 7>
+Warning: Close contact of 1.093997 angstroms between .R<non 2>.A<H13 21> and .R<non 2>.A<C5 6>
+Warning: Close contact of 1.094124 angstroms between .R<non 2>.A<H12 20> and .R<non 2>.A<C5 6>
+Warning: Close contact of 1.092612 angstroms between .R<non 2>.A<H11 19> and .R<non 2>.A<C4 5>
+Warning: Close contact of 1.092390 angstroms between .R<non 2>.A<H10 18> and .R<non 2>.A<C4 5>
+Warning: Close contact of 1.092612 angstroms between .R<non 2>.A<H9 17> and .R<non 2>.A<C3 4>
+Warning: Close contact of 1.092390 angstroms between .R<non 2>.A<H8 16> and .R<non 2>.A<C3 4>
+Warning: Close contact of 1.093997 angstroms between .R<non 2>.A<H7 15> and .R<non 2>.A<C2 3>
+Warning: Close contact of 1.094124 angstroms between .R<non 2>.A<H6 14> and .R<non 2>.A<C2 3>
+Warning: Close contact of 1.092180 angstroms between .R<non 2>.A<H5 13> and .R<non 2>.A<C1 2>
+Warning: Close contact of 1.093130 angstroms between .R<non 2>.A<H4 12> and .R<non 2>.A<C1 2>
+Warning: Close contact of 1.023237 angstroms between .R<non 2>.A<H3 11> and .R<non 2>.A<N1 1>
+Warning: Close contact of 1.021836 angstroms between .R<non 2>.A<H2 10> and .R<non 2>.A<N1 1>
+Warning: Close contact of 1.021650 angstroms between .R<non 2>.A<H1 9> and .R<non 2>.A<N1 1>
+Warning: Close contact of 1.465412 angstroms between .R<non 2>.A<N2 8> and .R<non 2>.A<C6 7>
+Warning: Close contact of 1.464974 angstroms between .R<non 2>.A<C1 2> and .R<non 2>.A<N1 1>
+Checking parameters for unit 'complex'.
+Checking for bond parameters.
+Checking for angle parameters.
+check:  Warnings: 21
+Unit is OK.
+> 
+>     # Report on net charge.
+>     charge complex
+Total unperturbed charge:   0.998000
+Total perturbed charge:     0.998000
+> 
+>     # Write parameters for vacuum
+>     saveAmberParm ligand vacuum.prmtop vacuum.inpcrd
+Checking Unit.
+WARNING: The unperturbed charge of the unit: 1.998000 is not zero.
+
+ -- ignoring the warning.
+
+Building topology.
+Building atom parameters.
+Building bond parameters.
+Building angle parameters.
+Building proper torsion parameters.
+Building improper torsion parameters.
+ total 0 improper torsions applied
+Building H-Bond parameters.
+Incorporating Non-Bonded adjustments.
+Not Marking per-residue atom chain types.
+Marking per-residue atom chain types.
+  (Residues lacking connect0/connect1 - 
+   these don't have chain types marked:
+
+	res	total affected
+
+	non	1
+  )
+ (no restraints)
+>     savepdb ligand vacuum.pdb
+Writing pdb file: vacuum.pdb
+>     
+>         solvatebox ligand TIP3PBOX 10.0 iso
+ (using default radius 1.500000 for N1)
+ (using default radius 1.500000 for C1)
+ (using default radius 1.500000 for C2)
+ (using default radius 1.500000 for C3)
+ (using default radius 1.500000 for C4)
+ (using default radius 1.500000 for C5)
+ (using default radius 1.500000 for C6)
+ (using default radius 1.500000 for N2)
+ (using default radius 1.500000 for H1)
+ (using default radius 1.500000 for H2)
+ (using default radius 1.500000 for H3)
+ (using default radius 1.500000 for H4)
+ (using default radius 1.500000 for H5)
+ (using default radius 1.500000 for H6)
+ (using default radius 1.500000 for H7)
+ (using default radius 1.500000 for H8)
+ (using default radius 1.500000 for H9)
+ (using default radius 1.500000 for H10)
+ (using default radius 1.500000 for H11)
+ (using default radius 1.500000 for H12)
+ (using default radius 1.500000 for H13)
+ (using default radius 1.500000 for H14)
+ (using default radius 1.500000 for H15)
+ (using default radius 1.500000 for H16)
+ (using default radius 1.500000 for H17)
+ (using default radius 1.500000 for H18)
+  Solute vdw bounding box:              5.409 4.777 13.488
+  Total bounding box for atom centers:  33.488 33.488 33.488
+      (box expansion for 'iso' is  78.1%)
+  Solvent unit box:                     18.774 18.774 18.774
+The number of boxes:  x= 2  y= 2  z= 2
+Adding box at: x=0  y=0  z=0
+Center of solvent box is: 9.387175, 9.387175, 9.387175
+Adding box at: x=0  y=0  z=1
+Center of solvent box is: 9.387175, 9.387175, -9.387175
+Adding box at: x=0  y=1  z=0
+Center of solvent box is: 9.387175, -9.387175, 9.387175
+Adding box at: x=0  y=1  z=1
+Center of solvent box is: 9.387175, -9.387175, -9.387175
+Adding box at: x=1  y=0  z=0
+Center of solvent box is: -9.387175, 9.387175, 9.387175
+Adding box at: x=1  y=0  z=1
+Center of solvent box is: -9.387175, 9.387175, -9.387175
+Adding box at: x=1  y=1  z=0
+Center of solvent box is: -9.387175, -9.387175, 9.387175
+Adding box at: x=1  y=1  z=1
+Center of solvent box is: -9.387175, -9.387175, -9.387175
+ (using default radius 1.500000 for N1)
+ (using default radius 1.500000 for C1)
+ (using default radius 1.500000 for C2)
+ (using default radius 1.500000 for C3)
+ (using default radius 1.500000 for C4)
+ (using default radius 1.500000 for C5)
+ (using default radius 1.500000 for C6)
+ (using default radius 1.500000 for N2)
+ (using default radius 1.500000 for H1)
+ (using default radius 1.500000 for H2)
+ (using default radius 1.500000 for H3)
+ (using default radius 1.500000 for H4)
+ (using default radius 1.500000 for H5)
+ (using default radius 1.500000 for H6)
+ (using default radius 1.500000 for H7)
+ (using default radius 1.500000 for H8)
+ (using default radius 1.500000 for H9)
+ (using default radius 1.500000 for H10)
+ (using default radius 1.500000 for H11)
+ (using default radius 1.500000 for H12)
+ (using default radius 1.500000 for H13)
+ (using default radius 1.500000 for H14)
+ (using default radius 1.500000 for H15)
+ (using default radius 1.500000 for H16)
+ (using default radius 1.500000 for H17)
+ (using default radius 1.500000 for H18)
+  Volume: 48794.245 A^3 
+  Total mass 19511.328 amu,  Density 0.664 g/cc
+  Added 1083 residues.
+>         addIons2 ligand Cl- 0
+1 Cl- ion required to neutralize.
+Adding 1 counter ions to "ligand" using 1A grid
+Total solute charge:   2.00  Max atom radius:   1.77
+Grid extends from solute vdw + 2.47  to  8.24
+Box:
+   enclosing:  -24.82 -24.82 -25.15   25.02 24.96 24.76
+   sized:			      39.18 39.18 38.85
+   edge:        64.00
+Resolution:      1.00 Angstrom.
+Tree depth: 6
+grid build: 0 sec
+Volume = 16.97% of box, grid points 44493
+Calculating grid charges
+charges: 2 sec
+Placed Cl- in ligand at (13.18, -17.82, -4.15).
+
+Done adding ions.
+>         
+>     saveAmberParm ligand solvent.prmtop solvent.inpcrd
+Checking Unit.
+WARNING: The unperturbed charge of the unit: 0.998000 is not zero.
+
+ -- ignoring the warning.
+
+Building topology.
+Building atom parameters.
+Building bond parameters.
+Building angle parameters.
+Building proper torsion parameters.
+Building improper torsion parameters.
+ total 0 improper torsions applied
+Building H-Bond parameters.
+Incorporating Non-Bonded adjustments.
+Not Marking per-residue atom chain types.
+Marking per-residue atom chain types.
+  (Residues lacking connect0/connect1 - 
+   these don't have chain types marked:
+
+	res	total affected
+
+	WAT	1083
+	non	1
+  )
+ (no restraints)
+>     saveAmberParm complex complex.prmtop complex.inpcrd
+Checking Unit.
+WARNING: The unperturbed charge of the unit: 0.998000 is not zero.
+
+ -- ignoring the warning.
+
+Building topology.
+Building atom parameters.
+Building bond parameters.
+Building angle parameters.
+Building proper torsion parameters.
+Building improper torsion parameters.
+ total 42 improper torsions applied
+Building H-Bond parameters.
+Incorporating Non-Bonded adjustments.
+Not Marking per-residue atom chain types.
+Marking per-residue atom chain types.
+  (Residues lacking connect0/connect1 - 
+   these don't have chain types marked:
+
+	res	total affected
+
+	LIG	1
+	WAT	10668
+	non	1
+  )
+ (no restraints)
+> 
+>     # Write PDB files
+> 
+>     savepdb ligand solvent.pdb
+Writing pdb file: solvent.pdb
+>     savepdb complex complex.pdb
+Writing pdb file: complex.pdb
+> 
+>     # Exit
+     quit 
+	Quit
