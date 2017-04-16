@@ -5,6 +5,7 @@
 
 YANK
 ====
+[![Gitter](https://badges.gitter.im/Join Chat.svg)](https://gitter.im/choderalab/yank?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
 An open, extensible Python framework for GPU-accelerated alchemical free energy calculations
 
