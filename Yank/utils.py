@@ -1111,7 +1111,10 @@ def is_openeye_installed(oetools=('oechem', 'oequacpac', 'oeiupac', 'oeomega')):
         for tool in oetools:
             if tool in tool_keys:
                 # Try loading the module
-                module = importlib.import_module('openeye', tool)
+                try:
+                    module = importlib.import_module('openeye', tool)
+                except SystemError: # Python 3.4 relative import fix
+                    module = importlib.import_module('openeye.' + tool)
                 # Check that we have the license
                 if not getattr(module, tools_license[tool])():
                     raise ImportError

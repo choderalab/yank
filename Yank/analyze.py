@@ -21,6 +21,7 @@ import abc
 import copy
 import numpy as np
 
+import openmmtools as mmtools
 from .repex import Reporter
 import netCDF4 as netcdf  # netcdf4-python
 
@@ -1775,26 +1776,24 @@ def extract_trajectory(output_path, nc_path, state_index=None, replica_index=Non
 
     # Import simulation data
     try:
-        nc_file = netcdf.Dataset(nc_path, 'r')
-
-        # Extract topology and system serialization
-        serialized_system = nc_file.groups['metadata'].variables['reference_system'][0]
-        serialized_topology = nc_file.groups['metadata'].variables['topology'][0]
+        reporter = Reporter(nc_path, open_mode='r')
+        metadata = reporter.read_dict('metadata')
+        reference_system = mmtools.utils.deserialize(metadata['reference_state']).system
+        topology = mmtools.utils.deserialize(metadata['topography']).topology
 
         # Determine if system is periodic
-        from simtk import openmm
-        reference_system = openmm.XmlSerializer.deserialize(str(serialized_system))
         is_periodic = reference_system.usesPeriodicBoundaryConditions()
         logger.info('Detected periodic boundary conditions: {}'.format(is_periodic))
 
         # Get dimensions
-        n_iterations = nc_file.variables['positions'].shape[0]
-        n_atoms = nc_file.variables['positions'].shape[2]
+        n_iterations = reporter._storage.variables['positions'].shape[0]
+        n_atoms = reporter._storage.variables['positions'].shape[2]
         logger.info('Number of iterations: {}, atoms: {}'.format(n_iterations, n_atoms))
 
         # Determine frames to extract
         if start_frame <= 0:
-            # TODO yank saves first frame with 0 energy!
+            # Discard frame 0 with minimized energy which
+            # throws off automatic equilibration detection.
             start_frame = 1
         if end_frame < 0:
             end_frame = n_iterations + end_frame + 1
@@ -1806,7 +1805,7 @@ def extract_trajectory(output_path, nc_path, state_index=None, replica_index=Non
 
         # Discard equilibration samples
         if discard_equilibration:
-            u_n = extract_u_n(nc_file)[frame_indices]
+            u_n = extract_u_n(reporter._storage)[frame_indices]
             n_equil, g, n_eff = timeseries.detectEquilibration(u_n)
             logger.info(("Discarding initial {} equilibration samples (leaving {} "
                          "effectively uncorrelated samples)...").format(n_equil, n_eff))
@@ -1822,29 +1821,28 @@ def extract_trajectory(output_path, nc_path, state_index=None, replica_index=Non
             # Deconvolute state indices
             state_indices = np.zeros(len(frame_indices))
             for i, iteration in enumerate(frame_indices):
-                replica_indices = nc_file.variables['states'][iteration, :]
+                replica_indices = reporter._storage.variables['states'][iteration, :]
                 state_indices[i] = np.where(replica_indices == state_index)[0][0]
 
             # Extract state positions and box vectors
             for i, iteration in enumerate(frame_indices):
                 replica_index = state_indices[i]
-                positions[i, :, :] = nc_file.variables['positions'][iteration, replica_index, :, :].astype(np.float32)
+                positions[i, :, :] = reporter._storage.variables['positions'][iteration, replica_index, :, :].astype(np.float32)
                 if is_periodic:
-                    box_vectors[i, :, :] = nc_file.variables['box_vectors'][iteration, replica_index, :, :].astype(np.float32)
+                    box_vectors[i, :, :] = reporter._storage.variables['box_vectors'][iteration, replica_index, :, :].astype(np.float32)
 
         else:  # Extract replica positions and box vectors
             logger.info('Extracting positions of replica {}...'.format(replica_index))
 
             for i, iteration in enumerate(frame_indices):
-                positions[i, :, :] = nc_file.variables['positions'][iteration, replica_index, :, :].astype(np.float32)
+                positions[i, :, :] = reporter._storage.variables['positions'][iteration, replica_index, :, :].astype(np.float32)
                 if is_periodic:
-                    box_vectors[i, :, :] = nc_file.variables['box_vectors'][iteration, replica_index, :, :].astype(np.float32)
+                    box_vectors[i, :, :] = reporter._storage.variables['box_vectors'][iteration, replica_index, :, :].astype(np.float32)
     finally:
-        nc_file.close()
+        reporter.close()
 
     # Create trajectory object
     logger.info('Creating trajectory object...')
-    topology = utils.deserialize_topology(serialized_topology)
     trajectory = mdtraj.Trajectory(positions, topology)
     if is_periodic:
         trajectory.unitcell_vectors = box_vectors
