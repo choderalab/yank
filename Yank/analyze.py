@@ -64,13 +64,13 @@ def generate_phase_name(current_name, name_list):
     return name
 
 
-def get_analyzer(file_path):
+def get_analyzer(file_base_path):
     """
     Utility function to convert storage file to a Reporter and Analyzer by reading the data on file
 
     For now this is mostly placeholder functions, but creates the API for the user to work with.
     """
-    reporter = Reporter(file_path)  # Eventually extend this to get more reporters, but for now simple placeholder\
+    reporter = Reporter(file_base_path)  # Eventually extend this to get more reporters, but for now simple placeholder\
     """
     storage = infer_storage_format_from_extension('complex.nc')  # This is always going to be nc for now.
     metadata = storage.metadata
@@ -776,7 +776,7 @@ class RepexPhase(YankPhaseAnalyzer):
 
         """
         if self._computed_observables['standard_state_correction'] is None:
-            ssc = self._reporter.read_dict('metadata')['standard_state_correction']
+            ssc = self._reporter.read_dict('metadata', storage='checkpoint')['standard_state_correction']
             self._computed_observables['standard_state_correction'] = ssc
         return self._computed_observables['standard_state_correction']
 
@@ -1777,7 +1777,7 @@ def extract_trajectory(output_path, nc_path, state_index=None, replica_index=Non
     # Import simulation data
     try:
         reporter = Reporter(nc_path, open_mode='r')
-        metadata = reporter.read_dict('metadata')
+        metadata = reporter.read_dict('metadata', storage='checkpoint')
         reference_system = mmtools.utils.deserialize(metadata['reference_state']).system
         topology = mmtools.utils.deserialize(metadata['topography']).topology
 
@@ -1786,8 +1786,8 @@ def extract_trajectory(output_path, nc_path, state_index=None, replica_index=Non
         logger.info('Detected periodic boundary conditions: {}'.format(is_periodic))
 
         # Get dimensions
-        n_iterations = reporter._storage.variables['positions'].shape[0]
-        n_atoms = reporter._storage.variables['positions'].shape[2]
+        n_iterations = reporter._storage_checkpoint.variables['positions'].shape[0]
+        n_atoms = reporter._storage_checkpoint.variables['positions'].shape[2]
         logger.info('Number of iterations: {}, atoms: {}'.format(n_iterations, n_atoms))
 
         # Determine frames to extract
@@ -1805,39 +1805,43 @@ def extract_trajectory(output_path, nc_path, state_index=None, replica_index=Non
 
         # Discard equilibration samples
         if discard_equilibration:
-            u_n = extract_u_n(reporter._storage)[frame_indices]
+            u_n = extract_u_n(reporter._storage_analysis)[frame_indices]
             n_equil, g, n_eff = timeseries.detectEquilibration(u_n)
             logger.info(("Discarding initial {} equilibration samples (leaving {} "
                          "effectively uncorrelated samples)...").format(n_equil, n_eff))
             frame_indices = frame_indices[n_equil:-1]
 
+        written_indices = []
+        for frame in frame_indices:
+            if reporter.get_previous_checkpoint(frame):
+                written_indices.append(frame)
         # Extract state positions and box vectors
-        positions = np.zeros((len(frame_indices), n_atoms, 3))
+        positions = np.zeros((len(written_indices), n_atoms, 3))
         if is_periodic:
-            box_vectors = np.zeros((len(frame_indices), 3, 3))
+            box_vectors = np.zeros((len(written_indices), 3, 3))
         if state_index is not None:
             logger.info('Extracting positions of state {}...'.format(state_index))
 
             # Deconvolute state indices
-            state_indices = np.zeros(len(frame_indices))
-            for i, iteration in enumerate(frame_indices):
-                replica_indices = reporter._storage.variables['states'][iteration, :]
+            state_indices = np.zeros(len(written_indices))
+            for i, iteration in enumerate(written_indices):
+                replica_indices = reporter._storage_analysis.variables['states'][iteration, :]
                 state_indices[i] = np.where(replica_indices == state_index)[0][0]
 
             # Extract state positions and box vectors
-            for i, iteration in enumerate(frame_indices):
+            for i, iteration in enumerate(written_indices):
                 replica_index = state_indices[i]
-                positions[i, :, :] = reporter._storage.variables['positions'][iteration, replica_index, :, :].astype(np.float32)
+                positions[i, :, :] = reporter._storage_checkpoint.variables['positions'][i, replica_index, :, :].astype(np.float32)
                 if is_periodic:
-                    box_vectors[i, :, :] = reporter._storage.variables['box_vectors'][iteration, replica_index, :, :].astype(np.float32)
+                    box_vectors[i, :, :] = reporter._storage_checkpoint.variables['box_vectors'][i, replica_index, :, :].astype(np.float32)
 
         else:  # Extract replica positions and box vectors
             logger.info('Extracting positions of replica {}...'.format(replica_index))
 
-            for i, iteration in enumerate(frame_indices):
-                positions[i, :, :] = reporter._storage.variables['positions'][iteration, replica_index, :, :].astype(np.float32)
+            for i, iteration in enumerate(written_indices):
+                positions[i, :, :] = reporter._storage_checkpoint.variables['positions'][i, replica_index, :, :].astype(np.float32)
                 if is_periodic:
-                    box_vectors[i, :, :] = reporter._storage.variables['box_vectors'][iteration, replica_index, :, :].astype(np.float32)
+                    box_vectors[i, :, :] = reporter._storage_checkpoint.variables['box_vectors'][i, replica_index, :, :].astype(np.float32)
     finally:
         reporter.close()
 

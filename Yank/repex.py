@@ -917,7 +917,7 @@ class ReplicaExchange(object):
     class while the simulation is running. This reads the SamplerStates of every
     run iteration.
 
-    >>> reporter = Reporter(storage=storage_path, open_mode='r')
+    >>> reporter = Reporter(storage=storage_path, open_mode='r', checkpoint_interval=1)
     >>> sampler_states = reporter.read_sampler_states(iteration=range(1, 4))
     >>> len(sampler_states)
     3
@@ -1265,7 +1265,7 @@ class ReplicaExchange(object):
         self._display_citations()
 
         # Initialize reporter file.
-        self._reporter = Reporter(storage_base, open_mode=None)  # This is open only in node 0.
+        self._reporter = Reporter(storage_base, open_mode=None, checkpoint_interval=checkpoint_interval)  # This is open only in node 0.
         self._initialize_reporter()
 
     @mmtools.utils.with_timer('Minimizing all replicas')
