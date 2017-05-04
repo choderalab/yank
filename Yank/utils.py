@@ -1246,7 +1246,7 @@ class TLeap:
             # Update loaded parameters cache
             self._loaded_parameters.add(par_file)
 
-    def load_group(self, name, file_path):
+    def load_unit(self, name, file_path):
         extension = os.path.splitext(file_path)[1]
         if extension == '.mol2':
             load_command = 'loadMol2'
@@ -1260,18 +1260,18 @@ class TLeap:
         # Update list of input files to copy in temporary folder before run
         self._file_paths[local_name] = file_path
 
-    def combine(self, group, *args):
+    def combine(self, unit, *args):
         components = ' '.join(args)
-        self.add_commands('{} = combine {{{{ {} }}}}'.format(group, components))
+        self.add_commands('{} = combine {{{{ {} }}}}'.format(unit, components))
 
     def add_ions(self, unit, ion, num_ions=0):
         self.add_commands('addIons2 {} {} {}'.format(unit, ion, num_ions))
 
-    def solvate(self, group, water_model, clearance):
-        self.add_commands('solvateBox {} {} {} iso'.format(group, water_model,
+    def solvate(self, unit, solvent_model, clearance):
+        self.add_commands('solvateBox {} {} {} iso'.format(unit, solvent_model,
                                                            str(clearance)))
 
-    def save_group(self, group, output_path):
+    def save_unit(self, unit, output_path):
         file_name = os.path.basename(output_path)
         file_name, extension = os.path.splitext(file_name)
         local_name = 'molo{}'.format(len(self._file_paths))
@@ -1282,7 +1282,7 @@ class TLeap:
         # Add command
         if extension == '.prmtop' or extension == '.inpcrd':
             local_name2 = 'molo{}'.format(len(self._file_paths))
-            command = 'saveAmberParm ' + group + ' {{{}}} {{{}}}'
+            command = 'saveAmberParm ' + unit + ' {{{}}} {{{}}}'
 
             # Update list of output files with the one not explicit
             if extension == '.inpcrd':
@@ -1296,7 +1296,7 @@ class TLeap:
 
             self.add_commands(command)
         elif extension == '.pdb':
-            self.add_commands('savePDB {} {{{}}}'.format(group, local_name))
+            self.add_commands('savePDB {} {{{}}}'.format(unit, local_name))
         else:
             raise ValueError('cannot export format {} from tLeap'.format(extension[1:]))
 

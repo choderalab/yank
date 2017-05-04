@@ -914,7 +914,7 @@ class SetupDatabase:
         # ------------------------------------
         tleap.new_section('Load molecules')
         for mol_id in molecule_ids:
-            tleap.load_group(name=mol_id, file_path=self.molecules[mol_id]['filepath'])
+            tleap.load_unit(name=mol_id, file_path=self.molecules[mol_id]['filepath'])
 
         if len(molecule_ids) > 1:
             # Check that molecules don't have clashing atoms. Also, if the ligand
@@ -990,7 +990,7 @@ class SetupDatabase:
                 tleap.load_parameters('frcmod.' + solvent_model)
             leap_solvent_model = _OPENMM_LEAP_SOLVENT_MODELS_MAP[solvent_model]
             clearance = float(solvent['clearance'].value_in_unit(unit.angstroms))
-            tleap.solvate(group=unit_to_solvate, water_model=leap_solvent_model, clearance=clearance)
+            tleap.solvate(unit=unit_to_solvate, solvent_model=leap_solvent_model, clearance=clearance)
 
         # Check charge
         tleap.new_section('Check charge')
@@ -1008,8 +1008,8 @@ class SetupDatabase:
 
         # Save prmtop, inpcrd and reference pdb files
         tleap.new_section('Save prmtop and inpcrd files')
-        tleap.save_group(unit_to_solvate, system_file_path)
-        tleap.save_group(unit_to_solvate, base_file_path + '.pdb')
+        tleap.save_unit(unit_to_solvate, system_file_path)
+        tleap.save_unit(unit_to_solvate, base_file_path + '.pdb')
 
         # Save tleap script for reference
         tleap.export_script(base_file_path + '.leap.in')

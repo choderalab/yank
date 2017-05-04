@@ -281,20 +281,20 @@ def test_TLeap_script():
 
     tleap = TLeap()
     tleap.load_parameters('oldff/leaprc.ff99SBildn', 'leaprc.gaff')
-    tleap.load_group(name='receptor', file_path='receptor.pdbfixer.pdb')
+    tleap.load_unit(name='receptor', file_path='receptor.pdbfixer.pdb')
     tleap.load_parameters('ligand.gaff.frcmod')
     tleap.load_parameters('ligand.gaff.frcmod')  # tLeap should not load this twice
-    tleap.load_group(name='ligand', file_path='path/to/ligand.gaff.mol2')
+    tleap.load_unit(name='ligand', file_path='path/to/ligand.gaff.mol2')
     tleap.transform('ligand', np.array([[1, 0, 0, 6], [0, -1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]))
     tleap.combine('complex', 'receptor', 'ligand')
-    tleap.solvate(group='complex', water_model='TIP3PBOX', clearance=10.0)
+    tleap.solvate(unit='complex', solvent_model='TIP3PBOX', clearance=10.0)
     tleap.add_commands('check complex', 'charge complex')
     tleap.new_section('New section')
-    tleap.save_group(group='complex', output_path='complex.prmtop')
-    tleap.save_group(group='complex', output_path='complex.pdb')
-    tleap.solvate(group='ligand', water_model='TIP3PBOX', clearance=10.0)
-    tleap.save_group(group='ligand', output_path='solvent.inpcrd')
-    tleap.save_group(group='ligand', output_path='solvent.pdb')
+    tleap.save_unit(unit='complex', output_path='complex.prmtop')
+    tleap.save_unit(unit='complex', output_path='complex.pdb')
+    tleap.solvate(unit='ligand', solvent_model='TIP3PBOX', clearance=10.0)
+    tleap.save_unit(unit='ligand', output_path='solvent.inpcrd')
+    tleap.save_unit(unit='ligand', output_path='solvent.pdb')
 
     assert tleap.script == expected_script
 
@@ -307,12 +307,12 @@ def test_TLeap_export_run():
 
     tleap = TLeap()
     tleap.load_parameters('oldff/leaprc.ff99SB', 'leaprc.gaff')
-    tleap.load_group(name='benzene', file_path=benzene_gaff)
+    tleap.load_unit(name='benzene', file_path=benzene_gaff)
     tleap.load_parameters(benzene_frcmod)
 
     with omt.utils.temporary_directory() as tmp_dir:
         output_path = os.path.join(tmp_dir, 'benzene')
-        tleap.save_group(group='benzene', output_path=output_path + '.prmtop')
+        tleap.save_unit(unit='benzene', output_path=output_path + '.prmtop')
 
         export_path = os.path.join(tmp_dir, 'leap.in')
         tleap.export_script(export_path)
