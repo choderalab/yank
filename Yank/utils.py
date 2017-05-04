@@ -1316,6 +1316,14 @@ class TLeap:
 
     def run(self):
         """Run script and return warning messages in leap log file."""
+
+        def create_dirs_and_copy(path_to_copy, copied_path):
+            """Create directories before copying the file."""
+            output_dir_path = os.path.dirname(copied_path)
+            if not os.path.isdir(output_dir_path):
+                os.makedirs(output_dir_path)
+            shutil.copy(path_to_copy, copied_path)
+
         # Transform paths in absolute paths since we'll change the working directory
         input_files = {local + os.path.splitext(path)[1]: os.path.abspath(path)
                        for local, path in listitems(self._file_paths) if 'moli' in local}
@@ -1346,13 +1354,13 @@ class TLeap:
                 first_output_name = os.path.basename(first_output_path).split('.')[0]
                 first_output_dir = os.path.dirname(first_output_path)
                 log_path = os.path.join(first_output_dir, first_output_name + '.leap.log')
-                shutil.copy('leap.log', log_path)
+                create_dirs_and_copy('leap.log', log_path)
 
             # Copy back output files. If something goes wrong, some files may not exist
             error_msg = ''
             try:
                 for local_file, file_path in listitems(output_files):
-                    shutil.copy(local_file, file_path)
+                    create_dirs_and_copy(local_file, file_path)
             except IOError:
                 error_msg = "Could not create one of the system files."
 
