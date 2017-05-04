@@ -1848,9 +1848,10 @@ class YamlBuilder(object):
 
         # Define protocol Schema
         lambda_list = [And(float, lambda l: 0.0 <= l <= 1.0)]
+        quantity_list = [Use(utils.quantity_from_string)]
         alchemical_path_schema = {'alchemical_path': {'lambda_sterics': lambda_list,
                                                       'lambda_electrostatics': lambda_list,
-                                                      Optional(str): lambda_list}}
+                                                      Optional(str): Or(lambda_list, quantity_list)}}
         protocol_schema = Schema(And(
             lambda v: len(v) == 2, {str: alchemical_path_schema},
             Or(collections.OrderedDict, Use(sort_protocol))
