@@ -545,7 +545,9 @@ def test_validation_correct_protocols():
     protocols = [
         {'lambda_electrostatics': [1.0, 0.8, 0.6, 0.3, 0.0], 'lambda_sterics': [1.0, 0.8, 0.6, 0.3, 0.0]},
         {'lambda_electrostatics': [1.0, 0.8, 0.6, 0.3, 0.0], 'lambda_sterics': [1.0, 0.8, 0.6, 0.3, 0.0],
-         'lambda_torsions': [1.0, 0.8, 0.6, 0.3, 0.0], 'lambda_angles': [1.0, 0.8, 0.6, 0.3, 0.0]}
+         'lambda_torsions': [1.0, 0.8, 0.6, 0.3, 0.0], 'lambda_angles': [1.0, 0.8, 0.6, 0.3, 0.0]},
+        {'lambda_electrostatics': [1.0, 0.8, 0.6, 0.3, 0.0], 'lambda_sterics': [1.0, 0.8, 0.6, 0.3, 0.0],
+         'temperature': ['300*kelvin', '320*kelvin', '340*kelvin', '320*kelvin', '300*kelvin']}
     ]
     for protocol in protocols:
         modified_protocol = copy.deepcopy(basic_protocol)

@@ -279,6 +279,19 @@ class TestAlchemicalPhase(object):
                     assert alchemical_region.alchemical_angles is True
                     assert alchemical_region.alchemical_torsions is True
 
+    def test_non_alchemical_protocol(self):
+        """Any property of the ThermodynamicSystem can be specified in the protocol."""
+        name, thermodynamic_state, sampler_state, topography = self.host_guest_implicit
+        protocol = {
+            'lambda_sterics': [0.0, 0.5, 1.0],
+            'temperature': [300, 320, 330] * unit.kelvin
+        }
+        alchemical_phase = AlchemicalPhase(sampler=ReplicaExchange())
+        with self.temporary_storage_path() as storage_path:
+            alchemical_phase.create(thermodynamic_state, sampler_state, topography,
+                                    protocol, storage_path, restraint=yank.restraints.Harmonic())
+            self.check_protocol(alchemical_phase, protocol)
+
     def test_illegal_restraint(self):
         """Raise an error when restraint is handled incorrectly."""
         # An error is raised with ligand-receptor systems in implicit without restraint.
