@@ -70,26 +70,50 @@ class Reporter(object):
 
     Parameters
     ----------
-    storage : str
-        The path to the file. In the future this will be able to take Storage
-        classes as well.
+    base_storage : str
+        The path to the files base name, this should not include a file suffix
+        The multiple storage files will be saved as two files named
+            "base_storage + _checkpointing" and "base_storage + _analysis"
+        In the future this will be able to take Storage classes as well.
     open_mode : str or None
         The mode of the file between 'r', 'w', and 'a' (or equivalently 'r+').
         If None, the storage file won't be open on construction, and a call to
         Reporter.open() will be needed before attempting read/write operations.
+    checkpoint_interval : int >= 1, Default: 10
+        The frequency at which checkpointing information is written relative to analysis information. This is a multiple
+        of the iteration at which energies is written, hence why it must be greater than or equal to 1.
+        Checkpoint information cannot be written on iterations which where iteration % checkpoint_interval != 0.
+        Attempting to read checkpointing information results in a masked array where only entries which were written
+            are unmasked
 
     """
-    def __init__(self, storage, open_mode=None):
-        self._storage_file_path = storage
-        self._storage = None
+    def __init__(self, base_storage, open_mode=None, checkpoint_interval=10):
+        if type(checkpoint_interval) != int:
+            raise ValueError("checkpoint_interval must be an integer!")
+        self._storage_file_base = base_storage
+        self._storage_file_checkpoint = base_storage + "_checkpointing.nc"
+        self._storage_file_analysis = base_storage + "_analysis.nc"
+        self._storage_checkpoint = None
+        self._storage_analysis = None
+        self._checkpoint_interval = checkpoint_interval
         if open_mode is not None:
             self.open(open_mode)
 
+    @property
+    def _storage(self):
+        """Return an iterable of the storage objects, avoids writing things like "for Z in [X,Y]" calls everywhere"""
+        return self._storage_checkpoint, self._storage_analysis
+
+    @property
+    def _storage_dict(self):
+        """Return an iterable dictionary of the self._storage_X objects"""
+        return {'checkpoint': self._storage_checkpoint, 'analysis': self._storage_analysis}
+
     def is_open(self):
         """Return True if the Reporter is ready to read/write."""
-        if self._storage is None:
+        if self._storage[0] is None or self._storage[1] is None:
             return False
-        return self._storage.isopen()
+        return np.all([self._storage[0].isopen(), self._storage[1].isopen()])
 
     def open(self, mode='r'):
         """Open the storage file for reading/writing.
@@ -104,52 +128,67 @@ class Reporter(object):
         """
         # Ensure we don't have already another file
         # open (possibly in a different mode).
-        if self._storage is not None:
+        if self._storage[0] is None or self._storage[1] is None:
             self.close()
 
         # Create directory if we want to write.
         if mode != 'r':
-            storage_dir = os.path.dirname(self._storage_file_path)
+            storage_dir = os.path.dirname(self._storage_file_base)
             if not os.path.exists(storage_dir):
                 os.makedirs(storage_dir)
 
         # Open NetCDF 4 file for writing.
-        ncfile = netcdf.Dataset(self._storage_file_path, mode, version='NETCDF4')
+        ncfile_checkpoint = netcdf.Dataset(self._storage_file_checkpoint, mode, version='NETCDF4')
+        ncfile_analysis = netcdf.Dataset(self._storage_file_analysis, mode, version='NETCDF4')
+        ncfiles = {'checkpoint': ncfile_checkpoint,
+                   'analysis': ncfile_analysis
+                   }
 
         # Create header if needed.
-        if 'scalar' not in ncfile.dimensions:
-            # Create common dimensions.
-            ncfile.createDimension('scalar', 1)  # Scalar dimension.
-            ncfile.createDimension('iteration', 0)  # Unlimited number of iterations.
-            ncfile.createDimension('spatial', 3)  # Number of spatial dimensions.
+        for nc_name, ncfile in utils.dictiter(ncfiles):
+            if 'scalar' not in ncfile.dimensions:
+                # Create common dimensions.
+                ncfile.createDimension('scalar', 1)  # Scalar dimension.
+                ncfile.createDimension('iteration', 0)  # Unlimited number of iterations.
+                ncfile.createDimension('spatial', 3)  # Number of spatial dimensions.
 
-            # Set global attributes.
-            ncfile.application = 'YANK'
-            ncfile.program = 'yank.py'
-            ncfile.programVersion = version.short_version
-            ncfile.Conventions = 'ReplicaExchange'
-            ncfile.ConventionVersion = '0.2'
-
-        self._storage = ncfile
+                # Set global attributes.
+                ncfile.application = 'YANK'
+                ncfile.program = 'yank.py'
+                ncfile.programVersion = version.short_version
+                ncfile.Conventions = 'ReplicaExchange'
+                ncfile.ConventionVersion = '0.2'
+                ncfile.DataUsedFor = nc_name
+                ncfile.checkpoint_interval = self._checkpoint_interval
+            setattr(self, '_storage_' + nc_name, ncfile)
+        on_file_interval = self._storage_checkpoint.checkpoint_interval
+        if on_file_interval != self._checkpoint_interval:
+            logger.debug("checkpoint_interval != on-file checkpoint interval! "
+                         "Using on file checkpoint interval of {}.".format(on_file_interval))
+            self._checkpoint_interval = on_file_interval
 
     def close(self):
         """Close the storage file."""
-        self._storage.sync()
-        self._storage.close()
-        self._storage = None
+        for storage_name, storage in utils.dictiter(self._storage_dict):
+            if storage is not None:
+                storage.sync()
+                storage.close()
+                setattr(self, '_storage' + storage_name, None)
 
     def sync(self):
         """Force any buffer to be flushed to the file."""
-        self._storage.sync()
+        for storage in self._storage:
+            if storage is not None:
+                storage.sync()
 
     def __del__(self):
         """Synchronize and close the storage."""
-        if self._storage is not None:
+        if self._storage[0] is not None or self._storage[1] is not None:
             self.close()
 
     @mmtools.utils.with_timer('Reading thermodynamic states from storage')
     def read_thermodynamic_states(self):
-        """Retrieve the stored thermodynamic states.
+        """Retrieve the stored thermodynamic states from the checkpoint file.
 
         Returns
         -------
@@ -172,14 +211,14 @@ class Reporter(object):
         # Read state information.
         for state_type, state_list in states.items():
             # There may not be unsampled states.
-            if state_type not in self._storage.groups:
+            if state_type not in self._storage_checkpoint.groups:
                 assert state_type == 'unsampled_states'
                 continue
 
             # We keep looking for states until we can't find them anymore.
-            n_states = len(self._storage.groups[state_type].variables)
+            n_states = len(self._storage_checkpoint.groups[state_type].variables)
             for state_id in range(n_states):
-                serialized_state = self.read_dict('{}/state{}'.format(state_type, state_id))
+                serialized_state = self.read_dict('{}/state{}'.format(state_type, state_id), storage='checkpoint')
 
                 # Find the thermodynamic state representation.
                 serialized_thermodynamic_state = serialized_state
@@ -208,7 +247,7 @@ class Reporter(object):
 
     @mmtools.utils.with_timer('Storing thermodynamic states')
     def write_thermodynamic_states(self, thermodynamic_states, unsampled_states):
-        """Store all the ThermodynamicStates.
+        """Store all the ThermodynamicStates to the checkpoint file.
 
         Parameters
         ----------
@@ -256,44 +295,52 @@ class Reporter(object):
                     serialized_thermodynamic_state['_Reporter__compatible_state'] = reference_state_name
 
                 # Write state as dictionary.
-                self.write_dict('{}/state{}'.format(state_type, state_id), serialized_state)
+                self.write_dict('{}/state{}'.format(state_type, state_id), serialized_state, storage='checkpoint')
 
-    def read_sampler_states(self, iteration=slice(None)):
-        """Retrieve the stored sampler states.
+    def read_sampler_states(self, iteration):
+        """Retrieve the stored sampler states on the checkpoint file
 
-        TODO: Test with the new slice
+        If the iteration is not on the checkpoint interval, None is returned
 
         Parameters
         ----------
-        iteration : int or slice
-            The iteration(s) at which to read the data. The slice(None) allows fetching all iterations at once.
+        iteration : int
+            The iteration at which to read the data.
 
         Returns
         -------
-        sampler_states : list of SamplerStates
+        sampler_states : list of SamplerStates or None
             The previously stored sampler states for each replica.
+            If the iteration is not on the checkpoint_interval, None is returned
 
         """
-        n_states = self._storage.dimensions['replica'].size
 
-        sampler_states = list()
-        for replica_index in range(n_states):
-            # Restore positions.
-            x = self._storage.variables['positions'][iteration, replica_index, :, :].astype(np.float64)
-            positions = unit.Quantity(x, unit.nanometers)
+        checkpoint_iteration = self._calculate_checkpoint_iteration(iteration)
+        if checkpoint_iteration:
+            n_states = self._storage_checkpoint.dimensions['replica'].size
 
-            # Restore box vectors.
-            x = self._storage.variables['box_vectors'][iteration, replica_index, :, :].astype(np.float64)
-            box_vectors = unit.Quantity(x, unit.nanometers)
+            sampler_states = list()
+            for replica_index in range(n_states):
+                # Restore positions.
+                x = self._storage_checkpoint.variables['positions'][checkpoint_iteration, replica_index, :, :].astype(np.float64)
+                positions = unit.Quantity(x, unit.nanometers)
 
-            # Create SamplerState.
-            sampler_states.append(mmtools.states.SamplerState(positions=positions, box_vectors=box_vectors))
+                # Restore box vectors.
+                x = self._storage_checkpoint.variables['box_vectors'][checkpoint_iteration, replica_index, :, :].astype(np.float64)
+                box_vectors = unit.Quantity(x, unit.nanometers)
 
-        return sampler_states
+                # Create SamplerState.
+                sampler_states.append(mmtools.states.SamplerState(positions=positions, box_vectors=box_vectors))
+
+            return sampler_states
+        else:
+            return None
 
     @mmtools.utils.with_timer('Storing sampler states')
     def write_sampler_states(self, sampler_states, iteration):
-        """Store all sampler states for a given iteration.
+        """Store all sampler states for a given iteration on the checkpoint file
+
+        If the iteration is not on the checkpoint interval, no data is written
 
         Parameters
         ----------
@@ -303,25 +350,25 @@ class Reporter(object):
             The iteration at which to store the data.
 
         """
-        # Check if the schema must be initialized.
-        if 'positions' not in self._storage.variables:
+        # Check if the schema must be initialized, do this regardless of the checkpoint_interval for consistency
+        if 'positions' not in self._storage_checkpoint.variables:
             n_atoms = sampler_states[0].n_particles
             n_states = len(sampler_states)
 
             # Create dimensions. Replica dimension could have been created before.
-            self._storage.createDimension('atom', n_atoms)
-            if 'replica' not in self._storage.dimensions:
-                self._storage.createDimension('replica', n_states)
+            self._storage_checkpoint.createDimension('atom', n_atoms)
+            if 'replica' not in self._storage_checkpoint.dimensions:
+                self._storage_checkpoint.createDimension('replica', n_states)
 
             # Create variables.
-            ncvar_positions = self._storage.createVariable('positions', 'f4',
-                                                           ('iteration', 'replica', 'atom', 'spatial'),
-                                                           zlib=True, chunksizes=(1, n_states, n_atoms, 3))
-            ncvar_box_vectors = self._storage.createVariable('box_vectors', 'f4',
-                                                             ('iteration', 'replica', 'spatial', 'spatial'),
-                                                             zlib=False, chunksizes=(1, n_states, 3, 3))
-            ncvar_volumes = self._storage.createVariable('volumes', 'f8', ('iteration', 'replica'),
-                                                         zlib=False, chunksizes=(1, n_states))
+            ncvar_positions = self._storage_checkpoint.createVariable('positions', 'f4',
+                                                                      ('iteration', 'replica', 'atom', 'spatial'),
+                                                                      zlib=True, chunksizes=(1, n_states, n_atoms, 3))
+            ncvar_box_vectors = self._storage_checkpoint.createVariable('box_vectors', 'f4',
+                                                                        ('iteration', 'replica', 'spatial', 'spatial'),
+                                                                        zlib=False, chunksizes=(1, n_states, 3, 3))
+            ncvar_volumes = self._storage_checkpoint.createVariable('volumes', 'f8', ('iteration', 'replica'),
+                                                                    zlib=False, chunksizes=(1, n_states))
 
             # Define units for variables.
             setattr(ncvar_positions, 'units', 'nm')
@@ -337,21 +384,27 @@ class Reporter(object):
                                                      "vector i for replica 'replica' from iteration 'iteration-1'."))
             setattr(ncvar_volumes, "long_name", ("volume[iteration][replica] is the box volume for replica 'replica' "
                                                  "from iteration 'iteration-1'."))
+        checkpoint_iteration = self._calculate_checkpoint_iteration(iteration)
+        if checkpoint_iteration:
+            # Store sampler states.
+            for replica_index, sampler_state in enumerate(sampler_states):
+                # Store positions
+                x = sampler_state.positions / unit.nanometers
+                self._storage_checkpoint.variables['positions'][checkpoint_iteration, replica_index, :, :] = x[:, :]
 
-        # Store sampler states.
-        for replica_index, sampler_state in enumerate(sampler_states):
-            # Store positions
-            x = sampler_state.positions / unit.nanometers
-            self._storage.variables['positions'][iteration, replica_index, :, :] = x[:, :]
-
-            # Store box vectors and volume.
-            for i in range(3):
-                vector_i = sampler_state.box_vectors[i] / unit.nanometers
-                self._storage.variables['box_vectors'][iteration, replica_index, i, :] = vector_i
-            self._storage.variables['volumes'][iteration, replica_index] = sampler_state.volume / unit.nanometers**3
+                # Store box vectors and volume.
+                for i in range(3):
+                    vector_i = sampler_state.box_vectors[i] / unit.nanometers
+                    self._storage_checkpoint.variables['box_vectors'][checkpoint_iteration, replica_index, i, :] = \
+                        vector_i
+                self._storage_checkpoint.variables['volumes'][checkpoint_iteration, replica_index] = \
+                    sampler_state.volume / unit.nanometers**3
+        else:
+            logger.debug("Iteration {} not on the Checkpoint Interval of {}. "
+                         "Sampler State not written.".format(iteration, self._checkpoint_interval))
 
     def read_replica_thermodynamic_states(self, iteration=slice(None)):
-        """Retrieve the indices of the ThermodynamicStates for each replica.
+        """Retrieve the indices of the ThermodynamicStates for each replica on the analysis file
 
         Parameters
         ----------
@@ -366,10 +419,10 @@ class Reporter(object):
             thermodynamic_states[states_indices[i]].
 
         """
-        return self._storage.variables['states'][iteration].astype(np.int64)
+        return self._storage_analysis.variables['states'][iteration].astype(np.int64)
 
     def write_replica_thermodynamic_states(self, state_indices, iteration):
-        """Store the indices of the ThermodynamicStates for each replica.
+        """Store the indices of the ThermodynamicStates for each replica on the analysis file
 
         Parameters
         ----------
@@ -382,25 +435,25 @@ class Reporter(object):
 
         """
         # Initialize schema if needed.
-        if 'states' not in self._storage.variables:
+        if 'states' not in self._storage_analysis.variables:
             n_states = len(state_indices)
 
             # Create dimension if they don't exist.
-            if 'replica' not in self._storage.dimensions:
-                self._storage.createDimension('replica', n_states)
+            if 'replica' not in self._storage_analysis.dimensions:
+                self._storage_analysis.createDimension('replica', n_states)
 
             # Create variables and attach units and description.
-            ncvar_states = self._storage.createVariable('states', 'i4', ('iteration', 'replica'),
-                                                        zlib=False, chunksizes=(1, n_states))
+            ncvar_states = self._storage_analysis.createVariable('states', 'i4', ('iteration', 'replica'),
+                                                                 zlib=False, chunksizes=(1, n_states))
             setattr(ncvar_states, 'units', 'none')
             setattr(ncvar_states, "long_name", ("states[iteration][replica] is the thermodynamic state index "
                                                 "(0..nstates-1) of replica 'replica' of iteration 'iteration'."))
 
         # Store thermodynamic states indices.
-        self._storage.variables['states'][iteration, :] = state_indices[:]
+        self._storage_analysis.variables['states'][iteration, :] = state_indices[:]
 
     def read_mcmc_moves(self):
-        """Return the MCMCMoves of the ReplicaExchange simulation.
+        """Return the MCMCMoves of the ReplicaExchange simulation on the checkpoint
 
         Returns
         -------
@@ -408,17 +461,17 @@ class Reporter(object):
             The MCMCMoves used to propagate the simulation.
 
         """
-        n_moves = len(self._storage.groups['mcmc_moves'].variables)
+        n_moves = len(self._storage_checkpoint.groups['mcmc_moves'].variables)
 
         # Retrieve all moves in order.
         mcmc_moves = list()
         for move_id in range(n_moves):
-            serialized_move = self.read_dict('mcmc_moves/move{}'.format(move_id))
+            serialized_move = self.read_dict('mcmc_moves/move{}'.format(move_id), storage='checkpoint')
             mcmc_moves.append(mmtools.utils.deserialize(serialized_move))
         return mcmc_moves
 
     def write_mcmc_moves(self, mcmc_moves):
-        """Store the MCMCMoves of the ReplicaExchange simulation.
+        """Store the MCMCMoves of the ReplicaExchange simulation on the checkpoint
 
         Parameters
         ----------
@@ -428,10 +481,10 @@ class Reporter(object):
         """
         for move_id, move in enumerate(mcmc_moves):
             serialized_move = mmtools.utils.serialize(move)
-            self.write_dict('mcmc_moves/move{}'.format(move_id), serialized_move)
+            self.write_dict('mcmc_moves/move{}'.format(move_id), serialized_move, storage='checkpoint')
 
     def read_energies(self, iteration=slice(None)):
-        """Retrieve the energy matrix at the given iteration.
+        """Retrieve the energy matrix at the given iteration on the analysis file
 
         Parameters
         ----------
@@ -448,9 +501,9 @@ class Reporter(object):
             sampler_states[iteration, i] and ThermodynamicState unsampled_thermodynamic_states[iteration, j].
 
         """
-        energy_thermodynamic_states = self._storage.variables['energies'][iteration, :, :]
+        energy_thermodynamic_states = self._storage_analysis.variables['energies'][iteration, :, :]
         try:
-            energy_unsampled_states = self._storage.variables['unsampled_energies'][iteration, :, :]
+            energy_unsampled_states = self._storage_analysis.variables['unsampled_energies'][iteration, :, :]
         except KeyError:
             # There are no unsampled thermodynamic states.
             unsampled_shape = energy_thermodynamic_states.shape[:-1] + (0,)
@@ -458,7 +511,7 @@ class Reporter(object):
         return energy_thermodynamic_states, energy_unsampled_states
 
     def write_energies(self, energy_thermodynamic_states, energy_unsampled_states, iteration):
-        """Store the energy matrix at the given iteration.
+        """Store the energy matrix at the given iteration on the analysis file
 
         Parameters
         ----------
@@ -473,16 +526,19 @@ class Reporter(object):
 
         """
         # Initialize schema if needed.
-        if 'energies' not in self._storage.variables:
+        if 'energies' not in self._storage_analysis.variables:
             n_replicas = len(energy_thermodynamic_states)
 
             # Create replica dimension if it wasn't created by other functions.
-            if 'replica' not in self._storage.dimensions:
-                self._storage.createDimension('replica', n_replicas)
+            if 'replica' not in self._storage_analysis.dimensions:
+                self._storage_analysis.createDimension('replica', n_replicas)
 
             # Create variable for thermodynamic state energies with units and descriptions.
-            ncvar_energies = self._storage.createVariable('energies', 'f8', ('iteration', 'replica', 'replica'),
-                                                          zlib=False, chunksizes=(1, n_replicas, n_replicas))
+            ncvar_energies = self._storage_analysis.createVariable('energies',
+                                                                   'f8',
+                                                                   ('iteration', 'replica', 'replica'),
+                                                                   zlib=False,
+                                                                   chunksizes=(1, n_replicas, n_replicas))
             ncvar_energies.units = 'kT'
             ncvar_energies.long_name = ("energies[iteration][replica][state] is the reduced (unitless) "
                                         "energy of replica 'replica' from iteration 'iteration' evaluated "
@@ -490,29 +546,34 @@ class Reporter(object):
 
             # Check if we have unsampled states.
             if energy_unsampled_states.shape[1] > 0:
-                if 'unsampled_energies' not in self._storage.variables:
+                if 'unsampled_energies' not in self._storage_analysis.variables:
                     n_unsampled_states = len(energy_unsampled_states[0])
 
                     # Create replica dimension if it wasn't created by other functions.
-                    if 'unsampled' not in self._storage.dimensions:
-                        self._storage.createDimension('unsampled', n_unsampled_states)
+                    if 'unsampled' not in self._storage_analysis.dimensions:
+                        self._storage_analysis.createDimension('unsampled', n_unsampled_states)
 
                     # Create variable for thermodynamic state energies with units and descriptions.
-                    ncvar_unsampled = self._storage.createVariable('unsampled_energies', 'f8',
-                                                                   ('iteration', 'replica', 'unsampled'), zlib=False,
-                                                                   chunksizes=(1, n_replicas, n_unsampled_states))
+                    ncvar_unsampled = self._storage_analysis.createVariable('unsampled_energies',
+                                                                            'f8',
+                                                                            ('iteration', 'replica', 'unsampled'),
+                                                                            zlib=False,
+                                                                            chunksizes=(1,
+                                                                                        n_replicas,
+                                                                                        n_unsampled_states)
+                                                                            )
                     ncvar_unsampled.units = 'kT'
                     ncvar_unsampled.long_name = ("unsampled_energies[iteration][replica][state] is the reduced "
                                                  "(unitless) energy of replica 'replica' from iteration 'iteration' "
                                                  "evaluated at unsampled thermodynamic state 'state'.")
 
         # Store states energy.
-        self._storage.variables['energies'][iteration, :, :] = energy_thermodynamic_states[:, :]
+        self._storage_analysis.variables['energies'][iteration, :, :] = energy_thermodynamic_states[:, :]
         if energy_unsampled_states.shape[1] > 0:
-            self._storage.variables['unsampled_energies'][iteration, :, :] = energy_unsampled_states[:, :]
+            self._storage_analysis.variables['unsampled_energies'][iteration, :, :] = energy_unsampled_states[:, :]
 
     def read_mixing_statistics(self, iteration=slice(None)):
-        """Retrieve the mixing statistics for the given iteration.
+        """Retrieve the mixing statistics for the given iteration on the analysis file
 
         Parameters
         ----------
@@ -531,12 +592,12 @@ class Reporter(object):
             from iteration-1 to iteration (not cumulative).
 
         """
-        n_accepted_matrix = self._storage.variables['accepted'][iteration, :, :].astype(np.int64)
-        n_proposed_matrix = self._storage.variables['proposed'][iteration, :, :].astype(np.int64)
+        n_accepted_matrix = self._storage_analysis.variables['accepted'][iteration, :, :].astype(np.int64)
+        n_proposed_matrix = self._storage_analysis.variables['proposed'][iteration, :, :].astype(np.int64)
         return n_accepted_matrix, n_proposed_matrix
 
     def write_mixing_statistics(self, n_accepted_matrix, n_proposed_matrix, iteration):
-        """Store the mixing statistics for the given iteration.
+        """Store the mixing statistics for the given iteration on the analysis file
 
         Parameters
         ----------
@@ -553,18 +614,26 @@ class Reporter(object):
 
         """
         # Create schema if necessary.
-        if 'accepted' not in self._storage.variables:
+        if 'accepted' not in self._storage_analysis.variables:
             n_states = len(n_accepted_matrix)
 
             # Create replica dimension if it wasn't already created.
-            if 'replica' not in self._storage.dimensions:
-                self._storage.createDimension('replica', n_states)
+            if 'replica' not in self._storage_analysis.dimensions:
+                self._storage_analysis.createDimension('replica', n_states)
 
             # Create variables with units and descriptions.
-            ncvar_accepted = self._storage.createVariable('accepted', 'i4', ('iteration', 'replica', 'replica'),
-                                                          zlib=False, chunksizes=(1, n_states, n_states))
-            ncvar_proposed = self._storage.createVariable('proposed', 'i4', ('iteration', 'replica', 'replica'),
-                                                          zlib=False, chunksizes=(1, n_states, n_states))
+            ncvar_accepted = self._storage_analysis.createVariable('accepted',
+                                                                   'i4',
+                                                                   ('iteration', 'replica', 'replica'),
+                                                                   zlib=False,
+                                                                   chunksizes=(1, n_states, n_states)
+                                                                   )
+            ncvar_proposed = self._storage_analysis.createVariable('proposed',
+                                                                   'i4',
+                                                                   ('iteration', 'replica', 'replica'),
+                                                                   zlib=False,
+                                                                   chunksizes=(1, n_states, n_states)
+                                                                   )
             setattr(ncvar_accepted, 'units', 'none')
             setattr(ncvar_proposed, 'units', 'none')
             setattr(ncvar_accepted, 'long_name', ("accepted[iteration][i][j] is the number of proposed transitions "
@@ -573,11 +642,13 @@ class Reporter(object):
                                                   "between states i and j from iteration 'iteration-1'."))
 
         # Store statistics.
-        self._storage.variables['accepted'][iteration, :, :] = n_accepted_matrix[:, :]
-        self._storage.variables['proposed'][iteration, :, :] = n_proposed_matrix[:, :]
+        self._storage_analysis.variables['accepted'][iteration, :, :] = n_accepted_matrix[:, :]
+        self._storage_analysis.variables['proposed'][iteration, :, :] = n_proposed_matrix[:, :]
 
     def read_timestamp(self, iteration=slice(None)):
         """Return the timestamp for the given iteration.
+
+        Read from the analysis file, although there is a paired timestamp on the checkpoint file as well
 
         Parameters
         ----------
@@ -590,10 +661,12 @@ class Reporter(object):
             The timestamp at which the iteration was stored.
 
         """
-        return self._storage.variables['timestamp'][iteration]
+        return self._storage_analysis.variables['timestamp'][iteration]
 
     def write_timestamp(self, iteration):
-        """Store a timestamp for the given iteration.
+        """Store a timestamp for the given iteration on both analysis and checkpoint file.
+
+        If the iteration is not on the checkpoint_interval, no timestamp is written
 
         Parameters
         ----------
@@ -602,17 +675,28 @@ class Reporter(object):
 
         """
         # Create variable if needed.
-        if 'timestamp' not in self._storage.variables:
-            self._storage.createVariable('timestamp', str, ('iteration',), zlib=False, chunksizes=(1,))
-        self._storage.variables['timestamp'][iteration] = time.ctime()
+        for storage in self._storage:
+            if 'timestamp' not in storage.variables:
+                storage.createVariable('timestamp', str, ('iteration',), zlib=False, chunksizes=(1,))
+        timestamp = time.ctime()
+        self._storage_analysis.variables['timestamp'][iteration] = timestamp
+        checkpoint_interval = self._calculate_checkpoint_iteration(iteration)
+        if checkpoint_interval:
+            self._storage_checkpoint.variables['timestamp'][iteration] = timestamp
 
-    def read_dict(self, name):
+    def read_dict(self, name, storage='analysis'):
         """Restore a dictionary from the storage file.
 
         Parameters
         ----------
         name : str
             The identifier of the dictionary used to stored the data.
+        storage : 'analysis' or 'checkpoint', optional, Default: 'analysis'
+            Stores a dictionary on the given storage file.
+            'analysis': Frequently written/accessed data, usually smaller in size
+                e.g. energies, state indices, etc.
+            'checkpoint': Infrequent written/accessed data, usually larger and needed to restore from a checkpoint
+                e.g. Explicit solvent coordinates, serialized state string, simulation options.
 
         Returns
         -------
@@ -620,17 +704,19 @@ class Reporter(object):
             The restored data as a dict.
 
         """
+        if storage not in ['analysis', 'checkpoint']:
+            raise ValueError("storage must be either 'analysis' or 'checkpoint'!")
         # Get NC variable.
-        nc_variable = self._resolve_variable_path(name)
+        nc_variable = self._resolve_variable_path(name, storage)
         data_str = str(nc_variable[0])
         data = yaml.load(data_str, Loader=_DictYamlLoader)
 
         # Restore the title in the metadata.
         if name == 'metadata':
-            data['title'] = self._storage.title
+            data['title'] = self._storage_dict[storage].title
         return data
 
-    def write_dict(self, name, data):
+    def write_dict(self, name, data, storage='analysis'):
         """Store the contents of a dict.
 
         Parameters
@@ -639,20 +725,28 @@ class Reporter(object):
             The identifier of the dictionary in the storage file.
         data : dict
             The dict to store.
+        storage : 'analysis' or 'checkpoint', optional, Default: 'analysis'
+            Stores a dictionary on the given storage file. Valid options are 'analysis' and 'checkpoint'.
+            'analysis': Frequently written/accessed data, usually smaller in size
+                e.g. energies, state indices, etc.
+            'checkpoint': Infrequent written/accessed data, usually larger and needed to restore from a checkpoint
+                e.g. Explicit solvent coordinates, serialized state string, simulation options.
 
         """
         # General NetCDF conventions assume the title of the dataset to be
         # specified as a global attribute, but the user can specify their
         # own titles only in metadata.
+        if storage not in ['analysis', 'checkpoint']:
+            raise ValueError("storage must be either 'analysis' or 'checkpoint'!")
         if name == 'metadata':
             data = copy.deepcopy(data)
-            self._storage.title = data.pop('title')
+            self._storage_dict[storage].title = data.pop('title')
 
         # Check if we are updating the dictionary or creating it.
         try:
-            nc_variable = self._resolve_variable_path(name)
+            nc_variable = self._resolve_variable_path(name, storage)
         except KeyError:
-            nc_variable = self._storage.createVariable(name, str, 'scalar')
+            nc_variable = self._storage_dict[storage].createVariable(name, str, 'scalar')
 
         # Activate flow style to save space.
         data_str = yaml.dump(data, Dumper=_DictYamlDumper)#, default_flow_style=True)
@@ -660,21 +754,72 @@ class Reporter(object):
         packed_data[0] = data_str
         nc_variable[:] = packed_data
 
+    def get_previous_checkpoint(self, iteration):
+        """
+        Find the most recently written checkpoint given the iteration searching backwards.
+
+        This is the primary function for determining which iteration to resume from
+
+        Parameters
+        ----------
+        iteration : int
+            Iteration to search from
+
+        Returns
+        -------
+        checkpoint : int
+            The checkpoint closest to the iteration searching reverse
+        """
+        for i in range(iteration, -1, -1):  # -1 for stop ensures the 0th index is searched
+            if self._calculate_checkpoint_iteration(i):
+                return i
+        raise RuntimeError("Could not find a checkpoint! This should not happen as the 0th iteration should always "
+                           "be written! Please check your input.")
+
+    @staticmethod
+    def storage_extensions():
+        """Returns the list of extensions on the base file name used by this class for analysis and checkpointing
+
+        Primary function is to serve as "does file exist" extensions on the base string
+        """
+        return "_analysis.nc", "_checkpointing.nc"
+
     # -------------------------------------------------------------------------
     # Internal-usage.
     # -------------------------------------------------------------------------
 
-    def _resolve_variable_path(self, path):
+    def _resolve_variable_path(self, path, storage):
         """Return the NC variable at the end of the path.
 
         This can be used to retrieve variables inside one or more groups.
 
         """
         path_split = path.split('/')
-        nc_group = self._storage
+        nc_group = self._storage_dict[storage]
         for group_name in path_split[:-1]:
             nc_group = nc_group.groups[group_name]
         return nc_group.variables[path_split[-1]]
+
+    def _calculate_checkpoint_iteration(self, iteration):
+        """Compute the iteration on disk of the checkpoint file matching the iteration linked on the analysis iteration.
+
+         Although this is a simple function, it provides a common function for calculation
+
+         Returns either the integer index, or None if there is no matched index
+         """
+        checkpoint_index = float(iteration) / self._checkpoint_interval
+        if checkpoint_index.is_integer():
+            output = int(checkpoint_index)
+        else:
+            output = None
+        return output
+
+    def _calculate_analysis_iteration(self, iteration):
+        """Compute the iteration on disk of the analysis file given the checkpoint iteration
+
+        Effectively the inverse of _calculate_checkpoint_iteration
+        """
+        return iteration * self._checkpoint_interval
 
 
 # ==============================================================================
@@ -744,14 +889,14 @@ class ReplicaExchange(object):
     Initialize simulation object with options. Run with a GHMC integrator.
 
     >>> move = mcmc.GHMCMove(timestep=2.0*unit.femtoseconds, n_steps=50)
-    >>> simulation = ReplicaExchange(mcmc_moves=move, number_of_iterations=2)
+    >>> simulation = ReplicaExchange(mcmc_moves=move, number_of_iterations=2, checkpoint_interval=1)
 
     Create simulation with its storage file (in a temporary directory) and run.
 
-    >>> storage_path = tempfile.NamedTemporaryFile(delete=False).name + '.nc'
+    >>> storage_base_path = tempfile.NamedTemporaryFile(delete=False).name
     >>> simulation.create(thermodynamic_states=thermodynamic_states,
     >>>                   sampler_states=states.SamplerState(testsystem.positions),
-    >>>                   storage=storage_path)
+    >>>                   storage_base=storage_base_path)
     >>> simulation.run()  # This runs for a maximum of 2 iterations.
     >>> simulation.iteration
     2
@@ -825,16 +970,18 @@ class ReplicaExchange(object):
         self._n_proposed_matrix = None
         self._reporter = None
         self._metadata = None
+        # Handle checkpointing
+        self._checkpoint_interval = None
 
     @classmethod
-    def from_storage(cls, storage):
+    def from_storage(cls, storage_base):
         """Constructor from an existing storage file.
 
         Parameters
         ----------
-        storage : str
-            The path to the storage file. In the future this will be able
-            to take a Reporter or a Storage class as well.
+        storage_base : str
+            The path to the base storage files. In the future this will be able
+            to take a Reporter class as well.
 
         Returns
         -------
@@ -844,15 +991,16 @@ class ReplicaExchange(object):
 
         """
         # Check if netcdf file exists.
-        file_exists = cls._does_file_exist(storage)
-        if not file_exists:
-            raise RuntimeError('Storage file {} does not exists; cannot resume.'.format(storage))
+        for extension in Reporter.storage_extensions():
+            storage_path = storage_base + extension
+            if not cls._does_file_exist(storage_path):
+                raise RuntimeError('Storage file {} does not exists; cannot resume.'.format(storage_path))
 
         # Open a reporter to read the data.
-        reporter = Reporter(storage, open_mode='r')
+        reporter = Reporter(storage_base, open_mode='r')
 
         # Retrieve options and create new simulation.
-        options = reporter.read_dict('options')
+        options = reporter.read_dict('options', storage='checkpoint')
         options['mcmc_moves'] = reporter.read_mcmc_moves()
         repex = cls(**options)
 
@@ -866,13 +1014,19 @@ class ReplicaExchange(object):
         iteration = len(reporter.read_timestamp(iteration=slice(None))) - 1  # 0-based
 
         # Retrieve other attributes.
-        logger.debug("Reading storage file {}...".format(storage))
+        logger.debug("Reading storage files with base {}...".format(storage_base))
+        checkpoint_iteration = reporter.get_previous_checkpoint(iteration)
+        # Find closest checkpoint
+        if iteration != checkpoint_iteration:
+            logger.debug("Last known checkpoint at iteration {0}. "
+                         "Restoring from iteration {0} instead of {1}".format(checkpoint_iteration, iteration))
+            iteration = checkpoint_iteration
         thermodynamic_states, unsampled_states = reporter.read_thermodynamic_states()
         sampler_states = reporter.read_sampler_states(iteration=iteration)
         state_indices = reporter.read_replica_thermodynamic_states(iteration=iteration)
         energy_thermodynamic_states, energy_unsampled_states = reporter.read_energies(iteration=iteration)
         n_accepted_matrix, n_proposed_matrix = reporter.read_mixing_statistics(iteration=iteration)
-        metadata = reporter.read_dict('metadata')
+        metadata = reporter.read_dict('metadata', storage='checkpoint')
 
         # Close reading reporter.
         reporter.close()
@@ -890,7 +1044,7 @@ class ReplicaExchange(object):
         repex._metadata = metadata
 
         # We open the reporter only in node 0.
-        repex._reporter = Reporter(storage, open_mode=None)
+        repex._reporter = Reporter(storage_base, open_mode=None)
         mpi.run_single_node(0, repex._reporter.open, mode='a',
                             broadcast_result=False, sync_nodes=False)
         return repex
@@ -986,8 +1140,8 @@ class ReplicaExchange(object):
     # Main public interface.
     # -------------------------------------------------------------------------
 
-    def create(self, thermodynamic_states, sampler_states, storage,
-               unsampled_thermodynamic_states=None, metadata=None):
+    def create(self, thermodynamic_states, sampler_states, storage_base,
+               unsampled_thermodynamic_states=None, metadata=None, checkpoint_interval=10):
         """Create new replica-exchange simulation.
 
         Parameters
@@ -998,9 +1152,9 @@ class ReplicaExchange(object):
         sampler_states : openmmtools.states.SamplerState or list
             One or more sets of initial sampler states. If a list of SamplerStates,
             they will be assigned to replicas in a round-robin fashion.
-        storage : str
-            The path to the storage file. In the future this will be able
-            to take a Reporter or a Storage class as well.
+        storage_base : str
+            The base path to the storage files. In the future this will be able
+            to take a Reporter.
         unsampled_thermodynamic_states : list of openmmtools.states.ThermodynamicState, optional
             These are ThermodynamicStates that are not propagated, but their
             reduced potential is computed at each iteration for each replica.
@@ -1008,16 +1162,27 @@ class ReplicaExchange(object):
             is None).
         metadata : dict, optional
            Simulation metadata to be stored in the file.
+        checkpoint_interval : int, optional,
+            Frequency at which checkpoint information is written to file relative to the iteration.
+            Simulations can be resumed from any checkpoint iteration.
+            e.g. explicit solvent coordinates are written only at checkpoints, but energies are written every iteration
+            Setting this to 1 will make every iteration a checkpoint, but will increase the IO time, and checkpoint file
+                size
+            (default is 10)
 
         """
-        # Check if netcdf file exists. This is run only on MPI node 0 and
+        # Check if netcdf files exist. This is run only on MPI node 0 and
         # broadcasted. This is to avoid the case where the other nodes
         # arrive to this line after node 0 has already created the storage
         # file, causing an error.
-        file_exists = mpi.run_single_node(0, self._does_file_exist, storage, broadcast_result=True)
-        if file_exists:
-            raise RuntimeError("Storage file {} already exists; cowardly "
-                               "refusing to overwrite.".format(storage))
+        files_exist = False
+        for extension in Reporter.storage_extensions():
+            storage_path = storage_base + extension
+            if mpi.run_single_node(0, self._does_file_exist, storage_path, broadcast_result=True):
+                files_exist = True
+        if files_exist:
+            raise RuntimeError("Storage files with base {} already exists; cowardly "
+                               "refusing to overwrite.".format(storage_base))
 
         # Make sure sampler_states is an iterable of SamplerStates for later.
         if isinstance(sampler_states, mmtools.states.SamplerState):
@@ -1100,7 +1265,7 @@ class ReplicaExchange(object):
         self._display_citations()
 
         # Initialize reporter file.
-        self._reporter = Reporter(storage, open_mode=None)  # This is open only in node 0.
+        self._reporter = Reporter(storage_base, open_mode=None)  # This is open only in node 0.
         self._initialize_reporter()
 
     @mmtools.utils.with_timer('Minimizing all replicas')
@@ -1382,7 +1547,7 @@ class ReplicaExchange(object):
 
         # Store run metadata and ReplicaExchange options.
         self._store_options()
-        self._reporter.write_dict('metadata', self._metadata)
+        self._reporter.write_dict('metadata', self._metadata, storage='checkpoint')
 
         # Store initial conditions. This forces the storage to be synchronized.
         self._report_iteration()
@@ -1419,7 +1584,7 @@ class ReplicaExchange(object):
                             for parameter_name in parameter_names[-len(defaults):]}
         # We store the MCMCMoves separately.
         options_to_store.pop('mcmc_moves')
-        self._reporter.write_dict('options', options_to_store)
+        self._reporter.write_dict('options', options_to_store, storage='checkpoint')
 
     # -------------------------------------------------------------------------
     # Internal-usage: Distributed tasks.
@@ -1713,11 +1878,12 @@ class ParallelTempering(ReplicaExchange):
 
     Create simulation with its storage file (in a temporary directory) and run.
 
-    >>> storage_path = tempfile.NamedTemporaryFile(delete=False).name + '.nc'
+    >>> storage_base_path = tempfile.NamedTemporaryFile(delete=False).name
     >>> simulation.create(thermodynamic_states=thermodynamic_states,
     >>>                   sampler_states=states.SamplerState(testsystem.positions),
-    ...                   storage=storage_path, min_temperature=T_min,
-    ...                   max_temperature=T_max, n_temperatures=n_replicas)
+    ...                   storage_base=storage_base_path, min_temperature=T_min,
+    ...                   max_temperature=T_max, n_temperatures=n_replicas,
+    ...                   checkpoint_interval=1)
     >>> simulation.run(n_iterations=1)
 
     Clean up.
@@ -1726,8 +1892,8 @@ class ParallelTempering(ReplicaExchange):
 
     """
 
-    def create(self, thermodynamic_state, sampler_states, storage, min_temperature=None,
-               max_temperature=None, n_temperatures=None, temperatures=None, metadata=None):
+    def create(self, thermodynamic_state, sampler_states, storage_base, min_temperature=None,
+               max_temperature=None, n_temperatures=None, temperatures=None, metadata=None, checkpoint_interval=10):
         """Initialize a parallel tempering simulation object.
 
         Parameters
@@ -1738,9 +1904,9 @@ class ParallelTempering(ReplicaExchange):
         sampler_states : openmmtools.states.SamplerState or list
             One or more sets of initial sampler states. If a list of SamplerStates,
             they will be assigned to replicas in a round-robin fashion.
-        storage : str
-            The path to the storage file. In the future this will be able
-            to take a Reporter or a Storage class as well.
+        storage_base : str
+            The base path to the storage files. In the future this will be able
+            to take a Reporter class as well.
         min_temperature : simtk.unit.Quantity, optional
            Minimum temperature (units of temperature, default is None).
         max_temperature : simtk.unit.Quantity, optional
@@ -1754,6 +1920,13 @@ class ParallelTempering(ReplicaExchange):
            default is None).
         metadata : dict, optional
            Simulation metadata to be stored in the file.
+        checkpoint_interval : int, optional,
+            Frequency at which checkpoint information is written to file relative to the iteration.
+            Simulations can be resumed from any checkpoint iteration.
+            e.g. explicit solvent coordinates are written only at checkpoints, but energies are written every iteration
+            Setting this to 1 will make every iteration a checkpoint, but will increase the IO time, and checkpoint file
+                size
+            (default is 10)
 
         Notes
         -----
@@ -1787,8 +1960,9 @@ class ParallelTempering(ReplicaExchange):
             metadata['title'] = default_title
 
         # Initialize replica-exchange simlulation.
-        super(ParallelTempering, self).create(self, thermodynamic_states, sampler_states,
-                                              storage=storage, metadata=metadata)
+        super(ParallelTempering, self).create(thermodynamic_states, sampler_states,
+                                              storage_base=storage_base, metadata=metadata,
+                                              checkpoint_interval=checkpoint_interval)
 
     def _compute_replica_energies(self, replica_id):
         """Compute the energy for the replica at every temperature.
