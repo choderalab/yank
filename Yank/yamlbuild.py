@@ -38,6 +38,16 @@ logger = logging.getLogger(__name__)
 
 HIGHEST_VERSION = '1.2'  # highest version of YAML syntax
 
+# Map the OpenMM-style name for a solvent to the tleap
+# name compatible with the solvateBox command.
+_OPENMM_LEAP_SOLVENT_MODELS_MAP = {
+    'tip3p': 'TIP3PBOX',
+    'tip3pfb': 'TIP3PFBOX',
+    'tip4pew': 'TIP4PEWBOX',
+    'tip5p': 'TIP5PBOX',
+    'spce': 'SPCBOX',
+}
+
 
 # =============================================================================
 # UTILITY FUNCTIONS
@@ -974,9 +984,13 @@ class SetupDatabase:
             if 'negative_ion' in solvent:
                 tleap.add_ions(unit=unit_to_solvate, ion=solvent['negative_ion'])
 
-            # Solvate unit
+            # Solvate unit. Solvent models different than tip3p need parameter modifications.
+            solvent_model = solvent['solvent_model']
+            if not solvent_model.startswith('tip3p'):
+                tleap.load_parameters('frcmod.' + solvent_model)
+            leap_solvent_model = _OPENMM_LEAP_SOLVENT_MODELS_MAP[solvent_model]
             clearance = float(solvent['clearance'].value_in_unit(unit.angstroms))
-            tleap.solvate(group=unit_to_solvate, water_model='TIP3PBOX', clearance=clearance)
+            tleap.solvate(group=unit_to_solvate, water_model=leap_solvent_model, clearance=clearance)
 
         # Check charge
         tleap.new_section('Check charge')
@@ -1780,6 +1794,10 @@ class YamlBuilder(object):
                 raise ValueError('Nonbonded method must be NoCutoff.')
             return openmm_app
 
+        def is_supported_solvent_model(solvent_model):
+            """Check that solvent model name is supported."""
+            return solvent_model in _OPENMM_LEAP_SOLVENT_MODELS_MAP
+
         validated_solvents = solvents_description.copy()
 
         # Define solvents Schema
@@ -1787,6 +1805,7 @@ class YamlBuilder(object):
                                 update_keys={'nonbonded_method': Use(to_explicit_solvent)},
                                 exclude_keys=['implicit_solvent'])
         explicit_schema.update({Optional('clearance'): Use(utils.to_unit_validator(unit.angstrom)),
+                                Optional('solvent_model', default='tip4pew'): is_supported_solvent_model,
                                 Optional('positive_ion'): str, Optional('negative_ion'): str})
         implicit_schema = utils.generate_signature_schema(AmberPrmtopFile.createSystem,
                                 update_keys={'implicit_solvent': Use(to_openmm_app),
@@ -1918,20 +1937,25 @@ class YamlBuilder(object):
                 elif type == 'openmm':
                     expected_extensions = ['pdb', 'xml']
 
+                # Check if extensions are expected.
                 correct_type = sorted(provided_extensions) == sorted(expected_extensions)
                 if not correct_type:
                     err_msg = ('Wrong system file types provided.\n'
                                'Extensions provided: {}\n'
                                'Expected extensions: {}').format(
                         sorted(provided_extensions), sorted(expected_extensions))
-                    logger.error(err_msg)
-                    raise RuntimeError(err_msg)
+                    logger.debug(err_msg)
+                    raise YamlParseError(err_msg)
                 else:
                     logger.debug('Correctly recognized files {} as {}'.format(files, expected_extensions))
+
+                # Check if given files exist.
                 for filepath in files:
                     if not os.path.isfile(filepath):
                         logger.error('os.path.isfile({}) is False'.format(filepath))
                         raise YamlParseError('File path {} does not exist.'.format(filepath))
+
+                # Return files in alphabetical order of extension.
                 return [filepath for (ext, filepath) in sorted(zip(provided_extensions, files))]
             return _system_files
 
