@@ -379,7 +379,7 @@ class AlchemicalPhase(object):
         # TODO: this should skip the Reporter and use the Storage to read storage.metadata.
         # Open Reporter for reading and read metadata.
         reporter = repex.Reporter(storage_base, open_mode='r')
-        metadata = reporter.read_dict('metadata')
+        metadata = reporter.read_dict('metadata', storage='checkpoint')
         reporter.close()
 
         # Retrieve the sampler class.

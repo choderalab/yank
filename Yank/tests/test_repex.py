@@ -245,7 +245,8 @@ class TestReporter(object):
         with mmtools.utils.temporary_directory() as tmp_dir_path:
             storage_file_base_path = os.path.join(tmp_dir_path, 'temp_dir/test_storage')
             assert not os.path.isfile(storage_file_base_path)
-            reporter = Reporter(storage=storage_file_base_path, open_mode='w', checkpoint_interval=checkpoint_interval)
+            reporter = Reporter(storage_base=storage_file_base_path, open_mode='w',
+                                checkpoint_interval=checkpoint_interval)
             for extension in reporter.storage_extensions():
                 full_path = storage_file_base_path + extension
                 assert os.path.isfile(full_path)
@@ -705,7 +706,7 @@ class TestReplicaExchange(object):
             mpicomm = mpi.get_mpicomm()
             if mpicomm is None or mpicomm.rank == 0:
                 reporter = Reporter(storage_path, open_mode='r')
-                restored_options = reporter.read_dict('options')
+                restored_options = reporter.read_dict('options', storage='checkpoint')
                 assert restored_options['number_of_iterations'] == 123
                 assert restored_options['replica_mixing_scheme'] == 'none'
 
@@ -925,24 +926,25 @@ class TestReplicaExchange(object):
         with self.temporary_storage_base_path() as storage_path:
             # For this test, we simply check that the checkpoiting writes on the interval
             # We don't care about the numbers, per se, but we do care about when things are written
+            n_iterations = 3
             move = mmtools.mcmc.IntegratorMove(openmm.VerletIntegrator(1.0*unit.femtosecond), n_steps=1)
-            repex = ReplicaExchange(mcmc_moves=move)
+            repex = ReplicaExchange(mcmc_moves=move, number_of_iterations=n_iterations)
             repex.create(thermodynamic_states, sampler_states, storage_base=storage_path,
                          unsampled_thermodynamic_states=unsampled_states, checkpoint_interval=2)
 
             # Propagate.
-            for i in range(3):  # Take 3 steps, index 0, 1, 2
-                repex._propagate_replicas()
+
+            repex.run()
 
             reporter = Reporter(storage_path, open_mode='r', checkpoint_interval=2)
-            for i in range(3):
-                energies = reporter.read_energies(i)
-                positions = reporter.read_sampler_states(i)
+            for i in range(n_iterations):
+                energies, _ = reporter.read_energies(i)
+                states = reporter.read_sampler_states(i)
                 assert type(energies) is np.ndarray
-                if reporter._calculate_checkpoint_iteration(i):
-                    assert type(positions) is np.ndarray
+                if reporter._calculate_checkpoint_iteration(i) is not None:
+                    assert type(states[0].positions) is unit.Quantity
                 else:
-                    assert type(positions) is None
+                    assert states is None
 
 
 # ==============================================================================

@@ -1989,9 +1989,13 @@ def test_run_solvation_experiment():
 
         # The experiments folders are correctly named and positioned
         output_dir = yaml_builder._get_experiment_dir('')
+
         assert os.path.isdir(output_dir)
-        assert os.path.isfile(os.path.join(output_dir, 'solvent1.nc'))
-        assert os.path.isfile(os.path.join(output_dir, 'solvent2.nc'))
+        for extension in repex.Reporter.storage_extensions():
+            solvent1_path = os.path.join(output_dir, 'solven1' + extension)
+            solvent2_path = os.path.join(output_dir, 'solven2' + extension)
+            assert os.path.isfile(solvent1_path)
+            assert os.path.isfile(solvent2_path)
         assert os.path.isfile(os.path.join(output_dir, 'experiments.yaml'))
         assert os.path.isfile(os.path.join(output_dir, 'experiments.log'))
 

@@ -70,10 +70,10 @@ class Reporter(object):
 
     Parameters
     ----------
-    base_storage : str
-        The path to the files base name, this should not include a file suffix
-        The multiple storage files will be saved as two files named
-            "base_storage + _checkpointing" and "base_storage + _analysis"
+    storage : str
+        The path to the storage file for analysis.
+        A second checkpoint file will be determined from either checkpoint_storage_file or automatically based on
+            the storage option
         In the future this will be able to take Storage classes as well.
     open_mode : str or None
         The mode of the file between 'r', 'w', and 'a' (or equivalently 'r+').
@@ -85,14 +85,26 @@ class Reporter(object):
         Checkpoint information cannot be written on iterations which where iteration % checkpoint_interval != 0.
         Attempting to read checkpointing information results in a masked array where only entries which were written
             are unmasked
+    checkpoint_storage_file : str or None, optional
+        Optional name of the checkpoint point file. This file is used to save trajectory information and other less
+            frequently accessed data.
+        If None: the derived checkpoint name is the same as storage, less any extension, then "_checkpoint.nc" is added
+        The reporter internally tracks what data goes into which file, so its transparent to all other classes
+        In the future, this will be able to take Storage classes as well
+
 
     """
-    def __init__(self, base_storage, open_mode=None, checkpoint_interval=10):
+    def __init__(self, storage, open_mode=None, checkpoint_interval=10, checkpoint_storage_file=None):
         if type(checkpoint_interval) != int:
             raise ValueError("checkpoint_interval must be an integer!")
-        self._storage_file_base = base_storage
-        self._storage_file_checkpoint = base_storage + "_checkpointing.nc"
-        self._storage_file_analysis = base_storage + "_analysis.nc"
+        if checkpoint_storage_file is None:
+            dirname, filename = os.path.split(storage)
+            basename, ext = os.path.splitext(filename)
+            addon = "_checkpoint"
+            checkpoint_storage_file = os.path.join(dirname, basename + addon + ext)
+            logger.debug("Checkpoint file automatically chosen as {}".format(checkpoint_storage_file))
+        self._storage_file_analysis = storage
+        self._storage_file_checkpoint = checkpoint_storage_file
         self._storage_checkpoint = None
         self._storage_analysis = None
         self._checkpoint_interval = checkpoint_interval
@@ -101,19 +113,40 @@ class Reporter(object):
 
     @property
     def _storage(self):
-        """Return an iterable of the storage objects, avoids writing things like "for Z in [X,Y]" calls everywhere"""
-        return self._storage_checkpoint, self._storage_analysis
+        """Return an iterable of the storage objects, avoids having the [list, of, storage, objects] everywhere"""
+        return self._storage_analysis, self._storage_checkpoint
+
+    @property
+    def _storage_paths(self):
+        """Return an iterable of paths to the storage files"""
+        return self._storage_file_analysis, self._storage_file_checkpoint
 
     @property
     def _storage_dict(self):
         """Return an iterable dictionary of the self._storage_X objects"""
         return {'checkpoint': self._storage_checkpoint, 'analysis': self._storage_analysis}
 
+    def storage_files_exist(self):
+        """
+        Check if the storage files exist on disk. Reads information on the primary file to see existence of others
+
+        Returns
+        -------
+        files_exist : bool
+            If the primary storage file and its related subfiles exist, returns True
+            If the primary file or any subfiles do not exist, returns False
+        """
+
+
     def is_open(self):
         """Return True if the Reporter is ready to read/write."""
-        if self._storage[0] is None or self._storage[1] is None:
-            return False
-        return np.all([self._storage[0].isopen(), self._storage[1].isopen()])
+        open_check_list = []
+        for storage in self._storage:
+            if storage is None:
+                return False
+            else:
+                open_check_list.append(storage.isopen())
+        return np.all(open_check_list)
 
     def open(self, mode='r'):
         """Open the storage file for reading/writing.
@@ -128,14 +161,18 @@ class Reporter(object):
         """
         # Ensure we don't have already another file
         # open (possibly in a different mode).
-        if self._storage[0] is None or self._storage[1] is None:
-            self.close()
+        for storage in self._storage:
+            if storage is not None:
+                self.close()
+                # No need to execute this code more than once
+                break
 
         # Create directory if we want to write.
         if mode != 'r':
-            storage_dir = os.path.dirname(self._storage_file_base)
-            if not os.path.exists(storage_dir):
-                os.makedirs(storage_dir)
+            for storage_path in self._storage_paths:
+                storage_dir = os.path.dirname(os.path.dirname(storage_path))
+                if not os.path.exists(storage_dir):
+                    os.makedirs(storage_dir)
 
         # Open NetCDF 4 file for writing.
         ncfile_checkpoint = netcdf.Dataset(self._storage_file_checkpoint, mode, version='NETCDF4')
@@ -159,9 +196,9 @@ class Reporter(object):
                 ncfile.Conventions = 'ReplicaExchange'
                 ncfile.ConventionVersion = '0.2'
                 ncfile.DataUsedFor = nc_name
-                ncfile.checkpoint_interval = self._checkpoint_interval
+                ncfile.CheckpointInterval = self._checkpoint_interval
             setattr(self, '_storage_' + nc_name, ncfile)
-        on_file_interval = self._storage_checkpoint.checkpoint_interval
+        on_file_interval = self._storage_checkpoint.CheckpointInterval
         if on_file_interval != self._checkpoint_interval:
             logger.debug("checkpoint_interval != on-file checkpoint interval! "
                          "Using on file checkpoint interval of {}.".format(on_file_interval))
@@ -171,9 +208,10 @@ class Reporter(object):
         """Close the storage file."""
         for storage_name, storage in utils.dictiter(self._storage_dict):
             if storage is not None:
-                storage.sync()
-                storage.close()
-                setattr(self, '_storage' + storage_name, None)
+                if storage.isopen():
+                    storage.sync()
+                    storage.close()
+            setattr(self, '_storage' + storage_name, None)
 
     def sync(self):
         """Force any buffer to be flushed to the file."""
@@ -183,8 +221,10 @@ class Reporter(object):
 
     def __del__(self):
         """Synchronize and close the storage."""
-        if self._storage[0] is not None or self._storage[1] is not None:
-            self.close()
+        for storage in self._storage:
+            if storage is not None:
+                self.close()
+                break
 
     @mmtools.utils.with_timer('Reading thermodynamic states from storage')
     def read_thermodynamic_states(self):
@@ -316,7 +356,7 @@ class Reporter(object):
         """
 
         checkpoint_iteration = self._calculate_checkpoint_iteration(iteration)
-        if checkpoint_iteration:
+        if checkpoint_iteration is not None:
             n_states = self._storage_checkpoint.dimensions['replica'].size
 
             sampler_states = list()
@@ -385,7 +425,7 @@ class Reporter(object):
             setattr(ncvar_volumes, "long_name", ("volume[iteration][replica] is the box volume for replica 'replica' "
                                                  "from iteration 'iteration-1'."))
         checkpoint_iteration = self._calculate_checkpoint_iteration(iteration)
-        if checkpoint_iteration:
+        if checkpoint_iteration is not None:
             # Store sampler states.
             for replica_index, sampler_state in enumerate(sampler_states):
                 # Store positions
@@ -680,23 +720,17 @@ class Reporter(object):
                 storage.createVariable('timestamp', str, ('iteration',), zlib=False, chunksizes=(1,))
         timestamp = time.ctime()
         self._storage_analysis.variables['timestamp'][iteration] = timestamp
-        checkpoint_interval = self._calculate_checkpoint_iteration(iteration)
-        if checkpoint_interval:
-            self._storage_checkpoint.variables['timestamp'][iteration] = timestamp
+        checkpoint_iteration = self._calculate_checkpoint_iteration(iteration)
+        if checkpoint_iteration is not None:
+            self._storage_checkpoint.variables['timestamp'][checkpoint_iteration] = timestamp
 
-    def read_dict(self, name, storage='analysis'):
+    def read_dict(self, name):
         """Restore a dictionary from the storage file.
 
         Parameters
         ----------
         name : str
             The identifier of the dictionary used to stored the data.
-        storage : 'analysis' or 'checkpoint', optional, Default: 'analysis'
-            Stores a dictionary on the given storage file.
-            'analysis': Frequently written/accessed data, usually smaller in size
-                e.g. energies, state indices, etc.
-            'checkpoint': Infrequent written/accessed data, usually larger and needed to restore from a checkpoint
-                e.g. Explicit solvent coordinates, serialized state string, simulation options.
 
         Returns
         -------
@@ -704,6 +738,9 @@ class Reporter(object):
             The restored data as a dict.
 
         """
+        # All dicts are saved to the checkpoint file for now.
+        # Leaving the skeleton to extend this in for now
+        storage = 'checkpoint'
         if storage not in ['analysis', 'checkpoint']:
             raise ValueError("storage must be either 'analysis' or 'checkpoint'!")
         # Get NC variable.
@@ -716,7 +753,7 @@ class Reporter(object):
             data['title'] = self._storage_dict[storage].title
         return data
 
-    def write_dict(self, name, data, storage='analysis'):
+    def write_dict(self, name, data):
         """Store the contents of a dict.
 
         Parameters
@@ -725,19 +762,16 @@ class Reporter(object):
             The identifier of the dictionary in the storage file.
         data : dict
             The dict to store.
-        storage : 'analysis' or 'checkpoint', optional, Default: 'analysis'
-            Stores a dictionary on the given storage file. Valid options are 'analysis' and 'checkpoint'.
-            'analysis': Frequently written/accessed data, usually smaller in size
-                e.g. energies, state indices, etc.
-            'checkpoint': Infrequent written/accessed data, usually larger and needed to restore from a checkpoint
-                e.g. Explicit solvent coordinates, serialized state string, simulation options.
 
         """
+        # All dicts are saved to the checkpoint file for now.
+        # Leaving the skeleton to extend this in for now
+        storage = 'checkpoint'
+        if storage not in ['analysis', 'checkpoint']:
+            raise ValueError("storage must be either 'analysis' or 'checkpoint'!")
         # General NetCDF conventions assume the title of the dataset to be
         # specified as a global attribute, but the user can specify their
         # own titles only in metadata.
-        if storage not in ['analysis', 'checkpoint']:
-            raise ValueError("storage must be either 'analysis' or 'checkpoint'!")
         if name == 'metadata':
             data = copy.deepcopy(data)
             self._storage_dict[storage].title = data.pop('title')
@@ -771,7 +805,7 @@ class Reporter(object):
             The checkpoint closest to the iteration searching reverse
         """
         for i in range(iteration, -1, -1):  # -1 for stop ensures the 0th index is searched
-            if self._calculate_checkpoint_iteration(i):
+            if self._calculate_checkpoint_iteration(i) is not None:
                 return i
         raise RuntimeError("Could not find a checkpoint! This should not happen as the 0th iteration should always "
                            "be written! Please check your input.")
@@ -974,14 +1008,14 @@ class ReplicaExchange(object):
         self._checkpoint_interval = None
 
     @classmethod
-    def from_storage(cls, storage_base):
+    def from_storage(cls, storage):
         """Constructor from an existing storage file.
 
         Parameters
         ----------
-        storage_base : str
-            The path to the base storage files. In the future this will be able
-            to take a Reporter class as well.
+        storage : str
+            The path to the storage file. In the future this will be able
+            to take a Reporter or Storage classes as well.
 
         Returns
         -------
@@ -990,17 +1024,15 @@ class ReplicaExchange(object):
             last stored iteration.
 
         """
-        # Check if netcdf file exists.
-        for extension in Reporter.storage_extensions():
-            storage_path = storage_base + extension
-            if not cls._does_file_exist(storage_path):
-                raise RuntimeError('Storage file {} does not exists; cannot resume.'.format(storage_path))
-
+        # Check if netcdf file exists, open data for read if it does
         # Open a reporter to read the data.
-        reporter = Reporter(storage_base, open_mode='r')
+        reporter = Reporter(storage, open_mode='r')
+        if not reporter.storage_files_exist():
+            raise RuntimeError('Storage file {} or its subfiles do not exist; cannot resume.'.format(storage))
+
 
         # Retrieve options and create new simulation.
-        options = reporter.read_dict('options', storage='checkpoint')
+        options = reporter.read_dict('options')
         options['mcmc_moves'] = reporter.read_mcmc_moves()
         repex = cls(**options)
 

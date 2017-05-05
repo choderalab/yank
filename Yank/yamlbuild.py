@@ -2615,7 +2615,7 @@ class YamlBuilder(object):
 
             # Create phases.
             phases[i] = YamlPhaseFactory(sampler, thermodynamic_state, sampler_state,
-                                         topography, phase_protocol, storage=phase_path,
+                                         topography, phase_protocol, storage_base=phase_path,
                                          restraint=restraint, alchemical_regions=alchemical_region,
                                          **phase_opts)
 
