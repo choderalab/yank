@@ -416,9 +416,6 @@ class AlchemicalPhase(object):
             1. The truncation of nonbonded interactions.
             2. The reciprocal space which is not modeled in alchemical
                states if an Ewald method is used for long-range interactions.
-            3. If the system is restrained and the first step of the protocol
-               has `lambda_restraints=1.0`, the reweighting also accounts
-               for the free energy of applying the restraint.
 
         Parameters
         ----------
@@ -570,6 +567,12 @@ class AlchemicalPhase(object):
                 else:
                     raise AttributeError('CompoundThermodynamicState object does not '
                                          'have protocol attribute {}'.format(lambda_key))
+
+        # Temperature and pressure at the end states should
+        # be the same or the analysis won't make sense.
+        for state_property in ['temperature', 'pressure']:
+            if getattr(compound_states[0], state_property) != getattr(compound_states[-1], state_property):
+                raise ValueError('The {}s of the end states must be the same.'.format(state_property))
 
         # Expanded cutoff unsampled states.
         # ---------------------------------
