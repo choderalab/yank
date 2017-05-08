@@ -1991,11 +1991,11 @@ def test_run_solvation_experiment():
         output_dir = yaml_builder._get_experiment_dir('')
 
         assert os.path.isdir(output_dir)
-        for extension in repex.Reporter.storage_extensions():
-            solvent1_path = os.path.join(output_dir, 'solven1' + extension)
-            solvent2_path = os.path.join(output_dir, 'solven2' + extension)
-            assert os.path.isfile(solvent1_path)
-            assert os.path.isfile(solvent2_path)
+        for solvent in ['solvent1.nc', 'solvent2.nc']:
+            solvent_path = os.path.join(output_dir, solvent)
+            reporter = repex.Reporter(solvent_path, open_mode=None)
+            assert reporter.storage_exists()
+            del reporter
         assert os.path.isfile(os.path.join(output_dir, 'experiments.yaml'))
         assert os.path.isfile(os.path.join(output_dir, 'experiments.log'))
 

@@ -249,7 +249,7 @@ class TestReporter(object):
             reporter = Reporter(storage=storage_file, open_mode='w',
                                 checkpoint_interval=checkpoint_interval,
                                 checkpoint_storage_file=checkpoint_storage_file)
-            assert reporter.storage_exists()
+            assert reporter.storage_exists(skip_size=True)
             yield reporter
 
     def test_store_thermodynamic_states(self):
@@ -985,6 +985,7 @@ class TestReplicaExchange(object):
             cp_file = 'checkpoint_file.nc'
             cp_file_mod = 'checkpoint_mod.nc'
             reporter = Reporter(storage_path, checkpoint_storage_file=cp_file, open_mode='w')
+            reporter.close()
             del reporter
             Reporter(storage_path, checkpoint_storage_file=cp_file_mod, open_mode='r')
 

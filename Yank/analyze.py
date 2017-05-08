@@ -1733,7 +1733,7 @@ def analyze(source_directory):
 # Extract trajectory from NetCDF4 file
 # ==============================================================================
 
-def extract_trajectory(output_path, nc_base_path, state_index=None, replica_index=None,
+def extract_trajectory(output_path, nc_path, nc_checkpoint_file=None, state_index=None, replica_index=None,
                        start_frame=0, end_frame=-1, skip_frame=1, keep_solvent=True,
                        discard_equilibration=False, image_molecules=False):
     """Extract phase trajectory from the NetCDF4 file.
@@ -1743,8 +1743,12 @@ def extract_trajectory(output_path, nc_base_path, state_index=None, replica_inde
     output_path : str
         Path to the trajectory file to be created. The extension of the file
         determines the format.
-    nc_base_path : str
-        Path to the base name of the NetCDF4 files containing the trajectory.
+    nc_path : str
+        Path to the primary nc_file storing the analysis options
+    nc_checkpoint_file : str or None, Optional
+        File name of the checkpoint file housing the main trajectory
+        Used if the checkpoint file is differently named from the default one chosen by the nc_path file.
+        Default: None
     state_index : int, optional
         The index of the alchemical state for which to extract the trajectory.
         One and only one between state_index and replica_index must be not None
@@ -1771,12 +1775,12 @@ def extract_trajectory(output_path, nc_base_path, state_index=None, replica_inde
     if (state_index is None) == (replica_index is None):
         raise ValueError('One and only one between "state_index" and '
                          '"replica_index" must be specified.')
-    if not os.path.isfile(nc_base_path):
-        raise ValueError('Cannot find file {}'.format(nc_base_path))
+    if not os.path.isfile(nc_path):
+        raise ValueError('Cannot find file {}'.format(nc_path))
 
     # Import simulation data
     try:
-        reporter = Reporter(nc_base_path, open_mode='r')
+        reporter = Reporter(nc_path, open_mode='r', checkpoint_storage_file=nc_checkpoint_file)
         metadata = reporter.read_dict('metadata')
         reference_system = mmtools.utils.deserialize(metadata['reference_state']).system
         topology = mmtools.utils.deserialize(metadata['topography']).topology

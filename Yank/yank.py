@@ -383,7 +383,7 @@ class AlchemicalPhase(object):
 
         # TODO: this should skip the Reporter and use the Storage to read storage.metadata.
         # Open Reporter for reading and read metadata.
-        reporter = reporter.open(mode='r')
+        reporter.open(mode='r')
         metadata = reporter.read_dict('metadata')
         reporter.close()
 
