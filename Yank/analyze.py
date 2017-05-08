@@ -776,7 +776,7 @@ class RepexPhase(YankPhaseAnalyzer):
 
         """
         if self._computed_observables['standard_state_correction'] is None:
-            ssc = self._reporter.read_dict('metadata', storage='checkpoint')['standard_state_correction']
+            ssc = self._reporter.read_dict('metadata')['standard_state_correction']
             self._computed_observables['standard_state_correction'] = ssc
         return self._computed_observables['standard_state_correction']
 
@@ -1777,7 +1777,7 @@ def extract_trajectory(output_path, nc_base_path, state_index=None, replica_inde
     # Import simulation data
     try:
         reporter = Reporter(nc_base_path, open_mode='r')
-        metadata = reporter.read_dict('metadata', storage='checkpoint')
+        metadata = reporter.read_dict('metadata')
         reference_system = mmtools.utils.deserialize(metadata['reference_state']).system
         topology = mmtools.utils.deserialize(metadata['topography']).topology
 

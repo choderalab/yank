@@ -40,6 +40,7 @@ import os
 import math
 import copy
 import time
+import uuid
 import yaml
 import inspect
 import datetime
@@ -88,6 +89,7 @@ class Reporter(object):
     checkpoint_storage_file : str or None, optional
         Optional name of the checkpoint point file. This file is used to save trajectory information and other less
             frequently accessed data.
+        This should NOT be a full path, and instead just a filename
         If None: the derived checkpoint name is the same as storage, less any extension, then "_checkpoint.nc" is added
         The reporter internally tracks what data goes into which file, so its transparent to all other classes
         In the future, this will be able to take Storage classes as well
@@ -97,12 +99,14 @@ class Reporter(object):
     def __init__(self, storage, open_mode=None, checkpoint_interval=10, checkpoint_storage_file=None):
         if type(checkpoint_interval) != int:
             raise ValueError("checkpoint_interval must be an integer!")
+        dirname, filename = os.path.split(storage)
         if checkpoint_storage_file is None:
-            dirname, filename = os.path.split(storage)
             basename, ext = os.path.splitext(filename)
             addon = "_checkpoint"
             checkpoint_storage_file = os.path.join(dirname, basename + addon + ext)
-            logger.debug("Checkpoint file automatically chosen as {}".format(checkpoint_storage_file))
+            logger.debug("Initial checkpoint file automatically chosen as {}".format(checkpoint_storage_file))
+        else:
+            checkpoint_storage_file = os.path.join(dirname, checkpoint_storage_file)
         self._storage_file_analysis = storage
         self._storage_file_checkpoint = checkpoint_storage_file
         self._storage_checkpoint = None
@@ -113,12 +117,18 @@ class Reporter(object):
 
     @property
     def _storage(self):
-        """Return an iterable of the storage objects, avoids having the [list, of, storage, objects] everywhere"""
+        """
+        Return an iterable of the storage objects, avoids having the [list, of, storage, objects] everywhere
+        Object 0 is always the primary file, all others are subfiles
+        """
         return self._storage_analysis, self._storage_checkpoint
 
     @property
     def _storage_paths(self):
-        """Return an iterable of paths to the storage files"""
+        """
+        Return an iterable of paths to the storage files
+        Object 0 is always the primary file, all others are subfiles
+        """
         return self._storage_file_analysis, self._storage_file_checkpoint
 
     @property
@@ -126,7 +136,7 @@ class Reporter(object):
         """Return an iterable dictionary of the self._storage_X objects"""
         return {'checkpoint': self._storage_checkpoint, 'analysis': self._storage_analysis}
 
-    def storage_files_exist(self):
+    def storage_exists(self):
         """
         Check if the storage files exist on disk. Reads information on the primary file to see existence of others
 
@@ -136,12 +146,23 @@ class Reporter(object):
             If the primary storage file and its related subfiles exist, returns True
             If the primary file or any subfiles do not exist, returns False
         """
-
+        # This function serves as a way to mask the subfiles from everything outside the reporter
+        for file_path in self._storage_paths:
+            if not os.path.exists(file_path) and os.path.getsize(file_path) > 0:
+                return False  # Return if any files do not exist
+        return True
 
     def is_open(self):
         """Return True if the Reporter is ready to read/write."""
+        if self._storage[0] is None:
+            return False
+        else:
+            return self._storage[0].isopen()
+
+    def _are_subfiles_open(self):
+        """Internal function to check if subfiles are open"""
         open_check_list = []
-        for storage in self._storage:
+        for storage in self._storage[1:]:
             if storage is None:
                 return False
             else:
@@ -175,14 +196,39 @@ class Reporter(object):
                     os.makedirs(storage_dir)
 
         # Open NetCDF 4 file for writing.
-        ncfile_checkpoint = netcdf.Dataset(self._storage_file_checkpoint, mode, version='NETCDF4')
-        ncfile_analysis = netcdf.Dataset(self._storage_file_analysis, mode, version='NETCDF4')
-        ncfiles = {'checkpoint': ncfile_checkpoint,
-                   'analysis': ncfile_analysis
-                   }
+        # If no file exists, this appropriatley throws an error on 'r' mode
+        primary_ncfiles = {}
+        sub_ncfiles = {}
+        # TODO: Figure out how to move around the analysis file without the checkpoint file
+        # Cast this to a common name space for operation below
+        primary_ncfiles['analysis'] = netcdf.Dataset(self._storage_file_analysis, mode, version='NETCDF4')
+        if mode == 'w':
+            sub_ncfiles['checkpoint'] = netcdf.Dataset(self._storage_file_checkpoint, mode, version='NETCDF4')
+        else:  # Read/append mode
+            # Try to open the files in read mode, its okay if they are not there
+            try:
+                sub_ncfiles['checkpoint'] = netcdf.Dataset(self._storage_file_checkpoint, mode, version='NETCDF4')
+                primary_uuid = primary_ncfiles['analysis'].UUID
+                assert primary_uuid == sub_ncfiles['checkpoint'].UUID
+            except IOError:  # Trap the "not on disk" warning
+                logger.debug('Could not locate checkpoint subfile. This is okay for certain append and read operations, '
+                             'but not for production simulation!')
+            except AttributeError:
+                raise AttributeError("Checkpoint file is missing its linked primary file UUID!"
+                                     "No way to ensure this checkpoint file contains data matching the analysis file!")
+            except AssertionError:
+                primary_uuid = primary_ncfiles['analysis'].UUID
+                check_uuid = sub_ncfiles['checkpoint'].UUID
+                raise IOError("Checkpoint UUID does not match analysis UUID! This checkpoint file came from another "
+                              "simulation!\n"
+                              "Analysis UUID: {}"
+                              "Checkpoint UUID: {}".format(primary_uuid, check_uuid))
 
-        # Create header if needed.
-        for nc_name, ncfile in utils.dictiter(ncfiles):
+        def check_and_build_storage_file(ncfile, nc_name, checkpoint_interval):
+            """
+            Helper function to build default file settings
+            Returns a bool depending on if it ran through the setup to indicate file needs additional data or not
+            """
             if 'scalar' not in ncfile.dimensions:
                 # Create common dimensions.
                 ncfile.createDimension('scalar', 1)  # Scalar dimension.
@@ -196,8 +242,37 @@ class Reporter(object):
                 ncfile.Conventions = 'ReplicaExchange'
                 ncfile.ConventionVersion = '0.2'
                 ncfile.DataUsedFor = nc_name
-                ncfile.CheckpointInterval = self._checkpoint_interval
+                ncfile.CheckpointInterval = checkpoint_interval
+                return True
+            else:
+                return False
+
+        # Setup the primary file if needed
+        # Generate a unique UUID in case we need to assign it
+        # primary and subfiles are linked by UUID
+        # Uses uuid4 to avoid assigning hostname information
+        primary_uuid = uuid.uuid4()
+        ncfile_ever_built = False
+        for nc_name, ncfile in utils.dictiter(primary_ncfiles):
+            ncfile_built = check_and_build_storage_file(ncfile, nc_name, self._checkpoint_interval)
+            if ncfile_built:
+                ncfile_ever_built = True
+            # Assign ncfile to class property
             setattr(self, '_storage_' + nc_name, ncfile)
+        if ncfile_ever_built:  # Assign the same UUID to all primary files
+            for _, ncfile in utils.dictiter(primary_ncfiles):
+                ncfile.UUID = primary_uuid
+        else:
+            primary_uuid = primary_ncfiles['analysis'].UUID
+        # Handle Subfiles
+        for nc_name, ncfile in utils.dictiter(sub_ncfiles):
+            # If they are in the sub_ncfiles dict, they exist and are open
+            ncfile_built = check_and_build_storage_file(ncfile, nc_name, self._checkpoint_interval)
+            if ncfile_built:
+                # Assign the UUID to the subfile
+                ncfile.UUID = primary_uuid
+            setattr(self, '_storage_' + nc_name, ncfile)
+
         on_file_interval = self._storage_checkpoint.CheckpointInterval
         if on_file_interval != self._checkpoint_interval:
             logger.debug("checkpoint_interval != on-file checkpoint interval! "
@@ -258,7 +333,7 @@ class Reporter(object):
             # We keep looking for states until we can't find them anymore.
             n_states = len(self._storage_checkpoint.groups[state_type].variables)
             for state_id in range(n_states):
-                serialized_state = self.read_dict('{}/state{}'.format(state_type, state_id), storage='checkpoint')
+                serialized_state = self.read_dict('{}/state{}'.format(state_type, state_id))
 
                 # Find the thermodynamic state representation.
                 serialized_thermodynamic_state = serialized_state
@@ -335,7 +410,7 @@ class Reporter(object):
                     serialized_thermodynamic_state['_Reporter__compatible_state'] = reference_state_name
 
                 # Write state as dictionary.
-                self.write_dict('{}/state{}'.format(state_type, state_id), serialized_state, storage='checkpoint')
+                self.write_dict('{}/state{}'.format(state_type, state_id), serialized_state)
 
     def read_sampler_states(self, iteration):
         """Retrieve the stored sampler states on the checkpoint file
@@ -506,7 +581,7 @@ class Reporter(object):
         # Retrieve all moves in order.
         mcmc_moves = list()
         for move_id in range(n_moves):
-            serialized_move = self.read_dict('mcmc_moves/move{}'.format(move_id), storage='checkpoint')
+            serialized_move = self.read_dict('mcmc_moves/move{}'.format(move_id))
             mcmc_moves.append(mmtools.utils.deserialize(serialized_move))
         return mcmc_moves
 
@@ -521,7 +596,7 @@ class Reporter(object):
         """
         for move_id, move in enumerate(mcmc_moves):
             serialized_move = mmtools.utils.serialize(move)
-            self.write_dict('mcmc_moves/move{}'.format(move_id), serialized_move, storage='checkpoint')
+            self.write_dict('mcmc_moves/move{}'.format(move_id), serialized_move)
 
     def read_energies(self, iteration=slice(None)):
         """Retrieve the energy matrix at the given iteration on the analysis file
@@ -740,7 +815,10 @@ class Reporter(object):
         """
         # All dicts are saved to the checkpoint file for now.
         # Leaving the skeleton to extend this in for now
-        storage = 'checkpoint'
+        if name in ['metadata']:  # store data needed for analysis in the primary file
+            storage = 'analysis'
+        else:
+            storage = 'checkpoint'
         if storage not in ['analysis', 'checkpoint']:
             raise ValueError("storage must be either 'analysis' or 'checkpoint'!")
         # Get NC variable.
@@ -809,14 +887,6 @@ class Reporter(object):
                 return i
         raise RuntimeError("Could not find a checkpoint! This should not happen as the 0th iteration should always "
                            "be written! Please check your input.")
-
-    @staticmethod
-    def storage_extensions():
-        """Returns the list of extensions on the base file name used by this class for analysis and checkpointing
-
-        Primary function is to serve as "does file exist" extensions on the base string
-        """
-        return "_analysis.nc", "_checkpointing.nc"
 
     # -------------------------------------------------------------------------
     # Internal-usage.
@@ -1008,7 +1078,7 @@ class ReplicaExchange(object):
         self._checkpoint_interval = None
 
     @classmethod
-    def from_storage(cls, storage):
+    def from_storage(cls, storage, checkpoint_storage_file=None):
         """Constructor from an existing storage file.
 
         Parameters
@@ -1016,6 +1086,13 @@ class ReplicaExchange(object):
         storage : str
             The path to the storage file. In the future this will be able
             to take a Reporter or Storage classes as well.
+        checkpoint_storage_file : str or None, Optional
+            Name of the checkpoint storage file used by the YANK simulation. If None is provided, file is determined
+                automatically from storage file.
+            This is not a path, as the file will be created in the same directory as the storage file
+            In the future this wil be able to take a Storage class as well.
+            Default: None
+
 
         Returns
         -------
@@ -1026,10 +1103,10 @@ class ReplicaExchange(object):
         """
         # Check if netcdf file exists, open data for read if it does
         # Open a reporter to read the data.
-        reporter = Reporter(storage, open_mode='r')
-        if not reporter.storage_files_exist():
+        reporter = Reporter(storage, open_mode='r', checkpoint_storage_file=checkpoint_storage_file)
+        if not reporter.storage_exists():
+            reporter.close()
             raise RuntimeError('Storage file {} or its subfiles do not exist; cannot resume.'.format(storage))
-
 
         # Retrieve options and create new simulation.
         options = reporter.read_dict('options')
@@ -1046,7 +1123,7 @@ class ReplicaExchange(object):
         iteration = len(reporter.read_timestamp(iteration=slice(None))) - 1  # 0-based
 
         # Retrieve other attributes.
-        logger.debug("Reading storage files with base {}...".format(storage_base))
+        logger.debug("Reading storage files with base {}...".format(storage))
         checkpoint_iteration = reporter.get_previous_checkpoint(iteration)
         # Find closest checkpoint
         if iteration != checkpoint_iteration:
@@ -1058,7 +1135,7 @@ class ReplicaExchange(object):
         state_indices = reporter.read_replica_thermodynamic_states(iteration=iteration)
         energy_thermodynamic_states, energy_unsampled_states = reporter.read_energies(iteration=iteration)
         n_accepted_matrix, n_proposed_matrix = reporter.read_mixing_statistics(iteration=iteration)
-        metadata = reporter.read_dict('metadata', storage='checkpoint')
+        metadata = reporter.read_dict('metadata')
 
         # Close reading reporter.
         reporter.close()
@@ -1076,7 +1153,7 @@ class ReplicaExchange(object):
         repex._metadata = metadata
 
         # We open the reporter only in node 0.
-        repex._reporter = Reporter(storage_base, open_mode=None)
+        repex._reporter = Reporter(storage, open_mode=None, checkpoint_storage_file=checkpoint_storage_file)
         mpi.run_single_node(0, repex._reporter.open, mode='a',
                             broadcast_result=False, sync_nodes=False)
         return repex
@@ -1172,7 +1249,8 @@ class ReplicaExchange(object):
     # Main public interface.
     # -------------------------------------------------------------------------
 
-    def create(self, thermodynamic_states, sampler_states, storage_base,
+    def create(self, thermodynamic_states, sampler_states,
+               storage, checkpoint_storage_file=None,
                unsampled_thermodynamic_states=None, metadata=None, checkpoint_interval=10):
         """Create new replica-exchange simulation.
 
@@ -1184,9 +1262,15 @@ class ReplicaExchange(object):
         sampler_states : openmmtools.states.SamplerState or list
             One or more sets of initial sampler states. If a list of SamplerStates,
             they will be assigned to replicas in a round-robin fashion.
-        storage_base : str
+        storage : str
             The base path to the storage files. In the future this will be able
             to take a Reporter.
+        checkpoint_storage_file : str or None, Optional
+            Name of the checkpoint storage file used by the YANK simulation. If None is provided, file is determined
+                automatically from storage file.
+            This is not a path, as the file will be created in the same directory as the storage file
+            In the future this wil be able to take a Storage class as well.
+            Default: None
         unsampled_thermodynamic_states : list of openmmtools.states.ThermodynamicState, optional
             These are ThermodynamicStates that are not propagated, but their
             reduced potential is computed at each iteration for each replica.
@@ -1208,13 +1292,15 @@ class ReplicaExchange(object):
         # arrive to this line after node 0 has already created the storage
         # file, causing an error.
         files_exist = False
-        for extension in Reporter.storage_extensions():
-            storage_path = storage_base + extension
-            if mpi.run_single_node(0, self._does_file_exist, storage_path, broadcast_result=True):
-                files_exist = True
+        # Create temporary reporter
+        check_file_reporter = Reporter(storage, checkpoint_storage_file=checkpoint_storage_file)
+        if mpi.run_single_node(0, check_file_reporter.storage_exists, broadcast_result=True):
+            files_exist = True
+        # Clean up temporary reporter
+        del check_file_reporter
         if files_exist:
-            raise RuntimeError("Storage files with base {} already exists; cowardly "
-                               "refusing to overwrite.".format(storage_base))
+            raise RuntimeError("Storage file {} already exists; cowardly "
+                               "refusing to overwrite.".format(storage))
 
         # Make sure sampler_states is an iterable of SamplerStates for later.
         if isinstance(sampler_states, mmtools.states.SamplerState):
@@ -1297,7 +1383,8 @@ class ReplicaExchange(object):
         self._display_citations()
 
         # Initialize reporter file.
-        self._reporter = Reporter(storage_base, open_mode=None, checkpoint_interval=checkpoint_interval)  # This is open only in node 0.
+        self._reporter = Reporter(storage, open_mode=None, checkpoint_interval=checkpoint_interval,
+                                  checkpoint_storage_file=checkpoint_storage_file)  # This is open only in node 0.
         self._initialize_reporter()
 
     @mmtools.utils.with_timer('Minimizing all replicas')
@@ -1579,7 +1666,7 @@ class ReplicaExchange(object):
 
         # Store run metadata and ReplicaExchange options.
         self._store_options()
-        self._reporter.write_dict('metadata', self._metadata, storage='checkpoint')
+        self._reporter.write_dict('metadata', self._metadata)
 
         # Store initial conditions. This forces the storage to be synchronized.
         self._report_iteration()
@@ -1616,7 +1703,7 @@ class ReplicaExchange(object):
                             for parameter_name in parameter_names[-len(defaults):]}
         # We store the MCMCMoves separately.
         options_to_store.pop('mcmc_moves')
-        self._reporter.write_dict('options', options_to_store, storage='checkpoint')
+        self._reporter.write_dict('options', options_to_store)
 
     # -------------------------------------------------------------------------
     # Internal-usage: Distributed tasks.
@@ -1924,8 +2011,10 @@ class ParallelTempering(ReplicaExchange):
 
     """
 
-    def create(self, thermodynamic_state, sampler_states, storage_base, min_temperature=None,
-               max_temperature=None, n_temperatures=None, temperatures=None, metadata=None, checkpoint_interval=10):
+    def create(self, thermodynamic_state, sampler_states,
+               storage, checkpoint_storage_file=None,
+               min_temperature=None, max_temperature=None, n_temperatures=None, temperatures=None,
+               metadata=None, checkpoint_interval=10):
         """Initialize a parallel tempering simulation object.
 
         Parameters
@@ -1936,9 +2025,15 @@ class ParallelTempering(ReplicaExchange):
         sampler_states : openmmtools.states.SamplerState or list
             One or more sets of initial sampler states. If a list of SamplerStates,
             they will be assigned to replicas in a round-robin fashion.
-        storage_base : str
-            The base path to the storage files. In the future this will be able
-            to take a Reporter class as well.
+        storage : str
+            The path to the storage file. In the future this will be able
+            to take a Reporter or Storage classes as well.
+        checkpoint_storage_file : str or None, Optional
+            Name of the checkpoint storage file used by the YANK simulation. If None is provided, file is determined
+                automatically from storage file.
+            This is not a path, as the file will be created in the same directory as the storage file
+            In the future this wil be able to take a Storage class as well.
+            Default: None
         min_temperature : simtk.unit.Quantity, optional
            Minimum temperature (units of temperature, default is None).
         max_temperature : simtk.unit.Quantity, optional
@@ -1993,7 +2088,8 @@ class ParallelTempering(ReplicaExchange):
 
         # Initialize replica-exchange simlulation.
         super(ParallelTempering, self).create(thermodynamic_states, sampler_states,
-                                              storage_base=storage_base, metadata=metadata,
+                                              storage=storage, checkpoint_storage_file=checkpoint_storage_file,
+                                              metadata=metadata,
                                               checkpoint_interval=checkpoint_interval)
 
     def _compute_replica_energies(self, replica_id):

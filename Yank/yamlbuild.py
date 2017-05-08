@@ -1027,14 +1027,14 @@ class YamlPhaseFactory(object):
     }
 
     def __init__(self, sampler, thermodynamic_state, sampler_states, topography,
-                 protocol, storage_base, restraint=None, alchemical_regions=None,
+                 protocol, storage, restraint=None, alchemical_regions=None,
                  alchemical_factory=None, metadata=None, **options):
         self.sampler = sampler
         self.thermodynamic_state = thermodynamic_state
         self.sampler_states = sampler_states
         self.topography = topography
         self.protocol = protocol
-        self.storage_base = storage_base
+        self.storage = storage
         self.restraint = restraint
         self.alchemical_regions = alchemical_regions
         self.alchemical_factory = alchemical_factory
@@ -1122,7 +1122,7 @@ class YamlExperiment(object):
                 # If this is a new simulation, initialize alchemical phase.
                 if isinstance(phase, YamlPhaseFactory):
                     alchemical_phase = phase.initialize_alchemical_phase()
-                    self.phases[phase_id] = phase.storage_base
+                    self.phases[phase_id] = phase.storage
                 else:  # Resume previous simulation.
                     alchemical_phase = AlchemicalPhase.from_storage(phase)
 
@@ -2615,7 +2615,7 @@ class YamlBuilder(object):
 
             # Create phases.
             phases[i] = YamlPhaseFactory(sampler, thermodynamic_state, sampler_state,
-                                         topography, phase_protocol, storage_base=phase_path,
+                                         topography, phase_protocol, storage=phase_path,
                                          restraint=restraint, alchemical_regions=alchemical_region,
                                          **phase_opts)
 
