@@ -262,9 +262,10 @@ class IMultiStateSampler(mmtools.utils.SubhookedABCMeta):
         sampler_states : openmmtools.states.SamplerState or list
             One or more sets of initial sampler states. If a list of SamplerStates,
             they will be assigned to thermodynamic states in a round-robin fashion.
-        storage : str
-            The path to the storage file. In the future this will be able
-            to take a Reporter or Storage classes as well.
+        storage : str or Reporter
+            If str: The path to the storage file. Reads defaults from the Reporter class
+            If Reporter: Reads the reporter settings for files and options
+            In the future this will be able to take a Storage class as well.
         unsampled_thermodynamic_states : list of openmmtools.states.ThermodynamicState
             These are ThermodynamicStates that are not propagated, but their
             reduced potential is computed at each iteration for each replica.
@@ -354,19 +355,15 @@ class AlchemicalPhase(object):
         self._sampler = sampler
 
     @staticmethod
-    def from_storage(storage, checkpoint_storage_file=None):
+    def from_storage(storage):
         """Static constructor from an existing storage file.
 
         Parameters
         ----------
-        storage : str
-            The path to the primary storage file. In the future this will be able
-            to take a Reporter and Storage classes as well.
-        checkpoint_storage_file : str or None, Optional
-            Path to the checkpoint file used by the YANK simulation. If None is provided, file is determined
-                automatically from storage file.
-            In the future this wil be able to take a Storage class as well.
-            Default: None
+        storage : str or Reporter
+            If str: The path to the primary storage file. Default checkpointing options are stored in this case
+            If Reporter: loads from the reporter class, including checkpointing information
+            In the future this will be able to take a Storage class as well.
 
         Returns
         -------
@@ -376,10 +373,13 @@ class AlchemicalPhase(object):
 
         """
         # Check if netcdf file exists.
-        reporter = repex.Reporter(storage, checkpoint_storage_file=checkpoint_storage_file)
+        if type(storage) is str:
+            reporter = repex.Reporter(storage)
+        else:
+            reporter = storage
         if not reporter.storage_exists():
             reporter.close()
-            raise RuntimeError('Storage file at {} does not exists; cannot resume.'.format(storage))
+            raise RuntimeError('Storage file at {} does not exists; cannot resume.'.format(reporter.filename))
 
         # TODO: this should skip the Reporter and use the Storage to read storage.metadata.
         # Open Reporter for reading and read metadata.
@@ -394,7 +394,7 @@ class AlchemicalPhase(object):
         cls = getattr(module, cls_name)
 
         # Resume sampler and return new AlchemicalPhase.
-        sampler = cls.from_storage(storage, checkpoint_storage_file=checkpoint_storage_file)
+        sampler = cls.from_storage(reporter)
         return AlchemicalPhase(sampler)
 
     @property
@@ -412,9 +412,8 @@ class AlchemicalPhase(object):
         self._sampler.number_of_iterations = value
 
     def create(self, thermodynamic_state, sampler_states, topography, protocol,
-               storage, checkpoint_storage_file=None,
-               restraint=None, anisotropic_dispersion_cutoff=None,
-               alchemical_regions=None, alchemical_factory=None, metadata=None, checkpoint_interval=10):
+               storage, restraint=None, anisotropic_dispersion_cutoff=None,
+               alchemical_regions=None, alchemical_factory=None, metadata=None):
         """Create a new AlchemicalPhase calculation for a specified protocol.
 
         If `anisotropic_dispersion_cutoff` is different than `None`. The
@@ -443,14 +442,10 @@ class AlchemicalPhase(object):
             The dictionary parameter_name: list_of_parameter_values defining
             the protocol. All the parameter values list must have the same
             number of elements.
-        storage : str
-            The path to the storage file.
-        checkpoint_storage_file : str or None, Optional
-            Name of the checkpoint storage file used by the YANK simulation. If None is provided, file is determined
-                automatically from storage file.
-            This is not a path, as the file will be created in the same directory as the storage file
-            In the future this wil be able to take a Storage class as well.
-            Default: None
+        storage : str or initialized Reporter class
+            If str: Path to the storage file. The default checkpointing options (see the Reporter class of Repex)
+                will be used in this case
+            If Reporter: Uses files and checkpointing options of the reporter class passed in
         restraint : ReceptorLigandRestraint, optional
             Restraint to add between protein and ligand. This must be specified
             for ligand-receptor systems in non-periodic boxes.
@@ -468,13 +463,6 @@ class AlchemicalPhase(object):
             the one created with default options.
         metadata : dict, optional
             Simulation metadata to be stored in the file.
-        checkpoint_interval : int, optional,
-            Frequency at which checkpoint information is written to file relative to the iteration.
-            Simulations can be resumed from any checkpoint iteration.
-            e.g. explicit solvent coordinates are written only at checkpoints, but energies are written every iteration
-            Setting this to 1 will make every iteration a checkpoint, but will increase the IO time, and checkpoint file
-                size
-            (default is 10)
 
         """
         # Do not modify passed thermodynamic state.
@@ -624,9 +612,7 @@ class AlchemicalPhase(object):
 
         logger.debug("Creating sampler object...")
         self._sampler.create(compound_states, sampler_states,
-                             storage=storage, checkpoint_storage_file=checkpoint_storage_file,
-                             unsampled_thermodynamic_states=expanded_cutoff_states,
-                             metadata=metadata, checkpoint_interval=checkpoint_interval)
+                             storage=storage, unsampled_thermodynamic_states=expanded_cutoff_states, metadata=metadata)
 
     def minimize(self, tolerance=1.0*unit.kilojoules_per_mole/unit.nanometers,
                  max_iterations=0):

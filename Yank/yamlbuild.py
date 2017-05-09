@@ -1047,6 +1047,14 @@ class YamlPhaseFactory(object):
         create_kwargs = self.__dict__.copy()
         create_kwargs.pop('options')
         create_kwargs.pop('sampler')
+        if not isinstance(self.storage, repex.Reporter):
+            # Build the Reporter
+            storage_path = create_kwargs.pop('storage')
+            checkpoint_interval = self.options['checkpoint_interval']
+            # We don't allow checkpoint file overwriting in YAML file
+            reporter = repex.Reporter(storage_path, checkpoint_interval=checkpoint_interval)
+            create_kwargs['storage'] = reporter
+            self.storage = reporter
         if self.options['anisotropic_dispersion_correction'] is True:
             dispersion_cutoff = self.options['anisotropic_dispersion_cutoff']
         else:
@@ -1122,7 +1130,7 @@ class YamlExperiment(object):
                 # If this is a new simulation, initialize alchemical phase.
                 if isinstance(phase, YamlPhaseFactory):
                     alchemical_phase = phase.initialize_alchemical_phase()
-                    self.phases[phase_id] = phase.storage
+                    self.phases[phase_id] = phase.storage  # Should automatically be a Reporter class
                 else:  # Resume previous simulation.
                     alchemical_phase = AlchemicalPhase.from_storage(phase)
 
