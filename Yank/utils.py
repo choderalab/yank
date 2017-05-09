@@ -1,18 +1,20 @@
+#!/usr/local/bin/env python
+
+# ==============================================================================
+# GLOBAL IMPORTS
+# ==============================================================================
+
 import os
 import re
-import sys
 import copy
 import glob
-import json
 import shutil
-import signal
-import pandas
 import inspect
 import logging
+import importlib
 import itertools
 import subprocess
 import collections
-from contextlib import contextmanager
 
 from pkg_resources import resource_filename
 
@@ -22,7 +24,10 @@ import numpy as np
 from simtk import unit
 from schema import Optional, Use
 
-from openmoltools.utils import wraps_py2, unwrap_py2  # Shortcuts for other modules
+import openmmtools as mmtools
+from openmoltools.utils import unwrap_py2  # Shortcuts for other modules
+
+from . import mpi
 
 #========================================================================================
 # Logging functions
@@ -51,7 +56,7 @@ def is_terminal_verbose():
 
     return is_verbose
 
-def config_root_logger(verbose, log_file_path=None, mpicomm=None):
+def config_root_logger(verbose, log_file_path=None):
     """Setup the the root logger's configuration.
 
      The log messages are printed in the terminal and saved in the file specified
@@ -74,8 +79,6 @@ def config_root_logger(verbose, log_file_path=None, mpicomm=None):
     log_file_path : str, optional, default = None
         If not None, this is the path where all the logger's messages of level
         logging.DEBUG or higher are saved.
-    mpicomm : mpi4py.MPI.COMM communicator, optional, default=None
-        If specified, this communicator will be used to determine node rank.
 
     """
 
@@ -108,6 +111,7 @@ def config_root_logger(verbose, log_file_path=None, mpicomm=None):
             root_logger.removeHandler(root_logger.handlers[0])
 
     # If this is a worker node, don't save any log file
+    mpicomm = mpi.get_mpicomm()
     if mpicomm:
         rank = mpicomm.rank
     else:
@@ -142,91 +146,6 @@ def config_root_logger(verbose, log_file_path=None, mpicomm=None):
         logging.root.setLevel(logging.DEBUG)
     else:
         logging.root.setLevel(terminal_handler.level)
-
-
-# =======================================================================================
-# MPI utility functions
-# =======================================================================================
-
-def initialize_mpi():
-    """Initialize and configure MPI to handle correctly terminate.
-
-    Returns
-    -------
-    mpicomm : mpi4py communicator
-        The communicator for this node.
-
-    """
-    # Check for environment variables set by mpirun. Variables are from
-    # http://docs.roguewave.com/threadspotter/2012.1/linux/manual_html/apas03.html
-    variables = ['PMI_RANK', 'OMPI_COMM_WORLD_RANK', 'OMPI_MCA_ns_nds_vpid',
-                 'PMI_ID', 'SLURM_PROCID', 'LAMRANK', 'MPI_RANKID',
-                 'MP_CHILD', 'MP_RANK', 'MPIRUN_RANK']
-    use_mpi = False
-    for var in variables:
-        if var in os.environ:
-            use_mpi = True
-            break
-    if not use_mpi:
-        return None
-
-    # Initialize MPI
-    from mpi4py import MPI
-    MPI.COMM_WORLD.barrier()
-    mpicomm = MPI.COMM_WORLD
-
-    # Override sys.excepthook to abort MPI on exception
-    def mpi_excepthook(type, value, traceback):
-        sys.__excepthook__(type, value, traceback)
-        sys.stdout.flush()
-        sys.stderr.flush()
-        if mpicomm.size > 1:
-            mpicomm.Abort(1)
-    # Use our eception handler
-    sys.excepthook = mpi_excepthook
-
-    # Catch sigterm signals
-    def handle_signal(signal, frame):
-        if mpicomm.size > 1:
-            mpicomm.Abort(1)
-    for sig in [signal.SIGINT, signal.SIGTERM, signal.SIGABRT]:
-        signal.signal(sig, handle_signal)
-
-    return mpicomm
-
-@contextmanager
-def delay_termination():
-    """Context manager to delay handling of termination signals."""
-    signals_to_catch = [signal.SIGINT, signal.SIGTERM, signal.SIGABRT]
-    old_handlers = {signum: signal.getsignal(signum) for signum in signals_to_catch}
-    signals_received = {signum: None for signum in signals_to_catch}
-
-    def delay_handler(signum, frame):
-        signals_received[signum] = (signum, frame)
-
-    # Set handlers fot delay
-    for signum in signals_to_catch:
-        signal.signal(signum, delay_handler)
-
-    yield  # Resume program
-
-    # Restore old handlers
-    for signum, handler in listitems(old_handlers):
-        signal.signal(signum, handler)
-
-    # Fire delayed signals
-    for signum, s in listitems(signals_received):
-        if s is not None:
-            old_handlers[signum](*s)
-
-
-def delayed_termination(func):
-    """Decorator to delay handling of termination signals during function execution."""
-    @wraps_py2(func)
-    def _delayed_termination(*args, **kwargs):
-        with delay_termination():
-            return func(*args, **kwargs)
-    return _delayed_termination
 
 
 # =======================================================================================
@@ -628,9 +547,9 @@ class CombinatorialTree(collections.MutableMapping):
             yield copy.deepcopy(template_tree._d)
 
 
-#========================================================================================
+# ========================================================================================
 # Miscellaneous functions
-#========================================================================================
+# ========================================================================================
 
 def get_data_filename(relative_path):
     """Get the full path to one of the reference files shipped for testing
@@ -641,7 +560,7 @@ def get_data_filename(relative_path):
 
     Parameters
     ----------
-    name : str
+    relative_path : str
         Name of the file to load, with respect to the yank egg folder which
         is typically located at something like
         ~/anaconda/lib/python2.7/site-packages/yank-*.egg/examples/
@@ -700,56 +619,6 @@ def is_iterable_container(value):
 # Conversion utilities
 # ==============================================================================
 
-def serialize_topology(topology):
-    """Serialize topology to string.
-
-    Parameters
-    ----------
-    topology : mdtraj.Topology, simtk.openmm.app.Topology
-        The topology object to serialize.
-
-    Returns
-    -------
-    serialized_topology : str
-        String obtained by jsonizing the return value of to_dataframe() of the
-        mdtraj Topology object.
-
-    """
-    # Check if we need to convert the topology to mdtraj
-    if isinstance(topology, mdtraj.Topology):
-        mdtraj_top = topology
-    else:
-        mdtraj_top = mdtraj.Topology.from_openmm(topology)
-
-    atoms, bonds = mdtraj_top.to_dataframe()
-    separators = (',', ':')  # don't dump whitespaces to save space
-    serialized_topology = json.dumps({'atoms': atoms.to_json(orient='records'),
-                                      'bonds': bonds.tolist()},
-                                     separators=separators)
-    return serialized_topology
-
-
-def deserialize_topology(serialized_topology):
-    """Serialize topology to string.
-
-    Parameters
-    ----------
-    serialized_topology : str
-        Serialized topology as returned by serialize_topology().
-
-    Returns
-    -------
-    topology : mdtraj.Topology
-        The deserialized topology object.
-
-    """
-    topology_dict = json.loads(serialized_topology)
-    atoms = pandas.read_json(topology_dict['atoms'], orient='records')
-    bonds = np.array(topology_dict['bonds'])
-    topology = mdtraj.Topology.from_dataframe(atoms, bonds)
-    return topology
-
-
 def typename(atype):
     """Convert a type object into a fully qualified typename.
 
@@ -780,7 +649,9 @@ def typename(atype):
     modulename = atype.__module__
     typename = atype.__name__
 
-    if modulename != '__builtin__':
+    # TODO remove __builtin__ when we drop Python 2 support.
+    # TODO use openmmtools.utils.typename when it'll get merged.
+    if modulename != '__builtin__' and modulename != 'builtins':
         typename = modulename + '.' + typename
 
     return typename
@@ -860,173 +731,44 @@ def camelcase_to_underscore(camelcase_str):
     underscore_str = re.sub(r'([A-Z])', '_\g<1>', camelcase_str)
     return underscore_str.lower()
 
-def quantity_from_string(quantity_str):
-    """
-    Generate a simtk.unit.Quantity object from a string of arbitrary nested strings
+
+def quantity_from_string(expression):
+    """Create a Quantity object from a string expression
+
+    All the functions in the standard module math are available together
+    with most of the methods inside the simtk.unit module.
 
     Parameters
     ----------
-    quantity_str : string
-        A string containing a value with a unit of measure
+    expression : str
+        The mathematical expression to rebuild a Quantity as a string.
 
     Returns
     -------
-    quantity : simtk.unit.Quantity
-        The specified string, returned as a Quantity
-
-    Raises
-    ------
-    AttributeError
-        If quantity_str does not contain any parsable data
-    TypeError
-        If quantity_str does not contain units
+    quantity
+        The result of the evaluated expression.
 
     Examples
     --------
-    >>> quantity_from_string("1*atmosphere")
-    Quantity(value=1.0, unit=atmosphere)
-
-    >>> quantity_from_string("'1 * joule / second'")
-    Quanity(value=1, unit=joule/second)
+    >>> expr = '4 * kilojoules / mole'
+    >>> quantity_from_string(expr)
+    Quantity(value=4.000000000000002, unit=kilojoule/mole)
 
     """
+    # Retrieve units from unit module.
+    if not hasattr(quantity_from_string, '_units'):
+        units_tuples = inspect.getmembers(unit, lambda x: isinstance(x, unit.Unit))
+        quantity_from_string._units = dict(units_tuples)
 
-    # Strip out (possible) surrounding quotes
-    quote_pattern = '[^\'"]+'
-    try:
-        quantity_str = re.search(quote_pattern, quantity_str).group()
-    except AttributeError as e:
-        raise AttributeError("Please pass a quantity in format of '#*unit'. e.g. '1*atmosphere'")
-    # Parse String
-    operators = ['(', ')', '*', '/']
-    def find_operator(passed_str):
-        # Process the current string until the next operator
-        for i, char in enumerate(passed_str):
-           if char in operators:
-               break
-        return i
+    # Eliminate nested quotes and excess whitespace
+    expression = expression.strip('\'" ')
 
+    # Handle a special case of the unit when it is just "inverse unit",
+    # e.g. Hz == /second
+    if expression[0] == '/':
+        expression = '(' + expression[1:] + ')**(-1)'
 
-    def nested_string(passed_str):
-        def exponent_unit(passed_str):
-            # Attempt to cast argument as an exponenet
-            future_operator_loc = find_operator(passed_str)
-            future_operator = passed_str[future_operator_loc]
-            if future_operator == '(': # This catches things like x**(3*2), rare, but it could happen
-                exponent, exponent_type, exp_count_indices = nested_string(passed_str[future_operator_loc+1:])
-            elif future_operator_loc == 0:
-                # No more operators
-                exponent = passed_str
-                future_operator_loc = len(passed_str)
-                exp_count_indices = future_operator_loc + 2 # +2 to skip the **
-            else:
-                exponent = passed_str[:future_operator_loc]
-                exp_count_indices = future_operator_loc + 2 # +2 to skip the **
-            exponent = float(exponent) # These should only ever be numbers, not quantities, let error occur if they aren't
-            if exponent.is_integer(): # Method of float
-                exponent = int(exponent)
-            return exponent, exp_count_indices
-        # Loop through a given string level, returns how many indicies of the string it got through
-        last_char_loop = 0
-        number_pass_string = len(passed_str)
-        last_operator = None
-        final_quantity = None
-        # Close Parenthisis flag
-        paren_closed = False
-        while last_char_loop < number_pass_string:
-            next_char_loop = find_operator(passed_str[last_char_loop:]) + last_char_loop
-            next_char = passed_str[next_char_loop]
-            # Figure out what the operator is
-            if (next_char_loop == number_pass_string - 1 and (next_char != ')')) or (next_char_loop == 0 and next_char != '(' and next_char != ')'):
-                # Case of no new operators found
-                argument = passed_str[last_char_loop:]
-            else:
-                argument = passed_str[last_char_loop:next_char_loop]
-            # Strip leading/trailing spaces
-            argument = argument.strip(' ')
-            # Determine if argument is a unit
-            try:
-                arg_unit = getattr(unit, argument)
-                arg_type = 'unit'
-            except Exception as e:
-                # Assume its float
-                try:
-                    arg_unit = float(argument)
-                    arg_type = 'float'
-                except: # Usually empty string
-                    if argument == '':
-                        arg_unit = None
-                        arg_type = 'None'
-                    else:
-                        raise e # Raise the syntax error
-            # See if we are at the end
-            augment = None
-            count_indices = 1 # How much to offset by to move past operator
-            if next_char_loop != number_pass_string:
-                next_operator = passed_str[next_char_loop]
-                if next_operator == '*':
-                    try: # Exponent
-                        if passed_str[next_char_loop+1] == '*':
-                            exponent, exponent_offset = exponent_unit(passed_str[next_char_loop+2:])
-                            try:
-                                next_char_loop += exponent_offset
-                                # Set the actual next operator (Does not handle nested **)
-                                next_operator = passed_str[next_char_loop]
-                            except IndexError:
-                                # End of string
-                                next_operator = None
-                            # Apply exponent
-                            arg_unit **= exponent
-                    except:
-                        pass
-                # Check for parenthises
-                if next_operator == '(':
-                    augment, augment_type, count_indices  = nested_string(passed_str[next_char_loop+1:])
-                    count_indices += 1 # add 1 more to offset the '(' itself
-                elif next_operator == ')':
-                    paren_closed = True
-            else:
-                # Case of no found operators
-                next_operator = None
-            # Handle the conditions
-            if (last_operator is None):
-                if (final_quantity is None) and (arg_type is 'None') and (augment is None):
-                    raise TypeError("Given Quantity could not be interpreted as presented")
-                elif (final_quantity is None) and (augment is None):
-                    final_quantity = arg_unit
-                    final_type = arg_type
-                elif (final_quantity is None) and (arg_type is 'None'):
-                    final_quantity = augment
-                    final_type = augment_type
-            else:
-                if augment is None:
-                    augment = arg_unit
-                    augment_type = arg_type
-                if last_operator == '*':
-                    final_quantity *= augment
-                elif last_operator == '/':
-                    final_quantity /= augment
-                # Assign type
-                if augment_type == 'unit':
-                    final_type = 'unit'
-                elif augment_type == 'float':
-                    final_type = 'float'
-            last_operator = next_operator
-            last_char_loop = next_char_loop + count_indices # Set the new position here skipping over processed terms
-            if paren_closed:
-                # Determine if the next term is a ** to exponentiate augment
-                try:
-                    if passed_str[last_char_loop:last_char_loop+2] == '**':
-                        exponent, exponent_offset = exponent_unit(passed_str[last_char_loop+2:])
-                        final_quantity **= exponent
-                        last_char_loop += exponent_offset
-                except:
-                    pass
-                break
-        return final_quantity, final_type, last_char_loop
-
-    quantity, final_type, x = nested_string(quantity_str)
-    return quantity
+    return mmtools.utils.math_eval(expression, variables=quantity_from_string._units)
 
 
 def process_unit_bearing_str(quantity_str, compatible_units):
@@ -1312,14 +1054,28 @@ class Mol2File(object):
 
     @property
     def resname(self):
+        """The name of the first molecule found in the mol2 file."""
         residue = parmed.load_file(self._file_path)
+        if isinstance(residue, parmed.modeller.residue.ResidueTemplateContainer):
+            return residue[0].name
         return residue.name
 
     @resname.setter
     def resname(self, value):
         residue = parmed.load_file(self._file_path)
-        residue.name = value
+        if isinstance(residue, parmed.modeller.residue.ResidueTemplateContainer):
+            residue[0].name = value
+        else:
+            residue.name = value
         parmed.formats.Mol2File.write(residue, self._file_path)
+
+    @property
+    def resnames(self):
+        """The list of the names of all the molecules in the file (read-only)."""
+        residues = parmed.load_file(self._file_path)
+        if isinstance(residues, parmed.modeller.residue.ResidueTemplateContainer):
+            return [residue.name for residue in residues]
+        return [residues.name]
 
     @property
     def net_charge(self):
@@ -1335,16 +1091,33 @@ class Mol2File(object):
 
 # OpenEye functions
 # ------------------
-def is_openeye_installed():
+def is_openeye_installed(oetools=('oechem', 'oequacpac', 'oeiupac', 'oeomega')):
+    # Complete list of module: License check
+    tools_license = {'oechem':'OEChemIsLicensed',
+                     'oequacpac': 'OEQuacPacIsLicensed',
+                     'oeiupac': 'OEIUPACIsLicensed',
+                     'oeomega': 'OEOmegaIsLicensed'}
+    tool_keys = tools_license.keys()
+    # Cast oetools to tuple if its a single string
+    if type(oetools) is str:
+        oetools = (oetools,)
+    tool_set = set(oetools)
+    valid_tool_set = set(tool_keys)
+    if tool_set & valid_tool_set == set():
+        # Check for empty set intersection
+        raise ValueError("Expected OpenEye tools to have at least of the following {}, "
+                         "but instead got {}".format(tool_keys, oetools))
     try:
-        from openeye import oechem
-        from openeye import oequacpac
-        from openeye import oeiupac
-        from openeye import oeomega
-
-        if not (oechem.OEChemIsLicensed() and oequacpac.OEQuacPacIsLicensed()
-                and oeiupac.OEIUPACIsLicensed() and oeomega.OEOmegaIsLicensed()):
-            raise ImportError
+        for tool in oetools:
+            if tool in tool_keys:
+                # Try loading the module
+                try:
+                    module = importlib.import_module('openeye', tool)
+                except SystemError: # Python 3.4 relative import fix
+                    module = importlib.import_module('openeye.' + tool)
+                # Check that we have the license
+                if not getattr(module, tools_license[tool])():
+                    raise ImportError
     except ImportError:
         return False
     return True

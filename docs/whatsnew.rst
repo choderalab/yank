@@ -6,13 +6,28 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the github yank releases page <https://github.com/choderalab/yank/releases>`_.
 
+0.15.2 Health Report and Anisotropic Dispersion Control
+-------------------------------------------------------
+- Added simulation Health Report through a Jupyter Notebook with CLI support
+- Added ability to control Anisotropic Dispersion Correction through YAML files
+
+0.15.0 Backend and Helpful Debugging Build
+------------------------------------------
+- Added support for ``solvent_dsl`` in user defined systems of YAML pages
+- Removed Command Line Interface ability to do ``yank prepare`` and ``yank run``
+- Added ability to overwrite individual YAML commands from command line
+- Added YAML feature to ``extend_simulation`` without modifying YAML files or command line every iteration
+- NaN's generated during simulations serialize system, state, and integrator which can be passed off for debugging to others
+- Backend website updating and pushes improved
+- Improved GROMACS extension file handling
+
 0.14.1 Early Access of 1.0 Release
 ----------------------------------
 - YAML Syntax Structure Frozen. YANK YAML Version 1.0. All YAML scripts from this version will be compatible with future versions until YAML 2.0
   New features may appear in the time meantime, but scripts will be forwards compatible.
 - Initial support for OpenMM XML systems and PDB files
 - Support for separate solvent configurations for the two phases when defined from amber/gromacs/openmm files
-- `clearance` in YAML no mandatory parameter of explicit solvent, but only when molecule setup goes through pipeline
+- ``clearance`` in YAML now mandatory parameter of explicit solvent, but only when molecule setup goes through pipeline
 - Boresch Orientational Restraints fully implemented and documented.
 - Long range anisotropic dispersion correction improved to work on both ends of thermodynamic cycle leg
 - Documentation updated with better algorithms and theory sections.
@@ -47,19 +62,19 @@ The full release history can be viewed `at the github yank releases page <https:
 0.9.0 (development)
 -------------------
 - Changed YAML Syntax
-- New Command `yank analyze extrat-trajectory` to extract data from NetCDF4 file in a common trajectory format.
+- New Command ``yank analyze extrat-trajectory`` to extract data from NetCDF4 file in a common trajectory format.
 - Support for solvation free energy calculations.
 - Automatic detection of MPI.
 - Various bug fixes.
 
 0.8.0 (development)
 -------------------
-- `alchemy` split to a standalone repository
+- ``alchemy`` split to a standalone repository
 - YAML based input files for setting up and running simulations. Uses an AmberTools-based pipeline
 
 0.7.0 (development)
 -------------------
-- Convert to single `Context` Hamiltonian Replica Exchange
+- Convert to single ``Context`` Hamiltonian Replica Exchange
 
 v0.6.1 (development)
 --------------------

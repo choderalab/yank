@@ -23,6 +23,7 @@ All Pages
    protocols <protocols>
    experiments <experiments>
    Combinatorial Options <combinatorial>
+   YAML Versions <version>
    cookbook
 
 Detailed Options List
@@ -62,13 +63,16 @@ Detailed Options List
     * :ref:`number_of_equilibration_iterations <yaml_options_number_of_equilibration_iterations>`
     * :ref:`equilibration_timestep <yaml_options_equilibration_timestep>`
     * :ref:`number_of_iterations <yaml_options_number_of_iterations>`
-    * :ref:`number_of_extension_iterations <yaml_options_number_of_extension_iterations>`
+    * :ref:`extend_simulation <yaml_options_extend_simulation>`
     * :ref:`nsteps_per_iteration <yaml_options_nsteps_per_iteration>`
     * :ref:`timestep <yaml_options_timestep>`
+    * :ref:`checkpoint_interval <yaml_options_checkpoint_interval>`
     * :ref:`replica_mixing_scheme <yaml_options_replica_mixing_scheme>`
     * :ref:`collision_rate <yaml_options_collision_rate>`
     * :ref:`constraint_tolerance <yaml_options_constraint_tolerance>`
     * :ref:`mc_displacement_sigma <yaml_options_mc_displacement_sigma>`
+    * :ref:`yaml_options_anisotropic_dispersion_correction`
+    * :ref:`yaml_options_anisotropic_dispersion_cutoff`
 
   * :ref:`Alchemy Parameters <yaml_options_alchemy_parameters>`
 
@@ -147,6 +151,7 @@ Detailed Options List
     * :ref:`phase1_path <yaml_systems_user_defined>`
     * :ref:`phase2_path <yaml_systems_user_defined>`
     * :ref:`ligand_dsl <yaml_systems_user_defined>`
+    * :ref:`solvent_dsl <yaml_systems_user_defined>`
     * :ref:`solvent <yaml_systems_user_defined>`
     * :ref:`gromacs_include_dir <yaml_systems_user_defined>`
 

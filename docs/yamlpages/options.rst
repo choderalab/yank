@@ -241,10 +241,51 @@ Constrain bond lengths and angles. See OpenMM ``createSystem()`` documentation f
 
 Valid options: [Hbonds]/AllBonds/HAngles
 
+
+.. _yaml_options_anisotropic_dispersion_correction:
+
+anisotropic_dispersion_correction
+---------------------------------
+.. code-block:: yaml
+
+   options:
+     anisotropic_dispersion_correction: yes
+
+Tell YANK to compute anisotropic dispersion corrections for long-range interactions. YANK accounts for these effects
+by creating two additional thermodynamic states at either end of the :ref:`thermodynamic cycle <yank_cycle>` with
+larger long-range cutoffs to remove errors introduced from treating long-range interactions as a homogenous, equal
+density medium. We estimate the free energy relative to these expanded cutoff states. No simulation is actually carried
+out at these states but energies from simulations are evaluated at them.
+
+This option only applies if you have specified a
+:ref:`system with periodic boundary conditions <yaml_solvents_nonbonded_method>`. You set the size of these expanded
+cutoffs through the :ref:`yaml_options_anisotropic_dispersion_cutoff` option.
+
+We put this option in the general options category instead of the :doc:`solvents <solvents>` section since these
+additional states are unique to YANK's setup.
+
+Valid options: [yes]/no
+
+
+.. _yaml_options_anisotropic_dispersion_cutoff:
+
+anisotropic_dispersion_cutoff
+-----------------------------
+.. code-block:: yaml
+
+   options:
+     anisotropic_dispersion_cutoff: 16.0 * angstrom
+
+Specify the expanded cutoff distance for YANK's :ref:`yaml_options_anisotropic_dispersion_correction` setting.
+Please see the main :ref:`yaml_options_anisotropic_dispersion_correction` option for details/
+
+Valid options (16 * angstrom): <Quantity Length> [1]_
+
+.. note:: This will be combined with :ref:`yaml_options_anisotropic_dispersion_correction` in our version 2.0 of our YAML code.
+
 |
 
 .. _yaml_options_simulation_parameters:
-
 
 Simulation Parameters
 =====================
@@ -394,28 +435,37 @@ set, this option can be used to extend previous simulations past their original 
 Valid Options (1): <Integer>
 
 
-.. _yaml_options_number_of_extension_iterations:
+.. _yaml_options_extend_simulation:
 
-number_of_extension_iterations
-------------------------------
+extend_simulation
+--------------------
 .. code-block:: yaml
 
     options:
-      number_of_extension_iterations: 0
+      extend_simulation: False
 
-Special override of :ref:`yaml_options_number_of_iterations` which allows extending a simulation by an arbitrary number
-of iterations. The simulation will run the additional specified number of iterations, even if a simulation already has
-run for a length of time. For fresh simulations, the resulting simulation is identical to specifying
-:ref:`yaml_options_number_of_iterations` of the same length.
+Special modification of :ref:`yaml_options_number_of_iterations` which allows **extending** a simulation by
+:ref:`yaml_options_number_of_iterations` instead of running for a maximum. If set to ``True``,
+the simulation will run the additional specified number of iterations, even if a simulation already has
+run for a length of time. For fresh simulations, the resulting simulation is identical to not setting this flag.
 
 This is helpful for running consecutive batches of simulations for time lengths that are unknown.
 
 *Recommended*: Also set :ref:`resume_setup <yaml_options_resume_setup>` and
 :ref:`resume_simulation <yaml_options_resume_simulation>` to allow resuming simulations.
 
-**OPTIONAL** and **SUPERSEDES** :ref:`yaml_options_number_of_iterations`
+*Example*: You have a simulation that ran for 500 iterations, you wish to add an additional 1000 iterations. You would
+set ``number_of_iterations: 1000`` and ``extend_simulation: True`` in your YAML file and rerun. The simulation would
+then resume at iteration 500, then continue to iteration 1500. The same behavior would be achieved if you set
+``number_of_iterations: 1500``, but the ``extend_simulation`` has the advantage that it can be run multiple times to
+keep extending the simulation without modifying the YAML file.
 
-Valid Options (0): <Integer>
+**WARNING**: Extending simulations affects ALL simulations for :doc:`Combinatorial <combinatorial>`. You cannot extend
+a subset of simulations from a combinatorial setup; all simulations will be extended if this option is set.
+
+**OPTIONAL** and **MODIFIES** :ref:`yaml_options_number_of_iterations`
+
+Valid Options: True/[False]
 
 
 .. _yaml_options_nsteps_per_iteration:
@@ -445,6 +495,28 @@ timestep
 Timestep of Langevin Dynamics production runs.
 
 Valid Options (2.0 * femtosecond): <Quantity Time> [1]_
+
+
+.. _yaml_options_checkpoint_interval:
+
+checkpoint_interval
+-------------------
+.. code-block:: yaml
+
+   options:
+     checkpoint_interval: 10
+
+Specify how frequently checkpoint information should be saved to file relative to iterations. YANK simulations can be
+resumed only from checkpoints, so if something crashes, up to ``checkpoint_interval`` worth of iterations will be lost
+and YANK will resume from the most recent checkpoint.
+
+This option helps control write-to-disk time and file sizes. The fewer times a checkpoint is written, the less of both
+you will get. If you want to write a checkpoint every iteration, set this to ``1``.
+
+Checkpoint information includes things like full coordinates and box vectors, as well as more static information such
+as metadata, simulation options, and serialized thermodynamic states.
+
+Valid Options (10): <Integer ``>= 1``>
 
 
 .. _yaml_options_replica_mixing_scheme:

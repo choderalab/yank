@@ -9,8 +9,8 @@ Hardware
 Running on GPUs
 """""""""""""""
 
-YANK uses `OpenMM <http://openmm.org>`_ as its simulation engine, which runs fastest on modern GPUs using either the ``CUDA` or ``OpenCL`` platforms.
-Modern GTX-class hardware, such as the `GTX-1080 <http://www.geforce.com/hardware/10series/geforce-gtx-1080>`_ or `GTX-TITAN-X <http://www.geforce.com/hardware/desktop-gpus/geforce-gtx-titan-x>`_, should work very well.
+YANK uses `OpenMM <http://openmm.org>`_ as its simulation engine, which runs fastest on modern GPUs using either the ``CUDA`` or ``OpenCL`` platforms.
+Modern GTX-class hardware, such as the `GTX-1080 <http://www.geforce.com/hardware/10series/geforce-gtx-1080>`_ or `GTX-TITAN-X (Maxwell) <http://www.geforce.com/hardware/desktop-gpus/geforce-gtx-titan-x>`_, should work very well.
 See :ref:`Supported hardware <supported_hardware>` for more information about supported and recommended hardware.
 
 Running on the CPU
@@ -45,9 +45,9 @@ All simulations are run using the same OpenMM ``Platform`` choice (``CUDA``, ``O
 
 No GPU management is needed on single GPU/node systems.
 
-Multi-GPU and multi-node systems require masking the GPUs so YANK only sees the one its suppose to. Effectively you need
-to set the ``CUDA_VISIBLE_DEVICES`` variables on each process to mask all but the 1 card you want to use. We cannot provide
-a universal solution as systems will differ, but we can provide some general rules of thumb.
+Multi-GPU and multi-node systems require masking the GPUs so YANK only sees the one its suppose to.
+You will need to set the ``CUDA_VISIBLE_DEVICES`` environment variables on each process to mask all but the card you intend to use.
+We cannot provide a universal solution as systems will differ, but we can provide some general rules of thumb.
 
 .. note:: |mpichNotes|
 
@@ -213,3 +213,61 @@ For example, to force YANK to use the ``OpenCL`` platform:
 See the ``yank script`` command line docs for more information on the ``-o`` flag.
 
 .. note:: The ``CPU`` platform will automatically use all available cores/hyperthreads in serial mode, but in MPI mode, will use a single thread to avoid causing problems in queue-regulated parallel systems.  To control the number of threads yourself, set the ``OPENMM_NUM_THREADS`` environment variable to the desired number of threads.
+
+
+Extending Simulations
+=====================
+
+One common operation when running simulations is to collect additional samples from an already run simulation to get
+better statistics. Alternately, when running on shared resources, you may need to break up long simulations into smaller
+simulations run in series. YANK provides a way to run its simulations in this manner by extending its simulations.
+
+YANK's :doc:`YAML <yamlpages/index>` files have two main options that work together to extend simulations.
+In order to extend simulations, set the following options in a YAML fie:
+
+.. code-block:: yaml
+
+  number_of_iterations: <Integer>
+  extend_simulation: True
+
+First you set :ref:`yaml_options_number_of_iterations` to an integer number of iterations you wish to extend the
+simulation. If no simulation has been run yet, then one will be run for the number of iterations.
+Setting :ref:`yaml_options_extend_simulation` to ``True`` modifies the behavior of
+:ref:`yaml_options_number_of_iterations` to extend the simulation by the specified number, adding on to what is already
+on the file.
+
+One could optionally just increase :ref:`yaml_options_number_of_iterations`, but then you have to change
+the YAML file every time you want to extend the run. Setting :ref:`yaml_options_extend_simulation` allows you to run
+the same YAML file without modification to do the same thing.
+
+
+You should also set the following two options as well as :ref:`yaml_options_number_of_iterations` and
+:ref:`yaml_options_extend_simulation`:
+
+.. code-block:: yaml
+
+  resume_setup: yes
+  resume_simulation: yes
+
+:ref:`resume_setup <yaml_options_resume_setup>` and :ref:`resume_simulation <yaml_options_resume_simulation>` allow
+YANK to resume simulations if it detects existing setup file or simulation output respectively. YANK will raise an error
+if these are not set and files exist to protect against overwrite. The only reason these are not mandatory is that if
+no files exist (i.e. fresh simulation), then the simulation will run without error once.
+
+
+Extending Previous Simulations from Command Line
+""""""""""""""""""""""""""""""""""""""""""""""""
+
+You may already have a simulation that you previously ran, but do not want to modify the YAML to extend the simulation.
+In this case, your YAML file has ``extend_simulation: False`` or is not set, and you only want to interact with the
+simulation through the command line. You can override individual settings from the command line; the settings for
+extending simulation would look like:
+
+.. code-block:: bash
+
+   $ yank script --yaml=yank.yaml -o options:extend_simulation:True -o options:number_of_iterations:X
+
+where ``X`` is the integer number you wish to extend the simulation by. The second option to override
+``number_of_iterations`` is optional if you are happy the existing option in the YAML file.
+
+See the ``yank script`` command line docs for more information on the ``-o`` flag.

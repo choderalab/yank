@@ -14,6 +14,8 @@ Analyze YANK output file.
 # =============================================================================================
 
 from .. import utils, analyze
+import re
+import pkg_resources
 
 # =============================================================================================
 # COMMAND-LINE INTERFACE
@@ -24,16 +26,22 @@ YANK analyze
 
 Usage:
   yank analyze (-s STORE | --store=STORE) [-v | --verbose]
-  yank analyze extract-trajectory --netcdf=FILEPATH (--state=STATE | --replica=REPLICA) --trajectory=FILEPATH [--start=START_FRAME] [--skip=SKIP_FRAME] [--end=END_FRAME] [--nosolvent] [--discardequil] [--imagemol] [-v | --verbose]
+  yank analyze report (-s STORE | --store=STORE) (-o REPORT | --output=REPORT)
+  yank analyze extract-trajectory --netcdf=FILEPATH [--checkpoint=FILEPATH ] (--state=STATE | --replica=REPLICA) --trajectory=FILEPATH [--start=START_FRAME] [--skip=SKIP_FRAME] [--end=END_FRAME] [--nosolvent] [--discardequil] [--imagemol] [-v | --verbose]
 
 Description:
   Analyze the data to compute Free Energies OR extract the trajectory from the NetCDF file into a common fortmat.
+  yank analyze report generates a Jupyter (Ipython) notebook of the report instead of writing it to standard output
 
 Free Energy Required Arguments:
   -s=STORE, --store=STORE       Storage directory for NetCDF data files.
 
+YANK Health Report Arguments:
+  -o=REPORT, --output=REPORT    Name of the health report Jupyter notebook, can use a path + name as well
+
 Extract Trajectory Required Arguments:
   --netcdf=FILEPATH             Path to the NetCDF file.
+  --checkpoint=FILEPATH         Path to the NetCDF checkpoint file if not the default name inferned from "netcdf" option
   --state=STATE_IDX             Index of the alchemical state for which to extract the trajectory
   --replica=REPLICA_IDX         Index of the replica for which to extract the trajectory
   --trajectory=FILEPATH         Path to the trajectory file to create (extension determines the format)
@@ -59,10 +67,13 @@ General Options:
 def dispatch(args):
     utils.config_root_logger(args['--verbose'])
 
+    if args['report']:
+        return dispatch_report(args)
+
     if args['extract-trajectory']:
         return dispatch_extract_trajectory(args)
 
-    analyze.analyze(args['--store'])
+    analyze.analyze_directory(args['--store'])
     return True
 
 
@@ -92,8 +103,29 @@ def dispatch_extract_trajectory(args):
         kwargs['discard_equilibration'] = True
     if args['--imagemol']:
         kwargs['image_molecules'] = True
+    if args['--checkpoint']:
+        kwargs["nc_checkpoint_file"] = args['--checkpoint']
 
     # Extract trajectory
     analyze.extract_trajectory(output_path, nc_path, **kwargs)
+
+    return True
+
+
+def dispatch_report(args):
+    # Check modules for render
+    try:
+        import matplotlib
+    except ImportError:
+        print("Rendering this notebook requires the following packages:\n"
+              " - matplotlib\n"
+              "These are not required to generate the notebook however")
+    store = args['--store']
+    output = args['--output']
+    template_path = pkg_resources.resource_filename('yank', 'reports/YANK_Health_Report_Template.ipynb')
+    with open(template_path, 'r') as template:
+        notebook_text = re.sub('STOREDIRBLANK', store, template.read())
+    with open(output, 'w') as notebook:
+        notebook.write(notebook_text)
 
     return True

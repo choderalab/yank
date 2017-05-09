@@ -17,7 +17,7 @@ requirements:
     - scipy
     - setuptools
     - netcdf4
-    - openmm >=7.0.1
+    - openmm >=7.1
     - mdtraj >=1.7.2
     - openmmtools
     - pymbar
@@ -25,7 +25,6 @@ requirements:
     - docopt
     - openmoltools
     - sphinxcontrib-bibtex
-    - alchemy
     - schema >=0.6.2
     #- gcc 4.8.2 # [linux]
     #- gcc 4.8.2 # [osx]
@@ -37,7 +36,7 @@ requirements:
     - scipy
     - cython
     - netcdf4
-    - openmm >=7.0.1
+    - openmm >=7.1
     - mdtraj >=1.7.2
     - openmmtools
     - pymbar
@@ -48,7 +47,6 @@ requirements:
     - pyyaml
     - clusterutils
     - sphinxcontrib-bibtex
-    - alchemy
     - schema >=0.6.2
     #- libgcc
 

@@ -1,752 +1,1657 @@
 #!/usr/local/bin/env python
 
-#=============================================================================================
+# ==============================================================================
 # MODULE DOCSTRING
-#=============================================================================================
+# ==============================================================================
 
-"""
-repex
-=====
+"""Replica-exchange simulation algorithms and specific variants.
 
-Replica-exchange simulation algorithms and specific variants.
-
-DESCRIPTION
-
-This module provides a general facility for running replica-exchange simulations, as well as
-derived classes for special cases such as parallel tempering (in which the states differ only
-in temperature) and Hamiltonian exchange (in which the state differ only by potential function).
+This module provides a general facility for running replica-exchange simulations,
+as well as derived classes for special cases such as parallel tempering (in which
+the states differ only in temperature).
 
 Provided classes include:
 
-* ReplicaExchange - Base class for general replica-exchange simulations among specified ThermodynamicState objects
-* ParallelTempering - Convenience subclass of ReplicaExchange for parallel tempering simulations (one System object, many temperatures/pressures)
-* HamiltonianExchange - Convenience subclass of ReplicaExchange for Hamiltonian exchange simulations (many System objects, same temperature/pressure)
-
-TODO
-
-* Add analysis facility accessible by user.
-* Give up on Context caching and revert to serial Context creation/destruction if we run out of GPU memory (issuing an alert).
-* Store replica self-energies and/or -ln q(x) for simulation (for analyzing correlation times).
-* Add analysis facility.
-* Allow user to call initialize() externally and get the NetCDF file handle to add additional data?
-* Store / restore parameters and System objects from NetCDF file for resuming and later analysis.
-* Sampling support:
-  * Short-term: Add support for user to specify a callback to create the Integrator to use ('integrator_factory' or 'integrator_callback').
-  * Longer-term: Allow a more complex MCMC sampling scheme consisting of one or more moves to be specified through mcmc.py facility.
-* Allow different choices of temperature handling during exchange attempts:
-  * scale velocities (exchanging only on potential energies) - make this the default?
-  * randomize velocities (exchanging only on potential energies)
-  * exchange on total energies, preserving velocities (requires more replicas)
-* Add control over number of times swaps are attempted when mixing replicas, or compute best guess automatically
-* Add another layer of abstraction so that the base class uses generic log probabilities, rather than reduced potentials?
-* Use interface-based checking of arguments so that different implementations of the OpenMM API (such as pyopenmm) can be used.
-* Eliminate file closures in favor of syncs to avoid closing temporary files in the middle of a run.
+- ReplicaExchange
+    Base class for general replica-exchange simulations.
+- ParallelTempering
+    Convenience subclass of ReplicaExchange for parallel tempering simulations
+    (one System object, many temperatures).
 
 COPYRIGHT
 
-Written by John D. Chodera <jchodera@gmail.com> while at the University of California Berkeley.
+Written by John D. Chodera <jchodera@gmail.com> while at the University of
+California Berkeley.
 
 LICENSE
 
-This code is licensed under the latest available version of the GNU General Public License.
+This code is licensed under the latest available version of the MIT License.
 
 """
 
-#=============================================================================================
+# ==============================================================================
 # GLOBAL IMPORTS
-#=============================================================================================
+# ==============================================================================
 
 from simtk import openmm
 from simtk import unit
 
-import os, os.path
+import os
 import math
 import copy
 import time
+import uuid
+import yaml
+import inspect
 import datetime
 import logging
+import collections
 
 import numpy as np
 import mdtraj as md
 import netCDF4 as netcdf
 
-from .utils import is_terminal_verbose, delayed_termination
+import openmmtools as mmtools
+from openmmtools.states import ThermodynamicState
+
+from . import utils, mpi, version
 
 logger = logging.getLogger(__name__)
 
-#=============================================================================================
-# MODULE CONSTANTS
-#=============================================================================================
 
-kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA # Boltzmann constant
+# ==============================================================================
+# REPLICA EXCHANGE REPORTER
+# ==============================================================================
 
-# TODO: Fix MAX_SEED when we determine what maximum allowed seed is.
-#MAX_SEED = 4294967 # maximum seed for OpenMM setRandomNumberSeed
-MAX_SEED = 2**31 - 1 # maximum seed for OpenMM setRandomNumberSeed
+class Reporter(object):
+    """Handle storage write/read operations and different format conventions.
 
-#=============================================================================================
-# Exceptions
-#=============================================================================================
+    You can use this object to programmatically inspect the data generated by
+    ReplicaExchange.
 
-class NotImplementedException(Exception):
-    """
-    Exception denoting that the requested feature has not yet been implemented.
+    Parameters
+    ----------
+    storage : str
+        The path to the storage file for analysis.
+        A second checkpoint file will be determined from either checkpoint_storage_file or automatically based on
+            the storage option
+        In the future this will be able to take Storage classes as well.
+    open_mode : str or None
+        The mode of the file between 'r', 'w', and 'a' (or equivalently 'r+').
+        If None, the storage file won't be open on construction, and a call to
+        Reporter.open() will be needed before attempting read/write operations.
+    checkpoint_interval : int >= 1, Default: 10
+        The frequency at which checkpointing information is written relative to analysis information. This is a multiple
+        of the iteration at which energies is written, hence why it must be greater than or equal to 1.
+        Checkpoint information cannot be written on iterations which where iteration % checkpoint_interval != 0.
+        Attempting to read checkpointing information results in a masked array where only entries which were written
+            are unmasked
+    checkpoint_storage_file : str or None, optional
+        Optional name of the checkpoint point file. This file is used to save trajectory information and other less
+            frequently accessed data.
+        This should NOT be a full path, and instead just a filename
+        If None: the derived checkpoint name is the same as storage, less any extension, then "_checkpoint.nc" is added
+        The reporter internally tracks what data goes into which file, so its transparent to all other classes
+        In the future, this will be able to take Storage classes as well
 
-    """
-    pass
-
-class ParameterException(Exception):
-    """
-    Exception denoting that an incorrect argument has been specified.
-
-    """
-    pass
-
-#=============================================================================================
-# Thermodynamic state description
-#=============================================================================================
-
-class ThermodynamicState(object):
-    """
-    Data specifying a thermodynamic state obeying Boltzmann statistics.
-
-    Examples
-    --------
-    Specify an NVT state for a water box at 298 K.
-
-    >>> from simtk import unit
-    >>> from openmmtools import testsystems
-    >>> waterbox = testsystems.WaterBox()
-    >>> [system, positions] = [waterbox.system, waterbox.positions]
-    >>> state = ThermodynamicState(system=system, temperature=298.0*unit.kelvin)
-
-    Specify an NPT state at 298 K and 1 atm pressure.
-
-    >>> state = ThermodynamicState(system=system, temperature=298.0*unit.kelvin, pressure=1.0*unit.atmospheres)
-
-    Note that the pressure is only relevant for periodic systems.
-
-    Notes
-    -----
-    This state object cannot describe states obeying non-Boltzamnn statistics, such as Tsallis statistics.
-
-    TODO
-    ----
-    * Implement a more fundamental ProbabilityState as a base class?
-    * Implement pH.
 
     """
-
-    def __init__(self, system=None, temperature=None, pressure=None):
-        """
-        Initialize the thermodynamic state.
-
-        Parameters
-        ----------
-
-        system : simtk.openmm.System, optional, default=None
-           A System object describing the potential energy function for the system
-           Note: Only a shallow copy is made.
-        temperature : simtk.unit.Quantity compatible with 'kelvin', optional, default=None
-           The temperature for a system with constant temperature
-        pressure : simtk.unit.Quantity compatible with 'atmospheres', optional, default=None
-           The pressure for constant-pressure systems (default: None)
-
-        """
-
-        # Initialize.
-        self.system = None          # the System object governing the potential energy computation
-        self.temperature = None     # the temperature
-        self.pressure = None        # the pressure, or None if not isobaric
-
-        # Store provided values.
-        if system is not None:
-            self.system = system
-        if temperature is not None:
-            self.temperature = temperature
-        if pressure is not None:
-            self.pressure = pressure
-
-        return
+    def __init__(self, storage, open_mode=None, checkpoint_interval=10, checkpoint_storage_file=None):
+        if type(checkpoint_interval) != int:
+            raise ValueError("checkpoint_interval must be an integer!")
+        dirname, filename = os.path.split(storage)
+        if checkpoint_storage_file is None:
+            basename, ext = os.path.splitext(filename)
+            addon = "_checkpoint"
+            checkpoint_storage_file = os.path.join(dirname, basename + addon + ext)
+            logger.debug("Initial checkpoint file automatically chosen as {}".format(checkpoint_storage_file))
+        else:
+            checkpoint_storage_file = os.path.join(dirname, checkpoint_storage_file)
+        self._storage_file_analysis = storage
+        self._storage_file_checkpoint = checkpoint_storage_file
+        self._storage_checkpoint = None
+        self._storage_analysis = None
+        self._checkpoint_interval = checkpoint_interval
+        if open_mode is not None:
+            self.open(open_mode)
 
     @property
-    def kT(self):
+    def filename(self):
         """
-        Return the thermal energy (kT) of this state.
+        Returns the file name of the primary file so classes outside the Reporter can access the file string for
+        error messages and such.
         """
-        return (kB * self.temperature)
+        return self._storage_file_analysis
 
-    def reduced_potential(self, positions, box_vectors=None, platform=None, context=None):
+    @property
+    def _storage(self):
         """
-        Compute the reduced potential for the given positions in this thermodynamic state.
+        Return an iterable of the storage objects, avoids having the [list, of, storage, objects] everywhere
+        Object 0 is always the primary file, all others are subfiles
+        """
+        return self._storage_analysis, self._storage_checkpoint
+
+    @property
+    def _storage_paths(self):
+        """
+        Return an iterable of paths to the storage files
+        Object 0 is always the primary file, all others are subfiles
+        """
+        return self._storage_file_analysis, self._storage_file_checkpoint
+
+    @property
+    def _storage_dict(self):
+        """Return an iterable dictionary of the self._storage_X objects"""
+        return {'checkpoint': self._storage_checkpoint, 'analysis': self._storage_analysis}
+
+    def storage_exists(self, skip_size=False):
+        """
+        Check if the storage files exist on disk. Reads information on the primary file to see existence of others
 
         Parameters
         ----------
-        positions : simtk.unit.Quantity of Nx3 numpy.array
-           Positions[n,k] is kth coordinate of particle n
-        box_vectors : tuple of Vec3 or ???, optional, default=None
-           Periodic box vectors, if present.
-        platform : simtk.openmm.Platform, optional, default=None
-           Platform to use, or None if default.
-        context : simtk.openmm.Context, optional, default=none
-           If specified, use this Context.
+        skip_size : bool, Optional
+            Skip the check of the file size. Helpful if you have just initialized a storage file but written nothing to
+                it yet and/or its still entirely in memory (e.g. just opened NetCDF files)
+            Default: False
 
         Returns
         -------
-        u : float
-           The unitless reduced potential (which can be considered to have units of kT)
-
-        Examples
-        --------
-        Compute the reduced potential of a Lennard-Jones cluster at 100 K.
-
-        >>> from simtk import unit
-        >>> from openmmtools import testsystems
-        >>> testsystem = testsystems.LennardJonesCluster()
-        >>> [system, positions] = [testsystem.system, testsystem.positions]
-        >>> state = ThermodynamicState(system=system, temperature=100.0*unit.kelvin)
-        >>> potential = state.reduced_potential(positions)
-
-        Compute the reduced potential of a Lennard-Jones fluid at 100 K and 1 atm.
-
-        >>> testsystem = testsystems.LennardJonesFluid()
-        >>> [system, positions] = [testsystem.system, testsystem.positions]
-        >>> state = ThermodynamicState(system=system, temperature=100.0*unit.kelvin, pressure=1.0*unit.atmosphere)
-        >>> box_vectors = system.getDefaultPeriodicBoxVectors()
-        >>> potential = state.reduced_potential(positions, box_vectors)
-
-        Compute the reduced potential of a water box at 298 K and 1 atm.
-
-        >>> testsystem = testsystems.WaterBox()
-        >>> [system, positions] = [testsystem.system, testsystem.positions]
-        >>> state = ThermodynamicState(system=system, temperature=298.0*unit.kelvin, pressure=1.0*unit.atmosphere)
-        >>> box_vectors = system.getDefaultPeriodicBoxVectors()
-        >>> potential = state.reduced_potential(positions, box_vectors)
-
-        Notes
-        -----
-        The reduced potential is defined as in Ref. [1]
-
-        u = \beta [U(x) + p V(x) + \mu N(x)]
-
-        where the thermodynamic parameters are
-
-        \beta = 1/(kB T) is he inverse temperature
-        U(x) is the potential energy
-        p is the pressure
-        \mu is the chemical potential
-
-        and the configurational properties are
-
-        x the atomic positions
-        V(x) is the instantaneous box volume
-        N(x) the numbers of various particle species (e.g. protons of titratible groups)
-
-        References
-        ----------
-        [1] Shirts MR and Chodera JD. Statistically optimal analysis of equilibrium states. J Chem Phys 129:124105, 2008.
-
-        TODO
-        ----
-        * Instead of requiring configuration and box_vectors be passed separately, develop a Configuration or Snapshot class.
-
+        files_exist : bool
+            If the primary storage file and its related subfiles exist, returns True
+            If the primary file or any subfiles do not exist, returns False
         """
+        # This function serves as a way to mask the subfiles from everything outside the reporter
+        for file_path in self._storage_paths:
+            if not os.path.exists(file_path):
+                return False  # Return if any files do not exist
+            elif not os.path.getsize(file_path) > 0 and not skip_size:
+                return False  # File is 0 size
+        return True
 
-        # If pressure is specified, ensure box vectors have been provided.
-        if (self.pressure is not None) and (box_vectors is None):
-            raise ParameterException("box_vectors must be specified if constant-pressure ensemble.")
+    def is_open(self):
+        """Return True if the Reporter is ready to read/write."""
+        if self._storage[0] is None:
+            return False
+        else:
+            return self._storage[0].isopen()
 
-        # Compute potential energy.
-        potential_energy = self._compute_potential_energy(positions, box_vectors=box_vectors, platform=platform, context=context)
-
-        # Compute inverse temperature.
-        beta = 1.0 / (kB * self.temperature)
-
-        # Compute reduced potential.
-        reduced_potential = beta * potential_energy
-        if self.pressure is not None:
-            reduced_potential += beta * self.pressure * self._volume(box_vectors) * unit.AVOGADRO_CONSTANT_NA
-
-        return reduced_potential
-
-    def _compute_potential_energy(self, positions, box_vectors=None, platform=None, context=None):
-        """
-        Compute the potential energy for the given positions in this thermodynamic state.
-
-        Parameters
-        ----------
-        positions : simtk.unit.Quantity of Nx3 numpy.array
-           Positions[n,k] is kth coordinate of particle n
-        box_vectors : tuple of Vec3 or ???, optional, default=None
-           Periodic box vectors, if present.
-        platform : simtk.openmm.Platform, optional, default=None
-           Platform to use, or None if default.
-        context : simtk.openmm.Context, optional, default=none
-           If specified, use this Context.
-
-        Returns
-        -------
-        potential_energy : simtk.unit.Quantity with units compatible with kilojoules_per_mole
-           The unit-bearing potential energy.
-
-        """
-
-        # Create OpenMM context to compute potential energy.
-        cleanup_context = False
-        if context == None:
-            integrator = openmm.VerletIntegrator(1.0*unit.femtosecond)
-            if platform:
-                context = openmm.Context(self.system, integrator, platform)
+    def _are_subfiles_open(self):
+        """Internal function to check if subfiles are open"""
+        open_check_list = []
+        for storage in self._storage[1:]:
+            if storage is None:
+                return False
             else:
-                context = openmm.Context(self.system, integrator)
-            cleanup_context = True
+                open_check_list.append(storage.isopen())
+        return np.all(open_check_list)
 
-        # Must set box vectors first.
-        if box_vectors is not None: context.setPeriodicBoxVectors(*box_vectors)
+    def open(self, mode='r'):
+        """Open the storage file for reading/writing.
 
-        # Set positions.
-        context.setPositions(positions)
+        This is not necessary if you have indicated in the constructor to open.
 
-        # WARNING: We don't set the alchemical state here, which may cause trouble.
-
-        # Retrieve potential energy.
-        potential_energy = context.getState(getEnergy=True).getPotentialEnergy()
-
-        # Clean up if we created a Context and Integrator.
-        if cleanup_context:
-            del context, integrator
-
-        return potential_energy
-
-    def is_compatible_with(self, state):
-        """
-        Determine whether another state is in the same thermodynamic ensemble (e.g. NVT, NPT).
-
-        ARGUMENTS
-
-        state (ThermodynamicState) - thermodynamic state whose compatibility is to be determined
-
-        RETURNS
-
-        is_compatible (boolean) - True if 'state' is of the same ensemble (e.g. both NVT, both NPT), False otherwise
-
-        EXAMPLES
-
-        Create NVT and NPT states.
-
-        >>> from simtk import unit
-        >>> from openmmtools import testsystems
-        >>> testsystem = testsystems.LennardJonesCluster()
-        >>> [system, positions] = [testsystem.system, testsystem.positions]
-        >>> nvt_state = ThermodynamicState(system=system, temperature=100.0*unit.kelvin)
-        >>> npt_state = ThermodynamicState(system=system, temperature=100.0*unit.kelvin, pressure=1.0*unit.atmospheres)
-
-        Test compatibility.
-
-        >>> test1 = nvt_state.is_compatible_with(nvt_state)
-        >>> test2 = nvt_state.is_compatible_with(npt_state)
-        >>> test3 = npt_state.is_compatible_with(nvt_state)
-        >>> test4 = npt_state.is_compatible_with(npt_state)
+        Parameters
+        ----------
+        mode : str
+            The mode of the file between 'r', 'w', and 'a' (or equivalently 'r+').
 
         """
+        # Ensure we don't have already another file
+        # open (possibly in a different mode).
+        for storage in self._storage:
+            if storage is not None:
+                self.close()
+                # No need to execute this code more than once
+                break
 
-        is_compatible = True
+        # Create directory if we want to write.
+        if mode != 'r':
+            for storage_path in self._storage_paths:
+                storage_dir = os.path.dirname(storage_path)
+                if not os.path.exists(storage_dir):
+                    os.makedirs(storage_dir)
 
-        # Make sure systems have the same number of atoms.
-        if ((self.system != None) and (state.system != None)):
-            if (self.system.getNumParticles() != state.system.getNumParticles()):
-                is_compatible = False
+        # Open NetCDF 4 file for writing.
+        # If no file exists, this appropriately throws an error on 'r' mode
+        primary_ncfiles = {}
+        sub_ncfiles = {}
+        # TODO: Figure out how to move around the analysis file without the checkpoint file
+        # Cast this to a common name space for operation below
+        primary_ncfiles['analysis'] = netcdf.Dataset(self._storage_file_analysis, mode, version='NETCDF4')
+        if mode == 'w':
+            sub_ncfiles['checkpoint'] = netcdf.Dataset(self._storage_file_checkpoint, mode, version='NETCDF4')
+        else:  # Read/append mode
+            # Try to open the files in read mode, its okay if they are not there
+            try:
+                sub_ncfiles['checkpoint'] = netcdf.Dataset(self._storage_file_checkpoint, mode, version='NETCDF4')
+                primary_uuid = primary_ncfiles['analysis'].UUID
+                assert primary_uuid == sub_ncfiles['checkpoint'].UUID
+            except IOError:  # Trap the "not on disk" warning
+                logger.debug('Could not locate checkpoint subfile. This is okay for certain append and read operations, '
+                             'but not for production simulation!')
+            except AttributeError:
+                raise AttributeError("Checkpoint file is missing its linked primary file UUID!"
+                                     "No way to ensure this checkpoint file contains data matching the analysis file!")
+            except AssertionError:
+                primary_uuid = primary_ncfiles['analysis'].UUID
+                check_uuid = sub_ncfiles['checkpoint'].UUID
+                raise IOError("Checkpoint UUID does not match analysis UUID! This checkpoint file came from another "
+                              "simulation!\n"
+                              "Analysis UUID: {}"
+                              "Checkpoint UUID: {}".format(primary_uuid, check_uuid))
 
-        # Make sure other terms are defined for both states.
-        # TODO: Use introspection to get list of parameters?
-        for parameter in ['temperature', 'pressure']:
-            if (parameter in dir(self)) is not (parameter in dir(state)):
-                # parameter is not shared by both states
-                is_compatible = False
+        def check_and_build_storage_file(ncfile, nc_name, checkpoint_interval):
+            """
+            Helper function to build default file settings
+            Returns a bool depending on if it ran through the setup to indicate file needs additional data or not
+            """
+            if 'scalar' not in ncfile.dimensions:
+                # Create common dimensions.
+                ncfile.createDimension('scalar', 1)  # Scalar dimension.
+                ncfile.createDimension('iteration', 0)  # Unlimited number of iterations.
+                ncfile.createDimension('spatial', 3)  # Number of spatial dimensions.
 
-        return is_compatible
+                # Set global attributes.
+                ncfile.application = 'YANK'
+                ncfile.program = 'yank.py'
+                ncfile.programVersion = version.short_version
+                ncfile.Conventions = 'ReplicaExchange'
+                ncfile.ConventionVersion = '0.2'
+                ncfile.DataUsedFor = nc_name
+                ncfile.CheckpointInterval = checkpoint_interval
 
-    def __repr__(self):
-        """
-        Returns a string representation of a state.
+                # Create and initilize the global variables
+                nc_last_good_iter = ncfile.createVariable('last_iteration', int, 'scalar')
+                nc_last_good_iter[0] = 0
+                return True
+            else:
+                return False
 
-        Examples
-        --------
-        Create an NVT state.
+        # Setup the primary file if needed
+        # Generate a unique UUID in case we need to assign it
+        # primary and subfiles are linked by UUID
+        # Uses uuid4 to avoid assigning hostname information
+        primary_uuid = str(uuid.uuid4())
+        ncfile_ever_built = False
+        for nc_name, ncfile in utils.dictiter(primary_ncfiles):
+            ncfile_built = check_and_build_storage_file(ncfile, nc_name, self._checkpoint_interval)
+            if ncfile_built:
+                ncfile_ever_built = True
+            # Assign ncfile to class property
+            setattr(self, '_storage_' + nc_name, ncfile)
+        if ncfile_ever_built:  # Assign the same UUID to all primary files
+            for _, ncfile in utils.dictiter(primary_ncfiles):
+                ncfile.UUID = primary_uuid
+        else:
+            primary_uuid = primary_ncfiles['analysis'].UUID
+        # Handle Subfiles
+        for nc_name, ncfile in utils.dictiter(sub_ncfiles):
+            # If they are in the sub_ncfiles dict, they exist and are open
+            ncfile_built = check_and_build_storage_file(ncfile, nc_name, self._checkpoint_interval)
+            if ncfile_built:
+                # Assign the UUID to the subfile
+                ncfile.UUID = primary_uuid
+            setattr(self, '_storage_' + nc_name, ncfile)
 
-        >>> from simtk import unit
-        >>> from openmmtools import testsystems
-        >>> testsystem = testsystems.LennardJonesCluster()
-        >>> [system, positions] = [testsystem.system, testsystem.positions]
-        >>> state = ThermodynamicState(system=system, temperature=100.0*unit.kelvin)
+        if self._storage_analysis is not None:
+            # The same number will be on checkpoint file as well, but its not guaranteed to be present
+            on_file_interval = self._storage_analysis.CheckpointInterval
+            if on_file_interval != self._checkpoint_interval:
+                logger.debug("checkpoint_interval != on-file checkpoint interval! "
+                             "Using on file analysis interval of {}.".format(on_file_interval))
+                self._checkpoint_interval = on_file_interval
 
-        Return a representation of the state.
+    def close(self):
+        """Close the storage file."""
+        for storage_name, storage in utils.dictiter(self._storage_dict):
+            if storage is not None:
+                if storage.isopen():
+                    storage.sync()
+                    storage.close()
+            setattr(self, '_storage' + storage_name, None)
 
-        >>> state_string = repr(state)
+    def sync(self):
+        """Force any buffer to be flushed to the file."""
+        for storage in self._storage:
+            if storage is not None:
+                storage.sync()
 
-        """
+    def __del__(self):
+        """Synchronize and close the storage."""
+        for storage in self._storage:
+            if storage is not None:
+                self.close()
+                break
 
-        r = "<ThermodynamicState object"
-        if self.temperature is not None:
-            r += ", temperature = %s" % str(self.temperature)
-        if self.pressure is not None:
-            r += ", pressure = %s" % str(self.pressure)
-        r += ">"
-
-        return r
-
-    def __str__(self):
-
-        r = "<ThermodynamicState object"
-        if self.temperature is not None:
-            r += ", temperature = %s" % str(self.temperature)
-        if self.pressure is not None:
-            r += ", pressure = %s" % str(self.pressure)
-        r += ">"
-
-        return r
-
-    def _volume(self, box_vectors):
-        """
-        Return the volume of the current configuration.
+    @mmtools.utils.with_timer('Reading thermodynamic states from storage')
+    def read_thermodynamic_states(self):
+        """Retrieve the stored thermodynamic states from the checkpoint file.
 
         Returns
         -------
-        volume : simtk.unit.Quantity
-           The volume of the system (in units of length^3), or None if no box positions are defined
+        thermodynamic_states : list of ThermodynamicStates
+            The previously stored thermodynamic states. During the simulation
+            these are swapped among replicas.
+        unsampled_states : list of ThermodynamicState
+            The previously stored unsampled thermodynamic states.
 
-        Examples
+        See Also
         --------
-        Compute the volume of a Lennard-Jones fluid at 100 K and 1 atm.
-
-        TODO
-        ----
-        * Replace with OpenMM State.getPeriodicBoxVolume()
-
-        >>> from openmmtools import testsystems
-        >>> testsystem = testsystems.LennardJonesFluid()
-        >>> [system, positions] = [testsystem.system, testsystem.positions]
-        >>> state = ThermodynamicState(system=system, temperature=100.0*unit.kelvin, pressure=1.0*unit.atmosphere)
-        >>> box_vectors = system.getDefaultPeriodicBoxVectors()
-        >>> volume = state._volume(box_vectors)
+        read_replica_thermodynamic_states
 
         """
+        # We have to parse the thermodynamic states first because the
+        # unsampled states may refer to them for the serialized system.
+        states = collections.OrderedDict([('thermodynamic_states', list()),
+                                          ('unsampled_states', list())])
 
-        # Compute volume of parallelepiped.
-        [a,b,c] = box_vectors
-        A = np.array([a/a.unit, b/a.unit, c/a.unit])
-        volume = np.linalg.det(A) * a.unit**3
-        return volume
+        # Read state information.
+        for state_type, state_list in states.items():
+            # There may not be unsampled states.
+            if state_type not in self._storage_analysis.groups:
+                assert state_type == 'unsampled_states'
+                continue
 
-#=============================================================================================
-# Replica-exchange simulation
-#=============================================================================================
+            # We keep looking for states until we can't find them anymore.
+            n_states = len(self._storage_analysis.groups[state_type].variables)
+            for state_id in range(n_states):
+                serialized_state = self.read_dict('{}/state{}'.format(state_type, state_id))
+
+                # Find the thermodynamic state representation.
+                serialized_thermodynamic_state = serialized_state
+                while 'thermodynamic_state' in serialized_thermodynamic_state:
+                    # The while loop is necessary for nested CompoundThermodynamicStates.
+                    serialized_thermodynamic_state = serialized_state['thermodynamic_state']
+
+                # Check if the standard state is in a previous state.
+                try:
+                    standard_system_name = serialized_thermodynamic_state.pop('_Reporter__compatible_state')
+                except KeyError:
+                    # We have stored the full standard system serialization.
+                    pass
+                else:
+                    # The system serialization can be retrieved from another state.
+                    reference_state_type, reference_system_id = standard_system_name.split('/')
+                    compatible_thermodynamic_state = states[reference_state_type][int(reference_system_id)]
+                    serialized_system = openmm.XmlSerializer.serialize(compatible_thermodynamic_state.system)
+                    serialized_thermodynamic_state['standard_system'] = serialized_system
+
+                # Create ThermodynamicState object.
+                states[state_type].append(mmtools.utils.deserialize(serialized_state))
+                state_id += 1
+
+        return [states['thermodynamic_states'], states['unsampled_states']]
+
+    @mmtools.utils.with_timer('Storing thermodynamic states')
+    def write_thermodynamic_states(self, thermodynamic_states, unsampled_states):
+        """Store all the ThermodynamicStates to the checkpoint file.
+
+        Parameters
+        ----------
+        thermodynamic_states : list of ThermodynamicState
+            The thermodynamic states to store.
+        unsampled_states : list of ThermodynamicState
+            The unsampled thermodynamic states to store.
+
+        See Also
+        --------
+        write_replica_thermodynamic_states
+
+        """
+        # Store all thermodynamic states as serialized dictionaries.
+        compatible_states_hashes = dict()
+        for state_type, states in [('thermodynamic_states', thermodynamic_states),
+                                   ('unsampled_states', unsampled_states)]:
+            for state_id, thermodynamic_state in enumerate(states):
+                serialized_state = mmtools.utils.serialize(thermodynamic_state)
+
+                # Find the serialized standard system.
+                serialized_thermodynamic_state = serialized_state
+                while 'thermodynamic_state' in serialized_thermodynamic_state:
+                    # The while loop is necessary for nested CompoundThermodynamicStates.
+                    serialized_thermodynamic_state = serialized_state['thermodynamic_state']
+                serialized_standard_system = serialized_thermodynamic_state['standard_system']
+
+                # We store the full standard system serialization only if we haven't
+                # store it yet, otherwise we just write a reference to a state containing
+                # the full system. We normally expect all the ThermodynamicStates to be
+                # compatible, which means we'll store only a single system in most cases.
+                standard_system_hash = serialized_standard_system.__hash__()
+                try:
+                    reference_state_name, len_serialization = compatible_states_hashes[standard_system_hash]
+                except KeyError:
+                    reference_state_name = '{}/{}'.format(state_type, state_id)
+                    len_serialization = len(serialized_standard_system)
+                    compatible_states_hashes[standard_system_hash] = reference_state_name, len_serialization
+
+                    logger.debug("Serialized state {} is  {}B | {:.3f}KB | {:.3f}MB".format(
+                        reference_state_name, len_serialization, len_serialization/1024.0,
+                        len_serialization/1024.0/1024.0))
+                else:
+                    serialized_thermodynamic_state.pop('standard_system')
+                    serialized_thermodynamic_state['_Reporter__compatible_state'] = reference_state_name
+
+                # Write state as dictionary.
+                self.write_dict('{}/state{}'.format(state_type, state_id), serialized_state)
+
+    def read_sampler_states(self, iteration):
+        """Retrieve the stored sampler states on the checkpoint file
+
+        If the iteration is not on the checkpoint interval, None is returned
+
+        Parameters
+        ----------
+        iteration : int
+            The iteration at which to read the data.
+
+        Returns
+        -------
+        sampler_states : list of SamplerStates or None
+            The previously stored sampler states for each replica.
+            If the iteration is not on the checkpoint_interval, None is returned
+
+        """
+        iteration = self._calculate_last_iteration(iteration)
+        checkpoint_iteration = self._calculate_checkpoint_iteration(iteration)
+        if checkpoint_iteration is not None:
+            n_states = self._storage_checkpoint.dimensions['replica'].size
+
+            sampler_states = list()
+            for replica_index in range(n_states):
+                # Restore positions.
+                x = self._storage_checkpoint.variables['positions'][checkpoint_iteration, replica_index, :, :].astype(np.float64)
+                positions = unit.Quantity(x, unit.nanometers)
+
+                # Restore box vectors.
+                x = self._storage_checkpoint.variables['box_vectors'][checkpoint_iteration, replica_index, :, :].astype(np.float64)
+                box_vectors = unit.Quantity(x, unit.nanometers)
+
+                # Create SamplerState.
+                sampler_states.append(mmtools.states.SamplerState(positions=positions, box_vectors=box_vectors))
+
+            return sampler_states
+        else:
+            return None
+
+    @mmtools.utils.with_timer('Storing sampler states')
+    def write_sampler_states(self, sampler_states, iteration):
+        """Store all sampler states for a given iteration on the checkpoint file
+
+        If the iteration is not on the checkpoint interval, no data is written
+
+        Parameters
+        ----------
+        sampler_states : list of SamplerStates
+            The sampler states to store for each replica.
+        iteration : int
+            The iteration at which to store the data.
+
+        """
+        # Check if the schema must be initialized, do this regardless of the checkpoint_interval for consistency
+        if 'positions' not in self._storage_checkpoint.variables:
+            n_atoms = sampler_states[0].n_particles
+            n_states = len(sampler_states)
+
+            # Create dimensions. Replica dimension could have been created before.
+            self._storage_checkpoint.createDimension('atom', n_atoms)
+            if 'replica' not in self._storage_checkpoint.dimensions:
+                self._storage_checkpoint.createDimension('replica', n_states)
+
+            # Create variables.
+            ncvar_positions = self._storage_checkpoint.createVariable('positions', 'f4',
+                                                                      ('iteration', 'replica', 'atom', 'spatial'),
+                                                                      zlib=True, chunksizes=(1, n_states, n_atoms, 3))
+            ncvar_box_vectors = self._storage_checkpoint.createVariable('box_vectors', 'f4',
+                                                                        ('iteration', 'replica', 'spatial', 'spatial'),
+                                                                        zlib=False, chunksizes=(1, n_states, 3, 3))
+            ncvar_volumes = self._storage_checkpoint.createVariable('volumes', 'f8', ('iteration', 'replica'),
+                                                                    zlib=False, chunksizes=(1, n_states))
+
+            # Define units for variables.
+            setattr(ncvar_positions, 'units', 'nm')
+            setattr(ncvar_box_vectors, 'units', 'nm')
+            setattr(ncvar_volumes, 'units', 'nm**3')
+
+            # Define long (human-readable) names for variables.
+            setattr(ncvar_positions, "long_name", ("positions[iteration][replica][atom][spatial] is position of "
+                                                   "coordinate 'spatial' of atom 'atom' from replica 'replica' for "
+                                                   "iteration 'iteration'."))
+
+            setattr(ncvar_box_vectors, "long_name", ("box_vectors[iteration][replica][i][j] is dimension j of box "
+                                                     "vector i for replica 'replica' from iteration 'iteration-1'."))
+            setattr(ncvar_volumes, "long_name", ("volume[iteration][replica] is the box volume for replica 'replica' "
+                                                 "from iteration 'iteration-1'."))
+        checkpoint_iteration = self._calculate_checkpoint_iteration(iteration)
+        if checkpoint_iteration is not None:
+            # Store sampler states.
+            for replica_index, sampler_state in enumerate(sampler_states):
+                # Store positions
+                x = sampler_state.positions / unit.nanometers
+                self._storage_checkpoint.variables['positions'][checkpoint_iteration, replica_index, :, :] = x[:, :]
+
+                # Store box vectors and volume.
+                for i in range(3):
+                    vector_i = sampler_state.box_vectors[i] / unit.nanometers
+                    self._storage_checkpoint.variables['box_vectors'][checkpoint_iteration, replica_index, i, :] = \
+                        vector_i
+                self._storage_checkpoint.variables['volumes'][checkpoint_iteration, replica_index] = \
+                    sampler_state.volume / unit.nanometers**3
+        else:
+            logger.debug("Iteration {} not on the Checkpoint Interval of {}. "
+                         "Sampler State not written.".format(iteration, self._checkpoint_interval))
+
+    def read_replica_thermodynamic_states(self, iteration=slice(None)):
+        """Retrieve the indices of the ThermodynamicStates for each replica on the analysis file
+
+        Parameters
+        ----------
+        iteration : int or slice
+            The iteration(s) at which to read the data. The slice(None) allows fetching all iterations at once.
+
+        Returns
+        -------
+        state_indices : list of int
+            At the given iteration, replica i propagated the system in
+            SamplerState sampler_states[i] and ThermodynamicState
+            thermodynamic_states[states_indices[i]].
+
+        """
+        iteration = self._calculate_last_iteration(iteration)
+        return self._storage_analysis.variables['states'][iteration].astype(np.int64)
+
+    def write_replica_thermodynamic_states(self, state_indices, iteration):
+        """Store the indices of the ThermodynamicStates for each replica on the analysis file
+
+        Parameters
+        ----------
+        state_indices : list of int
+            At the given iteration, replica i propagated the system in
+            SamplerState sampler_states[i] and ThermodynamicState
+            thermodynamic_states[replica_thermodynamic_states[i]].
+        iteration : int
+            The iteration at which to store the data.
+
+        """
+        # Initialize schema if needed.
+        if 'states' not in self._storage_analysis.variables:
+            n_states = len(state_indices)
+
+            # Create dimension if they don't exist.
+            if 'replica' not in self._storage_analysis.dimensions:
+                self._storage_analysis.createDimension('replica', n_states)
+
+            # Create variables and attach units and description.
+            ncvar_states = self._storage_analysis.createVariable('states', 'i4', ('iteration', 'replica'),
+                                                                 zlib=False, chunksizes=(1, n_states))
+            setattr(ncvar_states, 'units', 'none')
+            setattr(ncvar_states, "long_name", ("states[iteration][replica] is the thermodynamic state index "
+                                                "(0..nstates-1) of replica 'replica' of iteration 'iteration'."))
+
+        # Store thermodynamic states indices.
+        self._storage_analysis.variables['states'][iteration, :] = state_indices[:]
+
+    def read_mcmc_moves(self):
+        """Return the MCMCMoves of the ReplicaExchange simulation on the checkpoint
+
+        Returns
+        -------
+        mcmc_moves : list of MCMCMove
+            The MCMCMoves used to propagate the simulation.
+
+        """
+        n_moves = len(self._storage_analysis.groups['mcmc_moves'].variables)
+
+        # Retrieve all moves in order.
+        mcmc_moves = list()
+        for move_id in range(n_moves):
+            serialized_move = self.read_dict('mcmc_moves/move{}'.format(move_id))
+            mcmc_moves.append(mmtools.utils.deserialize(serialized_move))
+        return mcmc_moves
+
+    def write_mcmc_moves(self, mcmc_moves):
+        """Store the MCMCMoves of the ReplicaExchange simulation on the checkpoint
+
+        Parameters
+        ----------
+        mcmc_moves : list of MCMCMove
+            The MCMCMoves used to propagate the simulation.
+
+        """
+        for move_id, move in enumerate(mcmc_moves):
+            serialized_move = mmtools.utils.serialize(move)
+            self.write_dict('mcmc_moves/move{}'.format(move_id), serialized_move)
+
+    def read_energies(self, iteration=slice(None)):
+        """Retrieve the energy matrix at the given iteration on the analysis file
+
+        Parameters
+        ----------
+        iteration : int or slice
+            The iteration(s) at which to read the data. The slice(None) allows fetching all iterations at once.
+
+        Returns
+        -------
+        energy_thermodynamic_states : n_replicas x n_replicas numpy.ndarray
+            energy_thermodynamic_states[iteration, i, j] is the reduced potential computed at
+            SamplerState sampler_states[iteration, i] and ThermodynamicState thermodynamic_states[iteration, j].
+        energy_unsampled_states : n_replicas x n_unsampled_states numpy.ndarray
+            energy_unsampled_states[iteration, i, j] is the reduced potential computed at SamplerState
+            sampler_states[iteration, i] and ThermodynamicState unsampled_thermodynamic_states[iteration, j].
+
+        """
+        iteration = self._calculate_last_iteration(iteration)
+        energy_thermodynamic_states = self._storage_analysis.variables['energies'][iteration, :, :]
+        try:
+            energy_unsampled_states = self._storage_analysis.variables['unsampled_energies'][iteration, :, :]
+        except KeyError:
+            # There are no unsampled thermodynamic states.
+            unsampled_shape = energy_thermodynamic_states.shape[:-1] + (0,)
+            energy_unsampled_states = np.zeros(unsampled_shape)
+        return energy_thermodynamic_states, energy_unsampled_states
+
+    def write_energies(self, energy_thermodynamic_states, energy_unsampled_states, iteration):
+        """Store the energy matrix at the given iteration on the analysis file
+
+        Parameters
+        ----------
+        energy_thermodynamic_states : n_replicas x n_replicas numpy.ndarray
+            energy_thermodynamic_states[i][j] is the reduced potential computed at
+            SamplerState sampler_states[i] and ThermodynamicState thermodynamic_states[j].
+        energy_unsampled_states : n_replicas x n_unsampled_states numpy.ndarray
+            energy_unsampled_states[i][j] is the reduced potential computed at SamplerState
+            sampler_states[i] and ThermodynamicState unsampled_thermodynamic_states[j].
+        iteration : int
+            The iteration at which to store the data.
+
+        """
+        # Initialize schema if needed.
+        if 'energies' not in self._storage_analysis.variables:
+            n_replicas = len(energy_thermodynamic_states)
+
+            # Create replica dimension if it wasn't created by other functions.
+            if 'replica' not in self._storage_analysis.dimensions:
+                self._storage_analysis.createDimension('replica', n_replicas)
+
+            # Create variable for thermodynamic state energies with units and descriptions.
+            ncvar_energies = self._storage_analysis.createVariable('energies',
+                                                                   'f8',
+                                                                   ('iteration', 'replica', 'replica'),
+                                                                   zlib=False,
+                                                                   chunksizes=(1, n_replicas, n_replicas))
+            ncvar_energies.units = 'kT'
+            ncvar_energies.long_name = ("energies[iteration][replica][state] is the reduced (unitless) "
+                                        "energy of replica 'replica' from iteration 'iteration' evaluated "
+                                        "at the thermodynamic state 'state'.")
+
+            # Check if we have unsampled states.
+            if energy_unsampled_states.shape[1] > 0:
+                if 'unsampled_energies' not in self._storage_analysis.variables:
+                    n_unsampled_states = len(energy_unsampled_states[0])
+
+                    # Create replica dimension if it wasn't created by other functions.
+                    if 'unsampled' not in self._storage_analysis.dimensions:
+                        self._storage_analysis.createDimension('unsampled', n_unsampled_states)
+
+                    # Create variable for thermodynamic state energies with units and descriptions.
+                    ncvar_unsampled = self._storage_analysis.createVariable('unsampled_energies',
+                                                                            'f8',
+                                                                            ('iteration', 'replica', 'unsampled'),
+                                                                            zlib=False,
+                                                                            chunksizes=(1,
+                                                                                        n_replicas,
+                                                                                        n_unsampled_states)
+                                                                            )
+                    ncvar_unsampled.units = 'kT'
+                    ncvar_unsampled.long_name = ("unsampled_energies[iteration][replica][state] is the reduced "
+                                                 "(unitless) energy of replica 'replica' from iteration 'iteration' "
+                                                 "evaluated at unsampled thermodynamic state 'state'.")
+
+        # Store states energy.
+        self._storage_analysis.variables['energies'][iteration, :, :] = energy_thermodynamic_states[:, :]
+        if energy_unsampled_states.shape[1] > 0:
+            self._storage_analysis.variables['unsampled_energies'][iteration, :, :] = energy_unsampled_states[:, :]
+
+    def read_mixing_statistics(self, iteration=slice(None)):
+        """Retrieve the mixing statistics for the given iteration on the analysis file
+
+        Parameters
+        ----------
+        iteration : int or slice
+            The iteration(s) at which to read the data.
+
+        Returns
+        -------
+        n_accepted_matrix : kxk numpy.ndarray
+            n_accepted_matrix[i][j] is the number of accepted moves from
+            state thermodynamic_states[i] to thermodynamic_states[j] going
+            from iteration-1 to iteration (not cumulative).
+        n_proposed_matrix : kxk numpy.ndarray
+            n_proposed_matrix[i][j] is the number of proposed moves from
+            state thermodynamic_states[i] to thermodynamic_states[j] going
+            from iteration-1 to iteration (not cumulative).
+
+        """
+        iteration = self._calculate_last_iteration(iteration)
+        n_accepted_matrix = self._storage_analysis.variables['accepted'][iteration, :, :].astype(np.int64)
+        n_proposed_matrix = self._storage_analysis.variables['proposed'][iteration, :, :].astype(np.int64)
+        return n_accepted_matrix, n_proposed_matrix
+
+    def write_mixing_statistics(self, n_accepted_matrix, n_proposed_matrix, iteration):
+        """Store the mixing statistics for the given iteration on the analysis file
+
+        Parameters
+        ----------
+        n_accepted_matrix : kxk numpy.ndarray
+            n_accepted_matrix[i][j] is the number of accepted moves from
+            state thermodynamic_states[i] to thermodynamic_states[j] going
+            from iteration-1 to iteration (not cumulative).
+        n_proposed_matrix : kxk numpy.ndarray
+            n_proposed_matrix[i][j] is the number of proposed moves from
+            state thermodynamic_states[i] to thermodynamic_states[j] going
+            from iteration-1 to iteration (not cumulative).
+        iteration : int
+            The iteration at which to store the data.
+
+        """
+        # Create schema if necessary.
+        if 'accepted' not in self._storage_analysis.variables:
+            n_states = len(n_accepted_matrix)
+
+            # Create replica dimension if it wasn't already created.
+            if 'replica' not in self._storage_analysis.dimensions:
+                self._storage_analysis.createDimension('replica', n_states)
+
+            # Create variables with units and descriptions.
+            ncvar_accepted = self._storage_analysis.createVariable('accepted',
+                                                                   'i4',
+                                                                   ('iteration', 'replica', 'replica'),
+                                                                   zlib=False,
+                                                                   chunksizes=(1, n_states, n_states)
+                                                                   )
+            ncvar_proposed = self._storage_analysis.createVariable('proposed',
+                                                                   'i4',
+                                                                   ('iteration', 'replica', 'replica'),
+                                                                   zlib=False,
+                                                                   chunksizes=(1, n_states, n_states)
+                                                                   )
+            setattr(ncvar_accepted, 'units', 'none')
+            setattr(ncvar_proposed, 'units', 'none')
+            setattr(ncvar_accepted, 'long_name', ("accepted[iteration][i][j] is the number of proposed transitions "
+                                                  "between states i and j from iteration 'iteration-1'."))
+            setattr(ncvar_proposed, 'long_name', ("proposed[iteration][i][j] is the number of proposed transitions "
+                                                  "between states i and j from iteration 'iteration-1'."))
+
+        # Store statistics.
+        self._storage_analysis.variables['accepted'][iteration, :, :] = n_accepted_matrix[:, :]
+        self._storage_analysis.variables['proposed'][iteration, :, :] = n_proposed_matrix[:, :]
+
+    def read_timestamp(self, iteration=slice(None)):
+        """Return the timestamp for the given iteration.
+
+        Read from the analysis file, although there is a paired timestamp on the checkpoint file as well
+
+        Parameters
+        ----------
+        iteration : int or slice
+            The iteration(s) at which to read the data.
+
+        Returns
+        -------
+        timestamp : str
+            The timestamp at which the iteration was stored.
+
+        """
+        iteration = self._calculate_last_iteration(iteration)
+        return self._storage_analysis.variables['timestamp'][iteration]
+
+    def write_timestamp(self, iteration):
+        """Store a timestamp for the given iteration on both analysis and checkpoint file.
+
+        If the iteration is not on the checkpoint_interval, no timestamp is written
+
+        Parameters
+        ----------
+        iteration : int
+            The iteration at which to read the data.
+
+        """
+        # Create variable if needed.
+        for storage in self._storage:
+            if 'timestamp' not in storage.variables:
+                storage.createVariable('timestamp', str, ('iteration',), zlib=False, chunksizes=(1,))
+        timestamp = time.ctime()
+        self._storage_analysis.variables['timestamp'][iteration] = timestamp
+        checkpoint_iteration = self._calculate_checkpoint_iteration(iteration)
+        if checkpoint_iteration is not None:
+            self._storage_checkpoint.variables['timestamp'][checkpoint_iteration] = timestamp
+
+    def read_dict(self, name):
+        """Restore a dictionary from the storage file.
+
+        Parameters
+        ----------
+        name : str
+            The identifier of the dictionary used to stored the data.
+
+        Returns
+        -------
+        data : dict
+            The restored data as a dict.
+
+        """
+        # Leaving the skeleton to extend this in for now
+        storage = 'analysis'
+        if storage not in ['analysis', 'checkpoint']:
+            raise ValueError("storage must be either 'analysis' or 'checkpoint'!")
+        # Get NC variable.
+        nc_variable = self._resolve_variable_path(name, storage)
+        data_str = str(nc_variable[0])
+        data = yaml.load(data_str, Loader=_DictYamlLoader)
+
+        # Restore the title in the metadata.
+        if name == 'metadata':
+            data['title'] = self._storage_dict[storage].title
+        return data
+
+    def write_last_iteration(self, iteration):
+        """
+        Tell the reporter what the last iteration which was written in sequential order was to allow resuming and
+        analysis only on valid data.
+
+        Call this as the last step of any write_iteration-like routine to ensure analysis will not use junk data
+        left over from an interrupted simulation past the last checkpoint.
+
+        Parameters
+        ----------
+        iteration : int
+            Iteration at which the last good data point was written.
+        """
+        self._storage_analysis.variables['last_iteration'][0] = iteration
+
+    def read_last_iteration(self):
+        """
+        Read the last iteration from file which was written in sequential order. Used to check if there is junk data
+        which may have been written after the last checkpoint, but before the next one could be reached.
+
+        Returns
+        -------
+        last_iteration : int
+            Last iteration which was sequentially written
+        """
+        return int(self._storage_analysis.variables['last_iteration'][0])  # Make sure this is returned as Python Int
+
+    def write_dict(self, name, data):
+        """Store the contents of a dict.
+
+        Parameters
+        ----------
+        name : str
+            The identifier of the dictionary in the storage file.
+        data : dict
+            The dict to store.
+
+        """
+        # Leaving the skeleton to extend this in for now
+        storage = 'analysis'
+        if storage not in ['analysis', 'checkpoint']:
+            raise ValueError("storage must be either 'analysis' or 'checkpoint'!")
+        # General NetCDF conventions assume the title of the dataset to be
+        # specified as a global attribute, but the user can specify their
+        # own titles only in metadata.
+        if name == 'metadata':
+            data = copy.deepcopy(data)
+            self._storage_dict[storage].title = data.pop('title')
+
+        # Check if we are updating the dictionary or creating it.
+        try:
+            nc_variable = self._resolve_variable_path(name, storage)
+        except KeyError:
+            nc_variable = self._storage_dict[storage].createVariable(name, str, 'scalar')
+
+        # Activate flow style to save space.
+        data_str = yaml.dump(data, Dumper=_DictYamlDumper)#, default_flow_style=True)
+        packed_data = np.empty(1, 'O')
+        packed_data[0] = data_str
+        nc_variable[:] = packed_data
+
+    def get_previous_checkpoint(self, iteration):
+        """
+        Find the most recently written checkpoint given the iteration searching backwards.
+
+        This is the primary function for determining which iteration to resume from
+
+        Parameters
+        ----------
+        iteration : int
+            Iteration to search from
+
+        Returns
+        -------
+        checkpoint : int
+            The checkpoint closest to the iteration searching reverse
+        """
+        for i in range(iteration, -1, -1):  # -1 for stop ensures the 0th index is searched
+            if self._calculate_checkpoint_iteration(i) is not None:
+                return i
+        raise RuntimeError("Could not find a checkpoint! This should not happen as the 0th iteration should always "
+                           "be written! Please check your input.")
+
+    # -------------------------------------------------------------------------
+    # Internal-usage.
+    # -------------------------------------------------------------------------
+
+    def _resolve_variable_path(self, path, storage):
+        """Return the NC variable at the end of the path.
+
+        This can be used to retrieve variables inside one or more groups.
+
+        """
+        path_split = path.split('/')
+        nc_group = self._storage_dict[storage]
+        for group_name in path_split[:-1]:
+            nc_group = nc_group.groups[group_name]
+        return nc_group.variables[path_split[-1]]
+
+    def _calculate_checkpoint_iteration(self, iteration):
+        """Compute the iteration on disk of the checkpoint file matching the iteration linked on the analysis iteration.
+
+         Although this is a simple function, it provides a common function for calculation
+
+         Returns either the integer index, or None if there is no matched index
+         """
+        checkpoint_index = float(iteration) / self._checkpoint_interval
+        if checkpoint_index.is_integer():
+            output = int(checkpoint_index)
+        else:
+            output = None
+        return output
+
+    def _calculate_analysis_iteration(self, iteration):
+        """Compute the iteration on disk of the analysis file given the checkpoint iteration
+
+        Effectively the inverse of _calculate_checkpoint_iteration
+        """
+        return iteration * self._checkpoint_interval
+
+    def _calculate_last_iteration(self, iteration):
+        """
+        Convert the iteration in 'read_X' functions which take a iteration=slice(None)
+        to avoid returning a slice of data which goes past the last_iteration
+
+        Parameters
+        ----------
+        iteration : int or Slice
+            Iteration to feed into the check
+
+        Returns
+        -------
+        cast_iteration : int or Slice of type iteration
+            Iteration, converted as needed to only access certain ranges of data
+        """
+
+        last_good = self.read_last_iteration()
+        max_iter = len(self._storage_analysis.dimensions['iteration'])
+
+        def convert_negative_iteration(iteration):
+            return iteration - (max_iter - last_good - 1)
+
+        if last_good == max_iter - 1:
+            cast_iteration = iteration
+        else:
+            if type(iteration) is int:
+                throw = False
+                if iteration > last_good:  # check positive integer
+                    throw = True
+                elif iteration < 0:  # Operation on negative integer, recast
+                    # Convert negative integer to its mapped values
+                    cast_iteration = convert_negative_iteration(iteration)
+                    if cast_iteration < -max_iter:  # check against absolute size
+                        throw = True
+                else:
+                    cast_iteration = iteration
+                if throw:
+                    raise IndexError("Index out of range!")
+            elif type(iteration) is slice:
+                out_start = None
+                out_stop = None
+                # Condition the start, start must not exceed last good (positive) and must be greater than
+                if iteration.start is not None:
+                    if iteration.start > last_good:
+                        out_start = last_good
+                    elif iteration.start < 0:
+                        out_start = convert_negative_iteration(iteration.start)
+                # Condition end iteration
+                if iteration.stop is not None:
+                    if iteration.stop > last_good:
+                        out_stop = last_good + 1
+                    elif iteration.stop < 0:
+                        out_stop = convert_negative_iteration(iteration.stop) - 1
+                else:  # Trap special None cases for the "stop"
+                    # Trap the case of -step size, its easier to do all the conditions on which it is not that
+                    if iteration.step is None or (iteration.step is not None and iteration.step > 0):
+                        out_stop = last_good + 1
+                cast_iteration = slice(out_start, out_stop, iteration.step)
+            else:
+                raise ValueError("Iteration must be either an int or a slice!")
+        return cast_iteration
+
+
+# ==============================================================================
+# REPLICA-EXCHANGE SIMULATION
+# ==============================================================================
 
 class ReplicaExchange(object):
-    """
-    Replica-exchange simulation facility.
+    """Replica-exchange simulation facility.
 
-    This base class provides a general replica-exchange simulation facility, allowing any set of thermodynamic states
-    to be specified, along with a set of initial positions to be assigned to the replicas in a round-robin fashion.
-    No distinction is made between one-dimensional and multidimensional replica layout; by default, the replica mixing
-    scheme attempts to mix *all* replicas to minimize slow diffusion normally found in multidimensional replica exchange
-    simulations.  (Modification of the 'replica_mixing_scheme' setting will allow the tranditional 'neighbor swaps only'
-    scheme to be used.)
+    This base class provides a general replica-exchange simulation facility,
+    allowing any set of thermodynamic states to be specified, along with a
+    set of initial positions to be assigned to the replicas in a round-robin
+    fashion.
 
-    While this base class is fully functional, it does not make use of the special structure of parallel tempering or
-    Hamiltonian exchange variants of replica exchange.  The ParallelTempering and HamiltonianExchange classes should
-    therefore be used for these algorithms, since they are more efficient and provide more convenient ways to initialize
-    the simulation classes.
+    No distinction is made between one-dimensional and multidimensional replica
+    layout. By default, the replica mixing scheme attempts to mix *all* replicas
+    to minimize slow diffusion normally found in multidimensional replica exchange
+    simulations (Modification of the 'replica_mixing_scheme' setting will allow
+    the traditional 'neighbor swaps only' scheme to be used.)
 
-    Stored configurations, energies, swaps, and restart information are all written to a single output file using
-    the platform portable, robust, and efficient NetCDF4 library.  Plans for future HDF5 support are pending.
+    Stored configurations, energies, swaps, and restart information are all written
+    to a single output file using the platform portable, robust, and efficient
+    NetCDF4 library.
+
+    Parameters
+    ----------
+    mcmc_moves : MCMCMove or list of MCMCMove, optional
+        The MCMCMove used to propagate the states. If a list of MCMCMoves,
+        they will be assigned to the correspondent thermodynamic state on
+        creation. If None is provided, Langevin dynamics with 2fm timestep,
+        5.0/ps collision rate, and 500 steps per iteration will be used.
+    number_of_iterations : int, optional
+        The number of iterations to perform (default is 1).
+    replica_mixing_scheme : 'swap-all', 'swap-neighbors' or 'none'
+        The scheme used to swap thermodynamic states between replicas
+        (default is 'swap-all').
 
     Attributes
     ----------
-    The following parameters (attributes) can be set after the object has been created, but before it has been
-    initialized by a call to run():
-
-    collision_rate : simtk.unit.Quantity (units: 1/time)
-       The collision rate used for Langevin dynamics (default: 90 ps^-1)
-    constraint_tolerance : float
-       Relative constraint tolerance (default: 1e-6)
-    timestep : simtk.unit.Quantity (units: time)
-       Timestep for Langevin dyanmics (default: 2 fs)
-    nsteps_per_iteration : int
-       Number of timesteps per iteration (default: 500)
-    number_of_iterations : int
-       Number of replica-exchange iterations to simulate (default: 100)
-    number_of_equilibration_iterations : int
-       Number of equilibration iterations before beginning exchanges (default: 0)
-    equilibration_timestep : simtk.unit.Quantity (units: time)
-       Timestep for use in equilibration (default: 2 fs)
-    title : str
-       Title for the simulation.
-    minimize : bool
-       Minimize configurations before running the simulation (default: True)
-    minimize_tolerance : simtk.unit.Quantity (units: energy/mole/length)
-       Set minimization tolerance (default: 1.0 * unit.kilojoules_per_mole / unit.nanometers).
-    minimize_max_iterations : int
-       Maximum number of iterations for minimization.
-    replica_mixing_scheme : str
-       Specify how to mix replicas. Supported schemes are 'swap-neighbors' and
-       'swap-all' (default: 'swap-all').
-    online_analysis : bool
-       If True, analysis will occur each iteration (default: False).
-    online_analysis_min_iterations : int
-       Minimum number of iterations needed to begin online analysis (default: 20).
-    show_energies : bool
-       If True, will print energies at each iteration (default: True).
-    show_mixing_statistics : bool
-       If True, will show mixing statistics at each iteration (default: True).
-
-    TODO
-    ----
-    * Replace hard-coded Langevin dynamics with general MCMC moves.
-    * Allow parallel resource to be used, if available (likely via Parallel Python).
-    * Add support for and autodetection of other NetCDF4 interfaces.
-    * Add HDF5 support.
+    mcmc_moves
+    number_of_iterations
+    replica_mixing_scheme
 
     Examples
     --------
-    Parallel tempering simulation of alanine dipeptide in implicit solvent (replica exchange among temperatures)
-    (This is just an illustrative example; use ParallelTempering class for actual production parallel tempering simulations.)
+    Parallel tempering simulation of alanine dipeptide in implicit solvent (replica
+    exchange among temperatures). This is just an illustrative example; use ParallelTempering
+    class for actual production parallel tempering simulations.
 
-    >>> # Create test system.
-    >>> from openmmtools import testsystems
-    >>> testsystem = testsystems.AlanineDipeptideImplicit()
-    >>> [system, positions] = [testsystem.system, testsystem.positions]
-    >>> # Create thermodynamic states for parallel tempering with exponentially-spaced schedule.
-    >>> from simtk import unit
+    Create the system.
+
     >>> import math
-    >>> nreplicas = 3 # number of temperature replicas
-    >>> T_min = 298.0 * unit.kelvin # minimum temperature
-    >>> T_max = 600.0 * unit.kelvin # maximum temperature
-    >>> T_i = [ T_min + (T_max - T_min) * (math.exp(float(i) / float(nreplicas-1)) - 1.0) / (math.e - 1.0) for i in range(nreplicas) ]
-    >>> states = [ ThermodynamicState(system=system, temperature=T_i[i]) for i in range(nreplicas) ]
-    >>> import tempfile
-    >>> store_filename = tempfile.NamedTemporaryFile(delete=False).name + '.nc'
-    >>> # Create simulation.
-    >>> simulation = ReplicaExchange(store_filename)
-    >>> simulation.create(states, positions) # initialize the replica-exchange simulation
-    >>> simulation.minimize = False
-    >>> simulation.number_of_iterations = 2 # set the simulation to only run 2 iterations
-    >>> simulation.timestep = 2.0 * unit.femtoseconds # set the timestep for integration
-    >>> simulation.nsteps_per_iteration = 50 # run 50 timesteps per iteration
-    >>> simulation.run() # run the simulation
-    >>> del simulation # clean up
+    >>> from simtk import unit
+    >>> from openmmtools import testsystems, states, mcmc
+    >>> testsystem = testsystems.AlanineDipeptideImplicit()
 
-    Extend the simulation
+    Create thermodynamic states for parallel tempering with exponentially-spaced schedule.
 
-    >>> simulation = ReplicaExchange(store_filename)
-    >>> simulation.resume()
-    >>> simulation.number_of_iterations = 4 # extend
-    >>> simulation.run()
+    >>> n_replicas = 3  # Number of temperature replicas.
+    >>> T_min = 298.0 * unit.kelvin  # Minimum temperature.
+    >>> T_max = 600.0 * unit.kelvin  # Maximum temperature.
+    >>> temperatures = [T_min + (T_max - T_min) * (math.exp(float(i) / float(nreplicas-1)) - 1.0) / (math.e - 1.0)
+    ...                 for i in range(n_replicas)]
+    >>> thermodynamic_states = [states.ThermodynamicState(system=testsystem.system, temperature=T)
+    ...                         for T in temperatures]
+
+    Initialize simulation object with options. Run with a GHMC integrator.
+
+    >>> move = mcmc.GHMCMove(timestep=2.0*unit.femtoseconds, n_steps=50)
+    >>> simulation = ReplicaExchange(mcmc_moves=move, number_of_iterations=2)
+
+    Create simulation with its storage file (in a temporary directory) and run.
+
+    >>> storage_path = tempfile.NamedTemporaryFile(delete=False).name + '.nc'
+    >>> reporter = Reporter(storage_path, checkpoint_interval=1)
+    >>> simulation.create(thermodynamic_states=thermodynamic_states,
+    >>>                   sampler_states=states.SamplerState(testsystem.positions),
+    >>>                   storage=reporter)
+    >>> simulation.run()  # This runs for a maximum of 2 iterations.
+    >>> simulation.iteration
+    2
+    >>> simulation.run(n_iterations=1)
+    >>> simulation.iteration
+    2
+
+    To resume a simulation from an existing storage file and extend it beyond
+    the original number of iterations.
+
+    >>> del simulation
+    >>> simulation = ReplicaExchange.from_storage(reporter)
+    >>> simulation.extend(n_iterations=1)
+    >>> simulation.iteration
+    3
+
+    You can extract several information from the NetCDF file using the Reporter
+    class while the simulation is running. This reads the SamplerStates of every
+    run iteration.
+
+    >>> reporter = Reporter(storage=storage_path, open_mode='r', checkpoint_interval=1)
+    >>> sampler_states = reporter.read_sampler_states(iteration=range(1, 4))
+    >>> len(sampler_states)
+    3
+    >>> sampler_states[-1].positions.shape  # Alanine dipeptide has 22 atoms.
+    (22, 3)
 
     Clean up.
 
-    >>> os.remove(store_filename)
+    >>> os.remove(storage_path)
 
     """
 
-    default_parameters = {'collision_rate': 5.0 / unit.picosecond,
-                          'constraint_tolerance': 1.0e-6,
-                          'timestep': 2.0 * unit.femtosecond,
-                          'nsteps_per_iteration': 500,
-                          'number_of_iterations': 1,
-                          'number_of_extension_iterations': 0,  # Do not save this option as its an on-the-fly setting
-                          'equilibration_timestep': 1.0 * unit.femtosecond,
-                          'number_of_equilibration_iterations': 1,
-                          'title': 'Replica-exchange simulation created using ReplicaExchange class of repex.py on %s' % time.asctime(time.localtime()),
-                          'minimize': True,
-                          'minimize_tolerance': 1.0 * unit.kilojoules_per_mole / unit.nanometers,
-                          'minimize_max_iterations': 0,
-                          'replica_mixing_scheme': 'swap-all',
-                          'online_analysis': False,
-                          'online_analysis_min_iterations': 20,
-                          'show_energies': True,
-                          'show_mixing_statistics': True
-                          }
+    # -------------------------------------------------------------------------
+    # Constructors.
+    # -------------------------------------------------------------------------
 
-    # Options to store.
-    options_to_store = ['collision_rate', 'constraint_tolerance', 'timestep', 'nsteps_per_iteration',
-                        'number_of_iterations', 'equilibration_timestep', 'number_of_equilibration_iterations', 'title',
-                        'minimize', 'replica_mixing_scheme', 'online_analysis', 'show_mixing_statistics']
+    def __init__(self, mcmc_moves=None, number_of_iterations=1, replica_mixing_scheme='swap-all'):
 
-    def __init__(self, store_filename, mpicomm=None, platform=None, mm=None, **kwargs):
-        """
-        Initialize replica-exchange simulation facility.
+        # Check argument values.
+        if replica_mixing_scheme not in self._SUPPORTED_MIXING_SCHEMES:
+            raise ValueError("Unknown replica mixing scheme '{}'. Supported values are {}.".format(
+                replica_mixing_scheme, self._SUPPORTED_MIXING_SCHEMES))
 
-        Parameters
-        ----------
-        store_filename : string
-           Name of file to bind simulation to use as storage for checkpointing and storage of results.
-        mm : implementation of simtk.openmm, optional, default=simtk.openmm
-           OpenMM API implementation to use
-        mpicomm : mpi4py communicator, optional, default=None
-           MPI communicator, if parallel execution is desired
-        platform : simtk.openmm.Platform, optional, default=None
-            Platform to use for execution. If None, the fastest available platform is used.
-
-        Other Parameters
-        ----------------
-        **kwargs
-            Parameters in ReplicaExchange.default_parameters corresponding public attributes.
-
-        """
-        # To allow for parameters to be modified after object creation, class is not initialized until a call to self._initialize().
-        self._initialized = False
-
-        # Select default OpenMM implementation if not specified.
-        self.mm = mm
-        if mm is None: self.mm = openmm
-
-        # Set MPI communicator (or None if not used).
-        self.mpicomm = mpicomm
-
-        # Set default options.
-        # These can be changed externally until object is initialized.
-        self.platform = platform
-        self.integrator = None # OpenMM integrator to use for propagating dynamics
-
-        # Initialize keywords parameters and check for unknown keywords parameters
-        for par, default in self.default_parameters.items():
-            setattr(self, par, kwargs.pop(par, default))
-        if kwargs:
-            raise TypeError('got an unexpected keyword arguments {}'.format(
-                ', '.join(kwargs.keys())))
-
-        # Record store file filename
-        self.store_filename = store_filename
-
-        # Check if netcdf file exists, assuming we want to resume if one exists.
-        self._resume = os.path.exists(self.store_filename) and (os.path.getsize(self.store_filename) > 0)
-        if self.mpicomm:
-            logger.debug('Node {}/{}: MPI bcast - sharing self._resume'.format(
-                    self.mpicomm.rank, self.mpicomm.size))
-            self._resume = self.mpicomm.bcast(self._resume, root=0)  # use whatever root node decides
-
-        return
-
-    def create(self, states, positions, options=None, metadata=None):
-        """
-        Create new replica-exchange simulation.
-
-        Parameters
-        ----------
-        states : list of ThermodynamicState
-           Thermodynamic states to simulate, where one replica is allocated per state.
-           Each state must have a system with the same number of atoms, and the same
-           thermodynamic ensemble (combination of temperature, pressure, pH, etc.) must
-           be defined for each.
-        positions : Coordinate object or iterable container of Coordinate objects)
-           One or more sets of initial positions
-           to be initially assigned to replicas in a round-robin fashion, provided simulation is not resumed from store file.
-           Currently, positions must be specified as a list of simtk.unit.Quantity-wrapped np arrays.
-        options : dict, optional, default=None
-           Optional dict to use for specifying simulation options. Provided keywords will be matched to object variables to replace defaults.
-        metadata : dict, optional, default=None
-           metadata to store in a 'metadata' group in store file
-
-        """
-
-        # Check if netcdf file exists.
-        file_exists = os.path.exists(self.store_filename) and (os.path.getsize(self.store_filename) > 0)
-        if self.mpicomm:
-            logger.debug('Node {}/{}: MPI bcast - sharing file_exists'.format(
-                    self.mpicomm.rank, self.mpicomm.size))
-            file_exists = self.mpicomm.bcast(file_exists, root=0)  # use whatever root node decides
-        if file_exists:
-            raise RuntimeError("NetCDF file %s already exists; cowardly refusing to overwrite." % self.store_filename)
-        self._resume = False
-
-        # TODO: Make a deep copy of specified states once this is fixed in OpenMM.
-        # self.states = copy.deepcopy(states)
-        self.states = states
-
-        # Determine number of replicas from the number of specified thermodynamic states.
-        self.nreplicas = len(self.states)
-
-        # Check to make sure all states have the same number of atoms and are in the same thermodynamic ensemble.
-        for state in self.states:
-            if not state.is_compatible_with(self.states[0]):
-                raise ParameterError("Provided ThermodynamicState states must all be from the same thermodynamic ensemble.")
-
-        # Distribute coordinate information to replicas in a round-robin fashion.
-        # We have to explicitly check to see if z is a list or a set here because it turns out that np 2D arrays are iterable as well.
-        # TODO: Handle case where positions are passed in as a list of tuples, or list of lists, or list of Vec3s, etc.
-        if type(positions) in [type(list()), type(set())]:
-            self.provided_positions = [ unit.Quantity(np.array(coordinate_set / coordinate_set.unit), coordinate_set.unit) for coordinate_set in positions ]
+        # Handling default propagator.
+        if mcmc_moves is None:
+            # This will be converted to a list in create().
+            self._mcmc_moves = mmtools.mcmc.LangevinDynamicsMove(timestep=2.0*unit.femtosecond,
+                                                                 collision_rate=5.0/unit.picosecond,
+                                                                 n_steps=500, reassign_velocities=True,
+                                                                 n_restart_attempts=6)
         else:
-            self.provided_positions = [ unit.Quantity(np.array(positions / positions.unit), positions.unit) ]
+            self._mcmc_moves = copy.deepcopy(mcmc_moves)
 
-        # Handle provided 'options' dict, replacing any options provided by caller in dictionary.
-        if options is not None:
-            for key in options.keys(): # for each provided key
-                if key in vars(self).keys(): # if this is also a simulation parameter
-                    value = options[key]
-                    logger.debug("from options: %s -> %s" % (key, str(value)))
-                    vars(self)[key] = value # replace default simulation parameter with provided parameter
+        # Store constructor parameters. Everything is marked for internal
+        # usage because any change to these attribute implies a change
+        # in the storage file as well.
+        self._number_of_iterations = number_of_iterations
+        self._replica_mixing_scheme = replica_mixing_scheme
 
-        # Store metadata to store in store file.
-        self.metadata = metadata
+        # These will be set on initialization. See function
+        # create() for explanation of single variables.
+        self._thermodynamic_states = None
+        self._unsampled_states = None
+        self._sampler_states = None
+        self._replica_thermodynamic_states = None
+        self._iteration = None
+        self._energy_thermodynamic_states = None
+        self._energy_unsampled_states = None
+        self._n_accepted_matrix = None
+        self._n_proposed_matrix = None
+        self._reporter = None
+        self._metadata = None
+        # Handle checkpointing
+        self._checkpoint_interval = None
 
-        # Initialize NetCDF file.
-        self._initialize_create()
+    @classmethod
+    def from_storage(cls, storage):
+        """Constructor from an existing storage file.
 
-        return
-
-    def resume(self, options=None):
-        """
         Parameters
         ----------
-        options : dict, optional, default=None
-           will override any options restored from the store file.
+        storage : str or Reporter
+            If str: The path to the storage file.
+            If Reporter: uses the Reporter options
+            In the future this will be able to take a Storage class as well.
+
+        Returns
+        -------
+        repex : ReplicaExchange
+            A new instance of ReplicaExchange in the same state of the
+            last stored iteration.
 
         """
-        self._resume = True
+        # Check if netcdf file exists, open data for read if it does
+        if type(storage) is str:
+            # Open a reporter to read the data.
+            reporter = Reporter(storage, open_mode='r')
+            file_name = storage
+        else:
+            reporter = storage
+            reporter.open(mode='r')
+            file_name = reporter.filename
+        if not reporter.storage_exists():
+            reporter.close()
+            raise RuntimeError('Storage file {} or its subfiles do not exist; cannot resume.'.format(file_name))
 
-        # Check if netcdf file exists.
-        file_exists = os.path.exists(self.store_filename) and (os.path.getsize(self.store_filename) > 0)
-        if self.mpicomm:
-            logger.debug('Node {}/{}: MPI bcast - sharing file_exists'.format(
-                    self.mpicomm.rank, self.mpicomm.size))
-            file_exists = self.mpicomm.bcast(file_exists, root=0)  # use whatever root node decides
-        if not file_exists:
-            raise Exception("NetCDF file %s does not exist; cannot resume." % self.store_filename)
+        # Retrieve options and create new simulation.
+        options = reporter.read_dict('options')
+        options['mcmc_moves'] = reporter.read_mcmc_moves()
+        repex = cls(**options)
 
-        # Try to restore thermodynamic states and run options from the NetCDF file.
-        ncfile = netcdf.Dataset(self.store_filename, 'r')
-        self._restore_thermodynamic_states(ncfile)
-        self._restore_options(ncfile)
-        self._restore_metadata(ncfile)
-        ncfile.close()
+        # Display papers to be cited.
+        repex._display_citations()
 
-        # Determine number of replicas from the number of specified thermodynamic states.
-        self.nreplicas = len(self.states)
+        # Read the last iteration reported to ensure we dont include junk data written
+        # just before a crash, but not before it could then be overwritten.
+        iteration = reporter.read_last_iteration()
 
-        # Check to make sure all states have the same number of atoms and are in the same thermodynamic ensemble.
-        for state in self.states:
-            if not state.is_compatible_with(self.states[0]):
-                raise ParameterError("Provided ThermodynamicState states must all be from the same thermodynamic ensemble.")
+        # Retrieve other attributes.
+        logger.debug("Reading storage file {}...".format(file_name))
+        checkpoint_iteration = reporter.get_previous_checkpoint(iteration)
+        # Find closest checkpoint
+        if iteration != checkpoint_iteration:
+            logger.debug("Last known checkpoint at iteration {0}. "
+                         "Restoring from iteration {0} instead of {1}".format(checkpoint_iteration, iteration))
+            iteration = checkpoint_iteration
+        thermodynamic_states, unsampled_states = reporter.read_thermodynamic_states()
+        sampler_states = reporter.read_sampler_states(iteration=iteration)
+        state_indices = reporter.read_replica_thermodynamic_states(iteration=iteration)
+        energy_thermodynamic_states, energy_unsampled_states = reporter.read_energies(iteration=iteration)
+        n_accepted_matrix, n_proposed_matrix = reporter.read_mixing_statistics(iteration=iteration)
+        metadata = reporter.read_dict('metadata')
 
-        # Handle provided 'options' dict, replacing any options provided by caller in dictionary.
-        # TODO: Check to make sure that only allowed overrides are specified.
-        if options:
-            for key in options.keys(): # for each provided key
-                if key in vars(self).keys(): # if this is also a simulation parameter
-                    value = options[key]
-                    logger.debug("from options: %s -> %s" % (key, str(value)))
-                    vars(self)[key] = value # replace default simulation parameter with provided parameter
+        # Close reading reporter.
+        reporter.close()
 
-        return
+        # Assign attributes.
+        repex._iteration = iteration
+        repex._thermodynamic_states = thermodynamic_states
+        repex._unsampled_states = unsampled_states
+        repex._sampler_states = sampler_states
+        repex._replica_thermodynamic_states = state_indices
+        repex._energy_thermodynamic_states = energy_thermodynamic_states
+        repex._energy_unsampled_states = energy_unsampled_states
+        repex._n_accepted_matrix = n_accepted_matrix
+        repex._n_proposed_matrix = n_proposed_matrix
+        repex._metadata = metadata
+
+        # We open the reporter only in node 0.
+        repex._reporter = reporter
+        mpi.run_single_node(0, repex._reporter.open, mode='a',
+                            broadcast_result=False, sync_nodes=False)
+        # Don't write the new last iteration, we have not technically written anything yet, so there is no "junk"
+        return repex
+
+    # -------------------------------------------------------------------------
+    # Public properties.
+    # -------------------------------------------------------------------------
+
+    @property
+    def n_replicas(self):
+        """The number of replicas (read-only)."""
+        if self._thermodynamic_states is None:
+            return 0
+        else:
+            return len(self._thermodynamic_states)
+
+    @property
+    def iteration(self):
+        """The current iteration of the simulation (read-only).
+
+        If the simulation has not been created yet, this is None.
+
+        """
+        return self._iteration
+
+    @property
+    def mcmc_moves(self):
+        """A copy of the MCMCMoves used to propagate the simulation.
+
+        This can be set only before creation.
+
+        """
+        return copy.deepcopy(self._mcmc_moves)
+
+    @mcmc_moves.setter
+    def mcmc_moves(self, new_value):
+        if self._thermodynamic_states is not None:
+            # We can't modify representation of the MCMCMoves because it's
+            # impossible to delete groups/variables from an NetCDF file. We
+            # could support this by JSONizing the dict serialization and
+            # store it as a string instead, if we needed this.
+            raise RuntimeError('Cannot modify MCMCMoves after creation.')
+        # If this is a single MCMCMove, it'll be transformed to a list in create().
+        self._mcmc_moves = copy.deepcopy(new_value)
+
+    @property
+    def sampler_states(self):
+        """A copy of the sampler states at the current iteration.
+
+        This can be set only before running.
+        """
+        return copy.deepcopy(self._sampler_states)
+
+    @sampler_states.setter
+    def sampler_states(self, value):
+        if self._iteration != 0:
+            raise RuntimeError('Sampler states can be assigned only between '
+                               'create() and run().')
+        if len(value) != self.n_replicas:
+            raise ValueError('Passed {} sampler states for {} replicas'.format(
+                len(value), self.n_replicas))
+
+        # Update sampler state in the object and on storage.
+        self._sampler_states = copy.deepcopy(value)
+        mpi.run_single_node(0, self._reporter.write_sampler_states,
+                            self._sampler_states, self._iteration)
+
+    class _StoredProperty(object):
+        """Descriptor of a property stored as an option."""
+        def __init__(self, option_name):
+            self._option_name = option_name
+
+        def __get__(self, instance, owner_class=None):
+            return getattr(instance, '_' + self._option_name)
+
+        def __set__(self, instance, new_value):
+            if (self._option_name == 'replica_mixing_scheme' and
+                        new_value not in ReplicaExchange._SUPPORTED_MIXING_SCHEMES):
+                raise ValueError(("Unknown replica mixing scheme '{}'. Supported values "
+                                  "are {}.").format(new_value, self._SUPPORTED_MIXING_SCHEMES))
+            setattr(instance, '_' + self._option_name, new_value)
+            mpi.run_single_node(0, instance._store_options)
+
+    number_of_iterations = _StoredProperty('number_of_iterations')
+    replica_mixing_scheme = _StoredProperty('replica_mixing_scheme')
+
+    @property
+    def metadata(self):
+        """A copy of the metadata passed on creation (read-only)."""
+        return copy.deepcopy(self._metadata)
+
+    # -------------------------------------------------------------------------
+    # Main public interface.
+    # -------------------------------------------------------------------------
+
+    def create(self, thermodynamic_states, sampler_states, storage, unsampled_thermodynamic_states=None, metadata=None):
+        """Create new replica-exchange simulation.
+
+        Parameters
+        ----------
+        thermodynamic_states : list of openmmtools.states.ThermodynamicState
+            Thermodynamic states to simulate, where one replica is allocated per state.
+            Each state must have a system with the same number of atoms.
+        sampler_states : openmmtools.states.SamplerState or list
+            One or more sets of initial sampler states. If a list of SamplerStates,
+            they will be assigned to replicas in a round-robin fashion.
+        storage : str or instanced Reporter
+            If str: the path to the storage file. Default checkpoint options from Reporter class are used
+            If Reporter: Uses the reporter options and storage path
+            In the future this will be able to take a Storage class as well.
+        unsampled_thermodynamic_states : list of openmmtools.states.ThermodynamicState, optional
+            These are ThermodynamicStates that are not propagated, but their
+            reduced potential is computed at each iteration for each replica.
+            These energy can be used as data for reweighting schemes (default
+            is None).
+        metadata : dict, optional
+           Simulation metadata to be stored in the file.
+        """
+        # Check if netcdf files exist. This is run only on MPI node 0 and
+        # broadcasted. This is to avoid the case where the other nodes
+        # arrive to this line after node 0 has already created the storage
+        # file, causing an error.
+        files_exist = False
+        # Create temporary reporter
+        if type(storage) is str:
+            reporter = Reporter(storage, open_mode=None)
+            file_string = storage
+        else:
+            reporter = storage
+            file_string = reporter.filename
+        if mpi.run_single_node(0, reporter.storage_exists, broadcast_result=True):
+            files_exist = True
+        if files_exist:
+            raise RuntimeError("Storage file {} already exists; cowardly "
+                               "refusing to overwrite.".format(file_string))
+
+        # Make sure sampler_states is an iterable of SamplerStates for later.
+        if isinstance(sampler_states, mmtools.states.SamplerState):
+            sampler_states = [sampler_states]
+
+        # Make sure there are no more sampler states than thermodynamic states.
+        if len(sampler_states) > len(thermodynamic_states):
+            raise ValueError('Passed {} SamplerStates but only {} ThermodynamicStates'.format(
+                len(sampler_states), len(thermodynamic_states)))
+
+        # Make sure all states have same number of particles. We don't
+        # currently support writing storage with different n_particles
+        n_particles = thermodynamic_states[0].n_particles
+        for states in [thermodynamic_states, sampler_states]:
+            for state in states:
+                if state.n_particles != n_particles:
+                    raise ValueError('All ThermodynamicStates and SamplerStates must '
+                                     'have the same number of particles')
+
+        # Handle default argument for metadata and add default simulation title.
+        default_title = ('Replica-exchange simulation created using ReplicaExchange class '
+                         'of yank.repex.py on {}'.format(time.asctime(time.localtime())))
+        if metadata is None:
+            metadata = dict(title=default_title)
+        elif 'title' not in metadata:
+            metadata['title'] = default_title
+        self._metadata = metadata
+
+        # Save thermodynamic states. This sets n_replicas.
+        self._thermodynamic_states = copy.deepcopy(thermodynamic_states)
+
+        # Handle default unsampled thermodynamic states.
+        if unsampled_thermodynamic_states is None:
+            self._unsampled_states = []
+        else:
+            self._unsampled_states = copy.deepcopy(unsampled_thermodynamic_states)
+
+        # Distribute sampler states to replicas in a round-robin fashion.
+        self._sampler_states = [copy.deepcopy(sampler_states[i % len(sampler_states)])
+                                for i in range(self.n_replicas)]
+
+        # Map each thermodynamic state to a replica. Replica i at each iteration is
+        # in ThermodynamicState thermodynamic_states[replica_thermodynamic_states[i]]
+        # and SamplerState sampler_states[i]. During mixing, we exchange the indices
+        # of the ThermodynamicState, but we keep the SamplerStates (i.e. positions,
+        # velocities, box_vectors) bound to the same replica.
+        self._replica_thermodynamic_states = np.array([i for i in range(self.n_replicas)], np.int64)
+
+        # Assign default system box vectors if None has been specified.
+        for replica_id, thermodynamic_state_id in enumerate(self._replica_thermodynamic_states):
+            sampler_state = self._sampler_states[replica_id]
+            if sampler_state.box_vectors is not None:
+                continue
+            thermodynamic_state = self._thermodynamic_states[thermodynamic_state_id]
+            sampler_state.box_vectors = thermodynamic_state.system.getDefaultPeriodicBoxVectors()
+
+        # Ensure there is an MCMCMove for each thermodynamic state.
+        if isinstance(self._mcmc_moves, mmtools.mcmc.MCMCMove):
+            self._mcmc_moves = [copy.deepcopy(self._mcmc_moves) for _ in range(self.n_replicas)]
+        elif len(self._mcmc_moves) != self.n_replicas:
+            raise RuntimeError('The number of MCMCMoves ({}) and ThermodynamicStates ({}) must '
+                               'be the same.'.format(len(self._mcmc_moves), self.n_replicas))
+
+        # Reset iteration counter.
+        self._iteration = 0
+
+        # Reset statistics.
+        # _n_accepted_matrix[i][j] is the number of swaps proposed between thermodynamic states i and j.
+        # _n_proposed_matrix[i][j] is the number of swaps proposed between thermodynamic states i and j.
+        self._n_accepted_matrix = np.zeros([self.n_replicas, self.n_replicas], np.int64)
+        self._n_proposed_matrix = np.zeros([self.n_replicas, self.n_replicas], np.int64)
+
+        # Allocate memory for energy matrix. energy_thermodynamic/unsampled_states[k][l]
+        # is the reduced potential computed at the positions of SamplerState sampler_states[k]
+        # and ThermodynamicState thermodynamic/unsampled_states[l].
+        self._energy_thermodynamic_states = np.zeros([self.n_replicas, self.n_replicas], np.float64)
+        self._energy_unsampled_states = np.zeros([self.n_replicas, len(self._unsampled_states)], np.float64)
+
+        # Display papers to be cited.
+        self._display_citations()
+
+        # Close the reporter file so its ready for use
+        reporter.close()
+        self._reporter = reporter
+        self._initialize_reporter()
+
+    @mmtools.utils.with_timer('Minimizing all replicas')
+    def minimize(self, tolerance=1.0*unit.kilojoules_per_mole/unit.nanometers,
+                 max_iterations=0):
+        """Minimize all replicas.
+
+        Minimized positions are stored at the end.
+
+        Parameters
+        ----------
+        tolerance : simtk.unit.Quantity, optional
+            Minimization tolerance (units of energy/mole/length, default is
+            1.0 * unit.kilojoules_per_mole / unit.nanometers).
+        max_iterations : int, optional
+            Maximum number of iterations for minimization. If 0, minimization
+            continues until converged.
+
+        """
+        # Check that simulation has been created.
+        if self.n_replicas == 0:
+            raise RuntimeError('Cannot minimize replicas. The simulation must be created first.')
+
+        logger.debug("Minimizing all replicas...")
+
+        # Distribute minimization across nodes. Only node 0 will get all positions.
+        # The other nodes, only need the positions that they use for propagation and
+        # computation of the energy matrix entries.
+        minimized_positions, sampler_state_ids = mpi.distribute(self._minimize_replica, range(self.n_replicas),
+                                                                tolerance, max_iterations,
+                                                                send_results_to=0)
+
+        # Update all sampler states. For non-0 nodes, this will update only the
+        # sampler states associated to the replicas propagated by this node.
+        for sampler_state_id, minimized_pos in zip(sampler_state_ids, minimized_positions):
+            self._sampler_states[sampler_state_id].positions = minimized_pos
+
+        # Save the stored positions in the storage
+        mpi.run_single_node(0, self._reporter.write_sampler_states, self._sampler_states, self._iteration)
+
+    def equilibrate(self, n_iterations, mcmc_moves=None):
+        """Equilibrate all replicas.
+
+        This does not increase the iteration counter. The equilibrated
+        positions are stored at the end.
+
+        Parameters
+        ----------
+        n_iterations : int
+            Number of equilibration iterations.
+        mcmc_moves : MCMCMove or list of MCMCMove, optional
+            Optionally, the MCMCMoves to use for equilibration can be
+            different from the ones used in production.
+
+        """
+        # Check that simulation has been created.
+        if self.n_replicas == 0:
+            raise RuntimeError('Cannot minimize replicas. The simulation must be created first.')
+
+        # If no MCMCMove is specified, use the ones for production.
+        if mcmc_moves is None:
+            mcmc_moves = self._mcmc_moves
+
+        # Make sure there is one MCMCMove per thermodynamic state.
+        if isinstance(mcmc_moves, mmtools.mcmc.MCMCMove):
+            mcmc_moves = [copy.deepcopy(mcmc_moves) for _ in range(self.n_replicas)]
+        elif len(mcmc_moves) != self.n_replicas:
+            raise RuntimeError('The number of MCMCMoves ({}) and ThermodynamicStates ({}) for equilibration'
+                               ' must be the same.'.format(len(self._mcmc_moves), self.n_replicas))
+
+        # Temporarily set the equilibration MCMCMoves.
+        production_mcmc_moves = self._mcmc_moves
+        self._mcmc_moves = mcmc_moves
+        for iteration in range(n_iterations):
+            logger.debug("Equilibration iteration {}/{}".format(iteration, n_iterations))
+            self._propagate_replicas()
+
+        # Restore production MCMCMoves.
+        self._mcmc_moves = production_mcmc_moves
+
+        # Update stored positions.
+        mpi.run_single_node(0, self._reporter.write_sampler_states, self._sampler_states, self._iteration)
+
+    def run(self, n_iterations=None):
+        """Run the replica-exchange simulation.
+
+        This runs at most `number_of_iterations` iterations. Use `extend()`
+        to pass the limit.
+
+        Parameters
+        ----------
+        n_iterations : int, optional
+           If specified, only at most the specified number of iterations
+           will be run (default is None).
+
+        """
+        # If this is the first iteration, compute and store the
+        # starting energies of the minimized/equilibrated structures.
+        if self._iteration == 0:
+            self._compute_energies()
+            mpi.run_single_node(0, self._reporter.write_energies, self._energy_thermodynamic_states,
+                                self._energy_unsampled_states, self._iteration)
+            self._check_nan_energy()
+
+        timer = mmtools.utils.Timer()
+        timer.start('Run ReplicaExchange')
+        run_initial_iteration = self._iteration
+
+        # Handle default argument and determine number of iterations to run.
+        if n_iterations is None:
+            iteration_limit = self._number_of_iterations - self._iteration
+        else:
+            iteration_limit = min(self._iteration + n_iterations, self._number_of_iterations)
+
+        while self._iteration < iteration_limit:
+            # Increment iteration counter.
+            self._iteration += 1
+
+            logger.debug('Iteration {}/{}'.format(self._iteration, iteration_limit))
+            timer.start('Iteration')
+
+            # Attempt replica swaps to sample from equilibrium permuation of
+            # states associated with replicas. This step synchronizes replicas.
+            self._replica_thermodynamic_states = self._mix_replicas()
+
+            # Propagate replicas.
+            self._propagate_replicas()
+
+            # Compute energies of all replicas at all states.
+            self._compute_energies()
+
+            # Write iteration to storage file.
+            self._report_iteration()
+
+            # Show timing statistics if debug level is activated.
+            if logger.isEnabledFor(logging.DEBUG):
+                iteration_time = timer.stop('Iteration')
+                partial_total_time = timer.partial('Run ReplicaExchange')
+                time_per_iteration = partial_total_time / (self._iteration - run_initial_iteration)
+                estimated_time_remaining = time_per_iteration * (iteration_limit - self._iteration)
+                estimated_total_time = time_per_iteration * iteration_limit
+                estimated_finish_time = partial_total_time + estimated_time_remaining
+                logger.debug("Iteration took {:.3f}s.".format(iteration_time))
+                logger.debug("Estimated completion in {}, at {} (consuming total wall clock time {}).".format(
+                    str(datetime.timedelta(seconds=estimated_time_remaining)), time.ctime(estimated_finish_time),
+                    str(datetime.timedelta(seconds=estimated_total_time))))
+
+            # Perform sanity checks to see if we should terminate here.
+            self._check_nan_energy()
+
+    def extend(self, n_iterations):
+        """Extend the simulation by the given number of iterations.
+
+        Contrarily to `run()`, this will extend the number of iterations past
+        `number_of_iteration` if requested.
+
+        Parameters
+        ----------
+        n_iterations : int
+           The number of iterations to run.
+
+        """
+        if self._iteration + n_iterations > self._number_of_iterations:
+            self.number_of_iterations = self._iteration + n_iterations
+        self.run(n_iterations)
 
     def __repr__(self):
-        """
-        Return a 'formal' representation that can be used to reconstruct the class, if possible.
-
-        """
-
+        """Return a 'formal' representation that can be used to reconstruct the class, if possible."""
         # TODO: Can we make this a more useful expression?
         return "<instance of ReplicaExchange>"
 
@@ -755,9 +1660,7 @@ class ReplicaExchange(object):
         Show an 'informal' human-readable representation of the replica-exchange simulation.
 
         """
-
-        r =  ""
-        r += "Replica-exchange simulation\n"
+        r = "Replica-exchange simulation\n"
         r += "\n"
         r += "{:d} replicas\n".format(self.nreplicas)
         r += "{:d} coordinate sets provided\n".format(len(self.provided_positions))
@@ -770,384 +1673,56 @@ class ReplicaExchange(object):
         r += "timestep: {:s}\n".format(self.timestep)
         r += "number of steps/iteration: {:d}\n".format(self.nsteps_per_iteration)
         r += "number of iterations: {:d}\n".format(self.number_of_iterations)
-        if self.number_of_extension_iterations > 0:
-            r += "extended by {:d}\n".format(self.number_of_extension_iterations)
+        if self.extend_simulation:
+            r += "Iterations extending existing data.\n"
         r += "equilibration timestep: {:s}\n".format(self.equilibration_timestep)
         r += "number of equilibration iterations: {:d}\n".format(self.number_of_equilibration_iterations)
         r += "\n"
 
         return r
 
-    @classmethod
-    def _status_from_ncfile(cls, ncfile):
-        """
-        Return status dict of current calculation.
-
-        Returns
-        -------
-        status : dict
-           Returns a dict of useful information about current simulation progress.
-
-        """
-        status = dict()
-
-        status['number_of_iterations'] = ncfile.variables['positions'].shape[0]
-        status['nstates'] = ncfile.variables['positions'].shape[1]
-        status['natoms'] = ncfile.variables['positions'].shape[2]
-
-        return status
-
-    @classmethod
-    def status_from_store(cls, store_filename):
-        """
-        Return status dict of calculation on disk.
-
-        Parameters
-        ----------
-        store_filename : str
-           The name of the NetCDF storage filename.
-
-        Returns
-        -------
-        status : dict
-           Returns a dict of useful information about current simulation progress.
-
-        """
-        ncfile = netcdf.Dataset(store_filename, 'r')
-        status = ReplicaExchange._status_from_ncfile(ncfile)
-        ncfile.close()
-        return status
-
-    def status(self):
-        """
-        Return status dict of current calculation.
-
-        Returns
-        -------
-        status : dict
-           Returns a dict of useful information about current simulation progress.
-
-        """
-        ncfile = netcdf.Dataset(self.store_filename, 'r')
-        status = ReplicaExchange._status_from_ncfile(self.ncfile)
-        ncfile.close()
-
-        return status
-
-    def run(self, niterations_to_run=None):
-        """
-        Run the replica-exchange simulation.
-
-        Any parameter changes (via object attributes) that were made between object creation and calling this method become locked in
-        at this point, and the object will create and bind to the store file.  If the store file already exists, the run will be resumed
-        if possible; otherwise, an exception will be raised.
-
-        Parameters
-        ----------
-        niterations_to_run : int, optional, default=None
-           If specfied, only at most the specified number of iterations will be run.
-
-        """
-        if not self._initialized:
-            self._initialize_resume()
-
-        # Log platform configuration
-        if self.platform is None:
-            logger.info('No user-specified platform found. Will run with OpenMM default.')
-        else:
-            logger.info('Running with platform {}'.format(self.platform.getName()))
-
-        # Main loop
-        run_start_time = time.time()
-        run_start_iteration = self.iteration
-        if self.number_of_extension_iterations > 0:
-            default_iteration_limit = self.iteration + self.number_of_extension_iterations
-        else:
-            default_iteration_limit = self.number_of_iterations
-        if niterations_to_run:
-            iteration_limit = min(self.iteration + niterations_to_run, default_iteration_limit)
-        else:
-            iteration_limit = default_iteration_limit
-        while (self.iteration < iteration_limit):
-            logger.debug("\nIteration %d / %d" % (self.iteration+1, iteration_limit))
-            initial_time = time.time()
-
-            # Attempt replica swaps to sample from equilibrium permuation of states associated with replicas.
-            self._mix_replicas()
-
-            # Propagate replicas.
-            self._propagate_replicas()
-
-            # Compute energies of all replicas at all states.
-            self._compute_energies()
-
-            # Show energies.
-            if self.show_energies:
-                self._show_energies()
-
-            # Write iteration to storage file.
-            self._write_iteration_netcdf()
-
-            # Increment iteration counter.
-            self.iteration += 1
-
-            # Show mixing statistics.
-            if self.show_mixing_statistics:
-                self._show_mixing_statistics()
-
-            # Perform online analysis.
-            if self.online_analysis:
-                self._analysis()
-
-            # Show timing statistics if debug level is activated
-            if logger.isEnabledFor(logging.DEBUG):
-                final_time = time.time()
-                elapsed_time = final_time - initial_time
-                estimated_time_remaining = (final_time - run_start_time) / (self.iteration - run_start_iteration) * (iteration_limit - self.iteration)
-                estimated_total_time = (final_time - run_start_time) / (self.iteration - run_start_iteration) * (iteration_limit)
-                estimated_finish_time = final_time + estimated_time_remaining
-                logger.debug("Iteration took %.3f s." % elapsed_time)
-                logger.debug("Estimated completion in %s, at %s (consuming total wall clock time %s)." % (str(datetime.timedelta(seconds=estimated_time_remaining)), time.ctime(estimated_finish_time), str(datetime.timedelta(seconds=estimated_total_time))))
-
-            # Perform sanity checks to see if we should terminate here.
-            self._run_sanity_checks()
-
-        # Clean up and close storage files.
-        self._finalize()
-
-        return
-
-    def _initialize_create(self):
-        """
-        Initialize the simulation and create a storage file, closing it after completion.
-
-        """
-
-        if self._initialized:
-            raise Error("Simulation has already been initialized.")
-
-        # Extract a representative system.
-        representative_system = self.states[0].system
-
-        # Turn off verbosity if not master node.
-        if self.mpicomm:
-            # Have each node report that it is initialized.
-            # TODO this doesn't work on worker nodes since they report only warning entries and higher
-            logger.debug("Initialized node %d / %d" % (self.mpicomm.rank, self.mpicomm.size))
-
-        # Display papers to be cited.
-        if is_terminal_verbose():
-            self._display_citations()
-
-        # Determine number of alchemical states.
-        self.nstates = len(self.states)
-
-        # Determine number of atoms in systems.
-        self.natoms = representative_system.getNumParticles()
-
-        # Allocate storage.
-        self.replica_positions = list() # replica_positions[i] is the configuration currently held in replica i
-        self.replica_box_vectors = list() # replica_box_vectors[i] is the set of box vectors currently held in replica i
-        self.replica_states     = np.zeros([self.nstates], np.int64) # replica_states[i] is the state that replica i is currently at
-        self.u_kl               = np.zeros([self.nstates, self.nstates], np.float64)
-        self.swap_Pij_accepted  = np.zeros([self.nstates, self.nstates], np.float64)
-        self.Nij_proposed       = np.zeros([self.nstates,self.nstates], np.int64) # Nij_proposed[i][j] is the number of swaps proposed between states i and j, prior of 1
-        self.Nij_accepted       = np.zeros([self.nstates,self.nstates], np.int64) # Nij_proposed[i][j] is the number of swaps proposed between states i and j, prior of 1
-
-        # Distribute coordinate information to replicas in a round-robin fashion, making a deep copy.
-        if not self._resume:
-            self.replica_positions = [ copy.deepcopy(self.provided_positions[replica_index % len(self.provided_positions)]) for replica_index in range(self.nstates) ]
-
-        # Assign default box vectors.
-        self.replica_box_vectors = list()
-        for state in self.states:
-            [a,b,c] = state.system.getDefaultPeriodicBoxVectors()
-            box_vectors = unit.Quantity(np.zeros([3,3], np.float32), unit.nanometers)
-            box_vectors[0,:] = a
-            box_vectors[1,:] = b
-            box_vectors[2,:] = c
-            self.replica_box_vectors.append(box_vectors)
-
-        # Assign initial replica states.
-        for replica_index in range(self.nstates):
-            self.replica_states[replica_index] = replica_index
-
-        # Initialize current iteration counter.
-        self.iteration = 0
-
-        # Initialize NetCDF file.
-        self._initialize_netcdf()
-
-        # Store initial state.
-        self._write_iteration_netcdf()
-
-        # Close NetCDF file.
-        self.ncfile.close()
-        self.ncfile = None
-
-        return
-
-    def _initialize_resume(self):
-        """
-        Initialize the simulation, and bind to a storage file.
-
-        """
-
-        if self._initialized:
-            raise Error("Simulation has already been initialized.")
-
-        # Extract a representative system.
-        representative_system = self.states[0].system
-
-        # Turn off verbosity if not master node.
-        if self.mpicomm:
-            # Have each node report that it is initialized.
-            # TODO this doesn't work on worker nodes since they report only warning entries and higher
-            logger.debug("Initialized node %d / %d" % (self.mpicomm.rank, self.mpicomm.size))
-
-        # Display papers to be cited.
-        if is_terminal_verbose():
-            self._display_citations()
-
-        # Determine number of alchemical states.
-        self.nstates = len(self.states)
-
-        # Determine number of atoms in systems.
-        self.natoms = representative_system.getNumParticles()
-
-        # Allocate storage.
-        self.replica_positions = list() # replica_positions[i] is the configuration currently held in replica i
-        self.replica_box_vectors = list() # replica_box_vectors[i] is the set of box vectors currently held in replica i
-        self.replica_states     = np.zeros([self.nstates], np.int32) # replica_states[i] is the state that replica i is currently at
-        self.u_kl               = np.zeros([self.nstates, self.nstates], np.float64)
-        self.swap_Pij_accepted  = np.zeros([self.nstates, self.nstates], np.float64)
-        self.Nij_proposed       = np.zeros([self.nstates,self.nstates], np.int64) # Nij_proposed[i][j] is the number of swaps proposed between states i and j, prior of 1
-        self.Nij_accepted       = np.zeros([self.nstates,self.nstates], np.int64) # Nij_proposed[i][j] is the number of swaps proposed between states i and j, prior of 1
-
-        # Distribute coordinate information to replicas in a round-robin fashion, making a deep copy.
-        if not self._resume:
-            self.replica_positions = [ copy.deepcopy(self.provided_positions[replica_index % len(self.provided_positions)]) for replica_index in range(self.nstates) ]
-
-        # Assign default box vectors.
-        self.replica_box_vectors = list()
-        for state in self.states:
-            [a,b,c] = state.system.getDefaultPeriodicBoxVectors()
-            box_vectors = unit.Quantity(np.zeros([3,3], np.float32), unit.nanometers)
-            box_vectors[0,:] = a
-            box_vectors[1,:] = b
-            box_vectors[2,:] = c
-            self.replica_box_vectors.append(box_vectors)
-
-        # Assign initial replica states.
-        for replica_index in range(self.nstates):
-            self.replica_states[replica_index] = replica_index
-
-        # Check to make sure NetCDF file exists.
-        if not os.path.exists(self.store_filename):
-            raise Exception("Store file %s does not exist." % self.store_filename)
-
-        # Open NetCDF file for reading
-        logger.debug("Reading NetCDF file '%s'..." % self.store_filename)
-        ncfile = netcdf.Dataset(self.store_filename, 'r')
-
-        # Resume from NetCDF file.
-        self._resume_from_netcdf(ncfile)
-
-        # Close NetCDF file.
-        ncfile.close()
-
-        if (self.mpicomm is None) or (self.mpicomm.rank == 0):
-            # Reopen NetCDF file for appending, and maintain handle.
-            self.ncfile = netcdf.Dataset(self.store_filename, 'a')
-        else:
-            self.ncfile = None
-
-        # On first iteration, we need to do some initialization.
-        if self.iteration == 0:
-            # Perform sanity checks to see if we should terminate here.
-            self._run_sanity_checks()
-
-            # Minimize and equilibrate all replicas.
-            self._minimize_and_equilibrate()
-
-            # Compute energies of all alchemical replicas
-            self._compute_energies()
-
-            # Show energies.
-            if self.show_energies:
-                self._show_energies()
-
-            # Re-store initial state.
-            # TODO: Sort this logic out.
-            #self.ncfile = ncfile
-            #self._write_iteration_netcdf()
-            #self.ncfile = None
-
-        # Run sanity checks.
-        # TODO: Refine this.
-        self._run_sanity_checks()
-        #self._compute_energies() # recompute energies?
-        #self._run_sanity_checks()
-
-        # We will work on the next iteration.
-        self.iteration += 1
-
-        # Show energies.
-        if self.show_energies:
-            self._show_energies()
-
-        # Analysis object starts off empty.
-        self.analysis = None
-
-        # Signal that the class has been initialized.
-        self._initialized = True
-
-        return
-
-    def _finalize(self):
-        """
-        Do anything necessary to finish run except close files.
-
-        """
-
-        if self.mpicomm:
-            # Only the root node needs to clean up.
-            if self.mpicomm.rank != 0: return
-
-        if hasattr(self, 'ncfile') and self.ncfile:
-            self.ncfile.sync()
-
-        return
-
     def __del__(self):
-        """
-        Clean up, closing files.
+        # The reporter could be None if ReplicaExchange was not created.
+        if self._reporter is not None:
+            mpi.run_single_node(0, self._reporter.close)
+
+    # -------------------------------------------------------------------------
+    # Internal-usage.
+    # -------------------------------------------------------------------------
+
+    def _check_nan_energy(self):
+        """Checks that energies are finite and abort otherwise.
+
+        Checks both sampled and unsampled thermodynamic states.
 
         """
-        self._finalize()
+        # Check thermodynamic state energies.
+        if np.any(np.isnan(self._energy_thermodynamic_states)) or np.any(np.isnan(self._energy_unsampled_states)):
+            # Find faulty replicas to create error message.
+            faulty_replicas = set()
 
-        if self.mpicomm:
-            # Only the root node needs to clean up.
-            if self.mpicomm.rank != 0: return
+            # Check sampled thermodynamic states first.
+            state_type = 'thermodynamic state'
+            for replica_id in range(self.n_replicas):
+                if np.any(np.isnan(self._energy_thermodynamic_states[replica_id])):
+                    faulty_replicas.add(replica_id)
 
-        if hasattr(self, 'ncfile'):
-            if self.ncfile is not None:
-                self.ncfile.close()
-                self.ncfile = None
+            # If there are no NaNs in energies, the problem is in the unsampled states.
+            if len(faulty_replicas) == 0:
+                state_type = 'unsampled thermodynamic state'
+                for replica_id in range(self.n_replicas):
+                    if np.any(np.isnan(self._unsampled_states[replica_id])):
+                        faulty_replicas.add(replica_id)
 
-        return
+            # Raise exception.
+            err_msg = "NaN encountered in {} energies for replicas {}".format(state_type, faulty_replicas)
+            logger.error(err_msg)
+            raise RuntimeError(err_msg)
 
     def _display_citations(self):
-        """
-        Display papers to be cited.
-
-        TODO:
-
-        * Add original citations for various replica-exchange schemes.
-        * Show subset of OpenMM citations based on what features are being used.
-
-        """
-
+        """Display papers to be cited."""
+        # TODO Add original citations for various replica-exchange schemes.
+        # TODO Show subset of OpenMM citations based on what features are being used.
         openmm_citations = """\
         Friedrichs MS, Eastman P, Vaidyanathan V, Houston M, LeGrand S, Beberg AL, Ensign DL, Bruns CM, and Pande VS. Accelerating molecular dynamic simulations on graphics processing unit. J. Comput. Chem. 30:864, 2009. DOI: 10.1002/jcc.21209
         Eastman P and Pande VS. OpenMM: A hardware-independent framework for molecular simulations. Comput. Sci. Eng. 12:34, 2010. DOI: 10.1109/MCSE.2010.27
@@ -1163,1633 +1738,540 @@ class ReplicaExchange(object):
         print("Please cite the following:")
         print("")
         print(openmm_citations)
-        if self.replica_mixing_scheme == 'swap-all':
+        if self._replica_mixing_scheme == 'swap-all':
             print(gibbs_citations)
-        if self.online_analysis:
-            print(mbar_citations)
 
-        return
+    # -------------------------------------------------------------------------
+    # Internal-usage: Initialization and storage utilities.
+    # -------------------------------------------------------------------------
 
-    def _create_context(self, system, integrator):
-        """
-        Shortcut to handle creation of a context with or without user-selected
-        platform.
+    @staticmethod
+    def _does_file_exist(file_path):
+        """Check if there is a file at the given path."""
+        return os.path.exists(file_path) and os.path.getsize(file_path) > 0
 
-        Parameters
-        ----------
-        system : simtk.openmm.System
-           The system associated to the context.
-        integrator : simtk.openmm.Integrator
-           The integrator to use for Context creation.
+    @mpi.on_single_node(rank=0, broadcast_result=False, sync_nodes=True)
+    def _initialize_reporter(self):
+        """Initialize the reporter and store initial information.
 
-        Returns
-        -------
-        context : simtk.openmm.Context
-           The created OpenMM Context object.
+        This is executed only on MPI node 0 and it is blocking. This is to
+        avoid the case where the other nodes skip ahead and try to read
+        from a file that hasn't been created yet.
 
         """
-        if self.platform is None:
-            return self.mm.Context(system, integrator)
-        else:
-            return self.mm.Context(system, integrator, self.platform)
+        self._reporter.open(mode='w')
+        self._reporter.write_thermodynamic_states(self._thermodynamic_states,
+                                                  self._unsampled_states)
 
-    def _propagate_replica(self, replica_index):
-        """
-        Propagate the replica corresponding to the specified replica index.
-        Caching is used.
+        # Store run metadata and ReplicaExchange options.
+        self._store_options()
+        self._reporter.write_dict('metadata', self._metadata)
 
-        ARGUMENTS
+        # Store initial conditions. This forces the storage to be synchronized.
+        self._report_iteration()
 
-        replica_index (int) - the replica to propagate
+    @mpi.on_single_node(rank=0, broadcast_result=False, sync_nodes=False)
+    @mpi.delayed_termination
+    @mmtools.utils.with_timer('Writing iteration information to storage')
+    def _report_iteration(self):
+        """Store positions, states, and energies of current iteration.
 
-        RETURNS
-
-        elapsed_time (float) - time (in seconds) to propagate replica
-
-        """
-
-        start_time = time.time()
-
-        # Retrieve state.
-        state_index = self.replica_states[replica_index] # index of thermodynamic state that current replica is assigned to
-        state = self.states[state_index] # thermodynamic state
-
-        # If temperature and pressure are specified, make sure MonteCarloBarostat is attached.
-        if state.temperature and state.pressure:
-            forces = { state.system.getForce(index).__class__.__name__ : state.system.getForce(index) for index in range(state.system.getNumForces()) }
-
-            if 'MonteCarloAnisotropicBarostat' in forces:
-                raise Exception('MonteCarloAnisotropicBarostat is unsupported.')
-
-            if 'MonteCarloBarostat' in forces:
-                barostat = forces['MonteCarloBarostat']
-                # Set temperature and pressure.
-                try:
-                    barostat.setDefaultTemperature(state.temperature)
-                except AttributeError:  # versions previous to OpenMM0.8
-                    barostat.setTemperature(state.temperature)
-                barostat.setDefaultPressure(state.pressure)
-                barostat.setRandomNumberSeed(int(np.random.randint(0, MAX_SEED)))
-            else:
-                # Create barostat and add it to the system if it doesn't have one already.
-                barostat = openmm.MonteCarloBarostat(state.pressure, state.temperature)
-                barostat.setRandomNumberSeed(int(np.random.randint(0, MAX_SEED)))
-                state.system.addForce(barostat)
-
-        # Create Context and integrator.
-        integrator = openmm.LangevinIntegrator(state.temperature, self.collision_rate, self.timestep)
-        integrator.setRandomNumberSeed(int(np.random.randint(0, MAX_SEED)))
-        context = self._create_context(state.system, integrator)
-
-        # Set box vectors.
-        box_vectors = self.replica_box_vectors[replica_index]
-        context.setPeriodicBoxVectors(box_vectors[0,:], box_vectors[1,:], box_vectors[2,:])
-        # Set positions.
-        positions = self.replica_positions[replica_index]
-        context.setPositions(positions)
-        setpositions_end_time = time.time()
-        # Assign Maxwell-Boltzmann velocities.
-        context.setVelocitiesToTemperature(state.temperature, int(np.random.randint(0, MAX_SEED)))
-        setvelocities_end_time = time.time()
-        # Run dynamics.
-        integrator.step(self.nsteps_per_iteration)
-        integrator_end_time = time.time()
-        # Store final positions
-        getstate_start_time = time.time()
-        openmm_state = context.getState(getPositions=True, enforcePeriodicBox=state.system.usesPeriodicBoundaryConditions())
-        getstate_end_time = time.time()
-        self.replica_positions[replica_index] = openmm_state.getPositions(asNumpy=True)
-        # Store box vectors.
-        self.replica_box_vectors[replica_index] = openmm_state.getPeriodicBoxVectors(asNumpy=True)
-
-        # Clean up.
-        del context, integrator
-
-        # Compute timing.
-        end_time = time.time()
-        elapsed_time = end_time - start_time
-        positions_elapsed_time = setpositions_end_time - start_time
-        velocities_elapsed_time = setvelocities_end_time - setpositions_end_time
-        integrator_elapsed_time = integrator_end_time - setvelocities_end_time
-        getstate_elapsed_time = getstate_end_time - integrator_end_time
-        logger.debug("Replica %d/%d: integrator elapsed time %.3f s (positions %.3f s | velocities %.3f s | integrate+getstate %.3f s)." % (replica_index, self.nreplicas, elapsed_time, positions_elapsed_time, velocities_elapsed_time, integrator_elapsed_time+getstate_elapsed_time))
-
-        return elapsed_time
-
-    def _propagate_replicas_mpi(self):
-        """
-        Propagate all replicas using MPI communicator.
-
-        It is presumed all nodes have the correct configurations in the correct replica slots, but that state indices may be unsynchronized.
-
-        TODO
-
-        * Move synchronization of state information to mix_replicas?
-        * Broadcast from root node only?
+        This is executed only on MPI node 0 and it's not blocking. The
+        termination is delayed so that the file is not written only with
+        partial data if the program gets interrupted.
 
         """
+        self._reporter.write_sampler_states(self._sampler_states, self._iteration)
+        self._reporter.write_replica_thermodynamic_states(self._replica_thermodynamic_states, self._iteration)
+        self._reporter.write_mcmc_moves(self._mcmc_moves)  # MCMCMoves can store internal statistics.
+        self._reporter.write_energies(self._energy_thermodynamic_states, self._energy_unsampled_states,
+                                      self._iteration)
+        self._reporter.write_mixing_statistics(self._n_accepted_matrix, self._n_proposed_matrix, self._iteration)
+        self._reporter.write_timestamp(self._iteration)
+        self._reporter.write_last_iteration(self._iteration)
+        self._reporter.sync()
 
-        # Propagate all replicas.
-        logger.debug("Propagating all replicas for %.3f ps..." % (self.nsteps_per_iteration * self.timestep / unit.picoseconds))
+    def _store_options(self):
+        """Store __init__ parameters (beside MCMCMoves) in storage file."""
+        logger.debug("Storing general ReplicaExchange options...")
 
-        # Run just this node's share of states.
-        logger.debug("Running trajectories...")
-        start_time = time.time()
-        # replica_lookup = { self.replica_states[replica_index] : replica_index for replica_index in range(self.nstates) } # replica_lookup[state_index] is the replica index currently at state 'state_index' # requires Python 2.7 features
-        replica_lookup = dict( (self.replica_states[replica_index], replica_index) for replica_index in range(self.nstates) ) # replica_lookup[state_index] is the replica index currently at state 'state_index' # Python 2.6 compatible
-        replica_indices = [ replica_lookup[state_index] for state_index in range(self.mpicomm.rank, self.nstates, self.mpicomm.size) ] # list of replica indices for this node to propagate
-        for replica_index in replica_indices:
-            logger.debug("Node %3d/%3d propagating replica %3d state %3d..." % (self.mpicomm.rank, self.mpicomm.size, replica_index, self.replica_states[replica_index]))
-            self._propagate_replica(replica_index)
-        end_time = time.time()
-        elapsed_time = end_time - start_time
-        # Collect elapsed time.
-        node_elapsed_times = self.mpicomm.gather(elapsed_time, root=0) # barrier
-        if self.mpicomm.rank == 0 and logger.isEnabledFor(logging.DEBUG):
-            node_elapsed_times = np.array(node_elapsed_times)
-            end_time = time.time()
-            elapsed_time = end_time - start_time
-            barrier_wait_times = elapsed_time - node_elapsed_times
-            logger.debug("Running trajectories: elapsed time %.3f s (barrier time min %.3f s | max %.3f s | avg %.3f s)" % (elapsed_time, barrier_wait_times.min(), barrier_wait_times.max(), barrier_wait_times.mean()))
-            logger.debug("Total time spent waiting for GPU: %.3f s" % (node_elapsed_times.sum()))
+        # Inspect __init__ parameters to store.
+        parameter_names, _, _, defaults = inspect.getargspec(self.__init__)
 
-        # Send final configurations and box vectors back to all nodes.
-        logger.debug("Synchronizing trajectories...")
-        start_time = time.time()
-        replica_indices_gather = self.mpicomm.allgather(replica_indices)
-        replica_positions_gather = self.mpicomm.allgather([ self.replica_positions[replica_index] for replica_index in replica_indices ])
-        replica_box_vectors_gather = self.mpicomm.allgather([ self.replica_box_vectors[replica_index] for replica_index in replica_indices ])
-        for (source, replica_indices) in enumerate(replica_indices_gather):
-            for (index, replica_index) in enumerate(replica_indices):
-                self.replica_positions[replica_index] = replica_positions_gather[source][index]
-                self.replica_box_vectors[replica_index] = replica_box_vectors_gather[source][index]
-        end_time = time.time()
-        logger.debug("Synchronizing configurations and box vectors: elapsed time %.3f s" % (end_time - start_time))
+        # Retrieve and store options.
+        options_to_store = {parameter_name: getattr(self, '_' + parameter_name)
+                            for parameter_name in parameter_names[-len(defaults):]}
+        # We store the MCMCMoves separately.
+        options_to_store.pop('mcmc_moves')
+        self._reporter.write_dict('options', options_to_store)
 
-        return
+    # -------------------------------------------------------------------------
+    # Internal-usage: Distributed tasks.
+    # -------------------------------------------------------------------------
 
-    def _propagate_replicas_serial(self):
-        """
-        Propagate all replicas using serial execution.
-
-        """
-
-        # Propagate all replicas.
-        logger.debug("Propagating all replicas for %.3f ps..." % (self.nsteps_per_iteration * self.timestep / unit.picoseconds))
-        for replica_index in range(self.nstates):
-            self._propagate_replica(replica_index)
-
-        return
-
+    @mmtools.utils.with_timer('Propagating all replicas')
     def _propagate_replicas(self):
-        """
-        Propagate all replicas.
+        """Propagate all replicas."""
+        # TODO  Report on efficiency of dyanmics (fraction of time wasted to overhead).
+        logger.debug("Propagating all replicas...")
 
-        TODO
+        # Distribute propagation across nodes. Only node 0 will get all positions
+        # and box vectors. The other nodes, only need the positions that they use
+        # for propagation and computation of the energy matrix entries.
+        propagated_states, replica_ids = mpi.distribute(self._propagate_replica, range(self.n_replicas),
+                                                        send_results_to=0)
 
-        * Report on efficiency of dyanmics (fraction of time wasted to overhead).
+        # Update all sampler states. For non-0 nodes, this will update only the
+        # sampler states associated to the replicas propagated by this node.
+        for replica_id, propagated_state in zip(replica_ids, propagated_states):
+            propagated_positions, propagated_box_vectors = propagated_state  # Unpack.
+            self._sampler_states[replica_id].positions = propagated_positions
+            self._sampler_states[replica_id].box_vectors = propagated_box_vectors
 
-        """
-        start_time = time.time()
+        # Gather all MCMCMoves statistics. All nodes must have these up-to-date
+        # since they are tied to the ThermodynamicState, not the replica.
+        all_statistics = mpi.distribute(self._get_replica_move_statistics, range(self.n_replicas),
+                                        send_results_to='all')
+        for replica_id in range(self.n_replicas):
+            if len(all_statistics[replica_id]) > 0:
+                thermodynamic_state_id = self._replica_thermodynamic_states[replica_id]
+                self._mcmc_moves[thermodynamic_state_id].statistics = all_statistics[replica_id]
 
-        if self.mpicomm:
-            self._propagate_replicas_mpi()
-        else:
-            self._propagate_replicas_serial()
+    def _propagate_replica(self, replica_id):
+        """Propagate thermodynamic state associated to the given replica."""
+        # Retrieve thermodynamic, sampler states, and MCMC move of this replica.
+        thermodynamic_state_id = self._replica_thermodynamic_states[replica_id]
+        thermodynamic_state = self._thermodynamic_states[thermodynamic_state_id]
+        mcmc_move = self._mcmc_moves[thermodynamic_state_id]
+        sampler_state = self._sampler_states[replica_id]
 
-        end_time = time.time()
-        elapsed_time = end_time - start_time
-        time_per_replica = elapsed_time / float(self.nstates)
-        ns_per_day = self.timestep * self.nsteps_per_iteration / time_per_replica * 24*60*60 / unit.nanoseconds
-        logger.debug("Time to propagate all replicas: %.3f s (%.3f per replica, %.3f ns/day)." % (elapsed_time, time_per_replica, ns_per_day))
+        # Apply MCMC move.
+        try:
+            mcmc_move.apply(thermodynamic_state, sampler_state)
+        except mmtools.mcmc.IntegratorMoveError as e:
+            # Save NaNnig context and MCMove before aborting.
+            prefix = 'nan-error-logs/iteration{}-replica{}-state{}'.format(
+                self._iteration, replica_id, thermodynamic_state_id)
+            e.serialize_error(prefix)
+            raise
 
-        return
+        # Return new positions and box vectors.
+        return sampler_state.positions, sampler_state.box_vectors
 
-    def _minimize_replica(self, replica_index):
-        """
-        Minimize the specified replica.
+    def _get_replica_move_statistics(self, replica_id):
+        """Return the statistics of the MCMCMove currently associated to this replica."""
+        thermodynamic_state_id = self._replica_thermodynamic_states[replica_id]
+        mcmc_move = self._mcmc_moves[thermodynamic_state_id]
 
-        """
-        # Retrieve thermodynamic state.
-        state_index = self.replica_states[replica_index] # index of thermodynamic state that current replica is assigned to
-        state = self.states[state_index] # thermodynamic state
-        # Create integrator and context.
-        integrator = self.mm.VerletIntegrator(1.0 * unit.femtoseconds)
-        context = self._create_context(state.system, integrator)
-        # Set box vectors.
-        box_vectors = self.replica_box_vectors[replica_index]
-        context.setPeriodicBoxVectors(box_vectors[0,:], box_vectors[1,:], box_vectors[2,:])
-        # Set positions.
-        positions = self.replica_positions[replica_index]
-        context.setPositions(positions)
+        try:
+            move_statistics = mcmc_move.statistics
+        except AttributeError:
+            move_statistics = {}
+
+        return move_statistics
+
+    def _minimize_replica(self, replica_id, tolerance, max_iterations):
+        """Minimize the specified replica."""
+        # Retrieve thermodynamic and sampler states.
+        thermodynamic_state_id = self._replica_thermodynamic_states[replica_id]
+        thermodynamic_state = self._thermodynamic_states[thermodynamic_state_id]
+        sampler_state = self._sampler_states[replica_id]
+
+        # Retrieve a context. Any Integrator works.
+        context, integrator = mmtools.cache.global_context_cache.get_context(thermodynamic_state)
+
+        # Set initial positions and box vectors.
+        sampler_state.apply_to_context(context)
+
+        # Compute the initial energy of the system for logging.
+        initial_energy = thermodynamic_state.reduced_potential(context)
+        logger.debug('Replica {}/{}: initial energy {:8.3f}kT'.format(
+            replica_id + 1, self.n_replicas, initial_energy))
+
         # Minimize energy.
-        minimized_positions = self.mm.LocalEnergyMinimizer.minimize(context, self.minimize_tolerance, self.minimize_max_iterations)
-        # Store final positions
-        self.replica_positions[replica_index] = context.getState(getPositions=True, enforcePeriodicBox=state.system.usesPeriodicBoundaryConditions()).getPositions(asNumpy=True)
-        # Clean up.
-        del integrator, context
+        openmm.LocalEnergyMinimizer.minimize(context, tolerance, max_iterations)
 
-        return
+        # Get the minimized positions.
+        sampler_state.update_from_context(context)
 
-    def _minimize_and_equilibrate(self):
-        """
-        Minimize and equilibrate all replicas.
+        # Compute the final energy of the system for logging.
+        final_energy = thermodynamic_state.reduced_potential(sampler_state)
+        logger.debug('Replica {}/{}: final energy {:8.3f}kT'.format(
+            replica_id + 1, self.n_replicas, final_energy))
 
-        """
+        # Return minimized positions.
+        return sampler_state.positions
 
-        # Minimize
-        if self.minimize:
-            logger.debug("Minimizing all replicas...")
-
-            if self.mpicomm:
-                # MPI implementation.
-                logger.debug("MPI implementation.")
-                # Minimize this node's share of replicas.
-                start_time = time.time()
-                for replica_index in range(self.mpicomm.rank, self.nstates, self.mpicomm.size):
-                    logger.debug("node %d / %d : minimizing replica %d / %d" % (self.mpicomm.rank, self.mpicomm.size, replica_index, self.nstates))
-                    self._minimize_replica(replica_index)
-                end_time = time.time()
-                debug_msg = 'Node {}/{}: MPI barrier'.format(self.mpicomm.rank, self.mpicomm.size)
-                logger.debug(debug_msg + ' - waiting for the minimization to be completed.')
-                self.mpicomm.barrier()
-                logger.debug("Running trajectories: elapsed time %.3f s" % (end_time - start_time))
-
-                # Send final configurations and box vectors back to all nodes.
-                logger.debug("Synchronizing trajectories...")
-                replica_positions_gather = self.mpicomm.allgather(self.replica_positions[self.mpicomm.rank:self.nstates:self.mpicomm.size])
-                replica_box_vectors_gather = self.mpicomm.allgather(self.replica_box_vectors[self.mpicomm.rank:self.nstates:self.mpicomm.size])
-                for replica_index in range(self.nstates):
-                    source = replica_index % self.mpicomm.size # node with trajectory data
-                    index = replica_index // self.mpicomm.size # index within trajectory batch
-                    self.replica_positions[replica_index] = replica_positions_gather[source][index]
-                    self.replica_box_vectors[replica_index] = replica_box_vectors_gather[source][index]
-                logger.debug("Synchronizing configurations and box vectors: elapsed time %.3f s" % (end_time - start_time))
-
-            else:
-                # Serial implementation.
-                logger.debug("Serial implementation.")
-                for replica_index in range(self.nstates):
-                    logger.debug("minimizing replica %d / %d" % (replica_index, self.nstates))
-                    self._minimize_replica(replica_index)
-
-        # Equilibrate: temporarily set timestep to equilibration timestep
-        production_timestep = self.timestep
-        self.timestep = self.equilibration_timestep
-        for iteration in range(self.number_of_equilibration_iterations):
-            logger.debug("equilibration iteration %d / %d" % (iteration, self.number_of_equilibration_iterations))
-            self._propagate_replicas()
-        self.timestep = production_timestep
-
-        return
-
+    @mmtools.utils.with_timer('Computing energy matrix')
     def _compute_energies(self):
-        """
-        Compute energies of all replicas at all states.
+        """Compute energies of all replicas at all states."""
 
-        TODO
+        # Distribute energy computation across nodes. Only node 0 receives
+        # all the energies since it needs to store them and mix states.
+        new_energies, replica_ids = mpi.distribute(self._compute_replica_energies, range(self.n_replicas),
+                                                   send_results_to=0)
 
-        * We have to re-order Context initialization if we have variable box volume
-        * Parallel implementation
+        # Update energy matrices. Non-0 nodes update only the energies computed by this replica.
+        for replica_id, energies in zip(replica_ids, new_energies):
+            energy_thermodynamic_states, energy_unsampled_states = energies  # Unpack.
+            self._energy_thermodynamic_states[replica_id] = energy_thermodynamic_states
+            self._energy_unsampled_states[replica_id] = energy_unsampled_states
 
-        """
+    def _compute_replica_energies(self, replica_id):
+        """Compute the energy for the replica in every ThermodynamicState."""
+        # Initialize replica energies for each thermodynamic state.
+        energy_thermodynamic_states = np.zeros(self.n_replicas)
+        energy_unsampled_states = np.zeros(len(self._unsampled_states))
 
-        start_time = time.time()
+        # Retrieve sampler state associated to this replica.
+        sampler_state = self._sampler_states[replica_id]
 
-        logger.debug("Computing energies...")
+        # Compute energy for all thermodynamic states.
+        for energies, states in [(energy_thermodynamic_states, self._thermodynamic_states),
+                                 (energy_unsampled_states, self._unsampled_states)]:
+            for i, state in enumerate(states):
+                # Get the context, any Integrator works.
+                context, integrator = mmtools.cache.global_context_cache.get_context(state)
 
-        if self.mpicomm:
-            # MPI version.
+                # Update positions and box vectors. We don't need
+                # to set Context velocities for the potential.
+                sampler_state.apply_to_context(context, ignore_velocities=True)
 
-            # Compute energies for this node's share of states.
-            for state_index in range(self.mpicomm.rank, self.nstates, self.mpicomm.size):
-                for replica_index in range(self.nstates):
-                    self.u_kl[replica_index,state_index] = self.states[state_index].reduced_potential(self.replica_positions[replica_index], box_vectors=self.replica_box_vectors[replica_index], platform=self.platform)
+                # Compute energy.
+                energies[i] = state.reduced_potential(context)
 
-            # Send final energies to all nodes.
-            energies_gather = self.mpicomm.allgather(self.u_kl[:,self.mpicomm.rank:self.nstates:self.mpicomm.size])
-            for state_index in range(self.nstates):
-                source = state_index % self.mpicomm.size # node with trajectory data
-                index = state_index // self.mpicomm.size # index within trajectory batch
-                self.u_kl[:,state_index] = energies_gather[source][:,index]
+        # Return the new energies.
+        return energy_thermodynamic_states, energy_unsampled_states
 
-        else:
-            # Serial version.
-            for state_index in range(self.nstates):
-                for replica_index in range(self.nstates):
-                    self.u_kl[replica_index,state_index] = self.states[state_index].reduced_potential(self.replica_positions[replica_index], box_vectors=self.replica_box_vectors[replica_index], platform=self.platform)
+    # -------------------------------------------------------------------------
+    # Internal-usage: Replicas mixing.
+    # -------------------------------------------------------------------------
 
-        end_time = time.time()
-        elapsed_time = end_time - start_time
-        time_per_energy= elapsed_time / float(self.nstates)**2
-        logger.debug("Time to compute all energies %.3f s (%.3f per energy calculation)." % (elapsed_time, time_per_energy))
+    _SUPPORTED_MIXING_SCHEMES = frozenset(['swap-all', 'swap-neighbors', 'none'])
 
-        return
+    @mpi.on_single_node(0, broadcast_result=True)
+    def _mix_replicas(self):
+        """Attempt to swap replicas according to user-specified scheme."""
+        logger.debug("Mixing replicas...")
+
+        # Reset storage to keep track of swap attempts this iteration.
+        self._n_accepted_matrix[:, :] = 0
+        self._n_proposed_matrix[:, :] = 0
+
+        # Perform swap attempts according to requested scheme.
+        assert self._replica_mixing_scheme in self._SUPPORTED_MIXING_SCHEMES
+        with mmtools.utils.time_it('Mixing of replicas'):
+            if self._replica_mixing_scheme == 'swap-neighbors':
+                self._mix_neighboring_replicas()
+            elif self._replica_mixing_scheme == 'swap-all':
+                # Try to use cython-accelerated mixing code if possible,
+                # otherwise fall back to Python-accelerated code.
+                try:
+                    self._mix_all_replicas_cython()
+                except ValueError as e:
+                    logger.warning(e.message)
+                    self._mix_all_replicas()
+            else:
+                assert self._replica_mixing_scheme == 'none'
+
+        # Determine fraction of swaps accepted this iteration.
+        n_swaps_proposed = self._n_proposed_matrix.sum()
+        n_swaps_accepted = self._n_accepted_matrix.sum()
+        swap_fraction_accepted = 0.0
+        if n_swaps_proposed > 0:
+            # TODO drop casting to float when dropping Python 2 support.
+            swap_fraction_accepted = float(n_swaps_accepted) / n_swaps_proposed
+        logger.debug("Accepted {}/{} attempted swaps ({:.1f}%)".format(n_swaps_accepted, n_swaps_proposed,
+                                                                       swap_fraction_accepted * 100.0))
+
+        # Return new states indices for MPI broadcasting.
+        return self._replica_thermodynamic_states
+
+    def _mix_all_replicas_cython(self):
+        """Exchange all replicas with Cython-accelerated code."""
+        from .mixing._mix_replicas import _mix_replicas_cython
+
+        replica_states = md.utils.ensure_type(self._replica_thermodynamic_states, np.int64, 1, "Replica States")
+        u_kl = md.utils.ensure_type(self._energy_thermodynamic_states, np.float64, 2, "Reduced Potentials")
+        n_proposed_matrix = md.utils.ensure_type(self._n_proposed_matrix, np.int64, 2, "Nij Proposed Swaps")
+        n_accepted_matrix = md.utils.ensure_type(self._n_accepted_matrix, np.int64, 2, "Nij Accepted Swaps")
+        _mix_replicas_cython(self.n_replicas**4, self.n_replicas, replica_states,
+                             u_kl, n_proposed_matrix, n_accepted_matrix)
+
+        self._replica_thermodynamic_states = replica_states
+        self._n_proposed_matrix = n_proposed_matrix
+        self._n_accepted_matrix = n_accepted_matrix
 
     def _mix_all_replicas(self):
-        """
-        Attempt exchanges between all replicas to enhance mixing.
-
-        TODO
-
-        * Adjust nswap_attempts based on how many we can afford to do and not have mixing take a substantial fraction of iteration time.
-
-        """
-
+        """Exchange all replicas with Python."""
         # Determine number of swaps to attempt to ensure thorough mixing.
-        # TODO: Replace this with analytical result computed to guarantee sufficient mixing.
-        nswap_attempts = self.nstates**5 # number of swaps to attempt (ideal, but too slow!)
-        nswap_attempts = self.nstates**3 # best compromise for pure Python?
+        # TODO: Replace this with analytical result computed to guarantee sufficient mixing, or
+        # TODO:     adjust it  based on how many we can afford to do and not have mixing take a
+        # TODO:     substantial fraction of iteration time.
+        nswap_attempts = self.n_replicas**5  # Number of swaps to attempt (ideal, but too slow!)
+        nswap_attempts = self.n_replicas**3  # Best compromise for pure Python?
 
         logger.debug("Will attempt to swap all pairs of replicas, using a total of %d attempts." % nswap_attempts)
 
         # Attempt swaps to mix replicas.
         for swap_attempt in range(nswap_attempts):
-            # Choose replicas to attempt to swap.
-            i = np.random.randint(self.nstates) # Choose replica i uniformly from set of replicas.
-            j = np.random.randint(self.nstates) # Choose replica j uniformly from set of replicas.
-
-            # Determine which states these resplicas correspond to.
-            istate = self.replica_states[i] # state in replica slot i
-            jstate = self.replica_states[j] # state in replica slot j
-
-            # Reject swap attempt if any energies are nan.
-            if (np.isnan(self.u_kl[i,jstate]) or np.isnan(self.u_kl[j,istate]) or np.isnan(self.u_kl[i,istate]) or np.isnan(self.u_kl[j,jstate])):
-                continue
-
-            # Compute log probability of swap.
-            log_P_accept = - (self.u_kl[i,jstate] + self.u_kl[j,istate]) + (self.u_kl[i,istate] + self.u_kl[j,jstate])
-
-            #print("replica (%3d,%3d) states (%3d,%3d) energies (%8.1f,%8.1f) %8.1f -> (%8.1f,%8.1f) %8.1f : log_P_accept %8.1f" % (i,j,istate,jstate,self.u_kl[i,istate],self.u_kl[j,jstate],self.u_kl[i,istate]+self.u_kl[j,jstate],self.u_kl[i,jstate],self.u_kl[j,istate],self.u_kl[i,jstate]+self.u_kl[j,istate],log_P_accept))
-
-            # Record that this move has been proposed.
-            self.Nij_proposed[istate,jstate] += 1
-            self.Nij_proposed[jstate,istate] += 1
-
-            # Accept or reject.
-            if (log_P_accept >= 0.0 or (np.random.rand() < math.exp(log_P_accept))):
-                # Swap states in replica slots i and j.
-                (self.replica_states[i], self.replica_states[j]) = (self.replica_states[j], self.replica_states[i])
-                # Accumulate statistics
-                self.Nij_accepted[istate,jstate] += 1
-                self.Nij_accepted[jstate,istate] += 1
-
-        return
-
-    def _mix_all_replicas_cython(self):
-        """
-        Attempt to exchange all replicas to enhance mixing, calling code written in Cython.
-        """
-
-        from .mixing._mix_replicas import _mix_replicas_cython
-
-        replica_states = md.utils.ensure_type(self.replica_states, np.int64, 1, "Replica States")
-        u_kl = md.utils.ensure_type(self.u_kl, np.float64, 2, "Reduced Potentials")
-        Nij_proposed = md.utils.ensure_type(self.Nij_proposed, np.int64, 2, "Nij Proposed")
-        Nij_accepted = md.utils.ensure_type(self.Nij_accepted, np.int64, 2, "Nij accepted")
-        _mix_replicas_cython(self.nstates**4, self.nstates, replica_states, u_kl, Nij_proposed, Nij_accepted)
-
-        #replica_states = np.array(self.replica_states, np.int64)
-        #u_kl = np.array(self.u_kl, np.float64)
-        #Nij_proposed = np.array(self.Nij_proposed, np.int64)
-        #Nij_accepted = np.array(self.Nij_accepted, np.int64)
-        #_mix_replicas._mix_replicas_cython(self.nstates**4, self.nstates, replica_states, u_kl, Nij_proposed, Nij_accepted)
-
-        self.replica_states = replica_states
-        self.Nij_proposed = Nij_proposed
-        self.Nij_accepted = Nij_accepted
+            # Choose random replicas uniformly to attempt to swap.
+            replica_i = np.random.randint(self.n_replicas)
+            replica_j = np.random.randint(self.n_replicas)
+            self._attempt_swap(replica_i, replica_j)
 
     def _mix_neighboring_replicas(self):
-        """
-        Attempt exchanges between neighboring replicas only.
-
-        """
-
+        """Attempt exchanges between neighboring replicas only."""
         logger.debug("Will attempt to swap only neighboring replicas.")
 
-        # Attempt swaps of pairs of replicas using traditional scheme (e.g. [0,1], [2,3], ...)
-        offset = np.random.randint(2) # offset is 0 or 1
-        for istate in range(offset, self.nstates-1, 2):
-            jstate = istate + 1 # second state to attempt to swap with i
-
-            # Determine which replicas these states correspond to.
-            i = None
-            j = None
-            for index in range(self.nstates):
-                if self.replica_states[index] == istate: i = index
-                if self.replica_states[index] == jstate: j = index
-
-            # Reject swap attempt if any energies are nan.
-            if (np.isnan(self.u_kl[i,jstate]) or np.isnan(self.u_kl[j,istate]) or np.isnan(self.u_kl[i,istate]) or np.isnan(self.u_kl[j,jstate])):
-                continue
-
-            # Compute log probability of swap.
-            log_P_accept = - (self.u_kl[i,jstate] + self.u_kl[j,istate]) + (self.u_kl[i,istate] + self.u_kl[j,jstate])
-
-            #print("replica (%3d,%3d) states (%3d,%3d) energies (%8.1f,%8.1f) %8.1f -> (%8.1f,%8.1f) %8.1f : log_P_accept %8.1f" % (i,j,istate,jstate,self.u_kl[i,istate],self.u_kl[j,jstate],self.u_kl[i,istate]+self.u_kl[j,jstate],self.u_kl[i,jstate],self.u_kl[j,istate],self.u_kl[i,jstate]+self.u_kl[j,istate],log_P_accept))
-
-            # Record that this move has been proposed.
-            self.Nij_proposed[istate,jstate] += 1
-            self.Nij_proposed[jstate,istate] += 1
-
-            # Accept or reject.
-            if (log_P_accept >= 0.0 or (np.random.rand() < math.exp(log_P_accept))):
-                # Swap states in replica slots i and j.
-                (self.replica_states[i], self.replica_states[j]) = (self.replica_states[j], self.replica_states[i])
-                # Accumulate statistics
-                self.Nij_accepted[istate,jstate] += 1
-                self.Nij_accepted[jstate,istate] += 1
-
-        return
-
-    def _mix_replicas(self):
-        """
-        Attempt to swap replicas according to user-specified scheme.
-
-        """
-
-        if (self.mpicomm) and (self.mpicomm.rank != 0):
-            # Non-root nodes receive state information.
-            logger.debug('Node {}/{}: MPI bcast - sharing replica_states'.format(
-                    self.mpicomm.rank, self.mpicomm.size))
-            self.replica_states = self.mpicomm.bcast(self.replica_states, root=0)
-            return
-
-        logger.debug("Mixing replicas...")
-
-        # Reset storage to keep track of swap attempts this iteration.
-        self.Nij_proposed[:,:] = 0
-        self.Nij_accepted[:,:] = 0
-
-        # Perform swap attempts according to requested scheme.
-        start_time = time.time()
-        if self.replica_mixing_scheme == 'swap-neighbors':
-            self._mix_neighboring_replicas()
-        elif self.replica_mixing_scheme == 'swap-all':
-            # Try to use cython-accelerated mixing code if possible, otherwise fall back to Python-accelerated code.
-            try:
-                self._mix_all_replicas_cython()
-            except ValueError as e:
-                logger.warning(e.message)
-                self._mix_all_replicas()
-        elif self.replica_mixing_scheme == 'none':
-            # Don't mix replicas.
-            pass
-        else:
-            raise ParameterException("Replica mixing scheme '%s' unknown.  Choose valid 'replica_mixing_scheme' parameter." % self.replica_mixing_scheme)
-        end_time = time.time()
-
-        # Determine fraction of swaps accepted this iteration.
-        nswaps_attempted = self.Nij_proposed.sum()
-        nswaps_accepted = self.Nij_accepted.sum()
-        swap_fraction_accepted = 0.0
-        if (nswaps_attempted > 0): swap_fraction_accepted = float(nswaps_accepted) / float(nswaps_attempted);
-        logger.debug("Accepted %d / %d attempted swaps (%.1f %%)" % (nswaps_accepted, nswaps_attempted, swap_fraction_accepted * 100.0))
-
-        # Estimate cumulative transition probabilities between all states.
-        Nij_accepted = self.ncfile.variables['accepted'][:,:,:].sum(0) + self.Nij_accepted
-        Nij_proposed = self.ncfile.variables['proposed'][:,:,:].sum(0) + self.Nij_proposed
-        swap_Pij_accepted = np.zeros([self.nstates,self.nstates], np.float64)
-        for istate in range(self.nstates):
-            Ni = Nij_proposed[istate,:].sum()
-            if (Ni == 0):
-                swap_Pij_accepted[istate,istate] = 1.0
-            else:
-                swap_Pij_accepted[istate,istate] = 1.0 - float(Nij_accepted[istate,:].sum() - Nij_accepted[istate,istate]) / float(Ni)
-                for jstate in range(self.nstates):
-                    if istate != jstate:
-                        swap_Pij_accepted[istate,jstate] = float(Nij_accepted[istate,jstate]) / float(Ni)
-
-        if self.mpicomm:
-            # Root node will share state information with all replicas.
-            logger.debug('Node {}/{}: MPI bcast - sharing replica_states'.format(
-                    self.mpicomm.rank, self.mpicomm.size))
-            self.replica_states = self.mpicomm.bcast(self.replica_states, root=0)
-
-        # Report on mixing.
-        logger.debug("Mixing of replicas took %.3f s" % (end_time - start_time))
-
-        return
-
-    def _accumulate_mixing_statistics(self):
-        """Return the mixing transition matrix Tij."""
-        try:
-            return self._accumulate_mixing_statistics_update()
-        except AttributeError:
-            pass
-        except ValueError:
-            logger.info("Inconsistent transition count matrix detected, recalculating from scratch.")
-
-        return self._accumulate_mixing_statistics_full()
-
-    def _accumulate_mixing_statistics_full(self):
-        """Compute statistics of transitions iterating over all iterations of repex."""
-        states = self.ncfile.variables['states']
-        self._Nij = np.zeros([self.nstates, self.nstates], np.float64)
-        for iteration in range(states.shape[0]-1):
-            for ireplica in range(self.nstates):
-                istate = states[iteration, ireplica]
-                jstate = states[iteration + 1, ireplica]
-                self._Nij[istate, jstate] += 0.5
-                self._Nij[jstate, istate] += 0.5
-
-        Tij = np.zeros([self.nstates, self.nstates], np.float64)
-        for istate in range(self.nstates):
-            Tij[istate] = self._Nij[istate] / self._Nij[istate].sum()
-
-        return Tij
-
-    def _accumulate_mixing_statistics_update(self):
-        """Compute statistics of transitions updating Nij of last iteration of repex."""
-
-        states = self.ncfile.variables['states']
-        if self._Nij.sum() != (states.shape[0] - 2) * self.nstates:  # n_iter - 2 = (n_iter - 1) - 1.  Meaning that you have exactly one new iteration to process.
-            raise(ValueError("Inconsistent transition count matrix detected.  Perhaps you tried updating twice in a row?"))
-
-        for ireplica in range(self.nstates):
-            istate = states[self.iteration-2, ireplica]
-            jstate = states[self.iteration-1, ireplica]
-            self._Nij[istate, jstate] += 0.5
-            self._Nij[jstate, istate] += 0.5
-
-        Tij = np.zeros([self.nstates, self.nstates], np.float64)
-        for istate in range(self.nstates):
-            Tij[istate] = self._Nij[istate] / self._Nij[istate].sum()
-
-        return Tij
-
-    def _show_mixing_statistics(self):
-
-        if self.iteration < 2:
-            return
-        if self.mpicomm and self.mpicomm.rank != 0:
-            return  # only root node have access to ncfile
-        if not logger.isEnabledFor(logging.DEBUG):
-            return
-
-        Tij = self._accumulate_mixing_statistics()
-
-        # Print observed transition probabilities.
-        PRINT_CUTOFF = 0.001 # Cutoff for displaying fraction of accepted swaps.
-        logger.debug("Cumulative symmetrized state mixing transition matrix:")
-        str_row = "%6s" % ""
-        for jstate in range(self.nstates):
-            str_row += "%6d" % jstate
-        logger.debug(str_row)
-        for istate in range(self.nstates):
-            str_row = "%-6d" % istate
-            for jstate in range(self.nstates):
-                P = Tij[istate,jstate]
-                if (P >= PRINT_CUTOFF):
-                    str_row += "%6.3f" % P
-                else:
-                    str_row += "%6s" % ""
-            logger.debug(str_row)
-
-        # Estimate second eigenvalue and equilibration time.
-        mu = np.linalg.eigvals(Tij)
-        mu = -np.sort(-mu) # sort in descending order
-        if (mu[1] >= 1):
-            logger.debug("Perron eigenvalue is unity; Markov chain is decomposable.")
-        else:
-            logger.debug("Perron eigenvalue is %9.5f; state equilibration timescale is ~ %.1f iterations" % (mu[1], 1.0 / (1.0 - mu[1])))
-
-    def _initialize_netcdf(self):
-        """
-        Initialize NetCDF file for storage.
-
-        """
-
-        # Only root node should set up NetCDF file.
-        if self.mpicomm:
-            if self.mpicomm.rank != 0: return
-
-        # Open NetCDF 4 file for writing.
-        ncfile = netcdf.Dataset(self.store_filename, 'w', version='NETCDF4')
-
-        # Create dimensions.
-        ncfile.createDimension('iteration', 0) # unlimited number of iterations
-        ncfile.createDimension('replica', self.nreplicas) # number of replicas
-        ncfile.createDimension('atom', self.natoms) # number of atoms in system
-        ncfile.createDimension('spatial', 3) # number of spatial dimensions
-
-        # Set global attributes.
-        setattr(ncfile, 'title', self.title)
-        setattr(ncfile, 'application', 'YANK')
-        setattr(ncfile, 'program', 'yank.py')
-        setattr(ncfile, 'programVersion', 'unknown') # TODO: Include actual version.
-        setattr(ncfile, 'Conventions', 'YANK')
-        setattr(ncfile, 'ConventionVersion', '0.1')
-
-        # Create variables.
-        ncvar_positions = ncfile.createVariable('positions', 'f4', ('iteration','replica','atom','spatial'), zlib=True, chunksizes=(1,self.nreplicas,self.natoms,3))
-        ncvar_states    = ncfile.createVariable('states', 'i4', ('iteration','replica'), zlib=False, chunksizes=(1,self.nreplicas))
-        ncvar_energies  = ncfile.createVariable('energies', 'f8', ('iteration','replica','replica'), zlib=False, chunksizes=(1,self.nreplicas,self.nreplicas))
-        ncvar_proposed  = ncfile.createVariable('proposed', 'i4', ('iteration','replica','replica'), zlib=False, chunksizes=(1,self.nreplicas,self.nreplicas))
-        ncvar_accepted  = ncfile.createVariable('accepted', 'i4', ('iteration','replica','replica'), zlib=False, chunksizes=(1,self.nreplicas,self.nreplicas))
-        ncvar_box_vectors = ncfile.createVariable('box_vectors', 'f4', ('iteration','replica','spatial','spatial'), zlib=False, chunksizes=(1,self.nreplicas,3,3))
-        ncvar_volumes  = ncfile.createVariable('volumes', 'f8', ('iteration','replica'), zlib=False, chunksizes=(1,self.nreplicas))
-
-        # Define units for variables.
-        setattr(ncvar_positions, 'units', 'nm')
-        setattr(ncvar_states,    'units', 'none')
-        setattr(ncvar_energies,  'units', 'kT')
-        setattr(ncvar_proposed,  'units', 'none')
-        setattr(ncvar_accepted,  'units', 'none')
-        setattr(ncvar_box_vectors, 'units', 'nm')
-        setattr(ncvar_volumes, 'units', 'nm**3')
-
-        # Define long (human-readable) names for variables.
-        setattr(ncvar_positions, "long_name", "positions[iteration][replica][atom][spatial] is position of coordinate 'spatial' of atom 'atom' from replica 'replica' for iteration 'iteration'.")
-        setattr(ncvar_states,    "long_name", "states[iteration][replica] is the state index (0..nstates-1) of replica 'replica' of iteration 'iteration'.")
-        setattr(ncvar_energies,  "long_name", "energies[iteration][replica][state] is the reduced (unitless) energy of replica 'replica' from iteration 'iteration' evaluated at state 'state'.")
-        setattr(ncvar_proposed,  "long_name", "proposed[iteration][i][j] is the number of proposed transitions between states i and j from iteration 'iteration-1'.")
-        setattr(ncvar_accepted,  "long_name", "accepted[iteration][i][j] is the number of proposed transitions between states i and j from iteration 'iteration-1'.")
-        setattr(ncvar_box_vectors, "long_name", "box_vectors[iteration][replica][i][j] is dimension j of box vector i for replica 'replica' from iteration 'iteration-1'.")
-        setattr(ncvar_volumes, "long_name", "volume[iteration][replica] is the box volume for replica 'replica' from iteration 'iteration-1'.")
-
-        # Create timestamp variable.
-        ncvar_timestamp = ncfile.createVariable('timestamp', str, ('iteration',), zlib=False, chunksizes=(1,))
-
-        # Create group for performance statistics.
-        ncgrp_timings = ncfile.createGroup('timings')
-        ncvar_iteration_time = ncgrp_timings.createVariable('iteration', 'f', ('iteration',), zlib=False, chunksizes=(1,)) # total iteration time (seconds)
-        ncvar_iteration_time = ncgrp_timings.createVariable('mixing', 'f', ('iteration',), zlib=False, chunksizes=(1,)) # time for mixing
-        ncvar_iteration_time = ncgrp_timings.createVariable('propagate', 'f', ('iteration','replica'), zlib=False, chunksizes=(1,self.nreplicas)) # total time to propagate each replica
-
-        # Store thermodynamic states.
-        self._store_thermodynamic_states(ncfile)
-
-        # Store run options
-        self._store_options(ncfile)
-
-        # Store metadata.
-        if self.metadata:
-            self._store_metadata(ncfile)
-
-        # Force sync to disk to avoid data loss.
-        ncfile.sync()
-
-        # Store netcdf file handle.
-        self.ncfile = ncfile
-
-        return
-
-    @delayed_termination
-    def _write_iteration_netcdf(self):
-        """
-        Write positions, states, and energies of current iteration to NetCDF file.
-
-        """
-
-        if self.mpicomm:
-            # Only the root node will write data.
-            if self.mpicomm.rank != 0: return
-
-        initial_time = time.time()
-
-        # Store replica positions.
-        for replica_index in range(self.nstates):
-            positions = self.replica_positions[replica_index]
-            x = positions / unit.nanometers
-            self.ncfile.variables['positions'][self.iteration,replica_index,:,:] = x[:,:]
-
-        # Store box vectors and volume.
-        for replica_index in range(self.nstates):
-            state_index = self.replica_states[replica_index]
-            state = self.states[state_index]
-            box_vectors = self.replica_box_vectors[replica_index]
-            for i in range(3):
-                self.ncfile.variables['box_vectors'][self.iteration,replica_index,i,:] = (box_vectors[i] / unit.nanometers)
-            volume = state._volume(box_vectors)
-            self.ncfile.variables['volumes'][self.iteration,replica_index] = volume / (unit.nanometers**3)
-
-        # Store state information.
-        self.ncfile.variables['states'][self.iteration,:] = self.replica_states[:]
-
-        # Store energies.
-        self.ncfile.variables['energies'][self.iteration,:,:] = self.u_kl[:,:]
-
-        # Store mixing statistics.
-        # TODO: Write mixing statistics for this iteration?
-        self.ncfile.variables['proposed'][self.iteration,:,:] = self.Nij_proposed[:,:]
-        self.ncfile.variables['accepted'][self.iteration,:,:] = self.Nij_accepted[:,:]
-
-        # Store timestamp this iteration was written.
-        self.ncfile.variables['timestamp'][self.iteration] = time.ctime()
-
-        # Force sync to disk to avoid data loss.
-        presync_time = time.time()
-        self.ncfile.sync()
-
-        # Print statistics.
-        final_time = time.time()
-        sync_time = final_time - presync_time
-        elapsed_time = final_time - initial_time
-        logger.debug("Writing data to NetCDF file took %.3f s (%.3f s for sync)" % (elapsed_time, sync_time))
-
-        return
-
-    def _run_sanity_checks(self):
-        """
-        Run some checks on current state information to see if something has gone wrong that precludes continuation.
-
-        """
-
-        abort = False
-
-        # Check positions.
-        for replica_index in range(self.nreplicas):
-            positions = self.replica_positions[replica_index]
-            x = positions / unit.nanometers
-            if np.any(np.isnan(x)):
-                logger.warning("nan encountered in replica %d positions." % replica_index)
-                abort = True
-
-        # Check energies.
-        for replica_index in range(self.nreplicas):
-            if np.any(np.isnan(self.u_kl[replica_index,:])):
-                logger.warning("nan encountered in u_kl state energies for replica %d" % replica_index)
-                abort = True
-
-        if abort:
-            if self.mpicomm:
-                self.mpicomm.Abort()
-            else:
-                raise Exception("Aborting.")
-
-        return
-
-    def _store_thermodynamic_states(self, ncfile):
-        """
-        Store the thermodynamic states in a NetCDF file.
-
-        """
-        logger.debug("Storing thermodynamic states in NetCDF file...")
-        initial_time = time.time()
-
-        # Create a group to store state information.
-        ncgrp_stateinfo = ncfile.createGroup('thermodynamic_states')
-
-        # Get number of states.
-        ncvar_nstates = ncgrp_stateinfo.createVariable('nstates', int)
-        ncvar_nstates.assignValue(self.nstates)
-
-        # Temperatures.
-        ncvar_temperatures = ncgrp_stateinfo.createVariable('temperatures', 'f', ('replica',))
-        setattr(ncvar_temperatures, 'units', 'K')
-        setattr(ncvar_temperatures, 'long_name', "temperatures[state] is the temperature of thermodynamic state 'state'")
-        for state_index in range(self.nstates):
-            ncvar_temperatures[state_index] = self.states[state_index].temperature / unit.kelvin
-
-        # Pressures.
-        if self.states[0].pressure is not None:
-            ncvar_temperatures = ncgrp_stateinfo.createVariable('pressures', 'f', ('replica',))
-            setattr(ncvar_temperatures, 'units', 'atm')
-            setattr(ncvar_temperatures, 'long_name', "pressures[state] is the external pressure of thermodynamic state 'state'")
-            for state_index in range(self.nstates):
-                ncvar_temperatures[state_index] = self.states[state_index].pressure / unit.atmospheres
-
-        # TODO: Store other thermodynamic variables store in ThermodynamicState?  Generalize?
-
-        # Systems.
-        ncvar_serialized_states = ncgrp_stateinfo.createVariable('systems', str, ('replica',), zlib=True)
-        setattr(ncvar_serialized_states, 'long_name', "systems[state] is the serialized OpenMM System corresponding to the thermodynamic state 'state'")
-        for state_index in range(self.nstates):
-            logger.debug("Serializing state %d..." % state_index)
-            serialized = self.states[state_index].system.__getstate__()
-            logger.debug("Serialized state is %d B | %.3f KB | %.3f MB" % (len(serialized), len(serialized) / 1024.0, len(serialized) / 1024.0 / 1024.0))
-            ncvar_serialized_states[state_index] = serialized
-        final_time = time.time()
-        elapsed_time = final_time - initial_time
-
-        logger.debug("Serializing thermodynamic states took %.3f s." % elapsed_time)
-
-        return
-
-    def _restore_thermodynamic_states(self, ncfile):
-        """
-        Restore the thermodynamic states from a NetCDF file.
-
-        """
-        logger.debug("Restoring thermodynamic states from NetCDF file...")
-        initial_time = time.time()
-
-        # Make sure this NetCDF file contains thermodynamic state information.
-        if not 'thermodynamic_states' in ncfile.groups:
-            raise Exception("Could not restore thermodynamic states from %s" % self.store_filename)
-
-        # Create a group to store state information.
-        ncgrp_stateinfo = ncfile.groups['thermodynamic_states']
-
-        # Get number of states.
-        self.nstates = ncgrp_stateinfo.variables['nstates'].getValue()
-
-        # Read state information.
-        self.states = list()
-        for state_index in range(self.nstates):
-            # Populate a new ThermodynamicState object.
-            state = ThermodynamicState()
-            # Read temperature.
-            state.temperature = float(ncgrp_stateinfo.variables['temperatures'][state_index]) * unit.kelvin
-            # Read pressure, if present.
-            if 'pressures' in ncgrp_stateinfo.variables:
-                state.pressure = float(ncgrp_stateinfo.variables['pressures'][state_index]) * unit.atmospheres
-            # Reconstitute System object.
-            state.system = self.mm.System()
-            state.system.__setstate__(str(ncgrp_stateinfo.variables['systems'][state_index]))
-            # Store state.
-            self.states.append(state)
-
-        final_time = time.time()
-        elapsed_time = final_time - initial_time
-        logger.debug("Restoring thermodynamic states from NetCDF file took %.3f s." % elapsed_time)
-
-        return True
-
-    def _convert_netcdf_store_type(self, stored_type):
-        """
-        Convert the stored NetCDF datatype from string to type without relying on unsafe eval() function
-
-        Parameters
-        ----------
-        stored_type : string 
-            Read from ncfile.Variable.type stored by repex
- 
-        Returns:
-        --------
-        proper_type : type
-            Python or module type
-  
-        """
-        import importlib
-        try:
-            # Check if it's a builtin type
-            try: # Python 2
-                module = importlib.import_module('__builtin__')
-            except: # Python 3
-                module = importlib.import_module('builtins')
-            proper_type = getattr(module, stored_type)
-        except AttributeError:
-            # if not, separate module and class
-            module, stored_type = stored_type.rsplit(".", 1)
-            module = importlib.import_module(module)
-            proper_type = getattr(module, stored_type)
-        return proper_type
-
-    def _store_dict_in_netcdf(self, ncgrp, options):
-        """
-        Store the contents of a dict in a NetCDF file.
-
-        Parameters
-        ----------
-        ncgrp : ncfile.Dataset group
-            The group in which to store options.
-        options : dict
-            The dict to store.
-
-        """
-        from .utils import typename
-        import collections
-        for option_name in options.keys():
-            # Get option value.
-            option_value = options[option_name]
-            # If Quantity, strip off units first.
-            option_unit = None
-            if type(option_value) == unit.Quantity:
-                option_unit = option_value.unit
-                option_value = option_value / option_unit
-            # Store the Python type.
-            option_type = type(option_value)
-            option_type_name = typename(option_type)
-            # Handle booleans
-            if type(option_value) == bool:
-                option_value = int(option_value)
-            # Store the variable.
-            if type(option_value) == str:
-                ncvar = ncgrp.createVariable(option_name, type(option_value), 'scalar')
-                packed_data = np.empty(1, 'O')
-                packed_data[0] = option_value
-                ncvar[:] = packed_data
-                setattr(ncvar, 'type', option_type_name)
-            elif isinstance(option_value, collections.Iterable):
-                nelements = len(option_value)
-                element_type = type(option_value[0])
-                element_type_name = typename(element_type)
-                ncgrp.createDimension(option_name, nelements) # unlimited number of iterations
-                ncvar = ncgrp.createVariable(option_name, element_type, (option_name,))
-                for (i, element) in enumerate(option_value):
-                    ncvar[i] = element
-                setattr(ncvar, 'type', element_type_name)
-            elif option_value is None:
-                ncvar = ncgrp.createVariable(option_name, int)
-                ncvar.assignValue(0)
-                setattr(ncvar, 'type', option_type_name)
-            else:
-                ncvar = ncgrp.createVariable(option_name, type(option_value))
-                ncvar.assignValue(option_value)
-                setattr(ncvar, 'type', option_type_name)
-
-            # Log value (truncate if too long but save length)
-            if hasattr(option_value, '__len__'):
-                logger.debug("Storing option: {} -> {} (type: {}, length {})".format(
-                    option_name, str(option_value)[:500], option_type_name, len(option_value)))
-            else:
-                logger.debug("Storing option: {} -> {} (type: {})".format(
-                    option_name, option_value, option_type_name))
-            if option_unit: setattr(ncvar, 'units', str(option_unit))
-
-        return
-
-    def _restore_dict_from_netcdf(self, ncgrp):
-        """
-        Restore dict from NetCDF.
-
-        Parameters
-        ----------
-        ncgrp : netcdf.Dataset group
-            The NetCDF group to restore from.
-
-        Returns
-        -------
-        options : dict
-            The restored options as a dict.
-
-        """
-        options = dict()
-
-        import numpy
-        from .utils import quantity_from_string
-        for option_name in ncgrp.variables.keys():
-            # Get NetCDF variable.
-            option_ncvar = ncgrp.variables[option_name]
-            type_name = getattr(option_ncvar, 'type')
-            # TODO: Remove the if/elseif structure into one handy function
-            # Get option value.
-            if type_name == 'NoneType':
-                option_value = None
-            else: # Handle all Types not None
-                option_type = self._convert_netcdf_store_type(type_name)
-                if option_ncvar.shape == ():
-                    # Handle Standard Types
-                    option_value = option_type(option_ncvar.getValue())
-                elif (option_ncvar.shape[0] >= 0):
-                    # Handle array types
-                    option_value = np.array(option_ncvar[:], option_type)
-                    # TODO: Deal with values that are actually scalar constants.
-                    # TODO: Cast to appropriate type
-                else:
-                    # Handle iterable types?
-                    # TODO: Figure out what is actually cast here
-                    option_value = option_type(option_ncvar[0])
-
-            # Log value (truncate if too long but save length)
-            if hasattr(option_value, '__len__'):
-                try:
-                    option_value_len = len(option_value)
-                except TypeError:  # this is a zero-dimensional array
-                    option_value_len = np.atleast_1d(option_value)
-                logger.debug("Restoring option: {} -> {} (type: {}, length {})".format(
-                    option_name, str(option_value)[:500], type(option_value), option_value_len))
-            else:
-                logger.debug("Retoring option: {} -> {} (type: {})".format(
-                    option_name, option_value, type(option_value)))
-
-            # If Quantity, assign unit.
-            if hasattr(option_ncvar, 'units'):
-                option_unit_name = getattr(option_ncvar, 'units')
-                if option_unit_name[0] == '/':
-                    option_value = str(option_value) + option_unit_name
-                else:
-                    option_value = str(option_value) + '*' + option_unit_name
-                option_value = quantity_from_string(option_value)
-            # Store option.
-            options[option_name] = option_value
-
-        return options
-
-    def _store_options(self, ncfile):
-        """
-        Store run parameters in NetCDF file.
-
-        """
-
-        logger.debug("Storing run parameters in NetCDF file...")
-
-        # Create scalar dimension if not already present.
-        if 'scalar' not in ncfile.dimensions:
-            ncfile.createDimension('scalar', 1) # scalar dimension
-
-        # Create a group to store state information.
-        ncgrp_options = ncfile.createGroup('options')
-
-        # Build dict of options to store.
-        options = dict()
-        for option_name in self.options_to_store:
-            option_value = getattr(self, option_name)
-            options[option_name] = option_value
-
-        # Store options.
-        self._store_dict_in_netcdf(ncgrp_options, options)
-
-        return
-
-    def _restore_options(self, ncfile):
-        """
-        Restore run parameters from NetCDF file.
-
-        """
-
-        logger.debug("Attempting to restore options from NetCDF file...")
-
-        # Make sure this NetCDF file contains option information
-        if not 'options' in ncfile.groups:
-            raise Exception("options not found in NetCDF file.")
-
-        # Find the group.
-        ncgrp_options = ncfile.groups['options']
-
-        # Restore options as dict.
-        options = self._restore_dict_from_netcdf(ncgrp_options)
-
-        # Set these as attributes.
-        for option_name in options.keys():
-            setattr(self, option_name, options[option_name])
-
-        # Signal success.
-        return True
-
-    def _store_metadata(self, ncfile):
-        """
-        Store metadata in NetCDF file.
-
-        Parameters
-        ----------
-        ncfile : netcdf.Dataset
-            The NetCDF file in which metadata is to be stored.
-
-        """
-        ncgrp = ncfile.createGroup('metadata')
-        self._store_dict_in_netcdf(ncgrp, self.metadata)
-        return
-
-    def _restore_metadata(self, ncfile):
-        """
-        Restore metadata from NetCDF file.
-
-        Parameters
-        ----------
-        ncfile : netcdf.Dataset
-            The NetCDF file in which metadata is to be stored.
-
-        """
-        self.metadata = None
-        if 'metadata' in ncfile.groups:
-            ncgrp = ncfile.groups['metadata']
-            self.metadata = self._restore_dict_from_netcdf(ncgrp)
-
-    def _resume_from_netcdf(self, ncfile):
-        """
-        Resume execution by reading current positions and energies from a NetCDF file.
-
-        Parameters
-        ----------
-        ncfile : netcdf.Dataset
-            The NetCDF file in which metadata is to be stored.
-
-        """
-
-        # TODO: Perform sanity check on file before resuming
-
-        # Get current dimensions.
-        self.iteration = ncfile.variables['positions'].shape[0] - 1
-        self.nstates = ncfile.variables['positions'].shape[1]
-        self.natoms = ncfile.variables['positions'].shape[2]
-        self.nreplicas = self.nstates
-        logger.debug("iteration = %d, nstates = %d, natoms = %d" % (self.iteration, self.nstates, self.natoms))
-
-        # Restore positions.
-        self.replica_positions = list()
-        for replica_index in range(self.nstates):
-            x = ncfile.variables['positions'][self.iteration,replica_index,:,:].astype(np.float64).copy()
-            positions = unit.Quantity(x, unit.nanometers)
-            self.replica_positions.append(positions)
-
-        # Restore box vectors.
-        self.replica_box_vectors = list()
-        for replica_index in range(self.nstates):
-            x = ncfile.variables['box_vectors'][self.iteration,replica_index,:,:].astype(np.float64).copy()
-            box_vectors = unit.Quantity(x, unit.nanometers)
-            self.replica_box_vectors.append(box_vectors)
-
-        # Restore state information.
-        self.replica_states = ncfile.variables['states'][self.iteration,:].copy()
-
-        # Restore energies.
-        self.u_kl = ncfile.variables['energies'][self.iteration,:,:].copy()
-
-    def _show_energies(self):
-        """
-        Show energies (in units of kT) for all replicas at all states.
-
-        """
-
-        if not logger.isEnabledFor(logging.DEBUG):
-            return
-
-        # print header
-        str_row = "%-24s %16s" % ("reduced potential (kT)", "current state")
-        for state_index in range(self.nstates):
-            str_row += " state %3d" % state_index
-        logger.debug(str_row)
-
-        # print energies in kT
-        for replica_index in range(self.nstates):
-            str_row = "replica %-16d %16d" % (replica_index, self.replica_states[replica_index])
-            for state_index in range(self.nstates):
-                u = self.u_kl[replica_index,state_index]
-                if (u > 1e6):
-                    str_row += "%10.3e" % u
-                else:
-                    str_row += "%10.1f" % u
-            logger.debug(str_row)
-
-        return
-
-    def _compute_trace(self):
-        """
-        Compute trace for replica ensemble minus log probability.
-
-        Extract timeseries of u_n = - log q(X_n) from store file
-
-        where q(X_n) = \pi_{k=1}^K u_{s_{nk}}(x_{nk})
-
-        with X_n = [x_{n1}, ..., x_{nK}] is the current collection of replica configurations
-        s_{nk} is the current state of replica k at iteration n
-        u_k(x) is the kth reduced potential
-
-        Returns
-        -------
-        u_n : numpy array of numpy.float64
-        u   _n[n] is -log q(X_n)
-
-        TODO
-        ----
-        * Later, we should have this quantity computed and stored on the fly in the store file.
-        But we may want to do this without breaking backward compatibility.
-
-        """
-
-        # Get current dimensions.
-        niterations = self.ncfile.variables['energies'].shape[0]
-        nstates = self.ncfile.variables['energies'].shape[1]
-        natoms = self.ncfile.variables['energies'].shape[2]
-
-        # Extract energies.
-        energies = ncfile.variables['energies']
-        u_kln_replica = np.zeros([nstates, nstates, niterations], np.float64)
-        for n in range(niterations):
-            u_kln_replica[:,:,n] = energies[n,:,:]
-
-        # Deconvolute replicas
-        u_kln = np.zeros([nstates, nstates, niterations], np.float64)
-        for iteration in range(niterations):
-            state_indices = ncfile.variables['states'][iteration,:]
-            u_kln[state_indices,:,iteration] = energies[iteration,:,:]
-
-        # Compute total negative log probability over all iterations.
-        u_n = np.zeros([niterations], np.float64)
-        for iteration in range(niterations):
-            u_n[iteration] = np.sum(np.diagonal(u_kln[:,:,iteration]))
-
-        return u_n
-
-    def _analysis(self):
-        """
-        Perform online analysis each iteration.
-
-        Every iteration, this will update the estimate of the state relative free energy differences and statistical uncertainties.
-        We can additionally request further analysis.
-
-        """
-
-        # Only root node can perform analysis.
-        if self.mpicomm and (self.mpicomm.rank != 0): return
-
-        # Determine how many iterations there are data available for.
-        replica_states = self.ncfile.variables['states'][:,:]
-        u_nkl_replica = self.ncfile.variables['energies'][:,:,:]
-
-        # Determine number of iterations completed.
-        number_of_iterations_completed = replica_states.shape[0]
-        nstates = replica_states.shape[1]
-
-        # Online analysis can only be performed after a sufficient quantity of data has been collected.
-        if (number_of_iterations_completed < self.online_analysis_min_iterations):
-            logger.debug("Online analysis will be performed after %d iterations have elapsed." % self.online_analysis_min_iterations)
-            self.analysis = None
-            return
-
-        # Deconvolute replicas and compute total simulation effective self-energy timeseries.
-        u_kln = np.zeros([nstates, nstates, number_of_iterations_completed], np.float32)
-        u_n = np.zeros([number_of_iterations_completed], np.float64)
-        for iteration in range(number_of_iterations_completed):
-            state_indices = replica_states[iteration,:]
-            u_n[iteration] = 0.0
-            for replica_index in range(nstates):
-                state_index = state_indices[replica_index]
-                u_n[iteration] += u_nkl_replica[iteration,replica_index,state_index]
-                u_kln[state_index,:,iteration] = u_nkl_replica[iteration,replica_index,:]
-
-        # Determine optimal equilibration time, statistical inefficiency, and effectively uncorrelated sample indices.
-        from pymbar import timeseries
-        [t0, g, Neff_max] = timeseries.detectEquilibration(u_n)
-        indices = t0 + timeseries.subsampleCorrelatedData(u_n[t0:], g=g)
-        N_k = indices.size * np.ones([nstates], np.int32)
-
-        # Next, analyze with pymbar, initializing with last estimate of free energies.
-        from pymbar import MBAR
-        if hasattr(self, 'f_k'):
-            mbar = MBAR(u_kln[:,:,indices], N_k, initial_f_k=self.f_k)
-        else:
-            mbar = MBAR(u_kln[:,:,indices], N_k)
-
-        # Cache current free energy estimate to save time in future MBAR solutions.
-        self.f_k = mbar.f_k
-
-        # Compute entropy and enthalpy.
-        [Delta_f_ij, dDelta_f_ij, Delta_u_ij, dDelta_u_ij, Delta_s_ij, dDelta_s_ij] = mbar.computeEntropyAndEnthalpy()
-
-        # Store analysis summary.
-        # TODO: Convert this to an object?
-        analysis = dict()
-        analysis['equilibration_end'] = t0
-        analysis['g'] = g
-        analysis['indices'] = indices
-        analysis['Delta_f_ij'] = Delta_f_ij
-        analysis['dDelta_f_ij'] = dDelta_f_ij
-        analysis['Delta_u_ij'] = Delta_u_ij
-        analysis['dDelta_u_ij'] = dDelta_u_ij
-        analysis['Delta_s_ij'] = Delta_s_ij
-        analysis['dDelta_s_ij'] = dDelta_s_ij
-
-        def matrix2str(x):
-            """
-            Return a print-ready string version of a matrix of numbers.
-
-            Parameters
-            ----------
-            x : numpy.array of nrows x ncols matrix
-               Matrix of numbers to print.
-
-            TODO
-            ----
-            * Automatically determine optimal spacing
-
-            """
-            [nrows, ncols] = x.shape
-            str_row = ""
-            for i in range(nrows):
-                for j in range(ncols):
-                    str_row += "%8.3f" % x[i, j]
-                str_row += "\n"
-            return str_row
-
-        # Print estimate
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug("================================================================================")
-            logger.debug("Online analysis estimate of free energies:")
-            logger.debug("  equilibration end: %d iterations" % t0)
-            logger.debug("  statistical inefficiency: %.1f iterations" % g)
-            logger.debug("  effective number of uncorrelated samples: %.1f" % Neff_max)
-            logger.debug("Reduced free energy (f), enthalpy (u), and entropy (s) differences among thermodynamic states:")
-            logger.debug("Delta_f_ij")
-            logger.debug(matrix2str(Delta_f_ij))
-            logger.debug("dDelta_f_ij")
-            logger.debug(matrix2str(dDelta_f_ij))
-            logger.debug("Delta_u_ij")
-            logger.debug(matrix2str(Delta_u_ij))
-            logger.debug("dDelta_u_ij")
-            logger.debug(matrix2str(dDelta_u_ij))
-            logger.debug("Delta_s_ij")
-            logger.debug(matrix2str(Delta_s_ij))
-            logger.debug("dDelta_s_ij")
-            logger.debug(matrix2str(dDelta_s_ij))
-            logger.debug("================================================================================")
-
-        self.analysis = analysis
-
-        return
-
-    def analyze(self):
-        """
-        Analyze the current simulation and return estimated free energies.
-
-        Returns
-        -------
-        analysis : dict
-           Analysis object containing end of equilibrated region, statistical inefficiency, and free energy differences:
-
-        Keys
-        ----
-        equilibration_end : int
-           The last iteration in the discarded equilibrated region
-        g : float
-           Estimated statistical inefficiency of production region
-        indices : list of int
-           Equilibrated, effectively uncorrelated iteration indices used in analysis
-        Delta_f_ij : numpy array of nstates x nstates
-           Delta_f_ij[i,j] is the free energy difference f_j - f_i in units of kT
-        dDelta_f_ij : numpy array of nstates x nstates
-           dDelta_f_ij[i,j] is estimated standard error of Delta_f_ij[i,j]
-        Delta_u_ij
-           Delta_u_ij[i,j] is the reduced enthalpy difference u_j - u_i in units of kT
-        dDelta_u_ij
-           dDelta_u_ij[i,j] is estimated standard error of Delta_u_ij[i,j]
-        Delta_s_ij
-           Delta_s_ij[i,j] is the reduced entropic contribution to the free energy difference s_j - s_i in units of kT
-        dDelta_s_ij
-           dDelta_s_ij[i,j] is estimated standard error of Delta_s_ij[i,j]
-
-        """
-        if not self._initialized:
-            self._initialize_resume()
-
-        # Update analysis on root node.
-        self._analysis()
-
-        if self.mpicomm: self.analysis = self.mpicomm.bcast(self.analysis, root=0) # broadcast analysis from root node
-
-        # Return analysis object
-        return self.analysis
-
-#=============================================================================================
-# Parallel tempering
-#=============================================================================================
+        # Attempt swaps of pairs of replicas using traditional scheme (e.g. [0,1], [2,3], ...).
+        offset = np.random.randint(2)  # Offset is 0 or 1.
+        for thermodynamic_state_i in range(offset, self.n_replicas-1, 2):
+            thermodynamic_state_j = thermodynamic_state_i + 1  # Neighboring state.
+
+            # Determine which replicas currently hold the thermodynamic states.
+            replica_i = np.where(self._replica_thermodynamic_states == thermodynamic_state_i)
+            replica_j = np.where(self._replica_thermodynamic_states == thermodynamic_state_j)
+            self._attempt_swap(replica_i, replica_j)
+
+    def _attempt_swap(self, replica_i, replica_j):
+        """Attempt a single exchange between two replicas."""
+        # Determine the thermodynamic states associated to these replicas.
+        thermodynamic_state_i = self._replica_thermodynamic_states[replica_i]
+        thermodynamic_state_j = self._replica_thermodynamic_states[replica_j]
+
+        # Compute log probability of swap.
+        energy_ij = self._energy_thermodynamic_states[replica_i, thermodynamic_state_j]
+        energy_ji = self._energy_thermodynamic_states[replica_j, thermodynamic_state_i]
+        energy_ii = self._energy_thermodynamic_states[replica_i, thermodynamic_state_i]
+        energy_jj = self._energy_thermodynamic_states[replica_j, thermodynamic_state_j]
+        log_p_accept = - (energy_ij + energy_ji) + energy_ii + energy_jj
+
+        # Record that this move has been proposed.
+        self._n_proposed_matrix[thermodynamic_state_i, thermodynamic_state_j] += 1
+        self._n_proposed_matrix[thermodynamic_state_j, thermodynamic_state_i] += 1
+
+        # Accept or reject.
+        if log_p_accept >= 0.0 or np.random.rand() < math.exp(log_p_accept):
+            # Swap states in replica slots i and j.
+            self._replica_thermodynamic_states[replica_i] = thermodynamic_state_j
+            self._replica_thermodynamic_states[replica_j] = thermodynamic_state_i
+            # Accumulate statistics.
+            self._n_accepted_matrix[thermodynamic_state_i, thermodynamic_state_j] += 1
+            self._n_accepted_matrix[thermodynamic_state_j, thermodynamic_state_i] += 1
+
+
+# ==============================================================================
+# PARALLEL TEMPERING
+# ==============================================================================
 
 class ParallelTempering(ReplicaExchange):
-    """
-    Parallel tempering simulation facility.
+    """Parallel tempering simulation facility.
 
-    DESCRIPTION
+    This class provides a facility for parallel tempering simulations. It
+    is a subclass of ReplicaExchange, but provides efficiency improvements
+    for parallel tempering simulations, so should be preferred for this type
+    of simulation. In particular, this makes use of the fact that the reduced
+    potentials are linear in inverse temperature.
 
-    This class provides a facility for parallel tempering simulations.  It is a subclass of ReplicaExchange, but provides
-    various convenience methods and efficiency improvements for parallel tempering simulations, so should be preferred for
-    this type of simulation.  In particular, the System only need be specified once, while the temperatures (or a temperature
-    range) is used to automatically build a set of ThermodynamicState objects for replica-exchange.  Efficiency improvements
-    make use of the fact that the reduced potentials are linear in inverse temperature.
+    Examples
+    --------
 
-    EXAMPLES
+    Create the system.
 
-    Parallel tempering of alanine dipeptide in implicit solvent.
-
-    >>> # Create alanine dipeptide test system.
-    >>> from openmmtools import testsystems
+    >>> from simtk import unit
+    >>> from openmmtools import testsystems, states, mcmc
     >>> testsystem = testsystems.AlanineDipeptideImplicit()
-    >>> [system, positions] = [testsystem.system, testsystem.positions]
-    >>> # Create temporary file for storing output.
-    >>> import tempfile
-    >>> file = tempfile.NamedTemporaryFile() # temporary file for testing
-    >>> store_filename = file.name
-    >>> # Initialize parallel tempering on an exponentially-spaced scale
-    >>> Tmin = 298.0 * unit.kelvin
-    >>> Tmax = 600.0 * unit.kelvin
-    >>> nreplicas = 3
-    >>> simulation = ParallelTempering(store_filename)
-    >>> simulation.create(system, positions, Tmin=Tmin, Tmax=Tmax, ntemps=nreplicas)
-    >>> simulation.number_of_iterations = 2 # set the simulation to only run 10 iterations
-    >>> simulation.timestep = 2.0 * unit.femtoseconds # set the timestep for integration
-    >>> simulation.minimize = False
-    >>> simulation.nsteps_per_iteration = 50 # run 50 timesteps per iteration
-    >>> # Run simulation.
-    >>> simulation.run() # run the simulation
 
-    Parallel tempering of alanine dipeptide in explicit solvent at 1 atm.
+    Create thermodynamic states for parallel tempering with exponentially-spaced schedule.
 
-    >>> # Create alanine dipeptide system
-    >>> from openmmtools import testsystems
-    >>> testsystem = testsystems.AlanineDipeptideExplicit()
-    >>> [system, positions] = [testsystem.system, testsystem.positions]
-    >>> # Add Monte Carlo barsostat to system (must be same pressure as simulation).
-    >>> import simtk.openmm as openmm
-    >>> pressure = 1.0 * unit.atmosphere
-    >>> # Create temporary file for storing output.
-    >>> import tempfile
-    >>> file = tempfile.NamedTemporaryFile() # temporary file for testing
-    >>> store_filename = file.name
-    >>> # Initialize parallel tempering on an exponentially-spaced scale
-    >>> Tmin = 298.0 * unit.kelvin
-    >>> Tmax = 600.0 * unit.kelvin
-    >>> nreplicas = 3
-    >>> simulation = ParallelTempering(store_filename)
-    >>> simulation.create(system, positions, Tmin=Tmin, Tmax=Tmax, pressure=pressure, ntemps=nreplicas)
-    >>> simulation.number_of_iterations = 2 # set the simulation to only run 10 iterations
-    >>> simulation.timestep = 2.0 * unit.femtoseconds # set the timestep for integration
-    >>> simulation.nsteps_per_iteration = 50 # run 50 timesteps per iteration
-    >>> simulation.minimize = False # don't minimize first
-    >>> # Run simulation.
-    >>> simulation.run() # run the simulation
+    >>> n_replicas = 3  # Number of temperature replicas.
+    >>> T_min = 298.0 * unit.kelvin  # Minimum temperature.
+    >>> T_max = 600.0 * unit.kelvin  # Maximum temperature.
+    >>> reference_state = states.ThermodynamicState(system=testsystem.system, temperature=T_min)
+
+    Initialize simulation object with options. Run with a GHMC integrator.
+
+    >>> move = mcmc.GHMCMove(timestep=2.0*unit.femtoseconds, n_steps=50)
+    >>> simulation = ParallelTempering(mcmc_moves=move, number_of_iterations=2)
+
+    Create simulation with its storage file (in a temporary directory) and run.
+
+    >>> storage_path = tempfile.NamedTemporaryFile(delete=False).name + '.nc'
+    >>> reporter = Reporter(storage_path, checkpoint_interval=10)
+    >>> simulation.create(thermodynamic_states=thermodynamic_states,
+    >>>                   sampler_states=states.SamplerState(testsystem.positions),
+    ...                   storage=reporter, min_temperature=T_min,
+    ...                   max_temperature=T_max, n_temperatures=n_replicas)
+    >>> simulation.run(n_iterations=1)
+
+    Clean up.
+
+    >>> os.remove(storage_path)
 
     """
 
-    def create(self, system, positions, options=None, Tmin=None, Tmax=None, ntemps=None, temperatures=None, pressure=None, metadata=None):
-        """
-        Initialize a parallel tempering simulation object.
+    def create(self, thermodynamic_state, sampler_states,
+               storage, min_temperature=None, max_temperature=None, n_temperatures=None, temperatures=None,
+               metadata=None):
+        """Initialize a parallel tempering simulation object.
 
         Parameters
         ----------
-        system : simtk.openmm.System
-           the system to simulate
-        positions : simtk.unit.Quantity of np natoms x 3 array of units length, or list
-           coordinate set(s) for one or more replicas, assigned in a round-robin fashion
-        Tmin : simtk.unit.Quantity with units compatible with kelvin, optional, default=None
-           min temperature
-        Tmax : simtk.unit.Quantity with units compatible with kelvin, optional, default=None
-           max temperature
-        ntemps : int, optional, default=None
-           number of exponentially-spaced temperatures between Tmin and Tmax
-        temperatures : list of simtk.unit.Quantity with units compatible with kelvin, optional, default=None
-           if specified, this list of temperatures will be used instead of (Tmin, Tmax, ntemps)
-        pressure : simtk.unit.Quantity with units compatible with atmospheres, optional, default=None
-           if specified, a MonteCarloBarostat will be added (or modified) to perform NPT simulations
-        options : dict, optional, default=None
-           Options to use for specifying simulation protocol.  Provided keywords will be matched to object variables to replace defaults.
+        thermodynamic_state : openmmtools.states.ThermodynamicState
+            Reference thermodynamic state that will be simulated at the given
+            temperatures.
+        sampler_states : openmmtools.states.SamplerState or list
+            One or more sets of initial sampler states. If a list of SamplerStates,
+            they will be assigned to replicas in a round-robin fashion.
+        storage : str or Reporter
+            If str: path to the storage file, checkpoint options are default
+            If Reporter: Instanced repex.Reporter class, checkpoint information is read from
+            In the future this will be able to take a Storage class as well.
+        min_temperature : simtk.unit.Quantity, optional
+           Minimum temperature (units of temperature, default is None).
+        max_temperature : simtk.unit.Quantity, optional
+           Maximum temperature (units of temperature, default is None).
+        n_temperatures : int, optional
+           Number of exponentially-spaced temperatures between min_temperature
+           and max_temperature (default is None).
+        temperatures : list of simtk.unit.Quantity, optional
+           If specified, this list of temperatures will be used instead of
+           min_temperature, max_temperature, and n_temperatures (units of temeprature,
+           default is None).
+        metadata : dict, optional
+           Simulation metadata to be stored in the file.
 
         Notes
         -----
-        Either (Tmin, Tmax, ntempts) must all be specified or the list of 'temperatures' must be specified.
+        Either (min_temperature, max_temperature, n_temperatures) must all be
+        specified or the list of 'temperatures' must be specified.
 
         """
         # Create thermodynamic states from temperatures.
         if temperatures is not None:
-            logger.info("Using provided temperatures")
-            self.temperatures = temperatures
-        elif (Tmin is not None) and (Tmax is not None) and (ntemps is not None):
-            self.temperatures = [ Tmin + (Tmax - Tmin) * (math.exp(float(i) / float(ntemps-1)) - 1.0) / (math.e - 1.0) for i in range(ntemps) ]
+            logger.debug("Using provided temperatures")
+        elif min_temperature is not None and max_temperature is not None and n_temperatures is not None:
+            # TODO drop casting to float when dropping Python 2 support.
+            temperatures = [min_temperature + (max_temperature - min_temperature) *
+                            (math.exp(i / float(n_temperatures-1)) - 1.0) / (math.e - 1.0)
+                            for i in range(n_temperatures)]
+            logger.debug('using temperatures {}'.format(temperatures))
         else:
-            raise ValueError("Either 'temperatures' or 'Tmin', 'Tmax', and 'ntemps' must be provided.")
+            raise ValueError("Either 'temperatures' or 'min_temperature', 'max_temperature', "
+                             "and 'n_temperatures' must be provided.")
 
-        states = [ ThermodynamicState(system=system, temperature=self.temperatures[i], pressure=pressure) for i in range(ntemps) ]
+        thermodynamic_states = [copy.deepcopy(thermodynamic_state) for _ in range(n_temperatures)]
+        for state, temperature in zip(thermodynamic_states, temperatures):
+            state.temperature = temperature
+
+        # Override default title.
+        default_title = ('Parallel tempering simulation created using ParallelTempering '
+                         'class of yank.repex.py on {}'.format(time.asctime(time.localtime())))
+        if metadata is None:
+            metadata = dict(title=default_title)
+        elif 'title' not in metadata:
+            metadata['title'] = default_title
 
         # Initialize replica-exchange simlulation.
-        ReplicaExchange.create(self, states, positions, options=options, metadata=metadata)
+        super(ParallelTempering, self).create(thermodynamic_states, sampler_states, storage=storage, metadata=metadata)
 
-        # Override title.
-        self.title = 'Parallel tempering simulation created using ParallelTempering class of repex.py on %s' % time.asctime(time.localtime())
+    def _compute_replica_energies(self, replica_id):
+        """Compute the energy for the replica at every temperature.
 
-        return
-
-    def _compute_energies(self):
-        """
-        Compute reduced potentials of all replicas at all states (temperatures).
-
-        NOTES
-
-        Because only the temperatures differ among replicas, we replace the generic O(N^2) replica-exchange implementation with an O(N) implementation.
+        Because only the temperatures differ among replicas, we replace the generic O(N^2)
+        replica-exchange implementation with an O(N) implementation.
 
         """
+        # Initialize replica energies for each thermodynamic state.
+        replica_energies = np.zeros(self.n_replicas)
 
-        start_time = time.time()
-        logger.debug("Computing energies...")
+        # Retrieve sampler states associated to this replica.
+        sampler_state = self._sampler_states[replica_id]
 
-        if self.mpicomm:
-            # MPI implementation
+        # Thermodynamic state differ only by temperatures.
+        reference_thermodynamic_state = self._thermodynamic_states[0]
 
-            # Create an integrator and context.
-            state = self.states[0]
-            integrator = self.mm.VerletIntegrator(self.timestep)
-            context = self._create_context(state.system, integrator)
+        # Get the context, any Integrator works.
+        context, integrator = mmtools.cache.global_context_cache.get_context(reference_thermodynamic_state)
 
-            for replica_index in range(self.mpicomm.rank, self.nstates, self.mpicomm.size):
-                # Set positions.
-                context.setPositions(self.replica_positions[replica_index])
-                # Compute potential energy.
-                openmm_state = context.getState(getEnergy=True)
-                potential_energy = openmm_state.getPotentialEnergy()
-                # Compute energies at this state for all replicas.
-                for state_index in range(self.nstates):
-                    # Compute reduced potential
-                    beta = 1.0 / (kB * self.states[state_index].temperature)
-                    self.u_kl[replica_index,state_index] = beta * potential_energy
+        # Update positions and box vectors.
+        sampler_state.apply_to_context(context)
 
-            # Gather energies.
-            energies_gather = self.mpicomm.allgather(self.u_kl[self.mpicomm.rank:self.nstates:self.mpicomm.size,:])
-            for replica_index in range(self.nstates):
-                source = replica_index % self.mpicomm.size # node with trajectory data
-                index = replica_index // self.mpicomm.size # index within trajectory batch
-                self.u_kl[replica_index,:] = energies_gather[source][index]
+        # Compute energy.
+        reference_reduced_potential = reference_thermodynamic_state.reduced_potential(context)
 
-            # Clean up.
-            del context, integrator
+        # Strip reference potential of reference state's beta.
+        reference_beta = 1.0 / (mmtools.constants.kB * reference_thermodynamic_state.temperature)
+        reference_reduced_potential /= reference_beta
 
-        else:
-            # Serial implementation.
+        # Update potential energy by temperature.
+        for thermodynamic_state_id, thermodynamic_state in enumerate(self._thermodynamic_states):
+            beta = 1.0 / (mmtools.constants.kB * thermodynamic_state.temperature)
+            replica_energies[replica_id, thermodynamic_state_id] = beta * reference_reduced_potential
 
-            # Create an integrator and context.
-            state = self.states[0]
-            integrator = self.mm.VerletIntegrator(self.timestep)
-            context = self._create_context(state.system, integrator)
+        # Return the new energies.
+        return replica_energies
 
-            # Compute reduced potentials for all configurations in all states.
-            for replica_index in range(self.nstates):
-                # Set positions.
-                context.setPositions(self.replica_positions[replica_index])
-                # Compute potential energy.
-                openmm_state = context.getState(getEnergy=True)
-                potential_energy = openmm_state.getPotentialEnergy()
-                # Compute energies at this state for all replicas.
-                for state_index in range(self.nstates):
-                    # Compute reduced potential
-                    beta = 1.0 / (kB * self.states[state_index].temperature)
-                    self.u_kl[replica_index,state_index] = beta * potential_energy
 
-            # Clean up.
-            del context, integrator
+# ==============================================================================
+# MODULE INTERNAL USAGE UTILITIES
+# ==============================================================================
 
-        end_time = time.time()
-        elapsed_time = end_time - start_time
-        time_per_energy = elapsed_time / float(self.nstates)
-        logger.debug("Time to compute all energies %.3f s (%.3f per energy calculation).\n" % (elapsed_time, time_per_energy))
+class _DictYamlLoader(yaml.Loader):
+    """PyYAML Loader that reads !Quantity tags."""
+    def __init__(self, *args, **kwargs):
+        super(_DictYamlLoader, self).__init__(*args, **kwargs)
+        self.add_constructor(u'!Quantity', self.quantity_constructor)
+        self.add_constructor(u'!ndarray', self.ndarray_constructor)
 
-        return
+    @staticmethod
+    def quantity_constructor(loader, node):
+        loaded_mapping = loader.construct_mapping(node)
+        data_unit = utils.quantity_from_string(loaded_mapping['unit'])
+        data_value = loaded_mapping['value']
+        return data_value * data_unit
 
-#=============================================================================================
-# Hamiltonian exchange
-#=============================================================================================
+    @staticmethod
+    def ndarray_constructor(loader, node):
+        loaded_mapping = loader.construct_mapping(node, deep=True)
+        data_type = np.dtype(loaded_mapping['type'])
+        data_shape = loaded_mapping['shape']
+        data_values = loaded_mapping['values']
+        data = np.ndarray(shape=data_shape, dtype=data_type)
+        if 0 not in data_shape:
+            data[:] = data_values
+        return data
 
-class HamiltonianExchange(ReplicaExchange):
-    """
-    Hamiltonian exchange simulation facility.
 
-    DESCRIPTION
+class _DictYamlDumper(yaml.Dumper):
+    """PyYAML Dumper that handle simtk Quantities through !Quantity tags."""
 
-    This class provides an implementation of a Hamiltonian exchange simulation based on the ReplicaExchange facility.
-    It provides several convenience classes and efficiency improvements, and should be preferentially used for Hamiltonian
-    exchange simulations over ReplicaExchange when possible.
+    def __init__(self, *args, **kwargs):
+        super(_DictYamlDumper, self).__init__(*args, **kwargs)
+        self.add_representer(unit.Quantity, self.quantity_representer)
+        self.add_representer(np.ndarray, self.ndarray_representer)
 
-    EXAMPLES
+    @staticmethod
+    def quantity_representer(dumper, data):
+        data_unit = data.unit
+        data_value = data / data_unit
+        data_dump = dict(unit=str(data_unit), value=data_value)
+        return dumper.represent_mapping(u'!Quantity', data_dump)
 
-    >>> # Create baseline system
-    >>> from openmmtools import testsystems
-    >>> testsystem = testsystems.AlanineDipeptideImplicit()
-    >>> [base_system, positions] = [testsystem.system, testsystem.positions]
-    >>> # Copy baseline system.
-    >>> systems = [base_system for index in range(10)]
-    >>> # Create temporary file for storing output.
-    >>> import tempfile
-    >>> file = tempfile.NamedTemporaryFile() # temporary file for testing
-    >>> store_filename = file.name
-    >>> # Create baseline state.
-    >>> base_state = ThermodynamicState(base_system, temperature=298.0*unit.kelvin)
-    >>> # Create simulation.
-    >>> simulation = HamiltonianExchange(store_filename)
-    >>> simulation.create(base_state, systems, positions)
-    >>> simulation.number_of_iterations = 2 # set the simulation to only run 2 iterations
-    >>> simulation.timestep = 2.0 * unit.femtoseconds # set the timestep for integration
-    >>> simulation.nsteps_per_iteration = 50 # run 50 timesteps per iteration
-    >>> simulation.minimize = False
-    >>> # Run simulation.
-    >>> simulation.run() #doctest: +ELLIPSIS
-    ...
+    @staticmethod
+    def ndarray_representer(dumper, data):
+        """Convert a numpy array to native Python types."""
+        data_type = str(data.dtype)
+        data_shape = data.shape
+        data_values = data.tolist()
+        data_dump = dict(type=data_type, shape=data_shape, values=data_values)
+        return dumper.represent_mapping(u'!ndarray', data_dump)
 
-    """
 
-    def create(self, base_state, systems, positions, options=None, metadata=None):
-        """
-        Initialize a Hamiltonian exchange simulation object.
-
-        Parameters
-        ----------
-        base_state : ThermodynamicState
-           baseline state containing all thermodynamic parameters except the system, which will be replaced by 'systems'
-        systems : list of simtk.openmm.System
-           list of systems to simulate (one per replica)
-        positions : simtk.unit.Quantity of np natoms x 3 with units compatible with nanometers
-           positions (or a list of positions objects) for initial assignment of replicas (will be used in round-robin assignment)
-        options : dict, optional, default=None
-           Optional dict to use for specifying simulation protocol. Provided keywords will be matched to object variables to replace defaults.
-        metadata : dict, optional, default=None
-           metadata to store in a 'metadata' group in store file
-
-        """
-
-        if systems is None:
-            states = None
-        else:
-            # Create thermodynamic states from systems.
-            states = [ ThermodynamicState(system=system, temperature=base_state.temperature, pressure=base_state.pressure) for system in systems ]
-
-        # Initialize replica-exchange simlulation.
-        ReplicaExchange.create(self, states, positions, options=options, metadata=metadata)
-
-        # Override title.
-        self.title = 'Hamiltonian exchange simulation created using HamiltonianExchange class of repex.py on %s' % time.asctime(time.localtime())
-
-        return
-
-#=============================================================================================
+# ==============================================================================
 # MAIN AND TESTS
-#=============================================================================================
+# ==============================================================================
 
 if __name__ == "__main__":
     import doctest

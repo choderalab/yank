@@ -50,9 +50,9 @@ Getting YANK Up and Running
    quickstart
    installation
    running
-   yamlpages/yaml
+   yamlpages/index
    whatsnew
-   examples/examples
+   examples/index
    faq
 
 The Science Behind YANK
