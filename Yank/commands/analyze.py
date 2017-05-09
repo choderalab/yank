@@ -27,7 +27,7 @@ YANK analyze
 Usage:
   yank analyze (-s STORE | --store=STORE) [-v | --verbose]
   yank analyze report (-s STORE | --store=STORE) (-o REPORT | --output=REPORT)
-  yank analyze extract-trajectory --netcdf=FILEPATH (--state=STATE | --replica=REPLICA) --trajectory=FILEPATH [--start=START_FRAME] [--skip=SKIP_FRAME] [--end=END_FRAME] [--nosolvent] [--discardequil] [--imagemol] [-v | --verbose]
+  yank analyze extract-trajectory --netcdf=FILEPATH [--checkpoint=FILEPATH ] (--state=STATE | --replica=REPLICA) --trajectory=FILEPATH [--start=START_FRAME] [--skip=SKIP_FRAME] [--end=END_FRAME] [--nosolvent] [--discardequil] [--imagemol] [-v | --verbose]
 
 Description:
   Analyze the data to compute Free Energies OR extract the trajectory from the NetCDF file into a common fortmat.
@@ -41,6 +41,7 @@ YANK Health Report Arguments:
 
 Extract Trajectory Required Arguments:
   --netcdf=FILEPATH             Path to the NetCDF file.
+  --checkpoint=FILEPATH         Path to the NetCDF checkpoint file if not the default name inferned from "netcdf" option
   --state=STATE_IDX             Index of the alchemical state for which to extract the trajectory
   --replica=REPLICA_IDX         Index of the replica for which to extract the trajectory
   --trajectory=FILEPATH         Path to the trajectory file to create (extension determines the format)
@@ -102,6 +103,8 @@ def dispatch_extract_trajectory(args):
         kwargs['discard_equilibration'] = True
     if args['--imagemol']:
         kwargs['image_molecules'] = True
+    if args['--checkpoint']:
+        kwargs["nc_checkpoint_file"] = args['--checkpoint']
 
     # Extract trajectory
     analyze.extract_trajectory(output_path, nc_path, **kwargs)

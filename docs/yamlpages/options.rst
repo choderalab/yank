@@ -497,6 +497,28 @@ Timestep of Langevin Dynamics production runs.
 Valid Options (2.0 * femtosecond): <Quantity Time> [1]_
 
 
+.. _yaml_options_checkpoint_interval:
+
+checkpoint_interval
+-------------------
+.. code-block:: yaml
+
+   options:
+     checkpoint_interval: 10
+
+Specify how frequently checkpoint information should be saved to file relative to iterations. YANK simulations can be
+resumed only from checkpoints, so if something crashes, up to ``checkpoint_interval`` worth of iterations will be lost
+and YANK will resume from the most recent checkpoint.
+
+This option helps control write-to-disk time and file sizes. The fewer times a checkpoint is written, the less of both
+you will get. If you want to write a checkpoint every iteration, set this to ``1``.
+
+Checkpoint information includes things like full coordinates and box vectors, as well as more static information such
+as metadata, simulation options, and serialized thermodynamic states.
+
+Valid Options (10): <Integer ``>= 1``>
+
+
 .. _yaml_options_replica_mixing_scheme:
 
 replica_mixing_scheme

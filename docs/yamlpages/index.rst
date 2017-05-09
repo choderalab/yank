@@ -66,6 +66,7 @@ Detailed Options List
     * :ref:`extend_simulation <yaml_options_extend_simulation>`
     * :ref:`nsteps_per_iteration <yaml_options_nsteps_per_iteration>`
     * :ref:`timestep <yaml_options_timestep>`
+    * :ref:`checkpoint_interval <yaml_options_checkpoint_interval>`
     * :ref:`replica_mixing_scheme <yaml_options_replica_mixing_scheme>`
     * :ref:`collision_rate <yaml_options_collision_rate>`
     * :ref:`constraint_tolerance <yaml_options_constraint_tolerance>`

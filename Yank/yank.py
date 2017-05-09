@@ -262,9 +262,10 @@ class IMultiStateSampler(mmtools.utils.SubhookedABCMeta):
         sampler_states : openmmtools.states.SamplerState or list
             One or more sets of initial sampler states. If a list of SamplerStates,
             they will be assigned to thermodynamic states in a round-robin fashion.
-        storage : str
-            The path to the storage file. In the future this will be able
-            to take a Reporter or a Storage class as well.
+        storage : str or Reporter
+            If str: The path to the storage file. Reads defaults from the Reporter class
+            If Reporter: Reads the reporter settings for files and options
+            In the future this will be able to take a Storage class as well.
         unsampled_thermodynamic_states : list of openmmtools.states.ThermodynamicState
             These are ThermodynamicStates that are not propagated, but their
             reduced potential is computed at each iteration for each replica.
@@ -359,9 +360,10 @@ class AlchemicalPhase(object):
 
         Parameters
         ----------
-        storage : str
-            The path to the storage file. In the future this will be able
-            to take a Reporter or a Storage class as well.
+        storage : str or Reporter
+            If str: The path to the primary storage file. Default checkpointing options are stored in this case
+            If Reporter: loads from the reporter class, including checkpointing information
+            In the future this will be able to take a Storage class as well.
 
         Returns
         -------
@@ -371,13 +373,17 @@ class AlchemicalPhase(object):
 
         """
         # Check if netcdf file exists.
-        file_exists = os.path.exists(storage) and os.path.getsize(storage) > 0
-        if not file_exists:
-            raise RuntimeError('Storage file {} does not exists; cannot resume.'.format(storage))
+        if type(storage) is str:
+            reporter = repex.Reporter(storage)
+        else:
+            reporter = storage
+        if not reporter.storage_exists():
+            reporter.close()
+            raise RuntimeError('Storage file at {} does not exists; cannot resume.'.format(reporter.filename))
 
         # TODO: this should skip the Reporter and use the Storage to read storage.metadata.
         # Open Reporter for reading and read metadata.
-        reporter = repex.Reporter(storage, open_mode='r')
+        reporter.open(mode='r')
         metadata = reporter.read_dict('metadata')
         reporter.close()
 
@@ -388,7 +394,7 @@ class AlchemicalPhase(object):
         cls = getattr(module, cls_name)
 
         # Resume sampler and return new AlchemicalPhase.
-        sampler = cls.from_storage(storage)
+        sampler = cls.from_storage(reporter)
         return AlchemicalPhase(sampler)
 
     @property
@@ -405,8 +411,8 @@ class AlchemicalPhase(object):
     def number_of_iterations(self, value):
         self._sampler.number_of_iterations = value
 
-    def create(self, thermodynamic_state, sampler_states, topography, protocol, storage,
-               restraint=None, anisotropic_dispersion_cutoff=None,
+    def create(self, thermodynamic_state, sampler_states, topography, protocol,
+               storage, restraint=None, anisotropic_dispersion_cutoff=None,
                alchemical_regions=None, alchemical_factory=None, metadata=None):
         """Create a new AlchemicalPhase calculation for a specified protocol.
 
@@ -433,9 +439,10 @@ class AlchemicalPhase(object):
             The dictionary parameter_name: list_of_parameter_values defining
             the protocol. All the parameter values list must have the same
             number of elements.
-        storage : str
-            The path to the storage file. In the future this will be able
-            to take a Storage class as well.
+        storage : str or initialized Reporter class
+            If str: Path to the storage file. The default checkpointing options (see the Reporter class of Repex)
+                will be used in this case
+            If Reporter: Uses files and checkpointing options of the reporter class passed in
         restraint : ReceptorLigandRestraint, optional
             Restraint to add between protein and ligand. This must be specified
             for ligand-receptor systems in non-periodic boxes.
@@ -607,9 +614,8 @@ class AlchemicalPhase(object):
         # ------------------
 
         logger.debug("Creating sampler object...")
-        self._sampler.create(compound_states, sampler_states, storage=storage,
-                             unsampled_thermodynamic_states=expanded_cutoff_states,
-                             metadata=metadata)
+        self._sampler.create(compound_states, sampler_states,
+                             storage=storage, unsampled_thermodynamic_states=expanded_cutoff_states, metadata=metadata)
 
     def minimize(self, tolerance=1.0*unit.kilojoules_per_mole/unit.nanometers,
                  max_iterations=0):
