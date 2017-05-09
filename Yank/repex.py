@@ -252,6 +252,10 @@ class Reporter(object):
                 ncfile.ConventionVersion = '0.2'
                 ncfile.DataUsedFor = nc_name
                 ncfile.CheckpointInterval = checkpoint_interval
+
+                # Create and initilize the global variables
+                nc_last_good_iter = ncfile.createVariable('last_iteration', int, 'scalar')
+                nc_last_good_iter[0] = 0
                 return True
             else:
                 return False
@@ -440,7 +444,7 @@ class Reporter(object):
             If the iteration is not on the checkpoint_interval, None is returned
 
         """
-
+        iteration = self._calculate_last_iteration(iteration)
         checkpoint_iteration = self._calculate_checkpoint_iteration(iteration)
         if checkpoint_iteration is not None:
             n_states = self._storage_checkpoint.dimensions['replica'].size
@@ -545,6 +549,7 @@ class Reporter(object):
             thermodynamic_states[states_indices[i]].
 
         """
+        iteration = self._calculate_last_iteration(iteration)
         return self._storage_analysis.variables['states'][iteration].astype(np.int64)
 
     def write_replica_thermodynamic_states(self, state_indices, iteration):
@@ -627,6 +632,7 @@ class Reporter(object):
             sampler_states[iteration, i] and ThermodynamicState unsampled_thermodynamic_states[iteration, j].
 
         """
+        iteration = self._calculate_last_iteration(iteration)
         energy_thermodynamic_states = self._storage_analysis.variables['energies'][iteration, :, :]
         try:
             energy_unsampled_states = self._storage_analysis.variables['unsampled_energies'][iteration, :, :]
@@ -718,6 +724,7 @@ class Reporter(object):
             from iteration-1 to iteration (not cumulative).
 
         """
+        iteration = self._calculate_last_iteration(iteration)
         n_accepted_matrix = self._storage_analysis.variables['accepted'][iteration, :, :].astype(np.int64)
         n_proposed_matrix = self._storage_analysis.variables['proposed'][iteration, :, :].astype(np.int64)
         return n_accepted_matrix, n_proposed_matrix
@@ -787,6 +794,7 @@ class Reporter(object):
             The timestamp at which the iteration was stored.
 
         """
+        iteration = self._calculate_last_iteration(iteration)
         return self._storage_analysis.variables['timestamp'][iteration]
 
     def write_timestamp(self, iteration):
@@ -840,6 +848,33 @@ class Reporter(object):
         if name == 'metadata':
             data['title'] = self._storage_dict[storage].title
         return data
+
+    def write_last_iteration(self, iteration):
+        """
+        Tell the reporter what the last iteration which was written in sequential order was to allow resuming and
+        analysis only on valid data.
+
+        Call this as the last step of any write_iteration-like routine to ensure analysis will not use junk data
+        left over from an interrupted simulation past the last checkpoint.
+
+        Parameters
+        ----------
+        iteration : int
+            Iteration at which the last good data point was written.
+        """
+        self._storage_analysis.variables['last_iteration'][0] = iteration
+
+    def read_last_iteration(self):
+        """
+        Read the last iteration from file which was written in sequential order. Used to check if there is junk data
+        which may have been written after the last checkpoint, but before the next one could be reached.
+
+        Returns
+        -------
+        last_iteration : int
+            Last iteration which was sequentially written
+        """
+        return int(self._storage_analysis.variables['last_iteration'][0])  # Make sure this is returned as Python Int
 
     def write_dict(self, name, data):
         """Store the contents of a dict.
@@ -936,6 +971,68 @@ class Reporter(object):
         Effectively the inverse of _calculate_checkpoint_iteration
         """
         return iteration * self._checkpoint_interval
+
+    def _calculate_last_iteration(self, iteration):
+        """
+        Convert the iteration in 'read_X' functions which take a iteration=slice(None)
+        to avoid returning a slice of data which goes past the last_iteration
+
+        Parameters
+        ----------
+        iteration : int or Slice
+            Iteration to feed into the check
+
+        Returns
+        -------
+        cast_iteration : int or Slice of type iteration
+            Iteration, converted as needed to only access certain ranges of data
+        """
+
+        last_good = self.read_last_iteration()
+        max_iter = len(self._storage_analysis.dimensions['iteration'])
+
+        def convert_negative_iteration(iteration):
+            return iteration - (max_iter - last_good - 1)
+
+        if last_good == max_iter - 1:
+            cast_iteration = iteration
+        else:
+            if type(iteration) is int:
+                throw = False
+                if iteration > last_good:  # check positive integer
+                    throw = True
+                elif iteration < 0:  # Operation on negative integer, recast
+                    # Convert negative integer to its mapped values
+                    cast_iteration = convert_negative_iteration(iteration)
+                    if cast_iteration < -max_iter:  # check against absolute size
+                        throw = True
+                else:
+                    cast_iteration = iteration
+                if throw:
+                    raise IndexError("Index out of range!")
+            elif type(iteration) is slice:
+                out_start = None
+                out_stop = None
+                # Condition the start, start must not exceed last good (positive) and must be greater than
+                if iteration.start is not None:
+                    if iteration.start > last_good:
+                        out_start = last_good
+                    elif iteration.start < 0:
+                        out_start = convert_negative_iteration(iteration.start)
+                # Condition end iteration
+                if iteration.stop is not None:
+                    if iteration.stop > last_good:
+                        out_stop = last_good
+                    elif iteration.stop < 0:
+                        out_stop = convert_negative_iteration(iteration.stop)
+                else:  # Trap special None cases for the "stop"
+                    # Trap the case of -step size, its easier to do all the conditions on which it is not that
+                    if iteration.step is None or (iteration.step is not None and iteration.step > 0):
+                        out_stop = last_good
+                cast_iteration = slice(out_start, out_stop, iteration.step)
+            else:
+                raise ValueError("Iteration must be either an int or a slice!")
+        return cast_iteration
 
 
 # ==============================================================================
@@ -1132,7 +1229,7 @@ class ReplicaExchange(object):
         # Timestamp is the last thing reported in _report_iteration, so
         # we are sure that the full iteration information has been stored
         # and the simulation has not been interrupted during the report.
-        iteration = len(reporter.read_timestamp(iteration=slice(None))) - 1  # 0-based
+        iteration = reporter.read_last_iteration()
 
         # Retrieve other attributes.
         logger.debug("Reading storage file {}...".format(storage))
@@ -1168,6 +1265,7 @@ class ReplicaExchange(object):
         repex._reporter = Reporter(storage, open_mode=None, checkpoint_storage_file=checkpoint_storage_file)
         mpi.run_single_node(0, repex._reporter.open, mode='a',
                             broadcast_result=False, sync_nodes=False)
+        mpi.run_single_node(0, repex._reporter.write_last_iteration, iteration)
         return repex
 
     # -------------------------------------------------------------------------
@@ -1701,6 +1799,7 @@ class ReplicaExchange(object):
                                       self._iteration)
         self._reporter.write_mixing_statistics(self._n_accepted_matrix, self._n_proposed_matrix, self._iteration)
         self._reporter.write_timestamp(self._iteration)
+        self._reporter.write_last_iteration(self._iteration)
         self._reporter.sync()
 
     def _store_options(self):

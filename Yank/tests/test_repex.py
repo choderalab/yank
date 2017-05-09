@@ -347,6 +347,7 @@ class TestReporter(object):
 
             # Check that after writing and reading, states are identical.
             reporter.write_sampler_states(sampler_states, iteration=0)
+            reporter.write_last_iteration(0)
             restored_sampler_states = reporter.read_sampler_states(iteration=0)
             for state, restored_state in zip(sampler_states, restored_sampler_states):
                 assert np.allclose(state.positions, restored_state.positions)
@@ -357,6 +358,7 @@ class TestReporter(object):
         with self.temporary_reporter() as reporter:
             for i, replica_states in enumerate([[2, 1, 0, 3], np.array([3, 1, 0, 2])]):
                 reporter.write_replica_thermodynamic_states(replica_states, iteration=i)
+                reporter.write_last_iteration(i)
                 restored_replica_states = reporter.read_replica_thermodynamic_states(iteration=i)
                 assert np.all(replica_states == restored_replica_states)
 
@@ -924,18 +926,15 @@ class TestReplicaExchange(object):
         thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(self.alanine_test)
 
         with self.temporary_storage_path() as storage_path:
-            # For this test, we simply check that the checkpoiting writes on the interval
+            # For this test, we simply check that the checkpointing writes on the interval
             # We don't care about the numbers, per se, but we do care about when things are written
             n_iterations = 3
             move = mmtools.mcmc.IntegratorMove(openmm.VerletIntegrator(1.0*unit.femtosecond), n_steps=1)
             repex = ReplicaExchange(mcmc_moves=move, number_of_iterations=n_iterations)
             repex.create(thermodynamic_states, sampler_states, storage=storage_path,
                          unsampled_thermodynamic_states=unsampled_states, checkpoint_interval=2)
-
             # Propagate.
-
             repex.run()
-
             reporter = Reporter(storage_path, open_mode='r', checkpoint_interval=2)
             for i in range(n_iterations):
                 energies, _ = reporter.read_energies(i)
@@ -945,6 +944,44 @@ class TestReplicaExchange(object):
                     assert type(states[0].positions) is unit.Quantity
                 else:
                     assert states is None
+
+    def test_last_iteration_functions(self):
+        """Test that the last_iteration functions work right"""
+        """Test that checkpointing writes infrequently"""
+        thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(self.alanine_test)
+        with self.temporary_storage_path() as storage_path:
+            # For this test, we simply check that the checkpointing writes on the interval
+            # We don't care about the numbers, per se, but we do care about when things are written
+            n_iterations = 10
+            move = mmtools.mcmc.IntegratorMove(openmm.VerletIntegrator(1.0*unit.femtosecond), n_steps=1)
+            repex = ReplicaExchange(mcmc_moves=move, number_of_iterations=n_iterations)
+            repex.create(thermodynamic_states, sampler_states, storage=storage_path,
+                         unsampled_thermodynamic_states=unsampled_states, checkpoint_interval=2)
+            # Propagate.
+            repex.run()
+            reporter = Reporter(storage_path, open_mode='a', checkpoint_interval=2)
+            all_energies, _ = reporter.read_energies()
+            # Break the checkpoint
+            last_index = 4
+            reporter.write_last_iteration(last_index)  # 5th iteration
+            reporter.close()
+            del reporter
+            reporter = Reporter(storage_path, open_mode='r', checkpoint_interval=2)
+            # Check single positive index within range
+            energies , _= reporter.read_energies(1)
+            assert np.all(energies == all_energies[1])
+            # Check negative index was moved
+            energies, _ = reporter.read_energies(-1)
+            assert np.all(energies == all_energies[last_index])
+            # Check slice
+            energies, _ = reporter.read_energies()
+            assert np.all(energies == all_energies[:last_index])
+            # Check negative slicing
+            energies, _ = reporter.read_energies(slice(-1, None, -1))
+            assert np.all(energies == all_energies[last_index::-1])
+            # Errors
+            with assert_raises(IndexError):
+                reporter.read_energies(7)
 
     def test_separate_checkpoint_file(self):
         """Test that a separate checkpoint file can be created"""
