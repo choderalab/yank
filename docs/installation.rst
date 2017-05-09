@@ -147,7 +147,7 @@ Configuring Your CUDA Devices
 -----------------------------
 
 You will need to configure your CUDA devices to run in ``shared``/``Default`` Compute Mode
-if you have CUDA based cards, especially if you plan to run MPU on multiple CUDA cards.
+if you have CUDA based cards, especially if you plan to run MPI on multiple CUDA cards.
 
 If you run ``nvidia-smi`` on your device, you will see a sample output that looks like this:
 

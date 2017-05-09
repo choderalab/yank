@@ -32,6 +32,8 @@ In :ref:`serial mode <serial-mode>`, a single simulation is run at a time, eithe
 For replica-exchange calculations, this means that each replica is run serially, and then exchanges between replicas are allowed to occur.
 This is useful if you are testing YANK, or running a large number of free energy calculations where speed is not a major concern.
 
+.. _mpi_notes:
+
 MPI mode
 """"""""
 
@@ -41,43 +43,78 @@ We utilize the widely-supported
 `Message Passing Interface (MPI) standard <http://www.mcs.anl.gov/research/projects/mpi/standard.html>`_ for parallelization.
 All simulations are run using the same OpenMM ``Platform`` choice (``CUDA``, ``OpenCL``, ``CPU``, or ``Reference``)
 
-.. todo::
-   - ``$CUDA_VISIBLE_DEVICES``
-   - MPI ``configfile``
-   - SLURM
-
 No GPU management is needed on single GPU/node systems.
 
 Multi-GPU and multi-node systems require masking the GPUs so YANK only sees the one its suppose to.
 You will need to set the ``CUDA_VISIBLE_DEVICES`` environment variables on each process to mask all but the card you intend to use.
 We cannot provide a universal solution as systems will differ, but we can provide some general rules of thumb.
 
+.. note:: |mpichNotes|
+
+.. |mpichNotes| replace::
+    All our documentation assumes MPICH 3 formatting which has the package name ``mpich`` and version formatting ``3.X``.
+    This is distinct from MPICH2 which has the package name ``mpich2`` and version formatting ``1.X``.
+    Please see `the official MPICH site <https://www.mpich.org/about/overview/>`__ for more information about the
+    version naming and numbering.
+
+
 * |torquepbs|
 
 .. |torquepbs| replace::
     ``torque`` or ``PBS`` cluster - Install the `clusterutils <https://github.com/choderalab/clusterutils>`__ module (automatic when YANK
-    is installed from CONDA). Run the ``build_mpirun_configfile "yank --script=yank.yaml"`` targeting your YAML file.
+    is installed from conda). Run the ``build_mpirun_configfile "yank --script=yank.yaml"`` targeting your YAML file.
     The command works by targeting the cluster's ``$PBS_GPUFILE`` to determine device IDs as the cluster sees them.
 
 
-* ``SLURM`` cluster - SLURM should automatically handle the GPU ``CUDA_VISIBLE_DEVICES`` variable for you. You will still need to set the number of processes to run in MPI mode.
+*  |slurmsub|
+
+.. |slurmsub| replace::
+    ``SLURM`` cluster -  SLURM handles some of the GPU masking for you by setting ``CUDA_VISIBLE_DEVICES``, but we have
+    found breaks down over multiple nodes. The `clusterutils <https://github.com/choderalab/clusterutils>`__ will also
+    help you configure the MPI jobs to run over multiple nodes. The command in this case operates by reading environment
+    variables to figure out host and card names.
+
+
+* |lsfsub|
+
+.. |lsfsub| replace::
+    ``LSF`` cluster - Rely on the `clusterutils <https://github.com/choderalab/clusterutils>`__ module which comes with
+    YANK when conda installed. This configures hosts and GPU masking based on the batch job environment variables which
+    are set at job submission.
+
+
 
 We recommend running YANK with an MPI configfile. You can specify all of these sets to ``CUDA_VISIBLE_DEVICES`` by hand,
-but it will make for a long command line. Creating a configfile to feed into MPI is the preferred option for this reason.
-Below we show an example of one such config file on a 2 node, 4 GPU/node torque cluster (8 processes distributed over
-2 nodes):
+but it will make for a long command line. Creating a hostfile and configfile to feed into MPI is the preferred option
+for this reason. Although `clusterutils <https://github.com/choderalab/clusterutils>`_ will handle file creation for you,
+below we show an example of a hostfile and configfile in case you need to make the files by hand. This is a 2 node,
+4 GPU/node torque cluster (8 processes distributed over 2 nodes) setup:
+
+Hostfile:
 
 .. code-block:: bash
 
-    -hosts gpu-1-4:1,gpu-1-4:1,gpu-1-4:1,gpu-1-4:1,gpu-2-17:1,gpu-2-17:1,gpu-2-17:1,gpu-2-17:1
-    -np 1 -env CUDA_VISIBLE_DEVICES 3 yank script --yaml=freesolv.yaml :
-    -np 1 -env CUDA_VISIBLE_DEVICES 2 yank script --yaml=freesolv.yaml :
-    -np 1 -env CUDA_VISIBLE_DEVICES 1 yank script --yaml=freesolv.yaml :
-    -np 1 -env CUDA_VISIBLE_DEVICES 0 yank script --yaml=freesolv.yaml :
-    -np 1 -env CUDA_VISIBLE_DEVICES 3 yank script --yaml=freesolv.yaml :
-    -np 1 -env CUDA_VISIBLE_DEVICES 2 yank script --yaml=freesolv.yaml :
-    -np 1 -env CUDA_VISIBLE_DEVICES 1 yank script --yaml=freesolv.yaml :
-    -np 1 -env CUDA_VISIBLE_DEVICES 0 yank script —yaml=freesolv.yaml
+    gpu-1-4
+    gpu-1-4
+    gpu-1-4
+    gpu-1-4
+    gpu-2-17
+    gpu-2-17
+    gpu-2-17
+    gpu-2-17
+
+Configfile:
+
+.. code-block:: bash
+
+    -np 1 -env CUDA_VISIBLE_DEVICES 3 yank script --yaml=freesolv.yaml
+    -np 1 -env CUDA_VISIBLE_DEVICES 2 yank script --yaml=freesolv.yaml
+    -np 1 -env CUDA_VISIBLE_DEVICES 1 yank script --yaml=freesolv.yaml
+    -np 1 -env CUDA_VISIBLE_DEVICES 0 yank script --yaml=freesolv.yaml
+    -np 1 -env CUDA_VISIBLE_DEVICES 3 yank script --yaml=freesolv.yaml
+    -np 1 -env CUDA_VISIBLE_DEVICES 2 yank script --yaml=freesolv.yaml
+    -np 1 -env CUDA_VISIBLE_DEVICES 1 yank script --yaml=freesolv.yaml
+    -np 1 -env CUDA_VISIBLE_DEVICES 0 yank script —-yaml=freesolv.yaml
 
 Hopefully this example helps you construct your own configfile if the ``build_mpirun_configfile`` is unavailable or you
 are on a custom system.
@@ -127,19 +164,24 @@ Alternatively, to run the simulation in MPI mode:
 
 .. code-block:: none
 
-   $ yank script --yaml=yank.yaml
+   $ mpirun yank script --yaml=yank.yaml
+
+Keep in mind your system may have a different MPI executable name and/or syntax.
 
 On systems with multiple NVIDIA GPUs per node, it is necessary to perform masking using ``CUDA_VISIBLE_DEVICES``.
 
-On systems using the conda-installed ``mpi4py`` package, the `MPICH2 hydra mpirun <https://wiki.mpich.org/mpich/index.php/Using_the_Hydra_Process_Manager>`_ will be automatically installed for you.
-You can use the cluster utility script `build-mpirun-configfile.py <https://github.com/choderalab/clusterutils/blob/master/scripts/build-mpirun-configfile.py>`_ available in our `clusterutils <https://github.com/choderalab/clusterutils>`_ tools to generate an appropriate ``configfile``:
+On systems using the conda-installed ``mpi4py`` package, the `MPICH hydra mpirun <https://wiki.mpich.org/mpich/index.php/Using_the_Hydra_Process_Manager>`_ will be automatically installed for you.
+You can use the cluster utility command
+``build-mpirun-configfile``
+available in our `clusterutils <https://github.com/choderalab/clusterutils>`_ tools to generate an appropriate ``configfile``:
 
 .. code-block:: none
 
   $ build-mpirun-configfile "yank script --yaml=yank.yaml"
-  $ mpirun -configfile configfile
+  $ mpirun -f hostfile -configfile configfile
 
-``build-mpirun-configfile`` is automatically installed with YANK when you use the ``conda`` installation route.
+``build-mpirun-configfile`` is automatically installed with YANK when you use the ``conda`` installation route. Please
+see our :ref:`notes from above <mpi_notes>` about this script's applicability on torque, PBS, SLURM and LSF clusters.
 
 |
 
