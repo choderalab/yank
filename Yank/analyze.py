@@ -520,7 +520,7 @@ class RepexPhase(YankPhaseAnalyzer):
 
     def generate_mixing_statistics(self, number_equilibrated=0):
         """
-        Generate the mixing statistics
+        Generate the Transition state matrix and sorted eigenvalues
 
         Parameters
         ----------
@@ -535,13 +535,28 @@ class RepexPhase(YankPhaseAnalyzer):
             Eigenvalues of the Transition matrix sorted in descending order
         """
 
-        # Get mixing stats from reporter
-        n_accepted_matrix, n_proposed_matrix = self._reporter.read_mixing_statistics()
-        # Add along iteration dim
-        n_accepted_matrix = n_accepted_matrix[number_equilibrated:].sum(axis=0).astype(float)  # Ensure float division
-        n_proposed_matrix = n_proposed_matrix[number_equilibrated:].sum(axis=0)
-        # Compute empirical transition count matrix
-        t_ij = 1 - n_accepted_matrix/n_proposed_matrix
+        # Read data from disk
+        states = self._reporter.read_replica_thermodynamic_states()
+        n_iterations, n_states = states.shape
+        n_ij = np.zeros([n_states, n_states], np.int64)
+
+        # Compute empirical transition count matrix.
+        for iteration in range(number_equilibrated, n_iterations - 1):
+            for i_replica in range(n_states):
+                i_state = states[iteration, i_replica]
+                j_state = states[iteration + 1, i_replica]
+                n_ij[i_state, j_state] += 1
+
+        # Compute transition matrix estimate.
+        # TODO: Replace with maximum likelihood reversible count estimator from msmbuilder or pyemma.
+        t_ij = np.zeros([n_states, n_states], np.float64)
+        for i_state in range(n_states):
+            denominator = (n_ij[i_state, :].sum() + n_ij[:, i_state].sum())
+            if denominator > 0:
+                for j_state in range(n_states):
+                    t_ij[i_state, j_state] = (n_ij[i_state, j_state] + n_ij[j_state, i_state]) / denominator
+            else:
+                t_ij[i_state, i_state] = 1.0
 
         # Estimate eigenvalues
         mu = np.linalg.eigvals(t_ij)
