@@ -348,6 +348,24 @@ class YankPhaseAnalyzer(ABC):
         return n_equilibration, g_t, n_effective_max
 
     @staticmethod
+    def get_equilibration_data_per_sample(timeseries_to_analyze, nskip=1):
+        """
+        Compute the correlation time and n_effective per sample.
+        This is exactly what timeseries.detectEquilibration does, but returns the per sample data
+        """
+        A_t = timeseries_to_analyze
+        T = A_t.size
+        g_t = np.ones([T - 1], np.float32)
+        Neff_t = np.ones([T - 1], np.float32)
+        for t in range(0, T - 1, nskip):
+            try:
+                g_t[t] = timeseries.statisticalInefficiency(A_t[t:T])
+            except:
+                g_t[t] = (T - t + 1)
+            Neff_t[t] = (T - t + 1) / g_t[t]
+        return g_t, Neff_t
+
+    @staticmethod
     def remove_unequilibrated_data(data, number_equilibrated, axis):
         """
         Remove the number_equilibrated samples from a dataset by discarding number_equilibrated number of indices from

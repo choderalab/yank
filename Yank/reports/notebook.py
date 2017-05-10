@@ -122,22 +122,27 @@ class HealthReportData(object):
 
         """
         # Adjust figure size
-        plt.rcParams['figure.figsize'] = 20, 6 * self.nphases
+        plt.rcParams['figure.figsize'] = 20, 6 * self.nphases * 2
+        plot_grid = gridspec.GridSpec(self.nphases, 1)  # Vertical distribution
         equilibration_figure = plt.figure()
         # Add some space between the figures
         equilibration_figure.subplots_adjust(hspace=0.4)
-        # Create the matplotlib subplot shorthand keys for placement
-        plotkeys = [100 * self.nphases + 10 + (i + 1) for i in range(self.nphases)]
-        for phase_name, plotid in zip(self.phase_names, plotkeys):
+        for i, phase_name in enumerate(self.phase_names):
+            sub_grid = gridspec.GridSpecFromSubplotSpec(3, 1, subplot_spec=plot_grid[i])
             analyzer = self.analyzers[phase_name]
-            # Attach subplot to figure
-            p = equilibration_figure.add_subplot(plotid)
+
             # Data crunching to get timeseries
             u_kln, _ = analyzer.extract_energies()
             self.u_ns[phase_name] = analyzer.get_timeseries(u_kln)
             # Timseries statistics
-            self.nequils[phase_name], self.g_ts[phase_name], self.Neff_maxs[phase_name] = \
-                analyzer.get_equilibration_data(self.u_ns[phase_name])
+            g_t, Neff_t = analyzer.get_equilibration_data_per_sample(self.u_ns[phase_name])
+            self.Neff_maxs[phase_name] = Neff_t.max()
+            self.nequils[phase_name] = Neff_t.argmax()
+            self.g_ts[phase_name] = g_t[self.Neff_maxs[phase_name]]
+
+            # FIRST SUBPPLOT: energy scatter
+            # Attach subplot to figure
+            p = equilibration_figure.add_subplot(sub_grid[0])
             # Data assignment for plot generation
             y = self.u_ns[phase_name]
             N = y.size
@@ -156,7 +161,7 @@ class HealthReportData(object):
             # Set text
             p.set_title(phase_name + " phase", fontsize=20)
             p.set_ylabel(r'$\Sigma_n u_n$ in kT', fontsize=20)
-            p.set_xlabel('Iteration', fontsize=20)
+
             # Extra info in text boxes
             subsample_string = 'Subsample Rate: {0:.2f}\nDecorelated Samples: {1:d}'.format(self.g_ts[phase_name], int(
                 np.floor(self.Neff_maxs[phase_name])))
@@ -180,6 +185,26 @@ class HealthReportData(object):
                    fontsize=15,
                    bbox={'alpha': 1.0, 'facecolor': 'white'}
                    )
+
+            # SECOND SUBPLOT: g_t trace
+            g = equilibration_figure.add_subplot(sub_grid[1])
+            g.plot(x[:-1], g_t)
+            g.vlines(self.nequils[phase_name], *ylim, colors='b', linewidth=4)
+            ylim = g.get_ylim()
+            g.set_ylim(*ylim)  # Reset limits in case vlines expanded them
+            g.set_xlim([0, N])
+            g.set_ylabel(r'Decor. Time', fontsize=20)
+
+            # THRID SUBPLOT: Neff trace
+            ne = equilibration_figure.add_subplot(sub_grid[2])
+            ne.plot(x[:-1], Neff_t)
+            ne.vlines(self.nequils[phase_name], *ylim, colors='b', linewidth=4)
+            ylim = ne.get_ylim()
+            ne.set_ylim(*ylim)  # Reset limits in case vlines expanded them
+            ne.set_xlim([0, N])
+            ne.set_ylabel(r'Neff samples', fontsize=20)
+            ne.set_xlabel(r'Iteration', fontsize=20)
+
         # Set class variables to be used elsewhere
         # Set flag
         self._equilibration_run = True
