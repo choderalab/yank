@@ -274,7 +274,7 @@ def read_csv_lines(file_path, lines):
     # Read all lines ignoring blank lines and comments.
     with open(file_path, 'r') as f:
         all_records = [line for line in f
-                       if bool(line) and line.strip().startswith('#')]
+                       if bool(line) and not line.strip().startswith('#')]
 
     if lines == 'all':
         return all_records
@@ -1558,7 +1558,7 @@ class YamlBuilder(object):
                         n_models = PDBFile(comb_molecule['filepath']).getNumFrames()
 
                     elif extension == 'csv' or extension == 'smiles':
-                        n_models = len(read_csv_lines(comb_molecule['filepath']), lines='all')
+                        n_models = len(read_csv_lines(comb_molecule['filepath'], lines='all'))
 
                     elif extension == 'sdf' or extension == 'mol2':
                         if not utils.is_openeye_installed(oetools=('oechem',)):
