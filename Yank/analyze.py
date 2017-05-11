@@ -70,7 +70,8 @@ def get_analyzer(file_base_path):
 
     For now this is mostly placeholder functions, but creates the API for the user to work with.
     """
-    reporter = Reporter(file_base_path)  # Eventually extend this to get more reporters, but for now simple placeholder\
+    # Eventually extend this to get more reporters, but for now simple placeholder
+    reporter = Reporter(file_base_path, open_mode='r')
     """
     storage = infer_storage_format_from_extension('complex.nc')  # This is always going to be nc for now.
     metadata = storage.metadata
