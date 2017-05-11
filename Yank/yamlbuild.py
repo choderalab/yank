@@ -251,6 +251,36 @@ def strip_protons(input_file_path, output_file_path):
     output_file.close()
 
 
+def read_csv_lines(file_path, lines):
+    """Return a list of CSV records.
+
+    The function takes care of ignoring comments and blank lines.
+
+    Parameters
+    ----------
+    file_path : str
+        The path to the CSV file.
+    lines : 'all' or int
+        The index of the line to read or 'all' to return
+        the list of all lines.
+
+    Returns
+    -------
+    records : str or list of str
+        The CSV record if lines is an integer, or a list of CSV
+        records if it is 'all'.
+
+    """
+    # Read all lines ignoring blank lines and comments.
+    with open(file_path, 'r') as f:
+        all_records = [line for line in f
+                       if bool(line) and line.strip().startswith('#')]
+
+    if lines == 'all':
+        return all_records
+    return all_records[lines]
+
+
 def to_openmm_app(input_string):
     """Converter function to be used with validate_parameters()."""
     return getattr(openmm.app, input_string)
@@ -689,14 +719,13 @@ class SetupDatabase:
                         PDBFile.writeModel(pdb_file.topology, pdb_file.getPositions(frame=model_idx), file=f)
                     # We might as well already cache the positions
                     self._pos_cache[mol_id] = pdb_file.getPositions(asNumpy=True, frame=model_idx) / unit.angstrom
+
                 elif extension == '.smiles' or extension == '.csv':
-                    # Extract the correct line and save it in a new file
-                    # We ignore blank-lines with filter() when counting models
-                    with open(mol_descr['filepath'], 'r') as smiles_file:
-                        # TODO: Make sure this is working after Py 3.X conversion
-                        smiles_lines = [line for line in smiles_file.readlines() if bool(line)]
+                    # Extract the correct line and save it in a new file.
+                    smiles_line = read_csv_lines(mol_descr['filepath'], lines=model_idx)
                     with open(single_file_path, 'w') as f:
-                        f.write(smiles_lines[model_idx])
+                        f.write(smiles_line)
+
                 elif extension == '.mol2' or extension == '.sdf':
                     if not utils.is_openeye_installed(oetools=('oechem',)):
                         raise RuntimeError('Cannot support {} files selection without OpenEye'.format(
@@ -707,6 +736,7 @@ class SetupDatabase:
                         utils.write_oe_molecule(oe_molecule, single_file_path, mol2_resname=mol_names[model_idx])
                     else:
                         utils.write_oe_molecule(oe_molecule, single_file_path)
+
                 else:
                     raise RuntimeError('Model selection is not supported for {} files'.format(extension[1:]))
 
@@ -736,30 +766,30 @@ class SetupDatabase:
                 # Retrieve the first SMILES string (eventually extracted
                 # while handling of the 'select' keyword above)
                 if extension is not None:
-                    with open(mol_descr['filepath'], 'r') as smiles_file:
-                        # Automatically detect if delimiter is comma or semicolon
-                        first_line = smiles_file.readline()
-                        for delimiter in ',;':
-                            logger.debug("Attempt to parse smiles file with delimiter '{}'".format(delimiter))
-                            line_fields = first_line.split(delimiter)
-                            # If there is only one column, take that, otherwise take second
-                            if len(line_fields) > 1:
-                                smiles_str = line_fields[1].strip()
-                            else:
-                                smiles_str = line_fields[0].strip()
+                    # Get first record in CSV file.
+                    first_line = read_csv_lines(mol_descr['filepath'], lines=0)
 
-                            # try to generate the smiles and try new delimiter if it fails
-                            mol_descr['smiles'] = smiles_str
-                            try:
-                                oe_molecule = self._generate_molecule(mol_id)
-                            except (ValueError, RuntimeError):
-                                oe_molecule = None
-                                continue
+                    # Automatically detect if delimiter is comma or semicolon
+                    for delimiter in ',;':
+                        logger.debug("Attempt to parse smiles file with delimiter '{}'".format(delimiter))
+                        line_fields = first_line.split(delimiter)
+                        # If there is only one column, take that, otherwise take second
+                        if len(line_fields) > 1:
+                            smiles_str = line_fields[1].strip()
+                        else:
+                            smiles_str = line_fields[0].strip()
+
+                        # try to generate the smiles and try new delimiter if it fails
+                        mol_descr['smiles'] = smiles_str
+                        try:
+                            oe_molecule = self._generate_molecule(mol_id)
                             break
+                        except (ValueError, RuntimeError):
+                            oe_molecule = None
 
-                        # Raise an error if no delimiter worked
-                        if oe_molecule is None:
-                            raise RuntimeError('Cannot detect SMILES file format.')
+                    # Raise an error if no delimiter worked
+                    if oe_molecule is None:
+                        raise RuntimeError('Cannot detect SMILES file format.')
                 else:
                     # Generate molecule from mol_descr['smiles']
                     oe_molecule = self._generate_molecule(mol_id)
@@ -1526,15 +1556,16 @@ class YamlBuilder(object):
                 with omt.utils.temporary_cd(self._script_dir):
                     if extension == 'pdb':
                         n_models = PDBFile(comb_molecule['filepath']).getNumFrames()
+
                     elif extension == 'csv' or extension == 'smiles':
-                        with open(comb_molecule['filepath'], 'r') as smiles_file:
-                            # TODO: Make sure this is working as expected from Py 3.X conversion
-                            n_models = len([line for line in smiles_file.readlines() if bool(line)]) # remove blank lines
+                        n_models = len(read_csv_lines(comb_molecule['filepath']), lines='all')
+
                     elif extension == 'sdf' or extension == 'mol2':
                         if not utils.is_openeye_installed(oetools=('oechem',)):
                             err_msg = 'Molecule {}: Cannot "select" from {} file without OpenEye toolkit'
                             raise RuntimeError(err_msg.format(comb_mol_name, extension))
                         n_models = utils.read_oe_molecule(comb_molecule['filepath']).NumConfs()
+
                     else:
                         raise YamlParseError('Molecule {}: Cannot "select" from {} file'.format(
                             comb_mol_name, extension))
