@@ -82,11 +82,11 @@ class HealthReportData(object):
             analyzer = self.analyzers[phase_name]
             try:
                 positions = analyzer.reporter.read_sampler_states(0)[0].positions
-                iterations[phase_name], nstates[phase_name], natoms[phase_name], _ = positions.shape
+                natoms[phase_name], _ = positions.shape
             except AttributeError:  # Trap unloaded checkpoint file
                 natoms[phase_name] = 'No Cpt.'
-                energies, _ = analyzer.reporter.read_energies()
-                iterations[phase_name], nstates[phase_name], _ = energies.shape
+            energies, _ = analyzer.reporter.read_energies()
+            iterations[phase_name], nstates[phase_name], _ = energies.shape
 
         leniter = max(len('Iterations'), *[len(str(i)) for i in iterations.values()]) + 2
         lenstates = max(len('States'), *[len(str(i)) for i in nstates.values()]) + 2
