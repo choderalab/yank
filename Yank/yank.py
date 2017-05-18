@@ -585,6 +585,7 @@ class AlchemicalPhase(object):
         # ---------------------------------
 
         # TODO should we allow expanded states for non-periodic systems?
+        logger.debug('Creating expanded cutoff states...')
         expanded_cutoff_states = []
         if is_periodic and anisotropic_dispersion_cutoff is not None:
             # Create non-alchemically modified state with an expanded cutoff.
