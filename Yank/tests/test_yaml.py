@@ -875,6 +875,7 @@ class TestMultiMoleculeFiles(object):
 
         # Create 2-molecule SMILES file
         with open(cls.smiles_path, 'w') as f:
+            f.write('# comment\n')
             f.write('benzene,c1ccccc1\n')
             f.write('toluene,Cc1ccccc1\n')
 
@@ -1116,7 +1117,7 @@ class TestMultiMoleculeFiles(object):
                 assert os.path.getsize(os.path.join(mol2_path)) > 0
 
                 # The mol2 represents the right molecule
-                csv_smiles_str = (open(self.smiles_path, 'r').readlines()[i]).strip().split(',')[1]
+                csv_smiles_str = read_csv_lines(self.smiles_path, lines=i).strip().split(',')[1]
                 mol2_smiles_str = OEMolToSmiles(utils.read_oe_molecule(mol2_path))
                 assert mol2_smiles_str == csv_smiles_str
 
