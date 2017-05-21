@@ -1930,12 +1930,20 @@ class ReplicaExchange(object):
         for energies, states in [(energy_thermodynamic_states, self._thermodynamic_states),
                                  (energy_unsampled_states, self._unsampled_states)]:
             for i, state in enumerate(states):
-                # Get the context, any Integrator works.
-                context, integrator = mmtools.cache.global_context_cache.get_context(state)
+                # Check if we need to request a new Context.
+                if i == 0 or not state.is_state_compatible(context_state):
+                    context_state = state
 
-                # Update positions and box vectors. We don't need
-                # to set Context velocities for the potential.
-                sampler_state.apply_to_context(context, ignore_velocities=True)
+                    # Get the context, any Integrator works.
+                    context, integrator = mmtools.cache.global_context_cache.get_context(state)
+
+                    # Update positions and box vectors. We don't need
+                    # to set Context velocities for the potential.
+                    sampler_state.apply_to_context(context, ignore_velocities=True)
+                else:
+                    # If this state is compatible with the context, just fix the
+                    # thermodynamic state as positions/box vectors are the same.
+                    state.apply_to_context(context)
 
                 # Compute energy.
                 energies[i] = state.reduced_potential(context)
