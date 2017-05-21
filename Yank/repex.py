@@ -907,7 +907,7 @@ class Reporter(object):
         try:
             nc_variable = self._resolve_variable_path(name, storage)
         except KeyError:
-            nc_variable = self._storage_dict[storage].createVariable(name, str, 'scalar')
+            nc_variable = self._storage_dict[storage].createVariable(name, str, 'scalar', zlib=True)
 
         # Activate flow style to save space.
         data_str = yaml.dump(data, Dumper=_DictYamlDumper)#, default_flow_style=True)
