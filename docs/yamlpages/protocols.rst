@@ -53,7 +53,8 @@ Below is the *recommended* mappings of each ``{PhaseNameX}``:
   * ``{PhaseName2}`` -> ``phase2``
 
 More generally, the ``{PhaseNameX}`` only has to contain the keyword for the system you expect.
-For instance, in the Ligand/Receptor case, the following would also be a valid structure: 
+For instance, in the Ligand/Receptor case, the following would also be a valid structure:
+
 .. code-block:: yaml
 
    {UserDefinedProtocol}:
@@ -68,6 +69,7 @@ and ``my_complex_phase`` would correspond to the ``complex`` phase for the same 
 If you want to name them whatever you would like and instead rely on the which sign is used for the free energy evaluation,
 you can invoke ``{UserDefinedProtocol}: !Ordered`` to make the first entry the ``+`` sign and the second ``-`` sign in the free energy difference.
 Here is an example:
+
 .. code-block:: yaml
 
    absolute-binding: !Ordered
@@ -97,3 +99,28 @@ only applies if ``restraint`` :ref:`in experiments is specified <yaml_experiment
 * `The Boresh restraint in our YANK GitHub Examples <https://github.com/choderalab/yank-examples/tree/master/examples/binding/abl-imatinib>`_
 
 Valid Arguments: <Identical Sized List of Floats>
+
+
+.. _yaml_protocols_thermodynamic_variables:
+
+temperature and pressure
+------------------------
+
+It is possible to vary temperature and pressure along the alchemical path, but the end states must have the same values.
+The number of window must be identical to the other lambda variables. A short example:
+
+.. code-block::yaml
+
+   protocols:
+     {UserDefinedProtocol}:
+       {PhaseName1}:
+         alchemical_path:
+           lambda_electrostatics: [1.00, 0.50, 0.00, 0.00, 0.00]
+           lambda_sterics:        [1.00, 1.00, 1.00, 0.50, 0.00]
+           temperature:           [300*kelvin, 310*kelvin, 320*kelvin, 310*kelvin, 300*kelvin]
+       {PhaseName2}:
+         alchemical_path:
+           lambda_electrostatics: [1.00, 0.50, 0.00, 0.00, 0.00]
+           lambda_sterics:        [1.00, 1.00, 1.00, 0.50, 0.00]
+
+Valid Arguments: <List of Quantities>

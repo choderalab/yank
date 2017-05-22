@@ -99,14 +99,17 @@ MDTraj is required to use this options since picking the ligand out of the files
 
 * ``phase1_path``: The set of files which fully describe the first phase of the free energy simulation you want to run.
 * ``phase2_path``: The set of files which fully describe the second phase of the free energy simulation you want to run.
-* ``ligand_dsl``: An MDTraj DSL string which identifies the ligand in the files provided by ``phase1_path`` and ``phase2_path``.
-* ``solvent_dsl``: An optional MDTraj DSL string which identifies the solvent atoms in the files provided by ``phase1_path``
-  and ``phase2_path``. If not specified, a list of common solvent residue names will be used to automatically detect
-  solvent atoms.
-* ``solvent``: A ``{UserDefinedSolvent}`` to put the two phases in. Only one solvent is allowed for this calculation.
-  This option must be omitted if using XML/PDB files, since the solvent options are inherently specified in the XML
-  definition of the system. Finally, if the two phases require two different solvents, it is possible to substitute the
-  ``solvent`` option with two ``solvent1`` and ``solvent2``, which are associated to phase 1 and phase 2 respectively.
+* ``ligand_dsl``: *Only for receptor-ligand systems*. An MDTraj DSL string which identifies the ligand in the files
+  provided by ``phase1_path`` and ``phase2_path``. This must be specified only in case of a ligand-receptor system. If
+  you are running a solvation free energy calculation, this will raise an error.
+* ``solvent_dsl``: *Optional*. An MDTraj DSL string which identifies the solvent atoms (including ions) in the files
+  provided by ``phase1_path`` and ``phase2_path``. If not specified, a list of common solvent residue names will be used
+  to automatically detect solvent atoms.
+* ``solvent``: *Only for Amber and GROMACS files*. A ``{UserDefinedSolvent}`` to put the two phases in. Only one solvent
+  is allowed for this calculation. This option must be omitted if using XML/PDB files, since the solvent options are
+  inherently specified in the XML definition of the system. Finally, if the two phases require two different solvents,
+  it is possible to substitute the ``solvent`` option with two ``solvent1`` and ``solvent2``, which are associated to
+  phase 1 and phase 2 respectively.
 * ``gromacs_include_dir``: *Optional*, Tells YANK where the GROMACS include directory is to pull files and parameters from.
   This is particularly helpful if your topology file does not contain all parameters.
   Path is relative to the YAML script.

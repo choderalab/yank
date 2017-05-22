@@ -86,6 +86,24 @@ Nonbonded Methods: ``CutoffPeriodic``, ``Ewald``, ``PME``
 
 Valid Options (0 * nanometer) <Quantity Length> [1]_
 
+
+.. _yaml_solvents_solvent_model:
+
+solvent_model
+-------------
+.. code-block:: yaml
+
+   solvents:
+     {UserDefinedSolvent}:
+       solvent_model: tip4pew
+
+Specify the water model used to solvate the box.
+
+Nonbonded Methods: ``CuttoffNonPeriodic``, ``CuttoffPeriodic``, ``Ewald``, ``PME``
+
+Valid Options: [tip4pew] / tip3p / tip3pfb / tip5p / spce
+
+
 .. _yaml_solvents_rigid_water:
 
 rigid_water
