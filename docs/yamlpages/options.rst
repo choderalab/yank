@@ -411,37 +411,38 @@ set, this option can be used to extend previous simulations past their original 
 Valid Options (1): <Integer>
 
 
-.. _yaml_options_extend_simulation:
+..
+   .. _yaml_options_extend_simulation:
 
-extend_simulation
---------------------
-.. code-block:: yaml
+   extend_simulation
+   --------------------
+   .. code-block:: yaml
 
-    options:
-      extend_simulation: False
+       options:
+         extend_simulation: False
 
-Special modification of :ref:`yaml_options_number_of_iterations` which allows **extending** a simulation by
-:ref:`yaml_options_number_of_iterations` instead of running for a maximum. If set to ``True``,
-the simulation will run the additional specified number of iterations, even if a simulation already has
-run for a length of time. For fresh simulations, the resulting simulation is identical to not setting this flag.
+   Special modification of :ref:`yaml_options_number_of_iterations` which allows **extending** a simulation by
+   :ref:`yaml_options_number_of_iterations` instead of running for a maximum. If set to ``True``,
+   the simulation will run the additional specified number of iterations, even if a simulation already has
+   run for a length of time. For fresh simulations, the resulting simulation is identical to not setting this flag.
 
-This is helpful for running consecutive batches of simulations for time lengths that are unknown.
+   This is helpful for running consecutive batches of simulations for time lengths that are unknown.
 
-*Recommended*: Also set :ref:`resume_setup <yaml_options_resume_setup>` and
-:ref:`resume_simulation <yaml_options_resume_simulation>` to allow resuming simulations.
+   *Recommended*: Also set :ref:`resume_setup <yaml_options_resume_setup>` and
+   :ref:`resume_simulation <yaml_options_resume_simulation>` to allow resuming simulations.
 
-*Example*: You have a simulation that ran for 500 iterations, you wish to add an additional 1000 iterations. You would
-set ``number_of_iterations: 1000`` and ``extend_simulation: True`` in your YAML file and rerun. The simulation would
-then resume at iteration 500, then continue to iteration 1500. The same behavior would be achieved if you set
-``number_of_iterations: 1500``, but the ``extend_simulation`` has the advantage that it can be run multiple times to
-keep extending the simulation without modifying the YAML file.
+   *Example*: You have a simulation that ran for 500 iterations, you wish to add an additional 1000 iterations. You would
+   set ``number_of_iterations: 1000`` and ``extend_simulation: True`` in your YAML file and rerun. The simulation would
+   then resume at iteration 500, then continue to iteration 1500. The same behavior would be achieved if you set
+   ``number_of_iterations: 1500``, but the ``extend_simulation`` has the advantage that it can be run multiple times to
+   keep extending the simulation without modifying the YAML file.
 
-**WARNING**: Extending simulations affects ALL simulations for :doc:`Combinatorial <combinatorial>`. You cannot extend
-a subset of simulations from a combinatorial setup; all simulations will be extended if this option is set.
+   **WARNING**: Extending simulations affects ALL simulations for :doc:`Combinatorial <combinatorial>`. You cannot extend
+   a subset of simulations from a combinatorial setup; all simulations will be extended if this option is set.
 
-**OPTIONAL** and **MODIFIES** :ref:`yaml_options_number_of_iterations`
+   **OPTIONAL** and **MODIFIES** :ref:`yaml_options_number_of_iterations`
 
-Valid Options: True/[False]
+   Valid Options: True/[False]
 
 
 .. _yaml_options_nsteps_per_iteration:
