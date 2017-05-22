@@ -40,6 +40,7 @@ Detailed Options List
     * :ref:`experiments_dir <yaml_options_experiments_dir>`
     * :ref:`platform <yaml_options_platform>`
     * :ref:`precision <yaml_options_precision>`
+    * :ref:`switch_experiment_interval <yaml_options_switch_experiment_interval>`
 
   * :ref:`System and Simulation Prep <yaml_options_sys_and_sim_prep>`
 
@@ -53,17 +54,13 @@ Detailed Options List
 
   * :ref:`Simulation Parameters: <yaml_options_simulation_parameters>`
 
-    * :ref:`online_analysis <yaml_options_online_analysis>`
-    * :ref:`online_analysis_min_iterations <yaml_options_online_analysis_min_iterations>`
-    * :ref:`show_energies <yaml_options_show_energies>`
-    * :ref:`show_mixing_statistics <yaml_options_show_mixing_statistics>`
+    * :ref:`switch_phase_interval <yaml_options_switch_phase_interval>`
     * :ref:`minimize <yaml_options_minimize>`
     * :ref:`minimize_max_iterations <yaml_options_minimize_max_iterations>`
     * :ref:`minimize_tolerance <yaml_options_minimize_tolerance>`
     * :ref:`number_of_equilibration_iterations <yaml_options_number_of_equilibration_iterations>`
     * :ref:`equilibration_timestep <yaml_options_equilibration_timestep>`
     * :ref:`number_of_iterations <yaml_options_number_of_iterations>`
-    * :ref:`extend_simulation <yaml_options_extend_simulation>`
     * :ref:`nsteps_per_iteration <yaml_options_nsteps_per_iteration>`
     * :ref:`timestep <yaml_options_timestep>`
     * :ref:`checkpoint_interval <yaml_options_checkpoint_interval>`

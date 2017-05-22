@@ -1123,10 +1123,10 @@ class YamlPhaseFactory(object):
 
 class YamlExperiment(object):
     """An experiment built by YamlBuilder."""
-    def __init__(self, phases, number_of_iterations, switch_phase_every):
+    def __init__(self, phases, number_of_iterations, switch_phase_interval):
         self.phases = phases
         self.number_of_iterations = number_of_iterations
-        self.switch_phase_every = switch_phase_every
+        self.switch_phase_interval = switch_phase_interval
         self._phases_last_iterations = [None, None]
 
     @property
@@ -1141,14 +1141,14 @@ class YamlExperiment(object):
             n_iterations = self.number_of_iterations
 
         # Handle case in which we don't alternate between phases.
-        if self.switch_phase_every <= 0:
-            switch_phase_every = self.number_of_iterations
+        if self.switch_phase_interval <= 0:
+            switch_phase_interval = self.number_of_iterations
 
         # Count down the iterations to run.
         iterations_left = [None, None]
         while iterations_left != [0, 0]:
 
-            # Alternate phases every switch_phase_every iterations.
+            # Alternate phases every switch_phase_interval iterations.
             for phase_id, phase in enumerate(self.phases):
                 # Phases may get out of sync if the user delete the storage
                 # file of only one phase and restart. Here we check that the
@@ -1175,7 +1175,7 @@ class YamlExperiment(object):
                     iterations_left[phase_id] = min(n_iterations, total_iterations_left)
 
                 # Run simulation for iterations_left or until we have to switch phase.
-                iterations_to_run = min(iterations_left[phase_id], switch_phase_every)
+                iterations_to_run = min(iterations_left[phase_id], switch_phase_interval)
                 alchemical_phase.run(n_iterations=iterations_to_run)
 
                 # Update phase iteration info.
@@ -1263,13 +1263,13 @@ class YamlBuilder(object):
         'experiments_dir': 'experiments',
         'platform': 'fastest',
         'precision': 'auto',
-        'switch_experiment_every': 0,
+        'switch_experiment_interval': 0,
     }
 
     # These options can be overwritten also in the "experiment"
     # section and they can be thus combinatorially expanded.
     EXPERIMENT_DEFAULT_OPTIONS = {
-        'switch_phase_every': 0,
+        'switch_phase_interval': 0,
         'temperature': 298 * unit.kelvin,
         'pressure': 1 * unit.atmosphere,
         'constraints': openmm.app.HBonds,
@@ -1420,25 +1420,25 @@ class YamlBuilder(object):
             raise YamlParseError('No experiments specified!')
 
         # Handle case where we don't have to switch between experiments.
-        if self.options['switch_experiment_every'] <= 0:
+        if self.options['switch_experiment_interval'] <= 0:
             # Run YamlExperiment for number_of_iterations.
-            switch_experiment_every = None
+            switch_experiment_interval = None
         else:
-            switch_experiment_every = self.options['switch_experiment_every']
+            switch_experiment_interval = self.options['switch_experiment_interval']
 
         # Setup and run all experiments with paths relative to the script directory
         with omt.utils.temporary_cd(self._script_dir):
             self._check_resume()
             self._setup_experiments()
 
-            # Cycle between experiments every switch_experiment_every iterations
+            # Cycle between experiments every switch_experiment_interval iterations
             # until all of them are done. We don't know how many experiments
             # there are until after the end of first for-loop.
             completed = [False]  # There always be at least one experiment.
             while not all(completed):
                 for experiment_index, experiment in enumerate(self._build_experiments()):
 
-                    experiment.run(n_iterations=switch_experiment_every)
+                    experiment.run(n_iterations=switch_experiment_interval)
 
                     # Check if this experiment is done.
                     is_completed = experiment.iteration == experiment.number_of_iterations
@@ -2664,7 +2664,7 @@ class YamlBuilder(object):
 
         # Return new YamlExperiment object.
         return YamlExperiment(phases, sampler_opts['number_of_iterations'],
-                              exp_opts['switch_phase_every'])
+                              exp_opts['switch_phase_interval'])
 
 
 if __name__ == "__main__":

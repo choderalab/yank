@@ -6,10 +6,14 @@ Options for YAML files
 These are all the simulation, alchemy, and file I/O options controlled by the ``options`` header in the YAML files for
 YANK. We have subdivided the categories below, but all settings on this page go under the ``options`` header in the YAML file:
 
-* :ref:`General Options: <yaml_options_options>`
+* :ref:`General Options <yaml_options_options>`
 * :ref:`System and Simulation Prep <yaml_options_sys_and_sim_prep>`
-* :ref:`Simulation Parameters: <yaml_options_simulation_parameters>`
+* :ref:`Simulation Parameters <yaml_options_simulation_parameters>`
 * :ref:`Alchemy Parameters <yaml_options_alchemy_parameters>`
+
+Besides the options listed in :ref:`General Options <yaml_options_options>` that can be specified exclusively in the
+``options`` section of the YAML script, everything else can go either in ``options`` as a general setting, or in
+``experiments.options``. In the latter case, an option can be expanded combinatorially with the ``!Combinatorial`` tag.
 
 ----
 
@@ -132,12 +136,28 @@ value (``auto``) is equivalent to ``mixed`` when the device support this precisi
 
 Valid options: [auto]/double/mixed/single
 
-|
+
+.. _yaml_options_switch_experiment_interval:
+
+switch_experiment_interval
+--------------------------
+.. code-block:: yaml
+
+   options:
+     switch_experiments_interval: 0
+
+When running multiple experiments using the ``!Combinatorial`` tag, this allows to switch between experiments every
+``switch_experiments_interval`` iterations, and gather data about multiple molecules/conditions before
+completing the specified ``number_of_iterations``. If 0, YANK will complete the combinatorial calculations
+sequentially.
+
+Valid options (0): <Integer>
+
 
 .. _yaml_options_sys_and_sim_prep:
 
-System and Simulation Prepartion:
-=================================
+System and Simulation Preparation:
+==================================
 
 .. _yaml_options_randomize_ligand:
 
@@ -290,61 +310,20 @@ Valid options (16 * angstrom): <Quantity Length> [1]_
 Simulation Parameters
 =====================
 
-.. _yaml_options_online_analysis:
 
-online_analysis
----------------
+.. _yaml_options_switch_phase_interval:
+
+switch_phase_interval
+---------------------
 .. code-block:: yaml
 
    options:
-     online_analysis: no
+     switch_phase_interval: 0
 
-Analysis will occur at each iteration of the simulations if set. **WARNING:** This can be a slow process!
+This allows to switch the simulation between the two phases of the calculation every ``switch_phase_interval`` iterations.
+If 0, YANK will exhaust the ``number_of_iterations`` iterations of the first phase before switching to the second one.
 
-Valid options: [no]/yes
-
-
-.. _yaml_options_online_analysis_min_iterations:
-
-online_analysis_min_iterations
-------------------------------
-.. code-block:: yaml
-
-   options:
-     online_analysis_min_iterations: 20
-
-The minimum number of iterations that must pass before :ref:`online analysis <yaml_options_online_analysis>` begins.
-
-Valid options (20): <Integer>
-
-
-.. _yaml_options_show_energies:
-
-show_energies
--------------
-.. code-block:: yaml
-
-   options:
-     show_energies: yes
-
-If ``yes``, will print out the energies at each iteration.
-
-Valid options: [yes]/no
-
-
-.. _yaml_options_show_mixing_statistics:
-
-show_mixing_statistics
-----------------------
-.. code-block:: yaml
-
-   options:
-     show_mixing_statistics: yes
-
-If ``yes``, will print the Hamiltonian Replica Exchange swapping statistics at each iteration. This process adds a small
-amount of overhead to each iteration.
-
-Valid options: [yes]/no
+Valid options (0): <Integer>
 
 
 .. _yaml_options_minimize:
@@ -435,37 +414,38 @@ set, this option can be used to extend previous simulations past their original 
 Valid Options (1): <Integer>
 
 
-.. _yaml_options_extend_simulation:
+..
+   .. _yaml_options_extend_simulation:
 
-extend_simulation
---------------------
-.. code-block:: yaml
+   extend_simulation
+   --------------------
+   .. code-block:: yaml
 
-    options:
-      extend_simulation: False
+       options:
+         extend_simulation: False
 
-Special modification of :ref:`yaml_options_number_of_iterations` which allows **extending** a simulation by
-:ref:`yaml_options_number_of_iterations` instead of running for a maximum. If set to ``True``,
-the simulation will run the additional specified number of iterations, even if a simulation already has
-run for a length of time. For fresh simulations, the resulting simulation is identical to not setting this flag.
+   Special modification of :ref:`yaml_options_number_of_iterations` which allows **extending** a simulation by
+   :ref:`yaml_options_number_of_iterations` instead of running for a maximum. If set to ``True``,
+   the simulation will run the additional specified number of iterations, even if a simulation already has
+   run for a length of time. For fresh simulations, the resulting simulation is identical to not setting this flag.
 
-This is helpful for running consecutive batches of simulations for time lengths that are unknown.
+   This is helpful for running consecutive batches of simulations for time lengths that are unknown.
 
-*Recommended*: Also set :ref:`resume_setup <yaml_options_resume_setup>` and
-:ref:`resume_simulation <yaml_options_resume_simulation>` to allow resuming simulations.
+   *Recommended*: Also set :ref:`resume_setup <yaml_options_resume_setup>` and
+   :ref:`resume_simulation <yaml_options_resume_simulation>` to allow resuming simulations.
 
-*Example*: You have a simulation that ran for 500 iterations, you wish to add an additional 1000 iterations. You would
-set ``number_of_iterations: 1000`` and ``extend_simulation: True`` in your YAML file and rerun. The simulation would
-then resume at iteration 500, then continue to iteration 1500. The same behavior would be achieved if you set
-``number_of_iterations: 1500``, but the ``extend_simulation`` has the advantage that it can be run multiple times to
-keep extending the simulation without modifying the YAML file.
+   *Example*: You have a simulation that ran for 500 iterations, you wish to add an additional 1000 iterations. You would
+   set ``number_of_iterations: 1000`` and ``extend_simulation: True`` in your YAML file and rerun. The simulation would
+   then resume at iteration 500, then continue to iteration 1500. The same behavior would be achieved if you set
+   ``number_of_iterations: 1500``, but the ``extend_simulation`` has the advantage that it can be run multiple times to
+   keep extending the simulation without modifying the YAML file.
 
-**WARNING**: Extending simulations affects ALL simulations for :doc:`Combinatorial <combinatorial>`. You cannot extend
-a subset of simulations from a combinatorial setup; all simulations will be extended if this option is set.
+   **WARNING**: Extending simulations affects ALL simulations for :doc:`Combinatorial <combinatorial>`. You cannot extend
+   a subset of simulations from a combinatorial setup; all simulations will be extended if this option is set.
 
-**OPTIONAL** and **MODIFIES** :ref:`yaml_options_number_of_iterations`
+   **OPTIONAL** and **MODIFIES** :ref:`yaml_options_number_of_iterations`
 
-Valid Options: True/[False]
+   Valid Options: True/[False]
 
 
 .. _yaml_options_nsteps_per_iteration:

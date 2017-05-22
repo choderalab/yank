@@ -251,8 +251,8 @@ def test_yaml_parsing():
         experiments_dir: /path/to/output/experiments/
         platform: CPU
         precision: mixed
-        switch_experiment_every: -2.0
-        switch_phase_every: 32
+        switch_experiment_interval: -2.0
+        switch_phase_interval: 32
         temperature: 300*kelvin
         pressure: null
         constraints: AllBonds
