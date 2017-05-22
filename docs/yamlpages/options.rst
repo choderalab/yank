@@ -148,7 +148,7 @@ switch_experiment_interval
 
 When running multiple experiments using the ``!Combinatorial`` tag, this allows to switch between experiments every
 ``switch_experiments_interval`` iterations, and gather data about multiple molecules/conditions before
-completing the specified ``number_of_iterations``. If 0 or less, YANK will complete the combinatorial calculations
+completing the specified ``number_of_iterations``. If 0, YANK will complete the combinatorial calculations
 sequentially.
 
 Valid options (0): <Integer>
@@ -321,8 +321,7 @@ switch_phase_interval
      switch_phase_interval: 0
 
 This allows to switch the simulation between the two phases of the calculation every ``switch_phase_interval`` iterations.
-If 0 or less, YANK will exhaust the ``number_of_iterations`` iterations of the first phase before switching to the
-second one.
+If 0, YANK will exhaust the ``number_of_iterations`` iterations of the first phase before switching to the second one.
 
 Valid options (0): <Integer>
 
