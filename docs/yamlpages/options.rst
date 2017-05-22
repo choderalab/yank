@@ -136,6 +136,7 @@ value (``auto``) is equivalent to ``mixed`` when the device support this precisi
 
 Valid options: [auto]/double/mixed/single
 
+
 .. _yaml_options_switch_experiment_interval:
 
 switch_experiment_interval
@@ -150,12 +151,13 @@ When running multiple experiments using the ``!Combinatorial`` tag, this allows 
 completing the specified ``number_of_iterations``. If 0 or less, YANK will complete the combinatorial calculations
 sequentially.
 
-Valid options (0): <int>
+Valid options (0): <Integer>
+
 
 .. _yaml_options_sys_and_sim_prep:
 
-System and Simulation Prepartion:
-=================================
+System and Simulation Preparation:
+==================================
 
 .. _yaml_options_randomize_ligand:
 
@@ -308,10 +310,11 @@ Valid options (16 * angstrom): <Quantity Length> [1]_
 Simulation Parameters
 =====================
 
+
 .. _yaml_options_switch_phase_interval:
 
-switch_experiment_interval
---------------------------
+switch_phase_interval
+---------------------
 .. code-block:: yaml
 
    options:
@@ -321,7 +324,8 @@ This allows to switch the simulation between the two phases of the calculation e
 If 0 or less, YANK will exhaust the ``number_of_iterations`` iterations of the first phase before switching to the
 second one.
 
-Valid options (0): <int>
+Valid options (0): <Integer>
+
 
 .. _yaml_options_minimize:
 
