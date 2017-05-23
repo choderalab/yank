@@ -20,9 +20,10 @@ import unittest
 import tempfile
 import itertools
 
-from nose.tools import assert_raises
+import mdtraj
+
+from nose.tools import assert_raises, assert_equal
 from nose.plugins.attrib import attr
-from mdtraj.formats.mol2 import mol2_to_dataframes
 
 from yank.yamlbuild import *
 
@@ -362,6 +363,7 @@ def test_validation_correct_solvents():
     """Correct solvents YAML validation."""
     solvents = [
         {'nonbonded_method': 'NoCutoff', 'nonbonded_cutoff': '3*nanometers'},
+        {'nonbonded_method': 'PME', 'solvent_model': 'tip4pew'},
         {'nonbonded_method': 'PME', 'clearance': '3*angstroms'},
         {'nonbonded_method': 'PME'},
         {'nonbonded_method': 'NoCutoff', 'implicit_solvent': 'OBC2'},
@@ -378,6 +380,7 @@ def test_validation_wrong_solvents():
     """YAML validation raises exception with wrong solvents."""
     solvents = [
         {'nonbonded_cutoff: 3*nanometers'},
+        {'nonbonded_method': 'PME', 'solvent_model': 'unknown_solvent_model'},
         {'nonbonded_method': 'PME', 'clearance': '3*angstroms', 'implicit_solvent': 'OBC2'},
         {'nonbonded_method': 'NoCutoff', 'blabla': '3*nanometers'},
         {'nonbonded_method': 'NoCutoff', 'implicit_solvent': 'OBX2'},
@@ -723,9 +726,9 @@ def test_setup_name_smiles_openeye_charges():
             assert os.path.getsize(output_basepath + '.gaff.mol2') > 0
             assert os.path.getsize(output_basepath + '.frcmod') > 0
 
-            atoms_frame, _ = mol2_to_dataframes(output_basepath + '.mol2')
+            atoms_frame, _ = mdtraj.formats.mol2.mol2_to_dataframes(output_basepath + '.mol2')
             input_charges = atoms_frame['charge']
-            atoms_frame, _ = mol2_to_dataframes(output_basepath + '.gaff.mol2')
+            atoms_frame, _ = mdtraj.formats.mol2.mol2_to_dataframes(output_basepath + '.gaff.mol2')
             output_charges = atoms_frame['charge']
 
             # With openeye:am1bcc charges, the final charges should be unaltered
@@ -1488,6 +1491,35 @@ def test_setup_explicit_solvation_system():
             assert os.path.getsize(prmtop_path) > 0
             assert os.path.getsize(inpcrd_path) > 0
             assert found_resnames == expected_resnames[phase]
+
+
+def test_setup_solvent_models():
+    """Test the solvation with different solvent models works."""
+    with mmtools.utils.temporary_directory() as tmp_dir:
+        template_script = get_template_script(tmp_dir)
+
+        # Setup solvation system and reduce clearance to make test faster.
+        template_script['systems'] = {
+            'system1':
+                {'solute': 'toluene', 'solvent1': 'PME', 'solvent2': 'vacuum',
+                 'leap': {'parameters': ['leaprc.gaff', 'oldff/leaprc.ff14SB']}}}
+        template_script['solvents']['PME']['clearance'] = '3.0 * angstrom'
+        del template_script['experiments']
+
+        # Test solvent models.
+        for solvent_model in ['tip3p', 'tip3pfb', 'tip4pew', 'tip5p']:
+            yaml_script = copy.deepcopy(template_script)
+            yaml_script['solvents']['PME']['solvent_model'] = solvent_model
+            yaml_script['options']['setup_dir'] = solvent_model
+            yaml_builder = YamlBuilder(yaml_script)
+
+            # Infer number of expected atoms per water molecule from model.
+            expected_water_n_atoms = int(list(filter(str.isdigit, solvent_model))[0])
+
+            # Setup the system and check that water residues have expected number of particles.
+            prmtop_filepath = yaml_builder._db.get_system('system1')[0].parameters_path
+            topology = mdtraj.load_prmtop(prmtop_filepath)
+            yield assert_equal, topology.residue(1).n_atoms, expected_water_n_atoms
 
 
 def test_setup_multiple_parameters_system():
