@@ -94,12 +94,10 @@ def dispatch(args):
         if not os.path.isfile(yaml_path):
             raise ValueError('Cannot find YAML script "{}"'.format(yaml_path))
 
-        from ..utils import _profile
-        with _profile():
-            yaml_builder = YamlBuilder(yaml_source=yaml_path)
-            if override:  # Parse the string present.
-                yaml_builder.update_yaml(override)
-            yaml_builder.run_experiments()
+        yaml_builder = YamlBuilder(yaml_source=yaml_path)
+        if override:  # Parse the string present.
+            yaml_builder.update_yaml(override)
+        yaml_builder.run_experiments()
         return True
 
     return False

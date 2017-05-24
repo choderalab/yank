@@ -151,13 +151,9 @@ def config_root_logger(verbose, log_file_path=None):
 
 
 # =======================================================================================
-# Profiling Function
+# Profiling Functions
+# This is a series of functions and wrappers used for debugging, hence their private nature
 # =======================================================================================
-
-'''
-This is a series of functions and wrappers used for debugging, hence their private nature
-'''
-
 
 def _profile_block_separator_string(message):
     """Write a simple block spacing separator"""
@@ -165,9 +161,9 @@ def _profile_block_separator_string(message):
     time_format = '%d %b %Y %H:%M:%S'
     current_time = time.strftime(time_format)
     spacing_min = 50
-    spacing = max(current_time, message, spacing_min)
+    spacing = max(len(current_time), len(message), spacing_min)
     filler = '{' + '0: ^{}'.format(spacing) + '}'
-    separator = '#' * spacing + 2
+    separator = '#' * (spacing + 2)
     output_string = ''
     output_string += separator + '\n'
     output_string += '#' + filler.format(current_time) + '#\n'
@@ -221,7 +217,6 @@ def _with_profile(output_file='profile.log'):
                 return func(*args, **kwargs)
         return _wrapper
     return __with_profile
-
 
 
 # =======================================================================================
