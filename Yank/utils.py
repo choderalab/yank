@@ -12,6 +12,7 @@ import shutil
 import inspect
 import logging
 import importlib
+import functools
 import itertools
 import contextlib
 import subprocess
@@ -163,9 +164,10 @@ def _profile_block_separator_string(message):
     import time
     time_format = '%d %b %Y %H:%M:%S'
     current_time = time.strftime(time_format)
-    spacing = 50
-    filler = '{' + '0: ^{}'.format(spacing - 2) + '}'
-    separator = '#' * spacing
+    spacing_min = 50
+    spacing = max(current_time, message, spacing_min)
+    filler = '{' + '0: ^{}'.format(spacing) + '}'
+    separator = '#' * spacing + 2
     output_string = ''
     output_string += separator + '\n'
     output_string += '#' + filler.format(current_time) + '#\n'
@@ -177,7 +179,7 @@ def _profile_block_separator_string(message):
 @contextlib.contextmanager
 def _profile(output_file='profile.log'):
     """
-    Function that allows a `with _profile():` to wrap around a specific function
+    Function that allows a `with _profile():` to wrap around a calls
 
     Parameters
     ----------
@@ -204,7 +206,7 @@ def _profile(output_file='profile.log'):
 
 
 def _with_profile(output_file='profile.log'):
-    """Decorator that profiles the wrapped
+    """Decorator that profiles the full function wrapper to _profile
 
     Parameters
     ----------
@@ -213,8 +215,11 @@ def _with_profile(output_file='profile.log'):
     """
 
     def __with_profile(func):
-        with _profile(output_file):
-            return func
+        @functools.wraps(func)
+        def _wrapper(*args, **kwargs):
+            with _profile(output_file):
+                return func(*args, **kwargs)
+        return _wrapper
     return __with_profile
 
 
