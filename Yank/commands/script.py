@@ -25,7 +25,7 @@ usage = """
 YANK script
 
 Usage:
-  yank script (-y FILEPATH | --yaml=FILEPATH) [-o OVERRIDE]... [-d DEBUG | --debug=DEBUG]
+  yank script (-y FILEPATH | --yaml=FILEPATH) [-o OVERRIDE]...
 
 Description:
   Set up and run free energy calculations from a YAML script. All options can be specified in the YAML script.
@@ -42,8 +42,6 @@ Optional Arguments:
                                 Please see script file documentation for valid options.
                                 Specifying the same option multiple times results in an error.
                                 This method is not recommended for complex options such as lists or combinations
-  -d, --debug=DEBUG             Special mode of YANK to provide cProfile debug timing of whole execution, timing
-                                file written to DEBUG location
 """
 
 # =============================================================================================
@@ -90,31 +88,18 @@ def dispatch(args):
         # This is done to avoid input type ambiguity and instead let the parser handle it as though it were a file
         override = str(override_dict).replace("'", "").replace('"', '')
 
-    debug_mode = False
-    if args['--debug']:
-        debug_file = args['debug']
-        debug_mode = True
     if args['--yaml']:
         yaml_path = args['--yaml']
 
         if not os.path.isfile(yaml_path):
             raise ValueError('Cannot find YAML script "{}"'.format(yaml_path))
 
-        if debug_mode:
-            import cProfile, pstats, io
-            print('Debug Mode is ON!')
-            pr = cProfile.Profile()
-            pr.enable()
-        yaml_builder = YamlBuilder(yaml_source=yaml_path)
-        if override:  # Parse the string present.
-            yaml_builder.update_yaml(override)
-        yaml_builder.run_experiments()
-        if debug_mode:
-            pr.disable()
-            s = io.StringIO()
-            sortby = 'percall'
-            ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
-            ps.dump_stats(debug_file)
+        from ..utils import _profile
+        with _profile():
+            yaml_builder = YamlBuilder(yaml_source=yaml_path)
+            if override:  # Parse the string present.
+                yaml_builder.update_yaml(override)
+            yaml_builder.run_experiments()
         return True
 
     return False

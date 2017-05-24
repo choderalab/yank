@@ -13,6 +13,7 @@ import inspect
 import logging
 import importlib
 import itertools
+import contextlib
 import subprocess
 import collections
 
@@ -146,6 +147,76 @@ def config_root_logger(verbose, log_file_path=None):
         logging.root.setLevel(logging.DEBUG)
     else:
         logging.root.setLevel(terminal_handler.level)
+
+
+# =======================================================================================
+# Profiling Function
+# =======================================================================================
+
+'''
+This is a series of functions and wrappers used for debugging, hence their private nature
+'''
+
+
+def _profile_block_separator_string(message):
+    """Write a simple block spacing separator"""
+    import time
+    time_format = '%d %b %Y %H:%M:%S'
+    current_time = time.strftime(time_format)
+    spacing = 50
+    filler = '{' + '0: ^{}'.format(spacing - 2) + '}'
+    separator = '#' * spacing
+    output_string = ''
+    output_string += separator + '\n'
+    output_string += '#' + filler.format(current_time) + '#\n'
+    output_string += '#' + filler.format(message) + '#\n'
+    output_string += separator + '\n'
+    return output_string
+
+
+@contextlib.contextmanager
+def _profile(output_file='profile.log'):
+    """
+    Function that allows a `with _profile():` to wrap around a specific function
+
+    Parameters
+    ----------
+    output_file: str, Default: 'profile.log'
+        Name of the profile you want to write to
+
+    """
+    # Imports only used for debugging, not making this part of the name space
+
+    import pstats
+    import cProfile
+    start_string = _profile_block_separator_string('START PROFILE')
+    pr = cProfile.Profile()
+    pr.enable()
+    yield
+    pr.disable()
+    end_string = _profile_block_separator_string('END PROFILE')
+    sort_by = ['filename', 'cumulative']
+    with open(output_file, 'a+') as s:
+        s.write(start_string)
+        ps = pstats.Stats(pr, stream=s).sort_stats(*sort_by)
+        ps.print_stats()
+        s.write(end_string)
+
+
+def _with_profile(output_file='profile.log'):
+    """Decorator that profiles the wrapped
+
+    Parameters
+    ----------
+    output_file: str, Default: 'profile.log'
+        Name of the profile you want to write to
+    """
+
+    def __with_profile(func):
+        with _profile(output_file):
+            return func
+    return __with_profile
+
 
 
 # =======================================================================================
