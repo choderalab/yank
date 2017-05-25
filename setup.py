@@ -150,7 +150,7 @@ setup(
         'docopt>=0.6.1',
         'netcdf4',
         'schema',
-        'openmoltools',
+        'openmoltools>=0.9.5',
         'mdtraj',
         'pyyaml'
         ],
