@@ -410,57 +410,28 @@ class Reporter(object):
                 for compare_state in stored_states:
                     if compare_state.is_state_compatible(thermodynamic_state):
                         serialized_thermodynamic_state = mmtools.utils.serialize(thermodynamic_state, skip_system=True)
+                        standard_system_hash = stored_states[compare_state]
                         reference_state_name, len_serialization = compatible_states_hashes[standard_system_hash]
                         serialized_thermodynamic_state['_Reporter__compatible_state'] = reference_state_name
                         found_compatible_state = True
                         break
+                # If no compatible state is found, do full serialization
                 if not found_compatible_state:
                     serialized_state = mmtools.utils.serialize(thermodynamic_state)
-                    serialized_thermodynamic_state = serialized_state
+                    serialized_thermodynamic_state = serialized_state['thermodynamic_state']
                     serialized_standard_system = serialized_thermodynamic_state['standard_system']
                     standard_system_hash = serialized_standard_system.__hash__()
                     reference_state_name = '{}/{}'.format(state_type, state_id)
                     len_serialization = len(serialized_standard_system)
+                    # Store new compatibility data
                     compatible_states_hashes[standard_system_hash] = reference_state_name, len_serialization
+                    stored_states[thermodynamic_state] = standard_system_hash
 
                     logger.debug("Serialized state {} is  {}B | {:.3f}KB | {:.3f}MB".format(
                         reference_state_name, len_serialization, len_serialization/1024.0,
                         len_serialization/1024.0/1024.0))
                 # Finally write the dictionary
                 self.write_dict('{}/state{}'.format(state_type, state_id), serialized_thermodynamic_state)
-
-                '''
-                serialized_state = mmtools.utils.serialize(thermodynamic_state)
-
-                # Find the serialized standard system.
-                serialized_thermodynamic_state = serialized_state
-                while 'thermodynamic_state' in serialized_thermodynamic_state:
-                    # The while loop is necessary for nested CompoundThermodynamicStates.
-                    serialized_thermodynamic_state = serialized_state['thermodynamic_state']
-                serialized_standard_system = serialized_thermodynamic_state['standard_system']
-
-                # We store the full standard system serialization only if we haven't
-                # store it yet, otherwise we just write a reference to a state containing
-                # the full system. We normally expect all the ThermodynamicStates to be
-                # compatible, which means we'll store only a single system in most cases.
-                standard_system_hash = serialized_standard_system.__hash__()
-                try:
-                    reference_state_name, len_serialization = compatible_states_hashes[standard_system_hash]
-                except KeyError:
-                    reference_state_name = '{}/{}'.format(state_type, state_id)
-                    len_serialization = len(serialized_standard_system)
-                    compatible_states_hashes[standard_system_hash] = reference_state_name, len_serialization
-
-                    logger.debug("Serialized state {} is  {}B | {:.3f}KB | {:.3f}MB".format(
-                        reference_state_name, len_serialization, len_serialization/1024.0,
-                        len_serialization/1024.0/1024.0))
-                else:
-                    serialized_thermodynamic_state.pop('standard_system')
-                    serialized_thermodynamic_state['_Reporter__compatible_state'] = reference_state_name
-
-                # Write state as dictionary.
-                self.write_dict('{}/state{}'.format(state_type, state_id), serialized_state)
-                '''
 
     def read_sampler_states(self, iteration):
         """Retrieve the stored sampler states on the checkpoint file
