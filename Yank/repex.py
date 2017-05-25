@@ -401,9 +401,35 @@ class Reporter(object):
         """
         # Store all thermodynamic states as serialized dictionaries.
         compatible_states_hashes = dict()
+        stored_states = dict()
         for state_type, states in [('thermodynamic_states', thermodynamic_states),
                                    ('unsampled_states', unsampled_states)]:
             for state_id, thermodynamic_state in enumerate(states):
+                # Check if any compatible state has been found
+                found_compatible_state = False
+                for compare_state in stored_states:
+                    if compare_state.is_state_compatible(thermodynamic_state):
+                        serialized_thermodynamic_state = mmtools.utils.serialize(thermodynamic_state, skip_system=True)
+                        reference_state_name, len_serialization = compatible_states_hashes[standard_system_hash]
+                        serialized_thermodynamic_state['_Reporter__compatible_state'] = reference_state_name
+                        found_compatible_state = True
+                        break
+                if not found_compatible_state:
+                    serialized_state = mmtools.utils.serialize(thermodynamic_state)
+                    serialized_thermodynamic_state = serialized_state
+                    serialized_standard_system = serialized_thermodynamic_state['standard_system']
+                    standard_system_hash = serialized_standard_system.__hash__()
+                    reference_state_name = '{}/{}'.format(state_type, state_id)
+                    len_serialization = len(serialized_standard_system)
+                    compatible_states_hashes[standard_system_hash] = reference_state_name, len_serialization
+
+                    logger.debug("Serialized state {} is  {}B | {:.3f}KB | {:.3f}MB".format(
+                        reference_state_name, len_serialization, len_serialization/1024.0,
+                        len_serialization/1024.0/1024.0))
+                # Finally write the dictionary
+                self.write_dict('{}/state{}'.format(state_type, state_id), serialized_thermodynamic_state)
+
+                '''
                 serialized_state = mmtools.utils.serialize(thermodynamic_state)
 
                 # Find the serialized standard system.
@@ -434,6 +460,7 @@ class Reporter(object):
 
                 # Write state as dictionary.
                 self.write_dict('{}/state{}'.format(state_type, state_id), serialized_state)
+                '''
 
     def read_sampler_states(self, iteration):
         """Retrieve the stored sampler states on the checkpoint file
