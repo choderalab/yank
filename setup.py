@@ -146,11 +146,11 @@ setup(
         'cython',
         'openmm',
         'pymbar',
-        'openmmtools',
+        'openmmtools>=0.10.0',
         'docopt>=0.6.1',
         'netcdf4',
         'schema',
-        'openmoltools>=0.10.0',
+        'openmoltools',
         'mdtraj',
         'pyyaml'
         ],

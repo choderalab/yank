@@ -23,7 +23,7 @@ requirements:
     - pymbar
     - ambermini >=16.16.0
     - docopt
-    - openmoltools >=0.9.5
+    - openmoltools
     - sphinxcontrib-bibtex
     - schema >=0.6.2
     #- gcc 4.8.2 # [linux]
@@ -38,11 +38,11 @@ requirements:
     - netcdf4
     - openmm >=7.1
     - mdtraj >=1.7.2
-    - openmmtools
+    - openmmtools >=0.10.0
     - pymbar
     - ambermini >=16.16.0
     - docopt
-    - openmoltools >=0.10.0
+    - openmoltools
     - mpi4py
     - pyyaml
     - clusterutils
