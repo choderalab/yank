@@ -346,6 +346,9 @@ class Reporter(object):
         states = collections.OrderedDict([('thermodynamic_states', list()),
                                           ('unsampled_states', list())])
 
+        # Caches standard_system_name: serialized_standard_system
+        states_serializations = dict()
+
         # Read state information.
         for state_type, state_list in states.items():
             # There may not be unsampled states.
@@ -362,20 +365,19 @@ class Reporter(object):
                 serialized_thermodynamic_state = serialized_state
                 while 'thermodynamic_state' in serialized_thermodynamic_state:
                     # The while loop is necessary for nested CompoundThermodynamicStates.
-                    serialized_thermodynamic_state = serialized_state['thermodynamic_state']
+                    serialized_thermodynamic_state = serialized_thermodynamic_state['thermodynamic_state']
 
                 # Check if the standard state is in a previous state.
                 try:
                     standard_system_name = serialized_thermodynamic_state.pop('_Reporter__compatible_state')
                 except KeyError:
-                    # We have stored the full standard system serialization.
-                    pass
+                    # Cache the standard system serialization for future usage.
+                    standard_system_name = '{}/{}'.format(state_type, state_id)
+                    states_serializations[standard_system_name] = serialized_thermodynamic_state['standard_system']
                 else:
                     # The system serialization can be retrieved from another state.
-                    reference_state_type, reference_system_id = standard_system_name.split('/')
-                    compatible_thermodynamic_state = states[reference_state_type][int(reference_system_id)]
-                    serialized_system = openmm.XmlSerializer.serialize(compatible_thermodynamic_state.system)
-                    serialized_thermodynamic_state['standard_system'] = serialized_system
+                    serialized_standard_system = states_serializations[standard_system_name]
+                    serialized_thermodynamic_state['standard_system'] = serialized_standard_system
 
                 # Create ThermodynamicState object.
                 states[state_type].append(mmtools.utils.deserialize(serialized_state))
@@ -400,13 +402,13 @@ class Reporter(object):
 
         """
         # Store all thermodynamic states as serialized dictionaries.
-        compatible_states_hashes = dict()
         stored_states = dict()
 
         def unnest_thermodynamic_state(serialized):
             while 'thermodynamic_state' in serialized:
                 serialized = serialized['thermodynamic_state']
-            return serialized_state
+            return serialized
+
         for state_type, states in [('thermodynamic_states', thermodynamic_states),
                                    ('unsampled_states', unsampled_states)]:
             for state_id, state in enumerate(states):
@@ -417,26 +419,27 @@ class Reporter(object):
                         serialized_state = mmtools.utils.serialize(state, skip_system=True)
                         serialized_thermodynamic_state = unnest_thermodynamic_state(serialized_state)
                         serialized_thermodynamic_state.pop('standard_system')  # Remove the unneeded system objete
-                        standard_system_hash = stored_states[compare_state]
-                        reference_state_name, len_serialization = compatible_states_hashes[standard_system_hash]
+                        reference_state_name = stored_states[compare_state]
                         serialized_thermodynamic_state['_Reporter__compatible_state'] = reference_state_name
                         found_compatible_state = True
                         break
+
                 # If no compatible state is found, do full serialization
                 if not found_compatible_state:
                     serialized_state = mmtools.utils.serialize(state)
                     serialized_thermodynamic_state = unnest_thermodynamic_state(serialized_state)
                     serialized_standard_system = serialized_thermodynamic_state['standard_system']
-                    standard_system_hash = serialized_standard_system.__hash__()
+
                     reference_state_name = '{}/{}'.format(state_type, state_id)
                     len_serialization = len(serialized_standard_system)
+
                     # Store new compatibility data
-                    compatible_states_hashes[standard_system_hash] = reference_state_name, len_serialization
-                    stored_states[state] = standard_system_hash
+                    stored_states[state] = reference_state_name
 
                     logger.debug("Serialized state {} is  {}B | {:.3f}KB | {:.3f}MB".format(
                         reference_state_name, len_serialization, len_serialization/1024.0,
                         len_serialization/1024.0/1024.0))
+
                 # Finally write the dictionary
                 self.write_dict('{}/state{}'.format(state_type, state_id), serialized_state)
 
