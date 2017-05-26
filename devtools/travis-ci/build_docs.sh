@@ -6,7 +6,7 @@ set -ev
 # Install the built package
 conda create --yes -n docenv python=$CONDA_PY
 source activate docenv
-conda install -yq --use-local yank-dev
+conda install -yq --use-local yank-dev sphix==1.4.9
 
 # We don't use conda for these:
 pip install -I sphinx==1.4.9 sphinx_rtd_theme==0.1.9 msmb_theme==1.2.0
