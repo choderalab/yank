@@ -6,6 +6,19 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the github yank releases page <https://github.com/choderalab/yank/releases>`_.
 
+0.16.0 Full API and Python 3.6
+------------------------------
+- Full feature API for setting up, running, and analyzing experiments
+- Supports new generalized MCMC moves, ThermodynamicStates, and other features from improved OpenMMTools
+- Checkpoint feature added to reduce file size, add portability to data analysis files.
+- Simulations can now alternate between phases to allow analysis even before simulations are done
+- OpenEye features compartmentalized so you don't need every OpenEye feature YANK could use to use any of them
+- Major under the hood speed ups to base code and MPI behavior, includes a full code refactor.
+- Mol2 files can now read in multi-molecule files
+- No longer uses standalone Alchemy module, uses the one built into OpenMMTools
+- Added Python 3.6 support.
+- Retired Python 3.4 support
+
 0.15.2 Health Report and Anisotropic Dispersion Control
 -------------------------------------------------------
 - Added simulation Health Report through a Jupyter Notebook with CLI support
