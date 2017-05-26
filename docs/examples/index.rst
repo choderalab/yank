@@ -14,9 +14,10 @@ Since YANK 0.12.0, the examples exist in their own repository. You can get them 
 
 .. code-block:: bash
 
-  conda install -c omnia yank-examples
+  conda install -c conda-forge -c omnia yank-examples
 
-The ``-c omnia`` is optional if you have already the omnia channel added to your conda channels
+The ``-c conda-forge -c omnia`` is optional if you have already the conda-forge and omnia channel added to your conda
+channels
 
 
 Install Location

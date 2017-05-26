@@ -9,7 +9,7 @@ Install the release version of YANK from the `omnia Anaconda Cloud channel <http
 
 .. code-block:: bash
 
-   $ conda install -c omnia yank
+   $ conda install -c conda-forge -c omnia yank
 
 Go to the ``examples/p-xylene-implicit`` directory to find an example of computing the binding affinity of p-xylene to T4 lysozyme L99A:
 

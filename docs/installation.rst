@@ -13,7 +13,8 @@ The `yank Anaconda Cloud page <https://anaconda.org/omnia/yank>`_ has useful ins
 If you are using the `anaconda <https://www.continuum.io/downloads/>`_ scientific Python distribution, you already have the ``conda`` package manager installed.
 If not, the quickest way to get started is to install the `miniconda <http://conda.pydata.org/miniconda.html>`_ distribution, a lightweight minimal installation of Anaconda Python.
 
-On ``linux``, you can install the Python 2.7 version into ``$HOME/miniconda2`` with (on ``bash`` systems):
+On ``linux``, you can install the Python 2.7 version into ``$HOME/miniconda2`` with (on ``bash`` systems. Replace
+``Miniconda2`` with ``Miniconda`` if you want to use Python 3):
 
 .. code-block:: bash
 
@@ -43,7 +44,7 @@ You can install the latest stable release build of YANK via the ``conda`` packag
 
 .. code-block:: none
 
-   $ conda config --add channels omnia
+   $ conda config --add channels omnia --add channels conda-forge
    $ conda install yank
 
 This version is recommended for all users not actively developing new algorithms for alchemical free energy calculations.
@@ -59,7 +60,7 @@ The bleeding-edge, absolute latest, very likely unstable development build of YA
 
 .. code-block:: bash
 
-   $ conda config --add channels omnia
+   $ conda config --add channels omnia --add channels conda-forge
    $ conda install yank-dev
 
 .. warning:: Development builds may be unstable and are generally subjected to less testing than releases.  Use at your own risk!
@@ -221,7 +222,7 @@ Supported platforms and environments
 Software
 --------
 
-YANK runs on Python 2.7, Python 3.4, and Python 3.5
+YANK runs on Python 2.7, Python 3.5, and Python 3.6
 
 Dependencies
 ++++++++++++
