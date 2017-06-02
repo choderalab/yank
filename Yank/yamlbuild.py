@@ -1058,7 +1058,7 @@ class YamlPhaseFactory(object):
 
     DEFAULT_OPTIONS = {
         'anisotropic_dispersion_correction': True,
-        'anisotropic_dispersion_cutoff': 16.0*unit.angstroms,
+        'anisotropic_dispersion_cutoff': 'auto',
         'minimize': True,
         'minimize_tolerance': 1.0 * unit.kilojoules_per_mole/unit.nanometers,
         'minimize_max_iterations': 0,
@@ -1703,7 +1703,16 @@ class YamlBuilder(object):
         template_options.pop('alchemical_angles')
         template_options.pop('alchemical_torsions')
 
-        special_conversions = {'constraints': to_openmm_app}
+        # Some options need to be treated differently.
+        def check_anisotropic_cutoff(cutoff):
+            if cutoff == 'auto':
+                return cutoff
+            else:
+                return utils.process_unit_bearing_str(cutoff, unit.angstroms)
+        special_conversions = {'constraints': to_openmm_app,
+                               'anisotropic_dispersion_cutoff': check_anisotropic_cutoff}
+
+        # Validate parameters
         try:
             validated_options = utils.validate_parameters(options, template_options, check_unknown=True,
                                                           process_units_str=True, float_to_int=True,

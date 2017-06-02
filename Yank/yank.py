@@ -756,40 +756,53 @@ class AlchemicalPhase(object):
     @staticmethod
     def _expand_state_cutoff(thermodynamic_state, expanded_cutoff_distance):
         """Expand the thermodynamic state cutoff to the given one."""
+        # If we use a barostat we leave more room for volume fluctuations or
+        # we risk fatal errors. This is how much we allow the box size to change.
+        fluctuation_size = 0.8
+
         # Do not modify passed thermodynamic state.
         thermodynamic_state = copy.deepcopy(thermodynamic_state)
         system = thermodynamic_state.system
 
-        # Determine minimum box side dimension. This assumes
-        # that box vectors are aligned with the axes.
+        # Determine minimum box side dimension.
         box_vectors = system.getDefaultPeriodicBoxVectors()
-        min_box_dimension = min([max(vector) for vector in box_vectors])
+        min_box_dimension = min([np.linalg.norm(vector) for vector in box_vectors])
 
-        # If we use a barostat we leave more room for volume fluctuations or
-        # we risk fatal errors. If we don't use a barostat, OpenMM will raise
-        # the appropriate exception on context creation.
-        if (thermodynamic_state.pressure is not None and
-                min_box_dimension < 2.25 * expanded_cutoff_distance):
+        # Determine cutoff automatically if requested.
+        # We leave more space if the volume fluctuates.
+        if expanded_cutoff_distance == 'auto':
+            if thermodynamic_state.pressure is None:
+                expanded_cutoff_distance = min_box_dimension * 0.99 / 2.0
+            else:
+                expanded_cutoff_distance = min_box_dimension * fluctuation_size / 2.0
+            expanded_cutoff_distance = min(expanded_cutoff_distance, 16*unit.angstroms)
+        # Otherwise check that requested cutoff is within fluctuation limits. If the
+        # state is in NVT and the cutoff is too big, OpenMM will raise an exception
+        # on Context creation.
+        elif (thermodynamic_state.pressure is not None and
+                          min_box_dimension * fluctuation_size < 2.0 * expanded_cutoff_distance):
             raise RuntimeError('Barostated box sides must be at least {} Angstroms '
                                'to correct for missing dispersion interactions'
                                ''.format(expanded_cutoff_distance/unit.angstrom * 2))
 
-        logger.debug('Setting cutoff for fully interacting system to maximum '
-                     'allowed {}'.format(expanded_cutoff_distance))
+        logger.debug('Setting cutoff for fully interacting system to {}. The minimum box '
+                     'dimension is {}.'.format(expanded_cutoff_distance, min_box_dimension))
 
         # Expanded forces cutoff.
         for force in system.getForces():
             try:
+                force_cutoff = force.getCutoffDistance()
+            except AttributeError:
+                    pass
+            else:
                 # We don't want to reduce the cutoff if it's already large.
-                if force.getCutoffDistance() < expanded_cutoff_distance:
+                if force_cutoff < expanded_cutoff_distance:
                     force.setCutoffDistance(expanded_cutoff_distance)
 
                     # Set switch distance. We don't need to check if we are
                     # using a switch since there is a setting for that.
                     switching_distance = expanded_cutoff_distance - 1.0*unit.angstrom
                     force.setSwitchingDistance(switching_distance)
-            except AttributeError:
-                pass
 
         # Return the new thermodynamic state with the expanded cutoff.
         thermodynamic_state.system = system
