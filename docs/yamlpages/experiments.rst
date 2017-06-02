@@ -21,6 +21,8 @@ Experiments Syntax
      protocol: {UserDefinedProtocol}
      restraint:
        type: FlatBottom
+       {Restraint Parameter}
+       ...
      options:
        {Any Valid Option}
        {Any Valid Option}
@@ -32,7 +34,9 @@ It takes a ``{UserDefinedSystem}`` (see :doc:`systems <systems>`) and a ``{UserD
 to create the experiment and are the only required arguments.
 
 The ``restraint`` is an **optional** keyword that applies a restraint to the ligand to keep it close to the receptor.
-Valid types are: ``FlatBottom``/``Harmonic``/`` Boresch``/``null``. If not specified, assumes ``null``.
+The only required keyword is ``type``. Valid types are: ``FlatBottom``/``Harmonic``/``Boresch``/``null``. If not
+specified, assumes ``null``. Every restraint has his own set of optional parameters that are passed directly to the
+Python constructor of the restraint. See the API documentation in ``yank.restraints`` for the available parameters.
 
 The ``options`` directive lets you overwrite :doc:`any global setting <options>` specified in the header ``options`` for
 this specific experiment.

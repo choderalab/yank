@@ -294,12 +294,13 @@ anisotropic_dispersion_cutoff
 .. code-block:: yaml
 
    options:
-     anisotropic_dispersion_cutoff: 16.0 * angstrom
+     anisotropic_dispersion_cutoff: auto
 
-Specify the expanded cutoff distance for YANK's :ref:`yaml_options_anisotropic_dispersion_correction` setting.
-Please see the main :ref:`yaml_options_anisotropic_dispersion_correction` option for details/
+Specify the expanded cutoff distance for YANK's :ref:`yaml_options_anisotropic_dispersion_correction` setting. If
+``auto`` the cutoff will be set to a little smaller than the minimum box size. Please see the main
+:ref:`yaml_options_anisotropic_dispersion_correction` option for details.
 
-Valid options (16 * angstrom): <Quantity Length> [1]_
+Valid options: [auto]/<Quantity Length> [1]_
 
 .. note:: This will be combined with :ref:`yaml_options_anisotropic_dispersion_correction` in our version 2.0 of our YAML code.
 
