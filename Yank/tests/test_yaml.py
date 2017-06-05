@@ -637,7 +637,14 @@ def test_validation_correct_experiments():
     experiments = [
         {'system': 'sys', 'protocol': 'absolute-binding'},
         {'system': 'sys', 'protocol': 'absolute-binding', 'restraint': {'type': 'Harmonic'}},
-        {'system': 'sys', 'protocol': 'absolute-binding', 'restraint': {'type': None}}
+        {'system': 'sys', 'protocol': 'absolute-binding', 'restraint': {'type': None}},
+        {'system': 'sys', 'protocol': 'absolute-binding', 'restraint': {
+            'type': 'Harmonic', 'spring_constant': '8*kilojoule_per_mole/nanometers**2'}},
+        {'system': 'sys', 'protocol': 'absolute-binding', 'restraint': {
+            'type': 'FlatBottom', 'well_radius': '5.2*nanometers', 'restrained_receptor_atom': 1644}},
+        {'system': 'sys', 'protocol': 'absolute-binding', 'restraint': {
+            'type': 'Boresch', 'restrained_atoms': [1335, 1339, 1397, 2609, 2607, 2606],
+            'K_r': '20.0*kilocalories_per_mole/angstrom**2', 'r_aA0': '0.35*nanometer'}},
     ]
     for experiment in experiments:
         modified_script = basic_script.copy()
@@ -1930,6 +1937,10 @@ def test_run_experiment():
             protocol: absolute-binding
             restraint:
                 type: FlatBottom
+                spring_constant: 0.6*kilocalorie_per_mole/angstroms**2
+                well_radius: 5.2*nanometers
+                restrained_receptor_atom: 1644
+                restrained_ligand_atom: 2609
         """.format(tmp_dir, examples_paths()['lysozyme'], examples_paths()['p-xylene'],
                    indent(standard_protocol))
 

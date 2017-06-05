@@ -296,6 +296,15 @@ def to_openmm_app(input_string):
     return getattr(openmm.app, input_string)
 
 
+def convert_if_quantity(value):
+
+    try:
+        quantity = utils.quantity_from_string(value)
+    except:
+        return value
+    return quantity
+
+
 def update_nested_dict(original, updated):
     """Return a copy of a (possibly) nested dict of arbitrary depth"""
     new = original.copy()
@@ -1058,7 +1067,7 @@ class YamlPhaseFactory(object):
 
     DEFAULT_OPTIONS = {
         'anisotropic_dispersion_correction': True,
-        'anisotropic_dispersion_cutoff': 16.0*unit.angstroms,
+        'anisotropic_dispersion_cutoff': 'auto',
         'minimize': True,
         'minimize_tolerance': 1.0 * unit.kilojoules_per_mole/unit.nanometers,
         'minimize_max_iterations': 0,
@@ -1703,7 +1712,16 @@ class YamlBuilder(object):
         template_options.pop('alchemical_angles')
         template_options.pop('alchemical_torsions')
 
-        special_conversions = {'constraints': to_openmm_app}
+        # Some options need to be treated differently.
+        def check_anisotropic_cutoff(cutoff):
+            if cutoff == 'auto':
+                return cutoff
+            else:
+                return utils.process_unit_bearing_str(cutoff, unit.angstroms)
+        special_conversions = {'constraints': to_openmm_app,
+                               'anisotropic_dispersion_cutoff': check_anisotropic_cutoff}
+
+        # Validate parameters
         try:
             validated_options = utils.validate_parameters(options, template_options, check_unknown=True,
                                                           process_units_str=True, float_to_int=True,
@@ -2098,8 +2116,8 @@ class YamlBuilder(object):
             self._experiments = {}
             return
 
-        # Restraint schema
-        restraint_schema = {'type': Or(str, None)}
+        # Restraint schema contains type and optional parameters.
+        restraint_schema = {'type': Or(str, None), Optional(str): object}
 
         # Define experiment Schema
         experiment_schema = Schema({'system': is_known_system, 'protocol': is_known_protocol,
@@ -2594,11 +2612,8 @@ class YamlBuilder(object):
                 assert 'phase1_path' in self._db.systems[system_id]
                 solvent_ids = [None, None]
 
-        # Determine restraint
-        try:
-            restraint_type = experiment['restraint']['type']
-        except (KeyError, TypeError):  # restraint unspecified or None
-            restraint_type = None
+        # Determine restraint description (None if not specified).
+        restraint_descr = experiment.get('restraint')
 
         # Get system files.
         system_files_paths = self._db.get_system(system_id)
@@ -2655,8 +2670,11 @@ class YamlBuilder(object):
 
             # Apply restraint only if this is the first phase. AlchemicalPhase
             # will take care of raising an error if the phase type does not support it.
-            if i == 0 and restraint_type is not None:
-                restraint = restraints.create_restraint(restraint_type)
+            if (i == 0 and restraint_descr is not None and restraint_descr['type'] is not None):
+                restraint_type = restraint_descr['type']
+                restraint_parameters = {par: convert_if_quantity(value) for par, value in restraint_descr.items()
+                                        if par != 'type'}
+                restraint = restraints.create_restraint(restraint_type, **restraint_parameters)
             else:
                 restraint = None
 
