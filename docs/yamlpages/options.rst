@@ -297,7 +297,9 @@ anisotropic_dispersion_cutoff
      anisotropic_dispersion_cutoff: auto
 
 Specify the expanded cutoff distance for YANK's :ref:`yaml_options_anisotropic_dispersion_correction` setting. If
-``auto`` the cutoff will be set to a little smaller than the minimum box size. Please see the main
+``auto`` the cutoff will be set to ``0.99*min_box_size/2`` if no barostat is in use or ``0.8*min_box_size/2`` if
+one is in use (to account for box size fluctuations), with ``min_box_size`` denoting the norm of the smallest OpenMM
+box vector defining the initial triclinic cell volume. Please see the main
 :ref:`yaml_options_anisotropic_dispersion_correction` option for details.
 
 Valid options: [auto]/<Quantity Length> [1]_
