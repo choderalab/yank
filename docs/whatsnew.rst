@@ -6,8 +6,9 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the github yank releases page <https://github.com/choderalab/yank/releases>`_.
 
-0.16.1 Bugfix for Analyze Transition Matrix and Reporter
---------------------------------------------------------
+0.16.1 Auto Expanded Cutoffs and bug fixes for Transition Matrix and Reporter
+-----------------------------------------------------------------------------
+- Expanded cutoff now able to be chosen automatically instead of just hard coded number
 - Fixes bug causing transition matrix to be computed incorrectly, uses empirical to estimate
 - Allows user to drop samples equilibration report to avoid plot scale being dominated by initial fast equilibration
 
