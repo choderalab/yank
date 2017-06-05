@@ -12,7 +12,9 @@ import shutil
 import inspect
 import logging
 import importlib
+import functools
 import itertools
+import contextlib
 import subprocess
 import collections
 
@@ -146,6 +148,75 @@ def config_root_logger(verbose, log_file_path=None):
         logging.root.setLevel(logging.DEBUG)
     else:
         logging.root.setLevel(terminal_handler.level)
+
+
+# =======================================================================================
+# Profiling Functions
+# This is a series of functions and wrappers used for debugging, hence their private nature
+# =======================================================================================
+
+def _profile_block_separator_string(message):
+    """Write a simple block spacing separator"""
+    import time
+    time_format = '%d %b %Y %H:%M:%S'
+    current_time = time.strftime(time_format)
+    spacing_min = 50
+    spacing = max(len(current_time), len(message), spacing_min)
+    filler = '{' + '0: ^{}'.format(spacing) + '}'
+    separator = '#' * (spacing + 2)
+    output_string = ''
+    output_string += separator + '\n'
+    output_string += '#' + filler.format(current_time) + '#\n'
+    output_string += '#' + filler.format(message) + '#\n'
+    output_string += separator + '\n'
+    return output_string
+
+
+@contextlib.contextmanager
+def _profile(output_file='profile.log'):
+    """
+    Function that allows a `with _profile():` to wrap around a calls
+
+    Parameters
+    ----------
+    output_file: str, Default: 'profile.log'
+        Name of the profile you want to write to
+
+    """
+    # Imports only used for debugging, not making this part of the name space
+
+    import pstats
+    import cProfile
+    start_string = _profile_block_separator_string('START PROFILE')
+    pr = cProfile.Profile()
+    pr.enable()
+    yield
+    pr.disable()
+    end_string = _profile_block_separator_string('END PROFILE')
+    sort_by = ['filename', 'cumulative']
+    with open(output_file, 'a+') as s:
+        s.write(start_string)
+        ps = pstats.Stats(pr, stream=s).sort_stats(*sort_by)
+        ps.print_stats()
+        s.write(end_string)
+
+
+def _with_profile(output_file='profile.log'):
+    """Decorator that profiles the full function wrapper to _profile
+
+    Parameters
+    ----------
+    output_file: str, Default: 'profile.log'
+        Name of the profile you want to write to
+    """
+
+    def __with_profile(func):
+        @functools.wraps(func)
+        def _wrapper(*args, **kwargs):
+            with _profile(output_file):
+                return func(*args, **kwargs)
+        return _wrapper
+    return __with_profile
 
 
 # =======================================================================================
@@ -1246,7 +1317,7 @@ class TLeap:
             # Update loaded parameters cache
             self._loaded_parameters.add(par_file)
 
-    def load_group(self, name, file_path):
+    def load_unit(self, name, file_path):
         extension = os.path.splitext(file_path)[1]
         if extension == '.mol2':
             load_command = 'loadMol2'
@@ -1260,18 +1331,18 @@ class TLeap:
         # Update list of input files to copy in temporary folder before run
         self._file_paths[local_name] = file_path
 
-    def combine(self, group, *args):
+    def combine(self, unit, *args):
         components = ' '.join(args)
-        self.add_commands('{} = combine {{{{ {} }}}}'.format(group, components))
+        self.add_commands('{} = combine {{{{ {} }}}}'.format(unit, components))
 
     def add_ions(self, unit, ion, num_ions=0):
         self.add_commands('addIons2 {} {} {}'.format(unit, ion, num_ions))
 
-    def solvate(self, group, water_model, clearance):
-        self.add_commands('solvateBox {} {} {} iso'.format(group, water_model,
+    def solvate(self, unit, solvent_model, clearance):
+        self.add_commands('solvateBox {} {} {} iso'.format(unit, solvent_model,
                                                            str(clearance)))
 
-    def save_group(self, group, output_path):
+    def save_unit(self, unit, output_path):
         file_name = os.path.basename(output_path)
         file_name, extension = os.path.splitext(file_name)
         local_name = 'molo{}'.format(len(self._file_paths))
@@ -1282,7 +1353,7 @@ class TLeap:
         # Add command
         if extension == '.prmtop' or extension == '.inpcrd':
             local_name2 = 'molo{}'.format(len(self._file_paths))
-            command = 'saveAmberParm ' + group + ' {{{}}} {{{}}}'
+            command = 'saveAmberParm ' + unit + ' {{{}}} {{{}}}'
 
             # Update list of output files with the one not explicit
             if extension == '.inpcrd':
@@ -1296,7 +1367,7 @@ class TLeap:
 
             self.add_commands(command)
         elif extension == '.pdb':
-            self.add_commands('savePDB {} {{{}}}'.format(group, local_name))
+            self.add_commands('savePDB {} {{{}}}'.format(unit, local_name))
         else:
             raise ValueError('cannot export format {} from tLeap'.format(extension[1:]))
 
@@ -1316,6 +1387,14 @@ class TLeap:
 
     def run(self):
         """Run script and return warning messages in leap log file."""
+
+        def create_dirs_and_copy(path_to_copy, copied_path):
+            """Create directories before copying the file."""
+            output_dir_path = os.path.dirname(copied_path)
+            if not os.path.isdir(output_dir_path):
+                os.makedirs(output_dir_path)
+            shutil.copy(path_to_copy, copied_path)
+
         # Transform paths in absolute paths since we'll change the working directory
         input_files = {local + os.path.splitext(path)[1]: os.path.abspath(path)
                        for local, path in listitems(self._file_paths) if 'moli' in local}
@@ -1346,13 +1425,13 @@ class TLeap:
                 first_output_name = os.path.basename(first_output_path).split('.')[0]
                 first_output_dir = os.path.dirname(first_output_path)
                 log_path = os.path.join(first_output_dir, first_output_name + '.leap.log')
-                shutil.copy('leap.log', log_path)
+                create_dirs_and_copy('leap.log', log_path)
 
             # Copy back output files. If something goes wrong, some files may not exist
             error_msg = ''
             try:
                 for local_file, file_path in listitems(output_files):
-                    shutil.copy(local_file, file_path)
+                    create_dirs_and_copy(local_file, file_path)
             except IOError:
                 error_msg = "Could not create one of the system files."
 

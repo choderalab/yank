@@ -32,6 +32,8 @@ In :ref:`serial mode <serial-mode>`, a single simulation is run at a time, eithe
 For replica-exchange calculations, this means that each replica is run serially, and then exchanges between replicas are allowed to occur.
 This is useful if you are testing YANK, or running a large number of free energy calculations where speed is not a major concern.
 
+.. _mpi_notes:
+
 MPI mode
 """"""""
 
@@ -41,43 +43,78 @@ We utilize the widely-supported
 `Message Passing Interface (MPI) standard <http://www.mcs.anl.gov/research/projects/mpi/standard.html>`_ for parallelization.
 All simulations are run using the same OpenMM ``Platform`` choice (``CUDA``, ``OpenCL``, ``CPU``, or ``Reference``)
 
-.. todo::
-   - ``$CUDA_VISIBLE_DEVICES``
-   - MPI ``configfile``
-   - SLURM
-
 No GPU management is needed on single GPU/node systems.
 
 Multi-GPU and multi-node systems require masking the GPUs so YANK only sees the one its suppose to.
 You will need to set the ``CUDA_VISIBLE_DEVICES`` environment variables on each process to mask all but the card you intend to use.
 We cannot provide a universal solution as systems will differ, but we can provide some general rules of thumb.
 
+.. note:: |mpichNotes|
+
+.. |mpichNotes| replace::
+    All our documentation assumes MPICH 3 formatting which has the package name ``mpich`` and version formatting ``3.X``.
+    This is distinct from MPICH2 which has the package name ``mpich2`` and version formatting ``1.X``.
+    Please see `the official MPICH site <https://www.mpich.org/about/overview/>`__ for more information about the
+    version naming and numbering.
+
+
 * |torquepbs|
 
 .. |torquepbs| replace::
     ``torque`` or ``PBS`` cluster - Install the `clusterutils <https://github.com/choderalab/clusterutils>`__ module (automatic when YANK
-    is installed from CONDA). Run the ``build_mpirun_configfile "yank --script=yank.yaml"`` targeting your YAML file.
+    is installed from conda). Run the ``build_mpirun_configfile "yank --script=yank.yaml"`` targeting your YAML file.
     The command works by targeting the cluster's ``$PBS_GPUFILE`` to determine device IDs as the cluster sees them.
 
 
-* ``SLURM`` cluster - SLURM should automatically handle the GPU ``CUDA_VISIBLE_DEVICES`` variable for you. You will still need to set the number of processes to run in MPI mode.
+*  |slurmsub|
+
+.. |slurmsub| replace::
+    ``SLURM`` cluster -  SLURM handles some of the GPU masking for you by setting ``CUDA_VISIBLE_DEVICES``, but we have
+    found breaks down over multiple nodes. The `clusterutils <https://github.com/choderalab/clusterutils>`__ will also
+    help you configure the MPI jobs to run over multiple nodes. The command in this case operates by reading environment
+    variables to figure out host and card names.
+
+
+* |lsfsub|
+
+.. |lsfsub| replace::
+    ``LSF`` cluster - Rely on the `clusterutils <https://github.com/choderalab/clusterutils>`__ module which comes with
+    YANK when conda installed. This configures hosts and GPU masking based on the batch job environment variables which
+    are set at job submission.
+
+
 
 We recommend running YANK with an MPI configfile. You can specify all of these sets to ``CUDA_VISIBLE_DEVICES`` by hand,
-but it will make for a long command line. Creating a configfile to feed into MPI is the preferred option for this reason.
-Below we show an example of one such config file on a 2 node, 4 GPU/node torque cluster (8 processes distributed over
-2 nodes):
+but it will make for a long command line. Creating a hostfile and configfile to feed into MPI is the preferred option
+for this reason. Although `clusterutils <https://github.com/choderalab/clusterutils>`_ will handle file creation for you,
+below we show an example of a hostfile and configfile in case you need to make the files by hand. This is a 2 node,
+4 GPU/node torque cluster (8 processes distributed over 2 nodes) setup:
+
+Hostfile:
 
 .. code-block:: bash
 
-    -hosts gpu-1-4:1,gpu-1-4:1,gpu-1-4:1,gpu-1-4:1,gpu-2-17:1,gpu-2-17:1,gpu-2-17:1,gpu-2-17:1
-    -np 1 -env CUDA_VISIBLE_DEVICES 3 yank script --yaml=freesolv.yaml :
-    -np 1 -env CUDA_VISIBLE_DEVICES 2 yank script --yaml=freesolv.yaml :
-    -np 1 -env CUDA_VISIBLE_DEVICES 1 yank script --yaml=freesolv.yaml :
-    -np 1 -env CUDA_VISIBLE_DEVICES 0 yank script --yaml=freesolv.yaml :
-    -np 1 -env CUDA_VISIBLE_DEVICES 3 yank script --yaml=freesolv.yaml :
-    -np 1 -env CUDA_VISIBLE_DEVICES 2 yank script --yaml=freesolv.yaml :
-    -np 1 -env CUDA_VISIBLE_DEVICES 1 yank script --yaml=freesolv.yaml :
-    -np 1 -env CUDA_VISIBLE_DEVICES 0 yank script —yaml=freesolv.yaml
+    gpu-1-4
+    gpu-1-4
+    gpu-1-4
+    gpu-1-4
+    gpu-2-17
+    gpu-2-17
+    gpu-2-17
+    gpu-2-17
+
+Configfile:
+
+.. code-block:: bash
+
+    -np 1 -env CUDA_VISIBLE_DEVICES 3 yank script --yaml=freesolv.yaml
+    -np 1 -env CUDA_VISIBLE_DEVICES 2 yank script --yaml=freesolv.yaml
+    -np 1 -env CUDA_VISIBLE_DEVICES 1 yank script --yaml=freesolv.yaml
+    -np 1 -env CUDA_VISIBLE_DEVICES 0 yank script --yaml=freesolv.yaml
+    -np 1 -env CUDA_VISIBLE_DEVICES 3 yank script --yaml=freesolv.yaml
+    -np 1 -env CUDA_VISIBLE_DEVICES 2 yank script --yaml=freesolv.yaml
+    -np 1 -env CUDA_VISIBLE_DEVICES 1 yank script --yaml=freesolv.yaml
+    -np 1 -env CUDA_VISIBLE_DEVICES 0 yank script —-yaml=freesolv.yaml
 
 Hopefully this example helps you construct your own configfile if the ``build_mpirun_configfile`` is unavailable or you
 are on a custom system.
@@ -127,19 +164,24 @@ Alternatively, to run the simulation in MPI mode:
 
 .. code-block:: none
 
-   $ yank script --yaml=yank.yaml
+   $ mpirun yank script --yaml=yank.yaml
+
+Keep in mind your system may have a different MPI executable name and/or syntax.
 
 On systems with multiple NVIDIA GPUs per node, it is necessary to perform masking using ``CUDA_VISIBLE_DEVICES``.
 
-On systems using the conda-installed ``mpi4py`` package, the `MPICH2 hydra mpirun <https://wiki.mpich.org/mpich/index.php/Using_the_Hydra_Process_Manager>`_ will be automatically installed for you.
-You can use the cluster utility script `build-mpirun-configfile.py <https://github.com/choderalab/clusterutils/blob/master/scripts/build-mpirun-configfile.py>`_ available in our `clusterutils <https://github.com/choderalab/clusterutils>`_ tools to generate an appropriate ``configfile``:
+On systems using the conda-installed ``mpi4py`` package, the `MPICH hydra mpirun <https://wiki.mpich.org/mpich/index.php/Using_the_Hydra_Process_Manager>`_ will be automatically installed for you.
+You can use the cluster utility command
+``build-mpirun-configfile``
+available in our `clusterutils <https://github.com/choderalab/clusterutils>`_ tools to generate an appropriate ``configfile``:
 
 .. code-block:: none
 
   $ build-mpirun-configfile "yank script --yaml=yank.yaml"
-  $ mpirun -configfile configfile
+  $ mpirun -f hostfile -configfile configfile
 
-``build-mpirun-configfile`` is automatically installed with YANK when you use the ``conda`` installation route.
+``build-mpirun-configfile`` is automatically installed with YANK when you use the ``conda`` installation route. Please
+see our :ref:`notes from above <mpi_notes>` about this script's applicability on torque, PBS, SLURM and LSF clusters.
 
 |
 
@@ -173,59 +215,81 @@ See the ``yank script`` command line docs for more information on the ``-o`` fla
 .. note:: The ``CPU`` platform will automatically use all available cores/hyperthreads in serial mode, but in MPI mode, will use a single thread to avoid causing problems in queue-regulated parallel systems.  To control the number of threads yourself, set the ``OPENMM_NUM_THREADS`` environment variable to the desired number of threads.
 
 
-Extending Simulations
-=====================
+Breaking up Simulations
+=======================
 
-One common operation when running simulations is to collect additional samples from an already run simulation to get
-better statistics. Alternately, when running on shared resources, you may need to break up long simulations into smaller
-simulations run in series. YANK provides a way to run its simulations in this manner by extending its simulations.
+One limitation simulations run to compute free energy is that you need sufficient data to estimate all legs of the
+:ref:`thermodynamic cycle <yank_cycle>` before you can estimate many properties. YANK by default simulates each phase of
+the thermodynamic cycle sequentially, meaning you have to wait for simulation completion before you can do any kind of
+analysis.
 
-YANK's :doc:`YAML <yamlpages/index>` files have two main options that work together to extend simulations.
-In order to extend simulations, set the following options in a YAML fie:
+YANK allows its simulations to switch between phases of the thermodynamic cycle mid-simulation. Setting the
+:ref:`yaml_options_switch_phase_interval` option in the YAML file allows you to control how many iterations the
+simulation will run of one phase before switching to the other to allow collection between each phase on-the-fly, and
+therefore allowing analysis at any point. This feature is helpful for those who want to run for an arbitrarily long
+length of time, then wish to end the simulation after some convergence criteria is met, e.g. error in free energy
+estimate.
 
-.. code-block:: yaml
+YANK also provides a way flip between different experiments when setting the
+:ref:`\!Combinatorial <yaml_combinatorial_head>` flag. The :ref:`yaml_options_switch_experiment_interval` allows
+simulations to cycle through all the experiments created when users invoke the ``!Combinatorial`` flag. This option
+can be set in tandem with the :ref:`yaml_options_switch_phase_interval`. Please see the respective documentation on
+these options for more information.
 
-  number_of_iterations: <Integer>
-  extend_simulation: True
+..
+    Extending Simulations
+    =====================
 
-First you set :ref:`yaml_options_number_of_iterations` to an integer number of iterations you wish to extend the
-simulation. If no simulation has been run yet, then one will be run for the number of iterations.
-Setting :ref:`yaml_options_extend_simulation` to ``True`` modifies the behavior of
-:ref:`yaml_options_number_of_iterations` to extend the simulation by the specified number, adding on to what is already
-on the file.
+    One common operation when running simulations is to collect additional samples from an already run simulation to get
+    better statistics. Alternately, when running on shared resources, you may need to break up long simulations into smaller
+    simulations run in series. YANK provides a way to run its simulations in this manner by extending its simulations.
 
-One could optionally just increase :ref:`yaml_options_number_of_iterations`, but then you have to change
-the YAML file every time you want to extend the run. Setting :ref:`yaml_options_extend_simulation` allows you to run
-the same YAML file without modification to do the same thing.
+    YANK's :doc:`YAML <yamlpages/index>` files have two main options that work together to extend simulations.
+    In order to extend simulations, set the following options in a YAML fie:
 
+    .. code-block:: yaml
 
-You should also set the following two options as well as :ref:`yaml_options_number_of_iterations` and
-:ref:`yaml_options_extend_simulation`:
+      number_of_iterations: <Integer>
+      extend_simulation: True
 
-.. code-block:: yaml
+    First you set :ref:`yaml_options_number_of_iterations` to an integer number of iterations you wish to extend the
+    simulation. If no simulation has been run yet, then one will be run for the number of iterations.
+    Setting :ref:`yaml_options_extend_simulation` to ``True`` modifies the behavior of
+    :ref:`yaml_options_number_of_iterations` to extend the simulation by the specified number, adding on to what is already
+    on the file.
 
-  resume_setup: yes
-  resume_simulation: yes
-
-:ref:`resume_setup <yaml_options_resume_setup>` and :ref:`resume_simulation <yaml_options_resume_simulation>` allow
-YANK to resume simulations if it detects existing setup file or simulation output respectively. YANK will raise an error
-if these are not set and files exist to protect against overwrite. The only reason these are not mandatory is that if
-no files exist (i.e. fresh simulation), then the simulation will run without error once.
+    One could optionally just increase :ref:`yaml_options_number_of_iterations`, but then you have to change
+    the YAML file every time you want to extend the run. Setting :ref:`yaml_options_extend_simulation` allows you to run
+    the same YAML file without modification to do the same thing.
 
 
-Extending Previous Simulations from Command Line
-""""""""""""""""""""""""""""""""""""""""""""""""
+    You should also set the following two options as well as :ref:`yaml_options_number_of_iterations` and
+    :ref:`yaml_options_extend_simulation`:
 
-You may already have a simulation that you previously ran, but do not want to modify the YAML to extend the simulation.
-In this case, your YAML file has ``extend_simulation: False`` or is not set, and you only want to interact with the
-simulation through the command line. You can override individual settings from the command line; the settings for
-extending simulation would look like:
+    .. code-block:: yaml
 
-.. code-block:: bash
+      resume_setup: yes
+      resume_simulation: yes
 
-   $ yank script --yaml=yank.yaml -o options:extend_simulation:True -o options:number_of_iterations:X
+    :ref:`resume_setup <yaml_options_resume_setup>` and :ref:`resume_simulation <yaml_options_resume_simulation>` allow
+    YANK to resume simulations if it detects existing setup file or simulation output respectively. YANK will raise an error
+    if these are not set and files exist to protect against overwrite. The only reason these are not mandatory is that if
+    no files exist (i.e. fresh simulation), then the simulation will run without error once.
 
-where ``X`` is the integer number you wish to extend the simulation by. The second option to override
-``number_of_iterations`` is optional if you are happy the existing option in the YAML file.
 
-See the ``yank script`` command line docs for more information on the ``-o`` flag.
+    Extending Previous Simulations from Command Line
+    """"""""""""""""""""""""""""""""""""""""""""""""
+
+    You may already have a simulation that you previously ran, but do not want to modify the YAML to extend the simulation.
+    In this case, your YAML file has ``extend_simulation: False`` or is not set, and you only want to interact with the
+    simulation through the command line. You can override individual settings from the command line; the settings for
+    extending simulation would look like:
+
+    .. code-block:: bash
+
+       $ yank script --yaml=yank.yaml -o options:extend_simulation:True -o options:number_of_iterations:X
+
+    where ``X`` is the integer number you wish to extend the simulation by. The second option to override
+    ``number_of_iterations`` is optional if you are happy the existing option in the YAML file.
+
+    See the ``yank script`` command line docs for more information on the ``-o`` flag.

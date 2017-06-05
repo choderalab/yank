@@ -266,7 +266,7 @@ class TestReporter(object):
                                                                     temperature, 1.0*unit.atmosphere)
 
         # Compound states.
-        factory = mmtools.alchemy.AlchemicalFactory()
+        factory = mmtools.alchemy.AbsoluteAlchemicalFactory()
         alchemical_region = mmtools.alchemy.AlchemicalRegion(alchemical_atoms=range(22))
         alanine_alchemical = factory.create_alchemical_system(alanine_system, alchemical_region)
         alchemical_state_interacting = mmtools.alchemy.AlchemicalState.from_system(alanine_alchemical)
@@ -466,7 +466,7 @@ class TestReplicaExchange(object):
         # Test case with host guest in implicit at 3 different positions and alchemical parameters.
         # -----------------------------------------------------------------------------------------
         hostguest_test = testsystems.HostGuestVacuum()
-        factory = mmtools.alchemy.AlchemicalFactory()
+        factory = mmtools.alchemy.AbsoluteAlchemicalFactory()
         alchemical_region = mmtools.alchemy.AlchemicalRegion(alchemical_atoms=range(126, 156))
         hostguest_alchemical = factory.create_alchemical_system(hostguest_test.system, alchemical_region)
 

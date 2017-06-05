@@ -38,6 +38,16 @@ logger = logging.getLogger(__name__)
 
 HIGHEST_VERSION = '1.2'  # highest version of YAML syntax
 
+# Map the OpenMM-style name for a solvent to the tleap
+# name compatible with the solvateBox command.
+_OPENMM_LEAP_SOLVENT_MODELS_MAP = {
+    'tip3p': 'TIP3PBOX',
+    'tip3pfb': 'TIP3PFBOX',
+    'tip4pew': 'TIP4PEWBOX',
+    'tip5p': 'TIP5PBOX',
+    'spce': 'SPCBOX',
+}
+
 
 # =============================================================================
 # UTILITY FUNCTIONS
@@ -249,6 +259,36 @@ def strip_protons(input_file_path, output_file_path):
             if not (line[:6] == 'ATOM  ' and (line[12] == 'H' or line[13] == 'H')):
                 output_file.write(line)
     output_file.close()
+
+
+def read_csv_lines(file_path, lines):
+    """Return a list of CSV records.
+
+    The function takes care of ignoring comments and blank lines.
+
+    Parameters
+    ----------
+    file_path : str
+        The path to the CSV file.
+    lines : 'all' or int
+        The index of the line to read or 'all' to return
+        the list of all lines.
+
+    Returns
+    -------
+    records : str or list of str
+        The CSV record if lines is an integer, or a list of CSV
+        records if it is 'all'.
+
+    """
+    # Read all lines ignoring blank lines and comments.
+    with open(file_path, 'r') as f:
+        all_records = [line for line in f
+                       if bool(line) and not line.strip().startswith('#')]
+
+    if lines == 'all':
+        return all_records
+    return all_records[lines]
 
 
 def to_openmm_app(input_string):
@@ -689,14 +729,13 @@ class SetupDatabase:
                         PDBFile.writeModel(pdb_file.topology, pdb_file.getPositions(frame=model_idx), file=f)
                     # We might as well already cache the positions
                     self._pos_cache[mol_id] = pdb_file.getPositions(asNumpy=True, frame=model_idx) / unit.angstrom
+
                 elif extension == '.smiles' or extension == '.csv':
-                    # Extract the correct line and save it in a new file
-                    # We ignore blank-lines with filter() when counting models
-                    with open(mol_descr['filepath'], 'r') as smiles_file:
-                        # TODO: Make sure this is working after Py 3.X conversion
-                        smiles_lines = [line for line in smiles_file.readlines() if bool(line)]
+                    # Extract the correct line and save it in a new file.
+                    smiles_line = read_csv_lines(mol_descr['filepath'], lines=model_idx)
                     with open(single_file_path, 'w') as f:
-                        f.write(smiles_lines[model_idx])
+                        f.write(smiles_line)
+
                 elif extension == '.mol2' or extension == '.sdf':
                     if not utils.is_openeye_installed(oetools=('oechem',)):
                         raise RuntimeError('Cannot support {} files selection without OpenEye'.format(
@@ -707,6 +746,7 @@ class SetupDatabase:
                         utils.write_oe_molecule(oe_molecule, single_file_path, mol2_resname=mol_names[model_idx])
                     else:
                         utils.write_oe_molecule(oe_molecule, single_file_path)
+
                 else:
                     raise RuntimeError('Model selection is not supported for {} files'.format(extension[1:]))
 
@@ -736,30 +776,30 @@ class SetupDatabase:
                 # Retrieve the first SMILES string (eventually extracted
                 # while handling of the 'select' keyword above)
                 if extension is not None:
-                    with open(mol_descr['filepath'], 'r') as smiles_file:
-                        # Automatically detect if delimiter is comma or semicolon
-                        first_line = smiles_file.readline()
-                        for delimiter in ',;':
-                            logger.debug("Attempt to parse smiles file with delimiter '{}'".format(delimiter))
-                            line_fields = first_line.split(delimiter)
-                            # If there is only one column, take that, otherwise take second
-                            if len(line_fields) > 1:
-                                smiles_str = line_fields[1].strip()
-                            else:
-                                smiles_str = line_fields[0].strip()
+                    # Get first record in CSV file.
+                    first_line = read_csv_lines(mol_descr['filepath'], lines=0)
 
-                            # try to generate the smiles and try new delimiter if it fails
-                            mol_descr['smiles'] = smiles_str
-                            try:
-                                oe_molecule = self._generate_molecule(mol_id)
-                            except (ValueError, RuntimeError):
-                                oe_molecule = None
-                                continue
+                    # Automatically detect if delimiter is comma or semicolon
+                    for delimiter in ',;':
+                        logger.debug("Attempt to parse smiles file with delimiter '{}'".format(delimiter))
+                        line_fields = first_line.split(delimiter)
+                        # If there is only one column, take that, otherwise take second
+                        if len(line_fields) > 1:
+                            smiles_str = line_fields[1].strip()
+                        else:
+                            smiles_str = line_fields[0].strip()
+
+                        # try to generate the smiles and try new delimiter if it fails
+                        mol_descr['smiles'] = smiles_str
+                        try:
+                            oe_molecule = self._generate_molecule(mol_id)
                             break
+                        except (ValueError, RuntimeError):
+                            oe_molecule = None
 
-                        # Raise an error if no delimiter worked
-                        if oe_molecule is None:
-                            raise RuntimeError('Cannot detect SMILES file format.')
+                    # Raise an error if no delimiter worked
+                    if oe_molecule is None:
+                        raise RuntimeError('Cannot detect SMILES file format.')
                 else:
                     # Generate molecule from mol_descr['smiles']
                     oe_molecule = self._generate_molecule(mol_id)
@@ -904,7 +944,7 @@ class SetupDatabase:
         # ------------------------------------
         tleap.new_section('Load molecules')
         for mol_id in molecule_ids:
-            tleap.load_group(name=mol_id, file_path=self.molecules[mol_id]['filepath'])
+            tleap.load_unit(name=mol_id, file_path=self.molecules[mol_id]['filepath'])
 
         if len(molecule_ids) > 1:
             # Check that molecules don't have clashing atoms. Also, if the ligand
@@ -974,9 +1014,13 @@ class SetupDatabase:
             if 'negative_ion' in solvent:
                 tleap.add_ions(unit=unit_to_solvate, ion=solvent['negative_ion'])
 
-            # Solvate unit
+            # Solvate unit. Solvent models different than tip3p need parameter modifications.
+            solvent_model = solvent['solvent_model']
+            if not solvent_model.startswith('tip3p'):
+                tleap.load_parameters('frcmod.' + solvent_model)
+            leap_solvent_model = _OPENMM_LEAP_SOLVENT_MODELS_MAP[solvent_model]
             clearance = float(solvent['clearance'].value_in_unit(unit.angstroms))
-            tleap.solvate(group=unit_to_solvate, water_model='TIP3PBOX', clearance=clearance)
+            tleap.solvate(unit=unit_to_solvate, solvent_model=leap_solvent_model, clearance=clearance)
 
         # Check charge
         tleap.new_section('Check charge')
@@ -994,8 +1038,8 @@ class SetupDatabase:
 
         # Save prmtop, inpcrd and reference pdb files
         tleap.new_section('Save prmtop and inpcrd files')
-        tleap.save_group(unit_to_solvate, system_file_path)
-        tleap.save_group(unit_to_solvate, base_file_path + '.pdb')
+        tleap.save_unit(unit_to_solvate, system_file_path)
+        tleap.save_unit(unit_to_solvate, base_file_path + '.pdb')
 
         # Save tleap script for reference
         tleap.export_script(base_file_path + '.leap.in')
@@ -1093,10 +1137,10 @@ class YamlPhaseFactory(object):
 
 class YamlExperiment(object):
     """An experiment built by YamlBuilder."""
-    def __init__(self, phases, number_of_iterations, switch_phase_every):
+    def __init__(self, phases, number_of_iterations, switch_phase_interval):
         self.phases = phases
         self.number_of_iterations = number_of_iterations
-        self.switch_phase_every = switch_phase_every
+        self.switch_phase_interval = switch_phase_interval
         self._phases_last_iterations = [None, None]
 
     @property
@@ -1111,14 +1155,14 @@ class YamlExperiment(object):
             n_iterations = self.number_of_iterations
 
         # Handle case in which we don't alternate between phases.
-        if self.switch_phase_every <= 0:
-            switch_phase_every = self.number_of_iterations
+        if self.switch_phase_interval <= 0:
+            switch_phase_interval = self.number_of_iterations
 
         # Count down the iterations to run.
         iterations_left = [None, None]
         while iterations_left != [0, 0]:
 
-            # Alternate phases every switch_phase_every iterations.
+            # Alternate phases every switch_phase_interval iterations.
             for phase_id, phase in enumerate(self.phases):
                 # Phases may get out of sync if the user delete the storage
                 # file of only one phase and restart. Here we check that the
@@ -1145,7 +1189,7 @@ class YamlExperiment(object):
                     iterations_left[phase_id] = min(n_iterations, total_iterations_left)
 
                 # Run simulation for iterations_left or until we have to switch phase.
-                iterations_to_run = min(iterations_left[phase_id], switch_phase_every)
+                iterations_to_run = min(iterations_left[phase_id], switch_phase_interval)
                 alchemical_phase.run(n_iterations=iterations_to_run)
 
                 # Update phase iteration info.
@@ -1233,13 +1277,13 @@ class YamlBuilder(object):
         'experiments_dir': 'experiments',
         'platform': 'fastest',
         'precision': 'auto',
-        'switch_experiment_every': 0,
+        'switch_experiment_interval': 0,
     }
 
     # These options can be overwritten also in the "experiment"
     # section and they can be thus combinatorially expanded.
     EXPERIMENT_DEFAULT_OPTIONS = {
-        'switch_phase_every': 0,
+        'switch_phase_interval': 0,
         'temperature': 298 * unit.kelvin,
         'pressure': 1 * unit.atmosphere,
         'constraints': openmm.app.HBonds,
@@ -1390,25 +1434,25 @@ class YamlBuilder(object):
             raise YamlParseError('No experiments specified!')
 
         # Handle case where we don't have to switch between experiments.
-        if self.options['switch_experiment_every'] <= 0:
+        if self.options['switch_experiment_interval'] <= 0:
             # Run YamlExperiment for number_of_iterations.
-            switch_experiment_every = None
+            switch_experiment_interval = None
         else:
-            switch_experiment_every = self.options['switch_experiment_every']
+            switch_experiment_interval = self.options['switch_experiment_interval']
 
         # Setup and run all experiments with paths relative to the script directory
         with omt.utils.temporary_cd(self._script_dir):
             self._check_resume()
             self._setup_experiments()
 
-            # Cycle between experiments every switch_experiment_every iterations
+            # Cycle between experiments every switch_experiment_interval iterations
             # until all of them are done. We don't know how many experiments
             # there are until after the end of first for-loop.
             completed = [False]  # There always be at least one experiment.
             while not all(completed):
                 for experiment_index, experiment in enumerate(self._build_experiments()):
 
-                    experiment.run(n_iterations=switch_experiment_every)
+                    experiment.run(n_iterations=switch_experiment_interval)
 
                     # Check if this experiment is done.
                     is_completed = experiment.iteration == experiment.number_of_iterations
@@ -1526,15 +1570,16 @@ class YamlBuilder(object):
                 with omt.utils.temporary_cd(self._script_dir):
                     if extension == 'pdb':
                         n_models = PDBFile(comb_molecule['filepath']).getNumFrames()
+
                     elif extension == 'csv' or extension == 'smiles':
-                        with open(comb_molecule['filepath'], 'r') as smiles_file:
-                            # TODO: Make sure this is working as expected from Py 3.X conversion
-                            n_models = len([line for line in smiles_file.readlines() if bool(line)]) # remove blank lines
+                        n_models = len(read_csv_lines(comb_molecule['filepath'], lines='all'))
+
                     elif extension == 'sdf' or extension == 'mol2':
                         if not utils.is_openeye_installed(oetools=('oechem',)):
                             err_msg = 'Molecule {}: Cannot "select" from {} file without OpenEye toolkit'
                             raise RuntimeError(err_msg.format(comb_mol_name, extension))
                         n_models = utils.read_oe_molecule(comb_molecule['filepath']).NumConfs()
+
                     else:
                         raise YamlParseError('Molecule {}: Cannot "select" from {} file'.format(
                             comb_mol_name, extension))
@@ -1789,6 +1834,10 @@ class YamlBuilder(object):
                 raise ValueError('Nonbonded method must be NoCutoff.')
             return openmm_app
 
+        def is_supported_solvent_model(solvent_model):
+            """Check that solvent model name is supported."""
+            return solvent_model in _OPENMM_LEAP_SOLVENT_MODELS_MAP
+
         validated_solvents = solvents_description.copy()
 
         # Define solvents Schema
@@ -1796,6 +1845,7 @@ class YamlBuilder(object):
                                 update_keys={'nonbonded_method': Use(to_explicit_solvent)},
                                 exclude_keys=['implicit_solvent'])
         explicit_schema.update({Optional('clearance'): Use(utils.to_unit_validator(unit.angstrom)),
+                                Optional('solvent_model', default='tip4pew'): is_supported_solvent_model,
                                 Optional('positive_ion'): str, Optional('negative_ion'): str})
         implicit_schema = utils.generate_signature_schema(AmberPrmtopFile.createSystem,
                                 update_keys={'implicit_solvent': Use(to_openmm_app),
@@ -1928,20 +1978,25 @@ class YamlBuilder(object):
                 elif type == 'openmm':
                     expected_extensions = ['pdb', 'xml']
 
+                # Check if extensions are expected.
                 correct_type = sorted(provided_extensions) == sorted(expected_extensions)
                 if not correct_type:
                     err_msg = ('Wrong system file types provided.\n'
                                'Extensions provided: {}\n'
                                'Expected extensions: {}').format(
                         sorted(provided_extensions), sorted(expected_extensions))
-                    logger.error(err_msg)
-                    raise RuntimeError(err_msg)
+                    logger.debug(err_msg)
+                    raise YamlParseError(err_msg)
                 else:
                     logger.debug('Correctly recognized files {} as {}'.format(files, expected_extensions))
+
+                # Check if given files exist.
                 for filepath in files:
                     if not os.path.isfile(filepath):
                         logger.error('os.path.isfile({}) is False'.format(filepath))
                         raise YamlParseError('File path {} does not exist.'.format(filepath))
+
+                # Return files in alphabetical order of extension.
                 return [filepath for (ext, filepath) in sorted(zip(provided_extensions, files))]
             return _system_files
 
@@ -2633,7 +2688,7 @@ class YamlBuilder(object):
 
         # Return new YamlExperiment object.
         return YamlExperiment(phases, sampler_opts['number_of_iterations'],
-                              exp_opts['switch_phase_every'])
+                              exp_opts['switch_phase_interval'])
 
 
 if __name__ == "__main__":

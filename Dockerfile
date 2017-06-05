@@ -1,15 +1,13 @@
 # Start with CUDA base image
-FROM kaixhin/cuda
+FROM nvidia/cuda
 MAINTAINER John Chodera <john.chodera@choderalab.org>
 
-# Install curl and dependencies for FAH
-RUN apt-get update && apt-get install -y \
-  wget
-
 # Install miniconda
-RUN wget --quiet https://repo.continuum.io/miniconda/Miniconda2-latest-Linux-x86_64.sh && \
-    bash Miniconda2-latest-Linux-x86_64.sh -b -p /miniconda && \
-    rm -f Miniconda2-latest-Linux-x86_64.sh
+RUN apt-get update && apt-get install -y wget
+RUN MINICONDA="Miniconda3-3.5.5-Linux-x86_64.sh" && \
+    wget --quiet https://repo.continuum.io/miniconda/$MINICONDA && \
+    bash $MINICONDA -b -p /miniconda && \
+    rm -f $MINICONDA
 ENV PATH /miniconda/bin:$PATH
 
 # Add omnia

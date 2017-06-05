@@ -453,10 +453,10 @@ class AlchemicalPhase(object):
             is None).
         alchemical_regions : openmmtools.alchemy.AlchemicalRegion, optional
             If specified, this is the AlchemicalRegion that will be passed
-            to the AlchemicalFactory, otherwise the ligand will be alchemically
-            modified according to the given protocol.
-        alchemical_factory : openmmtools.alchemy.AlchemicalFactory, optional
-            If specified, this AlchemicalFactory will be used instead of
+            to the AbsoluteAlchemicalFactory, otherwise the ligand will be
+            alchemically modified according to the given protocol.
+        alchemical_factory : openmmtools.alchemy.AbsoluteAlchemicalFactory, optional
+            If specified, this AbsoluteAlchemicalFactory will be used instead of
             the one created with default options.
         metadata : dict, optional
             Simulation metadata to be stored in the file.
@@ -548,9 +548,9 @@ class AlchemicalPhase(object):
         # Create alchemically-modified system using alchemical factory.
         logger.debug("Creating alchemically-modified states...")
         if alchemical_factory is None:
-            factory = mmtools.alchemy.AlchemicalFactory()
-        alchemical_system = factory.create_alchemical_system(thermodynamic_state.system,
-                                                             alchemical_regions)
+            alchemical_factory = mmtools.alchemy.AbsoluteAlchemicalFactory()
+        alchemical_system = alchemical_factory.create_alchemical_system(thermodynamic_state.system,
+                                                                        alchemical_regions)
 
         # Create compound alchemically modified state to pass to sampler.
         thermodynamic_state.system = alchemical_system
@@ -585,6 +585,7 @@ class AlchemicalPhase(object):
         # ---------------------------------
 
         # TODO should we allow expanded states for non-periodic systems?
+        logger.debug('Creating expanded cutoff states...')
         expanded_cutoff_states = []
         if is_periodic and anisotropic_dispersion_cutoff is not None:
             # Create non-alchemically modified state with an expanded cutoff.

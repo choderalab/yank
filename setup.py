@@ -16,7 +16,7 @@ from Cython.Build import cythonize
 DOCLINES = __doc__.split("\n")
 
 ########################
-VERSION = "0.16.0"  # Primary base version of the build
+VERSION = "0.16.1"  # Primary base version of the build
 DEVBUILD = "0"      # Dev build status, Either None or Integer as string
 ISRELEASED = False  # Are we releasing this as a full cut?
 __version__ = VERSION
@@ -146,7 +146,7 @@ setup(
         'cython',
         'openmm',
         'pymbar',
-        'openmmtools',
+        'openmmtools>=0.10.0',
         'docopt>=0.6.1',
         'netcdf4',
         'schema',
