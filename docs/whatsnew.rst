@@ -6,6 +6,11 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the github yank releases page <https://github.com/choderalab/yank/releases>`_.
 
+0.16.1 Bugfix for Analyze Transition Matrix and Reporter
+--------------------------------------------------------
+- Fixes bug causing transition matrix to be computed incorrectly, uses empirical to estimate
+- Allows user to drop samples equilibration report to avoid plot scale being dominated by initial fast equilibration
+
 0.16.0 Full API and Python 3.6
 ------------------------------
 - Full feature API for setting up, running, and analyzing experiments
