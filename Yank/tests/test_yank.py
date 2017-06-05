@@ -159,7 +159,7 @@ class TestAlchemicalPhase(object):
             assert standard_state_correction == 0
 
     @classmethod
-    def check_expanded_states(cls, alchemical_phase, protocol, expected_cutoff):
+    def check_expanded_states(cls, alchemical_phase, protocol, expected_cutoff, expected_switch_width):
         """The expanded states have been setup correctly."""
         thermodynamic_state = alchemical_phase._sampler._thermodynamic_states[0]
         unsampled_states = alchemical_phase._sampler._unsampled_states
@@ -194,8 +194,12 @@ class TestAlchemicalPhase(object):
                 except AttributeError:
                     continue
                 else:
+                    switch_width = cutoff - force.getSwitchingDistance()
                     err_msg = 'obtained {}, expected {}'.format(cutoff, expected_cutoff)
                     assert np.isclose(cutoff / cutoff_unit, expected_cutoff / cutoff_unit), err_msg
+                    if force.getUseSwitchingFunction():
+                        err_msg = 'obtained {}, expected {}'.format(switch_width, expected_switch_width)
+                        assert np.isclose(switch_width / cutoff_unit, expected_switch_width / cutoff_unit), err_msg
 
         # If the thermodynamic systems are restrained, so should be the unsampled ones.
         if is_restrained:
@@ -230,6 +234,14 @@ class TestAlchemicalPhase(object):
             else:
                 correction_cutoff = 'auto'
 
+             # Find expected switch width.
+            system = thermodynamic_state.system
+            for force in system.getForces():
+                try:
+                    expected_switch_width = force.getCutoffDistance() - force.getSwitchingDistance()
+                except AttributeError:
+                    pass
+
             alchemical_phase = AlchemicalPhase(sampler=ReplicaExchange())
             with self.temporary_storage_path() as storage_path:
                 alchemical_phase.create(thermodynamic_state, sampler_state, topography,
@@ -240,7 +252,7 @@ class TestAlchemicalPhase(object):
                 yield prepare_yield(self.check_standard_state_correction, test_name, alchemical_phase,
                                     topography)
                 yield prepare_yield(self.check_expanded_states, test_name, alchemical_phase,
-                                    protocol, correction_cutoff)
+                                    protocol, correction_cutoff, expected_switch_width)
 
                 # Free memory.
                 del alchemical_phase

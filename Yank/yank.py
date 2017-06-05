@@ -797,12 +797,14 @@ class AlchemicalPhase(object):
             else:
                 # We don't want to reduce the cutoff if it's already large.
                 if force_cutoff < expanded_cutoff_distance:
-                    force.setCutoffDistance(expanded_cutoff_distance)
+                    cutoff_diff = expanded_cutoff_distance - force_cutoff
+                    switching_distance = force.getSwitchingDistance()
 
-                    # Set switch distance. We don't need to check if we are
-                    # using a switch since there is a setting for that.
-                    switching_distance = expanded_cutoff_distance - 1.0*unit.angstrom
-                    force.setSwitchingDistance(switching_distance)
+                    # Expand cutoff preserving the original switch width.
+                    # We don't need to check if we are using a switch since
+                    # there is a setting for that.
+                    force.setCutoffDistance(expanded_cutoff_distance)
+                    force.setSwitchingDistance(switching_distance + cutoff_diff)
 
         # Return the new thermodynamic state with the expanded cutoff.
         thermodynamic_state.system = system
