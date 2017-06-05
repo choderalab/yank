@@ -159,14 +159,25 @@ class TestAlchemicalPhase(object):
             assert standard_state_correction == 0
 
     @classmethod
-    def check_expanded_states(cls, alchemical_phase, protocol, expected_cutoff):
+    def check_expanded_states(cls, alchemical_phase, protocol, expected_cutoff, expected_switch_width):
         """The expanded states have been setup correctly."""
-        cutoff_unit = expected_cutoff.unit
         thermodynamic_state = alchemical_phase._sampler._thermodynamic_states[0]
         unsampled_states = alchemical_phase._sampler._unsampled_states
 
         is_periodic = thermodynamic_state.is_periodic
         is_restrained = hasattr(thermodynamic_state, 'lambda_restraints')
+
+        # If the expanded cutoff is determined automatically,
+        # figure out the expected value.
+        if expected_cutoff == 'auto':
+            box_vectors = thermodynamic_state._standard_system.getDefaultPeriodicBoxVectors()
+            min_box_dimension = min([np.linalg.norm(vector) for vector in box_vectors])
+            if thermodynamic_state.pressure is None:
+                min_box_half_size = min_box_dimension * 0.99 / 2.0
+            else:
+                min_box_half_size = min_box_dimension * 0.8 / 2.0
+            expected_cutoff = min(min_box_half_size, 16*unit.angstrom)
+        cutoff_unit = expected_cutoff.unit
 
         # Anisotropic correction is not applied to non-periodic systems.
         if not is_periodic:
@@ -183,8 +194,12 @@ class TestAlchemicalPhase(object):
                 except AttributeError:
                     continue
                 else:
+                    switch_width = cutoff - force.getSwitchingDistance()
                     err_msg = 'obtained {}, expected {}'.format(cutoff, expected_cutoff)
                     assert np.isclose(cutoff / cutoff_unit, expected_cutoff / cutoff_unit), err_msg
+                    if force.getUseSwitchingFunction():
+                        err_msg = 'obtained {}, expected {}'.format(switch_width, expected_switch_width)
+                        assert np.isclose(switch_width / cutoff_unit, expected_switch_width / cutoff_unit), err_msg
 
         # If the thermodynamic systems are restrained, so should be the unsampled ones.
         if is_restrained:
@@ -199,9 +214,8 @@ class TestAlchemicalPhase(object):
     def test_create(self):
         """Alchemical state correctly creates the simulation object."""
         available_restraints = list(yank.restraints.available_restraint_classes().values())
-        correction_cutoff = 12 * unit.angstroms
 
-        for test_case in self.all_test_cases:
+        for test_index, test_case in enumerate(self.all_test_cases):
             test_name, thermodynamic_state, sampler_state, topography = test_case
 
             # Add random restraint if this is ligand-receptor system in implicit solvent.
@@ -214,6 +228,20 @@ class TestAlchemicalPhase(object):
                 restraint = None
                 protocol = self.protocol
 
+            # Add either automatic of fixed correction cutoff.
+            if test_index % 2 == 0:
+                correction_cutoff = 12 * unit.angstroms
+            else:
+                correction_cutoff = 'auto'
+
+             # Find expected switch width.
+            system = thermodynamic_state.system
+            for force in system.getForces():
+                try:
+                    expected_switch_width = force.getCutoffDistance() - force.getSwitchingDistance()
+                except AttributeError:
+                    pass
+
             alchemical_phase = AlchemicalPhase(sampler=ReplicaExchange())
             with self.temporary_storage_path() as storage_path:
                 alchemical_phase.create(thermodynamic_state, sampler_state, topography,
@@ -224,7 +252,7 @@ class TestAlchemicalPhase(object):
                 yield prepare_yield(self.check_standard_state_correction, test_name, alchemical_phase,
                                     topography)
                 yield prepare_yield(self.check_expanded_states, test_name, alchemical_phase,
-                                    protocol, correction_cutoff)
+                                    protocol, correction_cutoff, expected_switch_width)
 
                 # Free memory.
                 del alchemical_phase
