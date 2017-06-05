@@ -61,6 +61,7 @@ class HealthReportData(object):
         self.nequils = {}
         self.g_ts = {}
         self.Neff_maxs = {}
+        self._n_discarded = 0
         # Decorrelation break-down
         self._decorrelation_run = False
         # Mixing Run (state)
@@ -79,13 +80,18 @@ class HealthReportData(object):
         natoms = {}
         for phase_name in self.phase_names:
             analyzer = self.analyzers[phase_name]
-            positions = analyzer.reporter.read_sampler_states()[0].positions
-            iterations[phase_name], nstates[phase_name], natoms[phase_name], _ = positions.shape
+            try:
+                positions = analyzer.reporter.read_sampler_states(0)[0].positions
+                natoms[phase_name], _ = positions.shape
+            except AttributeError:  # Trap unloaded checkpoint file
+                natoms[phase_name] = 'No Cpt.'
+            energies, _ = analyzer.reporter.read_energies()
+            iterations[phase_name], nstates[phase_name], _ = energies.shape
 
         leniter = max(len('Iterations'), *[len(str(i)) for i in iterations.values()]) + 2
         lenstates = max(len('States'), *[len(str(i)) for i in nstates.values()]) + 2
         lennatoms = max(len('Num Atoms'), *[len(str(i)) for i in natoms.values()]) + 2
-        lenleftcol = max(len('Phase'), *[len(phase) for phase in self.phases]) + 2
+        lenleftcol = max(len('Phase'), *[len(phase) for phase in self.phase_names]) + 2
 
         lines = []
         headstring = ''
@@ -111,9 +117,10 @@ class HealthReportData(object):
         self.iterations = iterations
         self._general_run = True
 
-    def generate_equilibration_plots(self):
+    def generate_equilibration_plots(self, discard_from_start=1):
         """
-        Create the equilibration scatter plots showing the trendlines
+        Create the equilibration scatter plots showing the trend lines, correlation time,
+        and number of effective samples
 
         Returns
         -------
@@ -122,22 +129,32 @@ class HealthReportData(object):
 
         """
         # Adjust figure size
-        plt.rcParams['figure.figsize'] = 20, 6 * self.nphases
+        plt.rcParams['figure.figsize'] = 20, 6 * self.nphases * 2
+        plot_grid = gridspec.GridSpec(self.nphases, 1)  # Vertical distribution
         equilibration_figure = plt.figure()
         # Add some space between the figures
         equilibration_figure.subplots_adjust(hspace=0.4)
-        # Create the matplotlib subplot shorthand keys for placement
-        plotkeys = [100 * self.nphases + 10 + (i + 1) for i in range(self.nphases)]
-        for phase_name, plotid in zip(self.phase_names, plotkeys):
+        for i, phase_name in enumerate(self.phase_names):
+            sub_grid = gridspec.GridSpecFromSubplotSpec(3, 1, subplot_spec=plot_grid[i])
             analyzer = self.analyzers[phase_name]
-            # Attach subplot to figure
-            p = equilibration_figure.add_subplot(plotid)
+
             # Data crunching to get timeseries
             u_kln, _ = analyzer.extract_energies()
+            # TODO: Figure out how not to discard the first sample
+            # Sample at index 0 is actually the minimized structure and NOT from the equilibrium distribution
+            # This throws off all of the equilibrium data
+            u_kln = u_kln[:, :, discard_from_start:]
+            self._n_discarded = discard_from_start
             self.u_ns[phase_name] = analyzer.get_timeseries(u_kln)
-            # Timseries statistics
-            self.nequils[phase_name], self.g_ts[phase_name], self.Neff_maxs[phase_name] = \
-                analyzer.get_equilibration_data(self.u_ns[phase_name])
+            # Timeseries statistics
+            g_t, Neff_t = analyzer.get_equilibration_data_per_sample(self.u_ns[phase_name])
+            self.Neff_maxs[phase_name] = Neff_t.max()
+            self.nequils[phase_name] = Neff_t.argmax()
+            self.g_ts[phase_name] = g_t[int(self.nequils[phase_name])]
+
+            # FIRST SUBPLOT: energy scatter
+            # Attach subplot to figure
+            p = equilibration_figure.add_subplot(sub_grid[0])
             # Data assignment for plot generation
             y = self.u_ns[phase_name]
             N = y.size
@@ -156,7 +173,7 @@ class HealthReportData(object):
             # Set text
             p.set_title(phase_name + " phase", fontsize=20)
             p.set_ylabel(r'$\Sigma_n u_n$ in kT', fontsize=20)
-            p.set_xlabel('Iteration', fontsize=20)
+
             # Extra info in text boxes
             subsample_string = 'Subsample Rate: {0:.2f}\nDecorelated Samples: {1:d}'.format(self.g_ts[phase_name], int(
                 np.floor(self.Neff_maxs[phase_name])))
@@ -180,6 +197,26 @@ class HealthReportData(object):
                    fontsize=15,
                    bbox={'alpha': 1.0, 'facecolor': 'white'}
                    )
+
+            # SECOND SUBPLOT: g_t trace
+            g = equilibration_figure.add_subplot(sub_grid[1])
+            g.plot(x[:-1], g_t)
+            ylim = g.get_ylim()
+            g.vlines(self.nequils[phase_name], *ylim, colors='b', linewidth=4)
+            g.set_ylim(*ylim)  # Reset limits in case vlines expanded them
+            g.set_xlim([0, N])
+            g.set_ylabel(r'Decor. Time', fontsize=20)
+
+            # THRID SUBPLOT: Neff trace
+            ne = equilibration_figure.add_subplot(sub_grid[2])
+            ne.plot(x[:-1], Neff_t)
+            ylim = ne.get_ylim()
+            ne.vlines(self.nequils[phase_name], *ylim, colors='b', linewidth=4)
+            ne.set_ylim(*ylim)  # Reset limits in case vlines expanded them
+            ne.set_xlim([0, N])
+            ne.set_ylabel(r'Neff samples', fontsize=20)
+            ne.set_xlabel(r'Iteration', fontsize=20)
+
         # Set class variables to be used elsewhere
         # Set flag
         self._equilibration_run = True
@@ -218,7 +255,7 @@ class HealthReportData(object):
             colors = ['#2c7bb6', '#abd0e0', '#fdae61']  # blue, light blue, and orange
             explode = [0, 0, 0.0]
             # Determine the wedges
-            eq = self.nequils[phase_name]
+            eq = self.nequils[phase_name] + self._n_discarded  # Make sure we include the discarded
             decor = int(np.floor(self.Neff_maxs[phase_name]))
             cor = N - eq - decor
             dat = np.array([decor, cor, eq]) / float(N)
@@ -331,14 +368,19 @@ class HealthReportData(object):
             cbar.set_ticks(ticks)
             # Labels
             title_txt = phase_name + " phase" + "\n"
-            title_txt += "Perron eigenvalue {0:9.5f}\nState equilibration timescale ~ {1:.1f} iterations".format(
-                mu[1], 1.0 / (1.0 - mu[1]))
+            title_txt += "Perron eigenvalue {0:9.5f}\n".format(mu[1])
+            title_txt += "State equilibration timescale ~"
+            timescale_dnom = 1.0 - mu[1]
+            if timescale_dnom == 0:
+                title_txt += r"$\infty$ iterations"
+            else:
+                title_txt += "{0:.1f} iterations".format(1.0 / timescale_dnom)
             subplot.set_title(title_txt, fontsize=20, y=1.05)
             # Display Warning
             if np.any(mixing_data >= mixing_warning_threshold):
                 subplot.text(
                     0.5, -0.2,
-                    "Warning!\nThere were states that less than {}% swaps!\nConsider adding more states!".format(
+                    "Warning!\nThere were states that less than {0:.2f}% swaps!\nConsider adding more states!".format(
                         (1 - mixing_warning_threshold) * 100),
                     verticalalignment='bottom', horizontalalignment='center',
                     transform=subplot.transAxes,
@@ -415,16 +457,16 @@ class HealthReportData(object):
         dDeltaH = 0.0
         for phase_name in self.phase_names:
             sign = self.signs[phase_name]
-            DeltaF -= sign * (data[phase_name]['DeltaF'] + data[phase_name]['DeltaF_restraints'])
+            DeltaF -= sign * (data[phase_name]['DeltaF'] + data[phase_name]['DeltaF_standard_state_correction'])
             dDeltaF += data[phase_name]['dDeltaF'] ** 2
-            DeltaH -= sign * (data[phase_name]['DeltaH'] + data[phase_name]['DeltaF_restraints'])
+            DeltaH -= sign * (data[phase_name]['DeltaH'] + data[phase_name]['DeltaF_standard_state_correction'])
             dDeltaH += data[phase_name]['dDeltaH'] ** 2
         dDeltaF = np.sqrt(dDeltaF)
         dDeltaH = np.sqrt(dDeltaH)
 
         # Attempt to guess type of calculation
         calculation_type = ''
-        for phase in self.phases:
+        for phase in self.phase_names:
             if 'complex' in phase:
                 calculation_type = ' of binding'
             elif 'solvent1' in phase:
@@ -434,11 +476,12 @@ class HealthReportData(object):
             calculation_type, DeltaF, dDeltaF, DeltaF * kT / units.kilocalories_per_mole,
                                                dDeltaF * kT / units.kilocalories_per_mole))
 
-        for phase in self.phases:
+        for phase in self.phase_names:
             print("DeltaG {:<25} : {:16.3f} +- {:.3f} kT".format(phase, data[phase]['DeltaF'],
                                                                  data[phase]['dDeltaF']))
-            if data[phase]['DeltaF_restraints'] != 0.0:
-                print("DeltaG {:<25} : {:25.3f} kT".format('restraint', data[phase]['DeltaF_restraints']))
+            if data[phase]['DeltaF_standard_state_correction'] != 0.0:
+                print("DeltaG {:<25} : {:25.3f} kT".format('standard state correction',
+                                                           data[phase]['DeltaF_standard_state_correction']))
         print('')
         print("Enthalpy{}: {:16.3f} +- {:.3f} kT ({:16.3f} +- {:.3f} kcal/mol)".format(
             calculation_type, DeltaH, dDeltaH, DeltaH * kT / units.kilocalories_per_mole,
