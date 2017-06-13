@@ -86,7 +86,7 @@ def test_script_yaml():
             number_of_iterations: 0
             output_dir: '.'
             resume_setup: yes
-            resume_simulation: yes
+            resume_simulation: no
             minimize: no
         molecules:
             T4lysozyme:
@@ -121,15 +121,12 @@ def test_script_yaml():
             restraint:
                 type: FlatBottom
         """.format(lysozyme_path, pxylene_path)
+
     with omt.utils.temporary_directory() as tmp_dir:
         yaml_file_path = os.path.join(tmp_dir, 'yank.yaml')
         with open(yaml_file_path, 'w') as f:
             f.write(textwrap.dedent(yaml_content))
         run_cli('script --yaml={}'.format(yaml_file_path))
-    # Test with override
-    with omt.utils.temporary_directory() as tmp_dir:
-        yaml_file_path = os.path.join(tmp_dir, 'yank.yaml')
-        with open(yaml_file_path, 'w') as f:
-            f.write(textwrap.dedent(yaml_content))
-        extension = "options:number_of_iterations:1"
-        run_cli('script --yaml={} -o {}'.format(yaml_file_path, extension))
+
+        # Test option overriding.
+        run_cli('script --yaml={} -o options:resume_simulation:yes'.format(yaml_file_path))

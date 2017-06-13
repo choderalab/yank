@@ -764,9 +764,11 @@ class AlchemicalPhase(object):
         thermodynamic_state = copy.deepcopy(thermodynamic_state)
         system = thermodynamic_state.system
 
-        # Determine minimum box side dimension.
+        # Determine minimum box side dimension. The theoretical maximal allowed cutoff
+        # is given by half the norm of the smallest vector, but OpenMM limits it to
+        # the minimum diagonal element of the box vector matrix for efficiency.
         box_vectors = system.getDefaultPeriodicBoxVectors()
-        min_box_dimension = min([np.linalg.norm(vector) for vector in box_vectors])
+        min_box_dimension = min([vector[i] for i, vector in enumerate(box_vectors)])
 
         # Determine cutoff automatically if requested.
         # We leave more space if the volume fluctuates.

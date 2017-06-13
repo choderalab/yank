@@ -171,7 +171,7 @@ class TestAlchemicalPhase(object):
         # figure out the expected value.
         if expected_cutoff == 'auto':
             box_vectors = thermodynamic_state._standard_system.getDefaultPeriodicBoxVectors()
-            min_box_dimension = min([np.linalg.norm(vector) for vector in box_vectors])
+            min_box_dimension = min([vector[i] for i, vector in enumerate(box_vectors)])
             if thermodynamic_state.pressure is None:
                 min_box_half_size = min_box_dimension * 0.99 / 2.0
             else:
