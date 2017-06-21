@@ -81,8 +81,8 @@ Here is an example:
 
 .. _yaml_protocols_alchemical_path:
 
-alchemical_path, lambda_electrostatics, lambda_sterics, and lambda_restraints
------------------------------------------------------------------------------
+``alchemical_path``, ``lambda_electrostatics``, ``lambda_sterics``, and ``lambda_restraints``
+---------------------------------------------------------------------------------------------
 
 The ``lambda_electrostatics``, ``lambda_sterics``, and ``lambda_restraints`` directives define the alchemical states that YANK will sample at.
 Each directive accepts an equal sized list of floats as arguments and each index of the list corresponds to what value of lambda those interactions will be controlled by at that state.
@@ -103,8 +103,8 @@ Valid Arguments: <Identical Sized List of Floats>
 
 .. _yaml_protocols_thermodynamic_variables:
 
-temperature and pressure
-------------------------
+``temperature`` and ``pressure``
+--------------------------------
 
 It is possible to vary temperature and pressure along the alchemical path, but the end states must have the same values.
 The number of window must be identical to the other lambda variables. A short example:

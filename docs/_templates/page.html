@@ -1,0 +1,29 @@
+<!-- Templated from https://stackoverflow.com/questions/2454577/sphinx-restructuredtext-show-hide-code-snippets -->
+{% extends "!page.html" %}
+
+{% set css_files = css_files + ["_static/custom.css"] %}
+
+{% block footer %}
+ <script type="text/javascript">
+    $(document).ready(function() {
+        $(".toggle > *").hide();
+        $(".toggle .header").show();
+        $(".toggle .header").click(function() {
+            $(this).parent().children().not(".header").toggle(400);
+            $(this).parent().children(".header").toggleClass("open");
+        })
+    });
+</script>
+
+<script type="text/javascript">
+    $(document).ready(function() {
+        $(".toggle2 > *").hide();
+        $(".toggle2").show();
+        $(".toggle2").click(function() {
+            $(this).children().toggle(400);
+            $(this).toggleClass("open");
+        })
+    });
+</script>
+
+{% endblock %}
