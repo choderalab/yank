@@ -333,8 +333,8 @@ class Reporter(object):
         # Handle Read mode
         if mode in ['r', 'a']:
             try:
-                self._storage_systems = gzip.open(self._storage_file_systems)
-                UUID = pickle.load(self._storage_file_systems, 'r')
+                self._storage_systems = gzip.open(self._storage_file_systems, 'r')
+                UUID = pickle.load(self._storage_file_systems)
                 assert UUID == primary_uuid
             except IOError:  # Trap not on disk
                 logger.debug('Could not locate systems subfile. This is okay for certain append and read operations, '
@@ -349,13 +349,6 @@ class Reporter(object):
             # Write UUID to file as the first entry
             pickle.dump(primary_uuid, self._storage_systems)
         self._open_mode = mode
-
-    def _reload_compressed_files(self):
-        """Helper function to reload the sequential access files """
-        files = [self._storage_systems]
-        for reload_file in files:
-            reload_file.rewind()
-            _ = pickle.load(reload_file)  # Load the UUID off the file
 
     def close(self):
         """Close the storage file."""
@@ -476,7 +469,6 @@ class Reporter(object):
             for state_type, state_list in states.items():
                 for index_key, serialized_state in utils.dictiter(state_index_holders[state_type]):
                     state_list[int(index_key)] = serialized_state
-            self._reload_compressed_files()
 
 
 
