@@ -333,9 +333,9 @@ class Reporter(object):
         # Handle Read mode
         if mode in ['r', 'a']:
             try:
-                self._storage_systems = gzip.open(self._storage_file_systems, 'r')
-                UUID = pickle.load(self._storage_systems)
-                assert UUID == primary_uuid
+                with gzip.open(self._storage_file_systems, 'r') as self._storage_systems:
+                    UUID = pickle.load(self._storage_systems)
+                    assert UUID == primary_uuid
             except IOError:  # Trap not on disk
                 logger.debug('Could not locate systems subfile. This is okay for certain append and read operations, '
                              'but not for production simulation!')
@@ -345,9 +345,9 @@ class Reporter(object):
                               "Analysis UUID: {}"
                               "Systems UUID: {}".format(primary_uuid, UUID))
         else:
-            self._storage_systems = gzip.open(self._storage_file_systems, mode)
-            # Write UUID to file as the first entry
-            pickle.dump(primary_uuid, self._storage_systems)
+            with gzip.open(self._storage_file_systems, mode) as self._storage_systems:
+                # Write UUID to file as the first entry
+                pickle.dump(primary_uuid, self._storage_systems)
         self._open_mode = mode
 
     def close(self):
@@ -424,39 +424,39 @@ class Reporter(object):
 
         # Reload the file in read mode
         self._storage_systems.close()
-        self._storage_systems = gzip.open(self._storage_file_systems, 'r')
-        _ = pickle.load(self._storage_systems)  # Read the storage systems UUID into the void
-        # We keep looking for states until we can't find them anymore.
-        while True:  # Read through each of the items in the compressed systems files
-            try:
-                read_dictionary = pickle.load(self._storage_systems)
-                state_type = read_dictionary['type']
-                state_id = read_dictionary['index']
-                serialized_state = read_dictionary['data']
-                # Add holder items to the states list
-                states[state_type].append(None)
-
-                # Find the thermodynamic state representation.
-                serialized_thermodynamic_state = unnest_thermodynamic_state(serialized_state)
-                # Check if the standard state is in a previous state.
+        with gzip.open(self._storage_file_systems, 'r') as self._storage_systems:
+            _ = pickle.load(self._storage_systems)  # Read the storage systems UUID into the void
+            # We keep looking for states until we can't find them anymore.
+            while True:  # Read through each of the items in the compressed systems files
                 try:
-                    standard_system_name = serialized_thermodynamic_state.pop('_Reporter__compatible_state')
-                except KeyError:
-                    # Cache the standard system serialization for future usage.
-                    standard_system_name = '{}/{}'.format(state_type, state_id)
-                    states_serializations[standard_system_name] = serialized_thermodynamic_state['standard_system']
-                else:
-                    # The system serialization can be retrieved from another state.
-                    # These are not too large, so we can hold them in memory
-                    states_needing_reference[state_type].append([state_id, standard_system_name])
-                # Hold the states in temporary storage, we'll sort them later
-                state_index_holders[state_type][state_id] = serialized_state
-                # Add a filler holder to the states output, we'll replace all of them on the 2nd pass
-                states[state_type].append(None)
+                    read_dictionary = pickle.load(self._storage_systems)
+                    state_type = read_dictionary['type']
+                    state_id = read_dictionary['index']
+                    serialized_state = read_dictionary['data']
+                    # Add holder items to the states list
+                    states[state_type].append(None)
 
-            except (EOFError, pickle.UnpicklingError):
-                # Reached EOF, break the loop
-                break
+                    # Find the thermodynamic state representation.
+                    serialized_thermodynamic_state = unnest_thermodynamic_state(serialized_state)
+                    # Check if the standard state is in a previous state.
+                    try:
+                        standard_system_name = serialized_thermodynamic_state.pop('_Reporter__compatible_state')
+                    except KeyError:
+                        # Cache the standard system serialization for future usage.
+                        standard_system_name = '{}/{}'.format(state_type, state_id)
+                        states_serializations[standard_system_name] = serialized_thermodynamic_state['standard_system']
+                    else:
+                        # The system serialization can be retrieved from another state.
+                        # These are not too large, so we can hold them in memory
+                        states_needing_reference[state_type].append([state_id, standard_system_name])
+                    # Hold the states in temporary storage, we'll sort them later
+                    state_index_holders[state_type][state_id] = serialized_state
+                    # Add a filler holder to the states output, we'll replace all of them on the 2nd pass
+                    states[state_type].append(None)
+
+                except (EOFError, pickle.UnpicklingError):
+                    # Reached EOF, break the loop
+                    break
             # Loop back through the placeholders for missing standard states and fill them in
             for state_type in states_needing_reference:
                 for state_id, standard_system_name in states_needing_reference[state_type]:
@@ -524,44 +524,47 @@ class Reporter(object):
             return serialized
 
         # Force a close/reopen of the thermodynamic states storage object to ensure clean writing.
-        self._storage_systems.close()
+
         UUID = self._storage_analysis.UUID
-        self._storage_systems = gzip.open(self._storage_file_systems, 'w')
-        pickle.dump(UUID, self._storage_systems)
+        with gzip.open(self._storage_file_systems, 'w') as self._storage_systems:
 
-        for state_type, states in [('thermodynamic_states', thermodynamic_states),
-                                   ('unsampled_states', unsampled_states)]:
-            for state_id, state in enumerate(states):
-                # Check if any compatible state has been found
-                found_compatible_state = False
-                for compare_state in stored_states:
-                    if compare_state.is_state_compatible(state):
-                        serialized_state = mmtools.utils.serialize(state, skip_system=True)
+            pickle.dump(UUID, self._storage_systems)
+
+            for state_type, states in [('thermodynamic_states', thermodynamic_states),
+                                       ('unsampled_states', unsampled_states)]:
+                for state_id, state in enumerate(states):
+                    # Check if any compatible state has been found
+                    found_compatible_state = False
+                    for compare_state in stored_states:
+                        if compare_state.is_state_compatible(state):
+                            serialized_state = mmtools.utils.serialize(state, skip_system=True)
+                            serialized_thermodynamic_state = unnest_thermodynamic_state(serialized_state)
+                            serialized_thermodynamic_state.pop('standard_system')  # Remove the unneeded system object
+                            reference_state_name = stored_states[compare_state]
+                            serialized_thermodynamic_state['_Reporter__compatible_state'] = reference_state_name
+                            found_compatible_state = True
+                            break
+
+                    # If no compatible state is found, do full serialization
+                    if not found_compatible_state:
+                        serialized_state = mmtools.utils.serialize(state)
                         serialized_thermodynamic_state = unnest_thermodynamic_state(serialized_state)
-                        serialized_thermodynamic_state.pop('standard_system')  # Remove the unneeded system object
-                        reference_state_name = stored_states[compare_state]
-                        serialized_thermodynamic_state['_Reporter__compatible_state'] = reference_state_name
-                        found_compatible_state = True
-                        break
+                        serialized_standard_system = serialized_thermodynamic_state['standard_system']
 
-                # If no compatible state is found, do full serialization
-                if not found_compatible_state:
-                    serialized_state = mmtools.utils.serialize(state)
-                    serialized_thermodynamic_state = unnest_thermodynamic_state(serialized_state)
-                    serialized_standard_system = serialized_thermodynamic_state['standard_system']
+                        reference_state_name = '{}/{}'.format(state_type, state_id)
+                        len_serialization = len(serialized_standard_system)
 
-                    reference_state_name = '{}/{}'.format(state_type, state_id)
-                    len_serialization = len(serialized_standard_system)
+                        # Store new compatibility data
+                        stored_states[state] = reference_state_name
 
-                    # Store new compatibility data
-                    stored_states[state] = reference_state_name
+                        logger.debug("Serialized state {} is  {}B | {:.3f}KB | {:.3f}MB, will be compressed".format(
+                            reference_state_name, len_serialization, len_serialization/1024.0,
+                            len_serialization/1024.0/1024.0))
 
-                    logger.debug("Serialized state {} is  {}B | {:.3f}KB | {:.3f}MB, will be compressed".format(
-                        reference_state_name, len_serialization, len_serialization/1024.0,
-                        len_serialization/1024.0/1024.0))
-
-                # Finally write the dictionary
-                self._write_system_dict('{}/state{}'.format(state_type, state_id), serialized_state)
+                    # Finally write the dictionary
+                    self._write_system_dict(self._storage_systems,
+                                            '{}/state{}'.format(state_type, state_id),
+                                            serialized_state)
 
     def read_sampler_states(self, iteration):
         """Retrieve the stored sampler states on the checkpoint file
@@ -1047,13 +1050,14 @@ class Reporter(object):
         packed_data[0] = data_str
         nc_variable[:] = packed_data
 
-    def _write_system_dict(self, name, data):
+    def _write_system_dict(self, storage_object, name, data):
         """
         Store the system dict serializations into compressed gzip objects.
         Creates a pointer in the analysis file to the location.
 
         Parameters
         ----------
+        storage_object : open gzip file stream
         name : str
             The identifier of the dictionary in the storage file.
         data : dict
@@ -1061,7 +1065,7 @@ class Reporter(object):
         """
         state_type, state_string = name.split('/')
         state_index = re.search('(\d+)', state_string).group(0)
-        pickle.dump({'type': state_type, 'index': state_index, 'data': data}, self._storage_systems)
+        pickle.dump({'type': state_type, 'index': state_index, 'data': data}, storage_object)
         self.write_dict(name, {'saved_to_file': self._storage_file_systems})
 
     def get_previous_checkpoint(self, iteration):
