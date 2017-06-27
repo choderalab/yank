@@ -204,7 +204,10 @@ class Reporter(object):
             if storage is None:
                 return False
             else:
-                open_check_list.append(storage.isopen())
+                try:
+                    open_check_list.append(storage.isopen())
+                except AttributeError:
+                    open_check_list.append(not storage.closed())
         return np.all(open_check_list)
 
     def open(self, mode='r'):
@@ -937,8 +940,12 @@ class Reporter(object):
         """
         # Create variable if needed.
         for storage in self._storage:
-            if 'timestamp' not in storage.variables:
-                storage.createVariable('timestamp', str, ('iteration',), zlib=False, chunksizes=(1,))
+            try:
+                if 'timestamp' not in storage.variables:
+                    storage.createVariable('timestamp', str, ('iteration',), zlib=False, chunksizes=(1,))
+            except AttributeError:
+                # Don't worry about timestamp on non-nc files
+                pass
         timestamp = time.ctime()
         self._storage_analysis.variables['timestamp'][iteration] = timestamp
         checkpoint_iteration = self._calculate_checkpoint_iteration(iteration)
