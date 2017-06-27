@@ -131,6 +131,9 @@ class Reporter(object):
         self._storage_checkpoint = None
         self._storage_systems = None
         self._checkpoint_interval = checkpoint_interval
+        self._open_mode = None
+        # Open mode not set here, its set in the open function
+        # Its used to read the sequential only files
         if open_mode is not None:
             self.open(open_mode)
 
@@ -331,7 +334,7 @@ class Reporter(object):
         if mode in ['r', 'a']:
             try:
                 self._storage_systems = gzip.open(self._storage_file_systems)
-                UUID = pickle.load(self._storage_file_systems, mode)
+                UUID = pickle.load(self._storage_file_systems, 'r')
                 assert UUID == primary_uuid
             except IOError:  # Trap not on disk
                 logger.debug('Could not locate systems subfile. This is okay for certain append and read operations, '
@@ -345,6 +348,7 @@ class Reporter(object):
             self._storage_systems = gzip.open(self._storage_file_systems, mode)
             # Write UUID to file as the first entry
             pickle.dump(primary_uuid, self._storage_systems)
+        self._open_mode = mode
 
     def _reload_compressed_files(self):
         """Helper function to reload the sequential access files """
@@ -365,6 +369,7 @@ class Reporter(object):
                     # Case of pickle files
                     storage.close()
             setattr(self, '_storage' + storage_name, None)
+        self._open_mode = None
 
     def sync(self):
         """Force any buffer to be flushed to the file."""
@@ -424,6 +429,10 @@ class Reporter(object):
                 state = state['thermodynamic_state']
             return state
 
+        # Reload the file in read mode
+        self._storage_systems.close()
+        self._storage_systems = gzip.open(self._storage_file_systems, 'r')
+        _ = pickle.load(self._storage_systems)  # Read the storage systems UUID into the void
         # We keep looking for states until we can't find them anymore.
         while True:  # Read through each of the items in the compressed systems files
             try:
@@ -522,6 +531,12 @@ class Reporter(object):
             while 'thermodynamic_state' in serialized:
                 serialized = serialized['thermodynamic_state']
             return serialized
+
+        # Force a close/reopen of the thermodynamic states storage object to ensure clean writing.
+        self._storage_systems.close()
+        UUID = self._storage_analysis.UUID
+        self._storage_systems = gzip.open(self._storage_file_systems, 'w')
+        pickle.dump(UUID, self._storage_systems)
 
         for state_type, states in [('thermodynamic_states', thermodynamic_states),
                                    ('unsampled_states', unsampled_states)]:
