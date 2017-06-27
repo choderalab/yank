@@ -452,7 +452,6 @@ class Reporter(object):
                     # Hold the states in temporary storage, we'll sort them later
                     state_index_holders[state_type][state_id] = serialized_state
                     # Add a filler holder to the states output, we'll replace all of them on the 2nd pass
-                    states[state_type].append(None)
 
                 except (EOFError, pickle.UnpicklingError):
                     # Reached EOF, break the loop
@@ -467,7 +466,7 @@ class Reporter(object):
             # Now assign the completed states to the final output
             for state_type, state_list in states.items():
                 for index_key, serialized_state in utils.dictiter(state_index_holders[state_type]):
-                    state_list[int(index_key)] = serialized_state
+                    state_list[int(index_key)] = mmtools.utils.deserialize(serialized_state)
 
 
 
