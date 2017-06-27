@@ -334,7 +334,7 @@ class Reporter(object):
         if mode in ['r', 'a']:
             try:
                 self._storage_systems = gzip.open(self._storage_file_systems, 'r')
-                UUID = pickle.load(self._storage_file_systems)
+                UUID = pickle.load(self._storage_systems)
                 assert UUID == primary_uuid
             except IOError:  # Trap not on disk
                 logger.debug('Could not locate systems subfile. This is okay for certain append and read operations, '
@@ -431,8 +431,7 @@ class Reporter(object):
             try:
                 read_dictionary = pickle.load(self._storage_systems)
                 state_type = read_dictionary['type']
-                state_index = read_dictionary['index']
-                state_id = 'state' + state_index
+                state_id = read_dictionary['index']
                 serialized_state = read_dictionary['data']
                 # Add holder items to the states list
                 states[state_type].append(None)
@@ -449,9 +448,9 @@ class Reporter(object):
                 else:
                     # The system serialization can be retrieved from another state.
                     # These are not too large, so we can hold them in memory
-                    states_needing_reference[state_type].append([state_index, standard_system_name])
+                    states_needing_reference[state_type].append([state_id, standard_system_name])
                 # Hold the states in temporary storage, we'll sort them later
-                state_index_holders[state_type][state_index] = serialized_state
+                state_index_holders[state_type][state_id] = serialized_state
                 # Add a filler holder to the states output, we'll replace all of them on the 2nd pass
                 states[state_type].append(None)
 
@@ -460,8 +459,8 @@ class Reporter(object):
                 break
             # Loop back through the placeholders for missing standard states and fill them in
             for state_type in states_needing_reference:
-                for state_index, standard_system_name in states_needing_reference[state_type]:
-                    serialized_state = state_index_holders[state_type][state_index]
+                for state_id, standard_system_name in states_needing_reference[state_type]:
+                    serialized_state = state_index_holders[state_type][state_id]
                     serialized_thermodynamic_state = unnest_thermodynamic_state(serialized_state)
                     serialized_standard_system = states_serializations[standard_system_name]
                     serialized_thermodynamic_state['standard_system'] = serialized_standard_system
