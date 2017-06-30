@@ -418,7 +418,7 @@ class Reporter(object):
                     if compare_state.is_state_compatible(state):
                         serialized_state = mmtools.utils.serialize(state, skip_system=True)
                         serialized_thermodynamic_state = unnest_thermodynamic_state(serialized_state)
-                        serialized_thermodynamic_state.pop('standard_system')  # Remove the unneeded system objete
+                        serialized_thermodynamic_state.pop('standard_system')  # Remove the unneeded system object
                         reference_state_name = stored_states[compare_state]
                         serialized_thermodynamic_state['_Reporter__compatible_state'] = reference_state_name
                         found_compatible_state = True
@@ -441,7 +441,7 @@ class Reporter(object):
                         len_serialization/1024.0/1024.0))
 
                 # Finally write the dictionary
-                self.write_dict('{}/state{}'.format(state_type, state_id), serialized_state)
+                self.write_dict('{}/state{}'.format(state_type, state_id), serialized_state, fixed_dimension=True)
 
     def read_sampler_states(self, iteration):
         """Retrieve the stored sampler states on the checkpoint file
@@ -854,7 +854,12 @@ class Reporter(object):
             raise ValueError("storage must be either 'analysis' or 'checkpoint'!")
         # Get NC variable.
         nc_variable = self._resolve_variable_path(name, storage)
-        data_str = str(nc_variable[0])
+        if nc_variable.dtype == 'S1':
+            # Handle variables stored in fixed_dimensions
+            data_chars = nc_variable[:]
+            data_str = data_chars.tostring().decode()
+        else:
+            data_str = str(nc_variable[0])
         data = yaml.load(data_str, Loader=_DictYamlLoader)
 
         # Restore the title in the metadata.
@@ -889,7 +894,7 @@ class Reporter(object):
         """
         return int(self._storage_analysis.variables['last_iteration'][0])  # Make sure this is returned as Python Int
 
-    def write_dict(self, name, data):
+    def write_dict(self, name, data, fixed_dimension=False):
         """Store the contents of a dict.
 
         Parameters
@@ -898,12 +903,19 @@ class Reporter(object):
             The identifier of the dictionary in the storage file.
         data : dict
             The dict to store.
+        fixed_dimension: bool, Defautlt: False
+            Use a fixed length dimension instead of variable length one. A unique dimension name (sharing a name with
+            "name") will be created and its length will be set equal to the length of the "name" string
+            This method seems to allow NetCDF to actually compress strings.
+            Do NOT use this flag if you expect to constantly be changing the length of the data fed in, use only for
+                static data
 
         """
         # Leaving the skeleton to extend this in for now
         storage = 'analysis'
         if storage not in ['analysis', 'checkpoint']:
             raise ValueError("storage must be either 'analysis' or 'checkpoint'!")
+        storage_nc = self._storage_dict[storage]
         # General NetCDF conventions assume the title of the dataset to be
         # specified as a global attribute, but the user can specify their
         # own titles only in metadata.
@@ -911,17 +923,26 @@ class Reporter(object):
             data = copy.deepcopy(data)
             self._storage_dict[storage].title = data.pop('title')
 
+        # Activate flow style to save space.
+        data_str = yaml.dump(data, Dumper=_DictYamlDumper)#, default_flow_style=True)
+
         # Check if we are updating the dictionary or creating it.
         try:
             nc_variable = self._resolve_variable_path(name, storage)
         except KeyError:
-            nc_variable = self._storage_dict[storage].createVariable(name, str, 'scalar', zlib=True)
-
-        # Activate flow style to save space.
-        data_str = yaml.dump(data, Dumper=_DictYamlDumper)#, default_flow_style=True)
-        packed_data = np.empty(1, 'O')
-        packed_data[0] = data_str
-        nc_variable[:] = packed_data
+            if fixed_dimension:
+                len_dim = len(data_str)
+                if name not in storage_nc.dimensions:
+                    storage_nc.createDimension(name, len_dim)
+                nc_variable = storage_nc.createVariable(name, 'S1', name, zlib=True)
+            else:
+                nc_variable = storage_nc.createVariable(name, str, 'scalar', zlib=True)
+        if fixed_dimension:
+            nc_variable[:] = data_str
+        else:
+            packed_data = np.empty(1, 'O')
+            packed_data[0] = data_str
+            nc_variable[:] = packed_data
 
     def get_previous_checkpoint(self, iteration):
         """
