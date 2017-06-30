@@ -905,7 +905,7 @@ class Reporter(object):
             The dict to store.
         fixed_dimension: bool, Defautlt: False
             Use a fixed length dimension instead of variable length one. A unique dimension name (sharing a name with
-            "name") will be created and its length will be set equal to the length of the "name" string
+            "name") will be created and its length will be set equal to "fixedL{}".format(len(data_string))
             This method seems to allow NetCDF to actually compress strings.
             Do NOT use this flag if you expect to constantly be changing the length of the data fed in, use only for
                 static data
@@ -932,13 +932,15 @@ class Reporter(object):
         except KeyError:
             if fixed_dimension:
                 len_dim = len(data_str)
-                if name not in storage_nc.dimensions:
-                    storage_nc.createDimension(name, len_dim)
-                nc_variable = storage_nc.createVariable(name, 'S1', name, zlib=True)
+                dim_str = "fixedL{}".format(len_dim)
+                if dim_str not in storage_nc.dimensions:
+                    storage_nc.createDimension(dim_str, len_dim)
+                nc_variable = storage_nc.createVariable(name, 'S1', dim_str, zlib=True)
             else:
                 nc_variable = storage_nc.createVariable(name, str, 'scalar', zlib=True)
         if fixed_dimension:
-            nc_variable[:] = data_str
+            data_char_array = np.array(list(data_str), dtype='S1')
+            nc_variable[:] = data_char_array
         else:
             packed_data = np.empty(1, 'O')
             packed_data[0] = data_str
