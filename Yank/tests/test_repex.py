@@ -304,14 +304,22 @@ class TestReporter(object):
 
             # Load representation of the states on the disk. There
             # should be only one full serialization per compatible state.
+            def decompact_state_variable(variable):
+                if variable.dtype == 'S1':
+                    # Handle variables stored in fixed_dimensions
+                    data_chars = variable[:]
+                    data_str = data_chars.tostring().decode()
+                else:
+                    data_str = str(variable[0])
+                return data_str
             states_serialized = []
             for state_id in range(len(thermodynamic_states)):
-                state_str = ncgrp_states.variables['state' + str(state_id)][0]
+                state_str = decompact_state_variable(ncgrp_states.variables['state' + str(state_id)])
                 state_dict = yaml.load(state_str, Loader=_DictYamlLoader)
                 states_serialized.append(state_dict)
             unsampled_serialized = []
             for state_id in range(len(unsampled_states)):
-                unsampled_str = ncgrp_unsampled.variables['state' + str(state_id)][0]
+                unsampled_str = decompact_state_variable(ncgrp_unsampled.variables['state' + str(state_id)])
                 unsampled_dict = yaml.load(unsampled_str, Loader=_DictYamlLoader)
                 unsampled_serialized.append(unsampled_dict)
 
@@ -404,17 +412,21 @@ class TestReporter(object):
             'mynesteddict': {'field1': 'string', 'field2': {'field21': 3.0, 'field22': True}}
         }
         with self.temporary_reporter() as reporter:
+
+            def compare_dicts(reference, check):
+                for key, value in reference.items():
+                    restored_value = check[key]
+                    err_msg = '{}, {}'.format(value, restored_value)
+                    try:
+                        assert value == restored_value, err_msg
+                    except ValueError:  # array-like
+                        assert np.all(value == restored_value)
+                    else:
+                        assert type(value) == type(restored_value), err_msg
+
             reporter.write_dict('testdict', data)
             restored_data = reporter.read_dict('testdict')
-            for key, value in data.items():
-                restored_value = restored_data[key]
-                err_msg = '{}, {}'.format(value, restored_value)
-                try:
-                    assert value == restored_value, err_msg
-                except ValueError:  # array-like
-                    assert np.all(value == restored_value)
-                else:
-                    assert type(value) == type(restored_value), err_msg
+            compare_dicts(data, restored_data)
 
             # write_dict supports updates.
             data['mybool'] = True
@@ -423,6 +435,11 @@ class TestReporter(object):
             restored_data = reporter.read_dict('testdict')
             assert restored_data['mybool'] is True
             assert restored_data['mystring'] == 'substituted'
+
+            # Write dict fixed_dimension creates static dimensions and read/writes correctly
+            reporter.write_dict('fixed', data, fixed_dimension=True)
+            restored_fixed_data = reporter.read_dict('fixed')
+            compare_dicts(data, restored_fixed_data)
 
     def test_store_mixing_statistics(self):
         """Check mixing statistics are correctly stored."""
