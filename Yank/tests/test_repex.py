@@ -304,14 +304,22 @@ class TestReporter(object):
 
             # Load representation of the states on the disk. There
             # should be only one full serialization per compatible state.
+            def decompact_state_variable(variable):
+                if variable.dtype == 'S1':
+                    # Handle variables stored in fixed_dimensions
+                    data_chars = variable[:]
+                    data_str = data_chars.tostring().decode()
+                else:
+                    data_str = str(variable[0])
+                return data_str
             states_serialized = []
             for state_id in range(len(thermodynamic_states)):
-                state_str = ncgrp_states.variables['state' + str(state_id)][0]
+                state_str = decompact_state_variable(ncgrp_states.variables['state' + str(state_id)])
                 state_dict = yaml.load(state_str, Loader=_DictYamlLoader)
                 states_serialized.append(state_dict)
             unsampled_serialized = []
             for state_id in range(len(unsampled_states)):
-                unsampled_str = ncgrp_unsampled.variables['state' + str(state_id)][0]
+                unsampled_str = decompact_state_variable(ncgrp_unsampled.variables['state' + str(state_id)])
                 unsampled_dict = yaml.load(unsampled_str, Loader=_DictYamlLoader)
                 unsampled_serialized.append(unsampled_dict)
 
