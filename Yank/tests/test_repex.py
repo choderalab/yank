@@ -324,7 +324,7 @@ class TestReporter(object):
                 unsampled_serialized.append(unsampled_dict)
 
             # Two of the three ThermodynamicStates are compatible.
-            assert isinstance(states_serialized[0]['standard_system'], str)
+            assert 'standard_system' in states_serialized[0]
             assert 'standard_system' not in states_serialized[1]
             state_compatible_to_1 = states_serialized[1]['_Reporter__compatible_state']
             assert state_compatible_to_1 == 'thermodynamic_states/0'

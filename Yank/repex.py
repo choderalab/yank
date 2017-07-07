@@ -2257,7 +2257,7 @@ class ParallelTempering(ReplicaExchange):
 # MODULE INTERNAL USAGE UTILITIES
 # ==============================================================================
 
-class _DictYamlLoader(yaml.Loader):
+class _DictYamlLoader(yaml.CLoader):
     """PyYAML Loader that reads !Quantity tags."""
     def __init__(self, *args, **kwargs):
         super(_DictYamlLoader, self).__init__(*args, **kwargs)
@@ -2283,7 +2283,7 @@ class _DictYamlLoader(yaml.Loader):
         return data
 
 
-class _DictYamlDumper(yaml.Dumper):
+class _DictYamlDumper(yaml.CDumper):
     """PyYAML Dumper that handle simtk Quantities through !Quantity tags."""
 
     def __init__(self, *args, **kwargs):
