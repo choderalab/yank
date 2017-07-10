@@ -56,6 +56,7 @@ from openmmtools.states import ThermodynamicState
 
 from . import utils, mpi, version
 from .analyze import RepexPhase
+from pymbar.utils import ParameterError
 
 logger = logging.getLogger(__name__)
 
@@ -1150,8 +1151,8 @@ class ReplicaExchange(object):
             energy estimate is at or below online_analysis_target_error, then the simulation will be considered
             completed.
     online_analysis_target_error : float >= 0
-        The target error for the online analysis. Once the free energy is at or below this value, the phase
-            will be considered complete.
+        The target error for the online analysis measured in kT.
+            Once the free energy is at or below this value, the phase will be considered complete.
         If online_analysis_interval is None, this option does nothing.
     online_analysis_minimum_iterations : int >= 0, optional, default 50
         Set the minimum number of iterations which must pass before online analysis is carried out.
@@ -1278,6 +1279,8 @@ class ReplicaExchange(object):
         self._online_analysis_interval = online_analysis_interval
         self._online_analysis_target_error = online_analysis_target_error
         self._online_analysis_minimum_iterations = online_analysis_minimum_iterations
+        self._online_error_trap_counter = 0  # Counter for errors in the online estimate
+        self._online_error_bank = []
 
         if self._number_of_iterations == np.inf:
             if self._number_of_iterations == np.inf:
@@ -1752,7 +1755,7 @@ class ReplicaExchange(object):
             if (self._online_analysis_interval is not None and
                     self._iteration > self._online_analysis_minimum_iterations and
                     self._iteration % self._online_analysis_interval == 0):
-                self._run_online_analysis()
+                free_energy_error = self._run_online_analysis()
             free_energy_error = None
 
             # Check if work complete
@@ -2232,23 +2235,41 @@ class ReplicaExchange(object):
                     self._last_mbar_f_k = f_k
                     break  # Don't need to continue the loop if we already found one
         # Start the analysis
+        bump_error_counter = False
         analysis = RepexPhase(self._reporter, analysis_kwargs={'initial_f_k': self._last_mbar_f_k})
         # Indices for online analysis, "i'th index, j'th index"
         idx, jdx = 0, -1
         timer = mmtools.utils.Timer()
         timer.start("MBAR")
         logger.debug("Computing free energy with MBAR...")
-        mbar = analysis.mbar
-        free_energy, err_free_energy = analysis.get_free_energy()
-        timer.end("MBAR")
-        logger.debug("Current Free Energy Estimate is {} +- {}".format(free_energy[idx, jdx],
-                                                                       err_free_energy[idx, jdx]))
-        self._last_mbar_f_k = mbar.f_k
+        try:
+            mbar = analysis.mbar
+            free_energy, err_free_energy = analysis.get_free_energy()
+            output_fe = free_energy[idx, jdx]
+            output_dfe = err_free_energy[idx, jdx]
+            logger.debug("Current Free Energy Estimate is {} +- {} kT".format(output_fe, output_dfe))
+            self._last_mbar_f_k = mbar.f_k
+            if np.isnan(output_dfe):  # Trap a case when errors don't converge (usually due to under sampling)
+                output_dfe = np.inf
+        except ParameterError as e:
+            bump_error_counter = True
+            self.online_error_bank.append(e)
+            output_dfe = np.inf
+        timer.stop("MBAR")
+        if bump_error_counter:
+            self._online_error_trap_counter += 1
+            if self._online_error_trap_counter >= 6:
+                logger.debug("Thrown MBAR Errors:")
+                for err in self._online_error_bank:
+                    logger.debug(str(err))
+                raise RuntimeError("Online Analysis has failed too many times! Please check the latest logs to see "
+                                   "the thrown errors!")
         # Make sure the reporter is back in a usable state
         self._reporter.close()
         self._reporter.open('a')
         # Write out the numbers
         self._reporter.write_mbar_weights(self._iteration, self._last_mbar_f_k)
+        return output_dfe
 
 
 # ==============================================================================
