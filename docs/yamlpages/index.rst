@@ -84,6 +84,12 @@ Detailed Options List
     * :ref:`softcore_e <yaml_options_alchemical_electrostatics>`
     * :ref:`softcore_f <yaml_options_alchemical_electrostatics>`
 
+  * :ref:`Online Analysis Parameters <yaml_options_online_analysis_parameters>`
+
+    * :ref:`online_analysis_interval <yaml_options_online_analysis_interval>`
+    * :ref:`online_analysis_target_error <yaml_options_online_analysis_target_error>`
+    * :ref:`online_analysis_minimum_iterations <yaml_options_online_analysis_minimum_iterations>`
+
 * :doc:`molecules <molecules>`
 
   * :ref:`Specifying Molecule Names <yaml_molecules_specifiy_names>`
