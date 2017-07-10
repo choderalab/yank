@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 # CONSTANTS
 # =============================================================================
 
-HIGHEST_VERSION = '1.2'  # highest version of YAML syntax
+HIGHEST_VERSION = '1.3'  # highest version of YAML syntax
 
 # Map the OpenMM-style name for a solvent to the tleap
 # name compatible with the solvateBox command.
@@ -1077,6 +1077,8 @@ class YamlPhaseFactory(object):
         'number_of_equilibration_iterations': 0,
         'equilibration_timestep': 1.0 * unit.femtosecond,
         'checkpoint_interval': 10,
+        'online_analysis_interval': None,
+        'online_analysis_target_error': 1.0,
     }
 
     def __init__(self, sampler, thermodynamic_state, sampler_states, topography,

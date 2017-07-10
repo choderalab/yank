@@ -176,7 +176,7 @@ class YankPhaseAnalyzer(ABC):
     Analyzer works in units of kT unless specifically stated otherwise. To convert back to a unit set, just multiply by
     the .kT property.
     """
-    def __init__(self, reporter, name=None, reference_states=(0, -1)):
+    def __init__(self, reporter, name=None, reference_states=(0, -1), analysis_kwargs=None):
         """
         The reporter provides the hook into how to read the data, all other options control where differences are
         measured from and how each phase interfaces with other phases.
@@ -199,6 +199,9 @@ class YankPhaseAnalyzer(ABC):
                 O[j] is not used
             For O where differences between states are required (e.g. Free Energy):
                 O[i,j] = O[j] - O[i]
+        analysis_kwargs : None or dict, optional
+            Dictionary of extra keyword arguments to pass into the analysis tool, typically MBAR.
+            For instance, the initial guess of weights to give to MBAR would be something like {'f_k':[0,1,2,3]}
         """
         if not reporter.is_open():
             reporter.open(mode='r')
@@ -224,6 +227,9 @@ class YankPhaseAnalyzer(ABC):
         self.reference_states = reference_states
         self._mbar = None
         self._kT = None
+        if analysis_kwargs is not None and type(analysis_kwargs) is not dict:
+            raise ValueError('analysis_kwargs must be either None or a dictionary')
+        self._extra_analysis_kwargs = analysis_kwargs
 
     @property
     def name(self):
@@ -473,8 +479,10 @@ class YankPhaseAnalyzer(ABC):
 
         # Initialize MBAR (computing free energy estimates, which may take a while)
         logger.info("Computing free energy differences...")
-        mbar = MBAR(energy_matrix, samples_per_state)
-
+        if self._extra_analysis_kwargs is not None:
+            mbar = MBAR(energy_matrix, samples_per_state, **self._extra_analysis_kwargs)
+        else:
+            mbar = MBAR(energy_matrix, samples_per_state)
         self._mbar = mbar
 
     def _combine_phases(self, other, operator='+'):

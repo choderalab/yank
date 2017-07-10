@@ -55,6 +55,7 @@ import openmmtools as mmtools
 from openmmtools.states import ThermodynamicState
 
 from . import utils, mpi, version
+from .analyze import RepexPhase
 
 logger = logging.getLogger(__name__)
 
@@ -93,10 +94,9 @@ class Reporter(object):
         If None: the derived checkpoint name is the same as storage, less any extension, then "_checkpoint.nc" is added
         The reporter internally tracks what data goes into which file, so its transparent to all other classes
         In the future, this will be able to take Storage classes as well
-
-
     """
     def __init__(self, storage, open_mode=None, checkpoint_interval=10, checkpoint_storage_file=None):
+        # Handle checkpointing
         if type(checkpoint_interval) != int:
             raise ValueError("checkpoint_interval must be an integer!")
         dirname, filename = os.path.split(storage)
@@ -946,6 +946,48 @@ class Reporter(object):
             packed_data[0] = data_str
             nc_variable[:] = packed_data
 
+    def read_mbar_weights(self, iteration):
+        """
+        Read the MBAR weights
+
+        Used primarily in online analysis, and should be used in tandem with an YankPhaseAnalysis object from the
+        analyze module
+
+        Parameters
+        ----------
+        iteration : iteration to read the weights from, if the iteration was not written at a the given iteration,
+            then the weights are all 0
+
+        Returns
+        -------
+        f_k : 1-D ndarray of floats
+            MBAR weights from the iteration.
+        """
+        f_k = self._storage_analysis.variables['f_k'][iteration]
+        return f_k
+
+    def write_mbar_weights(self, iteration, f_k):
+        """
+        Compute and write the mbar weights at the current iteration
+
+        Used primarily in online analysis, and should be used in tandem with an YankPhaseAnalysis object from the
+        analyze module
+
+        Parameters
+        ----------
+        iteration : iteration at which to compute the free energy.
+            Reads the current energy up to this value and stores it in the analysis reporter
+        f_k : weights you wish to store
+
+        """
+        analysis_nc = self._storage_analysis
+        if 'f_k' not in analysis_nc.dimensions:
+            analysis_nc.createDimension('f_k_length', len(f_k))
+            # larger chunks, faster operations, small matrix anyways
+            analysis_nc.createVariable('f_k', float, dimensions=('iteration', 'f_k_length'),
+                                       zlib=True, chunksizes=(10, len(f_k)))
+        analysis_nc.variables['f_k'][iteration] = f_k
+
     def get_previous_checkpoint(self, iteration):
         """
         Find the most recently written checkpoint given the iteration searching backwards.
@@ -1102,6 +1144,15 @@ class ReplicaExchange(object):
     replica_mixing_scheme : 'swap-all', 'swap-neighbors' or 'none'
         The scheme used to swap thermodynamic states between replicas
         (default is 'swap-all').
+    online_analysis_interval : None or Int >= 1, optional, default None
+        Choose the interval at which to perform online analysis of the free energy.
+        After every interval, the simulation will be stopped and the free energy estimated. If the error in the free
+            energy estimate is at or below online_analysis_target_error, then the simulation will be considered
+            completed.
+    online_analysis_target_error : float >= 0
+        The target error for the online analysis. Once the free energy is at or below this value, the phase
+            will be considered complete.
+        If online_analysis_interval is None, this option does nothing.
 
     Attributes
     ----------
@@ -1181,7 +1232,8 @@ class ReplicaExchange(object):
     # Constructors.
     # -------------------------------------------------------------------------
 
-    def __init__(self, mcmc_moves=None, number_of_iterations=1, replica_mixing_scheme='swap-all'):
+    def __init__(self, mcmc_moves=None, number_of_iterations=1, replica_mixing_scheme='swap-all',
+                 online_analysis_interval=None, online_analysis_target_error=1.0):
 
         # Check argument values.
         if replica_mixing_scheme not in self._SUPPORTED_MIXING_SCHEMES:
@@ -1201,8 +1253,38 @@ class ReplicaExchange(object):
         # Store constructor parameters. Everything is marked for internal
         # usage because any change to these attribute implies a change
         # in the storage file as well.
+        if number_of_iterations is None:  # Support infinite run
+            number_of_iterations = np.inf
         self._number_of_iterations = number_of_iterations
         self._replica_mixing_scheme = replica_mixing_scheme
+        # Handle Online Analysis
+        if online_analysis_interval is not None and (
+                        type(online_analysis_interval) != int or online_analysis_interval < 1):
+            raise ValueError("online_analysis_interval must be an integer 1 or greater")
+        if online_analysis_interval is not None:
+            if online_analysis_target_error < 0:
+                raise ValueError("online_analysis_target_error must be a float >= 0")
+            elif online_analysis_target_error == 0:
+                logger.warn("online_analysis_target_error of 0 may never converge.")
+
+        # Store all the options
+        self._online_analysis_interval = online_analysis_interval
+        self._online_analysis_target_error = online_analysis_target_error
+
+        if self._number_of_iterations == np.inf:
+            if self._number_of_iterations == np.inf:
+                logger.warning("WARNING! You have specified an unlimited number of iterations and a target error "
+                               "for online analysis of 0.0! Your simulation may never reach 'completed' state!")
+            else:
+                logger.warning("WARNING! This simulation will never be considered 'complete' since there is no "
+                               "specified maximum number of iterations nor target uncertainty in free energy estimate!")
+        # Handle online analysis
+        self._online_analysis_interval = None
+
+        self._online_analysis_target_error = None
+        self._last_mbar_f_k = None
+        # A "Have we met any of the stop condition targets? Or a type of "work complete, zug zug"
+        self._at_stop_target = None
 
         # These will be set on initialization. See function
         # create() for explanation of single variables.
@@ -1217,8 +1299,6 @@ class ReplicaExchange(object):
         self._n_proposed_matrix = None
         self._reporter = None
         self._metadata = None
-        # Handle checkpointing
-        self._checkpoint_interval = None
 
     @classmethod
     def from_storage(cls, storage):
@@ -1386,6 +1466,15 @@ class ReplicaExchange(object):
     def metadata(self):
         """A copy of the metadata passed on creation (read-only)."""
         return copy.deepcopy(self._metadata)
+
+    @property
+    def at_stop_target(self):
+        """"Have we reached any of the stop target criterias?" (read-only)"""
+        if self._at_stop_target is None:
+            output = False
+        else:
+            output = self._at_stop_target
+        return output
 
     # -------------------------------------------------------------------------
     # Main public interface.
@@ -1598,7 +1687,7 @@ class ReplicaExchange(object):
         # Update stored positions.
         mpi.run_single_node(0, self._reporter.write_sampler_states, self._sampler_states, self._iteration)
 
-    def run(self, n_iterations=None):
+    def run(self, n_iterations=None, continue_past_online_target=False):
         """Run the replica-exchange simulation.
 
         This runs at most `number_of_iterations` iterations. Use `extend()`
@@ -1609,6 +1698,8 @@ class ReplicaExchange(object):
         n_iterations : int, optional
            If specified, only at most the specified number of iterations
            will be run (default is None).
+        continue_past_online_target : bool, optional, default False
+            If specified, the simulation will continue past the online_analysis_target_error
 
         """
         # If this is the first iteration, compute and store the
@@ -1629,7 +1720,7 @@ class ReplicaExchange(object):
         else:
             iteration_limit = min(self._iteration + n_iterations, self._number_of_iterations)
 
-        while self._iteration < iteration_limit:
+        while not self._at_stop_target:
             # Increment iteration counter.
             self._iteration += 1
 
@@ -1648,6 +1739,19 @@ class ReplicaExchange(object):
 
             # Write iteration to storage file.
             self._report_iteration()
+
+            # Compute online free energy
+            if (self._online_analysis_interval is not None and self._iteration > 0 and
+                            self._iteration % self._online_analysis_interval == 0):
+                self._run_online_analysis()
+            free_energy_error = None
+
+            # Check if work complete
+            if (free_energy_error is not None and free_energy_error <= self._online_analysis_target_error
+                and not continue_past_online_target):  # Online + below error + overwrite
+                self._at_stop_target = True
+            elif self._iteration >= iteration_limit:  # Stop at iteration limit regardless
+                self._at_stop_target = True
 
             # Show timing statistics if debug level is activated.
             if logger.isEnabledFor(logging.DEBUG):
@@ -1678,7 +1782,7 @@ class ReplicaExchange(object):
 
         """
         if self._iteration + n_iterations > self._number_of_iterations:
-            self.number_of_iterations = self._iteration + n_iterations
+            self._number_of_iterations = self._iteration + n_iterations
         self.run(n_iterations)
 
     def __repr__(self):
@@ -1686,31 +1790,31 @@ class ReplicaExchange(object):
         # TODO: Can we make this a more useful expression?
         return "<instance of ReplicaExchange>"
 
-    def __str__(self):
-        """
-        Show an 'informal' human-readable representation of the replica-exchange simulation.
-
-        """
-        r = "Replica-exchange simulation\n"
-        r += "\n"
-        r += "{:d} replicas\n".format(self.nreplicas)
-        r += "{:d} coordinate sets provided\n".format(len(self.provided_positions))
-        r += "file store: {:s}\n".format(self.store_filename)
-        r += "initialized: {:s}\n".format(self._initialized)
-        r += "\n"
-        r += "PARAMETERS\n"
-        r += "collision rate: {:s}\n".format(self.collision_rate)
-        r += "relative constraint tolerance: {:s}\n".format(self.constraint_tolerance)
-        r += "timestep: {:s}\n".format(self.timestep)
-        r += "number of steps/iteration: {:d}\n".format(self.nsteps_per_iteration)
-        r += "number of iterations: {:d}\n".format(self.number_of_iterations)
-        if self.extend_simulation:
-            r += "Iterations extending existing data.\n"
-        r += "equilibration timestep: {:s}\n".format(self.equilibration_timestep)
-        r += "number of equilibration iterations: {:d}\n".format(self.number_of_equilibration_iterations)
-        r += "\n"
-
-        return r
+    # Disabled until we have a better answer to this
+    # def __str__(self):
+    #     """
+    #     Show an 'informal' human-readable representation of the replica-exchange simulation.
+    #     """
+    #     r = "Replica-exchange simulation\n"
+    #     r += "\n"
+    #     r += "{:d} replicas\n".format(self.nreplicas)
+    #     r += "{:d} coordinate sets provided\n".format(len(self.provided_positions))
+    #     r += "file store: {:s}\n".format(self.store_filename)
+    #     r += "initialized: {:s}\n".format(self._initialized)
+    #     r += "\n"
+    #     r += "PARAMETERS\n"
+    #     r += "collision rate: {:s}\n".format(self.collision_rate)
+    #     r += "relative constraint tolerance: {:s}\n".format(self.constraint_tolerance)
+    #     r += "timestep: {:s}\n".format(self.timestep)
+    #     r += "number of steps/iteration: {:d}\n".format(self.nsteps_per_iteration)
+    #     r += "number of iterations: {:d}\n".format(self._number_of_iterations)
+    #     if self.extend_simulation:
+    #         r += "Iterations extending existing data.\n"
+    #     r += "equilibration timestep: {:s}\n".format(self.equilibration_timestep)
+    #     r += "number of equilibration iterations: {:d}\n".format(self.number_of_equilibration_iterations)
+    #     r += "\n"
+    #
+    #     return r
 
     def __del__(self):
         # The reporter could be None if ReplicaExchange was not created.
@@ -2098,6 +2202,44 @@ class ReplicaExchange(object):
             # Accumulate statistics.
             self._n_accepted_matrix[thermodynamic_state_i, thermodynamic_state_j] += 1
             self._n_accepted_matrix[thermodynamic_state_j, thermodynamic_state_i] += 1
+
+    # -------------------------------------------------------------------------
+    # Internal-usage: Online Analysis.
+    # -------------------------------------------------------------------------
+
+    @mpi.on_single_node(rank=0, broadcast_result=False, sync_nodes=False)
+    @mpi.delayed_termination
+    @mmtools.utils.with_timer('Computing online free energy estimate')
+    def _run_online_analysis(self):
+        # Prep the reporter
+        self._reporter.close()
+        self._reporter.open('r')
+        if self._last_mbar_f_k is None:
+            # Backwards search for last weights, don't need the 0th iteration because the weights are 0
+            for index in range(self._iteration, 0, -1):
+                f_k = self._reporter.read_mbar_weights(index)
+                # Find an f_k that is not all zeros
+                if not np.all(f_k == 0):
+                    self._last_mbar_f_k = f_k
+                    break  # Don't need to continue the loop if we already found one
+        # Start the analysis
+        analysis = RepexPhase(self._reporter, analysis_kwargs={'initial_f_k': self._last_mbar_f_k})
+        # Indices for online analysis, "i'th index, j'th index"
+        idx, jdx = 0, -1
+        timer = mmtools.utils.Timer()
+        timer.start("MBAR")
+        logger.debug("Computing free energy with MBAR...")
+        mbar = analysis.mbar
+        free_energy, err_free_energy = analysis.get_free_energy()
+        timer.end("MBAR")
+        logger.debug("Current Free Energy Estimate is {} +- {}".format(free_energy[idx, jdx],
+                                                                       err_free_energy[idx, jdx]))
+        self._last_mbar_f_k = mbar.f_k
+        # Make sure the reporter is back in a usable state
+        self._reporter.close()
+        self._reporter.open('a')
+        # Write out the numbers
+        self._reporter.write_mbar_weights(self._iteration, self._last_mbar_f_k)
 
 
 # ==============================================================================
