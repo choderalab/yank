@@ -2228,12 +2228,15 @@ class ReplicaExchange(object):
         self._reporter.open('r')
         if self._last_mbar_f_k is None:
             # Backwards search for last weights, don't need the 0th iteration because the weights are 0
-            for index in range(self._iteration, 0, -1):
-                f_k = self._reporter.read_mbar_weights(index)
-                # Find an f_k that is not all zeros
-                if not np.all(f_k == 0):
-                    self._last_mbar_f_k = f_k
-                    break  # Don't need to continue the loop if we already found one
+            try:
+                for index in range(self._iteration, 0, -1):
+                    f_k = self._reporter.read_mbar_weights(index)
+                    # Find an f_k that is not all zeros
+                    if not np.all(f_k == 0):
+                        self._last_mbar_f_k = f_k
+                        break  # Don't need to continue the loop if we already found one
+            except (IndexError, KeyError):  # No such f_k written yet (or variable created), no need to do anything
+                pass
         # Start the analysis
         bump_error_counter = False
         analysis = RepexPhase(self._reporter, analysis_kwargs={'initial_f_k': self._last_mbar_f_k})
