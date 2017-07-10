@@ -1153,6 +1153,10 @@ class ReplicaExchange(object):
         The target error for the online analysis. Once the free energy is at or below this value, the phase
             will be considered complete.
         If online_analysis_interval is None, this option does nothing.
+    online_analysis_minimum_iterations : int >= 0, optional, default 50
+        Set the minimum number of iterations which must pass before online analysis is carried out.
+        Since the initial samples are likley not to yeild a good estimate of free energy, save time and just skip them
+        If online_analysis_interval is None, this does nothing
 
     Attributes
     ----------
@@ -1233,7 +1237,8 @@ class ReplicaExchange(object):
     # -------------------------------------------------------------------------
 
     def __init__(self, mcmc_moves=None, number_of_iterations=1, replica_mixing_scheme='swap-all',
-                 online_analysis_interval=None, online_analysis_target_error=1.0):
+                 online_analysis_interval=None, online_analysis_target_error=1.0,
+                 online_analysis_minimum_iterations=50):
 
         # Check argument values.
         if replica_mixing_scheme not in self._SUPPORTED_MIXING_SCHEMES:
@@ -1266,10 +1271,13 @@ class ReplicaExchange(object):
                 raise ValueError("online_analysis_target_error must be a float >= 0")
             elif online_analysis_target_error == 0:
                 logger.warn("online_analysis_target_error of 0 may never converge.")
+            if type(online_analysis_minimum_iterations) is not int or online_analysis_minimum_iterations < 0:
+                raise ValueError("online_analysis_minimum_iterations must be an integer >= 0")
 
         # Store all the options
         self._online_analysis_interval = online_analysis_interval
         self._online_analysis_target_error = online_analysis_target_error
+        self._online_analysis_minimum_iterations = online_analysis_minimum_iterations
 
         if self._number_of_iterations == np.inf:
             if self._number_of_iterations == np.inf:
@@ -1284,7 +1292,7 @@ class ReplicaExchange(object):
         self._online_analysis_target_error = None
         self._last_mbar_f_k = None
         # A "Have we met any of the stop condition targets? Or a type of "work complete, zug zug"
-        self._at_stop_target = None
+        self._is_completed = None
 
         # These will be set on initialization. See function
         # create() for explanation of single variables.
@@ -1468,12 +1476,12 @@ class ReplicaExchange(object):
         return copy.deepcopy(self._metadata)
 
     @property
-    def at_stop_target(self):
+    def is_completed(self):
         """"Have we reached any of the stop target criterias?" (read-only)"""
-        if self._at_stop_target is None:
+        if self._is_completed is None:
             output = False
         else:
-            output = self._at_stop_target
+            output = self._is_completed
         return output
 
     # -------------------------------------------------------------------------
@@ -1720,7 +1728,7 @@ class ReplicaExchange(object):
         else:
             iteration_limit = min(self._iteration + n_iterations, self._number_of_iterations)
 
-        while not self._at_stop_target:
+        while not self._is_completed:
             # Increment iteration counter.
             self._iteration += 1
 
@@ -1741,17 +1749,18 @@ class ReplicaExchange(object):
             self._report_iteration()
 
             # Compute online free energy
-            if (self._online_analysis_interval is not None and self._iteration > 0 and
-                            self._iteration % self._online_analysis_interval == 0):
+            if (self._online_analysis_interval is not None and
+                    self._iteration > self._online_analysis_minimum_iterations and
+                    self._iteration % self._online_analysis_interval == 0):
                 self._run_online_analysis()
             free_energy_error = None
 
             # Check if work complete
             if (free_energy_error is not None and free_energy_error <= self._online_analysis_target_error
-                and not continue_past_online_target):  # Online + below error + overwrite
-                self._at_stop_target = True
+                    and not continue_past_online_target):  # Online + below error + overwrite
+                self._is_completed = True
             elif self._iteration >= iteration_limit:  # Stop at iteration limit regardless
-                self._at_stop_target = True
+                self._is_completed = True
 
             # Show timing statistics if debug level is activated.
             if logger.isEnabledFor(logging.DEBUG):

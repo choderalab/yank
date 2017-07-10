@@ -1077,8 +1077,6 @@ class YamlPhaseFactory(object):
         'number_of_equilibration_iterations': 0,
         'equilibration_timestep': 1.0 * unit.femtosecond,
         'checkpoint_interval': 10,
-        'online_analysis_interval': None,
-        'online_analysis_target_error': 1.0,
     }
 
     def __init__(self, sampler, thermodynamic_state, sampler_states, topography,
@@ -1206,6 +1204,10 @@ class YamlExperiment(object):
                 # Update phase iteration info.
                 iterations_left[phase_id] -= iterations_to_run
                 self._phases_last_iterations[phase_id] = alchemical_phase.iteration
+
+                # Do one last check to see if the phase has converged by other means (e.g. online analysis)
+                if alchemical_phase.is_complete:
+                    self._phases_last_iterations[phase_id] = 0
 
                 # Delete alchemical phase and prepare switching.
                 del alchemical_phase
