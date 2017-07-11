@@ -45,7 +45,6 @@ import yaml
 import inspect
 import logging
 import datetime
-import operator
 import collections
 
 import numpy as np
@@ -1816,7 +1815,7 @@ class ReplicaExchange(object):
                 time_per_iteration = partial_total_time / (self._iteration - run_initial_iteration)
                 estimated_time_remaining = time_per_iteration * (iteration_limit - self._iteration)
                 estimated_total_time = time_per_iteration * iteration_limit
-                estimated_finish_time = partial_total_time + estimated_time_remaining
+                estimated_finish_time = time.time() + estimated_time_remaining
                 logger.debug("Iteration took {:.3f}s.".format(iteration_time))
                 logger.debug("Estimated completion in {}, at {} (consuming total wall clock time {}).".format(
                     str(datetime.timedelta(seconds=estimated_time_remaining)), time.ctime(estimated_finish_time),
