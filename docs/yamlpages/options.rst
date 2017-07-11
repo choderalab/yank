@@ -414,7 +414,16 @@ number_of_iterations
 Number of iterations for production simulation. Note: If :ref:`resume_simulation <yaml_options_resume_simulation>` is
 set, this option can be used to extend previous simulations past their original number of iterations.
 
-Valid Options (1): <Integer>
+Specifying ``0`` will run through the setup, create all the simulation files, store all options, and minimize the
+initial configurations (if specified), but will not run any production simulations.
+
+Set this to ``null`` to run an unlimited number of iterations. The simulation will not stop unless
+some other criteria is stops it. We **strongly** recommend specifying either
+:ref:`online free energy analysis <yaml_options_online_analysis_parameters>` and/or
+:ref:`a phase switching interval <switch_phase_interval>` to ensure there is at least some stop criteria, and all
+phases yield some samples.
+
+Valid Options (1): <Integer> or ``null``
 
 
 ..
@@ -689,13 +698,14 @@ online_analysis_target_error
    options:
       online_analysis_target_error: 1.0
 
-The target error for the online analysis measured in kT. Once the free energy is at or below this value, the phase will be considered complete.
+The target error for the online analysis measured in kT per phase. Once the free energy is at or below this value,
+the phase will be considered complete.
 This value should be a number greater than 0, even though 0 is a valid option. The error free energy estimate between states
-is never zero except in very rare cases
+is never zero except in very rare cases, so your simulation may never converge if you set this to 0.
 
 If :ref:`yaml_options_online_analysis_interval` is ``null``, this option does nothing.
 
-Valid Options (1.0): <Float >= 0>
+Valid Options (0.2): <Float >= 0>
 
 
 .. _yaml_options_online_analysis_minimum_iterations:
@@ -709,7 +719,7 @@ online_analysis_minimum_iterations
 
 Number of iterations that are skipped at the beginning of the simulation before online analysis is attempted. This is
 a speed option since most of the initial iterations will be either equilibration or under sampled. We recommend choosing
-an initial number that is at least one or two ref:`yaml_options_online_analysis_interval`'s for speed's sake.
+an initial number that is *at least* one or two :ref:`yaml_options_online_analysis_interval`'s for speed's sake.
 
 The first iteration at which online analysis is performed is not affected by this number and always tracked as the
 modulo of the current iteration. E.g. if you have ``online_analysis_interval: 100` and
@@ -717,4 +727,4 @@ modulo of the current iteration. E.g. if you have ``online_analysis_interval: 10
 
 If :ref:`yaml_options_online_analysis_interval` is ``null``, this option does nothing.
 
-Valid Options (50)
+Valid Options (50): <Int >=1>
