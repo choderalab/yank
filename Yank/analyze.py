@@ -201,7 +201,8 @@ class YankPhaseAnalyzer(ABC):
                 O[i,j] = O[j] - O[i]
         analysis_kwargs : None or dict, optional
             Dictionary of extra keyword arguments to pass into the analysis tool, typically MBAR.
-            For instance, the initial guess of weights to give to MBAR would be something like {'f_k':[0,1,2,3]}
+            For instance, the initial guess of relative free energies to give to MBAR would be something like:
+                {'f_k':[0,1,2,3]}
         """
         if not reporter.is_open():
             reporter.open(mode='r')
