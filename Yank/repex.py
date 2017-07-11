@@ -55,7 +55,6 @@ import openmmtools as mmtools
 from openmmtools.states import ThermodynamicState
 
 from . import utils, mpi, version
-from .analyze import RepexPhase
 from pymbar.utils import ParameterError
 
 logger = logging.getLogger(__name__)
@@ -2266,6 +2265,13 @@ class ReplicaExchange(object):
     @mpi.delayed_termination
     @mmtools.utils.with_timer('Computing online free energy estimate')
     def _run_online_analysis(self):
+        """Compute the free energy during simulation run"""
+        # This relative import is down here because having it at the top causes an ImportError.
+        # __init__ pulls in repex, which pulls in analyze, which pulls in repex. Because the first repex never finished
+        # importing, its not in the name space which causes relative analyze import of repex to crash as neither of them
+        # are the __main__ package.
+        # https://stackoverflow.com/questions/6351805/cyclic-module-dependencies-and-relative-imports-in-python
+        from .analyze import RepexPhase
         if self._last_mbar_f_k is None:
             # Backwards search for last free energies, don't need the 0th iteration because the guess f_k are 0
             try:
@@ -2285,7 +2291,7 @@ class ReplicaExchange(object):
         timer = mmtools.utils.Timer()
         timer.start("MBAR")
         logger.debug("Computing free energy with MBAR...")
-        try:
+        try:  # Trap errors for MBAR being under sampled and the W_nk matrix not being normalized correctly
             mbar = analysis.mbar
             free_energy, err_free_energy = analysis.get_free_energy()
             output_fe = free_energy[idx, jdx]
