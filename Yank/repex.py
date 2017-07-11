@@ -1464,46 +1464,45 @@ class ReplicaExchange(object):
         """
         Descriptor of a property stored as an option.
 
-        static_validate_function is a simple static function for checking things like "X > 0"
-        instanced_validate_function is a function which relies on the instance, like "if Y == True, then check X"
-        both of these are the string name of the function
+        validate_function is a simple function for checking things like "X > 0", but exposes both the
+            ReplicaExchange instance and the new value for the variable, in that order.
+        More complex checks which relies on the ReplicaExchange instance, like "if Y == True, then check X" can be
+            accessed through the instance object of the function
 
         """
-        def __init__(self, option_name, static_validate_function=None, instanced_validate_function=None):
+        def __init__(self, option_name, validate_function=None):
             self._option_name = option_name
-            self._static_validate_function = static_validate_function
-            self._instanced_validate_function = instanced_validate_function
+            self._validate_function = validate_function
 
         def __get__(self, instance, owner_class=None):
             return getattr(instance, '_' + self._option_name)
 
         def __set__(self, instance, new_value):
-            if self._static_validate_function is not None:
-                getattr(self, self._static_validate_function)(new_value)
-            if self._instanced_validate_function is not None:
-                getattr(self, self._instanced_validate_function)(new_value, instance)
+            if self._validate_function is not None:
+                self._validate_function(instance, new_value)
             setattr(instance, '_' + self._option_name, new_value)
             mpi.run_single_node(0, instance._store_options)
 
         # ----------------------------------
         # Value Validation of the properties
+        # Should be @staticmethod with arguments of (instance, value) in that order, even if instance is not used
         # ----------------------------------
 
         @staticmethod
-        def _repex_mixing_scheme_check(replica_mixing_scheme):
+        def _repex_mixing_scheme_check(instance, replica_mixing_scheme):
             if replica_mixing_scheme not in ReplicaExchange._SUPPORTED_MIXING_SCHEMES:
                 raise ValueError(("Unknown replica mixing scheme '{}'. Supported values "
                                   "are {}.").format(replica_mixing_scheme, ReplicaExchange._SUPPORTED_MIXING_SCHEMES))
 
         @staticmethod
-        def _oa_interval_check(online_analysis_interval):
+        def _oa_interval_check(instance, online_analysis_interval):
             """Check the online_analysis_interval value for consistency"""
             if online_analysis_interval is not None and (
                             type(online_analysis_interval) != int or online_analysis_interval < 1):
                 raise ValueError("online_analysis_interval must be an integer 1 or greater, or None")
 
         @staticmethod
-        def _oa_target_error_check(online_analysis_target_error, instance):
+        def _oa_target_error_check(instance, online_analysis_target_error):
             if instance.online_analysis_target_error is not None:
                 if online_analysis_target_error < 0:
                     raise ValueError("online_analysis_target_error must be a float >= 0")
@@ -1511,20 +1510,20 @@ class ReplicaExchange(object):
                     logger.warn("online_analysis_target_error of 0 may never converge.")
 
         @staticmethod
-        def _oa_min_iter_check(online_analysis_minimum_iterations, instance):
+        def _oa_min_iter_check(instance, online_analysis_minimum_iterations):
             if instance.online_analysis_target_error is not None:
                 if type(online_analysis_minimum_iterations) is not int or online_analysis_minimum_iterations < 0:
                     raise ValueError("online_analysis_minimum_iterations must be an integer >= 0")
 
     number_of_iterations = _StoredProperty('number_of_iterations')
     replica_mixing_scheme = _StoredProperty('replica_mixing_scheme',
-                                            static_validate_function='_repex_mixing_scheme_check')
+                                            validate_function=_StoredProperty._repex_mixing_scheme_check)
     online_analysis_interval = _StoredProperty('online_analysis_interval',
-                                               static_validate_function='_oa_interval_check')
+                                               validate_function=_StoredProperty._oa_interval_check)
     online_analysis_target_error = _StoredProperty('online_analysis_target_error',
-                                                   instanced_validate_function='_oa_target_error_check')
+                                                   validate_function=_StoredProperty._oa_target_error_check)
     online_analysis_minimum_iterations = _StoredProperty('online_analysis_minimum_iterations',
-                                                         instanced_validate_function='_oa_min_iter_check')
+                                                         validate_function=_StoredProperty._oa_min_iter_check)
     @property
     def metadata(self):
         """A copy of the metadata passed on creation (read-only)."""
