@@ -949,8 +949,9 @@ class Reporter(object):
     def read_mbar_free_energies(self, iteration):
         """
         Read the MBAR dimensionless free energy at a given iteration from file. These free energies are relative to
-        the first state. These are computed through self-consistent iterations from an initial guess. The initial
-        guess is often 0 for all states, so any state not written is returned as zeros.
+        the first state. These are computed through self-consistent iterations from an initial guess.
+        The initial guess is often 0 for all states, so any state not written is returned as zeros for f_k, and
+            infinity for
 
         Used primarily in online analysis, and should be used in tandem with an YankPhaseAnalysis object from the
         analyze module
@@ -964,11 +965,15 @@ class Reporter(object):
         -------
         f_k : 1-D ndarray of floats
             MBAR free_energies from the iteration.
+        free_energy : tuple of two Floats
+            Free energy estimate at the iteration between the end states
         """
-        f_k = self._storage_analysis.variables['f_k'][iteration]
-        return f_k
+        online_group = self._storage_analysis.groups['online_analysis']
+        f_k = online_group.variables['f_k'][iteration]
+        free_energy = online_group.variables['D_f'][iteration, :]
+        return f_k, free_energy
 
-    def write_mbar_free_energies(self, iteration, f_k):
+    def write_mbar_free_energies(self, iteration, f_k, free_energy):
         """
         Write the mbar free energies at the current iteration. See read_mbar_free_energies for more information about
         pymbar's f_k free energies
@@ -984,15 +989,25 @@ class Reporter(object):
         f_k : 1D array of floats,
             Dimensionless free energies you wish to store. This should come from pymbar.MBAR.f_k from an initialized
                 MBAR object.
+        free_energy : tuple of two floats
+            Current estimate of the free energy difference of the phase and its error.
+            This should be of the form (free_energy, error_in_free_energy)
+            Typically output of the pymbar.MBAR.getFreeEnergyDifferences()[i,j]
 
         """
         analysis_nc = self._storage_analysis
-        if 'f_k' not in analysis_nc.dimensions:
+        if 'f_k_length' not in analysis_nc.dimensions:
             analysis_nc.createDimension('f_k_length', len(f_k))
+            analysis_nc.createDimension('Df', 2)
+            online_group = analysis_nc.createGroup('online_analysis')
             # larger chunks, faster operations, small matrix anyways
-            analysis_nc.createVariable('f_k', float, dimensions=('iteration', 'f_k_length'),
+            online_group.createVariable('f_k', float, dimensions=('iteration', 'f_k_length'),
                                        zlib=True, chunksizes=(10, len(f_k)), fill_value=0)
-        analysis_nc.variables['f_k'][iteration] = f_k
+            online_group.createVariable('free_energy', float, dimensions=('iteration', 'Df'),
+                                        zlib=True, chunksizes=(10, 2), fill_value=np.inf)
+        online_group = analysis_nc.groups['online_analysis']
+        online_group.variables['f_k'][iteration] = f_k
+        online_group.variables['D_f'][iteration, :] = free_energy
 
     def get_previous_checkpoint(self, iteration):
         """
@@ -1294,12 +1309,10 @@ class ReplicaExchange(object):
             elif self._online_analysis_interval is None:
                 logger.warning("WARNING! This simulation will never be considered 'complete' since there is no "
                                "specified maximum number of iterations!")
-        # Handle online analysis
-        self._online_analysis_interval = None
-        self._online_analysis_target_error = None
+
         self._last_mbar_f_k = None
         # A "Have we met any of the stop condition targets? Or a type of "work complete, zug zug"
-        self._is_completed = None
+        self._is_completed = False
 
         # These will be set on initialization. See function
         # create() for explanation of single variables.
@@ -1530,7 +1543,7 @@ class ReplicaExchange(object):
     @property
     def is_completed(self):
         """"Have we reached any of the stop target criterias?" (read-only)"""
-        return self._is_completed if self._is_completed is not None else False
+        return self._is_completed
 
     # -------------------------------------------------------------------------
     # Main public interface.
@@ -1773,6 +1786,9 @@ class ReplicaExchange(object):
         else:
             iteration_limit = min(self._iteration + n_iterations, self._number_of_iterations)
 
+        # Check completed conditions
+        self._is_completed = self._check_completion(iteration_limit)
+
         while not self._is_completed:
             # Increment iteration counter.
             self._iteration += 1
@@ -1802,10 +1818,7 @@ class ReplicaExchange(object):
 
             # Check if work complete
             # Online + below error
-            if free_energy_error is not None and free_energy_error <= self._online_analysis_target_error:
-                self._is_completed = True
-            elif self._iteration >= iteration_limit:  # Stop at iteration limit regardless
-                self._is_completed = True
+            self._is_completed = self._check_completion(iteration_limit, free_energy_error=free_energy_error)
 
             # Show timing statistics if debug level is activated.
             if logger.isEnabledFor(logging.DEBUG):
@@ -2274,15 +2287,7 @@ class ReplicaExchange(object):
         from .analyze import RepexPhase
         if self._last_mbar_f_k is None:
             # Backwards search for last free energies, don't need the 0th iteration because the guess f_k are 0
-            try:
-                for index in range(self._iteration, 0, -1):
-                    f_k = self._reporter.read_mbar_free_energies(index)
-                    # Find an f_k that is not all zeros
-                    if not np.all(f_k == 0):
-                        self._last_mbar_f_k = f_k
-                        break  # Don't need to continue the loop if we already found one
-            except (IndexError, KeyError):  # No such f_k written yet (or variable created), no need to do anything
-                pass
+            self._last_mbar_f_k, _ = self._get_last_written_free_energy()
         # Start the analysis
         bump_error_counter = False
         analysis = RepexPhase(self._reporter, analysis_kwargs={'initial_f_k': self._last_mbar_f_k})
@@ -2314,8 +2319,37 @@ class ReplicaExchange(object):
                 raise RuntimeError("Online Analysis has failed too many times! Please check the latest logs to see "
                                    "the thrown errors!")
         # Write out the numbers
-        self._reporter.write_mbar_free_energies(self._iteration, self._last_mbar_f_k)
+        self._reporter.write_mbar_free_energies(self._iteration, self._last_mbar_f_k, (output_fe, output_dfe))
         return output_dfe
+
+    def _get_last_written_free_energy(self):
+        last_f_k = None
+        last_free_energy = None
+        try:
+            for index in range(self._iteration, 0, -1):
+                last_f_k, last_free_energy = self._reporter.read_mbar_free_energies(index)
+                # Find an f_k that is not all zeros (or masked and empty)
+                if not np.ma.is_masked(last_f_k) and np.all(last_f_k == 0):
+                    break  # Don't need to continue the loop if we already found one
+        except (IndexError, KeyError):  # No such f_k written yet (or variable created), no need to do anything
+            pass
+        return last_f_k, last_free_energy
+
+    def _check_completion(self, iteration_limit, free_energy_error=None):
+        """Check if we have completed the run previously
+        Accepts kwarg for free_energy_error to save time when this is already completed
+            in the online analysis at run time
+        """
+        completed = False
+        # Case where we are running the online free energy and feed in nothing for the error
+        if self._online_analysis_interval is not None and free_energy_error is None:
+                _, last_free_energy = self._get_last_written_free_energy()
+                _, free_energy_error = last_free_energy
+        if free_energy_error is not None and free_energy_error <= self._online_analysis_target_error:
+            completed = True
+        elif self._iteration >= iteration_limit:  # Stop at iteration limit regardless
+            completed = True
+        return completed
 
 
 # ==============================================================================

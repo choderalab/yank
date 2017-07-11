@@ -691,6 +691,17 @@ class TestReplicaExchange(object):
                 original_dict.pop('_cached_transition_counts', None)
                 original_dict.pop('_cached_last_replica_thermodynamic_states', None)
 
+                # Check that the original completed,
+                # No need to check restored since _is_completed is not cached, just computed on the fly
+                original_completed = original_dict.pop('_is_completed')
+                if iteration == 0:
+                    # Should not be completed on first pass
+                    assert not original_completed
+                else:
+                    # Is completed after going through all iterations (see end of this loop)
+                    assert original_completed
+                _ = restored_dict.pop('_is_completed')
+
                 # Check all other arrays. Instantiate list so that we can pop from original_dict.
                 for attr, original_value in list(original_dict.items()):
                     if isinstance(original_value, np.ndarray):
