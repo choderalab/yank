@@ -227,9 +227,9 @@ class YankPhaseAnalyzer(ABC):
         self.reference_states = reference_states
         self._mbar = None
         self._kT = None
-        if analysis_kwargs is not None and type(analysis_kwargs) is not dict:
+        if type(analysis_kwargs) not in [type(None), dict]:
             raise ValueError('analysis_kwargs must be either None or a dictionary')
-        self._extra_analysis_kwargs = analysis_kwargs
+        self._extra_analysis_kwargs = analysis_kwargs if (analysis_kwargs is not None) else dict()
 
     @property
     def name(self):
@@ -479,10 +479,7 @@ class YankPhaseAnalyzer(ABC):
 
         # Initialize MBAR (computing free energy estimates, which may take a while)
         logger.info("Computing free energy differences...")
-        if self._extra_analysis_kwargs is not None:
-            mbar = MBAR(energy_matrix, samples_per_state, **self._extra_analysis_kwargs)
-        else:
-            mbar = MBAR(energy_matrix, samples_per_state)
+        mbar = MBAR(energy_matrix, samples_per_state, **self._extra_analysis_kwargs)
         self._mbar = mbar
 
     def _combine_phases(self, other, operator='+'):

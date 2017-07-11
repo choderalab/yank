@@ -43,8 +43,9 @@ import time
 import uuid
 import yaml
 import inspect
-import datetime
 import logging
+import datetime
+import operator
 import collections
 
 import numpy as np
@@ -947,38 +948,44 @@ class Reporter(object):
             packed_data[0] = data_str
             nc_variable[:] = packed_data
 
-    def read_mbar_weights(self, iteration):
+    def read_mbar_free_energies(self, iteration):
         """
-        Read the MBAR weights
+        Read the MBAR dimensionless free energy at a given iteration from file. These free energies are relative to
+        the first state. These are computed through self-consistent iterations from an initial guess. The initial
+        guess is often 0 for all states, so any state not written is returned as zeros.
 
         Used primarily in online analysis, and should be used in tandem with an YankPhaseAnalysis object from the
         analyze module
 
         Parameters
         ----------
-        iteration : iteration to read the weights from, if the iteration was not written at a the given iteration,
-            then the weights are all 0
+        iteration : iteration to read the free energies from, if the iteration was not written at a the given iteration,
+            then the free_energies are all 0
 
         Returns
         -------
         f_k : 1-D ndarray of floats
-            MBAR weights from the iteration.
+            MBAR free_energies from the iteration.
         """
         f_k = self._storage_analysis.variables['f_k'][iteration]
         return f_k
 
-    def write_mbar_weights(self, iteration, f_k):
+    def write_mbar_free_energies(self, iteration, f_k):
         """
-        Compute and write the mbar weights at the current iteration
+        Write the mbar free energies at the current iteration. See read_mbar_free_energies for more information about
+        pymbar's f_k free energies
 
         Used primarily in online analysis, and should be used in tandem with an YankPhaseAnalysis object from the
-        analyze module
+        analyze module.
 
         Parameters
         ----------
-        iteration : iteration at which to compute the free energy.
+        iteration : int,
+            iteration at which to save the free energy.
             Reads the current energy up to this value and stores it in the analysis reporter
-        f_k : weights you wish to store
+        f_k : 1D array of floats,
+            Dimensionless free energies you wish to store. This should come from pymbar.MBAR.f_k from an initialized
+                MBAR object.
 
         """
         analysis_nc = self._storage_analysis
@@ -986,7 +993,7 @@ class Reporter(object):
             analysis_nc.createDimension('f_k_length', len(f_k))
             # larger chunks, faster operations, small matrix anyways
             analysis_nc.createVariable('f_k', float, dimensions=('iteration', 'f_k_length'),
-                                       zlib=True, chunksizes=(10, len(f_k)))
+                                       zlib=True, chunksizes=(10, len(f_k)), fill_value=0)
         analysis_nc.variables['f_k'][iteration] = f_k
 
     def get_previous_checkpoint(self, iteration):
@@ -1150,8 +1157,8 @@ class ReplicaExchange(object):
         After every interval, the simulation will be stopped and the free energy estimated. If the error in the free
             energy estimate is at or below online_analysis_target_error, then the simulation will be considered
             completed.
-    online_analysis_target_error : float >= 0
-        The target error for the online analysis measured in kT.
+    online_analysis_target_error : float >= 0, optional, default 0.2
+        The target error for the online analysis measured in kT per phase.
             Once the free energy is at or below this value, the phase will be considered complete.
         If online_analysis_interval is None, this option does nothing.
     online_analysis_minimum_iterations : int >= 0, optional, default 50
@@ -1238,7 +1245,7 @@ class ReplicaExchange(object):
     # -------------------------------------------------------------------------
 
     def __init__(self, mcmc_moves=None, number_of_iterations=1, replica_mixing_scheme='swap-all',
-                 online_analysis_interval=None, online_analysis_target_error=1.0,
+                 online_analysis_interval=None, online_analysis_target_error=0.2,
                  online_analysis_minimum_iterations=50):
 
         # Check argument values.
@@ -1283,15 +1290,14 @@ class ReplicaExchange(object):
         self._online_error_bank = []
 
         if self._number_of_iterations == np.inf:
-            if self._number_of_iterations == np.inf:
+            if self._online_analysis_target_error == 0.0:
                 logger.warning("WARNING! You have specified an unlimited number of iterations and a target error "
                                "for online analysis of 0.0! Your simulation may never reach 'completed' state!")
-            else:
+            elif self._online_analysis_interval is None:
                 logger.warning("WARNING! This simulation will never be considered 'complete' since there is no "
-                               "specified maximum number of iterations nor target uncertainty in free energy estimate!")
+                               "specified maximum number of iterations!")
         # Handle online analysis
         self._online_analysis_interval = None
-
         self._online_analysis_target_error = None
         self._last_mbar_f_k = None
         # A "Have we met any of the stop condition targets? Or a type of "work complete, zug zug"
@@ -1455,24 +1461,70 @@ class ReplicaExchange(object):
                             self._sampler_states, self._iteration)
 
     class _StoredProperty(object):
-        """Descriptor of a property stored as an option."""
-        def __init__(self, option_name):
+        """
+        Descriptor of a property stored as an option.
+
+        static_validate_function is a simple static function for checking things like "X > 0"
+        instanced_validate_function is a function which relies on the instance, like "if Y == True, then check X"
+        both of these are the string name of the function
+
+        """
+        def __init__(self, option_name, static_validate_function=None, instanced_validate_function=None):
             self._option_name = option_name
+            self._static_validate_function = static_validate_function
+            self._instanced_validate_function = instanced_validate_function
 
         def __get__(self, instance, owner_class=None):
             return getattr(instance, '_' + self._option_name)
 
         def __set__(self, instance, new_value):
-            if (self._option_name == 'replica_mixing_scheme' and
-                        new_value not in ReplicaExchange._SUPPORTED_MIXING_SCHEMES):
-                raise ValueError(("Unknown replica mixing scheme '{}'. Supported values "
-                                  "are {}.").format(new_value, self._SUPPORTED_MIXING_SCHEMES))
+            if self._static_validate_function is not None:
+                getattr(self, self._static_validate_function)(new_value)
+            if self._instanced_validate_function is not None:
+                getattr(self, self._instanced_validate_function)(new_value, instance)
             setattr(instance, '_' + self._option_name, new_value)
             mpi.run_single_node(0, instance._store_options)
 
-    number_of_iterations = _StoredProperty('number_of_iterations')
-    replica_mixing_scheme = _StoredProperty('replica_mixing_scheme')
+        # ----------------------------------
+        # Value Validation of the properties
+        # ----------------------------------
 
+        @staticmethod
+        def _repex_mixing_scheme_check(replica_mixing_scheme):
+            if replica_mixing_scheme not in ReplicaExchange._SUPPORTED_MIXING_SCHEMES:
+                raise ValueError(("Unknown replica mixing scheme '{}'. Supported values "
+                                  "are {}.").format(replica_mixing_scheme, ReplicaExchange._SUPPORTED_MIXING_SCHEMES))
+
+        @staticmethod
+        def _oa_interval_check(online_analysis_interval):
+            """Check the online_analysis_interval value for consistency"""
+            if online_analysis_interval is not None and (
+                            type(online_analysis_interval) != int or online_analysis_interval < 1):
+                raise ValueError("online_analysis_interval must be an integer 1 or greater, or None")
+
+        @staticmethod
+        def _oa_target_error_check(online_analysis_target_error, instance):
+            if instance.online_analysis_target_error is not None:
+                if online_analysis_target_error < 0:
+                    raise ValueError("online_analysis_target_error must be a float >= 0")
+                elif online_analysis_target_error == 0:
+                    logger.warn("online_analysis_target_error of 0 may never converge.")
+
+        @staticmethod
+        def _oa_min_iter_check(online_analysis_minimum_iterations, instance):
+            if instance.online_analysis_target_error is not None:
+                if type(online_analysis_minimum_iterations) is not int or online_analysis_minimum_iterations < 0:
+                    raise ValueError("online_analysis_minimum_iterations must be an integer >= 0")
+
+    number_of_iterations = _StoredProperty('number_of_iterations')
+    replica_mixing_scheme = _StoredProperty('replica_mixing_scheme',
+                                            static_validate_function='_repex_mixing_scheme_check')
+    online_analysis_interval = _StoredProperty('online_analysis_interval',
+                                               static_validate_function='_oa_interval_check')
+    online_analysis_target_error = _StoredProperty('online_analysis_target_error',
+                                                   instanced_validate_function='_oa_target_error_check')
+    online_analysis_minimum_iterations = _StoredProperty('online_analysis_minimum_iterations',
+                                                         instanced_validate_function='_oa_min_iter_check')
     @property
     def metadata(self):
         """A copy of the metadata passed on creation (read-only)."""
@@ -1481,11 +1533,7 @@ class ReplicaExchange(object):
     @property
     def is_completed(self):
         """"Have we reached any of the stop target criterias?" (read-only)"""
-        if self._is_completed is None:
-            output = False
-        else:
-            output = self._is_completed
-        return output
+        return self._is_completed if self._is_completed is not None else False
 
     # -------------------------------------------------------------------------
     # Main public interface.
@@ -1698,7 +1746,7 @@ class ReplicaExchange(object):
         # Update stored positions.
         mpi.run_single_node(0, self._reporter.write_sampler_states, self._sampler_states, self._iteration)
 
-    def run(self, n_iterations=None, continue_past_online_target=False):
+    def run(self, n_iterations=None):
         """Run the replica-exchange simulation.
 
         This runs at most `number_of_iterations` iterations. Use `extend()`
@@ -1709,9 +1757,6 @@ class ReplicaExchange(object):
         n_iterations : int, optional
            If specified, only at most the specified number of iterations
            will be run (default is None).
-        continue_past_online_target : bool, optional, default False
-            If specified, the simulation will continue past the online_analysis_target_error
-
         """
         # If this is the first iteration, compute and store the
         # starting energies of the minimized/equilibrated structures.
@@ -1752,15 +1797,15 @@ class ReplicaExchange(object):
             self._report_iteration()
 
             # Compute online free energy
+            free_energy_error = None
             if (self._online_analysis_interval is not None and
                     self._iteration > self._online_analysis_minimum_iterations and
                     self._iteration % self._online_analysis_interval == 0):
                 free_energy_error = self._run_online_analysis()
-            free_energy_error = None
 
             # Check if work complete
-            if (free_energy_error is not None and free_energy_error <= self._online_analysis_target_error
-                    and not continue_past_online_target):  # Online + below error + overwrite
+            # Online + below error
+            if free_energy_error is not None and free_energy_error <= self._online_analysis_target_error:
                 self._is_completed = True
             elif self._iteration >= iteration_limit:  # Stop at iteration limit regardless
                 self._is_completed = True
@@ -2223,14 +2268,11 @@ class ReplicaExchange(object):
     @mpi.delayed_termination
     @mmtools.utils.with_timer('Computing online free energy estimate')
     def _run_online_analysis(self):
-        # Prep the reporter
-        self._reporter.close()
-        self._reporter.open('r')
         if self._last_mbar_f_k is None:
-            # Backwards search for last weights, don't need the 0th iteration because the weights are 0
+            # Backwards search for last free energies, don't need the 0th iteration because the guess f_k are 0
             try:
                 for index in range(self._iteration, 0, -1):
-                    f_k = self._reporter.read_mbar_weights(index)
+                    f_k = self._reporter.read_mbar_free_energies(index)
                     # Find an f_k that is not all zeros
                     if not np.all(f_k == 0):
                         self._last_mbar_f_k = f_k
@@ -2267,11 +2309,8 @@ class ReplicaExchange(object):
                     logger.debug(str(err))
                 raise RuntimeError("Online Analysis has failed too many times! Please check the latest logs to see "
                                    "the thrown errors!")
-        # Make sure the reporter is back in a usable state
-        self._reporter.close()
-        self._reporter.open('a')
         # Write out the numbers
-        self._reporter.write_mbar_weights(self._iteration, self._last_mbar_f_k)
+        self._reporter.write_mbar_free_energies(self._iteration, self._last_mbar_f_k)
         return output_dfe
 
 
