@@ -96,7 +96,22 @@ class _ObservablesRegistry(object):
     This is a hidden class accessed by the YankPhaseAnalyzer and MultiPhaseAnalyzer objects to check which observables
     can be computed, and then provide a regular categorization of them. This is a static registry.
 
-    To define your own methods
+    To define your own methods:
+    1) Choose a unique observable name.
+    2) Categorize the observable in one of the following ways by adding to the list in the "observables_X" method:
+     2a) "defined_by_phase": Depends on the Phase as a whole (state independent)
+     2b) "defined_by_single_state": Computed entirely from one state, e.g. Radius of Gyration
+     2c) "defined_by_two_states": Property is relative to some reference state, such as Free Energy Difference
+    3) Optionally categorize the error category calculation in the "observables_with_error_adding_Y" methods
+       If not placed in an error category, the observable will be assumed not to carry error
+       Examples: A, B, C are the observable in 3 phases, eA, eB, eC are the error of the observable in each phase
+     3a) "linear": Error between phases adds linearly.
+        If C = A + B, eC = eA + eB
+     3b) "quadrature": Error between phases adds in the square.
+        If C = A + B, eC = sqrt(eA^2 + eB^2)
+    4) Finally, to add this observable to the phase, implement a "get_{method name}" method to the subclass of
+       YankPhaseAnalyzer. Any MultiPhaseAnalyzer composed of this phase will automatically have the "get_{method name}"
+       if all other phases in the MultiPhaseAnalyzer have the same method.
     """
 
     ########################
@@ -138,7 +153,7 @@ class _ObservablesRegistry(object):
         Observables which are defined by the phase as a whole, and not defined by any 1 or more states
         e.g. Standard State Correction
         """
-        return ('standard_state_correction',)
+        return 'standard_state_correction',
 
     ##########################################
     # Define the observables which carry error
@@ -170,8 +185,9 @@ class YankPhaseAnalyzer(ABC):
     Analyzer for a single phase of a YANK simulation. Uses the reporter from the simulation to determine the location
     of all variables.
 
-    To compute a specific observable, add it to the ObservableRegistry and then implement a "compute_X" where X is the
-    name of the observable you want to compute.
+    To compute a specific observable, add it to the ObservableRegistry and then implement a "get_X" where X is the
+    name of the observable you want to compute. See the ObservablesRegistry for information about formatting the
+    observables.
 
     Analyzer works in units of kT unless specifically stated otherwise. To convert back to a unit set, just multiply by
     the .kT property.
@@ -360,7 +376,7 @@ class YankPhaseAnalyzer(ABC):
         """
         Compute the correlation time and n_effective per sample.
         This is exactly what timeseries.detectEquilibration does, but returns the per sample data
-        See the timeseries.detectEquilibration function for full documentaiton
+        See the timeseries.detectEquilibration function for full documentation
         """
         A_t = timeseries_to_analyze
         T = A_t.size
@@ -577,7 +593,8 @@ class RepexPhase(YankPhaseAnalyzer):
         # TODO: Replace with maximum likelihood reversible count estimator from msmbuilder or pyemma.
         t_ij = np.zeros([n_states, n_states], np.float64)
         for i_state in range(n_states):
-            denominator = (n_ij[i_state, :].sum() + n_ij[:, i_state].sum())
+            # Cast to float to ensure we dont get integer division
+            denominator = float((n_ij[i_state, :].sum() + n_ij[:, i_state].sum()))
             if denominator > 0:
                 for j_state in range(n_states):
                     t_ij[i_state, j_state] = (n_ij[i_state, j_state] + n_ij[j_state, i_state]) / denominator
@@ -905,7 +922,16 @@ class MultiPhaseAnalyzer(object):
         self._signs = phases['signs']
         # Set the methods shared between both objects
         for observable in self.observables:
-            setattr(self, "get_" + observable, lambda: self._compute_observable(observable))
+            setattr(self, "get_" + observable, self._spool_function(observable))
+
+    def _spool_function(self, observable):
+        """
+        Dynamic observable calculator layer
+        Must be in its own function to isolate the variable name space
+        If you have this in the __init__, the "observable" variable colides with any others in the list, causing a
+            the wrong property to be fetched.
+        """
+        return lambda: self._compute_observable(observable)
 
     @property
     def observables(self):
