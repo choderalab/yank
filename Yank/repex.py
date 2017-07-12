@@ -58,6 +58,7 @@ from . import utils, mpi, version
 from pymbar.utils import ParameterError
 
 logger = logging.getLogger(__name__)
+_global_citation_silence = False
 
 
 # ==============================================================================
@@ -1943,7 +1944,7 @@ class ReplicaExchange(object):
         mbar_citations = """\
         Shirts MR and Chodera JD. Statistically optimal analysis of samples from multiple equilibrium states. J. Chem. Phys. 129:124105, 2008. DOI: 10.1063/1.2978177"""
 
-        if not self._have_displayed_citations_before or overwrite_global:
+        if (not self._have_displayed_citations_before and not _global_citation_silence) or overwrite_global:
             print("Please cite the following:")
             print("")
             print(openmm_citations)

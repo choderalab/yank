@@ -37,7 +37,7 @@ from yank.repex import Reporter, ReplicaExchange, _DictYamlLoader
 # MODULE CONSTANTS
 # ==============================================================================
 
-kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA # Boltzmann constant
+kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA  # Boltzmann constant
 
 
 # ==============================================================================
