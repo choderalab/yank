@@ -1327,6 +1327,7 @@ class ReplicaExchange(object):
         self._n_proposed_matrix = None
         self._reporter = None
         self._metadata = None
+        self._have_displayed_citations_before = False
 
     @classmethod
     def from_storage(cls, storage):
@@ -1522,8 +1523,8 @@ class ReplicaExchange(object):
 
         @staticmethod
         def _oa_min_iter_check(instance, online_analysis_minimum_iterations):
-            if instance.online_analysis_target_error is not None:
-                if type(online_analysis_minimum_iterations) is not int or online_analysis_minimum_iterations < 0:
+            if (instance.online_analysis_target_error is not None and
+                    (type(online_analysis_minimum_iterations) is not int or online_analysis_minimum_iterations < 0)):
                     raise ValueError("online_analysis_minimum_iterations must be an integer >= 0")
 
     number_of_iterations = _StoredProperty('number_of_iterations')
@@ -1542,7 +1543,7 @@ class ReplicaExchange(object):
 
     @property
     def is_completed(self):
-        """"Have we reached any of the stop target criterias?" (read-only)"""
+        """"Have we reached any of the stop target criteria?" (read-only)"""
         return self._is_completed
 
     # -------------------------------------------------------------------------
@@ -1921,8 +1922,13 @@ class ReplicaExchange(object):
             logger.error(err_msg)
             raise RuntimeError(err_msg)
 
-    def _display_citations(self):
-        """Display papers to be cited."""
+    @mpi.on_single_node(rank=0, broadcast_result=False, sync_nodes=False)
+    def _display_citations(self, overwrite_global=False):
+        """
+        Display papers to be cited.
+        The overwrite_golbal command will force the citation to display even if the "have_citations_been_shown" variable
+            is True
+        """
         # TODO Add original citations for various replica-exchange schemes.
         # TODO Show subset of OpenMM citations based on what features are being used.
         openmm_citations = """\
@@ -1937,11 +1943,13 @@ class ReplicaExchange(object):
         mbar_citations = """\
         Shirts MR and Chodera JD. Statistically optimal analysis of samples from multiple equilibrium states. J. Chem. Phys. 129:124105, 2008. DOI: 10.1063/1.2978177"""
 
-        print("Please cite the following:")
-        print("")
-        print(openmm_citations)
-        if self._replica_mixing_scheme == 'swap-all':
-            print(gibbs_citations)
+        if not self._have_displayed_citations_before or overwrite_global:
+            print("Please cite the following:")
+            print("")
+            print(openmm_citations)
+            if self._replica_mixing_scheme == 'swap-all':
+                print(gibbs_citations)
+            self._have_displayed_citations_before = True
 
     # -------------------------------------------------------------------------
     # Internal-usage: Initialization and storage utilities.
@@ -2323,6 +2331,7 @@ class ReplicaExchange(object):
         return output_dfe
 
     def _get_last_written_free_energy(self):
+        """Get the last free energy computed from online analysis"""
         last_f_k = None
         last_free_energy = None
         try:
