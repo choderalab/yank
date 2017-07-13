@@ -58,7 +58,6 @@ from . import utils, mpi, version
 from pymbar.utils import ParameterError
 
 logger = logging.getLogger(__name__)
-_global_citation_silence = False
 
 
 # ==============================================================================
@@ -971,7 +970,7 @@ class Reporter(object):
         """
         online_group = self._storage_analysis.groups['online_analysis']
         f_k = online_group.variables['f_k'][iteration]
-        free_energy = online_group.variables['D_f'][iteration, :]
+        free_energy = online_group.variables['free_energy'][iteration, :]
         return f_k, free_energy
 
     def write_mbar_free_energies(self, iteration, f_k, free_energy):
@@ -1003,12 +1002,12 @@ class Reporter(object):
             online_group = analysis_nc.createGroup('online_analysis')
             # larger chunks, faster operations, small matrix anyways
             online_group.createVariable('f_k', float, dimensions=('iteration', 'f_k_length'),
-                                       zlib=True, chunksizes=(10, len(f_k)), fill_value=0)
+                                       zlib=True, chunksizes=(1, len(f_k)), fill_value=0)
             online_group.createVariable('free_energy', float, dimensions=('iteration', 'Df'),
-                                        zlib=True, chunksizes=(10, 2), fill_value=np.inf)
+                                        zlib=True, chunksizes=(1, 2), fill_value=np.inf)
         online_group = analysis_nc.groups['online_analysis']
         online_group.variables['f_k'][iteration] = f_k
-        online_group.variables['D_f'][iteration, :] = free_energy
+        online_group.variables['free_energy'][iteration, :] = free_energy
 
     def get_previous_checkpoint(self, iteration):
         """
@@ -1944,7 +1943,7 @@ class ReplicaExchange(object):
         mbar_citations = """\
         Shirts MR and Chodera JD. Statistically optimal analysis of samples from multiple equilibrium states. J. Chem. Phys. 129:124105, 2008. DOI: 10.1063/1.2978177"""
 
-        if (not self._have_displayed_citations_before and not _global_citation_silence) or overwrite_global:
+        if overwrite_global or (not self._have_displayed_citations_before and not self._global_citation_silence):
             print("Please cite the following:")
             print("")
             print(openmm_citations)
@@ -2354,12 +2353,17 @@ class ReplicaExchange(object):
         # Case where we are running the online free energy and feed in nothing for the error
         if self._online_analysis_interval is not None and free_energy_error is None:
                 _, last_free_energy = self._get_last_written_free_energy()
-                _, free_energy_error = last_free_energy
+                _, free_energy_error = last_free_energy if last_free_energy is not None else (None, None)
         if free_energy_error is not None and free_energy_error <= self._online_analysis_target_error:
             completed = True
         elif self._iteration >= iteration_limit:  # Stop at iteration limit regardless
             completed = True
         return completed
+
+    # -------------------------------------------------------------------------
+    # Internal-usage: Test globals
+    # -------------------------------------------------------------------------
+    _global_citation_silence = False
 
 
 # ==============================================================================
