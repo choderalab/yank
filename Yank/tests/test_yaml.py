@@ -235,7 +235,7 @@ def test_yaml_parsing():
     ---
     test: 2
     """
-    yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
+    yaml_builder = ExperimentBuilder(textwrap.dedent(yaml_content))
     expected_n_options = (len(yaml_builder.GENERAL_DEFAULT_OPTIONS) +
                           len(yaml_builder.EXPERIMENT_DEFAULT_OPTIONS))
     assert len(yaml_builder.options) == expected_n_options
@@ -278,7 +278,7 @@ def test_yaml_parsing():
         annihilate_electrostatics: true
     """
 
-    yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
+    yaml_builder = ExperimentBuilder(textwrap.dedent(yaml_content))
     assert len(yaml_builder.options) == 32
 
     # Check correct types
@@ -301,7 +301,7 @@ def test_validation_wrong_options():
         {'minimize': 100}
     ]
     for option in options:
-        yield assert_raises, YamlParseError, YamlBuilder._validate_options, option, True
+        yield assert_raises, YamlParseError, ExperimentBuilder._validate_options, option, True
 
 
 def test_validation_correct_molecules():
@@ -326,7 +326,7 @@ def test_validation_correct_molecules():
         {'filepath': paths['benzene'], 'epik': {'select': 1, 'tautomerize': False}}
     ]
     for molecule in molecules:
-        yield YamlBuilder._validate_molecules, {'mol': molecule}
+        yield ExperimentBuilder._validate_molecules, {'mol': molecule}
 
 
 def test_validation_wrong_molecules():
@@ -356,7 +356,7 @@ def test_validation_wrong_molecules():
         {'filepath': paths['abl'], 'leap': {'parameters': 'oldff/leaprc.ff14SB'}, 'select': 'notanoption'},
     ]
     for molecule in molecules:
-        yield assert_raises, YamlParseError, YamlBuilder._validate_molecules, {'mol': molecule}
+        yield assert_raises, YamlParseError, ExperimentBuilder._validate_molecules, {'mol': molecule}
 
 
 def test_validation_correct_solvents():
@@ -373,7 +373,7 @@ def test_validation_correct_solvents():
         {'nonbonded_method': 'PME', 'clearance': '3*angstroms', 'ewald_error_tolerance': 0.001},
     ]
     for solvent in solvents:
-        yield YamlBuilder._validate_solvents, {'solv': solvent}
+        yield ExperimentBuilder._validate_solvents, {'solv': solvent}
 
 
 def test_validation_wrong_solvents():
@@ -387,13 +387,13 @@ def test_validation_wrong_solvents():
         {'implicit_solvent': 'OBC2', 'implicit_solvent_salt_conc': '1.0*angstrom'}
     ]
     for solvent in solvents:
-        yield assert_raises, YamlParseError, YamlBuilder._validate_solvents, {'solv': solvent}
+        yield assert_raises, YamlParseError, ExperimentBuilder._validate_solvents, {'solv': solvent}
 
 
 def test_validation_correct_systems():
     """Correct systems YAML validation."""
     data_paths = examples_paths()
-    yaml_builder = YamlBuilder()
+    yaml_builder = ExperimentBuilder()
     basic_script = """
     ---
     molecules:
@@ -452,7 +452,7 @@ def test_validation_correct_systems():
 def test_validation_wrong_systems():
     """YAML validation raises exception with wrong experiments specification."""
     data_paths = examples_paths()
-    yaml_builder = YamlBuilder()
+    yaml_builder = ExperimentBuilder()
     basic_script = """
     ---
     molecules:
@@ -555,7 +555,7 @@ def test_validation_correct_protocols():
     for protocol in protocols:
         modified_protocol = copy.deepcopy(basic_protocol)
         modified_protocol['absolute-binding']['complex']['alchemical_path'] = protocol
-        yield YamlBuilder._validate_protocols, modified_protocol
+        yield ExperimentBuilder._validate_protocols, modified_protocol
 
     # Phases
     alchemical_path = copy.deepcopy(basic_protocol['absolute-binding']['complex'])
@@ -570,8 +570,8 @@ def test_validation_correct_protocols():
     for protocol in protocols:
         modified_protocol = copy.deepcopy(basic_protocol)
         modified_protocol['absolute-binding'] = protocol
-        yield YamlBuilder._validate_protocols, modified_protocol
-        sorted_protocol = YamlBuilder._validate_protocols(modified_protocol)['absolute-binding']
+        yield ExperimentBuilder._validate_protocols, modified_protocol
+        sorted_protocol = ExperimentBuilder._validate_protocols(modified_protocol)['absolute-binding']
         if isinstance(protocol, collections.OrderedDict):
             assert sorted_protocol.keys() == protocol.keys()
         else:
@@ -596,7 +596,7 @@ def test_validation_wrong_protocols():
     for protocol in protocols:
         modified_protocol = copy.deepcopy(basic_protocol)
         modified_protocol['absolute-binding']['complex']['alchemical_path'] = protocol
-        yield assert_raises, YamlParseError, YamlBuilder._validate_protocols, modified_protocol
+        yield assert_raises, YamlParseError, ExperimentBuilder._validate_protocols, modified_protocol
 
     # Phases
     alchemical_path = copy.deepcopy(basic_protocol['absolute-binding']['complex'])
@@ -615,12 +615,12 @@ def test_validation_wrong_protocols():
     for protocol in protocols:
         modified_protocol = copy.deepcopy(basic_protocol)
         modified_protocol['absolute-binding'] = protocol
-        yield assert_raises, YamlParseError, YamlBuilder._validate_protocols, modified_protocol
+        yield assert_raises, YamlParseError, ExperimentBuilder._validate_protocols, modified_protocol
 
 
 def test_validation_correct_experiments():
     """YAML validation raises exception with wrong experiments specification."""
-    yaml_builder = YamlBuilder()
+    yaml_builder = ExperimentBuilder()
     basic_script = """
     ---
     molecules:
@@ -654,7 +654,7 @@ def test_validation_correct_experiments():
 
 def test_validation_wrong_experiments():
     """YAML validation raises exception with wrong experiments specification."""
-    yaml_builder = YamlBuilder()
+    yaml_builder = ExperimentBuilder()
     basic_script = """
     ---
     molecules:
@@ -688,7 +688,7 @@ def test_yaml_mol2_antechamber():
     """Test antechamber setup of molecule files."""
     with omt.utils.temporary_directory() as tmp_dir:
         yaml_content = get_template_script(tmp_dir)
-        yaml_builder = YamlBuilder(yaml_content)
+        yaml_builder = ExperimentBuilder(yaml_content)
         yaml_builder._db._setup_molecules('benzene')
 
         output_dir = yaml_builder._db.get_molecule_dir('benzene')
@@ -718,7 +718,7 @@ def test_setup_name_smiles_openeye_charges():
     with omt.utils.temporary_directory() as tmp_dir:
         molecules_ids = ['toluene-smiles', 'p-xylene-name']
         yaml_content = get_template_script(tmp_dir)
-        yaml_builder = YamlBuilder(yaml_content)
+        yaml_builder = ExperimentBuilder(yaml_content)
         yaml_builder._db._setup_molecules(*molecules_ids)
 
         for mol in molecules_ids:
@@ -745,7 +745,7 @@ def test_setup_name_smiles_openeye_charges():
                 assert not input_charges.equals(output_charges)
 
         # Check that molecules are resumed correctly
-        yaml_builder = YamlBuilder(yaml_content)
+        yaml_builder = ExperimentBuilder(yaml_content)
         yaml_builder._db._setup_molecules(*molecules_ids)
 
 
@@ -766,7 +766,7 @@ def test_clashing_atoms():
         benzene_pos = utils.get_oe_mol_positions(utils.read_oe_molecule(benzene_path))
         assert pipeline.compute_min_dist(toluene_pos, benzene_pos) < SetupDatabase.CLASH_THRESHOLD
 
-        yaml_builder = YamlBuilder(yaml_content)
+        yaml_builder = ExperimentBuilder(yaml_content)
 
         for system_id in [system_id + '_vacuum', system_id + '_PME']:
             system_dir = os.path.dirname(
@@ -798,7 +798,7 @@ def test_epik_enumeration():
     """Test epik protonation state enumeration."""
     with omt.utils.temporary_directory() as tmp_dir:
         yaml_content = get_template_script(tmp_dir)
-        yaml_builder = YamlBuilder(yaml_content)
+        yaml_builder = ExperimentBuilder(yaml_content)
         mol_ids = ['benzene-epik0', 'benzene-epikcustom']
         yaml_builder._db._setup_molecules(*mol_ids)
 
@@ -826,7 +826,7 @@ def test_strip_protons():
         assert has_hydrogen
 
         yaml_content = get_template_script(tmp_dir)
-        yaml_builder = YamlBuilder(yaml_content)
+        yaml_builder = ExperimentBuilder(yaml_content)
         output_dir = yaml_builder._db.get_molecule_dir(mol_id)
         output_path = os.path.join(output_dir, 'Abl.pdb')
 
@@ -1034,7 +1034,7 @@ class TestMultiMoleculeFiles(object):
         expected_content = textwrap.dedent(expected_content)
 
         raw = yank_load(yaml_content)
-        expanded = YamlBuilder(yaml_content)._expand_molecules(raw)
+        expanded = ExperimentBuilder(yaml_content)._expand_molecules(raw)
         expected = yank_load(expected_content)
         assert expanded == expected, 'Expected:\n{}\n\nExpanded:\n{}'.format(
             expected['systems'], expanded['systems'])
@@ -1054,7 +1054,7 @@ class TestMultiMoleculeFiles(object):
                     select: 1
             """.format(tmp_dir, self.pdb_path)
             yaml_content = textwrap.dedent(yaml_content)
-            yaml_builder = YamlBuilder(yaml_content)
+            yaml_builder = ExperimentBuilder(yaml_content)
 
             # The molecule now is neither set up nor processed
             is_setup, is_processed = yaml_builder._db.is_molecule_setup('selected')
@@ -1083,8 +1083,8 @@ class TestMultiMoleculeFiles(object):
             assert is_setup is True
             assert is_processed is True
 
-            # A new instance of YamlBuilder is able to resume with correct molecule
-            yaml_builder = YamlBuilder(yaml_content)
+            # A new instance of ExperimentBuilder is able to resume with correct molecule
+            yaml_builder = ExperimentBuilder(yaml_content)
             is_setup, is_processed = yaml_builder._db.is_molecule_setup('selected')
             assert is_setup is True
             assert is_processed is True
@@ -1112,7 +1112,7 @@ class TestMultiMoleculeFiles(object):
                     select: 1
             """.format(tmp_dir, self.smiles_path, self.smiles_path)
             yaml_content = textwrap.dedent(yaml_content)
-            yaml_builder = YamlBuilder(yaml_content)
+            yaml_builder = ExperimentBuilder(yaml_content)
 
             for i, mol_id in enumerate(['take-first', 'select-second']):
                 # The molecule now is neither set up nor processed
@@ -1136,8 +1136,8 @@ class TestMultiMoleculeFiles(object):
                 assert is_setup is True
                 assert is_processed is True
 
-                # A new instance of YamlBuilder is able to resume with correct molecule
-                yaml_builder = YamlBuilder(yaml_content)
+                # A new instance of ExperimentBuilder is able to resume with correct molecule
+                yaml_builder = ExperimentBuilder(yaml_content)
                 is_setup, is_processed = yaml_builder._db.is_molecule_setup(mol_id)
                 assert is_setup is True
                 assert is_processed is True
@@ -1174,7 +1174,7 @@ class TestMultiMoleculeFiles(object):
                     select: 1
             """.format(tmp_dir, self.sdf_path, self.sdf_path, self.mol2_path, self.mol2_path)
             yaml_content = textwrap.dedent(yaml_content)
-            yaml_builder = YamlBuilder(yaml_content)
+            yaml_builder = ExperimentBuilder(yaml_content)
 
             for extension in ['sdf', 'mol2']:
                 multi_path = getattr(self, extension + '_path')
@@ -1225,8 +1225,8 @@ class TestMultiMoleculeFiles(object):
                     assert is_setup is True
                     assert is_processed is True
 
-                    # A new instance of YamlBuilder is able to resume with correct molecule
-                    yaml_builder = YamlBuilder(yaml_content)
+                    # A new instance of ExperimentBuilder is able to resume with correct molecule
+                    yaml_builder = ExperimentBuilder(yaml_content)
                     is_setup, is_processed = yaml_builder._db.is_molecule_setup(mol_id)
                     assert is_setup is True
                     assert is_processed is True
@@ -1259,7 +1259,7 @@ def test_system_expansion():
     expanded_script['systems'] = expected_script['systems']
     expanded_script['experiments'] = expected_script['experiments']
 
-    assert YamlBuilder(template_script)._expand_systems(template_script) == expanded_script
+    assert ExperimentBuilder(template_script)._expand_systems(template_script) == expanded_script
 
 
 def test_exp_sequence():
@@ -1298,7 +1298,7 @@ def test_exp_sequence():
         protocol: absolute-binding
     experiments: [experiment1, experiment2]
     """.format(examples_paths()['lysozyme'], standard_protocol)
-    yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
+    yaml_builder = ExperimentBuilder(textwrap.dedent(yaml_content))
     assert len(yaml_builder._experiments) == 2
 
 
@@ -1310,7 +1310,7 @@ def test_setup_implicit_system_leap():
     """Create prmtop and inpcrd for implicit solvent protein-ligand system."""
     with omt.utils.temporary_directory() as tmp_dir:
         yaml_content = get_template_script(tmp_dir)
-        yaml_builder = YamlBuilder(yaml_content)
+        yaml_builder = ExperimentBuilder(yaml_content)
 
         output_dir = os.path.dirname(
             yaml_builder._db.get_system('implicit-system')[0].position_path)
@@ -1346,7 +1346,7 @@ def test_setup_explicit_system_leap():
     """Create prmtop and inpcrd protein-ligand system in explicit solvent."""
     with omt.utils.temporary_directory() as tmp_dir:
         yaml_content = get_template_script(tmp_dir)
-        yaml_builder = YamlBuilder(yaml_content)
+        yaml_builder = ExperimentBuilder(yaml_content)
 
         output_dir = os.path.dirname(
             yaml_builder._db.get_system('explicit-system')[0].position_path)
@@ -1378,7 +1378,7 @@ def test_neutralize_system():
         yaml_content = get_template_script(tmp_dir)
         yaml_content['systems']['explicit-system']['receptor'] = 'T4Lysozyme'
         yaml_content['systems']['explicit-system']['ligand'] = 'p-xylene'
-        yaml_builder = YamlBuilder(yaml_content)
+        yaml_builder = ExperimentBuilder(yaml_content)
 
         output_dir = os.path.dirname(
             yaml_builder._db.get_system('explicit-system')[0].position_path)
@@ -1421,7 +1421,7 @@ def test_charged_ligand():
         yaml_content = get_template_script(tmp_dir)
         yaml_content['molecules'].update(updates['molecules'])
         yaml_content['systems']['explicit-system'].update(updates['explicit-system'])
-        yaml_builder = YamlBuilder(yaml_content)
+        yaml_builder = ExperimentBuilder(yaml_content)
 
         for receptor in receptors:
             system_files_paths = yaml_builder._db.get_system('explicit-system_' + receptor)
@@ -1476,7 +1476,7 @@ def test_setup_explicit_solvation_system():
                 {'solute': 'toluene', 'solvent1': 'PME', 'solvent2': 'vacuum',
                  'leap': {'parameters': ['leaprc.gaff', 'oldff/leaprc.ff14SB']}}}
         del yaml_script['experiments']
-        yaml_builder = YamlBuilder(yaml_script)
+        yaml_builder = ExperimentBuilder(yaml_script)
         output_dir = os.path.dirname(
             yaml_builder._db.get_system('system1')[0].position_path)
 
@@ -1518,7 +1518,7 @@ def test_setup_solvent_models():
             yaml_script = copy.deepcopy(template_script)
             yaml_script['solvents']['PME']['solvent_model'] = solvent_model
             yaml_script['options']['setup_dir'] = solvent_model
-            yaml_builder = YamlBuilder(yaml_script)
+            yaml_builder = ExperimentBuilder(yaml_script)
 
             # Infer number of expected atoms per water molecule from model.
             expected_water_n_atoms = int(list(filter(str.isdigit, solvent_model))[0])
@@ -1535,7 +1535,7 @@ def test_setup_multiple_parameters_system():
         yaml_script = get_template_script(tmp_dir)
 
         # Force antechamber parametrization of benzene to output frcmod file
-        yaml_builder = YamlBuilder(yaml_script)
+        yaml_builder = ExperimentBuilder(yaml_script)
         yaml_builder._db._setup_molecules('benzene')
         benzene_dir = yaml_builder._db.get_molecule_dir('benzene')
         frcmod_path = os.path.join(benzene_dir, 'benzene.frcmod')
@@ -1553,7 +1553,7 @@ def test_setup_multiple_parameters_system():
         }
         del yaml_script['experiments']
 
-        yaml_builder = YamlBuilder(yaml_script)
+        yaml_builder = ExperimentBuilder(yaml_script)
         system_files_path = yaml_builder._db.get_system('system')
 
         # Check that output exist:
@@ -1574,7 +1574,7 @@ def test_platform_precision_configuration():
                            for i in range(openmm.Platform.getNumPlatforms())]
 
     for platform_name in available_platforms:
-        yaml_builder = YamlBuilder(yaml_source='options: {}')
+        yaml_builder = ExperimentBuilder(yaml_source='options: {}')
 
         # Reference and CPU platform support only one precision model
         if platform_name == 'Reference':
@@ -1591,7 +1591,7 @@ def test_platform_precision_configuration():
                                                             platform_precision=precision)
                 assert platform.getPropertyDefaultValue('CudaPrecision') == precision
             elif platform_name == 'OpenCL':
-                if YamlBuilder._opencl_device_support_precision(precision):
+                if ExperimentBuilder._opencl_device_support_precision(precision):
                     platform = yaml_builder._configure_platform(platform_name=platform_name,
                                                                 platform_precision=precision)
                     assert platform.getPropertyDefaultValue('OpenCLPrecision') == precision
@@ -1606,13 +1606,13 @@ def test_default_platform_precision():
 
     # Determine whether this device OpenCL platform supports double precision
     if 'OpenCL' in available_platforms:
-        opencl_support_double = YamlBuilder._opencl_device_support_precision('double')
+        opencl_support_double = ExperimentBuilder._opencl_device_support_precision('double')
 
     for platform_name in available_platforms:
         # Reference and CPU platform support only one precision model so we don't
         # explicitly test them. We still call _configure_platform to be sure that
         # precision 'auto' works
-        yaml_builder = YamlBuilder(yaml_source='options: {}')
+        yaml_builder = ExperimentBuilder(yaml_source='options: {}')
         platform = yaml_builder._configure_platform(platform_name=platform_name,
                                                     platform_precision='auto')
         if platform_name == 'CUDA':
@@ -1696,7 +1696,7 @@ def test_yaml_creation():
                    solvent, system, protocol, experiment))
         expected_yaml_content = expected_yaml_content[1:]  # remove first '\n'
 
-        yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
+        yaml_builder = ExperimentBuilder(textwrap.dedent(yaml_content))
 
         # during setup we can modify molecule's fields, so we need
         # to check that it doesn't affect the YAML file exported
@@ -1788,7 +1788,7 @@ def test_yaml_extension():
         """.format(HIGHEST_VERSION, num_iterations, molecules, os.path.relpath(ligand_path, tmp_dir),
                    solvent, system, protocol, experiment))
         expected_yaml_content = expected_yaml_content[1:]  # remove first '\n'
-        yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
+        yaml_builder = ExperimentBuilder(textwrap.dedent(yaml_content))
         yaml_builder.update_yaml(yaml_extension)
         # during setup we can modify molecule's fields, so we need
         # to check that it doesn't affect the YAML file exported
@@ -1814,7 +1814,7 @@ def test_run_experiment_from_amber_files():
                 {'phase1_path': complex_path, 'phase2_path': solvent_path,
                  'ligand_dsl': 'resname TOL', 'solvent': 'PME'}}
 
-        yaml_builder = YamlBuilder(yaml_script)
+        yaml_builder = ExperimentBuilder(yaml_script)
         yaml_builder._check_resume()  # check_resume should not raise exceptions
         yaml_builder.run_experiments()
 
@@ -1848,7 +1848,7 @@ def test_run_experiment_from_gromacs_files():
                  'gromacs_include_dir': include_path}}
         yaml_script['experiments']['system'] = 'explicit-system'
 
-        yaml_builder = YamlBuilder(yaml_script)
+        yaml_builder = ExperimentBuilder(yaml_script)
         yaml_builder._check_resume()  # check_resume should not raise exceptions
         yaml_builder.run_experiments()
 
@@ -1878,7 +1878,7 @@ def test_run_experiment_from_xml_files():
                 {'phase1_path': solvent_path, 'phase2_path': vacuum_path,
                  'solvent_dsl': 'not resname TOL'}}
 
-        yaml_builder = YamlBuilder(yaml_script)
+        yaml_builder = ExperimentBuilder(yaml_script)
         yaml_builder._check_resume()  # check_resume should not raise exceptions
         yaml_builder.run_experiments()
 
@@ -1944,7 +1944,7 @@ def test_run_experiment():
         """.format(tmp_dir, examples_paths()['lysozyme'], examples_paths()['p-xylene'],
                    indent(standard_protocol))
 
-        yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
+        yaml_builder = ExperimentBuilder(textwrap.dedent(yaml_content))
 
         # Now check_setup_resume should not raise exceptions
         yaml_builder._check_resume()
@@ -2029,7 +2029,7 @@ def test_run_solvation_experiment():
             'protocol': 'hydration-protocol'
             }
 
-        yaml_builder = YamlBuilder(yaml_script)
+        yaml_builder = ExperimentBuilder(yaml_script)
         yaml_builder._check_resume()  # check_resume should not raise exceptions
         yaml_builder.run_experiments()
 

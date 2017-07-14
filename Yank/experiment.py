@@ -1063,7 +1063,7 @@ class SetupDatabase:
 # BUILDER CLASS
 # ==============================================================================
 
-class YamlPhaseFactory(object):
+class AlchemicalPhaseFactory(object):
 
     DEFAULT_OPTIONS = {
         'anisotropic_dispersion_correction': True,
@@ -1144,8 +1144,8 @@ class YamlPhaseFactory(object):
         return alchemical_phase
 
 
-class YamlExperiment(object):
-    """An experiment built by YamlBuilder."""
+class Experiment(object):
+    """An experiment built by ExperimentBuilder."""
     def __init__(self, phases, number_of_iterations, switch_phase_interval):
         self.phases = phases
         self.number_of_iterations = number_of_iterations
@@ -1181,7 +1181,7 @@ class YamlExperiment(object):
                     continue
 
                 # If this is a new simulation, initialize alchemical phase.
-                if isinstance(phase, YamlPhaseFactory):
+                if isinstance(phase, AlchemicalPhaseFactory):
                     alchemical_phase = phase.initialize_alchemical_phase()
                     self.phases[phase_id] = phase.storage  # Should automatically be a Reporter class
                 else:  # Resume previous simulation.
@@ -1213,11 +1213,11 @@ class YamlExperiment(object):
                 del alchemical_phase
 
 
-class YamlBuilder(object):
+class ExperimentBuilder(object):
     """Parse YAML configuration file and build the experiment.
 
     The relative paths indicated in the script are assumed to be relative to
-    the script directory. However, if YamlBuilder is initiated with a string
+    the script directory. However, if ExperimentBuilder is initiated with a string
     rather than a file path, the paths will be relative to the user's working
     directory.
 
@@ -1271,7 +1271,7 @@ class YamlBuilder(object):
     ...       system: my_system
     ...       protocol: absolute-binding
     ...     '''.format(tmp_dir, lysozyme_path, pxylene_path)
-    >>> yaml_builder = YamlBuilder(textwrap.dedent(yaml_content))
+    >>> yaml_builder = ExperimentBuilder(textwrap.dedent(yaml_content))
     >>> yaml_builder.run_experiments()
 
     """
@@ -1448,7 +1448,7 @@ class YamlBuilder(object):
 
         # Handle case where we don't have to switch between experiments.
         if self.options['switch_experiment_interval'] <= 0:
-            # Run YamlExperiment for number_of_iterations.
+            # Run Experiment for number_of_iterations.
             switch_experiment_interval = None
         else:
             switch_experiment_interval = self.options['switch_experiment_interval']
@@ -1517,11 +1517,11 @@ class YamlBuilder(object):
         Returns
         -------
         experiment_options : dict
-            The YamlBuilder experiment options. This does not contain
-            the general YamlBuilder options that are accessible through
+            The ExperimentBuilder experiment options. This does not contain
+            the general ExperimentBuilder options that are accessible through
             self.options.
         phase_options : dict
-            The options to pass to the YamlPhaseFactory constructor.
+            The options to pass to the AlchemicalPhaseFactory constructor.
         sampler_options : dict
             The options to pass to the ReplicaExchange constructor.
         alchemical_region_options : dict
@@ -1540,7 +1540,7 @@ class YamlBuilder(object):
                     if name in reference_options}
 
         experiment_options = _filter_options(self.EXPERIMENT_DEFAULT_OPTIONS)
-        phase_options = _filter_options(YamlPhaseFactory.DEFAULT_OPTIONS)
+        phase_options = _filter_options(AlchemicalPhaseFactory.DEFAULT_OPTIONS)
         sampler_options = _filter_options(utils.get_keyword_args(repex.ReplicaExchange.__init__))
         alchemical_region_options = _filter_options(mmtools.alchemy._ALCHEMICAL_REGION_ARGS)
 
@@ -1702,7 +1702,7 @@ class YamlBuilder(object):
 
         """
         template_options = cls.EXPERIMENT_DEFAULT_OPTIONS.copy()
-        template_options.update(YamlPhaseFactory.DEFAULT_OPTIONS)
+        template_options.update(AlchemicalPhaseFactory.DEFAULT_OPTIONS)
         template_options.update(mmtools.alchemy._ALCHEMICAL_REGION_ARGS)
         template_options.update(utils.get_keyword_args(repex.ReplicaExchange.__init__))
 
@@ -2107,7 +2107,7 @@ class YamlBuilder(object):
             raise YamlParseError('Protocol ' + protocol_id + ' is unknown')
 
         def validate_experiment_options(options):
-            return YamlBuilder._validate_options(options, validate_general_options=False)
+            return ExperimentBuilder._validate_options(options, validate_general_options=False)
 
         # Check if there is a sequence of experiments or a single one
         try:
@@ -2187,7 +2187,7 @@ class YamlBuilder(object):
     def _check_resume(self, check_setup=True, check_experiments=True):
         """Perform dry run to check if we are going to overwrite files.
 
-        If we find folders that YamlBuilder should create we raise an exception
+        If we find folders that ExperimentBuilder should create we raise an exception
         unless resume_setup or resume_simulation are found, in which case we
         assume we need to use the existing files. We never overwrite files, the
         user is responsible to delete them or move them.
@@ -2547,8 +2547,8 @@ class YamlBuilder(object):
 
         Returns
         -------
-        yaml_experiment : YamlExperiment
-            A YamlExperiment object.
+        yaml_experiment : Experiment
+            A Experiment object.
 
         """
         system_id = experiment['system']
@@ -2630,7 +2630,7 @@ class YamlBuilder(object):
         phase_names = list(self._protocols[protocol_id].keys())
         for i, phase_name in enumerate(phase_names):
             # Check if we need to resume a phase. If the phase has been
-            # already created, YamlExperiment will resume from the storage.
+            # already created, Experiment will resume from the storage.
             phase_path = os.path.join(results_dir, phase_name + '.nc')
             if os.path.isfile(phase_path):
                 phases[i] = phase_path
@@ -2700,17 +2700,17 @@ class YamlBuilder(object):
             sampler = repex.ReplicaExchange(mcmc_moves=mcmc_move, **sampler_opts)
 
             # Create phases.
-            phases[i] = YamlPhaseFactory(sampler, thermodynamic_state, sampler_state,
-                                         topography, phase_protocol, storage=phase_path,
-                                         restraint=restraint, alchemical_regions=alchemical_region,
-                                         **phase_opts)
+            phases[i] = AlchemicalPhaseFactory(sampler, thermodynamic_state, sampler_state,
+                                               topography, phase_protocol, storage=phase_path,
+                                               restraint=restraint, alchemical_regions=alchemical_region,
+                                               **phase_opts)
 
         # Dump analysis script
         mpi.run_single_node(0, self._save_analysis_script, results_dir, phase_names)
 
-        # Return new YamlExperiment object.
-        return YamlExperiment(phases, sampler_opts['number_of_iterations'],
-                              exp_opts['switch_phase_interval'])
+        # Return new Experiment object.
+        return Experiment(phases, sampler_opts['number_of_iterations'],
+                          exp_opts['switch_phase_interval'])
 
 
 if __name__ == "__main__":
