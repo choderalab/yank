@@ -21,6 +21,7 @@ import tempfile
 import itertools
 
 import mdtraj
+import numpy as np
 
 from nose.tools import assert_raises, assert_equal
 from nose.plugins.attrib import attr
@@ -177,50 +178,6 @@ def get_template_script(output_dir='.'):
                abl_path=paths['abl'], lysozyme_path=paths['lysozyme'])
 
     return yank_load(template_script)
-
-
-# ==============================================================================
-# YamlBuild utility functions
-# ==============================================================================
-
-def test_remove_overlap():
-    """Test function remove_overlap()."""
-    mol1_pos = np.array([[-1, -1, -1], [1, 1, 1]], np.float)
-    mol2_pos = np.array([[1, 1, 1], [3, 4, 5]], np.float)
-    mol3_pos = np.array([[2, 2, 2], [2, 4, 5]], np.float)
-    assert pipeline.compute_min_dist(mol1_pos, mol2_pos, mol3_pos) < 0.1
-    mol1_pos = remove_overlap(mol1_pos, mol2_pos, mol3_pos, min_distance=0.1, sigma=2.0)
-    assert pipeline.compute_min_dist(mol1_pos, mol2_pos, mol3_pos) >= 0.1
-
-
-def test_pull_close():
-    """Test function pull_close()."""
-    mol1_pos = np.array([[-1, -1, -1], [1, 1, 1]], np.float)
-    mol2_pos = np.array([[-1, -1, -1], [1, 1, 1]], np.float)
-    mol3_pos = np.array([[10, 10, 10], [13, 14, 15]], np.float)
-    translation2 = pull_close(mol1_pos, mol2_pos, 1.5, 5)
-    translation3 = pull_close(mol1_pos, mol3_pos, 1.5, 5)
-    assert isinstance(translation2, np.ndarray)
-    assert 1.5 <= pipeline.compute_min_dist(mol1_pos, mol2_pos + translation2) <= 5
-    assert 1.5 <= pipeline.compute_min_dist(mol1_pos, mol3_pos + translation3) <= 5
-
-
-def test_pack_transformation():
-    """Test function pack_transformation()."""
-    BOX_SIZE = 5
-    CLASH_DIST = 1
-
-    mol1 = np.array([[-1, -1, -1], [1, 1, 1]], np.float)
-    mols = [np.copy(mol1),  # distance = 0
-            mol1 + 2 * BOX_SIZE]  # distance > box
-    mols_affine = [np.append(mol, np.ones((2, 1)), axis=1) for mol in mols]
-
-    transformations = [pack_transformation(mol1, mol2, CLASH_DIST, BOX_SIZE) for mol2 in mols]
-    for mol, transf in zip(mols_affine, transformations):
-        assert isinstance(transf, np.ndarray)
-        mol2 = mol.dot(transf.T)[:, :3]  # transform and "de-affine"
-        min_dist, max_dist = pipeline.compute_min_max_dist(mol1, mol2)
-        assert CLASH_DIST <= min_dist and max_dist <= BOX_SIZE
 
 
 # ==============================================================================
@@ -686,7 +643,7 @@ def test_validation_wrong_experiments():
 
 def test_yaml_mol2_antechamber():
     """Test antechamber setup of molecule files."""
-    with omt.utils.temporary_directory() as tmp_dir:
+    with mmtools.utils.temporary_directory() as tmp_dir:
         yaml_content = get_template_script(tmp_dir)
         yaml_builder = ExperimentBuilder(yaml_content)
         yaml_builder._db._setup_molecules('benzene')
@@ -715,7 +672,7 @@ def test_yaml_mol2_antechamber():
 @unittest.skipIf(not utils.is_openeye_installed(), 'This test requires OpenEye installed.')
 def test_setup_name_smiles_openeye_charges():
     """Setup molecule from name and SMILES with openeye charges and gaff."""
-    with omt.utils.temporary_directory() as tmp_dir:
+    with mmtools.utils.temporary_directory() as tmp_dir:
         molecules_ids = ['toluene-smiles', 'p-xylene-name']
         yaml_content = get_template_script(tmp_dir)
         yaml_builder = ExperimentBuilder(yaml_content)
@@ -754,7 +711,7 @@ def test_clashing_atoms():
     """Check that clashing atoms are resolved."""
     benzene_path = examples_paths()['benzene']
     toluene_path = examples_paths()['toluene']
-    with omt.utils.temporary_directory() as tmp_dir:
+    with mmtools.utils.temporary_directory() as tmp_dir:
         yaml_content = get_template_script(tmp_dir)
         system_id = 'explicit-system'
         system_description = yaml_content['systems'][system_id]
@@ -764,7 +721,7 @@ def test_clashing_atoms():
         # Sanity check: at the beginning molecules clash
         toluene_pos = utils.get_oe_mol_positions(utils.read_oe_molecule(toluene_path))
         benzene_pos = utils.get_oe_mol_positions(utils.read_oe_molecule(benzene_path))
-        assert pipeline.compute_min_dist(toluene_pos, benzene_pos) < SetupDatabase.CLASH_THRESHOLD
+        assert pipeline.compute_min_dist(toluene_pos, benzene_pos) < pipeline.SetupDatabase.CLASH_THRESHOLD
 
         yaml_builder = ExperimentBuilder(yaml_content)
 
@@ -785,18 +742,18 @@ def test_clashing_atoms():
 
             # Test that clashes are resolved in the system
             min_dist, max_dist = pipeline.compute_min_max_dist(toluene_pos2, benzene_pos2)
-            assert min_dist >= SetupDatabase.CLASH_THRESHOLD
+            assert min_dist >= pipeline.SetupDatabase.CLASH_THRESHOLD
 
             # For solvent we check that molecule is within the box
             if system_id == system_id + '_PME':
                 assert max_dist <= yaml_content['solvents']['PME']['clearance']
 
 
-@unittest.skipIf(not omt.schrodinger.is_schrodinger_suite_installed(),
+@unittest.skipIf(not moltools.schrodinger.is_schrodinger_suite_installed(),
                  "This test requires Schrodinger's suite")
 def test_epik_enumeration():
     """Test epik protonation state enumeration."""
-    with omt.utils.temporary_directory() as tmp_dir:
+    with mmtools.utils.temporary_directory() as tmp_dir:
         yaml_content = get_template_script(tmp_dir)
         yaml_builder = ExperimentBuilder(yaml_content)
         mol_ids = ['benzene-epik0', 'benzene-epikcustom']
@@ -815,7 +772,7 @@ def test_strip_protons():
     """Test that protons are stripped correctly for tleap."""
     mol_id = 'Abl'
     abl_path = examples_paths()['abl']
-    with omt.utils.temporary_directory() as tmp_dir:
+    with mmtools.utils.temporary_directory() as tmp_dir:
         # Safety check: protein must have protons
         has_hydrogen = False
         with open(abl_path, 'r') as f:
@@ -1041,7 +998,7 @@ class TestMultiMoleculeFiles(object):
 
     def test_select_pdb_conformation(self):
         """Check that frame selection in multi-model PDB files works."""
-        with omt.utils.temporary_directory() as tmp_dir:
+        with mmtools.utils.temporary_directory() as tmp_dir:
             yaml_content = """
             ---
             options:
@@ -1063,7 +1020,7 @@ class TestMultiMoleculeFiles(object):
 
             # The setup of the molecule must isolate the frame in a single-frame PDB
             yaml_builder._db._setup_molecules('selected')
-            selected_pdb_path = os.path.join(tmp_dir, SetupDatabase.MOLECULES_DIR,
+            selected_pdb_path = os.path.join(tmp_dir, pipeline.SetupDatabase.MOLECULES_DIR,
                                              'selected', 'selected.pdb')
             assert os.path.exists(os.path.join(selected_pdb_path))
             assert os.path.getsize(os.path.join(selected_pdb_path)) > 0
@@ -1094,7 +1051,7 @@ class TestMultiMoleculeFiles(object):
         """Check that setup molecule from SMILES files works."""
         from openeye.oechem import OEMolToSmiles
 
-        with omt.utils.temporary_directory() as tmp_dir:
+        with mmtools.utils.temporary_directory() as tmp_dir:
             yaml_content = """
             ---
             options:
@@ -1122,12 +1079,12 @@ class TestMultiMoleculeFiles(object):
 
                 # The single SMILES has been converted to mol2 file
                 yaml_builder._db._setup_molecules(mol_id)
-                mol2_path = os.path.join(tmp_dir, SetupDatabase.MOLECULES_DIR, mol_id, mol_id + '.mol2')
+                mol2_path = os.path.join(tmp_dir, pipeline.SetupDatabase.MOLECULES_DIR, mol_id, mol_id + '.mol2')
                 assert os.path.exists(os.path.join(mol2_path))
                 assert os.path.getsize(os.path.join(mol2_path)) > 0
 
                 # The mol2 represents the right molecule
-                csv_smiles_str = read_csv_lines(self.smiles_path, lines=i).strip().split(',')[1]
+                csv_smiles_str = pipeline.read_csv_lines(self.smiles_path, lines=i).strip().split(',')[1]
                 mol2_smiles_str = OEMolToSmiles(utils.read_oe_molecule(mol2_path))
                 assert mol2_smiles_str == csv_smiles_str
 
@@ -1145,7 +1102,7 @@ class TestMultiMoleculeFiles(object):
     @unittest.skipIf(not utils.is_openeye_installed(), 'This test requires OpenEye installed.')
     def test_select_sdf_mol2(self):
         """Check that selection in sdf and mol2 files works."""
-        with omt.utils.temporary_directory() as tmp_dir:
+        with mmtools.utils.temporary_directory() as tmp_dir:
             yaml_content = """
             ---
             options:
@@ -1189,7 +1146,7 @@ class TestMultiMoleculeFiles(object):
                     yaml_builder._db._setup_molecules(mol_id)
 
                     # The setup of the molecule must isolate the frame in a single-frame PDB
-                    single_mol_path = os.path.join(tmp_dir, SetupDatabase.MOLECULES_DIR,
+                    single_mol_path = os.path.join(tmp_dir, pipeline.SetupDatabase.MOLECULES_DIR,
                                                    mol_id, mol_id + '.' + extension)
                     assert os.path.exists(os.path.join(single_mol_path))
                     assert os.path.getsize(os.path.join(single_mol_path)) > 0
@@ -1201,13 +1158,13 @@ class TestMultiMoleculeFiles(object):
 
                     # sdf files must be converted to mol2 to be fed to antechamber
                     if extension == 'sdf':
-                        single_mol_path = os.path.join(tmp_dir, SetupDatabase.MOLECULES_DIR,
+                        single_mol_path = os.path.join(tmp_dir, pipeline.SetupDatabase.MOLECULES_DIR,
                                                        mol_id, mol_id + '.mol2')
                         assert os.path.exists(os.path.join(single_mol_path))
                         assert os.path.getsize(os.path.join(single_mol_path)) > 0
 
                     # Check antechamber parametrization
-                    single_mol_path = os.path.join(tmp_dir, SetupDatabase.MOLECULES_DIR,
+                    single_mol_path = os.path.join(tmp_dir, pipeline.SetupDatabase.MOLECULES_DIR,
                                                    mol_id, mol_id + '.gaff.mol2')
                     assert os.path.exists(os.path.join(single_mol_path))
                     assert os.path.getsize(os.path.join(single_mol_path)) > 0
@@ -1308,7 +1265,7 @@ def test_exp_sequence():
 
 def test_setup_implicit_system_leap():
     """Create prmtop and inpcrd for implicit solvent protein-ligand system."""
-    with omt.utils.temporary_directory() as tmp_dir:
+    with mmtools.utils.temporary_directory() as tmp_dir:
         yaml_content = get_template_script(tmp_dir)
         yaml_builder = ExperimentBuilder(yaml_content)
 
@@ -1344,7 +1301,7 @@ def test_setup_implicit_system_leap():
 
 def test_setup_explicit_system_leap():
     """Create prmtop and inpcrd protein-ligand system in explicit solvent."""
-    with omt.utils.temporary_directory() as tmp_dir:
+    with mmtools.utils.temporary_directory() as tmp_dir:
         yaml_content = get_template_script(tmp_dir)
         yaml_builder = ExperimentBuilder(yaml_content)
 
@@ -1374,7 +1331,7 @@ def test_setup_explicit_system_leap():
 
 def test_neutralize_system():
     """Test whether the system charge is neutralized correctly."""
-    with omt.utils.temporary_directory() as tmp_dir:
+    with mmtools.utils.temporary_directory() as tmp_dir:
         yaml_content = get_template_script(tmp_dir)
         yaml_content['systems']['explicit-system']['receptor'] = 'T4Lysozyme'
         yaml_content['systems']['explicit-system']['ligand'] = 'p-xylene'
@@ -1402,7 +1359,7 @@ def test_neutralize_system():
 def test_charged_ligand():
     """Check that there are alchemical counterions for charged ligands."""
     imatinib_path = examples_paths()['imatinib']
-    with omt.utils.temporary_directory() as tmp_dir:
+    with mmtools.utils.temporary_directory() as tmp_dir:
         receptors = {'Asp': -1, 'Abl': -8}  # receptor name -> net charge
         updates = yank_load("""
         molecules:
@@ -1469,7 +1426,7 @@ def test_charged_ligand():
 
 def test_setup_explicit_solvation_system():
     """Create prmtop and inpcrd files for solvation free energy in explicit solvent."""
-    with omt.utils.temporary_directory() as tmp_dir:
+    with mmtools.utils.temporary_directory() as tmp_dir:
         yaml_script = get_template_script(tmp_dir)
         yaml_script['systems'] = {
             'system1':
@@ -1531,7 +1488,7 @@ def test_setup_solvent_models():
 
 def test_setup_multiple_parameters_system():
     """Set up system with molecule that needs many parameter files."""
-    with omt.utils.temporary_directory() as tmp_dir:
+    with mmtools.utils.temporary_directory() as tmp_dir:
         yaml_script = get_template_script(tmp_dir)
 
         # Force antechamber parametrization of benzene to output frcmod file
@@ -1632,7 +1589,7 @@ def test_yaml_creation():
     """Test the content of generated single experiment YAML files."""
     ligand_path = examples_paths()['p-xylene']
     toluene_path = examples_paths()['toluene']
-    with omt.utils.temporary_directory() as tmp_dir:
+    with mmtools.utils.temporary_directory() as tmp_dir:
         molecules = """
             T4lysozyme:
                 filepath: {}
@@ -1713,7 +1670,7 @@ def test_yaml_extension():
     """Test that extending a yaml content with additional data produces the correct fusion"""
     ligand_path = examples_paths()['p-xylene']
     toluene_path = examples_paths()['toluene']
-    with omt.utils.temporary_directory() as tmp_dir:
+    with mmtools.utils.temporary_directory() as tmp_dir:
         molecules = """
             T4lysozyme:
                 filepath: {}
@@ -1805,7 +1762,7 @@ def test_run_experiment_from_amber_files():
     """Test experiment run from prmtop/inpcrd files."""
     complex_path = examples_paths()['bentol-complex']
     solvent_path = examples_paths()['bentol-solvent']
-    with omt.utils.temporary_directory() as tmp_dir:
+    with mmtools.utils.temporary_directory() as tmp_dir:
         yaml_script = get_template_script(tmp_dir)
         yaml_script['options']['anisotropic_dispersion_correction'] = False
         del yaml_script['molecules']  # we shouldn't need any molecule
@@ -1838,7 +1795,7 @@ def test_run_experiment_from_gromacs_files():
     complex_path = examples_paths()['pxylene-complex']
     solvent_path = examples_paths()['pxylene-solvent']
     include_path = examples_paths()['pxylene-gro-include']
-    with omt.utils.temporary_directory() as tmp_dir:
+    with mmtools.utils.temporary_directory() as tmp_dir:
         yaml_script = get_template_script(tmp_dir)
         yaml_script['options']['anisotropic_dispersion_correction'] = False
         del yaml_script['molecules']  # we shouldn't need any molecule
@@ -1871,7 +1828,7 @@ def test_run_experiment_from_xml_files():
     """Test hydration experiment run from pdb/xml files."""
     solvent_path = examples_paths()['toluene-solvent']
     vacuum_path = examples_paths()['toluene-vacuum']
-    with omt.utils.temporary_directory() as tmp_dir:
+    with mmtools.utils.temporary_directory() as tmp_dir:
         yaml_script = get_template_script(tmp_dir)
         del yaml_script['molecules']  # we shouldn't need any molecule
         yaml_script['systems'] = {'explicit-system':
@@ -1899,7 +1856,7 @@ def test_run_experiment_from_xml_files():
 @attr('slow')  # Skip on Travis-CI
 def test_run_experiment():
     """Test experiment run and resuming."""
-    with omt.utils.temporary_directory() as tmp_dir:
+    with mmtools.utils.temporary_directory() as tmp_dir:
         yaml_content = """
         ---
         options:
@@ -2010,7 +1967,7 @@ def test_run_experiment():
 
 def test_run_solvation_experiment():
     """Test solvation free energy experiment run."""
-    with omt.utils.temporary_directory() as tmp_dir:
+    with mmtools.utils.temporary_directory() as tmp_dir:
         yaml_script = get_template_script(tmp_dir)
         yaml_script['solvents']['PME']['clearance'] = '14*angstroms'
         yaml_script['systems'] = {
