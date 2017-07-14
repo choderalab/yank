@@ -674,18 +674,6 @@ def find_phases_in_store_directory(store_directory):
     return phases
 
 
-def is_iterable_container(value):
-    """Check whether the given value is a list-like object or not.
-
-    Returns
-    -------
-    Flase if value is a string or not iterable, True otherwise.
-
-    """
-    # strings are iterable too so we have to treat them as a special case
-    return not isinstance(value, str) and isinstance(value, collections.Iterable)
-
-
 # ==============================================================================
 # Conversion utilities
 # ==============================================================================
@@ -1262,10 +1250,6 @@ def get_oe_mol_positions(molecule, conformer_idx=0):
         molecule_pos[i] = oe_coords
     return molecule_pos
 
-def set_oe_mol_positions(molecule, positions):
-    for i, atom in enumerate(molecule.GetAtoms()):
-        molecule.SetCoords(atom, positions[i])
-
 
 class TLeap:
     """Programmatic interface to write and run tLeap scripts.
@@ -1456,28 +1440,18 @@ class TLeap:
 
 """
 Generate same behavior for dict.item in both versions of Python
-Avoids external dependancies on future.utils or six
+Avoids external dependencies on future.utils or six
 
 """
 try:
     dict.iteritems
-except AttributeError:
-    # Python 3
-    def listvalues(d):
-        return list(d.values())
-    def listitems(d):
-        return list(d.items())
+except AttributeError:  # Python 3
     def dictiter(d):
         return d.items()
-
-else:
-    # Python 2
-    def listvalues(d):
-        return d.values()
-    def listitems(d):
-        return d.items()
+else:  # Python 2
     def dictiter(d):
         return d.iteritems()
+
 
 #=============================================================================================
 # Main and tests
