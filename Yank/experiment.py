@@ -638,7 +638,7 @@ class ExperimentBuilder(object):
             return expanded_content
 
         # First substitute all 'select: all' with the correct combination of indices
-        for comb_mol_name, comb_molecule in utils.listitems(expanded_content['molecules']):
+        for comb_mol_name, comb_molecule in utils.dictiter(expanded_content['molecules']):
             if 'select' in comb_molecule and comb_molecule['select'] == 'all':
                 # Get the number of models in the file
                 extension = os.path.splitext(comb_molecule['filepath'])[1][1:]  # remove dot
@@ -728,7 +728,7 @@ class ExperimentBuilder(object):
 
         """
         output_dir = ''
-        for exp_name, experiment in utils.listitems(self._experiments):
+        for exp_name, experiment in utils.dictiter(self._experiments):
             if len(self._experiments) > 1:
                 output_dir = exp_name
 
@@ -857,7 +857,7 @@ class ExperimentBuilder(object):
         )
 
         # Schema validation
-        for molecule_id, molecule_descr in utils.listitems(molecules_description):
+        for molecule_id, molecule_descr in utils.dictiter(molecules_description):
             try:
                 validated_molecules[molecule_id] = molecule_schema.validate(molecule_descr)
 
@@ -941,7 +941,7 @@ class ExperimentBuilder(object):
         solvent_schema = Schema(Or(explicit_schema, implicit_schema, vacuum_schema))
 
         # Schema validation
-        for solvent_id, solvent_descr in utils.listitems(solvents_description):
+        for solvent_id, solvent_descr in utils.dictiter(solvents_description):
             try:
                 validated_solvents[solvent_id] = solvent_schema.validate(solvent_descr)
             except SchemaError as e:
@@ -974,9 +974,9 @@ class ExperimentBuilder(object):
             sortables = [('complex', 'solvent'), ('solvent1', 'solvent2')]
             for sortable in sortables:
                 # Phases names must be unambiguous, they can't contain both names
-                phase1 = [(k, v) for k, v in utils.listitems(protocol)
+                phase1 = [(k, v) for k, v in utils.dictiter(protocol)
                           if (sortable[0] in k and sortable[1] not in k)]
-                phase2 = [(k, v) for k, v in utils.listitems(protocol)
+                phase2 = [(k, v) for k, v in utils.dictiter(protocol)
                           if (sortable[1] in k and sortable[0] not in k)]
 
                 # Phases names must be unique
@@ -1001,7 +1001,7 @@ class ExperimentBuilder(object):
         ))
 
         # Schema validation
-        for protocol_id, protocol_descr in utils.listitems(protocols_description):
+        for protocol_id, protocol_descr in utils.dictiter(protocols_description):
             try:
                 validated_protocols[protocol_id] = protocol_schema.validate(protocol_descr)
             except SchemaError as e:
@@ -1127,7 +1127,7 @@ class ExperimentBuilder(object):
         ))
 
         # Schema validation
-        for system_id, system_descr in utils.listitems(systems_description):
+        for system_id, system_descr in utils.dictiter(systems_description):
             try:
                 validated_systems[system_id] = system_schema.validate(system_descr)
 
@@ -1534,7 +1534,7 @@ class ExperimentBuilder(object):
         opt_section.update(exp_section.pop('options', {}))
 
         # Convert relative paths to new script directory
-        for molecule in utils.listvalues(mol_section):
+        for molecule in mol_section.values():
             if 'filepath' in molecule and not os.path.isabs(molecule['filepath']):
                 molecule['filepath'] = os.path.relpath(molecule['filepath'], yaml_dir)
 

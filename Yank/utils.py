@@ -554,7 +554,7 @@ class CombinatorialTree(collections.MutableMapping):
         def recursive_find_leaves(node):
             leaf_paths = []
             leaf_vals = []
-            for child_key, child_val in listitems(node):
+            for child_key, child_val in dictiter(node):
                 if isinstance(child_val, collections.Mapping):
                     subleaf_paths, subleaf_vals = recursive_find_leaves(child_val)
                     # prepend child key to path
@@ -926,7 +926,7 @@ def generate_signature_schema(func, update_keys=None, exclude_keys=frozenset()):
     >>> print(isinstance(f_dict, dict))
     True
     >>> # Print (key, values) in the correct order
-    >>> print(sorted(listitems(f_dict), key=lambda x: x[1]))
+    >>> print(sorted(dictiter(f_dict), key=lambda x: x[1]))
     [(Optional('camel_case'), <type 'bool'>), (Optional('none'), <type 'object'>)]
     >>> f_schema = Schema(generate_signature_schema(f))
     >>> f_schema.validate({'quantity': '1.0*nanometer'})
@@ -1070,7 +1070,7 @@ def validate_parameters(parameters, template_parameters, check_unknown=False,
         diff = set(parameters) - set(template_parameters)
         raise TypeError("found unknown parameter {}".format(', '.join(diff)))
 
-    for par, value in listitems(validated_par):
+    for par, value in dictiter(validated_par):
         templ_value = template_parameters[par]
 
         # Convert requested types
@@ -1397,18 +1397,18 @@ class TLeap:
 
         # Transform paths in absolute paths since we'll change the working directory
         input_files = {local + os.path.splitext(path)[1]: os.path.abspath(path)
-                       for local, path in listitems(self._file_paths) if 'moli' in local}
+                       for local, path in dictiter(self._file_paths) if 'moli' in local}
         output_files = {local + os.path.splitext(path)[1]: os.path.abspath(path)
-                        for local, path in listitems(self._file_paths) if 'molo' in local}
+                        for local, path in dictiter(self._file_paths) if 'molo' in local}
 
         # Resolve all the names in the script
         local_files = {local: local + os.path.splitext(path)[1]
-                       for local, path in listitems(self._file_paths)}
+                       for local, path in dictiter(self._file_paths)}
         script = self._script.format(**local_files) + 'quit\n'
 
         with mdtraj.utils.enter_temp_directory():
             # Copy input files
-            for local_file, file_path in listitems(input_files):
+            for local_file, file_path in dictiter(input_files):
                 shutil.copy(file_path, local_file)
 
             # Save script and run tleap
@@ -1419,7 +1419,7 @@ class TLeap:
             # Save leap.log in directory of first output file
             if len(output_files) > 0:
                 #Get first output path in Py 3.X way that is also thread-safe
-                for val in listvalues(output_files):
+                for val in output_files.values():
                     first_output_path = val
                     break
                 first_output_name = os.path.basename(first_output_path).split('.')[0]
@@ -1430,7 +1430,7 @@ class TLeap:
             # Copy back output files. If something goes wrong, some files may not exist
             error_msg = ''
             try:
-                for local_file, file_path in listitems(output_files):
+                for local_file, file_path in dictiter(output_files):
                     create_dirs_and_copy(local_file, file_path)
             except IOError:
                 error_msg = "Could not create one of the system files."
