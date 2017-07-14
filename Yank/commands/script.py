@@ -14,7 +14,7 @@ Set up and run YANK calculation from script.
 # =============================================================================================
 
 import os
-from ..yamlbuild import YamlBuilder
+from ..experiment import YamlBuilder
 
 
 # =============================================================================================

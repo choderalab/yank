@@ -14,6 +14,6 @@ from . import utils
 from . import repex
 from . import restraints
 from . import pipeline
-from . import yamlbuild
+from . import experiment
 from . import analyze
 from .yank import Topography, AlchemicalPhase

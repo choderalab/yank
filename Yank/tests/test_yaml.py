@@ -25,7 +25,7 @@ import mdtraj
 from nose.tools import assert_raises, assert_equal
 from nose.plugins.attrib import attr
 
-from yank.yamlbuild import *
+from yank.experiment import *
 
 # ==============================================================================
 # Subroutines for testing
