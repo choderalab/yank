@@ -27,7 +27,7 @@ from nose.plugins.attrib import attr
 
 from yank.yamlbuild import *
 # silence the citations at a global level
-repex._global_citation_silence = True
+repex.ReplicaExchange._global_citation_silence = True
 
 # ==============================================================================
 # Subroutines for testing
