@@ -819,7 +819,7 @@ class ExperimentBuilder(object):
         def is_peptide(filepath):
             """Input file is a peptide."""
             if not os.path.isfile(filepath):
-                raise YamlParseError('File path does not exist.')
+                raise SchemaError('File path does not exist.')
             extension = os.path.splitext(filepath)[1]
             if extension == '.pdb':
                 return True
@@ -829,7 +829,7 @@ class ExperimentBuilder(object):
             """Input file is a small molecule."""
             file_formats = frozenset(['mol2', 'sdf', 'smiles', 'csv'])
             if not os.path.isfile(filepath):
-                raise YamlParseError('File path does not exist.')
+                raise SchemaError('File path does not exist.')
             extension = os.path.splitext(filepath)[1][1:]
             if extension in file_formats:
                 return True
@@ -1034,20 +1034,20 @@ class ExperimentBuilder(object):
         def is_known_molecule(molecule_id):
             if molecule_id in self._db.molecules:
                 return True
-            raise YamlParseError('Molecule ' + molecule_id + ' is unknown.')
+            raise SchemaError('Molecule ' + molecule_id + ' is unknown.')
 
         def is_known_solvent(solvent_id):
             if solvent_id in self._db.solvents:
                 return True
-            raise YamlParseError('Solvent ' + solvent_id + ' is unknown.')
+            raise SchemaError('Solvent ' + solvent_id + ' is unknown.')
 
         def is_pipeline_solvent(solvent_id):
             is_known_solvent(solvent_id)
             solvent = self._db.solvents[solvent_id]
             if (solvent['nonbonded_method'] != openmm.app.NoCutoff and
                     'clearance' not in solvent):
-                raise YamlParseError('Explicit solvent {} does not specify '
-                                     'clearance.'.format(solvent_id))
+                raise SchemaError('Explicit solvent {} does not specify '
+                                  'clearance.'.format(solvent_id))
             return True
 
         def system_files(type):
@@ -1070,14 +1070,13 @@ class ExperimentBuilder(object):
                                'Expected extensions: {}').format(
                         sorted(provided_extensions), sorted(expected_extensions))
                     logger.debug(err_msg)
-                    raise YamlParseError(err_msg)
+                    raise SchemaError(err_msg)
                 else:
                     logger.debug('Correctly recognized files {} as {}'.format(files, expected_extensions))
 
                 # Check if given files exist.
                 for filepath in files:
                     if not os.path.isfile(filepath):
-                        logger.error('os.path.isfile({}) is False'.format(filepath))
                         raise YamlParseError('File path {} does not exist.'.format(filepath))
 
                 # Return files in alphabetical order of extension.
@@ -1161,12 +1160,12 @@ class ExperimentBuilder(object):
         def is_known_system(system_id):
             if system_id in self._db.systems:
                 return True
-            raise YamlParseError('System ' + system_id + ' is unknown.')
+            raise SchemaError('System ' + system_id + ' is unknown.')
 
         def is_known_protocol(protocol_id):
             if protocol_id in self._protocols:
                 return True
-            raise YamlParseError('Protocol ' + protocol_id + ' is unknown')
+            raise SchemaError('Protocol ' + protocol_id + ' is unknown')
 
         def validate_experiment_options(options):
             return ExperimentBuilder._validate_options(options, validate_general_options=False)
