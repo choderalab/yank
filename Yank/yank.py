@@ -411,6 +411,17 @@ class AlchemicalPhase(object):
     def number_of_iterations(self, value):
         self._sampler.number_of_iterations = value
 
+    @property
+    def is_complete(self):
+        """
+        bool: is the sampler complete by some other mechanism.
+        If no method is present in sampler, check if sampler's current iteration is number of iterations
+        """
+        try:
+            return self._sampler.is_complete
+        except AttributeError:
+            return self._sampler.iteration >= self._sampler.number_of_iterations
+
     def create(self, thermodynamic_state, sampler_states, topography, protocol,
                storage, restraint=None, anisotropic_dispersion_cutoff=None,
                alchemical_regions=None, alchemical_factory=None, metadata=None):

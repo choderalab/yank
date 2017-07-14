@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 # CONSTANTS
 # =============================================================================
 
-HIGHEST_VERSION = '1.2'  # highest version of YAML syntax
+HIGHEST_VERSION = '1.3'  # highest version of YAML syntax
 
 # Map the OpenMM-style name for a solvent to the tleap
 # name compatible with the solvateBox command.
@@ -1204,6 +1204,10 @@ class YamlExperiment(object):
                 # Update phase iteration info.
                 iterations_left[phase_id] -= iterations_to_run
                 self._phases_last_iterations[phase_id] = alchemical_phase.iteration
+
+                # Do one last check to see if the phase has converged by other means (e.g. online analysis)
+                if alchemical_phase.is_complete:
+                    self._phases_last_iterations[phase_id] = 0
 
                 # Delete alchemical phase and prepare switching.
                 del alchemical_phase
