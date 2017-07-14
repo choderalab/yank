@@ -1744,7 +1744,9 @@ class ExperimentBuilder(object):
                 restraint = None
 
             # Create MCMC moves and sampler. Apply MC rotation displacement to ligand.
-            if len(topography.ligand_atoms) > 0:
+            # We don't try displacing and rotating the ligand with a Boresch restraint
+            # since the attempts would likely always fail.
+            if len(topography.ligand_atoms) > 0 and not isinstance(restraint, restraints.Boresch):
                 move_list = [
                     mmtools.mcmc.MCDisplacementMove(displacement_sigma=exp_opts['mc_displacement_sigma'],
                                                     atom_subset=topography.ligand_atoms),
