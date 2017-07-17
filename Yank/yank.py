@@ -16,7 +16,6 @@ Interface for automated free energy calculations.
 # GLOBAL IMPORTS
 # ==============================================================================
 
-import os
 import abc
 import copy
 import time
@@ -473,6 +472,12 @@ class AlchemicalPhase(object):
             Simulation metadata to be stored in the file.
 
         """
+        # Check that protocol has same number of states for each parameter.
+        len_protocol_parameters = {par_name: len(path) for par_name, path in protocol.items()}
+        if len(set(len_protocol_parameters.values())) != 1:
+            raise ValueError('The protocol parameters have a different number '
+                             'of states: {}'.format(len_protocol_parameters))
+
         # Do not modify passed thermodynamic state.
         reference_thermodynamic_state = copy.deepcopy(thermodynamic_state)
         thermodynamic_state = copy.deepcopy(thermodynamic_state)

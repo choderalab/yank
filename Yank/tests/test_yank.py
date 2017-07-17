@@ -21,6 +21,7 @@ This code is licensed under the latest available version of the MIT License.
 # GLOBAL IMPORTS
 # ==============================================================================
 
+import os
 import functools
 import contextlib
 
@@ -44,6 +45,7 @@ def prepare_yield(func, test_case_name, *args):
     f = functools.partial(func, *args)
     f.description = test_case_name + ': ' + func.__doc__
     return f
+
 
 # ==============================================================================
 # TEST TOPOLOGY OBJECT
@@ -326,6 +328,19 @@ class TestAlchemicalPhase(object):
         with nose.tools.assert_raises(ValueError):
             alchemical_phase.create(thermodynamic_state, sampler_state, topography,
                                     protocol, 'not_created.nc', restraint=yank.restraints.Harmonic())
+
+    def test_illegal_protocol(self):
+        """An error is raised when the protocol parameters have a different number of states."""
+        name, thermodynamic_state, sampler_state, topography = self.host_guest_implicit
+        protocol = {
+            'lambda_sterics': [0.0, 1.0],
+            'lambda_electrostatics': [1.0]
+        }
+        alchemical_phase = AlchemicalPhase(sampler=ReplicaExchange())
+        restraint = yank.restraints.Harmonic()
+        with nose.tools.assert_raises(ValueError):
+            alchemical_phase.create(thermodynamic_state, sampler_state, topography,
+                                    protocol, 'not_created.nc', restraint=restraint)
 
     def test_illegal_restraint(self):
         """Raise an error when restraint is handled incorrectly."""
