@@ -1562,6 +1562,7 @@ class Boresch(ReceptorLigandRestraint):
 
         # Cast to Python ints to avoid type issues when passing to OpenMM
         restrained_atoms = [int(i) for i in restrained_atoms]
+        logger.debug('Selected atoms to restrain: {}'.format(restrained_atoms))
         return restrained_atoms
 
     def _determine_restraint_parameters(self, sampler_states, topography):
