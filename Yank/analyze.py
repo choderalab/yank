@@ -4,34 +4,22 @@
 # Analyze datafiles produced by YANK.
 # =============================================================================================
 
-# =============================================================================================
-# REQUIREMENTS
-#
-# The netcdf4-python module is now used to provide netCDF v4 support:
-# http://code.google.com/p/netcdf4-python/
-#
-# This requires NetCDF with version 4 and multithreading support, as well as HDF5.
-# =============================================================================================
-
 import os
 import os.path
 
-import yaml
 import abc
 import copy
+import yaml
 import numpy as np
 
 import openmmtools as mmtools
 from .repex import Reporter
-import netCDF4 as netcdf  # netcdf4-python
 
 from pymbar import MBAR  # multi-state Bennett acceptance ratio
 from pymbar import timeseries  # for statistical inefficiency analysis
 
 import mdtraj
 import simtk.unit as units
-
-from . import utils
 
 import logging
 logger = logging.getLogger(__name__)
@@ -44,6 +32,10 @@ ABC = abc.ABCMeta('ABC', (object,), {})  # compatible with Python 2 *and* 3
 
 kB = units.BOLTZMANN_CONSTANT_kB * units.AVOGADRO_CONSTANT_NA
 
+
+# =============================================================================================
+# MODULE FUNCTIONS
+# =============================================================================================
 
 def generate_phase_name(current_name, name_list):
     """Provide a regular way to generate unique names"""
@@ -89,6 +81,10 @@ def get_analyzer(file_base_path):
     return analyzer
 
 
+# =============================================================================================
+# MODULE CLASSES
+# =============================================================================================
+
 class _ObservablesRegistry(object):
     """
     Registry of computable observables.
@@ -96,7 +92,22 @@ class _ObservablesRegistry(object):
     This is a hidden class accessed by the YankPhaseAnalyzer and MultiPhaseAnalyzer objects to check which observables
     can be computed, and then provide a regular categorization of them. This is a static registry.
 
-    To define your own methods
+    To define your own methods:
+    1) Choose a unique observable name.
+    2) Categorize the observable in one of the following ways by adding to the list in the "observables_X" method:
+     2a) "defined_by_phase": Depends on the Phase as a whole (state independent)
+     2b) "defined_by_single_state": Computed entirely from one state, e.g. Radius of Gyration
+     2c) "defined_by_two_states": Property is relative to some reference state, such as Free Energy Difference
+    3) Optionally categorize the error category calculation in the "observables_with_error_adding_Y" methods
+       If not placed in an error category, the observable will be assumed not to carry error
+       Examples: A, B, C are the observable in 3 phases, eA, eB, eC are the error of the observable in each phase
+     3a) "linear": Error between phases adds linearly.
+        If C = A + B, eC = eA + eB
+     3b) "quadrature": Error between phases adds in the square.
+        If C = A + B, eC = sqrt(eA^2 + eB^2)
+    4) Finally, to add this observable to the phase, implement a "get_{method name}" method to the subclass of
+       YankPhaseAnalyzer. Any MultiPhaseAnalyzer composed of this phase will automatically have the "get_{method name}"
+       if all other phases in the MultiPhaseAnalyzer have the same method.
     """
 
     ########################
@@ -138,7 +149,7 @@ class _ObservablesRegistry(object):
         Observables which are defined by the phase as a whole, and not defined by any 1 or more states
         e.g. Standard State Correction
         """
-        return ('standard_state_correction',)
+        return 'standard_state_correction',
 
     ##########################################
     # Define the observables which carry error
@@ -146,6 +157,7 @@ class _ObservablesRegistry(object):
     ##########################################
     @staticmethod
     def observables_with_error():
+        """Determine which observables have error by inspecting the the error subsets"""
         observables = set()
         for subset in (_ObservablesRegistry.observables_with_error_adding_quadrature(),
                        _ObservablesRegistry.observables_with_error_adding_linear()):
@@ -158,20 +170,27 @@ class _ObservablesRegistry(object):
     # ------------------------------------------------
     @staticmethod
     def observables_with_error_adding_quadrature():
+        """Observable C = A + B, Error eC = sqrt(eA**2 + eB**2)"""
         return 'entropy', 'enthalpy', 'free_energy'
 
     @staticmethod
     def observables_with_error_adding_linear():
+        """Observable C = A + B, Error eC = eA + eB"""
         return tuple()
 
+
+# ---------------------------------------------------------------------------------------------
+# Phase Analyzers
+# ---------------------------------------------------------------------------------------------
 
 class YankPhaseAnalyzer(ABC):
     """
     Analyzer for a single phase of a YANK simulation. Uses the reporter from the simulation to determine the location
     of all variables.
 
-    To compute a specific observable, add it to the ObservableRegistry and then implement a "compute_X" where X is the
-    name of the observable you want to compute.
+    To compute a specific observable, add it to the ObservableRegistry and then implement a "get_X" where X is the
+    name of the observable you want to compute. See the ObservablesRegistry for information about formatting the
+    observables.
 
     Analyzer works in units of kT unless specifically stated otherwise. To convert back to a unit set, just multiply by
     the .kT property.
@@ -348,10 +367,12 @@ class YankPhaseAnalyzer(ABC):
     # Static methods
     @staticmethod
     def get_decorrelation_time(timeseries_to_analyze):
+        """Compute the decorrelation times given a timeseries"""
         return timeseries.statisticalInefficiency(timeseries_to_analyze)
 
     @staticmethod
     def get_equilibration_data(timeseries_to_analyze):
+        """Compute equilibration method given a timeseries"""
         [n_equilibration, g_t, n_effective_max] = timeseries.detectEquilibration(timeseries_to_analyze)
         return n_equilibration, g_t, n_effective_max
 
@@ -360,7 +381,7 @@ class YankPhaseAnalyzer(ABC):
         """
         Compute the correlation time and n_effective per sample.
         This is exactly what timeseries.detectEquilibration does, but returns the per sample data
-        See the timeseries.detectEquilibration function for full documentaiton
+        See the timeseries.detectEquilibration function for full documentation
         """
         A_t = timeseries_to_analyze
         T = A_t.size
@@ -484,6 +505,7 @@ class YankPhaseAnalyzer(ABC):
         self._mbar = mbar
 
     def _combine_phases(self, other, operator='+'):
+        """Workhorse function when creating a MultiPhaseAnalyzer object by combining single YankPhaseAnalyzers"""
         phases = [self]
         names = []
         signs = [self._sign]
@@ -577,7 +599,8 @@ class RepexPhase(YankPhaseAnalyzer):
         # TODO: Replace with maximum likelihood reversible count estimator from msmbuilder or pyemma.
         t_ij = np.zeros([n_states, n_states], np.float64)
         for i_state in range(n_states):
-            denominator = (n_ij[i_state, :].sum() + n_ij[:, i_state].sum())
+            # Cast to float to ensure we dont get integer division
+            denominator = float((n_ij[i_state, :].sum() + n_ij[:, i_state].sum()))
             if denominator > 0:
                 for j_state in range(n_states):
                     t_ij[i_state, j_state] = (n_ij[i_state, j_state] + n_ij[j_state, i_state]) / denominator
@@ -681,6 +704,7 @@ class RepexPhase(YankPhaseAnalyzer):
         return u_n
 
     def _prepare_mbar_input_data(self, sampled_energy_matrix, unsampled_energy_matrix):
+        """Convert the sampled and unsampled energy matrices into MBAR ready data"""
         nstates, _, niterations = sampled_energy_matrix.shape
         _, nunsampled, _ = unsampled_energy_matrix.shape
         # Subsample data to obtain uncorrelated samples
@@ -905,7 +929,16 @@ class MultiPhaseAnalyzer(object):
         self._signs = phases['signs']
         # Set the methods shared between both objects
         for observable in self.observables:
-            setattr(self, "get_" + observable, lambda: self._compute_observable(observable))
+            setattr(self, "get_" + observable, self._spool_function(observable))
+
+    def _spool_function(self, observable):
+        """
+        Dynamic observable calculator layer
+        Must be in its own function to isolate the variable name space
+        If you have this in the __init__, the "observable" variable colides with any others in the list, causing a
+            the wrong property to be fetched.
+        """
+        return lambda: self._compute_observable(observable)
 
     @property
     def observables(self):
@@ -1109,7 +1142,7 @@ class MultiPhaseAnalyzer(object):
                 if observable_name in _ObservablesRegistry.observables_with_error_adding_linear():
                     passed_output['error'] += payload['error']
                 elif observable_name in _ObservablesRegistry.observables_with_error_adding_quadrature():
-                    passed_output['error'] += (passed_output['error']**2 + payload['error']**2)**0.5
+                    passed_output['error'] = (passed_output['error']**2 + payload['error']**2)**0.5
             else:
                 if sign == '+':
                     passed_output += payload
@@ -1198,331 +1231,9 @@ def analyze_directory(source_directory):
         dDeltaH * kT / units.kilocalories_per_mole))
 
 
-"""
-Everything below here is the old code. Currently left in for comparison
-"""
-
-
-
-
-
-
-
-
-
-# =============================================================================================
-# SUBROUTINES
-# =============================================================================================
-
-
-def generate_mixing_statistics(ncfile, number_equilibrated=0):
-    """
-    Generate the mixing statistics
-
-    Parameters
-    ----------
-    ncfile : netCDF4.Dataset
-       NetCDF file
-    number_equilibrated : int, optional, default=0
-       If specified, only samples number_equilibrated:end will be used in analysis
-
-    Returns
-    -------
-    mixing_stats : np.array of shape [nstates, nstates]
-        Transition matrix estimate
-    mu : np.array
-        Eigenvalues of the Transition matrix sorted in descending order
-    """
-
-    # Get dimensions.
-    niterations = ncfile.variables['states'].shape[0]
-    nstates = ncfile.variables['states'].shape[1]
-
-    # Compute empirical transition count matrix.
-    Nij = np.zeros([nstates, nstates], np.float64)
-    for iteration in range(number_equilibrated, niterations-1):
-        for ireplica in range(nstates):
-            istate = ncfile.variables['states'][iteration, ireplica]
-            jstate = ncfile.variables['states'][iteration+1, ireplica]
-            Nij[istate, jstate] += 1
-
-    # Compute transition matrix estimate.
-    # TODO: Replace with maximum likelihood reversible count estimator from msmbuilder or pyemma.
-    Tij = np.zeros([nstates,nstates], np.float64)
-    for istate in range(nstates):
-        denom = (Nij[istate,:].sum() + Nij[:,istate].sum())
-        if denom > 0:
-            for jstate in range(nstates):
-                Tij[istate, jstate] = (Nij[istate, jstate] + Nij[jstate, istate]) / denom
-        else:
-            Tij[istate, istate] = 1.0
-
-    # Estimate eigenvalues
-    mu = np.linalg.eigvals(Tij)
-    mu = -np.sort(-mu)  # Sort in descending order
-
-    return Tij, mu
-
-
-def show_mixing_statistics(ncfile, cutoff=0.05, number_equilibrated=0):
-    """
-    Print summary of mixing statistics. Passes information off to generate_mixing_statistics then prints it out to
-    the logger
-
-    Parameters
-    ----------
-
-    ncfile : netCDF4.Dataset
-       NetCDF file
-    cutoff : float, optional, default=0.05
-       Only transition probabilities above 'cutoff' will be printed
-    number_equilibrated : int, optional, default=0
-       If specified, only samples number_equilibrated:end will be used in analysis
-
-    """
-
-    Tij, mu = generate_mixing_statistics(ncfile, number_equilibrated=number_equilibrated)
-
-    # Print observed transition probabilities.
-    nstates = ncfile.variables['states'].shape[1]
-    logger.info("Cumulative symmetrized state mixing transition matrix:")
-    str_row = "%6s" % ""
-    for jstate in range(nstates):
-        str_row += "%6d" % jstate
-    logger.info(str_row)
-
-    for istate in range(nstates):
-        str_row = ""
-        str_row += "%-6d" % istate
-        for jstate in range(nstates):
-            P = Tij[istate,jstate]
-            if P >= cutoff:
-                str_row += "%6.3f" % P
-            else:
-                str_row += "%6s" % ""
-        logger.info(str_row)
-
-    # Estimate second eigenvalue and equilibration time.
-    if mu[1] >= 1:
-        logger.info("Perron eigenvalue is unity; Markov chain is decomposable.")
-    else:
-        logger.info("Perron eigenvalue is {0:9.5f}; state equilibration timescale is ~ {1:.1f} iterations".format(
-            mu[1], 1.0 / (1.0 - mu[1]))
-        )
-
-    return
-
-
-def extract_ncfile_energies(ncfile, ndiscard=0, nuse=None, g=None):
-    """
-    Extract and decorelate energies from the ncfile to gather common data for other functions
-
-    Parameters
-    ----------
-    ncfile : NetCDF
-       Input YANK netcdf file
-    ndiscard : int, optional, default=0
-       Number of iterations to discard to equilibration
-    nuse : int, optional, default=None
-       Maximum number of iterations to use (after discarding)
-    g : int, optional, default=None
-       Statistical inefficiency to use if desired; if None, will be computed.
-
-    TODO
-    ----
-    * Automatically determine 'ndiscard'.
-
-    """
-    # Get current dimensions.
-    niterations = ncfile.variables['energies'].shape[0]
-    nstates = ncfile.variables['energies'].shape[1]
-    natoms = ncfile.variables['energies'].shape[2]
-
-    # Extract energies.
-    logger.info("Reading energies...")
-    energies = ncfile.variables['energies']
-    u_kln_replica = np.zeros([nstates, nstates, niterations], np.float64)
-    for n in range(niterations):
-        u_kln_replica[:,:,n] = energies[n,:,:]
-    logger.info("Done.")
-
-    # Deconvolute replicas
-    logger.info("Deconvoluting replicas...")
-    u_kln = np.zeros([nstates, nstates, niterations], np.float64)
-    for iteration in range(niterations):
-        state_indices = ncfile.variables['states'][iteration,:]
-        u_kln[state_indices,:,iteration] = energies[iteration,:,:]
-    logger.info("Done.")
-
-    # Compute total negative log probability over all iterations.
-    u_n = np.zeros([niterations], np.float64)
-    for iteration in range(niterations):
-        u_n[iteration] = np.sum(np.diagonal(u_kln[:,:,iteration]))
-
-    # Discard initial data to equilibration.
-    u_kln_replica = u_kln_replica[:,:,ndiscard:]
-    u_kln = u_kln[:,:,ndiscard:]
-    u_n = u_n[ndiscard:]
-
-    # Truncate to number of specified conforamtions to use
-    if (nuse):
-        u_kln_replica = u_kln_replica[:,:,0:nuse]
-        u_kln = u_kln[:,:,0:nuse]
-        u_n = u_n[0:nuse]
-
-    # Subsample data to obtain uncorrelated samples
-    N_k = np.zeros(nstates, np.int32)
-    indices = timeseries.subsampleCorrelatedData(u_n, g=g) # indices of uncorrelated samples
-    #print(u_n) # DEBUG
-    #indices = range(0,u_n.size) # DEBUG - assume samples are uncorrelated
-    N = len(indices) # number of uncorrelated samples
-    N_k[:] = N
-    u_kln = u_kln[:,:,indices]
-    logger.info("number of uncorrelated samples:")
-    logger.info(N_k)
-    logger.info("")
-
-    # Check for the expanded cutoff states, and subsamble as needed
-    try:
-        u_ln_full_raw = ncfile.variables['fully_interacting_expanded_cutoff_energies'][:].T #Its stored as nl, need in ln
-        u_ln_non_raw = ncfile.variables['noninteracting_expanded_cutoff_energies'][:].T 
-        fully_interacting_u_ln = np.zeros(u_ln_full_raw.shape)
-        noninteracting_u_ln = np.zeros(u_ln_non_raw.shape)
-        # Deconvolute the fully interacting state
-        for iteration in range(niterations):
-            state_indices = ncfile.variables['states'][iteration,:]
-            fully_interacting_u_ln[state_indices,iteration] = u_ln_full_raw[:,iteration]
-            noninteracting_u_ln[state_indices,iteration] = u_ln_non_raw[:,iteration]
-        # Discard non-equilibrated samples
-        fully_interacting_u_ln = fully_interacting_u_ln[:,ndiscard:]
-        fully_interacting_u_ln = fully_interacting_u_ln[:,indices]
-        noninteracting_u_ln = noninteracting_u_ln[:,ndiscard:]
-        noninteracting_u_ln = noninteracting_u_ln[:,indices]
-        # Augment u_kln to accept the new state
-        u_kln_new = np.zeros([nstates + 2, nstates + 2, N], np.float64)
-        N_k_new = np.zeros(nstates + 2, np.int32)
-        # Insert energies
-        u_kln_new[1:-1,0,:] = fully_interacting_u_ln
-        u_kln_new[1:-1,-1,:] = noninteracting_u_ln
-        # Fill in other energies
-        u_kln_new[1:-1,1:-1,:] = u_kln 
-        N_k_new[1:-1] = N_k
-        # Notify users
-        logger.info("Found expanded cutoff states in the energies!")
-        logger.info("Free energies will be reported relative to them instead!")
-        # Reset values, last step in case something went wrong so we dont overwrite u_kln on accident
-        u_kln = u_kln_new
-        N_k = N_k_new
-    except:
-        pass
-
-    return u_kln, N_k, u_n
-
-
-def initialize_MBAR(ncfile, u_kln=None, N_k=None):
-    """
-    Initialize MBAR for Free Energy and Enthalpy estimates, this may take a while.
-
-    ncfile : NetCDF
-       Input YANK netcdf file
-    u_kln : array of numpy.float64, optional, default=None
-       Reduced potential energies of the replicas; if None, will be extracted from the ncfile
-    N_k : array of ints, optional, default=None
-       Number of samples drawn from each kth replica; if None, will be extracted from the ncfile
-
-    TODO
-    ----
-    * Ensure that the u_kln and N_k are decorrelated if not provided in this function
-
-    """
-
-    if u_kln is None or N_k is None:
-        (u_kln, N_k, u_n) = extract_ncfile_energies(ncfile)
-
-    # Initialize MBAR (computing free energy estimates, which may take a while)
-    logger.info("Computing free energy differences...")
-    mbar = MBAR(u_kln, N_k)
-    
-    return mbar
-    
-
-def estimate_free_energies(ncfile, mbar=None):
-    """
-    Estimate free energies of all alchemical states.
-
-    Parameters
-    ----------
-    ncfile : NetCDF
-       Input YANK netcdf file
-    mbar : pymbar MBAR object, optional, default=None
-       Initilized MBAR object from simulations; if None, it will be generated from the ncfile
-    
-    """
-
-    # Create MBAR object if not provided
-    if mbar is None:
-        mbar = initialize_MBAR(ncfile)
-
-    nstates = mbar.N_k.size
-
-    # Get matrix of dimensionless free energy differences and uncertainty estimate.
-    logger.info("Computing covariance matrix...")
-
-    try:
-        # pymbar 2
-        (Deltaf_ij, dDeltaf_ij) = mbar.getFreeEnergyDifferences()
-    except ValueError:
-        # pymbar 3
-        (Deltaf_ij, dDeltaf_ij, theta_ij) = mbar.getFreeEnergyDifferences()
-
-    # Matrix of free energy differences
-    logger.info("Deltaf_ij:")
-    for i in range(nstates):
-        str_row = ""
-        for j in range(nstates):
-            str_row += "%8.3f" % Deltaf_ij[i, j]
-        logger.info(str_row)
-
-    # Matrix of uncertainties in free energy difference (expectations standard
-    # deviations of the estimator about the true free energy)
-    logger.info("dDeltaf_ij:")
-    for i in range(nstates):
-        str_row = ""
-        for j in range(nstates):
-            str_row += "%8.3f" % dDeltaf_ij[i, j]
-        logger.info(str_row)
-
-    # Return free energy differences and an estimate of the covariance.
-    return Deltaf_ij, dDeltaf_ij
-
-
-def estimate_enthalpies(ncfile, mbar=None):
-    """
-    Estimate enthalpies of all alchemical states.
-
-    Parameters
-    ----------
-    ncfile : NetCDF
-       Input YANK netcdf file
-    mbar : pymbar MBAR object, optional, default=None
-       Initilized MBAR object from simulations; if None, it will be generated from the ncfile
-
-    TODO
-    ----
-    * Check if there is an output/function name difference between pymbar 2 and 3
-    """
-
-    # Create MBAR object if not provided
-    if mbar is None:
-        mbar = initialize_MBAR(ncfile)
-
-    nstates = mbar.N_k.size
-
-    # Compute average enthalpies
-    (f_k, df_k, H_k, dH_k, S_k, dS_k) = mbar.computeEntropyAndEnthalpy()
-
-    return H_k, dH_k
-
+# ==========================================
+# HELPER FUNCTIONS FOR TRAJECTORY EXTRACTION
+# ==========================================
 
 def extract_u_n(ncfile):
     """
@@ -1536,8 +1247,8 @@ def extract_u_n(ncfile):
 
     Parameters
     ----------
-    ncfile : str
-       The filename of the repex NetCDF file.
+    ncfile : netCDF4.Dataset
+       Open NetCDF file to analyze
 
     Returns
     -------
@@ -1546,7 +1257,7 @@ def extract_u_n(ncfile):
 
     TODO
     ----
-    Move this to repex.
+    Figure out a way to remove this function
 
     """
 
@@ -1567,8 +1278,8 @@ def extract_u_n(ncfile):
     logger.info("Deconvoluting replicas...")
     u_kln = np.zeros([nstates, nstates, niterations], np.float64)
     for iteration in range(niterations):
-        state_indices = ncfile.variables['states'][iteration,:]
-        u_kln[state_indices,:,iteration] = energies[iteration,:,:]
+        state_indices = ncfile.variables['states'][iteration, :]
+        u_kln[state_indices,:,iteration] = energies[iteration, :, :]
     logger.info("Done.")
 
     # Compute total negative log probability over all iterations.
@@ -1577,197 +1288,6 @@ def extract_u_n(ncfile):
         u_n[iteration] = np.sum(np.diagonal(u_kln[:,:,iteration]))
 
     return u_n
-
-# =============================================================================================
-# SHOW STATUS OF STORE FILES
-# =============================================================================================
-
-
-def print_status(store_directory):
-    """
-    Print a quick summary of simulation progress.
-
-    Parameters
-    ----------
-    store_directory : string
-       The location of the NetCDF simulation output files.
-
-    Returns
-    -------
-    success : bool
-       True is returned on success; False if some files could not be read.
-
-    """
-    # Get NetCDF files
-    phases = utils.find_phases_in_store_directory(store_directory)
-
-    # Process each netcdf file.
-    for phase, fullpath in phases.items():
-
-        # Check that the file exists.
-        if not os.path.exists(fullpath):
-            # Report failure.
-            logger.info("File %s not found." % fullpath)
-            logger.info("Check to make sure the right directory was specified, and 'yank setup' has been run.")
-            return False
-
-        # Open NetCDF file for reading.
-        logger.debug("Opening NetCDF trajectory file '%(fullpath)s' for reading..." % vars())
-        ncfile = netcdf.Dataset(fullpath, 'r')
-
-        # Read dimensions.
-        niterations = ncfile.variables['positions'].shape[0]
-        nstates = ncfile.variables['positions'].shape[1]
-        natoms = ncfile.variables['positions'].shape[2]
-
-        # Print summary.
-        logger.info("%s" % phase)
-        logger.info("  %8d iterations completed" % niterations)
-        logger.info("  %8d alchemical states" % nstates)
-        logger.info("  %8d atoms" % natoms)
-
-        # TODO: Print average ns/day and estimated completion time.
-
-        # Close file.
-        ncfile.close()
-
-    return True
-
-# =============================================================================================
-# ANALYZE STORE FILES
-# =============================================================================================
-
-
-def analyze(source_directory):
-    """
-    Analyze contents of store files to compute free energy differences.
-
-    Parameters
-    ----------
-    source_directory : string
-       The location of the NetCDF simulation storage files.
-
-    """
-    analysis_script_path = os.path.join(source_directory, 'analysis.yaml')
-    if not os.path.isfile(analysis_script_path):
-        err_msg = 'Cannot find analysis.yaml script in {}'.format(source_directory)
-        logger.error(err_msg)
-        raise RuntimeError(err_msg)
-    with open(analysis_script_path, 'r') as f:
-        analysis = yaml.load(f)
-    phases = [phase_name for phase_name, sign in analysis]
-
-    # Storage for different phases.
-    data = dict()
-
-    # Process each netcdf file.
-    for phase in phases:
-        ncfile_path = os.path.join(source_directory, phase + '.nc')
-
-        # Open NetCDF file for reading.
-        logger.info("Opening NetCDF trajectory file %(ncfile_path)s for reading..." % vars())
-        try:
-            ncfile = netcdf.Dataset(ncfile_path, 'r')
-
-            logger.debug("dimensions:")
-            for dimension_name in ncfile.dimensions.keys():
-                logger.debug("%16s %8d" % (dimension_name, len(ncfile.dimensions[dimension_name])))
-
-            # Read dimensions.
-            niterations = ncfile.variables['positions'].shape[0]
-            nstates = ncfile.variables['positions'].shape[1]
-            logger.info("Read %(niterations)d iterations, %(nstates)d states" % vars())
-
-            DeltaF_standard_state_correction = 0.0
-            if 'metadata' in ncfile.groups:
-                # Read phase direction and standard state correction free energy.
-                # Yank sets correction to 0 if there are no standard_state_correction
-                DeltaF_standard_state_correction = ncfile.groups['metadata'].variables['standard_state_correction'][0]
-
-            # Choose number of samples to discard to equilibration
-            MIN_ITERATIONS = 10 # minimum number of iterations to use automatic detection
-            if niterations > MIN_ITERATIONS:
-                from pymbar import timeseries
-                u_n = extract_u_n(ncfile)
-                u_n = u_n[1:] # discard initial frame of zero energies TODO: Get rid of initial frame of zero energies
-                [number_equilibrated, g_t, Neff_max] = timeseries.detectEquilibration(u_n)
-                number_equilibrated += 1 # account for initial frame of zero energies
-                logger.info([number_equilibrated, Neff_max])
-            else:
-                number_equilibrated = 1  # discard first frame
-                g_t = 1
-                Neff_max = niterations
-
-            # Examine acceptance probabilities.
-            show_mixing_statistics(ncfile, cutoff=0.05, number_equilibrated=number_equilibrated)
-
-            # Extract equilibrated, decorrelated energies, check for fully interacting state
-            (u_kln, N_k, u_n) = extract_ncfile_energies(ncfile, ndiscard=number_equilibrated, g=g_t)
-
-            # Create MBAR object to use for free energy and entropy states
-            mbar = initialize_MBAR(ncfile, u_kln=u_kln, N_k=N_k)
-
-            # Estimate free energies, use fully interacting state if present
-            (Deltaf_ij, dDeltaf_ij) = estimate_free_energies(ncfile, mbar=mbar)
-
-            # Estimate average enthalpies
-            (DeltaH_i, dDeltaH_i) = estimate_enthalpies(ncfile, mbar=mbar)
-
-            # Accumulate free energy differences
-            entry = dict()
-            entry['DeltaF'] = Deltaf_ij[0, -1]
-            entry['dDeltaF'] = dDeltaf_ij[0, -1]
-            entry['DeltaH'] = DeltaH_i[0, -1]
-            entry['dDeltaH'] = dDeltaH_i[0, -1]
-            entry['DeltaF_standard_state_correction'] = DeltaF_standard_state_correction
-            data[phase] = entry
-
-            # Get temperatures.
-            ncvar = ncfile.groups['thermodynamic_states'].variables['temperatures']
-            temperature = ncvar[0] * units.kelvin
-            kT = kB * temperature
-
-        finally:
-            ncfile.close()
-
-    # Compute free energy and enthalpy
-    DeltaF = 0.0
-    dDeltaF = 0.0
-    DeltaH = 0.0
-    dDeltaH = 0.0
-    for phase, sign in analysis:
-        DeltaF -= sign * (data[phase]['DeltaF'] + data[phase]['DeltaF_standard_state_correction'])
-        dDeltaF += data[phase]['dDeltaF']**2
-        DeltaH -= sign * (data[phase]['DeltaH'] + data[phase]['DeltaF_standard_state_correction'])
-        dDeltaH += data[phase]['dDeltaH']**2
-    dDeltaF = np.sqrt(dDeltaF)
-    dDeltaH = np.sqrt(dDeltaH)
-
-    # Attempt to guess type of calculation
-    calculation_type = ''
-    for phase in phases:
-        if 'complex' in phase:
-            calculation_type = ' of binding'
-        elif 'solvent1' in phase:
-            calculation_type = ' of solvation'
-
-    # Print energies
-    logger.info("")
-    logger.info("Free energy{}: {:16.3f} +- {:.3f} kT ({:16.3f} +- {:.3f} kcal/mol)".format(
-        calculation_type, DeltaF, dDeltaF, DeltaF * kT / units.kilocalories_per_mole,
-        dDeltaF * kT / units.kilocalories_per_mole))
-    logger.info("")
-
-    for phase in phases:
-        logger.info("DeltaG {:<25} : {:16.3f} +- {:.3f} kT".format(phase, data[phase]['DeltaF'],
-                                                                   data[phase]['dDeltaF']))
-        if data[phase]['DeltaF_standard_state_correction'] != 0.0:
-            logger.info("DeltaG {:<25} : {:25.3f} kT".format('restraint',
-                                                             data[phase]['DeltaF_standard_state_correction']))
-    logger.info("")
-    logger.info("Enthalpy{}: {:16.3f} +- {:.3f} kT ({:16.3f} +- {:.3f} kcal/mol)".format(
-        calculation_type, DeltaH, dDeltaH, DeltaH * kT / units.kilocalories_per_mole,
-        dDeltaH * kT / units.kilocalories_per_mole))
 
 
 # ==============================================================================
