@@ -14,7 +14,7 @@ Set up and run YANK calculation from script.
 # =============================================================================================
 
 import os
-from ..yamlbuild import YamlBuilder
+from ..experiment import ExperimentBuilder
 
 
 # =============================================================================================
@@ -94,7 +94,7 @@ def dispatch(args):
         if not os.path.isfile(yaml_path):
             raise ValueError('Cannot find YAML script "{}"'.format(yaml_path))
 
-        yaml_builder = YamlBuilder(yaml_source=yaml_path)
+        yaml_builder = ExperimentBuilder(yaml_source=yaml_path)
         if override:  # Parse the string present.
             yaml_builder.update_yaml(override)
         yaml_builder.run_experiments()

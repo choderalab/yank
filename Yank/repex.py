@@ -209,7 +209,8 @@ class Reporter(object):
         if mode != 'r':
             for storage_path in self._storage_paths:
                 storage_dir = os.path.dirname(storage_path)
-                if not os.path.exists(storage_dir):
+                # When storage_dir == '', os.path.exists() returns False.
+                if not os.path.exists(storage_dir) and storage_dir != '':
                     os.makedirs(storage_dir)
 
         # Open NetCDF 4 file for writing.
