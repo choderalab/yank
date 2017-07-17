@@ -26,6 +26,8 @@ from nose.tools import assert_raises, assert_equal
 from nose.plugins.attrib import attr
 
 from yank.yamlbuild import *
+# silence the citations at a global level
+repex.ReplicaExchange._global_citation_silence = True
 
 # ==============================================================================
 # Subroutines for testing
@@ -35,12 +37,12 @@ standard_protocol = """
         absolute-binding:
             complex:
                 alchemical_path:
-                    lambda_electrostatics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
-                    lambda_sterics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
+                    lambda_electrostatics: [1.0, 0.5, 0.0]
+                    lambda_sterics: [1.0, 0.5, 0.0]
             solvent:
                 alchemical_path:
-                    lambda_electrostatics: [1.0, 0.8, 0.6, 0.3, 0.0]
-                    lambda_sterics: [1.0, 0.8, 0.6, 0.3, 0.0]"""
+                    lambda_electrostatics: [1.0, 0.5, 0.0]
+                    lambda_sterics: [1.0, 0.5, 0.0]"""
 
 
 def indent(str):
@@ -163,12 +165,12 @@ def get_template_script(output_dir='.'):
         absolute-binding:
             complex:
                 alchemical_path:
-                    lambda_electrostatics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
-                    lambda_sterics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
+                    lambda_electrostatics: [1.0, 0.5, 0.0]
+                    lambda_sterics: [1.0, 0.5, 0.0]
             solvent:
                 alchemical_path:
-                    lambda_electrostatics: [1.0, 0.8, 0.6, 0.3, 0.0]
-                    lambda_sterics: [1.0, 0.8, 0.6, 0.3, 0.0]
+                    lambda_electrostatics: [1.0, 0.5, 0.0]
+                    lambda_sterics: [1.0, 0.5, 0.0]
     experiments:
         system: explicit-system
         protocol: absolute-binding
@@ -516,16 +518,16 @@ def test_order_phases():
     absolute-binding:
         {}:
             alchemical_path:
-                lambda_electrostatics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
-                lambda_sterics: [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.0]
+                lambda_electrostatics: [1.0, 0.5, 0.0]
+                lambda_sterics: [1.0, 0.5, 0.0]
         {}:
             alchemical_path:
-                lambda_electrostatics: [1.0, 0.8, 0.6, 0.3, 0.0]
-                lambda_sterics: [1.0, 0.8, 0.6, 0.3, 0.0]
+                lambda_electrostatics: [1.0, 0.5, 0.0]
+                lambda_sterics: [1.0, 0.5, 0.0]
         {}:
             alchemical_path:
-                lambda_electrostatics: [1.0, 0.8, 0.6, 0.3, 0.0]
-                lambda_sterics: [1.0, 0.8, 0.6, 0.3, 0.0]"""
+                lambda_electrostatics: [1.0, 0.5, 0.0]
+                lambda_sterics: [1.0, 0.5, 0.0]"""
 
     # Find order of phases for which normal parsing is not ordered or the test is useless
     for ordered_phases in itertools.permutations(['athirdphase', 'complex', 'solvent']):
@@ -546,11 +548,11 @@ def test_validation_correct_protocols():
 
     # Alchemical paths
     protocols = [
-        {'lambda_electrostatics': [1.0, 0.8, 0.6, 0.3, 0.0], 'lambda_sterics': [1.0, 0.8, 0.6, 0.3, 0.0]},
-        {'lambda_electrostatics': [1.0, 0.8, 0.6, 0.3, 0.0], 'lambda_sterics': [1.0, 0.8, 0.6, 0.3, 0.0],
-         'lambda_torsions': [1.0, 0.8, 0.6, 0.3, 0.0], 'lambda_angles': [1.0, 0.8, 0.6, 0.3, 0.0]},
-        {'lambda_electrostatics': [1.0, 0.8, 0.6, 0.3, 0.0], 'lambda_sterics': [1.0, 0.8, 0.6, 0.3, 0.0],
-         'temperature': ['300*kelvin', '320*kelvin', '340*kelvin', '320*kelvin', '300*kelvin']}
+        {'lambda_electrostatics': [1.0, 0.5, 0.0], 'lambda_sterics': [1.0, 0.5, 0.0]},
+        {'lambda_electrostatics': [1.0, 0.5, 0.0], 'lambda_sterics': [1.0, 0.5, 0.0],
+         'lambda_torsions': [1.0, 0.5, 0.0], 'lambda_angles': [1.0, 0.5, 0.0]},
+        {'lambda_electrostatics': [1.0, 0.5, 0.0], 'lambda_sterics': [1.0, 0.5, 0.0],
+         'temperature': ['300*kelvin', '340*kelvin', '300*kelvin']}
     ]
     for protocol in protocols:
         modified_protocol = copy.deepcopy(basic_protocol)
@@ -586,12 +588,12 @@ def test_validation_wrong_protocols():
 
     # Alchemical paths
     protocols = [
-        {'lambda_electrostatics': [1.0, 0.8, 0.6, 0.3, 0.0]},
-        {'lambda_electrostatics': [1.0, 0.8, 0.6, 0.3, 0.0], 'lambda_sterics': [1.0, 0.8, 0.6, 0.3, 'wrong!']},
-        {'lambda_electrostatics': [1.0, 0.8, 0.6, 0.3, 0.0], 'lambda_sterics': [1.0, 0.8, 0.6, 0.3, 11000.0]},
-        {'lambda_electrostatics': [1.0, 0.8, 0.6, 0.3, 0.0], 'lambda_sterics': [1.0, 0.8, 0.6, 0.3, -0.5]},
-        {'lambda_electrostatics': [1.0, 0.8, 0.6, 0.3, 0.0], 'lambda_sterics': 0.0},
-        {'lambda_electrostatics': [1.0, 0.8, 0.6, 0.3, 0.0], 'lambda_sterics': [1.0, 0.8, 0.6, 0.3, 0.0], 3: 2}
+        {'lambda_electrostatics': [1.0, 0.5, 0.0]},
+        {'lambda_electrostatics': [1.0, 0.5, 0.0], 'lambda_sterics': [1.0, 0.5, 'wrong!']},
+        {'lambda_electrostatics': [1.0, 0.5, 0.0], 'lambda_sterics': [1.0, 0.5, 11000.0]},
+        {'lambda_electrostatics': [1.0, 0.5, 0.0], 'lambda_sterics': [1.0, 0.5, -0.5]},
+        {'lambda_electrostatics': [1.0, 0.5, 0.0], 'lambda_sterics': 0.0},
+        {'lambda_electrostatics': [1.0, 0.5, 0.0], 'lambda_sterics': [1.0, 0.5, 0.0], 3: 2}
     ]
     for protocol in protocols:
         modified_protocol = copy.deepcopy(basic_protocol)
