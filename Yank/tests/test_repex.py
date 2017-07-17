@@ -46,7 +46,7 @@ ReplicaExchange._global_citation_silence = True
 # MODULE CONSTANTS
 # ==============================================================================
 
-kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA # Boltzmann constant
+kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA  # Boltzmann constant
 
 
 # ==============================================================================

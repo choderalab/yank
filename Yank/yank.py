@@ -559,7 +559,7 @@ class AlchemicalPhase(object):
         # Create alchemically-modified system using alchemical factory.
         logger.debug("Creating alchemically-modified states...")
         if alchemical_factory is None:
-            alchemical_factory = mmtools.alchemy.AbsoluteAlchemicalFactory()
+            alchemical_factory = mmtools.alchemy.AbsoluteAlchemicalFactory(disable_alchemical_dispersion_correction=True)
         alchemical_system = alchemical_factory.create_alchemical_system(thermodynamic_state.system,
                                                                         alchemical_regions)
 
