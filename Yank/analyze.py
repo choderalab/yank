@@ -1142,7 +1142,7 @@ class MultiPhaseAnalyzer(object):
                 if observable_name in _ObservablesRegistry.observables_with_error_adding_linear():
                     passed_output['error'] += payload['error']
                 elif observable_name in _ObservablesRegistry.observables_with_error_adding_quadrature():
-                    passed_output['error'] += (passed_output['error']**2 + payload['error']**2)**0.5
+                    passed_output['error'] = (passed_output['error']**2 + payload['error']**2)**0.5
             else:
                 if sign == '+':
                     passed_output += payload
