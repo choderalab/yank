@@ -369,12 +369,12 @@ class ExperimentBuilder(object):
         'mc_displacement_sigma': 10.0 * unit.angstroms
     }
 
-    def __init__(self, yaml_source=None):
+    def __init__(self, script=None):
         """Constructor.
 
         Parameters
         ----------
-        yaml_source : str or dict
+        script : str or dict
             A path to the YAML script or the YAML content. If not specified, you
             can load it later by using parse() (default is None).
 
@@ -391,30 +391,30 @@ class ExperimentBuilder(object):
         self._experiments = {}  # Experiments description
 
         # Parse YAML script
-        if yaml_source is not None:
-            self.parse(yaml_source)
+        if script is not None:
+            self.parse(script)
 
-    def update_yaml(self, yaml_source):
+    def update_yaml(self, script):
         """
         Update the current yaml content and reparse it
 
         Parameters
         ----------
-        yaml_source
+        script
 
         """
         current_content = self._raw_yaml
         try:
-            with open(yaml_source, 'r') as f:
+            with open(script, 'r') as f:
                 new_content = yaml.load(f, Loader=YankLoader)
         except IOError:  # string
-            new_content = yaml.load(yaml_source, Loader=YankLoader)
+            new_content = yaml.load(script, Loader=YankLoader)
         except TypeError:  # dict
-            new_content = yaml_source.copy()
+            new_content = script.copy()
         combined_content = update_nested_dict(current_content, new_content)
         self.parse(combined_content)
 
-    def parse(self, yaml_source):
+    def parse(self, script):
         """Parse the given YAML configuration file.
 
         Validate the syntax and load the script into memory. This does not build
@@ -422,7 +422,7 @@ class ExperimentBuilder(object):
 
         Parameters
         ----------
-        yaml_source : str or dict
+        script : str or dict
             A path to the YAML script or the YAML content.
 
         Raises
@@ -435,13 +435,13 @@ class ExperimentBuilder(object):
         # TODO what if there are multiple streams in the YAML file?
         # Load YAML script and decide working directory for relative paths
         try:
-            with open(yaml_source, 'r') as f:
+            with open(script, 'r') as f:
                 yaml_content = yaml.load(f, Loader=YankLoader)
-            self._script_dir = os.path.dirname(yaml_source)
+            self._script_dir = os.path.dirname(script)
         except IOError:  # string
-            yaml_content = yaml.load(yaml_source, Loader=YankLoader)
+            yaml_content = yaml.load(script, Loader=YankLoader)
         except TypeError:  # dict
-            yaml_content = yaml_source.copy()
+            yaml_content = script.copy()
 
         self._raw_yaml = yaml_content.copy()
 
@@ -449,7 +449,7 @@ class ExperimentBuilder(object):
         if yaml_content is None:
             raise YamlParseError('The YAML file is empty!')
         if not isinstance(yaml_content, dict):
-            raise YamlParseError('Cannot load YAML from source: {}'.format(yaml_source))
+            raise YamlParseError('Cannot load YAML from source: {}'.format(script))
 
         # Check version (currently there's only one)
         try:
