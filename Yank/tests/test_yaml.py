@@ -198,7 +198,7 @@ def test_yaml_parsing():
     yaml_builder = ExperimentBuilder(textwrap.dedent(yaml_content))
     expected_n_options = (len(yaml_builder.GENERAL_DEFAULT_OPTIONS) +
                           len(yaml_builder.EXPERIMENT_DEFAULT_OPTIONS))
-    assert len(yaml_builder.options) == expected_n_options
+    assert len(yaml_builder._options) == expected_n_options
 
     # Correct parsing
     yaml_content = """
@@ -239,19 +239,34 @@ def test_yaml_parsing():
     """
 
     yaml_builder = ExperimentBuilder(textwrap.dedent(yaml_content))
-    assert len(yaml_builder.options) == 32
+    assert len(yaml_builder._options) == 32
 
     # Check correct types
-    assert yaml_builder.options['pressure'] is None
-    assert yaml_builder.options['constraints'] == openmm.app.AllBonds
-    assert yaml_builder.options['replica_mixing_scheme'] == 'swap-all'
-    assert yaml_builder.options['timestep'] == 2.0 * unit.femtoseconds
-    assert yaml_builder.options['randomize_ligand_sigma_multiplier'] == 1.0e-2
-    assert yaml_builder.options['nsteps_per_iteration'] == 2500
-    assert type(yaml_builder.options['nsteps_per_iteration']) is int
-    assert yaml_builder.options['number_of_iterations'] == 1000
-    assert type(yaml_builder.options['number_of_iterations']) is int
-    assert yaml_builder.options['minimize'] is False
+    assert yaml_builder._options['pressure'] is None
+    assert yaml_builder._options['constraints'] == openmm.app.AllBonds
+    assert yaml_builder._options['replica_mixing_scheme'] == 'swap-all'
+    assert yaml_builder._options['timestep'] == 2.0 * unit.femtoseconds
+    assert yaml_builder._options['randomize_ligand_sigma_multiplier'] == 1.0e-2
+    assert yaml_builder._options['nsteps_per_iteration'] == 2500
+    assert type(yaml_builder._options['nsteps_per_iteration']) is int
+    assert yaml_builder._options['number_of_iterations'] == 1000
+    assert type(yaml_builder._options['number_of_iterations']) is int
+    assert yaml_builder._options['minimize'] is False
+
+
+def test_paths_properties():
+    """Test that setup directory is updated correctly when changing output paths."""
+    template_script = get_template_script(output_dir='output1')
+    template_script['options']['setup_dir'] = 'setup1'
+    exp_builder = ExperimentBuilder(template_script)
+
+    # The database path is configured correctly.
+    assert exp_builder._db.setup_dir == os.path.join('output1', 'setup1')
+
+    # Updating paths also updates the database main directory.
+    exp_builder.output_dir = 'output2'
+    exp_builder.setup_dir = 'setup2'
+    assert exp_builder._db.setup_dir == os.path.join('output2', 'setup2')
 
 
 def test_validation_wrong_options():
@@ -1929,7 +1944,7 @@ def test_run_experiment():
         assert 'system' in err_msg
 
         # Now we set resume_setup to True and things work
-        yaml_builder.options['resume_setup'] = True
+        yaml_builder._options['resume_setup'] = True
         ligand_dir = yaml_builder._db.get_molecule_dir('p-xylene')
         frcmod_file = os.path.join(ligand_dir, 'p-xylene.frcmod')
         prmtop_file = os.path.join(system_dir, 'complex.prmtop')
@@ -1964,7 +1979,7 @@ def test_run_experiment():
         assert 'experiment' in err_msg
 
         # We set resume_simulation: yes and now things work
-        yaml_builder.options['resume_simulation'] = True
+        yaml_builder._options['resume_simulation'] = True
         yaml_builder.run_experiments()
 
 

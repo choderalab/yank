@@ -379,8 +379,8 @@ class ExperimentBuilder(object):
             can load it later by using parse() (default is None).
 
         """
-        self.options = self.GENERAL_DEFAULT_OPTIONS.copy()
-        self.options.update(self.EXPERIMENT_DEFAULT_OPTIONS.copy())
+        self._options = self.GENERAL_DEFAULT_OPTIONS.copy()
+        self._options.update(self.EXPERIMENT_DEFAULT_OPTIONS.copy())
 
         self._version = None
         self._script_dir = os.getcwd()  # basic dir for relative paths
@@ -470,17 +470,17 @@ class ExperimentBuilder(object):
                                                              'systems', 'protocols']})
 
         # Validate options and overwrite defaults
-        self.options.update(self._validate_options(yaml_content.get('options', {}),
+        self._options.update(self._validate_options(yaml_content.get('options', {}),
                                                    validate_general_options=True))
 
         # Setup general logging
-        utils.config_root_logger(self.options['verbose'], log_file_path=None)
+        utils.config_root_logger(self._options['verbose'], log_file_path=None)
 
         # Configure ContextCache, platform and precision. A Yank simulation
         # currently needs 3 contexts: 1 for the alchemical states and 2 for
         # the states with expanded cutoff.
-        platform = self._configure_platform(self.options['platform'],
-                                            self.options['precision'])
+        platform = self._configure_platform(self._options['platform'],
+                                            self._options['precision'])
         try:
             mmtools.cache.global_context_cache.platform = platform
         except RuntimeError:
@@ -490,7 +490,7 @@ class ExperimentBuilder(object):
         mmtools.cache.global_context_cache.capacity = 3
 
         # Initialize and configure database with molecules, solvents and systems
-        setup_dir = os.path.join(self.options['output_dir'], self.options['setup_dir'])
+        setup_dir = os.path.join(self._options['output_dir'], self._options['setup_dir'])
         self._db = pipeline.SetupDatabase(setup_dir=setup_dir)
         self._db.molecules = self._validate_molecules(yaml_content.get('molecules', {}))
         self._db.solvents = self._validate_solvents(yaml_content.get('solvents', {}))
@@ -509,11 +509,11 @@ class ExperimentBuilder(object):
             raise YamlParseError('No experiments specified!')
 
         # Handle case where we don't have to switch between experiments.
-        if self.options['switch_experiment_interval'] <= 0:
+        if self._options['switch_experiment_interval'] <= 0:
             # Run Experiment for number_of_iterations.
             switch_experiment_interval = None
         else:
-            switch_experiment_interval = self.options['switch_experiment_interval']
+            switch_experiment_interval = self._options['switch_experiment_interval']
 
         # Setup and run all experiments with paths relative to the script directory
         with moltools.utils.temporary_cd(self._script_dir):
@@ -561,6 +561,30 @@ class ExperimentBuilder(object):
             self._setup_experiments()
 
     # --------------------------------------------------------------------------
+    # Properties
+    # --------------------------------------------------------------------------
+
+    @property
+    def output_dir(self):
+        """The path to the main output directory."""
+        return self._options['output_dir']
+
+    @output_dir.setter
+    def output_dir(self, new_output_dir):
+        self._options['output_dir'] = new_output_dir
+        self._db.setup_dir = os.path.join(new_output_dir, self.setup_dir)
+
+    @property
+    def setup_dir(self):
+        """The path to the setup files directory relative to the output folder.."""
+        return self._options['setup_dir']
+
+    @setup_dir.setter
+    def setup_dir(self, new_setup_dir):
+        self._options['setup_dir'] = new_setup_dir
+        self._db.setup_dir = os.path.join(self.output_dir, new_setup_dir)
+
+    # --------------------------------------------------------------------------
     # Options handling
     # --------------------------------------------------------------------------
 
@@ -581,7 +605,7 @@ class ExperimentBuilder(object):
         experiment_options : dict
             The ExperimentBuilder experiment options. This does not contain
             the general ExperimentBuilder options that are accessible through
-            self.options.
+            self._options.
         phase_options : dict
             The options to pass to the AlchemicalPhaseFactory constructor.
         sampler_options : dict
@@ -591,7 +615,7 @@ class ExperimentBuilder(object):
 
         """
         # First discard general options.
-        options = {name: value for name, value in self.options.items()
+        options = {name: value for name, value in self._options.items()
                    if name not in self.GENERAL_DEFAULT_OPTIONS}
 
         # Then update with specific experiment options.
@@ -1211,7 +1235,7 @@ class ExperimentBuilder(object):
             through the options) of the experiment-specific subfolder.
 
         """
-        return os.path.join(self.options['output_dir'], self.options['experiments_dir'],
+        return os.path.join(self._options['output_dir'], self._options['experiments_dir'],
                             experiment_subdir)
 
     # --------------------------------------------------------------------------
@@ -1274,7 +1298,7 @@ class ExperimentBuilder(object):
         for exp_sub_dir, combination in self._expand_experiments():
 
             if check_experiments:
-                resume_sim = self.options['resume_simulation']
+                resume_sim = self._options['resume_simulation']
                 experiment_dir = self._get_experiment_dir(exp_sub_dir)
                 if not resume_sim and self._check_resume_experiment(experiment_dir,
                                                                     combination['protocol']):
@@ -1282,7 +1306,7 @@ class ExperimentBuilder(object):
                     solving_option = 'resume_simulation'
 
             if check_setup and err_msg == '':
-                resume_setup = self.options['resume_setup']
+                resume_setup = self._options['resume_setup']
                 system_id = combination['system']
 
                 # Check system and molecule setup dirs
@@ -1625,7 +1649,7 @@ class ExperimentBuilder(object):
         self._safe_makedirs(results_dir)
 
         # Configure logger file for this experiment.
-        utils.config_root_logger(self.options['verbose'],
+        utils.config_root_logger(self._options['verbose'],
                                  os.path.join(results_dir, exp_name + '.log'))
 
         # Export YAML file for reproducibility
