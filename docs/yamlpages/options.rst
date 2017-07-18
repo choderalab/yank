@@ -420,8 +420,8 @@ initial configurations (if specified), but will not run any production simulatio
 Set this to ``null`` to run an unlimited number of iterations. The simulation will not stop unless
 some other criteria is stops it. We **strongly** recommend specifying either
 :ref:`online free energy analysis <yaml_options_online_analysis_parameters>` and/or
-:ref:`a phase switching interval <switch_phase_interval>` to ensure there is at least some stop criteria, and all
-phases yield some samples.
+:ref:`a phase switching interval <yaml_options_switch_phase_interval>` to ensure there is at least some stop criteria,
+and all phases yield some samples.
 
 Valid Options (1): <Integer> or ``null``
 
@@ -722,8 +722,8 @@ a speed option since most of the initial iterations will be either equilibration
 an initial number that is *at least* one or two :ref:`yaml_options_online_analysis_interval`'s for speed's sake.
 
 The first iteration at which online analysis is performed is not affected by this number and always tracked as the
-modulo of the current iteration. E.g. if you have ``online_analysis_interval: 100` and
-`online_analysis_minimum_iterations: 150`, online analysis would happen at iteration 200 first, not iteration 250.
+modulo of the current iteration. E.g. if you have ``online_analysis_interval: 100`` and
+``online_analysis_minimum_iterations: 150``, online analysis would happen at iteration 200 first, not iteration 250.
 
 If :ref:`yaml_options_online_analysis_interval` is ``null``, this option does nothing.
 
