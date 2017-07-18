@@ -820,8 +820,10 @@ the slower this process becomes.
 
 .. _yaml_options_online_analysis_interval:
 
-online_analysis_interval
-------------------------
+.. rst-class:: html-toggle
+
+``online_analysis_interval``
+----------------------------
 .. code-block:: yaml
 
    options:
@@ -837,10 +839,12 @@ If set to ``null`` (default), then online analysis is not run.
 Valid Options (``null``): ``null`` or <Int >= 1>
 
 
+.. rst-class:: html-toggle
+
 .. _yaml_options_online_analysis_target_error:
 
-online_analysis_target_error
-----------------------------
+``online_analysis_target_error``
+--------------------------------
 .. code-block:: yaml
 
    options:
@@ -856,10 +860,13 @@ If :ref:`yaml_options_online_analysis_interval` is ``null``, this option does no
 Valid Options (0.2): <Float >= 0>
 
 
+
 .. _yaml_options_online_analysis_minimum_iterations:
 
-online_analysis_minimum_iterations
-----------------------------------
+.. rst-class:: html-toggle
+
+``online_analysis_minimum_iterations``
+--------------------------------------
 .. code-block:: yaml
 
    options:
