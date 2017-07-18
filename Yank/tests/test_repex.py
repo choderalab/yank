@@ -14,6 +14,7 @@ TODO
 # =============================================================================================
 
 import os
+import sys
 import math
 import copy
 import pickle
@@ -33,11 +34,19 @@ from openmmtools import testsystems
 from yank import mpi, utils, analyze
 from yank.repex import Reporter, ReplicaExchange, _DictYamlLoader
 
+if sys.version_info[0] == 2:
+    from io import BytesIO as StringIO
+else:
+    from io import StringIO
+
+# quiet down some citation spam
+ReplicaExchange._global_citation_silence = True
+
 # ==============================================================================
 # MODULE CONSTANTS
 # ==============================================================================
 
-kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA # Boltzmann constant
+kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA  # Boltzmann constant
 
 
 # ==============================================================================
@@ -304,19 +313,27 @@ class TestReporter(object):
 
             # Load representation of the states on the disk. There
             # should be only one full serialization per compatible state.
+            def decompact_state_variable(variable):
+                if variable.dtype == 'S1':
+                    # Handle variables stored in fixed_dimensions
+                    data_chars = variable[:]
+                    data_str = data_chars.tostring().decode()
+                else:
+                    data_str = str(variable[0])
+                return data_str
             states_serialized = []
             for state_id in range(len(thermodynamic_states)):
-                state_str = ncgrp_states.variables['state' + str(state_id)][0]
+                state_str = decompact_state_variable(ncgrp_states.variables['state' + str(state_id)])
                 state_dict = yaml.load(state_str, Loader=_DictYamlLoader)
                 states_serialized.append(state_dict)
             unsampled_serialized = []
             for state_id in range(len(unsampled_states)):
-                unsampled_str = ncgrp_unsampled.variables['state' + str(state_id)][0]
+                unsampled_str = decompact_state_variable(ncgrp_unsampled.variables['state' + str(state_id)])
                 unsampled_dict = yaml.load(unsampled_str, Loader=_DictYamlLoader)
                 unsampled_serialized.append(unsampled_dict)
 
             # Two of the three ThermodynamicStates are compatible.
-            assert isinstance(states_serialized[0]['standard_system'], str)
+            assert 'standard_system' in states_serialized[0]
             assert 'standard_system' not in states_serialized[1]
             state_compatible_to_1 = states_serialized[1]['_Reporter__compatible_state']
             assert state_compatible_to_1 == 'thermodynamic_states/0'
@@ -404,17 +421,21 @@ class TestReporter(object):
             'mynesteddict': {'field1': 'string', 'field2': {'field21': 3.0, 'field22': True}}
         }
         with self.temporary_reporter() as reporter:
+
+            def compare_dicts(reference, check):
+                for key, value in reference.items():
+                    restored_value = check[key]
+                    err_msg = '{}, {}'.format(value, restored_value)
+                    try:
+                        assert value == restored_value, err_msg
+                    except ValueError:  # array-like
+                        assert np.all(value == restored_value)
+                    else:
+                        assert type(value) == type(restored_value), err_msg
+
             reporter.write_dict('testdict', data)
             restored_data = reporter.read_dict('testdict')
-            for key, value in data.items():
-                restored_value = restored_data[key]
-                err_msg = '{}, {}'.format(value, restored_value)
-                try:
-                    assert value == restored_value, err_msg
-                except ValueError:  # array-like
-                    assert np.all(value == restored_value)
-                else:
-                    assert type(value) == type(restored_value), err_msg
+            compare_dicts(data, restored_data)
 
             # write_dict supports updates.
             data['mybool'] = True
@@ -423,6 +444,11 @@ class TestReporter(object):
             restored_data = reporter.read_dict('testdict')
             assert restored_data['mybool'] is True
             assert restored_data['mystring'] == 'substituted'
+
+            # Write dict fixed_dimension creates static dimensions and read/writes correctly
+            reporter.write_dict('fixed', data, fixed_dimension=True)
+            restored_fixed_data = reporter.read_dict('fixed')
+            compare_dicts(data, restored_fixed_data)
 
     def test_store_mixing_statistics(self):
         """Check mixing statistics are correctly stored."""
@@ -584,6 +610,60 @@ class TestReplicaExchange(object):
             assert len(metadata) == 1
             assert repex.metadata['title'] == metadata['title']
 
+    @staticmethod
+    @contextlib.contextmanager
+    def captured_output():
+        new_out, new_err = StringIO(), StringIO()
+        old_out, old_err = sys.stdout, sys.stderr
+        try:
+            sys.stdout, sys.stderr = new_out, new_err
+            yield sys.stdout, sys.stderr
+        finally:
+            sys.stdout, sys.stderr = old_out, old_err
+
+    def test_citations(self):
+        thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(self.alanine_test)
+
+        # Remove one sampler state to verify distribution over states.
+        sampler_states = sampler_states[:-1]
+
+        with self.temporary_storage_path() as storage_path:
+            repex = ReplicaExchange()
+            # Ensure global mute is on
+            repex._global_citation_silence = True
+
+            # Create simulation and storage file.
+            reporter = Reporter(storage_path, checkpoint_interval=1)
+            # Trap expected output
+            with self.captured_output() as (out, _):
+                repex._display_citations(overwrite_global=True)
+                cite_string = out.getvalue().strip()
+                repex.create(thermodynamic_states, sampler_states, storage=reporter,
+                             unsampled_thermodynamic_states=unsampled_states)
+                # Reset internal flag
+                repex._have_displayed_citations_before = False
+                # Test that the overwrite flag worked
+                assert cite_string != ''
+            # Test that the output is not generate when the global is set
+            with self.captured_output() as (out, _):
+                repex._global_citation_silence = True
+                repex._display_citations()
+                output = out.getvalue().strip()
+                assert cite_string not in output
+            # Test that the output is generated with the global is not set and previously un shown
+            with self.captured_output() as (out, _):
+                repex._global_citation_silence = False
+                repex._have_displayed_citations_before = False
+                repex._display_citations()
+                output = out.getvalue().strip()
+                assert cite_string in output
+            # Repeat to ensure the citations are not generated a second time
+            with self.captured_output() as (out, _):
+                repex._global_citation_silence = False
+                repex._display_citations()
+                output = out.getvalue().strip()
+                assert cite_string not in output
+
     def test_from_storage(self):
         """Test that from_storage completely restore ReplicaExchange.
 
@@ -673,6 +753,17 @@ class TestReplicaExchange(object):
                 # Remove cached values that are not resumed.
                 original_dict.pop('_cached_transition_counts', None)
                 original_dict.pop('_cached_last_replica_thermodynamic_states', None)
+
+                # Check that the original completed,
+                # No need to check restored since _is_completed is not cached, just computed on the fly
+                original_completed = original_dict.pop('_is_completed')
+                if iteration == 0:
+                    # Should not be completed on first pass
+                    assert not original_completed
+                else:
+                    # Is completed after going through all iterations (see end of this loop)
+                    assert original_completed
+                _ = restored_dict.pop('_is_completed')
 
                 # Check all other arrays. Instantiate list so that we can pop from original_dict.
                 for attr, original_value in list(original_dict.items()):
@@ -1061,6 +1152,44 @@ class TestReplicaExchange(object):
             repex = ReplicaExchange.from_storage(reporter)
             energies_rep, _ = repex._reporter.read_energies()
             assert np.all(energies_str == energies_rep)
+
+    def test_online_analysis_works(self):
+        """Test online analysis runs"""
+        thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(self.alanine_test)
+        with self.temporary_storage_path() as storage_path:
+            n_iterations = 5
+            online_interval = 2
+            move = mmtools.mcmc.IntegratorMove(openmm.VerletIntegrator(1.0 * unit.femtosecond), n_steps=1)
+            repex = ReplicaExchange(mcmc_moves=move, number_of_iterations=n_iterations,
+                                    online_analysis_interval=online_interval,
+                                    online_analysis_minimum_iterations=0)
+            repex.create(thermodynamic_states, sampler_states, storage=storage_path,
+                         unsampled_thermodynamic_states=unsampled_states)
+            # Run
+            repex.run()
+            last_mbar_f_k, free_energy = repex._get_last_written_free_energy()
+            assert len(last_mbar_f_k) == len(thermodynamic_states)
+            assert len(free_energy) == 2
+            assert not np.all(last_mbar_f_k == 0)
+            # Error should not be 0 yet
+            assert not free_energy[-1] == 0
+
+    def test_online_analysis_stops(self):
+        """Test online analysis will stop the simulation"""
+        thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(self.alanine_test)
+        with self.temporary_storage_path() as storage_path:
+            n_iterations = 5
+            online_interval = 1
+            move = mmtools.mcmc.IntegratorMove(openmm.VerletIntegrator(1.0 * unit.femtosecond), n_steps=1)
+            repex = ReplicaExchange(mcmc_moves=move, number_of_iterations=n_iterations,
+                                    online_analysis_interval=online_interval,
+                                    online_analysis_minimum_iterations=0,
+                                    online_analysis_target_error=np.inf)  # use infinite error to stop right away
+            repex.create(thermodynamic_states, sampler_states, storage=storage_path,
+                         unsampled_thermodynamic_states=unsampled_states)
+            # Run
+            repex.run()
+            assert repex._iteration < n_iterations
 
 # ==============================================================================
 # MAIN AND TESTS

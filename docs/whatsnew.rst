@@ -6,6 +6,13 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the github yank releases page <https://github.com/choderalab/yank/releases>`_.
 
+0.16.2 Startup Speed and Reduced File Sizes
+-------------------------------------------
+- Automatic Expanded Cutoff Distance Selection
+- Compressed stored systems drastically reduce initial file sizes
+- Use C Yaml Dumper and Loaders to speed up YAML object processing
+- Requires OpenMMTools 0.11.2 at minimum
+
 0.16.1 Auto Expanded Cutoffs and bug fixes for Transition Matrix and Reporter
 -----------------------------------------------------------------------------
 - Expanded cutoff now able to be chosen automatically instead of just hard coded number

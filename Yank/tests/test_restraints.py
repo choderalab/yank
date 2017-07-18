@@ -26,7 +26,7 @@ import nose
 from nose.plugins.attrib import attr
 
 import yank.restraints
-from yank import yamlbuild, analyze, Topography
+from yank import experiment, analyze, Topography
 
 
 # =============================================================================================
@@ -127,7 +127,7 @@ def general_restraint_run(options):
         # TODO refactor this to use AlchemicalPhase API rather than a YAML script.
         options['output_directory'] = output_directory
         # run both setup and experiment
-        yaml_builder = yamlbuild.YamlBuilder(restraint_test_yaml % options)
+        yaml_builder = experiment.ExperimentBuilder(restraint_test_yaml % options)
         yaml_builder.run_experiments()
         # Estimate Free Energies
         ncfile_path = os.path.join(output_directory, 'experiments', 'complex.nc')

@@ -520,7 +520,16 @@ Valid Options (1.0 * femtosecond): <Quantity Time> [1]_
 Number of iterations for production simulation. Note: If :ref:`resume_simulation <yaml_options_resume_simulation>` is
 set, this option can be used to extend previous simulations past their original number of iterations.
 
-Valid Options (1): <Integer>
+Specifying ``0`` will run through the setup, create all the simulation files, store all options, and minimize the
+initial configurations (if specified), but will not run any production simulations.
+
+Set this to ``null`` to run an unlimited number of iterations. The simulation will not stop unless
+some other criteria is stops it. We **strongly** recommend specifying either
+:ref:`online free energy analysis <yaml_options_online_analysis_parameters>` and/or
+:ref:`a phase switching interval <switch_phase_interval>` to ensure there is at least some stop criteria, and all
+phases yield some samples.
+
+Valid Options (1): <Integer> or ``null``
 
 
 ..
@@ -794,3 +803,76 @@ Valid Options for ``softcore_[d,e,f]`` (1,1,2): <Integer preferred, Float accept
 .. [1] Quantity strings are of the format: ``<float> * <unit>`` where ``<unit>`` is any valid unit specified in the "Valid Options" for an option. e.g. "<Quantity Length>" indicates any measure of length may be used for <unit> such as nanometer or angstrom.
    Compound units are also parsed such as ``kilogram / meter**3`` for density.
    Only full unit names as they appear in the simtk.unit package (part of OpenMM) are allowed; so "nm" and "A" will be rejected.
+
+|
+
+
+
+.. _yaml_options_online_analysis_parameters:
+
+Online Analysis Parameters
+==========================
+
+YANK also supports an online free energy analysis framework which allows running simulations up to some target error
+in the free energy. Note that this will pause the simulation to run this analysis. The longer the simulation gets,
+the slower this process becomes.
+
+
+.. _yaml_options_online_analysis_interval:
+
+online_analysis_interval
+------------------------
+.. code-block:: yaml
+
+   options:
+      online_analysis_interval: 100
+
+Both the toggle and iteration count between online analysis operations. Every interval, the Multistate Bennet Acceptance
+Ratio estimate for the free energy is calculated and the error is computed. Some data is preserved each iteration to
+speed up future calculations, but this operation will still slow down as more iterations are added. We recommend
+choosing an interval of *at least* 100, if not more.
+
+If set to ``null`` (default), then online analysis is not run.
+
+Valid Options (``null``): ``null`` or <Int >= 1>
+
+
+.. _yaml_options_online_analysis_target_error:
+
+online_analysis_target_error
+----------------------------
+.. code-block:: yaml
+
+   options:
+      online_analysis_target_error: 1.0
+
+The target error for the online analysis measured in kT per phase. Once the free energy is at or below this value,
+the phase will be considered complete.
+This value should be a number greater than 0, even though 0 is a valid option. The error free energy estimate between states
+is never zero except in very rare cases, so your simulation may never converge if you set this to 0.
+
+If :ref:`yaml_options_online_analysis_interval` is ``null``, this option does nothing.
+
+Valid Options (0.2): <Float >= 0>
+
+
+.. _yaml_options_online_analysis_minimum_iterations:
+
+online_analysis_minimum_iterations
+----------------------------------
+.. code-block:: yaml
+
+   options:
+      online_analysis_minimum_iterations: 50
+
+Number of iterations that are skipped at the beginning of the simulation before online analysis is attempted. This is
+a speed option since most of the initial iterations will be either equilibration or under sampled. We recommend choosing
+an initial number that is *at least* one or two :ref:`yaml_options_online_analysis_interval`'s for speed's sake.
+
+The first iteration at which online analysis is performed is not affected by this number and always tracked as the
+modulo of the current iteration. E.g. if you have ``online_analysis_interval: 100` and
+`online_analysis_minimum_iterations: 150`, online analysis would happen at iteration 200 first, not iteration 250.
+
+If :ref:`yaml_options_online_analysis_interval` is ``null``, this option does nothing.
+
+Valid Options (50): <Int >=1>

@@ -43,8 +43,8 @@ import time
 import uuid
 import yaml
 import inspect
-import datetime
 import logging
+import datetime
 import collections
 
 import numpy as np
@@ -55,6 +55,7 @@ import openmmtools as mmtools
 from openmmtools.states import ThermodynamicState
 
 from . import utils, mpi, version
+from pymbar.utils import ParameterError
 
 logger = logging.getLogger(__name__)
 
@@ -93,10 +94,9 @@ class Reporter(object):
         If None: the derived checkpoint name is the same as storage, less any extension, then "_checkpoint.nc" is added
         The reporter internally tracks what data goes into which file, so its transparent to all other classes
         In the future, this will be able to take Storage classes as well
-
-
     """
     def __init__(self, storage, open_mode=None, checkpoint_interval=10, checkpoint_storage_file=None):
+        # Handle checkpointing
         if type(checkpoint_interval) != int:
             raise ValueError("checkpoint_interval must be an integer!")
         dirname, filename = os.path.split(storage)
@@ -209,7 +209,8 @@ class Reporter(object):
         if mode != 'r':
             for storage_path in self._storage_paths:
                 storage_dir = os.path.dirname(storage_path)
-                if not os.path.exists(storage_dir):
+                # When storage_dir == '', os.path.exists() returns False.
+                if not os.path.exists(storage_dir) and storage_dir != '':
                     os.makedirs(storage_dir)
 
         # Open NetCDF 4 file for writing.
@@ -418,7 +419,7 @@ class Reporter(object):
                     if compare_state.is_state_compatible(state):
                         serialized_state = mmtools.utils.serialize(state, skip_system=True)
                         serialized_thermodynamic_state = unnest_thermodynamic_state(serialized_state)
-                        serialized_thermodynamic_state.pop('standard_system')  # Remove the unneeded system objete
+                        serialized_thermodynamic_state.pop('standard_system')  # Remove the unneeded system object
                         reference_state_name = stored_states[compare_state]
                         serialized_thermodynamic_state['_Reporter__compatible_state'] = reference_state_name
                         found_compatible_state = True
@@ -441,7 +442,7 @@ class Reporter(object):
                         len_serialization/1024.0/1024.0))
 
                 # Finally write the dictionary
-                self.write_dict('{}/state{}'.format(state_type, state_id), serialized_state)
+                self.write_dict('{}/state{}'.format(state_type, state_id), serialized_state, fixed_dimension=True)
 
     def read_sampler_states(self, iteration):
         """Retrieve the stored sampler states on the checkpoint file
@@ -854,7 +855,12 @@ class Reporter(object):
             raise ValueError("storage must be either 'analysis' or 'checkpoint'!")
         # Get NC variable.
         nc_variable = self._resolve_variable_path(name, storage)
-        data_str = str(nc_variable[0])
+        if nc_variable.dtype == 'S1':
+            # Handle variables stored in fixed_dimensions
+            data_chars = nc_variable[:]
+            data_str = data_chars.tostring().decode()
+        else:
+            data_str = str(nc_variable[0])
         data = yaml.load(data_str, Loader=_DictYamlLoader)
 
         # Restore the title in the metadata.
@@ -889,7 +895,7 @@ class Reporter(object):
         """
         return int(self._storage_analysis.variables['last_iteration'][0])  # Make sure this is returned as Python Int
 
-    def write_dict(self, name, data):
+    def write_dict(self, name, data, fixed_dimension=False):
         """Store the contents of a dict.
 
         Parameters
@@ -898,12 +904,19 @@ class Reporter(object):
             The identifier of the dictionary in the storage file.
         data : dict
             The dict to store.
+        fixed_dimension: bool, Defautlt: False
+            Use a fixed length dimension instead of variable length one. A unique dimension name (sharing a name with
+            "name") will be created and its length will be set equal to "fixedL{}".format(len(data_string))
+            This method seems to allow NetCDF to actually compress strings.
+            Do NOT use this flag if you expect to constantly be changing the length of the data fed in, use only for
+                static data
 
         """
         # Leaving the skeleton to extend this in for now
         storage = 'analysis'
         if storage not in ['analysis', 'checkpoint']:
             raise ValueError("storage must be either 'analysis' or 'checkpoint'!")
+        storage_nc = self._storage_dict[storage]
         # General NetCDF conventions assume the title of the dataset to be
         # specified as a global attribute, but the user can specify their
         # own titles only in metadata.
@@ -911,17 +924,91 @@ class Reporter(object):
             data = copy.deepcopy(data)
             self._storage_dict[storage].title = data.pop('title')
 
+        # Activate flow style to save space.
+        data_str = yaml.dump(data, Dumper=_DictYamlDumper)#, default_flow_style=True)
+
         # Check if we are updating the dictionary or creating it.
         try:
             nc_variable = self._resolve_variable_path(name, storage)
         except KeyError:
-            nc_variable = self._storage_dict[storage].createVariable(name, str, 'scalar', zlib=True)
+            if fixed_dimension:
+                len_dim = len(data_str)
+                dim_str = "fixedL{}".format(len_dim)
+                if dim_str not in storage_nc.dimensions:
+                    storage_nc.createDimension(dim_str, len_dim)
+                nc_variable = storage_nc.createVariable(name, 'S1', dim_str, zlib=True)
+            else:
+                nc_variable = storage_nc.createVariable(name, str, 'scalar', zlib=True)
+        if fixed_dimension:
+            data_char_array = np.array(list(data_str), dtype='S1')
+            nc_variable[:] = data_char_array
+        else:
+            packed_data = np.empty(1, 'O')
+            packed_data[0] = data_str
+            nc_variable[:] = packed_data
 
-        # Activate flow style to save space.
-        data_str = yaml.dump(data, Dumper=_DictYamlDumper)#, default_flow_style=True)
-        packed_data = np.empty(1, 'O')
-        packed_data[0] = data_str
-        nc_variable[:] = packed_data
+    def read_mbar_free_energies(self, iteration):
+        """
+        Read the MBAR dimensionless free energy at a given iteration from file. These free energies are relative to
+        the first state. These are computed through self-consistent iterations from an initial guess.
+        The initial guess is often 0 for all states, so any state not written is returned as zeros for f_k, and
+            infinity for
+
+        Used primarily in online analysis, and should be used in tandem with an YankPhaseAnalysis object from the
+        analyze module
+
+        Parameters
+        ----------
+        iteration : iteration to read the free energies from, if the iteration was not written at a the given iteration,
+            then the free_energies are all 0
+
+        Returns
+        -------
+        f_k : 1-D ndarray of floats
+            MBAR free_energies from the iteration.
+        free_energy : tuple of two Floats
+            Free energy estimate at the iteration between the end states
+        """
+        online_group = self._storage_analysis.groups['online_analysis']
+        f_k = online_group.variables['f_k'][iteration]
+        free_energy = online_group.variables['free_energy'][iteration, :]
+        return f_k, free_energy
+
+    def write_mbar_free_energies(self, iteration, f_k, free_energy):
+        """
+        Write the mbar free energies at the current iteration. See read_mbar_free_energies for more information about
+        pymbar's f_k free energies
+
+        Used primarily in online analysis, and should be used in tandem with an YankPhaseAnalysis object from the
+        analyze module.
+
+        Parameters
+        ----------
+        iteration : int,
+            iteration at which to save the free energy.
+            Reads the current energy up to this value and stores it in the analysis reporter
+        f_k : 1D array of floats,
+            Dimensionless free energies you wish to store. This should come from pymbar.MBAR.f_k from an initialized
+                MBAR object.
+        free_energy : tuple of two floats
+            Current estimate of the free energy difference of the phase and its error.
+            This should be of the form (free_energy, error_in_free_energy)
+            Typically output of the pymbar.MBAR.getFreeEnergyDifferences()[i,j]
+
+        """
+        analysis_nc = self._storage_analysis
+        if 'f_k_length' not in analysis_nc.dimensions:
+            analysis_nc.createDimension('f_k_length', len(f_k))
+            analysis_nc.createDimension('Df', 2)
+            online_group = analysis_nc.createGroup('online_analysis')
+            # larger chunks, faster operations, small matrix anyways
+            online_group.createVariable('f_k', float, dimensions=('iteration', 'f_k_length'),
+                                       zlib=True, chunksizes=(1, len(f_k)), fill_value=0)
+            online_group.createVariable('free_energy', float, dimensions=('iteration', 'Df'),
+                                        zlib=True, chunksizes=(1, 2), fill_value=np.inf)
+        online_group = analysis_nc.groups['online_analysis']
+        online_group.variables['f_k'][iteration] = f_k
+        online_group.variables['free_energy'][iteration, :] = free_energy
 
     def get_previous_checkpoint(self, iteration):
         """
@@ -1079,6 +1166,19 @@ class ReplicaExchange(object):
     replica_mixing_scheme : 'swap-all', 'swap-neighbors' or 'none'
         The scheme used to swap thermodynamic states between replicas
         (default is 'swap-all').
+    online_analysis_interval : None or Int >= 1, optional, default None
+        Choose the interval at which to perform online analysis of the free energy.
+        After every interval, the simulation will be stopped and the free energy estimated. If the error in the free
+            energy estimate is at or below online_analysis_target_error, then the simulation will be considered
+            completed.
+    online_analysis_target_error : float >= 0, optional, default 0.2
+        The target error for the online analysis measured in kT per phase.
+            Once the free energy is at or below this value, the phase will be considered complete.
+        If online_analysis_interval is None, this option does nothing.
+    online_analysis_minimum_iterations : int >= 0, optional, default 50
+        Set the minimum number of iterations which must pass before online analysis is carried out.
+        Since the initial samples are likley not to yeild a good estimate of free energy, save time and just skip them
+        If online_analysis_interval is None, this does nothing
 
     Attributes
     ----------
@@ -1158,7 +1258,9 @@ class ReplicaExchange(object):
     # Constructors.
     # -------------------------------------------------------------------------
 
-    def __init__(self, mcmc_moves=None, number_of_iterations=1, replica_mixing_scheme='swap-all'):
+    def __init__(self, mcmc_moves=None, number_of_iterations=1, replica_mixing_scheme='swap-all',
+                 online_analysis_interval=None, online_analysis_target_error=0.2,
+                 online_analysis_minimum_iterations=50):
 
         # Check argument values.
         if replica_mixing_scheme not in self._SUPPORTED_MIXING_SCHEMES:
@@ -1178,8 +1280,40 @@ class ReplicaExchange(object):
         # Store constructor parameters. Everything is marked for internal
         # usage because any change to these attribute implies a change
         # in the storage file as well.
+        if number_of_iterations is None:  # Support infinite run
+            number_of_iterations = np.inf
         self._number_of_iterations = number_of_iterations
         self._replica_mixing_scheme = replica_mixing_scheme
+        # Handle Online Analysis
+        if online_analysis_interval is not None and (
+                        type(online_analysis_interval) != int or online_analysis_interval < 1):
+            raise ValueError("online_analysis_interval must be an integer 1 or greater")
+        if online_analysis_interval is not None:
+            if online_analysis_target_error < 0:
+                raise ValueError("online_analysis_target_error must be a float >= 0")
+            elif online_analysis_target_error == 0:
+                logger.warn("online_analysis_target_error of 0 may never converge.")
+            if type(online_analysis_minimum_iterations) is not int or online_analysis_minimum_iterations < 0:
+                raise ValueError("online_analysis_minimum_iterations must be an integer >= 0")
+
+        # Store all the options
+        self._online_analysis_interval = online_analysis_interval
+        self._online_analysis_target_error = online_analysis_target_error
+        self._online_analysis_minimum_iterations = online_analysis_minimum_iterations
+        self._online_error_trap_counter = 0  # Counter for errors in the online estimate
+        self._online_error_bank = []
+
+        if self._number_of_iterations == np.inf:
+            if self._online_analysis_target_error == 0.0:
+                logger.warning("WARNING! You have specified an unlimited number of iterations and a target error "
+                               "for online analysis of 0.0! Your simulation may never reach 'completed' state!")
+            elif self._online_analysis_interval is None:
+                logger.warning("WARNING! This simulation will never be considered 'complete' since there is no "
+                               "specified maximum number of iterations!")
+
+        self._last_mbar_f_k = None
+        # A "Have we met any of the stop condition targets? Or a type of "work complete, zug zug"
+        self._is_completed = False
 
         # These will be set on initialization. See function
         # create() for explanation of single variables.
@@ -1194,8 +1328,7 @@ class ReplicaExchange(object):
         self._n_proposed_matrix = None
         self._reporter = None
         self._metadata = None
-        # Handle checkpointing
-        self._checkpoint_interval = None
+        self._have_displayed_citations_before = False
 
     @classmethod
     def from_storage(cls, storage):
@@ -1341,28 +1474,78 @@ class ReplicaExchange(object):
                             self._sampler_states, self._iteration)
 
     class _StoredProperty(object):
-        """Descriptor of a property stored as an option."""
-        def __init__(self, option_name):
+        """
+        Descriptor of a property stored as an option.
+
+        validate_function is a simple function for checking things like "X > 0", but exposes both the
+            ReplicaExchange instance and the new value for the variable, in that order.
+        More complex checks which relies on the ReplicaExchange instance, like "if Y == True, then check X" can be
+            accessed through the instance object of the function
+
+        """
+        def __init__(self, option_name, validate_function=None):
             self._option_name = option_name
+            self._validate_function = validate_function
 
         def __get__(self, instance, owner_class=None):
             return getattr(instance, '_' + self._option_name)
 
         def __set__(self, instance, new_value):
-            if (self._option_name == 'replica_mixing_scheme' and
-                        new_value not in ReplicaExchange._SUPPORTED_MIXING_SCHEMES):
-                raise ValueError(("Unknown replica mixing scheme '{}'. Supported values "
-                                  "are {}.").format(new_value, self._SUPPORTED_MIXING_SCHEMES))
+            if self._validate_function is not None:
+                self._validate_function(instance, new_value)
             setattr(instance, '_' + self._option_name, new_value)
             mpi.run_single_node(0, instance._store_options)
 
-    number_of_iterations = _StoredProperty('number_of_iterations')
-    replica_mixing_scheme = _StoredProperty('replica_mixing_scheme')
+        # ----------------------------------
+        # Value Validation of the properties
+        # Should be @staticmethod with arguments of (instance, value) in that order, even if instance is not used
+        # ----------------------------------
 
+        @staticmethod
+        def _repex_mixing_scheme_check(instance, replica_mixing_scheme):
+            if replica_mixing_scheme not in ReplicaExchange._SUPPORTED_MIXING_SCHEMES:
+                raise ValueError(("Unknown replica mixing scheme '{}'. Supported values "
+                                  "are {}.").format(replica_mixing_scheme, ReplicaExchange._SUPPORTED_MIXING_SCHEMES))
+
+        @staticmethod
+        def _oa_interval_check(instance, online_analysis_interval):
+            """Check the online_analysis_interval value for consistency"""
+            if online_analysis_interval is not None and (
+                            type(online_analysis_interval) != int or online_analysis_interval < 1):
+                raise ValueError("online_analysis_interval must be an integer 1 or greater, or None")
+
+        @staticmethod
+        def _oa_target_error_check(instance, online_analysis_target_error):
+            if instance.online_analysis_target_error is not None:
+                if online_analysis_target_error < 0:
+                    raise ValueError("online_analysis_target_error must be a float >= 0")
+                elif online_analysis_target_error == 0:
+                    logger.warn("online_analysis_target_error of 0 may never converge.")
+
+        @staticmethod
+        def _oa_min_iter_check(instance, online_analysis_minimum_iterations):
+            if (instance.online_analysis_target_error is not None and
+                    (type(online_analysis_minimum_iterations) is not int or online_analysis_minimum_iterations < 0)):
+                    raise ValueError("online_analysis_minimum_iterations must be an integer >= 0")
+
+    number_of_iterations = _StoredProperty('number_of_iterations')
+    replica_mixing_scheme = _StoredProperty('replica_mixing_scheme',
+                                            validate_function=_StoredProperty._repex_mixing_scheme_check)
+    online_analysis_interval = _StoredProperty('online_analysis_interval',
+                                               validate_function=_StoredProperty._oa_interval_check)
+    online_analysis_target_error = _StoredProperty('online_analysis_target_error',
+                                                   validate_function=_StoredProperty._oa_target_error_check)
+    online_analysis_minimum_iterations = _StoredProperty('online_analysis_minimum_iterations',
+                                                         validate_function=_StoredProperty._oa_min_iter_check)
     @property
     def metadata(self):
         """A copy of the metadata passed on creation (read-only)."""
         return copy.deepcopy(self._metadata)
+
+    @property
+    def is_completed(self):
+        """"Have we reached any of the stop target criteria?" (read-only)"""
+        return self._is_completed
 
     # -------------------------------------------------------------------------
     # Main public interface.
@@ -1586,7 +1769,6 @@ class ReplicaExchange(object):
         n_iterations : int, optional
            If specified, only at most the specified number of iterations
            will be run (default is None).
-
         """
         # If this is the first iteration, compute and store the
         # starting energies of the minimized/equilibrated structures.
@@ -1606,7 +1788,10 @@ class ReplicaExchange(object):
         else:
             iteration_limit = min(self._iteration + n_iterations, self._number_of_iterations)
 
-        while self._iteration < iteration_limit:
+        # Check completed conditions
+        self._is_completed = self._check_completion(iteration_limit)
+
+        while not self._is_completed:
             # Increment iteration counter.
             self._iteration += 1
 
@@ -1626,6 +1811,17 @@ class ReplicaExchange(object):
             # Write iteration to storage file.
             self._report_iteration()
 
+            # Compute online free energy
+            free_energy_error = None
+            if (self._online_analysis_interval is not None and
+                    self._iteration > self._online_analysis_minimum_iterations and
+                    self._iteration % self._online_analysis_interval == 0):
+                free_energy_error = self._run_online_analysis()
+
+            # Check if work complete
+            # Online + below error
+            self._is_completed = self._check_completion(iteration_limit, free_energy_error=free_energy_error)
+
             # Show timing statistics if debug level is activated.
             if logger.isEnabledFor(logging.DEBUG):
                 iteration_time = timer.stop('Iteration')
@@ -1633,7 +1829,7 @@ class ReplicaExchange(object):
                 time_per_iteration = partial_total_time / (self._iteration - run_initial_iteration)
                 estimated_time_remaining = time_per_iteration * (iteration_limit - self._iteration)
                 estimated_total_time = time_per_iteration * iteration_limit
-                estimated_finish_time = partial_total_time + estimated_time_remaining
+                estimated_finish_time = time.time() + estimated_time_remaining
                 logger.debug("Iteration took {:.3f}s.".format(iteration_time))
                 logger.debug("Estimated completion in {}, at {} (consuming total wall clock time {}).".format(
                     str(datetime.timedelta(seconds=estimated_time_remaining)), time.ctime(estimated_finish_time),
@@ -1655,7 +1851,7 @@ class ReplicaExchange(object):
 
         """
         if self._iteration + n_iterations > self._number_of_iterations:
-            self.number_of_iterations = self._iteration + n_iterations
+            self._number_of_iterations = self._iteration + n_iterations
         self.run(n_iterations)
 
     def __repr__(self):
@@ -1663,31 +1859,31 @@ class ReplicaExchange(object):
         # TODO: Can we make this a more useful expression?
         return "<instance of ReplicaExchange>"
 
-    def __str__(self):
-        """
-        Show an 'informal' human-readable representation of the replica-exchange simulation.
-
-        """
-        r = "Replica-exchange simulation\n"
-        r += "\n"
-        r += "{:d} replicas\n".format(self.nreplicas)
-        r += "{:d} coordinate sets provided\n".format(len(self.provided_positions))
-        r += "file store: {:s}\n".format(self.store_filename)
-        r += "initialized: {:s}\n".format(self._initialized)
-        r += "\n"
-        r += "PARAMETERS\n"
-        r += "collision rate: {:s}\n".format(self.collision_rate)
-        r += "relative constraint tolerance: {:s}\n".format(self.constraint_tolerance)
-        r += "timestep: {:s}\n".format(self.timestep)
-        r += "number of steps/iteration: {:d}\n".format(self.nsteps_per_iteration)
-        r += "number of iterations: {:d}\n".format(self.number_of_iterations)
-        if self.extend_simulation:
-            r += "Iterations extending existing data.\n"
-        r += "equilibration timestep: {:s}\n".format(self.equilibration_timestep)
-        r += "number of equilibration iterations: {:d}\n".format(self.number_of_equilibration_iterations)
-        r += "\n"
-
-        return r
+    # Disabled until we have a better answer to this
+    # def __str__(self):
+    #     """
+    #     Show an 'informal' human-readable representation of the replica-exchange simulation.
+    #     """
+    #     r = "Replica-exchange simulation\n"
+    #     r += "\n"
+    #     r += "{:d} replicas\n".format(self.nreplicas)
+    #     r += "{:d} coordinate sets provided\n".format(len(self.provided_positions))
+    #     r += "file store: {:s}\n".format(self.store_filename)
+    #     r += "initialized: {:s}\n".format(self._initialized)
+    #     r += "\n"
+    #     r += "PARAMETERS\n"
+    #     r += "collision rate: {:s}\n".format(self.collision_rate)
+    #     r += "relative constraint tolerance: {:s}\n".format(self.constraint_tolerance)
+    #     r += "timestep: {:s}\n".format(self.timestep)
+    #     r += "number of steps/iteration: {:d}\n".format(self.nsteps_per_iteration)
+    #     r += "number of iterations: {:d}\n".format(self._number_of_iterations)
+    #     if self.extend_simulation:
+    #         r += "Iterations extending existing data.\n"
+    #     r += "equilibration timestep: {:s}\n".format(self.equilibration_timestep)
+    #     r += "number of equilibration iterations: {:d}\n".format(self.number_of_equilibration_iterations)
+    #     r += "\n"
+    #
+    #     return r
 
     def __del__(self):
         # The reporter could be None if ReplicaExchange was not created.
@@ -1727,8 +1923,13 @@ class ReplicaExchange(object):
             logger.error(err_msg)
             raise RuntimeError(err_msg)
 
-    def _display_citations(self):
-        """Display papers to be cited."""
+    @mpi.on_single_node(rank=0, broadcast_result=False, sync_nodes=False)
+    def _display_citations(self, overwrite_global=False):
+        """
+        Display papers to be cited.
+        The overwrite_golbal command will force the citation to display even if the "have_citations_been_shown" variable
+            is True
+        """
         # TODO Add original citations for various replica-exchange schemes.
         # TODO Show subset of OpenMM citations based on what features are being used.
         openmm_citations = """\
@@ -1743,11 +1944,13 @@ class ReplicaExchange(object):
         mbar_citations = """\
         Shirts MR and Chodera JD. Statistically optimal analysis of samples from multiple equilibrium states. J. Chem. Phys. 129:124105, 2008. DOI: 10.1063/1.2978177"""
 
-        print("Please cite the following:")
-        print("")
-        print(openmm_citations)
-        if self._replica_mixing_scheme == 'swap-all':
-            print(gibbs_citations)
+        if overwrite_global or (not self._have_displayed_citations_before and not self._global_citation_silence):
+            print("Please cite the following:")
+            print("")
+            print(openmm_citations)
+            if self._replica_mixing_scheme == 'swap-all':
+                print(gibbs_citations)
+            self._have_displayed_citations_before = True
 
     # -------------------------------------------------------------------------
     # Internal-usage: Initialization and storage utilities.
@@ -2076,6 +2279,93 @@ class ReplicaExchange(object):
             self._n_accepted_matrix[thermodynamic_state_i, thermodynamic_state_j] += 1
             self._n_accepted_matrix[thermodynamic_state_j, thermodynamic_state_i] += 1
 
+    # -------------------------------------------------------------------------
+    # Internal-usage: Online Analysis.
+    # -------------------------------------------------------------------------
+
+    @mpi.on_single_node(rank=0, broadcast_result=False, sync_nodes=False)
+    @mpi.delayed_termination
+    @mmtools.utils.with_timer('Computing online free energy estimate')
+    def _run_online_analysis(self):
+        """Compute the free energy during simulation run"""
+        # This relative import is down here because having it at the top causes an ImportError.
+        # __init__ pulls in repex, which pulls in analyze, which pulls in repex. Because the first repex never finished
+        # importing, its not in the name space which causes relative analyze import of repex to crash as neither of them
+        # are the __main__ package.
+        # https://stackoverflow.com/questions/6351805/cyclic-module-dependencies-and-relative-imports-in-python
+        from .analyze import RepexPhase
+        if self._last_mbar_f_k is None:
+            # Backwards search for last free energies, don't need the 0th iteration because the guess f_k are 0
+            self._last_mbar_f_k, _ = self._get_last_written_free_energy()
+        # Start the analysis
+        bump_error_counter = False
+        analysis = RepexPhase(self._reporter, analysis_kwargs={'initial_f_k': self._last_mbar_f_k})
+        # Indices for online analysis, "i'th index, j'th index"
+        idx, jdx = 0, -1
+        timer = mmtools.utils.Timer()
+        timer.start("MBAR")
+        logger.debug("Computing free energy with MBAR...")
+        try:  # Trap errors for MBAR being under sampled and the W_nk matrix not being normalized correctly
+            mbar = analysis.mbar
+            free_energy, err_free_energy = analysis.get_free_energy()
+            output_fe = free_energy[idx, jdx]
+            output_dfe = err_free_energy[idx, jdx]
+            logger.debug("Current Free Energy Estimate is {} +- {} kT".format(output_fe, output_dfe))
+            self._last_mbar_f_k = mbar.f_k
+            if np.isnan(output_dfe):  # Trap a case when errors don't converge (usually due to under sampling)
+                output_dfe = np.inf
+        except ParameterError as e:
+            bump_error_counter = True
+            self.online_error_bank.append(e)
+            output_dfe = np.inf
+        timer.stop("MBAR")
+        if bump_error_counter:
+            self._online_error_trap_counter += 1
+            if self._online_error_trap_counter >= 6:
+                logger.debug("Thrown MBAR Errors:")
+                for err in self._online_error_bank:
+                    logger.debug(str(err))
+                raise RuntimeError("Online Analysis has failed too many times! Please check the latest logs to see "
+                                   "the thrown errors!")
+        # Write out the numbers
+        self._reporter.write_mbar_free_energies(self._iteration, self._last_mbar_f_k, (output_fe, output_dfe))
+        return output_dfe
+
+    def _get_last_written_free_energy(self):
+        """Get the last free energy computed from online analysis"""
+        last_f_k = None
+        last_free_energy = None
+        try:
+            for index in range(self._iteration, 0, -1):
+                last_f_k, last_free_energy = self._reporter.read_mbar_free_energies(index)
+                # Find an f_k that is not all zeros (or masked and empty)
+                if not np.ma.is_masked(last_f_k) and np.all(last_f_k == 0):
+                    break  # Don't need to continue the loop if we already found one
+        except (IndexError, KeyError):  # No such f_k written yet (or variable created), no need to do anything
+            pass
+        return last_f_k, last_free_energy
+
+    def _check_completion(self, iteration_limit, free_energy_error=None):
+        """Check if we have completed the run previously
+        Accepts kwarg for free_energy_error to save time when this is already completed
+            in the online analysis at run time
+        """
+        completed = False
+        # Case where we are running the online free energy and feed in nothing for the error
+        if self._online_analysis_interval is not None and free_energy_error is None:
+                _, last_free_energy = self._get_last_written_free_energy()
+                _, free_energy_error = last_free_energy if last_free_energy is not None else (None, None)
+        if free_energy_error is not None and free_energy_error <= self._online_analysis_target_error:
+            completed = True
+        elif self._iteration >= iteration_limit:  # Stop at iteration limit regardless
+            completed = True
+        return completed
+
+    # -------------------------------------------------------------------------
+    # Internal-usage: Test globals
+    # -------------------------------------------------------------------------
+    _global_citation_silence = False
+
 
 # ==============================================================================
 # PARALLEL TEMPERING
@@ -2234,7 +2524,7 @@ class ParallelTempering(ReplicaExchange):
 # MODULE INTERNAL USAGE UTILITIES
 # ==============================================================================
 
-class _DictYamlLoader(yaml.Loader):
+class _DictYamlLoader(yaml.CLoader):
     """PyYAML Loader that reads !Quantity tags."""
     def __init__(self, *args, **kwargs):
         super(_DictYamlLoader, self).__init__(*args, **kwargs)
@@ -2260,7 +2550,7 @@ class _DictYamlLoader(yaml.Loader):
         return data
 
 
-class _DictYamlDumper(yaml.Dumper):
+class _DictYamlDumper(yaml.CDumper):
     """PyYAML Dumper that handle simtk Quantities through !Quantity tags."""
 
     def __init__(self, *args, **kwargs):

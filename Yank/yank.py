@@ -16,7 +16,6 @@ Interface for automated free energy calculations.
 # GLOBAL IMPORTS
 # ==============================================================================
 
-import os
 import abc
 import copy
 import time
@@ -411,6 +410,17 @@ class AlchemicalPhase(object):
     def number_of_iterations(self, value):
         self._sampler.number_of_iterations = value
 
+    @property
+    def is_complete(self):
+        """
+        bool: is the sampler complete by some other mechanism.
+        If no method is present in sampler, check if sampler's current iteration is number of iterations
+        """
+        try:
+            return self._sampler.is_complete
+        except AttributeError:
+            return self._sampler.iteration >= self._sampler.number_of_iterations
+
     def create(self, thermodynamic_state, sampler_states, topography, protocol,
                storage, restraint=None, anisotropic_dispersion_cutoff=None,
                alchemical_regions=None, alchemical_factory=None, metadata=None):
@@ -462,6 +472,12 @@ class AlchemicalPhase(object):
             Simulation metadata to be stored in the file.
 
         """
+        # Check that protocol has same number of states for each parameter.
+        len_protocol_parameters = {par_name: len(path) for par_name, path in protocol.items()}
+        if len(set(len_protocol_parameters.values())) != 1:
+            raise ValueError('The protocol parameters have a different number '
+                             'of states: {}'.format(len_protocol_parameters))
+
         # Do not modify passed thermodynamic state.
         reference_thermodynamic_state = copy.deepcopy(thermodynamic_state)
         thermodynamic_state = copy.deepcopy(thermodynamic_state)
@@ -548,7 +564,7 @@ class AlchemicalPhase(object):
         # Create alchemically-modified system using alchemical factory.
         logger.debug("Creating alchemically-modified states...")
         if alchemical_factory is None:
-            alchemical_factory = mmtools.alchemy.AbsoluteAlchemicalFactory()
+            alchemical_factory = mmtools.alchemy.AbsoluteAlchemicalFactory(disable_alchemical_dispersion_correction=True)
         alchemical_system = alchemical_factory.create_alchemical_system(thermodynamic_state.system,
                                                                         alchemical_regions)
 
