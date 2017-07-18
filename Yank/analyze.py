@@ -1,5 +1,21 @@
 #!/usr/local/bin/env python
 
+# ==============================================================================
+# MODULE DOCSTRING
+# ==============================================================================
+
+"""
+Analyze
+=======
+
+Analysis tools and module for YANK simulations. Provides programmatic and automatic "best practices" integration to
+determine free energy and other observables.
+
+Fully extensible to support new samplers and observables.
+
+"""
+
+
 # =============================================================================================
 # Analyze datafiles produced by YANK.
 # =============================================================================================
@@ -38,7 +54,26 @@ kB = units.BOLTZMANN_CONSTANT_kB * units.AVOGADRO_CONSTANT_NA
 # =============================================================================================
 
 def generate_phase_name(current_name, name_list):
-    """Provide a regular way to generate unique names"""
+    """
+    Provide a regular way to generate unique human-readable names from base names.
+
+    Given a base name and a list of existing names, a number will be appended to the base name until a unique string
+    is generated.
+
+    Parameters
+    ----------
+    current_name : string
+        The base name you wish to ensure is unique. Numbers will be appended to this string until a unique string
+        not in the name_list is provided
+    name_list : iterable of strings
+        The current_name, and its modifiers, are compared against this list until a unique string is found
+
+    Returns
+    -------
+    name : string
+        Unique string derived from the current_name that is not in name_list.
+        If the parameter current_name is not already in the name_list, then current_name is returned unmodified.
+    """
     base_name = 'phase{}'
     counter = 0
     if current_name is None:
@@ -60,7 +95,18 @@ def get_analyzer(file_base_path):
     """
     Utility function to convert storage file to a Reporter and Analyzer by reading the data on file
 
-    For now this is mostly placeholder functions, but creates the API for the user to work with.
+    For now this is mostly placeholder functions since there is only the implemented RepexPhase, but creates the
+    API for the user to work with.
+
+    Parameters
+    ----------
+    file_base_path : string
+        Complete path to the storage file with filename and extension.
+
+    Returns
+    -------
+    analyzer : instance of implemented YankPhaseAnalyzer
+        Analyzer for the specific phase.
     """
     # Eventually extend this to get more reporters, but for now simple placeholder
     reporter = Reporter(file_base_path, open_mode='r')
@@ -185,43 +231,70 @@ class _ObservablesRegistry(object):
 
 class YankPhaseAnalyzer(ABC):
     """
-    Analyzer for a single phase of a YANK simulation. Uses the reporter from the simulation to determine the location
+    Analyzer for a single phase of a YANK simulation.
+
+    Uses the reporter from the simulation to determine the location
     of all variables.
 
-    To compute a specific observable, add it to the ObservableRegistry and then implement a "get_X" where X is the
-    name of the observable you want to compute. See the ObservablesRegistry for information about formatting the
-    observables.
+    To compute a specific observable in an implementation of this class, add it to the ObservableRegistry and then
+    implement a ``get_X`` where ``X`` is the name of the observable you want to compute. See the ObservablesRegistry for
+    information about formatting the observables.
 
     Analyzer works in units of kT unless specifically stated otherwise. To convert back to a unit set, just multiply by
     the .kT property.
+
+    Parameters
+    ----------
+    reporter : Reporter instance
+        Reporter from Repex which ties to the simulation data on disk.
+    name : str, Optional
+        Unique name you want to assign this phase, this is the name that will appear in MultiPhaseAnalyzer's. If not
+        set, it will be given the arbitrary name "phase#" where # is an integer, chosen in order that it is
+        assigned to the MultiPhaseAnalyzer.
+    reference_states : tuple of ints, length 2, Optional, Default: (0,-1)
+        Integers ``i`` and ``j`` of the state that is used for reference in observables, "O". These values are only used
+        when reporting single numbers or combining observables through MultiPhaseAnalyzer (since the number of states
+        between phases can be different). Calls to functions such as `get_free_energy` in a single Phase results in
+        the O being returned for all states.
+
+            For O completely defined by the state itself (i.e. no differences between states, e.g. Temperature),
+            only O[i] is used
+
+            For O where differences between states are required (e.g. Free Energy): O[i,j] = O[j] - O[i]
+
+            For O defined by the phase as a whole, the reference states are not needed.
+
+    analysis_kwargs : None or dict, optional
+        Dictionary of extra keyword arguments to pass into the analysis tool, typically MBAR.
+        For instance, the initial guess of relative free energies to give to MBAR would be something like:
+        ``{'initial_f_k':[0,1,2,3]}``
+
+
+    Attributes
+    ----------
+    name
+    observables
+    mbar
+    reference_states
+    kT
+    reporter
+
+    Methods
+    -------
+    analyze_phase
+    extract_energies
+    get_timeseries
+    get_decorrelation_time
+    get_equilibration_data
+    get_equilibration_data_per_sample
+    remove_unequilibrated_data
+    decorrelate_data
+
     """
     def __init__(self, reporter, name=None, reference_states=(0, -1), analysis_kwargs=None):
         """
         The reporter provides the hook into how to read the data, all other options control where differences are
         measured from and how each phase interfaces with other phases.
-
-        Parameters
-        ----------
-        reporter : Reporter instance
-            Reporter from Repex which ties to the simulation data on disk.
-        name : str, Optional
-            Unique name you want to assign this phase, this is the name that will appear in MultiPhaseAnalyzer's. If not
-            set, it will be given the arbitrary name "phase#" where # is an integer, chosen in order that it is
-            assigned to the MultiPhaseAnalyzer.
-        reference_states: tuple of ints, length 2, Optional, Default: (0,-1)
-            Integers i and j of the state that is used for reference in observables, "O". These values are only used
-            when reporting single numbers or combining observables through MultiPhaseAnalyzer (since the number of states
-            between phases can be different). Calls to functions such as `get_free_energy` in a single Phase results in
-            the O being returned for all states.
-            For O completely defined by the state itself (i.e. no differences between states, e.g. Temperature)"
-                O[i] is returned
-                O[j] is not used
-            For O where differences between states are required (e.g. Free Energy):
-                O[i,j] = O[j] - O[i]
-        analysis_kwargs : None or dict, optional
-            Dictionary of extra keyword arguments to pass into the analysis tool, typically MBAR.
-            For instance, the initial guess of relative free energies to give to MBAR would be something like:
-                {'f_k':[0,1,2,3]}
         """
         if not reporter.is_open():
             reporter.open(mode='r')
@@ -263,27 +336,27 @@ class YankPhaseAnalyzer(ABC):
     @property
     def observables(self):
         """
-        Access the list of observables that the instanced analyzer can compute/fetch.
+        List of observables that the instanced analyzer can compute/fetch.
 
-        This list is automatically compiled upon __init__ based on the functions implemented in the subclass
+        This list is automatically compiled upon class initialization based on the functions implemented in the subclass
         """
         return self._observables
 
     @property
     def mbar(self):
-        """Access the MBAR object tied to this phase"""
+        """MBAR object tied to this phase"""
         if self._mbar is None:
             self._create_mbar_from_scratch()
         return self._mbar
 
     @property
     def reference_states(self):
-        """Provide a way to access the i,j states"""
+        """Reference states ``i`` and ``j`` for ``MultiPhaseAnalyzer`` instances"""
         return self._reference_states
 
     @reference_states.setter
     def reference_states(self, value):
-        """Provide a way to re-assign the i,j states in a protected way"""
+        """Provide a way to re-assign the ``i, j`` states in a protected way"""
         i, j = value[0], value[1]
         if type(i) is not int or type(j) is not int:
             raise ValueError("reference_states must be a length 2 iterable of ints")
@@ -291,7 +364,10 @@ class YankPhaseAnalyzer(ABC):
 
     @property
     def kT(self):
-        """Fetch the kT of the phase"""
+        """Boltzmann constant times temperature of the phase
+
+        Allows conversion between dimensionless energy and unit bearing energy
+        """
         if self._kT is None:
             thermodynamic_states, _ = self._reporter.read_thermodynamic_states()
             temperature = thermodynamic_states[0].temperature
@@ -300,18 +376,20 @@ class YankPhaseAnalyzer(ABC):
 
     @property
     def reporter(self):
-        """Return the reporter tied to this object..."""
+        """Sampler Reporter tied to this object."""
         return self._reporter
 
     @reporter.setter
     def reporter(self, value):
-        """... and then make sure users cannot overwrite it."""
+        """make sure users cannot overwrite the reporter."""
         raise ValueError("You cannot re-assign the reporter for this analyzer!")
 
     # Abstract methods
     @abc.abstractmethod
     def analyze_phase(self, *args, **kwargs):
         """
+        Auto-analysis function for the phase
+
         Function which broadly handles "auto-analysis" for those that do not wish to call all the methods on their own.
         This should be have like the old "analyze" function from versions of YANK pre-1.0.
 
@@ -326,23 +404,29 @@ class YankPhaseAnalyzer(ABC):
         the assumptions needed to make the MBAR object.  Typically alot of these functions will be needed for the
         analyze_phase function,
 
-        Returns nothing, but the self.mbar object should be set after this
+        Returns nothing, but the self.mbar object should be set after this.
         """
         raise NotImplementedError()
 
     @abc.abstractmethod
     def extract_energies(self):
         """
-        Extract the deconvoluted energies from a phase. Energies from this are NOT decorrelated.
+        Extract the deconvoluted energies from a phase.
+
+        Energies from this are NOT decorrelated.
 
         Returns
         -------
-        sampled_energy_matrix : Deconvoluted energy of sampled states evaluated at other sampled states.
+        sampled_energy_matrix : numpy.ndarray of shape K,K,N
+            Deconvoluted energy of sampled states evaluated at other sampled states.
+
             Has shape (K,K,N) = (number of sampled states, number of sampled states, number of iterations)
-            Indexed by [k,l,n]
-            where an energy drawn from sampled state [k] is evaluated in sampled state [l] at iteration [n]
-        unsampled_energy_matrix
+
+            Indexed by [k,l,n] where an energy drawn from sampled state [k] is evaluated in sampled state [l] at
+            iteration [n]
+        unsampled_energy_matrix : numpy.ndarray of shape K,L,N
             Has shape (K, L, N) = (number of sampled states, number of UN-sampled states, number of iterations)
+
             Indexed by [k,l,n]
             where an energy drawn from sampled state [k] is evaluated in un-sampled state [l] at iteration [n]
         """
@@ -354,7 +438,7 @@ class YankPhaseAnalyzer(ABC):
     @staticmethod
     def get_timeseries(passed_timeseries):
         """
-        Generate the timeseries that is generated for this function
+        Generate the timeseries that is generated for this phase
 
         Returns
         -------
@@ -367,12 +451,20 @@ class YankPhaseAnalyzer(ABC):
     # Static methods
     @staticmethod
     def get_decorrelation_time(timeseries_to_analyze):
-        """Compute the decorrelation times given a timeseries"""
+        """
+        Compute the decorrelation times given a timeseries
+
+        See the ``pymbar.timeseries.statisticalInefficiency`` for full documentation
+        """
         return timeseries.statisticalInefficiency(timeseries_to_analyze)
 
     @staticmethod
     def get_equilibration_data(timeseries_to_analyze):
-        """Compute equilibration method given a timeseries"""
+        """
+        Compute equilibration method given a timeseries
+
+        See the ``pymbar.timeseries.detectEquilibration`` function for full documentation
+        """
         [n_equilibration, g_t, n_effective_max] = timeseries.detectEquilibration(timeseries_to_analyze)
         return n_equilibration, g_t, n_effective_max
 
@@ -380,8 +472,10 @@ class YankPhaseAnalyzer(ABC):
     def get_equilibration_data_per_sample(timeseries_to_analyze, fast=True, nskip=1):
         """
         Compute the correlation time and n_effective per sample.
-        This is exactly what timeseries.detectEquilibration does, but returns the per sample data
-        See the timeseries.detectEquilibration function for full documentation
+
+        This is exactly what ``pymbar.timeseries.detectEquilibration`` does, but returns the per sample data
+
+        See the ``pymbar.timeseries.detectEquilibration`` function for full documentation
         """
         A_t = timeseries_to_analyze
         T = A_t.size
@@ -398,21 +492,23 @@ class YankPhaseAnalyzer(ABC):
     @staticmethod
     def remove_unequilibrated_data(data, number_equilibrated, axis):
         """
-        Remove the number_equilibrated samples from a dataset by discarding number_equilibrated number of indices from
-        given axis
+        Remove the number_equilibrated samples from a dataset
+
+        Discards number_equilibrated number of indices from given axis
 
         Parameters
         ----------
-        data: np.array-like of any dimension length
-        number_equilibrated: int
+        data : np.array-like of any dimension length
+            This is the data which will be paired down
+        number_equilibrated : int
             Number of indices that will be removed from the given axis, i.e. axis will be shorter by number_equilibrated
-        axis: int
-            axis index along wich to remove samples from
+        axis : int
+            Axis index along which to remove samples from. This supports negative indexing as well
 
         Returns
         -------
-        equilibrated_data: ndarray
-            Data with the number_equilibrated number of indices removed from the begining along axis
+        equilibrated_data : ndarray
+            Data with the number_equilibrated number of indices removed from the beginning along axis
 
         """
         cast_data = np.asarray(data)
@@ -431,11 +527,11 @@ class YankPhaseAnalyzer(ABC):
 
         Parameters
         ----------
-        data: np.array-like of any dimension length
+        data : np.array-like of any dimension length
         subsample_rate : float or int
             Rate at which to draw samples. A sample is considered decorrelated after every ceil(subsample_rate) of
-            indicies along data and the specified axis
-        axis: int
+            indices along data and the specified axis
+        axis : int
             axis along which to apply the subsampling
 
         Returns
@@ -464,7 +560,8 @@ class YankPhaseAnalyzer(ABC):
 
         Parameters
         ----------
-        args, kwargs: whatever is needed to generate the appropriate outputs
+        args : arguments needed to generate the appropriate Returns
+        kwargs : keyword arguments needed to generate the appropriate Returns
 
         Returns
         -------
@@ -474,7 +571,7 @@ class YankPhaseAnalyzer(ABC):
             N is the total number of samples
             The kth sample was drawn from state k at iteration n,
                 the nth configuration of kth state is evaluated in thermodynamic state l
-        samples_per_state: 1-D iterable of shape L
+        samples_per_state : 1-D iterable of shape L
             The total number of samples drawn from each lth state
         """
         raise NotImplementedError()
@@ -488,6 +585,8 @@ class YankPhaseAnalyzer(ABC):
 
         This function is hidden from the user unless they really, really need to create their own mbar object
 
+        Parameters
+        ----------
         energy_matrix : array of numpy.float64, optional, default=None
            Reduced potential energies of the replicas; if None, will be extracted from the ncfile
         samples_per_state : array of ints, optional, default=None
@@ -566,6 +665,28 @@ class YankPhaseAnalyzer(ABC):
 
 class RepexPhase(YankPhaseAnalyzer):
 
+    """
+    The RepexPhase is the analyzer for a simulation generated from a Replica Exchange sampler simulation, implemented
+    as an instance of the ``YankPhaseAnalyzer``.
+
+    Methods
+    -------
+    generate_mixing_statistics
+    show_mixing_statistics
+    extract_energies
+    get_timeseries
+    get_free_energy
+    get_enthalpy
+    get_entropy
+    get_standard_state_correction
+    analyze_phase
+
+    See Also
+    --------
+    YankPhaseAnalyzer
+
+    """
+
     def generate_mixing_statistics(self, number_equilibrated=0):
         """
         Generate the Transition state matrix and sorted eigenvalues
@@ -620,7 +741,6 @@ class RepexPhase(YankPhaseAnalyzer):
 
         Parameters
         ----------
-
         cutoff : float, optional, default=0.05
            Only transition probabilities above 'cutoff' will be printed
         number_equilibrated : int, optional, default=0
@@ -659,7 +779,17 @@ class RepexPhase(YankPhaseAnalyzer):
 
     def extract_energies(self):
         """
-        Extract and decorelate energies from the ncfile to gather energies common data for other functions
+        Extract and decorrelate energies from the ncfile to gather energies common data for other functions
+
+        Returns
+        -------
+        energy_matrix : ndarray of shape (K,K,N)
+            Potential energy matrix of the sampled states
+            Energy is from each sample n, drawn from state (first k), and evaluated at every sampled state (second k)
+        unsampled_energy_matrix : ndarray of shape (K,L,N)
+            Potential energy matrix of the unsampled states
+            Energy from each sample n, drawn from sampled state k, evaluated at unsampled state l
+            If no unsampled states were drawn, this will be shape (K,0,N)
 
         """
         logger.info("Reading energies...")
@@ -687,14 +817,25 @@ class RepexPhase(YankPhaseAnalyzer):
     @staticmethod
     def get_timeseries(passed_timeseries):
         """
+        Compute the timeseries of a simulation from the Replica Exchange simulation. This is the sum of energies
+        for each sample from the state it was drawn from.
+
         Parameters
         ----------
-        passed_timeseries: ndarray of shape (K,L,N), indexed by k,l,n
+        passed_timeseries : ndarray of shape (K,L,N), indexed by k,l,n
             K is the total number of sampled states
+
             L is the total states we want MBAR to analyze
+
             N is the total number of samples
-            The kth sample was drawn from state k at iteration n,
-                the nth configuration of kth state is evaluated in thermodynamic state l
+
+            The kth sample was drawn from state k at iteration n, the nth configuration of kth state is evaluated in
+            thermodynamic state l
+
+        Returns
+        -------
+        u_n : ndarray of shape (N,)
+            Timeseries to compute decorrelation and equilibration data from.
         """
         niterations = passed_timeseries.shape[-1]
         u_n = np.zeros([niterations], np.float64)
@@ -776,15 +917,15 @@ class RepexPhase(YankPhaseAnalyzer):
 
     def get_free_energy(self):
         """
-        Return the free energy and error in free energy from the MBAR object
+        Compute the free energy and error in free energy from the MBAR object
 
-        Return changes based on if there are expanded cutoff states detected in the sampler
+        Output shape changes based on if there are unsampled states detected in the sampler
 
         Returns
         -------
         DeltaF_ij : ndarray of floats, shape (K,K) or (K+2, K+2)
             Difference in free energy from each state relative to each other state
-        dDeltaF_ij: ndarray of floats, shape (K,K) or (K+2, K+2)
+        dDeltaF_ij : ndarray of floats, shape (K,K) or (K+2, K+2)
             Error in the difference in free energy from each state relative to each other state
         """
         if self._computed_observables['free_energy'] is None:
@@ -806,13 +947,13 @@ class RepexPhase(YankPhaseAnalyzer):
         """
         Compute the difference in enthalpy and error in that estimate from the MBAR object
 
-        Return changes based on if there are expanded cutoff states detected in the sampler
+        Output shape changes based on if there are unsampled states detected in the sampler
 
         Returns
         -------
         DeltaH_ij : ndarray of floats, shape (K,K) or (K+2, K+2)
             Difference in enthalpy from each state relative to each other state
-        dDeltaH_ij: ndarray of floats, shape (K,K) or (K+2, K+2)
+        dDeltaH_ij : ndarray of floats, shape (K,K) or (K+2, K+2)
             Error in the difference in enthalpy from each state relative to each other state
         """
         if self._computed_observables['enthalpy'] is None:
@@ -822,7 +963,16 @@ class RepexPhase(YankPhaseAnalyzer):
 
     def get_entropy(self):
         """
-        Return the difference in entropy and error in that estimate from the MBAR object
+        Compute the difference in entropy and error in that estimate from the MBAR object
+
+        Output shape changes based on if there are unsampled states detected in the sampler
+
+        Returns
+        -------
+        DeltaH_ij : ndarray of floats, shape (K,K) or (K+2, K+2)
+            Difference in enthalpy from each state relative to each other state
+        dDeltaH_ij : ndarray of floats, shape (K,K) or (K+2, K+2)
+            Error in the difference in enthalpy from each state relative to each other state
         """
         if self._computed_observables['entropy'] is None:
             self._compute_enthalpy_and_entropy()
@@ -831,12 +981,13 @@ class RepexPhase(YankPhaseAnalyzer):
 
     def get_standard_state_correction(self):
         """
-        Compute the standard state correction free energy associated with the Reporter.
-        This usually is just a stored variable, but it may need other calculations
+        Compute the standard state correction free energy associated with the Phase.
+
+        This usually is just a stored variable, but it may need other calculations.
 
         Returns
         -------
-        standard_state_correction: float
+        standard_state_correction : float
             Free energy contribution from the standard_state_correction
 
         """
@@ -878,7 +1029,6 @@ class RepexPhase(YankPhaseAnalyzer):
         data['DeltaH'] = DeltaH_ij[self.reference_states[0], self.reference_states[1]]
         data['dDeltaH'] = dDeltaH_ij[self.reference_states[0], self.reference_states[1]]
         data['DeltaF_standard_state_correction'] = self.get_standard_state_correction()
-
         return data
 
 
@@ -887,28 +1037,74 @@ class RepexPhase(YankPhaseAnalyzer):
 class MultiPhaseAnalyzer(object):
     """
     Multiple Phase Analyzer creator, not to be directly called itself, but instead called by adding or subtracting
-    different YankPhaseAnalyzer or MultiPhaseAnalyzers's
+    different implemented YankPhaseAnalyzer or other MultiPhaseAnalyzers's. The individual Phases of the
+    MultiPhaseAnalyzer are only references to existing Phase objects, not copies.
+
+    The user themselves should not attempt to make this class by calling it directly, but instead through doing
+    addition and subtraction of YankPhaseAnalyzer objects and/or other MultiPhaseAnalyzer objects. All YankPhaseAnalyzer
+    and MultiPhaseAnalyzer classes support ``+`` and ``-`` operations.
+
+    The observables of this phase are determined through inspection of all the passed in phases and only observables
+    which are shared can be computed. For example:
+
+        ``PhaseA`` has ``.get_free_energy`` and ``.get_entropy``
+
+        ``PhaseB`` has ``.get_free_energy`` and ``.get_enthalpy``,
+
+        ``PhaseAB = PhaseA + PhaseB`` will only have a .get_free_energy method
+
+    Because each Phase may have a different number of states, the ``reference_states`` property of each phase
+    determines which states from each phase to read the data from.
+
+    For observables defined by two states, the i'th and j'th reference states are used:
+
+        If we define ``PhaseAB = PhaseA - PhaseB``
+
+        Then ``PhaseAB.get_free_energy()`` is roughly equivalent to doing the following:
+
+            ``A_i, A_j = PhaseA.reference_states``
+
+            ``B_i, B_j = PhaseB.reference_states``
+
+            ``PhaseA.get_free_energy()[A_i, A_j] - PhaseB.get_free_energy()[B_i, B_j]``
+
+        The above is not exact since get_free_energy returns an error estimate as well
+
+    For observables defined by a single state, only the i'th reference state is used
+
+        Given ``PhaseAB = PhaseA + PhaseB``, ``PhaseAB.get_temperature()`` is equivalent to:
+
+            ``A_i = PhaseA.reference_states[0]``
+
+            ``B_i = PhaseB.reference_states[0]``
+
+            ``PhaseA.get_temperature()[A_i] + PhaseB.get_temperature()[B_i]``
+
+    For observables defined entirely by the phase, no reference states are needed.
+
+        Given ``PhaseAB = PhaseA + PhaseB``, ``PhaseAB.get_standard_state_correction()`` gives:
+
+            ``PhaseA.get_standard_state_correction() + PhaseB.get_standard_state_correction()``
+
+    This class is public to see its API.
+
+    Parameters
+    ----------
+    phases : dict
+        has keys "phases", "names", and "signs"
+
+    Attributes
+    ----------
+    observables
+    phases
+    names
+    signs
+
     """
     def __init__(self, phases):
         """
         Create the compound phase which is any combination of phases to generate a new MultiPhaseAnalyzer.
 
-        The observables of this phase are determined through inspection of all the passed in phases and only
-        observables which are shared can be computed.
-
-        e.g.
-            PhaseA has .get_free_energy and .get_entropy
-            PhaseB has .get_free_energy and .get_enthalpy
-            Only .get_free_energy will be available to this MultiPhaseAnalyzer
-
-        The user themselves should not attempt to make this class by calling it directly, but instead through doing
-        addition and subtraction of YankPhaseAnalyzer objects and/or other MultiPhaseAnalyzer objects.
-        This class is public to see its API.
-
-        Parameters
-        ----------
-        phases: dict
-            has keys "phases", "names", and "signs"
         """
         # Determine
         observables = []
@@ -934,9 +1130,11 @@ class MultiPhaseAnalyzer(object):
     def _spool_function(self, observable):
         """
         Dynamic observable calculator layer
+
         Must be in its own function to isolate the variable name space
+
         If you have this in the __init__, the "observable" variable colides with any others in the list, causing a
-            the wrong property to be fetched.
+        the wrong property to be fetched.
         """
         return lambda: self._compute_observable(observable)
 
@@ -978,12 +1176,12 @@ class MultiPhaseAnalyzer(object):
 
         Parameters
         ----------
-        other: MultiPhaseAnalyzer or YankPhaseAnalyzer
-        operator: sign of the operator connecting the two objects
+        other : MultiPhaseAnalyzer or YankPhaseAnalyzer
+        operator : sign of the operator connecting the two objects
 
         Returns
         -------
-        output: MultiPhaseAnalyzer
+        output : MultiPhaseAnalyzer
             New MultiPhaseAnalyzer where the phases are the combined list of the individual phases from each component.
             Because the memory pointers to the individual phases are the same, changing any SinglePhase's
             reference_state objects updates all MultiPhaseAnalyzer objects they are tied to
@@ -1084,7 +1282,7 @@ class MultiPhaseAnalyzer(object):
 
         Parameters
         ----------
-        observable_name: str
+        observable_name : str
             Name of the observable as its defined in the ObservablesRegistry
 
         Returns
@@ -1245,6 +1443,8 @@ def extract_u_n(ncfile):
     s_{nk} is the current state of replica k at iteration n
     u_k(x) is the kth reduced potential
 
+    TODO: Figure out a way to remove this function
+
     Parameters
     ----------
     ncfile : netCDF4.Dataset
@@ -1254,11 +1454,6 @@ def extract_u_n(ncfile):
     -------
     u_n : numpy array of numpy.float64
        u_n[n] is -log q(X_n)
-
-    TODO
-    ----
-    Figure out a way to remove this function
-
     """
 
     # Get current dimensions.

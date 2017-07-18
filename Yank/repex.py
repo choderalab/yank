@@ -4,7 +4,11 @@
 # MODULE DOCSTRING
 # ==============================================================================
 
-"""Replica-exchange simulation algorithms and specific variants.
+"""
+Repex
+=====
+
+Replica-exchange simulation algorithms and specific variants.
 
 This module provides a general facility for running replica-exchange simulations,
 as well as derived classes for special cases such as parallel tempering (in which
@@ -17,10 +21,15 @@ Provided classes include:
 - ParallelTempering
     Convenience subclass of ReplicaExchange for parallel tempering simulations
     (one System object, many temperatures).
+- Reporter
+    Replica Exchange reporter class to store all variables and data
 
 COPYRIGHT
 
-Written by John D. Chodera <jchodera@gmail.com> while at the University of
+Current version by Andrea Rizzi <andrea.rizzi@choderalab.org>, Levi N. Naden <levi.naden@choderalab.org> and
+John D. Chodera<john.chodera@choderalab.org> while at Memorial Sloan-Kettering Cancer Center.
+
+Original version by John D. Chodera <jchodera@gmail.com> while at the University of
 California Berkeley.
 
 LICENSE
@@ -74,26 +83,70 @@ class Reporter(object):
     ----------
     storage : str
         The path to the storage file for analysis.
+
         A second checkpoint file will be determined from either checkpoint_storage_file or automatically based on
-            the storage option
+        the storage option
+
         In the future this will be able to take Storage classes as well.
     open_mode : str or None
         The mode of the file between 'r', 'w', and 'a' (or equivalently 'r+').
+
         If None, the storage file won't be open on construction, and a call to
         Reporter.open() will be needed before attempting read/write operations.
     checkpoint_interval : int >= 1, Default: 10
-        The frequency at which checkpointing information is written relative to analysis information. This is a multiple
+        The frequency at which checkpointing information is written relative to analysis information.
+
+        This is a multiple
         of the iteration at which energies is written, hence why it must be greater than or equal to 1.
         Checkpoint information cannot be written on iterations which where iteration % checkpoint_interval != 0.
+
         Attempting to read checkpointing information results in a masked array where only entries which were written
-            are unmasked
+        are unmasked
     checkpoint_storage_file : str or None, optional
         Optional name of the checkpoint point file. This file is used to save trajectory information and other less
-            frequently accessed data.
+        frequently accessed data.
+
         This should NOT be a full path, and instead just a filename
-        If None: the derived checkpoint name is the same as storage, less any extension, then "_checkpoint.nc" is added
+
+        If None: the derived checkpoint name is the same as storage, less any extension, then "_checkpoint.nc" is added.
+
         The reporter internally tracks what data goes into which file, so its transparent to all other classes
         In the future, this will be able to take Storage classes as well
+
+    Attributes
+    ----------
+    filename
+
+    Storage Manipulation Methods
+    ----------------------------
+    storage_exists
+    is_open
+    open
+    close
+    sync
+
+    Data Read and Write Methods
+    ---------------------------
+    read_thermodynamic_states
+    write_thermodynamic_states
+    read_sampler_states
+    write_sampler_states
+    read_replica_thermodynamic_states
+    write_replica_thermodynamic_states
+    read_mcmc_moves
+    write_mcmc_moves
+    read_energies
+    write_energies
+    read_mixing_statistics
+    write_mixing_statistics
+    read_timestamp
+    write_timestamp
+    read_dict
+    write_dict
+    read_last_iteration
+    read_mbar_free_energies
+    write_mbar_free_energies
+    get_previous_checkpoint
     """
     def __init__(self, storage, open_mode=None, checkpoint_interval=10, checkpoint_storage_file=None):
         # Handle checkpointing
@@ -118,8 +171,9 @@ class Reporter(object):
     @property
     def filename(self):
         """
-        Returns the file name of the primary file so classes outside the Reporter can access the file string for
-        error messages and such.
+        Returns the file name of the primary storage file
+
+        Classes outside the Reporter can access the file string for error messages and such.
         """
         return self._storage_file_analysis
 
@@ -146,14 +200,15 @@ class Reporter(object):
 
     def storage_exists(self, skip_size=False):
         """
-        Check if the storage files exist on disk. Reads information on the primary file to see existence of others
+        Check if the storage files exist on disk.
+
+        Reads information on the primary file to see existence of others
 
         Parameters
         ----------
-        skip_size : bool, Optional
+        skip_size : bool, Optional, Default: False
             Skip the check of the file size. Helpful if you have just initialized a storage file but written nothing to
-                it yet and/or its still entirely in memory (e.g. just opened NetCDF files)
-            Default: False
+            it yet and/or its still entirely in memory (e.g. just opened NetCDF files)
 
         Returns
         -------
@@ -187,13 +242,16 @@ class Reporter(object):
         return np.all(open_check_list)
 
     def open(self, mode='r'):
-        """Open the storage file for reading/writing.
+        """
+        Open the storage file for reading/writing.
+
+        Creates and pre-formats the required files if they don't exist.
 
         This is not necessary if you have indicated in the constructor to open.
 
         Parameters
         ----------
-        mode : str
+        mode : str, Optional, Default: 'r'
             The mode of the file between 'r', 'w', and 'a' (or equivalently 'r+').
 
         """
@@ -304,7 +362,7 @@ class Reporter(object):
                 self._checkpoint_interval = on_file_interval
 
     def close(self):
-        """Close the storage file."""
+        """Close the storage files"""
         for storage_name, storage in utils.dictiter(self._storage_dict):
             if storage is not None:
                 if storage.isopen():
@@ -313,7 +371,7 @@ class Reporter(object):
             setattr(self, '_storage' + storage_name, None)
 
     def sync(self):
-        """Force any buffer to be flushed to the file."""
+        """Force any buffer to be flushed to the file"""
         for storage in self._storage:
             if storage is not None:
                 storage.sync()
@@ -458,6 +516,7 @@ class Reporter(object):
         -------
         sampler_states : list of SamplerStates or None
             The previously stored sampler states for each replica.
+
             If the iteration is not on the checkpoint_interval, None is returned
 
         """
@@ -883,18 +942,6 @@ class Reporter(object):
         """
         self._storage_analysis.variables['last_iteration'][0] = iteration
 
-    def read_last_iteration(self):
-        """
-        Read the last iteration from file which was written in sequential order. Used to check if there is junk data
-        which may have been written after the last checkpoint, but before the next one could be reached.
-
-        Returns
-        -------
-        last_iteration : int
-            Last iteration which was sequentially written
-        """
-        return int(self._storage_analysis.variables['last_iteration'][0])  # Make sure this is returned as Python Int
-
     def write_dict(self, name, data, fixed_dimension=False):
         """Store the contents of a dict.
 
@@ -907,9 +954,11 @@ class Reporter(object):
         fixed_dimension: bool, Defautlt: False
             Use a fixed length dimension instead of variable length one. A unique dimension name (sharing a name with
             "name") will be created and its length will be set equal to "fixedL{}".format(len(data_string))
+
             This method seems to allow NetCDF to actually compress strings.
+
             Do NOT use this flag if you expect to constantly be changing the length of the data fed in, use only for
-                static data
+            static data
 
         """
         # Leaving the skeleton to extend this in for now
@@ -947,20 +996,39 @@ class Reporter(object):
             packed_data[0] = data_str
             nc_variable[:] = packed_data
 
+    def read_last_iteration(self):
+        """
+        Read the last iteration from file which was written in sequential order.
+
+        Used to check if there is junk data
+        which may have been written after the last checkpoint, but before the next one could be reached.
+
+        Returns
+        -------
+        last_iteration : int
+            Last iteration which was sequentially written
+        """
+        return int(self._storage_analysis.variables['last_iteration'][0])  # Make sure this is returned as Python Int
+
     def read_mbar_free_energies(self, iteration):
         """
-        Read the MBAR dimensionless free energy at a given iteration from file. These free energies are relative to
-        the first state. These are computed through self-consistent iterations from an initial guess.
+        Read the MBAR dimensionless free energy at a given iteration from file.
+
+        These free energies are relative to the first state.
+        These are computed through self-consistent iterations from an initial guess.
+
         The initial guess is often 0 for all states, so any state not written is returned as zeros for f_k, and
-            infinity for
+        infinity for
 
         Used primarily in online analysis, and should be used in tandem with an YankPhaseAnalysis object from the
         analyze module
 
         Parameters
         ----------
-        iteration : iteration to read the free energies from, if the iteration was not written at a the given iteration,
-            then the free_energies are all 0
+        iteration : int
+            iteration to read the free energies from
+
+            if the iteration was not written at a the given iteration, then the free_energies are all 0
 
         Returns
         -------
@@ -985,15 +1053,15 @@ class Reporter(object):
         Parameters
         ----------
         iteration : int,
-            iteration at which to save the free energy.
+            Iteration at which to save the free energy.
             Reads the current energy up to this value and stores it in the analysis reporter
         f_k : 1D array of floats,
             Dimensionless free energies you wish to store. This should come from pymbar.MBAR.f_k from an initialized
-                MBAR object.
+            MBAR object.
         free_energy : tuple of two floats
             Current estimate of the free energy difference of the phase and its error.
             This should be of the form (free_energy, error_in_free_energy)
-            Typically output of the pymbar.MBAR.getFreeEnergyDifferences()[i,j]
+            Typically output of the ``pymbar.MBAR.getFreeEnergyDifferences()[i,j]``
 
         """
         analysis_nc = self._storage_analysis
@@ -1159,32 +1227,56 @@ class ReplicaExchange(object):
     mcmc_moves : MCMCMove or list of MCMCMove, optional
         The MCMCMove used to propagate the states. If a list of MCMCMoves,
         they will be assigned to the correspondent thermodynamic state on
-        creation. If None is provided, Langevin dynamics with 2fm timestep,
-        5.0/ps collision rate, and 500 steps per iteration will be used.
-    number_of_iterations : int, optional
-        The number of iterations to perform (default is 1).
-    replica_mixing_scheme : 'swap-all', 'swap-neighbors' or 'none'
+        creation. If None is provided, Langevin dynamics with 2fm timestep, 5.0/ps collision rate,
+        and 500 steps per iteration will be used.
+    number_of_iterations : int, Optional, Default: 1
+        The number of iterations to perform
+    replica_mixing_scheme : 'swap-all', 'swap-neighbors' or 'none', Default: 'swap-all'
         The scheme used to swap thermodynamic states between replicas
-        (default is 'swap-all').
     online_analysis_interval : None or Int >= 1, optional, default None
         Choose the interval at which to perform online analysis of the free energy.
-        After every interval, the simulation will be stopped and the free energy estimated. If the error in the free
-            energy estimate is at or below online_analysis_target_error, then the simulation will be considered
-            completed.
+
+        After every interval, the simulation will be stopped and the free energy estimated.
+
+        If the error in the free energy estimate is at or below online_analysis_target_error, then the simulation will
+        be considered completed.
+
     online_analysis_target_error : float >= 0, optional, default 0.2
         The target error for the online analysis measured in kT per phase.
-            Once the free energy is at or below this value, the phase will be considered complete.
+
+        Once the free energy is at or below this value, the phase will be considered complete.
+
         If online_analysis_interval is None, this option does nothing.
+
     online_analysis_minimum_iterations : int >= 0, optional, default 50
         Set the minimum number of iterations which must pass before online analysis is carried out.
+
         Since the initial samples are likley not to yeild a good estimate of free energy, save time and just skip them
         If online_analysis_interval is None, this does nothing
 
     Attributes
     ----------
-    mcmc_moves
     number_of_iterations
     replica_mixing_scheme
+    n_replicas
+    iteration
+    mcmc_moves
+    sampler_states
+    metadata
+    is_completed
+    online_analysis_interval
+    online_analysis_target_error
+    online_analysis_minimum_iterations
+
+
+    Methods
+    -------
+    from_storage
+    create
+    minimize
+    equilibrate
+    run
+    extend
 
     Examples
     --------
@@ -1532,7 +1624,7 @@ class ReplicaExchange(object):
     replica_mixing_scheme = _StoredProperty('replica_mixing_scheme',
                                             validate_function=_StoredProperty._repex_mixing_scheme_check)
     online_analysis_interval = _StoredProperty('online_analysis_interval',
-                                               validate_function=_StoredProperty._oa_interval_check)
+                                               validate_function=_StoredProperty._oa_interval_check) #:interval to carry out online analysis
     online_analysis_target_error = _StoredProperty('online_analysis_target_error',
                                                    validate_function=_StoredProperty._oa_target_error_check)
     online_analysis_minimum_iterations = _StoredProperty('online_analysis_minimum_iterations',
@@ -1841,8 +1933,8 @@ class ReplicaExchange(object):
     def extend(self, n_iterations):
         """Extend the simulation by the given number of iterations.
 
-        Contrarily to `run()`, this will extend the number of iterations past
-        `number_of_iteration` if requested.
+        Contrarily to ``run()``, this will extend the number of iterations past
+        ``number_of_iteration`` if requested.
 
         Parameters
         ----------
@@ -2380,6 +2472,10 @@ class ParallelTempering(ReplicaExchange):
     of simulation. In particular, this makes use of the fact that the reduced
     potentials are linear in inverse temperature.
 
+    Methods
+    -------
+    create
+
     Examples
     --------
 
@@ -2414,6 +2510,11 @@ class ParallelTempering(ReplicaExchange):
     Clean up.
 
     >>> os.remove(storage_path)
+
+
+    See Also
+    --------
+    ReplicaExchange
 
     """
 

@@ -42,6 +42,8 @@ extensions = ['sphinx.ext.mathjax', 'sphinx.ext.ifconfig', 'sphinx.ext.autosumma
 
 autosummary_generate = True
 autodoc_default_flags = ['members', 'inherited-members']
+# Disable NumPy style attributes/methods expecting every method to have its own docs page
+numpydoc_class_members_toctree = False
 
 
 extensions.append('notebook_sphinxext')
