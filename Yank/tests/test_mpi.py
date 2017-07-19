@@ -13,8 +13,12 @@ Test MPI utility functions in mpi.py.
 # GLOBAL IMPORTS
 # =============================================================================
 
-import numpy as np
+import json
+import shutil
+import contextlib
+
 from simtk import unit
+from openmoltools.utils import temporary_cd
 
 from yank.mpi import *
 
@@ -201,3 +205,72 @@ def test_distribute():
 
         result = distribute(task, distributed_args, send_results_to=None)
         assert_is_equal(result, (partial_expected_results, partial_job_indices))
+
+
+def test_distribute_groups():
+    """Test distribute jobs among groups of nodes."""
+    # Configuration.
+    group_nodes = 2
+    temp_folder = 'temp_test_mpi_test_distribute_groups'
+
+    @contextlib.contextmanager
+    def enter_temp_directory():
+        run_single_node(0, os.makedirs, temp_folder, sync_nodes=True)
+        try:
+            with temporary_cd(temp_folder):
+                yield
+        finally:
+            run_single_node(0, shutil.rmtree, temp_folder)
+
+
+    def store_data(file_name, data):
+        with open(file_name, 'w') as f:
+            json.dump(data, f)
+
+    def supertask(list_of_bases):
+        """Compute square of bases and store results"""
+        squared_values = distribute(square, list_of_bases, send_results_to='all')
+        mpicomm = get_mpicomm()
+        if mpicomm is None:
+            mpi_size = 0
+        else:
+            mpi_size = mpicomm.size
+        file_name = 'file_len{}.dat'.format(len(list_of_bases))
+        run_single_node(0, store_data, file_name, (squared_values, mpi_size))
+
+    def verify_task(list_of_supertask_args):
+        mpicomm = get_mpicomm()
+        n_jobs = len(list_of_supertask_args)
+
+        # Find the job_ids assigned to the last group and the size of its communicator.
+        if mpicomm is not None:
+            n_groups = int(np.ceil(mpicomm.size / group_nodes))
+            last_group_size = group_nodes - mpicomm.size % group_nodes
+            last_group_job_ids = set(range(n_groups-1, n_jobs, n_groups))
+
+        # Verify all tasks.
+        for supertask_args_idx, supertask_args in enumerate(list_of_supertask_args):
+            file_name = 'file_len{}.dat'.format(len(supertask_args))
+            with open(file_name, 'r') as f:
+                squared_values, mpi_size = json.load(f)
+
+            # Check that result is correct.
+            assert len(supertask_args) == len(squared_values)
+            for idx, value in enumerate(squared_values):
+                assert value == supertask_args[idx]**2
+
+            # Check that the correct group executed this task.
+            if mpicomm is None:
+                expected_mpi_size = 0
+            elif supertask_args_idx in last_group_job_ids:
+                expected_mpi_size = last_group_size
+            else:
+                expected_mpi_size = 2
+            assert mpi_size == expected_mpi_size
+
+    # Super tasks will store results in the same temporary directory.
+    with enter_temp_directory():
+        list_of_supertask_args = [[1, 2], [3, 4, 5], [6, 7, 8, 9]]
+        distribute(supertask, distributed_args=list_of_supertask_args, sync_nodes=True,
+                   group_nodes=group_nodes)
+        run_single_node(0, verify_task, list_of_supertask_args)

@@ -44,6 +44,7 @@ import signal
 import logging
 from contextlib import contextmanager
 
+import numpy as np
 # TODO drop this when we drop Python 2 support
 from openmoltools.utils import wraps_py2
 
@@ -271,6 +272,13 @@ def distribute(task, distributed_args, *other_args, **kwargs):
         If True, the nodes will be synchronized at the end of the
         execution (i.e. the task will be blocking) even if the
         result is not shared (default is False).
+    group_jobs : None, int or list of int, optional, default is None
+        If not None, the `distributed_args` are distributed among groups of
+        nodes that are isolated from each other. This is particularly useful
+        if `task` also calls `distribute()`, since normally that would result
+        in unexpected behavior. If an integer, the nodes are split into equal
+        groups of `group_jobs` nodes. If a list of integers, the nodes are
+        split in possibly unequal groups (see example below).
 
     Other Parameters
     ----------------
@@ -305,9 +313,19 @@ def distribute(task, distributed_args, *other_args, **kwargs):
     >>> distribute(square, [1, 2, 3, 4], send_results_to=0)
     ([1, 4, 9, 16], [0, 1, 2, 3])
 
+    Divide 3 nodes in two groups of 2 and 1 nodes. The task, in turn,
+    can distribute another task among the nodes in its own group.
+
+    >>> def supertask(list_of_bases):
+    ...     distribute(square, list_of_bases)
+    >>> list_of_supertask_args = [[1, 2, 3], [4], [5, 6]]
+    >>> distribute(supertask, distributed_args=list_of_supertask_args,
+    ...            group_nodes=[2, 1])
+
     """
     send_results_to = kwargs.pop('send_results_to', None)
     sync_nodes = kwargs.pop('sync_nodes', False)
+    group_nodes = kwargs.pop('group_nodes', None)
     mpicomm = get_mpicomm()
     n_jobs = len(distributed_args)
 
@@ -320,15 +338,60 @@ def distribute(task, distributed_args, *other_args, **kwargs):
         else:
             return all_results, list(range(n_jobs))
 
-    node_job_ids = range(mpicomm.rank, n_jobs, mpicomm.size)
+    # Determine the jobs that this node has to run.
+    # If we need to group nodes, split the default mpicomm.
+    if group_nodes is not None:
+        # We don't support returning results.
+        if send_results_to is not None:
+            raise ValueError('Cannot return the result of the distributed '
+                             'task if nodes are divided into groups.')
+
+        # Store original mpicomm that we'll have to restore later.
+        original_mpicomm = mpicomm
+
+        # Determine the color of this node.
+        try:  # Check if this is an integer.
+            color = int(mpicomm.rank / group_nodes)
+            n_groups = int(np.ceil(mpicomm.size / group_nodes))
+        except TypeError:  # List of integers.
+            # Check that the group division requested make sense.
+            cumulative_sum_nodes = np.cumsum(group_nodes)
+            if cumulative_sum_nodes[-1] != mpicomm.size:
+                raise ValueError('The group division requested cannot be performed.\n'
+                                 'Total number of nodes: {}\n'
+                                 'Group nodes: {}'.format(mpicomm.size, group_nodes))
+            # The first group_nodes[0] nodes have color 0, the next group_nodes[1] nodes
+            # have color 1 etc.
+            color = next(i for i, v in enumerate(cumulative_sum_nodes) if v > mpicomm.rank)
+            n_groups = len(group_nodes)
+
+        # Split the mpicomm among nodes. Maintain same order using mpicomm.rank as rank.
+        mpicomm = original_mpicomm.Split(color=color, key=mpicomm.rank)
+
+        # Cache new mpicomm so that task() will access the split mpicomm.
+        get_mpicomm._mpicomm = mpicomm
+
+        # Distribute distributed_args by color.
+        node_job_ids = range(color, n_jobs, n_groups)
+        node_name = 'Group {}/{}, Node {}/{}'.format(color+1, n_groups,
+                                                    mpicomm.rank+1, mpicomm.size)
+    else:
+        # Distribute distributed_args by mpicomm.rank.
+        node_job_ids = range(mpicomm.rank, n_jobs, mpicomm.size)
+        node_name = 'Node {}/{}'.format(mpicomm.rank+1, mpicomm.size)
 
     # Compute all the results assigned to this node.
     results = []
-    node_name = 'Node {}/{}'.format(mpicomm.rank+1, mpicomm.size)
     for job_id in node_job_ids:
         distributed_arg = distributed_args[job_id]
         logger.debug('{}: execute {}({})'.format(node_name, task.__name__, distributed_arg))
         results.append(task(distributed_arg, *other_args, **kwargs))
+
+    # Restore the original mpicomm.
+    if group_nodes is not None:
+        mpicomm.Free()
+        mpicomm = original_mpicomm
+        get_mpicomm._mpicomm = original_mpicomm
 
     # Share result as specified.
     if send_results_to == 'all':
