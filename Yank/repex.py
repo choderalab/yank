@@ -1256,17 +1256,13 @@ class ReplicaExchange(object):
 
     Attributes
     ----------
-    number_of_iterations
-    replica_mixing_scheme
     n_replicas
     iteration
     mcmc_moves
     sampler_states
     metadata
     is_completed
-    online_analysis_interval
-    online_analysis_target_error
-    online_analysis_minimum_iterations
+
 
 
     Methods
@@ -1343,6 +1339,17 @@ class ReplicaExchange(object):
     Clean up.
 
     >>> os.remove(storage_path)
+
+
+    :param number_of_iterations: Maximum number of iterations that will be run
+
+    :param replica_mixing_scheme: Scheme which describes how replicas are exchanged each iteration
+
+    :param online_analysis_interval: How frequently to carry out online analysis
+
+    :param online_analysis_target_error: Target free energy difference error at which simulation will be stopped during online analysis
+
+    :param online_analysis_minimum_iterations: Minimum number of iterations needed before online analysis is run
 
     """
 
