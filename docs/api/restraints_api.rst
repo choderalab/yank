@@ -1,4 +1,4 @@
-.. _API_repex:
+.. _API_restraints:
 
 .. automodule:: yank.restraints
    :members:

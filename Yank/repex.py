@@ -117,16 +117,13 @@ class Reporter(object):
     ----------
     filename
 
-    Storage Manipulation Methods
-    ----------------------------
+    Methods
+    -------
     storage_exists
     is_open
     open
     close
     sync
-
-    Data Read and Write Methods
-    ---------------------------
     read_thermodynamic_states
     write_thermodynamic_states
     read_sampler_states

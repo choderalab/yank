@@ -1140,6 +1140,9 @@ class Boresch(ReceptorLigandRestraint):
     The class supports automatic determination of the parameters left undefined
     in the constructor through ``determine_missing_parameters()``.
 
+    *Warning*: Symmetry corrections for symmetric ligands are not automatically applied.
+    See Ref [1] and [2] for more information on correcting for ligand symmetry.
+
     Parameters
     ----------
     restrained_atoms : iterable of int, optional
@@ -1165,11 +1168,6 @@ class Boresch(ReceptorLigandRestraint):
     standard_state_correction_method : 'analytical' or 'numeric', optional
         The method to use to estimate the standard state correction (default
         is 'analytical').
-
-    WARNING
-    -------
-    Symmetry corrections for symmetric ligands are not automatically applied.
-    See Ref [1] and [2] for more information on correcting for ligand symmetry.
 
     Attributes
     ----------

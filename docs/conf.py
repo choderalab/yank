@@ -70,7 +70,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'YANK'
-copyright = u'2014-2016, Copyright Stanford University, University of California Berkeley, Sloan Kettering Institute, and the authors'
+copyright = u'2014-2017, Copyright Stanford University, University of California Berkeley, Sloan Kettering Institute, and the authors'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the

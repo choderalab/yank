@@ -11,7 +11,9 @@ YAML input files, please see the command line interface and the YAML options.
    :maxdepth: 1
 
    analyze_api
+   experiment_api
    mpi_api
+   pipeline_api
    repex_api
    restraints_api
    utils_api
