@@ -13,6 +13,7 @@ YAML input files, please see the command line interface and the YAML options.
    analyze_api
    mpi_api
    repex_api
+   restraints_api
    utils_api
    yank_api
 
