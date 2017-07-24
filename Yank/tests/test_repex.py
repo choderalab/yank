@@ -1158,11 +1158,20 @@ class TestReplicaExchange(object):
                          unsampled_thermodynamic_states=unsampled_states)
             # Run
             repex.run()
+
+            # The stored values of online analysis should be up to date.
+            last_written_free_energy = ReplicaExchange._get_last_written_free_energy(repex._reporter, repex.iteration)
+            last_mbar_f_k, (last_free_energy, last_err_free_energy) = last_written_free_energy
+
             assert len(repex._last_mbar_f_k) == len(thermodynamic_states)
             assert not np.all(repex._last_mbar_f_k == 0)
-            assert repex._last_free_energy is not None
+            assert np.all(repex._last_mbar_f_k == last_mbar_f_k)
+
+            assert last_free_energy is not None
+
             # Error should not be 0 yet
             assert repex._last_err_free_energy != 0
+            assert repex._last_err_free_energy == last_err_free_energy
 
     def test_online_analysis_stops(self):
         """Test online analysis will stop the simulation"""

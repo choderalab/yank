@@ -1003,7 +1003,7 @@ class Reporter(object):
             online_group = analysis_nc.createGroup('online_analysis')
             # larger chunks, faster operations, small matrix anyways
             online_group.createVariable('f_k', float, dimensions=('iteration', 'f_k_length'),
-                                       zlib=True, chunksizes=(1, len(f_k)), fill_value=0)
+                                       zlib=True, chunksizes=(1, len(f_k)), fill_value=np.inf)
             online_group.createVariable('free_energy', float, dimensions=('iteration', 'Df'),
                                         zlib=True, chunksizes=(1, 2), fill_value=np.inf)
         online_group = analysis_nc.groups['online_analysis']
@@ -1314,7 +1314,6 @@ class ReplicaExchange(object):
         self._online_error_bank = []
 
         self._last_mbar_f_k = None
-        self._last_free_energy = None
         self._last_err_free_energy = None
 
         # These will be set on initialization. See function
@@ -1393,9 +1392,9 @@ class ReplicaExchange(object):
         # Search for last cached free energies only if online analysis is activated.
         if repex._online_analysis_interval is not None:
             online_anaysis_info = repex._get_last_written_free_energy(reporter, iteration)
-            last_mbar_f_k, (last_free_energy, last_err_free_energy) = online_anaysis_info
+            last_mbar_f_k, (_, last_err_free_energy) = online_anaysis_info
         else:
-            last_mbar_f_k, (last_free_energy, last_err_free_energy) = None, (None, None)
+            last_mbar_f_k, (_, last_err_free_energy) = None, (None, None)
 
         # Close reading reporter.
         reporter.close()
@@ -1413,7 +1412,6 @@ class ReplicaExchange(object):
         repex._metadata = metadata
 
         repex._last_mbar_f_k = last_mbar_f_k
-        repex._last_free_energy = last_free_energy
         repex._last_err_free_energy = last_err_free_energy
 
         # We open the reporter only in node 0.
@@ -1823,7 +1821,6 @@ class ReplicaExchange(object):
             self._report_iteration()
 
             # Compute online free energy
-            free_energy_error = None
             if (self._online_analysis_interval is not None and
                     self._iteration > self._online_analysis_minimum_iterations and
                     self._iteration % self._online_analysis_interval == 0):
@@ -2321,9 +2318,9 @@ class ReplicaExchange(object):
             self._online_error_bank.append(e)
         else:
             self._last_mbar_f_k = mbar.f_k
-            self._last_free_energy = free_energy[idx, jdx]
+            free_energy = free_energy[idx, jdx]
             self._last_err_free_energy = err_free_energy[idx, jdx]
-            logger.debug("Current Free Energy Estimate is {} +- {} kT".format(self._last_free_energy,
+            logger.debug("Current Free Energy Estimate is {} +- {} kT".format(free_energy,
                                                                               self._last_err_free_energy))
             # Trap a case when errors don't converge (usually due to under sampling)
             if np.isnan(self._last_err_free_energy):
@@ -2344,7 +2341,7 @@ class ReplicaExchange(object):
 
         # Write out the numbers
         self._reporter.write_mbar_free_energies(self._iteration, self._last_mbar_f_k,
-                                                (self._last_free_energy, self._last_err_free_energy))
+                                                (free_energy, self._last_err_free_energy))
 
     @staticmethod
     def _get_last_written_free_energy(reporter, iteration):
@@ -2355,7 +2352,7 @@ class ReplicaExchange(object):
             for index in range(iteration, 0, -1):
                 last_f_k, last_free_energy = reporter.read_mbar_free_energies(index)
                 # Find an f_k that is not all zeros (or masked and empty)
-                if not (np.ma.is_masked(last_f_k) and np.all(last_f_k == 0)):
+                if not (np.ma.is_masked(last_f_k) or np.all(last_f_k == 0)):
                     break  # Don't need to continue the loop if we already found one
         except (IndexError, KeyError):  # No such f_k written yet (or variable created), no need to do anything
             pass
