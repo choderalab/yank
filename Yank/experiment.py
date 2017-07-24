@@ -1924,7 +1924,7 @@ class ExperimentBuilder(object):
             try:
                 with open(yaml_script_file_path, 'r') as f:
                     yaml_script = yaml.load(f, Loader=YankLoader)
-            except FileNotFoundError:
+            except EnvironmentError:  # TODO replace with FileNotFoundError when dropping Python 2 support
                 for phase_name in generated_alchemical_paths:
                     protocol[phase_name]['alchemical_path'] = {}
             else:
