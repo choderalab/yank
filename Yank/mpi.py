@@ -313,14 +313,15 @@ def distribute(task, distributed_args, *other_args, **kwargs):
     >>> distribute(square, [1, 2, 3, 4], send_results_to=0)
     ([1, 4, 9, 16], [0, 1, 2, 3])
 
-    Divide 3 nodes in two groups of 2 and 1 nodes. The task, in turn,
-    can distribute another task among the nodes in its own group.
+    Divide the nodes in two groups of 2. The task, in turn, can
+    distribute another task among the nodes in its own group.
 
     >>> def supertask(list_of_bases):
-    ...     distribute(square, list_of_bases)
+    ...     return distribute(square, list_of_bases, send_results_to='all')
     >>> list_of_supertask_args = [[1, 2, 3], [4], [5, 6]]
     >>> distribute(supertask, distributed_args=list_of_supertask_args,
-    ...            group_nodes=[2, 1])
+    ...            send_results_to='all', group_nodes=2)
+    [[1, 4, 9], [16], [25, 36]]
 
     """
     send_results_to = kwargs.pop('send_results_to', None)
