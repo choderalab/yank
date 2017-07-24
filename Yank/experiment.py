@@ -359,7 +359,7 @@ class ExperimentBuilder(object):
         'platform': 'fastest',
         'precision': 'auto',
         'switch_experiment_interval': 0,
-        'nodes_per_experiments': None
+        'nodes_per_experiment': None
     }
 
     # These options can be overwritten also in the "experiment"
@@ -540,7 +540,7 @@ class ExperimentBuilder(object):
 
             # Find all the experiments to distribute among mpicomms.
             all_experiments = [experiment for experiment in self._expand_experiments()]
-            nodes_per_experiments = self._options['nodes_per_experiments']
+            nodes_per_experiment = self._options['nodes_per_experiment']
 
             # Cycle between experiments every switch_experiment_interval iterations
             # until all of them are done.
@@ -548,7 +548,7 @@ class ExperimentBuilder(object):
             while not all(completed):
                 completed, experiment_indices = mpi.distribute(self._run_experiment,
                                                                distributed_args=all_experiments,
-                                                               group_nodes=nodes_per_experiments)
+                                                               group_nodes=nodes_per_experiment)
 
     def build_experiments(self):
         """Set up, build and iterate over all the Yank experiments."""
