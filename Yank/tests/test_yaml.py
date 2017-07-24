@@ -163,6 +163,12 @@ def get_template_script(output_dir='.'):
             solvent: GBSA-OBC2
             leap:
                 parameters: [oldff/leaprc.ff14SB, leaprc.gaff]
+        hydration-system:
+            solute: toluene
+            solvent1: PME
+            solvent2: vacuum
+            leap:
+                parameters: [leaprc.gaff, oldff/leaprc.ff14SB]
     protocols:
         absolute-binding:
             complex:
@@ -173,6 +179,15 @@ def get_template_script(output_dir='.'):
                 alchemical_path:
                     lambda_electrostatics: [1.0, 0.5, 0.0]
                     lambda_sterics: [1.0, 0.5, 0.0]
+        hydration-protocol:
+            solvent1:
+                alchemical_path:
+                    lambda_electrostatics: [1.0, 0.5, 0.0]
+                    lambda_sterics: [1.0, 0.5, 0.0]
+            solvent2:
+                alchemical_path:
+                    lambda_electrostatics: [1.0, 0.0]
+                    lambda_sterics: [1.0, 1.0]
     experiments:
         system: explicit-system
         protocol: absolute-binding
@@ -525,7 +540,8 @@ def test_validation_correct_protocols():
         {'lambda_electrostatics': [1.0, 0.5, 0.0], 'lambda_sterics': [1.0, 0.5, 0.0],
          'lambda_torsions': [1.0, 0.5, 0.0], 'lambda_angles': [1.0, 0.5, 0.0]},
         {'lambda_electrostatics': [1.0, 0.5, 0.0], 'lambda_sterics': [1.0, 0.5, 0.0],
-         'temperature': ['300*kelvin', '340*kelvin', '300*kelvin']}
+         'temperature': ['300*kelvin', '340*kelvin', '300*kelvin']},
+        'auto',
     ]
     for protocol in protocols:
         modified_protocol = copy.deepcopy(basic_protocol)
@@ -536,6 +552,7 @@ def test_validation_correct_protocols():
     alchemical_path = copy.deepcopy(basic_protocol['absolute-binding']['complex'])
     protocols = [
         {'complex': alchemical_path, 'solvent': alchemical_path},
+        {'complex': alchemical_path, 'solvent': {'alchemical_path': 'auto'}},
         {'my-complex': alchemical_path, 'my-solvent': alchemical_path},
         {'solvent1': alchemical_path, 'solvent2': alchemical_path},
         {'solvent1variant': alchemical_path, 'solvent2variant': alchemical_path},
@@ -1446,14 +1463,10 @@ def test_setup_explicit_solvation_system():
     """Create prmtop and inpcrd files for solvation free energy in explicit solvent."""
     with mmtools.utils.temporary_directory() as tmp_dir:
         yaml_script = get_template_script(tmp_dir)
-        yaml_script['systems'] = {
-            'system1':
-                {'solute': 'toluene', 'solvent1': 'PME', 'solvent2': 'vacuum',
-                 'leap': {'parameters': ['leaprc.gaff', 'oldff/leaprc.ff14SB']}}}
         del yaml_script['experiments']
         exp_builder = ExperimentBuilder(yaml_script)
         output_dir = os.path.dirname(
-            exp_builder._db.get_system('system1')[0].position_path)
+            exp_builder._db.get_system('hydration-system')[0].position_path)
 
         # Test that output file exists and that it has correct components
         expected_resnames = {'solvent1': set(['TOL', 'WAT']), 'solvent2': set(['TOL'])}
@@ -1481,10 +1494,7 @@ def test_setup_solvent_models():
         template_script = get_template_script(tmp_dir)
 
         # Setup solvation system and reduce clearance to make test faster.
-        template_script['systems'] = {
-            'system1':
-                {'solute': 'toluene', 'solvent1': 'PME', 'solvent2': 'vacuum',
-                 'leap': {'parameters': ['leaprc.gaff', 'oldff/leaprc.ff14SB']}}}
+        template_script['systems']['hydration-system']['solvent1'] = 'PME'
         template_script['solvents']['PME']['clearance'] = '3.0 * angstrom'
         del template_script['experiments']
 
@@ -1499,7 +1509,7 @@ def test_setup_solvent_models():
             expected_water_n_atoms = int(list(filter(str.isdigit, solvent_model))[0])
 
             # Setup the system and check that water residues have expected number of particles.
-            prmtop_filepath = exp_builder._db.get_system('system1')[0].parameters_path
+            prmtop_filepath = exp_builder._db.get_system('hydration-system')[0].parameters_path
             topology = mdtraj.load_prmtop(prmtop_filepath)
             yield assert_equal, topology.residue(1).n_atoms, expected_water_n_atoms
 
@@ -1987,22 +1997,8 @@ def test_run_solvation_experiment():
     """Test solvation free energy experiment run."""
     with mmtools.utils.temporary_directory() as tmp_dir:
         yaml_script = get_template_script(tmp_dir)
-        yaml_script['solvents']['PME']['clearance'] = '14*angstroms'
-        yaml_script['systems'] = {
-            'system1':
-                {'solute': 'toluene', 'solvent1': 'PME', 'solvent2': 'vacuum',
-                 'leap': {'parameters': ['leaprc.gaff', 'oldff/leaprc.ff14SB']}}}
-        protocol = yaml_script['protocols']['absolute-binding']['solvent']
-        yaml_script['protocols'] = {
-            'hydration-protocol': {
-                'solvent1': protocol,
-                'solvent2': protocol
-            }
-        }
-        yaml_script['experiments'] = {
-            'system': 'system1',
-            'protocol': 'hydration-protocol'
-            }
+        yaml_script['experiments']['system'] = 'hydration-system'
+        yaml_script['experiments']['protocol'] = 'hydration-protocol'
 
         exp_builder = ExperimentBuilder(yaml_script)
         exp_builder._check_resume()  # check_resume should not raise exceptions
@@ -2024,6 +2020,45 @@ def test_run_solvation_experiment():
         analysis_script_path = os.path.join(output_dir, 'analysis.yaml')
         with open(analysis_script_path, 'r') as f:
             assert yaml.load(f) == [['solvent1', 1], ['solvent2', -1]]
+
+
+def test_automatic_alchemical_path():
+    """Test automatic alchemical path."""
+    with mmtools.utils.temporary_directory() as tmp_dir:
+        yaml_script = get_template_script(tmp_dir)
+        yaml_script['systems']['hydration-system']['solvent1'] = 'GBSA-OBC2'
+        yaml_script['protocols']['hydration-protocol']['solvent2']['alchemical_path'] = 'auto'
+        yaml_script['experiments']['system'] = 'hydration-system'
+        yaml_script['experiments']['protocol'] = 'hydration-protocol'
+
+        exp_builder = ExperimentBuilder(yaml_script)
+        exp_builder._check_resume()  # check_resume should not raise exceptions
+
+        # Building the experiment should generate the alchemical path.
+        for experiment in exp_builder.build_experiments():
+            pass
+
+        # The experiment has the correct path. Only the path of solvent2 has been generated.
+        expected_generated_protocol = {
+            'lambda_electrostatics': [1.0, 0.0],
+            'lambda_sterics': [1.0, 1.0]
+        }
+        assert experiment.phases[0].protocol == yaml_script['protocols']['hydration-protocol']['solvent1']['alchemical_path']
+        assert experiment.phases[1].protocol == expected_generated_protocol
+
+        # Resuming fails at this point because we have
+        # generated the YAML file containing the protocol.
+        with assert_raises(YamlParseError):
+            next(exp_builder.build_experiments())
+
+        # When resuming, ExperimentBuilder should recycle the path from the previous run.
+        generated_yaml_script_path = exp_builder._get_generated_yaml_script_path('')
+        last_touched_yaml = os.stat(generated_yaml_script_path).st_mtime
+        exp_builder._options['resume_setup'] = True
+        exp_builder._options['resume_simulation'] = True
+        exp_builder.run_experiments()
+        assert last_touched_yaml == os.stat(generated_yaml_script_path).st_mtime
+
 
 if __name__ == '__main__':
     test_run_solvation_experiment()

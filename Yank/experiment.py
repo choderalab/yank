@@ -162,18 +162,20 @@ class AlchemicalPhaseFactory(object):
         create_kwargs = self.__dict__.copy()
         create_kwargs.pop('options')
         create_kwargs.pop('sampler')
-        if not isinstance(self.storage, repex.Reporter):
-            # Build the Reporter
-            storage_path = create_kwargs.pop('storage')
+
+        # Create a reporter if this is only a path.
+        if isinstance(self.storage, str):
             checkpoint_interval = self.options['checkpoint_interval']
             # We don't allow checkpoint file overwriting in YAML file
-            reporter = repex.Reporter(storage_path, checkpoint_interval=checkpoint_interval)
+            reporter = repex.Reporter(self.storage, checkpoint_interval=checkpoint_interval)
             create_kwargs['storage'] = reporter
             self.storage = reporter
+
         if self.options['anisotropic_dispersion_correction'] is True:
             dispersion_cutoff = self.options['anisotropic_dispersion_cutoff']
         else:
             dispersion_cutoff = None
+
         alchemical_phase.create(anisotropic_dispersion_cutoff=dispersion_cutoff,
                                 **create_kwargs)
         return alchemical_phase
@@ -471,7 +473,7 @@ class ExperimentBuilder(object):
 
         # Validate options and overwrite defaults
         self._options.update(self._validate_options(yaml_content.get('options', {}),
-                                                   validate_general_options=True))
+                                                    validate_general_options=True))
 
         # Setup general logging
         utils.config_root_logger(self._options['verbose'], log_file_path=None)
@@ -519,6 +521,7 @@ class ExperimentBuilder(object):
         with moltools.utils.temporary_cd(self._script_dir):
             self._check_resume()
             self._setup_experiments()
+            self._generate_experiments_protocols()
 
             # Cycle between experiments every switch_experiment_interval iterations
             # until all of them are done. We don't know how many experiments
@@ -546,6 +549,7 @@ class ExperimentBuilder(object):
         with moltools.utils.temporary_cd(self._script_dir):
             self._check_resume()
             self._setup_experiments()
+            self._generate_experiments_protocols()
             for experiment in self._build_experiments():
                 yield experiment
 
@@ -744,7 +748,7 @@ class ExperimentBuilder(object):
 
         Returns
         -------
-        output_dir : str
+        experiment_path : str
             A unique path where to save the experiment output files relative to
             the main output directory specified by the user in the options.
         combination : dict
@@ -1016,9 +1020,11 @@ class ExperimentBuilder(object):
         # Define protocol Schema
         lambda_list = [And(float, lambda l: 0.0 <= l <= 1.0)]
         quantity_list = [Use(utils.quantity_from_string)]
-        alchemical_path_schema = {'alchemical_path': {'lambda_sterics': lambda_list,
-                                                      'lambda_electrostatics': lambda_list,
-                                                      Optional(str): Or(lambda_list, quantity_list)}}
+        alchemical_path_schema = {'alchemical_path': Or(
+            'auto',
+            {'lambda_sterics': lambda_list, 'lambda_electrostatics': lambda_list,
+             Optional(str): Or(lambda_list, quantity_list)}
+        )}
         protocol_schema = Schema(And(
             lambda v: len(v) == 2, {str: alchemical_path_schema},
             Or(collections.OrderedDict, Use(sort_protocol))
@@ -1214,59 +1220,113 @@ class ExperimentBuilder(object):
                                     Optional('restraint'): restraint_schema})
 
         # Schema validation
-        for experiment_id, experiment_descr in self._expand_experiments():
+        for experiment_path, experiment_descr in self._expand_experiments():
             try:
                 experiment_schema.validate(experiment_descr)
             except SchemaError as e:
-                raise YamlParseError('Experiment {}: {}'.format(experiment_id, e.autos[-1]))
+                raise YamlParseError('Experiment {}: {}'.format(experiment_path, e.autos[-1]))
 
     # --------------------------------------------------------------------------
     # File paths utilities
     # --------------------------------------------------------------------------
 
-    def _get_experiment_dir(self, experiment_subdir):
+    def _get_experiment_dir(self, experiment_path):
         """Return the path to the directory where the experiment output files
         should be stored.
 
         Parameters
         ----------
-        experiment_subdir : str
+        experiment_path : str
             The relative path w.r.t. the main experiments directory (determined
             through the options) of the experiment-specific subfolder.
 
         """
         return os.path.join(self._options['output_dir'], self._options['experiments_dir'],
-                            experiment_subdir)
+                            experiment_path)
+
+    def _get_nc_file_paths(self, experiment_path, experiment):
+        """Return the paths to the two output .nc files of the experiment.
+
+        Parameters
+        ----------
+        experiment_path : str
+            The relative path w.r.t. the main experiments directory of the
+            experiment-specific subfolder.
+        experiment : dict
+            The dictionary describing the single experiment.
+
+        Returns
+        -------
+        list of str
+            A list with the path of the .nc files for the two phases.
+
+        """
+        protocol = self._protocols[experiment['protocol']]
+        experiment_dir = self._get_experiment_dir(experiment_path)
+        # The order of the phases needs to be well defined for this to make sense.
+        assert isinstance(protocol, collections.OrderedDict)
+        return [os.path.join(experiment_dir, name + '.nc') for name in protocol.keys()]
+
+    def _get_experiment_file_name(self, experiment_path):
+        """Return the extension-less path to use for files referring to the experiment.
+
+        Parameters
+        ----------
+        experiment_path : str
+            The relative path w.r.t. the main experiments directory of the
+            experiment-specific subfolder.
+
+        """
+        experiment_dir = self._get_experiment_dir(experiment_path)
+        log_file_name = 'experiments' if experiment_path == '' else os.path.basename(experiment_path)
+        return os.path.join(experiment_dir, log_file_name)
+
+    def _get_generated_yaml_script_path(self, experiment_path):
+        """Return the path for the generated single-experiment YAML script."""
+        return self._get_experiment_file_name(experiment_path) + '.yaml'
+
+    def _get_experiment_log_path(self, experiment_path):
+        """Return the path for the experiment log file."""
+        return self._get_experiment_file_name(experiment_path) + '.log'
 
     # --------------------------------------------------------------------------
     # Resuming
     # --------------------------------------------------------------------------
 
-    def _check_resume_experiment(self, experiment_dir, protocol_id):
+    def _check_resume_experiment(self, experiment_path, experiment):
         """Check if Yank output files already exist.
 
         Parameters
         ----------
-        experiment_dir : str
-            The path to the directory that should contain the output files.
-        protocol_id : str
-            The ID of the protocol used in the experiment.
+        experiment_path : str
+            The relative path w.r.t. the main experiments directory of the
+            experiment-specific subfolder.
+        experiment : dict
+            The dictionary describing the single experiment.
 
         Returns
         -------
         bool
-            True if NetCDF output files already exist, False otherwise.
+            True if NetCDF output files already exist, or if the protocol
+            needs to be found automatically, and the generated YAML file
+            exists, False otherwise.
 
         """
-        # Build phases .nc file paths
-        phase_names = self._protocols[protocol_id].keys()
-        phase_paths = [os.path.join(experiment_dir, name + '.nc') for name in phase_names]
+        # If protocol has automatic alchemical paths to generate,
+        # check if generated YAML script exist.
+        protocol = self._protocols[experiment['protocol']]
+        automatic_phases = self._find_automatic_protocol_phases(protocol)
+        yaml_generated_script_path = self._get_generated_yaml_script_path(experiment_path)
+        if len(automatic_phases) > 0 and os.path.exists(yaml_generated_script_path):
+            return True
 
         # Look for existing .nc files in the folder
+        phase_paths = self._get_nc_file_paths(experiment_path, experiment)
         for phase_path in phase_paths:
-            if not (os.path.isfile(phase_path) and os.path.getsize(phase_path) > 0):
-                return False
-        return True
+            if os.path.isfile(phase_path) and os.path.getsize(phase_path) > 0:
+                return True
+
+        return False
 
     @mpi.on_single_node(0, sync_nodes=True)
     def _check_resume(self, check_setup=True, check_experiments=True):
@@ -1295,13 +1355,13 @@ class ExperimentBuilder(object):
         """
         err_msg = ''
 
-        for exp_sub_dir, combination in self._expand_experiments():
+        for experiment_path, combination in self._expand_experiments():
 
             if check_experiments:
                 resume_sim = self._options['resume_simulation']
-                experiment_dir = self._get_experiment_dir(exp_sub_dir)
-                if not resume_sim and self._check_resume_experiment(experiment_dir,
-                                                                    combination['protocol']):
+                if not resume_sim and self._check_resume_experiment(experiment_path,
+                                                                    combination):
+                    experiment_dir = self._get_experiment_dir(experiment_path)
                     err_msg = 'experiment files in directory {}'.format(experiment_dir)
                     solving_option = 'resume_simulation'
 
@@ -1466,19 +1526,8 @@ class ExperimentBuilder(object):
         return platform
 
     # --------------------------------------------------------------------------
-    # Experiment setup and execution
+    # Experiment setup
     # --------------------------------------------------------------------------
-
-    def _build_experiments(self):
-        """Set up and build all the Yank experiments.
-
-        IMPORTANT: This does not check if we are about to overwrite files, neither
-        it creates the setup files nor it cds into the script directory! Use
-        build_experiments() for that.
-
-        """
-        for output_dir, combination in self._expand_experiments():
-            yield self._build_experiment(combination, output_dir)
 
     @mpi.on_single_node(rank=0, sync_nodes=True)
     def _setup_experiments(self):
@@ -1503,7 +1552,144 @@ class ExperimentBuilder(object):
             except KeyError:  # system files are given directly by the user
                 pass
 
-    def _generate_yaml(self, experiment, file_path):
+    # --------------------------------------------------------------------------
+    # Automatic alchemical path generation
+    # --------------------------------------------------------------------------
+
+    @staticmethod
+    def _find_automatic_protocol_phases(protocol):
+        """Return the list of phase names whose alchemical path must be generated automatically."""
+        assert isinstance(protocol, collections.OrderedDict)
+        phases_to_generate = []
+        for phase_name in protocol:
+            if protocol[phase_name]['alchemical_path'] == 'auto':
+                phases_to_generate.append(phase_name)
+        return phases_to_generate
+
+    def _generate_experiments_protocols(self):
+        """Go through all experiments and generate auto alchemical paths."""
+        # Find all experiments that have at least one phase whose
+        # alchemical path needs to be generated automatically.
+        experiments_to_generate = []
+        for experiment_path, experiment in self._expand_experiments():
+            # First check if we have already generated the path for it.
+            script_filepath = self._get_generated_yaml_script_path(experiment_path)
+            if os.path.isfile(script_filepath):
+                continue
+
+            # Determine output directory and create it if it doesn't exist.
+            self._safe_makedirs(os.path.dirname(script_filepath))
+
+            # Check if any of the phases needs to have its path generated.
+            protocol = self._protocols[experiment['protocol']]
+            phases_to_generate = self._find_automatic_protocol_phases(protocol)
+            if len(phases_to_generate) > 0:
+                experiments_to_generate.append((experiment_path, experiment))
+            else:
+                # Export YAML file for reproducibility.
+                self._generate_yaml(experiment, script_filepath)
+
+        # Parallelize generation of all protocols among nodes.
+        mpi.distribute(self._generate_experiment_protocol,
+                       distributed_args=experiments_to_generate,
+                       group_nodes=1)
+
+    def _generate_experiment_protocol(self, experiment, constrain_receptor=True,
+                                      n_equilibration_iterations=None, **kwargs):
+        class DummyReporter(object):
+            """A dummy reporter since we don't need to store repex stuff on disk."""
+            def nothing(self, *args, **kwargs):
+                """This serves both as an attribute and a callable."""
+                pass
+            def __getattr__(self, _):
+                return self.nothing
+
+        # Unpack experiment argument that has been distributed among nodes.
+        experiment_path, experiment = experiment
+
+        # Maybe only a subset of the phases need to be generated.
+        protocol = self._protocols[experiment['protocol']]
+        phases_to_generate = self._find_automatic_protocol_phases(protocol)
+
+        # Build experiment.
+        exp = self._build_experiment(experiment, experiment_path)
+
+        # Generate protocols.
+        optimal_protocols = collections.OrderedDict.fromkeys(phases_to_generate)
+        for phase_idx, phase_name in enumerate(phases_to_generate):
+            logger.debug('Generating alchemical path for {}.{}'.format(experiment_path, phase_name))
+            phase = exp.phases[phase_idx]
+            state_parameters = []
+            is_vacuum = len(phase.topography.receptor_atoms) == 0 and len(phase.topography.solvent_atoms) == 0
+
+            # We may need to slowly turn on a Boresch restraint.
+            if isinstance(phase.restraint, restraints.Boresch):
+                state_parameters.append(('lambda_restraints', [0.0, 1.0]))
+
+            # We support only lambda sterics and electrostatics for now.
+            if is_vacuum and not phase.alchemical_regions.annihilate_electrostatics:
+                state_parameters.append(('lambda_electrostatics', [1.0, 1.0]))
+            else:
+                state_parameters.append(('lambda_electrostatics', [1.0, 0.0]))
+            if is_vacuum and not phase.alchemical_regions.annihilate_sterics:
+                state_parameters.append(('lambda_sterics', [1.0, 1.0]))
+            else:
+                state_parameters.append(('lambda_sterics', [1.0, 0.0]))
+
+            # We only need to create a single state.
+            phase.protocol = {par[0]: [par[1][0]] for par in state_parameters}
+
+            # Remove unsampled state that we don't need for the optimization.
+            phase.options['anisotropic_dispersion_correction'] = False
+
+            # If default argument is used, determine number of equilibration iterations.
+            # TODO automatic equilibration?
+            if n_equilibration_iterations is None:
+                if is_vacuum:  # Vacuum or small molecule in implicit solvent.
+                    n_equilibration_iterations = 0
+                elif len(phase.topography.receptor_atoms) == 0:  # Explicit solvent phase.
+                    n_equilibration_iterations = 250
+                elif len(phase.topography.solvent_atoms) == 0:  # Implicit complex phase.
+                    n_equilibration_iterations = 500
+                else:  # Explicit complex phase
+                    n_equilibration_iterations = 1000
+
+            # Set number of equilibration iterations.
+            phase.options['number_of_equilibration_iterations'] = n_equilibration_iterations
+
+            # Use a reporter that doesn't write anything to save time.
+            phase.storage = DummyReporter()
+
+            # Create the thermodynamic state exactly as AlchemicalPhase would make it.
+            alchemical_phase = phase.initialize_alchemical_phase()
+
+            # Get sampler and thermodynamic state and delete alchemical phase.
+            thermodynamic_state = alchemical_phase._sampler._thermodynamic_states[0]
+            sampler_state = alchemical_phase._sampler._sampler_states[0]
+            mcmc_move = alchemical_phase._sampler.mcmc_moves[0]
+            del alchemical_phase
+
+            # Restrain the protein heavy atoms to avoid drastic
+            # conformational changes (possibly after equilibration).
+            if len(phase.topography.receptor_atoms) != 0 and constrain_receptor:
+                pipeline.restrain_atoms(thermodynamic_state, sampler_state, phase.topography.topology,
+                                        atoms_dsl='name CA', sigma=3.0*unit.angstroms)
+
+            # Find protocol.
+            alchemical_path = pipeline.find_alchemical_protocol(thermodynamic_state, sampler_state,
+                                                                mcmc_move, state_parameters,
+                                                                **kwargs)
+            optimal_protocols[phase_name] = alchemical_path
+
+        # Generate yaml script with updated protocol.
+        script_path = self._get_generated_yaml_script_path(experiment_path)
+        protocol = copy.deepcopy(self._protocols[experiment['protocol']])
+        for phase_name, alchemical_path in optimal_protocols.items():
+            protocol[phase_name]['alchemical_path'] = alchemical_path
+        self._generate_yaml(experiment, script_path, overwrite_protocol=protocol)
+
+    @mpi.on_single_node(rank=0, sync_nodes=True)
+    def _generate_yaml(self, experiment, file_path, overwrite_protocol=None):
         """Generate the minimum YAML file needed to reproduce the experiment.
 
         Parameters
@@ -1512,6 +1698,9 @@ class ExperimentBuilder(object):
             The dictionary describing a single experiment.
         file_path : str
             The path to the file to save.
+        overwrite_protocol : None or dict
+            If not None, this protocol description will be used instead
+            of the one in the original YAML file.
 
         """
         yaml_dir = os.path.dirname(file_path)
@@ -1549,7 +1738,10 @@ class ExperimentBuilder(object):
 
         # Protocols section data
         protocol_id = experiment['protocol']
-        prot_section = {protocol_id: self._expanded_raw_yaml['protocols'][protocol_id]}
+        if overwrite_protocol is None:
+            prot_section = {protocol_id: self._expanded_raw_yaml['protocols'][protocol_id]}
+        else:
+            prot_section = {protocol_id: overwrite_protocol}
 
         # We pop the options section in experiment and merge it to the general one
         exp_section = experiment.copy()
@@ -1597,6 +1789,21 @@ class ExperimentBuilder(object):
         with open(file_path, 'w') as f:
             f.write(yaml_content)
 
+    # --------------------------------------------------------------------------
+    # Experiment building
+    # --------------------------------------------------------------------------
+
+    def _build_experiments(self):
+        """Set up and build all the Yank experiments.
+
+        IMPORTANT: This does not check if we are about to overwrite files, neither
+        it creates the setup files nor it cds into the script directory! Use
+        build_experiments() for that.
+
+        """
+        for experiment_path, combination in self._expand_experiments():
+            yield self._build_experiment(combination, experiment_path)
+
     @staticmethod
     def _save_analysis_script(results_dir, phase_names):
         """Store the analysis information about phase signs for analyze."""
@@ -1619,14 +1826,14 @@ class ExperimentBuilder(object):
         if not os.path.isdir(directory):
             os.makedirs(directory)
 
-    def _build_experiment(self, experiment, experiment_dir):
+    def _build_experiment(self, experiment, experiment_path):
         """Prepare and run a single experiment.
 
         Parameters
         ----------
         experiment : dict
             A dictionary describing a single experiment
-        experiment_dir : str
+        experiment_path : str
             The directory where to store the output files relative to the main
             output directory as specified by the user in the YAML script
 
@@ -1637,24 +1844,14 @@ class ExperimentBuilder(object):
 
         """
         system_id = experiment['system']
-        protocol_id = experiment['protocol']
-        exp_name = 'experiments' if experiment_dir == '' else os.path.basename(experiment_dir)
 
         # Get and validate experiment sub-options and divide them by class.
         exp_opts = self._determine_experiment_options(experiment)
         exp_opts, phase_opts, sampler_opts, alchemical_region_opts = exp_opts
 
-        # Determine output directory and create it if it doesn't exist.
-        results_dir = self._get_experiment_dir(experiment_dir)
-        self._safe_makedirs(results_dir)
-
         # Configure logger file for this experiment.
-        utils.config_root_logger(self._options['verbose'],
-                                 os.path.join(results_dir, exp_name + '.log'))
-
-        # Export YAML file for reproducibility
-        mpi.run_single_node(0, self._generate_yaml, experiment,
-                            os.path.join(results_dir, exp_name + '.yaml'))
+        experiment_log_file_path = self._get_experiment_log_path(experiment_path)
+        utils.config_root_logger(self._options['verbose'], experiment_log_file_path)
 
         # Get ligand resname for alchemical atom selection. If we can't
         # find it, this is a solvation free energy calculation.
@@ -1701,6 +1898,26 @@ class ExperimentBuilder(object):
                 assert 'phase1_path' in self._db.systems[system_id]
                 solvent_ids = [None, None]
 
+        # Obtain the protocol for this experiment. We need to load the
+        # alchemical path from the single-experiment YAML file if it has
+        # been automatically generated.
+        protocol = copy.deepcopy(self._protocols[experiment['protocol']])
+        generated_alchemical_paths = self._find_automatic_protocol_phases(protocol)
+        if len(generated_alchemical_paths) > 0:
+            yaml_script_file_path = self._get_generated_yaml_script_path(experiment_path)
+
+            # The file won't exist if _build_experiment has been called
+            # within _generate_experiment_protocol. In this case we just
+            # use a dummy protocol.
+            try:
+                with open(yaml_script_file_path, 'r') as f:
+                    yaml_script = yaml.load(f, Loader=YankLoader)
+            except FileNotFoundError:
+                for phase_name in generated_alchemical_paths:
+                    protocol[phase_name]['alchemical_path'] = {}
+            else:
+                protocol = yaml_script['protocols'][experiment['protocol']]
+
         # Determine restraint description (None if not specified).
         restraint_descr = experiment.get('restraint')
 
@@ -1710,21 +1927,22 @@ class ExperimentBuilder(object):
 
         # Prepare Yank arguments
         phases = [None, None]
-        # self._protocols[protocol_id] is an OrderedDict so phases are in the
-        # correct order (e.g. [complex, solvent] or [solvent1, solvent2])
-        phase_names = list(self._protocols[protocol_id].keys())
-        for i, phase_name in enumerate(phase_names):
+        # protocol is an OrderedDict so phases are in the correct
+        # order (e.g. [complex, solvent] or [solvent1, solvent2]).
+        assert isinstance(protocol, collections.OrderedDict)
+        phase_names = list(protocol.keys())
+        phase_paths = self._get_nc_file_paths(experiment_path, experiment)
+        for phase_idx, (phase_name, phase_path) in enumerate(zip(phase_names, phase_paths)):
             # Check if we need to resume a phase. If the phase has been
             # already created, Experiment will resume from the storage.
-            phase_path = os.path.join(results_dir, phase_name + '.nc')
             if os.path.isfile(phase_path):
-                phases[i] = phase_path
+                phases[phase_idx] = phase_path
                 continue
 
             # Create system, topology and sampler state from system files.
-            solvent_id = solvent_ids[i]
-            positions_file_path = system_files_paths[i].position_path
-            parameters_file_path = system_files_paths[i].parameters_path
+            solvent_id = solvent_ids[phase_idx]
+            positions_file_path = system_files_paths[phase_idx].position_path
+            parameters_file_path = system_files_paths[phase_idx].parameters_path
             if solvent_id is None:
                 system_options = None
             else:
@@ -1735,7 +1953,7 @@ class ExperimentBuilder(object):
                 gromacs_include_dir=gromacs_include_dir)
 
             # Identify system components. There is a ligand only in the complex phase.
-            if i == 0:
+            if phase_idx == 0:
                 ligand_atoms = ligand_dsl
             else:
                 ligand_atoms = None
@@ -1752,14 +1970,15 @@ class ExperimentBuilder(object):
 
             # Start from AlchemicalPhase default alchemical region
             # and modified it according to the user options.
-            phase_protocol = self._protocols[protocol_id][phase_name]['alchemical_path']
+            phase_protocol = protocol[phase_name]['alchemical_path']
             alchemical_region = AlchemicalPhase._build_default_alchemical_region(system, topography,
                                                                                  phase_protocol)
             alchemical_region = alchemical_region._replace(**alchemical_region_opts)
 
             # Apply restraint only if this is the first phase. AlchemicalPhase
             # will take care of raising an error if the phase type does not support it.
-            if (i == 0 and restraint_descr is not None and restraint_descr['type'] is not None):
+            if (phase_idx == 0 and restraint_descr is not None and
+                        restraint_descr['type'] is not None):
                 restraint_type = restraint_descr['type']
                 restraint_parameters = {par: convert_if_quantity(value) for par, value in restraint_descr.items()
                                         if par != 'type'}
@@ -1787,12 +2006,13 @@ class ExperimentBuilder(object):
             sampler = repex.ReplicaExchange(mcmc_moves=mcmc_move, **sampler_opts)
 
             # Create phases.
-            phases[i] = AlchemicalPhaseFactory(sampler, thermodynamic_state, sampler_state,
-                                               topography, phase_protocol, storage=phase_path,
-                                               restraint=restraint, alchemical_regions=alchemical_region,
-                                               **phase_opts)
+            phases[phase_idx] = AlchemicalPhaseFactory(sampler, thermodynamic_state, sampler_state,
+                                                       topography, phase_protocol, storage=phase_path,
+                                                       restraint=restraint, alchemical_regions=alchemical_region,
+                                                       **phase_opts)
 
         # Dump analysis script
+        results_dir = self._get_experiment_dir(experiment_path)
         mpi.run_single_node(0, self._save_analysis_script, results_dir, phase_names)
 
         # Return new Experiment object.

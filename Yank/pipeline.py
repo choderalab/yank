@@ -1417,6 +1417,124 @@ class SetupDatabase:
             logger.warning('TLeap: ' + warning)
 
 
+# ==============================================================================
+# FUNCTIONS FOR ALCHEMICAL PATH OPTIMIZATION
+# ==============================================================================
+
+def restrain_atoms(thermodynamic_state, sampler_state, mdtraj_topology,
+                   atoms_dsl, sigma=3.0*unit.angstroms):
+    K = thermodynamic_state.kT / sigma  # Spring constant.
+    system = thermodynamic_state.system  # This is a copy.
+
+    # Translate the system to the origin to avoid
+    # MonteCarloBarostat rejections (see openmm#1854).
+    protein_atoms = mdtraj_topology.select('protein')
+    distance_unit = sampler_state.positions.unit
+    centroid = np.mean(sampler_state.positions[protein_atoms,:] / distance_unit, 0) * distance_unit
+    sampler_state.positions -= centroid
+
+    # Create a CustomExternalForce to restrain all atoms.
+    restraint_force = openmm.CustomExternalForce('(K/2)*((x-x0)^2 + (y-y0)^2 + (z-z0)^2)')
+    restrained_atoms = mdtraj_topology.select(atoms_dsl).tolist()
+    # Adding the spring constant as a global parameter allows us to turn it off if desired
+    restraint_force.addGlobalParameter('K', K)
+    restraint_force.addPerParticleParameter('x0')
+    restraint_force.addPerParticleParameter('y0')
+    restraint_force.addPerParticleParameter('z0')
+    for index in restrained_atoms:
+        parameters = sampler_state.positions[index,:].value_in_unit_system(unit.md_unit_system)
+        restraint_force.addParticle(index, parameters)
+
+    # Update thermodynamic state.
+    system.addForce(restraint_force)
+    thermodynamic_state.system = system
+
+
+def find_alchemical_protocol(thermodynamic_state, sampler_state, mcmc_move, state_parameters,
+                             std_energy_threshold=0.5, threshold_tolerance=0.05,
+                             n_samples_per_state=100):
+    # Make sure that the state parameters to optimize have a clear order.
+    assert(isinstance(state_parameters, list) or isinstance(state_parameters, tuple))
+
+    # Make sure that thermodynamic_state is in correct state
+    # and initialize protocol with starting value.
+    optimal_protocol = {}
+    for parameter, values in state_parameters:
+        setattr(thermodynamic_state, parameter, values[0])
+        optimal_protocol[parameter] = [values[0]]
+
+    # We change only one parameter at a time.
+    for state_parameter, values in state_parameters:
+        logger.debug('Determining alchemical path for parameter {}'.format(state_parameter))
+
+        # Is this a search from 0 to 1 or from 1 to 0?
+        search_direction = np.sign(values[1] - values[0])
+        # If the parameter doesn't change, continue to the next one.
+        if search_direction == 0:
+            continue
+
+        # Gather data until we get to the last value.
+        while optimal_protocol[state_parameter][-1] != values[-1]:
+            # Simulate current thermodynamic state to obtain energies.
+            sampler_states = []
+            simulated_energies = np.zeros(n_samples_per_state)
+            for i in range(n_samples_per_state):
+                mcmc_move.apply(thermodynamic_state, sampler_state)
+                sampler_states.append(copy.deepcopy(sampler_state))
+                simulated_energies[i] = thermodynamic_state.reduced_potential(sampler_state)
+
+            # Find first state that doesn't overlap with simulated one
+            # with std(du) within std_energy_threshold +- threshold_tolerance.
+            # We stop anyway if we reach the last value of the protocol.
+            std_energy = 0.0
+            current_parameter_value = optimal_protocol[state_parameter][-1]
+            while (abs(std_energy - std_energy_threshold) > threshold_tolerance and
+                   not (current_parameter_value == values[1] and std_energy < std_energy_threshold)):
+                # Determine next parameter value to compute.
+                if np.isclose(std_energy, 0.0):
+                    # This is the first iteration or the two state overlap significantly
+                    # (e.g. small molecule in vacuum). Just advance by a +- 0.05 step.
+                    old_parameter_value = current_parameter_value
+                    current_parameter_value += (values[1] - values[0]) / 20.0
+                else:
+                    # Assume std_energy(parameter_value) is linear to determine next value to try.
+                    derivative_std_energy = ((std_energy - old_std_energy) /
+                                             (current_parameter_value - old_parameter_value))
+                    old_parameter_value = current_parameter_value
+                    current_parameter_value += (std_energy_threshold - std_energy) / derivative_std_energy
+
+                # Keep current_parameter_value inside bound interval.
+                if search_direction * current_parameter_value > values[1]:
+                    current_parameter_value = values[1]
+                assert search_direction * (optimal_protocol[state_parameter][-1] - current_parameter_value) < 0
+
+                # Get context in new thermodynamic state.
+                setattr(thermodynamic_state, state_parameter, current_parameter_value)
+                context, integrator = mmtools.cache.global_context_cache.get_context(thermodynamic_state)
+
+                # Compute the energies at the sampled positions.
+                reweighted_energies = np.zeros(n_samples_per_state)
+                for i, sampler_state in enumerate(sampler_states):
+                    sampler_state.apply_to_context(context, ignore_velocities=True)
+                    reweighted_energies[i] = thermodynamic_state.reduced_potential(context)
+
+                # Compute standard deviation of the difference.
+                old_std_energy = std_energy
+                denergies = reweighted_energies - simulated_energies
+                std_energy = np.std(denergies)
+
+            # Update the optimal protocol with the new value of this parameter.
+            # The other parameters remain fixed.
+            for par_name in optimal_protocol:
+                if par_name == state_parameter:
+                    optimal_protocol[par_name].append(current_parameter_value)
+                else:
+                    optimal_protocol[par_name].append(optimal_protocol[par_name][-1])
+
+    logger.debug('Alchemical path found: {}'.format(optimal_protocol))
+    return optimal_protocol
+
+
 if __name__ == '__main__':
     import doctest
     doctest.testmod()
