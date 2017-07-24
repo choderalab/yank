@@ -375,7 +375,7 @@ class ExperimentBuilder(object):
         'mc_displacement_sigma': 10.0 * unit.angstroms
     }
 
-    def __init__(self, script=None):
+    def __init__(self, script=None, job_id=None, n_jobs=None):
         """Constructor.
 
         Parameters
@@ -383,8 +383,25 @@ class ExperimentBuilder(object):
         script : str or dict
             A path to the YAML script or the YAML content. If not specified, you
             can load it later by using parse() (default is None).
+        job_id : None or int
+            If you want to split the experiments among different executions,
+            you can set this to an integer 0 <= job_id <= n_jobs-1, and this
+            ExperimentBuilder will run only 1/n_jobs of the experiments.
+        n_jobs : None or int
+            If job_id is specified, this is the total number of jobs that
+            you are running in parallel from your script.
 
         """
+        # Check consistency job_id and n_jobs.
+        if job_id is not None:
+            if n_jobs is None:
+                raise ValueError('n_jobs must be specified together with job_id')
+            if not 0 <= job_id <= n_jobs:
+                raise ValueError('job_id must be between 0 and n_jobs ({})'.format(n_jobs))
+
+        self._job_id = job_id
+        self._n_jobs = n_jobs
+
         self._options = self.GENERAL_DEFAULT_OPTIONS.copy()
         self._options.update(self.EXPERIMENT_DEFAULT_OPTIONS.copy())
 
@@ -530,7 +547,7 @@ class ExperimentBuilder(object):
             # Cycle between experiments every switch_experiment_interval iterations
             # until all of them are done. We don't know how many experiments
             # there are until after the end of first for-loop.
-            completed = [False]  # There always be at least one experiment.
+            completed = [False]  # There is always at least one experiment.
             while not all(completed):
                 for experiment_index, experiment in enumerate(self._build_experiments()):
 
@@ -747,7 +764,8 @@ class ExperimentBuilder(object):
     def _expand_experiments(self):
         """Generates all possible combinations of experiment.
 
-        Each generated experiment is uniquely named.
+        Each generated experiment is uniquely named. If job_id and n_jobs are
+        set, this returns only the experiments assigned to this particular job.
 
         Returns
         -------
@@ -758,6 +776,11 @@ class ExperimentBuilder(object):
             The dictionary describing a single experiment.
 
         """
+        # We need to distribute experiments among jobs, but different
+        # experiments sectiona may have a different number of combinations,
+        # so we need to count them.
+        experiment_id = 0
+
         output_dir = ''
         for exp_name, experiment in utils.dictiter(self._experiments):
             if len(self._experiments) > 1:
@@ -765,7 +788,9 @@ class ExperimentBuilder(object):
 
             # Loop over all combinations
             for name, combination in experiment.named_combinations(separator='_', max_name_length=50):
-                yield os.path.join(output_dir, name), combination
+                if self._job_id is None or experiment_id % self._n_jobs == self._job_id:
+                    yield os.path.join(output_dir, name), combination
+                experiment_id += 1
 
     # --------------------------------------------------------------------------
     # Parsing and syntax validation
@@ -1203,15 +1228,19 @@ class ExperimentBuilder(object):
         def validate_experiment_options(options):
             return ExperimentBuilder._validate_options(options, validate_general_options=False)
 
-        # Check if there is a sequence of experiments or a single one
+        # Check if there is a sequence of experiments or a single one.
+        # We need to have a deterministic order of experiments so that
+        # if we run multiple experiments in parallel, we won't have
+        # multiple processes running the same one.
         try:
             if isinstance(yaml_content['experiments'], list):
-                self._experiments = {exp_name: utils.CombinatorialTree(yaml_content[exp_name])
-                                     for exp_name in yaml_content['experiments']}
+                combinatorial_trees = [(exp_name, utils.CombinatorialTree(yaml_content[exp_name]))
+                                       for exp_name in yaml_content['experiments']]
             else:
-                self._experiments = {'experiments': utils.CombinatorialTree(yaml_content['experiments'])}
+                combinatorial_trees = [('experiments', utils.CombinatorialTree(yaml_content['experiments']))]
+            self._experiments = collections.OrderedDict(combinatorial_trees)
         except KeyError:
-            self._experiments = {}
+            self._experiments = collections.OrderedDict()
             return
 
         # Restraint schema contains type and optional parameters.
@@ -1830,7 +1859,7 @@ class ExperimentBuilder(object):
             os.makedirs(directory)
 
     def _build_experiment(self, experiment, experiment_path):
-        """Prepare and run a single experiment.
+        """Prepare a single experiment.
 
         Parameters
         ----------
