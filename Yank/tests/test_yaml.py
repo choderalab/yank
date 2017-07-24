@@ -228,6 +228,7 @@ def test_yaml_parsing():
         platform: CPU
         precision: mixed
         switch_experiment_interval: -2.0
+        nodes_per_experiment: 2
         switch_phase_interval: 32
         temperature: 300*kelvin
         pressure: null
@@ -1612,6 +1613,21 @@ def test_default_platform_precision():
 # ==============================================================================
 # Experiment execution
 # ==============================================================================
+
+def test_expand_experiments():
+    """Test that job_id and n_jobs limit the number of experiments run."""
+    template_script = get_template_script()
+    experiment_systems = utils.CombinatorialLeaf(['explicit-system', 'implicit-system', 'hydration-system'])
+    template_script['experiments']['system'] = experiment_systems
+
+    exp_builder = ExperimentBuilder(script=template_script, job_id=0, n_jobs=2)
+    experiments = list(exp_builder._expand_experiments())
+    assert len(experiments) == 2
+
+    exp_builder = ExperimentBuilder(script=template_script, job_id=1, n_jobs=2)
+    experiments = list(exp_builder._expand_experiments())
+    assert len(experiments) == 1
+
 
 def test_yaml_creation():
     """Test the content of generated single experiment YAML files."""

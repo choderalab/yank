@@ -359,6 +359,7 @@ class ExperimentBuilder(object):
         'platform': 'fastest',
         'precision': 'auto',
         'switch_experiment_interval': 0,
+        'nodes_per_experiments': None
     }
 
     # These options can be overwritten also in the "experiment"
@@ -531,33 +532,23 @@ class ExperimentBuilder(object):
         if len(self._experiments) == 0:
             raise YamlParseError('No experiments specified!')
 
-        # Handle case where we don't have to switch between experiments.
-        if self._options['switch_experiment_interval'] <= 0:
-            # Run Experiment for number_of_iterations.
-            switch_experiment_interval = None
-        else:
-            switch_experiment_interval = self._options['switch_experiment_interval']
-
         # Setup and run all experiments with paths relative to the script directory
         with moltools.utils.temporary_cd(self._script_dir):
             self._check_resume()
             self._setup_experiments()
             self._generate_experiments_protocols()
 
+            # Find all the experiments to distribute among mpicomms.
+            all_experiments = [experiment for experiment in self._expand_experiments()]
+            nodes_per_experiments = self._options['nodes_per_experiments']
+
             # Cycle between experiments every switch_experiment_interval iterations
-            # until all of them are done. We don't know how many experiments
-            # there are until after the end of first for-loop.
-            completed = [False]  # There is always at least one experiment.
+            # until all of them are done.
+            completed = [False]  # This is just to run the first iteration.
             while not all(completed):
-                for experiment_index, experiment in enumerate(self._build_experiments()):
-
-                    experiment.run(n_iterations=switch_experiment_interval)
-
-                    # Check if this experiment is done.
-                    try:
-                        completed[experiment_index] = experiment.is_completed
-                    except IndexError:
-                        completed.append(experiment.is_completed)
+                completed, experiment_indices = mpi.distribute(self._run_experiment,
+                                                               distributed_args=all_experiments,
+                                                               group_nodes=nodes_per_experiments)
 
     def build_experiments(self):
         """Set up, build and iterate over all the Yank experiments."""
@@ -570,8 +561,8 @@ class ExperimentBuilder(object):
             self._check_resume()
             self._setup_experiments()
             self._generate_experiments_protocols()
-            for experiment in self._build_experiments():
-                yield experiment
+            for experiment_path, combination in self._expand_experiments():
+                yield self._build_experiment(experiment_path, combination)
 
     def setup_experiments(self):
         """Set up all Yank experiments without running them."""
@@ -1644,7 +1635,7 @@ class ExperimentBuilder(object):
         phases_to_generate = self._find_automatic_protocol_phases(protocol)
 
         # Build experiment.
-        exp = self._build_experiment(experiment, experiment_path)
+        exp = self._build_experiment(experiment_path, experiment)
 
         # Generate protocols.
         optimal_protocols = collections.OrderedDict.fromkeys(phases_to_generate)
@@ -1825,17 +1816,6 @@ class ExperimentBuilder(object):
     # Experiment building
     # --------------------------------------------------------------------------
 
-    def _build_experiments(self):
-        """Set up and build all the Yank experiments.
-
-        IMPORTANT: This does not check if we are about to overwrite files, neither
-        it creates the setup files nor it cds into the script directory! Use
-        build_experiments() for that.
-
-        """
-        for experiment_path, combination in self._expand_experiments():
-            yield self._build_experiment(combination, experiment_path)
-
     @staticmethod
     def _save_analysis_script(results_dir, phase_names):
         """Store the analysis information about phase signs for analyze."""
@@ -1858,16 +1838,16 @@ class ExperimentBuilder(object):
         if not os.path.isdir(directory):
             os.makedirs(directory)
 
-    def _build_experiment(self, experiment, experiment_path):
+    def _build_experiment(self, experiment_path, experiment):
         """Prepare a single experiment.
 
         Parameters
         ----------
-        experiment : dict
-            A dictionary describing a single experiment
         experiment_path : str
             The directory where to store the output files relative to the main
-            output directory as specified by the user in the YAML script
+            output directory as specified by the user in the YAML script.
+        experiment : dict
+            A dictionary describing a single experiment
 
         Returns
         -------
@@ -2050,6 +2030,25 @@ class ExperimentBuilder(object):
         # Return new Experiment object.
         return Experiment(phases, sampler_opts['number_of_iterations'],
                           exp_opts['switch_phase_interval'])
+
+    # --------------------------------------------------------------------------
+    # Experiment run
+    # --------------------------------------------------------------------------
+
+    def _run_experiment(self, experiment):
+        # Unpack experiment argument that has been distributed among nodes.
+        experiment_path, experiment = experiment
+
+        # Handle case where we don't have to switch between experiments.
+        if self._options['switch_experiment_interval'] <= 0:
+            # Run Experiment for number_of_iterations.
+            switch_experiment_interval = None
+        else:
+            switch_experiment_interval = self._options['switch_experiment_interval']
+
+        built_experiment = self._build_experiment(experiment_path, experiment)
+        built_experiment.run(n_iterations=switch_experiment_interval)
+        return built_experiment.is_completed
 
 
 if __name__ == "__main__":
