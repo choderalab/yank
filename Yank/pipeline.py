@@ -1388,13 +1388,13 @@ class SetupDatabase:
                                'solvent {}').format(solvent_id)
                     logger.error(err_msg)
                     raise RuntimeError(err_msg)
-                tleap.add_ions(unit=unit_to_solvate, ion=ion, num_ions=abs(alchemical_charge))
+                tleap.add_ions(leap_unit=unit_to_solvate, ion=ion, num_ions=abs(alchemical_charge))
 
             # Neutralizing solvation box
             if 'positive_ion' in solvent:
-                tleap.add_ions(unit=unit_to_solvate, ion=solvent['positive_ion'])
+                tleap.add_ions(leap_unit=unit_to_solvate, ion=solvent['positive_ion'])
             if 'negative_ion' in solvent:
-                tleap.add_ions(unit=unit_to_solvate, ion=solvent['negative_ion'])
+                tleap.add_ions(leap_unit=unit_to_solvate, ion=solvent['negative_ion'])
 
             # Solvate unit. Solvent models different than tip3p need parameter modifications.
             solvent_model = solvent['solvent_model']
@@ -1402,7 +1402,7 @@ class SetupDatabase:
                 tleap.load_parameters('frcmod.' + solvent_model)
             leap_solvent_model = _OPENMM_LEAP_SOLVENT_MODELS_MAP[solvent_model]
             clearance = float(solvent['clearance'].value_in_unit(unit.angstroms))
-            tleap.solvate(unit=unit_to_solvate, solvent_model=leap_solvent_model, clearance=clearance)
+            tleap.solvate(leap_unit=unit_to_solvate, solvent_model=leap_solvent_model, clearance=clearance)
 
         # Check charge
         tleap.new_section('Check charge')
