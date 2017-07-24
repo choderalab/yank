@@ -215,12 +215,17 @@ class Experiment(object):
         self.number_of_iterations = number_of_iterations
         self.switch_phase_interval = switch_phase_interval
         self._phases_last_iterations = [None, None]
+        self._are_phases_completed = [False, False]
 
     @property
     def iteration(self):
         if None in self._phases_last_iterations:
             return 0
-        return min(self._phases_last_iterations)
+        return self._phases_last_iterations
+
+    @property
+    def is_completed(self):
+        return all(self._are_phases_completed)
 
     def run(self, n_iterations=None):
         # Handle default argument.
@@ -240,7 +245,7 @@ class Experiment(object):
                 # Phases may get out of sync if the user delete the storage
                 # file of only one phase and restart. Here we check that the
                 # phase still has iterations to run before creating it.
-                if self._phases_last_iterations[phase_id] == self.number_of_iterations:
+                if self._are_phases_completed[phase_id]:
                     iterations_left[phase_id] = 0
                     continue
 
@@ -270,8 +275,7 @@ class Experiment(object):
                 self._phases_last_iterations[phase_id] = alchemical_phase.iteration
 
                 # Do one last check to see if the phase has converged by other means (e.g. online analysis)
-                if alchemical_phase.is_complete:
-                    self._phases_last_iterations[phase_id] = 0
+                self._are_phases_completed[phase_id] = alchemical_phase.is_completed
 
                 # Delete alchemical phase and prepare switching.
                 del alchemical_phase
@@ -533,11 +537,10 @@ class ExperimentBuilder(object):
                     experiment.run(n_iterations=switch_experiment_interval)
 
                     # Check if this experiment is done.
-                    is_completed = experiment.iteration == experiment.number_of_iterations
                     try:
-                        completed[experiment_index] = is_completed
+                        completed[experiment_index] = experiment.is_completed
                     except IndexError:
-                        completed.append(is_completed)
+                        completed.append(experiment.is_completed)
 
     def build_experiments(self):
         """Set up, build and iterate over all the Yank experiments."""

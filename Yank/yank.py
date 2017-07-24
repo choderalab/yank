@@ -411,13 +411,13 @@ class AlchemicalPhase(object):
         self._sampler.number_of_iterations = value
 
     @property
-    def is_complete(self):
+    def is_completed(self):
         """
         bool: is the sampler complete by some other mechanism.
         If no method is present in sampler, check if sampler's current iteration is number of iterations
         """
         try:
-            return self._sampler.is_complete
+            return self._sampler.is_completed
         except AttributeError:
             return self._sampler.iteration >= self._sampler.number_of_iterations
 
