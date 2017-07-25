@@ -153,6 +153,23 @@ sequentially.
 
 Valid options (0): <Integer>
 
+.. _yaml_options_processes_per_experiment:
+
+.. rst-class:: html-toggle
+
+``processes_per_experiment``
+----------------------------
+.. code-block:: yaml
+
+   options:
+     processes_per_experiment: null
+
+When running YANK on multiple processes with MPI, you can run several experiments in parallel by using this option to
+allocate a given number of processes to each experiment. If ``null``, the experiments are performed one after the
+other on all the available MPI processes.
+
+Valid options (null): null / <Integer>
+
 
 .. _yaml_options_sys_and_sim_prep:
 
