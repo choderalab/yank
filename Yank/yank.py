@@ -474,9 +474,12 @@ class AlchemicalPhase(object):
         restraint : ReceptorLigandRestraint, optional
             Restraint to add between protein and ligand. This must be specified
             for ligand-receptor systems in non-periodic boxes.
-        anisotropic_dispersion_cutoff : simtk.openmm.Quantity, optional
+        anisotropic_dispersion_cutoff : simtk.openmm.Quantity, 'auto', or None, optional, default None
             If specified, this is the cutoff at which to reweight long range
             interactions of the end states to correct for anisotropic dispersions.
+
+            If `'auto'`, then the distance is automatically chosen based on the minimum possible size it can be given
+            the box volume, then behaves as if a Quantity was passed in.
 
             If `None`, the correction won't be applied (units of length, default
             is None).

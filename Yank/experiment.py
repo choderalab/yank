@@ -217,7 +217,6 @@ class AlchemicalPhaseFactory(object):
     """
 
     DEFAULT_OPTIONS = {
-        'anisotropic_dispersion_correction': True,
         'anisotropic_dispersion_cutoff': 'auto',
         'minimize': True,
         'minimize_tolerance': 1.0 * unit.kilojoules_per_mole/unit.nanometers,
@@ -273,10 +272,7 @@ class AlchemicalPhaseFactory(object):
             reporter = repex.Reporter(storage_path, checkpoint_interval=checkpoint_interval)
             create_kwargs['storage'] = reporter
             self.storage = reporter
-        if self.options['anisotropic_dispersion_correction'] is True:
-            dispersion_cutoff = self.options['anisotropic_dispersion_cutoff']
-        else:
-            dispersion_cutoff = None
+        dispersion_cutoff = self.options['anisotropic_dispersion_cutoff']  # This will be None or an option
         alchemical_phase.create(anisotropic_dispersion_cutoff=dispersion_cutoff,
                                 **create_kwargs)
         return alchemical_phase

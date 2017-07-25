@@ -82,7 +82,7 @@ options:
   nsteps_per_iteration: 100
   temperature: 300*kelvin
   pressure: null
-  anisotropic_dispersion_correction: no
+  anisotropic_dispersion_cutoff: null
   platform: OpenCL
 
 solvents:
