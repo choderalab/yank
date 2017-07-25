@@ -23,10 +23,14 @@ Each of the arguments in this category is optional and the default option will b
 OpenMM System Creation Options
 ==============================
 
+
+
 .. _yaml_solvents_nonbonded_method:
 
-nonbonded_method
-----------------
+.. rst-class:: html-toggle
+
+``nonbonded_method``
+--------------------
 .. code-block:: yaml
 
    solvents:
@@ -50,10 +54,13 @@ Because each option has very different behavior, we list each of them here and s
   **This is YANK's currently preferred mode for explicit solvent.**
 
 
+
 .. _yaml_solvents_nonbonded_cutoff:
 
-nonbonded_cutoff
-----------------
+.. rst-class:: html-toggle
+
+``nonbonded_cutoff``
+--------------------
 .. code-block:: yaml
 
    solvents:
@@ -68,10 +75,13 @@ Nonbonded Methods: ``CutoffPeriodic``, ``Ewald``, ``PME``
 Valid Options (1 * nanometer): <Quantity Length> [1]_
 
 
+
 .. _yaml_solvents_switch_distance:
 
-switch_distance
----------------
+.. rst-class:: html-toggle
+
+``switch_distance``
+-------------------
 .. code-block:: yaml
 
    solvents:
@@ -87,10 +97,14 @@ Nonbonded Methods: ``CutoffPeriodic``, ``Ewald``, ``PME``
 Valid Options (0 * nanometer) <Quantity Length> [1]_
 
 
+
+
 .. _yaml_solvents_solvent_model:
 
-solvent_model
--------------
+.. rst-class:: html-toggle
+
+``solvent_model``
+-----------------
 .. code-block:: yaml
 
    solvents:
@@ -104,10 +118,14 @@ Nonbonded Methods: ``CuttoffNonPeriodic``, ``CuttoffPeriodic``, ``Ewald``, ``PME
 Valid Options: [tip4pew] / tip3p / tip3pfb / tip5p / spce
 
 
+
+
 .. _yaml_solvents_rigid_water:
 
-rigid_water
------------
+.. rst-class:: html-toggle
+
+``rigid_water``
+---------------
 .. code-block:: yaml
 
    solvents:
@@ -121,10 +139,14 @@ Nonbonded Methods: All
 Valid Options: [True] / False 
 
 
+
+
 .. _yaml_solvents_implicit_solvent:
 
-implicit_solvent
-----------------
+.. rst-class:: html-toggle
+
+``implicit_solvent``
+--------------------
 .. code-block:: yaml
 
    solvents:
@@ -140,10 +162,13 @@ Nonbonded Methods: ``NoCutoff``, ``CutoffNonPeriodic``
 Valid Options: HCT / OBC1 / OBC2 / GBn / GBn2
 
 
+
 .. _yaml_options_implicit_solvent_salt_conc:
 
-implicit_solvent_salt_concentration
------------------------------------
+.. rst-class:: html-toggle
+
+``implicit_solvent_salt_concentration``
+---------------------------------------
 .. code-block:: yaml
 
    solvents:
@@ -160,9 +185,12 @@ Nonbonded Methods: ``NoCutoff``, ``CutoffNonPeriodic``
 Valid Options (0.0 * moles / liter): <Quantity Moles / Volume> OR <Quantity Temperature> [1]_
 
 
+
 .. _yaml_options_solute_dielectric:
 
-solute_dielectric
+.. rst-class:: html-toggle
+
+``solute_dielectric``
 ----------------------
 .. code-block:: yaml
    
@@ -177,9 +205,12 @@ Nonbonded Methods: ``NoCutoff``, ``CutoffNonPeriodic``
 Valid Options (1.0): <Float>
 
 
+
 .. _yaml_options_solvent_dielectric:
 
-solvent_dielectric
+.. rst-class:: html-toggle
+
+``solvent_dielectric``
 ----------------------
 .. code-block:: yaml
    
@@ -194,10 +225,13 @@ Nonbonded Methods: ``NoCutoff``, ``CutoffNonPeriodic``
 Valid Options (78.5): <Float>
 
 
+
 .. _yaml_options_ewald_error_tol:
 
-ewald_error_tolerance
----------------------
+.. rst-class:: html-toggle
+
+``ewald_error_tolerance``
+-------------------------
 .. code-block:: yaml
 
    solvents:
@@ -218,10 +252,14 @@ Valid Options (0.0005): <Float>
 LEaP Solvation Options
 ======================
 
+
+
 .. _yaml_solvents_clearance:
 
-clearance
----------
+.. rst-class:: html-toggle
+
+``clearance``
+-------------
 .. code-block:: yaml
    
    solvents:
@@ -242,10 +280,14 @@ Nonbonded Methods: ``CuttoffNonPeriodic``, ``CuttoffPeriodic``, ``Ewald``, ``PME
 Valid Options: <Quantity Length> [1]_
 
 
+
+
 .. _yaml_solvents_positive_ion:
 
-positive_ion
-------------
+.. rst-class:: html-toggle
+
+``positive_ion``
+----------------
 .. code-block:: yaml
 
    solvents:
@@ -262,10 +304,14 @@ Nonbonded Methods: ``CuttoffPeriodic``, ``Ewald``, ``PME``
 Valid Options: <Ion Symbol and charge>
 
 
+
+
 .. _yaml_solvents_negative_ion:
 
-negative_ion
-------------
+.. rst-class:: html-toggle
+
+``negative_ion``
+----------------
 .. code-block:: yaml
 
    solvents:

@@ -1,0 +1,42 @@
+/* Templated from https://stackoverflow.com/questions/2454577/sphinx-restructuredtext-show-hide-code-snippets */
+.toggle .header {
+    display: block;
+    clear: both;
+}
+
+.toggle .header:after {
+    content: " ▼";
+}
+
+.toggle .header.open:after {
+    content: " ▲";
+}
+
+.toggle2 {
+    display: block;
+    clear: both;
+}
+
+.toggle2:after {
+    content: " ▼";
+}
+
+.toggle2.open:after {
+    content: " ▲";
+}
+
+/* Templated from the Cloud Sphinx Theme */
+.html-toggle.collapsed > .section-toggle-button {
+}
+
+.html-toggle.collapsed > .section-toggle-button:after {
+    content: " show ▼";
+    float: right;
+    font-size: 70%;
+}
+
+.html-toggle.expanded > .section-toggle-button:after {
+    content: " hide ▲";
+    float: right;
+    font-size: 70%;
+}

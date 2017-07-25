@@ -22,10 +22,15 @@ Besides the options listed in :ref:`General Options <yaml_options_options>` that
 General Options:
 ================
 
+
+
 .. _yaml_options_verbose:
 
-verbose
--------
+.. rst-class:: html-toggle
+
+``verbose``
+-----------
+
 .. code-block:: yaml
 
   options:
@@ -36,10 +41,15 @@ Turn on/off verbose output.
 Valid Options: [no]/yes
 
 
+
+
 .. _yaml_options_resume_setup:
 
-resume_setup
-------------
+.. rst-class:: html-toggle
+
+``resume_setup``
+----------------
+
 .. code-block:: yaml
 
    options:
@@ -51,10 +61,14 @@ the directory specified by :ref:`setup_dir <yaml_options_setup_dir>`.
 Valid Options: [no]/yes
 
 
+
+
 .. _yaml_options_resume_simulation:
 
-resume_simulation
------------------
+.. rst-class:: html-toggle
+
+``resume_simulation``
+---------------------
 .. code-block:: yaml
 
    options:
@@ -65,10 +79,16 @@ directory specified by :ref:`experiments_dir <yaml_options_experiments_dir>`.
 
 Valid Options: [no]/yes
 
+
+
+
+
 .. _yaml_options_output_dir:
 
-output_dir
-----------
+.. rst-class:: html-toggle
+
+``output_dir``
+--------------
 .. code-block:: yaml
 
    options:
@@ -78,10 +98,15 @@ The main output folder of YANK simulations. A folder will be created if none exi
 
 Valid Options (output): <Path String>
 
+
+
+
 .. _yaml_options_setup_dir:
 
-setup_dir
----------
+.. rst-class:: html-toggle
+
+``setup_dir``
+-------------
 .. code-block:: yaml
 
    options:
@@ -93,10 +118,14 @@ Path is relative to the :ref:`output_dir <yaml_options_output_dir>` folder.
 Valid Options (setup): <Path String>
 
 
+
+
 .. _yaml_options_experiments_dir:
 
-experiments_dir
----------------
+.. rst-class:: html-toggle
+
+``experiments_dir``
+-------------------
 .. code-block:: yaml
 
    options:
@@ -108,10 +137,14 @@ relative to to the :ref:`output_dir <yaml_options_output_dir>` folder.
 Valid Options (experiments): <Path String>
 
 
+
+
 .. _yaml_options_platform:
 
-platform
---------
+.. rst-class:: html-toggle
+
+``platform``
+------------
 .. code-block:: yaml
 
    options:
@@ -122,10 +155,14 @@ available platform. Some platforms (especially ``CUDA`` and ``OpenCL``) may not 
 
 Valid options: [fastest]/CUDA/OpenCL/CPU/Reference
 
+
+
 .. _yaml_options_precision:
 
-precision
----------
+.. rst-class:: html-toggle
+
+``precision``
+-------------
 .. code-block:: yaml
 
    options:
@@ -137,10 +174,14 @@ value (``auto``) is equivalent to ``mixed`` when the device support this precisi
 Valid options: [auto]/double/mixed/single
 
 
+
+
 .. _yaml_options_switch_experiment_interval:
 
-switch_experiment_interval
---------------------------
+.. rst-class:: html-toggle
+
+``switch_experiment_interval``
+------------------------------
 .. code-block:: yaml
 
    options:
@@ -171,15 +212,19 @@ other on all the available MPI processes.
 Valid options (null): null / <Integer>
 
 
+
 .. _yaml_options_sys_and_sim_prep:
+
 
 System and Simulation Preparation:
 ==================================
 
 .. _yaml_options_randomize_ligand:
 
-randomize_ligand
-----------------
+.. rst-class:: html-toggle
+
+``randomize_ligand``
+--------------------
 .. code-block:: yaml
 
    options:
@@ -195,10 +240,14 @@ with the constraint of being at a distance greater than
 Valid options: [no]/yes
 
 
+
+
 .. _yaml_options_randomize_ligand_sigma_multiplier:
 
-randomize_ligand_sigma_multiplier
----------------------------------
+.. rst-class:: html-toggle
+
+``randomize_ligand_sigma_multiplier``
+-------------------------------------
 .. code-block:: yaml
 
    options:
@@ -209,10 +258,14 @@ See :ref:`randomize_ligand <yaml_options_randomize_ligand>`.
 Valid options (2.0): <float>
 
 
+
+
 .. _yaml_options_ligand_close_cutoff:
 
-randomize_ligand_close_cutoff
------------------------------
+.. rst-class:: html-toggle
+
+``randomize_ligand_close_cutoff``
+---------------------------------
 .. code-block:: yaml
 
    options:
@@ -223,10 +276,14 @@ See :ref:`randomize_ligand <yaml_options_randomize_ligand>`.
 Valid options (1.5 * angstrom): <Quantity Length> [1]_
 
 
+
+
 .. _yaml_options_temperature:
 
-temperature
------------
+.. rst-class:: html-toggle
+
+``temperature``
+---------------
 .. code-block:: yaml
 
    options:
@@ -237,10 +294,14 @@ Temperature of the system.
 Valid options (298 * kelvin): <Quantity Temperature> [1]_
 
 
+
+
 .. _yaml_options_pressure:
 
-pressure
---------
+.. rst-class:: html-toggle
+
+``pressure``
+------------
 .. code-block:: yaml
 
    options:
@@ -251,10 +312,14 @@ Pressure of the system. If set to ``null``, the simulation samples as an NVT ens
 Valid options (1 * atmosphere): null / <Quantity Pressure> [1]_
 
 
+
+
 .. _yaml_options_hydrogen_mass:
 
-hydrogen_mass
--------------
+.. rst-class:: html-toggle
+
+``hydrogen_mass``
+-----------------
 .. code-block:: yaml
 
    options:
@@ -265,10 +330,14 @@ Hydrogen mass for HMR simulations.
 Valid options (1*amu): <Quantity Mass> [1]_
 
 
+
+
 .. _yaml_options_constraints:
 
-constraints
------------
+.. rst-class:: html-toggle
+
+``constraints``
+---------------
 .. code-block:: yaml
 
    options:
@@ -279,10 +348,14 @@ Constrain bond lengths and angles. See OpenMM ``createSystem()`` documentation f
 Valid options: [Hbonds]/AllBonds/HAngles
 
 
+
+
 .. _yaml_options_anisotropic_dispersion_correction:
 
-anisotropic_dispersion_correction
----------------------------------
+.. rst-class:: html-toggle
+
+``anisotropic_dispersion_correction``
+-------------------------------------
 .. code-block:: yaml
 
    options:
@@ -304,10 +377,14 @@ additional states are unique to YANK's setup.
 Valid options: [yes]/no
 
 
+
+
 .. _yaml_options_anisotropic_dispersion_cutoff:
 
-anisotropic_dispersion_cutoff
------------------------------
+.. rst-class:: html-toggle
+
+``anisotropic_dispersion_cutoff``
+---------------------------------
 .. code-block:: yaml
 
    options:
@@ -325,7 +402,10 @@ Valid options: [auto]/<Quantity Length> [1]_
 
 |
 
+
+
 .. _yaml_options_simulation_parameters:
+
 
 Simulation Parameters
 =====================
@@ -333,8 +413,10 @@ Simulation Parameters
 
 .. _yaml_options_switch_phase_interval:
 
-switch_phase_interval
----------------------
+.. rst-class:: html-toggle
+
+``switch_phase_interval``
+-------------------------
 .. code-block:: yaml
 
    options:
@@ -346,10 +428,14 @@ If 0, YANK will exhaust the ``number_of_iterations`` iterations of the first pha
 Valid options (0): <Integer>
 
 
+
+
 .. _yaml_options_minimize:
 
-minimize
---------
+.. rst-class:: html-toggle
+
+``minimize``
+------------
 .. code-block:: yaml
 
    options:
@@ -361,10 +447,14 @@ or if explicit solvent generation is left to YANK.
 Valid Options: [yes]/no
 
 
+
+
 .. _yaml_options_minimize_max_iterations:
 
-minimize_max_iterations
------------------------
+.. rst-class:: html-toggle
+
+``minimize_max_iterations``
+---------------------------
 .. code-block:: yaml
 
    options:
@@ -376,10 +466,14 @@ Set the maximum number of iterations the
 Valid Options (0): <Integer>
 
 
+
+
 .. _yaml_options_minimize_tolerance:
 
-minimize_tolerance
-------------------
+.. rst-class:: html-toggle
+
+``minimize_tolerance``
+----------------------
 .. code-block:: yaml
 
    options:
@@ -391,10 +485,14 @@ the energy does not change by the given tolerance in subsequent iterations.
 Valid Options (1.0 * kilojoules_per_mole / nanometers): <Quantity (Molar Energy)/(Length)> [1]_
 
 
+
+
 .. _yaml_options_number_of_equilibration_iterations:
 
-number_of_equilibration_iterations
-----------------------------------
+.. rst-class:: html-toggle
+
+``number_of_equilibration_iterations``
+--------------------------------------
 .. code-block:: yaml
 
    options:
@@ -405,10 +503,14 @@ Number of iterations used for equilibration before production run. Iterations wr
 Valid Options (1): <Integer>
 
 
+
+
 .. _yaml_options_equilibration_timestep:
 
-equilibration_timestep
-----------------------
+.. rst-class:: html-toggle
+
+``equilibration_timestep``
+--------------------------
 .. code-block:: yaml
 
    options:
@@ -419,10 +521,14 @@ Timestep of the *equilibration* timestep (not production).
 Valid Options (1.0 * femtosecond): <Quantity Time> [1]_
 
 
+
+
 .. _yaml_options_number_of_iterations:
 
-number_of_iterations
---------------------
+.. rst-class:: html-toggle
+
+``number_of_iterations``
+------------------------
 .. code-block:: yaml
 
    options:
@@ -437,8 +543,8 @@ initial configurations (if specified), but will not run any production simulatio
 Set this to ``null`` to run an unlimited number of iterations. The simulation will not stop unless
 some other criteria is stops it. We **strongly** recommend specifying either
 :ref:`online free energy analysis <yaml_options_online_analysis_parameters>` and/or
-:ref:`a phase switching interval <switch_phase_interval>` to ensure there is at least some stop criteria, and all
-phases yield some samples.
+:ref:`a phase switching interval <yaml_options_switch_phase_interval>` to ensure there is at least some stop criteria,
+and all phases yield some samples.
 
 Valid Options (1): <Integer> or ``null``
 
@@ -477,10 +583,14 @@ Valid Options (1): <Integer> or ``null``
    Valid Options: True/[False]
 
 
+
+
 .. _yaml_options_nsteps_per_iteration:
 
-nsteps_per_iteration
---------------------
+.. rst-class:: html-toggle
+
+``nsteps_per_iteration``
+------------------------
 .. code-block:: yaml
 
    options:
@@ -492,10 +602,14 @@ between iterations. Hamiltonian Replica Exchange swaps are attempted after each 
 Valid Options (500): <Integer>
 
 
+
+
 .. _yaml_options_timestep:
 
-timestep
---------
+.. rst-class:: html-toggle
+
+``timestep``
+------------
 .. code-block:: yaml
 
    options:
@@ -506,10 +620,14 @@ Timestep of Langevin Dynamics production runs.
 Valid Options (2.0 * femtosecond): <Quantity Time> [1]_
 
 
+
+
 .. _yaml_options_checkpoint_interval:
 
-checkpoint_interval
--------------------
+.. rst-class:: html-toggle
+
+``checkpoint_interval``
+-----------------------
 .. code-block:: yaml
 
    options:
@@ -528,10 +646,14 @@ as metadata, simulation options, and serialized thermodynamic states.
 Valid Options (10): <Integer ``>= 1``>
 
 
+
+
 .. _yaml_options_replica_mixing_scheme:
 
-replica_mixing_scheme
----------------------
+.. rst-class:: html-toggle
+
+``replica_mixing_scheme``
+-------------------------
 .. code-block:: yaml
 
    options:
@@ -544,10 +666,14 @@ exchanges between adjacent states.
 Valid Options: [swap-all]/swap-neighbors
 
 
+
+
 .. _yaml_options_collision_rate:
 
-collision_rate
---------------
+.. rst-class:: html-toggle
+
+``collision_rate``
+------------------
 .. code-block:: yaml
 
    options:
@@ -563,10 +689,14 @@ inverse time, or just time. For example: a collision rate of 5.0/ps -> :math:`\t
 Valid Options (5.0 / picosecond): <Quantity Inverse Time> [1]_
 
 
+
+
 .. _yaml_options_constraint_tolerance:
 
-constraint_tolerance
---------------------
+.. rst-class:: html-toggle
+
+``constraint_tolerance``
+------------------------
 .. code-block:: yaml
 
    options:
@@ -577,10 +707,14 @@ Relative tolerance on the :ref:`constraints <yaml_options_constraints>` of the s
 Valid Options (1.0e-6): <Scientific Notation Float>
 
 
+
+
 .. _yaml_options_mc_displacement_sigma:
 
-mc_displacement_sigma
----------------------
+.. rst-class:: html-toggle
+
+``mc_displacement_sigma``
+-------------------------
 .. code-block:: yaml
 
    options:
@@ -600,8 +734,10 @@ Alchemy Parameters
 
 .. _yaml_options_annihilate_electrostatics:
 
-annihilate_electrostatics
--------------------------
+.. rst-class:: html-toggle
+
+``annihilate_electrostatics``
+-----------------------------
 .. code-block:: yaml
 
    options:
@@ -613,10 +749,14 @@ electrostatics will be turned off as well as ligand-nonligand nonbonded electros
 Valid Options: [yes]/no
 
 
+
+
 .. _yaml_options_annihilate_sterics:
 
-annihilate_sterics
-------------------
+.. rst-class:: html-toggle
+
+``annihilate_sterics``
+----------------------
 .. code-block:: yaml
 
    options:
@@ -629,10 +769,14 @@ Annihilate sterics (Lennad-Jones or Halgren potential) rather than decouple them
 Valid Options: [no]/yes
 
 
+
+
 .. _yaml_options_alchemical_sterics:
 
-Steric Alchemical Options
--------------------------
+.. rst-class:: html-toggle
+
+``Steric Alchemical Options``
+-----------------------------
 .. code-block:: yaml
 
    options:
@@ -649,10 +793,14 @@ Valid Options for ``softcore_alpha`` (0.5): <Float>
 Valid Options for ``softcore_[a,b,c]`` (1,1,6): <Integer preferred, Float accepted>
 
 
+
+
 .. _yaml_options_alchemical_electrostatics:
 
-Electrostatic Alchemical Options
---------------------------------
+.. rst-class:: html-toggle
+
+``Electrostatic Alchemical Options``
+------------------------------------
 .. code-block:: yaml
 
    options:
@@ -689,8 +837,10 @@ the slower this process becomes.
 
 .. _yaml_options_online_analysis_interval:
 
-online_analysis_interval
-------------------------
+.. rst-class:: html-toggle
+
+``online_analysis_interval``
+----------------------------
 .. code-block:: yaml
 
    options:
@@ -706,10 +856,12 @@ If set to ``null`` (default), then online analysis is not run.
 Valid Options (``null``): ``null`` or <Int >= 1>
 
 
+.. rst-class:: html-toggle
+
 .. _yaml_options_online_analysis_target_error:
 
-online_analysis_target_error
-----------------------------
+``online_analysis_target_error``
+--------------------------------
 .. code-block:: yaml
 
    options:
@@ -725,10 +877,13 @@ If :ref:`yaml_options_online_analysis_interval` is ``null``, this option does no
 Valid Options (0.2): <Float >= 0>
 
 
+
 .. _yaml_options_online_analysis_minimum_iterations:
 
-online_analysis_minimum_iterations
-----------------------------------
+.. rst-class:: html-toggle
+
+``online_analysis_minimum_iterations``
+--------------------------------------
 .. code-block:: yaml
 
    options:
@@ -739,8 +894,8 @@ a speed option since most of the initial iterations will be either equilibration
 an initial number that is *at least* one or two :ref:`yaml_options_online_analysis_interval`'s for speed's sake.
 
 The first iteration at which online analysis is performed is not affected by this number and always tracked as the
-modulo of the current iteration. E.g. if you have ``online_analysis_interval: 100` and
-`online_analysis_minimum_iterations: 150`, online analysis would happen at iteration 200 first, not iteration 250.
+modulo of the current iteration. E.g. if you have ``online_analysis_interval: 100`` and
+``online_analysis_minimum_iterations: 150``, online analysis would happen at iteration 200 first, not iteration 250.
 
 If :ref:`yaml_options_online_analysis_interval` is ``null``, this option does nothing.
 

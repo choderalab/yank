@@ -5,7 +5,13 @@
 # =============================================================================
 
 """
+Experiment
+==========
+
 Tools to build Yank experiments from a YAML configuration file.
+
+This is not something that should be normally invoked by the user, and instead
+created by going through the Command Line Interface with the ``yank script`` command.
 
 """
 
@@ -42,12 +48,38 @@ HIGHEST_VERSION = '1.3'  # highest version of YAML syntax
 # =============================================================================
 
 def to_openmm_app(input_string):
-    """Converter function to be used with validate_parameters()."""
+    """
+    Converter function to be used with validate_parameters().
+
+    Parameters
+    ----------
+    input_string : str
+        Method name of openmm.app to fetch
+
+    Returns
+    -------
+    method : Method of openmm.app
+        Returns openmm.app.{input_string}
+    """
     return getattr(openmm.app, input_string)
 
 
 def convert_if_quantity(value):
+    """
+    Try to convert a passed value to quantity
 
+    Parameters
+    ----------
+    value : int, float, or simtk.unit.Quantity as string
+        This function tries to take a string which can be converted to a quantity with the
+        ``yank.utils.quantity_from_string``, or just a number
+
+    Returns
+    -------
+    output : value or simtk.unit.Quantity
+        Returns either the Quantity which was converted from string, or the original value.
+
+    """
     try:
         quantity = utils.quantity_from_string(value)
     except:
@@ -56,7 +88,21 @@ def convert_if_quantity(value):
 
 
 def update_nested_dict(original, updated):
-    """Return a copy of a (possibly) nested dict of arbitrary depth"""
+    """
+    Return a copy of a (possibly) nested dict of arbitrary depth
+
+    Parameters
+    ----------
+    original : dict
+        Original dict which we want to update, can contain nested dicts
+    updated : dict
+        Dictionary of updated values to place in original
+
+    Returns
+    -------
+    new : dict
+        Copy of original with values updated from updated
+    """
     new = original.copy()
     for key, value in updated.items():
         if isinstance(value, collections.Mapping):
@@ -126,6 +172,49 @@ class YankDumper(yaml.Dumper):
 # ==============================================================================
 
 class AlchemicalPhaseFactory(object):
+    """
+    YANK simulation phase entirely contained as one object.
+
+    Creates a full phase to simulate, expects Replica Exchange simulation for now.
+
+    Parameters
+    ----------
+    sampler : yank.repex.ReplicaExchange
+        Sampler which will carry out the simulation
+    thermodynamic_state : openmmtools.states.ThermodynamicState
+        Reference thermodynamic state without any alchemical modifications
+    sampler_states : openmmtools.states.SamplerState
+        Sampler state to initilize from, including the positions of the atoms
+    topography : yank.yank.Topography
+        Topography defining the ligand atoms and other atoms
+    protocol : dict of lists
+        Alchemical protocol to create states from.
+
+        Format should be {parameter_name : parameter_values}
+
+        where lambda_name is the name of the specific alchemical
+        parameter (e.g. lambda_sterics), and parameter_values is a list of values for that parameter where each entry
+        is one state.
+
+        Each of the parameter_values for every parameter_name should be the same length.
+
+    storage : yank.repex.Reporter or str
+        Reporter object to use, or file path to create the reporter at
+        Will be a yank.repex.Reporter internally if str is given
+    restraint : yank.restraint.ReceptorLigandRestraint or None, Optional, Default: None
+        Optional restraint to apply to the system
+    alchemical_regions : openmmtools.alchemy.AlchemicalRegion or None, Optional, Default: None
+        Alchemical regions which define which atoms to modify.
+    alchemical_factory : openmmtools.alchemy.AbsoluteAlchemicalFactory, Optional, Default: None
+        Alchemical factory with which to create the alchemical system with if you don't want to use all the previously
+        defined options.
+        This is passed on to yank.yank.AlchemicalPhase
+    metadata : dict
+        Additional metdata to pass on to yank.yank.AlchemicalPhase
+    options : dict
+        Additional options to setup the rest of the process.
+        See the DEFAULT_OPTIONS for this class in the source code or look at the *options* header for the YAML options.
+    """
 
     DEFAULT_OPTIONS = {
         'anisotropic_dispersion_correction': True,
@@ -158,6 +247,20 @@ class AlchemicalPhaseFactory(object):
         self.options.update(options)
 
     def create_alchemical_phase(self):
+        """
+        Create the alchemical phase based on all the options
+
+        This only creates it, but does nothing else to prepare for simulations. The ``initialize_alchemical_phase``
+        will actually minimize, randomize ligand, and/or equilibrate if requested.
+
+        Returns
+        -------
+        alchemical_phase : yank.yank.AlchemicalPhase
+
+        See Also
+        --------
+        initialize_alchemical_phase
+        """
         alchemical_phase = AlchemicalPhase(self.sampler)
         create_kwargs = self.__dict__.copy()
         create_kwargs.pop('options')
@@ -181,6 +284,16 @@ class AlchemicalPhaseFactory(object):
         return alchemical_phase
 
     def initialize_alchemical_phase(self):
+        """
+        Create and set all the initial options for the alchemical phase
+
+        This minimizes, randomizes_ligand, and equilibrates the alchemical_phase on top of creating it, if the various
+        options are set
+
+        Returns
+        -------
+        alchemical_phase : yank.yank.AlchemicalPhase
+        """
         alchemical_phase = self.create_alchemical_phase()
 
         # Minimize if requested.
@@ -209,7 +322,34 @@ class AlchemicalPhaseFactory(object):
 
 
 class Experiment(object):
-    """An experiment built by ExperimentBuilder."""
+    """
+    An experiment built by ExperimentBuilder.
+
+    This is a completely defined experiment with all parameters and settings ready to go.
+
+    It is highly recommended to **NOT** use this class directly, and instead rely on the ExperimentBuilder class to
+    parse all options, configure all phases, properly set up the experiments, and even run them.
+
+    These experiments are frequently created with the :func:`ExperimentBuilder.build_experiments` method.
+
+    Parameters
+    ----------
+    phases : list of yank.yank.AlchemicalPhases
+        Phases to run for the experiment
+    number_of_iterations : int
+        Total number of iterations each phase will be run for
+    switch_phase_interval : int
+        Number of iterations each phase will be run before the cycling to the next phase
+
+    Attributes
+    ----------
+    iteration
+
+    See Also
+    --------
+    ExperimentBuilder
+
+    """
     def __init__(self, phases, number_of_iterations, switch_phase_interval):
         self.phases = phases
         self.number_of_iterations = number_of_iterations
@@ -219,6 +359,7 @@ class Experiment(object):
 
     @property
     def iteration(self):
+        """int, Current total number of iterations which have been run."""
         if None in self._phases_last_iterations:
             return 0
         return self._phases_last_iterations
@@ -228,6 +369,18 @@ class Experiment(object):
         return all(self._are_phases_completed)
 
     def run(self, n_iterations=None):
+        """
+        Run the experiment
+
+        Run's until either the maximum number of iterations have been reached or the sampler
+        for that phase reports its own completion (e.g. online analysis)
+
+        Parameters
+        ----------
+        n_iterations : int or None, Optional, Default: None
+            Optional parameter to run for a finite number of iterations instead of up to the maximum number of
+            iterations.
+        """
         # Handle default argument.
         if n_iterations is None:
             n_iterations = self.number_of_iterations
@@ -292,6 +445,23 @@ class ExperimentBuilder(object):
     The class firstly perform a dry run to check if this is going to overwrite
     some files and raises an exception if it finds already existing output folders
     unless the options resume_setup or resume_simulation are True.
+
+    Parameters
+    ----------
+    script : str or dict
+        A path to the YAML script or the YAML content. If not specified, you
+        can load it later by using parse() (default is None).
+    job_id : None or int
+        If you want to split the experiments among different executions,
+        you can set this to an integer 0 <= job_id <= n_jobs-1, and this
+        ExperimentBuilder will run only 1/n_jobs of the experiments.
+    n_jobs : None or int
+        If job_id is specified, this is the total number of jobs that
+        you are running in parallel from your script.
+
+    See Also
+    --------
+    Experiment
 
     Examples
     --------
@@ -376,21 +546,11 @@ class ExperimentBuilder(object):
         'mc_displacement_sigma': 10.0 * unit.angstroms
     }
 
-    def __init__(self, script=None, job_id=None, n_jobs=None):
-        """Constructor.
 
-        Parameters
-        ----------
-        script : str or dict
-            A path to the YAML script or the YAML content. If not specified, you
-            can load it later by using parse() (default is None).
-        job_id : None or int
-            If you want to split the experiments among different executions,
-            you can set this to an integer 0 <= job_id <= n_jobs-1, and this
-            ExperimentBuilder will run only 1/n_jobs of the experiments.
-        n_jobs : None or int
-            If job_id is specified, this is the total number of jobs that
-            you are running in parallel from your script.
+    def __init__(self, script=None, job_id=None, n_jobs=None):
+        """
+        Constructor
+
 
         """
         # Check consistency job_id and n_jobs.
@@ -424,7 +584,18 @@ class ExperimentBuilder(object):
 
         Parameters
         ----------
-        script
+        script : str or dict
+            String which accepts multiple forms of YAML content that is one of the following:
+
+            File path to the YAML file
+
+            String containing all the YAML data
+
+            Dict of yaml content you wish to replace
+
+        See Also
+        --------
+        update_nested_dict
 
         """
         current_content = self._raw_yaml
@@ -527,7 +698,13 @@ class ExperimentBuilder(object):
         self._parse_experiments(yaml_content)
 
     def run_experiments(self):
-        """Set up and run all the Yank experiments."""
+        """
+        Set up and run all the Yank experiments.
+
+        See Also
+        --------
+        Experiment
+        """
         # Throw exception if there are no experiments
         if len(self._experiments) == 0:
             raise YamlParseError('No experiments specified!')
@@ -551,7 +728,13 @@ class ExperimentBuilder(object):
                                                                group_nodes=processes_per_experiment)
 
     def build_experiments(self):
-        """Set up, build and iterate over all the Yank experiments."""
+        """
+        Generator to configure, build, and yield an experiment
+
+        Yields
+        ------
+        Experiment
+        """
         # Throw exception if there are no experiments
         if len(self._experiments) == 0:
             raise YamlParseError('No experiments specified!')
@@ -565,7 +748,9 @@ class ExperimentBuilder(object):
                 yield self._build_experiment(experiment_path, combination)
 
     def setup_experiments(self):
-        """Set up all Yank experiments without running them."""
+        """
+        Set up all Yank experiments without running them
+        """
         # Throw exception if there are no experiments
         if len(self._experiments) == 0:
             raise YamlParseError('No experiments specified!')
