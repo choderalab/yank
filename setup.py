@@ -146,7 +146,7 @@ setup(
         'cython',
         'openmm',
         'pymbar',
-        'openmmtools>=0.11.2',
+        'openmmtools>=0.12.0',
         'docopt>=0.6.1',
         'netcdf4',
         'schema',
