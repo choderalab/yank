@@ -468,6 +468,11 @@ class AlchemicalPhase(object):
         is_periodic = thermodynamic_state.is_periodic
         is_complex = len(topography.receptor_atoms) > 0
 
+        # We currently don't support reaction field.
+        nonbonded_method = mmtools.forces.find_nonbonded_force(reference_system).getNonbondedMethod()
+        if nonbonded_method == openmm.NonbondedForce.CutoffPeriodic:
+            raise RuntimeError('CutoffPeriodic is not supported yet. Use PME for explicit solvent.')
+
         # Make sure sampler_states is a list of SamplerStates.
         if isinstance(sampler_states, mmtools.states.SamplerState):
             sampler_states = [sampler_states]
@@ -589,9 +594,7 @@ class AlchemicalPhase(object):
         if is_periodic and anisotropic_dispersion_cutoff is not None:
             # Create non-alchemically modified state with an expanded cutoff.
             reference_state_expanded = self._expand_state_cutoff(reference_thermodynamic_state,
-                                                                 anisotropic_dispersion_cutoff,
-                                                                 replace_reaction_field=True,
-                                                                 switch_width=alchemical_factory.switch_width)
+                                                                 anisotropic_dispersion_cutoff)
 
             # Add the restraint if any. The free energy of removing the restraint
             # will be taken into account with the standard state correction.

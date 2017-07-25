@@ -116,7 +116,7 @@ class TestAlchemicalPhase(object):
         cls.host_guest_explicit = ('Host-guest explicit', thermodynamic_state, sampler_state, topography)
 
         # Peptide solvated in explicit solvent.
-        test_system = testsystems.AlanineDipeptideExplicit(nonbondedMethod=openmm.app.CutoffPeriodic)
+        test_system = testsystems.AlanineDipeptideExplicit()
         thermodynamic_state = states.ThermodynamicState(test_system.system,
                                                         temperature=temperature)
         sampler_state = states.SamplerState(test_system.positions)
