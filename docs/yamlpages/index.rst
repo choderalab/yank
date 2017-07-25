@@ -69,7 +69,6 @@ Detailed Options List
     * :ref:`collision_rate <yaml_options_collision_rate>`
     * :ref:`constraint_tolerance <yaml_options_constraint_tolerance>`
     * :ref:`mc_displacement_sigma <yaml_options_mc_displacement_sigma>`
-    * :ref:`yaml_options_anisotropic_dispersion_correction`
     * :ref:`yaml_options_anisotropic_dispersion_cutoff`
 
   * :ref:`Alchemy Parameters <yaml_options_alchemy_parameters>`
