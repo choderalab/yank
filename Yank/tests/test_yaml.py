@@ -238,7 +238,7 @@ def test_yaml_parsing():
     """
 
     yaml_builder = ExperimentBuilder(textwrap.dedent(yaml_content))
-    assert len(yaml_builder.options) == 32
+    assert len(yaml_builder.options) == 31
 
     # Check correct types
     assert yaml_builder.options['pressure'] is None
