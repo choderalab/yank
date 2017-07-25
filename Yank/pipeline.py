@@ -766,13 +766,6 @@ class SetupDatabase:
         YAML description of the systems.
         Dictionary should be of form {system_id : system YAML description}
 
-    Methods
-    -------
-    get_molecule_dir
-    get_system_files_paths
-    is_molecule_setup
-    is_system_setup
-    get_system
     """
 
     SYSTEMS_DIR = 'systems'  #: Stock system's sub-directory name

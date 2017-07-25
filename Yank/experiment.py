@@ -11,10 +11,7 @@ Experiment
 Tools to build Yank experiments from a YAML configuration file.
 
 This is not something that should be normally invoked by the user, and instead
-created by going through the Command Line Interface with the ``yank script``.
-
-These functions are not designed to be in fully featured API, but we document
-them anyways.
+created by going through the Command Line Interface with the ``yank script`` command.
 
 """
 
@@ -217,11 +214,6 @@ class AlchemicalPhaseFactory(object):
     options : dict
         Additional options to setup the rest of the process.
         See the DEFAULT_OPTIONS for this class in the source code or look at the *options* header for the YAML options.
-
-    Methods
-    -------
-    create_alchemical_phase
-    initialize_alchemical_phase
     """
 
     DEFAULT_OPTIONS = {
@@ -336,7 +328,7 @@ class Experiment(object):
     It is highly recommended to **NOT** use this class directly, and instead rely on the ExperimentBuilder class to
     parse all options, configure all phases, properly set up the experiments, and even run them.
 
-    These experiments are frequently created with the
+    These experiments are frequently created with the :func:`ExperimentBuilder.build_experiments` method.
 
     Parameters
     ----------
@@ -351,10 +343,6 @@ class Experiment(object):
     ----------
     iteration
 
-    Methods
-    -------
-    run
-
     See Also
     --------
     ExperimentBuilder
@@ -368,7 +356,7 @@ class Experiment(object):
 
     @property
     def iteration(self):
-        """Current iteration"""
+        """int, Current total number of iterations which have been run."""
         if None in self._phases_last_iterations:
             return 0
         return min(self._phases_last_iterations)
@@ -457,13 +445,6 @@ class ExperimentBuilder(object):
     yaml_source : str or dict
         A path to the YAML script or the YAML content. If not specified, you
         can load it later by using parse() (default is None).
-
-    Methods
-    -------
-    update_yaml
-    parse
-    run_experiments
-    build_experiments
 
     See Also
     --------
@@ -732,7 +713,7 @@ class ExperimentBuilder(object):
 
     def build_experiments(self):
         """
-        Set up, build and iterate over all the Yank experiments.
+        Generator to configure, build, and yield an experiment
 
         Yields
         ------

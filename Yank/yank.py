@@ -95,7 +95,7 @@ class Topography(object):
 
     @property
     def ligand_atoms(self):
-        """The atom indices of the ligand.
+        """The atom indices of the ligand as list
 
         This can be empty if this Topography doesn't represent a receptor-ligand
         system. Use solute_atoms to obtain the atom indices of the molecule if
@@ -118,7 +118,7 @@ class Topography(object):
 
     @property
     def receptor_atoms(self):
-        """The atom indices of the receptor (read-only).
+        """The atom indices of the receptor as list (read-only).
 
         This can be empty if this Topography doesn't represent a receptor-ligand
         system. Use solute_atoms to obtain the atom indices of the molecule if
@@ -233,15 +233,6 @@ class IMultiStateSampler(mmtools.utils.SubhookedABCMeta):
     iteration
     metadata
     sampler_states
-
-    Methods
-    -------
-    create
-    minimize
-    equilibrate
-    run
-    extend
-
 
     """
 
@@ -372,16 +363,6 @@ class AlchemicalPhase(object):
     iteration
     number_of_iterations
     is_complete
-
-    Methods
-    -------
-    from_storage
-    create
-    minimize
-    randomize_ligand
-    equilibrate
-    run
-    extend
 
     """
     def __init__(self, sampler):

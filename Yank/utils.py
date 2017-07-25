@@ -1174,7 +1174,7 @@ class Mol2File(object):
 
     @property
     def resname(self):
-        """The name of the first molecule found in the mol2 file."""
+        """The string name of the first molecule found in the mol2 file."""
         residue = parmed.load_file(self._file_path)
         if isinstance(residue, parmed.modeller.residue.ResidueTemplateContainer):
             return residue[0].name
@@ -1199,7 +1199,7 @@ class Mol2File(object):
 
     @property
     def net_charge(self):
-        """Net charge of the file"""
+        """Net charge of the file as a float"""
         residue = parmed.load_file(self._file_path)
         return sum(a.charge for a in residue.atoms)
 
@@ -1382,26 +1382,12 @@ class TLeap:
     Attributes
     ----------
     script
-
-    Methods
-    -------
-    add_commands
-    load_parameters
-    load_unit
-    combine
-    add_ions
-    solvate
-    save_unit
-    transform
-    new_section
-    export_script
-    run
     """
 
     @property
     def script(self):
         """
-        Complete and return the finalized script
+        Complete and return the finalized script string
 
         Adds a ``quit`` command to the end of the script.
         """

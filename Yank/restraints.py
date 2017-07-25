@@ -152,12 +152,6 @@ class RestraintState(object):
     ----------
     lambda_restraints
 
-    Methods
-    -------
-    apply_to_system
-    check_system_consistency
-    apply_to_context
-
     Examples
     --------
     Create a system in a thermodynamic state.
@@ -206,7 +200,7 @@ class RestraintState(object):
 
     """
     def __init__(self, lambda_restraints):
-        self._lambda_restraints = lambda_restraints
+        self.lambda_restraints = lambda_restraints
 
     @property
     def lambda_restraints(self):
@@ -376,12 +370,6 @@ class ReceptorLigandRestraint(ABC):
         4. Optionally, implement `determine_missing_parameters()` to fill in
         the parameters left undefined in the constructor.
 
-    Methods
-    -------
-    restrain_state
-    get_standard_state_correction
-    determine_missing_parameters
-
     """
     @abc.abstractmethod
     def restrain_state(self, thermodynamic_state):
@@ -466,12 +454,6 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
 
         3. Optionally, you can overwrite the `_determine_bond_parameters()` member
         function to automatically determine these parameters from the atoms positions.
-
-    Methods
-    -------
-    restrain_state
-    get_standard_state_correction
-    determine_missing_parameters
 
     """
     def __init__(self, restrained_receptor_atom=None, restrained_ligand_atom=None):
@@ -1174,12 +1156,6 @@ class Boresch(ReceptorLigandRestraint):
     restrained_atoms
     standard_state_correction_method
 
-    Methods
-    -------
-    restrain_state
-    get_standard_state_correction
-    determine_missing_parameters
-
     References
     ----------
     [1] Boresch S, Tettinger F, Leitgeb M, Karplus M. J Phys Chem B. 107:9535, 2003.
@@ -1255,7 +1231,7 @@ class Boresch(ReceptorLigandRestraint):
 
     @property
     def standard_state_correction_method(self):
-        """The default method to use in `get_standard_state_correction`.
+        """str: The default method to use in `get_standard_state_correction`.
 
         This can be either 'analytical' or 'numerical'.
 

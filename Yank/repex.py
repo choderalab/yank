@@ -117,33 +117,6 @@ class Reporter(object):
     ----------
     filename
 
-    Methods
-    -------
-    storage_exists
-    is_open
-    open
-    close
-    sync
-    read_thermodynamic_states
-    write_thermodynamic_states
-    read_sampler_states
-    write_sampler_states
-    read_replica_thermodynamic_states
-    write_replica_thermodynamic_states
-    read_mcmc_moves
-    write_mcmc_moves
-    read_energies
-    write_energies
-    read_mixing_statistics
-    write_mixing_statistics
-    read_timestamp
-    write_timestamp
-    read_dict
-    write_dict
-    read_last_iteration
-    read_mbar_free_energies
-    write_mbar_free_energies
-    get_previous_checkpoint
     """
     def __init__(self, storage, open_mode=None, checkpoint_interval=10, checkpoint_storage_file=None):
         # Handle checkpointing
@@ -168,7 +141,7 @@ class Reporter(object):
     @property
     def filename(self):
         """
-        Returns the file name of the primary storage file
+        Returns the string file name of the primary storage file
 
         Classes outside the Reporter can access the file string for error messages and such.
         """
@@ -1260,17 +1233,6 @@ class ReplicaExchange(object):
     metadata
     is_completed
 
-
-
-    Methods
-    -------
-    from_storage
-    create
-    minimize
-    equilibrate
-    run
-    extend
-
     Examples
     --------
     Parallel tempering simulation of alanine dipeptide in implicit solvent (replica
@@ -1338,15 +1300,15 @@ class ReplicaExchange(object):
     >>> os.remove(storage_path)
 
 
-    :param number_of_iterations: Maximum number of iterations that will be run
+    :param number_of_iterations: Maximum number of integer iterations that will be run
 
-    :param replica_mixing_scheme: Scheme which describes how replicas are exchanged each iteration
+    :param replica_mixing_scheme: Scheme which describes how replicas are exchanged each iteration as string
 
-    :param online_analysis_interval: How frequently to carry out online analysis
+    :param online_analysis_interval: How frequently to carry out online analysis in number of iterations
 
-    :param online_analysis_target_error: Target free energy difference error at which simulation will be stopped during online analysis
+    :param online_analysis_target_error: Target free energy difference error float at which simulation will be stopped during online analysis, in dimensionless energy
 
-    :param online_analysis_minimum_iterations: Minimum number of iterations needed before online analysis is run
+    :param online_analysis_minimum_iterations: Minimum number of iterations needed before online analysis is run as int
 
     """
 
@@ -1512,7 +1474,7 @@ class ReplicaExchange(object):
 
     @property
     def n_replicas(self):
-        """The number of replicas (read-only)."""
+        """The integer number of replicas (read-only)."""
         if self._thermodynamic_states is None:
             return 0
         else:
@@ -1520,7 +1482,7 @@ class ReplicaExchange(object):
 
     @property
     def iteration(self):
-        """The current iteration of the simulation (read-only).
+        """The integer current iteration of the simulation (read-only).
 
         If the simulation has not been created yet, this is None.
 
@@ -1529,7 +1491,7 @@ class ReplicaExchange(object):
 
     @property
     def mcmc_moves(self):
-        """A copy of the MCMCMoves used to propagate the simulation.
+        """A copy of the MCMCMoves list used to propagate the simulation.
 
         This can be set only before creation.
 
@@ -1549,7 +1511,7 @@ class ReplicaExchange(object):
 
     @property
     def sampler_states(self):
-        """A copy of the sampler states at the current iteration.
+        """A copy of the sampler states list at the current iteration.
 
         This can be set only before running.
         """
@@ -1635,12 +1597,12 @@ class ReplicaExchange(object):
                                                          validate_function=_StoredProperty._oa_min_iter_check)
     @property
     def metadata(self):
-        """A copy of the metadata passed on creation (read-only)."""
+        """A copy of the metadata dictionary passed on creation (read-only)."""
         return copy.deepcopy(self._metadata)
 
     @property
     def is_completed(self):
-        """"Have we reached any of the stop target criteria?" (read-only)"""
+        """"Boolean check if we have reached any of the stop target criteria?" (read-only)"""
         return self._is_completed
 
     # -------------------------------------------------------------------------
@@ -2475,10 +2437,6 @@ class ParallelTempering(ReplicaExchange):
     for parallel tempering simulations, so should be preferred for this type
     of simulation. In particular, this makes use of the fact that the reduced
     potentials are linear in inverse temperature.
-
-    Methods
-    -------
-    create
 
     Examples
     --------

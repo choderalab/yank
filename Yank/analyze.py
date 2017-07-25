@@ -279,17 +279,6 @@ class YankPhaseAnalyzer(ABC):
     kT
     reporter
 
-    Methods
-    -------
-    analyze_phase
-    extract_energies
-    get_timeseries
-    get_decorrelation_time
-    get_equilibration_data
-    get_equilibration_data_per_sample
-    remove_unequilibrated_data
-    decorrelate_data
-
     """
     def __init__(self, reporter, name=None, reference_states=(0, -1), analysis_kwargs=None):
         """
@@ -326,7 +315,7 @@ class YankPhaseAnalyzer(ABC):
 
     @property
     def name(self):
-        """User-readable name of the phase"""
+        """User-readable string name of the phase"""
         return self._name
 
     @name.setter
@@ -351,7 +340,7 @@ class YankPhaseAnalyzer(ABC):
 
     @property
     def reference_states(self):
-        """Reference states ``i`` and ``j`` for ``MultiPhaseAnalyzer`` instances"""
+        """Tuple of reference states ``i`` and ``j`` for ``MultiPhaseAnalyzer`` instances"""
         return self._reference_states
 
     @reference_states.setter
@@ -364,7 +353,8 @@ class YankPhaseAnalyzer(ABC):
 
     @property
     def kT(self):
-        """Boltzmann constant times temperature of the phase
+        """
+        Quantity of boltzmann constant times temperature of the phase in units of energy per mol
 
         Allows conversion between dimensionless energy and unit bearing energy
         """
@@ -381,7 +371,7 @@ class YankPhaseAnalyzer(ABC):
 
     @reporter.setter
     def reporter(self, value):
-        """make sure users cannot overwrite the reporter."""
+        """Make sure users cannot overwrite the reporter."""
         raise ValueError("You cannot re-assign the reporter for this analyzer!")
 
     # Abstract methods
@@ -668,18 +658,6 @@ class RepexPhase(YankPhaseAnalyzer):
     """
     The RepexPhase is the analyzer for a simulation generated from a Replica Exchange sampler simulation, implemented
     as an instance of the ``YankPhaseAnalyzer``.
-
-    Methods
-    -------
-    generate_mixing_statistics
-    show_mixing_statistics
-    extract_energies
-    get_timeseries
-    get_free_energy
-    get_enthalpy
-    get_entropy
-    get_standard_state_correction
-    analyze_phase
 
     See Also
     --------
@@ -1145,13 +1123,13 @@ class MultiPhaseAnalyzer(object):
 
     @property
     def phases(self):
-        """List of SinglePhase objects this MultiPhaseAnalyzer is tied to"""
+        """List of implemented YankPhaseAnalyzers objects this MultiPhaseAnalyzer is tied to"""
         return self._phases
 
     @property
     def names(self):
         """
-        Unique list of names identifying this phase. If this MultiPhaseAnalyzer is combined with another,
+        Unique list of string names identifying this phase. If this MultiPhaseAnalyzer is combined with another,
         its possible that new names will be generated unique to that MultiPhaseAnalyzer, but will still reference
         the same phase.
 
