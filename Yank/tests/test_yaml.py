@@ -228,7 +228,7 @@ def test_yaml_parsing():
         platform: CPU
         precision: mixed
         switch_experiment_interval: -2.0
-        nodes_per_experiment: 2
+        processes_per_experiment: 2
         switch_phase_interval: 32
         temperature: 300*kelvin
         pressure: null
