@@ -1421,55 +1421,9 @@ class SetupDatabase:
 # FUNCTIONS FOR ALCHEMICAL PATH OPTIMIZATION
 # ==============================================================================
 
-def restrain_atoms(thermodynamic_state, sampler_state, mdtraj_topology,
-                   atoms_dsl, sigma=3.0*unit.angstroms):
-    """Apply a soft harmonic restraint to the given atoms.
-
-    Parameters
-    ----------
-    thermodynamic_state : openmmtools.states.ThermodynamicState
-        The thermodynamic state with the system. This will be modified.
-    sampler_state : openmmtools.states.SamplerState
-        The sampler state with the positions.
-    mdtraj_topology : mdtraj.Topology
-        The topology.
-    atoms_dsl : str
-        The MDTraj DSL string for selecting the atoms to restrain.
-    sigma : simtk.unit.Quantity, optional
-        Controls the strength of the restrain. The smaller, the tighter
-        (units of distance, default is 3.0*angstrom).
-
-    """
-    K = thermodynamic_state.kT / sigma  # Spring constant.
-    system = thermodynamic_state.system  # This is a copy.
-
-    # Translate the system to the origin to avoid
-    # MonteCarloBarostat rejections (see openmm#1854).
-    protein_atoms = mdtraj_topology.select('protein')
-    distance_unit = sampler_state.positions.unit
-    centroid = np.mean(sampler_state.positions[protein_atoms,:] / distance_unit, 0) * distance_unit
-    sampler_state.positions -= centroid
-
-    # Create a CustomExternalForce to restrain all atoms.
-    restraint_force = openmm.CustomExternalForce('(K/2)*((x-x0)^2 + (y-y0)^2 + (z-z0)^2)')
-    restrained_atoms = mdtraj_topology.select(atoms_dsl).tolist()
-    # Adding the spring constant as a global parameter allows us to turn it off if desired
-    restraint_force.addGlobalParameter('K', K)
-    restraint_force.addPerParticleParameter('x0')
-    restraint_force.addPerParticleParameter('y0')
-    restraint_force.addPerParticleParameter('z0')
-    for index in restrained_atoms:
-        parameters = sampler_state.positions[index,:].value_in_unit_system(unit.md_unit_system)
-        restraint_force.addParticle(index, parameters)
-
-    # Update thermodynamic state.
-    system.addForce(restraint_force)
-    thermodynamic_state.system = system
-
-
-def find_alchemical_protocol(thermodynamic_state, sampler_state, mcmc_move, state_parameters,
-                             std_energy_threshold=0.5, threshold_tolerance=0.05,
-                             n_samples_per_state=100):
+def trailblaze_alchemical_protocol(thermodynamic_state, sampler_state, mcmc_move, state_parameters,
+                                   std_energy_threshold=0.5, threshold_tolerance=0.05,
+                                   n_samples_per_state=100):
     """
     Find an alchemical path by placing alchemical states at a fixed distance.
 

@@ -1718,13 +1718,14 @@ class ExperimentBuilder(object):
             # Restrain the protein heavy atoms to avoid drastic
             # conformational changes (possibly after equilibration).
             if len(phase.topography.receptor_atoms) != 0 and constrain_receptor:
-                pipeline.restrain_atoms(thermodynamic_state, sampler_state, phase.topography.topology,
-                                        atoms_dsl='name CA', sigma=3.0*unit.angstroms)
+                mmtools.forcefactories.restrain_atoms(thermodynamic_state, sampler_state,
+                                                      phase.topography.topology, atoms_dsl='name CA',
+                                                      sigma=3.0*unit.angstroms)
 
             # Find protocol.
-            alchemical_path = pipeline.find_alchemical_protocol(thermodynamic_state, sampler_state,
-                                                                mcmc_move, state_parameters,
-                                                                **kwargs)
+            alchemical_path = pipeline.trailblaze_alchemical_protocol(thermodynamic_state, sampler_state,
+                                                                      mcmc_move, state_parameters,
+                                                                      **kwargs)
             optimal_protocols[phase_name] = alchemical_path
 
         # Generate yaml script with updated protocol.
