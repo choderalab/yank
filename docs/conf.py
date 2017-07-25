@@ -42,6 +42,8 @@ extensions = ['sphinx.ext.mathjax', 'sphinx.ext.ifconfig', 'sphinx.ext.autosumma
 
 autosummary_generate = True
 autodoc_default_flags = ['members', 'inherited-members']
+# Disable NumPy style attributes/methods expecting every method to have its own docs page
+numpydoc_class_members_toctree = False
 
 
 extensions.append('notebook_sphinxext')
@@ -68,7 +70,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'YANK'
-copyright = u'2014-2016, Copyright Stanford University, University of California Berkeley, Sloan Kettering Institute, and the authors'
+copyright = u'2014-2017, Copyright Stanford University, University of California Berkeley, Sloan Kettering Institute, and the authors'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -172,7 +174,7 @@ html_static_path = ['_static']
 
 # Additional templates that should be rendered to pages, maps page names to
 # template names.
-#html_additional_pages = {}
+#html_additional_pages = {'page.html':'custom.css'}
 
 # If false, no module index is generated.
 #html_domain_indices = True

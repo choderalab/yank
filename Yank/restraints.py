@@ -6,9 +6,13 @@
 
 """
 
+Restraints
+==========
+
 Automated selection and imposition of receptor-ligand restraints for absolute
 alchemical binding free energy calculations, along with computation of the
 standard state correction.
+
 
 """
 
@@ -65,16 +69,16 @@ def available_restraint_classes():
 
     Returns
     -------
-    restraint_classes : dict of str : class
+    restraint_classes : dict of {str : class}
         restraint_classes[name] is the class corresponding to `name`
 
     """
     # Get a list of all subclasses of ReceptorLigandRestraint
-    def get_all_subclasses(cls):
+    def get_all_subclasses(check_cls):
         """Find all subclasses of a given class recursively."""
         all_subclasses = []
 
-        for subclass in cls.__subclasses__():
+        for subclass in check_cls.__subclasses__():
             all_subclasses.append(subclass)
             all_subclasses.extend(get_all_subclasses(subclass))
 
@@ -88,7 +92,7 @@ def available_restraint_classes():
             # Skip abstract base classes
             pass
         elif classname in available_restraints:
-            raise ValueError("More than one restraint subclass has the name '%s'." % classname)
+            raise ValueError("More than one restraint subclass has the name '{}'.".format(classname))
         else:
             available_restraints[classname] = cls
 
@@ -116,7 +120,7 @@ def create_restraint(restraint_type, **kwargs):
     ----------
     restraint_type : str
         Restraint type name matching a register (imported) subclass of ReceptorLigandRestraint.
-    **kwargs
+    kwargs
         Parameters to pass to the restraint constructor.
 
     """
@@ -133,7 +137,8 @@ def create_restraint(restraint_type, **kwargs):
 # ==============================================================================
 
 class RestraintState(object):
-    """The state of a restraint.
+    """
+    The state of a restraint.
 
     A `ComposableState` controlling the strength of a restraint
     through its `lambda_restraints` property.
@@ -199,7 +204,7 @@ class RestraintState(object):
 
     @property
     def lambda_restraints(self):
-        """float: the strength of the applied restraint (between 0 and 1)."""
+        """Float: the strength of the applied restraint (between 0 and 1 inclusive)."""
         return self._lambda_restraints
 
     @lambda_restraints.setter
@@ -208,7 +213,10 @@ class RestraintState(object):
         self._lambda_restraints = float(value)
 
     def apply_to_system(self, system):
-        """Set the strength of the system's restraint to this.
+        """
+        Set the strength of the system's restraint to this.
+
+        System is updated in-place
 
         Parameters
         ----------
@@ -224,10 +232,11 @@ class RestraintState(object):
         """
         # Set lambda_restraints in all forces that have it.
         for force, parameter_id in self._get_system_forces_parameters(system):
-            force.setGlobalParameterDefaultValue(parameter_id, self.lambda_restraints)
+            force.setGlobalParameterDefaultValue(parameter_id, self._lambda_restraints)
 
     def check_system_consistency(self, system):
-        """Check if the system's restraint is in this restraint state.
+        """
+        Check if the system's restraint is in this restraint state.
 
         It raises a RestraintStateError if the restraint is not consistent
         with the state.
@@ -248,7 +257,7 @@ class RestraintState(object):
             force_lambda = force.getGlobalParameterDefaultValue(parameter_id)
             if force_lambda != self.lambda_restraints:
                 err_msg = 'Consistency check failed: system {}, state {}'
-                raise RestraintStateError(err_msg.format(force_lambda, self.lambda_restraints))
+                raise RestraintStateError(err_msg.format(force_lambda, self._lambda_restraints))
 
     def apply_to_context(self, context):
         """Put the restraint in the `Context` into this state.
@@ -265,7 +274,7 @@ class RestraintState(object):
 
         """
         try:
-            context.setParameter('lambda_restraints', self.lambda_restraints)
+            context.setParameter('lambda_restraints', self._lambda_restraints)
         except Exception:
             raise RestraintStateError('The context does not have a restraint.')
 
@@ -319,7 +328,7 @@ class RestraintState(object):
             raise RestraintStateError('The system does not have a restraint.')
 
     def __getstate__(self):
-        return dict(lambda_restraints=self.lambda_restraints)
+        return dict(lambda_restraints=self._lambda_restraints)
 
     def __setstate__(self, serialization):
         self.lambda_restraints = serialization['lambda_restraints']
@@ -333,7 +342,8 @@ ABC = abc.ABCMeta('ABC', (object,), {})  # compatible with Python 2 *and* 3
 
 
 class ReceptorLigandRestraint(ABC):
-    """A restraint preventing a ligand from drifting too far from its receptor.
+    """
+    A restraint preventing a ligand from drifting too far from its receptor.
 
     With replica exchange simulations, keeping the ligand close to the binding
     pocket can enhance mixing between the interacting and the decoupled state.
@@ -347,14 +357,18 @@ class ReceptorLigandRestraint(ABC):
     Notes
     -----
     Creating a subclass requires the following:
-    * Implement a constructor. Optionally this can leave all or a subset of
-      the restraint parameters undefined. In this case, you need to provide
-      an implementation of `determine_missing_parameters()`.
-    * Implement `restrain_state()` that add the restrain `Force` to the state's
-      `System`.
-    * Implement `get_standard_state_correction()` to return standard state correction.
-    * Optionally, implement `determine_missing_parameters()` to fill in
-      the parameters left undefined in the constructor.
+
+        1. Implement a constructor. Optionally this can leave all or a subset of
+        the restraint parameters undefined. In this case, you need to provide
+        an implementation of `determine_missing_parameters()`.
+
+        2. Implement `restrain_state()` that add the restrain `Force` to the state's
+        `System`.
+
+        3. Implement `get_standard_state_correction()` to return standard state correction.
+
+        4. Optionally, implement `determine_missing_parameters()` to fill in
+        the parameters left undefined in the constructor.
 
     """
     @abc.abstractmethod
@@ -382,11 +396,21 @@ class ReceptorLigandRestraint(ABC):
         pass
 
     def determine_missing_parameters(self, thermodynamic_state, sampler_state, topography):
-        """Automatically choose undefined parameters.
+        """
+        Automatically choose undefined parameters.
 
         Optionally, a ReceptorLigandRestraint can support the automatic
         determination of all or a subset of the parameters that can be
-        left undefined in the constructor.
+        left undefined in the constructor, making implementation of this method optional.
+
+        Parameters
+        ----------
+        thermodynamic_state : openmmtools.states.ThermodynamicState
+            The thermodynmaic state to inspect
+        sampler_state : openmmtools.states.SamplerState
+            The sampler state holding the positions of all atoms.
+        topography : yank.Topography
+            The topography with labeled receptor and ligand atoms.
 
         """
         raise NotImplementedError('{} does not support automatic determination of the '
@@ -398,7 +422,8 @@ class ReceptorLigandRestraint(ABC):
 # ==============================================================================
 
 class RadiallySymmetricRestraint(ReceptorLigandRestraint):
-    """Base class for radially-symmetric restraints between ligand and protein.
+    """
+    Base class for radially-symmetric restraints between ligand and protein.
 
     This class is intended to be inherited by Restraints using a `CustomBondForce`.
     The restraint strength is controlled by a global context parameter called
@@ -421,11 +446,14 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
     Notes
     -----
     To create a subclass, follow these steps:
-    * Implement the property '_energy_function' with the energy function of choice.
-    * Implement the property '_bond_parameters' to return the `_energy_function`
-      parameters as a dict parameter_name: parameter_value.
-    * Optionally, you can overwrite the `_determine_bond_parameters()` member
-      function to automatically determine these parameters from the atoms positions.
+
+        1. Implement the property '_energy_function' with the energy function of choice.
+
+        2. Implement the property '_bond_parameters' to return the `_energy_function`
+        parameters as a dict parameter_name: parameter_value.
+
+        3. Optionally, you can overwrite the `_determine_bond_parameters()` member
+        function to automatically determine these parameters from the atoms positions.
 
     """
     def __init__(self, restrained_receptor_atom=None, restrained_ligand_atom=None):
@@ -769,7 +797,7 @@ class Harmonic(RadiallySymmetricRestraint):
 
     The energy expression of the restraint is given by
 
-        E = lambda_restraints * (K/2)*r^2
+       ``E = lambda_restraints * (K/2)*r^2``
 
     where `K` is the spring constant, `r` is the distance between the
     restrained atoms, and `lambda_restraints` is a scale factor that
@@ -890,7 +918,7 @@ class FlatBottom(RadiallySymmetricRestraint):
 
     More precisely, the energy expression of the restraint is given by
 
-        E = lambda_restraints * step(r-r0) * (K/2)*(r-r0)^2
+        ``E = lambda_restraints * step(r-r0) * (K/2)*(r-r0)^2``
 
     where `K` is the spring constant, `r` is the distance between the
     restrained atoms, `r0` is another parameter defining the distance
@@ -1054,65 +1082,79 @@ class Boresch(ReceptorLigandRestraint):
 
     More precisely, the energy expression of the restraint is given by
 
-        E = lambda_restraints * {
-                K_r/2 * [|r3 - l1| - r_aA0]^2 +
-                + K_thetaA/2 * [angle(r2,r3,l1) - theta_A0]^2 +
-                + K_thetaB/2 * [angle(r3,l1,l2) - theta_B0]^2 +
-                + K_phiA/2 * [dihedral(r1,r2,r3,l1) - phi_A0]^2 +
-                + K_phiB/2 * [dihedral(r2,r3,l1,l2) - phi_B0]^2 +
-                + K_phiC/2 * [dihedral(r3,l1,l2,l3) - phi_C0]^2
-            }
+        .. code-block:: python
+
+            E = lambda_restraints * {
+                    K_r/2 * [|r3 - l1| - r_aA0]^2 +
+                    + K_thetaA/2 * [angle(r2,r3,l1) - theta_A0]^2 +
+                    + K_thetaB/2 * [angle(r3,l1,l2) - theta_B0]^2 +
+                    + K_phiA/2 * [dihedral(r1,r2,r3,l1) - phi_A0]^2 +
+                    + K_phiB/2 * [dihedral(r2,r3,l1,l2) - phi_B0]^2 +
+                    + K_phiC/2 * [dihedral(r3,l1,l2,l3) - phi_C0]^2
+                }
+
 
     , where the parameters are:
 
-    * r1, r2, r3: the coordinates of the 3 receptor atoms.
-    * l1, l2, l3: the coordinates of the 3 ligand atoms.
-    * K_r: the spring constant for the restrained distance |r3 - l1|.
-    * r_aA0: the equilibrium distance of |r3 - l1|.
-    * K_thetaA, K_thetaB: the spring constants for angle(r2,r3,l1) and angle(r3,l1,l2).
-    * theta_A0, theta_B0: the equilibrium angles of angle(r2,r3,l1) and angle(r3,l1,l2).
-    * K_phiA, K_phiB, K_phiC: the spring constants for dihedral(r1,r2,r3,l1),
-      dihedral(r2,r3,l1,l2), dihedral(r3,l1,l2,l3).
-    * phi_A0, phi_B0, phi_C0: the equilibrium torsion of dihedral(r1,r2,r3,l1),
-      dihedral(r2,r3,l1,l2), dihedral(r3,l1,l2,l3).
-    * lambda_restraints: a scale factor that can be used to control the strength
-      of the restraint.
+        r1, r2, r3: the coordinates of the 3 receptor atoms.
 
-    You can control `lambda_restraints` through the class `RestraintState`.
+        l1, l2, l3: the coordinates of the 3 ligand atoms.
+
+        K_r: the spring constant for the restrained distance ``|r3 - l1|``.
+
+        r_aA0: the equilibrium distance of ``|r3 - l1|``.
+
+        K_thetaA, K_thetaB: the spring constants for ``angle(r2,r3,l1)`` and ``angle(r3,l1,l2)``.
+
+        theta_A0, theta_B0: the equilibrium angles of ``angle(r2,r3,l1)`` and ``angle(r3,l1,l2)``.
+
+        K_phiA, K_phiB, K_phiC: the spring constants for ``dihedral(r1,r2,r3,l1)``,
+        ``dihedral(r2,r3,l1,l2)``, ``dihedral(r3,l1,l2,l3)``.
+
+        phi_A0, phi_B0, phi_C0: the equilibrium torsion of ``dihedral(r1,r2,r3,l1)``,
+        ``dihedral(r2,r3,l1,l2)``, ``dihedral(r3,l1,l2,l3)``.
+
+        lambda_restraints: a scale factor that can be used to control the strength
+        of the restraint.
+
+    You can control ``lambda_restraints`` through the class ``RestraintState``.
 
     The class supports automatic determination of the parameters left undefined
-    in the constructor through `determine_missing_parameters()`.
+    in the constructor through ``determine_missing_parameters()``.
+
+    *Warning*: Symmetry corrections for symmetric ligands are not automatically applied.
+    See Ref [1] and [2] for more information on correcting for ligand symmetry.
 
     Parameters
     ----------
     restrained_atoms : iterable of int, optional
         The indices of the atoms to restrain, in order r1, r2, r3, l1, l2, l3.
     K_r : simtk.unit.Quantity, optional
-        The spring constant for the restrained distance |r3 - l1| (units
+        The spring constant for the restrained distance ``|r3 - l1|`` (units
         compatible with kilocalories_per_mole/angstrom**2).
     r_aA0 : simtk.unit.Quantity, optional
         The equilibrium distance between r3 and l1 (units of length).
     K_thetaA, K_thetaB : simtk.unit.Quantity, optional
-        The spring constants for angle(r2, r3, l1) and angle(r3, l1, l2)
+        The spring constants for ``angle(r2, r3, l1)`` and ``angle(r3, l1, l2)``
         (units compatible with kilocalories_per_mole/radians**2).
     theta_A0, theta_B0 : simtk.unit.Quantity, optional
-        The equilibrium angles of angle(r2, r3, l1) and angle(r3, l1, l2)
+        The equilibrium angles of ``angle(r2, r3, l1)`` and ``angle(r3, l1, l2)``
         (units compatible with radians).
     K_phiA, K_phiB, K_phiC : simtk.unit.Quantity, optional
-        The spring constants for dihedral(r1, r2, r3, l1),
-        dihedral(r2, r3, l1, l2) and dihedral(r3,l1,l2,l3) (units compatible
+        The spring constants for ``dihedral(r1, r2, r3, l1)``,
+        ``dihedral(r2, r3, l1, l2)`` and ``dihedral(r3,l1,l2,l3)`` (units compatible
         with kilocalories_per_mole/radians**2).
     phi_A0, phi_B0, phi_C0 : simtk.unit.Quantity, optional
-        The equilibrium torsion of dihedral(r1,r2,r3,l1), dihedral(r2,r3,l1,l2)
-        and dihedral(r3,l1,l2,l3) (units compatible with radians).
+        The equilibrium torsion of ``dihedral(r1,r2,r3,l1)``, ``dihedral(r2,r3,l1,l2)``
+        and ``dihedral(r3,l1,l2,l3)`` (units compatible with radians).
     standard_state_correction_method : 'analytical' or 'numeric', optional
         The method to use to estimate the standard state correction (default
         is 'analytical').
 
-    WARNING
-    -------
-    Symmetry corrections for symmetric ligands are not automatically applied.
-    See Ref [1] and [2] for more information on correcting for ligand symmetry.
+    Attributes
+    ----------
+    restrained_atoms
+    standard_state_correction_method
 
     References
     ----------
@@ -1189,7 +1231,7 @@ class Boresch(ReceptorLigandRestraint):
 
     @property
     def standard_state_correction_method(self):
-        """The default method to use in `get_standard_state_correction`.
+        """str: The default method to use in `get_standard_state_correction`.
 
         This can be either 'analytical' or 'numerical'.
 

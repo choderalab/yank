@@ -95,7 +95,7 @@ class Topography(object):
 
     @property
     def ligand_atoms(self):
-        """The atom indices of the ligand.
+        """The atom indices of the ligand as list
 
         This can be empty if this Topography doesn't represent a receptor-ligand
         system. Use solute_atoms to obtain the atom indices of the molecule if
@@ -118,7 +118,7 @@ class Topography(object):
 
     @property
     def receptor_atoms(self):
-        """The atom indices of the receptor (read-only).
+        """The atom indices of the receptor as list (read-only).
 
         This can be empty if this Topography doesn't represent a receptor-ligand
         system. Use solute_atoms to obtain the atom indices of the molecule if
@@ -225,7 +225,14 @@ class IMultiStateSampler(mmtools.utils.SubhookedABCMeta):
 
     This is the interface documents the properties and methods that
     need to be exposed by the sampler object to be compatible with
-    the class `AlchemicalPhase`.
+    the class ``AlchemicalPhase``.
+
+    Attributes
+    ----------
+    number_of_iterations
+    iteration
+    metadata
+    sampler_states
 
     """
 
@@ -263,7 +270,9 @@ class IMultiStateSampler(mmtools.utils.SubhookedABCMeta):
             they will be assigned to thermodynamic states in a round-robin fashion.
         storage : str or Reporter
             If str: The path to the storage file. Reads defaults from the Reporter class
+
             If Reporter: Reads the reporter settings for files and options
+
             In the future this will be able to take a Storage class as well.
         unsampled_thermodynamic_states : list of openmmtools.states.ThermodynamicState
             These are ThermodynamicStates that are not propagated, but their
@@ -349,6 +358,12 @@ class AlchemicalPhase(object):
     sampler : MultiStateSampler
         The sampler instance implementing the IMultiStateSampler interface.
 
+    Attributes
+    ----------
+    iteration
+    number_of_iterations
+    is_complete
+
     """
     def __init__(self, sampler):
         self._sampler = sampler
@@ -413,8 +428,8 @@ class AlchemicalPhase(object):
     @property
     def is_complete(self):
         """
-        bool: is the sampler complete by some other mechanism.
-        If no method is present in sampler, check if sampler's current iteration is number of iterations
+        Boolean check if if the sampler has been completed by its own determination or if we have exceeded number of
+        iterations
         """
         try:
             return self._sampler.is_complete
@@ -426,12 +441,14 @@ class AlchemicalPhase(object):
                alchemical_regions=None, alchemical_factory=None, metadata=None):
         """Create a new AlchemicalPhase calculation for a specified protocol.
 
-        If `anisotropic_dispersion_cutoff` is different than `None`. The
+        If ``anisotropic_dispersion_cutoff`` is different than ``None``. The
         end states of the phase will be reweighted. The fully interacting
         state accounts for:
+
             1. The truncation of nonbonded interactions.
+
             2. The reciprocal space which is not modeled in alchemical
-               states if an Ewald method is used for long-range interactions.
+            states if an Ewald method is used for long-range interactions.
 
         Parameters
         ----------
@@ -451,7 +468,8 @@ class AlchemicalPhase(object):
             number of elements.
         storage : str or initialized Reporter class
             If str: Path to the storage file. The default checkpointing options (see the Reporter class of Repex)
-                will be used in this case
+            will be used in this case
+
             If Reporter: Uses files and checkpointing options of the reporter class passed in
         restraint : ReceptorLigandRestraint, optional
             Restraint to add between protein and ligand. This must be specified
@@ -459,6 +477,7 @@ class AlchemicalPhase(object):
         anisotropic_dispersion_cutoff : simtk.openmm.Quantity, optional
             If specified, this is the cutoff at which to reweight long range
             interactions of the end states to correct for anisotropic dispersions.
+
             If `None`, the correction won't be applied (units of length, default
             is None).
         alchemical_regions : openmmtools.alchemy.AlchemicalRegion, optional

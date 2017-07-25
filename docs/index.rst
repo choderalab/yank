@@ -81,7 +81,7 @@ API Reference
 .. toctree::
    :maxdepth: 1
 
-   yank
+   api/index
 
 Developing
 ----------

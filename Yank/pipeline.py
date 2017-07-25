@@ -1,17 +1,20 @@
 #!/usr/bin/env python
 
-#=============================================================================================
+# =============================================================================================
 # MODULE DOCSTRING
-#=============================================================================================
+# =============================================================================================
 
 """
+Pipeline
+========
+
 Utility functions to help setting up Yank configurations.
 
 """
 
-#=============================================================================================
+# =============================================================================================
 # GLOBAL IMPORTS
-#=============================================================================================
+# =============================================================================================
 
 import os
 import re
@@ -134,37 +137,38 @@ def compute_min_max_dist(mol_positions, *args):
 
 
 def compute_radius_of_gyration(positions):
-        """
-        Compute the radius of gyration of the specified coordinate set.
+    """
+    Compute the radius of gyration of the specified coordinate set.
 
-        Parameters
-        ----------
-        positions : simtk.unit.Quantity with units compatible with angstrom
-           The coordinate set (natoms x 3) for which the radius of gyration is to be computed.
+    Parameters
+    ----------
+    positions : simtk.unit.Quantity with units compatible with angstrom
+       The coordinate set (natoms x 3) for which the radius of gyration is to be computed.
 
-        Returns
-        -------
-        radius_of_gyration : simtk.unit.Quantity with units compatible with angstrom
-           The radius of gyration
+    Returns
+    -------
+    radius_of_gyration : simtk.unit.Quantity with units compatible with angstrom
+       The radius of gyration
 
-        """
-        unit = positions.unit
+    """
+    unit = positions.unit
 
-        # Get dimensionless receptor positions.
-        x = positions / unit
+    # Get dimensionless receptor positions.
+    x = positions / unit
 
-        # Get dimensionless restrained atom coordinate.
-        xref = x.mean(0)
-        xref = np.reshape(xref, (1,3)) # (1,3) array
+    # Get dimensionless restrained atom coordinate.
+    xref = x.mean(0)
+    xref = np.reshape(xref, (1,3)) # (1,3) array
 
-        # Compute distances from restrained atom.
-        natoms = x.shape[0]
-        distances = np.sqrt(((x - np.tile(xref, (natoms, 1)))**2).sum(1)) #  distances[i] is the distance from the centroid to particle i
+    # Compute distances from restrained atom.
+    natoms = x.shape[0]
+    # Distances[i] is the distance from the centroid to particle i
+    distances = np.sqrt(((x - np.tile(xref, (natoms, 1)))**2).sum(1))
 
-        # Compute std dev of distances from restrained atom.
-        radius_of_gyration = distances.std() * unit
+    # Compute std dev of distances from restrained atom.
+    radius_of_gyration = distances.std() * unit
 
-        return radius_of_gyration
+    return radius_of_gyration
 
 
 def compute_net_charge(system, atom_indices):
@@ -198,7 +202,7 @@ def compute_net_charge(system, atom_indices):
 
 
 def find_alchemical_counterions(system, topography, region_name):
-    """Return the atom indices of the ligand or solute counterions.
+    """Return the atom indices of the ligand or solute counter ions.
 
     In periodic systems, the solvation box needs to be neutral, and
     if the decoupled molecule is charged, it will cause trouble. This
@@ -216,12 +220,12 @@ def find_alchemical_counterions(system, topography, region_name):
         energy).
     region_name : str
         The region name in the topography (e.g. "ligand_atoms") for
-        which to find counterions.
+        which to find counter ions.
 
     Returns
     -------
     counterions_indices : list of int
-        The list of atom indices in the system of the counterions
+        The list of atom indices in the system of the counter ions
         neutralizing the region.
 
     Raises
@@ -390,8 +394,6 @@ def read_system_files(positions_file_path, parameters_file_path, system_options,
     gromacs_include_dir : str, optional
         Path to directory in which to look for other files included
         from the gromacs top file.
-    verbose : bool
-        Whether or not to log information (default is False).
 
     Returns
     -------
@@ -689,7 +691,18 @@ def pull_close(fixed_mol_pos, translated_mol_pos, min_bound, max_bound):
 
 
 def strip_protons(input_file_path, output_file_path):
-    """Remove all hydrogens from PDB file and save the result."""
+    """
+    Remove all hydrogens from PDB file and save the result.
+
+    Input and output file cannot be the same file
+
+    Parameters
+    ----------
+    input_file_path : str
+        Full file path to the file to read, including extensions
+    output_file_path : str
+        Full file path to the file to save, including extensions
+    """
     output_file = open(output_file_path, 'w')
     with open(input_file_path, 'r') as input_file:
         for line in input_file:
@@ -739,33 +752,28 @@ class SetupDatabase:
     care of parametrizing molecules and creating the AMBER prmtop and inpcrd files
     describing systems.
 
-    Attributes
+    Parameters
     ----------
     setup_dir : str
         Path to the main setup directory. Changing this means changing the database.
-    molecules : dict
-        Dictionary of molecule_id -> molecule YAML description.
-    solvents : dict
-        Dictionary of solvent_id -> molecule YAML description.
+    molecules : dict, Optional. Default: None
+        YAML description of the molecules.
+        Dictionary should be of form {molecule_id : molecule YAML description}
+    solvents : dict, Optional. Default: None
+        YAML description of the solvents.
+        Dictionary should be of form {solvent_id : solvent YAML description}
+    systems : dict, Optional. Default: None
+        YAML description of the systems.
+        Dictionary should be of form {system_id : system YAML description}
 
     """
 
-    SYSTEMS_DIR = 'systems'
-    MOLECULES_DIR = 'molecules'
-    CLASH_THRESHOLD = 1.5  # distance in Angstroms to consider two atoms clashing
+    SYSTEMS_DIR = 'systems'  #: Stock system's sub-directory name
+    MOLECULES_DIR = 'molecules'  #: Stock Molecules sub-directory name
+    CLASH_THRESHOLD = 1.5  #: distance in Angstroms to consider two atoms clashing
 
     def __init__(self, setup_dir, molecules=None, solvents=None, systems=None):
         """Initialize the database.
-
-        Parameters
-        ----------
-        setup_dir : str
-            Path to the main setup directory.
-        molecules : dict
-            YAML description of the molecules (default is None).
-        solvents : dict
-            YAML description of the solvents (default is None).
-
         """
         self.setup_dir = setup_dir
         self.molecules = molecules
@@ -1373,13 +1381,13 @@ class SetupDatabase:
                                'solvent {}').format(solvent_id)
                     logger.error(err_msg)
                     raise RuntimeError(err_msg)
-                tleap.add_ions(unit=unit_to_solvate, ion=ion, num_ions=abs(alchemical_charge))
+                tleap.add_ions(leap_unit=unit_to_solvate, ion=ion, num_ions=abs(alchemical_charge))
 
             # Neutralizing solvation box
             if 'positive_ion' in solvent:
-                tleap.add_ions(unit=unit_to_solvate, ion=solvent['positive_ion'])
+                tleap.add_ions(leap_unit=unit_to_solvate, ion=solvent['positive_ion'])
             if 'negative_ion' in solvent:
-                tleap.add_ions(unit=unit_to_solvate, ion=solvent['negative_ion'])
+                tleap.add_ions(leap_unit=unit_to_solvate, ion=solvent['negative_ion'])
 
             # Solvate unit. Solvent models different than tip3p need parameter modifications.
             solvent_model = solvent['solvent_model']
@@ -1387,7 +1395,7 @@ class SetupDatabase:
                 tleap.load_parameters('frcmod.' + solvent_model)
             leap_solvent_model = _OPENMM_LEAP_SOLVENT_MODELS_MAP[solvent_model]
             clearance = float(solvent['clearance'].value_in_unit(unit.angstroms))
-            tleap.solvate(unit=unit_to_solvate, solvent_model=leap_solvent_model, clearance=clearance)
+            tleap.solvate(leap_unit=unit_to_solvate, solvent_model=leap_solvent_model, clearance=clearance)
 
         # Check charge
         tleap.new_section('Check charge')

@@ -4,7 +4,11 @@
 # MODULE DOCSTRING
 # ==============================================================================
 
-"""Utilities to run on MPI.
+"""
+MPI
+===
+
+Utilities to run on MPI.
 
 Provide functions and decorators that simplify running the same code on
 multiple nodes. One benefit is that serial and parallel code is exactly
@@ -158,9 +162,9 @@ def run_single_node(rank, task, *args, **kwargs):
 
     Other Parameters
     ----------------
-    *args
+    args
         The ordered arguments to pass to task.
-    **kwargs
+    kwargs
         The keyword arguments to pass to task.
 
     Returns
@@ -258,7 +262,7 @@ def distribute(task, distributed_args, *other_args, **kwargs):
     ----------
     task : callable
         The task to be distributed among nodes. The task will be called as
-        task(distributed_args[job_id], *other_args, **kwargs), so the parameter
+        ``task(distributed_args[job_id], *other_args, **kwargs)``, so the parameter
         to be distributed must the the first one.
     distributed_args : iterable
         The sequence of the parameters to distribute among nodes.
@@ -274,10 +278,10 @@ def distribute(task, distributed_args, *other_args, **kwargs):
 
     Other Parameters
     ----------------
-    *other_args
+    other_args
         Other parameters to pass to task beside the assigned distributed
         parameters.
-    **kwargs
+    kwargs
         Keyword arguments to pass to task beside the assigned distributed
         parameters.
 

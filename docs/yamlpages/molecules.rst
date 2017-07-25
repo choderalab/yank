@@ -25,8 +25,10 @@ Specifying Molecule Names
 
 .. _yaml_molecules_filepath:
 
-filepath
---------
+.. rst-class:: html-toggle
+
+``filepath``
+------------
 .. code-block:: yaml
 
     molecules:
@@ -45,10 +47,14 @@ Valid Filetypes: PDB, mol2, sdf, cvs
 If multiple molecules are to be used (for the :doc:`!Combinatorial <combinatorial>` ability), 
 then each row is its own molecule where the second column is the SMILES string.
 
+
+
 .. _yaml_molecules_smiles:
 
-smiles
-------
+.. rst-class:: html-toggle
+
+``smiles``
+----------
 .. code-block:: yaml
 
    molecules:
@@ -61,10 +67,13 @@ Requires that the OpenEye Toolkits are installed.
 **MANDATORY** but exclusive with :ref:`filepath <yaml_molecules_filepath>` and :ref:`name <yaml_molecules_name>`
 
 
+
 .. _yaml_molecules_name:
 
-name
-----
+.. rst-class:: html-toggle
+
+``name``
+--------
 .. code-block:: yaml
 
    molecules:
@@ -76,10 +85,14 @@ YANK can process raw molecule name if the OpenEye Toolkits are installed
 **MANDATORY** but exclusive with :ref:`filepath <yaml_molecules_filepath>` and :ref:`smiles <yaml_molecules_smiles>`
 
 
+
+
 .. _yaml_molecules_strip_protons:
 
-strip_protons
--------------
+.. rst-class:: html-toggle
+
+``strip_protons``
+-----------------
 .. code-block:: yaml
 
    molecules:
@@ -95,10 +108,14 @@ Primarily for proteins, not small molecules.
 Valid Options: [no]/yes
 
 
+
+
 .. _yaml_molecules_select:
 
-select
-------
+.. rst-class:: html-toggle
+
+``select``
+----------
 .. code-block:: yaml
 
    molecules:
@@ -129,10 +146,14 @@ Valid Options: [all]/<Integer>/<Combinatorial List of ints>
 Assigning Missing Parameters
 ============================
 
+
+
 .. _yaml_molecules_antechamber:
 
-antechamber
------------
+.. rst-class:: html-toggle
+
+``antechamber``
+---------------
 .. code-block:: yaml
 
    molecules:
@@ -159,10 +180,13 @@ included (such as standard protein residues in many force fields), then there is
 force fields you give to the ``leap`` commands are missing parameters though, you should call this.
 
 
+
 .. _yaml_molecules_openeye:
 
-openeye
--------
+.. rst-class:: html-toggle
+
+``openeye``
+-----------
 .. code-block:: yaml
 
    molecules:
@@ -193,10 +217,14 @@ force fields you give to the ``leap`` commands are missing partial charges thoug
 Assigning Extra Information
 ===========================
 
+
+
 .. _yaml_molecules_leap:
 
-leap
-----
+.. rst-class:: html-toggle
+
+``leap``
+--------
 .. code-block:: yaml
 
    molecules:
@@ -221,10 +249,13 @@ Filepaths are relative to either the AmberTools default paths or to the folder t
 **OPTIONAL**
 
 
+
 .. _yaml_molecules_epik:
 
-epik
-----
+.. rst-class:: html-toggle
+
+``epik``
+--------
 .. code-block:: yaml
 
    molecules:

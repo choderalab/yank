@@ -279,14 +279,14 @@ def test_TLeap_script():
     tleap.load_unit(name='ligand', file_path='path/to/ligand.gaff.mol2')
     tleap.transform('ligand', np.array([[1, 0, 0, 6], [0, -1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]))
     tleap.combine('complex', 'receptor', 'ligand')
-    tleap.solvate(unit='complex', solvent_model='TIP3PBOX', clearance=10.0)
+    tleap.solvate(leap_unit='complex', solvent_model='TIP3PBOX', clearance=10.0)
     tleap.add_commands('check complex', 'charge complex')
     tleap.new_section('New section')
-    tleap.save_unit(unit='complex', output_path='complex.prmtop')
-    tleap.save_unit(unit='complex', output_path='complex.pdb')
-    tleap.solvate(unit='ligand', solvent_model='TIP3PBOX', clearance=10.0)
-    tleap.save_unit(unit='ligand', output_path='solvent.inpcrd')
-    tleap.save_unit(unit='ligand', output_path='solvent.pdb')
+    tleap.save_unit(leap_unit='complex', output_path='complex.prmtop')
+    tleap.save_unit(leap_unit='complex', output_path='complex.pdb')
+    tleap.solvate(leap_unit='ligand', solvent_model='TIP3PBOX', clearance=10.0)
+    tleap.save_unit(leap_unit='ligand', output_path='solvent.inpcrd')
+    tleap.save_unit(leap_unit='ligand', output_path='solvent.pdb')
 
     assert tleap.script == expected_script
 
@@ -304,7 +304,7 @@ def test_TLeap_export_run():
 
     with omt.utils.temporary_directory() as tmp_dir:
         output_path = os.path.join(tmp_dir, 'benzene')
-        tleap.save_unit(unit='benzene', output_path=output_path + '.prmtop')
+        tleap.save_unit(leap_unit='benzene', output_path=output_path + '.prmtop')
 
         export_path = os.path.join(tmp_dir, 'leap.in')
         tleap.export_script(export_path)
