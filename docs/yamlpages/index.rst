@@ -41,6 +41,7 @@ Detailed Options List
     * :ref:`platform <yaml_options_platform>`
     * :ref:`precision <yaml_options_precision>`
     * :ref:`switch_experiment_interval <yaml_options_switch_experiment_interval>`
+    * :ref:`processes_per_experiment <yaml_options_processes_per_experiment>`
 
   * :ref:`System and Simulation Prep <yaml_options_sys_and_sim_prep>`
 

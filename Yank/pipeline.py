@@ -1425,6 +1425,136 @@ class SetupDatabase:
             logger.warning('TLeap: ' + warning)
 
 
+# ==============================================================================
+# FUNCTIONS FOR ALCHEMICAL PATH OPTIMIZATION
+# ==============================================================================
+
+def trailblaze_alchemical_protocol(thermodynamic_state, sampler_state, mcmc_move, state_parameters,
+                                   std_energy_threshold=0.5, threshold_tolerance=0.05,
+                                   n_samples_per_state=100):
+    """
+    Find an alchemical path by placing alchemical states at a fixed distance.
+
+    The distance between two states is estimated by collecting ``n_samples_per_state``
+    configurations through the MCMCMove in one of the two alchemical states,
+    and computing the standard deviation of the difference of potential energies
+    between the two states at those configurations.
+
+    Two states are chosen for the protocol if their standard deviation is
+    within ``std_energy_threshold +- threshold_tolerance``.
+
+    Parameters
+    ----------
+    thermodynamic_state : openmmtools.states.CompoundThermodynamicState
+        The state of the alchemically modified system.
+    sampler_state : openmmtools.states.SamplerState
+        The sampler states including initila positions and box vectors.
+    mcmc_move : openmmtools.mcmc.MCMCMove
+        The MCMCMove to use for propagation.
+    state_parameters : list of tuples (str, [float, float])
+        Each element of this list is a tuple containing first the name
+        of the parameter to be modified (e.g. ``lambda_electrostatics``,
+        ``lambda_sterics``) and a list specifying the initial and final
+        values for the path.
+    std_energy_threshold : float
+        The threshold that determines how to separate the states between
+        each others.
+    threshold_tolerance : float
+        The tolerance on the found standard deviation.
+    n_samples_per_state : int
+        How many samples to collect to estimate the overlap between two
+        states.
+
+    Returns
+    -------
+    optimal_protocol : dict {str, list of floats}
+        The estimated protocol. Each dictionary key is one of the
+        parameters in ``state_parameters``, and its values is the
+        list of values that it takes in each state of the path.
+
+    """
+    # Make sure that the state parameters to optimize have a clear order.
+    assert(isinstance(state_parameters, list) or isinstance(state_parameters, tuple))
+
+    # Make sure that thermodynamic_state is in correct state
+    # and initialize protocol with starting value.
+    optimal_protocol = {}
+    for parameter, values in state_parameters:
+        setattr(thermodynamic_state, parameter, values[0])
+        optimal_protocol[parameter] = [values[0]]
+
+    # We change only one parameter at a time.
+    for state_parameter, values in state_parameters:
+        logger.debug('Determining alchemical path for parameter {}'.format(state_parameter))
+
+        # Is this a search from 0 to 1 or from 1 to 0?
+        search_direction = np.sign(values[1] - values[0])
+        # If the parameter doesn't change, continue to the next one.
+        if search_direction == 0:
+            continue
+
+        # Gather data until we get to the last value.
+        while optimal_protocol[state_parameter][-1] != values[-1]:
+            # Simulate current thermodynamic state to obtain energies.
+            sampler_states = []
+            simulated_energies = np.zeros(n_samples_per_state)
+            for i in range(n_samples_per_state):
+                mcmc_move.apply(thermodynamic_state, sampler_state)
+                sampler_states.append(copy.deepcopy(sampler_state))
+                simulated_energies[i] = thermodynamic_state.reduced_potential(sampler_state)
+
+            # Find first state that doesn't overlap with simulated one
+            # with std(du) within std_energy_threshold +- threshold_tolerance.
+            # We stop anyway if we reach the last value of the protocol.
+            std_energy = 0.0
+            current_parameter_value = optimal_protocol[state_parameter][-1]
+            while (abs(std_energy - std_energy_threshold) > threshold_tolerance and
+                   not (current_parameter_value == values[1] and std_energy < std_energy_threshold)):
+                # Determine next parameter value to compute.
+                if np.isclose(std_energy, 0.0):
+                    # This is the first iteration or the two state overlap significantly
+                    # (e.g. small molecule in vacuum). Just advance by a +- 0.05 step.
+                    old_parameter_value = current_parameter_value
+                    current_parameter_value += (values[1] - values[0]) / 20.0
+                else:
+                    # Assume std_energy(parameter_value) is linear to determine next value to try.
+                    derivative_std_energy = ((std_energy - old_std_energy) /
+                                             (current_parameter_value - old_parameter_value))
+                    old_parameter_value = current_parameter_value
+                    current_parameter_value += (std_energy_threshold - std_energy) / derivative_std_energy
+
+                # Keep current_parameter_value inside bound interval.
+                if search_direction * current_parameter_value > values[1]:
+                    current_parameter_value = values[1]
+                assert search_direction * (optimal_protocol[state_parameter][-1] - current_parameter_value) < 0
+
+                # Get context in new thermodynamic state.
+                setattr(thermodynamic_state, state_parameter, current_parameter_value)
+                context, integrator = mmtools.cache.global_context_cache.get_context(thermodynamic_state)
+
+                # Compute the energies at the sampled positions.
+                reweighted_energies = np.zeros(n_samples_per_state)
+                for i, sampler_state in enumerate(sampler_states):
+                    sampler_state.apply_to_context(context, ignore_velocities=True)
+                    reweighted_energies[i] = thermodynamic_state.reduced_potential(context)
+
+                # Compute standard deviation of the difference.
+                old_std_energy = std_energy
+                denergies = reweighted_energies - simulated_energies
+                std_energy = np.std(denergies)
+
+            # Update the optimal protocol with the new value of this parameter.
+            # The other parameters remain fixed.
+            for par_name in optimal_protocol:
+                if par_name == state_parameter:
+                    optimal_protocol[par_name].append(current_parameter_value)
+                else:
+                    optimal_protocol[par_name].append(optimal_protocol[par_name][-1])
+
+    logger.debug('Alchemical path found: {}'.format(optimal_protocol))
+    return optimal_protocol
+
+
 if __name__ == '__main__':
     import doctest
     doctest.testmod()

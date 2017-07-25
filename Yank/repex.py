@@ -1041,7 +1041,7 @@ class Reporter(object):
             online_group = analysis_nc.createGroup('online_analysis')
             # larger chunks, faster operations, small matrix anyways
             online_group.createVariable('f_k', float, dimensions=('iteration', 'f_k_length'),
-                                       zlib=True, chunksizes=(1, len(f_k)), fill_value=0)
+                                       zlib=True, chunksizes=(1, len(f_k)), fill_value=np.inf)
             online_group.createVariable('free_energy', float, dimensions=('iteration', 'Df'),
                                         zlib=True, chunksizes=(1, 2), fill_value=np.inf)
         online_group = analysis_nc.groups['online_analysis']
@@ -1319,12 +1319,6 @@ class ReplicaExchange(object):
     def __init__(self, mcmc_moves=None, number_of_iterations=1, replica_mixing_scheme='swap-all',
                  online_analysis_interval=None, online_analysis_target_error=0.2,
                  online_analysis_minimum_iterations=50):
-
-        # Check argument values.
-        if replica_mixing_scheme not in self._SUPPORTED_MIXING_SCHEMES:
-            raise ValueError("Unknown replica mixing scheme '{}'. Supported values are {}.".format(
-                replica_mixing_scheme, self._SUPPORTED_MIXING_SCHEMES))
-
         # Handling default propagator.
         if mcmc_moves is None:
             # This will be converted to a list in create().
@@ -1335,17 +1329,19 @@ class ReplicaExchange(object):
         else:
             self._mcmc_moves = copy.deepcopy(mcmc_moves)
 
-        # Store constructor parameters. Everything is marked for internal
-        # usage because any change to these attribute implies a change
-        # in the storage file as well.
-        if number_of_iterations is None:  # Support infinite run
+        # Support infinite number of iterations.
+        if number_of_iterations is None:
             number_of_iterations = np.inf
-        self._number_of_iterations = number_of_iterations
-        self._replica_mixing_scheme = replica_mixing_scheme
-        # Handle Online Analysis
+
+        # Check arguments values.
+        if replica_mixing_scheme not in self._SUPPORTED_MIXING_SCHEMES:
+            raise ValueError("Unknown replica mixing scheme '{}'. Supported values are {}.".format(
+                replica_mixing_scheme, self._SUPPORTED_MIXING_SCHEMES))
+
         if online_analysis_interval is not None and (
                         type(online_analysis_interval) != int or online_analysis_interval < 1):
             raise ValueError("online_analysis_interval must be an integer 1 or greater")
+
         if online_analysis_interval is not None:
             if online_analysis_target_error < 0:
                 raise ValueError("online_analysis_target_error must be a float >= 0")
@@ -1354,24 +1350,29 @@ class ReplicaExchange(object):
             if type(online_analysis_minimum_iterations) is not int or online_analysis_minimum_iterations < 0:
                 raise ValueError("online_analysis_minimum_iterations must be an integer >= 0")
 
-        # Store all the options
+        if number_of_iterations == np.inf:
+            if online_analysis_target_error == 0.0:
+                logger.warning("WARNING! You have specified an unlimited number of iterations and a target error "
+                               "for online analysis of 0.0! Your simulation may never reach 'completed' state!")
+            elif online_analysis_interval is None:
+                logger.warning("WARNING! This simulation will never be considered 'complete' since there is no "
+                               "specified maximum number of iterations!")
+
+        # Store constructor parameters. Everything is marked for internal
+        # usage because any change to these attribute implies a change
+        # in the storage file as well.
+        self._number_of_iterations = number_of_iterations
+        self._replica_mixing_scheme = replica_mixing_scheme
+
+        # Online analysis options.
         self._online_analysis_interval = online_analysis_interval
         self._online_analysis_target_error = online_analysis_target_error
         self._online_analysis_minimum_iterations = online_analysis_minimum_iterations
         self._online_error_trap_counter = 0  # Counter for errors in the online estimate
         self._online_error_bank = []
 
-        if self._number_of_iterations == np.inf:
-            if self._online_analysis_target_error == 0.0:
-                logger.warning("WARNING! You have specified an unlimited number of iterations and a target error "
-                               "for online analysis of 0.0! Your simulation may never reach 'completed' state!")
-            elif self._online_analysis_interval is None:
-                logger.warning("WARNING! This simulation will never be considered 'complete' since there is no "
-                               "specified maximum number of iterations!")
-
         self._last_mbar_f_k = None
-        # A "Have we met any of the stop condition targets? Or a type of "work complete, zug zug"
-        self._is_completed = False
+        self._last_err_free_energy = None
 
         # These will be set on initialization. See function
         # create() for explanation of single variables.
@@ -1386,6 +1387,7 @@ class ReplicaExchange(object):
         self._n_proposed_matrix = None
         self._reporter = None
         self._metadata = None
+
         self._have_displayed_citations_before = False
 
     @classmethod
@@ -1430,21 +1432,27 @@ class ReplicaExchange(object):
         # Read the last iteration reported to ensure we dont include junk data written
         # just before a crash, but not before it could then be overwritten.
         iteration = reporter.read_last_iteration()
-
-        # Retrieve other attributes.
-        logger.debug("Reading storage file {}...".format(file_name))
         checkpoint_iteration = reporter.get_previous_checkpoint(iteration)
-        # Find closest checkpoint
         if iteration != checkpoint_iteration:
             logger.debug("Last known checkpoint at iteration {0}. "
                          "Restoring from iteration {0} instead of {1}".format(checkpoint_iteration, iteration))
             iteration = checkpoint_iteration
+
+        # Retrieve other attributes.
+        logger.debug("Reading storage file {}...".format(file_name))
         thermodynamic_states, unsampled_states = reporter.read_thermodynamic_states()
         sampler_states = reporter.read_sampler_states(iteration=iteration)
         state_indices = reporter.read_replica_thermodynamic_states(iteration=iteration)
         energy_thermodynamic_states, energy_unsampled_states = reporter.read_energies(iteration=iteration)
         n_accepted_matrix, n_proposed_matrix = reporter.read_mixing_statistics(iteration=iteration)
         metadata = reporter.read_dict('metadata')
+
+        # Search for last cached free energies only if online analysis is activated.
+        if repex._online_analysis_interval is not None:
+            online_anaysis_info = repex._get_last_written_free_energy(reporter, iteration)
+            last_mbar_f_k, (_, last_err_free_energy) = online_anaysis_info
+        else:
+            last_mbar_f_k, (_, last_err_free_energy) = None, (None, None)
 
         # Close reading reporter.
         reporter.close()
@@ -1460,6 +1468,9 @@ class ReplicaExchange(object):
         repex._n_accepted_matrix = n_accepted_matrix
         repex._n_proposed_matrix = n_proposed_matrix
         repex._metadata = metadata
+
+        repex._last_mbar_f_k = last_mbar_f_k
+        repex._last_err_free_energy = last_err_free_energy
 
         # We open the reporter only in node 0.
         repex._reporter = reporter
@@ -1602,8 +1613,8 @@ class ReplicaExchange(object):
 
     @property
     def is_completed(self):
-        """"Boolean check if we have reached any of the stop target criteria?" (read-only)"""
-        return self._is_completed
+        """Check if we have reached any of the stop target criteria (read-only)"""
+        return self._is_completed()
 
     # -------------------------------------------------------------------------
     # Main public interface.
@@ -1846,10 +1857,8 @@ class ReplicaExchange(object):
         else:
             iteration_limit = min(self._iteration + n_iterations, self._number_of_iterations)
 
-        # Check completed conditions
-        self._is_completed = self._check_completion(iteration_limit)
-
-        while not self._is_completed:
+        # Main loop.
+        while not self._is_completed(iteration_limit):
             # Increment iteration counter.
             self._iteration += 1
 
@@ -1870,15 +1879,10 @@ class ReplicaExchange(object):
             self._report_iteration()
 
             # Compute online free energy
-            free_energy_error = None
             if (self._online_analysis_interval is not None and
                     self._iteration > self._online_analysis_minimum_iterations and
                     self._iteration % self._online_analysis_interval == 0):
-                free_energy_error = self._run_online_analysis()
-
-            # Check if work complete
-            # Online + below error
-            self._is_completed = self._check_completion(iteration_limit, free_energy_error=free_energy_error)
+                self._run_online_analysis()
 
             # Show timing statistics if debug level is activated.
             if logger.isEnabledFor(logging.DEBUG):
@@ -2352,12 +2356,11 @@ class ReplicaExchange(object):
         # are the __main__ package.
         # https://stackoverflow.com/questions/6351805/cyclic-module-dependencies-and-relative-imports-in-python
         from .analyze import RepexPhase
-        if self._last_mbar_f_k is None:
-            # Backwards search for last free energies, don't need the 0th iteration because the guess f_k are 0
-            self._last_mbar_f_k, _ = self._get_last_written_free_energy()
+
         # Start the analysis
         bump_error_counter = False
         analysis = RepexPhase(self._reporter, analysis_kwargs={'initial_f_k': self._last_mbar_f_k})
+
         # Indices for online analysis, "i'th index, j'th index"
         idx, jdx = 0, -1
         timer = mmtools.utils.Timer()
@@ -2366,58 +2369,65 @@ class ReplicaExchange(object):
         try:  # Trap errors for MBAR being under sampled and the W_nk matrix not being normalized correctly
             mbar = analysis.mbar
             free_energy, err_free_energy = analysis.get_free_energy()
-            output_fe = free_energy[idx, jdx]
-            output_dfe = err_free_energy[idx, jdx]
-            logger.debug("Current Free Energy Estimate is {} +- {} kT".format(output_fe, output_dfe))
-            self._last_mbar_f_k = mbar.f_k
-            if np.isnan(output_dfe):  # Trap a case when errors don't converge (usually due to under sampling)
-                output_dfe = np.inf
         except ParameterError as e:
+            # We don't update self._last_err_free_energy here since if it
+            # wasn't below the target threshold before, it won't stop repex now.
             bump_error_counter = True
-            self.online_error_bank.append(e)
-            output_dfe = np.inf
+            self._online_error_bank.append(e)
+        else:
+            self._last_mbar_f_k = mbar.f_k
+            free_energy = free_energy[idx, jdx]
+            self._last_err_free_energy = err_free_energy[idx, jdx]
+            logger.debug("Current Free Energy Estimate is {} +- {} kT".format(free_energy,
+                                                                              self._last_err_free_energy))
+            # Trap a case when errors don't converge (usually due to under sampling)
+            if np.isnan(self._last_err_free_energy):
+                self._last_err_free_energy = np.inf
         timer.stop("MBAR")
+
+        # Raise an exception after 6 times MBAR gave an error.
         if bump_error_counter:
             self._online_error_trap_counter += 1
             if self._online_error_trap_counter >= 6:
                 logger.debug("Thrown MBAR Errors:")
                 for err in self._online_error_bank:
                     logger.debug(str(err))
-                raise RuntimeError("Online Analysis has failed too many times! Please check the latest logs to see "
-                                   "the thrown errors!")
-        # Write out the numbers
-        self._reporter.write_mbar_free_energies(self._iteration, self._last_mbar_f_k, (output_fe, output_dfe))
-        return output_dfe
+                raise RuntimeError("Online Analysis has failed too many times! Please "
+                                   "check the latest logs to see the thrown errors!")
+            # Don't write out the free energy in case of error.
+            return
 
-    def _get_last_written_free_energy(self):
+        # Write out the numbers
+        self._reporter.write_mbar_free_energies(self._iteration, self._last_mbar_f_k,
+                                                (free_energy, self._last_err_free_energy))
+
+    @staticmethod
+    def _get_last_written_free_energy(reporter, iteration):
         """Get the last free energy computed from online analysis"""
         last_f_k = None
         last_free_energy = None
         try:
-            for index in range(self._iteration, 0, -1):
-                last_f_k, last_free_energy = self._reporter.read_mbar_free_energies(index)
+            for index in range(iteration, 0, -1):
+                last_f_k, last_free_energy = reporter.read_mbar_free_energies(index)
                 # Find an f_k that is not all zeros (or masked and empty)
-                if not np.ma.is_masked(last_f_k) and np.all(last_f_k == 0):
+                if not (np.ma.is_masked(last_f_k) or np.all(last_f_k == 0)):
                     break  # Don't need to continue the loop if we already found one
         except (IndexError, KeyError):  # No such f_k written yet (or variable created), no need to do anything
             pass
         return last_f_k, last_free_energy
 
-    def _check_completion(self, iteration_limit, free_energy_error=None):
-        """Check if we have completed the run previously
-        Accepts kwarg for free_energy_error to save time when this is already completed
-            in the online analysis at run time
-        """
-        completed = False
-        # Case where we are running the online free energy and feed in nothing for the error
-        if self._online_analysis_interval is not None and free_energy_error is None:
-                _, last_free_energy = self._get_last_written_free_energy()
-                _, free_energy_error = last_free_energy if last_free_energy is not None else (None, None)
-        if free_energy_error is not None and free_energy_error <= self._online_analysis_target_error:
-            completed = True
-        elif self._iteration >= iteration_limit:  # Stop at iteration limit regardless
-            completed = True
-        return completed
+    def _is_completed(self, iteration_limit=None):
+        """Check if we have completed the run previously"""
+        if iteration_limit is None:
+            iteration_limit = self._number_of_iterations
+
+        # Return if we have reached the number of iterations
+        # or the statistical error target required.
+        if (self._iteration >= iteration_limit or
+                (self._last_err_free_energy is not None and
+                         self._last_err_free_energy <= self._online_analysis_target_error)):
+            return True
+        return False
 
     # -------------------------------------------------------------------------
     # Internal-usage: Test globals

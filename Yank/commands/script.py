@@ -25,7 +25,7 @@ usage = """
 YANK script
 
 Usage:
-  yank script (-y FILEPATH | --yaml=FILEPATH) [-o OVERRIDE]...
+  yank script (-y FILEPATH | --yaml=FILEPATH) [--jobid=INTEGER] [--njobs=INTEGER] [-o OVERRIDE]...
 
 Description:
   Set up and run free energy calculations from a YAML script. All options can be specified in the YAML script.
@@ -34,7 +34,11 @@ Required Arguments:
   -y, --yaml=FILEPATH           Path to the YAML script specifying options and/or how to set up and run the experiment.
 
 Optional Arguments:
-
+  --jobid=INTEGER               You can run only a subset of the experiments by specifying jobid and njobs, where
+                                0 <= job_id <= n_jobs-1. In this case, njobs must be specified as well and YANK will
+                                run only 1/n_jobs of the experiments. This can be used to run several separate YANK
+                                executions in parallel starting from the same script.
+  --njobs=INTEGER               Specify the total number of parallel executions. jobid has to be specified too.
   -o, --override=OVERRIDE       Override a single option in the script file. May be specified multiple times.
                                 Specified as a nested dictionary of the form:
                                 top_option:sub_option:value
@@ -88,13 +92,22 @@ def dispatch(args):
         # This is done to avoid input type ambiguity and instead let the parser handle it as though it were a file
         override = str(override_dict).replace("'", "").replace('"', '')
 
+    if args['--jobid']:
+        job_id = args['--jobid']
+    else:
+        job_id = None
+    if args['--njobs']:
+        n_jobs = args['--njobs']
+    else:
+        n_jobs = None
+
     if args['--yaml']:
         yaml_path = args['--yaml']
 
         if not os.path.isfile(yaml_path):
             raise ValueError('Cannot find YAML script "{}"'.format(yaml_path))
 
-        yaml_builder = ExperimentBuilder(yaml_source=yaml_path)
+        yaml_builder = ExperimentBuilder(script=yaml_path, job_id=job_id, n_jobs=n_jobs)
         if override:  # Parse the string present.
             yaml_builder.update_yaml(override)
         yaml_builder.run_experiments()

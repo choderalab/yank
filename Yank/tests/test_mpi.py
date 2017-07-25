@@ -13,8 +13,12 @@ Test MPI utility functions in mpi.py.
 # GLOBAL IMPORTS
 # =============================================================================
 
-import numpy as np
+import json
+import shutil
+import contextlib
+
 from simtk import unit
+from openmoltools.utils import temporary_cd
 
 from yank.mpi import *
 
@@ -201,3 +205,51 @@ def test_distribute():
 
         result = distribute(task, distributed_args, send_results_to=None)
         assert_is_equal(result, (partial_expected_results, partial_job_indices))
+
+
+def test_distribute_groups():
+    """Test distribute jobs among groups of nodes."""
+    # Configuration.
+    group_nodes = 2
+    list_of_supertask_args = [[1, 2], [3, 4, 5], [6, 7, 8, 9]]
+
+    def supertask(list_of_bases):
+        """Compute square of all the bases."""
+        squared_values = distribute(square, list_of_bases, send_results_to='all')
+        mpicomm = get_mpicomm()
+        if mpicomm is None:
+            mpi_size = 0
+        else:
+            mpi_size = mpicomm.size
+        return squared_values, mpi_size
+
+    # Super tasks will store results in the same temporary directory.
+    all_results = distribute(supertask, distributed_args=list_of_supertask_args, sync_nodes=True,
+                             send_results_to='all', group_nodes=group_nodes)
+
+    mpicomm = get_mpicomm()
+    n_jobs = len(list_of_supertask_args)
+
+    # Find the job_ids assigned to the last group and the size of its communicator.
+    if mpicomm is not None:
+        n_groups = int(np.ceil(mpicomm.size / group_nodes))
+        last_group_size = group_nodes - mpicomm.size % group_nodes
+        last_group_job_ids = set(range(n_groups-1, n_jobs, n_groups))
+
+    # Verify all tasks.
+    for job_id, (supertask_args, job_result) in enumerate(zip(list_of_supertask_args, all_results)):
+        squared_values, mpi_size = job_result  # Unpack.
+
+        # Check that result is correct.
+        assert len(supertask_args) == len(squared_values)
+        for idx, value in enumerate(squared_values):
+            assert value == supertask_args[idx]**2
+
+        # Check that the correct group executed this task.
+        if mpicomm is None:
+            expected_mpi_size = 0
+        elif job_id in last_group_job_ids:
+            expected_mpi_size = last_group_size
+        else:
+            expected_mpi_size = 2
+        assert mpi_size == expected_mpi_size

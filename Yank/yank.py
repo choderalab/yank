@@ -426,13 +426,13 @@ class AlchemicalPhase(object):
         self._sampler.number_of_iterations = value
 
     @property
-    def is_complete(self):
+    def is_completed(self):
         """
         Boolean check if if the sampler has been completed by its own determination or if we have exceeded number of
         iterations
         """
         try:
-            return self._sampler.is_complete
+            return self._sampler.is_completed
         except AttributeError:
             return self._sampler.iteration >= self._sampler.number_of_iterations
 

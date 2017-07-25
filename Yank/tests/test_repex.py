@@ -754,17 +754,6 @@ class TestReplicaExchange(object):
                 original_dict.pop('_cached_transition_counts', None)
                 original_dict.pop('_cached_last_replica_thermodynamic_states', None)
 
-                # Check that the original completed,
-                # No need to check restored since _is_completed is not cached, just computed on the fly
-                original_completed = original_dict.pop('_is_completed')
-                if iteration == 0:
-                    # Should not be completed on first pass
-                    assert not original_completed
-                else:
-                    # Is completed after going through all iterations (see end of this loop)
-                    assert original_completed
-                _ = restored_dict.pop('_is_completed')
-
                 # Check all other arrays. Instantiate list so that we can pop from original_dict.
                 for attr, original_value in list(original_dict.items()):
                     if isinstance(original_value, np.ndarray):
@@ -1002,8 +991,10 @@ class TestReplicaExchange(object):
                              unsampled_thermodynamic_states=unsampled_states)
 
                 # ReplicaExchange.run doesn't go past number_of_iterations.
+                assert not repex.is_completed
                 repex.run(n_iterations=3)
                 assert repex.iteration == 2
+                assert repex.is_completed
 
                 # ReplicaExchange.extend does.
                 repex.extend(n_iterations=2)
@@ -1167,12 +1158,20 @@ class TestReplicaExchange(object):
                          unsampled_thermodynamic_states=unsampled_states)
             # Run
             repex.run()
-            last_mbar_f_k, free_energy = repex._get_last_written_free_energy()
-            assert len(last_mbar_f_k) == len(thermodynamic_states)
-            assert len(free_energy) == 2
-            assert not np.all(last_mbar_f_k == 0)
+
+            # The stored values of online analysis should be up to date.
+            last_written_free_energy = ReplicaExchange._get_last_written_free_energy(repex._reporter, repex.iteration)
+            last_mbar_f_k, (last_free_energy, last_err_free_energy) = last_written_free_energy
+
+            assert len(repex._last_mbar_f_k) == len(thermodynamic_states)
+            assert not np.all(repex._last_mbar_f_k == 0)
+            assert np.all(repex._last_mbar_f_k == last_mbar_f_k)
+
+            assert last_free_energy is not None
+
             # Error should not be 0 yet
-            assert not free_energy[-1] == 0
+            assert repex._last_err_free_energy != 0
+            assert repex._last_err_free_energy == last_err_free_energy
 
     def test_online_analysis_stops(self):
         """Test online analysis will stop the simulation"""
@@ -1190,6 +1189,7 @@ class TestReplicaExchange(object):
             # Run
             repex.run()
             assert repex._iteration < n_iterations
+            assert repex.is_completed
 
 # ==============================================================================
 # MAIN AND TESTS
