@@ -1423,6 +1423,23 @@ class SetupDatabase:
 
 def restrain_atoms(thermodynamic_state, sampler_state, mdtraj_topology,
                    atoms_dsl, sigma=3.0*unit.angstroms):
+    """Apply a soft harmonic restraint to the given atoms.
+
+    Parameters
+    ----------
+    thermodynamic_state : openmmtools.states.ThermodynamicState
+        The thermodynamic state with the system. This will be modified.
+    sampler_state : openmmtools.states.SamplerState
+        The sampler state with the positions.
+    mdtraj_topology : mdtraj.Topology
+        The topology.
+    atoms_dsl : str
+        The MDTraj DSL string for selecting the atoms to restrain.
+    sigma : simtk.unit.Quantity, optional
+        Controls the strength of the restrain. The smaller, the tighter
+        (units of distance, default is 3.0*angstrom).
+
+    """
     K = thermodynamic_state.kT / sigma  # Spring constant.
     system = thermodynamic_state.system  # This is a copy.
 
@@ -1453,6 +1470,47 @@ def restrain_atoms(thermodynamic_state, sampler_state, mdtraj_topology,
 def find_alchemical_protocol(thermodynamic_state, sampler_state, mcmc_move, state_parameters,
                              std_energy_threshold=0.5, threshold_tolerance=0.05,
                              n_samples_per_state=100):
+    """
+    Find an alchemical path by placing alchemical states at a fixed distance.
+
+    The distance between two states is estimated by collecting ``n_samples_per_state``
+    configurations through the MCMCMove in one of the two alchemical states,
+    and computing the standard deviation of the difference of potential energies
+    between the two states at those configurations.
+
+    Two states are chosen for the protocol if their standard deviation is
+    within ``std_energy_threshold +- threshold_tolerance``.
+
+    Parameters
+    ----------
+    thermodynamic_state : openmmtools.states.CompoundThermodynamicState
+        The state of the alchemically modified system.
+    sampler_state : openmmtools.states.SamplerState
+        The sampler states including initila positions and box vectors.
+    mcmc_move : openmmtools.mcmc.MCMCMove
+        The MCMCMove to use for propagation.
+    state_parameters : list of tuples (str, [float, float])
+        Each element of this list is a tuple containing first the name
+        of the parameter to be modified (e.g. ``lambda_electrostatics``,
+        ``lambda_sterics``) and a list specifying the initial and final
+        values for the path.
+    std_energy_threshold : float
+        The threshold that determines how to separate the states between
+        each others.
+    threshold_tolerance : float
+        The tolerance on the found standard deviation.
+    n_samples_per_state : int
+        How many samples to collect to estimate the overlap between two
+        states.
+
+    Returns
+    -------
+    optimal_protocol : dict {str, list of floats}
+        The estimated protocol. Each dictionary key is one of the
+        parameters in ``state_parameters``, and its values is the
+        list of values that it takes in each state of the path.
+
+    """
     # Make sure that the state parameters to optimize have a clear order.
     assert(isinstance(state_parameters, list) or isinstance(state_parameters, tuple))
 

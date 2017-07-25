@@ -1581,7 +1581,8 @@ class ExperimentBuilder(object):
 
     @staticmethod
     def _find_automatic_protocol_phases(protocol):
-        """Return the list of phase names whose alchemical path must be generated automatically."""
+        """Return the list of phase names in the protocol whose alchemical
+        path must be generated automatically."""
         assert isinstance(protocol, collections.OrderedDict)
         phases_to_generate = []
         for phase_name in protocol:
@@ -1619,6 +1620,28 @@ class ExperimentBuilder(object):
 
     def _generate_experiment_protocol(self, experiment, constrain_receptor=True,
                                       n_equilibration_iterations=None, **kwargs):
+        """Generate auto alchemical paths for the given experiment.
+
+        Creates a YAML script in the experiment folder with the found protocol.
+
+        Parameters
+        ----------
+        experiment : tuple (str, dict)
+            A tuple with the experiment path and the experiment description.
+        constrain_receptor : bool, optional
+            If True, the receptor in a receptor-ligand system will have its
+            CA atoms constrained during optimization (default is True).
+        n_equilibration_iterations : None or int
+            The number of equilibration iterations to perform before running
+            the path search. If None, the function will determine the number
+            of iterations to run based on the system dimension.
+
+        Other Parameters
+        ----------------
+        kwargs : dict
+            Other parameters to pass to pipeline.find_alchemical_protocol().
+
+        """
         class DummyReporter(object):
             """A dummy reporter since we don't need to store repex stuff on disk."""
             def nothing(self, *args, **kwargs):
@@ -2036,6 +2059,23 @@ class ExperimentBuilder(object):
     # --------------------------------------------------------------------------
 
     def _run_experiment(self, experiment):
+        """Run a single experiment.
+
+        This runs the experiment only for ``switch_experiment_interval``
+        iterations (if specified).
+
+        Parameters
+        ----------
+        experiment : tuple (str, dict)
+            A tuple with the experiment path and the experiment description.
+
+        Returns
+        -------
+        is_completed
+            True if the experiment has completed the number of iterations
+            requested or if it has reached the target statistical error.
+
+        """
         # Unpack experiment argument that has been distributed among nodes.
         experiment_path, experiment = experiment
 
