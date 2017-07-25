@@ -507,6 +507,11 @@ class AlchemicalPhase(object):
         is_periodic = thermodynamic_state.is_periodic
         is_complex = len(topography.receptor_atoms) > 0
 
+        # We currently don't support reaction field.
+        nonbonded_method = mmtools.forces.find_nonbonded_force(reference_system).getNonbondedMethod()
+        if nonbonded_method == openmm.NonbondedForce.CutoffPeriodic:
+            raise RuntimeError('CutoffPeriodic is not supported yet. Use PME for explicit solvent.')
+
         # Make sure sampler_states is a list of SamplerStates.
         if isinstance(sampler_states, mmtools.states.SamplerState):
             sampler_states = [sampler_states]
@@ -792,8 +797,15 @@ class AlchemicalPhase(object):
     # -------------------------------------------------------------------------
 
     @staticmethod
-    def _expand_state_cutoff(thermodynamic_state, expanded_cutoff_distance):
-        """Expand the thermodynamic state cutoff to the given one."""
+    def _expand_state_cutoff(thermodynamic_state, expanded_cutoff_distance,
+                             replace_reaction_field=False, switch_width=None):
+        """Expand the thermodynamic state cutoff to the given one.
+
+        If replace_reaction_field is True, the system will be modified
+        to use an UnshiftedReactionFieldForce. In this case switch_width
+        must be specified.
+
+        """
         # If we use a barostat we leave more room for volume fluctuations or
         # we risk fatal errors. This is how much we allow the box size to change.
         fluctuation_size = 0.8
@@ -845,6 +857,12 @@ class AlchemicalPhase(object):
                     # there is a setting for that.
                     force.setCutoffDistance(expanded_cutoff_distance)
                     force.setSwitchingDistance(switching_distance + cutoff_diff)
+
+        # Replace reaction field NonbondedForce to remove constant shift term.
+        # AbsoluteAlchemicalFactory already does it for the other states.
+        if replace_reaction_field:
+            mmtools.forcefactories.replace_reaction_field(system, return_copy=False,
+                                                          switch_width=switch_width)
 
         # Return the new thermodynamic state with the expanded cutoff.
         thermodynamic_state.system = system

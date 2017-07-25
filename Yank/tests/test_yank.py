@@ -161,7 +161,7 @@ class TestAlchemicalPhase(object):
             assert standard_state_correction == 0
 
     @classmethod
-    def check_expanded_states(cls, alchemical_phase, protocol, expected_cutoff, expected_switch_width):
+    def check_expanded_states(cls, alchemical_phase, protocol, expected_cutoff, reference_system):
         """The expanded states have been setup correctly."""
         thermodynamic_state = alchemical_phase._sampler._thermodynamic_states[0]
         unsampled_states = alchemical_phase._sampler._unsampled_states
@@ -187,8 +187,20 @@ class TestAlchemicalPhase(object):
             return
         assert len(unsampled_states) == 2
 
-        # Find all nonbonded forces and verify their cutoff.
+        # The switch distances in the nonbonded forces should be preserved.
+        # Get the original(s) from the reference system. We store 5-decimal
+        # strings to avoid having problems with precision in sets.
+        expected_switch_widths = set()
+        for force in reference_system.getForces():
+            try:
+                switch_width = force.getCutoffDistance() - force.getSwitchingDistance()
+                expected_switch_widths.add('{:.5}'.format(switch_width/unit.nanometers))
+            except AttributeError:
+                pass
+
+        # Find all cutoff and switch width for the reference and unsampled states.
         for state in unsampled_states:
+            switch_widths = set()
             system = state.system
             for force in system.getForces():
                 try:
@@ -196,12 +208,15 @@ class TestAlchemicalPhase(object):
                 except AttributeError:
                     continue
                 else:
-                    switch_width = cutoff - force.getSwitchingDistance()
                     err_msg = 'obtained {}, expected {}'.format(cutoff, expected_cutoff)
                     assert np.isclose(cutoff / cutoff_unit, expected_cutoff / cutoff_unit), err_msg
                     if force.getUseSwitchingFunction():
-                        err_msg = 'obtained {}, expected {}'.format(switch_width, expected_switch_width)
-                        assert np.isclose(switch_width / cutoff_unit, expected_switch_width / cutoff_unit), err_msg
+                        switch_width = cutoff - force.getSwitchingDistance()
+                        switch_widths.add('{:.5}'.format(switch_width/unit.nanometers))
+
+            # The unsampled state should preserve all switch widths of the reference system.
+            err_msg = 'obtained {}, expected {}'.format(switch_widths, expected_switch_widths)
+            assert switch_widths == expected_switch_widths, err_msg
 
         # If the thermodynamic systems are restrained, so should be the unsampled ones.
         if is_restrained:
@@ -236,13 +251,10 @@ class TestAlchemicalPhase(object):
             else:
                 correction_cutoff = 'auto'
 
-             # Find expected switch width.
-            system = thermodynamic_state.system
-            for force in system.getForces():
-                try:
-                    expected_switch_width = force.getCutoffDistance() - force.getSwitchingDistance()
-                except AttributeError:
-                    pass
+            # Replace the reaction field of the reference system to compare
+            # also cutoff and switch width for the electrostatics.
+            reference_system = thermodynamic_state.system
+            mmtools.forcefactories.replace_reaction_field(reference_system, return_copy=False)
 
             alchemical_phase = AlchemicalPhase(sampler=ReplicaExchange())
             with self.temporary_storage_path() as storage_path:
@@ -254,7 +266,7 @@ class TestAlchemicalPhase(object):
                 yield prepare_yield(self.check_standard_state_correction, test_name, alchemical_phase,
                                     topography)
                 yield prepare_yield(self.check_expanded_states, test_name, alchemical_phase,
-                                    protocol, correction_cutoff, expected_switch_width)
+                                    protocol, correction_cutoff, reference_system)
 
                 # Free memory.
                 del alchemical_phase
