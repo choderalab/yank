@@ -834,8 +834,10 @@ class AlchemicalPhase(object):
         elif (thermodynamic_state.pressure is not None and
                           min_box_dimension * fluctuation_size < 2.0 * expanded_cutoff_distance):
             raise RuntimeError('Barostated box sides must be at least {} Angstroms '
-                               'to correct for missing dispersion interactions'
-                               ''.format(expanded_cutoff_distance/unit.angstrom * 2))
+                               'to correct for missing dispersion interactions. The '
+                               'minimum dimension of the provided box is {} Angstroms'
+                               ''.format(expanded_cutoff_distance/unit.angstrom * 2,
+                                         min_box_dimension/unit.angstrom))
 
         logger.debug('Setting cutoff for fully interacting system to {}. The minimum box '
                      'dimension is {}.'.format(expanded_cutoff_distance, min_box_dimension))
