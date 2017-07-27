@@ -1500,7 +1500,7 @@ class TLeap:
         components = ' '.join(args)
         self.add_commands('{} = combine {{{{ {} }}}}'.format(leap_unit, components))
 
-    def add_ions(self, leap_unit, ion, num_ions=0):
+    def add_ions(self, leap_unit, ion, num_ions=0, replace_solvent=False):
         """
         Add ions to a unit in LEaP
 
@@ -1512,10 +1512,17 @@ class TLeap:
             Name of the existing LEaP unit which Ions will be added into
         ion : str
             LEaP recognized name of ion to add
-        num_ions : int
-            Number of ions of type ion to add to leap_unit
+        num_ions : int, optional
+            Number of ions of type ion to add to leap_unit. If 0, the unit
+            is neutralized (default is 0).
+        replace_solvent : bool, optional
+            If True, ions will replace solvent molecules rather than being
+            added.
         """
-        self.add_commands('addIons2 {} {} {}'.format(leap_unit, ion, num_ions))
+        if replace_solvent:
+            self.add_commands('addIonsRand {} {} {}'.format(leap_unit, ion, num_ions))
+        else:
+            self.add_commands('addIons2 {} {} {}'.format(leap_unit, ion, num_ions))
 
     def solvate(self, leap_unit, solvent_model, clearance):
         """
