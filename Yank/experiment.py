@@ -1157,7 +1157,8 @@ class ExperimentBuilder(object):
                                 exclude_keys=['implicit_solvent'])
         explicit_schema.update({Optional('clearance'): Use(utils.to_unit_validator(unit.angstrom)),
                                 Optional('solvent_model', default='tip4pew'): is_supported_solvent_model,
-                                Optional('positive_ion'): str, Optional('negative_ion'): str})
+                                Optional('positive_ion'): str, Optional('negative_ion'): str,
+                                Optional('ionic_strength', default=0.0*unit.molar): Use(utils.to_unit_validator(unit.molar))})
         implicit_schema = utils.generate_signature_schema(AmberPrmtopFile.createSystem,
                                 update_keys={'implicit_solvent': Use(to_openmm_app),
                                              Optional('nonbonded_method'): Use(to_no_cutoff)},
