@@ -1467,10 +1467,8 @@ class SetupDatabase:
             # Count number of waters of created system.
             system_file_path = os.path.join(tmp_dir, 'temp_system.pdb')
             system_traj = mdtraj.load(system_file_path)
-            n_waters = 0
-            for res in system_traj.topology.residues:
-                if res.is_water:
-                    n_waters += 1
+            n_waters = sum([1 for res in system_traj.topology.residues if res.is_water])
+
         return n_waters
 
 

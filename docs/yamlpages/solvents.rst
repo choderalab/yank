@@ -43,10 +43,6 @@ Because each option has very different behavior, we list each of them here and s
 
 * ``NoCutoff``: **Default**. Specifies a non-periodic system with no cutoff. 
   This is the de facto choice for vacuum and implicit solvent.
-* ``CutoffNonPeriodic``: Specify a non-periodic system which uses a cutoff scheme to reduce the computational overhead of computing long range interactions. 
-  This scheme is helpful for vacuum and implicit solvent systems with large number of molecules where computing the pairwise interaction at long range between all atoms is inefficient.
-* ``CutoffPeriodic``: Specifies a periodic system with a cutoff scheme and Reaction Field electrostatics for long range interactions.
-  There is some cutoff based error associated with using this option and is not currently recommended.
 * ``Ewald``: Specifies a periodic system with a cutoff scheme and Ewald decomposed electrostatics. This is typically not used over PME
 * ``PME``: Specifies a periodic system with a cutoff scheme and Particle Mesh Ewald (PME) decomposed electrostatics. 
   Currently support by YANK, however, there is a small error introduced by YANK due to the inability efficiently treat long range alchemical PME electrostatics during simulation.
@@ -70,7 +66,7 @@ Because each option has very different behavior, we list each of them here and s
 Specify the cutoff radius for the ``nonbonded_method``'s which rely on it.
 What happens beyond this cutoff depends both on the ``nonbonded_method`` and the ``switch_distance``.
 
-Nonbonded Methods: ``CutoffPeriodic``, ``Ewald``, ``PME``
+Nonbonded Methods: ``Ewald``, ``PME``
 
 Valid Options (1 * nanometer): <Quantity Length> [1]_
 
@@ -92,7 +88,7 @@ The distance at which the potential energy switching function is turned on for L
 If the ``switch_distance`` is 0 (or not specified), no switching function will be used. 
 Values greater than ``nonbonded_cutoff`` or less than 0 raise errors.
 
-Nonbonded Methods: ``CutoffPeriodic``, ``Ewald``, ``PME``
+Nonbonded Methods: ``Ewald``, ``PME``
 
 Valid Options (0 * nanometer) <Quantity Length> [1]_
 
@@ -157,7 +153,7 @@ Specify an implicit solvent model. Please check the OpenMM documentation on each
 
 When not specified, no implicit solvent is set.
 
-Nonbonded Methods: ``NoCutoff``, ``CutoffNonPeriodic``
+Nonbonded Methods: ``NoCutoff``
 
 Valid Options: HCT / OBC1 / OBC2 / GBn / GBn2
 
@@ -180,7 +176,7 @@ Specify the salt concentration of the implicit model. Requires an ``implicit_sol
 You may also specify a Debye length ``temperature`` parameter which accepts <Quantity Temperature> [1]_ as an argument, default ``300 * kelvin``.
 *Note*: This is NOT the temperature for the system as a whole.
 
-Nonbonded Methods: ``NoCutoff``, ``CutoffNonPeriodic``
+Nonbonded Methods: ``NoCutoff``
 
 Valid Options (0.0 * moles / liter): <Quantity Moles / Volume> OR <Quantity Temperature> [1]_
 
@@ -200,7 +196,7 @@ Valid Options (0.0 * moles / liter): <Quantity Moles / Volume> OR <Quantity Temp
 
 Specify the dielectric of the solute molecules.
 
-Nonbonded Methods: ``NoCutoff``, ``CutoffNonPeriodic``
+Nonbonded Methods: ``NoCutoff``
 
 Valid Options (1.0): <Float>
 
@@ -220,7 +216,7 @@ Valid Options (1.0): <Float>
 
 Specify the dielectric of the implcit solvent models
 
-Nonbonded Methods: ``NoCutoff``, ``CutoffNonPeriodic``
+Nonbonded Methods: ``NoCutoff``
 
 Valid Options (78.5): <Float>
 
@@ -323,7 +319,7 @@ Specifies the negative counter ions that will be added as needed.
 No negative counter ions will be added if this option is not specified. Note that the name must match a known atom type
 in LEaP based on the parameter files you specified to load.
 
-Nonbonded Methods: ``CutoffPeriodic``, ``Ewald``, ``PME``
+Nonbonded Methods: ``Ewald``, ``PME``
 
 Valid Options: <Ion Symbol and charge>
 
@@ -347,9 +343,9 @@ The ionic strength of the ions.
 Both ``positive_ion`` and ``negative_ion`` must be specified with this, and only monovalent ions are supported. Note
 that this does not include the ions that are used to neutralize the periodic box.
 
-Nonbonded Methods: ``CutoffPeriodic``, ``Ewald``, ``PME``
+Nonbonded Methods: ``Ewald``, ``PME``
 
-Valid Options (0 * molar) <Quantity Length> [1]_
+Valid Options (0 * molar): <Quantity Concentration> [1]_
 
 
 
