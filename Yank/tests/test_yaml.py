@@ -168,7 +168,7 @@ def get_template_script(output_dir='.'):
             solvent1: PME
             solvent2: vacuum
             leap:
-                parameters: [leaprc.gaff, oldff/leaprc.ff14SB]
+                parameters: [leaprc.gaff, oldff/leaprc.ff14SB, frcmod.ionsjc_tip3p]
     protocols:
         absolute-binding:
             complex:
@@ -358,7 +358,8 @@ def test_validation_correct_solvents():
         {'nonbonded_method': 'PME'},
         {'nonbonded_method': 'NoCutoff', 'implicit_solvent': 'OBC2'},
         {'nonbonded_method': 'CutoffPeriodic', 'nonbonded_cutoff': '9*angstroms',
-         'clearance': '9*angstroms', 'positive_ion': 'Na+', 'negative_ion': 'Cl-'},
+         'clearance': '9*angstroms', 'positive_ion': 'Na+', 'negative_ion': 'Cl-',
+         'ionic_strength': '200*millimolar'},
         {'implicit_solvent': 'OBC2', 'implicit_solvent_salt_conc': '1.0*nanomolar'},
         {'nonbonded_method': 'PME', 'clearance': '3*angstroms', 'ewald_error_tolerance': 0.001},
     ]
@@ -1457,6 +1458,45 @@ def test_charged_ligand():
                     assert set(['Na+', 'Cl-']) <= found_resnames
                 else:
                     assert set(['Cl-']) <= found_resnames
+
+
+def test_ionic_strength():
+    """The correct number of ions is added to achieve the requested ionic strength."""
+    with mmtools.utils.temporary_directory() as tmp_dir:
+        yaml_script = get_template_script(tmp_dir)
+        assert yaml_script['systems']['hydration-system']['solute'] == 'toluene'
+        assert yaml_script['systems']['hydration-system']['solvent1'] == 'PME'
+
+        # Set ionic strength.
+        yaml_script['solvents']['PME']['ionic_strength'] = '200*millimolar'
+
+        # Set up toluene in explicit solvent.
+        exp_builder = ExperimentBuilder(yaml_script)
+        exp_builder._db.get_system('hydration-system')
+
+        # Read in output pdb file to read ionic strength.
+        system_filepath = exp_builder._db.get_system_files_paths('hydration-system')[0].position_path
+        system_filepath = os.path.splitext(system_filepath)[0] + '.pdb'
+        system_traj = mdtraj.load(system_filepath)
+
+        # Count number of waters and ions.
+        n_waters = 0
+        n_pos_ions = 0
+        n_neg_ions = 0
+        for res in system_traj.topology.residues:
+            if res.is_water:
+                n_waters += 1
+            elif '+' in res.name:
+                n_pos_ions += 1
+            elif '-' in res.name:
+                n_neg_ions += 1
+
+        # Verify that number of ions roughly models the expected ionic strength.
+        ionic_strength = exp_builder._db.solvents['PME']['ionic_strength']
+        expected_n_ions = int(np.round(n_waters * ionic_strength / (55.41*unit.molar)))
+        assert expected_n_ions > 0  # Or this test doesn't make sense.
+        assert n_pos_ions == expected_n_ions, '{}, {}'.format(n_pos_ions, expected_n_ions)
+        assert n_neg_ions == expected_n_ions, '{}, {}'.format(n_neg_ions, expected_n_ions)
 
 
 def test_setup_explicit_solvation_system():

@@ -24,6 +24,7 @@ import logging
 import itertools
 import collections
 
+import mdtraj
 import numpy as np
 import openmmtools as mmtools
 import openmoltools as moltools
@@ -1275,7 +1276,7 @@ class SetupDatabase:
             self._processed_mols.add(mol_id)
 
     def _setup_system(self, system_file_path, pack, alchemical_charge,
-                      system_parameters, solvent_id, *molecule_ids):
+                      system_parameters, solvent_id, *molecule_ids, **kwargs):
         """Setup a system and create its prmtop/inpcrd files.
 
         IMPORTANT: This function does not check if it's about to overwrite
@@ -1295,12 +1296,26 @@ class SetupDatabase:
             system in addition to the molecule-specific ones.
         solvent_id : str
             The ID of the solvent.
+        ignore_ionic_strength : bool, optional
+            If True, no ions will be added to reach the ionic strength (default
+            is False).
+        save_amber_files : bool, optional
+            If False, prmtop and inpcrd files are not saved (default is True).
+
+        Other Parameters
+        ----------------
         *molecule_ids : list-like of str
             List the IDs of the molecules to pack together in the system.
 
         """
+        # Get kwargs
+        ignore_ionic_strength = kwargs.pop('ignore_ionic_strength', False)
+        save_amber_files = kwargs.pop('save_amber_files', True)
+        assert len(kwargs) == 0
+
+        # Make sure molecules are set up
+        self._setup_molecules(*molecule_ids)
         solvent = self.solvents[solvent_id]
-        self._setup_molecules(*molecule_ids)  # Be sure molecules are set up
 
         # Create tleap script
         tleap = utils.TLeap()
@@ -1369,6 +1384,14 @@ class SetupDatabase:
         else:  # explicit solvent
             tleap.new_section('Solvate systems')
 
+            # Solvate unit. Solvent models different than tip3p need parameter modifications.
+            solvent_model = solvent['solvent_model']
+            if not solvent_model.startswith('tip3p'):
+                tleap.load_parameters('frcmod.' + solvent_model)
+            leap_solvent_model = _OPENMM_LEAP_SOLVENT_MODELS_MAP[solvent_model]
+            clearance = float(solvent['clearance'].value_in_unit(unit.angstroms))
+            tleap.solvate(leap_unit=unit_to_solvate, solvent_model=leap_solvent_model, clearance=clearance)
+
             # Add alchemically modified ions
             if alchemical_charge != 0:
                 try:
@@ -1381,21 +1404,30 @@ class SetupDatabase:
                                'solvent {}').format(solvent_id)
                     logger.error(err_msg)
                     raise RuntimeError(err_msg)
-                tleap.add_ions(leap_unit=unit_to_solvate, ion=ion, num_ions=abs(alchemical_charge))
+                tleap.add_ions(leap_unit=unit_to_solvate, ion=ion,
+                               num_ions=abs(alchemical_charge), replace_solvent=True)
 
             # Neutralizing solvation box
             if 'positive_ion' in solvent:
-                tleap.add_ions(leap_unit=unit_to_solvate, ion=solvent['positive_ion'])
+                tleap.add_ions(leap_unit=unit_to_solvate, ion=solvent['positive_ion'],
+                               replace_solvent=True)
             if 'negative_ion' in solvent:
-                tleap.add_ions(leap_unit=unit_to_solvate, ion=solvent['negative_ion'])
+                tleap.add_ions(leap_unit=unit_to_solvate, ion=solvent['negative_ion'],
+                               replace_solvent=True)
 
-            # Solvate unit. Solvent models different than tip3p need parameter modifications.
-            solvent_model = solvent['solvent_model']
-            if not solvent_model.startswith('tip3p'):
-                tleap.load_parameters('frcmod.' + solvent_model)
-            leap_solvent_model = _OPENMM_LEAP_SOLVENT_MODELS_MAP[solvent_model]
-            clearance = float(solvent['clearance'].value_in_unit(unit.angstroms))
-            tleap.solvate(leap_unit=unit_to_solvate, solvent_model=leap_solvent_model, clearance=clearance)
+            # Ions for the ionic strength must be added AFTER neutralization.
+            if not ignore_ionic_strength and solvent['ionic_strength'] != 0.0*unit.molar:
+                # Currently we support only monovalent ions.
+                for ion_name in [solvent['positive_ion'], solvent['negative_ion']]:
+                    assert '2' not in ion_name and '3' not in ion_name
+                n_waters = self._get_number_box_waters(pack, alchemical_charge, system_parameters,
+                                                       solvent_id, *molecule_ids)
+                # Water molarity at room temperature: 998.23g/L / 18.01528g/mol ~= 55.41M
+                n_ions = int(np.round(n_waters * solvent['ionic_strength'] / (55.41*unit.molar)))
+                tleap.add_ions(leap_unit=unit_to_solvate, ion=solvent['positive_ion'],
+                               num_ions=n_ions, replace_solvent=True)
+                tleap.add_ions(leap_unit=unit_to_solvate, ion=solvent['negative_ion'],
+                               num_ions=n_ions, replace_solvent=True)
 
         # Check charge
         tleap.new_section('Check charge')
@@ -1413,7 +1445,8 @@ class SetupDatabase:
 
         # Save prmtop, inpcrd and reference pdb files
         tleap.new_section('Save prmtop and inpcrd files')
-        tleap.save_unit(unit_to_solvate, system_file_path)
+        if save_amber_files:
+            tleap.save_unit(unit_to_solvate, system_file_path)
         tleap.save_unit(unit_to_solvate, base_file_path + '.pdb')
 
         # Save tleap script for reference
@@ -1423,6 +1456,20 @@ class SetupDatabase:
         warnings = tleap.run()
         for warning in warnings:
             logger.warning('TLeap: ' + warning)
+
+    def _get_number_box_waters(self, *args):
+        """Build a system in a temporary directory and count the number of waters."""
+        with mmtools.utils.temporary_directory() as tmp_dir:
+            system_file_path = os.path.join(tmp_dir, 'temp_system.prmtop')
+            self._setup_system(system_file_path, *args, ignore_ionic_strength=True,
+                               save_amber_files=False)
+
+            # Count number of waters of created system.
+            system_file_path = os.path.join(tmp_dir, 'temp_system.pdb')
+            system_traj = mdtraj.load(system_file_path)
+            n_waters = sum([1 for res in system_traj.topology.residues if res.is_water])
+
+        return n_waters
 
 
 # ==============================================================================

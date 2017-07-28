@@ -129,6 +129,7 @@ Detailed Options List
     * :ref:`clearance <yaml_solvents_clearance>`
     * :ref:`positive_ion <yaml_solvents_positive_ion>`
     * :ref:`negative_ion <yaml_solvents_negative_ion>`
+    * :ref:`ionic_strength <yaml_solvents_ionic_strength>`
 
 * :doc:`systems <systems>`
 
