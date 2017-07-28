@@ -93,11 +93,11 @@ def dispatch(args):
         override = str(override_dict).replace("'", "").replace('"', '')
 
     if args['--jobid']:
-        job_id = args['--jobid']
+        job_id = int(args['--jobid'])
     else:
         job_id = None
     if args['--njobs']:
-        n_jobs = args['--njobs']
+        n_jobs = int(args['--njobs'])
     else:
         n_jobs = None
 
