@@ -1026,7 +1026,7 @@ class MultiPhaseAnalyzer(object):
 
         ``PhaseB`` has ``.get_free_energy`` and ``.get_enthalpy``,
 
-        ``PhaseAB = PhaseA + PhaseB`` will only have a .get_free_energy method
+        ``PhaseAB = PhaseA + PhaseB`` will only have a ``.get_free_energy`` method
 
     Because each Phase may have a different number of states, the ``reference_states`` property of each phase
     determines which states from each phase to read the data from.
