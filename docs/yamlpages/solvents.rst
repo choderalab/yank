@@ -323,13 +323,38 @@ Specifies the negative counter ions that will be added as needed.
 No negative counter ions will be added if this option is not specified. Note that the name must match a known atom type
 in LEaP based on the parameter files you specified to load.
 
-Nonbonded Methods: ``CuttoffPeriodic``, ``Ewald``, ``PME``
+Nonbonded Methods: ``CutoffPeriodic``, ``Ewald``, ``PME``
 
 Valid Options: <Ion Symbol and charge>
 
 
 
+
+.. _yaml_solvents_ionic_strength:
+
+.. rst-class:: html-toggle
+
+``ionic_strength``
+------------------
+.. code-block:: yaml
+
+   solvents:
+     {UserDefinedSolvent}:
+       ionic_strength: 0.0*molar
+
+The ionic strength of the ions.
+
+Both ``positive_ion`` and ``negative_ion`` must be specified with this, and only monovalent ions are supported. Note
+that this does not include the ions that are used to neutralize the periodic box.
+
+Nonbonded Methods: ``CutoffPeriodic``, ``Ewald``, ``PME``
+
+Valid Options (0 * molar) <Quantity Length> [1]_
+
+
+
+
 .. [1] Quantity strings are of the format: ``<float> * <unit>`` where ``<unit>`` is any valid unit specified in the "Valid Options" for an option.
-   e.g. "<Quantity Length>" indicates any measure of length may be used for <unit> such as nanometer or angstrom. 
-   Compound units are also parsed such as ``kilogram / meter**3`` for density. 
+   e.g. "<Quantity Length>" indicates any measure of length may be used for <unit> such as nanometer or angstrom.
+   Compound units are also parsed such as ``kilogram / meter**3`` for density.
    Only full unit names as they appear in the simtk.unit package (part of OpenMM) are allowed; so "nm" and "A" will be rejected.
