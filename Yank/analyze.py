@@ -1016,10 +1016,7 @@ class MultiPhaseAnalyzer(object):
     """
     Multiple Phase Analyzer creator, not to be directly called itself, but instead called by adding or subtracting
     different implemented YankPhaseAnalyzer or other MultiPhaseAnalyzers's. The individual Phases of the
-    MultiPhaseAnalyzer are only references to existing Phase objects, not copies.
-
-    The user themselves should not attempt to make this class by calling it directly, but instead through doing
-    addition and subtraction of YankPhaseAnalyzer objects and/or other MultiPhaseAnalyzer objects. All YankPhaseAnalyzer
+    MultiPhaseAnalyzer are only references to existing Phase objects, not copies. All YankPhaseAnalyzer
     and MultiPhaseAnalyzer classes support ``+`` and ``-`` operations.
 
     The observables of this phase are determined through inspection of all the passed in phases and only observables
