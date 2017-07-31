@@ -16,12 +16,12 @@ the states differ only in temperature).
 
 Provided classes include:
 
-- ReplicaExchange
+- :class:`ReplicaExchange`
     Base class for general replica-exchange simulations.
-- ParallelTempering
+- :class:`ParallelTempering`
     Convenience subclass of ReplicaExchange for parallel tempering simulations
     (one System object, many temperatures).
-- Reporter
+- :class:`Reporter`
     Replica Exchange reporter class to store all variables and data
 
 COPYRIGHT
@@ -84,7 +84,7 @@ class Reporter(object):
     storage : str
         The path to the storage file for analysis.
 
-        A second checkpoint file will be determined from either checkpoint_storage_file or automatically based on
+        A second checkpoint file will be determined from either ``checkpoint_storage_file`` or automatically based on
         the storage option
 
         In the future this will be able to take Storage classes as well.
@@ -92,13 +92,13 @@ class Reporter(object):
         The mode of the file between 'r', 'w', and 'a' (or equivalently 'r+').
 
         If None, the storage file won't be open on construction, and a call to
-        Reporter.open() will be needed before attempting read/write operations.
+        :func:`Reporter.open` will be needed before attempting read/write operations.
     checkpoint_interval : int >= 1, Default: 10
         The frequency at which checkpointing information is written relative to analysis information.
 
         This is a multiple
         of the iteration at which energies is written, hence why it must be greater than or equal to 1.
-        Checkpoint information cannot be written on iterations which where iteration % checkpoint_interval != 0.
+        Checkpoint information cannot be written on iterations which where ``iteration % checkpoint_interval != 0``.
 
         Attempting to read checkpointing information results in a masked array where only entries which were written
         are unmasked
@@ -183,7 +183,7 @@ class Reporter(object):
         Returns
         -------
         files_exist : bool
-            If the primary storage file and its related subfiles exist, returns True
+            If the primary storage file and its related subfiles exist, returns True.
             If the primary file or any subfiles do not exist, returns False
         """
         # This function serves as a way to mask the subfiles from everything outside the reporter
@@ -590,9 +590,9 @@ class Reporter(object):
         Returns
         -------
         state_indices : list of int
-            At the given iteration, replica i propagated the system in
-            SamplerState sampler_states[i] and ThermodynamicState
-            thermodynamic_states[states_indices[i]].
+            At the given iteration, replica ``i`` propagated the system in
+            SamplerState ``sampler_states[i]`` and ThermodynamicState
+            ``thermodynamic_states[states_indices[i]]``.
 
         """
         iteration = self._calculate_last_iteration(iteration)
@@ -604,9 +604,9 @@ class Reporter(object):
         Parameters
         ----------
         state_indices : list of int
-            At the given iteration, replica i propagated the system in
-            SamplerState sampler_states[i] and ThermodynamicState
-            thermodynamic_states[replica_thermodynamic_states[i]].
+            At the given iteration, replica ``i`` propagated the system in
+            SamplerState ``sampler_states[i]`` and ThermodynamicState
+            ``thermodynamic_states[replica_thermodynamic_states[i]]``.
         iteration : int
             The iteration at which to store the data.
 
@@ -630,7 +630,7 @@ class Reporter(object):
         self._storage_analysis.variables['states'][iteration, :] = state_indices[:]
 
     def read_mcmc_moves(self):
-        """Return the MCMCMoves of the ReplicaExchange simulation on the checkpoint
+        """Return the MCMCMoves of the :class:`yank.repex.ReplicaExchange` simulation on the checkpoint
 
         Returns
         -------
@@ -648,7 +648,7 @@ class Reporter(object):
         return mcmc_moves
 
     def write_mcmc_moves(self, mcmc_moves):
-        """Store the MCMCMoves of the ReplicaExchange simulation on the checkpoint
+        """Store the MCMCMoves of the :class:`yank.repex.ReplicaExchange` simulation on the checkpoint
 
         Parameters
         ----------
@@ -671,11 +671,11 @@ class Reporter(object):
         Returns
         -------
         energy_thermodynamic_states : n_replicas x n_replicas numpy.ndarray
-            energy_thermodynamic_states[iteration, i, j] is the reduced potential computed at
-            SamplerState sampler_states[iteration, i] and ThermodynamicState thermodynamic_states[iteration, j].
+            ``energy_thermodynamic_states[iteration, i, j]`` is the reduced potential computed at
+            SamplerState ``sampler_states[iteration, i]`` and ThermodynamicState ``thermodynamic_states[iteration, j]``.
         energy_unsampled_states : n_replicas x n_unsampled_states numpy.ndarray
-            energy_unsampled_states[iteration, i, j] is the reduced potential computed at SamplerState
-            sampler_states[iteration, i] and ThermodynamicState unsampled_thermodynamic_states[iteration, j].
+            ``energy_unsampled_states[iteration, i, j]`` is the reduced potential computed at SamplerState
+            ``sampler_states[iteration, i]`` and ThermodynamicState ``unsampled_thermodynamic_states[iteration, j]``.
 
         """
         iteration = self._calculate_last_iteration(iteration)
@@ -694,11 +694,11 @@ class Reporter(object):
         Parameters
         ----------
         energy_thermodynamic_states : n_replicas x n_replicas numpy.ndarray
-            energy_thermodynamic_states[i][j] is the reduced potential computed at
-            SamplerState sampler_states[i] and ThermodynamicState thermodynamic_states[j].
+            ``energy_thermodynamic_states[i][j]`` is the reduced potential computed at
+            SamplerState ``sampler_states[i]`` and ThermodynamicState ``thermodynamic_states[j]``.
         energy_unsampled_states : n_replicas x n_unsampled_states numpy.ndarray
-            energy_unsampled_states[i][j] is the reduced potential computed at SamplerState
-            sampler_states[i] and ThermodynamicState unsampled_thermodynamic_states[j].
+            ``energy_unsampled_states[i][j]`` is the reduced potential computed at SamplerState
+            ``sampler_states[i]`` and ThermodynamicState ``unsampled_thermodynamic_states[j]``.
         iteration : int
             The iteration at which to store the data.
 
@@ -761,13 +761,13 @@ class Reporter(object):
         Returns
         -------
         n_accepted_matrix : kxk numpy.ndarray
-            n_accepted_matrix[i][j] is the number of accepted moves from
-            state thermodynamic_states[i] to thermodynamic_states[j] going
-            from iteration-1 to iteration (not cumulative).
+            ``n_accepted_matrix[i][j]`` is the number of accepted moves from
+            state ``thermodynamic_states[i]`` to ``thermodynamic_states[j]`` going
+            from ``iteration-1`` to ``iteration`` (not cumulative).
         n_proposed_matrix : kxk numpy.ndarray
-            n_proposed_matrix[i][j] is the number of proposed moves from
-            state thermodynamic_states[i] to thermodynamic_states[j] going
-            from iteration-1 to iteration (not cumulative).
+            ``n_proposed_matrix[i][j]`` is the number of proposed moves from
+            state ``thermodynamic_states[i]`` to ``thermodynamic_states[j]`` going
+            from ``iteration-1`` to ``iteration`` (not cumulative).
 
         """
         iteration = self._calculate_last_iteration(iteration)
@@ -781,13 +781,13 @@ class Reporter(object):
         Parameters
         ----------
         n_accepted_matrix : kxk numpy.ndarray
-            n_accepted_matrix[i][j] is the number of accepted moves from
-            state thermodynamic_states[i] to thermodynamic_states[j] going
+            ``n_accepted_matrix[i][j]`` is the number of accepted moves from
+            state ``thermodynamic_states[i]`` to ``thermodynamic_states[j]`` going
             from iteration-1 to iteration (not cumulative).
         n_proposed_matrix : kxk numpy.ndarray
-            n_proposed_matrix[i][j] is the number of proposed moves from
-            state thermodynamic_states[i] to thermodynamic_states[j] going
-            from iteration-1 to iteration (not cumulative).
+            ``n_proposed_matrix[i][j]`` is the number of proposed moves from
+            state ``thermodynamic_states[i]`` to ``thermodynamic_states[j]`` going
+            from ``iteration-1`` to ``iteration`` (not cumulative).
         iteration : int
             The iteration at which to store the data.
 
@@ -846,7 +846,7 @@ class Reporter(object):
     def write_timestamp(self, iteration):
         """Store a timestamp for the given iteration on both analysis and checkpoint file.
 
-        If the iteration is not on the checkpoint_interval, no timestamp is written
+        If the iteration is not on the ``checkpoint_interval``, no timestamp is written on the checkpoint file
 
         Parameters
         ----------
@@ -902,8 +902,8 @@ class Reporter(object):
         Tell the reporter what the last iteration which was written in sequential order was to allow resuming and
         analysis only on valid data.
 
-        Call this as the last step of any write_iteration-like routine to ensure analysis will not use junk data
-        left over from an interrupted simulation past the last checkpoint.
+        Call this as the last step of any ``write_iteration``-like routine to ensure
+        analysis will not use junk data left over from an interrupted simulation past the last checkpoint.
 
         Parameters
         ----------
@@ -923,7 +923,7 @@ class Reporter(object):
             The dict to store.
         fixed_dimension: bool, Defautlt: False
             Use a fixed length dimension instead of variable length one. A unique dimension name (sharing a name with
-            "name") will be created and its length will be set equal to "fixedL{}".format(len(data_string))
+            "name") will be created and its length will be set equal to ``"fixedL{}".format(len(data_string))``
 
             This method seems to allow NetCDF to actually compress strings.
 
@@ -990,8 +990,8 @@ class Reporter(object):
         The initial guess is often 0 for all states, so any state not written is returned as zeros for f_k, and
         infinity for
 
-        Used primarily in online analysis, and should be used in tandem with an YankPhaseAnalysis object from the
-        analyze module
+        Used primarily in online analysis, and should be used in tandem with an :class:`yank.analyze.YankPhaseAnalyzer`
+        object from the :mod:`yank.analyze` module
 
         Parameters
         ----------
@@ -1014,11 +1014,11 @@ class Reporter(object):
 
     def write_mbar_free_energies(self, iteration, f_k, free_energy):
         """
-        Write the mbar free energies at the current iteration. See read_mbar_free_energies for more information about
-        pymbar's f_k free energies
+        Write the mbar free energies at the current iteration. See :func:`read_mbar_free_energies` for more information
+        about pymbar's f_k free energies
 
-        Used primarily in online analysis, and should be used in tandem with an YankPhaseAnalysis object from the
-        analyze module.
+        Used primarily in online analysis, and should be used in tandem with an :class:`yank.analyze.YankPhaseAnalyzer`
+        object from the :mod:`analyze` module.
 
         Parameters
         ----------
@@ -1208,21 +1208,21 @@ class ReplicaExchange(object):
 
         After every interval, the simulation will be stopped and the free energy estimated.
 
-        If the error in the free energy estimate is at or below online_analysis_target_error, then the simulation will
-        be considered completed.
+        If the error in the free energy estimate is at or below ``online_analysis_target_error``, then the simulation
+        will be considered completed.
 
     online_analysis_target_error : float >= 0, optional, default 0.2
         The target error for the online analysis measured in kT per phase.
 
         Once the free energy is at or below this value, the phase will be considered complete.
 
-        If online_analysis_interval is None, this option does nothing.
+        If ``online_analysis_interval`` is None, this option does nothing.
 
     online_analysis_minimum_iterations : int >= 0, optional, default 50
         Set the minimum number of iterations which must pass before online analysis is carried out.
 
-        Since the initial samples are likley not to yeild a good estimate of free energy, save time and just skip them
-        If online_analysis_interval is None, this does nothing
+        Since the initial samples likely not to yield a good estimate of free energy, save time and just skip them
+        If ``online_analysis_interval`` is None, this does nothing
 
     Attributes
     ----------
@@ -1236,7 +1236,7 @@ class ReplicaExchange(object):
     Examples
     --------
     Parallel tempering simulation of alanine dipeptide in implicit solvent (replica
-    exchange among temperatures). This is just an illustrative example; use ParallelTempering
+    exchange among temperatures). This is just an illustrative example; use :class:`ParallelTempering`
     class for actual production parallel tempering simulations.
 
     Create the system.
@@ -1398,7 +1398,7 @@ class ReplicaExchange(object):
         ----------
         storage : str or Reporter
             If str: The path to the storage file.
-            If Reporter: uses the Reporter options
+            If :class:`Reporter`: uses the :class:`Reporter` options
             In the future this will be able to take a Storage class as well.
 
         Returns
@@ -1757,7 +1757,7 @@ class ReplicaExchange(object):
         ----------
         tolerance : simtk.unit.Quantity, optional
             Minimization tolerance (units of energy/mole/length, default is
-            1.0 * unit.kilojoules_per_mole / unit.nanometers).
+            ``1.0 * unit.kilojoules_per_mole / unit.nanometers``).
         max_iterations : int, optional
             Maximum number of iterations for minimization. If 0, minimization
             continues until converged.
@@ -1830,7 +1830,7 @@ class ReplicaExchange(object):
     def run(self, n_iterations=None):
         """Run the replica-exchange simulation.
 
-        This runs at most `number_of_iterations` iterations. Use `extend()`
+        This runs at most ``number_of_iterations`` iterations. Use :func:`extend`
         to pass the limit.
 
         Parameters
@@ -1903,7 +1903,7 @@ class ReplicaExchange(object):
     def extend(self, n_iterations):
         """Extend the simulation by the given number of iterations.
 
-        Contrarily to ``run()``, this will extend the number of iterations past
+        Contrarily to :func:`run`, this will extend the number of iterations past
         ``number_of_iteration`` if requested.
 
         Parameters
@@ -2443,7 +2443,7 @@ class ParallelTempering(ReplicaExchange):
     """Parallel tempering simulation facility.
 
     This class provides a facility for parallel tempering simulations. It
-    is a subclass of ReplicaExchange, but provides efficiency improvements
+    is a subclass of :class:`ReplicaExchange`, but provides efficiency improvements
     for parallel tempering simulations, so should be preferred for this type
     of simulation. In particular, this makes use of the fact that the reduced
     potentials are linear in inverse temperature.
@@ -2505,26 +2505,26 @@ class ParallelTempering(ReplicaExchange):
             they will be assigned to replicas in a round-robin fashion.
         storage : str or Reporter
             If str: path to the storage file, checkpoint options are default
-            If Reporter: Instanced repex.Reporter class, checkpoint information is read from
+            If Reporter: Instanced :class:`Reporter` class, checkpoint information is read from
             In the future this will be able to take a Storage class as well.
         min_temperature : simtk.unit.Quantity, optional
            Minimum temperature (units of temperature, default is None).
         max_temperature : simtk.unit.Quantity, optional
            Maximum temperature (units of temperature, default is None).
         n_temperatures : int, optional
-           Number of exponentially-spaced temperatures between min_temperature
-           and max_temperature (default is None).
+           Number of exponentially-spaced temperatures between ``min_temperature``
+           and ``max_temperature`` (default is None).
         temperatures : list of simtk.unit.Quantity, optional
            If specified, this list of temperatures will be used instead of
-           min_temperature, max_temperature, and n_temperatures (units of temeprature,
+           ``min_temperature``, ``max_temperature``, and ``n_temperatures`` (units of temperature,
            default is None).
         metadata : dict, optional
            Simulation metadata to be stored in the file.
 
         Notes
         -----
-        Either (min_temperature, max_temperature, n_temperatures) must all be
-        specified or the list of 'temperatures' must be specified.
+        Either (``min_temperature``, ``max_temperature``, ``n_temperatures``) must all be
+        specified or the list of '`temperatures`' must be specified.
 
         """
         # Create thermodynamic states from temperatures.

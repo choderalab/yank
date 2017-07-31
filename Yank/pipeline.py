@@ -61,7 +61,7 @@ def compute_min_dist(mol_positions, *args):
     Returns
     -------
     min_dist : float
-        The minimum distance between mol_positions and the other set of positions
+        The minimum distance between ``mol_positions`` and the other set of positions
 
     """
     for pos1 in args:
@@ -320,9 +320,9 @@ def create_system(parameters_file, box_vectors, create_system_args, system_optio
     box_vectors : list of Vec3
         The default box vectors of the system will be set to this value.
     create_system_args : dict of str
-        The kwargs accepted by the createSystem() function of the file.
+        The kwargs accepted by the ``createSystem()`` function of the ``parameters_file``.
     system_options : dict
-        The kwargs to forward to createSystem().
+        The kwargs to forward to ``createSystem()``.
 
     Returns
     -------
@@ -389,8 +389,8 @@ def read_system_files(positions_file_path, parameters_file_path, system_options,
     parameters_file_path : str
         Path to system parameters file (e.g. 'complex.prmtop/.top/.xml').
     system_options : dict
-        system_options[phase] is a a dictionary containing options to
-        pass to createSystem(). If the parameters file is an OpenMM
+        ``system_options[phase]`` is a a dictionary containing options to
+        pass to ``createSystem()``. If the parameters file is an OpenMM
         system in XML format, this will be ignored.
     gromacs_include_dir : str, optional
         Path to directory in which to look for other files included
@@ -851,7 +851,7 @@ class SetupDatabase:
 
         An example to clarify the difference between the two return values: a protein
         in a single-frame pdb does not have to be processed (since it does not go through
-        antechamber) thus the function will return is_setup=True and is_processed=False.
+        antechamber) thus the function will return ``is_setup=True`` and ``is_processed=False``.
 
         Parameters
         ----------
