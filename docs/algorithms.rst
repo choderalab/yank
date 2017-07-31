@@ -112,7 +112,8 @@ Explicit solvent
 Solvent model
 ^^^^^^^^^^^^^
 
-Any explicit solvent model that can be constructed via AmberTools or that is distributed along with OpenMM is supported.
+Any explicit solvent model that can be constructed via AmberTools is supported for building through the
+:mod:`pipeline module <yank.pipeline>`.
 
 .. tabularcolumns:: |l|L|
 
@@ -340,8 +341,11 @@ This speeds up mixing and reduces the total number of samples you need to get un
 Markov chain Monte Carlo
 ========================
 
-YANK operates with additional sampling enhancements based on Markov Chain Monte Carlo (MCMC) techniques, and implements
-them through `OpenMMTools <http://openmmtools.readthedocs.io/en/latest/mcmc.html>`_ MCMC suite. Each enhancement is
+YANK implements a replica exchange scheme with Gibbs sampling :cite:`Chodera2011` to sample multiple thermodynamic
+states in a manner that improves mixing of the overall Markov chain. In between replica exchange attempts, YANK uses
+compositions of Markov chain Monte Carlo (MCMC) moves from the
+`openmmtools.mcmc module <http://openmmtools.readthedocs.io/en/latest/mcmc.html>`_
+to sample from the equilibrium distribution at each thermodynamic states. Each MCMC move is
 treated as a single, independent, MCMC move carried out in sequence so that samples are drawn from the equilibrium
 distribution at each step. Should one move be rejected, the other moves will still be carried out.
 
@@ -437,7 +441,8 @@ thermodynamic state it is visiting.
 Determining equilibration and autocorrelation in a replica-exchange simulation
 ------------------------------------------------------------------------------
 
-Now that we have the observable, we now need to evaluate the equilibration, and autocorrelation times.
+YANK automatically determines an optimal partitioning between the initial equilibration phase of the simulation
+(which is discarded) and the production phase of the simulation (which is analyzed to estimate free energies).
 
 We first define a some terminology. We start with
 finite count of samples :math:`t \in [1,T]` where `t` is the individual sample index and `T` is the total number of
@@ -514,7 +519,8 @@ expanded cutoffs that YANK supports.
 Automated convergence detection
 ===============================
 
-YANK has the ability to run a simulation until the free energy difference in a phase reaches a target uncertainty.
+YANK has the ability to run a simulation until the free energy difference in a phase reaches a user-specified target
+uncertainty.
 If this option is set, either through the :ref:`yaml options <yaml_options_online_analysis_parameters>` or
 :meth:`the ReplicaExchange API <yank.repex.ReplicaExchange>`, then each phase will be simulated until either the
 error free energy difference reaches the target, or the maximum number of iterations has been reached.
@@ -563,8 +569,7 @@ fully mix once. The closer this value is to unity (1), the better.
 Autotuning the alchemical protocol
 ==================================
 
-.. andrea.rizi, can you add more to this section?
-
 This is an experimental feature YANK has recently implemented to automatically choose your alchemical states based on
 a quick estimate of the free energy. It is still going through improvements and will receive further documentation as
-its options are finalized and debugged.
+its options are finalized and debugged. This feature's development can be followed
+`on YANK's GitHub page <https://github.com/choderalab/yank>`_.
