@@ -183,7 +183,7 @@ def test_harmonic_standard_state():
     LJ_fluid = testsystems.LennardJonesFluid()
 
     # Create Harmonic restraint.
-    restraint = yank.restraints.create_restraint('Harmonic', restrained_receptor_atom=1)
+    restraint = yank.restraints.create_restraint('Harmonic', restrained_receptor_atoms=[1])
 
     # Determine other parameters.
     ligand_atoms = [3, 4, 5]
@@ -204,7 +204,7 @@ def test_harmonic_standard_state():
 
 
 # ==============================================================================
-# RESTRAINT FACTORY FUNCTIONS
+# RESTRAINT PARAMETER DETERMINATION
 # ==============================================================================
 
 def test_partial_parametrization():
@@ -219,8 +219,8 @@ def test_partial_parametrization():
     # Test case: (restraint_type, constructor_kwargs)
     test_cases = [
         ('Harmonic', dict(spring_constant=2.0*unit.kilojoule_per_mole/unit.nanometer**2,
-                          restrained_receptor_atom=5)),
-        ('FlatBottom', dict(well_radius=1.0*unit.angstrom, restrained_ligand_atom=130)),
+                          restrained_receptor_atoms=[5])),
+        ('FlatBottom', dict(well_radius=1.0*unit.angstrom, restrained_ligand_atoms=[130])),
         ('Boresch', dict(restrained_atoms=[106, 123, 117, 130, 131, 136],
                          K_r=1.0*unit.kilojoule_per_mole/unit.angstroms**2))
     ]
@@ -239,6 +239,36 @@ def test_partial_parametrization():
 
         # The rest of the parameters has been determined.
         restraint.get_standard_state_correction(thermodynamic_state)
+
+def test_restraint_dsl_selection():
+    """The DSL atom selection works as expected."""
+    test_system = testsystems.HostGuestVacuum()
+    topography = Topography(test_system.topology, ligand_atoms='resname B2')
+    sampler_state = states.SamplerState(positions=test_system.positions)
+    thermodynamic_state = states.ThermodynamicState(test_system.system,
+                                                    temperature=300.0*unit.kelvin)
+
+    # Iniialize with DSL and without topology raises an error.
+    restraint = yank.restraints.Harmonic(spring_constant=2.0*unit.kilojoule_per_mole/unit.nanometer**2,
+                                         restrained_receptor_atoms="(resname CUC) and (name =~ 'O[0-9]+')",
+                                         restrained_ligand_atoms='resname B2')
+    with nose.tools.assert_raises(yank.restraints.RestraintParameterError):
+            restraint.restrain_state(thermodynamic_state)
+
+    # After oarameter determination, the indices of the restrained atoms are correct.
+    restraint.determine_missing_parameters(thermodynamic_state, sampler_state, topography)
+    assert len(restraint.restrained_receptor_atoms) == 14
+    assert len(restraint.restrained_ligand_atoms) == 30
+
+    # The bond force is configured correctly.
+    restraint.restrain_state(thermodynamic_state)
+    system = thermodynamic_state.system
+    for force in system.getForces():
+        if isinstance(force, openmm.CustomCentroidBondForce):
+            assert force.getBondParameters(0)[0] == (0, 1)
+            assert len(force.getGroupParameters(0)[0]) == 14
+            assert len(force.getGroupParameters(1)[0]) == 30
+    assert isinstance(force, openmm.CustomCentroidBondForce)  # We have found a force.
 
 
 # ==============================================================================

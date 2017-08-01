@@ -425,23 +425,36 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
     """
     Base class for radially-symmetric restraints between ligand and protein.
 
-    This class is intended to be inherited by Restraints using a `CustomBondForce`.
     The restraint strength is controlled by a global context parameter called
     'lambda_restraints'.
 
-    The class allows the restrained atoms to be temporarily, but in this case
-    `determine_missing_parameters()` must be called before using the restraint.
+    The class allows the restrained atoms to be temporarily undefined, but in
+    this case ``determine_missing_parameters()`` must be called before using
+    the restraint.
 
     Parameters
     ----------
-    restrained_receptor_atom : int, optional
-        The index of the receptor atom to restrain. This can temporarily be left
-        undefined, but in this case `determine_missing_parameters()` must be called
-        before using the Restraint object (default is None).
-    restrained_ligand_atom : int, optional
-        The index of the ligand atom to restrain. This can temporarily be left
-        undefined, but in this case `determine_missing_parameters()` must be called
-        before using the Restraint object (default is None).
+    restrained_receptor_atoms : list of int or str, optional
+        The indices of the receptor atoms to restrain, or an MDTraj DSL expression.
+        This can temporarily be left undefined, but ``determine_missing_parameters()``
+        must be called before using the Restraint object. The same if a DSL
+        expression is provided without passing the topology (default is None).
+    restrained_ligand_atoms : list of int or str, optional
+        The indices of the ligand atoms to restrain, or an MDTraj DSL expression.
+        This can temporarily be left undefined, but ``determine_missing_parameters()``
+        must be called before using the Restraint object. The same if a DSL
+        expression is provided without passing the topology (default is None).
+    topology : simtk.openmm.app.Topology or mdtraj.Topology, optional
+        The topology used to resolve the DSL string. If not provided, the atom
+        selection expressions will be resolved by ``determine_missing_parameters()``.
+
+    Attributes
+    ----------
+    restrained_receptor_atoms : list of int or None
+        The indices of the receptor atoms to restrain.
+    restrained_ligand_atoms : list of int or None
+        The indieces of the ligand atoms to restrain.
+    topology : mdtraj.Topology
 
     Notes
     -----
@@ -456,9 +469,62 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
         function to automatically determine these parameters from the atoms positions.
 
     """
-    def __init__(self, restrained_receptor_atom=None, restrained_ligand_atom=None):
-        self.restrained_receptor_atom = restrained_receptor_atom
-        self.restrained_ligand_atom = restrained_ligand_atom
+    def __init__(self, restrained_receptor_atoms=None, restrained_ligand_atoms=None, topology=None):
+        self.restrained_receptor_atoms = restrained_receptor_atoms
+        self.restrained_ligand_atoms = restrained_ligand_atoms
+        self.topology = topology
+
+    # -------------------------------------------------------------------------
+    # Public properties.
+    # -------------------------------------------------------------------------
+
+    class _RestrainedAtomsProperty(object):
+        """
+        Descriptor of restrained atoms.
+
+        Evaluate DSL atoms selections at runtime to allow partially specified restraints.
+
+        """
+        def __init__(self, atoms_type):
+            self._attribute_name = '_restrained_' + atoms_type + '_atoms'
+
+        def __get__(self, instance, owner_class=None):
+            restrained_atoms = getattr(instance, self._attribute_name)
+
+            # On-demand resolution of restrained receptor atoms.
+            if isinstance(restrained_atoms, str):
+                if instance.topology is None:
+                    raise RestraintParameterError('Cannot resolve receptor DSL expression "{}" '
+                                                  'without topology'.format(restrained_atoms))
+                restrained_atoms = instance.topology.select(restrained_atoms).tolist()
+                setattr(instance, self._attribute_name, restrained_atoms)
+
+            # Return None if an empty list.
+            if restrained_atoms is None or len(restrained_atoms) == 0:
+                return None
+            return restrained_atoms
+
+        def __set__(self, instance, new_restrained_atoms):
+            setattr(instance, self._attribute_name, new_restrained_atoms)
+
+    restrained_receptor_atoms = _RestrainedAtomsProperty('receptor')
+    restrained_ligand_atoms = _RestrainedAtomsProperty('ligand')
+
+    @property
+    def topology(self):
+        """The topology used to solve DSL atom selection"""
+        # On-demand conversion of OpenMM topology to mdtraj topology.
+        if isinstance(self._topology, openmm.app.Topology):
+            self._topology = md.Topology.from_openmm(self._topology)
+        return self._topology
+
+    @topology.setter
+    def topology(self, new_topology):
+        self._topology = new_topology
+
+    # -------------------------------------------------------------------------
+    # Public methods.
+    # -------------------------------------------------------------------------
 
     def restrain_state(self, thermodynamic_state):
         """Add the restraining Force(s) to the thermodynamic state's system.
@@ -478,13 +544,13 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
 
         """
         # Check that restrained atoms are defined.
-        if self.restrained_receptor_atom is None or self.restrained_ligand_atom is None:
+        if self.restrained_receptor_atoms is None or self.restrained_ligand_atoms is None:
             raise RestraintParameterError('Restraint {}: Undefined restrained '
                                           'atoms.'.format(self.__class__.__name__))
 
         # Create restraint force.
-        restraint_force = self._create_restraint_force(self.restrained_receptor_atom,
-                                                       self.restrained_ligand_atom)
+        restraint_force = self._create_restraint_force(self.restrained_receptor_atoms,
+                                                       self.restrained_ligand_atoms)
 
         # Set periodic conditions on the force if necessary.
         restraint_force.setUsesPeriodicBoundaryConditions(thermodynamic_state.is_periodic)
@@ -520,7 +586,7 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
         system = openmm.System()
         system.addParticle(1.0 * unit.amu)
         system.addParticle(1.0 * unit.amu)
-        force = self._create_restraint_force(0, 1)
+        force = self._create_restraint_force([0], [1])
         # Disable the PBC if on for this approximation of the analytical solution
         force.setUsesPeriodicBoundaryConditions(False)
         system.addForce(force)
@@ -596,6 +662,9 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
             The topography with labeled receptor and ligand atoms.
 
         """
+        if self.topology is None:
+            self.topology = topography.topology
+
         # Determine restrained atoms, if needed.
         self._determine_restrained_atoms(sampler_state, topography)
 
@@ -680,24 +749,24 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
 
         # Automatically determine receptor atom to restrain only
         # if the user has not defined specific atoms to restrain.
-        if self.restrained_receptor_atom is None:
-            self.restrained_receptor_atom = self._closest_atom_to_centroid(positions, receptor_atoms)
-            logger.debug(debug_msg.format(self.restrained_receptor_atom))
+        if self.restrained_receptor_atoms is None:
+            self.restrained_receptor_atoms = [self._closest_atom_to_centroid(positions, receptor_atoms)]
+            logger.debug(debug_msg.format(self.restrained_receptor_atoms))
 
         # Same for ligand atom.
-        if self.restrained_ligand_atom is None:
-            self.restrained_ligand_atom = self._closest_atom_to_centroid(positions, ligand_atoms)
-            logger.debug(debug_msg.format(self.restrained_ligand_atom))
+        if self.restrained_ligand_atoms is None:
+            self.restrained_ligand_atoms = [self._closest_atom_to_centroid(positions, ligand_atoms)]
+            logger.debug(debug_msg.format(self.restrained_ligand_atoms))
 
-    def _create_restraint_force(self, particle1, particle2):
+    def _create_restraint_force(self, particles1, particles2):
         """Create a new restraint force between specified atoms.
 
         Parameters
         ----------
-        particle1 : int
-            Index of first atom in restraint
-        particle2 : int
-            Index of second atom in restraint
+        particles1 : list of int
+            Indices of first group of atoms to restraint.
+        particles2 : list of int
+            Indices of second group of atoms to restraint.
 
         Returns
         -------
@@ -714,21 +783,23 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
         parameter_names, parameter_values = zip(*self._bond_parameters.items())
 
         # Create bond force and lambda_restraints parameter to control it.
-        force = openmm.CustomBondForce('lambda_restraints * ' + self._energy_function)
-        force.addGlobalParameter('lambda_restraints', 1.0)
+        if len(particles1) == 1 and len(particles2) == 1:
+            # CustomCentroidBondForce works only on 64bit platforms. When the
+            # restrained groups only have 1 particle, we can use the standard
+            # CustomBondForce so that we can support 32bit platforms too.
+            energy_function = self._energy_function.replace('distance(g1,g2)', 'r')
+            force = openmm.CustomBondForce('lambda_restraints * ' + energy_function)
+            force.addBond(particles1[0], particles2[0], parameter_values)
+        else:
+            force = openmm.CustomCentroidBondForce(2, 'lambda_restraints * ' + self._energy_function)
+            force.addGroup(particles1)
+            force.addGroup(particles2)
+            force.addBond([0, 1], parameter_values)
 
         # Add all parameters.
+        force.addGlobalParameter('lambda_restraints', 1.0)
         for parameter in parameter_names:
             force.addPerBondParameter(parameter)
-
-        # Create restraining bond.
-        try:
-            force.addBond(particle1, particle2, parameter_values)
-        except Exception:
-            err_msg = 'particle1: {}\nparticle2: {}\nbond_parameters: {}'.format(
-                particle1, particle2, self._bond_parameters)
-            logger.error(err_msg)
-            raise
 
         return force
 
@@ -812,10 +883,27 @@ class Harmonic(RadiallySymmetricRestraint):
     spring_constant : simtk.unit.Quantity, optional
         The spring constant K (see energy expression above) in units compatible
         with joule/nanometer**2/mole (default is None).
-    restrained_receptor_atom : int, optional
-        The index of the receptor atom to restrain (default is None).
-    restrained_ligand_atom : int, optional
-        The index of the ligand atom to restrain (default is None).
+    restrained_receptor_atoms : list of int or str, optional
+        The indices of the receptor atoms to restrain, or an MDTraj DSL expression.
+        This can temporarily be left undefined, but ``determine_missing_parameters()``
+        must be called before using the Restraint object. The same if a DSL
+        expression is provided without passing the topology (default is None).
+    restrained_ligand_atoms : list of int or str, optional
+        The indices of the ligand atoms to restrain, or an MDTraj DSL expression.
+        This can temporarily be left undefined, but ``determine_missing_parameters()``
+        must be called before using the Restraint object. The same if a DSL
+        expression is provided without passing the topology (default is None).
+    topology : simtk.openmm.app.Topology or mdtraj.Topology, optional
+        The topology used to resolve the DSL string. If not provided, the atom
+        selection expressions will be resolved by ``determine_missing_parameters()``.
+
+    Attributes
+    ----------
+    restrained_receptor_atoms : list of int or None
+        The indices of the receptor atoms to restrain.
+    restrained_ligand_atoms : list of int or None
+        The indieces of the ligand atoms to restrain.
+    topology : mdtraj.Topology
 
     Examples
     --------
@@ -835,7 +923,7 @@ class Harmonic(RadiallySymmetricRestraint):
     you can create a completely defined restraint
 
     >>> restraint = Harmonic(spring_constant=8*unit.kilojoule_per_mole/unit.nanometers**2,
-    ...                      restrained_receptor_atom=1644, restrained_ligand_atom=2609)
+    ...                      restrained_receptor_atoms=[1644], restrained_ligand_atoms=[2609])
 
     Or automatically identify the parameters. When trying to impose a restraint
     with undefined parameters, RestraintParameterError is raised.
@@ -862,7 +950,7 @@ class Harmonic(RadiallySymmetricRestraint):
     @property
     def _energy_function(self):
         """str: energy expression of the restraint force."""
-        return '(K/2)*r^2'
+        return '(K/2)*distance(g1,g2)^2'
 
     @property
     def _bond_parameters(self):
@@ -938,10 +1026,27 @@ class FlatBottom(RadiallySymmetricRestraint):
     well_radius : simtk.unit.Quantity, optional
         The distance r0 (see energy expression above) at which the harmonic
         restraint is imposed in units of distance (default is None).
-    restrained_receptor_atom : int, optional
-        The index of the receptor atom to restrain (default is None).
-    restrained_ligand_atom : int, optional
-        The index of the ligand atom to restrain (default is None).
+    restrained_receptor_atoms : list of int or str, optional
+        The indices of the receptor atoms to restrain, or an MDTraj DSL expression.
+        This can temporarily be left undefined, but ``determine_missing_parameters()``
+        must be called before using the Restraint object. The same if a DSL
+        expression is provided without passing the topology (default is None).
+    restrained_ligand_atoms : list of int or str, optional
+        The indices of the ligand atoms to restrain, or an MDTraj DSL expression.
+        This can temporarily be left undefined, but ``determine_missing_parameters()``
+        must be called before using the Restraint object. The same if a DSL
+        expression is provided without passing the topology (default is None).
+    topology : simtk.openmm.app.Topology or mdtraj.Topology, optional
+        The topology used to resolve the DSL string. If not provided, the atom
+        selection expressions will be resolved by ``determine_missing_parameters()``.
+
+    Attributes
+    ----------
+    restrained_receptor_atoms : list of int or None
+        The indices of the receptor atoms to restrain.
+    restrained_ligand_atoms : list of int or None
+        The indieces of the ligand atoms to restrain.
+    topology : mdtraj.Topology
 
     Examples
     --------
@@ -961,8 +1066,8 @@ class FlatBottom(RadiallySymmetricRestraint):
     You can create a completely defined restraint
 
     >>> restraint = FlatBottom(spring_constant=0.6*unit.kilocalorie_per_mole/unit.angstroms**2,
-    ...                        well_radius=5.2*unit.nanometers, restrained_receptor_atom=1644,
-    ...                        restrained_ligand_atom=2609)
+    ...                        well_radius=5.2*unit.nanometers, restrained_receptor_atoms=[1644],
+    ...                        restrained_ligand_atoms=[2609])
 
     or automatically identify the parameters. When trying to impose a restraint
     with undefined parameters, RestraintParameterError is raised.
@@ -990,7 +1095,7 @@ class FlatBottom(RadiallySymmetricRestraint):
     @property
     def _energy_function(self):
         """str: energy expression of the restraint force."""
-        return 'step(r-r0) * (K/2)*(r-r0)^2'
+        return 'step(distance(g1,g2)-r0) * (K/2)*(distance(g1,g2)-r0)^2'
 
     @property
     def _bond_parameters(self):
@@ -1020,25 +1125,28 @@ class FlatBottom(RadiallySymmetricRestraint):
             The topography with labeled receptor and ligand atoms.
 
         """
-        x_unit = sampler_state.positions.unit
-
-        # Get dimensionless receptor positions.
-        x = sampler_state.positions[topography.receptor_atoms, :] / x_unit
-
         # Determine number of atoms.
-        n_atoms = x.shape[0]
+        n_atoms = len(topography.receptor_atoms)
 
         if n_atoms > 3:
-            # Check that restrained receptor atom is in expected range.
-            if self.restrained_receptor_atom > n_atoms:
-                raise ValueError('Receptor atom {} was selected for restraint, but system '
-                                 'only has {} atoms.'.format(self.restrained_receptor_atom, n_atoms))
+            # Check that restrained receptor atoms are in expected range.
+            if any(atom_id >= n_atoms for atom_id in self.restrained_receptor_atoms):
+                raise ValueError('Receptor atoms {} were selected for restraint, but system '
+                                 'only has {} atoms.'.format(self.restrained_receptor_atoms, n_atoms))
 
-            # Compute median absolute distance to central atom.
+            # Get positions of mass-weighted centroid atom.
             # (Working in non-unit-bearing floats for speed.)
-            xref = np.reshape(x[self.restrained_receptor_atom, :], (1, 3))  # (1,3) array
+            x_unit = sampler_state.positions.unit
+            x_restrained_atoms = sampler_state.positions[self.restrained_receptor_atoms, :] / x_unit
+            system = thermodynamic_state.system
+            masses = np.array([system.getParticleMass(i) / unit.dalton for i in self.restrained_receptor_atoms])
+            x_centroid = np.average(x_restrained_atoms, axis=0, weights=masses)
+
+            # Compute median absolute distance to centroid atom.
+            # Get dimensionless receptor positions.
+            x = sampler_state.positions[topography.receptor_atoms, :] / x_unit
             # distances[i] is the distance from the centroid to particle i
-            distances = np.sqrt(((x - np.tile(xref, (n_atoms, 1)))**2).sum(1))
+            distances = np.sqrt(((x - np.tile(x_centroid, (n_atoms, 1)))**2).sum(1))
             median_absolute_distance = np.median(abs(distances))
 
             # Convert back to unit-bearing quantity.
