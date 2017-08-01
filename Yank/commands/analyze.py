@@ -15,6 +15,7 @@ Analyze YANK output file.
 
 from .. import utils, analyze
 import re
+import os
 import pkg_resources
 
 # =============================================================================================
@@ -37,7 +38,10 @@ Free Energy Required Arguments:
   -s=STORE, --store=STORE       Storage directory for NetCDF data files.
 
 YANK Health Report Arguments:
-  -o=REPORT, --output=REPORT    Name of the health report Jupyter notebook, can use a path + name as well
+  -o=REPORT, --output=REPORT    Name of the health report Jupyter notebook or static file, can use a path + name as well
+                                If the filename ends in .pdf or .html, the notebook is auto run and converted to a
+                                static PDF or HTML file respectively.
+                                Static generation may be slow!
 
 Extract Trajectory Required Arguments:
   --netcdf=FILEPATH             Path to the NetCDF file.
@@ -114,17 +118,29 @@ def dispatch_extract_trajectory(args):
 
 def dispatch_report(args):
     # Check modules for render
-    try:
-        import matplotlib
-    except ImportError:
-        print("Rendering this notebook requires the following packages:\n"
-              " - matplotlib\n"
-              "These are not required to generate the notebook however")
     store = args['--store']
     output = args['--output']
+    file_base_name, file_extension = os.path.splitext(output)
+    static_extensions = [".pdf", ".html"]
+    try:
+        import matplotlib
+        import jupyter
+    except ImportError:
+        error_msg = "Rendering this notebook requires the following packages:\n"
+        " - matplotlib\n"
+        " - jupyter\n"
+        "These are not required to generate the notebook however"
+        if file_extension.lower() in static_extensions:
+            error_msg += "\nRendering as static {} is not possible without the packages!".format(file_extension)
+            raise ImportError(error_msg)
+        else:
+            print(error_msg)
     template_path = pkg_resources.resource_filename('yank', 'reports/YANK_Health_Report_Template.ipynb')
     with open(template_path, 'r') as template:
         notebook_text = re.sub('STOREDIRBLANK', store, template.read())
+    if file_extension.lower() in static_extensions:
+        # Cast to static ouptput
+        print("Rendering notebook as static file...")
     with open(output, 'w') as notebook:
         notebook.write(notebook_text)
 
