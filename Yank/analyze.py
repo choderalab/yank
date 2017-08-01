@@ -95,8 +95,8 @@ def get_analyzer(file_base_path):
     """
     Utility function to convert storage file to a Reporter and Analyzer by reading the data on file
 
-    For now this is mostly placeholder functions since there is only the implemented RepexPhase, but creates the
-    API for the user to work with.
+    For now this is mostly placeholder functions since there is only the implemented :class:`RepexPhase`, but creates
+    the API for the user to work with.
 
     Parameters
     ----------
@@ -105,7 +105,7 @@ def get_analyzer(file_base_path):
 
     Returns
     -------
-    analyzer : instance of implemented YankPhaseAnalyzer
+    analyzer : instance of implemented :class:`YankPhaseAnalyzer`
         Analyzer for the specific phase.
     """
     # Eventually extend this to get more reporters, but for now simple placeholder
@@ -135,8 +135,8 @@ class _ObservablesRegistry(object):
     """
     Registry of computable observables.
 
-    This is a hidden class accessed by the YankPhaseAnalyzer and MultiPhaseAnalyzer objects to check which observables
-    can be computed, and then provide a regular categorization of them. This is a static registry.
+    This is a hidden class accessed by the :class:`YankPhaseAnalyzer` and :class:`MultiPhaseAnalyzer` objects to check
+    which observables can be computed, and then provide a regular categorization of them. This is a static registry.
 
     To define your own methods:
     1) Choose a unique observable name.
@@ -152,8 +152,8 @@ class _ObservablesRegistry(object):
      3b) "quadrature": Error between phases adds in the square.
         If C = A + B, eC = sqrt(eA^2 + eB^2)
     4) Finally, to add this observable to the phase, implement a "get_{method name}" method to the subclass of
-       YankPhaseAnalyzer. Any MultiPhaseAnalyzer composed of this phase will automatically have the "get_{method name}"
-       if all other phases in the MultiPhaseAnalyzer have the same method.
+       :class:`YankPhaseAnalyzer`. Any :class:`MultiPhaseAnalyzer` composed of this phase will automatically have the
+       "get_{method name}" if all other phases in the :class:`MultiPhaseAnalyzer` have the same method.
     """
 
     ########################
@@ -248,14 +248,14 @@ class YankPhaseAnalyzer(ABC):
     reporter : Reporter instance
         Reporter from Repex which ties to the simulation data on disk.
     name : str, Optional
-        Unique name you want to assign this phase, this is the name that will appear in MultiPhaseAnalyzer's. If not
-        set, it will be given the arbitrary name "phase#" where # is an integer, chosen in order that it is
-        assigned to the MultiPhaseAnalyzer.
+        Unique name you want to assign this phase, this is the name that will appear in :class:`MultiPhaseAnalyzer`'s.
+        If not set, it will be given the arbitrary name "phase#" where # is an integer, chosen in order that it is
+        assigned to the :class:`MultiPhaseAnalyzer`.
     reference_states : tuple of ints, length 2, Optional, Default: (0,-1)
         Integers ``i`` and ``j`` of the state that is used for reference in observables, "O". These values are only used
-        when reporting single numbers or combining observables through MultiPhaseAnalyzer (since the number of states
-        between phases can be different). Calls to functions such as `get_free_energy` in a single Phase results in
-        the O being returned for all states.
+        when reporting single numbers or combining observables through :class:`MultiPhaseAnalyzer` (since the number of
+        states between phases can be different). Calls to functions such as ``get_free_energy`` in a single Phase
+        results in the O being returned for all states.
 
             For O completely defined by the state itself (i.e. no differences between states, e.g. Temperature),
             only O[i] is used
@@ -340,7 +340,7 @@ class YankPhaseAnalyzer(ABC):
 
     @property
     def reference_states(self):
-        """Tuple of reference states ``i`` and ``j`` for ``MultiPhaseAnalyzer`` instances"""
+        """Tuple of reference states ``i`` and ``j`` for :class:`MultiPhaseAnalyzer` instances"""
         return self._reference_states
 
     @reference_states.setter
@@ -594,7 +594,10 @@ class YankPhaseAnalyzer(ABC):
         self._mbar = mbar
 
     def _combine_phases(self, other, operator='+'):
-        """Workhorse function when creating a MultiPhaseAnalyzer object by combining single YankPhaseAnalyzers"""
+        """
+        Workhorse function when creating a :class:`MultiPhaseAnalyzer` object by combining single
+        :class:`YankPhaseAnalyzers`
+        """
         phases = [self]
         names = []
         signs = [self._sign]
@@ -657,7 +660,7 @@ class RepexPhase(YankPhaseAnalyzer):
 
     """
     The RepexPhase is the analyzer for a simulation generated from a Replica Exchange sampler simulation, implemented
-    as an instance of the ``YankPhaseAnalyzer``.
+    as an instance of the :class:`YankPhaseAnalyzer`.
 
     See Also
     --------
@@ -1015,12 +1018,9 @@ class RepexPhase(YankPhaseAnalyzer):
 class MultiPhaseAnalyzer(object):
     """
     Multiple Phase Analyzer creator, not to be directly called itself, but instead called by adding or subtracting
-    different implemented YankPhaseAnalyzer or other MultiPhaseAnalyzers's. The individual Phases of the
-    MultiPhaseAnalyzer are only references to existing Phase objects, not copies.
-
-    The user themselves should not attempt to make this class by calling it directly, but instead through doing
-    addition and subtraction of YankPhaseAnalyzer objects and/or other MultiPhaseAnalyzer objects. All YankPhaseAnalyzer
-    and MultiPhaseAnalyzer classes support ``+`` and ``-`` operations.
+    different implemented :class:`YankPhaseAnalyzer` or other :class:`MultiPhaseAnalyzers`'s. The individual Phases of
+    the :class:`MultiPhaseAnalyzer` are only references to existing Phase objects, not copies. All
+    :class:`YankPhaseAnalyzer` and :class:`MultiPhaseAnalyzer` classes support ``+`` and ``-`` operations.
 
     The observables of this phase are determined through inspection of all the passed in phases and only observables
     which are shared can be computed. For example:
@@ -1029,7 +1029,7 @@ class MultiPhaseAnalyzer(object):
 
         ``PhaseB`` has ``.get_free_energy`` and ``.get_enthalpy``,
 
-        ``PhaseAB = PhaseA + PhaseB`` will only have a .get_free_energy method
+        ``PhaseAB = PhaseA + PhaseB`` will only have a ``.get_free_energy`` method
 
     Because each Phase may have a different number of states, the ``reference_states`` property of each phase
     determines which states from each phase to read the data from.
@@ -1118,51 +1118,52 @@ class MultiPhaseAnalyzer(object):
 
     @property
     def observables(self):
-        """List of observables this MultiPhaseAnalyzer can generate"""
+        """List of observables this :class:`MultiPhaseAnalyzer` can generate"""
         return self._observables
 
     @property
     def phases(self):
-        """List of implemented YankPhaseAnalyzers objects this MultiPhaseAnalyzer is tied to"""
+        """List of implemented :class:`YankPhaseAnalyzer`'s objects this :class:`MultiPhaseAnalyzer` is tied to"""
         return self._phases
 
     @property
     def names(self):
         """
-        Unique list of string names identifying this phase. If this MultiPhaseAnalyzer is combined with another,
-        its possible that new names will be generated unique to that MultiPhaseAnalyzer, but will still reference
-        the same phase.
+        Unique list of string names identifying this phase. If this :class:`MultiPhaseAnalyzer` is combined with
+        another, its possible that new names will be generated unique to that :class:`MultiPhaseAnalyzer`, but will
+        still reference the same phase.
 
-        When in doubt, use .phases to get the actual phase objects.
+        When in doubt, use :func:`MultiPhaseAnalyzer.phases` to get the actual phase objects.
         """
         return self._names
 
     @property
     def signs(self):
         """
-        List of signs that are used by the MultiPhaseAnalyzer to
+        List of signs that are used by the :class:`MultiPhaseAnalyzer` to
         """
         return self._signs
 
     def _combine_phases(self, other, operator='+'):
         """
         Function to combine the phases regardless of operator to reduce code duplication. Creates a new
-        MultiPhaseAnalyzer object based on the combined phases of the other. Accepts either a YankPhaseAnalyzer
-        or a MultiPhaseAnalyzer.
+        :class:`MultiPhaseAnalyzer` object based on the combined phases of the other. Accepts either a
+        :class:`YankPhaseAnalyzer` or a :class:`MultiPhaseAnalyzer`.
 
         If the names have collision, they are re-named with an extra digit at the end.
 
         Parameters
         ----------
-        other : MultiPhaseAnalyzer or YankPhaseAnalyzer
+        other : :class:`MultiPhaseAnalyzer` or :class:`YankPhaseAnalyzer`
         operator : sign of the operator connecting the two objects
 
         Returns
         -------
-        output : MultiPhaseAnalyzer
-            New MultiPhaseAnalyzer where the phases are the combined list of the individual phases from each component.
-            Because the memory pointers to the individual phases are the same, changing any SinglePhase's
-            reference_state objects updates all MultiPhaseAnalyzer objects they are tied to
+        output : :class:`MultiPhaseAnalyzer`
+            New :class:`MultiPhaseAnalyzer` where the phases are the combined list of the individual phases from each
+            component. Because the memory pointers to the individual phases are the same, changing any
+            single :class:`YankPhaseAnalyzer`'s
+            reference_state objects updates all :class:`MultiPhaseAnalyzer` objects they are tied to
 
         """
         phases = []

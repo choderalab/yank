@@ -194,7 +194,7 @@ def _profile_block_separator_string(message):
 @contextlib.contextmanager
 def _profile(output_file='profile.log'):
     """
-    Function that allows a `with _profile():` to wrap around a calls
+    Function that allows a ``with _profile():`` to wrap around a calls
 
     Parameters
     ----------
@@ -221,7 +221,7 @@ def _profile(output_file='profile.log'):
 
 
 def _with_profile(output_file='profile.log'):
-    """Decorator that profiles the full function wrapper to _profile
+    """Decorator that profiles the full function wrapper to :func:`_profile`
 
     Parameters
     ----------
@@ -243,7 +243,7 @@ def _with_profile(output_file='profile.log'):
 # =======================================================================================
 
 class CombinatorialLeaf(list):
-    """List type that can be expanded combinatorially in CombinatorialTree."""
+    """List type that can be expanded combinatorially in :class:`CombinatorialTree`."""
     def __repr__(self):
         return "Combinatorial({})".format(super(CombinatorialLeaf, self).__repr__())
 
@@ -262,7 +262,7 @@ class CombinatorialTree(collections.MutableMapping):
 
     Examples
     --------
-    # Set an arbitrary nested path
+    Set an arbitrary nested path
 
     >>> tree = CombinatorialTree({'a': {'b': 2}})
     >>> path = ('a', 'b')
@@ -355,7 +355,7 @@ class CombinatorialTree(collections.MutableMapping):
         separator are found in the generated names. Values representing paths to
         existing files contribute to the name only with they file name without extensions.
 
-        The iterator yields tuples of (name, dict), not other CombinatorialTrees. If
+        The iterator yields tuples of ``(name, dict)``, not other :class:`CombinatorialTree`'s. If
         there is only a single combination, an empty string is returned for the name.
 
         Parameters
@@ -438,7 +438,7 @@ class CombinatorialTree(collections.MutableMapping):
             yield name, combination
 
     def expand_id_nodes(self, id_nodes_path, update_nodes_paths):
-        """Return a new CombinatorialTree with id-bearing nodes expanded
+        """Return a new :class:`CombinatorialTree` with id-bearing nodes expanded
         and updated in the rest of the script.
 
         Parameters
@@ -570,7 +570,7 @@ class CombinatorialTree(collections.MutableMapping):
         Returns
         -------
         A tuple containing two lists. The first one is a list of paths to the leaf
-        nodes in a tuple format (e.g. the path to node['a']['b'] is ('a', 'b')) while
+        nodes in a tuple format (e.g. the path to ``node['a']['b']`` is ``('a', 'b')``) while
         the second one is a list of all the values of those leaf nodes.
 
         Examples
@@ -608,9 +608,9 @@ class CombinatorialTree(collections.MutableMapping):
         Returns
         -------
         combinatorial_leaf_paths, combinatorial_leaf_vals : tuple of tuples
-            combinatorial_leaf_paths is a tuple of paths to combinatorial leaf
-            nodes in tuple format (e.g. the path to node['a']['b'] is ('a', 'b'))
-            while combinatorial_leaf_vals is the tuple of the values of those nodes.
+            ``combinatorial_leaf_paths`` is a tuple of paths to combinatorial leaf
+            nodes in tuple format (e.g. the path to ``node['a']['b']`` is ``('a', 'b')``)
+            while ``combinatorial_leaf_vals`` is the tuple of the values of those nodes.
             The list of paths is guaranteed to be sorted by alphabetical order.
 
         """
@@ -630,7 +630,7 @@ class CombinatorialTree(collections.MutableMapping):
     def _combinations_generator(self, leaf_paths, leaf_vals):
         """Generate all possible combinations of experiments.
 
-        The iterator returns dict objects, not other CombinatorialTrees.
+        The iterator returns dict objects, not other :class:`CombinatorialTree`s.
 
         Parameters
         ----------
@@ -758,10 +758,10 @@ def typename(atype):
 
 
 def merge_dict(dict1, dict2):
-    """Return the union of two dictionaries.
+    """Return the union of two dictionaries in through Python version agnostic code.
 
     In Python 3.5 there is a syntax to do this ``{**dict1, **dict2}`` but
-    in Python 2 you need to go through update().
+    in Python 2 you need to go through ``update()``.
 
     Parameters
     ----------
@@ -779,7 +779,7 @@ def merge_dict(dict1, dict2):
 
 
 def underscore_to_camelcase(underscore_str):
-    """Convert the given string from underscore_case to camelCase.
+    """Convert the given string from ``underscore_case`` to ``camelCase``.
 
     Underscores at the beginning or at the end of the string are ignored. All
     underscores in the middle of the string are removed.
@@ -817,7 +817,9 @@ def underscore_to_camelcase(underscore_str):
 
 
 def camelcase_to_underscore(camelcase_str):
-    """Convert the given string from camelCase to underscore_case.
+    """Convert the given string from ``camelCase`` to ``underscore_case``.
+
+    Underscores at the beginning and end of the string are preserved. All capital letters are cast to lower case.
 
     Parameters
     ----------
@@ -845,7 +847,7 @@ def quantity_from_string(expression):
     """Create a Quantity object from a string expression
 
     All the functions in the standard module math are available together
-    with most of the methods inside the simtk.unit module.
+    with most of the methods inside the ``simtk.unit`` module.
 
     Parameters
     ----------
@@ -892,6 +894,9 @@ def process_unit_bearing_str(quantity_str, compatible_units):
        The result will be checked for compatibility with specified units, and an
        exception raised if not compatible.
 
+       `Note`: The output is not converted to ``compatible_units``, they are only used as a unit to validate the input
+       against.
+
     Returns
     -------
     quantity : simtk.unit.Quantity
@@ -900,9 +905,13 @@ def process_unit_bearing_str(quantity_str, compatible_units):
     Raises
     ------
     TypeError
-        If quantity_str does not contains units.
+        If ``quantity_str`` does not contains units.
     ValueError
-        If the units attached to quantity_str are incompatible with compatible_units
+        If the units attached to ``quantity_str`` are incompatible with ``compatible_units``
+
+    See Also
+    --------
+    quantity_from_string
 
     Examples
     --------
@@ -1014,7 +1023,7 @@ def get_keyword_args(function):
     Returns
     -------
     kwargs : dict
-        A dictionary 'keyword argument' -> 'default value'. The arguments of the
+        A dictionary ``{'keyword argument': 'default value'}``. The arguments of the
         function that do not have a default value will not be included.
 
     """
@@ -1042,7 +1051,7 @@ def validate_parameters(parameters, template_parameters, check_unknown=False,
         The template used to filter the parameters and infer the types.
     check_unknown : bool
         If True, an exception is raised when parameters contain a key that is not
-        contained in template_parameters.
+        contained in ``template_parameters``.
     process_units_str: bool
         If True, the function will attempt to convert the strings whose template
         type is simtk.unit.Quantity.
@@ -1058,12 +1067,12 @@ def validate_parameters(parameters, template_parameters, check_unknown=False,
     -------
     validate_par : dict
         The converted parameters that are contained both in parameters and
-        template_parameters.
+        ``template_parameters``.
 
     Raises
     ------
     TypeError
-        If check_unknown is True and there are parameters not in template_parameters.
+        If ``check_unknown`` is True and there are parameters not in ``template_parameters``.
     ValueError
         If a parameter has an incompatible type with its template parameter.
 
@@ -1217,6 +1226,8 @@ def is_openeye_installed(oetools=('oechem', 'oequacpac', 'oeiupac', 'oeomega')):
     """
     Check if a given OpenEye tool is installed and Licensed
 
+    If the OpenEye toolkit is not installed, returns False
+
     Parameters
     ----------
     oetools : str or iterable of strings, Optional, Default: ('oechem', 'oequacpac', 'oeiupac', 'oeomega')
@@ -1229,7 +1240,7 @@ def is_openeye_installed(oetools=('oechem', 'oequacpac', 'oeiupac', 'oeomega')):
     Returns
     -------
     all_installed : bool
-        True if all tools in oetools are installed and licensed, False otherwise
+        True if all tools in ``oetools`` are installed and licensed, False otherwise
     """
     # Complete list of module: License check
     tools_license = {'oechem': 'OEChemIsLicensed',
@@ -1314,7 +1325,7 @@ def write_oe_molecule(oe_mol, file_path, mol2_resname=None):
         Complete path to file with filename and extension
     mol2_resname : None or str, Optional, Default: None
         Name to replace the residue name if the file is a .mol2 file
-        Requires file_path to match ``*mol2``
+        Requires ``file_path`` to match ``*mol2``
     """
     from openeye import oechem
 
@@ -1373,7 +1384,7 @@ def get_oe_mol_positions(molecule, conformer_idx=0):
 
 class TLeap:
     """
-    Programmatic interface to write and run tLeap scripts.
+    Programmatic interface to write and run AmberTools' ``tLEaP`` scripts.
 
     To avoid problems with special characters in file paths, the class run the
     tleap script in a temporary folder with hardcoded names for files and then

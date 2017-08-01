@@ -97,7 +97,7 @@ class Topography(object):
     def ligand_atoms(self):
         """The atom indices of the ligand as list
 
-        This can be empty if this Topography doesn't represent a receptor-ligand
+        This can be empty if this :class:`Topography` doesn't represent a receptor-ligand
         system. Use solute_atoms to obtain the atom indices of the molecule if
         this is the case.
 
@@ -225,7 +225,7 @@ class IMultiStateSampler(mmtools.utils.SubhookedABCMeta):
 
     This is the interface documents the properties and methods that
     need to be exposed by the sampler object to be compatible with
-    the class ``AlchemicalPhase``.
+    the class :class:`AlchemicalPhase`.
 
     Attributes
     ----------
@@ -269,9 +269,9 @@ class IMultiStateSampler(mmtools.utils.SubhookedABCMeta):
             One or more sets of initial sampler states. If a list of SamplerStates,
             they will be assigned to thermodynamic states in a round-robin fashion.
         storage : str or Reporter
-            If str: The path to the storage file. Reads defaults from the Reporter class
+            If str: The path to the storage file. Reads defaults from the :class:`yank.repex.Reporter` class
 
-            If Reporter: Reads the reporter settings for files and options
+            If :class:`yank.repex.Reporter`: Reads the reporter settings for files and options
 
             In the future this will be able to take a Storage class as well.
         unsampled_thermodynamic_states : list of openmmtools.states.ThermodynamicState
@@ -292,7 +292,7 @@ class IMultiStateSampler(mmtools.utils.SubhookedABCMeta):
         ----------
         tolerance : simtk.unit.Quantity
             Minimization tolerance (units of energy/mole/length, default is
-            1.0 * unit.kilojoules_per_mole / unit.nanometers).
+            ``1.0 * unit.kilojoules_per_mole / unit.nanometers``).
         max_iterations : int
             Maximum number of iterations for minimization. If 0, minimization
             continues until converged.
@@ -319,7 +319,7 @@ class IMultiStateSampler(mmtools.utils.SubhookedABCMeta):
     def run(self, n_iterations=None):
         """Run the simulation.
 
-        This runs at most `number_of_iterations` iterations. Use `extend()`
+        This runs at most :attr:`number_of_iterations` iterations. Use :func:`extend`
         to pass the limit.
 
         Parameters
@@ -335,8 +335,8 @@ class IMultiStateSampler(mmtools.utils.SubhookedABCMeta):
     def extend(self, n_iterations):
         """Extend the simulation by the given number of iterations.
 
-        Contrarily to `run()`, this will extend the number of iterations past
-        `number_of_iteration` if requested.
+        Contrarily to :func:`run`, this will extend the number of iterations past
+        :attr:`number_of_iteration` if requested.
 
         Parameters
         ----------
@@ -356,13 +356,13 @@ class AlchemicalPhase(object):
     Parameters
     ----------
     sampler : MultiStateSampler
-        The sampler instance implementing the IMultiStateSampler interface.
+        The sampler instance implementing the :class:`IMultiStateSampler` interface.
 
     Attributes
     ----------
     iteration
     number_of_iterations
-    is_complete
+    is_completed
 
     """
     def __init__(self, sampler):
@@ -376,13 +376,15 @@ class AlchemicalPhase(object):
         ----------
         storage : str or Reporter
             If str: The path to the primary storage file. Default checkpointing options are stored in this case
-            If Reporter: loads from the reporter class, including checkpointing information
+
+            If :class:`yank.repex.Reporter`: loads from the reporter class, including checkpointing information
+
             In the future this will be able to take a Storage class as well.
 
         Returns
         -------
         alchemical_phase : AlchemicalPhase
-            A new instance of AlchemicalPhase in the same state of the
+            A new instance of :class:`AlchemicalPhase` in the same state of the
             last stored iteration.
 
         """
@@ -463,14 +465,14 @@ class AlchemicalPhase(object):
             components of the system. This is used to discriminate between
             ligand-receptor and solvation systems.
         protocol : dict
-            The dictionary parameter_name: list_of_parameter_values defining
+            The dictionary ``{parameter_name: list_of_parameter_values}`` defining
             the protocol. All the parameter values list must have the same
             number of elements.
         storage : str or initialized Reporter class
-            If str: Path to the storage file. The default checkpointing options (see the Reporter class of Repex)
-            will be used in this case
+            If str: Path to the storage file. The default checkpointing options (see the :class:`yank.repex.Reporter`
+            class) will be used in this case
 
-            If Reporter: Uses files and checkpointing options of the reporter class passed in
+            If :class:`yank.repex.Reporter`: Uses files and checkpointing options of the reporter class passed in
         restraint : ReceptorLigandRestraint, optional
             Restraint to add between protein and ligand. This must be specified
             for ligand-receptor systems in non-periodic boxes.
@@ -484,11 +486,11 @@ class AlchemicalPhase(object):
             If `None`, the correction won't be applied (units of length, default
             is None).
         alchemical_regions : openmmtools.alchemy.AlchemicalRegion, optional
-            If specified, this is the AlchemicalRegion that will be passed
-            to the AbsoluteAlchemicalFactory, otherwise the ligand will be
+            If specified, this is the ``AlchemicalRegion`` that will be passed
+            to the ``AbsoluteAlchemicalFactory``, otherwise the ligand will be
             alchemically modified according to the given protocol.
         alchemical_factory : openmmtools.alchemy.AbsoluteAlchemicalFactory, optional
-            If specified, this AbsoluteAlchemicalFactory will be used instead of
+            If specified, this ``AbsoluteAlchemicalFactory`` will be used instead of
             the one created with default options.
         metadata : dict, optional
             Simulation metadata to be stored in the file.
@@ -674,7 +676,7 @@ class AlchemicalPhase(object):
         ----------
         tolerance : simtk.unit.Quantity, optional
             Minimization tolerance (units of energy/mole/length, default is
-            1.0 * unit.kilojoules_per_mole / unit.nanometers).
+            ``1.0 * unit.kilojoules_per_mole / unit.nanometers``).
         max_iterations : int, optional
             Maximum number of iterations for minimization. If 0, minimization
             continues until converged.
@@ -725,11 +727,11 @@ class AlchemicalPhase(object):
         sigma_multiplier : float, optional
             The ligand will be placed close to a random receptor atom at
             a distance that is normally distributed with standard deviation
-            sigma_multiplier * receptor_radius_of_gyration (default is 2.0).
+            ``sigma_multiplier * receptor_radius_of_gyration`` (default is 2.0).
         close_cutoff : simtk.unit.Quantity, optional
             Each random placement proposal will be rejected if the ligand
             ends up being closer to the receptor than this cutoff (units of
-            length, default is 1.5*unit.angstrom).
+            length, default is ``1.5*unit.angstrom``).
 
         """
         metadata = self._sampler.metadata

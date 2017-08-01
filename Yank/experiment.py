@@ -49,7 +49,7 @@ HIGHEST_VERSION = '1.3'  # highest version of YAML syntax
 
 def to_openmm_app(input_string):
     """
-    Converter function to be used with validate_parameters().
+    Converter function to be used with :func:`yank.utils.validate_parameters`.
 
     Parameters
     ----------
@@ -72,7 +72,7 @@ def convert_if_quantity(value):
     ----------
     value : int, float, or simtk.unit.Quantity as string
         This function tries to take a string which can be converted to a quantity with the
-        ``yank.utils.quantity_from_string``, or just a number
+        :func:`yank.utils.quantity_from_string`, or just a number
 
     Returns
     -------
@@ -190,17 +190,17 @@ class AlchemicalPhaseFactory(object):
     protocol : dict of lists
         Alchemical protocol to create states from.
 
-        Format should be {parameter_name : parameter_values}
+        Format should be ``{parameter_name : parameter_values}``
 
-        where lambda_name is the name of the specific alchemical
-        parameter (e.g. lambda_sterics), and parameter_values is a list of values for that parameter where each entry
-        is one state.
+        where ``parameter_name`` is the name of the specific alchemical
+        parameter (e.g. ``lambda_sterics``), and ``parameter_values`` is a list of values for that parameter where each
+        entry is one state.
 
-        Each of the parameter_values for every parameter_name should be the same length.
+        Each of the ``parameter_values`` lists for every ``parameter_name`` should be the same length.
 
     storage : yank.repex.Reporter or str
         Reporter object to use, or file path to create the reporter at
-        Will be a yank.repex.Reporter internally if str is given
+        Will be a :class:`yank.repex.Reporter` internally if str is given
     restraint : yank.restraint.ReceptorLigandRestraint or None, Optional, Default: None
         Optional restraint to apply to the system
     alchemical_regions : openmmtools.alchemy.AlchemicalRegion or None, Optional, Default: None
@@ -208,9 +208,9 @@ class AlchemicalPhaseFactory(object):
     alchemical_factory : openmmtools.alchemy.AbsoluteAlchemicalFactory, Optional, Default: None
         Alchemical factory with which to create the alchemical system with if you don't want to use all the previously
         defined options.
-        This is passed on to yank.yank.AlchemicalPhase
+        This is passed on to :class:`yank.yank.AlchemicalPhase`
     metadata : dict
-        Additional metdata to pass on to yank.yank.AlchemicalPhase
+        Additional metdata to pass on to :class:`yank.yank.AlchemicalPhase`
     options : dict
         Additional options to setup the rest of the process.
         See the DEFAULT_OPTIONS for this class in the source code or look at the *options* header for the YAML options.
@@ -318,12 +318,12 @@ class AlchemicalPhaseFactory(object):
 
 class Experiment(object):
     """
-    An experiment built by ExperimentBuilder.
+    An experiment built by :class:`ExperimentBuilder`.
 
     This is a completely defined experiment with all parameters and settings ready to go.
 
-    It is highly recommended to **NOT** use this class directly, and instead rely on the ExperimentBuilder class to
-    parse all options, configure all phases, properly set up the experiments, and even run them.
+    It is highly recommended to **NOT** use this class directly, and instead rely on the :class:`ExperimentBuilder`
+    class to parse all options, configure all phases, properly set up the experiments, and even run them.
 
     These experiments are frequently created with the :func:`ExperimentBuilder.build_experiments` method.
 
@@ -445,13 +445,13 @@ class ExperimentBuilder(object):
     ----------
     script : str or dict
         A path to the YAML script or the YAML content. If not specified, you
-        can load it later by using parse() (default is None).
+        can load it later by using :func:`parse` (default is None).
     job_id : None or int
         If you want to split the experiments among different executions,
         you can set this to an integer 0 <= job_id <= n_jobs-1, and this
-        ExperimentBuilder will run only 1/n_jobs of the experiments.
+        :class:`ExperimentBuilder` will run only 1/n_jobs of the experiments.
     n_jobs : None or int
-        If job_id is specified, this is the total number of jobs that
+        If ``job_id`` is specified, this is the total number of jobs that
         you are running in parallel from your script.
 
     See Also
