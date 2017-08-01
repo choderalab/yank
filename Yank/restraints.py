@@ -432,8 +432,11 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
     The restraint strength is controlled by a global context parameter called
     'lambda_restraints'.
 
+    With OpenCL, groups with more than 1 atom are supported only on 64bit
+    platforms.
+
     The class allows the restrained atoms to be temporarily undefined, but in
-    this case :func:`determine_missing_parameters` must be called before using
+    this case, :func:`determine_missing_parameters` must be called before using
     the restraint.
 
     Parameters
@@ -886,6 +889,9 @@ class Harmonic(RadiallySymmetricRestraint):
     The class supports automatic determination of the parameters left undefined
     in the constructor through :func:`determine_missing_parameters`.
 
+    With OpenCL, groups with more than 1 atom are supported only on 64bit
+    platforms.
+
     Parameters
     ----------
     spring_constant : simtk.unit.Quantity, optional
@@ -1030,6 +1036,9 @@ class FlatBottom(RadiallySymmetricRestraint):
 
     The class supports automatic determination of the parameters left undefined
     in the constructor through :func:`determine_missing_parameters`.
+
+    With OpenCL, groups with more than 1 atom are supported only on 64bit
+    platforms.
 
     Parameters
     ----------
