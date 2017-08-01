@@ -371,6 +371,7 @@ class ReceptorLigandRestraint(ABC):
         the parameters left undefined in the constructor.
 
     """
+
     @abc.abstractmethod
     def restrain_state(self, thermodynamic_state):
         """Add the restraint force to the state's `System`.
@@ -425,6 +426,9 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
     """
     Base class for radially-symmetric restraints between ligand and protein.
 
+    The restraint is applied between the centroids of two groups of atoms
+    that belong to the receptor and the ligand respectively. The centroids
+    are determined by a mass-weighted average of the group particles positions.
     The restraint strength is controlled by a global context parameter called
     'lambda_restraints'.
 
@@ -866,12 +870,16 @@ class Harmonic(RadiallySymmetricRestraint):
     protein in implicit solvent calculations or to keep the ligand close
     to the binding pocket in the decoupled states to increase mixing.
 
+    The restraint is applied between the centroids of two groups of atoms
+    that belong to the receptor and the ligand respectively. The centroids
+    are determined by a mass-weighted average of the group particles positions.
+
     The energy expression of the restraint is given by
 
        ``E = lambda_restraints * (K/2)*r^2``
 
     where `K` is the spring constant, `r` is the distance between the
-    restrained atoms, and `lambda_restraints` is a scale factor that
+    two group centroids, and `lambda_restraints` is a scale factor that
     can be used to control the strength of the restraint. You can control
     `lambda_restraints` through `RestraintState` class.
 
@@ -923,7 +931,8 @@ class Harmonic(RadiallySymmetricRestraint):
     you can create a completely defined restraint
 
     >>> restraint = Harmonic(spring_constant=8*unit.kilojoule_per_mole/unit.nanometers**2,
-    ...                      restrained_receptor_atoms=[1644], restrained_ligand_atoms=[2609])
+    ...                      restrained_receptor_atoms=[1644, 1650, 1678],
+    ...                      restrained_ligand_atoms='resname TMP')
 
     Or automatically identify the parameters. When trying to impose a restraint
     with undefined parameters, RestraintParameterError is raised.
@@ -1004,12 +1013,16 @@ class FlatBottom(RadiallySymmetricRestraint):
     drifting too far from protein in implicit solvent calculations while
     still exploring the surface of the protein for putative binding sites.
 
+    The restraint is applied between the centroids of two groups of atoms
+    that belong to the receptor and the ligand respectively. The centroids
+    are determined by a mass-weighted average of the group particles positions.
+
     More precisely, the energy expression of the restraint is given by
 
         ``E = lambda_restraints * step(r-r0) * (K/2)*(r-r0)^2``
 
     where `K` is the spring constant, `r` is the distance between the
-    restrained atoms, `r0` is another parameter defining the distance
+    centroids of the groups, `r0` is another parameter defining the distance
     at which the harmonic restraint is imposed, and `lambda_restraints`
     is a scale factor that can be used to control the strength of the
     restraint. You can control `lambda_restraints` through the class
@@ -1066,8 +1079,8 @@ class FlatBottom(RadiallySymmetricRestraint):
     You can create a completely defined restraint
 
     >>> restraint = FlatBottom(spring_constant=0.6*unit.kilocalorie_per_mole/unit.angstroms**2,
-    ...                        well_radius=5.2*unit.nanometers, restrained_receptor_atoms=[1644],
-    ...                        restrained_ligand_atoms=[2609])
+    ...                        well_radius=5.2*unit.nanometers, restrained_receptor_atoms=[1644, 1650, 1678],
+    ...                        restrained_ligand_atoms='resname TMP')
 
     or automatically identify the parameters. When trying to impose a restraint
     with undefined parameters, RestraintParameterError is raised.
