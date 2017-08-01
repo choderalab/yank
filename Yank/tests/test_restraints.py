@@ -221,24 +221,40 @@ def test_partial_parametrization():
         ('Harmonic', dict(spring_constant=2.0*unit.kilojoule_per_mole/unit.nanometer**2,
                           restrained_receptor_atoms=[5])),
         ('FlatBottom', dict(well_radius=1.0*unit.angstrom, restrained_ligand_atoms=[130])),
-        ('Boresch', dict(restrained_atoms=[106, 123, 117, 130, 131, 136],
+        ('Boresch', dict(restrained_ligand_atoms=[130, 131, 136],
                          K_r=1.0*unit.kilojoule_per_mole/unit.angstroms**2))
     ]
 
     for restraint_type, kwargs in test_cases:
+        state = copy.deepcopy(thermodynamic_state)
         restraint = yank.restraints.create_restraint(restraint_type, **kwargs)
 
         # Test-precondition: The restraint has undefined parameters.
         with nose.tools.assert_raises(yank.restraints.RestraintParameterError):
-            restraint.restrain_state(thermodynamic_state)
+            restraint.restrain_state(state)
 
         # The automatic parametrization maintains user values.
-        restraint.determine_missing_parameters(thermodynamic_state, sampler_state, topography)
+        restraint.determine_missing_parameters(state, sampler_state, topography)
         for parameter_name, parameter_value in kwargs.items():
             assert getattr(restraint, parameter_name) == parameter_value
 
         # The rest of the parameters has been determined.
-        restraint.get_standard_state_correction(thermodynamic_state)
+        restraint.get_standard_state_correction(state)
+
+        # The force has been configured correctly.
+        restraint.restrain_state(state)
+        system = state.system
+        for force in system.getForces():
+            # RadiallySymmetricRestraint between two single atoms.
+            if isinstance(force, openmm.CustomBondForce):
+                particle1, particle2, _ = force.getBondParameters(0)
+                assert particle1 == restraint.restrained_receptor_atoms[0]
+                assert particle2 == restraint.restrained_ligand_atoms[0]
+            # Boresch restraint.
+            elif isinstance(force, openmm.CustomCompoundBondForce):
+                particles, _ = force.getBondParameters(0)
+                assert particles == tuple(restraint.restrained_receptor_atoms + restraint.restrained_ligand_atoms)
+
 
 def test_restraint_dsl_selection():
     """The DSL atom selection works as expected."""

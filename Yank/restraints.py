@@ -1257,8 +1257,10 @@ class Boresch(ReceptorLigandRestraint):
 
     Parameters
     ----------
-    restrained_atoms : iterable of int, optional
-        The indices of the atoms to restrain, in order r1, r2, r3, l1, l2, l3.
+    restrained_receptor_atoms : iterable of int, optional
+        The indices of the receptor atoms to restrain, in order r1, r2, r3.
+    restrained_ligand_atoms : iterable of int, optional
+        The indices of the ligand atoms to restrain, in order l1, l2, l3.
     K_r : simtk.unit.Quantity, optional
         The spring constant for the restrained distance ``|r3 - l1|`` (units
         compatible with kilocalories_per_mole/angstrom**2).
@@ -1283,6 +1285,10 @@ class Boresch(ReceptorLigandRestraint):
 
     Attributes
     ----------
+    restrained_receptor_atoms : list of int
+        The indices of the 3 receptor atoms to restrain [r1, r2, r3].
+    restrained_ligand_atoms : list of int
+        The indices of the 3 ligand atoms to restrain [l1, l2, l3].
     restrained_atoms
     standard_state_correction_method
 
@@ -1310,7 +1316,8 @@ class Boresch(ReceptorLigandRestraint):
 
     Create a partially defined restraint
 
-    >>> restraint = Boresch(restrained_atoms=[1335, 1339, 1397, 2609, 2607, 2606],
+    >>> restraint = Boresch(restrained_receptor_atoms=[1335, 1339, 1397],
+    ...                     restrained_ligand_atoms=[2609, 2607, 2606],
     ...                     K_r=20.0*unit.kilocalories_per_mole/unit.angstrom**2,
     ...                     r_aA0=0.35*unit.nanometer)
 
@@ -1331,7 +1338,7 @@ class Boresch(ReceptorLigandRestraint):
     >>> correction = restraint.get_standard_state_correction(thermodynamic_state)
 
     """
-    def __init__(self, restrained_atoms=None,
+    def __init__(self, restrained_receptor_atoms=None, restrained_ligand_atoms=None,
                  K_r=None, r_aA0=None,
                  K_thetaA=None, theta_A0=None,
                  K_thetaB=None, theta_B0=None,
@@ -1339,7 +1346,8 @@ class Boresch(ReceptorLigandRestraint):
                  K_phiB=None, phi_B0=None,
                  K_phiC=None, phi_C0=None,
                  standard_state_correction_method='analytical'):
-        self.restrained_atoms = restrained_atoms
+        self.restrained_receptor_atoms = restrained_receptor_atoms
+        self.restrained_ligand_atoms = restrained_ligand_atoms
         self.K_r = K_r
         self.r_aA0 = r_aA0
         self.K_thetaA, self.K_thetaB = K_thetaA, K_thetaB
@@ -1348,16 +1356,44 @@ class Boresch(ReceptorLigandRestraint):
         self.phi_A0, self.phi_B0, self.phi_C0 = phi_A0, phi_B0, phi_C0
         self.standard_state_correction_method = standard_state_correction_method
 
-    @property
-    def restrained_atoms(self):
-        """list of int: The indices of the six atoms to restrain."""
-        return self._restrained_atoms
+    # -------------------------------------------------------------------------
+    # Public properties.
+    # -------------------------------------------------------------------------
 
-    @restrained_atoms.setter
-    def restrained_atoms(self, value):
-        if value is not None and len(value) != 6:
-            raise ValueError('Six atoms are required to impose a Boresch-style restraint.')
-        self._restrained_atoms = value
+    class _RestrainedAtomsProperty(object):
+        """
+        Descriptor of restrained atoms.
+
+        It guarantees that the property is a list of ints to support concatenation.
+
+        """
+        def __init__(self, atoms_type):
+            self._atoms_type = '_restrained_' + atoms_type + '_atoms'
+
+        def __get__(self, instance, owner_class=None):
+            attribute_name = '_restrained_' + self._atoms_type + '_atoms'
+            return getattr(instance, attribute_name)
+
+        def __set__(self, instance, new_restrained_atoms):
+            attribute_name = '_restrained_' + self._atoms_type + '_atoms'
+
+            # If we set the restrained attributes to None, no reason to check things.
+            if new_restrained_atoms is None:
+                setattr(instance, attribute_name, new_restrained_atoms)
+                return
+            if len(new_restrained_atoms) != 3:
+                raise ValueError('Three {} atoms are required to impose a '
+                                 'Boresch-style restraint.'.format(self._atoms_type))
+            # Make sure this is a list to support concatenation.
+            try:
+                new_restrained_atoms = new_restrained_atoms.tolist()
+            except AttributeError:
+                new_restrained_atoms = list(new_restrained_atoms)
+
+            setattr(instance, attribute_name, new_restrained_atoms)
+
+    restrained_receptor_atoms = _RestrainedAtomsProperty('receptor')
+    restrained_ligand_atoms = _RestrainedAtomsProperty('ligand')
 
     @property
     def standard_state_correction_method(self):
@@ -1374,6 +1410,10 @@ class Boresch(ReceptorLigandRestraint):
             raise ValueError("The standard state correction method must be one between "
                              "'analytical' and 'numerical', got {}.".format(value))
         self._standard_state_correction_method = value
+
+    # -------------------------------------------------------------------------
+    # Public methods.
+    # -------------------------------------------------------------------------
 
     def restrain_state(self, thermodynamic_state):
         """Add the restraint force to the state's ``System``.
@@ -1411,7 +1451,7 @@ class Boresch(ReceptorLigandRestraint):
         n_particles = 6  # number of particles involved in restraint: p1 ... p6
         restraint_force = openmm.CustomCompoundBondForce(n_particles, energy_function)
         restraint_force.addGlobalParameter('lambda_restraints', 1.0)
-        restraint_force.addBond(self.restrained_atoms, [])
+        restraint_force.addBond(self.restrained_receptor_atoms + self.restrained_ligand_atoms, [])
         restraint_force.setUsesPeriodicBoundaryConditions(thermodynamic_state.is_periodic)
 
         # Get a copy of the system of the ThermodynamicState, modify it and set it back.
@@ -1466,7 +1506,7 @@ class Boresch(ReceptorLigandRestraint):
         logger.debug('Automatically selecting restraint atoms and parameters:')
 
         # If restrained atoms are already specified, we only need to determine parameters.
-        if self.restrained_atoms is not None:
+        if self.restrained_receptor_atoms is not None and self.restrained_ligand_atoms is not None:
             self._determine_restraint_parameters(sampler_state, topography)
         else:
             # Keep selecting random retrained atoms until the parameters
@@ -1476,7 +1516,9 @@ class Boresch(ReceptorLigandRestraint):
                              'restraint parameters...'.format(attempt, MAX_ATTEMPTS))
 
                 # Randomly pick non-collinear atoms.
-                self.restrained_atoms = self._pick_restrained_atoms(sampler_state, topography)
+                restrained_atoms = self._pick_restrained_atoms(sampler_state, topography)
+                self.restrained_receptor_atoms = restrained_atoms[:3]
+                self.restrained_ligand_atoms =  restrained_atoms[3:]
 
                 # Determine restraint parameters for these atoms.
                 self._determine_restraint_parameters(sampler_state, topography)
@@ -1504,7 +1546,8 @@ class Boresch(ReceptorLigandRestraint):
         parameter_names, _, _, _ = inspect.getargspec(self.__init__)
 
         # Exclude non-parameters arguments.
-        for exclusion in ['self', 'restrained_atoms', 'standard_state_correction_method']:
+        for exclusion in ['self', 'restrained_receptor_atoms', 'restrained_ligand_atoms',
+                          'standard_state_correction_method']:
             parameter_names.remove(exclusion)
 
         # Retrieve and store options.
@@ -1514,7 +1557,7 @@ class Boresch(ReceptorLigandRestraint):
 
     def _check_parameters_defined(self):
         """Raise an exception there are still parameters undefined."""
-        if self.restrained_atoms is None:
+        if self.restrained_receptor_atoms is None or self.restrained_ligand_atoms is None:
             raise RestraintParameterError('Undefined restrained atoms.')
 
         # Find undefined parameters and raise error.
@@ -1694,46 +1737,73 @@ class Boresch(ReceptorLigandRestraint):
         Future updates can further refine this algorithm.
 
         """
-        t = md.Trajectory(sampler_state.positions / unit.nanometers, topography.topology)
+        # No need to determine parameters if atoms have been given.
+        if self.restrained_receptor_atoms is not None and self.restrained_ligand_atoms is not None:
+            return self.restrained_receptor_atoms + self.restrained_ligand_atoms
 
-        # Determine heavy atoms. Using sets since lists should be unique anyways
-        heavy_atoms = set(topography.topology.select('not element H'))
+        # If receptor and ligand atoms are explicitly provided, use those.
+        heavy_ligand_atoms = self.restrained_ligand_atoms
+        heavy_receptor_atoms = self.restrained_receptor_atoms
 
-        # Intersect heavy atoms with receptor/ligand atoms (s1&s2 is intersect)
-        heavy_ligand_atoms = set(topography.ligand_atoms) & heavy_atoms
-        heavy_receptor_atoms = set(topography.receptor_atoms) & heavy_atoms
+        # Otherwise we restrain only heavy atoms.
+        heavy_atoms = set(topography.topology.select('not element H').tolist())
+        # Intersect heavy atoms with receptor/ligand atoms (s1&s2 is intersect).
+        if heavy_ligand_atoms is None:
+            heavy_ligand_atoms = set(topography.ligand_atoms) & heavy_atoms
+        if heavy_receptor_atoms is None:
+            heavy_receptor_atoms = set(topography.receptor_atoms) & heavy_atoms
+
         if len(heavy_receptor_atoms) < 3 or len(heavy_ligand_atoms) < 3:
             raise ValueError('There must be at least three heavy atoms in receptor_atoms '
                              '(# heavy {}) and ligand_atoms (# heavy {}).'.format(
                                      len(heavy_receptor_atoms), len(heavy_ligand_atoms)))
 
-        # Find valid pairs of ligand/receptor atoms within a cutoff
+        # If r3 or l1 atoms are given. We have to pick those.
+        if isinstance(heavy_receptor_atoms, list):
+            r3_atoms = [heavy_receptor_atoms[2]]
+        else:
+            r3_atoms = heavy_receptor_atoms
+        if isinstance(heavy_ligand_atoms, list):
+            l1_atoms = [heavy_ligand_atoms[0]]
+        else:
+            l1_atoms = heavy_ligand_atoms
+        # TODO: Cast itertools generator to np array more efficiently
+        r3_l1_pairs = np.array(list(itertools.product(r3_atoms, l1_atoms)))
+
+        # Filter r3-l1 pairs that are too close/far away for the distance constraint.
         max_distance = 4 * unit.angstrom/unit.nanometer
         min_distance = 1 * unit.angstrom/unit.nanometer
-        # TODO: Cast itertools generator to np array more efficiently
-        all_pairs = np.array(list(itertools.product(heavy_receptor_atoms, heavy_ligand_atoms)))
-        distances = md.geometry.compute_distances(t, all_pairs)[0]
-        index_of_in_range_atoms = np.where(np.logical_and(distances > min_distance, distances <= max_distance))[0]
-        if len(index_of_in_range_atoms) == 0:
+        t = md.Trajectory(sampler_state.positions / unit.nanometers, topography.topology)
+        distances = md.geometry.compute_distances(t, r3_l1_pairs)[0]
+        indices_of_in_range_pairs = np.where(np.logical_and(distances > min_distance, distances <= max_distance))[0]
+
+        if len(indices_of_in_range_pairs) == 0:
             error_msg = ('There are no heavy ligand atoms within the range of [{},{}] nm heavy receptor atoms!\n'
                          'Please Check your input files or try another restraint class')
             raise ValueError(error_msg.format(min_distance, max_distance))
+        r3_l1_pairs = r3_l1_pairs[indices_of_in_range_pairs].tolist()
 
         # Iterate until we have found a set of non-collinear atoms.
         accepted = False
         while not accepted:
-            # Select a receptor/ligand atom in range of each other
-            raA_atoms = all_pairs[random.sample(list(index_of_in_range_atoms), 1)[0]].tolist()
-            # Cast to set for easy comparison operations
-            raA_set = set(raA_atoms)
-            # Select two additional random atoms from the receptor and ligand
-            restrained_atoms = (random.sample(heavy_receptor_atoms-raA_set, 2) + raA_atoms +
-                                random.sample(heavy_ligand_atoms-raA_set, 2))
+            # Select a receptor/ligand atom in range of each other for the distance constraint.
+            r3_l1_atoms = random.sample(r3_l1_pairs, 1)[0]
+            r3_l1_atoms_set = set(r3_l1_atoms)
+
+            # Determine remaining receptor/ligand atoms.
+            if isinstance(heavy_receptor_atoms, list):
+                r1_r2_atoms = heavy_receptor_atoms[:2]
+            else:
+                r1_r2_atoms = random.sample(heavy_receptor_atoms - r3_l1_atoms_set, 2)
+            if isinstance(heavy_ligand_atoms, list):
+                l2_l3_atoms = heavy_ligand_atoms[1:]
+            else:
+                l2_l3_atoms = random.sample(heavy_ligand_atoms - r3_l1_atoms_set, 2)
+
             # Reject collinear sets of atoms.
+            restrained_atoms = r1_r2_atoms + r3_l1_atoms + l2_l3_atoms
             accepted = not self._is_collinear(sampler_state.positions, restrained_atoms)
 
-        # Cast to Python ints to avoid type issues when passing to OpenMM
-        restrained_atoms = [int(i) for i in restrained_atoms]
         logger.debug('Selected atoms to restrain: {}'.format(restrained_atoms))
         return restrained_atoms
 
@@ -1753,12 +1823,14 @@ class Boresch(ReceptorLigandRestraint):
         http://dx.doi.org/10.1021/jp0217839
 
         """
-        # We determine automatically determine only the
-        # parameters that have been left undefined.
+        # We determine automatically only the parameters that have been left undefined.
         def _assign_if_undefined(attr_name, attr_value):
             """Assign value to self.name only if it is None."""
             if getattr(self, attr_name) is None:
                 setattr(self, attr_name, attr_value)
+
+        # Merge receptor and ligand atoms in a single array for easy manipulation.
+        restrained_atoms = self.restrained_receptor_atoms + self.restrained_ligand_atoms
 
         # Set spring constants uniformly, as in Ref [1] Table 1 caption.
         _assign_if_undefined('K_r', 20.0 * unit.kilocalories_per_mole / unit.angstrom**2)
@@ -1768,14 +1840,17 @@ class Boresch(ReceptorLigandRestraint):
         # Measure equilibrium geometries from static reference structure
         t = md.Trajectory(sampler_states.positions / unit.nanometers, topography.topology)
 
-        distances = md.geometry.compute_distances(t, [self.restrained_atoms[2:4]], periodic=False)
+        atom_pairs = [restrained_atoms[2:4]]
+        distances = md.geometry.compute_distances(t, atom_pairs, periodic=False)
         _assign_if_undefined('r_aA0', distances[0][0] * unit.nanometers)
 
-        angles = md.geometry.compute_angles(t, [self.restrained_atoms[i:(i+3)] for i in range(1, 3)], periodic=False)
+        atom_triplets = [restrained_atoms[i:(i+3)] for i in range(1, 3)]
+        angles = md.geometry.compute_angles(t, atom_triplets, periodic=False)
         for parameter_name, angle in zip(['theta_A0', 'theta_B0'], angles[0]):
             _assign_if_undefined(parameter_name, angle * unit.radians)
 
-        dihedrals = md.geometry.compute_dihedrals(t, [self.restrained_atoms[i:(i+4)] for i in range(3)], periodic=False)
+        atom_quadruplets = [restrained_atoms[i:(i+4)] for i in range(3)]
+        dihedrals = md.geometry.compute_dihedrals(t, atom_quadruplets, periodic=False)
         for parameter_name, angle in zip(['phi_A0', 'phi_B0', 'phi_C0'], dihedrals[0]):
             _assign_if_undefined(parameter_name, angle * unit.radians)
 
