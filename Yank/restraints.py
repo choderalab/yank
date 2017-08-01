@@ -50,12 +50,12 @@ V0 = 1660.53928 * unit.angstroms**3  # standard state volume
 # ==============================================================================
 
 class RestraintStateError(mmtools.states.ComposableStateError):
-    """Error raised by an RestraintState."""
+    """Error raised by an :class:`RestraintState`."""
     pass
 
 
 class RestraintParameterError(Exception):
-    """Error raised by a ReceptorLigandRestraint."""
+    """Error raised by a :class:`ReceptorLigandRestraint`."""
     pass
 
 
@@ -70,7 +70,7 @@ def available_restraint_classes():
     Returns
     -------
     restraint_classes : dict of {str : class}
-        restraint_classes[name] is the class corresponding to `name`
+        ``restraint_classes[name]`` is the class corresponding to ``name``
 
     """
     # Get a list of all subclasses of ReceptorLigandRestraint
@@ -119,7 +119,7 @@ def create_restraint(restraint_type, **kwargs):
     Parameters
     ----------
     restraint_type : str
-        Restraint type name matching a register (imported) subclass of ReceptorLigandRestraint.
+        Restraint type name matching a register (imported) subclass of :class:`ReceptorLigandRestraint`.
     kwargs
         Parameters to pass to the restraint constructor.
 
@@ -140,8 +140,8 @@ class RestraintState(object):
     """
     The state of a restraint.
 
-    A `ComposableState` controlling the strength of a restraint
-    through its `lambda_restraints` property.
+    A ``ComposableState`` controlling the strength of a restraint
+    through its ``lambda_restraints`` property.
 
     Parameters
     ----------
@@ -174,12 +174,12 @@ class RestraintState(object):
     >>> restraint.determine_missing_parameters(thermodynamic_state, sampler_state, topography)
     >>> restraint.restrain_state(thermodynamic_state)
 
-    Create a `RestraintState` object to control the strength of the restraint.
+    Create a ``RestraintState`` object to control the strength of the restraint.
 
     >>> restraint_state = RestraintState(lambda_restraints=1.0)
 
-    `RestraintState` implements the IComposableState interface, so it can be
-    used with `CompoundThermodynamicState`.
+    ``RestraintState`` implements the ``IComposableState`` interface, so it can be
+    used with ``CompoundThermodynamicState``.
 
     >>> compound_state = states.CompoundThermodynamicState(thermodynamic_state=thermodynamic_state,
     ...                                                    composable_states=[restraint_state])
@@ -226,8 +226,8 @@ class RestraintState(object):
         Raises
         ------
         RestraintStateError
-            If the system does not have any `CustomForce` with a
-            `lambda_restraint` global parameter.
+            If the system does not have any ``CustomForce`` with a
+            ``lambda_restraint`` global parameter.
 
         """
         # Set lambda_restraints in all forces that have it.
@@ -238,7 +238,7 @@ class RestraintState(object):
         """
         Check if the system's restraint is in this restraint state.
 
-        It raises a RestraintStateError if the restraint is not consistent
+        It raises a :class:`RestraintStateError` if the restraint is not consistent
         with the state.
 
         Parameters
@@ -301,11 +301,11 @@ class RestraintState(object):
 
     @staticmethod
     def _get_system_forces_parameters(system):
-        """Yields the system's forces having a lambda_restraints parameter.
+        """Yields the system's forces having a ``lambda_restraints`` parameter.
 
         Yields
         ------
-        A tuple force, parameter_index for each force with lambda_restraints.
+        A tuple force, ``parameter_index`` for each force with ``lambda_restraints``.
 
         """
         found_restraint = False
@@ -351,8 +351,8 @@ class ReceptorLigandRestraint(ABC):
     boundary conditions.
 
     This restraint strength is controlled by a global context parameter called
-    'lambda_restraints'. You can easily control this variable through the
-    `RestraintState` object.
+    ``lambda_restraints``. You can easily control this variable through the
+    ``RestraintState`` object.
 
     Notes
     -----
@@ -360,14 +360,14 @@ class ReceptorLigandRestraint(ABC):
 
         1. Implement a constructor. Optionally this can leave all or a subset of
         the restraint parameters undefined. In this case, you need to provide
-        an implementation of `determine_missing_parameters()`.
+        an implementation of :func:`determine_missing_parameters`.
 
-        2. Implement `restrain_state()` that add the restrain `Force` to the state's
+        2. Implement :func:`restrain_state` that add the restrain ``Force`` to the state's
         `System`.
 
-        3. Implement `get_standard_state_correction()` to return standard state correction.
+        3. Implement :func:`get_standard_state_correction` to return standard state correction.
 
-        4. Optionally, implement `determine_missing_parameters()` to fill in
+        4. Optionally, implement :func:`determine_missing_parameters` to fill in
         the parameters left undefined in the constructor.
 
     """
@@ -399,7 +399,7 @@ class ReceptorLigandRestraint(ABC):
         """
         Automatically choose undefined parameters.
 
-        Optionally, a ReceptorLigandRestraint can support the automatic
+        Optionally, a :class:`ReceptorLigandRestraint` can support the automatic
         determination of all or a subset of the parameters that can be
         left undefined in the constructor, making implementation of this method optional.
 
@@ -425,34 +425,34 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
     """
     Base class for radially-symmetric restraints between ligand and protein.
 
-    This class is intended to be inherited by Restraints using a `CustomBondForce`.
+    This class is intended to be inherited by Restraints using a ``CustomBondForce``.
     The restraint strength is controlled by a global context parameter called
     'lambda_restraints'.
 
     The class allows the restrained atoms to be temporarily, but in this case
-    `determine_missing_parameters()` must be called before using the restraint.
+    :func:`determine_missing_parameters` must be called before using the restraint.
 
     Parameters
     ----------
     restrained_receptor_atom : int, optional
         The index of the receptor atom to restrain. This can temporarily be left
-        undefined, but in this case `determine_missing_parameters()` must be called
+        undefined, but in this case :func:`determine_missing_parameters` must be called
         before using the Restraint object (default is None).
     restrained_ligand_atom : int, optional
         The index of the ligand atom to restrain. This can temporarily be left
-        undefined, but in this case `determine_missing_parameters()` must be called
+        undefined, but in this case :func:`determine_missing_parameters` must be called
         before using the Restraint object (default is None).
 
     Notes
     -----
     To create a subclass, follow these steps:
 
-        1. Implement the property '_energy_function' with the energy function of choice.
+        1. Implement the property :func:`_energy_function` with the energy function of choice.
 
-        2. Implement the property '_bond_parameters' to return the `_energy_function`
-        parameters as a dict parameter_name: parameter_value.
+        2. Implement the property :func:`_bond_parameters` to return the :func:`_energy_function`
+        parameters as a dict ``{parameter_name: parameter_value}``.
 
-        3. Optionally, you can overwrite the `_determine_bond_parameters()` member
+        3. Optionally, you can overwrite the :func:`_determine_bond_parameters` member
         function to automatically determine these parameters from the atoms positions.
 
     """
@@ -802,10 +802,10 @@ class Harmonic(RadiallySymmetricRestraint):
     where `K` is the spring constant, `r` is the distance between the
     restrained atoms, and `lambda_restraints` is a scale factor that
     can be used to control the strength of the restraint. You can control
-    `lambda_restraints` through `RestraintState` class.
+    ``lambda_restraints`` through :class:`RestraintState` class.
 
     The class supports automatic determination of the parameters left undefined
-    in the constructor through `determine_missing_parameters()`.
+    in the constructor through :func:`determine_missing_parameters`.
 
     Parameters
     ----------
@@ -920,15 +920,15 @@ class FlatBottom(RadiallySymmetricRestraint):
 
         ``E = lambda_restraints * step(r-r0) * (K/2)*(r-r0)^2``
 
-    where `K` is the spring constant, `r` is the distance between the
-    restrained atoms, `r0` is another parameter defining the distance
+    where ``K`` is the spring constant, ``r`` is the distance between the
+    restrained atoms, ``r0`` is another parameter defining the distance
     at which the harmonic restraint is imposed, and `lambda_restraints`
     is a scale factor that can be used to control the strength of the
-    restraint. You can control `lambda_restraints` through the class
-    `RestraintState`.
+    restraint. You can control ``lambda_restraints`` through the class
+    :class:`RestraintState`.
 
     The class supports automatic determination of the parameters left undefined
-    in the constructor through `determine_missing_parameters()`.
+    in the constructor through :func:`determine_missing_parameters`.
 
     Parameters
     ----------
@@ -1096,31 +1096,31 @@ class Boresch(ReceptorLigandRestraint):
 
     , where the parameters are:
 
-        r1, r2, r3: the coordinates of the 3 receptor atoms.
+        ``r1``, ``r2``, ``r3``: the coordinates of the 3 receptor atoms.
 
-        l1, l2, l3: the coordinates of the 3 ligand atoms.
+        ``l1``, ``l2``, ``l3``: the coordinates of the 3 ligand atoms.
 
-        K_r: the spring constant for the restrained distance ``|r3 - l1|``.
+        ``K_r``: the spring constant for the restrained distance ``|r3 - l1|``.
 
-        r_aA0: the equilibrium distance of ``|r3 - l1|``.
+        ``r_aA0``: the equilibrium distance of ``|r3 - l1|``.
 
-        K_thetaA, K_thetaB: the spring constants for ``angle(r2,r3,l1)`` and ``angle(r3,l1,l2)``.
+        ``K_thetaA``, ``K_thetaB``: the spring constants for ``angle(r2,r3,l1)`` and ``angle(r3,l1,l2)``.
 
-        theta_A0, theta_B0: the equilibrium angles of ``angle(r2,r3,l1)`` and ``angle(r3,l1,l2)``.
+        ``theta_A0``, ``theta_B0``: the equilibrium angles of ``angle(r2,r3,l1)`` and ``angle(r3,l1,l2)``.
 
-        K_phiA, K_phiB, K_phiC: the spring constants for ``dihedral(r1,r2,r3,l1)``,
+        ``K_phiA``, ``K_phiB``, ``K_phiC``: the spring constants for ``dihedral(r1,r2,r3,l1)``,
         ``dihedral(r2,r3,l1,l2)``, ``dihedral(r3,l1,l2,l3)``.
 
-        phi_A0, phi_B0, phi_C0: the equilibrium torsion of ``dihedral(r1,r2,r3,l1)``,
+        ``phi_A0``, ``phi_B0``, ``phi_C0``: the equilibrium torsion of ``dihedral(r1,r2,r3,l1)``,
         ``dihedral(r2,r3,l1,l2)``, ``dihedral(r3,l1,l2,l3)``.
 
-        lambda_restraints: a scale factor that can be used to control the strength
+        ``lambda_restraints``: a scale factor that can be used to control the strength
         of the restraint.
 
-    You can control ``lambda_restraints`` through the class ``RestraintState``.
+    You can control ``lambda_restraints`` through the class :class:`RestraintState`.
 
     The class supports automatic determination of the parameters left undefined
-    in the constructor through ``determine_missing_parameters()``.
+    in the constructor through :func:`determine_missing_parameters`.
 
     *Warning*: Symmetry corrections for symmetric ligands are not automatically applied.
     See Ref [1] and [2] for more information on correcting for ligand symmetry.
@@ -1231,7 +1231,7 @@ class Boresch(ReceptorLigandRestraint):
 
     @property
     def standard_state_correction_method(self):
-        """str: The default method to use in `get_standard_state_correction`.
+        """str: The default method to use in :func:`get_standard_state_correction`.
 
         This can be either 'analytical' or 'numerical'.
 
@@ -1246,7 +1246,7 @@ class Boresch(ReceptorLigandRestraint):
         self._standard_state_correction_method = value
 
     def restrain_state(self, thermodynamic_state):
-        """Add the restraint force to the state's `System`.
+        """Add the restraint force to the state's ``System``.
 
         Parameters
         ----------
@@ -1456,7 +1456,7 @@ class Boresch(ReceptorLigandRestraint):
     def _get_standard_state_correction_numerical(self, thermodynamic_state):
         """Return the standard state correction using the numerical method.
 
-        Uses numerical integral to the partition function contriubtions for
+        Uses numerical integral to the partition function contributions for
         r and theta, analytical for phi
 
         Parameters
@@ -1523,7 +1523,7 @@ class Boresch(ReceptorLigandRestraint):
             The indices of the atoms to test.
         threshold : float, optional, default=0.9
             Atoms are not collinear if their sequential vector separation dot
-            products are less than `threshold`.
+            products are less than ``threshold``.
 
         Returns
         -------

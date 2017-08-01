@@ -86,7 +86,7 @@ is calculated from the atomic radius :math:`r_i` as :math:`\rho_i = r_i-0.009` n
 :math:`\Psi_i` is calculated as an integral over the van der Waals
 spheres of all particles outside particle *i*\ :
 
-.. warning:: This integral needs to be rewritten in terms of a sum over atoms *j* with the alchemical modification `math`:s_j(\lambda,\eta)` inserted.
+.. warning:: This integral needs to be rewritten in terms of a sum over atoms *j* with the alchemical modification :math:`s_j(\lambda,\eta)` inserted.
 
 .. math::
    \Psi_i=\frac{\rho_i}{4\pi}\int_{\text{VDW}}\theta\left(|\mathbf{r}|-{\rho }_{i}\right)\frac{1}{{|\mathbf{r}|}^{4}}{d}^{3}\mathbf{r}
@@ -97,7 +97,7 @@ where :math:`\theta`\ (\ *r*\ ) is a step function that excludes the interior of
 The alchemically-modified surface area potential term is a modified form of the term given by :cite:`Schaefer1998`\ :cite:`Ponder`
 
 .. math::
-   U_{SA}(x;\lambda) = \epsilon_{SA} \cdot 4\pi erically
+   U_{SA}(x;\lambda) = \epsilon_{SA} \cdot 4\pi
    \sum_{i} s_i(\lambda,\eta) {\left({r}_{i}+{r}_{\mathit{solvent}}\right)}^{2}{\left(\frac{{r}_{i}}{{R}_{i}}\right)}^{6}
 
 where :math:`\epsilon_{SA}` is the surface area energy penalty, :math:`r_i` is the atomic radius of particle *i*\ ,
@@ -112,28 +112,22 @@ Explicit solvent
 Solvent model
 ^^^^^^^^^^^^^
 
-.. warning:: Only TIP3P is supported through the :ref:`YAML method of setting up solvents <yaml_head>` at this moment. We are working on adding back in support for other water models before the YANK 1.0 release, but after the preview build
+Any explicit solvent model that can be constructed via AmberTools is supported for building through the
+:mod:`pipeline module <yank.pipeline>`.
 
-.. Any explicit solvent model that can be constructed via AmberTools or that is distributed along with OpenMM is supported.
+.. tabularcolumns:: |l|L|
 
-.. For the ``yank prepare amber`` command that imports AMBER ``prmtop`` files, any solvent model specified in the ``prmtop`` file is used automatically.
-.. This method is depreciated however in favor of the :ref:`YAML method of setting up systems <yaml_head>`.
-
-.. For systems prepared with ``yank prepare systembuilder``, any solvent models available in OpenMM can be specified via the ``--solventmodel <model>`` argument.  Water models available in OpenMM include:
-
-.. .. tabularcolumns:: |l|L|
-
-.. RemoveMeToUncomment ===================  ============================================
-.. Model                Water Model
-.. RemoveMeToUncomment ===================  ============================================
-.. RemoveMeToUncomment :code:`tip3p`        TIP3P water model :cite:`Jorgensen1983` (older model used in many legacy calculations)
-.. RemoveMeToUncomment :code:`tip4pew`      TIP4P-Ew water model :cite:`Horn2004` (recommended)
-.. RemoveMeToUncomment :code:`tip3pfb`      TIP3P-FB water model :cite:`Wang2014`
-.. RemoveMeToUncomment :code:`tip4pfb`      TIP4P-FB water model :cite:`Wang2014`
-.. RemoveMeToUncomment :code:`tip5p`        TIP5P water model :cite:`Mahoney2000`
-.. RemoveMeToUncomment :code:`spce`         SPC/E water model :cite:`Berendsen1987`
-.. RemoveMeToUncomment :code:`swm4ndp`      SWM4-NDP water model :cite:`Lamoureux2006`
-.. RemoveMeToUncomment ===================  ============================================
+===================  ============================================
+Model                Water Model
+===================  ============================================
+:code:`tip3p`        TIP3P water model :cite:`Jorgensen1983` (older model used in many legacy calculations)
+:code:`tip4pew`      TIP4P-Ew water model :cite:`Horn2004` (recommended, default)
+:code:`tip3pfb`      TIP3P-FB water model :cite:`Wang2014`
+:code:`tip4pfb`      TIP4P-FB water model :cite:`Wang2014`
+:code:`tip5p`        TIP5P water model :cite:`Mahoney2000`
+:code:`spce`         SPC/E water model :cite:`Berendsen1987`
+:code:`swm4ndp`      SWM4-NDP water model :cite:`Lamoureux2006`
+===================  ============================================
 
 .. .. todo:: What should we recommend for reaction field calculations?  Is there a ForceBalance-parameterized version for use with reaction field?
 
@@ -217,8 +211,8 @@ Note that this is not recommended for explicit solvent, since there is a signifi
 Spherically symmetric restraints
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Harmonic resstraints (``Harmonic``)
-"""""""""""""""""""""""""""""""""""
+Harmonic restraints (``Harmonic``)
+""""""""""""""""""""""""""""""""""
 
 A harmonic potential is imposed between the closest atom to the center of the receptor and the closest atom to the center of the ligand, given the initial geometry.
 The equilibrium distance is zero, while the spring constant is selected such the potential reaches ``kT`` at one radius of gyration.
@@ -347,27 +341,235 @@ This speeds up mixing and reduces the total number of samples you need to get un
 Markov chain Monte Carlo
 ========================
 
+YANK implements a replica exchange scheme with Gibbs sampling :cite:`Chodera2011` to sample multiple thermodynamic
+states in a manner that improves mixing of the overall Markov chain. In between replica exchange attempts, YANK uses
+compositions of Markov chain Monte Carlo (MCMC) moves from the
+`openmmtools.mcmc module <http://openmmtools.readthedocs.io/en/latest/mcmc.html>`_
+to sample from the equilibrium distribution at each thermodynamic states. Each MCMC move is
+treated as a single, independent, MCMC move carried out in sequence so that samples are drawn from the equilibrium
+distribution at each step. Should one move be rejected, the other moves will still be carried out.
+
+Generalized Hybrid Monte Carlo
+------------------------------
+
+Generalized hybrid Monte Carlo (GHMC) moves are MC moves where the proposed move is generated by some molecular dynamics
+algorithm, and then weighted by generalized ensemble being sampled. In YANK, we generate samples with a psuedo-GHMC
+move through Langevin dynamics, but do not actually make an MC evaluation. Velocities are drawn from the Maxwell-Boltzmann
+distribution at the start of the move, then MD is propagated through the stochastic Langevin dynamics integration.
+We assume the discretization error is negligible, but the generation of the correct distribution is only
+truly exact in the limit of infinitely small timestep.
+
+See the `OpenMMTools documentation on Langevin Dynamics Moves <http://openmmtools.readthedocs.io/en/latest/api/generated/openmmtools.mcmc.LangevinDynamicsMove.html#openmmtools.mcmc.LangevinDynamicsMove>`_
+for more information.
+
+
 Metropolis Monte Carlo displacement and rotation moves
 ------------------------------------------------------
 
-Generalized hybrid Monte Carlo
-------------------------------
+Ligands often are trapped by kinetic barriers and steric clashes, limiting their configurational space. Hamiltonian
+replica exchange allows the ligand to escape these traps by swapping to a new the thermodynamic state, but the swap
+may occur with a state where the ligand is nowhere near the same volume of space.
+
+YANK enhances sampling by proposing MC displacement and rotation moves on the ligand without leaving the same state.
+These MC moves are separate actions, and evaluated as independent moves.
+
+The MC Rotation move is proposed by rotating
+all particles in the ligand by a uniform normalized quaternion 4-vector :cite:`Shoemake1992`. See the
+`OpenMMTools MCRotation docs <http://openmmtools.readthedocs.io/en/latest/api/generated/openmmtools.mcmc.MCRotationMove.html#openmmtools.mcmc.MCRotationMove>`_
+for more information.
+
+The MC Displacement proposes a move where the ligand atoms are translated in each Cartesian dimension by uniformly
+drawn random number on :math:`[0,1]` domain, then scaled by a small perturbation distance, :math:`\sigma`. The final
+proposed position is then evaluated as the MC move. The ligand in this case is translated as a singular unit, so each
+particle is translated by the same distance in each direction.
 
 Automated equilibration detection
 =================================
 
-Will extract information from `here <http://nbviewer.ipython.org/github/choderalab/simulation-health-reports/blob/master/examples/yank/YANK%20analysis%20example.ipynb>`_.
+In principle, we don't need to discard initial "unequilibrated" data; the estimate over a very long trajectory will
+converge to the correct free energy estimate no matter what, we simply need to run long enough. Some MCMC practitioners,
+like Geyer, feel strongly enough about this to `throw up a webpage <http://users.stat.umn.edu/~geyer/mcmc/burn.html>`_
+in defense of this position.
+
+In practice, if the initial conditions are very atypical of equilibrium (which is often the case in molecular
+simulation, especially after energy minimization), it helps a great deal to discard an initial part of the simulation to
+equilibration. But how much? How do we decide? YANK chooses an automatic equilibrium detection scheme based on the
+following articles: :cite:`Shirts2008` :cite:`Chodera2011` :cite:`Chodera2016`
+
+Determining a timeseries to analyze in a replica-exchange simulation
+--------------------------------------------------------------------
+
+For a standard molecular dynamics simulation producing a trajectory :math:`x_t`, it's reasonably straightforward to
+decide approximately how much to discard if human intervention is allowed. Simply look at some property
+:math:`A_t = A(x_t)` over the course of the simulation. This property should ideally be one that we know has some slow
+behavior that may affect the quantities we are interested in computing and find the point where :math:`A_t` seems to
+have "settled in" to typical equilibrium behavior. :math:`A(x)` is a good choice if we're
+interested in the expectation :math:`\left\langle A \right\rangle`.
+
+If we're interested in a free energy, which is computed from the potential energy differences,
+let's suppose the potential energy :math:`U(x)` may be a good quantity to examine.
+
+In replica-exchange simulation, there are K replicas that execute nonphysical walks on many potential energy
+functions :math:`U_k(x)`. The multiple states call into question what observable should be examined.
+Let's work by analogy. In a single simulation, we would plot some quantity related to the potential energy :math:`U(x)`,
+or its reduced version :math:`u(x) = \beta U(x)`. This is actually the negative logarithm of the probability
+density :math:`\pi(x)` sampled, up to an additive constant:
+
+.. math::
+
+    u(x) = -\ln \pi(x) + c
+
+For a replica-exchange simulation, the sampler state is given by the pair :math:`(X,S)`, where
+:math:`X = \{x_1, x_2, \ldots, x_K \}` are the replica configurations and :math:`S = \{s_1, s_2, \ldots, s_K\}` is the
+vector of state index permutations associated with the replicas. The total probability sampled is
+
+.. math::
+
+    \Pi(X,S) &= \prod_{k=1}^K \pi_{s_k}(x_k) \\
+             &= (Z_1 \cdots Z_K) \exp\left[-\sum_{k=1}^K u_{s_k}(x_k)\right] \\
+             &= Q^{-1} e^{-u_*(X)}
+
+where the pseudoenergy :math:`u_*(X)` for the replica-exchange simulation is defined as
+
+.. math::
+
+    u_*(X) \equiv \sum_{k=1}^K u_{s_k}(x_k)
+
+That is, :math:`u_*(X)` is the sum of the reduced potential energies of each replica configuration at the current
+thermodynamic state it is visiting.
+
+Determining equilibration and autocorrelation in a replica-exchange simulation
+------------------------------------------------------------------------------
+
+YANK automatically determines an optimal partitioning between the initial equilibration phase of the simulation
+(which is discarded) and the production phase of the simulation (which is analyzed to estimate free energies).
+
+We first define a some terminology. We start with
+finite count of samples :math:`t \in [1,T]` where `t` is the individual sample index and `T` is the total number of
+samples. For a given observable :math:`A` drawn from a configuration :math:`x`, indexed by :math:`t`,
+let :math:`a_t \equiv A(x_t)`.
+
+
+In an infinite set of samples from the simulations, we expect the bias from the initial transiant, not fully-equilibrated,
+samples to be negligible. However, in a finite simulation, this is not necessarily the case. We construct an
+estimator for the expectation of the observable
+
+.. math::
+
+    \hat{A}_{[1,T]} = \frac{1}{T} \sum_{t-1}^T a_t
+
+where we also assume that there is some correlation time between each observable :math:`\tau`. We can also define a
+metric of statistical efficiency by :math:`g \equiv 1 + 2\tau`. If we compute the
+correlation time with the non-equilibrated data, then the correlation times will be much longer than they should be,
+resulting in many more samples being discarded due to correlation. As such, we assume that we can reduce
+the bias in the series of observables by discarding some initial set of samples, :math:`t_0 \geq t` such that the
+expectation then becomes
+
+.. math::
+
+    \hat{A}_{[t_0,T]} = \frac{1}{T - t_0 + 1} \sum_{t=t_0}^T a_t
+
+Because we can conclude the bias will only increase the correlation time, lowering the total number of samples used
+in analysis, we define the metric of both equilibration and correlation as the :math:`t_0` which maximizes the total
+number of effective samples leftover after discarding from equilibration and correlation. This metric is computed by
+
+.. math::
+
+    N_{\text{eff}}(t_0) \equiv (T − t_0 + 1)/g_{t_0}
+
+where :math:`g_{t_0}` is the statistical efficiency of the timeseries with all samples before :math:`t_0` discarded
+as the equilibration. We then look at each index of :math:`t` proposing it as :math:`t_0` until we find the one which
+maximizes :math:`N_{\text{eff}}`. :math:`\tau` is computed from the following equations :cite:`Chodera2016`:
+
+.. math::
+
+    \tau &\equiv \sum_{t=t'}^{T-1} \left(1-\frac{1}{T}\right)C_t \\
+     C_t &\equiv \frac{\left\langle a_n a_{n+t} \right\rangle - \left\langle a_n \right\rangle^2}
+                      {\left\langle a_{n}^{2} \right\rangle - \left\langle a_n \right\rangle^2}
+
+where :math:`t'` is the proposed :math:`t_0`, :math:`a_n` is the observable series on indices :math:`[t',T]`, and
+:math:`a_{n+t}` is the observable series on indices :math:`[t'+t,T]`. At the maximized :math:`N_{\text{eff}}`, all
+samples before :math:`t_0` are considered "unequilibrated" and discarded, and decorrelated samples are drawn on an
+interval of :math:`g_{t_0}` from the remaining series.
+
+This is all implemented in the ``pymbar`` module: `timeseries <https://github.com/choderalab/pymbar/blob/master/pymbar/timeseries.py>`_
 
 Analysis with MBAR
 ==================
 
+Free energies and other observables are computed with the Multistate Bennet Acceptance Ratio (MBAR) implemented in
+the ``pymbar`` package :cite:`Shirts2008`. MBAR requires the energy of each sampled configuration evaluated at every
+state we wish to compute the free energy at, and then the number of samples drawn from each state. From there, the
+free energy of each state is estimates through the self-consistent equation of
+
+.. math::
+
+    \hat{f}_i = -\ln \sum_{j=1}^K \sum_{n=1}^{N_j}
+                \frac{\exp \left[ -u_i (x_{j,n})\right]}
+                {\sum_{k=1}^K N_k \exp \left[\hat{f}_k -u_k(x_{j,n}) \right]}
+
+where :math:`f` is the dimensionless free energy estimate of state i (in units of kT), :math:`K` is the number of
+sampled states, :math:`u` is the dimensionless potential energy, :math:`N` is the number of samples from a given state,
+and :math:`x` is the sampled configuration. Because this requires a self-consistent, it is an underspecified problem as
+presented. However, we really only care about differences in free energies between states, so one state is chosen as
+the reference, so :math:`f_0 = 0`. This equation is also not conditioned on state :math:`i` being part of the sampled
+states :math:`K`, allowing estimation of the free energy at any thermodynamic state such as the unsampled states with
+expanded cutoffs that YANK supports.
+
 Automated convergence detection
 ===============================
 
-Will extract information from `here <http://nbviewer.ipython.org/github/choderalab/simulation-health-reports/blob/master/examples/yank/YANK%20analysis%20example.ipynb>`_.
+YANK has the ability to run a simulation until the free energy difference in a phase reaches a user-specified target
+uncertainty.
+If this option is set, either through the :ref:`yaml options <yaml_options_online_analysis_parameters>` or
+:meth:`the ReplicaExchange API <yank.repex.ReplicaExchange>`, then each phase will be simulated until either the
+error free energy difference reaches the target, or the maximum number of iterations has been reached.
+
+Free energy error alone is a helpful, but not necessarily sufficient metric of convergence, and
+`other measures <http://nbviewer.ipython.org/github/choderalab/simulation-health-reports/blob/master/examples/yank/YANK%20analysis%20example.ipynb>`_
+will be implemented in future releases to help better gauge simulation convergence.
 
 Simulation health report
 ========================
 
+YANK's analysis module can also create Jupyter Notebooks which help provide visual information to determine the
+quality of the simulation. An example notebook can be
+`found here <https://github.com/choderalab/yank/blob/master/Yank/reports/YANK_Health_Report_Example.ipynb>`_.
+This notebook takes the analysis ideas from the previous section and puts them into chart format. All of the information
+shown in this report is also part of the main analysis suite run from command line, but can often get lost as pure text
+output.
+
+The first block of the notebook plots the timeseries, autocorrelation time, and effective number of samples detailed in
+the previous sections for each phase. The first block also breaks down how many samples are lost to equilibration and
+decorrelation, and how many samples are left over for analysis.
+
+The second block computes the mixing statistics between each replica. This is done empirically based on number of times
+a replica transitions from alchemical state :math:`i` to state :math:`j` in a single iteration. Because the overall chain
+must obey detailed balance, we count each transition as contributing 0.5 counts toward the :math:`i \rightarrow j`
+direction and 0.5 in the reverse. This has the advantage of ensuring that the eigenvalues of the resulting transition
+matrix among alchemical states are purely real.
+
+The second block also computes the Perron (subdominant/second) eigenvalue as a measure of how well mixed all the
+replicas are. If the subdominant eigenvalue would have been unity, then the chain would be decomposable, meaning that it
+completely separated into two separate sets of alchemical states that did not mix.
+This would have been an indication of poor phase space overlap between some alchemical states.
+If the configuration :math:`x` sampling is infinitely fast so that :math:`x` can be considered to be at equilibrium
+given the instantaneous permutation :math:`S` of alchemical state assignments,
+the subdominant eigenvalue :math:`\lambda_2 \in [0,1]` gives an estimate of the mixing time of the overall
+:math:`(X,S)` chain:
+
+.. math::
+
+    \tau_{\lambda} = \frac{1}{1-\lambda_2}
+
+:math:`\tau_{\lambda}` is then the estimate for how many iterations must elapse before the collection of replicas
+fully mix once. The closer this value is to unity (1), the better.
+
+
 Autotuning the alchemical protocol
 ==================================
+
+This is an experimental feature YANK has recently implemented to automatically choose your alchemical states based on
+a quick estimate of the free energy. It is still going through improvements and will receive further documentation as
+its options are finalized and debugged. This feature's development can be followed
+`on YANK's GitHub page <https://github.com/choderalab/yank>`_.

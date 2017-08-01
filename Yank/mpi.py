@@ -21,19 +21,19 @@ disable_mpi : bool
 
 Routines
 --------
-get_mpicomm
+:func:`get_mpicomm`
     Automatically detect and configure MPI execution and return an
     MPI communicator.
-run_single_node
+:func:`run_single_node`
     Run a task on a single node.
-on_single_node
-    Decorator version of run_single_node.
-distribute
+:func:`on_single_node`
+    Decorator version of :func:`run_single_node`.
+:func:`distribute`
     Map a task on a sequence of arguments on all the nodes.
-delay_termination
+:func:`delay_termination`
     A context manager to delay the response to termination signals.
-delayed_termination
-    A decorator version of delay_termination.
+:func:`delayed_termination`
+    A decorator version of :func:`delay_termination`.
 
 """
 
@@ -71,7 +71,7 @@ def get_mpicomm():
     The function automatically detects if the program runs on MPI by checking
     specific environment variables set by various MPI implementations. On
     first execution, it modifies sys.excepthook and register a handler for
-    SIGINT, SIGTERM, SIGABRT to call Abort() to correctly terminate all
+    SIGINT, SIGTERM, SIGABRT to call MPI's ``Abort()`` to correctly terminate all
     processes.
 
     Returns
@@ -172,7 +172,7 @@ def run_single_node(rank, task, *args, **kwargs):
     -------
     result
         The return value of the task. This will be None on all nodes
-        that is not the rank unless broadcast_result is set to True.
+        that is not the rank unless ``broadcast_result`` is set to True.
 
     Examples
     --------
@@ -214,7 +214,7 @@ def run_single_node(rank, task, *args, **kwargs):
 def on_single_node(rank, broadcast_result=False, sync_nodes=False):
     """A decorator version of run_single_node.
 
-    Decorates a function to be always executed with run_single_node.
+    Decorates a function to be always executed with :func:`run_single_node`.
 
     Parameters
     ----------
@@ -257,7 +257,7 @@ def distribute(task, distributed_args, *other_args, **kwargs):
 
     If MPI is not activated, this simply runs serially on this node. The
     algorithm guarantees that each node will be assigned to the same job_id
-    (i.e. the index of the argument in distributed_args) every time.
+    (i.e. the index of the argument in ``distributed_args``) every time.
 
     Parameters
     ----------
@@ -269,7 +269,7 @@ def distribute(task, distributed_args, *other_args, **kwargs):
         The sequence of the parameters to distribute among nodes.
     send_results_to : int or 'all', optional
         If the string 'all', the result will be sent to all nodes. If an
-        int, the result will be send only to the node with rank send_results_to.
+        int, the result will be send only to the node with rank ``send_results_to``.
         The return value of distribute depends on the value of this parameter
         (default is None).
     sync_nodes : bool, optional
@@ -277,11 +277,11 @@ def distribute(task, distributed_args, *other_args, **kwargs):
         execution (i.e. the task will be blocking) even if the
         result is not shared (default is False).
     group_nodes : None, int or list of int, optional, default is None
-        If not None, the `distributed_args` are distributed among groups of
+        If not None, the ``distributed_args`` are distributed among groups of
         nodes that are isolated from each other. This is particularly useful
-        if `task` also calls `distribute()`, since normally that would result
+        if ``task`` also calls :func:`distribute`, since normally that would result
         in unexpected behavior. If an integer, the nodes are split into equal
-        groups of `group_nodes` nodes. If a list of integers, the nodes are
+        groups of ``group_nodes`` nodes. If a list of integers, the nodes are
         split in possibly unequal groups (see example below).
 
     Other Parameters
@@ -300,9 +300,9 @@ def distribute(task, distributed_args, *other_args, **kwargs):
         to the node, or only the return values of the arguments processed by
         this node otherwise.
     arg_indices : list of int, optional
-        This is returned as part of a tuple (all_results, job_indices) only
-        if send_results_to is set to an int or None. In this case all_results[i]
-        is the return value of task(all_args[arg_indices[i]]).
+        This is returned as part of a tuple ``(all_results, job_indices)`` only
+        if ``send_results_to`` is set to an int or None. In this case ``all_results[i]``
+        is the return value of ``task(all_args[arg_indices[i]])``.
 
     Examples
     --------
@@ -474,7 +474,7 @@ def delay_termination():
 
 
 def delayed_termination(func):
-    """Decorator that runs the function with delay_termination()."""
+    """Decorator that runs the function with :func:`delay_termination`."""
     @wraps_py2(func)
     def _delayed_termination(*args, **kwargs):
         with delay_termination():
