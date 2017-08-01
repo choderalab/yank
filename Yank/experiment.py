@@ -718,9 +718,14 @@ class ExperimentBuilder(object):
             # until all of them are done.
             completed = [False]  # This is just to run the first iteration.
             while not all(completed):
-                completed, experiment_indices = mpi.distribute(self._run_experiment,
-                                                               distributed_args=all_experiments,
-                                                               group_nodes=processes_per_experiment)
+                # Distribute experiments across MPI communicators if requested
+                if processes_per_experiment is None:
+                    for exp in all_experiments:
+                        self._run_experiment(exp)
+                else:
+                    completed, experiment_indices = mpi.distribute(self._run_experiment,
+                                                                   distributed_args=all_experiments,
+                                                                   group_nodes=processes_per_experiment)
 
     def build_experiments(self):
         """
