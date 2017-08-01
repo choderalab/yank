@@ -161,7 +161,7 @@ class TestPhaseAnalyzer(object):
         cls.n_states = n_states
         cls.n_steps = n_steps
         cls.repex.run(cls.n_steps-1)  # Initial config
-        cls.repex_name = "RepexPhase"
+        cls.repex_name = "RepexAnalyzer"
 
     @classmethod
     def teardown_class(cls):
@@ -169,13 +169,13 @@ class TestPhaseAnalyzer(object):
 
     def test_repex_phase_initilize(self):
         """Test that the Repex Phase analyzer initializes correctly"""
-        phase = analyze.RepexPhase(self.reporter, name=self.repex_name)
+        phase = analyze.ReplicaExchangeAnalyzer(self.reporter, name=self.repex_name)
         assert phase.reporter is self.reporter
         assert phase.name == self.repex_name
 
     def test_repex_mixing_stats(self):
         """Test that the Repex Phase yields mixing stats that make sense"""
-        phase = analyze.RepexPhase(self.reporter, name=self.repex_name)
+        phase = analyze.ReplicaExchangeAnalyzer(self.reporter, name=self.repex_name)
         t, mu = phase.generate_mixing_statistics()
         # Output is the correct number of states
         assert t.shape == (self.n_states, self.n_states)
@@ -193,7 +193,7 @@ class TestPhaseAnalyzer(object):
 
         We do this in one function since the test for each part would be a bunch of repeated recreation of the phase
         """
-        phase = analyze.RepexPhase(self.reporter, name=self.repex_name)
+        phase = analyze.ReplicaExchangeAnalyzer(self.reporter, name=self.repex_name)
         u_sampled, u_unsampled = phase.extract_energies()
         # Test energy output matches appropriate MBAR shapes
         assert u_sampled.shape == (self.n_states, self.n_states, self.n_steps)
@@ -234,7 +234,7 @@ class TestPhaseAnalyzer(object):
     def test_multi_phase(self):
         """Test MultiPhaseAnalysis"""
         # Create the phases
-        full_phase = analyze.RepexPhase(self.reporter, name=self.repex_name)
+        full_phase = analyze.ReplicaExchangeAnalyzer(self.reporter, name=self.repex_name)
         blank_phase = BlankPhase(self.reporter, name="blank")
         fe_phase = FreeEnergyPhase(self.reporter, name="fe")
         fes_phase = FEStandardStatePhase(self.reporter, name="fes")

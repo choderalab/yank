@@ -95,8 +95,8 @@ def get_analyzer(file_base_path):
     """
     Utility function to convert storage file to a Reporter and Analyzer by reading the data on file
 
-    For now this is mostly placeholder functions since there is only the implemented :class:`RepexPhase`, but creates
-    the API for the user to work with.
+    For now this is mostly placeholder functions since there is only the implemented :class:`ReplicaExchangeAnalyzer`,
+    but creates the API for the user to work with.
 
     Parameters
     ----------
@@ -121,10 +121,110 @@ def get_analyzer(file_base_path):
     """
     # Eventually change this to auto-detect simulation from reporter:
     if True:
-        analyzer = RepexPhase(reporter)
+        analyzer = ReplicaExchangeAnalyzer(reporter)
     else:
         raise RuntimeError("Cannot automatically determine analyzer for Reporter: {}".format(reporter))
     return analyzer
+
+
+def get_decorrelation_time(timeseries_to_analyze):
+    """
+    Compute the decorrelation times given a timeseries.
+
+    See the ``pymbar.timeseries.statisticalInefficiency`` for full documentation
+    """
+    return timeseries.statisticalInefficiency(timeseries_to_analyze)
+
+
+def get_equilibration_data(timeseries_to_analyze):
+    """
+    Compute equilibration method given a timeseries
+
+    See the ``pymbar.timeseries.detectEquilibration`` function for full documentation
+    """
+    [n_equilibration, g_t, n_effective_max] = timeseries.detectEquilibration(timeseries_to_analyze)
+    return n_equilibration, g_t, n_effective_max
+
+
+def get_equilibration_data_per_sample(timeseries_to_analyze, fast=True, nskip=1):
+    """
+    Compute the correlation time and n_effective per sample.
+
+    This is exactly what ``pymbar.timeseries.detectEquilibration`` does, but returns the per sample data
+
+    See the ``pymbar.timeseries.detectEquilibration`` function for full documentation
+    """
+    A_t = timeseries_to_analyze
+    T = A_t.size
+    g_t = np.ones([T - 1], np.float32)
+    Neff_t = np.ones([T - 1], np.float32)
+    for t in range(0, T - 1, nskip):
+        try:
+            g_t[t] = timeseries.statisticalInefficiency(A_t[t:T], fast=fast)
+        except:
+            g_t[t] = (T - t + 1)
+        Neff_t[t] = (T - t + 1) / g_t[t]
+    return g_t, Neff_t
+
+
+def remove_unequilibrated_data(data, number_equilibrated, axis):
+    """
+    Remove the number_equilibrated samples from a dataset
+
+    Discards number_equilibrated number of indices from given axis
+
+    Parameters
+    ----------
+    data : np.array-like of any dimension length
+        This is the data which will be paired down
+    number_equilibrated : int
+        Number of indices that will be removed from the given axis, i.e. axis will be shorter by number_equilibrated
+    axis : int
+        Axis index along which to remove samples from. This supports negative indexing as well
+
+    Returns
+    -------
+    equilibrated_data : ndarray
+        Data with the number_equilibrated number of indices removed from the beginning along axis
+
+    """
+    cast_data = np.asarray(data)
+    # Define the slice along an arbitrary dimension
+    slc = [slice(None)] * len(cast_data.shape)
+    # Set the dimension we are truncating
+    slc[axis] = slice(number_equilibrated, None)
+    # Slice
+    equilibrated_data = cast_data[slc]
+    return equilibrated_data
+
+
+def subsample_data_along_axis(data, subsample_rate, axis):
+    """
+    Generate a decorrelated version of a given input data and subsample_rate along a single axis.
+
+    Parameters
+    ----------
+    data : np.array-like of any dimension length
+    subsample_rate : float or int
+        Rate at which to draw samples. A sample is considered decorrelated after every ceil(subsample_rate) of
+        indices along data and the specified axis
+    axis : int
+        axis along which to apply the subsampling
+
+    Returns
+    -------
+    subsampled_data : ndarray of same number of dimensions as data
+        Data will be subsampled along the given axis
+
+    """
+    # TODO: find a name for the function that clarifies that decorrelation
+    # TODO:             is determined exclusively by subsample_rate?
+    cast_data = np.asarray(data)
+    data_shape = cast_data.shape
+    # Since we already have g, we can just pass any appropriate shape to the subsample function
+    indices = timeseries.subsampleCorrelatedData(np.zeros(data_shape[axis]), g=subsample_rate)
+    subsampled_data = np.take(cast_data, indices, axis=axis)
+    return subsampled_data
 
 
 # =============================================================================================
@@ -438,107 +538,6 @@ class YankPhaseAnalyzer(ABC):
 
         raise NotImplementedError("This class has not implemented this function")
 
-    # Static methods
-    @staticmethod
-    def get_decorrelation_time(timeseries_to_analyze):
-        """
-        Compute the decorrelation times given a timeseries
-
-        See the ``pymbar.timeseries.statisticalInefficiency`` for full documentation
-        """
-        return timeseries.statisticalInefficiency(timeseries_to_analyze)
-
-    @staticmethod
-    def get_equilibration_data(timeseries_to_analyze):
-        """
-        Compute equilibration method given a timeseries
-
-        See the ``pymbar.timeseries.detectEquilibration`` function for full documentation
-        """
-        [n_equilibration, g_t, n_effective_max] = timeseries.detectEquilibration(timeseries_to_analyze)
-        return n_equilibration, g_t, n_effective_max
-
-    @staticmethod
-    def get_equilibration_data_per_sample(timeseries_to_analyze, fast=True, nskip=1):
-        """
-        Compute the correlation time and n_effective per sample.
-
-        This is exactly what ``pymbar.timeseries.detectEquilibration`` does, but returns the per sample data
-
-        See the ``pymbar.timeseries.detectEquilibration`` function for full documentation
-        """
-        A_t = timeseries_to_analyze
-        T = A_t.size
-        g_t = np.ones([T - 1], np.float32)
-        Neff_t = np.ones([T - 1], np.float32)
-        for t in range(0, T - 1, nskip):
-            try:
-                g_t[t] = timeseries.statisticalInefficiency(A_t[t:T], fast=fast)
-            except:
-                g_t[t] = (T - t + 1)
-            Neff_t[t] = (T - t + 1) / g_t[t]
-        return g_t, Neff_t
-
-    @staticmethod
-    def remove_unequilibrated_data(data, number_equilibrated, axis):
-        """
-        Remove the number_equilibrated samples from a dataset
-
-        Discards number_equilibrated number of indices from given axis
-
-        Parameters
-        ----------
-        data : np.array-like of any dimension length
-            This is the data which will be paired down
-        number_equilibrated : int
-            Number of indices that will be removed from the given axis, i.e. axis will be shorter by number_equilibrated
-        axis : int
-            Axis index along which to remove samples from. This supports negative indexing as well
-
-        Returns
-        -------
-        equilibrated_data : ndarray
-            Data with the number_equilibrated number of indices removed from the beginning along axis
-
-        """
-        cast_data = np.asarray(data)
-        # Define the slice along an arbitrary dimension
-        slc = [slice(None)] * len(cast_data.shape)
-        # Set the dimension we are truncating
-        slc[axis] = slice(number_equilibrated, None)
-        # Slice
-        equilibrated_data = cast_data[slc]
-        return equilibrated_data
-
-    @staticmethod
-    def decorrelate_data(data, subsample_rate, axis):
-        """
-        Generate a decorrelated version of a given input data and subsample_rate along a single axis.
-
-        Parameters
-        ----------
-        data : np.array-like of any dimension length
-        subsample_rate : float or int
-            Rate at which to draw samples. A sample is considered decorrelated after every ceil(subsample_rate) of
-            indices along data and the specified axis
-        axis : int
-            axis along which to apply the subsampling
-
-        Returns
-        -------
-        subsampled_data : ndarray of same number of dimensions as data
-            Data will be subsampled along the given axis
-
-        """
-        # TODO: find a name for the function that clarifies that decorrelation
-        # TODO:             is determined exclusively by subsample_rate?
-        cast_data = np.asarray(data)
-        data_shape = cast_data.shape
-        # Since we already have g, we can just pass any appropriate shape to the subsample function
-        indices = timeseries.subsampleCorrelatedData(np.zeros(data_shape[axis]), g=subsample_rate)
-        subsampled_data = np.take(cast_data, indices, axis=axis)
-        return subsampled_data
-
     # Private Class Methods
     @abc.abstractmethod
     def _prepare_mbar_input_data(self, *args, **kwargs):
@@ -656,11 +655,11 @@ class YankPhaseAnalyzer(ABC):
         return self
 
 
-class RepexPhase(YankPhaseAnalyzer):
+class ReplicaExchangeAnalyzer(YankPhaseAnalyzer):
 
     """
-    The RepexPhase is the analyzer for a simulation generated from a Replica Exchange sampler simulation, implemented
-    as an instance of the :class:`YankPhaseAnalyzer`.
+    The ReplicaExchangeAnalyzer is the analyzer for a simulation generated from a Replica Exchange sampler simulation,
+    implemented as an instance of the :class:`YankPhaseAnalyzer`.
 
     See Also
     --------
@@ -984,14 +983,14 @@ class RepexPhase(YankPhaseAnalyzer):
         # Discard equilibration samples.
         # TODO: if we include u_n[0] (the energy right after minimization) in the equilibration detection,
         # TODO:         then number_equilibrated is 0. Find a better way than just discarding first frame.
-        number_equilibrated, g_t, Neff_max = self.get_equilibration_data(u_n[1:])
+        number_equilibrated, g_t, Neff_max = get_equilibration_data(u_n[1:])
         self._equilibration_data = number_equilibrated, g_t, Neff_max
-        u_kln = self.remove_unequilibrated_data(u_kln, number_equilibrated, -1)
-        unsampled_u_kln = self.remove_unequilibrated_data(unsampled_u_kln, number_equilibrated, -1)
+        u_kln = remove_unequilibrated_data(u_kln, number_equilibrated, -1)
+        unsampled_u_kln = remove_unequilibrated_data(unsampled_u_kln, number_equilibrated, -1)
 
         # decorrelate_data subsample the energies only based on g_t so both ends up with same indices.
-        u_kln = self.decorrelate_data(u_kln, g_t, -1)
-        unsampled_u_kln = self.decorrelate_data(unsampled_u_kln, g_t, -1)
+        u_kln = subsample_data_along_axis(u_kln, g_t, -1)
+        unsampled_u_kln = subsample_data_along_axis(unsampled_u_kln, g_t, -1)
 
         mbar_ukln, mbar_N_k = self._prepare_mbar_input_data(u_kln, unsampled_u_kln)
         self._create_mbar(mbar_ukln, mbar_N_k)
