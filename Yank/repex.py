@@ -115,7 +115,7 @@ class Reporter(object):
 
     Attributes
     ----------
-    filename
+    filepath
 
     """
     def __init__(self, storage, open_mode=None, checkpoint_interval=10, checkpoint_storage_file=None):
@@ -139,7 +139,7 @@ class Reporter(object):
             self.open(open_mode)
 
     @property
-    def filename(self):
+    def filepath(self):
         """
         Returns the string file name of the primary storage file
 
@@ -1416,7 +1416,7 @@ class ReplicaExchange(object):
         else:
             reporter = storage
             reporter.open(mode='r')
-            file_name = reporter.filename
+            file_name = reporter.filepath
         if not reporter.storage_exists():
             reporter.close()
             raise RuntimeError('Storage file {} or its subfiles do not exist; cannot resume.'.format(file_name))
@@ -1654,7 +1654,7 @@ class ReplicaExchange(object):
             file_string = storage
         else:
             reporter = storage
-            file_string = reporter.filename
+            file_string = reporter.filepath
         if mpi.run_single_node(0, reporter.storage_exists, broadcast_result=True):
             files_exist = True
         if files_exist:

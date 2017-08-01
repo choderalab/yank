@@ -395,7 +395,7 @@ class AlchemicalPhase(object):
             reporter = storage
         if not reporter.storage_exists():
             reporter.close()
-            raise RuntimeError('Storage file at {} does not exists; cannot resume.'.format(reporter.filename))
+            raise RuntimeError('Storage file at {} does not exists; cannot resume.'.format(reporter.filepath))
 
         # TODO: this should skip the Reporter and use the Storage to read storage.metadata.
         # Open Reporter for reading and read metadata.

@@ -89,7 +89,7 @@ Let us look at the receptor, T4-Lysozyme. We'll look at the whole code block for
 First we define our molecule name ``t4-lysozyme``, this name will come up again in later sections, hence why we have
 given it a meaningful name.
 
-Next we tell YANK where the file is, so ``filename`` points at the file relative to where
+Next we tell YANK where the file is, so ``filepath`` points at the file relative to where
 the the yaml script.
 
 Lastly we have to tell YANK where to get the molecule's parameters to put into a simulation. The combination of
@@ -108,7 +108,7 @@ Now let us look at the ligand molecule, para-xylene
 
 First we give our ligand a meaningful name: ``p-xylene``.
 
-Next we tell YANK where the file is with ``filename``.
+Next we tell YANK where the file is with ``filepath``.
 
 The ``antechamber`` command is probably the most loaded command in the YAML file. Several things happen when this command
 is invoked. First, specifying ``antechamber`` tells YANK to prep the molecule by running it through ANTECHAMBER to get
