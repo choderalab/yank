@@ -200,7 +200,7 @@ class TestPhaseAnalyzer(object):
         discard = 1
         # Generate mbar semi-manually, use phases's static methods
         n_eq, g_t, Neff_max = pymbar.timeseries.detectEquilibration(u_n[discard:])
-        u_sampled_sub = phase.remove_unequilibrated_data(u_sampled, n_eq, -1)
+        u_sampled_sub = analyze.remove_unequilibrated_data(u_sampled, n_eq, -1)
         # Make sure output from subsample is what we expect
         assert u_sampled_sub.shape == (self.n_states, self.n_states, Neff_max)
         # Generate MBAR from phase
