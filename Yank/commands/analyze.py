@@ -142,7 +142,7 @@ def dispatch_report(args):
     with open(template_path, 'r') as template:
         notebook_text = re.sub('STOREDIRBLANK', store, template.read())
     if file_extension.lower() in static_extensions:
-        # Cast to static ouptput
+        # Cast to static output
         print("Rendering notebook as static file...")
         import nbformat
         from nbconvert.preprocessors import ExecutePreprocessor
@@ -163,7 +163,7 @@ def dispatch_report(args):
             # Read the temp notebook into a notebook_node object nbconvert can work with
             with open(tmp_nb_path, 'r') as tmp_notebook:
                 loaded_notebook = nbformat.read(tmp_notebook, as_version=4)
-            ep = ExecutePreprocessor()
+            ep = ExecutePreprocessor(timeout=None)
             # Set the title name, does not appear in all exporters
             resource_data = {'metadata': {'name': 'YANK Simulation Report: {}'.format(file_base_name)}}
             # Process notebook
