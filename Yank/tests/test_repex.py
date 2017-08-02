@@ -781,7 +781,7 @@ class TestReplicaExchange(object):
 
             # Update options and check the storage is synchronized.
             repex.number_of_iterations = 123
-            repex.replica_mixing_scheme = 'none'
+            repex.replica_mixing_scheme = None
 
             # Displace positions of the first sampler state.
             sampler_states = repex.sampler_states
@@ -796,7 +796,7 @@ class TestReplicaExchange(object):
                 reporter = Reporter(storage_path, open_mode='r')
                 restored_options = reporter.read_dict('options')
                 assert restored_options['number_of_iterations'] == 123
-                assert restored_options['replica_mixing_scheme'] == 'none'
+                assert restored_options['replica_mixing_scheme'] is None
 
                 restored_sampler_states = reporter.read_sampler_states(iteration=0)
                 assert np.allclose(restored_sampler_states[0].positions,

@@ -1185,8 +1185,8 @@ class ReplicaExchange(object):
         and 500 steps per iteration will be used.
     number_of_iterations : int, Optional, Default: 1
         The number of iterations to perform
-    replica_mixing_scheme : 'swap-all', 'swap-neighbors' or 'none', Default: 'swap-all'
-        The scheme used to swap thermodynamic states between replicas
+    replica_mixing_scheme : 'swap-all', 'swap-neighbors' or None, Default: 'swap-all'
+        The scheme used to swap thermodynamic states between replicas.
     online_analysis_interval : None or Int >= 1, optional, default None
         Choose the interval at which to perform online analysis of the free energy.
 
@@ -1318,13 +1318,8 @@ class ReplicaExchange(object):
             number_of_iterations = np.inf
 
         # Check arguments values.
-        if replica_mixing_scheme not in self._SUPPORTED_MIXING_SCHEMES:
-            raise ValueError("Unknown replica mixing scheme '{}'. Supported values are {}.".format(
-                replica_mixing_scheme, self._SUPPORTED_MIXING_SCHEMES))
-
-        if online_analysis_interval is not None and (
-                        type(online_analysis_interval) != int or online_analysis_interval < 1):
-            raise ValueError("online_analysis_interval must be an integer 1 or greater")
+        self._StoredProperty._repex_mixing_scheme_check(self, replica_mixing_scheme)
+        self._StoredProperty._oa_interval_check(self, online_analysis_interval)
 
         if online_analysis_interval is not None:
             if online_analysis_target_error < 0:
@@ -1551,9 +1546,10 @@ class ReplicaExchange(object):
 
         @staticmethod
         def _repex_mixing_scheme_check(instance, replica_mixing_scheme):
-            if replica_mixing_scheme not in ReplicaExchange._SUPPORTED_MIXING_SCHEMES:
-                raise ValueError(("Unknown replica mixing scheme '{}'. Supported values "
-                                  "are {}.").format(replica_mixing_scheme, ReplicaExchange._SUPPORTED_MIXING_SCHEMES))
+            supported_schemes = ['swap-all', 'swap-neighbors', None]
+            if replica_mixing_scheme not in supported_schemes:
+                raise ValueError("Unknown replica mixing scheme '{}'. Supported values "
+                                 "are {}.".format(replica_mixing_scheme, supported_schemes))
 
         @staticmethod
         def _oa_interval_check(instance, online_analysis_interval):
@@ -2207,8 +2203,6 @@ class ReplicaExchange(object):
     # Internal-usage: Replicas mixing.
     # -------------------------------------------------------------------------
 
-    _SUPPORTED_MIXING_SCHEMES = frozenset(['swap-all', 'swap-neighbors', 'none'])
-
     @mpi.on_single_node(0, broadcast_result=True)
     def _mix_replicas(self):
         """Attempt to swap replicas according to user-specified scheme."""
@@ -2219,11 +2213,10 @@ class ReplicaExchange(object):
         self._n_proposed_matrix[:, :] = 0
 
         # Perform swap attempts according to requested scheme.
-        assert self._replica_mixing_scheme in self._SUPPORTED_MIXING_SCHEMES
         with mmtools.utils.time_it('Mixing of replicas'):
-            if self._replica_mixing_scheme == 'swap-neighbors':
+            if self.replica_mixing_scheme == 'swap-neighbors':
                 self._mix_neighboring_replicas()
-            elif self._replica_mixing_scheme == 'swap-all':
+            elif self.replica_mixing_scheme == 'swap-all':
                 # Try to use cython-accelerated mixing code if possible,
                 # otherwise fall back to Python-accelerated code.
                 try:
@@ -2232,7 +2225,7 @@ class ReplicaExchange(object):
                     logger.warning(e.message)
                     self._mix_all_replicas()
             else:
-                assert self._replica_mixing_scheme == 'none'
+                assert self.replica_mixing_scheme is None
 
         # Determine fraction of swaps accepted this iteration.
         n_swaps_proposed = self._n_proposed_matrix.sum()

@@ -248,7 +248,7 @@ def test_yaml_parsing():
         minimize: False
         minimize_tolerance: 1.0 * kilojoules_per_mole / nanometers
         minimize_max_iterations: 0
-        replica_mixing_scheme: swap-all
+        replica_mixing_scheme: null
         annihilate_sterics: no
         annihilate_electrostatics: true
     """
@@ -257,9 +257,10 @@ def test_yaml_parsing():
     assert len(exp_builder._options) == 32
 
     # Check correct types
+    assert exp_builder._options['output_dir'] == '/path/to/output/'
     assert exp_builder._options['pressure'] is None
     assert exp_builder._options['constraints'] == openmm.app.AllBonds
-    assert exp_builder._options['replica_mixing_scheme'] == 'swap-all'
+    assert exp_builder._options['replica_mixing_scheme'] is None
     assert exp_builder._options['timestep'] == 2.0 * unit.femtoseconds
     assert exp_builder._options['randomize_ligand_sigma_multiplier'] == 1.0e-2
     assert exp_builder._options['nsteps_per_iteration'] == 2500
