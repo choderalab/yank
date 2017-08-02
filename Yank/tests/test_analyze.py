@@ -10,25 +10,21 @@ Test analyze.py facility.
 # =============================================================================================
 
 import os
-import math
 import copy
 import shutil
 import tempfile
-import contextlib
 
-import yaml
 import pymbar
 import numpy as np
-import scipy.integrate
-from simtk import openmm, unit
+from simtk import unit
 from nose.plugins.attrib import attr
 from nose.tools import assert_raises
 
 import openmmtools as mmtools
 from openmmtools import testsystems
 
-from yank import mpi, utils, analyze
-from yank.repex import Reporter, ReplicaExchange, _DictYamlLoader
+from yank import analyze
+from yank.repex import Reporter, ReplicaExchange
 
 # ==============================================================================
 # MODULE CONSTANTS
