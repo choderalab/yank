@@ -897,21 +897,6 @@ class Reporter(object):
             data['title'] = self._storage_dict[storage].title
         return data
 
-    def write_last_iteration(self, iteration):
-        """
-        Tell the reporter what the last iteration which was written in sequential order was to allow resuming and
-        analysis only on valid data.
-
-        Call this as the last step of any ``write_iteration``-like routine to ensure
-        analysis will not use junk data left over from an interrupted simulation past the last checkpoint.
-
-        Parameters
-        ----------
-        iteration : int
-            Iteration at which the last good data point was written.
-        """
-        self._storage_analysis.variables['last_iteration'][0] = iteration
-
     def write_dict(self, name, data, fixed_dimension=False):
         """Store the contents of a dict.
 
@@ -966,19 +951,49 @@ class Reporter(object):
             packed_data[0] = data_str
             nc_variable[:] = packed_data
 
-    def read_last_iteration(self):
+    def read_last_iteration(self, full_iteration=True):
         """
         Read the last iteration from file which was written in sequential order.
 
-        Used to check if there is junk data
-        which may have been written after the last checkpoint, but before the next one could be reached.
+        Parameters
+        ----------
+        full_iteration : bool, optional
+            If True, returns the last checkpoint iteration (default is True).
 
         Returns
         -------
         last_iteration : int
-            Last iteration which was sequentially written
+            Last iteration which was sequentially written.
+
         """
-        return int(self._storage_analysis.variables['last_iteration'][0])  # Make sure this is returned as Python Int
+        # Make sure this is returned as Python int.
+        last_iteration = int(self._storage_analysis.variables['last_iteration'][0])
+
+        # Get last checkpoint.
+        if full_iteration:
+            # -1 for stop ensures the 0th index is searched.
+            for i in range(last_iteration, -1, -1):
+                if self._calculate_checkpoint_iteration(i) is not None:
+                    return i
+            raise RuntimeError("Could not find a checkpoint! This should not happen "
+                               "as the 0th iteration should always be written!")
+
+        return last_iteration
+
+    def write_last_iteration(self, iteration):
+        """
+        Tell the reporter what the last iteration which was written in sequential order was to allow resuming and
+        analysis only on valid data.
+
+        Call this as the last step of any ``write_iteration``-like routine to ensure
+        analysis will not use junk data left over from an interrupted simulation past the last checkpoint.
+
+        Parameters
+        ----------
+        iteration : int
+            Iteration at which the last good data point was written.
+        """
+        self._storage_analysis.variables['last_iteration'][0] = iteration
 
     def read_mbar_free_energies(self, iteration):
         """
@@ -1048,28 +1063,6 @@ class Reporter(object):
         online_group.variables['f_k'][iteration] = f_k
         online_group.variables['free_energy'][iteration, :] = free_energy
 
-    def get_previous_checkpoint(self, iteration):
-        """
-        Find the most recently written checkpoint given the iteration searching backwards.
-
-        This is the primary function for determining which iteration to resume from
-
-        Parameters
-        ----------
-        iteration : int
-            Iteration to search from
-
-        Returns
-        -------
-        checkpoint : int
-            The checkpoint closest to the iteration searching reverse
-        """
-        for i in range(iteration, -1, -1):  # -1 for stop ensures the 0th index is searched
-            if self._calculate_checkpoint_iteration(i) is not None:
-                return i
-        raise RuntimeError("Could not find a checkpoint! This should not happen as the 0th iteration should always "
-                           "be written! Please check your input.")
-
     # -------------------------------------------------------------------------
     # Internal-usage.
     # -------------------------------------------------------------------------
@@ -1095,17 +1088,8 @@ class Reporter(object):
          """
         checkpoint_index = float(iteration) / self._checkpoint_interval
         if checkpoint_index.is_integer():
-            output = int(checkpoint_index)
-        else:
-            output = None
-        return output
-
-    def _calculate_analysis_iteration(self, iteration):
-        """Compute the iteration on disk of the analysis file given the checkpoint iteration
-
-        Effectively the inverse of _calculate_checkpoint_iteration
-        """
-        return iteration * self._checkpoint_interval
+            return int(checkpoint_index)
+        return None
 
     def _calculate_last_iteration(self, iteration):
         """
@@ -1123,7 +1107,7 @@ class Reporter(object):
             Iteration, converted as needed to only access certain ranges of data
         """
 
-        last_good = self.read_last_iteration()
+        last_good = self.read_last_iteration(full_iteration=False)
         max_iter = len(self._storage_analysis.dimensions['iteration'])
 
         def convert_negative_iteration(iteration):
@@ -1429,14 +1413,9 @@ class ReplicaExchange(object):
         # Display papers to be cited.
         repex._display_citations()
 
-        # Read the last iteration reported to ensure we dont include junk data written
-        # just before a crash, but not before it could then be overwritten.
+        # Read the last iteration reported to ensure we don't include junk
+        # data written just before a crash.
         iteration = reporter.read_last_iteration()
-        checkpoint_iteration = reporter.get_previous_checkpoint(iteration)
-        if iteration != checkpoint_iteration:
-            logger.debug("Last known checkpoint at iteration {0}. "
-                         "Restoring from iteration {0} instead of {1}".format(checkpoint_iteration, iteration))
-            iteration = checkpoint_iteration
 
         # Retrieve other attributes.
         logger.debug("Reading storage file {}...".format(file_name))
