@@ -1303,56 +1303,6 @@ class ReplicaExchange(object):
     def __init__(self, mcmc_moves=None, number_of_iterations=1, replica_mixing_scheme='swap-all',
                  online_analysis_interval=None, online_analysis_target_error=0.2,
                  online_analysis_minimum_iterations=50):
-        # Handling default propagator.
-        if mcmc_moves is None:
-            # This will be converted to a list in create().
-            self._mcmc_moves = mmtools.mcmc.LangevinDynamicsMove(timestep=2.0*unit.femtosecond,
-                                                                 collision_rate=5.0/unit.picosecond,
-                                                                 n_steps=500, reassign_velocities=True,
-                                                                 n_restart_attempts=6)
-        else:
-            self._mcmc_moves = copy.deepcopy(mcmc_moves)
-
-        # Support infinite number of iterations.
-        if number_of_iterations is None:
-            number_of_iterations = np.inf
-
-        # Check arguments values.
-        self._StoredProperty._repex_mixing_scheme_check(self, replica_mixing_scheme)
-        self._StoredProperty._oa_interval_check(self, online_analysis_interval)
-
-        if online_analysis_interval is not None:
-            if online_analysis_target_error < 0:
-                raise ValueError("online_analysis_target_error must be a float >= 0")
-            elif online_analysis_target_error == 0:
-                logger.warn("online_analysis_target_error of 0 may never converge.")
-            if type(online_analysis_minimum_iterations) is not int or online_analysis_minimum_iterations < 0:
-                raise ValueError("online_analysis_minimum_iterations must be an integer >= 0")
-
-        if number_of_iterations == np.inf:
-            if online_analysis_target_error == 0.0:
-                logger.warning("WARNING! You have specified an unlimited number of iterations and a target error "
-                               "for online analysis of 0.0! Your simulation may never reach 'completed' state!")
-            elif online_analysis_interval is None:
-                logger.warning("WARNING! This simulation will never be considered 'complete' since there is no "
-                               "specified maximum number of iterations!")
-
-        # Store constructor parameters. Everything is marked for internal
-        # usage because any change to these attribute implies a change
-        # in the storage file as well.
-        self._number_of_iterations = number_of_iterations
-        self._replica_mixing_scheme = replica_mixing_scheme
-
-        # Online analysis options.
-        self._online_analysis_interval = online_analysis_interval
-        self._online_analysis_target_error = online_analysis_target_error
-        self._online_analysis_minimum_iterations = online_analysis_minimum_iterations
-        self._online_error_trap_counter = 0  # Counter for errors in the online estimate
-        self._online_error_bank = []
-
-        self._last_mbar_f_k = None
-        self._last_err_free_energy = None
-
         # These will be set on initialization. See function
         # create() for explanation of single variables.
         self._thermodynamic_states = None
@@ -1367,7 +1317,42 @@ class ReplicaExchange(object):
         self._reporter = None
         self._metadata = None
 
+        # Handling default propagator.
+        if mcmc_moves is None:
+            # This will be converted to a list in create().
+            self._mcmc_moves = mmtools.mcmc.LangevinDynamicsMove(timestep=2.0*unit.femtosecond,
+                                                                 collision_rate=5.0/unit.picosecond,
+                                                                 n_steps=500, reassign_velocities=True,
+                                                                 n_restart_attempts=6)
+        else:
+            self._mcmc_moves = copy.deepcopy(mcmc_moves)
+
+        # Store constructor parameters. Everything is marked for internal
+        # usage because any change to these attribute implies a change
+        # in the storage file as well. Use properties for checks.
+        self.number_of_iterations = number_of_iterations
+        self.replica_mixing_scheme = replica_mixing_scheme
+
+        # Online analysis options.
+        self.online_analysis_interval = online_analysis_interval
+        self.online_analysis_target_error = online_analysis_target_error
+        self.online_analysis_minimum_iterations = online_analysis_minimum_iterations
+        self._online_error_trap_counter = 0  # Counter for errors in the online estimate
+        self._online_error_bank = []
+
+        self._last_mbar_f_k = None
+        self._last_err_free_energy = None
+
         self._have_displayed_citations_before = False
+
+        # Check convergence.
+        if self.number_of_iterations == np.inf:
+            if self.online_analysis_target_error == 0.0:
+                logger.warning("WARNING! You have specified an unlimited number of iterations and a target error "
+                               "for online analysis of 0.0! Your simulation may never reach 'completed' state!")
+            elif self.online_analysis_interval is None:
+                logger.warning("WARNING! This simulation will never be considered 'complete' since there is no "
+                               "specified maximum number of iterations!")
 
     @classmethod
     def from_storage(cls, storage):
@@ -1535,9 +1520,11 @@ class ReplicaExchange(object):
 
         def __set__(self, instance, new_value):
             if self._validate_function is not None:
-                self._validate_function(instance, new_value)
+                new_value = self._validate_function(instance, new_value)
             setattr(instance, '_' + self._option_name, new_value)
-            mpi.run_single_node(0, instance._store_options)
+            # Update storage if we ReplicaExchange is initialized.
+            if instance._thermodynamic_states is not None:
+                mpi.run_single_node(0, instance._store_options)
 
         # ----------------------------------
         # Value Validation of the properties
@@ -1545,42 +1532,54 @@ class ReplicaExchange(object):
         # ----------------------------------
 
         @staticmethod
-        def _repex_mixing_scheme_check(instance, replica_mixing_scheme):
+        def _number_of_iterations_validator(instance, number_of_iterations):
+            # Support infinite number of iterations.
+            if number_of_iterations is None:
+                number_of_iterations = np.inf
+            return number_of_iterations
+
+        @staticmethod
+        def _repex_mixing_scheme_validator(instance, replica_mixing_scheme):
             supported_schemes = ['swap-all', 'swap-neighbors', None]
             if replica_mixing_scheme not in supported_schemes:
                 raise ValueError("Unknown replica mixing scheme '{}'. Supported values "
                                  "are {}.".format(replica_mixing_scheme, supported_schemes))
+            return replica_mixing_scheme
 
         @staticmethod
-        def _oa_interval_check(instance, online_analysis_interval):
+        def _oa_interval_validator(instance, online_analysis_interval):
             """Check the online_analysis_interval value for consistency"""
             if online_analysis_interval is not None and (
                             type(online_analysis_interval) != int or online_analysis_interval < 1):
                 raise ValueError("online_analysis_interval must be an integer 1 or greater, or None")
+            return online_analysis_interval
 
         @staticmethod
-        def _oa_target_error_check(instance, online_analysis_target_error):
-            if instance.online_analysis_target_error is not None:
+        def _oa_target_error_validator(instance, online_analysis_target_error):
+            if instance.online_analysis_interval is not None:
                 if online_analysis_target_error < 0:
                     raise ValueError("online_analysis_target_error must be a float >= 0")
                 elif online_analysis_target_error == 0:
-                    logger.warn("online_analysis_target_error of 0 may never converge.")
+                    logger.warning("online_analysis_target_error of 0 may never converge.")
+            return online_analysis_target_error
 
         @staticmethod
-        def _oa_min_iter_check(instance, online_analysis_minimum_iterations):
-            if (instance.online_analysis_target_error is not None and
+        def _oa_min_iter_validator(instance, online_analysis_minimum_iterations):
+            if (instance.online_analysis_interval is not None and
                     (type(online_analysis_minimum_iterations) is not int or online_analysis_minimum_iterations < 0)):
-                    raise ValueError("online_analysis_minimum_iterations must be an integer >= 0")
+                raise ValueError("online_analysis_minimum_iterations must be an integer >= 0")
+            return online_analysis_minimum_iterations
 
-    number_of_iterations = _StoredProperty('number_of_iterations')
+    number_of_iterations = _StoredProperty('number_of_iterations',
+                                           validate_function=_StoredProperty._number_of_iterations_validator)
     replica_mixing_scheme = _StoredProperty('replica_mixing_scheme',
-                                            validate_function=_StoredProperty._repex_mixing_scheme_check)
+                                            validate_function=_StoredProperty._repex_mixing_scheme_validator)
     online_analysis_interval = _StoredProperty('online_analysis_interval',
-                                               validate_function=_StoredProperty._oa_interval_check) #:interval to carry out online analysis
+                                               validate_function=_StoredProperty._oa_interval_validator) #:interval to carry out online analysis
     online_analysis_target_error = _StoredProperty('online_analysis_target_error',
-                                                   validate_function=_StoredProperty._oa_target_error_check)
+                                                   validate_function=_StoredProperty._oa_target_error_validator)
     online_analysis_minimum_iterations = _StoredProperty('online_analysis_minimum_iterations',
-                                                         validate_function=_StoredProperty._oa_min_iter_check)
+                                                         validate_function=_StoredProperty._oa_min_iter_validator)
     @property
     def metadata(self):
         """A copy of the metadata dictionary passed on creation (read-only)."""
