@@ -129,10 +129,10 @@ def dispatch_report(args):
         import matplotlib
         import jupyter
     except ImportError:
-        error_msg = "Rendering this notebook requires the following packages:\n"
-        " - matplotlib\n"
-        " - jupyter\n"
-        "These are not required to generate the notebook however"
+        error_msg = ("Rendering this notebook requires the following packages:\n"
+                     " - matplotlib\n"
+                     " - jupyter\n"
+                     "These are not required to generate the notebook however")
         if file_extension.lower() in static_extensions:
             error_msg += "\nRendering as static {} is not possible without the packages!".format(file_extension)
             raise ImportError(error_msg)

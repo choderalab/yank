@@ -492,9 +492,35 @@ class YankPhaseAnalyzer(ABC):
         """
         This method should automatically do everything needed to make the MBAR object from file. It should make all
         the assumptions needed to make the MBAR object.  Typically alot of these functions will be needed for the
-        analyze_phase function,
+        :func:`analyze_phase` function.
+
+        Should call the :func:`_prepare_mbar_input_data` to get the data ready for
 
         Returns nothing, but the self.mbar object should be set after this.
+        """
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def _prepare_mbar_input_data(self, *args, **kwargs):
+        """
+        Prepare a set of data for MBAR, because each analyzer may need to do something else to prepare for MBAR, it
+        should have its own function to do that with.
+
+        Parameters
+        ----------
+        args : arguments needed to generate the appropriate Returns
+        kwargs : keyword arguments needed to generate the appropriate Returns
+
+        Returns
+        -------
+        energy_matrix : energy matrix of shape (K,L,N), indexed by k,l,n
+            K is the total number of sampled states
+            L is the total states we want MBAR to analyze
+            N is the total number of samples
+            The kth sample was drawn from state k at iteration n,
+                the nth configuration of kth state is evaluated in thermodynamic state l
+        samples_per_state : 1-D iterable of shape L
+            The total number of samples drawn from each lth state
         """
         raise NotImplementedError()
 
@@ -539,33 +565,6 @@ class YankPhaseAnalyzer(ABC):
         raise NotImplementedError("This class has not implemented this function")
 
     # Private Class Methods
-    @abc.abstractmethod
-    def _prepare_mbar_input_data(self, *args, **kwargs):
-        """
-        Prepare a set of data for MBAR, because each analyzer may need to do something else to prepare for MBAR, it
-        should have its own function to do that with.
-
-        This is not a public function
-
-        Parameters
-        ----------
-        args : arguments needed to generate the appropriate Returns
-        kwargs : keyword arguments needed to generate the appropriate Returns
-
-        Returns
-        -------
-        energy_matrix : energy matrix of shape (K,L,N), indexed by k,l,n
-            K is the total number of sampled states
-            L is the total states we want MBAR to analyze
-            N is the total number of samples
-            The kth sample was drawn from state k at iteration n,
-                the nth configuration of kth state is evaluated in thermodynamic state l
-        samples_per_state : 1-D iterable of shape L
-            The total number of samples drawn from each lth state
-        """
-        raise NotImplementedError()
-
-    # Shared methods
     def _create_mbar(self, energy_matrix, samples_per_state):
         """
         Initialize MBAR for Free Energy and Enthalpy estimates, this may take a while.
@@ -667,14 +666,16 @@ class ReplicaExchangeAnalyzer(YankPhaseAnalyzer):
 
     """
 
-    def generate_mixing_statistics(self, number_equilibrated=0):
+    def generate_mixing_statistics(self, number_equilibrated=None):
         """
         Generate the Transition state matrix and sorted eigenvalues
 
         Parameters
         ----------
-        number_equilibrated : int, optional, default=0
+        number_equilibrated : int, optional, default=None
            If specified, only samples number_equilibrated:end will be used in analysis
+           If not specified, automatically retrieves the number from equilibration data or generates it from the
+           internal energy.
 
         Returns
         -------
@@ -685,6 +686,8 @@ class ReplicaExchangeAnalyzer(YankPhaseAnalyzer):
         """
 
         # Read data from disk
+        if number_equilibrated is None:
+            number_equilibrated, _, _ = self._equilibration_data
         states = self._reporter.read_replica_thermodynamic_states()
         n_iterations, n_states = states.shape
         n_ij = np.zeros([n_states, n_states], np.int64)
@@ -714,7 +717,7 @@ class ReplicaExchangeAnalyzer(YankPhaseAnalyzer):
 
         return t_ij, mu
 
-    def show_mixing_statistics(self, cutoff=0.05, number_equilibrated=0):
+    def show_mixing_statistics(self, cutoff=0.05, number_equilibrated=None):
         """
         Print summary of mixing statistics. Passes information off to generate_mixing_statistics then prints it out to
         the logger
@@ -723,8 +726,9 @@ class ReplicaExchangeAnalyzer(YankPhaseAnalyzer):
         ----------
         cutoff : float, optional, default=0.05
            Only transition probabilities above 'cutoff' will be printed
-        number_equilibrated : int, optional, default=0
+        number_equilibrated : int, optional, default=None
            If specified, only samples number_equilibrated:end will be used in analysis
+           If not specified, it uses the internally held statistics best
 
         """
 
@@ -976,22 +980,35 @@ class ReplicaExchangeAnalyzer(YankPhaseAnalyzer):
             self._computed_observables['standard_state_correction'] = ssc
         return self._computed_observables['standard_state_correction']
 
-    def _create_mbar_from_scratch(self):
-        u_kln, unsampled_u_kln = self.extract_energies()
-        u_n = self.get_timeseries(u_kln)
+    def _get_equilibration_data_auto(self, input_data=None):
+        """
+        Automatically generate the equilibration data from best practices, part of the :func:`_create_mbar_from_scratch`
+        routine.
 
+        Parameters
+        ----------
+        input_data : np.ndarray-like, Optional, Default: None
+            Optionally provide the data to look at. If not provided, uses energies from :func:`extract_energies()`
+
+        Returns nothing, but sets self._equilibration_data
+        """
+        if input_data is None:
+            input_data, _ = self.extract_energies()
+        u_n = self.get_timeseries(input_data)
         # Discard equilibration samples.
         # TODO: if we include u_n[0] (the energy right after minimization) in the equilibration detection,
         # TODO:         then number_equilibrated is 0. Find a better way than just discarding first frame.
-        number_equilibrated, g_t, Neff_max = get_equilibration_data(u_n[1:])
-        self._equilibration_data = number_equilibrated, g_t, Neff_max
+        self._equilibration_data = get_equilibration_data(u_n[1:])
+
+    def _create_mbar_from_scratch(self):
+        u_kln, unsampled_u_kln = self.extract_energies()
+        self._get_equilibration_data_auto(input_data=u_kln)
+        number_equilibrated, g_t, Neff_max = self._equilibration_data
         u_kln = remove_unequilibrated_data(u_kln, number_equilibrated, -1)
         unsampled_u_kln = remove_unequilibrated_data(unsampled_u_kln, number_equilibrated, -1)
-
         # decorrelate_data subsample the energies only based on g_t so both ends up with same indices.
         u_kln = subsample_data_along_axis(u_kln, g_t, -1)
         unsampled_u_kln = subsample_data_along_axis(unsampled_u_kln, g_t, -1)
-
         mbar_ukln, mbar_N_k = self._prepare_mbar_input_data(u_kln, unsampled_u_kln)
         self._create_mbar(mbar_ukln, mbar_N_k)
 
