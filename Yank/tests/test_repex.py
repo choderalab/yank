@@ -251,14 +251,14 @@ class TestReporter(object):
 
     @staticmethod
     @contextlib.contextmanager
-    def temporary_reporter(checkpoint_interval=1, checkpoint_storage_file=None):
+    def temporary_reporter(checkpoint_interval=1, checkpoint_storage=None):
         """Create and initialize a reporter in a temporary directory."""
         with mmtools.utils.temporary_directory() as tmp_dir_path:
             storage_file = os.path.join(tmp_dir_path, 'temp_dir/test_storage.nc')
             assert not os.path.isfile(storage_file)
             reporter = Reporter(storage=storage_file, open_mode='w',
                                 checkpoint_interval=checkpoint_interval,
-                                checkpoint_storage_file=checkpoint_storage_file)
+                                checkpoint_storage=checkpoint_storage)
             assert reporter.storage_exists(skip_size=True)
             yield reporter
 
@@ -1089,7 +1089,7 @@ class TestReplicaExchange(object):
             cp_file = 'checkpoint_file.nc'
             base, head = os.path.split(storage_path)
             cp_path = os.path.join(base, cp_file)
-            reporter = Reporter(storage_path, checkpoint_storage_file=cp_file, open_mode='w')
+            reporter = Reporter(storage_path, checkpoint_storage=cp_file, open_mode='w')
             reporter.close()
             assert os.path.isfile(storage_path)
             assert os.path.isfile(cp_path)
@@ -1098,7 +1098,7 @@ class TestReplicaExchange(object):
         """Test that checkpoint and storage files have the same UUID"""
         with self.temporary_storage_path() as storage_path:
             cp_file = 'checkpoint_file.nc'
-            reporter = Reporter(storage_path, checkpoint_storage_file=cp_file, open_mode='w')
+            reporter = Reporter(storage_path, checkpoint_storage=cp_file, open_mode='w')
             assert reporter._storage_checkpoint.UUID == reporter._storage_analysis.UUID
 
     def test_uuid_mismatch_errors(self):
@@ -1108,23 +1108,23 @@ class TestReplicaExchange(object):
             storage_mod = file_base + '_mod' + ext
             cp_file_main = 'checkpoint_file.nc'
             cp_file_mod = 'checkpoint_mod.nc'
-            reporter_main = Reporter(storage_path, checkpoint_storage_file=cp_file_main, open_mode='w')
+            reporter_main = Reporter(storage_path, checkpoint_storage=cp_file_main, open_mode='w')
             reporter_main.close()
-            reporter_mod = Reporter(storage_mod, checkpoint_storage_file=cp_file_mod, open_mode='w')
+            reporter_mod = Reporter(storage_mod, checkpoint_storage=cp_file_mod, open_mode='w')
             reporter_mod.close()
             del reporter_main, reporter_mod
             with assert_raises(IOError):
-                Reporter(storage_path, checkpoint_storage_file=cp_file_mod, open_mode='r')
+                Reporter(storage_path, checkpoint_storage=cp_file_mod, open_mode='r')
 
     def test_analysis_opens_without_checkpoint(self):
         """Test that the analysis file can open without the checkpoint file"""
         with self.temporary_storage_path() as storage_path:
             cp_file = 'checkpoint_file.nc'
             cp_file_mod = 'checkpoint_mod.nc'
-            reporter = Reporter(storage_path, checkpoint_storage_file=cp_file, open_mode='w')
+            reporter = Reporter(storage_path, checkpoint_storage=cp_file, open_mode='w')
             reporter.close()
             del reporter
-            Reporter(storage_path, checkpoint_storage_file=cp_file_mod, open_mode='r')
+            Reporter(storage_path, checkpoint_storage=cp_file_mod, open_mode='r')
 
     def test_storage_reporter_and_string(self):
         """Test that creating a repex by storage string and reporter is the same"""

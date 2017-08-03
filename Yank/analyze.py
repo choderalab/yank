@@ -1515,7 +1515,7 @@ def extract_trajectory(output_path, nc_path, nc_checkpoint_file=None, state_inde
 
     # Import simulation data
     try:
-        reporter = Reporter(nc_path, open_mode='r', checkpoint_storage_file=nc_checkpoint_file)
+        reporter = Reporter(nc_path, open_mode='r', checkpoint_storage=nc_checkpoint_file)
         metadata = reporter.read_dict('metadata')
         reference_system = mmtools.utils.deserialize(metadata['reference_state']).system
         topology = mmtools.utils.deserialize(metadata['topography']).topology

@@ -84,7 +84,7 @@ class Reporter(object):
     storage : str
         The path to the storage file for analysis.
 
-        A second checkpoint file will be determined from either ``checkpoint_storage_file`` or automatically based on
+        A second checkpoint file will be determined from either ``checkpoint_storage`` or automatically based on
         the storage option
 
         In the future this will be able to take Storage classes as well.
@@ -102,7 +102,7 @@ class Reporter(object):
 
         Attempting to read checkpointing information results in a masked array where only entries which were written
         are unmasked
-    checkpoint_storage_file : str or None, optional
+    checkpoint_storage : str or None, optional
         Optional name of the checkpoint point file. This file is used to save trajectory information and other less
         frequently accessed data.
 
@@ -118,20 +118,20 @@ class Reporter(object):
     filepath
 
     """
-    def __init__(self, storage, open_mode=None, checkpoint_interval=10, checkpoint_storage_file=None):
+    def __init__(self, storage, open_mode=None, checkpoint_interval=10, checkpoint_storage=None):
         # Handle checkpointing
         if type(checkpoint_interval) != int:
             raise ValueError("checkpoint_interval must be an integer!")
         dirname, filename = os.path.split(storage)
-        if checkpoint_storage_file is None:
+        if checkpoint_storage is None:
             basename, ext = os.path.splitext(filename)
             addon = "_checkpoint"
-            checkpoint_storage_file = os.path.join(dirname, basename + addon + ext)
-            logger.debug("Initial checkpoint file automatically chosen as {}".format(checkpoint_storage_file))
+            checkpoint_storage = os.path.join(dirname, basename + addon + ext)
+            logger.debug("Initial checkpoint file automatically chosen as {}".format(checkpoint_storage))
         else:
-            checkpoint_storage_file = os.path.join(dirname, checkpoint_storage_file)
+            checkpoint_storage = os.path.join(dirname, checkpoint_storage)
         self._storage_file_analysis = storage
-        self._storage_file_checkpoint = checkpoint_storage_file
+        self._storage_file_checkpoint = checkpoint_storage
         self._storage_checkpoint = None
         self._storage_analysis = None
         self._checkpoint_interval = checkpoint_interval
