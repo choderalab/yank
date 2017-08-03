@@ -2,7 +2,7 @@
 [![Anaconda Cloud Badge](https://anaconda.org/omnia/yank/badges/version.svg)](https://anaconda.org/omnia/yank)
 [![Anaconda Cloud Downloads](https://anaconda.org/omnia/yank/badges/downloads.svg)](https://anaconda.org/omnia/yank)
 [![DOI](https://zenodo.org/badge/13779937.svg)](https://zenodo.org/badge/latestdoi/13779937)
-[![CodeClimate](https://codeclimate.com/github/choderalab/yank/badges/gpa.svg)
+[![CodeClimate](https://codeclimate.com/github/choderalab/yank/badges/gpa.svg)](https://codeclimate.com/github/choderalab/yank/)
 
 YANK
 ====
