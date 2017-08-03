@@ -139,7 +139,7 @@ class HealthReportData(object):
             analyzer = self.analyzers[phase_name]
 
             # Data crunching to get timeseries
-            u_kln, _ = analyzer.extract_energies()
+            u_kln, _ = analyzer.get_states_energies()
             # TODO: Figure out how not to discard the first sample
             # Sample at index 0 is actually the minimized structure and NOT from the equilibrium distribution
             # This throws off all of the equilibrium data

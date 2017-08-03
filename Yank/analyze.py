@@ -525,7 +525,7 @@ class YankPhaseAnalyzer(ABC):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def extract_energies(self):
+    def get_states_energies(self):
         """
         Extract the deconvoluted energies from a phase.
 
@@ -761,7 +761,7 @@ class ReplicaExchangeAnalyzer(YankPhaseAnalyzer):
                 mu[1], 1.0 / (1.0 - mu[1]))
             )
 
-    def extract_energies(self):
+    def get_states_energies(self):
         """
         Extract and decorrelate energies from the ncfile to gather energies common data for other functions
 
@@ -993,7 +993,7 @@ class ReplicaExchangeAnalyzer(YankPhaseAnalyzer):
         Returns nothing, but sets self._equilibration_data
         """
         if input_data is None:
-            input_data, _ = self.extract_energies()
+            input_data, _ = self.get_states_energies()
         u_n = self.get_timeseries(input_data)
         # Discard equilibration samples.
         # TODO: if we include u_n[0] (the energy right after minimization) in the equilibration detection,
@@ -1001,7 +1001,7 @@ class ReplicaExchangeAnalyzer(YankPhaseAnalyzer):
         self._equilibration_data = get_equilibration_data(u_n[1:])
 
     def _create_mbar_from_scratch(self):
-        u_kln, unsampled_u_kln = self.extract_energies()
+        u_kln, unsampled_u_kln = self.get_states_energies()
         self._get_equilibration_data_auto(input_data=u_kln)
         number_equilibrated, g_t, Neff_max = self._equilibration_data
         u_kln = remove_unequilibrated_data(u_kln, number_equilibrated, -1)

@@ -45,7 +45,7 @@ class BlankPhase(analyze.YankPhaseAnalyzer):
     def _create_mbar_from_scratch(self):
         pass
 
-    def extract_energies(self):
+    def get_states_energies(self):
         pass
 
     @staticmethod
@@ -190,7 +190,7 @@ class TestPhaseAnalyzer(object):
         We do this in one function since the test for each part would be a bunch of repeated recreation of the phase
         """
         phase = analyze.ReplicaExchangeAnalyzer(self.reporter, name=self.repex_name)
-        u_sampled, u_unsampled = phase.extract_energies()
+        u_sampled, u_unsampled = phase.get_states_energies()
         # Test energy output matches appropriate MBAR shapes
         assert u_sampled.shape == (self.n_states, self.n_states, self.n_steps)
         assert u_unsampled.shape == (self.n_states, 2, self.n_steps)
