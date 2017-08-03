@@ -640,9 +640,10 @@ Valid Options (10): <Integer ``>= 1``>
 
 Specifies how the Hamiltonian Replica Exchange attempts swaps between replicas.
 ``swap-all`` will attempt to exchange every state with every other state. ``swap-neighbors``  will attempt only
-exchanges between adjacent states.
+exchanges between adjacent states. If ``null`` is specified, no mixing is done, and effectively disables all replica
+exchange functionality.
 
-Valid Options: [swap-all]/swap-neighbors
+Valid Options: [swap-all]/swap-neighbors/null
 
 
 

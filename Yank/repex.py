@@ -84,7 +84,7 @@ class Reporter(object):
     storage : str
         The path to the storage file for analysis.
 
-        A second checkpoint file will be determined from either ``checkpoint_storage_file`` or automatically based on
+        A second checkpoint file will be determined from either ``checkpoint_storage`` or automatically based on
         the storage option
 
         In the future this will be able to take Storage classes as well.
@@ -102,7 +102,7 @@ class Reporter(object):
 
         Attempting to read checkpointing information results in a masked array where only entries which were written
         are unmasked
-    checkpoint_storage_file : str or None, optional
+    checkpoint_storage : str or None, optional
         Optional name of the checkpoint point file. This file is used to save trajectory information and other less
         frequently accessed data.
 
@@ -115,23 +115,23 @@ class Reporter(object):
 
     Attributes
     ----------
-    filename
+    filepath
 
     """
-    def __init__(self, storage, open_mode=None, checkpoint_interval=10, checkpoint_storage_file=None):
+    def __init__(self, storage, open_mode=None, checkpoint_interval=10, checkpoint_storage=None):
         # Handle checkpointing
         if type(checkpoint_interval) != int:
             raise ValueError("checkpoint_interval must be an integer!")
         dirname, filename = os.path.split(storage)
-        if checkpoint_storage_file is None:
+        if checkpoint_storage is None:
             basename, ext = os.path.splitext(filename)
             addon = "_checkpoint"
-            checkpoint_storage_file = os.path.join(dirname, basename + addon + ext)
-            logger.debug("Initial checkpoint file automatically chosen as {}".format(checkpoint_storage_file))
+            checkpoint_storage = os.path.join(dirname, basename + addon + ext)
+            logger.debug("Initial checkpoint file automatically chosen as {}".format(checkpoint_storage))
         else:
-            checkpoint_storage_file = os.path.join(dirname, checkpoint_storage_file)
+            checkpoint_storage = os.path.join(dirname, checkpoint_storage)
         self._storage_file_analysis = storage
-        self._storage_file_checkpoint = checkpoint_storage_file
+        self._storage_file_checkpoint = checkpoint_storage
         self._storage_checkpoint = None
         self._storage_analysis = None
         self._checkpoint_interval = checkpoint_interval
@@ -139,7 +139,7 @@ class Reporter(object):
             self.open(open_mode)
 
     @property
-    def filename(self):
+    def filepath(self):
         """
         Returns the string file name of the primary storage file
 
@@ -897,21 +897,6 @@ class Reporter(object):
             data['title'] = self._storage_dict[storage].title
         return data
 
-    def write_last_iteration(self, iteration):
-        """
-        Tell the reporter what the last iteration which was written in sequential order was to allow resuming and
-        analysis only on valid data.
-
-        Call this as the last step of any ``write_iteration``-like routine to ensure
-        analysis will not use junk data left over from an interrupted simulation past the last checkpoint.
-
-        Parameters
-        ----------
-        iteration : int
-            Iteration at which the last good data point was written.
-        """
-        self._storage_analysis.variables['last_iteration'][0] = iteration
-
     def write_dict(self, name, data, fixed_dimension=False):
         """Store the contents of a dict.
 
@@ -966,19 +951,49 @@ class Reporter(object):
             packed_data[0] = data_str
             nc_variable[:] = packed_data
 
-    def read_last_iteration(self):
+    def read_last_iteration(self, full_iteration=True):
         """
         Read the last iteration from file which was written in sequential order.
 
-        Used to check if there is junk data
-        which may have been written after the last checkpoint, but before the next one could be reached.
+        Parameters
+        ----------
+        full_iteration : bool, optional
+            If True, returns the last checkpoint iteration (default is True).
 
         Returns
         -------
         last_iteration : int
-            Last iteration which was sequentially written
+            Last iteration which was sequentially written.
+
         """
-        return int(self._storage_analysis.variables['last_iteration'][0])  # Make sure this is returned as Python Int
+        # Make sure this is returned as Python int.
+        last_iteration = int(self._storage_analysis.variables['last_iteration'][0])
+
+        # Get last checkpoint.
+        if full_iteration:
+            # -1 for stop ensures the 0th index is searched.
+            for i in range(last_iteration, -1, -1):
+                if self._calculate_checkpoint_iteration(i) is not None:
+                    return i
+            raise RuntimeError("Could not find a checkpoint! This should not happen "
+                               "as the 0th iteration should always be written!")
+
+        return last_iteration
+
+    def write_last_iteration(self, iteration):
+        """
+        Tell the reporter what the last iteration which was written in sequential order was to allow resuming and
+        analysis only on valid data.
+
+        Call this as the last step of any ``write_iteration``-like routine to ensure
+        analysis will not use junk data left over from an interrupted simulation past the last checkpoint.
+
+        Parameters
+        ----------
+        iteration : int
+            Iteration at which the last good data point was written.
+        """
+        self._storage_analysis.variables['last_iteration'][0] = iteration
 
     def read_mbar_free_energies(self, iteration):
         """
@@ -1048,28 +1063,6 @@ class Reporter(object):
         online_group.variables['f_k'][iteration] = f_k
         online_group.variables['free_energy'][iteration, :] = free_energy
 
-    def get_previous_checkpoint(self, iteration):
-        """
-        Find the most recently written checkpoint given the iteration searching backwards.
-
-        This is the primary function for determining which iteration to resume from
-
-        Parameters
-        ----------
-        iteration : int
-            Iteration to search from
-
-        Returns
-        -------
-        checkpoint : int
-            The checkpoint closest to the iteration searching reverse
-        """
-        for i in range(iteration, -1, -1):  # -1 for stop ensures the 0th index is searched
-            if self._calculate_checkpoint_iteration(i) is not None:
-                return i
-        raise RuntimeError("Could not find a checkpoint! This should not happen as the 0th iteration should always "
-                           "be written! Please check your input.")
-
     # -------------------------------------------------------------------------
     # Internal-usage.
     # -------------------------------------------------------------------------
@@ -1095,17 +1088,8 @@ class Reporter(object):
          """
         checkpoint_index = float(iteration) / self._checkpoint_interval
         if checkpoint_index.is_integer():
-            output = int(checkpoint_index)
-        else:
-            output = None
-        return output
-
-    def _calculate_analysis_iteration(self, iteration):
-        """Compute the iteration on disk of the analysis file given the checkpoint iteration
-
-        Effectively the inverse of _calculate_checkpoint_iteration
-        """
-        return iteration * self._checkpoint_interval
+            return int(checkpoint_index)
+        return None
 
     def _calculate_last_iteration(self, iteration):
         """
@@ -1123,7 +1107,7 @@ class Reporter(object):
             Iteration, converted as needed to only access certain ranges of data
         """
 
-        last_good = self.read_last_iteration()
+        last_good = self.read_last_iteration(full_iteration=False)
         max_iter = len(self._storage_analysis.dimensions['iteration'])
 
         def convert_negative_iteration(iteration):
@@ -1199,10 +1183,11 @@ class ReplicaExchange(object):
         they will be assigned to the correspondent thermodynamic state on
         creation. If None is provided, Langevin dynamics with 2fm timestep, 5.0/ps collision rate,
         and 500 steps per iteration will be used.
-    number_of_iterations : int, Optional, Default: 1
+    number_of_iterations : int or None, Optional, Default: 1
         The number of iterations to perform
-    replica_mixing_scheme : 'swap-all', 'swap-neighbors' or 'none', Default: 'swap-all'
-        The scheme used to swap thermodynamic states between replicas
+        If None, an unlimited number of iterations is run
+    replica_mixing_scheme : 'swap-all', 'swap-neighbors' or None, Default: 'swap-all'
+        The scheme used to swap thermodynamic states between replicas.
     online_analysis_interval : None or Int >= 1, optional, default None
         Choose the interval at which to perform online analysis of the free energy.
 
@@ -1319,61 +1304,6 @@ class ReplicaExchange(object):
     def __init__(self, mcmc_moves=None, number_of_iterations=1, replica_mixing_scheme='swap-all',
                  online_analysis_interval=None, online_analysis_target_error=0.2,
                  online_analysis_minimum_iterations=50):
-        # Handling default propagator.
-        if mcmc_moves is None:
-            # This will be converted to a list in create().
-            self._mcmc_moves = mmtools.mcmc.LangevinDynamicsMove(timestep=2.0*unit.femtosecond,
-                                                                 collision_rate=5.0/unit.picosecond,
-                                                                 n_steps=500, reassign_velocities=True,
-                                                                 n_restart_attempts=6)
-        else:
-            self._mcmc_moves = copy.deepcopy(mcmc_moves)
-
-        # Support infinite number of iterations.
-        if number_of_iterations is None:
-            number_of_iterations = np.inf
-
-        # Check arguments values.
-        if replica_mixing_scheme not in self._SUPPORTED_MIXING_SCHEMES:
-            raise ValueError("Unknown replica mixing scheme '{}'. Supported values are {}.".format(
-                replica_mixing_scheme, self._SUPPORTED_MIXING_SCHEMES))
-
-        if online_analysis_interval is not None and (
-                        type(online_analysis_interval) != int or online_analysis_interval < 1):
-            raise ValueError("online_analysis_interval must be an integer 1 or greater")
-
-        if online_analysis_interval is not None:
-            if online_analysis_target_error < 0:
-                raise ValueError("online_analysis_target_error must be a float >= 0")
-            elif online_analysis_target_error == 0:
-                logger.warn("online_analysis_target_error of 0 may never converge.")
-            if type(online_analysis_minimum_iterations) is not int or online_analysis_minimum_iterations < 0:
-                raise ValueError("online_analysis_minimum_iterations must be an integer >= 0")
-
-        if number_of_iterations == np.inf:
-            if online_analysis_target_error == 0.0:
-                logger.warning("WARNING! You have specified an unlimited number of iterations and a target error "
-                               "for online analysis of 0.0! Your simulation may never reach 'completed' state!")
-            elif online_analysis_interval is None:
-                logger.warning("WARNING! This simulation will never be considered 'complete' since there is no "
-                               "specified maximum number of iterations!")
-
-        # Store constructor parameters. Everything is marked for internal
-        # usage because any change to these attribute implies a change
-        # in the storage file as well.
-        self._number_of_iterations = number_of_iterations
-        self._replica_mixing_scheme = replica_mixing_scheme
-
-        # Online analysis options.
-        self._online_analysis_interval = online_analysis_interval
-        self._online_analysis_target_error = online_analysis_target_error
-        self._online_analysis_minimum_iterations = online_analysis_minimum_iterations
-        self._online_error_trap_counter = 0  # Counter for errors in the online estimate
-        self._online_error_bank = []
-
-        self._last_mbar_f_k = None
-        self._last_err_free_energy = None
-
         # These will be set on initialization. See function
         # create() for explanation of single variables.
         self._thermodynamic_states = None
@@ -1388,7 +1318,42 @@ class ReplicaExchange(object):
         self._reporter = None
         self._metadata = None
 
+        # Handling default propagator.
+        if mcmc_moves is None:
+            # This will be converted to a list in create().
+            self._mcmc_moves = mmtools.mcmc.LangevinDynamicsMove(timestep=2.0*unit.femtosecond,
+                                                                 collision_rate=5.0/unit.picosecond,
+                                                                 n_steps=500, reassign_velocities=True,
+                                                                 n_restart_attempts=6)
+        else:
+            self._mcmc_moves = copy.deepcopy(mcmc_moves)
+
+        # Store constructor parameters. Everything is marked for internal
+        # usage because any change to these attribute implies a change
+        # in the storage file as well. Use properties for checks.
+        self.number_of_iterations = number_of_iterations
+        self.replica_mixing_scheme = replica_mixing_scheme
+
+        # Online analysis options.
+        self.online_analysis_interval = online_analysis_interval
+        self.online_analysis_target_error = online_analysis_target_error
+        self.online_analysis_minimum_iterations = online_analysis_minimum_iterations
+        self._online_error_trap_counter = 0  # Counter for errors in the online estimate
+        self._online_error_bank = []
+
+        self._last_mbar_f_k = None
+        self._last_err_free_energy = None
+
         self._have_displayed_citations_before = False
+
+        # Check convergence.
+        if self.number_of_iterations == np.inf:
+            if self.online_analysis_target_error == 0.0:
+                logger.warning("WARNING! You have specified an unlimited number of iterations and a target error "
+                               "for online analysis of 0.0! Your simulation may never reach 'completed' state!")
+            elif self.online_analysis_interval is None:
+                logger.warning("WARNING! This simulation will never be considered 'complete' since there is no "
+                               "specified maximum number of iterations!")
 
     @classmethod
     def from_storage(cls, storage):
@@ -1416,7 +1381,7 @@ class ReplicaExchange(object):
         else:
             reporter = storage
             reporter.open(mode='r')
-            file_name = reporter.filename
+            file_name = reporter.filepath
         if not reporter.storage_exists():
             reporter.close()
             raise RuntimeError('Storage file {} or its subfiles do not exist; cannot resume.'.format(file_name))
@@ -1429,14 +1394,9 @@ class ReplicaExchange(object):
         # Display papers to be cited.
         repex._display_citations()
 
-        # Read the last iteration reported to ensure we dont include junk data written
-        # just before a crash, but not before it could then be overwritten.
+        # Read the last iteration reported to ensure we don't include junk
+        # data written just before a crash.
         iteration = reporter.read_last_iteration()
-        checkpoint_iteration = reporter.get_previous_checkpoint(iteration)
-        if iteration != checkpoint_iteration:
-            logger.debug("Last known checkpoint at iteration {0}. "
-                         "Restoring from iteration {0} instead of {1}".format(checkpoint_iteration, iteration))
-            iteration = checkpoint_iteration
 
         # Retrieve other attributes.
         logger.debug("Reading storage file {}...".format(file_name))
@@ -1561,9 +1521,11 @@ class ReplicaExchange(object):
 
         def __set__(self, instance, new_value):
             if self._validate_function is not None:
-                self._validate_function(instance, new_value)
+                new_value = self._validate_function(instance, new_value)
             setattr(instance, '_' + self._option_name, new_value)
-            mpi.run_single_node(0, instance._store_options)
+            # Update storage if we ReplicaExchange is initialized.
+            if instance._thermodynamic_states is not None:
+                mpi.run_single_node(0, instance._store_options)
 
         # ----------------------------------
         # Value Validation of the properties
@@ -1571,41 +1533,54 @@ class ReplicaExchange(object):
         # ----------------------------------
 
         @staticmethod
-        def _repex_mixing_scheme_check(instance, replica_mixing_scheme):
-            if replica_mixing_scheme not in ReplicaExchange._SUPPORTED_MIXING_SCHEMES:
-                raise ValueError(("Unknown replica mixing scheme '{}'. Supported values "
-                                  "are {}.").format(replica_mixing_scheme, ReplicaExchange._SUPPORTED_MIXING_SCHEMES))
+        def _number_of_iterations_validator(instance, number_of_iterations):
+            # Support infinite number of iterations.
+            if number_of_iterations is None:
+                number_of_iterations = np.inf
+            return number_of_iterations
 
         @staticmethod
-        def _oa_interval_check(instance, online_analysis_interval):
+        def _repex_mixing_scheme_validator(instance, replica_mixing_scheme):
+            supported_schemes = ['swap-all', 'swap-neighbors', None]
+            if replica_mixing_scheme not in supported_schemes:
+                raise ValueError("Unknown replica mixing scheme '{}'. Supported values "
+                                 "are {}.".format(replica_mixing_scheme, supported_schemes))
+            return replica_mixing_scheme
+
+        @staticmethod
+        def _oa_interval_validator(instance, online_analysis_interval):
             """Check the online_analysis_interval value for consistency"""
             if online_analysis_interval is not None and (
                             type(online_analysis_interval) != int or online_analysis_interval < 1):
                 raise ValueError("online_analysis_interval must be an integer 1 or greater, or None")
+            return online_analysis_interval
 
         @staticmethod
-        def _oa_target_error_check(instance, online_analysis_target_error):
-            if instance.online_analysis_target_error is not None:
+        def _oa_target_error_validator(instance, online_analysis_target_error):
+            if instance.online_analysis_interval is not None:
                 if online_analysis_target_error < 0:
                     raise ValueError("online_analysis_target_error must be a float >= 0")
                 elif online_analysis_target_error == 0:
-                    logger.warn("online_analysis_target_error of 0 may never converge.")
+                    logger.warning("online_analysis_target_error of 0 may never converge.")
+            return online_analysis_target_error
 
         @staticmethod
-        def _oa_min_iter_check(instance, online_analysis_minimum_iterations):
-            if (instance.online_analysis_target_error is not None and
+        def _oa_min_iter_validator(instance, online_analysis_minimum_iterations):
+            if (instance.online_analysis_interval is not None and
                     (type(online_analysis_minimum_iterations) is not int or online_analysis_minimum_iterations < 0)):
-                    raise ValueError("online_analysis_minimum_iterations must be an integer >= 0")
+                raise ValueError("online_analysis_minimum_iterations must be an integer >= 0")
+            return online_analysis_minimum_iterations
 
-    number_of_iterations = _StoredProperty('number_of_iterations')
+    number_of_iterations = _StoredProperty('number_of_iterations',
+                                           validate_function=_StoredProperty._number_of_iterations_validator)
     replica_mixing_scheme = _StoredProperty('replica_mixing_scheme',
-                                            validate_function=_StoredProperty._repex_mixing_scheme_check)
+                                            validate_function=_StoredProperty._repex_mixing_scheme_validator)
     online_analysis_interval = _StoredProperty('online_analysis_interval',
-                                               validate_function=_StoredProperty._oa_interval_check) #:interval to carry out online analysis
+                                               validate_function=_StoredProperty._oa_interval_validator) #:interval to carry out online analysis
     online_analysis_target_error = _StoredProperty('online_analysis_target_error',
-                                                   validate_function=_StoredProperty._oa_target_error_check)
+                                                   validate_function=_StoredProperty._oa_target_error_validator)
     online_analysis_minimum_iterations = _StoredProperty('online_analysis_minimum_iterations',
-                                                         validate_function=_StoredProperty._oa_min_iter_check)
+                                                         validate_function=_StoredProperty._oa_min_iter_validator)
     @property
     def metadata(self):
         """A copy of the metadata dictionary passed on creation (read-only)."""
@@ -1654,7 +1629,7 @@ class ReplicaExchange(object):
             file_string = storage
         else:
             reporter = storage
-            file_string = reporter.filename
+            file_string = reporter.filepath
         if mpi.run_single_node(0, reporter.storage_exists, broadcast_result=True):
             files_exist = True
         if files_exist:
@@ -2228,8 +2203,6 @@ class ReplicaExchange(object):
     # Internal-usage: Replicas mixing.
     # -------------------------------------------------------------------------
 
-    _SUPPORTED_MIXING_SCHEMES = frozenset(['swap-all', 'swap-neighbors', 'none'])
-
     @mpi.on_single_node(0, broadcast_result=True)
     def _mix_replicas(self):
         """Attempt to swap replicas according to user-specified scheme."""
@@ -2240,11 +2213,10 @@ class ReplicaExchange(object):
         self._n_proposed_matrix[:, :] = 0
 
         # Perform swap attempts according to requested scheme.
-        assert self._replica_mixing_scheme in self._SUPPORTED_MIXING_SCHEMES
         with mmtools.utils.time_it('Mixing of replicas'):
-            if self._replica_mixing_scheme == 'swap-neighbors':
+            if self.replica_mixing_scheme == 'swap-neighbors':
                 self._mix_neighboring_replicas()
-            elif self._replica_mixing_scheme == 'swap-all':
+            elif self.replica_mixing_scheme == 'swap-all':
                 # Try to use cython-accelerated mixing code if possible,
                 # otherwise fall back to Python-accelerated code.
                 try:
@@ -2253,7 +2225,7 @@ class ReplicaExchange(object):
                     logger.warning(e.message)
                     self._mix_all_replicas()
             else:
-                assert self._replica_mixing_scheme == 'none'
+                assert self.replica_mixing_scheme is None
 
         # Determine fraction of swaps accepted this iteration.
         n_swaps_proposed = self._n_proposed_matrix.sum()
