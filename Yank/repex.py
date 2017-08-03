@@ -1183,8 +1183,9 @@ class ReplicaExchange(object):
         they will be assigned to the correspondent thermodynamic state on
         creation. If None is provided, Langevin dynamics with 2fm timestep, 5.0/ps collision rate,
         and 500 steps per iteration will be used.
-    number_of_iterations : int, Optional, Default: 1
+    number_of_iterations : int or None, Optional, Default: 1
         The number of iterations to perform
+        If None, an unlimited number of iterations is run
     replica_mixing_scheme : 'swap-all', 'swap-neighbors' or None, Default: 'swap-all'
         The scheme used to swap thermodynamic states between replicas.
     online_analysis_interval : None or Int >= 1, optional, default None
