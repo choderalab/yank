@@ -2327,11 +2327,11 @@ class ReplicaExchange(object):
         # importing, its not in the name space which causes relative analyze import of repex to crash as neither of them
         # are the __main__ package.
         # https://stackoverflow.com/questions/6351805/cyclic-module-dependencies-and-relative-imports-in-python
-        from .analyze import RepexPhase
+        from .analyze import ReplicaExchangeAnalyzer
 
         # Start the analysis
         bump_error_counter = False
-        analysis = RepexPhase(self._reporter, analysis_kwargs={'initial_f_k': self._last_mbar_f_k})
+        analysis = ReplicaExchangeAnalyzer(self._reporter, analysis_kwargs={'initial_f_k': self._last_mbar_f_k})
 
         # Indices for online analysis, "i'th index, j'th index"
         idx, jdx = 0, -1

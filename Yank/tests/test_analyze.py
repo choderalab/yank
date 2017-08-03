@@ -10,25 +10,21 @@ Test analyze.py facility.
 # =============================================================================================
 
 import os
-import math
 import copy
 import shutil
 import tempfile
-import contextlib
 
-import yaml
 import pymbar
 import numpy as np
-import scipy.integrate
-from simtk import openmm, unit
+from simtk import unit
 from nose.plugins.attrib import attr
 from nose.tools import assert_raises
 
 import openmmtools as mmtools
 from openmmtools import testsystems
 
-from yank import mpi, utils, analyze
-from yank.repex import Reporter, ReplicaExchange, _DictYamlLoader
+from yank import analyze
+from yank.repex import Reporter, ReplicaExchange
 
 # ==============================================================================
 # MODULE CONSTANTS
@@ -49,7 +45,7 @@ class BlankPhase(analyze.YankPhaseAnalyzer):
     def _create_mbar_from_scratch(self):
         pass
 
-    def extract_energies(self):
+    def get_states_energies(self):
         pass
 
     @staticmethod
@@ -161,7 +157,7 @@ class TestPhaseAnalyzer(object):
         cls.n_states = n_states
         cls.n_steps = n_steps
         cls.repex.run(cls.n_steps-1)  # Initial config
-        cls.repex_name = "RepexPhase"
+        cls.repex_name = "RepexAnalyzer"
 
     @classmethod
     def teardown_class(cls):
@@ -169,13 +165,13 @@ class TestPhaseAnalyzer(object):
 
     def test_repex_phase_initilize(self):
         """Test that the Repex Phase analyzer initializes correctly"""
-        phase = analyze.RepexPhase(self.reporter, name=self.repex_name)
+        phase = analyze.ReplicaExchangeAnalyzer(self.reporter, name=self.repex_name)
         assert phase.reporter is self.reporter
         assert phase.name == self.repex_name
 
     def test_repex_mixing_stats(self):
         """Test that the Repex Phase yields mixing stats that make sense"""
-        phase = analyze.RepexPhase(self.reporter, name=self.repex_name)
+        phase = analyze.ReplicaExchangeAnalyzer(self.reporter, name=self.repex_name)
         t, mu = phase.generate_mixing_statistics()
         # Output is the correct number of states
         assert t.shape == (self.n_states, self.n_states)
@@ -193,8 +189,8 @@ class TestPhaseAnalyzer(object):
 
         We do this in one function since the test for each part would be a bunch of repeated recreation of the phase
         """
-        phase = analyze.RepexPhase(self.reporter, name=self.repex_name)
-        u_sampled, u_unsampled = phase.extract_energies()
+        phase = analyze.ReplicaExchangeAnalyzer(self.reporter, name=self.repex_name)
+        u_sampled, u_unsampled = phase.get_states_energies()
         # Test energy output matches appropriate MBAR shapes
         assert u_sampled.shape == (self.n_states, self.n_states, self.n_steps)
         assert u_unsampled.shape == (self.n_states, 2, self.n_steps)
@@ -204,7 +200,7 @@ class TestPhaseAnalyzer(object):
         discard = 1
         # Generate mbar semi-manually, use phases's static methods
         n_eq, g_t, Neff_max = pymbar.timeseries.detectEquilibration(u_n[discard:])
-        u_sampled_sub = phase.remove_unequilibrated_data(u_sampled, n_eq, -1)
+        u_sampled_sub = analyze.remove_unequilibrated_data(u_sampled, n_eq, -1)
         # Make sure output from subsample is what we expect
         assert u_sampled_sub.shape == (self.n_states, self.n_states, Neff_max)
         # Generate MBAR from phase
@@ -234,7 +230,7 @@ class TestPhaseAnalyzer(object):
     def test_multi_phase(self):
         """Test MultiPhaseAnalysis"""
         # Create the phases
-        full_phase = analyze.RepexPhase(self.reporter, name=self.repex_name)
+        full_phase = analyze.ReplicaExchangeAnalyzer(self.reporter, name=self.repex_name)
         blank_phase = BlankPhase(self.reporter, name="blank")
         fe_phase = FreeEnergyPhase(self.reporter, name="fe")
         fes_phase = FEStandardStatePhase(self.reporter, name="fes")

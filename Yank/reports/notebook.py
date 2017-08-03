@@ -139,7 +139,7 @@ class HealthReportData(object):
             analyzer = self.analyzers[phase_name]
 
             # Data crunching to get timeseries
-            u_kln, _ = analyzer.extract_energies()
+            u_kln, _ = analyzer.get_states_energies()
             # TODO: Figure out how not to discard the first sample
             # Sample at index 0 is actually the minimized structure and NOT from the equilibrium distribution
             # This throws off all of the equilibrium data
@@ -147,7 +147,7 @@ class HealthReportData(object):
             self._n_discarded = discard_from_start
             self.u_ns[phase_name] = analyzer.get_timeseries(u_kln)
             # Timeseries statistics
-            g_t, Neff_t = analyzer.get_equilibration_data_per_sample(self.u_ns[phase_name])
+            g_t, Neff_t = analyze.get_equilibration_data_per_sample(self.u_ns[phase_name])
             self.Neff_maxs[phase_name] = Neff_t.max()
             self.nequils[phase_name] = Neff_t.argmax()
             self.g_ts[phase_name] = g_t[int(self.nequils[phase_name])]
