@@ -687,6 +687,8 @@ class ReplicaExchangeAnalyzer(YankPhaseAnalyzer):
 
         # Read data from disk
         if number_equilibrated is None:
+            if self._equilibration_data is None:
+                self._get_equilibration_data_auto()
             number_equilibrated, _, _ = self._equilibration_data
         states = self._reporter.read_replica_thermodynamic_states()
         n_iterations, n_states = states.shape
