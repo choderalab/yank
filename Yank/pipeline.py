@@ -1116,7 +1116,7 @@ class SetupDatabase:
                     if not utils.is_openeye_installed(oetools=('oechem',)):
                         raise RuntimeError('Cannot support {} files selection without OpenEye'.format(
                                 extension[1:]))
-                    oe_molecule = utils.read_oe_molecule(mol_descr['filepath'], conformer_idx=model_idx)
+                    oe_molecule = utils.load_oe_molecules(mol_descr['filepath'], molecule_idx=model_idx)
                     if extension == '.mol2':
                         mol_names = utils.Mol2File(mol_descr['filepath']).resnames
                         utils.write_oe_molecule(oe_molecule, single_file_path, mol2_resname=mol_names[model_idx])
@@ -1218,7 +1218,7 @@ class SetupDatabase:
                 if not utils.is_openeye_installed(oetools=('oechem',)):
                     raise RuntimeError('Cannot support sdf files without OpenEye OEChem')
                 mol2_file_path = os.path.join(mol_dir, mol_id + '.mol2')
-                oe_molecule = utils.read_oe_molecule(mol_descr['filepath'])
+                oe_molecule = utils.load_oe_molecules(mol_descr['filepath'], molecule_idx=0)
 
                 # We set the residue name as the first three uppercase letters of mol_id
                 residue_name = re.sub('[^A-Za-z]+', '', mol_id.upper())[:3]
@@ -1238,7 +1238,7 @@ class SetupDatabase:
                         logger.error(err_msg)
                         raise RuntimeError(err_msg)
                     mol2_file_path = os.path.join(mol_dir, mol_id + '.mol2')
-                    oe_molecule = utils.read_oe_molecule(mol_descr['filepath'])
+                    oe_molecule = utils.load_oe_molecules(mol_descr['filepath'], molecule_idx=0)
 
                     # Setting keep_confs = None keeps the original conformation
                     oe_molecule = moltools.openeye.get_charges(oe_molecule, keep_confs=None)
@@ -1347,7 +1347,7 @@ class SetupDatabase:
                 for i, mol_id in enumerate(molecule_ids):
                     if mol_id not in self._pos_cache:
                         self._pos_cache[mol_id] = utils.get_oe_mol_positions(
-                                utils.read_oe_molecule(self.molecules[mol_id]['filepath']))
+                                utils.load_oe_molecules(self.molecules[mol_id]['filepath'], molecule_idx=0))
                     positions[i] = self._pos_cache[mol_id]
 
                 # Find and apply the transformation to fix clashing

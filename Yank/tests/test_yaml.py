@@ -756,8 +756,8 @@ def test_clashing_atoms():
         system_description['solvent'] = utils.CombinatorialLeaf(['vacuum', 'PME'])
 
         # Sanity check: at the beginning molecules clash
-        toluene_pos = utils.get_oe_mol_positions(utils.read_oe_molecule(toluene_path))
-        benzene_pos = utils.get_oe_mol_positions(utils.read_oe_molecule(benzene_path))
+        toluene_pos = utils.get_oe_mol_positions(utils.load_oe_molecules(toluene_path, molecule_idx=0))
+        benzene_pos = utils.get_oe_mol_positions(utils.load_oe_molecules(benzene_path, molecule_idx=0))
         assert pipeline.compute_min_dist(toluene_pos, benzene_pos) < pipeline.SetupDatabase.CLASH_THRESHOLD
 
         exp_builder = ExperimentBuilder(yaml_content)
@@ -886,7 +886,7 @@ class TestMultiMoleculeFiles(object):
         # Create 2-molecule sdf and mol2 with OpenEye
         if utils.is_openeye_installed():
             from openeye import oechem
-            oe_benzene = utils.read_oe_molecule(examples_paths()['benzene'])
+            oe_benzene = utils.load_oe_molecules(examples_paths()['benzene'], molecule_idx=0)
             oe_benzene_pos = utils.get_oe_mol_positions(oe_benzene).dot(rot)
             oe_benzene.NewConf(oechem.OEFloatArray(oe_benzene_pos.flatten()))
 
@@ -1122,7 +1122,7 @@ class TestMultiMoleculeFiles(object):
 
                 # The mol2 represents the right molecule
                 csv_smiles_str = pipeline.read_csv_lines(self.smiles_path, lines=i).strip().split(',')[1]
-                mol2_smiles_str = OEMolToSmiles(utils.read_oe_molecule(mol2_path))
+                mol2_smiles_str = OEMolToSmiles(utils.load_oe_molecules(mol2_path, molecule_idx=0))
                 assert mol2_smiles_str == csv_smiles_str
 
                 # The molecule now both set up and processed
@@ -1207,9 +1207,9 @@ class TestMultiMoleculeFiles(object):
                     assert os.path.getsize(os.path.join(single_mol_path)) > 0
 
                     # The positions must be approximately correct (antechamber move the molecule)
-                    selected_oe_mol = utils.read_oe_molecule(single_mol_path)
+                    selected_oe_mol = utils.load_oe_molecules(single_mol_path, molecule_idx=0)
                     selected_pos = utils.get_oe_mol_positions(selected_oe_mol)
-                    second_oe_mol = utils.read_oe_molecule(multi_path, conformer_idx=model_idx)
+                    second_oe_mol = utils.load_oe_molecules(multi_path, molecule_idx=model_idx)
                     second_pos = utils.get_oe_mol_positions(second_oe_mol)
                     assert selected_oe_mol.NumConfs() == 1
                     assert np.allclose(selected_pos, second_pos, atol=1e-1)

@@ -877,7 +877,7 @@ class ExperimentBuilder(object):
                         if not utils.is_openeye_installed(oetools=('oechem',)):
                             err_msg = 'Molecule {}: Cannot "select" from {} file without OpenEye toolkit'
                             raise RuntimeError(err_msg.format(comb_mol_name, extension))
-                        n_models = utils.read_oe_molecule(comb_molecule['filepath']).NumConfs()
+                        n_models = len(utils.load_oe_molecules(comb_molecule['filepath']))
 
                     else:
                         raise YamlParseError('Molecule {}: Cannot "select" from {} file'.format(

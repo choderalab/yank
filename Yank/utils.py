@@ -1273,21 +1273,27 @@ def is_openeye_installed(oetools=('oechem', 'oequacpac', 'oeiupac', 'oeomega')):
     return True
 
 
-def read_oe_molecule(file_path, conformer_idx=None):
-    """Read OpenEye molecule from file
+def load_oe_molecules(file_path, molecule_idx=None):
+    """Read one or more molecules from a file.
 
-    Requires OpenEye Toolkit
+    Requires OpenEye Toolkit. Several formats are supported (including
+    mol2, sdf and pdb).
 
     Parameters
     ----------
     file_path : str
-        Complete path to the OpenEye Molecule file on disk
-    conformer_idx : None or int, Optional, Default: None
-        Index of the conformer on the file. If None, not used.
+        Complete path to the file on disk.
+    molecule_idx : None or int, optional, default: None
+        Index of the molecule on the file. If None, all of them are
+        returned.
 
     Returns
     -------
-    molecule : OpenEye Molecule
+    molecule : OEGraphMol or list of OEGraphMol
+        The molecules stored in the file. If molecule_idx is specified
+        only one molecule is returned, otherwise a list (even if the
+        file contain only 1 molecule).
+
     """
     from openeye import oechem
 
@@ -1296,20 +1302,16 @@ def read_oe_molecule(file_path, conformer_idx=None):
     if not ifs.open(file_path):
         oechem.OEThrow.Fatal('Unable to open {}'.format(file_path))
 
-    # Read all conformations
+    # Read all molecules.
+    molecules = []
     for mol in ifs.GetOEMols():
-        try:
-            molecule.NewConf(mol)
-        except UnboundLocalError:
-            molecule = oechem.OEMol(mol)
+        molecules.append(oechem.OEGraphMol(mol))
 
     # Select conformation of interest
-    if conformer_idx is not None:
-        if molecule.NumConfs() <= conformer_idx:
-            raise ValueError('conformer_idx {} out of range'.format(conformer_idx))
-        molecule = oechem.OEGraphMol(molecule.GetConf(oechem.OEHasConfIdx(conformer_idx)))
+    if molecule_idx is not None:
+        return molecules[molecule_idx]
 
-    return molecule
+    return molecules
 
 
 def write_oe_molecule(oe_mol, file_path, mol2_resname=None):
