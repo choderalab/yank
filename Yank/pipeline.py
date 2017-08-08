@@ -1118,7 +1118,7 @@ class SetupDatabase:
                                 extension[1:]))
                     oe_molecule = utils.load_oe_molecules(mol_descr['filepath'], molecule_idx=model_idx)
                     if extension == '.mol2':
-                        mol_names = utils.Mol2File(mol_descr['filepath']).resnames
+                        mol_names = list(utils.Mol2File(mol_descr['filepath']).resnames)
                         utils.write_oe_molecule(oe_molecule, single_file_path, mol2_resname=mol_names[model_idx])
                     else:
                         utils.write_oe_molecule(oe_molecule, single_file_path)

@@ -1183,39 +1183,58 @@ class Mol2File(object):
 
     @property
     def resname(self):
-        """The string name of the first molecule found in the mol2 file."""
-        residue = parmed.load_file(self._file_path)
-        if isinstance(residue, parmed.modeller.residue.ResidueTemplateContainer):
-            return residue[0].name
-        return residue.name
+        """The residue name of the first molecule found in the mol2 file.
 
-    @resname.setter
-    def resname(self, value):
-        residue = parmed.load_file(self._file_path)
-        if isinstance(residue, parmed.modeller.residue.ResidueTemplateContainer):
-            residue[0].name = value
-        else:
-            residue.name = value
-        parmed.formats.Mol2File.write(residue, self._file_path)
+        This assumes that each molecule in the mol2 file has a single residue name.
+
+        """
+        return next(self.resnames)
 
     @property
     def resnames(self):
-        """The list of the names of all the molecules in the file (read-only)."""
-        residues = parmed.load_file(self._file_path)
-        if isinstance(residues, parmed.modeller.residue.ResidueTemplateContainer):
-            return [residue.name for residue in residues]
-        return [residues.name]
+        """Iterate over the names of all the molecules in the file (read-only).
+
+        This assumes that each molecule in the mol2 file has a single residue name.
+
+        """
+        new_resname = False
+        with open(self._file_path, 'r') as f:
+            for line in f:
+                # If the previous line was the ATOM directive, yield the resname.
+                if new_resname:
+                    # The residue name is the 8th word in the line.
+                    yield line.split()[7]
+                    new_resname = False
+                # Go on until you find an atom.
+                elif line.startswith('@<TRIPOS>'):
+                    section = line[9:].strip()
+                    if section == 'ATOM':
+                        new_resname = True
 
     @property
     def net_charge(self):
         """Net charge of the file as a float"""
         residue = parmed.load_file(self._file_path)
-        return sum(a.charge for a in residue.atoms)
+        try:
+            tot_charge = sum(a.charge for a in residue.atoms)
+        except AttributeError:  # residue is a ResidueTemplateContainer
+            tot_charge = 0.0
+            for res in residue:
+                tot_charge += sum(a.charge for a in res.atoms)
+        return tot_charge
 
     @net_charge.setter
     def net_charge(self, value):
         residue = parmed.load_file(self._file_path)
-        residue.fix_charges(to=value, precision=6)
+        try:
+            residue.fix_charges(to=value, precision=6)
+        except TypeError:  # residue is a ResidueTemplateContainer
+            if value is not None:
+                raise ValueError('Cannot modify the net charge of a mol2 '
+                                 'file molecule with multiple residues.')
+            logging.warning("Found mol2 file with multiple residues. The charge of "
+                            "each residue will be rounded to the nearest integer.")
+            residue.fix_charges(precision=6)
         parmed.formats.Mol2File.write(residue, self._file_path)
 
 
@@ -1289,7 +1308,7 @@ def load_oe_molecules(file_path, molecule_idx=None):
 
     Returns
     -------
-    molecule : OEGraphMol or list of OEGraphMol
+    molecule : openeye.oechem.OEMol or list of openeye.oechem.OEMol
         The molecules stored in the file. If molecule_idx is specified
         only one molecule is returned, otherwise a list (even if the
         file contain only 1 molecule).
@@ -1305,7 +1324,7 @@ def load_oe_molecules(file_path, molecule_idx=None):
     # Read all molecules.
     molecules = []
     for mol in ifs.GetOEMols():
-        molecules.append(oechem.OEGraphMol(mol))
+        molecules.append(oechem.OEMol(mol))
 
     # Select conformation of interest
     if molecule_idx is not None:
