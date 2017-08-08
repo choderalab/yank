@@ -150,25 +150,27 @@ def get_template_script(output_dir='.'):
             clearance: 10*angstroms
             positive_ion: Na+
             negative_ion: Cl-
+            leap:
+                parameters: [leaprc.water.tip4pew]
     systems:
         explicit-system:
             receptor: benzene
             ligand: toluene
             solvent: PME
             leap:
-                parameters: [oldff/leaprc.ff14SB, leaprc.gaff, frcmod.ionsjc_tip3p]
+                parameters: [leaprc.protein.ff14SB, leaprc.gaff]
         implicit-system:
             receptor: T4Lysozyme
             ligand: p-xylene
             solvent: GBSA-OBC2
             leap:
-                parameters: [oldff/leaprc.ff14SB, leaprc.gaff]
+                parameters: [leaprc.protein.ff14SB, leaprc.gaff]
         hydration-system:
             solute: toluene
             solvent1: PME
             solvent2: vacuum
             leap:
-                parameters: [leaprc.gaff, oldff/leaprc.ff14SB, frcmod.ionsjc_tip3p]
+                parameters: [leaprc.protein.ff14SB, leaprc.gaff]
     protocols:
         absolute-binding:
             complex:
@@ -355,6 +357,7 @@ def test_validation_correct_solvents():
     solvents = [
         {'nonbonded_method': 'NoCutoff', 'nonbonded_cutoff': '3*nanometers'},
         {'nonbonded_method': 'PME', 'solvent_model': 'tip4pew'},
+        {'nonbonded_method': 'PME', 'solvent_model': 'tip3p', 'leap': {'parameters': 'leaprc.water.tip3p'}},
         {'nonbonded_method': 'PME', 'clearance': '3*angstroms'},
         {'nonbonded_method': 'PME'},
         {'nonbonded_method': 'NoCutoff', 'implicit_solvent': 'OBC2'},
@@ -373,6 +376,7 @@ def test_validation_wrong_solvents():
     solvents = [
         {'nonbonded_cutoff: 3*nanometers'},
         {'nonbonded_method': 'PME', 'solvent_model': 'unknown_solvent_model'},
+        {'nonbonded_method': 'PME', 'solvent_model': 'tip3p', 'leap': 'leaprc.water.tip3p'},
         {'nonbonded_method': 'PME', 'clearance': '3*angstroms', 'implicit_solvent': 'OBC2'},
         {'nonbonded_method': 'NoCutoff', 'blabla': '3*nanometers'},
         {'nonbonded_method': 'NoCutoff', 'implicit_solvent': 'OBX2'},
@@ -1540,9 +1544,14 @@ def test_setup_solvent_models():
         del template_script['experiments']
 
         # Test solvent models.
-        for solvent_model in ['tip3p', 'tip3pfb', 'tip4pew', 'tip5p']:
+        for solvent_model in ['tip3p', 'tip4pew', 'tip3pfb', 'tip5p']:
             yaml_script = copy.deepcopy(template_script)
             yaml_script['solvents']['PME']['solvent_model'] = solvent_model
+            if solvent_model == 'tip3p' or solvent_model == 'tip4pew':
+                solvent_parameters = ['leaprc.water.' + solvent_model]
+            else:
+                solvent_parameters = ['leaprc.water.tip3p', 'frcmod.' + solvent_model]
+            yaml_script['solvents']['PME']['leap']['parameters'] = solvent_parameters
             yaml_script['options']['setup_dir'] = solvent_model
             exp_builder = ExperimentBuilder(yaml_script)
 

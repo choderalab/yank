@@ -1328,6 +1328,7 @@ class SetupDatabase:
             molecule_parameters = self.molecules[mol_id]['leap']['parameters']
             tleap.load_parameters(*molecule_parameters)
 
+        tleap.load_parameters(*solvent['leap']['parameters'])
         tleap.load_parameters(*system_parameters)
 
         # Load molecules and create complexes
@@ -1386,8 +1387,6 @@ class SetupDatabase:
 
             # Solvate unit. Solvent models different than tip3p need parameter modifications.
             solvent_model = solvent['solvent_model']
-            if not solvent_model.startswith('tip3p'):
-                tleap.load_parameters('frcmod.' + solvent_model)
             leap_solvent_model = _OPENMM_LEAP_SOLVENT_MODELS_MAP[solvent_model]
             clearance = float(solvent['clearance'].value_in_unit(unit.angstroms))
             tleap.solvate(leap_unit=unit_to_solvate, solvent_model=leap_solvent_model, clearance=clearance)
