@@ -9,8 +9,10 @@ Hardware
 Running on GPUs
 """""""""""""""
 
-YANK uses `OpenMM <http://openmm.org>`_ as its simulation engine, which runs fastest on modern GPUs using either the ``CUDA`` or ``OpenCL`` platforms.
-Modern GTX-class hardware, such as the `GTX-1080 <http://www.geforce.com/hardware/10series/geforce-gtx-1080>`_ or `GTX-TITAN-X (Maxwell) <http://www.geforce.com/hardware/desktop-gpus/geforce-gtx-titan-x>`_, should work very well.
+YANK uses `OpenMM <http://openmm.org>`_ as its simulation engine, which runs fastest on modern GPUs using either the
+``CUDA`` or ``OpenCL`` platforms.
+Modern GTX-class hardware, such as the `GTX-1080 <http://www.geforce.com/hardware/10series/geforce-gtx-1080>`_ or
+`GTX-TITAN-X (Maxwell) <http://www.geforce.com/hardware/desktop-gpus/geforce-gtx-titan-x>`_, should work very well.
 See :ref:`Supported hardware <supported_hardware>` for more information about supported and recommended hardware.
 
 Running on the CPU
@@ -140,6 +142,23 @@ To get a list of all command-like options, simply use the ``--help`` flag:
 
    $ yank --help
 
+Each YANK command supports its own full command-line support. Type in any of these commands without options or
+``yank help COMMAND`` to see what they do.
+
+.. tabularcolumns:: |l|L|
+
+===================  ============================================
+Command              Description
+===================  ============================================
+``yank help``        The basic help message and this list
+``yank selftest``    Check YANK's install status and hardware
+``yank script``      Primary tool for running yank from command line from options file
+``yank platforms``   List platforms available on current hardware
+``yank status``      Deprecated - Check the current status of a store directory
+``yank analyze``     Analyze a simulation or make an analysis Jupyter Notebook
+``yank cleanup``     Remove simulation files
+===================  ============================================
+
 |
 
 .. _serial-mode:
@@ -147,13 +166,13 @@ To get a list of all command-like options, simply use the ``--help`` flag:
 Running in serial mode
 ======================
 
-To run the simulation in serial mode, simply use ``yank run``, specifying a store directory by ``--store=dirname``:
+To run the simulation in serial mode, simply use ``yank script``, specifying a yaml file by ``--yaml=filename.yaml``:
 
 .. code-block:: bash
 
    $ yank script --yaml=yank.yaml
 
-The optional ``--verbose`` flag will show additional output during execution.
+The optional :ref:`yaml_options_verbose` option will show additional output during execution.
 
 .. _mpi-mode:
 

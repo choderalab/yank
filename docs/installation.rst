@@ -6,7 +6,8 @@ Installation
 Installing via `conda`
 ======================
 
-The simplest way to install YANK is via the `conda <http://www.continuum.io/blog/conda>`_  package manager.
+The simplest way to install YANK is via the `conda <https://www.continuum.io/content/conda-data-science>`_  package
+manager.
 Packages are provided on the `omnia Anaconda Cloud channel <http://anaconda.org/omnia>`_ for Linux, OS X, and Win platforms.
 The `yank Anaconda Cloud page <https://anaconda.org/omnia/yank>`_ has useful instructions and `download statistics <https://anaconda.org/omnia/yank/files>`_.
 
@@ -18,22 +19,25 @@ On ``linux``, you can install the Python 2.7 version into ``$HOME/miniconda2`` w
 
 .. code-block:: bash
 
-   $ wget https://repo.continuum.io/miniconda/Miniconda2-latest-Linux-x86_64.sh
-   $ bash ./Miniconda2-latest-Linux-x86_64.sh -b -p $HOME/miniconda2
+   $ wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh
+   $ bash ./Miniconda3-latest-Linux-x86_64.sh -b -p $HOME/miniconda2
    $ export PATH="$HOME/miniconda2/bin:$PATH"
 
-On ``osx``, you want to use the ```osx`` binary
+On ``osx``, you want to use the ``osx`` binary
 
 .. code-block:: bash
 
-   $ wget https://repo.continuum.io/miniconda/Miniconda2-latest-MacOSX-x86_64.sh
-   $ bash ./Miniconda2-latest-Linux-x86_64.sh -b -p $HOME/miniconda2
+   $ wget https://repo.continuum.io/miniconda/Miniconda3-latest-MacOSX-x86_64.sh
+   $ bash ./Miniconda3-latest-Linux-x86_64.sh -b -p $HOME/miniconda2
    $ export PATH="$HOME/miniconda2/bin:$PATH"
 
-You may want to add the new ```$PATH`` extension to your ``~/.bashrc`` file to ensure Anaconda Python is used by default.
-Note that YANK will be installed into this local Python installation, so that you will not need to worry about disrupting existing Python installations.
+You may want to add the new ```$PATH`` extension to your ``~/.bashrc`` file to ensure Anaconda Python is used by
+default.
+Note that YANK will be installed into this local Python installation, so that you will not need to worry about
+disrupting existing Python installations.
 
-.. note:: ``conda`` installation is the preferred method since all dependencies are automatically fetched and installed for you.
+.. note:: ``conda`` installation is the preferred method since all dependencies are automatically fetched and installed
+for you.
 
 |
 
@@ -56,12 +60,9 @@ This version is recommended for all users not actively developing new algorithms
 Development build
 -----------------
 
-The bleeding-edge, absolute latest, very likely unstable development build of YANK is pushed to `binstar <https://binstar.org/omnia/yank>`_ with each GitHub commit, and can be obtained by
-
-.. code-block:: bash
-
-   $ conda config --add channels omnia --add channels conda-forge
-   $ conda install yank-dev
+The bleeding-edge, absolute latest, very likely unstable development build of YANK is available on GitHub commit,
+and can be obtained by :ref:`installing from source <install_from_source>` (and installed into whatever the current
+`conda environment <https://conda.io/docs/using/envs.html>`_ is):
 
 .. warning:: Development builds may be unstable and are generally subjected to less testing than releases.  Use at your own risk!
 
@@ -88,8 +89,8 @@ Test your YANK installation to make sure everything is behaving properly on your
 
    $ yank selftest
 
-This will not only check that installation paths are correct, but also run a battery of tests that ensure any
-automatically detected GPU hardware is behaving as expected.
+This will check that installation paths are correct and run a battery of tests that ensure any
+automatically detected GPU hardware is behaving as expected. If installed, it will also check your OpenEye installation.
 
 |
 
@@ -230,7 +231,7 @@ Dependencies
 YANK uses a number of tools in order to allow the developers to focus on developing efficient algorithms involved in
 alchemical free energy calculations, rather than reinventing basic software, numerical, and molecular simulation infrastructure.
 
-.. warning:: Installation of these prerequisites by hand is not recommended---all required dependencies can be installed via the `conda <http://www.continuum.io/blog/conda>`_  package manager.
+.. warning:: Installation of these prerequisites by hand is not recommended---all required dependencies can be installed via the `conda <https://www.continuum.io/content/conda-data-science>`_  package manager.
 
 .. note:: This list is taken directly from YANK's `conda-recipe/meta.yaml <https://github.com/choderalab/yank/blob/master/devtools/conda-recipe/meta.yaml>`_ to provide a singular source for dependencies
 
@@ -287,6 +288,8 @@ Ross Walker and the Amber GPU developers maintain a set of
 `excellent pages with good inexpensive GPU hardware recommendations <http://ambermd.org/gpus/recommended_hardware.htm>`_
 that will also work well with OpenMM and YANK.
 
+.. _install_from_source:
+
 Installing from Source
 ======================
 
@@ -297,13 +300,13 @@ Installing from the GitHub Source Repository
 --------------------------------------------
 
 Installing from source is only recommended for developers that wish to modify YANK or the algorithms it uses.
-Installation via `conda` is preferred for all other users.
+Installation via ``conda`` is preferred for all other users.
 
 Clone the source code repository from `GitHub <http://github.com/choderalab/yank>`_.
 
 .. code-block:: bash
 
-   $ git clone git://github.com/choderalab/yank.git
+   $ git clone git@github.com:choderalab/yank.git
    $ cd yank/
    $ python setup.py install
 
@@ -313,8 +316,10 @@ If you wish to install into a different path (often preferred for development), 
 
    $ python setup.py install
 
-``setup.py`` will try to install some of the dependencies, or at least check that you have them installed and throw an error.
-Note that not all dependencies can be installed via ``pip``, so you will have to install dependencies if installation fails due to unmet dependencies.
+``setup.py`` will try to install some of the dependencies, or at least check that you have them installed and throw an
+error.
+Note that not all dependencies can be installed via ``pip``, so you will have to install dependencies if installation
+fails due to unmet dependencies.
 
 Testing your Installation
 -------------------------

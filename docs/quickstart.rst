@@ -5,7 +5,8 @@ Quickstart (for the impatient)
 
 First, install the `anaconda <https://store.continuum.io/cshop/anaconda/>`_ scientific Python distribution.
 
-Install the release version of YANK from the `omnia Anaconda Cloud channel <https://anaconda.org/omnia/yank>`_ (check out our detailed `installation <installation>`_ section):
+Install the release version of YANK from the `omnia Anaconda Cloud channel <https://anaconda.org/omnia/yank>`_ (check
+out our detailed :doc:`installation <installation>` section):
 
 .. code-block:: bash
 
