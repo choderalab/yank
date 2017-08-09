@@ -136,7 +136,7 @@ the notebook as. This only generates the notebook, you will have to open and run
 
 If you want to generate static, auto-rendered notebooks, change the extension on your ``--output`` flag to either
 ``.pdf`` or ``.html``. This will generate, render, and export the notebook to the corresponding file type. Note that
-additional packages or external programs may be required to use this feature (e.g. ``.pdf`` requires a ``lelatex``
+additional packages or external programs may be required to use this feature (e.g. ``.pdf`` requires a ``xelatex``
 binary to be on the current system path).
 
 
