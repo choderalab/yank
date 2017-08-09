@@ -36,8 +36,10 @@ default.
 Note that YANK will be installed into this local Python installation, so that you will not need to worry about
 disrupting existing Python installations.
 
-.. note:: ``conda`` installation is the preferred method since all dependencies are automatically fetched and installed
-for you.
+.. note::
+
+   ``conda`` installation is the preferred method since all dependencies are automatically fetched and installed
+   for you.
 
 |
 
