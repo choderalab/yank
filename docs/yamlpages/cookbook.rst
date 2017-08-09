@@ -12,8 +12,8 @@ A series of examples that may help you understanding how to put together the opt
 Best Practices Shown by These Examples
 ======================================
 
-The following examples exemplify some of the `best practices <http://www.alchemistry.org/wiki/Best_Practices>` laid out on
-`alchemistry.org <http://www.alchemistry.org/>`. Specifically:
+The following examples exemplify some of the `best practices <http://www.alchemistry.org/wiki/Best_Practices>`_ laid out on
+`alchemistry.org <http://www.alchemistry.org/>`_. Specifically:
 
 * There are no partial atomic charges on an atom while its Lennard-Jones interactions are being removed.
 * The whole free energy setup and run is automated through YANK's YAML format, meaning its easily transferable and repeatable
@@ -175,22 +175,22 @@ Now run:
 
 .. code-block:: bash
 
-  build_mpirun_configfile "yank script --yaml=yank.yaml"
-  mpiexec -configfile configfile
+  $ build_mpirun_configfile "yank script --yaml=yank.yaml"
+  $ mpiexec -f hostfile -configfile configfile
 
 The ``build_mpirun_configfile`` is a command available if you have installed YANK through conda, and though the ``clusterutils``
 repo.
 
 
-.. _yaml_raw_examples:
+.. .. _yaml_raw_examples:
 
-Raw YAML File Examples
-======================
+    Raw YAML File Examples
+    ======================
 
-.. literalinclude:: ../yank-yaml-cookbook/all-options.yaml
-      :language: yaml
+    .. literalinclude:: ../yank-yaml-cookbook/all-options.yaml
+          :language: yaml
 
-|
+    |
 
-.. literalinclude:: ../yank-yaml-cookbook/combinatorial-experiment.yaml
-      :language: yaml
+    .. literalinclude:: ../yank-yaml-cookbook/combinatorial-experiment.yaml
+          :language: yaml

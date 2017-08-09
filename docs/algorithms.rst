@@ -158,6 +158,8 @@ Simulations in explicit solvent will by default add an **analytical isotropic lo
 correct for the truncation of the nonbonded potential at the cutoff.
 Without this correction, significant artifacts in solvent density and other physical properties can occur :cite:`Shirts2007`.
 
+.. _ansiotropic_algorithm:
+
 Anisotropic long-range dispersion correction
 """"""""""""""""""""""""""""""""""""""""""""
 
@@ -172,7 +174,7 @@ are enlarged to a point where this error is negligible.
 Because this contribution is only accumulated when configurations are written to disk, the additional computational
 overhead is small.
 The largest allowable cutoff (slightly smaller than one-half the smallest box edge) is automatically selected for this
-purpose, but the user must specify a large enough box that the cutoff can be expanded to at least 16 Angstroms.
+purpose.
 
 Restraints and standard state correction
 ========================================
@@ -191,10 +193,14 @@ In principle, both types of restraints would be used in tandem: One restraint wo
 In the current version of YANK, only one restraint can be used at a time.
 More guidance is given for each restraint type below.
 
+.. _standard_state_algorithm:
+
 Standard state correction
 -------------------------
 
-Since the restraint defines the bound complex, in order to report a standard state binding free energy, we must compute the free energy of releasing the restraint into a volume ``V0`` representing the *standard state volume* to achieve a standard state concentration of 1 Molar.
+Since the restraint defines the bound complex, in order to report a standard state binding free energy, we must compute
+the free energy of releasing the restraint into a volume ``V0`` representing the *standard state volume* to achieve a
+standard state concentration of 1 Molar.
 More detail of how this free energy fits into the thermodynamic cycle can be found in `theory <theory.html>`_.
 
 Restraint types
@@ -396,6 +402,8 @@ simulation, especially after energy minimization), it helps a great deal to disc
 equilibration. But how much? How do we decide? YANK chooses an automatic equilibrium detection scheme based on the
 following articles: :cite:`Shirts2008` :cite:`Chodera2011` :cite:`Chodera2016`
 
+.. _repex_timeseries:
+
 Determining a timeseries to analyze in a replica-exchange simulation
 --------------------------------------------------------------------
 
@@ -437,6 +445,8 @@ where the pseudoenergy :math:`u_*(X)` for the replica-exchange simulation is def
 
 That is, :math:`u_*(X)` is the sum of the reduced potential energies of each replica configuration at the current
 thermodynamic state it is visiting.
+
+.. _autocorrelate_algorithm:
 
 Determining equilibration and autocorrelation in a replica-exchange simulation
 ------------------------------------------------------------------------------
@@ -494,6 +504,8 @@ interval of :math:`g_{t_0}` from the remaining series.
 
 This is all implemented in the ``pymbar`` module: `timeseries <https://github.com/choderalab/pymbar/blob/master/pymbar/timeseries.py>`_
 
+.. _mbar_algorithm:
+
 Analysis with MBAR
 ==================
 
@@ -528,6 +540,8 @@ error free energy difference reaches the target, or the maximum number of iterat
 Free energy error alone is a helpful, but not necessarily sufficient metric of convergence, and
 `other measures <http://nbviewer.ipython.org/github/choderalab/simulation-health-reports/blob/master/examples/yank/YANK%20analysis%20example.ipynb>`_
 will be implemented in future releases to help better gauge simulation convergence.
+
+.. _sim_hp_report:
 
 Simulation health report
 ========================
