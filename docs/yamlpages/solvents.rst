@@ -354,3 +354,31 @@ Valid Options (0 * molar): <Quantity Concentration> [1]_
    e.g. "<Quantity Length>" indicates any measure of length may be used for <unit> such as nanometer or angstrom.
    Compound units are also parsed such as ``kilogram / meter**3`` for density.
    Only full unit names as they appear in the simtk.unit package (part of OpenMM) are allowed; so "nm" and "A" will be rejected.
+
+
+
+
+.. _yaml_solvents_leap:
+
+.. rst-class:: html-toggle
+
+``leap``
+--------
+.. code-block:: yaml
+
+   solvents:
+     {UserDefinedSolvent}:
+       leap:
+         parameters: [leaprc.water.tip3p]
+
+Load solvent-specific force field parameters. This is useful if you plan to run a combinatorial experiment over
+multiple solvent models that require different parameters.
+
+This command has only one mandatory subargument ``parameters``, which can accept both single files as a string or a
+comma separated list of files enclosed by [ ]. File paths are relative to either the AmberTools default paths or to
+the folder the YAML script is in.
+
+Alternatively, the solvent parameters can be specified also as :ref:`leap arguments in the system section <yaml_systems_head>`.
+There is no difference between the two solutions other than convenience.
+
+**OPTIONAL**
