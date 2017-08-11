@@ -418,8 +418,8 @@ following articles: :cite:`Shirts2008` :cite:`Chodera2011` :cite:`Chodera2016`
 
 .. _repex_timeseries:
 
-Identifying equilibration and production regions in a replica-exchange simulations
-----------------------------------------------------------------------------------
+Determining a timeseries to analyze in a replica-exchange simulation
+--------------------------------------------------------------------
 
 For a standard molecular dynamics simulation producing a trajectory :math:`x_t`, it's reasonably straightforward to
 decide approximately how much to discard if human intervention is allowed. Simply look at some property
@@ -462,8 +462,8 @@ thermodynamic state it is visiting.
 
 .. _autocorrelate_algorithm:
 
-Determining equilibration and autocorrelation in a replica-exchange simulation
-------------------------------------------------------------------------------
+Identifying equilibration and production regions in a replica-exchange simulations
+--------------------------------------------------====----------------------------
 
 YANK automatically determines an optimal partitioning between the initial equilibration phase of the simulation
 (which is discarded) and the production phase of the simulation (which is analyzed to estimate free energies).
