@@ -1486,16 +1486,13 @@ def extract_u_n(ncfile):
 # Extract trajectory from NetCDF4 file
 # ==============================================================================
 
-def extract_trajectory(output_path, nc_path, nc_checkpoint_file=None, state_index=None, replica_index=None,
+def extract_trajectory(nc_path, nc_checkpoint_file=None, state_index=None, replica_index=None,
                        start_frame=0, end_frame=-1, skip_frame=1, keep_solvent=True,
                        discard_equilibration=False, image_molecules=False):
     """Extract phase trajectory from the NetCDF4 file.
 
     Parameters
     ----------
-    output_path : str
-        Path to the trajectory file to be created. The extension of the file
-        determines the format.
     nc_path : str
         Path to the primary nc_file storing the analysis options
     nc_checkpoint_file : str or None, Optional
@@ -1523,6 +1520,11 @@ def extract_trajectory(output_path, nc_path, nc_checkpoint_file=None, state_inde
         If True, initial equilibration frames are discarded (see the method
         pymbar.timeseries.detectEquilibration() for details, default is False).
 
+    Returns
+    -------
+    trajectory: mdtraj.Trajectory
+        The trajectory extracted from the netcdf file.
+
     """
     # Check correct input
     if (state_index is None) == (replica_index is None):
@@ -1543,9 +1545,10 @@ def extract_trajectory(output_path, nc_path, nc_checkpoint_file=None, state_inde
         logger.info('Detected periodic boundary conditions: {}'.format(is_periodic))
 
         # Get dimensions
-        n_iterations = reporter._storage_checkpoint.variables['positions'].shape[0]
+        n_iterations = reporter.read_last_iteration()
+        n_frames = reporter._storage_checkpoint.variables['positions'].shape[0]
         n_atoms = reporter._storage_checkpoint.variables['positions'].shape[2]
-        logger.info('Number of frames: {}, atoms: {}'.format(n_iterations, n_atoms))
+        logger.info('Number of frames: {}, atoms: {}'.format(n_frames, n_atoms))
 
         # Determine frames to extract
         if start_frame <= 0:
@@ -1553,7 +1556,7 @@ def extract_trajectory(output_path, nc_path, nc_checkpoint_file=None, state_inde
             # throws off automatic equilibration detection.
             start_frame = 1
         if end_frame < 0:
-            end_frame = n_iterations + end_frame + 1
+            end_frame = n_frames + end_frame + 1
         frame_indices = range(start_frame, end_frame, skip_frame)
         if len(frame_indices) == 0:
             raise ValueError('No frames selected')
@@ -1562,11 +1565,16 @@ def extract_trajectory(output_path, nc_path, nc_checkpoint_file=None, state_inde
 
         # Discard equilibration samples
         if discard_equilibration:
-            u_n = extract_u_n(reporter._storage_analysis)[frame_indices]
-            n_equil, g, n_eff = timeseries.detectEquilibration(u_n)
+            u_n = extract_u_n(reporter._storage_analysis)
+            n_equil_iterations, g, n_eff = timeseries.detectEquilibration(u_n)
             logger.info(("Discarding initial {} equilibration samples (leaving {} "
-                         "effectively uncorrelated samples)...").format(n_equil, n_eff))
-            frame_indices = frame_indices[n_equil:-1]
+                         "effectively uncorrelated samples)...").format(n_equil_iterations, n_eff))
+            # Find first frame post-equilibration.
+            for iteration in range(n_equil_iterations, n_iterations):
+                n_equil_frames = reporter._calculate_checkpoint_iteration(iteration)
+                if n_equil_frames is not None:
+                    break
+            frame_indices = frame_indices[n_equil_frames:-1]
 
         # Extract state positions and box vectors
         positions = np.zeros((len(frame_indices), n_atoms, 3))
@@ -1614,16 +1622,4 @@ def extract_trajectory(output_path, nc_path, nc_checkpoint_file=None, state_inde
         logger.info('Removing solvent molecules...')
         trajectory = trajectory.remove_solvent()
 
-    # Detect format
-    extension = os.path.splitext(output_path)[1][1:]  # remove dot
-    try:
-        save_function = getattr(trajectory, 'save_' + extension)
-    except AttributeError:
-        raise ValueError('Cannot detect format from extension of file {}'.format(output_path))
-
-    # Create output directory and save trajectory
-    logger.info('Creating trajectory file: {}'.format(output_path))
-    output_dir = os.path.dirname(output_path)
-    if output_dir != '' and not os.path.isdir(output_dir):
-        os.makedirs(output_dir)
-    save_function(output_path)
+    return trajectory

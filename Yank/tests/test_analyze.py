@@ -17,13 +17,13 @@ import tempfile
 import pymbar
 import numpy as np
 from simtk import unit
-from nose.plugins.attrib import attr
 from nose.tools import assert_raises
 
 import openmmtools as mmtools
 from openmmtools import testsystems
 
 from yank import analyze
+from yank.yank import Topography
 from yank.repex import Reporter, ReplicaExchange
 
 # ==============================================================================
@@ -141,16 +141,21 @@ class TestPhaseAnalyzer(object):
         # Remove one sampler state to verify distribution over states.
         sampler_states = sampler_states[:-1]
 
-        repex = ReplicaExchange()
+        # Prepare metadata for analysis.
+        reference_state = mmtools.states.ThermodynamicState(hostguest_test.system, 300*unit.kelvin)
+        topography = Topography(hostguest_test.topology, ligand_atoms=range(126, 156))
+        metadata = {
+            'standard_state_correction': 4.0,
+            'reference_state': mmtools.utils.serialize(reference_state),
+            'topography': mmtools.utils.serialize(topography)
+        }
 
         # Create simulation and storage file.
         cls.tmp_dir = tempfile.mkdtemp()
         storage_path = os.path.join(cls.tmp_dir, 'test_analyze.nc')
         move = mmtools.mcmc.LangevinDynamicsMove(n_steps=1)
         cls.repex = ReplicaExchange(mcmc_moves=move, number_of_iterations=n_steps)
-        cls.reporter = Reporter(storage_path)
-        # Generate some phony metadata since the HostGuest Vacuum does not have any
-        metadata = {'standard_state_correction': 4.0}
+        cls.reporter = Reporter(storage_path, checkpoint_interval=2)
         cls.repex.create(thermodynamic_states, sampler_states, storage=cls.reporter,
                          unsampled_thermodynamic_states=unsampled_states, metadata=metadata)
         # run some iterations
@@ -277,15 +282,8 @@ class TestPhaseAnalyzer(object):
         assert triple.get_standard_state_correction() == (2*full_phase.get_standard_state_correction() -
                                                           full_phase.get_standard_state_correction())
 
-
-
-
-
-
-
-
-
-
-
-
-
+    def test_extract_trajectory(self):
+        """extract_trajectory handles checkpointing and skip frame correctly."""
+        print(self.reporter.read_last_iteration())
+        trajectory = analyze.extract_trajectory(self.reporter.filepath, state_index=0, skip_frame=2)
+        assert len(trajectory) == 1

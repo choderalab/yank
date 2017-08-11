@@ -877,7 +877,7 @@ class ExperimentBuilder(object):
                         if not utils.is_openeye_installed(oetools=('oechem',)):
                             err_msg = 'Molecule {}: Cannot "select" from {} file without OpenEye toolkit'
                             raise RuntimeError(err_msg.format(comb_mol_name, extension))
-                        n_models = utils.read_oe_molecule(comb_molecule['filepath']).NumConfs()
+                        n_models = len(utils.load_oe_molecules(comb_molecule['filepath']))
 
                     else:
                         raise YamlParseError('Molecule {}: Cannot "select" from {} file'.format(
@@ -972,6 +972,10 @@ class ExperimentBuilder(object):
     # Parsing and syntax validation
     # --------------------------------------------------------------------------
 
+    # Shared schema for leap parameters. Molecules, solvents and systems use it.
+    # Simple strings are converted to list of strings.
+    _LEAP_PARAMETERS_SCHEMA = {'parameters': And(Use(lambda p: [p] if isinstance(p, str) else p), [str])}
+
     @classmethod
     def _validate_options(cls, options, validate_general_options):
         """Validate molecules syntax.
@@ -1028,8 +1032,8 @@ class ExperimentBuilder(object):
             raise YamlParseError(str(e))
         return validated_options
 
-    @staticmethod
-    def _validate_molecules(molecules_description):
+    @classmethod
+    def _validate_molecules(cls, molecules_description):
         """Validate molecules syntax.
 
         Parameters
@@ -1074,9 +1078,8 @@ class ExperimentBuilder(object):
                                                       update_keys={'select': int},
                                                       exclude_keys=['extract_range'])
 
-        parameters_schema = {  # simple strings are converted to list of strings
-            'parameters': And(Use(lambda p: [p] if isinstance(p, str) else p), [str])}
-        common_schema = {Optional('leap'): parameters_schema, Optional('openeye'): {'quacpac': 'am1-bcc'},
+        common_schema = {Optional('leap'): cls._LEAP_PARAMETERS_SCHEMA,
+                         Optional('openeye'): {'quacpac': 'am1-bcc'},
                          Optional('antechamber'): {'charge_method': Or(str, None)},
                          Optional('epik'): epik_schema}
         molecule_schema = Or(
@@ -1085,7 +1088,8 @@ class ExperimentBuilder(object):
             utils.merge_dict({'filepath': is_small_molecule, Optional('select'): Or(int, 'all')},
                              common_schema),
             {'filepath': is_peptide, Optional('select'): Or(int, 'all'),
-             Optional('leap'): parameters_schema, Optional('strip_protons'): bool}
+             Optional('leap'): cls._LEAP_PARAMETERS_SCHEMA,
+             Optional('strip_protons'): bool}
         )
 
         # Schema validation
@@ -1116,8 +1120,8 @@ class ExperimentBuilder(object):
 
         return validated_molecules
 
-    @staticmethod
-    def _validate_solvents(solvents_description):
+    @classmethod
+    def _validate_solvents(cls, solvents_description):
         """Validate molecules syntax.
 
         Parameters
@@ -1171,6 +1175,11 @@ class ExperimentBuilder(object):
         vacuum_schema = utils.generate_signature_schema(AmberPrmtopFile.createSystem,
                                 update_keys={'nonbonded_method': Use(to_no_cutoff)},
                                 exclude_keys=['rigid_water', 'implicit_solvent'])
+
+        # Common schema to all types of solvents
+        for schema in [explicit_schema, implicit_schema, vacuum_schema]:
+            schema.update({Optional('leap'): cls._LEAP_PARAMETERS_SCHEMA})
+
         solvent_schema = Schema(Or(explicit_schema, implicit_schema, vacuum_schema))
 
         # Schema validation
@@ -1180,6 +1189,9 @@ class ExperimentBuilder(object):
             except SchemaError as e:
                 raise YamlParseError('Solvent {}: {}'.format(solvent_id, e.autos[-1]))
 
+            # Create empty parameters list if not specified
+            if 'leap' not in validated_solvents[solvent_id]:
+                validated_solvents[solvent_id]['leap'] = {'parameters': []}
         return validated_solvents
 
     @staticmethod
@@ -1321,9 +1333,6 @@ class ExperimentBuilder(object):
         # Define experiment Schema
         validated_systems = systems_description.copy()
 
-        # Schema for leap parameters. Simple strings are converted to list of strings.
-        parameters_schema = {'parameters': And(Use(lambda p: [p] if isinstance(p, str) else p), [str])}
-
         # Schema for DSL specification with system files.
         dsl_schema = {Optional('ligand_dsl'): str, Optional('solvent_dsl'): str}
 
@@ -1331,10 +1340,10 @@ class ExperimentBuilder(object):
         system_schema = Schema(Or(
             {'receptor': is_known_molecule, 'ligand': is_known_molecule,
              'solvent': is_pipeline_solvent, Optional('pack', default=False): bool,
-             Optional('leap'): parameters_schema},
+             Optional('leap'): self._LEAP_PARAMETERS_SCHEMA},
 
             {'solute': is_known_molecule, 'solvent1': is_pipeline_solvent,
-             'solvent2': is_pipeline_solvent, Optional('leap'): parameters_schema},
+             'solvent2': is_pipeline_solvent, Optional('leap'): self._LEAP_PARAMETERS_SCHEMA},
 
             utils.merge_dict(dsl_schema, {'phase1_path': Use(system_files('amber')),
                                           'phase2_path': Use(system_files('amber')),

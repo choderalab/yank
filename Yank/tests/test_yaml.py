@@ -150,25 +150,27 @@ def get_template_script(output_dir='.'):
             clearance: 10*angstroms
             positive_ion: Na+
             negative_ion: Cl-
+            leap:
+                parameters: [leaprc.water.tip4pew]
     systems:
         explicit-system:
             receptor: benzene
             ligand: toluene
             solvent: PME
             leap:
-                parameters: [oldff/leaprc.ff14SB, leaprc.gaff, frcmod.ionsjc_tip3p]
+                parameters: [leaprc.protein.ff14SB, leaprc.gaff]
         implicit-system:
             receptor: T4Lysozyme
             ligand: p-xylene
             solvent: GBSA-OBC2
             leap:
-                parameters: [oldff/leaprc.ff14SB, leaprc.gaff]
+                parameters: [leaprc.protein.ff14SB, leaprc.gaff]
         hydration-system:
             solute: toluene
             solvent1: PME
             solvent2: vacuum
             leap:
-                parameters: [leaprc.gaff, oldff/leaprc.ff14SB, frcmod.ionsjc_tip3p]
+                parameters: [leaprc.protein.ff14SB, leaprc.gaff]
     protocols:
         absolute-binding:
             complex:
@@ -355,6 +357,7 @@ def test_validation_correct_solvents():
     solvents = [
         {'nonbonded_method': 'NoCutoff', 'nonbonded_cutoff': '3*nanometers'},
         {'nonbonded_method': 'PME', 'solvent_model': 'tip4pew'},
+        {'nonbonded_method': 'PME', 'solvent_model': 'tip3p', 'leap': {'parameters': 'leaprc.water.tip3p'}},
         {'nonbonded_method': 'PME', 'clearance': '3*angstroms'},
         {'nonbonded_method': 'PME'},
         {'nonbonded_method': 'NoCutoff', 'implicit_solvent': 'OBC2'},
@@ -373,6 +376,7 @@ def test_validation_wrong_solvents():
     solvents = [
         {'nonbonded_cutoff: 3*nanometers'},
         {'nonbonded_method': 'PME', 'solvent_model': 'unknown_solvent_model'},
+        {'nonbonded_method': 'PME', 'solvent_model': 'tip3p', 'leap': 'leaprc.water.tip3p'},
         {'nonbonded_method': 'PME', 'clearance': '3*angstroms', 'implicit_solvent': 'OBC2'},
         {'nonbonded_method': 'NoCutoff', 'blabla': '3*nanometers'},
         {'nonbonded_method': 'NoCutoff', 'implicit_solvent': 'OBX2'},
@@ -756,8 +760,8 @@ def test_clashing_atoms():
         system_description['solvent'] = utils.CombinatorialLeaf(['vacuum', 'PME'])
 
         # Sanity check: at the beginning molecules clash
-        toluene_pos = utils.get_oe_mol_positions(utils.read_oe_molecule(toluene_path))
-        benzene_pos = utils.get_oe_mol_positions(utils.read_oe_molecule(benzene_path))
+        toluene_pos = utils.get_oe_mol_positions(utils.load_oe_molecules(toluene_path, molecule_idx=0))
+        benzene_pos = utils.get_oe_mol_positions(utils.load_oe_molecules(benzene_path, molecule_idx=0))
         assert pipeline.compute_min_dist(toluene_pos, benzene_pos) < pipeline.SetupDatabase.CLASH_THRESHOLD
 
         exp_builder = ExperimentBuilder(yaml_content)
@@ -886,7 +890,7 @@ class TestMultiMoleculeFiles(object):
         # Create 2-molecule sdf and mol2 with OpenEye
         if utils.is_openeye_installed():
             from openeye import oechem
-            oe_benzene = utils.read_oe_molecule(examples_paths()['benzene'])
+            oe_benzene = utils.load_oe_molecules(examples_paths()['benzene'], molecule_idx=0)
             oe_benzene_pos = utils.get_oe_mol_positions(oe_benzene).dot(rot)
             oe_benzene.NewConf(oechem.OEFloatArray(oe_benzene_pos.flatten()))
 
@@ -1122,7 +1126,7 @@ class TestMultiMoleculeFiles(object):
 
                 # The mol2 represents the right molecule
                 csv_smiles_str = pipeline.read_csv_lines(self.smiles_path, lines=i).strip().split(',')[1]
-                mol2_smiles_str = OEMolToSmiles(utils.read_oe_molecule(mol2_path))
+                mol2_smiles_str = OEMolToSmiles(utils.load_oe_molecules(mol2_path, molecule_idx=0))
                 assert mol2_smiles_str == csv_smiles_str
 
                 # The molecule now both set up and processed
@@ -1190,7 +1194,7 @@ class TestMultiMoleculeFiles(object):
                     if extension == 'mol2':
                         # OpenEye loses the resname when writing a mol2 file.
                         mol2_file = utils.Mol2File(single_mol_path)
-                        assert len(mol2_file.resnames) == 1
+                        assert len(list(mol2_file.resnames)) == 1
                         assert mol2_file.resname != '<0>'
 
                     # sdf files must be converted to mol2 to be fed to antechamber
@@ -1207,9 +1211,9 @@ class TestMultiMoleculeFiles(object):
                     assert os.path.getsize(os.path.join(single_mol_path)) > 0
 
                     # The positions must be approximately correct (antechamber move the molecule)
-                    selected_oe_mol = utils.read_oe_molecule(single_mol_path)
+                    selected_oe_mol = utils.load_oe_molecules(single_mol_path, molecule_idx=0)
                     selected_pos = utils.get_oe_mol_positions(selected_oe_mol)
-                    second_oe_mol = utils.read_oe_molecule(multi_path, conformer_idx=model_idx)
+                    second_oe_mol = utils.load_oe_molecules(multi_path, molecule_idx=model_idx)
                     second_pos = utils.get_oe_mol_positions(second_oe_mol)
                     assert selected_oe_mol.NumConfs() == 1
                     assert np.allclose(selected_pos, second_pos, atol=1e-1)
@@ -1540,9 +1544,14 @@ def test_setup_solvent_models():
         del template_script['experiments']
 
         # Test solvent models.
-        for solvent_model in ['tip3p', 'tip3pfb', 'tip4pew', 'tip5p']:
+        for solvent_model in ['tip3p', 'tip4pew', 'tip3pfb', 'tip5p']:
             yaml_script = copy.deepcopy(template_script)
             yaml_script['solvents']['PME']['solvent_model'] = solvent_model
+            if solvent_model == 'tip3p' or solvent_model == 'tip4pew':
+                solvent_parameters = ['leaprc.water.' + solvent_model]
+            else:
+                solvent_parameters = ['leaprc.water.tip3p', 'frcmod.' + solvent_model]
+            yaml_script['solvents']['PME']['leap']['parameters'] = solvent_parameters
             yaml_script['options']['setup_dir'] = solvent_model
             exp_builder = ExperimentBuilder(yaml_script)
 
