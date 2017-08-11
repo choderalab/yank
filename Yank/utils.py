@@ -1315,9 +1315,15 @@ def load_oe_molecules(file_path, molecule_idx=None):
 
     """
     from openeye import oechem
+    extension = os.path.splitext(file_path)[1][1:]  # Remove dot.
 
     # Open input file stream
     ifs = oechem.oemolistream()
+    if extension == 'mol2':
+        mol2_flavor = (oechem.OEIFlavor_Generic_Default |
+                       oechem.OEIFlavor_MOL2_Default |
+                       oechem.OEIFlavor_MOL2_Forcefield)
+        ifs.SetFlavor(oechem.OEFormat_MOL2, mol2_flavor)
     if not ifs.open(file_path):
         oechem.OEThrow.Fatal('Unable to open {}'.format(file_path))
 
