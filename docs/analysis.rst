@@ -12,16 +12,17 @@ your free energy estimate. We try to provide guides and built-in analysis to hel
 
 The analysis framework comes three ways to help the user analyze their data (use these links to **jump to usage**):
 
-* :ref:`Command line auto-execution <auto_analyze>`
-* :ref:`Cisually with Jupyter Notebooks<visual_analyze>`
-* :ref:`Full feature API <programmatic_analyze>`
+* :ref:`Command line automatic analysis <auto_analyze>`
+* :ref:`Visually with Jupyter Notebooks<visual_analyze>`
+* :ref:`Programmatic Python API <programmatic_analyze>`
 
 
 Analysis Theory
 ---------------
 
-We run YANK simulations through  improve the estimate in free energy and other thermodynamic properties. We document them in
-the :doc:`algorithms` page, but summarize them here, and linked to their detailed explanation in the appropriate page.
+We run YANK simulations through multiple data processing tools improve the estimate in free energy and other
+thermodynamic properties. We document them in
+the :doc:`algorithms` page, but summarize them here, and link to their detailed explanation in the appropriate page.
 When running :ref:`automatically <auto_analyze>`, these steps are run in order to yield the final free energy estimate.
 The analysis procedure is carried out for each phase of the YANK simulation.
 
@@ -41,24 +42,25 @@ is treated as the sample at which equilibration is complete, and the remaining s
 for free energy estimate.
 
 
-Replica Mixing Quality
-^^^^^^^^^^^^^^^^^^^^^^
+Replica Mixing Convergence
+^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Quality free energy estimates require a sufficient mixing of replicas to
-`improve phase space overlap <http://www.alchemistry.org/wiki/Free_Energy_Fundamentals#Facts_from_the_Free_Energy_Difference_Definition>`_.
+Converged free energy estimates require a sufficient mixing of replicas which
+`indicated good phase space overlap <http://www.alchemistry.org/wiki/Free_Energy_Fundamentals#Facts_from_the_Free_Energy_Difference_Definition>`_.
 Replica exchange simulations enhance sampling by allowing configurations to swap into new states, reducing energetic or steric barriers.
-However, if no or little swaps occur, then the replica exchange provides little additional benefit over single simulations.
+However, if no or few swaps occur, then the replica exchange provides little additional benefit over single simulations.
 Furthermore, there is a good chance you have low phase space overlap between states the replicas can sample, which may
 yield not only an incorrect free energy estimate, but also underestimate the error in the free energy as well.
 
 .. note::
 
-    Terminology Note: Replica is the time-continuous trajectory of particles and box vectors. A (thermodynamic) state is
-    the collection of forces and rules which dictate how particles interact with each other and the surrounding bulk
-    environment. In YANK, the Hamiltonian Replica Exchange is carried out by proposing each replica swap their states,
-    so each replica has a time-discontinuous state associated with it as well.
+    Terminology Note: The "Replica" is the time-continuous trajectory of particles and box vectors. A (thermodynamic)
+    state is the collection of forces and rules which dictate how particles interact with each other and the surrounding
+    bulk environment, including temperature, pressure, and Hamiltonian. In YANK, the Hamiltonian Replica Exchange is
+    carried out by proposing each replica swap their states, so each replica has a time-discontinuous state associated
+    with it as well.
 
-YANK provides a visual, and quantitative guide for how well the replicas mixed. The first guide is the transition
+YANK provides a visual and quantitative guide for how well the replicas mixed. The first guide is the transition
 state matrix, which is the measure how frequently states swapped replicas with each other. In
 :ref:`automatic <auto_analyze>` or :ref:`programmatic <programmatic_analyze>`, the transition state matrix is shown as a
 table indexed by ``i, j`` where each entry shows the number of times state ``i`` (row) swapped with state ``j`` (column).
@@ -66,12 +68,12 @@ In :ref:`visual <visual_analyze>` mode, a heat map shows the same data where dar
 of states. Note that if a state does not exchange replicas, it is counted as "exchanging with itself." You want a
 state to exchange with at least one other state.
 
-The Peron eigenvalue is computed as a quantitative metric of how well mixed the replicas are. This is computed as the
-:ref:`second eigenvalue of the transition state matrix <sim_hp_report>`. This quantity is the provides the estimate for
-how decomposable the transition state matrix is and how many iterations it would take for one state to swap to all
+The subdominant eigenvalue is computed as a quantitative metric of how well mixed the replicas are. This is computed as
+the :ref:`second eigenvalue of the transition state matrix <sim_hp_report>`. This quantity is the provides the estimate
+for how decomposable the transition state matrix is and how many iterations it would take for one state to swap to all
 replicas. The lower this number is, the better mixing has occurred.
 
-The :ref:`visual analyze<visual_analyze>` mode provides an additional qualitative guide for how individual replicas
+The :ref:`visual analyze<visual_analyze>` mode provides an additional qualitative guide for how well individual replicas
 sampled each state. The state each replica is in is plotted as a function of time to see if any particular replicas
 are getting stuck in a single state.
 
@@ -83,7 +85,8 @@ The free energy difference and its error are estimated through the Multistate Be
 PyMBAR. The equilibrated and decorrelated data :ref:`are analyzed by MBAR <mbar_algorithm>` with default values for the
 initial guess. If there are unsampled states, such as when
 :ref:`anisotropic-dispersion corrections are accounted for <ansiotropic_algorithm>`, then the free energy difference to
-those states are also estimated. The final :doc:`free energy difference of scientific interest <theory>`, such as
+those states are also estimated using one-sided exponential reweighting. The final
+:doc:`free energy difference of scientific interest <theory>`, such as
 binding or hydration, is taken when multiple phases' free energies are added together, along with any
 :ref:`standard state corrections <standard_state_algorithm>`.
 
@@ -98,7 +101,7 @@ Analysis Usage
 Automatic Analysis
 ^^^^^^^^^^^^^^^^^^
 
-YANK looks at a simulation output directory, and makes automatic choices based on best practices and procedures. All
+YANK looks at a simulation output directory and makes automatic choices based on best practices and procedures. All
 the steps taken here are outlined above and in order. You can use this ``yank analyze`` facility, even when YANK is
 running.
 

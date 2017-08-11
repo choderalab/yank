@@ -1,5 +1,7 @@
 .. _algorithms:
 
+.. py:currentmodule:: yank
+
 **********
 Algorithms
 **********
@@ -174,7 +176,9 @@ are enlarged to a point where this error is negligible.
 Because this contribution is only accumulated when configurations are written to disk, the additional computational
 overhead is small.
 The largest allowable cutoff (slightly smaller than one-half the smallest box edge) is automatically selected for this
-purpose.
+purpose, if the user does not specify one. Settings for this can be found in the
+:ref:`YAML options <yaml_options_anisotropic_dispersion_cutoff>`, or through the API at
+:func:`yank.AlchemicalPhase.create`
 
 Restraints and standard state correction
 ========================================
@@ -200,8 +204,18 @@ Standard state correction
 
 Since the restraint defines the bound complex, in order to report a standard state binding free energy, we must compute
 the free energy of releasing the restraint into a volume ``V0`` representing the *standard state volume* to achieve a
-standard state concentration of 1 Molar.
-More detail of how this free energy fits into the thermodynamic cycle can be found in `theory <theory.html>`_.
+standard state concentration of 1 Molar. ``V0`` is computed as the following:
+
+.. math::
+
+   V_0 = \frac{1 \text{L}}{N_A}
+
+where ``N_A`` is in Avogadro's constant. This calculation results in :math:`V0 = 1660.53928 \unicode{xC5}^3` where we treat ``V0``
+as a per mole quantity. More detail of how this free energy fits into the thermodynamic cycle can be found in
+`theory <theory.html>`_.
+
+.. The \unicode{xC5} creates the angstrom symbol (A with circle above), \AA and \r{A} are mangled by sphinx and don't render
+
 
 Restraint types
 ---------------
@@ -404,8 +418,8 @@ following articles: :cite:`Shirts2008` :cite:`Chodera2011` :cite:`Chodera2016`
 
 .. _repex_timeseries:
 
-Determining a timeseries to analyze in a replica-exchange simulation
---------------------------------------------------------------------
+Identifying equilibration and production regions in a replica-exchange simulations
+----------------------------------------------------------------------------------
 
 For a standard molecular dynamics simulation producing a trajectory :math:`x_t`, it's reasonably straightforward to
 decide approximately how much to discard if human intervention is allowed. Simply look at some property
