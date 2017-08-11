@@ -1328,8 +1328,8 @@ class SetupDatabase:
             molecule_parameters = self.molecules[mol_id]['leap']['parameters']
             tleap.load_parameters(*molecule_parameters)
 
-        tleap.load_parameters(*solvent['leap']['parameters'])
         tleap.load_parameters(*system_parameters)
+        tleap.load_parameters(*solvent['leap']['parameters'])
 
         # Load molecules and create complexes
         # ------------------------------------
