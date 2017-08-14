@@ -26,6 +26,8 @@ requirements:
     - openmoltools
     - sphinxcontrib-bibtex
     - schema >=0.6.2
+    - matplotlib
+    - jupyter
     #- gcc 4.8.2 # [linux]
     #- gcc 4.8.2 # [osx]
 
@@ -48,6 +50,8 @@ requirements:
     - clusterutils
     - sphinxcontrib-bibtex
     - schema >=0.6.2
+    - matplotlib
+    - jupyter
     #- libgcc
 
 test:

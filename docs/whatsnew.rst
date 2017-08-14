@@ -6,6 +6,22 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the github yank releases page <https://github.com/choderalab/yank/releases>`_.
 
+0.17.0 Current Development (In flux)
+------------------------------------
+- Many Website additions and cleanups
+- Online analysis allowing simulations to be run until they reach a target free energy uncertainty
+- Renamed and refactored ``YAMLBuilder`` to more general ``ExperimentBuilder``
+- Remove ligand rotation and displacement with Boresch restraints to improve acceptance rates
+- Analyze module fully tested now
+- Fully updated API docstrings. API auto-generated on website
+- Parallelize multiple experiments over MPI by splitting MPI Communicator
+- Anisotropic dispersion options in YAML reduced to single option
+- Ionic Strength ability added to setup pipeline
+- Centroids for restraints now selectable through DSL string instead of whole molecule
+- Added MDTraj as requirement
+- Analyze Jupyter Notebooks can now be exported as pre-rendered static HTML or PDF pages (LaTeX required for PDF)
+- Refactor some API function names and keywords
+
 0.16.2 Startup Speed and Reduced File Sizes
 -------------------------------------------
 - Automatic Expanded Cutoff Distance Selection

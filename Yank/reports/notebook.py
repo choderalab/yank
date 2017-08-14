@@ -14,7 +14,7 @@ from matplotlib import pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap, NoNorm
 from matplotlib import gridspec
 from simtk import unit as units
-from .. import analyze
+from .. import analyze, version
 
 kB = units.BOLTZMANN_CONSTANT_kB * units.AVOGADRO_CONSTANT_NA
 
@@ -487,4 +487,8 @@ class HealthReportData(object):
             calculation_type, DeltaH, dDeltaH, DeltaH * kT / units.kilocalories_per_mole,
                                                dDeltaH * kT / units.kilocalories_per_mole))
         self._free_energy_run = True
+
+    @staticmethod
+    def report_version():
+        print("Rendered with YANK Version {}".format(version.version))
 
