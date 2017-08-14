@@ -7,7 +7,6 @@ import os
 import sys
 import distutils.extension
 from setuptools import setup, Extension, find_packages
-import numpy
 import glob
 import os
 from os.path import relpath, join
@@ -152,7 +151,7 @@ setup(
         'schema',
         'openmoltools',
         'mdtraj',
-        'pyyaml'
+        'pyyaml',
         ],
     ext_modules=cythonize(mixing_ext),
     entry_points={'console_scripts': ['yank = yank.cli:main']})
