@@ -1,0 +1,53 @@
+options:
+  minimize: yes
+  verbose: yes
+  output_dir: fxr-imp-34
+  number_of_iterations: 3000
+  nsteps_per_iteration: 500
+  temperature: 300*kelvin
+  pressure: null
+  timestep: 1.5*femtoseconds
+  resume_setup: yes
+  resume_simulation: yes
+
+molecules:
+  Fxr:
+    filepath: ../fxr_set2_his_fix.pdb
+    strip_protons: yes 
+  fxr_LIGAND:
+    filepath: ../ligands_set2____FXR_34.mol2
+    openeye:
+      quacpac: am1-bcc
+    antechamber:
+      charge_method: null
+
+solvents:
+  gbsa:
+    nonbonded_method: NoCutoff
+    implicit_solvent: OBC2
+
+systems:
+  Fxr-ligands:
+    receptor: Fxr
+    ligand: fxr_LIGAND
+    solvent: gbsa
+    leap:
+      parameters: [leaprc.protein.ff14SB, leaprc.gaff2, leaprc.water.tip3p]
+
+protocols:
+  absolute-binding:
+    complex:
+      alchemical_path:
+        lambda_restraints:     [0.00, 0.50, 1.00, 1.00, 1.00]          #, 0.45, 0.50, 0.75, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.000, 1.00, 1.000, 1.00, 1.00]
+        lambda_electrostatics: [1.00, 1.00, 1.00, 0.50, 0.00]          #, 1.00, 1.00, 1.00, 1.00, 0.95, 0.90, 0.80, 0.70, 0.60, 0.50, 0.40, 0.30, 0.20, 0.10, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.000, 0.00, 0.000, 0.00, 0.00]
+        lambda_sterics:        [1.00, 1.00, 1.00, 1.00, 1.00]          #, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 0.95, 0.90, 0.80, 0.70, 0.60, 0.50, 0.40, 0.30, 0.25, 0.20, 0.15, 0.10, 0.075, 0.05, 0.025, 0.01, 0.00]
+    solvent:
+      alchemical_path:
+        lambda_electrostatics: [1.00, 0.95, 0.90, 0.85]           #, 0.80, 0.75, 0.70, 0.65, 0.60, 0.55, 0.50, 0.45, 0.40, 0.35, 0.30, 0.25, 0.20, 0.15, 0.10, 0.05, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00]
+        lambda_sterics:        [1.00, 1.00, 1.00, 1.00]           #, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 0.90, 0.80, 0.70, 0.60, 0.50, 0.40, 0.30, 0.20, 0.10, 0.00]
+
+experiments:
+  system: Fxr-ligands
+  protocol: absolute-binding
+  restraint:
+    type: Boresch
