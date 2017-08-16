@@ -714,32 +714,6 @@ def find_phases_in_store_directory(store_directory):
     return phases
 
 
-def update_nested_dict(original, updated):
-    """
-    Return a copy of a (possibly) nested dict of arbitrary depth
-
-    Parameters
-    ----------
-    original : dict
-        Original dict which we want to update, can contain nested dicts
-    updated : dict
-        Dictionary of updated values to place in original
-
-    Returns
-    -------
-    new : dict
-        Copy of original with values updated from updated
-    """
-    new = original.copy()
-    for key, value in updated.items():
-        if isinstance(value, collections.Mapping):
-            replacement = update_nested_dict(new.get(key, {}), value)
-            new[key] = replacement
-        else:
-            new[key] = updated[key]
-    return new
-
-
 # ==============================================================================
 # Conversion utilities
 # ==============================================================================

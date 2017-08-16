@@ -2058,49 +2058,33 @@ def test_run_experiment():
         exp_builder.run_experiments()
 
 
-def solvation_stock(tmp_dir, overwrite_options=None):
-    """Stock actions to take for a solvation run"""
-    yaml_script = get_template_script(tmp_dir)
-    yaml_script['experiments']['system'] = 'hydration-system'
-    yaml_script['experiments']['protocol'] = 'hydration-protocol'
-    if overwrite_options is not None:
-        yaml_script = utils.update_nested_dict(yaml_script, overwrite_options)
-
-    exp_builder = ExperimentBuilder(yaml_script)
-    exp_builder._check_resume()  # check_resume should not raise exceptions
-    exp_builder.run_experiments()
-
-    # The experiments folders are correctly named and positioned
-    output_dir = exp_builder._get_experiment_dir('')
-
-    assert os.path.isdir(output_dir)
-    for solvent in ['solvent1.nc', 'solvent2.nc']:
-        solvent_path = os.path.join(output_dir, solvent)
-        reporter = repex.Reporter(solvent_path, open_mode=None)
-        assert reporter.storage_exists()
-        del reporter
-    assert os.path.isfile(os.path.join(output_dir, 'experiments.yaml'))
-    assert os.path.isfile(os.path.join(output_dir, 'experiments.log'))
-
-    # Analysis script is correct
-    analysis_script_path = os.path.join(output_dir, 'analysis.yaml')
-    with open(analysis_script_path, 'r') as f:
-        assert yaml.load(f) == [['solvent1', 1], ['solvent2', -1]]
-
-
 def test_run_solvation_experiment():
     """Test solvation free energy experiment run."""
     with mmtools.utils.temporary_directory() as tmp_dir:
-        solvation_stock(tmp_dir)
+        yaml_script = get_template_script(tmp_dir)
+        yaml_script['experiments']['system'] = 'hydration-system'
+        yaml_script['experiments']['protocol'] = 'hydration-protocol'
 
+        exp_builder = ExperimentBuilder(yaml_script)
+        exp_builder._check_resume()  # check_resume should not raise exceptions
+        exp_builder.run_experiments()
 
-def test_splitting():
-    """Test that different integrator splittings work"""
-    for replacement in [{'options': {'integrator_splitting': None}},
-                        {'options': {'integrator_splitting': "O { V R V } O"}}]:
-        with mmtools.utils.temporary_directory() as tmp_dir:
-            replacement['options']['number_of_iterations'] = 1
-            solvation_stock(tmp_dir, overwrite_options=replacement)
+        # The experiments folders are correctly named and positioned
+        output_dir = exp_builder._get_experiment_dir('')
+
+        assert os.path.isdir(output_dir)
+        for solvent in ['solvent1.nc', 'solvent2.nc']:
+            solvent_path = os.path.join(output_dir, solvent)
+            reporter = repex.Reporter(solvent_path, open_mode=None)
+            assert reporter.storage_exists()
+            del reporter
+        assert os.path.isfile(os.path.join(output_dir, 'experiments.yaml'))
+        assert os.path.isfile(os.path.join(output_dir, 'experiments.log'))
+
+        # Analysis script is correct
+        analysis_script_path = os.path.join(output_dir, 'analysis.yaml')
+        with open(analysis_script_path, 'r') as f:
+            assert yaml.load(f) == [['solvent1', 1], ['solvent2', -1]]
 
 
 def test_automatic_alchemical_path():

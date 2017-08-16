@@ -87,6 +87,32 @@ def convert_if_quantity(value):
     return quantity
 
 
+def update_nested_dict(original, updated):
+    """
+    Return a copy of a (possibly) nested dict of arbitrary depth
+
+    Parameters
+    ----------
+    original : dict
+        Original dict which we want to update, can contain nested dicts
+    updated : dict
+        Dictionary of updated values to place in original
+
+    Returns
+    -------
+    new : dict
+        Copy of original with values updated from updated
+    """
+    new = original.copy()
+    for key, value in updated.items():
+        if isinstance(value, collections.Mapping):
+            replacement = update_nested_dict(new.get(key, {}), value)
+            new[key] = replacement
+        else:
+            new[key] = updated[key]
+    return new
+
+
 # ==============================================================================
 # UTILITY CLASSES
 # ==============================================================================
@@ -201,7 +227,6 @@ class AlchemicalPhaseFactory(object):
         'number_of_equilibration_iterations': 0,
         'equilibration_timestep': 1.0 * unit.femtosecond,
         'checkpoint_interval': 10,
-        'integrator_splitting': "BAOAB",
     }
 
     def __init__(self, sampler, thermodynamic_state, sampler_states, topography,
@@ -282,19 +307,10 @@ class AlchemicalPhaseFactory(object):
         # Equilibrate if requested.
         if self.options['number_of_equilibration_iterations'] > 0:
             n_iterations = self.options['number_of_equilibration_iterations']
-            if self.options['integrator_splitting'] is not None:
-                mcmc_move = mmtools.mcmc.LangevinSplittingDynamicsMove(timestep=self.options['equilibration_timestep'],
-                                                                       collision_rate=90.0 / unit.picosecond,
-                                                                       n_steps=500, reassign_velocities=True,
-                                                                       n_restart_attempts=6,
-                                                                       splitting=self.options['integrator_splitting'],
-                                                                       measure_shadow_work=False,
-                                                                       measure_heat=False)
-            else:
-                mcmc_move = mmtools.mcmc.LangevinDynamicsMove(timestep=self.options['equilibration_timestep'],
-                                                              collision_rate=90.0/unit.picosecond,
-                                                              n_steps=500, reassign_velocities=True,
-                                                              n_restart_attempts=6)
+            mcmc_move = mmtools.mcmc.LangevinDynamicsMove(timestep=self.options['equilibration_timestep'],
+                                                          collision_rate=90.0/unit.picosecond,
+                                                          n_steps=500, reassign_velocities=True,
+                                                          n_restart_attempts=6)
             alchemical_phase.equilibrate(n_iterations, mcmc_moves=mcmc_move)
 
         return alchemical_phase
@@ -574,7 +590,7 @@ class ExperimentBuilder(object):
 
         See Also
         --------
-        utils.update_nested_dict
+        update_nested_dict
 
         """
         current_content = self._raw_yaml
@@ -585,7 +601,7 @@ class ExperimentBuilder(object):
             new_content = yaml.load(script, Loader=YankLoader)
         except TypeError:  # dict
             new_content = script.copy()
-        combined_content = utils.update_nested_dict(current_content, new_content)
+        combined_content = update_nested_dict(current_content, new_content)
         self.parse(combined_content)
 
     def parse(self, script):
@@ -2212,22 +2228,11 @@ class ExperimentBuilder(object):
                 ]
             else:
                 move_list = []
-            integrator_splitting = exp_opts['integrator_splitting']
-            if integrator_splitting is not None:
-                move_list.append(mmtools.mcmc.LangevinSplittingDynamicsMove(timestep=exp_opts['timestep'],
-                                                                            collision_rate=exp_opts['collision_rate'],
-                                                                            n_steps=exp_opts['nsteps_per_iteration'],
-                                                                            reassign_velocities=True,
-                                                                            n_restart_attempts=6,
-                                                                            splitting=integrator_splitting,
-                                                                            measure_shadow_work=False,
-                                                                            measure_heat=False))
-            else:
-                move_list.append(mmtools.mcmc.LangevinDynamicsMove(timestep=exp_opts['timestep'],
-                                                                   collision_rate=exp_opts['collision_rate'],
-                                                                   n_steps=exp_opts['nsteps_per_iteration'],
-                                                                   reassign_velocities=True,
-                                                                   n_restart_attempts=6))
+            move_list.append(mmtools.mcmc.LangevinDynamicsMove(timestep=exp_opts['timestep'],
+                                                               collision_rate=exp_opts['collision_rate'],
+                                                               n_steps=exp_opts['nsteps_per_iteration'],
+                                                               reassign_velocities=True,
+                                                               n_restart_attempts=6))
             mcmc_move = mmtools.mcmc.SequenceMove(move_list=move_list)
             sampler = repex.ReplicaExchange(mcmc_moves=mcmc_move, **sampler_opts)
 
