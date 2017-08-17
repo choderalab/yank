@@ -124,3 +124,14 @@ The number of window must be identical to the other lambda variables. A short ex
            lambda_sterics:        [1.00, 1.00, 1.00, 0.50, 0.00]
 
 Valid Arguments: <List of Quantities>
+
+
+.. _yaml_protocols_video:
+
+Protocols How-To Video
+======================
+
+.. raw:: html
+
+    <iframe width="560" height="315" src="https://www.youtube.com/embed/nVVl6if6g0w" frameborder="0" allowfullscreen></iframe>
+

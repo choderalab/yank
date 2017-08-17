@@ -15,6 +15,14 @@ Frequently Asked Questions (FAQ)
    do *not* use your local cluster's MPI module if it has one. If you wish to use your own MPI package, make sure the
    ``mpi4py`` you install is compiled against your local MPI, otherwise you may see difficult to diagnose errors.
 
+#. How do I add a new state to the ``protocols`` section of a YAML file?
+
+   #. Find the phase you want to change in the YAML file
+   #. Add an entry in each list of values for a given parameter at the index of that list where you wish to insert the state
+
+   See the :ref:`protocols documentation <yaml_protocols_alchemical_path>` for more information or
+   `watch our video guide to see how to add a state <https://youtu.be/nVVl6if6g0w?t=2m46s>`_
+
 #. I found a bug or want a feature. Where do I tell you?
 
    Head to `YANK's GitHub page <https://github.com/choderalab/yank>`_ and post an issue.

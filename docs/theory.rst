@@ -14,7 +14,7 @@ The Thermodynamic Cycle of YANK
 
 We cover the full thermodynamic cycle that YANK follows to compute the free energy of binding.
 
-.. figure:: docimages/YANKTC-Stage1.png
+.. figure:: site-resources/images/YANKTC-Stage1.png
 
 The fundamental process we want to capture.
 
@@ -41,7 +41,7 @@ free energy will be identical no mater what path is taken. However, even though 
 making an estimate, so there will be error associated with our estimate, and that error **does** depend on the path.
 
 
-.. figure:: docimages/YANKTC-Stage2.png
+.. figure:: site-resources/images/YANKTC-Stage2.png
 
 The thermodynamic cycle YANK follows over its simulations. Left side is the ``solvent`` phase of the simulation,
 right is the ``complex`` phase of the simulation. Top is the fully interacting/coupled interactions, and bottom is the
@@ -71,7 +71,7 @@ into its own system with just solvent. We handle this with the standard state co
 analytical contribution of the restraint. This connects the bottom two states, however, this does not complete the
 thermodynamic cycle.
 
-.. figure:: docimages/YANKTC-Stage3.png
+.. figure:: site-resources/images/YANKTC-Stage3.png
 
 We expand the cutoff radius to reduce the error introduced from having a reduced cutoff. Both the fully interacting
 and noninteracting state are expanded to account for the errors on both ends of the thermodynamic cycle.
@@ -93,7 +93,7 @@ at the cost of computational efficiency.
 
 We are now ready to complete the thermodynamic cycle, connecting the stages of YANK with our original binding process.
 
-.. figure:: docimages/YANKTC-Complete.png
+.. figure:: site-resources/images/YANKTC-Complete.png
 
 We now have a completed thermodynamic cycle for YANK which lets us estimate the free energy of binding.
 
