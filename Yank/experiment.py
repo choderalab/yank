@@ -2212,7 +2212,7 @@ class ExperimentBuilder(object):
                 ]
             else:
                 move_list = []
-            integrator_splitting = exp_opts['integrator_splitting']
+            integrator_splitting = phase_opts['integrator_splitting']
             if integrator_splitting is not None:
                 move_list.append(mmtools.mcmc.LangevinSplittingDynamicsMove(timestep=exp_opts['timestep'],
                                                                             collision_rate=exp_opts['collision_rate'],
