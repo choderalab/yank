@@ -328,6 +328,26 @@ examples of which can be found in the
 #. Always define the "fully coupled" state as the first index, 0 in Python, in the list of alchemical states (the state most closely representing the physically bound/fully solvated conditions)
 #. Always define the "fully decoupled/annihilated" state as the last index, -1 in Python, in the list of states.
 
+.. _algorithm_auto_protocol:
+
+Automatic Alchemical Protocol Selection
+---------------------------------------
+
+YANK supports :ref:`automatically choosing the alchemical path <yaml_protocols_auto>` instead of setting all the values
+by hand. The states are chosen such that the standard deviation of the difference of energies between states is roughly equal within
+some tolerance. States spaced equally by this metric should have better phase space overlap than states placed
+haphazardly, and should have better mixing in replica exchange.
+
+The algorithm is as follows, given an upper and lower bound for a set of alchemical parameters:
+
+#. A short simulation is run at the upper bound of the parameter set.
+#. The potential energies of the simulated state are computed at a proposed state where the alchemical parameters are perturbed.
+#. The energies of the simulation are reweighted in the proposed state
+#. The standard deviation of the difference in energies between the simulated and proposed state is computed.
+#. If the standard deviation is within some tolerance around a target value, the proposed state is chosen and the process repeats with the proposed state as the new, simulated state.
+#. If the standard deviation is outside the tolerance, a new state is proposed is repeated without updating the simulated state.
+#. The cycle continues until the parameters' lower bounds are reached.
+
 Hamiltonian exchange with Gibbs sampling
 ========================================
 

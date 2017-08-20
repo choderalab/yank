@@ -98,7 +98,30 @@ only applies if ``restraint`` :ref:`in experiments is specified <yaml_experiment
 * :ref:`The FlatBottom restraint in our host-guest binding free energy tutorial <host_guest_implicit>`
 * `The Boresh restraint in our YANK GitHub Examples <https://github.com/choderalab/yank-examples/tree/master/examples/binding/abl-imatinib>`_
 
-Valid Arguments: <Identical Sized List of Floats>
+Valid Arguments: <Identical Sized List of Floats>/auto
+
+
+.. _yaml_protocols_auto:
+
+Automatic Path Determination
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. code-block:: yaml
+
+   protocols:
+     {UserDefinedProtocol}:
+       {PhaseName1}:
+         alchemical_path: auto
+
+
+YANK can automatically determine the parameters for ``lambda_X`` for you. YANK will distribute states between the fully
+coupled and fully decoupled states for you based on the restraint scheme, class of transformation, and input system.
+States are distributed such that the standard deviation of potential energy differences between the states is equal,
+which should improve replica mixing between the states over placing the states yourself.
+
+Specifying the option ``auto`` for your ``alchemical_path`` will start the process as shown in the example. The process
+may take a while, but the final path is saved as a new `.yaml` file in your
+:ref:`output_dir/experiments <yaml_options_output_dir>`, and immediately used as the input for your simulation.
 
 
 .. _yaml_protocols_thermodynamic_variables:

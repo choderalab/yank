@@ -322,14 +322,15 @@ Valid options (1 * atmosphere): null / <Quantity Pressure> [1]_
 .. code-block:: yaml
 
    options:
-     splitting: BAOAB
+     splitting: V R O R V
 
-Sequence of "R", "V", "O" (and optionally "{", "}", "V0", "V1", ...) sub-steps to be executed each timestep. Tells the
+Sequence of "R", "V", "O" (and optionally "{", "}", "V0", "V1", ...) sub-steps to be executed each timestep with a space
+between each step. Tells the
 integrator how to subdivide the work of taking a full timestep. For more details, see
 `the OpenMMTools documentation splits <http://openmmtools.readthedocs.io/en/latest/api/generated/openmmtools.integrators.LangevinIntegrator.html#openmmtools.integrators.LangevinIntegrator>`_.
 If you don't want a splitting integrator, specify ``null`` to get a standard Langevin integrator.
 
-Valid options (BAOAB): <String of R, V, O, {, and/or }>/``null``
+Valid options (V R O R V): <String of R, V, O, {, and/or }>/``null``
 
 
 .. _yaml_options_hydrogen_mass:
