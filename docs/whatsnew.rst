@@ -6,8 +6,10 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the github yank releases page <https://github.com/choderalab/yank/releases>`_.
 
-0.17.0 Current Development (In flux)
-------------------------------------
+0.17.0 Auto Alchemical Path and Split Langevin Integrators
+----------------------------------------------------------
+- Added Langevin Splitting Integrator which allows time-substep operation order
+- Automatic Alchemical Path selection feature added.
 - Many Website additions and cleanups
 - Online analysis allowing simulations to be run until they reach a target free energy uncertainty
 - Renamed and refactored ``YAMLBuilder`` to more general ``ExperimentBuilder``
@@ -21,8 +23,6 @@ The full release history can be viewed `at the github yank releases page <https:
 - Added MDTraj, Matplotlib, and Jupyter as requirements
 - Analyze Jupyter Notebooks can now be exported as pre-rendered static HTML or PDF pages (LaTeX required for PDF)
 - Refactor some API function names and keywords
-- Added Langevin Splitting Integrator which allows time-substep operation order
-- Automatic Alchemical Path selection feature added.
 
 0.16.2 Startup Speed and Reduced File Sizes
 -------------------------------------------
