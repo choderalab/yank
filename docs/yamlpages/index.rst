@@ -50,7 +50,7 @@ Detailed Options List
     * :ref:`randomize_ligand_close_cutoff <yaml_options_ligand_close_cutoff>`
     * :ref:`temperature <yaml_options_temperature>`
     * :ref:`pressure <yaml_options_pressure>`
-    * :ref:`splitting <yaml_options_splitting>`
+    * :ref:`integrator_splitting <yaml_options_integrator_splitting>`
     * :ref:`hydrogen_mass <yaml_options_hydrogen_mass>`
     * :ref:`constraints <yaml_options_constraints>`
 

@@ -313,16 +313,16 @@ Valid options (1 * atmosphere): null / <Quantity Pressure> [1]_
 
 
 
-.. _yaml_options_splitting:
+.. _yaml_options_integrator_splitting:
 
 .. rst-class:: html-toggle
 
-``splitting``
--------------
+``integrator_splitting``
+------------------------
 .. code-block:: yaml
 
    options:
-     splitting: null
+     integrator_splitting: null
 
 Sequence of "R", "V", "O" (and optionally "{", "}", "V0", "V1", ...) sub-steps to be executed each timestep with a space
 between each step. Tells the
@@ -330,7 +330,7 @@ integrator how to subdivide the work of taking a full timestep, with optional HM
 For example: ``V R O R V`` is a `BAOAB Integrator <https://journals.aps.org/pre/abstract/10.1103/PhysRevE.75.056707>`_
 If you don't want a splitting integrator, specify ``null`` to get a standard Langevin integrator.
 For more details, see
-`the OpenMMTools documentation splits <http://openmmtools.readthedocs.io/en/latest/api/generated/openmmtools.integrators.LangevinIntegrator.html#openmmtools.integrators.LangevinIntegrator>`_.
+`the OpenMMTools documentation <http://openmmtools.readthedocs.io/en/latest/api/generated/openmmtools.integrators.LangevinIntegrator.html#openmmtools.integrators.LangevinIntegrator>`_.
 
 Valid options (``null``): ``null``/<String of R, V, O, {, and/or }; white space " " delimiter>
 
