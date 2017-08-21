@@ -202,6 +202,11 @@ available in our `clusterutils <https://github.com/choderalab/clusterutils>`_ to
 ``build-mpirun-configfile`` is automatically installed with YANK when you use the ``conda`` installation route. Please
 see our :ref:`notes from above <mpi_notes>` about this script's applicability on torque, PBS, SLURM and LSF clusters.
 
+.. note::
+
+   The name of your ``mpi`` binary may be different than what is shown in the example. Make sure you are using the
+   correct binary, especially on systems which already had an MPI installed before the ``conda`` one was installed.
+
 |
 
 Selecting a platform
@@ -274,7 +279,8 @@ can be increased after a simulation has completed to extend the number of iterat
 
 Setting a target :ref:`free energy difference error <yaml_options_online_analysis_parameters>` tells
 YANK to run each phase until the error in the free energy difference is below some threshold. The free energy difference
-of the phase is estimated during the simulation through online analysis every :ref:`specified interval <online_analysis_interval>`.
+of the phase is estimated during the simulation through online analysis every
+:ref:`specified interval <yaml_options_online_analysis_interval>`.
 This process will slow down the simulation, so it is recommended the interval be at least 100 iterations, if not more.
 
 It is recommended you also set a :ref:`switch phase interval <yaml_options_switch_phase_interval>` for a large number
