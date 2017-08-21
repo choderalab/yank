@@ -255,6 +255,32 @@ simulations to cycle through all the experiments created when users invoke the `
 can be set in tandem with the :ref:`yaml_options_switch_phase_interval`. Please see the respective documentation on
 these options for more information.
 
+
+Specifying Simulation Stop Conditions
+=====================================
+
+YANK simulations will run until one of two stop conditions are met, if specified: either the
+:ref:`maximum number of iterations <yaml_options_number_of_iterations>` is reached, or the
+:ref:`error in free energy difference of the phase <yaml_options_online_analysis_parameters>` reaches a target value
+through online analysis.
+These options can be combined to change when YANK stops a simulation.
+
+Specifying a :ref:`maximum number of iterations <yaml_options_number_of_iterations>` will tell YANK to run each phase
+up to the target number of iterations. This options accepts any positive integer, ``0`` (zero), or
+``None`` (``null`` in the .yaml, ``None`` in the API). Setting this option to ``0`` will tell YANK to only handle file
+initialization and input preparation, without running any production simulation. Setting this to ``None`` will
+run an unlimited number of simulations until another stop condition is met, or is stopped by the user. This option
+can be increased after a simulation has completed to extend the number of iterations run for each phase.
+
+Setting a target :ref:`free energy difference error <yaml_options_online_analysis_parameters>` tells
+YANK to run each phase until the error in the free energy difference is below some threshold. The free energy difference
+of the phase is estimated during the simulation through online analysis every :ref:`specified interval <online_analysis_interval>`.
+This process will slow down the simulation, so it is recommended the interval be at least 100 iterations, if not more.
+
+It is recommended you also set a :ref:`switch phase interval <yaml_options_switch_phase_interval>` for a large number
+of iterations, especially if an unlimited number of iterations are specified, otherwise only one phase will be
+simulated.
+
 ..
     Extending Simulations
     =====================
