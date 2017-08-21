@@ -201,7 +201,7 @@ class AlchemicalPhaseFactory(object):
         'number_of_equilibration_iterations': 0,
         'equilibration_timestep': 1.0 * unit.femtosecond,
         'checkpoint_interval': 10,
-        'integrator_splitting': "BAOAB",
+        'integrator_splitting': None,
     }
 
     def __init__(self, sampler, thermodynamic_state, sampler_states, topography,
