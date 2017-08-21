@@ -169,6 +169,8 @@ Detailed Options List
       * :ref:`lambda_electrostatics <yaml_protocols_alchemical_path>`
       * :ref:`lambda_sterics <yaml_protocols_alchemical_path>`
 
+    * :ref:`Automatic alchemical path Generation <yaml_protocols_auto>`
+
   * :ref:`How-To Video <yaml_protocols_video>`
     
 * :doc:`experiements <experiments>`

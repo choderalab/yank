@@ -18,9 +18,11 @@ The full release history can be viewed `at the github yank releases page <https:
 - Anisotropic dispersion options in YAML reduced to single option
 - Ionic Strength ability added to setup pipeline
 - Centroids for restraints now selectable through DSL string instead of whole molecule
-- Added MDTraj as requirement
+- Added MDTraj, Matplotlib, and Jupyter as requirements
 - Analyze Jupyter Notebooks can now be exported as pre-rendered static HTML or PDF pages (LaTeX required for PDF)
 - Refactor some API function names and keywords
+- Added Langevin Splitting Integrator which allows time-substep operation order
+- Automatic Alchemical Path selection feature added.
 
 0.16.2 Startup Speed and Reduced File Sizes
 -------------------------------------------

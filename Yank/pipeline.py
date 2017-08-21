@@ -1494,7 +1494,7 @@ def trailblaze_alchemical_protocol(thermodynamic_state, sampler_state, mcmc_move
     thermodynamic_state : openmmtools.states.CompoundThermodynamicState
         The state of the alchemically modified system.
     sampler_state : openmmtools.states.SamplerState
-        The sampler states including initila positions and box vectors.
+        The sampler states including initial positions and box vectors.
     mcmc_move : openmmtools.mcmc.MCMCMove
         The MCMCMove to use for propagation.
     state_parameters : list of tuples (str, [float, float])

@@ -17,6 +17,13 @@ Frequently Asked Questions (FAQ)
 
 #. How do I add a new state to the ``protocols`` section of a YAML file?
 
+   You can allow YANK to fully specify the alchemical protocol for you with the ``auto`` argument for the
+   ``alchemical path``, instead of adding each state by hand. You can see its
+   :ref:`full usage documentation <yaml_protocols_auto>` or its
+   :ref:`implementation information <algorithm_auto_protocol>`
+
+   If you want to add states by hand, follow these instructions:
+
    #. Find the phase you want to change in the YAML file
    #. Add an entry in each list of values for a given parameter at the index of that list where you wish to insert the state
 
