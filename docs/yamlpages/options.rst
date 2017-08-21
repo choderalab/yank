@@ -322,7 +322,7 @@ Valid options (1 * atmosphere): null / <Quantity Pressure> [1]_
 .. code-block:: yaml
 
    options:
-     integrator_splitting: null
+     integrator_splitting: V R O R V
 
 Sequence of "R", "V", "O" (and optionally "{", "}", "V0", "V1", ...) sub-steps to be executed each timestep with a space
 between each step. Tells the
@@ -332,7 +332,7 @@ If you don't want a splitting integrator, specify ``null`` to get a standard Lan
 For more details, see
 `the OpenMMTools documentation <http://openmmtools.readthedocs.io/en/latest/api/generated/openmmtools.integrators.LangevinIntegrator.html#openmmtools.integrators.LangevinIntegrator>`_.
 
-Valid options (``null``): ``null``/<String of R, V, O, {, and/or }; white space " " delimiter>
+Valid options (V R O R V): <String of R, V, O, {, and/or }; white space " " delimiter>/``null``
 
 
 .. _yaml_options_hydrogen_mass:
