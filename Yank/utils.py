@@ -1510,12 +1510,12 @@ class TLeap:
             # use loadAmberParams if this is a frcmod file and source otherwise
             base_name = os.path.basename(par_file)
             extension = os.path.splitext(base_name)[1]
-            if 'frcmod' in base_name:
+            if 'frcmod' in base_name or extension == '.dat':
                 self.add_commands('loadAmberParams ' + local_name)
             elif extension == '.off' or extension == '.lib':
                 self.add_commands('loadOff ' + local_name)
             else:
-                self.add_commands('source ' + par_file)
+                self.add_commands('source ' + local_name)
 
             # Update loaded parameters cache
             self._loaded_parameters.add(par_file)
