@@ -669,7 +669,7 @@ def get_data_filename(relative_path):
     relative_path : str
         Name of the file to load, with respect to the yank egg folder which
         is typically located at something like
-        ``~/anaconda/lib/python2.7/site-packages/yank-*.egg/examples/``
+        ``~/anaconda/lib/python3.6/site-packages/yank-*.egg/examples/``
 
     Returns
     -------
@@ -788,6 +788,8 @@ def merge_dict(dict1, dict2):
 
     In Python 3.5 there is a syntax to do this ``{**dict1, **dict2}`` but
     in Python 2 you need to go through ``update()``.
+
+    TODO: Refactor to no longer need this now that Python 2 is dropped
 
     Parameters
     ----------
