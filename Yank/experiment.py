@@ -1808,7 +1808,7 @@ class ExperimentBuilder(object):
         # Parallelize generation of all protocols among nodes.
         mpi.distribute(self._generate_experiment_protocol,
                        distributed_args=experiments_to_generate,
-                       group_nodes=1)
+                       group_nodes=1, sync_nodes=True)
 
     def _generate_experiment_protocol(self, experiment, constrain_receptor=True,
                                       n_equilibration_iterations=None, **kwargs):
