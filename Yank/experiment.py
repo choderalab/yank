@@ -1907,12 +1907,19 @@ class ExperimentBuilder(object):
             mcmc_move = alchemical_phase._sampler.mcmc_moves[0]
             del alchemical_phase
 
-            # Restrain the protein heavy atoms to avoid drastic
+            # Restrain the receptor heavy atoms to avoid drastic
             # conformational changes (possibly after equilibration).
             if len(phase.topography.receptor_atoms) != 0 and constrain_receptor:
+                receptor_atoms_set = set(phase.topography.receptor_atoms)
+                # Check first if there are alpha carbons. If not, restrain all carbons.
+                restrained_atoms = [atom.index for atom in phase.topography.topology.atoms
+                                    if atom.name is 'CA' and atom.index in receptor_atoms_set]
+                if len(restrained_atoms) == 0:
+                    # Select all carbon atoms of the receptor.
+                    restrained_atoms = [atom.index for atom in phase.topography.topology.atoms
+                                        if atom.element.symbol is 'C' and atom.index in receptor_atoms_set]
                 mmtools.forcefactories.restrain_atoms(thermodynamic_state, sampler_state,
-                                                      phase.topography.topology, atoms_dsl='name CA',
-                                                      sigma=3.0*unit.angstroms)
+                                                      restrained_atoms, sigma=3.0*unit.angstroms)
 
             # Find protocol.
             alchemical_path = pipeline.trailblaze_alchemical_protocol(thermodynamic_state, sampler_state,
