@@ -1183,9 +1183,10 @@ class ReplicaExchange(object):
         they will be assigned to the correspondent thermodynamic state on
         creation. If None is provided, Langevin dynamics with 2fm timestep, 5.0/ps collision rate,
         and 500 steps per iteration will be used.
-    number_of_iterations : int or None, Optional, Default: 1
-        The number of iterations to perform
-        If None, an unlimited number of iterations is run
+    number_of_iterations : int or infinity, optional, default: 1
+        The number of iterations to perform. Both ``float('inf')`` and
+        ``numpy.inf`` are accepted for infinity. If you set this to infinity,
+        be sure to set also ``online_analysis_interval``.
     replica_mixing_scheme : 'swap-all', 'swap-neighbors' or None, Default: 'swap-all'
         The scheme used to swap thermodynamic states between replicas.
     online_analysis_interval : None or Int >= 1, optional, default None
@@ -1535,8 +1536,9 @@ class ReplicaExchange(object):
         @staticmethod
         def _number_of_iterations_validator(instance, number_of_iterations):
             # Support infinite number of iterations.
-            if number_of_iterations is None:
-                number_of_iterations = np.inf
+            if not (0 <= number_of_iterations <= float('inf')):
+                raise ValueError('Accepted values for number_of_iterations are'
+                                 'non-negative integers and infinity.')
             return number_of_iterations
 
         @staticmethod
@@ -1888,7 +1890,8 @@ class ReplicaExchange(object):
 
         """
         if self._iteration + n_iterations > self._number_of_iterations:
-            self._number_of_iterations = self._iteration + n_iterations
+            # This MUST be assigned to a property or the storage won't be updated.
+            self.number_of_iterations = self._iteration + n_iterations
         self.run(n_iterations)
 
     def __repr__(self):

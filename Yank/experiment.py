@@ -315,8 +315,9 @@ class Experiment(object):
     ----------
     phases : list of yank.yank.AlchemicalPhases
         Phases to run for the experiment
-    number_of_iterations : int
-        Total number of iterations each phase will be run for
+    number_of_iterations : int or infinity
+        Total number of iterations each phase will be run for. Both
+        ``float('inf')`` and ``numpy.inf`` are accepted for infinity.
     switch_phase_interval : int
         Number of iterations each phase will be run before the cycling to the next phase
 
@@ -338,7 +339,7 @@ class Experiment(object):
 
     @property
     def iteration(self):
-        """int, Current total number of iterations which have been run."""
+        """pair of int, Current total number of iterations which have been run for each phase."""
         if None in self._phases_last_iterations:
             return 0
         return self._phases_last_iterations
@@ -351,7 +352,7 @@ class Experiment(object):
         """
         Run the experiment
 
-        Run's until either the maximum number of iterations have been reached or the sampler
+        Runs until either the maximum number of iterations have been reached or the sampler
         for that phase reports its own completion (e.g. online analysis)
 
         Parameters
@@ -359,6 +360,7 @@ class Experiment(object):
         n_iterations : int or None, Optional, Default: None
             Optional parameter to run for a finite number of iterations instead of up to the maximum number of
             iterations.
+
         """
         # Handle default argument.
         if n_iterations is None:
@@ -402,12 +404,16 @@ class Experiment(object):
                 iterations_to_run = min(iterations_left[phase_id], switch_phase_interval)
                 alchemical_phase.run(n_iterations=iterations_to_run)
 
-                # Update phase iteration info.
-                iterations_left[phase_id] -= iterations_to_run
-                self._phases_last_iterations[phase_id] = alchemical_phase.iteration
-
-                # Do one last check to see if the phase has converged by other means (e.g. online analysis)
+                # Check if the phase has converged.
                 self._are_phases_completed[phase_id] = alchemical_phase.is_completed
+
+                # Update phase iteration info. iterations_to_run may be infinity
+                # if number_of_iterations is.
+                if iterations_to_run == float('inf') and self._are_phases_completed[phase_id]:
+                    iterations_left[phase_id] = 0
+                else:
+                    iterations_left[phase_id] -= iterations_to_run
+                self._phases_last_iterations[phase_id] = alchemical_phase.iteration
 
                 # Delete alchemical phase and prepare switching.
                 del alchemical_phase
@@ -999,12 +1005,19 @@ class ExperimentBuilder(object):
         template_options.pop('alchemical_torsions')
 
         # Some options need to be treated differently.
+        def integer_or_infinity(value):
+            if value != float('inf'):
+                value = int(value)
+            return value
+
         def check_anisotropic_cutoff(cutoff):
             if cutoff == 'auto':
                 return cutoff
             else:
                 return utils.process_unit_bearing_str(cutoff, unit.angstroms)
+
         special_conversions = {'constraints': to_openmm_app,
+                               'number_of_iterations': integer_or_infinity,
                                'anisotropic_dispersion_cutoff': check_anisotropic_cutoff}
 
         # Validate parameters

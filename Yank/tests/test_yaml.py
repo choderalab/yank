@@ -244,7 +244,7 @@ def test_yaml_parsing():
         collision_rate: 5.0 / picosecond
         timestep: 2.0 * femtosecond
         nsteps_per_iteration: 2500
-        number_of_iterations: 1000.999
+        number_of_iterations: .inf
         equilibration_timestep: 1.0 * femtosecond
         number_of_equilibration_iterations: 100
         minimize: False
@@ -267,8 +267,9 @@ def test_yaml_parsing():
     assert exp_builder._options['randomize_ligand_sigma_multiplier'] == 1.0e-2
     assert exp_builder._options['nsteps_per_iteration'] == 2500
     assert type(exp_builder._options['nsteps_per_iteration']) is int
-    assert exp_builder._options['number_of_iterations'] == 1000
-    assert type(exp_builder._options['number_of_iterations']) is int
+    assert exp_builder._options['number_of_iterations'] == float('inf')
+    assert exp_builder._options['number_of_equilibration_iterations'] == 100
+    assert type(exp_builder._options['number_of_equilibration_iterations']) is int
     assert exp_builder._options['minimize'] is False
 
 
