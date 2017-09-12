@@ -774,13 +774,13 @@ class TestReplicaExchange(object):
         thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(self.alanine_test)
 
         with self.temporary_storage_path() as storage_path:
-            repex = ReplicaExchange()
+            repex = ReplicaExchange(number_of_iterations=5)
             reporter = Reporter(storage_path, checkpoint_interval=1)
             repex.create(thermodynamic_states, sampler_states, storage=reporter,
                          unsampled_thermodynamic_states=unsampled_states)
 
             # Update options and check the storage is synchronized.
-            repex.number_of_iterations = 123
+            repex.number_of_iterations = float('inf')
             repex.replica_mixing_scheme = None
 
             # Displace positions of the first sampler state.
@@ -795,7 +795,7 @@ class TestReplicaExchange(object):
                 reporter.close()
                 reporter = Reporter(storage_path, open_mode='r')
                 restored_options = reporter.read_dict('options')
-                assert restored_options['number_of_iterations'] == 123
+                assert restored_options['number_of_iterations'] == float('inf')
                 assert restored_options['replica_mixing_scheme'] is None
 
                 restored_sampler_states = reporter.read_sampler_states(iteration=0)
