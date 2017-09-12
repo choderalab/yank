@@ -1546,8 +1546,10 @@ def trailblaze_alchemical_protocol(thermodynamic_state, sampler_state, mcmc_move
             simulated_energies = np.zeros(n_samples_per_state)
             for i in range(n_samples_per_state):
                 mcmc_move.apply(thermodynamic_state, sampler_state)
+                context, _ = mmtools.cache.global_context_cache.get_context(thermodynamic_state)
+                sampler_state.apply_to_context(context, ignore_velocities=True)
+                simulated_energies[i] = thermodynamic_state.reduced_potential(context)
                 sampler_states.append(copy.deepcopy(sampler_state))
-                simulated_energies[i] = thermodynamic_state.reduced_potential(sampler_state)
 
             # Find first state that doesn't overlap with simulated one
             # with std(du) within std_energy_threshold +- threshold_tolerance.
@@ -1588,6 +1590,9 @@ def trailblaze_alchemical_protocol(thermodynamic_state, sampler_state, mcmc_move
                 old_std_energy = std_energy
                 denergies = reweighted_energies - simulated_energies
                 std_energy = np.std(denergies)
+                logger.debug('trailblazing: state_parameter {}, simulated_value {}, current_parameter_value {}, '
+                             'std_du {}'.format(state_parameter, optimal_protocol[state_parameter][-1],
+                                                current_parameter_value, std_energy))
 
             # Update the optimal protocol with the new value of this parameter.
             # The other parameters remain fixed.
