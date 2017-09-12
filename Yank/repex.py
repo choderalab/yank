@@ -1870,9 +1870,10 @@ class ReplicaExchange(object):
                 estimated_total_time = time_per_iteration * iteration_limit
                 estimated_finish_time = time.time() + estimated_time_remaining
                 logger.debug("Iteration took {:.3f}s.".format(iteration_time))
-                logger.debug("Estimated completion in {}, at {} (consuming total wall clock time {}).".format(
-                    str(datetime.timedelta(seconds=estimated_time_remaining)), time.ctime(estimated_finish_time),
-                    str(datetime.timedelta(seconds=estimated_total_time))))
+                if estimated_time_remaining != float('inf'):
+                    logger.debug("Estimated completion in {}, at {} (consuming total wall clock time {}).".format(
+                        str(datetime.timedelta(seconds=estimated_time_remaining)), time.ctime(estimated_finish_time),
+                        str(datetime.timedelta(seconds=estimated_total_time))))
 
             # Perform sanity checks to see if we should terminate here.
             self._check_nan_energy()
