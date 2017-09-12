@@ -1597,10 +1597,13 @@ def trailblaze_alchemical_protocol(thermodynamic_state, sampler_state, mcmc_move
             # Update the optimal protocol with the new value of this parameter.
             # The other parameters remain fixed.
             for par_name in optimal_protocol:
+                # Make sure we append to a Python float to the list.
+                # Lists of numpy types sometimes give problems.
                 if par_name == state_parameter:
-                    optimal_protocol[par_name].append(current_parameter_value)
+                    protocol_value = float(current_parameter_value)
                 else:
-                    optimal_protocol[par_name].append(optimal_protocol[par_name][-1])
+                    protocol_value = float(optimal_protocol[par_name][-1])
+                optimal_protocol[par_name].append(protocol_value)
 
     logger.debug('Alchemical path found: {}'.format(optimal_protocol))
     return optimal_protocol
