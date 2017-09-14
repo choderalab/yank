@@ -1859,7 +1859,8 @@ class ReplicaExchange(object):
             if (self._online_analysis_interval is not None and
                     self._iteration > self._online_analysis_minimum_iterations and
                     self._iteration % self._online_analysis_interval == 0):
-                self._run_online_analysis()
+                # Executed only by node 0 and broadcasted to be used in _is_completed().
+                self._last_err_free_energy = self._run_online_analysis()
 
             # Show timing statistics if debug level is activated.
             if logger.isEnabledFor(logging.DEBUG):
@@ -2321,7 +2322,7 @@ class ReplicaExchange(object):
     # Internal-usage: Online Analysis.
     # -------------------------------------------------------------------------
 
-    @mpi.on_single_node(rank=0, broadcast_result=False, sync_nodes=False)
+    @mpi.on_single_node(rank=0, broadcast_result=True)
     @mpi.delayed_termination
     @mmtools.utils.with_timer('Computing online free energy estimate')
     def _run_online_analysis(self):
@@ -2377,6 +2378,9 @@ class ReplicaExchange(object):
         self._reporter.write_mbar_free_energies(self._iteration, self._last_mbar_f_k,
                                                 (free_energy, self._last_err_free_energy))
 
+        # Broadcast the last free energy used to determine completion.
+        return self._last_err_free_energy
+
     @staticmethod
     def _get_last_written_free_energy(reporter, iteration):
         """Get the last free energy computed from online analysis"""
@@ -2393,7 +2397,7 @@ class ReplicaExchange(object):
         return last_f_k, last_free_energy
 
     def _is_completed(self, iteration_limit=None):
-        """Check if we have completed the run previously"""
+        """Check if we have reached the required number of iterations or statistical error."""
         if iteration_limit is None:
             iteration_limit = self._number_of_iterations
 
