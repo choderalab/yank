@@ -1397,12 +1397,67 @@ def test_neutralize_system():
         assert os.path.exists(inpcrd_path)
 
 
+def get_number_of_ions(exp_builder, phase, system_id):
+    """Return number of ions in the system.
+
+    Parameters
+    ----------
+    exp_builder : ExperimentBuilder
+        The experiment builder.
+    phase : str
+        complex, solvent, solvent1, solvent2.
+    system_id : str
+        The ID of the system.
+
+    Returns
+    -------
+    n_pos_ions : int
+        Number of positive ions in the system.
+    n_neg_ions : int
+        Number of negative ions in the system.
+    n_ionic_strength_ions : int
+        Expected number of ions needed to reach the desired ionic strength.
+
+    """
+    # Read in output pdb file to read ionic strength.
+    if phase == 'complex' or phase == 'solvent1':
+        phase_id = 0
+    else:
+        phase_id = 1
+    system_filepath = exp_builder._db.get_system_files_paths(system_id)[phase_id].position_path
+    system_filepath = os.path.splitext(system_filepath)[0] + '.pdb'
+    system_traj = mdtraj.load(system_filepath)
+
+    # Count number of waters and ions.
+    n_waters = 0
+    n_pos_ions = 0
+    n_neg_ions = 0
+    for res in system_traj.topology.residues:
+        if res.is_water:
+            n_waters += 1
+        elif '+' in res.name:
+            n_pos_ions += 1
+        elif '-' in res.name:
+            n_neg_ions += 1
+
+    # Verify that number of ions roughly models the expected ionic strength.
+    try:
+        solvent_id = exp_builder._db.systems[system_id]['solvent']
+    except KeyError:
+        solvent_id = exp_builder._db.systems[system_id][phase]  # solvent1 or solvent2
+    ionic_strength = exp_builder._db.solvents[solvent_id]['ionic_strength']
+    n_ionic_strength_ions = int(np.round(n_waters * ionic_strength / (55.41*unit.molar)))
+
+    return n_pos_ions, n_neg_ions, n_ionic_strength_ions
+
 @unittest.skipIf(not utils.is_openeye_installed(), "This test requires OpenEye toolkit")
 def test_charged_ligand():
     """Check that there are alchemical counterions for charged ligands."""
     imatinib_path = examples_paths()['imatinib']
     with mmtools.utils.temporary_directory() as tmp_dir:
         receptors = {'Asp': -1, 'Abl': -8}  # receptor name -> net charge
+        solvent_names = ['PME', 'PMEionic']
+
         updates = yank_load("""
         molecules:
             Asp:
@@ -1416,54 +1471,65 @@ def test_charged_ligand():
         explicit-system:
             receptor: !Combinatorial {}
             ligand: imatinib
-        """.format(imatinib_path, list(receptors.keys())))
+            pack: yes
+            solvent: !Combinatorial {}
+        """.format(imatinib_path, list(receptors.keys()), solvent_names))
         yaml_content = get_template_script(tmp_dir)
+        yaml_content['options']['resume_setup'] = True
         yaml_content['molecules'].update(updates['molecules'])
+        yaml_content['solvents']['PMEionic'] = copy.deepcopy(yaml_content['solvents']['PME'])
+        yaml_content['solvents']['PMEionic']['ionic_strength'] = '10*millimolar'
         yaml_content['systems']['explicit-system'].update(updates['explicit-system'])
         exp_builder = ExperimentBuilder(yaml_content)
 
         for receptor in receptors:
-            system_files_paths = exp_builder._db.get_system('explicit-system_' + receptor)
-            for i, phase_name in enumerate(['complex', 'solvent']):
-                inpcrd_file_path = system_files_paths[i].position_path
-                prmtop_file_path = system_files_paths[i].parameters_path
+            for solvent_name in solvent_names:
+                system_id = 'explicit-system_{}_{}'.format(receptor, solvent_name)
+                system_files_paths = exp_builder._db.get_system(system_id)
+                for i, phase_name in enumerate(['complex', 'solvent']):
+                    inpcrd_file_path = system_files_paths[i].position_path
+                    prmtop_file_path = system_files_paths[i].parameters_path
 
-                system, topology, _ = pipeline.read_system_files(
-                    inpcrd_file_path, prmtop_file_path, {'nonbondedMethod': openmm.app.PME})
+                    system, topology, _ = pipeline.read_system_files(
+                        inpcrd_file_path, prmtop_file_path, {'nonbondedMethod': openmm.app.PME})
 
-                # Identify components.
-                if phase_name == 'complex':
-                    alchemical_region = 'ligand_atoms'
-                    topography = Topography(topology, ligand_atoms='resname MOL')
+                    # Identify components.
+                    if phase_name == 'complex':
+                        alchemical_region = 'ligand_atoms'
+                        topography = Topography(topology, ligand_atoms='resname MOL')
 
-                    # Safety check: receptor must be negatively charged as expected
-                    receptor_net_charge = pipeline.compute_net_charge(system,
-                                                                      topography.receptor_atoms)
-                    assert receptor_net_charge == receptors[receptor]
-                else:
-                    alchemical_region = 'solute_atoms'
-                    topography = Topography(topology)
+                        # Safety check: receptor must be negatively charged as expected
+                        receptor_net_charge = pipeline.compute_net_charge(system,
+                                                                          topography.receptor_atoms)
+                        assert receptor_net_charge == receptors[receptor]
+                    else:
+                        alchemical_region = 'solute_atoms'
+                        topography = Topography(topology)
 
-                # There is a single ligand/solute counterion.
-                ligand_counterions = pipeline.find_alchemical_counterions(system, topography,
-                                                                          alchemical_region)
-                assert len(ligand_counterions) == 1
-                ion_idx = ligand_counterions[0]
-                ion_atom = next(itertools.islice(topology.atoms(), ion_idx, None))
-                assert '-' in ion_atom.residue.name
+                    # There is a single ligand/solute counterion.
+                    ligand_counterions = pipeline.find_alchemical_counterions(system, topography,
+                                                                              alchemical_region)
+                    assert len(ligand_counterions) == 1
+                    ion_idx = ligand_counterions[0]
+                    ion_atom = next(itertools.islice(topology.atoms(), ion_idx, None))
+                    assert '-' in ion_atom.residue.name
 
-                # In complex, there should be both ions even if the system is globally
-                # neutral (e.g. asp lys system), because of the alchemical ion
-                found_resnames = set()
-                output_dir = os.path.dirname(system_files_paths[0].position_path)
-                with open(os.path.join(output_dir, phase_name + '.pdb'), 'r') as f:
-                    for line in f:
-                        if len(line) > 10 and line[:5] != 'CRYST':
-                            found_resnames.add(line[17:20])
-                if phase_name == 'complex':
-                    assert set(['Na+', 'Cl-']) <= found_resnames
-                else:
-                    assert set(['Cl-']) <= found_resnames
+                    # In complex, there should be both ions even if the system is globally
+                    # neutral (e.g. asp lys system), because of the alchemical ion.
+                    n_pos_ions, n_neg_ions, n_ionic_strength_ions = get_number_of_ions(
+                        exp_builder, phase=phase_name, system_id=system_id)
+                    print(system_id, phase_name, n_ionic_strength_ions, n_pos_ions, n_neg_ions)
+
+                    # Check correct number of ions.
+                    if phase_name == 'complex':
+                        n_neutralization_ions = abs(receptors[receptor])
+                        if n_ionic_strength_ions > 0:
+                            n_neutralization_ions -= 1  # we don't add an extra anion to alchemically modify
+                        assert n_pos_ions == n_neutralization_ions + n_ionic_strength_ions
+                        assert n_neg_ions == max(1, n_ionic_strength_ions)
+                    else:
+                        assert n_pos_ions == n_ionic_strength_ions
+                        assert n_neg_ions == 1 + n_ionic_strength_ions
 
 
 def test_ionic_strength():
@@ -1480,27 +1546,10 @@ def test_ionic_strength():
         exp_builder = ExperimentBuilder(yaml_script)
         exp_builder._db.get_system('hydration-system')
 
-        # Read in output pdb file to read ionic strength.
-        system_filepath = exp_builder._db.get_system_files_paths('hydration-system')[0].position_path
-        system_filepath = os.path.splitext(system_filepath)[0] + '.pdb'
-        system_traj = mdtraj.load(system_filepath)
+        n_pos_ions, n_neg_ions, expected_n_ions = get_number_of_ions(exp_builder, phase='solvent1',
+                                                                     system_id='hydration-system')
 
-        # Count number of waters and ions.
-        n_waters = 0
-        n_pos_ions = 0
-        n_neg_ions = 0
-        for res in system_traj.topology.residues:
-            if res.is_water:
-                n_waters += 1
-            elif '+' in res.name:
-                n_pos_ions += 1
-            elif '-' in res.name:
-                n_neg_ions += 1
-
-        # Verify that number of ions roughly models the expected ionic strength.
-        ionic_strength = exp_builder._db.solvents['PME']['ionic_strength']
-        expected_n_ions = int(np.round(n_waters * ionic_strength / (55.41*unit.molar)))
-        assert expected_n_ions > 0  # Or this test doesn't make sense.
+        assert expected_n_ions > 0  # Otherwise this test doesn't make sense.
         assert n_pos_ions == expected_n_ions, '{}, {}'.format(n_pos_ions, expected_n_ions)
         assert n_neg_ions == expected_n_ions, '{}, {}'.format(n_neg_ions, expected_n_ions)
 

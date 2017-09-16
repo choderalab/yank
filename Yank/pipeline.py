@@ -1391,8 +1391,24 @@ class SetupDatabase:
             clearance = float(solvent['clearance'].value_in_unit(unit.angstroms))
             tleap.solvate(leap_unit=unit_to_solvate, solvent_model=leap_solvent_model, clearance=clearance)
 
-            # Add alchemically modified ions
-            if alchemical_charge != 0:
+            # First, determine how many ions we need to add for the ionic strength.
+            if not ignore_ionic_strength and solvent['ionic_strength'] != 0.0*unit.molar:
+                # Currently we support only monovalent ions.
+                for ion_name in [solvent['positive_ion'], solvent['negative_ion']]:
+                    assert '2' not in ion_name and '3' not in ion_name
+                n_waters = self._get_number_box_waters(pack, alchemical_charge, system_parameters,
+                                                       solvent_id, *molecule_ids)
+                # Water molarity at room temperature: 998.23g/L / 18.01528g/mol ~= 55.41M
+                n_ions_ionic_strength = int(np.round(n_waters * solvent['ionic_strength'] / (55.41*unit.molar)))
+
+                logging.debug('Adding {} ions in {} water molcules to reach ionic strength '
+                              'of {}'.format(n_ions_ionic_strength, n_waters, solvent['ionic_strength']))
+            else:
+                n_ions_ionic_strength = 0
+
+            # Add alchemically modified ions that we don't already add for ionic strength.
+            if abs(alchemical_charge) > n_ions_ionic_strength:
+                n_alchemical_ions = abs(alchemical_charge) - n_ions_ionic_strength
                 try:
                     if alchemical_charge > 0:
                         ion = solvent['negative_ion']
@@ -1404,7 +1420,9 @@ class SetupDatabase:
                     logger.error(err_msg)
                     raise RuntimeError(err_msg)
                 tleap.add_ions(leap_unit=unit_to_solvate, ion=ion,
-                               num_ions=abs(alchemical_charge), replace_solvent=True)
+                               num_ions=n_alchemical_ions, replace_solvent=True)
+                logging.debug('Adding {} {} ion to neutralize ligand charge of {}'
+                              ''.format(n_alchemical_ions, ion, alchemical_charge))
 
             # Neutralizing solvation box
             if 'positive_ion' in solvent:
@@ -1415,18 +1433,11 @@ class SetupDatabase:
                                replace_solvent=True)
 
             # Ions for the ionic strength must be added AFTER neutralization.
-            if not ignore_ionic_strength and solvent['ionic_strength'] != 0.0*unit.molar:
-                # Currently we support only monovalent ions.
-                for ion_name in [solvent['positive_ion'], solvent['negative_ion']]:
-                    assert '2' not in ion_name and '3' not in ion_name
-                n_waters = self._get_number_box_waters(pack, alchemical_charge, system_parameters,
-                                                       solvent_id, *molecule_ids)
-                # Water molarity at room temperature: 998.23g/L / 18.01528g/mol ~= 55.41M
-                n_ions = int(np.round(n_waters * solvent['ionic_strength'] / (55.41*unit.molar)))
+            if n_ions_ionic_strength != 0:
                 tleap.add_ions(leap_unit=unit_to_solvate, ion=solvent['positive_ion'],
-                               num_ions=n_ions, replace_solvent=True)
+                               num_ions=n_ions_ionic_strength, replace_solvent=True)
                 tleap.add_ions(leap_unit=unit_to_solvate, ion=solvent['negative_ion'],
-                               num_ions=n_ions, replace_solvent=True)
+                               num_ions=n_ions_ionic_strength, replace_solvent=True)
 
         # Check charge
         tleap.new_section('Check charge')
