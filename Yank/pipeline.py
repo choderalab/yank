@@ -31,7 +31,7 @@ import openmoltools as moltools
 from simtk import openmm, unit
 from simtk.openmm.app import PDBFile
 
-from . import utils
+from . import utils, mpi
 
 logger = logging.getLogger(__name__)
 
@@ -982,14 +982,17 @@ class SetupDatabase:
             return system_files_paths
 
         system_descr = self.systems[system_id]
+        log_message = 'Setting up the systems for {}, {} and {}'
 
         if 'receptor' in system_descr:  # binding free energy calculation
             receptor_id = system_descr['receptor']
             ligand_id = system_descr['ligand']
             solvent_id = system_descr['solvent']
             system_parameters = system_descr['leap']['parameters']
+            logger.info(log_message.format(receptor_id, ligand_id, solvent_id))
 
             # solvent phase
+            logger.debug('Setting up solvent phase')
             self._setup_system(system_files_paths[1].position_path, False,
                                0, system_parameters, solvent_id, ligand_id)
 
@@ -999,6 +1002,7 @@ class SetupDatabase:
                 alchemical_charge = 0
 
             # complex phase
+            logger.debug('Setting up complex phase')
             self._setup_system(system_files_paths[0].position_path,
                                system_descr['pack'], alchemical_charge,
                                system_parameters,  solvent_id, receptor_id,
@@ -1008,16 +1012,47 @@ class SetupDatabase:
             solvent1_id = system_descr['solvent1']
             solvent2_id = system_descr['solvent2']
             system_parameters = system_descr['leap']['parameters']
+            logger.info(log_message.format(solute_id, solvent1_id, solvent2_id))
 
             # solvent1 phase
+            logger.debug('Setting up solvent1 phase')
             self._setup_system(system_files_paths[0].position_path, False,
                                0, system_parameters, solvent1_id, solute_id)
 
             # solvent2 phase
+            logger.debug('Setting up solvent2 phase')
             self._setup_system(system_files_paths[1].position_path, False,
                                0, system_parameters, solvent2_id, solute_id)
 
         return system_files_paths
+
+    def setup_all_systems(self):
+        """Setup all molecules and systems in the database.
+
+        The method supports parallelization through MPI.
+
+        """
+        # Find all molecules that need to be set up.
+        molecules_to_setup = []
+        for molecule_id, molecule_description in self.molecules.items():
+            if not self.is_molecule_setup(molecule_id)[0]:
+                molecules_to_setup.append(molecule_id)
+
+        # Parallelize generation of all molecules among nodes.
+        mpi.distribute(self._setup_molecules,
+                       distributed_args=molecules_to_setup,
+                       group_nodes=1, sync_nodes=True)
+
+        # Find all systems that need to be set up.
+        systems_to_setup = []
+        for system_id, system_description in self.systems.items():
+            if not self.is_system_setup(system_id)[0]:
+                systems_to_setup.append(system_id)
+
+        # Parallelize generation of all systems among nodes.
+        mpi.distribute(self.get_system,
+                       distributed_args=systems_to_setup,
+                       group_nodes=1, sync_nodes=True)
 
     def _generate_molecule(self, molecule_id):
         """Generate molecule using the OpenEye toolkit from name or smiles.
@@ -1396,12 +1431,16 @@ class SetupDatabase:
                 # Currently we support only monovalent ions.
                 for ion_name in [solvent['positive_ion'], solvent['negative_ion']]:
                     assert '2' not in ion_name and '3' not in ion_name
+
+                logger.debug('Estimating number of water molecules in the box.')
                 n_waters = self._get_number_box_waters(pack, alchemical_charge, system_parameters,
                                                        solvent_id, *molecule_ids)
+                logger.debug('Estimated number of water molecules: {}'.format(n_waters))
+
                 # Water molarity at room temperature: 998.23g/L / 18.01528g/mol ~= 55.41M
                 n_ions_ionic_strength = int(np.round(n_waters * solvent['ionic_strength'] / (55.41*unit.molar)))
 
-                logging.debug('Adding {} ions in {} water molcules to reach ionic strength '
+                logging.debug('Adding {} ions in {} water molecules to reach ionic strength '
                               'of {}'.format(n_ions_ionic_strength, n_waters, solvent['ionic_strength']))
             else:
                 n_ions_ionic_strength = 0

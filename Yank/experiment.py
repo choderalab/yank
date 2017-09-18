@@ -1744,7 +1744,6 @@ class ExperimentBuilder(object):
     # Experiment setup
     # --------------------------------------------------------------------------
 
-    @mpi.on_single_node(rank=0, sync_nodes=True)
     def _setup_experiments(self):
         """Set up all experiments without running them.
 
@@ -1752,20 +1751,15 @@ class ExperimentBuilder(object):
         cd into the script directory! Use setup_experiments() for that.
 
         """
-        # TODO parallelize setup
-        for _, experiment in self._expand_experiments():
-            # Force system and molecules setup
-            system_id = experiment['system']
-            sys_descr = self._db.systems[system_id]  # system description
-            try:
-                try:  # binding free energy system
-                    components = (sys_descr['receptor'], sys_descr['ligand'], sys_descr['solvent'])
-                except KeyError:  # partition/solvation free energy system
-                    components = (sys_descr['solute'], sys_descr['solvent1'], sys_descr['solvent2'])
-                logger.info('Setting up the systems for {}, {} and {}'.format(*components))
-                self._db.get_system(system_id)
-            except KeyError:  # system files are given directly by the user
-                pass
+        # Create setup directory if it doesn't exist.
+        os.makedirs(self.setup_dir, exist_ok=True)
+
+        # Configure log file for setup.
+        setup_log_file_path = os.path.join(self.setup_dir, 'setup.log')
+        utils.config_root_logger(self._options['verbose'], setup_log_file_path)
+
+        # Setup all systems.
+        self._db.setup_all_systems()
 
     # --------------------------------------------------------------------------
     # Automatic alchemical path generation
