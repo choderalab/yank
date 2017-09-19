@@ -400,7 +400,12 @@ class Experiment(object):
 
                 # Run simulation for iterations_left or until we have to switch phase.
                 iterations_to_run = min(iterations_left[phase_id], switch_phase_interval)
-                alchemical_phase.run(n_iterations=iterations_to_run)
+                try:
+                    alchemical_phase.run(n_iterations=iterations_to_run)
+                except utils.SimulationNaNError:
+                    # Simulation has NaN'd, this experiment is done, flag phases as done and send error up stack
+                    self._are_phases_completed = [True] * len(self._are_phases_completed)
+                    raise
 
                 # Update phase iteration info.
                 iterations_left[phase_id] -= iterations_to_run
@@ -701,6 +706,7 @@ class ExperimentBuilder(object):
             # Cycle between experiments every switch_experiment_interval iterations
             # until all of them are done.
             completed = [False for _ in range(len(all_experiments))]
+            nand = [False for _ in range(len(all_experiments))]
             while not all(completed):
                 # Distribute experiments across MPI communicators if requested
                 if processes_per_experiment is None:
@@ -710,6 +716,29 @@ class ExperimentBuilder(object):
                     completed, experiment_indices = mpi.distribute(self._run_experiment,
                                                                    distributed_args=all_experiments,
                                                                    group_nodes=processes_per_experiment)
+                # Handle failed experiments due to NaN's
+                for exp_index, experiment_tuple in enumerate(all_experiments):
+                    if isinstance(completed[exp_index], utils.SimulationNaNError):
+                        # Set the NaN flag if its not already set
+                        if nand[exp_index]:
+                            # Add the path of the experiment to the stack
+                            nand[exp_index] = experiment_tuple[0]
+                        # Reset the completed flag
+                        completed[exp_index] = True
+        # Finally write out error messages if if anything NaN'd
+        if any(nand):
+            nan_warning_string = ('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n'
+                                  '!     CRITICAL: Some Simulations are NaN    !\n'
+                                  '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n'
+                                  'The following experiments threw a NaN! They should be considered incomplete!\n'
+                                  )
+            # Generator for only failed experiments (e.g. entries which are not False)
+            exp_generator = (exp for exp in nand if exp)
+            for exp in exp_generator:
+                nan_warning_string += '  *. {}\n'.format(exp)
+            nan_warning_string += '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n' * 2
+            # Print out to logger
+            logger.debug(nan_warning_string)
 
     def build_experiments(self):
         """
@@ -2278,7 +2307,11 @@ class ExperimentBuilder(object):
             switch_experiment_interval = self._options['switch_experiment_interval']
 
         built_experiment = self._build_experiment(experiment_path, experiment)
-        built_experiment.run(n_iterations=switch_experiment_interval)
+        # Trap a NaN'd simulation by capturing only the error we can handle, let all others raise normally
+        try:
+            built_experiment.run(n_iterations=switch_experiment_interval)
+        except utils.SimulationNaNError as e:
+            return e
         return built_experiment.is_completed
 
 
