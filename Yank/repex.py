@@ -2101,7 +2101,7 @@ class ReplicaExchange(object):
             prefix = 'nan-error-logs/iteration{}-replica{}-state{}'.format(
                 self._iteration, replica_id, thermodynamic_state_id)
             e.serialize_error(prefix)
-            raise utils.SimulationNaNError
+            raise utils.SimulationNaNError()
 
         # Return new positions and box vectors.
         return sampler_state.positions, sampler_state.box_vectors
