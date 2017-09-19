@@ -24,8 +24,8 @@ Implicit solvent
 
 YANK provides the somewhat unique ability to perform alchemical free energy calculations in implicit solvent.
 
-Solvent model
-^^^^^^^^^^^^^
+Solvent Models
+^^^^^^^^^^^^^^
 
 For the :ref:`implicit solvent models in YANK <yaml_solvents_implicit_solvent>` any of the AMBER implicit solvent models
 available in OpenMM are available for use in the `implicit_solvent` directive:
@@ -43,10 +43,9 @@ Value          Meaning
 :code:`GBn2`   GBn2 solvation model\ :cite:`Nguyen2013` (corresponds to igb=8 in AMBER).
 =============  ==================================================================================================================================
 
-Alchemical intermediates
-^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. warning:: This section is still undergoing revision for accuracy.
+Generalized GBSA Model
+^^^^^^^^^^^^^^^^^^^^^^
 
 In order to permit alchemical free energy calculations to be carried out in implicit solvent, the contribution of atoms
 in the alchemically annihilated region must also be annihilated.
@@ -57,14 +56,13 @@ part of the alchemical region and 0 otherwise.
 The modified Generalized Born contribution to the potential energy is given by :cite:`Onufriev2004`
 
 .. math::
-   U_{GB}(x; \lambda, \eta) = - \frac{1}{2} C \left(\frac{1}{\epsilon_{\mathit{solute}}}-\frac{1}{\epsilon_{\mathit{solvent}}}\right)\sum _{i,j}\frac{ s_{ij}(\lambda,\eta) \, {q}_{i} {q}_{j}}{{f}_{\text{GB}}\left(||x_i - x_j||_2,{R}_{i},{R}_{j};\lambda, \eta\right)}
+   U_{GB}(x; \lambda, \eta) = - \frac{V_e}{2} \left(\frac{1}{\epsilon_{\text{solute}}}-\frac{1}{\epsilon_{\text{solvent}}}\right)\sum _{i,j}\frac{ s_{ij}(\lambda,\eta) \, {q}_{i} {q}_{j}}{{f}_{\text{GB}}\left(||x_i - x_j||_2,{R}_{i},{R}_{j};\lambda, \eta\right)}
 
-where the indices *i* and *j* run over all particles, :math:`\epsilon_\mathit{solute}` and :math:`\epsilon_\mathit{solvent}`
+where the indices *i* and *j* run over all particles, :math:`\epsilon_\text{solute}` and :math:`\epsilon_\text{solvent}`
 are the dielectric constants of the solute and solvent respectively, :math:`q_i` is the charge of particle *i*\ ,
-and :math:`||x_i - x_j||_2` is the distance between particles *i* and *j*.
-The electrostatic constant :math:`C` is equal to 138.935485 nm kJ/mol/e\ :sup:`2`\ .
+and :math:`||x_i - x_j||_2` is the distance between particles *i* and *j* which we will short-hand to :math:`d_{ij}`
+The electrostatic constant :math:`V_e` is equal to 138.935485 nm kJ/mol/e\ :sup:`2`\ .
 
-.. warning:: Add alchemical self-energy terms.
 
 The alchemical attenuation function :math:`s_{ij}(\lambda, \eta)` attenuates interactions involving softcore atoms, and is given by
 
@@ -82,31 +80,103 @@ The alchemically-modified GB effective interaction distance function :math:`f_\t
 .. math::
    R_i=\frac{1}{\rho_i^{-1}-r_i^{-1}\text{tanh}\left(\alpha \Psi_{i}-{\beta \Psi}_i^2+{\gamma \Psi}_i^3\right)}
 
-where :math:`\alpha`, :math:`\beta`, and :math:`\gamma` are the GB\ :sup:`OBC`\ II parameters :math:`\alpha` = 1, :math:`\beta` = 0.8, and :math:`\gamma` =
-4.85.  :math:`\rho_i` is the adjusted atomic radius of particle *i*\ , which
-is calculated from the atomic radius :math:`r_i` as :math:`\rho_i = r_i-0.009` nm.
+where :math:`\alpha`, :math:`\beta`, and :math:`\gamma` are the tunable parameters for the solvent model. Exact values
+are discussed in later sections. :math:`\rho_i` is the adjusted atomic radius of particle *i*\ , which
+is calculated from the atomic radius :math:`r_i` as :math:`\rho_i = r_i-o_f` where :math:`o_f = 0.009` nm is the
+offset parameter.
 :math:`\Psi_i` is calculated as an integral over the van der Waals
 spheres of all particles outside particle *i*\ :
 
-.. warning:: This integral needs to be rewritten in terms of a sum over atoms *j* with the alchemical modification :math:`s_j(\lambda,\eta)` inserted.
 
 .. math::
    \Psi_i=\frac{\rho_i}{4\pi}\int_{\text{VDW}}\theta\left(|\mathbf{r}|-{\rho }_{i}\right)\frac{1}{{|\mathbf{r}|}^{4}}{d}^{3}\mathbf{r}
 
-where :math:`\theta`\ (\ *r*\ ) is a step function that excludes the interior of particle
-\ *i* from the integral.
+where :math:`\theta`\ (\ *r*\ ) is a step function that excludes the interior of particle *i* from the integral.
+This integral can be re-written as sum over all other *j* particles in the system as
+
+.. math::
+
+   \Psi_i = \frac{\rho_i}{2}\sum_{j} H(U_p-\rho_i) {s}_{j}(\lambda,\eta) \Big[ & \frac{1}{L} - \frac{1}{U_p} \\
+                                                                                               & + \frac{1}{4}\left({d}_{ij}-\frac{{S}_{j}^2}{{d}_{i,j}}\right)\left(\frac{1}{U_p^2} - \frac{1}{L^2}\right) \\
+                                                                                               & + \frac{1}{2{d}_{ij}}\text{ln}\left(\frac{L}{U_p}\right) + C \Big]
+
+with
+
+.. math::
+
+   U_p &= {d}_{ij} + {S}_j \\
+   L   &= \text{max}\left(\rho_i, |{d}_{ij} - S_j|\right) \\
+   C   &= 2H\left(S_j - {d}_{ij} - \rho_i\right)\left(\frac{1}{\rho_i} - \frac{1}{L}\right)
+
+where :math:`U_p` and :math:`L` are the smoothed upper and lower bounds of :math:`\Psi`, :math:`S_j` is the
+scalar factor on particle *j* from the HTC model which is a function of atom-type :cite:`Hawkins1995`,
+and :math:`H(x)` is the Heaviside step function following :math:`H(0)=1`.
+
+The self-interaction energy of the particle is computed as
+
+.. math::
+
+  {U}_{\text{GB,self},i} = -\frac{V_e}{2}s_i(\lambda,\eta)\left(\frac{1}{\epsilon_{\text{solute}}}-\frac{1}{\epsilon_{\text{solvent}}}\right) \frac{q_i^2}{R_i}
 
 The alchemically-modified surface area potential term is a modified form of the term given by :cite:`Schaefer1998`\ :cite:`Ponder`
 
 .. math::
    U_{SA}(x;\lambda) = \epsilon_{SA} \cdot 4\pi
-   \sum_{i} s_i(\lambda,\eta) {\left({r}_{i}+{r}_{\mathit{solvent}}\right)}^{2}{\left(\frac{{r}_{i}}{{R}_{i}}\right)}^{6}
+   \sum_{i} s_i(\lambda,\eta) {\left({r}_{i}+{r}_{\text{solvent}}\right)}^{2}{\left(\frac{{r}_{i}}{{R}_{i}}\right)}^{6}
 
-where :math:`\epsilon_{SA}` is the surface area energy penalty, :math:`r_i` is the atomic radius of particle *i*\ ,
-:math:`r_i` is its atomic radius, and :math:`r_\mathit{solvent}` is the solvent radius, which is taken to be 0.14 nm.
+where :math:`\epsilon_{SA}` is the surface area energy penalty and :math:`r_\text{solvent}` is the solvent radius,
+which is taken to be 0.14 nm.
 The default value for the surface area penalty :math:`\epsilon_{SA}` is 2.25936 kJ/mol/nm\ :sup:`2`\ .
 
-.. warning:: Add description of other GBSA forms.
+
+HCT Solvent Models
+^^^^^^^^^^^^^^^^^^
+
+The ``HCT`` model is actually a precursor to the generalized GBSA model as shown above. Instead of rewritting the
+full equations, we can derive this model from the previous equations by changing the :math:`R_i` equation to
+
+.. math::
+
+   R_i = \rho_i - \frac{\Psi_i}{\rho_i}
+
+
+OBCX Solvent Models
+^^^^^^^^^^^^^^^^^^^
+
+.. note::
+    ``OBC2`` is the recommended model for implicit solvent in YANK
+
+The ``OBC1`` and ``OBC2`` models follow the theory from the Generalized GBSA model and use the following parameters
+for :math:`\alpha`, :math:`\beta`, and :math:`\gamma`:
+
+* ``OBC1``: GB\ :sup:`OBC`\ I  parameters :math:`\alpha` = 0.8, :math:`\beta` = 0, :math:`\gamma` = 2.91.
+* ``OBC2``: GB\ :sup:`OBC`\ II parameters :math:`\alpha` = 1, :math:`\beta` = 0.8, :math:`\gamma` = 4.85.
+
+
+GBn Solvent Models
+^^^^^^^^^^^^^^^^^^
+
+The ``GBn`` models are extensions to the generalized model above to correct for short range interactions when
+:math:`{d}_{ij} < R_i + R_2 + 2R_W` where :math:`R_W` is the radius of the solvent particle we are representing as
+a continuum. These models can be computed through a small correction on the generalized model's :math:`\Psi_i` parameter
+of
+
+.. math::
+
+   \Psi_{i,\text{GBn}} = \Psi_{i} + \rho_i \sum_j \frac{{S}_{\text{neck}} m_0 s_j(\lambda, \eta)}{1 + ({d}_{ij} - d_0)^2 + 0.3({d}_{ij} - d_0)^6}
+
+where :math:`m_0` and :math:`d_0` are parameters to maximize the term and have continuous derivatives, found numerically
+and tabulated internally. The :math:`S_{\text{neck}}` parameter is tunable.
+
+The ``GBn`` model refits :math:`\alpha`, :math:`\beta`, :math:`\gamma` and all of the :math:`S_x` terms for the following:
+
+* :math:`\alpha` = 1.095, :math:`\beta` = 1.908, :math:`\gamma` = 2.508.
+* :math:`S_{\text{neck}} = 0.362`, :math:`S_H =1.091`, :math:`S_C = 0.484`, :math:`S_N = 0.700`, :math:`S_O = 1.068`
+
+The ``GBn2`` model refits :math:`\alpha`, :math:`\beta`, :math:`\gamma` per atomic scaling factor :math:`S_x`, and then
+also refits the :math:`S_{\text{neck}}` and :math:`o_f` parameters for a total of 18 parameters. We do not show the
+table here for space, please see Table 2 in Nguyen et al for the entries :cite:`Nguyen2013`.
+
 
 Explicit solvent
 ----------------
@@ -239,17 +309,10 @@ The equilibrium distance is zero, while the spring constant is selected such the
 This allows the ligand to explore multiple binding sites---including internal sites---without drifting away from the receptor.
 For implicit and explicit solvent calculations, harmonic restraints should be imposed at full strength and retained
 throughout all alchemical states to define the bound complex.
-Since the harmonic restraint is significant at the periphery of the receptor, it can lead to bias in estimates of binding affinities on the surface of receptors.
+Since the harmonic restraint is significant at the periphery of the receptor, it can lead to bias in estimates of
+binding affinities on the surface of receptors.
 
 The standard-state correction is computed via numerical quadrature.
-
-.. note:: |ExplicitNote|
-
-.. |ExplicitNote| replace::
-    For **explicit** solvent in the fully coupled (non-alchemical) state, these restraints
-    should be off to represent the physically bound system. A series of alchemical intermediates should be added to smoothly
-    bring these restraints to full before academically modifying any other interactions. In implicit solvent, the restraint
-    should always be fully coupled.
 
 Flat-bottom restraints (``FlatBottom``)
 """""""""""""""""""""""""""""""""""""""
@@ -270,6 +333,8 @@ Orientational restraints
 Orientational restraints are used to confine the ligand to a single binding pose.
 
 .. warning:: Because the ligand is highly restrained orientationally, the initial configuration should have the ligand well-placed in the binding site; errors in initial pose cannot be easily recovered from.
+
+.. _algorithm_boresch:
 
 Boresch restraints (``Boresch``)
 """"""""""""""""""""""""""""""""
@@ -307,16 +372,13 @@ Simply subclassing this class (an abstract base class) and implementing the foll
 
 * ``get_standard_state_correction(self):``
 
-Alchemical intermediates
-========================
-
-Alchemical intermediate states are chosen to provide overlap along a one dimensional thermodynamic path for each phase
-of the simulation, ultimately making a :ref:`complete thermodynamic cycle of binding/solvation <yank_cycle>`. At this time,
-there is no automated way of selecting alchemical intermediates and it is up to the user to define them at this time,
-although automatic selection of alchemical intermediates is planned for a future release.
+.. _algorithm_alchemical_protocol:
 
 Alchemical protocol
 ===================
+
+Alchemical intermediate states are chosen to provide overlap along a one dimensional thermodynamic path for each phase
+of the simulation, ultimately making a :ref:`complete thermodynamic cycle of binding/solvation <yank_cycle>`.
 
 A number of rules of thumb are followed when choosing what order to carry out alchemical intermediates,
 examples of which can be found in the
@@ -423,6 +485,10 @@ drawn random number on :math:`[0,1]` domain, then scaled by a small perturbation
 proposed position is then evaluated as the MC move. The ligand in this case is translated as a singular unit, so each
 particle is translated by the same distance in each direction.
 
+Ligand rotation and displacements moves are disabled for the
+:ref:`orientational Boresch restraints <algorithm_boresch>`. This class of MCMC move under the orientational restraints
+will almost always be rejected so they are not enabled to reduce computational time.
+
 Automated equilibration detection
 =================================
 
@@ -483,7 +549,7 @@ thermodynamic state it is visiting.
 .. _autocorrelate_algorithm:
 
 Identifying equilibration and production regions in a replica-exchange simulations
---------------------------------------------------====----------------------------
+----------------------------------------------------------------------------------
 
 YANK automatically determines an optimal partitioning between the initial equilibration phase of the simulation
 (which is discarded) and the production phase of the simulation (which is analyzed to estimate free energies).
@@ -613,11 +679,3 @@ the subdominant eigenvalue :math:`\lambda_2 \in [0,1]` gives an estimate of the 
 :math:`\tau_{\lambda}` is then the estimate for how many iterations must elapse before the collection of replicas
 fully mix once. The closer this value is to unity (1), the better.
 
-
-Autotuning the alchemical protocol
-==================================
-
-This is an experimental feature YANK has recently implemented to automatically choose your alchemical states based on
-a quick estimate of the free energy. It is still going through improvements and will receive further documentation as
-its options are finalized and debugged. This feature's development can be followed
-`on YANK's GitHub page <https://github.com/choderalab/yank>`_.
