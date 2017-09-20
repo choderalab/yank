@@ -1241,17 +1241,16 @@ class Mol2File(object):
     def net_charge(self):
         """Net charge of the file as a float"""
         residue = parmed.load_file(self._file_path)
-        try:
-            tot_charge = sum(a.charge for a in residue.atoms)
-        except AttributeError:  # residue is a ResidueTemplateContainer
-            tot_charge = 0.0
-            for res in residue:
-                tot_charge += sum(a.charge for a in res.atoms)
-        return tot_charge
+        return self._compute_net_charge(residue)
 
     @net_charge.setter
     def net_charge(self, value):
         residue = parmed.load_file(self._file_path)
+
+        # We don't rewrite the mol2 file with ParmEd if not necessary.
+        old_net_charge = self._compute_net_charge(residue)
+
+        # Round the net charge.
         try:
             residue.fix_charges(to=value, precision=6)
         except TypeError:  # residue is a ResidueTemplateContainer
@@ -1261,12 +1260,31 @@ class Mol2File(object):
             logging.warning("Found mol2 file with multiple residues. The charge of "
                             "each residue will be rounded to the nearest integer.")
             residue.fix_charges(precision=6)
-        parmed.formats.Mol2File.write(residue, self._file_path)
+
+        # Rewrite the net charge if necessary.
+        new_net_charge = self._compute_net_charge(residue)
+        if new_net_charge != old_net_charge:
+            logging.debug('Fixing net charge from {} to {}'.format(old_net_charge, new_net_charge))
+            # Something is wrong if the new rounded net charge is very different.
+            if value is None and abs(old_net_charge - new_net_charge) > 0.05:
+                raise RuntimeError('The rounded net charge is too different from the original one.')
+            parmed.formats.Mol2File.write(residue, self._file_path)
+
+    @staticmethod
+    def _compute_net_charge(residue):
+        try:
+            tot_charge = sum(a.charge for a in residue.atoms)
+        except AttributeError:  # residue is a ResidueTemplateContainer
+            tot_charge = 0.0
+            for res in residue:
+                tot_charge += sum(a.charge for a in res.atoms)
+        return tot_charge
 
 
 # -----------------
 # OpenEye functions
 # -----------------
+
 def is_openeye_installed(oetools=('oechem', 'oequacpac', 'oeiupac', 'oeomega')):
     """
     Check if a given OpenEye tool is installed and Licensed
