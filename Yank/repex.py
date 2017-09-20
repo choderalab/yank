@@ -1957,7 +1957,7 @@ class ReplicaExchange(object):
 
             # Raise exception.
             err_msg = "NaN encountered in {} energies for replicas {}".format(state_type, faulty_replicas)
-            logger.error(err_msg)
+            logger.critical(err_msg)
             raise utils.SimulationNaNError(err_msg)
 
     @mpi.on_single_node(rank=0, broadcast_result=False, sync_nodes=False)
@@ -2101,6 +2101,11 @@ class ReplicaExchange(object):
             prefix = 'nan-error-logs/iteration{}-replica{}-state{}'.format(
                 self._iteration, replica_id, thermodynamic_state_id)
             e.serialize_error(prefix)
+            directory, file_template = os.path.split(prefix)
+            logger_message = "This Repex simulation threw a NaN!\nLook for error logs in:\n"
+            logger_message += "    Directory: {}".format(directory)
+            logger_message += "    File Name Base: {}".format(file_template)
+            logger.critical(logger_message)
             raise utils.SimulationNaNError()
 
         # Return new positions and box vectors.
