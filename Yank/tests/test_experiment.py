@@ -226,7 +226,7 @@ def get_functionality_script(output_directory=',', number_of_iter=0, experiment_
     ---
     options:
       minimize: no
-      verbose: yes
+      verbose: no
       output_dir: {output_directory}
       number_of_iterations: {number_of_iter}
       nsteps_per_iteration: 10
