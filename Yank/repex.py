@@ -1822,7 +1822,7 @@ class ReplicaExchange(object):
             # We're intercepting a possible initial NaN position here thrown by OpenMM, which is a simple exception
             # So we have to under-specify this trap.
             except Exception as e:
-                if 'coordinate is nan' in e.message.lower():
+                if 'coordinate is nan' in str(e).lower():
                     err_message = "Initial coordinates were NaN! Check your inputs!"
                     logger.critical(err_message)
                     raise utils.SimulationNaNError(err_message)
