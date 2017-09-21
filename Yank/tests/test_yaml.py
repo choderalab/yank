@@ -89,7 +89,7 @@ def yank_load(script):
     return yaml.load(textwrap.dedent(script), Loader=YankLoader)
 
 
-def get_template_script(output_dir='.'):
+def get_template_script(output_dir='.', keep_schrodinger=False, keep_openeye=False):
     """Return a YAML template script as a dict."""
     paths = examples_paths()
     template_script = """
@@ -197,7 +197,23 @@ def get_template_script(output_dir='.'):
                pxylene_path=paths['p-xylene'], toluene_path=paths['toluene'],
                abl_path=paths['abl'], lysozyme_path=paths['lysozyme'])
 
-    return yank_load(template_script)
+    # Load script as dictionary.
+    script_dict = yank_load(template_script)
+
+    # Find all molecules that require optional tools.
+    molecules_to_remove = []
+    for molecule_id, molecule_description in script_dict['molecules'].items():
+        need_schrodinger = 'epik' in molecule_description
+        need_openeye = any([k in molecule_description for k in ['name', 'smiles', 'openeye']])
+        if ((need_schrodinger and not keep_schrodinger) or
+                (need_openeye and not keep_openeye)):
+            molecules_to_remove.append(molecule_id)
+
+    # Remove molecules.
+    for molecule_id in molecules_to_remove:
+        del script_dict['molecules'][molecule_id]
+
+    return script_dict
 
 
 # ==============================================================================
@@ -716,7 +732,7 @@ def test_setup_name_smiles_openeye_charges():
     """Setup molecule from name and SMILES with openeye charges and gaff."""
     with mmtools.utils.temporary_directory() as tmp_dir:
         molecules_ids = ['toluene-smiles', 'p-xylene-name']
-        yaml_content = get_template_script(tmp_dir)
+        yaml_content = get_template_script(tmp_dir, keep_openeye=True)
         exp_builder = ExperimentBuilder(yaml_content)
         exp_builder._db._setup_molecules(*molecules_ids)
 
@@ -754,7 +770,7 @@ def test_clashing_atoms():
     benzene_path = examples_paths()['benzene']
     toluene_path = examples_paths()['toluene']
     with mmtools.utils.temporary_directory() as tmp_dir:
-        yaml_content = get_template_script(tmp_dir)
+        yaml_content = get_template_script(tmp_dir, keep_openeye=True)
         system_id = 'explicit-system'
         system_description = yaml_content['systems'][system_id]
         system_description['pack'] = True
@@ -796,7 +812,7 @@ def test_clashing_atoms():
 def test_epik_enumeration():
     """Test epik protonation state enumeration."""
     with mmtools.utils.temporary_directory() as tmp_dir:
-        yaml_content = get_template_script(tmp_dir)
+        yaml_content = get_template_script(tmp_dir, keep_schrodinger=True)
         exp_builder = ExperimentBuilder(yaml_content)
         mol_ids = ['benzene-epik0', 'benzene-epikcustom']
         exp_builder._db._setup_molecules(*mol_ids)
@@ -1474,7 +1490,7 @@ def test_charged_ligand():
             pack: yes
             solvent: !Combinatorial {}
         """.format(imatinib_path, list(receptors.keys()), solvent_names))
-        yaml_content = get_template_script(tmp_dir)
+        yaml_content = get_template_script(tmp_dir, keep_openeye=True)
         yaml_content['options']['resume_setup'] = True
         yaml_content['molecules'].update(updates['molecules'])
         yaml_content['solvents']['PMEionic'] = copy.deepcopy(yaml_content['solvents']['PME'])
