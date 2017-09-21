@@ -1817,7 +1817,18 @@ class ReplicaExchange(object):
         # If this is the first iteration, compute and store the
         # starting energies of the minimized/equilibrated structures.
         if self._iteration == 0:
-            self._compute_energies()
+            try:
+                self._compute_energies()
+            # We're intercepting a possible initial NaN position here thrown by OpenMM, which is a simple exception
+            # So we have to under-specify this trap.
+            except Exception as e:
+                if 'coordinate is nan' in e.message.lower():
+                    err_message = "Initial coordinates were NaN! Check your inputs!"
+                    logger.critical(err_message)
+                    raise utils.SimulationNaNError(err_message)
+                else:
+                    # If not the special case, raise the error normally
+                    raise e
             mpi.run_single_node(0, self._reporter.write_energies, self._energy_thermodynamic_states,
                                 self._energy_unsampled_states, self._iteration)
             self._check_nan_energy()
