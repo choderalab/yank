@@ -1245,30 +1245,39 @@ class Mol2File(object):
 
     @net_charge.setter
     def net_charge(self, value):
+        precision = 6
         residue = parmed.load_file(self._file_path)
-
-        # We don't rewrite the mol2 file with ParmEd if not necessary.
         old_net_charge = self._compute_net_charge(residue)
+
+        # We don't rewrite the mol2 file with ParmEd if the
+        # net charge is already within precision.
+        expected_net_charge = value
+        if expected_net_charge is None:
+            expected_net_charge = round(old_net_charge)
+        if abs(expected_net_charge - old_net_charge) < 10**(-precision):
+            return
 
         # Round the net charge.
         try:
-            residue.fix_charges(to=value, precision=6)
+            residue.fix_charges(to=value, precision=precision)
         except TypeError:  # residue is a ResidueTemplateContainer
             if value is not None:
                 raise ValueError('Cannot modify the net charge of a mol2 '
                                  'file molecule with multiple residues.')
             logging.warning("Found mol2 file with multiple residues. The charge of "
                             "each residue will be rounded to the nearest integer.")
-            residue.fix_charges(precision=6)
+            residue.fix_charges(precision=precision)
 
-        # Rewrite the net charge if necessary.
+        # Compute new net charge.
         new_net_charge = self._compute_net_charge(residue)
-        if new_net_charge != old_net_charge:
-            logging.debug('Fixing net charge from {} to {}'.format(old_net_charge, new_net_charge))
-            # Something is wrong if the new rounded net charge is very different.
-            if value is None and abs(old_net_charge - new_net_charge) > 0.05:
-                raise RuntimeError('The rounded net charge is too different from the original one.')
-            parmed.formats.Mol2File.write(residue, self._file_path)
+        logging.debug('Fixing net charge from {} to {}'.format(old_net_charge, new_net_charge))
+
+        # Something is wrong if the new rounded net charge is very different.
+        if value is None and abs(old_net_charge - new_net_charge) > 0.05:
+            raise RuntimeError('The rounded net charge is too different from the original one.')
+
+        # Rewrite charges.
+        parmed.formats.Mol2File.write(residue, self._file_path)
 
     @staticmethod
     def _compute_net_charge(residue):
