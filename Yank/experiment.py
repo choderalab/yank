@@ -530,7 +530,6 @@ class ExperimentBuilder(object):
         'mc_displacement_sigma': 10.0 * unit.angstroms
     }
 
-
     def __init__(self, script=None, job_id=None, n_jobs=None):
         """
         Constructor
@@ -2295,16 +2294,17 @@ class ExperimentBuilder(object):
         try:
             built_experiment.run(n_iterations=switch_experiment_interval)
         except utils.SimulationNaNError as e:
-            nan_warning_string = ('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n'
-                                  '!     CRITICAL: Experiment NaN    !\n'
-                                  '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n'
-                                  'The following experiment threw a NaN! It should NOT be considered!\n'
-                                  )
-            nan_warning_string += 'Experiment: {}'.format(experiment_path)
+            nan_warning_string = '\n'  # initial blank line for spacing
+            nan_warning_string += ('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n'
+                                   '!     CRITICAL: Experiment NaN    !\n'
+                                   '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n'
+                                   'The following experiment threw a NaN! It should NOT be considered!\n'
+                                   )
+            nan_warning_string += 'Experiment: {}\n'.format(self._get_experiment_dir(experiment_path))
             nan_warning_string += '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n' * 2
             # Print out to critical logger
             logger.critical(nan_warning_string)
-            # Return error at end to be handled by whatever invoked funciton
+            # Return error at end to be handled by whatever invoked function
             return e
         return built_experiment.is_completed
 
