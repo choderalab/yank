@@ -4,7 +4,13 @@ Release history
 
 This section features and improvements of note in each release.
 
-The full release history can be viewed `at the github yank releases page <https://github.com/choderalab/yank/releases>`_.
+The full release history can be viewed `at the GitHub yank releases page <https://github.com/choderalab/yank/releases>`_.
+
+0.17.1 In Development (Work in Progress)
+----------------------------------------
+- Python 2.X Support officially *removed*
+- Additional doc cleanups
+- Added restraint selection flowchart to documentation
 
 0.17.0 Auto Alchemical Path and Split Langevin Integrators
 ----------------------------------------------------------

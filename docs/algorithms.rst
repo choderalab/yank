@@ -295,8 +295,11 @@ Restraint types
 No restraints (``null``)
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
-While it is possible to run a simulation without a restraint in explicit solvent---such that the noninteracting ligand must explore the entire simulation box---this is not possible in implicit solvent since the ligand can drift away into infinite space.
-Note that this is not recommended for explicit solvent, since there is a significant entropy bottleneck that must be overcome for the ligand to discover the binding site from the search space of the entire box.
+While it is possible to run a simulation without a restraint in explicit solvent---such that the noninteracting ligand
+must explore the entire simulation box---this is not possible in implicit solvent since the ligand can drift away into
+infinite space.
+Note that this is not recommended for explicit solvent, since there is a significant entropy bottleneck that must be
+overcome for the ligand to discover the binding site from the search space of the entire box.
 
 Spherically symmetric restraints
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -318,7 +321,7 @@ Flat-bottom restraints (``FlatBottom``)
 """""""""""""""""""""""""""""""""""""""
 
 A variant of ``Harmonic`` where the restraint potential is zero in the central region and grows as a half-harmonic potential outside of this region.
-A lengthscale ``sigma`` is computed from the median absolute distance from the central receptor atom to all atoms, multiplied by 1.4826.
+A length scale ``sigma`` is computed from the median absolute distance from the central receptor atom to all atoms, multiplied by 1.4826.
 The transition from flat to harmonic occurs at ``r0 = 2*sigma + 5*angstroms``.
 A spring constant of ``K = 0.6 * kilocalories_per_mole / angstroms**2`` is used.
 This restraint is described in detail in :cite:`Shirts2013:yank`.
@@ -359,6 +362,24 @@ Note that the analytical standard state correction described in Eq. 32 of :cite:
 0 or :math:`\pi`) and should be avoided.
 
 .. warning:: Symmetry corrections for symmetric ligands are **not** automatically applied; see Ref :cite:`Boresch2003` and :cite:`Mobley2006:orientational-restraints` for more information on correcting for ligand symmetry.
+
+Restraint Selection Flowchart
+-----------------------------
+
+Consult the following flowchart to assist in selecting the restraints and reference the following key additional
+guidance
+
+* Restraints are marked in end point circles
+* Unless stated, the restraints should always be fully coupled (NO ``lambda_restraints`` in the YAML file)
+* Assume default parameters for restraints unless otherwise stated
+* Shaded entries are not recommended for use and may require user insight to be accurate, even if they are the "best option" for the choice of answers.
+
+    * The ``Harmonic`` at the bottom restraints the ligand to the centroid of the receptor only, which may not be the binding site. Consider if this is really what you want to do.
+    * The half-shaded ``FlatBottom`` entry is not recommended if you don't know what the ligand should do. You probably want the ligand to explore the whole receptor, but we cannot be sure if you reached this entry from the shaded side
+
+* A ``Null`` entry indicates no restraints needed at all
+
+.. figure:: site-resources/images/YANKRestraintFlowChart.png
 
 Adding new restraints
 ---------------------
