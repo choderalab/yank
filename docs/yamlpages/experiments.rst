@@ -60,15 +60,25 @@ Running Multiple Experiments
 
 A single experiment can be defined by the following example. However, if one would like to run multiple experiments from the same YAML file, then follow these instructions:
 
-#. Create a header above ``experiments`` with whatever name of experiment you want to run. We label this as ``{UserDefinedExperiment}``.
+#. Create an outermost header above ``experiments`` with whatever name of experiment you want to run. We label this as ``{UserDefinedExperiment}``.
 #. Define your ``{UserDefinedExperiment}`` by creating sub-directives just as you would in the main ``experiment`` header (se the :ref:`Experiments Syntax <yaml_experiments_syntax>` for description).
 #. Repeat this process for as many experiments as you want.
 #. Create an ``experiments`` header below your user defined ones with the syntax: ``experiments: [{UserDefinedExperiment}, {UserDefinedExperiment}, ...]`` where the list is the experiments you defined.
 
   * **NOTE**: There are no sub-directives under the ``experiments`` header when invoked this way.
 
+Here is an example
 
-.. _yaml_experiments_restraints:
+.. code-block:: yaml
 
-Restraints Options
-==================
+   {UserDefinedExperiment}:
+     system: {UserDefinedSystem}
+     protocol: {UserDefinedProtocol}
+     restraint:
+       type: FlatBottom
+   {ASecondUserDefinedExperiment}:
+     system: {UserDefinedSystem}
+     protocol: {UserDefinedProtocol}
+     restraint:
+       type: Boresch
+   experiments: [{UserDefinedExperiment}, {ASecondUserDefinedExperiment}]
