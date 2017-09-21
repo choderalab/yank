@@ -47,9 +47,9 @@ standard_protocol = """
                     lambda_sterics: [1.0, 0.5, 0.0]"""
 
 
-def indent(str):
+def indent(input_string):
     """Put 4 extra spaces in front of every line."""
-    return '\n    '.join(str.split('\n'))
+    return '\n    '.join(input_string.split('\n'))
 
 
 def examples_paths():
@@ -60,6 +60,7 @@ def examples_paths():
     ben_tol_dir = os.path.join(data_dir, 'benzene-toluene-explicit')
     abl_imatinib_dir = os.path.join(data_dir, 'abl-imatinib-explicit')
     tol_dir = os.path.join(data_dir, 'toluene-explicit')
+    benz_tol_dir = os.path.join(data_dir, 'benzene-toluene-standard-state')
 
     paths = dict()
     paths['lysozyme'] = os.path.join(p_xylene_dir, '181L-pdbfixer.pdb')
@@ -81,6 +82,10 @@ def examples_paths():
                                 os.path.join(tol_dir, 'solvent.xml')]
     paths['toluene-vacuum'] = [os.path.join(tol_dir, 'vacuum.pdb'),
                                os.path.join(tol_dir, 'vacuum.xml')]
+    paths['benzene-toluene-boxless'] = [os.path.join(benz_tol_dir, 'standard_state_complex_boxless.inpcrd'),
+                                        os.path.join(benz_tol_dir, 'standard_state_complex.prmtop')]
+    paths['benzene-toluene-nan'] = [os.path.join(benz_tol_dir, 'standard_state_complex_nan.inpcrd'),
+                                    os.path.join(benz_tol_dir, 'standard_state_complex.prmtop')]
     return paths
 
 
@@ -198,6 +203,88 @@ def get_template_script(output_dir='.'):
                abl_path=paths['abl'], lysozyme_path=paths['lysozyme'])
 
     return yank_load(template_script)
+
+
+def get_functionality_script(output_directory=',', number_of_iter=0, experiment_repeats=1, number_nan_repeats=0):
+    """
+    A computationally simple pre-setup system which can be loaded to manipulate a formal experiment
+    Should not be used for scientific testing per-se, but can be used to test functional components of experiment
+
+    Parameters
+    ==========
+    output_directory : str, Optional
+        Output directory to set in script
+    number_of_iter : int Optional, Default: 1
+        Number of iterations to run
+    experiment_repeats : int, Optional, Default: 1
+        Number of times the experiment is repeated in a "experiments" header
+    number_nan_repeats : int, Optional, Default: 0
+        Number of times the experiment with a NaN is repeated, this will be added to the end of the stack
+    """
+    paths = examples_paths()
+    template_script = """
+    ---
+    options:
+      minimize: no
+      verbose: no
+      output_dir: {output_directory}
+      number_of_iterations: {number_of_iter}
+      nsteps_per_iteration: 10
+      temperature: 300*kelvin
+      pressure: null
+      anisotropic_dispersion_cutoff: null
+
+    solvents:
+      vacuum:
+        nonbonded_method: NoCutoff
+
+    systems:
+      premade:
+        phase1_path: {boxless_path}
+        phase2_path: {boxless_path}
+        ligand_dsl: resname ene
+        solvent: vacuum
+      premade_nan:
+        phase1_path: {nan_path}
+        phase2_path: {nan_path}
+        ligand_dsl: resname ene
+        solvent: vacuum
+
+    protocols:
+      absolute-binding:
+        complex:
+          alchemical_path:
+            lambda_electrostatics: [0.0, 0.0]
+            lambda_sterics:        [0.0, 0.0]
+        solvent:
+          alchemical_path:
+            lambda_electrostatics: [1.0, 1.0]
+            lambda_sterics:        [1.0, 1.0]
+
+    the_exp:
+      system: premade
+      protocol: absolute-binding
+      restraint:
+        type: FlatBottom
+    the_nan_exp:
+      system: premade_nan
+      protocol: absolute-binding
+      restraint:
+        type: FlatBottom
+
+    experiments: [{repeating}]
+
+    """
+    repeating_string = ', '.join(['the_exp'] * experiment_repeats)
+    repeating_nan_string = ', '.join(['the_nan_exp'] * number_nan_repeats)
+    if repeating_string != '':
+        repeating_string += ', '
+    repeating_string += repeating_nan_string
+    return yank_load(template_script.format(output_directory=output_directory,
+                                            number_of_iter=number_of_iter,
+                                            repeating=repeating_string,
+                                            boxless_path=paths['benzene-toluene-boxless'],
+                                            nan_path=paths['benzene-toluene-nan']))
 
 
 # ==============================================================================
@@ -2139,6 +2226,32 @@ def test_automatic_alchemical_path():
         exp_builder._options['resume_simulation'] = True
         exp_builder.run_experiments()
         assert last_touched_yaml == os.stat(generated_yaml_script_path).st_mtime
+
+
+def test_experiment_nan():
+    """Test that when an experiment NaN's, it returns a formal error when things go wrong"""
+    with mmtools.utils.temporary_directory() as tmp_dir:
+        yaml_script = get_functionality_script(output_directory=tmp_dir, experiment_repeats=0, number_nan_repeats=1)
+        exp_builder = ExperimentBuilder(script=yaml_script)
+        with moltools.utils.temporary_cd(exp_builder._script_dir):
+            exp_builder._check_resume()
+            exp_builder._setup_experiments()
+            exp_builder._generate_experiments_protocols()
+            for experiment in exp_builder._expand_experiments():
+                output = exp_builder._run_experiment(experiment)
+                assert isinstance(output, utils.SimulationNaNError)
+
+
+def test_multi_experiment_nan():
+    """Test that no one experiment going NaN crashes the simulation"""
+    with mmtools.utils.temporary_directory() as tmp_dir:
+        yaml_script = get_functionality_script(output_directory=tmp_dir,
+                                               number_of_iter=2,
+                                               experiment_repeats=2,
+                                               number_nan_repeats=2)
+        exp_builder = ExperimentBuilder(yaml_script)
+        # This should run correctly and not raise errors
+        exp_builder.run_experiments()
 
 
 if __name__ == '__main__':

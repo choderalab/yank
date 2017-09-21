@@ -1817,7 +1817,18 @@ class ReplicaExchange(object):
         # If this is the first iteration, compute and store the
         # starting energies of the minimized/equilibrated structures.
         if self._iteration == 0:
-            self._compute_energies()
+            try:
+                self._compute_energies()
+            # We're intercepting a possible initial NaN position here thrown by OpenMM, which is a simple exception
+            # So we have to under-specify this trap.
+            except Exception as e:
+                if 'coordinate is nan' in str(e).lower():
+                    err_message = "Initial coordinates were NaN! Check your inputs!"
+                    logger.critical(err_message)
+                    raise utils.SimulationNaNError(err_message)
+                else:
+                    # If not the special case, raise the error normally
+                    raise e
             mpi.run_single_node(0, self._reporter.write_energies, self._energy_thermodynamic_states,
                                 self._energy_unsampled_states, self._iteration)
             self._check_nan_energy()
@@ -1957,8 +1968,8 @@ class ReplicaExchange(object):
 
             # Raise exception.
             err_msg = "NaN encountered in {} energies for replicas {}".format(state_type, faulty_replicas)
-            logger.error(err_msg)
-            raise RuntimeError(err_msg)
+            logger.critical(err_msg)
+            raise utils.SimulationNaNError(err_msg)
 
     @mpi.on_single_node(rank=0, broadcast_result=False, sync_nodes=False)
     def _display_citations(self, overwrite_global=False):
@@ -2101,7 +2112,12 @@ class ReplicaExchange(object):
             prefix = 'nan-error-logs/iteration{}-replica{}-state{}'.format(
                 self._iteration, replica_id, thermodynamic_state_id)
             e.serialize_error(prefix)
-            raise
+            directory, file_template = os.path.split(prefix)
+            logger_message = "This Repex simulation threw a NaN!\nLook for error logs in:\n"
+            logger_message += "    Directory: {}".format(directory)
+            logger_message += "    File Name Base: {}".format(file_template)
+            logger.critical(logger_message)
+            raise utils.SimulationNaNError()
 
         # Return new positions and box vectors.
         return sampler_state.positions, sampler_state.box_vectors

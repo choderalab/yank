@@ -400,7 +400,12 @@ class Experiment(object):
 
                 # Run simulation for iterations_left or until we have to switch phase.
                 iterations_to_run = min(iterations_left[phase_id], switch_phase_interval)
-                alchemical_phase.run(n_iterations=iterations_to_run)
+                try:
+                    alchemical_phase.run(n_iterations=iterations_to_run)
+                except utils.SimulationNaNError:
+                    # Simulation has NaN'd, this experiment is done, flag phases as done and send error up stack
+                    self._are_phases_completed = [True] * len(self._are_phases_completed)
+                    raise
 
                 # Update phase iteration info.
                 iterations_left[phase_id] -= iterations_to_run
@@ -524,7 +529,6 @@ class ExperimentBuilder(object):
         'collision_rate': 1.0 / unit.picosecond,
         'mc_displacement_sigma': 10.0 * unit.angstroms
     }
-
 
     def __init__(self, script=None, job_id=None, n_jobs=None):
         """
@@ -700,16 +704,24 @@ class ExperimentBuilder(object):
 
             # Cycle between experiments every switch_experiment_interval iterations
             # until all of them are done.
-            completed = [False for _ in range(len(all_experiments))]
-            while not all(completed):
+            while len(all_experiments) > 0:
                 # Distribute experiments across MPI communicators if requested
+                completed = [False] * len(all_experiments)
                 if processes_per_experiment is None:
                     for exp_index, exp in enumerate(all_experiments):
                         completed[exp_index] = self._run_experiment(exp)
                 else:
-                    completed, experiment_indices = mpi.distribute(self._run_experiment,
-                                                                   distributed_args=all_experiments,
-                                                                   group_nodes=processes_per_experiment)
+                    completed = mpi.distribute(self._run_experiment,
+                                               distributed_args=all_experiments,
+                                               group_nodes=processes_per_experiment,
+                                               send_results_to='all')
+                # Remove any completed experiments, releasing possible parallel resources to be reused
+                # Evaluate in reverse order to avoid shuffling indices
+                for exp_index in range(len(all_experiments)-1, -1, -1):
+                    # This will evaluate True for any "True" entry, and any "SimulationNaNError" entries
+                    # NaN'd simulations handled within the experiment itself.
+                    if completed[exp_index]:
+                        all_experiments.pop(exp_index)
 
     def build_experiments(self):
         """
@@ -2278,7 +2290,22 @@ class ExperimentBuilder(object):
             switch_experiment_interval = self._options['switch_experiment_interval']
 
         built_experiment = self._build_experiment(experiment_path, experiment)
-        built_experiment.run(n_iterations=switch_experiment_interval)
+        # Trap a NaN'd simulation by capturing only the error we can handle, let all others raise normally
+        try:
+            built_experiment.run(n_iterations=switch_experiment_interval)
+        except utils.SimulationNaNError as e:
+            nan_warning_string = '\n'  # initial blank line for spacing
+            nan_warning_string += ('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n'
+                                   '!     CRITICAL: Experiment NaN    !\n'
+                                   '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n'
+                                   'The following experiment threw a NaN! It should NOT be considered!\n'
+                                   )
+            nan_warning_string += 'Experiment: {}\n'.format(self._get_experiment_dir(experiment_path))
+            nan_warning_string += '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n' * 2
+            # Print out to critical logger
+            logger.critical(nan_warning_string)
+            # Return error at end to be handled by whatever invoked function
+            return e
         return built_experiment.is_completed
 
 
