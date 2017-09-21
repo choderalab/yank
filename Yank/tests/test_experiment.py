@@ -2232,10 +2232,14 @@ def test_experiment_nan():
     """Test that when an experiment NaN's, it returns a formal error when things go wrong"""
     with mmtools.utils.temporary_directory() as tmp_dir:
         yaml_script = get_functionality_script(output_directory=tmp_dir, experiment_repeats=0, number_nan_repeats=1)
-        exp_builder = ExperimentBuilder(yaml_script)
-        for experiment in exp_builder.build_experiments():
-            output = exp_builder._run_experiment(experiment)
-            assert isinstance(output, utils.SimulationNaNError)
+        exp_builder = ExperimentBuilder(script=yaml_script)
+        with moltools.utils.temporary_cd(exp_builder._script_dir):
+            exp_builder._check_resume()
+            exp_builder._setup_experiments()
+            exp_builder._generate_experiments_protocols()
+            for experiment in exp_builder._expand_experiments():
+                output = exp_builder._run_experiment(experiment)
+                assert isinstance(output, utils.SimulationNaNError)
 
 
 def test_multi_experiment_nan():
