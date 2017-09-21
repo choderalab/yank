@@ -705,7 +705,6 @@ class ExperimentBuilder(object):
 
             # Cycle between experiments every switch_experiment_interval iterations
             # until all of them are done.
-            nand = [False for _ in range(len(all_experiments))]
             while len(all_experiments) > 0:
                 # Distribute experiments across MPI communicators if requested
                 completed = [False] * len(all_experiments)
@@ -718,7 +717,8 @@ class ExperimentBuilder(object):
                                                group_nodes=processes_per_experiment,
                                                send_results_to='all')
                 # Remove any completed experiments, releasing possible parallel resources to be reused
-                for exp_index in range(len(all_experiments)):
+                # Evaluate in reverse order to avoid shuffling indices
+                for exp_index in range(len(all_experiments)-1, -1, -1):
                     # This will evaluate True for any "True" entry, and any "SimulationNaNError" entries
                     # NaN'd simulations handled within the experiment itself.
                     if completed[exp_index]:
