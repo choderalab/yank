@@ -45,7 +45,7 @@ requirements:
     - pymbar
     - ambermini >=16.16.0
     - docopt
-    - openmoltools
+    - openmoltools >=0.7.5
     - mpi4py
     - pyyaml
     - clusterutils
