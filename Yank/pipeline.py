@@ -1253,10 +1253,13 @@ class SetupDatabase:
                 # Generate parameters
                 charge_method = mol_descr['antechamber']['charge_method']
                 input_mol_path = os.path.abspath(mol_descr['filepath'])
+                # Use Gaff in parameters, otherwise default to gaff2
+                gaff = 'gaff' if 'leaprc.gaff' in mol_descr['leap']['parameters'] else 'gaff2'
                 with moltools.utils.temporary_cd(mol_dir):
                     moltools.amber.run_antechamber(mol_id, input_mol_path,
                                                    charge_method=charge_method,
-                                                   net_charge=net_charge)
+                                                   net_charge=net_charge,
+                                                   gaff_version=gaff)
 
                 # Save new parameters paths
                 mol_descr['filepath'] = os.path.join(mol_dir, mol_id + '.gaff.mol2')
