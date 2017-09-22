@@ -1183,9 +1183,10 @@ class ReplicaExchange(object):
         they will be assigned to the correspondent thermodynamic state on
         creation. If None is provided, Langevin dynamics with 2fm timestep, 5.0/ps collision rate,
         and 500 steps per iteration will be used.
-    number_of_iterations : int or None, Optional, Default: 1
-        The number of iterations to perform
-        If None, an unlimited number of iterations is run
+    number_of_iterations : int or infinity, optional, default: 1
+        The number of iterations to perform. Both ``float('inf')`` and
+        ``numpy.inf`` are accepted for infinity. If you set this to infinity,
+        be sure to set also ``online_analysis_interval``.
     replica_mixing_scheme : 'swap-all', 'swap-neighbors' or None, Default: 'swap-all'
         The scheme used to swap thermodynamic states between replicas.
     online_analysis_interval : None or Int >= 1, optional, default None
@@ -1535,8 +1536,9 @@ class ReplicaExchange(object):
         @staticmethod
         def _number_of_iterations_validator(instance, number_of_iterations):
             # Support infinite number of iterations.
-            if number_of_iterations is None:
-                number_of_iterations = np.inf
+            if not (0 <= number_of_iterations <= float('inf')):
+                raise ValueError('Accepted values for number_of_iterations are'
+                                 'non-negative integers and infinity.')
             return number_of_iterations
 
         @staticmethod
@@ -1868,7 +1870,8 @@ class ReplicaExchange(object):
             if (self._online_analysis_interval is not None and
                     self._iteration > self._online_analysis_minimum_iterations and
                     self._iteration % self._online_analysis_interval == 0):
-                self._run_online_analysis()
+                # Executed only by node 0 and broadcasted to be used in _is_completed().
+                self._last_err_free_energy = self._run_online_analysis()
 
             # Show timing statistics if debug level is activated.
             if logger.isEnabledFor(logging.DEBUG):
@@ -1879,9 +1882,10 @@ class ReplicaExchange(object):
                 estimated_total_time = time_per_iteration * iteration_limit
                 estimated_finish_time = time.time() + estimated_time_remaining
                 logger.debug("Iteration took {:.3f}s.".format(iteration_time))
-                logger.debug("Estimated completion in {}, at {} (consuming total wall clock time {}).".format(
-                    str(datetime.timedelta(seconds=estimated_time_remaining)), time.ctime(estimated_finish_time),
-                    str(datetime.timedelta(seconds=estimated_total_time))))
+                if estimated_time_remaining != float('inf'):
+                    logger.debug("Estimated completion in {}, at {} (consuming total wall clock time {}).".format(
+                        str(datetime.timedelta(seconds=estimated_time_remaining)), time.ctime(estimated_finish_time),
+                        str(datetime.timedelta(seconds=estimated_total_time))))
 
             # Perform sanity checks to see if we should terminate here.
             self._check_nan_energy()
@@ -1899,7 +1903,8 @@ class ReplicaExchange(object):
 
         """
         if self._iteration + n_iterations > self._number_of_iterations:
-            self._number_of_iterations = self._iteration + n_iterations
+            # This MUST be assigned to a property or the storage won't be updated.
+            self.number_of_iterations = self._iteration + n_iterations
         self.run(n_iterations)
 
     def __repr__(self):
@@ -2333,7 +2338,7 @@ class ReplicaExchange(object):
     # Internal-usage: Online Analysis.
     # -------------------------------------------------------------------------
 
-    @mpi.on_single_node(rank=0, broadcast_result=False, sync_nodes=False)
+    @mpi.on_single_node(rank=0, broadcast_result=True)
     @mpi.delayed_termination
     @mmtools.utils.with_timer('Computing online free energy estimate')
     def _run_online_analysis(self):
@@ -2389,6 +2394,9 @@ class ReplicaExchange(object):
         self._reporter.write_mbar_free_energies(self._iteration, self._last_mbar_f_k,
                                                 (free_energy, self._last_err_free_energy))
 
+        # Broadcast the last free energy used to determine completion.
+        return self._last_err_free_energy
+
     @staticmethod
     def _get_last_written_free_energy(reporter, iteration):
         """Get the last free energy computed from online analysis"""
@@ -2405,7 +2413,7 @@ class ReplicaExchange(object):
         return last_f_k, last_free_energy
 
     def _is_completed(self, iteration_limit=None):
-        """Check if we have completed the run previously"""
+        """Check if we have reached the required number of iterations or statistical error."""
         if iteration_limit is None:
             iteration_limit = self._number_of_iterations
 

@@ -94,7 +94,7 @@ def yank_load(script):
     return yaml.load(textwrap.dedent(script), Loader=YankLoader)
 
 
-def get_template_script(output_dir='.'):
+def get_template_script(output_dir='.', keep_schrodinger=False, keep_openeye=False):
     """Return a YAML template script as a dict."""
     paths = examples_paths()
     template_script = """
@@ -202,7 +202,23 @@ def get_template_script(output_dir='.'):
                pxylene_path=paths['p-xylene'], toluene_path=paths['toluene'],
                abl_path=paths['abl'], lysozyme_path=paths['lysozyme'])
 
-    return yank_load(template_script)
+    # Load script as dictionary.
+    script_dict = yank_load(template_script)
+
+    # Find all molecules that require optional tools.
+    molecules_to_remove = []
+    for molecule_id, molecule_description in script_dict['molecules'].items():
+        need_schrodinger = 'epik' in molecule_description
+        need_openeye = any([k in molecule_description for k in ['name', 'smiles', 'openeye']])
+        if ((need_schrodinger and not keep_schrodinger) or
+                (need_openeye and not keep_openeye)):
+            molecules_to_remove.append(molecule_id)
+
+    # Remove molecules.
+    for molecule_id in molecules_to_remove:
+        del script_dict['molecules'][molecule_id]
+
+    return script_dict
 
 
 def get_functionality_script(output_directory=',', number_of_iter=0, experiment_repeats=1, number_nan_repeats=0):
@@ -331,7 +347,7 @@ def test_yaml_parsing():
         collision_rate: 5.0 / picosecond
         timestep: 2.0 * femtosecond
         nsteps_per_iteration: 2500
-        number_of_iterations: 1000.999
+        number_of_iterations: .inf
         equilibration_timestep: 1.0 * femtosecond
         number_of_equilibration_iterations: 100
         minimize: False
@@ -354,8 +370,9 @@ def test_yaml_parsing():
     assert exp_builder._options['randomize_ligand_sigma_multiplier'] == 1.0e-2
     assert exp_builder._options['nsteps_per_iteration'] == 2500
     assert type(exp_builder._options['nsteps_per_iteration']) is int
-    assert exp_builder._options['number_of_iterations'] == 1000
-    assert type(exp_builder._options['number_of_iterations']) is int
+    assert exp_builder._options['number_of_iterations'] == float('inf')
+    assert exp_builder._options['number_of_equilibration_iterations'] == 100
+    assert type(exp_builder._options['number_of_equilibration_iterations']) is int
     assert exp_builder._options['minimize'] is False
 
 
@@ -802,7 +819,7 @@ def test_setup_name_smiles_openeye_charges():
     """Setup molecule from name and SMILES with openeye charges and gaff."""
     with mmtools.utils.temporary_directory() as tmp_dir:
         molecules_ids = ['toluene-smiles', 'p-xylene-name']
-        yaml_content = get_template_script(tmp_dir)
+        yaml_content = get_template_script(tmp_dir, keep_openeye=True)
         exp_builder = ExperimentBuilder(yaml_content)
         exp_builder._db._setup_molecules(*molecules_ids)
 
@@ -840,7 +857,7 @@ def test_clashing_atoms():
     benzene_path = examples_paths()['benzene']
     toluene_path = examples_paths()['toluene']
     with mmtools.utils.temporary_directory() as tmp_dir:
-        yaml_content = get_template_script(tmp_dir)
+        yaml_content = get_template_script(tmp_dir, keep_openeye=True)
         system_id = 'explicit-system'
         system_description = yaml_content['systems'][system_id]
         system_description['pack'] = True
@@ -882,7 +899,7 @@ def test_clashing_atoms():
 def test_epik_enumeration():
     """Test epik protonation state enumeration."""
     with mmtools.utils.temporary_directory() as tmp_dir:
-        yaml_content = get_template_script(tmp_dir)
+        yaml_content = get_template_script(tmp_dir, keep_schrodinger=True)
         exp_builder = ExperimentBuilder(yaml_content)
         mol_ids = ['benzene-epik0', 'benzene-epikcustom']
         exp_builder._db._setup_molecules(*mol_ids)
@@ -1483,12 +1500,67 @@ def test_neutralize_system():
         assert os.path.exists(inpcrd_path)
 
 
+def get_number_of_ions(exp_builder, phase, system_id):
+    """Return number of ions in the system.
+
+    Parameters
+    ----------
+    exp_builder : ExperimentBuilder
+        The experiment builder.
+    phase : str
+        complex, solvent, solvent1, solvent2.
+    system_id : str
+        The ID of the system.
+
+    Returns
+    -------
+    n_pos_ions : int
+        Number of positive ions in the system.
+    n_neg_ions : int
+        Number of negative ions in the system.
+    n_ionic_strength_ions : int
+        Expected number of ions needed to reach the desired ionic strength.
+
+    """
+    # Read in output pdb file to read ionic strength.
+    if phase == 'complex' or phase == 'solvent1':
+        phase_id = 0
+    else:
+        phase_id = 1
+    system_filepath = exp_builder._db.get_system_files_paths(system_id)[phase_id].position_path
+    system_filepath = os.path.splitext(system_filepath)[0] + '.pdb'
+    system_traj = mdtraj.load(system_filepath)
+
+    # Count number of waters and ions.
+    n_waters = 0
+    n_pos_ions = 0
+    n_neg_ions = 0
+    for res in system_traj.topology.residues:
+        if res.is_water:
+            n_waters += 1
+        elif '+' in res.name:
+            n_pos_ions += 1
+        elif '-' in res.name:
+            n_neg_ions += 1
+
+    # Verify that number of ions roughly models the expected ionic strength.
+    try:
+        solvent_id = exp_builder._db.systems[system_id]['solvent']
+    except KeyError:
+        solvent_id = exp_builder._db.systems[system_id][phase]  # solvent1 or solvent2
+    ionic_strength = exp_builder._db.solvents[solvent_id]['ionic_strength']
+    n_ionic_strength_ions = int(np.round(n_waters * ionic_strength / (55.41*unit.molar)))
+
+    return n_pos_ions, n_neg_ions, n_ionic_strength_ions
+
+  
 @unittest.skipIf(not utils.is_openeye_installed(), "This test requires OpenEye toolkit")
 def test_charged_ligand():
     """Check that there are alchemical counterions for charged ligands."""
     imatinib_path = examples_paths()['imatinib']
     with mmtools.utils.temporary_directory() as tmp_dir:
         receptors = {'Asp': -1, 'Abl': -8}  # receptor name -> net charge
+        solvent_names = ['PME', 'PMEionic']
         updates = yank_load("""
         molecules:
             Asp:
@@ -1502,54 +1574,66 @@ def test_charged_ligand():
         explicit-system:
             receptor: !Combinatorial {}
             ligand: imatinib
-        """.format(imatinib_path, list(receptors.keys())))
-        yaml_content = get_template_script(tmp_dir)
+            pack: yes
+            solvent: !Combinatorial {}
+        """.format(imatinib_path, list(receptors.keys()), solvent_names))
+        yaml_content = get_template_script(tmp_dir, keep_openeye=True)
+        yaml_content['options']['resume_setup'] = True
         yaml_content['molecules'].update(updates['molecules'])
+        yaml_content['solvents']['PMEionic'] = copy.deepcopy(yaml_content['solvents']['PME'])
+        yaml_content['solvents']['PMEionic']['ionic_strength'] = '10*millimolar'
         yaml_content['systems']['explicit-system'].update(updates['explicit-system'])
         exp_builder = ExperimentBuilder(yaml_content)
 
         for receptor in receptors:
-            system_files_paths = exp_builder._db.get_system('explicit-system_' + receptor)
-            for i, phase_name in enumerate(['complex', 'solvent']):
-                inpcrd_file_path = system_files_paths[i].position_path
-                prmtop_file_path = system_files_paths[i].parameters_path
 
-                system, topology, _ = pipeline.read_system_files(
-                    inpcrd_file_path, prmtop_file_path, {'nonbondedMethod': openmm.app.PME})
+            for solvent_name in solvent_names:
+                system_id = 'explicit-system_{}_{}'.format(receptor, solvent_name)
+                system_files_paths = exp_builder._db.get_system(system_id)
+                for i, phase_name in enumerate(['complex', 'solvent']):
+                    inpcrd_file_path = system_files_paths[i].position_path
+                    prmtop_file_path = system_files_paths[i].parameters_path
 
-                # Identify components.
-                if phase_name == 'complex':
-                    alchemical_region = 'ligand_atoms'
-                    topography = Topography(topology, ligand_atoms='resname MOL')
+                    system, topology, _ = pipeline.read_system_files(
+                        inpcrd_file_path, prmtop_file_path, {'nonbondedMethod': openmm.app.PME})
 
-                    # Safety check: receptor must be negatively charged as expected
-                    receptor_net_charge = pipeline.compute_net_charge(system,
-                                                                      topography.receptor_atoms)
-                    assert receptor_net_charge == receptors[receptor]
-                else:
-                    alchemical_region = 'solute_atoms'
-                    topography = Topography(topology)
+                    # Identify components.
+                    if phase_name == 'complex':
+                        alchemical_region = 'ligand_atoms'
+                        topography = Topography(topology, ligand_atoms='resname MOL')
 
-                # There is a single ligand/solute counterion.
-                ligand_counterions = pipeline.find_alchemical_counterions(system, topography,
-                                                                          alchemical_region)
-                assert len(ligand_counterions) == 1
-                ion_idx = ligand_counterions[0]
-                ion_atom = next(itertools.islice(topology.atoms(), ion_idx, None))
-                assert '-' in ion_atom.residue.name
+                        # Safety check: receptor must be negatively charged as expected
+                        receptor_net_charge = pipeline.compute_net_charge(system,
+                                                                          topography.receptor_atoms)
+                        assert receptor_net_charge == receptors[receptor]
+                    else:
+                        alchemical_region = 'solute_atoms'
+                        topography = Topography(topology)
 
-                # In complex, there should be both ions even if the system is globally
-                # neutral (e.g. asp lys system), because of the alchemical ion
-                found_resnames = set()
-                output_dir = os.path.dirname(system_files_paths[0].position_path)
-                with open(os.path.join(output_dir, phase_name + '.pdb'), 'r') as f:
-                    for line in f:
-                        if len(line) > 10 and line[:5] != 'CRYST':
-                            found_resnames.add(line[17:20])
-                if phase_name == 'complex':
-                    assert set(['Na+', 'Cl-']) <= found_resnames
-                else:
-                    assert set(['Cl-']) <= found_resnames
+                    # There is a single ligand/solute counterion.
+                    ligand_counterions = pipeline.find_alchemical_counterions(system, topography,
+                                                                              alchemical_region)
+                    assert len(ligand_counterions) == 1
+                    ion_idx = ligand_counterions[0]
+                    ion_atom = next(itertools.islice(topology.atoms(), ion_idx, None))
+                    assert '-' in ion_atom.residue.name
+
+                    # In complex, there should be both ions even if the system is globally
+                    # neutral (e.g. asp lys system), because of the alchemical ion.
+                    n_pos_ions, n_neg_ions, n_ionic_strength_ions = get_number_of_ions(
+                        exp_builder, phase=phase_name, system_id=system_id)
+                    print(system_id, phase_name, n_ionic_strength_ions, n_pos_ions, n_neg_ions)
+
+                    # Check correct number of ions.
+                    if phase_name == 'complex':
+                        n_neutralization_ions = abs(receptors[receptor])
+                        if n_ionic_strength_ions > 0:
+                            n_neutralization_ions -= 1  # we don't add an extra anion to alchemically modify
+                        assert n_pos_ions == n_neutralization_ions + n_ionic_strength_ions
+                        assert n_neg_ions == max(1, n_ionic_strength_ions)
+                    else:
+                        assert n_pos_ions == n_ionic_strength_ions
+                        assert n_neg_ions == 1 + n_ionic_strength_ions
 
 
 def test_ionic_strength():
@@ -1566,27 +1650,10 @@ def test_ionic_strength():
         exp_builder = ExperimentBuilder(yaml_script)
         exp_builder._db.get_system('hydration-system')
 
-        # Read in output pdb file to read ionic strength.
-        system_filepath = exp_builder._db.get_system_files_paths('hydration-system')[0].position_path
-        system_filepath = os.path.splitext(system_filepath)[0] + '.pdb'
-        system_traj = mdtraj.load(system_filepath)
+        n_pos_ions, n_neg_ions, expected_n_ions = get_number_of_ions(exp_builder, phase='solvent1',
+                                                                     system_id='hydration-system')
 
-        # Count number of waters and ions.
-        n_waters = 0
-        n_pos_ions = 0
-        n_neg_ions = 0
-        for res in system_traj.topology.residues:
-            if res.is_water:
-                n_waters += 1
-            elif '+' in res.name:
-                n_pos_ions += 1
-            elif '-' in res.name:
-                n_neg_ions += 1
-
-        # Verify that number of ions roughly models the expected ionic strength.
-        ionic_strength = exp_builder._db.solvents['PME']['ionic_strength']
-        expected_n_ions = int(np.round(n_waters * ionic_strength / (55.41*unit.molar)))
-        assert expected_n_ions > 0  # Or this test doesn't make sense.
+        assert expected_n_ions > 0  # Otherwise this test doesn't make sense.
         assert n_pos_ions == expected_n_ions, '{}, {}'.format(n_pos_ions, expected_n_ions)
         assert n_neg_ions == expected_n_ions, '{}, {}'.format(n_neg_ions, expected_n_ions)
 

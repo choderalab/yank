@@ -31,7 +31,7 @@ import openmoltools as moltools
 from simtk import openmm, unit
 from simtk.openmm.app import PDBFile
 
-from . import utils
+from . import utils, mpi
 
 logger = logging.getLogger(__name__)
 
@@ -982,14 +982,17 @@ class SetupDatabase:
             return system_files_paths
 
         system_descr = self.systems[system_id]
+        log_message = 'Setting up the systems for {}, {} and {}'
 
         if 'receptor' in system_descr:  # binding free energy calculation
             receptor_id = system_descr['receptor']
             ligand_id = system_descr['ligand']
             solvent_id = system_descr['solvent']
             system_parameters = system_descr['leap']['parameters']
+            logger.info(log_message.format(receptor_id, ligand_id, solvent_id))
 
             # solvent phase
+            logger.debug('Setting up solvent phase')
             self._setup_system(system_files_paths[1].position_path, False,
                                0, system_parameters, solvent_id, ligand_id)
 
@@ -999,6 +1002,7 @@ class SetupDatabase:
                 alchemical_charge = 0
 
             # complex phase
+            logger.debug('Setting up complex phase')
             self._setup_system(system_files_paths[0].position_path,
                                system_descr['pack'], alchemical_charge,
                                system_parameters,  solvent_id, receptor_id,
@@ -1008,16 +1012,47 @@ class SetupDatabase:
             solvent1_id = system_descr['solvent1']
             solvent2_id = system_descr['solvent2']
             system_parameters = system_descr['leap']['parameters']
+            logger.info(log_message.format(solute_id, solvent1_id, solvent2_id))
 
             # solvent1 phase
+            logger.debug('Setting up solvent1 phase')
             self._setup_system(system_files_paths[0].position_path, False,
                                0, system_parameters, solvent1_id, solute_id)
 
             # solvent2 phase
+            logger.debug('Setting up solvent2 phase')
             self._setup_system(system_files_paths[1].position_path, False,
                                0, system_parameters, solvent2_id, solute_id)
 
         return system_files_paths
+
+    def setup_all_systems(self):
+        """Setup all molecules and systems in the database.
+
+        The method supports parallelization through MPI.
+
+        """
+        # Find all molecules that need to be set up.
+        molecules_to_setup = []
+        for molecule_id, molecule_description in self.molecules.items():
+            if not self.is_molecule_setup(molecule_id)[0]:
+                molecules_to_setup.append(molecule_id)
+
+        # Parallelize generation of all molecules among nodes.
+        mpi.distribute(self._setup_molecules,
+                       distributed_args=molecules_to_setup,
+                       group_nodes=1, sync_nodes=True)
+
+        # Find all systems that need to be set up.
+        systems_to_setup = []
+        for system_id, system_description in self.systems.items():
+            if not self.is_system_setup(system_id)[0]:
+                systems_to_setup.append(system_id)
+
+        # Parallelize generation of all systems among nodes.
+        mpi.distribute(self.get_system,
+                       distributed_args=systems_to_setup,
+                       group_nodes=1, sync_nodes=True)
 
     def _generate_molecule(self, molecule_id):
         """Generate molecule using the OpenEye toolkit from name or smiles.
@@ -1246,7 +1281,7 @@ class SetupDatabase:
                     moltools.openeye.molecule_to_mol2(oe_molecule, mol2_file_path,
                                                       residue_name=residue_name)
 
-                    utils.Mol2File(mol2_file_path).net_charge = None  # normalize charges
+                    utils.Mol2File(mol2_file_path).round_charge()  # normalize charges
                     net_charge = None  # we don't need Epik's net charge
                     mol_descr['filepath'] = mol2_file_path
 
@@ -1267,7 +1302,7 @@ class SetupDatabase:
 
                 # Normalize charges if not done before
                 if 'openeye' not in mol_descr:
-                    utils.Mol2File(mol_descr['filepath']).net_charge = None
+                    utils.Mol2File(mol_descr['filepath']).round_charge()
 
             # Determine small molecule net charge
             extension = os.path.splitext(mol_descr['filepath'])[1]
@@ -1394,8 +1429,28 @@ class SetupDatabase:
             clearance = float(solvent['clearance'].value_in_unit(unit.angstroms))
             tleap.solvate(leap_unit=unit_to_solvate, solvent_model=leap_solvent_model, clearance=clearance)
 
-            # Add alchemically modified ions
-            if alchemical_charge != 0:
+            # First, determine how many ions we need to add for the ionic strength.
+            if not ignore_ionic_strength and solvent['ionic_strength'] != 0.0*unit.molar:
+                # Currently we support only monovalent ions.
+                for ion_name in [solvent['positive_ion'], solvent['negative_ion']]:
+                    assert '2' not in ion_name and '3' not in ion_name
+
+                logger.debug('Estimating number of water molecules in the box.')
+                n_waters = self._get_number_box_waters(pack, alchemical_charge, system_parameters,
+                                                       solvent_id, *molecule_ids)
+                logger.debug('Estimated number of water molecules: {}'.format(n_waters))
+
+                # Water molarity at room temperature: 998.23g/L / 18.01528g/mol ~= 55.41M
+                n_ions_ionic_strength = int(np.round(n_waters * solvent['ionic_strength'] / (55.41*unit.molar)))
+
+                logging.debug('Adding {} ions in {} water molecules to reach ionic strength '
+                              'of {}'.format(n_ions_ionic_strength, n_waters, solvent['ionic_strength']))
+            else:
+                n_ions_ionic_strength = 0
+
+            # Add alchemically modified ions that we don't already add for ionic strength.
+            if abs(alchemical_charge) > n_ions_ionic_strength:
+                n_alchemical_ions = abs(alchemical_charge) - n_ions_ionic_strength
                 try:
                     if alchemical_charge > 0:
                         ion = solvent['negative_ion']
@@ -1407,7 +1462,9 @@ class SetupDatabase:
                     logger.error(err_msg)
                     raise RuntimeError(err_msg)
                 tleap.add_ions(leap_unit=unit_to_solvate, ion=ion,
-                               num_ions=abs(alchemical_charge), replace_solvent=True)
+                               num_ions=n_alchemical_ions, replace_solvent=True)
+                logging.debug('Adding {} {} ion to neutralize ligand charge of {}'
+                              ''.format(n_alchemical_ions, ion, alchemical_charge))
 
             # Neutralizing solvation box
             if 'positive_ion' in solvent:
@@ -1418,18 +1475,11 @@ class SetupDatabase:
                                replace_solvent=True)
 
             # Ions for the ionic strength must be added AFTER neutralization.
-            if not ignore_ionic_strength and solvent['ionic_strength'] != 0.0*unit.molar:
-                # Currently we support only monovalent ions.
-                for ion_name in [solvent['positive_ion'], solvent['negative_ion']]:
-                    assert '2' not in ion_name and '3' not in ion_name
-                n_waters = self._get_number_box_waters(pack, alchemical_charge, system_parameters,
-                                                       solvent_id, *molecule_ids)
-                # Water molarity at room temperature: 998.23g/L / 18.01528g/mol ~= 55.41M
-                n_ions = int(np.round(n_waters * solvent['ionic_strength'] / (55.41*unit.molar)))
+            if n_ions_ionic_strength != 0:
                 tleap.add_ions(leap_unit=unit_to_solvate, ion=solvent['positive_ion'],
-                               num_ions=n_ions, replace_solvent=True)
+                               num_ions=n_ions_ionic_strength, replace_solvent=True)
                 tleap.add_ions(leap_unit=unit_to_solvate, ion=solvent['negative_ion'],
-                               num_ions=n_ions, replace_solvent=True)
+                               num_ions=n_ions_ionic_strength, replace_solvent=True)
 
         # Check charge
         tleap.new_section('Check charge')
@@ -1549,8 +1599,10 @@ def trailblaze_alchemical_protocol(thermodynamic_state, sampler_state, mcmc_move
             simulated_energies = np.zeros(n_samples_per_state)
             for i in range(n_samples_per_state):
                 mcmc_move.apply(thermodynamic_state, sampler_state)
+                context, _ = mmtools.cache.global_context_cache.get_context(thermodynamic_state)
+                sampler_state.apply_to_context(context, ignore_velocities=True)
+                simulated_energies[i] = thermodynamic_state.reduced_potential(context)
                 sampler_states.append(copy.deepcopy(sampler_state))
-                simulated_energies[i] = thermodynamic_state.reduced_potential(sampler_state)
 
             # Find first state that doesn't overlap with simulated one
             # with std(du) within std_energy_threshold +- threshold_tolerance.
@@ -1591,14 +1643,20 @@ def trailblaze_alchemical_protocol(thermodynamic_state, sampler_state, mcmc_move
                 old_std_energy = std_energy
                 denergies = reweighted_energies - simulated_energies
                 std_energy = np.std(denergies)
+                logger.debug('trailblazing: state_parameter {}, simulated_value {}, current_parameter_value {}, '
+                             'std_du {}'.format(state_parameter, optimal_protocol[state_parameter][-1],
+                                                current_parameter_value, std_energy))
 
             # Update the optimal protocol with the new value of this parameter.
             # The other parameters remain fixed.
             for par_name in optimal_protocol:
+                # Make sure we append to a Python float to the list.
+                # Lists of numpy types sometimes give problems.
                 if par_name == state_parameter:
-                    optimal_protocol[par_name].append(current_parameter_value)
+                    protocol_value = float(current_parameter_value)
                 else:
-                    optimal_protocol[par_name].append(optimal_protocol[par_name][-1])
+                    protocol_value = float(optimal_protocol[par_name][-1])
+                optimal_protocol[par_name].append(protocol_value)
 
     logger.debug('Alchemical path found: {}'.format(optimal_protocol))
     return optimal_protocol

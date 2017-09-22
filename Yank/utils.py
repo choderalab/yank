@@ -1254,8 +1254,59 @@ class Mol2File(object):
 
     @property
     def net_charge(self):
-        """Net charge of the file as a float"""
-        residue = parmed.load_file(self._file_path)
+        """Net charge of the file as a float (read-only)."""
+        structure = parmed.load_file(self._file_path, structure=True)
+        return self._compute_net_charge(structure)
+
+    def round_charge(self):
+        """Round the net charge to the nearest integer to 6-digit precision.
+
+        Raises
+        ------
+        RuntimeError
+            If the total net charge is far from the nearest integer by more
+            than 0.05.
+
+        """
+        precision = 6
+
+        # Load mol2 file. We load as structure as residues are buggy (see ParmEd#898).
+        structure = parmed.load_file(self._file_path, structure=True)
+        old_net_charge = self._compute_net_charge(structure)
+
+        # We don't rewrite the mol2 file with ParmEd if the
+        # net charge is already within precision.
+        expected_net_charge = round(old_net_charge)
+        if abs(expected_net_charge - old_net_charge) < 10**(-precision):
+            return
+
+        # Convert to residue to use the fix_charges method.
+        residue_container = parmed.modeller.ResidueTemplateContainer.from_structure(structure)
+        if len(residue_container) > 1:
+            logging.warning("Found mol2 file with multiple residues. The charge of "
+                            "each residue will be rounded to the nearest integer.")
+
+        # Round the net charge.
+        residue_container.fix_charges(precision=precision)
+
+        # Compute new net charge.
+        new_net_charge = self._compute_net_charge(residue_container)
+        logging.debug('Fixing net charge from {} to {}'.format(old_net_charge, new_net_charge))
+
+        # Something is wrong if the new rounded net charge is very different.
+        if abs(old_net_charge - new_net_charge) > 0.05:
+            raise RuntimeError('The rounded net charge is too different from the original one.')
+
+        # Copy new charges to structure.
+        for structure_residue, residue in zip(structure.residues, residue_container):
+            for structure_atom, atom in zip(structure_residue.atoms, residue.atoms):
+                structure_atom.charge = atom.charge
+
+        # Rewrite charges.
+        parmed.formats.Mol2File.write(structure, self._file_path)
+
+    @staticmethod
+    def _compute_net_charge(residue):
         try:
             tot_charge = sum(a.charge for a in residue.atoms)
         except AttributeError:  # residue is a ResidueTemplateContainer
@@ -1264,24 +1315,11 @@ class Mol2File(object):
                 tot_charge += sum(a.charge for a in res.atoms)
         return tot_charge
 
-    @net_charge.setter
-    def net_charge(self, value):
-        residue = parmed.load_file(self._file_path)
-        try:
-            residue.fix_charges(to=value, precision=6)
-        except TypeError:  # residue is a ResidueTemplateContainer
-            if value is not None:
-                raise ValueError('Cannot modify the net charge of a mol2 '
-                                 'file molecule with multiple residues.')
-            logging.warning("Found mol2 file with multiple residues. The charge of "
-                            "each residue will be rounded to the nearest integer.")
-            residue.fix_charges(precision=6)
-        parmed.formats.Mol2File.write(residue, self._file_path)
-
 
 # -----------------
 # OpenEye functions
 # -----------------
+
 def is_openeye_installed(oetools=('oechem', 'oequacpac', 'oeiupac', 'oeomega')):
     """
     Check if a given OpenEye tool is installed and Licensed
@@ -1525,12 +1563,12 @@ class TLeap:
             # use loadAmberParams if this is a frcmod file and source otherwise
             base_name = os.path.basename(par_file)
             extension = os.path.splitext(base_name)[1]
-            if 'frcmod' in base_name:
+            if 'frcmod' in base_name or extension == '.dat':
                 self.add_commands('loadAmberParams ' + local_name)
             elif extension == '.off' or extension == '.lib':
                 self.add_commands('loadOff ' + local_name)
             else:
-                self.add_commands('source ' + par_file)
+                self.add_commands('source ' + local_name)
 
             # Update loaded parameters cache
             self._loaded_parameters.add(par_file)

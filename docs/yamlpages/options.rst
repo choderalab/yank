@@ -540,13 +540,13 @@ set, this option can be used to extend previous simulations past their original 
 Specifying ``0`` will run through the setup, create all the simulation files, store all options, and minimize the
 initial configurations (if specified), but will not run any production simulations.
 
-Set this to ``null`` to run an unlimited number of iterations. The simulation will not stop unless
-some other criteria is stops it. We **strongly** recommend specifying either
+Set this to ``.inf`` (note the prepended dot character) to run an unlimited number of iterations. The simulation will
+not stop unless some other criteria is stops it. We **strongly** recommend specifying either
 :ref:`online free energy analysis <yaml_options_online_analysis_parameters>` and/or
 :ref:`a phase switching interval <yaml_options_switch_phase_interval>` to ensure there is at least some stop criteria,
 and all phases yield some samples.
 
-Valid Options (1): <Integer> or ``null``
+Valid Options (1): <Integer> or ``.inf``
 
 
 ..

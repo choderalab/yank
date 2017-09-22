@@ -315,8 +315,9 @@ class Experiment(object):
     ----------
     phases : list of yank.yank.AlchemicalPhases
         Phases to run for the experiment
-    number_of_iterations : int
-        Total number of iterations each phase will be run for
+    number_of_iterations : int or infinity
+        Total number of iterations each phase will be run for. Both
+        ``float('inf')`` and ``numpy.inf`` are accepted for infinity.
     switch_phase_interval : int
         Number of iterations each phase will be run before the cycling to the next phase
 
@@ -338,9 +339,9 @@ class Experiment(object):
 
     @property
     def iteration(self):
-        """int, Current total number of iterations which have been run."""
+        """pair of int, Current total number of iterations which have been run for each phase."""
         if None in self._phases_last_iterations:
-            return 0
+            return 0, 0
         return self._phases_last_iterations
 
     @property
@@ -351,7 +352,7 @@ class Experiment(object):
         """
         Run the experiment
 
-        Run's until either the maximum number of iterations have been reached or the sampler
+        Runs until either the maximum number of iterations have been reached or the sampler
         for that phase reports its own completion (e.g. online analysis)
 
         Parameters
@@ -359,6 +360,7 @@ class Experiment(object):
         n_iterations : int or None, Optional, Default: None
             Optional parameter to run for a finite number of iterations instead of up to the maximum number of
             iterations.
+
         """
         # Handle default argument.
         if n_iterations is None:
@@ -407,12 +409,16 @@ class Experiment(object):
                     self._are_phases_completed = [True] * len(self._are_phases_completed)
                     raise
 
-                # Update phase iteration info.
-                iterations_left[phase_id] -= iterations_to_run
-                self._phases_last_iterations[phase_id] = alchemical_phase.iteration
-
-                # Do one last check to see if the phase has converged by other means (e.g. online analysis)
+                # Check if the phase has converged.
                 self._are_phases_completed[phase_id] = alchemical_phase.is_completed
+
+                # Update phase iteration info. iterations_to_run may be infinity
+                # if number_of_iterations is.
+                if iterations_to_run == float('inf') and self._are_phases_completed[phase_id]:
+                    iterations_left[phase_id] = 0
+                else:
+                    iterations_left[phase_id] -= iterations_to_run
+                self._phases_last_iterations[phase_id] = alchemical_phase.iteration
 
                 # Delete alchemical phase and prepare switching.
                 del alchemical_phase
@@ -1011,12 +1017,19 @@ class ExperimentBuilder(object):
         template_options.pop('alchemical_torsions')
 
         # Some options need to be treated differently.
+        def integer_or_infinity(value):
+            if value != float('inf'):
+                value = int(value)
+            return value
+
         def check_anisotropic_cutoff(cutoff):
             if cutoff == 'auto':
                 return cutoff
             else:
                 return utils.process_unit_bearing_str(cutoff, unit.angstroms)
+
         special_conversions = {'constraints': to_openmm_app,
+                               'number_of_iterations': integer_or_infinity,
                                'anisotropic_dispersion_cutoff': check_anisotropic_cutoff}
 
         # Validate parameters
@@ -1492,7 +1505,11 @@ class ExperimentBuilder(object):
 
         """
         experiment_dir = self._get_experiment_dir(experiment_path)
-        log_file_name = 'experiments' if experiment_path == '' else os.path.basename(experiment_path)
+        if experiment_path == '':
+            log_file_name = 'experiments'
+        else:
+            # Normalize path to drop eventual final slash character.
+            log_file_name = os.path.normpath(os.path.basename(experiment_path))
         return os.path.join(experiment_dir, log_file_name)
 
     def _get_generated_yaml_script_path(self, experiment_path):
@@ -1743,7 +1760,6 @@ class ExperimentBuilder(object):
     # Experiment setup
     # --------------------------------------------------------------------------
 
-    @mpi.on_single_node(rank=0, sync_nodes=True)
     def _setup_experiments(self):
         """Set up all experiments without running them.
 
@@ -1751,20 +1767,15 @@ class ExperimentBuilder(object):
         cd into the script directory! Use setup_experiments() for that.
 
         """
-        # TODO parallelize setup
-        for _, experiment in self._expand_experiments():
-            # Force system and molecules setup
-            system_id = experiment['system']
-            sys_descr = self._db.systems[system_id]  # system description
-            try:
-                try:  # binding free energy system
-                    components = (sys_descr['receptor'], sys_descr['ligand'], sys_descr['solvent'])
-                except KeyError:  # partition/solvation free energy system
-                    components = (sys_descr['solute'], sys_descr['solvent1'], sys_descr['solvent2'])
-                logger.info('Setting up the systems for {}, {} and {}'.format(*components))
-                self._db.get_system(system_id)
-            except KeyError:  # system files are given directly by the user
-                pass
+        # Create setup directory if it doesn't exist.
+        os.makedirs(self.setup_dir, exist_ok=True)
+
+        # Configure log file for setup.
+        setup_log_file_path = os.path.join(self.setup_dir, 'setup.log')
+        utils.config_root_logger(self._options['verbose'], setup_log_file_path)
+
+        # Setup all systems.
+        self._db.setup_all_systems()
 
     # --------------------------------------------------------------------------
     # Automatic alchemical path generation
@@ -1807,7 +1818,7 @@ class ExperimentBuilder(object):
         # Parallelize generation of all protocols among nodes.
         mpi.distribute(self._generate_experiment_protocol,
                        distributed_args=experiments_to_generate,
-                       group_nodes=1)
+                       group_nodes=1, sync_nodes=True)
 
     def _generate_experiment_protocol(self, experiment, constrain_receptor=True,
                                       n_equilibration_iterations=None, **kwargs):
@@ -1906,12 +1917,19 @@ class ExperimentBuilder(object):
             mcmc_move = alchemical_phase._sampler.mcmc_moves[0]
             del alchemical_phase
 
-            # Restrain the protein heavy atoms to avoid drastic
+            # Restrain the receptor heavy atoms to avoid drastic
             # conformational changes (possibly after equilibration).
             if len(phase.topography.receptor_atoms) != 0 and constrain_receptor:
+                receptor_atoms_set = set(phase.topography.receptor_atoms)
+                # Check first if there are alpha carbons. If not, restrain all carbons.
+                restrained_atoms = [atom.index for atom in phase.topography.topology.atoms
+                                    if atom.name is 'CA' and atom.index in receptor_atoms_set]
+                if len(restrained_atoms) == 0:
+                    # Select all carbon atoms of the receptor.
+                    restrained_atoms = [atom.index for atom in phase.topography.topology.atoms
+                                        if atom.element.symbol is 'C' and atom.index in receptor_atoms_set]
                 mmtools.forcefactories.restrain_atoms(thermodynamic_state, sampler_state,
-                                                      phase.topography.topology, atoms_dsl='name CA',
-                                                      sigma=3.0*unit.angstroms)
+                                                      restrained_atoms, sigma=3.0*unit.angstroms)
 
             # Find protocol.
             alchemical_path = pipeline.trailblaze_alchemical_protocol(thermodynamic_state, sampler_state,
