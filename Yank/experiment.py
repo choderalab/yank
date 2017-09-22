@@ -341,7 +341,7 @@ class Experiment(object):
     def iteration(self):
         """pair of int, Current total number of iterations which have been run for each phase."""
         if None in self._phases_last_iterations:
-            return 0
+            return 0, 0
         return self._phases_last_iterations
 
     @property
