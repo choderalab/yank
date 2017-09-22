@@ -11,6 +11,16 @@ The full release history can be viewed `at the GitHub yank releases page <https:
 - Python 2.X Support officially *removed*
 - Additional doc cleanups
 - Added restraint selection flowchart to documentation
+- Implement #772: Use infinity instead of None to specify unlimited number of iterations.
+- Implemented #557: Parallelized setup of molecules and systems with MPI.
+- Generalized restrained atoms selection during trailblaze scheme to include non-protein receptors (see also choderalab/openmmtools#290).
+- Fix loading of leap parameters from a local .dat files (allow us to use local versions of gaff parameters for validation).
+- Fix #762: Trailblaze protocol crashes with MPI.
+- Fixed bug when computing reduced potentials of simulated energies during trailblaze scheme.
+- Fix #763: Automatic path is saved in YAML as a mix of python and numpy floats.
+- Fixed the number of neutralizing counterions when receptor and ligand have opposite charges (we were adding too many in this case).
+- Fixed the log file name with lists of experiments that ended up being just .log.
+- Implemented workaround for fixing the net charge of cyclic multi-residue mol2 files.
 
 0.17.0 Auto Alchemical Path and Split Langevin Integrators
 ----------------------------------------------------------
