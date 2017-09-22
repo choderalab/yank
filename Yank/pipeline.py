@@ -1281,7 +1281,7 @@ class SetupDatabase:
                     moltools.openeye.molecule_to_mol2(oe_molecule, mol2_file_path,
                                                       residue_name=residue_name)
 
-                    utils.Mol2File(mol2_file_path).net_charge = None  # normalize charges
+                    utils.Mol2File(mol2_file_path).round_charge()  # normalize charges
                     net_charge = None  # we don't need Epik's net charge
                     mol_descr['filepath'] = mol2_file_path
 
@@ -1299,7 +1299,7 @@ class SetupDatabase:
 
                 # Normalize charges if not done before
                 if 'openeye' not in mol_descr:
-                    utils.Mol2File(mol_descr['filepath']).net_charge = None
+                    utils.Mol2File(mol_descr['filepath']).round_charge()
 
             # Determine small molecule net charge
             extension = os.path.splitext(mol_descr['filepath'])[1]
