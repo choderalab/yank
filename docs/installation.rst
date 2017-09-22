@@ -14,22 +14,21 @@ The `yank Anaconda Cloud page <https://anaconda.org/omnia/yank>`_ has useful ins
 If you are using the `anaconda <https://www.continuum.io/downloads/>`_ scientific Python distribution, you already have the ``conda`` package manager installed.
 If not, the quickest way to get started is to install the `miniconda <http://conda.pydata.org/miniconda.html>`_ distribution, a lightweight minimal installation of Anaconda Python.
 
-On ``linux``, you can install the Python 2.7 version into ``$HOME/miniconda2`` with (on ``bash`` systems. Replace
-``Miniconda2`` with ``Miniconda`` if you want to use Python 3):
+On ``linux``, you can install the Python 3.6 version into ``$HOME/miniconda3`` with:
 
 .. code-block:: bash
 
    $ wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh
-   $ bash ./Miniconda3-latest-Linux-x86_64.sh -b -p $HOME/miniconda2
-   $ export PATH="$HOME/miniconda2/bin:$PATH"
+   $ bash ./Miniconda3-latest-Linux-x86_64.sh -b -p $HOME/miniconda3
+   $ export PATH="$HOME/miniconda3/bin:$PATH"
 
 On ``osx``, you want to use the ``osx`` binary
 
 .. code-block:: bash
 
    $ wget https://repo.continuum.io/miniconda/Miniconda3-latest-MacOSX-x86_64.sh
-   $ bash ./Miniconda3-latest-Linux-x86_64.sh -b -p $HOME/miniconda2
-   $ export PATH="$HOME/miniconda2/bin:$PATH"
+   $ bash ./Miniconda3-latest-Linux-x86_64.sh -b -p $HOME/miniconda3
+   $ export PATH="$HOME/miniconda3/bin:$PATH"
 
 You may want to add the new ```$PATH`` extension to your ``~/.bashrc`` file to ensure Anaconda Python is used by
 default.
@@ -225,7 +224,9 @@ Supported platforms and environments
 Software
 --------
 
-YANK runs on Python 2.7, Python 3.5, and Python 3.6
+YANK runs on Python 3.5, and Python 3.6
+
+We no longer support Python 2.X.
 
 Dependencies
 ++++++++++++

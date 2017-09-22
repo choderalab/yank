@@ -155,8 +155,8 @@ def config_root_logger(verbose, log_file_path=None):
     logging.root.addHandler(terminal_handler)
 
     # Add file handler to root logger
+    file_format = '%(asctime)s - %(levelname)s - %(name)s - %(message)s'
     if log_file_path is not None:
-        file_format = '%(asctime)s - %(levelname)s - %(name)s - %(message)s'
         file_handler = logging.FileHandler(log_file_path)
         file_handler.setLevel(logging.DEBUG)
         file_handler.setFormatter(logging.Formatter(file_format))
@@ -167,6 +167,19 @@ def config_root_logger(verbose, log_file_path=None):
         logging.root.setLevel(logging.DEBUG)
     else:
         logging.root.setLevel(terminal_handler.level)
+
+    # Setup critical logger file if a logfile is specified
+    # No need to worry about MPI due to it already being set above
+    if log_file_path is not None:
+        basepath, ext = os.path.splitext(log_file_path)
+        critical_log_path = basepath + "_CRITICAL" + ext
+        # Create the critical file handler to only create the file IF a critical message is sent
+        critical_file_handler = logging.FileHandler(critical_log_path, delay=True)
+        critical_file_handler.setLevel(logging.CRITICAL)
+        # Add blank lines to space out critical errors
+        critical_file_format = file_format + "\n\n\n"
+        critical_file_handler.setFormatter(logging.Formatter(critical_file_format))
+        logging.root.addHandler(critical_file_handler)
 
 
 # =======================================================================================
@@ -669,7 +682,7 @@ def get_data_filename(relative_path):
     relative_path : str
         Name of the file to load, with respect to the yank egg folder which
         is typically located at something like
-        ``~/anaconda/lib/python2.7/site-packages/yank-*.egg/examples/``
+        ``~/anaconda/lib/python3.6/site-packages/yank-*.egg/examples/``
 
     Returns
     -------
@@ -788,6 +801,8 @@ def merge_dict(dict1, dict2):
 
     In Python 3.5 there is a syntax to do this ``{**dict1, **dict2}`` but
     in Python 2 you need to go through ``update()``.
+
+    TODO: Refactor to no longer need this now that Python 2 is dropped
 
     Parameters
     ----------
@@ -1777,6 +1792,15 @@ class TLeap:
 
 
 # =============================================================================================
+# YANK Exceptions
+# =============================================================================================
+
+class SimulationNaNError(Exception):
+    """Error when a simulation goes to NaN"""
+    pass
+
+
+# =============================================================================================
 # Python 2/3 compatibility
 # =============================================================================================
 
@@ -1794,9 +1818,9 @@ else:  # Python 2
         return d.iteritems()
 
 
-#=============================================================================================
+# =============================================================================================
 # Main and tests
-#=============================================================================================
+# =============================================================================================
 
 if __name__ == "__main__":
     import doctest

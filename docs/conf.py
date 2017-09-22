@@ -48,7 +48,7 @@ numpydoc_class_members_toctree = False
 
 extensions.append('notebook_sphinxext')
 
-_python_doc_base = 'http://docs.python.org/2.7'
+_python_doc_base = 'http://docs.python.org/3.6'
 intersphinx_mapping = {
     _python_doc_base: None,
     'http://docs.scipy.org/doc/numpy': None,
