@@ -201,6 +201,7 @@ class AlchemicalPhaseFactory(object):
         'number_of_equilibration_iterations': 0,
         'equilibration_timestep': 1.0 * unit.femtosecond,
         'checkpoint_interval': 10,
+        'store_solute_trajectory': True,
         'integrator_splitting': "V R O R V",
     }
 
@@ -243,8 +244,19 @@ class AlchemicalPhaseFactory(object):
         # Create a reporter if this is only a path.
         if isinstance(self.storage, str):
             checkpoint_interval = self.options['checkpoint_interval']
+            # Get the solute atoms
+            if self.options['store_solute_trajectory']:
+                solute_atoms = self.topography.solute_atoms
+                if checkpoint_interval == 1:
+                    logger.warning("WARNING! You have specified both a solute-only trajectory AND a checkpoint "
+                                   "interval of 1! You are about write the trajectory of the solute twice!\n"
+                                   "This can be okay if you are running explicit solvent and want faster retrieval "
+                                   "of the solute atoms, but in implicit solvent, this is redundant.")
+            else:
+                solute_atoms = ()
             # We don't allow checkpoint file overwriting in YAML file
-            reporter = repex.Reporter(self.storage, checkpoint_interval=checkpoint_interval)
+            reporter = repex.Reporter(self.storage, checkpoint_interval=checkpoint_interval,
+                                      analysis_particle_indices=solute_atoms)
             create_kwargs['storage'] = reporter
             self.storage = reporter
 

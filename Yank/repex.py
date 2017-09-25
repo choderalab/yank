@@ -112,13 +112,18 @@ class Reporter(object):
 
         The reporter internally tracks what data goes into which file, so its transparent to all other classes
         In the future, this will be able to take Storage classes as well
+    analysis_particle_indices : tuple of ints, Optional. Default: () (empty tuple)
+        Indices of particles which should be treated as special when manipulating read and write functions.
+        If this is an empty tuple, then no particles are treated as special
 
     Attributes
     ----------
     filepath
 
     """
-    def __init__(self, storage, open_mode=None, checkpoint_interval=10, checkpoint_storage=None):
+    def __init__(self, storage, open_mode=None,
+                 checkpoint_interval=10, checkpoint_storage=None,
+                 analysis_particle_indices=()):
         # Handle checkpointing
         if type(checkpoint_interval) != int:
             raise ValueError("checkpoint_interval must be an integer!")
@@ -135,6 +140,7 @@ class Reporter(object):
         self._storage_checkpoint = None
         self._storage_analysis = None
         self._checkpoint_interval = checkpoint_interval
+        self._analysis_particle_indices = tuple(analysis_particle_indices)
         if open_mode is not None:
             self.open(open_mode)
 
@@ -167,6 +173,11 @@ class Reporter(object):
     def _storage_dict(self):
         """Return an iterable dictionary of the self._storage_X objects"""
         return {'checkpoint': self._storage_checkpoint, 'analysis': self._storage_analysis}
+
+    @property
+    def analysis_particle_indices(self):
+        """Return the tuple of indices of the particles which additional information is stored on for analysis"""
+        return self._analysis_particle_indices
 
     def storage_exists(self, skip_size=False):
         """
@@ -330,6 +341,24 @@ class Reporter(object):
                 logger.debug("checkpoint_interval != on-file checkpoint interval! "
                              "Using on file analysis interval of {}.".format(on_file_interval))
                 self._checkpoint_interval = on_file_interval
+            # Check the special particle indices
+            # Handle the "variable does not exist" case
+            if 'analysis_particle_indices' not in self._storage_analysis.variables:
+                n_particles = len(self._analysis_particle_indices)
+                # This dimension won't exist if the above statement does not either
+                self._storage_analysis.createDimension('analysis_particles', n_particles)
+                ncvar_analysis_particles = \
+                    self._storage_analysis.createVariable('analysis_particle_indices', int, 'analysis_particles')
+                ncvar_analysis_particles[:] = self._analysis_particle_indices
+                ncvar_analysis_particles.long_name = ("analysis_particle_indices[analysis_particles] is the indices of "
+                                                      "the particles with extra information stored about them in the"
+                                                      "analysis file.")
+            # Now handle the "variable does exist but does not match the provided ones
+            stored_analysis_particles = self._storage_analysis.variables['analysis_particle_indices'][:]
+            if self._analysis_particle_indices != tuple(stored_analysis_particles.astype(int)):
+                logger.debug("analysis_particle_indices != on-file analysis_particle_indices!"
+                             "Using on file analysis indices of {}".format(stored_analysis_particles))
+                self._analysis_particle_indices = tuple(stored_analysis_particles.astype(int))
 
     def close(self):
         """Close the storage files"""
@@ -472,51 +501,45 @@ class Reporter(object):
                 # Finally write the dictionary
                 self.write_dict('{}/state{}'.format(state_type, state_id), serialized_state, fixed_dimension=True)
 
-    def read_sampler_states(self, iteration):
+    def read_sampler_states(self, iteration, analysis_particles_only=False):
         """Retrieve the stored sampler states on the checkpoint file
 
         If the iteration is not on the checkpoint interval, None is returned
+
 
         Parameters
         ----------
         iteration : int
             The iteration at which to read the data.
+        analysis_particles_only : bool, Optional, Default: False
+            If set, will return the trajectory of ONLY the analysis particles flagged on original creation of the files
 
         Returns
         -------
         sampler_states : list of SamplerStates or None
             The previously stored sampler states for each replica.
 
-            If the iteration is not on the checkpoint_interval, None is returned
+            If the iteration is not on the checkpoint_interval and the analysis_particles_only is not set,
+            None is returned
+
+            If analysis_particles_only is set, will return only the subset of particles which make up the solute
 
         """
-        iteration = self._calculate_last_iteration(iteration)
-        checkpoint_iteration = self._calculate_checkpoint_iteration(iteration)
-        if checkpoint_iteration is not None:
-            n_states = self._storage_checkpoint.dimensions['replica'].size
-
-            sampler_states = list()
-            for replica_index in range(n_states):
-                # Restore positions.
-                x = self._storage_checkpoint.variables['positions'][checkpoint_iteration, replica_index, :, :].astype(np.float64)
-                positions = unit.Quantity(x, unit.nanometers)
-
-                # Restore box vectors.
-                x = self._storage_checkpoint.variables['box_vectors'][checkpoint_iteration, replica_index, :, :].astype(np.float64)
-                box_vectors = unit.Quantity(x, unit.nanometers)
-
-                # Create SamplerState.
-                sampler_states.append(mmtools.states.SamplerState(positions=positions, box_vectors=box_vectors))
-
-            return sampler_states
+        if analysis_particles_only:
+            if len(self._analysis_particle_indices) == 0:
+                raise ValueError("No particles were flagged for special analysis! "
+                                 "No such trajectory would have been written!")
+            return self._read_sampler_states_from_given_file(iteration, storage_file='analysis',
+                                                             obey_checkpoint_interval=False)
         else:
-            return None
+            return self._read_sampler_states_from_given_file(iteration, storage_file='checkpoint',
+                                                             obey_checkpoint_interval=True)
 
     @mmtools.utils.with_timer('Storing sampler states')
     def write_sampler_states(self, sampler_states, iteration):
         """Store all sampler states for a given iteration on the checkpoint file
 
-        If the iteration is not on the checkpoint interval, no data is written
+        If the iteration is not on the checkpoint interval, only the analysis_particle_indices data is written, if set.
 
         Parameters
         ----------
@@ -526,58 +549,23 @@ class Reporter(object):
             The iteration at which to store the data.
 
         """
-        # Check if the schema must be initialized, do this regardless of the checkpoint_interval for consistency
-        if 'positions' not in self._storage_checkpoint.variables:
-            n_atoms = sampler_states[0].n_particles
-            n_states = len(sampler_states)
-
-            # Create dimensions. Replica dimension could have been created before.
-            self._storage_checkpoint.createDimension('atom', n_atoms)
-            if 'replica' not in self._storage_checkpoint.dimensions:
-                self._storage_checkpoint.createDimension('replica', n_states)
-
-            # Create variables.
-            ncvar_positions = self._storage_checkpoint.createVariable('positions', 'f4',
-                                                                      ('iteration', 'replica', 'atom', 'spatial'),
-                                                                      zlib=True, chunksizes=(1, n_states, n_atoms, 3))
-            ncvar_box_vectors = self._storage_checkpoint.createVariable('box_vectors', 'f4',
-                                                                        ('iteration', 'replica', 'spatial', 'spatial'),
-                                                                        zlib=False, chunksizes=(1, n_states, 3, 3))
-            ncvar_volumes = self._storage_checkpoint.createVariable('volumes', 'f8', ('iteration', 'replica'),
-                                                                    zlib=False, chunksizes=(1, n_states))
-
-            # Define units for variables.
-            setattr(ncvar_positions, 'units', 'nm')
-            setattr(ncvar_box_vectors, 'units', 'nm')
-            setattr(ncvar_volumes, 'units', 'nm**3')
-
-            # Define long (human-readable) names for variables.
-            setattr(ncvar_positions, "long_name", ("positions[iteration][replica][atom][spatial] is position of "
-                                                   "coordinate 'spatial' of atom 'atom' from replica 'replica' for "
-                                                   "iteration 'iteration'."))
-
-            setattr(ncvar_box_vectors, "long_name", ("box_vectors[iteration][replica][i][j] is dimension j of box "
-                                                     "vector i for replica 'replica' from iteration 'iteration-1'."))
-            setattr(ncvar_volumes, "long_name", ("volume[iteration][replica] is the box volume for replica 'replica' "
-                                                 "from iteration 'iteration-1'."))
-        checkpoint_iteration = self._calculate_checkpoint_iteration(iteration)
-        if checkpoint_iteration is not None:
-            # Store sampler states.
-            for replica_index, sampler_state in enumerate(sampler_states):
-                # Store positions
-                x = sampler_state.positions / unit.nanometers
-                self._storage_checkpoint.variables['positions'][checkpoint_iteration, replica_index, :, :] = x[:, :]
-
-                # Store box vectors and volume.
-                for i in range(3):
-                    vector_i = sampler_state.box_vectors[i] / unit.nanometers
-                    self._storage_checkpoint.variables['box_vectors'][checkpoint_iteration, replica_index, i, :] = \
-                        vector_i
-                self._storage_checkpoint.variables['volumes'][checkpoint_iteration, replica_index] = \
-                    sampler_state.volume / unit.nanometers**3
-        else:
-            logger.debug("Iteration {} not on the Checkpoint Interval of {}. "
-                         "Sampler State not written.".format(iteration, self._checkpoint_interval))
+        # Case of no special atoms, write to normal checkpoint
+        self._write_sampler_states_to_given_file(sampler_states, iteration, storage_file='checkpoint',
+                                                 obey_checkpoint_interval=True)
+        if len(self._analysis_particle_indices) > 0:
+            # Special case, pre-process the sampler_states
+            sampler_subset = []
+            for sampler_state in sampler_states:
+                positions = sampler_state.positions
+                # Subset positions by converting tuple of indices into the correct indexing scheme
+                # np.unravel_index works with tuples and lists
+                # Doing positions[tuple] tries to treat each index as a different dimension, which is different than
+                # positions[list]
+                position_subset = positions[np.unravel_index(self._analysis_particle_indices, positions.shape)]
+                sampler_subset.append(mmtools.states.SamplerState(position_subset,
+                                                                  box_vectors=sampler_state.box_vectors))
+            self._write_sampler_states_to_given_file(sampler_subset, iteration, storage_file='analysis',
+                                                     obey_checkpoint_interval=False)
 
     def read_replica_thermodynamic_states(self, iteration=slice(None)):
         """Retrieve the indices of the ThermodynamicStates for each replica on the analysis file
@@ -1152,6 +1140,149 @@ class Reporter(object):
             else:
                 raise ValueError("Iteration must be either an int or a slice!")
         return cast_iteration
+
+    @staticmethod
+    def _initilize_sampler_variables_on_file(dataset, n_atoms, n_states):
+        """
+        Initialize the NetCDF variables on the storage file needed to store sampler states.
+        Does nothing if file already initilzied
+
+        Parameters
+        ----------
+        dataset : NetCDF4 Dataset
+            Dataset to validate
+        n_atoms : int
+            Number of atoms which will be stored
+        n_states : int
+            Number of Sampler states which will be written
+        """
+        if 'positions' not in dataset.variables:
+
+            # Create dimensions. Replica dimension could have been created before.
+            dataset.createDimension('atom', n_atoms)
+            if 'replica' not in dataset.dimensions:
+                dataset.createDimension('replica', n_states)
+
+            # Create variables.
+            ncvar_positions = dataset.createVariable('positions', 'f4',
+                                                     ('iteration', 'replica', 'atom', 'spatial'),
+                                                     zlib=True, chunksizes=(1, n_states, n_atoms, 3))
+            ncvar_box_vectors = dataset.createVariable('box_vectors', 'f4',
+                                                       ('iteration', 'replica', 'spatial', 'spatial'),
+                                                       zlib=False, chunksizes=(1, n_states, 3, 3))
+            ncvar_volumes = dataset.createVariable('volumes', 'f8', ('iteration', 'replica'),
+                                                   zlib=False, chunksizes=(1, n_states))
+
+            # Define units for variables.
+            setattr(ncvar_positions, 'units', 'nm')
+            setattr(ncvar_box_vectors, 'units', 'nm')
+            setattr(ncvar_volumes, 'units', 'nm**3')
+
+            # Define long (human-readable) names for variables.
+            setattr(ncvar_positions, "long_name", ("positions[iteration][replica][atom][spatial] is position of "
+                                                   "coordinate 'spatial' of atom 'atom' from replica 'replica' for "
+                                                   "iteration 'iteration'."))
+
+            setattr(ncvar_box_vectors, "long_name", ("box_vectors[iteration][replica][i][j] is dimension j of box "
+                                                     "vector i for replica 'replica' from iteration 'iteration-1'."))
+            setattr(ncvar_volumes, "long_name", ("volume[iteration][replica] is the box volume for replica 'replica' "
+                                                 "from iteration 'iteration-1'."))
+
+    def _write_sampler_states_to_given_file(self, sampler_states, iteration,
+                                            storage_file='checkpoint', obey_checkpoint_interval=True):
+        """
+        Internal function to handle writing sampler states more generically to target file
+
+        Parameters
+        ----------
+        sampler_states : list of openmmtools.states.SamplerStates
+            The sampler states to store for each replica.
+        iteration : int
+            The iteration at which to store the data.
+        storage_file : string, Optional, Default: 'checkpoint'
+            Name of storage file we're writing to. Must match a valid key of self._storage_dict
+        obey_checkpoint_interval : bool, Optional, Default: False
+            Tells this (attempted) write to obey the checkpoint interval or not.
+            If True, no write out will be done if iteration is not on the checkpoint interval
+            If False, the write WILL occur
+        """
+
+        storage = self._storage_dict[storage_file]
+        # Check if the schema must be initialized, do this regardless of the checkpoint_interval for consistency
+        self._initilize_sampler_variables_on_file(storage, sampler_states[0].n_particles, len(sampler_states))
+        if obey_checkpoint_interval:
+            write_iteration = self._calculate_checkpoint_iteration(iteration)
+        else:
+            write_iteration = iteration
+        # Write the sampler state if we are on the checkpoint interval OR if told to ignore the interval
+        if write_iteration is not None:
+            # Store sampler states.
+            for replica_index, sampler_state in enumerate(sampler_states):
+                # Store positions
+                x = sampler_state.positions / unit.nanometers
+                storage.variables['positions'][write_iteration, replica_index, :, :] = x[:, :]
+
+                # Store box vectors and volume.
+                for i in range(3):
+                    vector_i = sampler_state.box_vectors[i] / unit.nanometers
+                    storage.variables['box_vectors'][write_iteration, replica_index, i, :] = vector_i
+                    storage.variables['volumes'][write_iteration, replica_index] = \
+                        sampler_state.volume / unit.nanometers ** 3
+        else:
+            logger.debug("Iteration {} not on the Checkpoint Interval of {}. "
+                         "Sampler State not written.".format(iteration, self._checkpoint_interval))
+
+    def _read_sampler_states_from_given_file(self, iteration, storage_file='checkpoint', obey_checkpoint_interval=True):
+        """
+        Internal function to handle reading sampler states more from a general storage file
+
+        Parameters
+        ----------
+        iteration : int
+            Iteration on which to read data from
+        storage_file : string, Optional, Default: 'checkpoint'
+            Name of storage file we're writing to. Must match a valid key of self._storage_dict
+        obey_checkpoint_interval : bool, Optional, Default: False
+            Tells this (attempted) write to obey the checkpoint interval or not.
+            If True, no write out will be done if iteration is not on the checkpoint interval
+            If False, the read will be attempted regardless
+
+            WARNING: If the storage file you specify was written on the checkpoint interval and you set
+            obey_checkpoint_interval=False, you will get undefined behavior!
+
+        Returns
+        -------
+        sampler_states : list of SamplerStates or None
+            The previously stored sampler states for each replica.
+
+            If the iteration is not on the checkpoint_interval and the file only writes on the checkpoint_interval,
+            None is returned
+        """
+        storage = self._storage_dict[storage_file]
+        if obey_checkpoint_interval:
+            iteration = self._calculate_last_iteration(iteration)
+            read_iteration = self._calculate_checkpoint_iteration(iteration)
+        else:
+            read_iteration = iteration
+        if read_iteration is not None:
+            n_states = storage.dimensions['replica'].size
+
+            sampler_states = list()
+            for replica_index in range(n_states):
+                # Restore positions.
+                x = storage.variables['positions'][read_iteration, replica_index, :, :].astype(np.float64)
+                positions = unit.Quantity(x, unit.nanometers)
+
+                # Restore box vectors.
+                x = storage.variables['box_vectors'][read_iteration, replica_index, :, :].astype(np.float64)
+                box_vectors = unit.Quantity(x, unit.nanometers)
+
+                # Create SamplerState.
+                sampler_states.append(mmtools.states.SamplerState(positions=positions, box_vectors=box_vectors))
+
+            return sampler_states
+        else:
+            return None
 
 
 # ==============================================================================
