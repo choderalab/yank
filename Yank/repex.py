@@ -557,11 +557,10 @@ class Reporter(object):
             sampler_subset = []
             for sampler_state in sampler_states:
                 positions = sampler_state.positions
-                # Subset positions by converting tuple of indices into the correct indexing scheme
-                # np.unravel_index works with tuples and lists
-                # Doing positions[tuple] tries to treat each index as a different dimension, which is different than
-                # positions[list]
-                position_subset = positions[np.unravel_index(self._analysis_particle_indices, positions.shape)]
+                # Subset positions
+                # Need the [arg, :] to get uniform behavior with tuple and list for arg
+                # since a ndarray[tuple] is different than ndarray[list]
+                position_subset = positions[self._analysis_particle_indices, :]
                 sampler_subset.append(mmtools.states.SamplerState(position_subset,
                                                                   box_vectors=sampler_state.box_vectors))
             self._write_sampler_states_to_given_file(sampler_subset, iteration, storage_file='analysis',
