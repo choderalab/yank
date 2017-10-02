@@ -251,14 +251,15 @@ class TestReporter(object):
 
     @staticmethod
     @contextlib.contextmanager
-    def temporary_reporter(checkpoint_interval=1, checkpoint_storage=None):
+    def temporary_reporter(checkpoint_interval=1, checkpoint_storage=None, analysis_particle_indices=()):
         """Create and initialize a reporter in a temporary directory."""
         with mmtools.utils.temporary_directory() as tmp_dir_path:
             storage_file = os.path.join(tmp_dir_path, 'temp_dir/test_storage.nc')
             assert not os.path.isfile(storage_file)
             reporter = Reporter(storage=storage_file, open_mode='w',
                                 checkpoint_interval=checkpoint_interval,
-                                checkpoint_storage=checkpoint_storage)
+                                checkpoint_storage=checkpoint_storage,
+                                analysis_particle_indices=analysis_particle_indices)
             assert reporter.storage_exists(skip_size=True)
             yield reporter
 
@@ -353,9 +354,10 @@ class TestReporter(object):
             thermodynamic_state_2 = unsampled_serialized[2]['thermodynamic_state']
             assert thermodynamic_state_2['_Reporter__compatible_state'] == 'thermodynamic_states/3'
 
-    def test_store_sampler_states(self):
+    def test_write_sampler_states(self):
         """Check correct storage of thermodynamic states."""
-        with self.temporary_reporter() as reporter:
+        analysis_particles = (1, 2)
+        with self.temporary_reporter(analysis_particle_indices=analysis_particles, checkpoint_interval=2) as reporter:
             # Create sampler states.
             alanine_test = testsystems.AlanineDipeptideVacuum()
             positions = alanine_test.positions
@@ -363,6 +365,42 @@ class TestReporter(object):
             sampler_states = [mmtools.states.SamplerState(positions=positions, box_vectors=box_vectors)
                               for _ in range(2)]
 
+            # Check that after writing and reading, states are identical.
+            for iteration in range(3):
+                reporter.write_sampler_states(sampler_states, iteration=iteration)
+                reporter.write_last_iteration(iteration)
+            restored_sampler_states = reporter.read_sampler_states(iteration=0)
+            for state, restored_state in zip(sampler_states, restored_sampler_states):
+                assert np.allclose(state.positions, restored_state.positions)
+                assert np.allclose(state.box_vectors / unit.nanometer, restored_state.box_vectors / unit.nanometer)
+            # Check that the analysis particles are written off checkpoint whereas full trajectory is not
+            restored_analysis_states = reporter.read_sampler_states(iteration=1, analysis_particles_only=True)
+            restored_checkpoint_states = reporter.read_sampler_states(iteration=1)
+            assert type(restored_analysis_states) is list
+            for state in restored_analysis_states:
+                assert state.positions.shape == (len(analysis_particles), 3)
+            assert restored_checkpoint_states is None
+            # Check that the analysis particles are written separate from the checkpoint particles
+            restored_analysis_states = reporter.read_sampler_states(iteration=2, analysis_particles_only=True)
+            restored_checkpoint_states = reporter.read_sampler_states(iteration=2)
+            assert len(restored_analysis_states) == len(restored_checkpoint_states)
+            for analysis_state, checkpoint_state in zip(restored_analysis_states, restored_checkpoint_states):
+                # This assert is dual purpose: Positions are identical; Analysis shape is correct
+                # Will raise a ValueError for np.allclose(x,y) if x.shape != y.shape
+                # Will raise AssertionError if the values are not allclose
+                assert np.allclose(analysis_state.positions, restored_checkpoint_states[analysis_particles, :])
+                assert np.allclose(analysis_state.box_vectors / unit.nanometer,
+                                   checkpoint_state.box_vectors / unit.nanometer)
+
+    def test_analysis_particles(self):
+        """Check that analysis particles are stored separate from the checkpoint particles"""
+        with self.temporary_reporter(analysis_particle_indices=(1, 2), checkpoint_interval=2) as reporter:
+            # Create sampler states.
+            alanine_test = testsystems.AlanineDipeptideVacuum()
+            positions = alanine_test.positions
+            box_vectors = alanine_test.system.getDefaultPeriodicBoxVectors()
+            sampler_states = [mmtools.states.SamplerState(positions=positions, box_vectors=box_vectors)
+                              for _ in range(2)]
             # Check that after writing and reading, states are identical.
             reporter.write_sampler_states(sampler_states, iteration=0)
             reporter.write_last_iteration(0)

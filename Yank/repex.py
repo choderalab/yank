@@ -140,6 +140,7 @@ class Reporter(object):
         self._storage_checkpoint = None
         self._storage_analysis = None
         self._checkpoint_interval = checkpoint_interval
+        # Cast to tuple no mater what 1-D-like input was given
         self._analysis_particle_indices = tuple(analysis_particle_indices)
         if open_mode is not None:
             self.open(open_mode)
