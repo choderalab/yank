@@ -388,26 +388,9 @@ class TestReporter(object):
                 # This assert is dual purpose: Positions are identical; Analysis shape is correct
                 # Will raise a ValueError for np.allclose(x,y) if x.shape != y.shape
                 # Will raise AssertionError if the values are not allclose
-                assert np.allclose(analysis_state.positions, restored_checkpoint_states[analysis_particles, :])
+                assert np.allclose(analysis_state.positions, checkpoint_state.positions[analysis_particles, :])
                 assert np.allclose(analysis_state.box_vectors / unit.nanometer,
                                    checkpoint_state.box_vectors / unit.nanometer)
-
-    def test_analysis_particles(self):
-        """Check that analysis particles are stored separate from the checkpoint particles"""
-        with self.temporary_reporter(analysis_particle_indices=(1, 2), checkpoint_interval=2) as reporter:
-            # Create sampler states.
-            alanine_test = testsystems.AlanineDipeptideVacuum()
-            positions = alanine_test.positions
-            box_vectors = alanine_test.system.getDefaultPeriodicBoxVectors()
-            sampler_states = [mmtools.states.SamplerState(positions=positions, box_vectors=box_vectors)
-                              for _ in range(2)]
-            # Check that after writing and reading, states are identical.
-            reporter.write_sampler_states(sampler_states, iteration=0)
-            reporter.write_last_iteration(0)
-            restored_sampler_states = reporter.read_sampler_states(iteration=0)
-            for state, restored_state in zip(sampler_states, restored_sampler_states):
-                assert np.allclose(state.positions, restored_state.positions)
-                assert np.allclose(state.box_vectors / unit.nanometer, restored_state.box_vectors / unit.nanometer)
 
     def test_store_replica_thermodynamic_states(self):
         """Check storage of replica thermodynamic states indices."""
