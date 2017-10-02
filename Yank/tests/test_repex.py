@@ -392,6 +392,37 @@ class TestReporter(object):
                 assert np.allclose(analysis_state.box_vectors / unit.nanometer,
                                    checkpoint_state.box_vectors / unit.nanometer)
 
+    def test_analysis_particle_mismatch(self):
+        """Test that previously stored analysis particles is higher priority."""
+        blank_analysis_particles = ()
+        set1_analysis_particles = (0, 1)
+        set2_analysis_particles = (0, 2)
+        # Does not use the temp reporter since we close and reopen reporter a few times
+        with mmtools.utils.temporary_directory() as tmp_dir_path:
+            # Test that starting with a blank analysis cannot be overwritten
+            blank_file = os.path.join(tmp_dir_path, 'temp_dir/blank_analysis.nc')
+            reporter = Reporter(storage=blank_file, open_mode='w',
+                                analysis_particle_indices=blank_analysis_particles)
+            reporter.close()
+            del reporter
+            new_blank_reporter = Reporter(storage=blank_file, open_mode='r',
+                                          analysis_particle_indices=set1_analysis_particles)
+            assert new_blank_reporter.analysis_particle_indices == blank_analysis_particles
+            del new_blank_reporter
+            # Test that starting from an initial set of particles and passing in a blank does not overwrite
+            set1_file = os.path.join(tmp_dir_path, 'temp_dir/set1_analysis.nc')
+            set1_reporter = Reporter(storage=set1_file, open_mode='w',
+                                     analysis_particle_indices=set1_analysis_particles)
+            set1_reporter.close()  # Don't delete, we'll need it for another test
+            new_set1_reporter = Reporter(storage=set1_file, open_mode='r',
+                                         analysis_particle_indices=blank_analysis_particles)
+            assert new_set1_reporter.analysis_particle_indices == set1_analysis_particles
+            del new_set1_reporter
+            # Test that passing in a different set than the initial returns the initial set
+            new2_set1_reporter = Reporter(storage=set1_file, open_mode='r',
+                                          analysis_particle_indices=set2_analysis_particles)
+            assert new2_set1_reporter.analysis_particle_indices == set1_analysis_particles
+
     def test_store_replica_thermodynamic_states(self):
         """Check storage of replica thermodynamic states indices."""
         with self.temporary_reporter() as reporter:

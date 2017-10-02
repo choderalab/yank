@@ -19,7 +19,7 @@ If you'd like to build the docs on your machine, you'll first need to install sp
 
 .. code-block:: bash
 
-    $ conda install sphinx numpydoc
+    $ conda install sphinx numpydoc sphinx_rtd_theme runipy
 
 You may also need Jupyter notebooks and matplotlib:
 

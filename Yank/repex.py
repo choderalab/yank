@@ -354,7 +354,8 @@ class Reporter(object):
                 ncvar_analysis_particles.long_name = ("analysis_particle_indices[analysis_particles] is the indices of "
                                                       "the particles with extra information stored about them in the"
                                                       "analysis file.")
-            # Now handle the "variable does exist but does not match the provided ones
+            # Now handle the "variable does exist but does not match the provided ones"
+            # Although redundant if it was just created, its an easy check to make
             stored_analysis_particles = self._storage_analysis.variables['analysis_particle_indices'][:]
             if self._analysis_particle_indices != tuple(stored_analysis_particles.astype(int)):
                 logger.debug("analysis_particle_indices != on-file analysis_particle_indices!"
@@ -505,7 +506,8 @@ class Reporter(object):
     def read_sampler_states(self, iteration, analysis_particles_only=False):
         """Retrieve the stored sampler states on the checkpoint file
 
-        If the iteration is not on the checkpoint interval, None is returned
+        If the iteration is not on the checkpoint interval, None is returned.
+        Exception to this is if``analysis_particles_only``, see the Returns for output behavior.
 
 
         Parameters
@@ -520,10 +522,11 @@ class Reporter(object):
         sampler_states : list of SamplerStates or None
             The previously stored sampler states for each replica.
 
-            If the iteration is not on the checkpoint_interval and the analysis_particles_only is not set,
+            If the iteration is not on the ``checkpoint_interval`` and the ``analysis_particles_only`` is not set,
             None is returned
 
-            If analysis_particles_only is set, will return only the subset of particles which make up the solute
+            If ``analysis_particles_only`` is set, will return only the subset of particles which were defined by the
+            ``analysis_particle_indices`` on reporter creation
 
         """
         if analysis_particles_only:
@@ -540,7 +543,8 @@ class Reporter(object):
     def write_sampler_states(self, sampler_states, iteration):
         """Store all sampler states for a given iteration on the checkpoint file
 
-        If the iteration is not on the checkpoint interval, only the analysis_particle_indices data is written, if set.
+        If the iteration is not on the checkpoint interval, only the ``analysis_particle_indices`` data is written,
+        if set.
 
         Parameters
         ----------
