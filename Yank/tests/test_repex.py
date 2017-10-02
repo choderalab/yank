@@ -251,14 +251,15 @@ class TestReporter(object):
 
     @staticmethod
     @contextlib.contextmanager
-    def temporary_reporter(checkpoint_interval=1, checkpoint_storage=None):
+    def temporary_reporter(checkpoint_interval=1, checkpoint_storage=None, analysis_particle_indices=()):
         """Create and initialize a reporter in a temporary directory."""
         with mmtools.utils.temporary_directory() as tmp_dir_path:
             storage_file = os.path.join(tmp_dir_path, 'temp_dir/test_storage.nc')
             assert not os.path.isfile(storage_file)
             reporter = Reporter(storage=storage_file, open_mode='w',
                                 checkpoint_interval=checkpoint_interval,
-                                checkpoint_storage=checkpoint_storage)
+                                checkpoint_storage=checkpoint_storage,
+                                analysis_particle_indices=analysis_particle_indices)
             assert reporter.storage_exists(skip_size=True)
             yield reporter
 
@@ -353,9 +354,10 @@ class TestReporter(object):
             thermodynamic_state_2 = unsampled_serialized[2]['thermodynamic_state']
             assert thermodynamic_state_2['_Reporter__compatible_state'] == 'thermodynamic_states/3'
 
-    def test_store_sampler_states(self):
+    def test_write_sampler_states(self):
         """Check correct storage of thermodynamic states."""
-        with self.temporary_reporter() as reporter:
+        analysis_particles = (1, 2)
+        with self.temporary_reporter(analysis_particle_indices=analysis_particles, checkpoint_interval=2) as reporter:
             # Create sampler states.
             alanine_test = testsystems.AlanineDipeptideVacuum()
             positions = alanine_test.positions
@@ -364,12 +366,62 @@ class TestReporter(object):
                               for _ in range(2)]
 
             # Check that after writing and reading, states are identical.
-            reporter.write_sampler_states(sampler_states, iteration=0)
-            reporter.write_last_iteration(0)
+            for iteration in range(3):
+                reporter.write_sampler_states(sampler_states, iteration=iteration)
+                reporter.write_last_iteration(iteration)
             restored_sampler_states = reporter.read_sampler_states(iteration=0)
             for state, restored_state in zip(sampler_states, restored_sampler_states):
                 assert np.allclose(state.positions, restored_state.positions)
                 assert np.allclose(state.box_vectors / unit.nanometer, restored_state.box_vectors / unit.nanometer)
+            # Check that the analysis particles are written off checkpoint whereas full trajectory is not
+            restored_analysis_states = reporter.read_sampler_states(iteration=1, analysis_particles_only=True)
+            restored_checkpoint_states = reporter.read_sampler_states(iteration=1)
+            assert type(restored_analysis_states) is list
+            for state in restored_analysis_states:
+                assert state.positions.shape == (len(analysis_particles), 3)
+            assert restored_checkpoint_states is None
+            # Check that the analysis particles are written separate from the checkpoint particles
+            restored_analysis_states = reporter.read_sampler_states(iteration=2, analysis_particles_only=True)
+            restored_checkpoint_states = reporter.read_sampler_states(iteration=2)
+            assert len(restored_analysis_states) == len(restored_checkpoint_states)
+            for analysis_state, checkpoint_state in zip(restored_analysis_states, restored_checkpoint_states):
+                # This assert is dual purpose: Positions are identical; Analysis shape is correct
+                # Will raise a ValueError for np.allclose(x,y) if x.shape != y.shape
+                # Will raise AssertionError if the values are not allclose
+                assert np.allclose(analysis_state.positions, checkpoint_state.positions[analysis_particles, :])
+                assert np.allclose(analysis_state.box_vectors / unit.nanometer,
+                                   checkpoint_state.box_vectors / unit.nanometer)
+
+    def test_analysis_particle_mismatch(self):
+        """Test that previously stored analysis particles is higher priority."""
+        blank_analysis_particles = ()
+        set1_analysis_particles = (0, 1)
+        set2_analysis_particles = (0, 2)
+        # Does not use the temp reporter since we close and reopen reporter a few times
+        with mmtools.utils.temporary_directory() as tmp_dir_path:
+            # Test that starting with a blank analysis cannot be overwritten
+            blank_file = os.path.join(tmp_dir_path, 'temp_dir/blank_analysis.nc')
+            reporter = Reporter(storage=blank_file, open_mode='w',
+                                analysis_particle_indices=blank_analysis_particles)
+            reporter.close()
+            del reporter
+            new_blank_reporter = Reporter(storage=blank_file, open_mode='r',
+                                          analysis_particle_indices=set1_analysis_particles)
+            assert new_blank_reporter.analysis_particle_indices == blank_analysis_particles
+            del new_blank_reporter
+            # Test that starting from an initial set of particles and passing in a blank does not overwrite
+            set1_file = os.path.join(tmp_dir_path, 'temp_dir/set1_analysis.nc')
+            set1_reporter = Reporter(storage=set1_file, open_mode='w',
+                                     analysis_particle_indices=set1_analysis_particles)
+            set1_reporter.close()  # Don't delete, we'll need it for another test
+            new_set1_reporter = Reporter(storage=set1_file, open_mode='r',
+                                         analysis_particle_indices=blank_analysis_particles)
+            assert new_set1_reporter.analysis_particle_indices == set1_analysis_particles
+            del new_set1_reporter
+            # Test that passing in a different set than the initial returns the initial set
+            new2_set1_reporter = Reporter(storage=set1_file, open_mode='r',
+                                          analysis_particle_indices=set2_analysis_particles)
+            assert new2_set1_reporter.analysis_particle_indices == set1_analysis_particles
 
     def test_store_replica_thermodynamic_states(self):
         """Check storage of replica thermodynamic states indices."""

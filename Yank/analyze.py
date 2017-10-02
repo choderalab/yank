@@ -1545,9 +1545,19 @@ def extract_trajectory(nc_path, nc_checkpoint_file=None, state_index=None, repli
         logger.info('Detected periodic boundary conditions: {}'.format(is_periodic))
 
         # Get dimensions
-        n_iterations = reporter.read_last_iteration()
-        n_frames = reporter._storage_checkpoint.variables['positions'].shape[0]
-        n_atoms = reporter._storage_checkpoint.variables['positions'].shape[2]
+        # Assume full iteration until proven otherwise
+        full_iteration = True
+        trajectory_storage = reporter._storage_checkpoint
+        if not keep_solvent:
+            # If tracked solute particles, use any last iteration, set with this logic test
+            full_iteration = len(reporter.analysis_particle_indices) == 0
+            if not full_iteration:
+                trajectory_storage = reporter._storage_analysis
+                topology = topology.subset(reporter.analysis_particle_indices)
+
+        n_iterations = reporter.read_last_iteration(full_iteration=full_iteration)
+        n_frames = trajectory_storage.variables['positions'].shape[0]
+        n_atoms = trajectory_storage.variables['positions'].shape[2]
         logger.info('Number of frames: {}, atoms: {}'.format(n_frames, n_atoms))
 
         # Determine frames to extract
@@ -1570,10 +1580,13 @@ def extract_trajectory(nc_path, nc_checkpoint_file=None, state_index=None, repli
             logger.info(("Discarding initial {} equilibration samples (leaving {} "
                          "effectively uncorrelated samples)...").format(n_equil_iterations, n_eff))
             # Find first frame post-equilibration.
-            for iteration in range(n_equil_iterations, n_iterations):
-                n_equil_frames = reporter._calculate_checkpoint_iteration(iteration)
-                if n_equil_frames is not None:
-                    break
+            if not full_iteration:
+                for iteration in range(n_equil_iterations, n_iterations):
+                    n_equil_frames = reporter._calculate_checkpoint_iteration(iteration)
+                    if n_equil_frames is not None:
+                        break
+            else:
+                n_equil_frames = n_equil_iterations
             frame_indices = frame_indices[n_equil_frames:-1]
 
         # Extract state positions and box vectors
@@ -1592,17 +1605,17 @@ def extract_trajectory(nc_path, nc_checkpoint_file=None, state_index=None, repli
             # Extract state positions and box vectors
             for i, iteration in enumerate(frame_indices):
                 replica_index = state_indices[i]
-                positions[i, :, :] = reporter._storage_checkpoint.variables['positions'][i, replica_index, :, :].astype(np.float32)
+                positions[i, :, :] = trajectory_storage.variables['positions'][i, replica_index, :, :].astype(np.float32)
                 if is_periodic:
-                    box_vectors[i, :, :] = reporter._storage_checkpoint.variables['box_vectors'][i, replica_index, :, :].astype(np.float32)
+                    box_vectors[i, :, :] = trajectory_storage.variables['box_vectors'][i, replica_index, :, :].astype(np.float32)
 
         else:  # Extract replica positions and box vectors
             logger.info('Extracting positions of replica {}...'.format(replica_index))
 
             for i, iteration in enumerate(frame_indices):
-                positions[i, :, :] = reporter._storage_checkpoint.variables['positions'][i, replica_index, :, :].astype(np.float32)
+                positions[i, :, :] = trajectory_storage.variables['positions'][i, replica_index, :, :].astype(np.float32)
                 if is_periodic:
-                    box_vectors[i, :, :] = reporter._storage_checkpoint.variables['box_vectors'][i, replica_index, :, :].astype(np.float32)
+                    box_vectors[i, :, :] = trajectory_storage.variables['box_vectors'][i, replica_index, :, :].astype(np.float32)
     finally:
         reporter.close()
 
@@ -1616,10 +1629,5 @@ def extract_trajectory(nc_path, nc_checkpoint_file=None, state_index=None, repli
     if image_molecules:
         logger.info('Applying periodic boundary conditions to molecules positions...')
         trajectory.image_molecules(inplace=True)
-
-    # Remove solvent
-    if not keep_solvent:
-        logger.info('Removing solvent molecules...')
-        trajectory = trajectory.remove_solvent()
 
     return trajectory

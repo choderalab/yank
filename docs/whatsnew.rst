@@ -21,6 +21,7 @@ The full release history can be viewed `at the GitHub yank releases page <https:
 - Fixed the number of neutralizing counterions when receptor and ligand have opposite charges (we were adding too many in this case).
 - Fixed the log file name with lists of experiments that ended up being just .log.
 - Implemented workaround for fixing the net charge of cyclic multi-residue mol2 files.
+- Solute-only trajectories can now be stored every iteration, regardless of checkpoint interval
 
 0.17.0 Auto Alchemical Path and Split Langevin Integrators
 ----------------------------------------------------------

@@ -648,6 +648,28 @@ Valid Options (10): <Integer ``>= 1``>
 
 
 
+.. _yaml_options_store_solute_trajectory:
+
+.. rst-class:: html-toggle
+
+``store_solute_trajectory``
+---------------------------
+.. code-block:: yaml
+
+   options:
+     store_solute_trajectory: yes
+
+Specify if you want an additional trajectory of just the solute atoms stored every iteration, regardless of the
+``checkpoint_interval``.
+
+If specified, this will write the data to the analysis file in addition to the normal information stored in the
+checkpoint file. As such, you should be careful when considering space and the ``checkpoint_interval`` setting. For
+instance, an implicit solvent simulation with ``checkpoint_interval: 1`` will result in a redundant copy of the
+complete trajectory.
+
+Valid Options: [yes]/no
+
+
 .. _yaml_options_replica_mixing_scheme:
 
 .. rst-class:: html-toggle

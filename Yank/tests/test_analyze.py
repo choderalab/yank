@@ -98,6 +98,7 @@ class TestPhaseAnalyzer(object):
         """Shared test cases and variables."""
         n_states = 3
         n_steps = 5
+        checkpoint_interval = 2
 
         # Test case with host guest in vacuum at 3 different positions and alchemical parameters.
         # -----------------------------------------------------------------------------------------
@@ -149,18 +150,22 @@ class TestPhaseAnalyzer(object):
             'reference_state': mmtools.utils.serialize(reference_state),
             'topography': mmtools.utils.serialize(topography)
         }
+        analysis_atoms = topography.ligand_atoms
 
         # Create simulation and storage file.
         cls.tmp_dir = tempfile.mkdtemp()
         storage_path = os.path.join(cls.tmp_dir, 'test_analyze.nc')
         move = mmtools.mcmc.LangevinDynamicsMove(n_steps=1)
         cls.repex = ReplicaExchange(mcmc_moves=move, number_of_iterations=n_steps)
-        cls.reporter = Reporter(storage_path, checkpoint_interval=2)
+        cls.reporter = Reporter(storage_path, checkpoint_interval=checkpoint_interval,
+                                analysis_particle_indices=analysis_atoms)
         cls.repex.create(thermodynamic_states, sampler_states, storage=cls.reporter,
                          unsampled_thermodynamic_states=unsampled_states, metadata=metadata)
         # run some iterations
         cls.n_states = n_states
         cls.n_steps = n_steps
+        cls.checkpoint_interval = checkpoint_interval
+        cls.analysis_atoms = analysis_atoms
         cls.repex.run(cls.n_steps-1)  # Initial config
         cls.repex_name = "RepexAnalyzer"
 
@@ -284,6 +289,17 @@ class TestPhaseAnalyzer(object):
 
     def test_extract_trajectory(self):
         """extract_trajectory handles checkpointing and skip frame correctly."""
-        print(self.reporter.read_last_iteration())
+        # print(self.reporter.read_last_iteration())
         trajectory = analyze.extract_trajectory(self.reporter.filepath, state_index=0, skip_frame=2)
         assert len(trajectory) == 1
+        full_trajectory = analyze.extract_trajectory(self.reporter.filepath, state_index=0, keep_solvent=True)
+        # This should work since its pure Python integer division
+        # Follows the checkpoint interval logic
+        # The -1 is because frame 0 is discarded from trajectory extraction due to equilibration problems
+        # Should this change in analyze, then this logic will need to be changed as well
+        assert len(full_trajectory) == ((self.n_steps + 1) / self.checkpoint_interval) - 1
+        # Make sure the "solute"-only (analysis atoms) trajectory has the correct properties
+        solute_trajectory = analyze.extract_trajectory(self.reporter.filepath, state_index=0, keep_solvent=False)
+        assert len(solute_trajectory) == self.n_steps - 1
+        assert solute_trajectory.n_atoms == len(self.analysis_atoms)
+
