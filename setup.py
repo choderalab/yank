@@ -139,6 +139,7 @@ setup(
     package_data={'yank': find_package_data('Yank/tests/data', 'yank') + ['reports/*.ipynb'],
                   },
     zip_safe=False,
+    python_requires=">=3.5",
     install_requires=[
         'numpy',
         'scipy',
