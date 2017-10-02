@@ -667,6 +667,8 @@ checkpoint file. As such, you should be careful when considering space and the `
 instance, an implicit solvent simulation with ``checkpoint_interval: 1`` will result in a redundant copy of the
 complete trajectory.
 
+Valid Options: [yes]/no
+
 
 .. _yaml_options_replica_mixing_scheme:
 
