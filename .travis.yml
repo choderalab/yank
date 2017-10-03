@@ -43,7 +43,9 @@ script:
   # Install the package
   - conda install --yes --use-local ${PACKAGENAME}-dev
   # Test the package
-  - cd devtools && nosetests $PACKAGENAME --nocapture --verbosity=2 --with-timer -a '!slow' && cd .. && if [[ $CONDA_PY = 3.5 ]]; then devtools/travis-ci/build_docs.sh; fi
+  - cd devtools && nosetests $PACKAGENAME --nocapture --verbosity=3 --with-timer -a '!slow'
+  - ls -la
+  - gdb --batch --quiet -ex "thread apply all bt full" -ex "quit" ${exe} ${corefile}
 
 env:
   matrix:
