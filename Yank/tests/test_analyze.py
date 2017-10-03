@@ -292,12 +292,14 @@ class TestPhaseAnalyzer(object):
         # print(self.reporter.read_last_iteration())
         trajectory = analyze.extract_trajectory(self.reporter.filepath, state_index=0, skip_frame=2)
         assert len(trajectory) == 1
+        self.reporter.close()
         full_trajectory = analyze.extract_trajectory(self.reporter.filepath, state_index=0, keep_solvent=True)
         # This should work since its pure Python integer division
         # Follows the checkpoint interval logic
         # The -1 is because frame 0 is discarded from trajectory extraction due to equilibration problems
         # Should this change in analyze, then this logic will need to be changed as well
         assert len(full_trajectory) == ((self.n_steps + 1) / self.checkpoint_interval) - 1
+        self.reporter.close()
         # Make sure the "solute"-only (analysis atoms) trajectory has the correct properties
         solute_trajectory = analyze.extract_trajectory(self.reporter.filepath, state_index=0, keep_solvent=False)
         assert len(solute_trajectory) == self.n_steps - 1
