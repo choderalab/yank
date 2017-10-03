@@ -12,7 +12,7 @@ build:
 
 requirements:
   build:
-    - python >=3.5
+    - python
     - cython
     - numpy
     - scipy
@@ -33,7 +33,7 @@ requirements:
     #- gcc 4.8.2 # [osx]
 
   run:
-    - python >=3.5
+    - python
     - pandas
     - numpy
     - scipy
