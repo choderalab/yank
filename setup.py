@@ -15,9 +15,9 @@ from Cython.Build import cythonize
 DOCLINES = __doc__.split("\n")
 
 ########################
-VERSION = "0.17.1"  # Primary base version of the build
-DEVBUILD = "0"      # Dev build status, Either None or Integer as string
-ISRELEASED = False  # Are we releasing this as a full cut?
+VERSION = "0.18.0"  # Primary base version of the build
+DEVBUILD = None  # Dev build status, Either None or Integer as string
+ISRELEASED = True  # Are we releasing this as a full cut?
 __version__ = VERSION
 ########################
 CLASSIFIERS = """\
@@ -139,11 +139,12 @@ setup(
     package_data={'yank': find_package_data('Yank/tests/data', 'yank') + ['reports/*.ipynb'],
                   },
     zip_safe=False,
+    python_requires=">=3.5",
     install_requires=[
         'numpy',
         'scipy',
         'cython',
-        'openmm',
+        'openmm>=7.1',
         'pymbar',
         'openmmtools>=0.13.1',
         'docopt>=0.6.1',
