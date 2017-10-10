@@ -70,15 +70,38 @@ def test_topography():
     assert len(topography.ions_atoms) == 0
 
 
+def test_topography_regions():
+    """Test that topography regions are created and fetched"""
+    toluene_vacuum = testsystems.TolueneVacuum()
+    topography = Topography(toluene_vacuum.topology)
+    # Should do nothing and return nothing without error
+    assert topography.remove_region('Nothing') is None
+    topography.add_region('A hard list', [0, 1, 2])
+    assert 'A hard list' in topography
+    topography.add_region('A junk list', [5, 5, 5])
+    topography.remove_region('A junk list')
+    assert 'A junk list' not in topography
+    assert topography.get_region('A hard list') == [0, 1, 2]
+    # Confirm that string typing is handled
+    topography.add_region('carbon', 'name C')
+    assert len(topography.get_region('carbon')) > 0
+    with nose.tools.assert_raises(ValueError):
+        topography.add_region('failure', 'Bad selection string')
+    # Ensure region was not added
+    assert 'failure' not in topography
+
+
 def test_topography_serialization():
     """Correct serialization of Topography objects."""
     test_system = testsystems.AlanineDipeptideImplicit()
     topography = Topography(test_system.topology)
+    topography.add_region('atest', [0, 1, 2, 3])
     serialized_topography = mmtools.utils.serialize(topography)
     restored_topography = mmtools.utils.deserialize(serialized_topography)
     assert topography.topology == restored_topography.topology
     assert topography.ligand_atoms == restored_topography.ligand_atoms
     assert topography.solvent_atoms == restored_topography.solvent_atoms
+    assert topography.get_region('atest') == restored_topography.regions['atest']
 
 
 # ==============================================================================

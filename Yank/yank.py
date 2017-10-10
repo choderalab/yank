@@ -88,6 +88,10 @@ class Topography(object):
         self.solvent_atoms = solvent_atoms
         self.ligand_atoms = ligand_atoms
 
+        # Initialize regions
+        self._built_in_regions = ['ligand_atoms', 'receptor_atoms', 'solute_atoms', 'solvent_atoms', 'ion_atoms']
+        self._regions = {}
+
     @property
     def topology(self):
         """mdtraj.Topology: A copy of the topology (read-only)."""
@@ -179,6 +183,66 @@ class Topography(object):
                 if '-' in self._topology.atom(i).residue.name or
                 '+' in self._topology.atom(i).residue.name]
 
+    def add_region(self, region_name, region_selection):
+        """
+        Add a region to the Topography based on a selection string of atoms. The selection accepts multiple formats
+        such as a DSL string, a SMIRKS selection string, or hard coded atom indices. The selection string is converted
+        to a list of atom indices.
+
+        Parameters
+        ----------
+        region_name : str
+            Name of the region. This must be unique and also not the name of an existing method
+        region_selection : str or list of ints
+            Atom selection identifier, either a MDTraj DSL string, a SMIRKS string, or a hard-coded list of ints
+            The SMIRKS string requires the OpenEye OEChem library to correctly use
+            TODO: SMIRKS is not implemented in this build, but is planned
+
+        """
+        self._check_existing_regions(region_name)
+        atom_selection = self._resolve_atom_indices(region_selection)
+        self._regions[region_name] = atom_selection
+        pass
+
+    def remove_region(self, region_name):
+        """
+        Remove a previously added region from this Topography. This only affects regions added through the
+        :func:`add_region` function.
+
+        Does nothing if the region was not previously added
+
+        Parameters
+        ----------
+        region_name : str
+            Name of the region to remove
+
+        """
+        self._regions.pop(region_name, None)
+
+    def get_region(self, region_name):
+        """
+        Retrieve the atom indices of the given region. This function will also fetch the built-in regions
+
+        Parameters
+        ----------
+        region_name
+
+        Returns
+        -------
+
+        Raises
+        ------
+        KeyError
+            If region is not part of the Topography
+        """
+        if region_name not in self._combied_regions:
+            raise KeyError("Cannot find region \"{}\" in this Topography.".format(region_name))
+        # Return the built-in if present
+        if region_name in self._built_in_regions:
+            return getattr(self, region_name)
+        # Return a copy to ensure people cant tweak the region outside of the api
+        return copy.copy(self._regions[region_name])
+
     # -------------------------------------------------------------------------
     # Serialization
     # -------------------------------------------------------------------------
@@ -193,7 +257,8 @@ class Topography(object):
                                'bonds': bonds.tolist()}
         return dict(topology=serialized_topology,
                     ligand_atoms=self._ligand_atoms,
-                    solvent_atoms=self._solvent_atoms)
+                    solvent_atoms=self._solvent_atoms,
+                    regions=self._regions)
 
     def __setstate__(self, serialization):
         topology_dict = serialization['topology']
@@ -202,17 +267,54 @@ class Topography(object):
         self._topology = mdtraj.Topology.from_dataframe(atoms, bonds)
         self._ligand_atoms = serialization['ligand_atoms']
         self._solvent_atoms = serialization['solvent_atoms']
+        self._regions = serialization['regions']
 
     # -------------------------------------------------------------------------
     # Internal-usage
     # -------------------------------------------------------------------------
 
-    def _resolve_atom_indices(self, atoms_description):
-        if isinstance(atoms_description, str):
+    def _check_existing_regions(self, region_string):
+        """Make sure regions don't overlap"""
+        if region_string in self:
+            raise KeyError("{} is already part of this Topology! "
+                           "Cannot overwrite built-in regions!".format(region_string))
+
+    @property
+    def _combied_regions(self):
+        """
+        Return the combined set of regions
+        This is its own property despite its simplicity since several functions and methods call it
+        """
+        return self._built_in_regions + self._regions.keys()
+
+    def __contains__(self, item):
+        """Check the in operator to see if region is in this class"""
+        return item in self._combied_regions
+
+    @utils.multi
+    def _resolve_atom_indices(self, atom_description):
+        return type(atom_description)
+
+    @utils.method(_resolve_atom_indices, str)
+    def _resolve_atom_string(self, atoms_description):
+        """Handle atoms_descriptions which are string based, try MDTraj, then OpenEye SMIRKS"""
+        try:
             # Assume this is DSL selection. select() returns a numpy array
             # of int64 that we convert to python integers.
-            atoms_description = self._topology.select(atoms_description).tolist()
-        # Convert to a frozen set of indices.
+            return self._topology.select(atoms_description).tolist()
+        except ValueError:
+            # Selection string failed, do nothing for now
+            pass
+        # Resolve SMIRKS/SMILES String
+        if utils.is_openeye_installed('oechem'):
+            # TODO: Handle SMIRKS in the future
+            pass
+        raise ValueError("Either your atoms_description was messed up or you dont have OpenEye OEChem installed! "
+                         "String based atom description could not be processed")
+
+    @utils.method(_resolve_atom_indices)
+    def _resolve_atom_else(self, atoms_description):
+        """Fall back method to handle all other atom_description types"""
         return atoms_description
 
 
