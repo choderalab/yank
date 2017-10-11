@@ -420,7 +420,24 @@ def test_validation_correct_molecules():
         {'filepath': paths['abl'], 'leap': {'parameters': 'leaprc.ff99SBildn'}, 'select': 1},
         {'filepath': paths['abl'], 'select': 'all'},
         {'filepath': paths['toluene'], 'leap': {'parameters': 'leaprc.gaff'}},
-        {'filepath': paths['benzene'], 'epik': {'select': 1, 'tautomerize': False}}
+        {'filepath': paths['benzene'], 'epik': {'select': 1, 'tautomerize': False}},
+        # Regions tests, make sure all other combos still work
+        {'name': 'toluene', 'regions': {'a_region': 4}},
+        {'name': 'toluene', 'regions': {'a_region': 'dsl string'}},
+        {'name': 'toluene', 'regions': {'a_region': [0, 2, 3]}},
+        {'name': 'toluene', 'regions': {'a_region': [0, 2, 3], 'another_region': [5, 4, 3]}},
+        {'smiles': 'Cc1ccccc1', 'regions': {'a_region': 4}},
+        {'smiles': 'Cc1ccccc1', 'regions': {'a_region': 'dsl string'}},
+        {'smiles': 'Cc1ccccc1', 'regions': {'a_region': [0, 2, 3]}},
+        {'smiles': 'Cc1ccccc1', 'regions': {'a_region': [0, 2, 3], 'another_region': [5, 4, 3]}},
+        {'filepath': paths['abl'], 'regions': {'a_region': 4}},
+        {'filepath': paths['abl'], 'regions': {'a_region': 'dsl string'}},
+        {'filepath': paths['abl'], 'regions': {'a_region': [0, 2, 3]}},
+        {'filepath': paths['abl'], 'regions': {'a_region': [0, 2, 3], 'another_region': [5, 4, 3]}},
+        {'filepath': paths['toluene'], 'regions': {'a_region': 4}},
+        {'filepath': paths['toluene'], 'regions': {'a_region': 'dsl string'}},
+        {'filepath': paths['toluene'], 'regions': {'a_region': [0, 2, 3]}},
+        {'filepath': paths['toluene'], 'regions': {'a_region': [0, 2, 3], 'another_region': [5, 4, 3]}}
     ]
     for molecule in molecules:
         yield ExperimentBuilder._validate_molecules, {'mol': molecule}

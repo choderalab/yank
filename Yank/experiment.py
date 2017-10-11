@@ -1092,10 +1092,13 @@ class ExperimentBuilder(object):
                 return True
             return False
 
-        def regions_match_format(region_dict):
-            """Regions are formatted correctly"""
+        def region_iterable_validator(region_iter):
+            for p in region_iter:
+                if not p >= 0 or not isinstance(p, int):
+                    raise SchemaError("{} of region list must be a positive integer!".format(p))
+            return True
 
-        regions_schema = {Optional(str): Or(list, str)}
+        regions_schema = {Optional(str): Or(And(list, region_iterable_validator), str, And(int, lambda p: p >= 0))}
 
 
         validated_molecules = molecules_description.copy()
@@ -1114,23 +1117,12 @@ class ExperimentBuilder(object):
                           Optional('leap'): cls._LEAP_PARAMETERS_SCHEMA,
                           Optional('strip_protons'): bool}
 
-        molecules_schema = Or(
+        molecule_schema = Or(
             {**common_schema, **{'smiles': str}, **small_molecule_schema},  # Smiles small molecule
             {**common_schema, **{'name': str}, **small_molecule_schema},  # Name small molecule
             {**common_schema, **{'filepath': is_small_molecule, Optional('select'): Or(int, 'all')},
-             **small_molecule_schema},  # Filepath small molecule
-        )
-
-        molecule_schema = Or(
-
-            utils.merge_dict({'smiles': str}, common_schema),
-            utils.merge_dict({'name': str}, common_schema),
-            utils.merge_dict({'filepath': is_small_molecule, Optional('select'): Or(int, 'all')},
-                             common_schema),
-,
-            {'regions': regions_schema},
-            {'parameters': And(Use(lambda p: [p] if isinstance(p, str) else p), [str])}
-            restraint_schema = {'type': Or(str, None), Optional(str): object}
+             **small_molecule_schema},  # File path small molecule
+            {**common_schema, **peptide_schema}  # Peptide schema
         )
 
         # Schema validation
