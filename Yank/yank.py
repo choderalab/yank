@@ -235,7 +235,7 @@ class Topography(object):
         KeyError
             If region is not part of the Topography
         """
-        if region_name not in self._combied_regions:
+        if region_name not in self._combined_regions:
             raise KeyError("Cannot find region \"{}\" in this Topography.".format(region_name))
         # Return the built-in if present
         if region_name in self._built_in_regions:
@@ -280,7 +280,7 @@ class Topography(object):
                            "Cannot overwrite built-in regions!".format(region_string))
 
     @property
-    def _combied_regions(self):
+    def _combined_regions(self):
         """
         Return the combined set of regions
         This is its own property despite its simplicity since several functions and methods call it
@@ -290,7 +290,7 @@ class Topography(object):
 
     def __contains__(self, item):
         """Check the in operator to see if region is in this class"""
-        return item in self._combied_regions
+        return item in self._combined_regions
 
     @utils.multi
     def _resolve_atom_indices(self, atom_description):
