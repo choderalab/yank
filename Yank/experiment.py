@@ -1363,6 +1363,25 @@ class ExperimentBuilder(object):
                 return [filepath for (ext, filepath) in sorted(zip(provided_extensions, files))]
             return _system_files
 
+        def check_regions_clash(system_dict, mol_class1, mol_class2=None):
+            """
+            Check that the regions have non clashing names by looking at regions in each molecule for a given
+            system
+            """
+            mol_description1 = self._db.molecules[system_dict[mol_class1]]
+            mol_description2 = self._db.molecules[system_dict[mol_class2]] if mol_class2 is not None else {}
+            # Fetch the regions or an empty dict
+            regions_1_names = mol_description1.get('regions', {}).keys()
+            regions_2_names = mol_description2.get('regions', {}).keys()
+            for region_1_name in regions_1_names:
+                if region_1_name in regions_2_names:
+                    raise YamlParseError("Cannot resolve molecular regions! "
+                                         "Found clashing region name {} for a {}/{} pair!".format(region_1_name,
+                                                                                                  mol_class1,
+                                                                                                  mol_class2))
+            return True
+
+
         # Define experiment Schema
         validated_systems = systems_description.copy()
 
@@ -1371,12 +1390,14 @@ class ExperimentBuilder(object):
 
         # System schema.
         system_schema = Schema(Or(
-            {'receptor': is_known_molecule, 'ligand': is_known_molecule,
-             'solvent': is_pipeline_solvent, Optional('pack', default=False): bool,
-             Optional('leap'): self._LEAP_PARAMETERS_SCHEMA},
+            And({'receptor': is_known_molecule, 'ligand': is_known_molecule,
+                 'solvent': is_pipeline_solvent, Optional('pack', default=False): bool,
+                 Optional('leap'): self._LEAP_PARAMETERS_SCHEMA},
+                lambda d: check_regions_clash(d, 'ligand', 'receptor')),
 
-            {'solute': is_known_molecule, 'solvent1': is_pipeline_solvent,
-             'solvent2': is_pipeline_solvent, Optional('leap'): self._LEAP_PARAMETERS_SCHEMA},
+            And({'solute': is_known_molecule, 'solvent1': is_pipeline_solvent,
+                'solvent2': is_pipeline_solvent, Optional('leap'): self._LEAP_PARAMETERS_SCHEMA},
+                lambda d: check_regions_clash(d, 'solute')),
 
             utils.merge_dict(dsl_schema, {'phase1_path': Use(system_files('amber')),
                                           'phase2_path': Use(system_files('amber')),
