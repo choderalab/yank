@@ -73,6 +73,10 @@ class Topography(object):
     ions_atoms
 
     """
+
+    # Built in class attributes
+    _BUILT_IN_REGIONS = ('ligand_atoms', 'receptor_atoms', 'solute_atoms', 'solvent_atoms', 'ion_atoms')
+
     def __init__(self, topology, ligand_atoms=None, solvent_atoms='auto'):
         # Determine if we need to convert the topology to mdtraj.
         if isinstance(topology, mdtraj.Topology):
@@ -89,7 +93,6 @@ class Topography(object):
         self.ligand_atoms = ligand_atoms
 
         # Initialize regions
-        self._built_in_regions = ['ligand_atoms', 'receptor_atoms', 'solute_atoms', 'solvent_atoms', 'ion_atoms']
         self._regions = {}
 
     @property
@@ -234,10 +237,10 @@ class Topography(object):
         KeyError
             If region is not part of the Topography
         """
-        if region_name not in self._combined_regions:
+        if region_name not in self:
             raise KeyError("Cannot find region \"{}\" in this Topography.".format(region_name))
         # Return the built-in if present
-        if region_name in self._built_in_regions:
+        if region_name in self._BUILT_IN_REGIONS:
             return getattr(self, region_name)
         # Return a copy to ensure people cant tweak the region outside of the api
         return copy.copy(self._regions[region_name])
@@ -278,24 +281,16 @@ class Topography(object):
             raise KeyError("{} is already part of this Topology! "
                            "Cannot overwrite built-in regions!".format(region_string))
 
-    @property
-    def _combined_regions(self):
-        """
-        Return the combined set of regions
-        This is its own property despite its simplicity since several functions and methods call it
-        """
-        # Iterate over the dict_keys object since its a static view and should be thread-safe
-        return self._built_in_regions + [region for region in self._regions.keys()]
-
     def __contains__(self, item):
         """Check the in operator to see if region is in this class"""
-        return item in self._combined_regions
+        return item in self._regions or item in self._BUILT_IN_REGIONS
 
-    @utils.multi
+    @utils.methoddispatch
     def _resolve_atom_indices(self, atom_description):
-        return type(atom_description)
+        """Fallback method to handle all other atom_descriptions"""
+        return atom_description
 
-    @utils.method(_resolve_atom_indices, str)
+    @_resolve_atom_indices.register(str)
     def _resolve_atom_string(self, atoms_description):
         """Handle atoms_descriptions which are string based, try MDTraj, then OpenEye SMIRKS"""
         try:
@@ -311,12 +306,6 @@ class Topography(object):
             pass
         raise ValueError("Either your atoms_description was messed up or you dont have OpenEye OEChem installed! "
                          "String based atom description could not be processed")
-
-    @utils.method(_resolve_atom_indices)
-    def _resolve_atom_else(self, atoms_description):
-        """Fall back method to handle all other atom_description types"""
-        return atoms_description
-
 
 # ==============================================================================
 # Class that define a single thermodynamic leg (phase) of the calculation

@@ -252,63 +252,21 @@ def _with_profile(output_file='profile.log'):
 
 
 # =======================================================================================
-# Multimethod wrapping to better handle cyclomatic complexity with input types
-# See Adam Bard's post: https://adambard.com/blog/implementing-multimethods-in-python/
+# Methoddispatch wrapping to better handle cyclomatic complexity with input types
+# Relies on functools.singledispatch (Python 3.5+ only)
+# https://stackoverflow.com/questions/24601722/how-can-i-use-functools-singledispatch-with-instance-methods/24602374#24602374
+# And the comment to use update_wrapper(wrapper, dispatcher) instead
 # =======================================================================================
 
-def multi(dispatch_fn):
-    """
-    Decorator for the dispatch function to handle multiple types
-    Should return a way of classifying multiple input types
+def methoddispatch(func):
+    dispatcher = functools.singledispatch(func)
 
-    Example
-    -------
-    Instead of doing "If A is class X do J, elif A is class Y do K, else do L", instead wrap this ``multi`` method
-    around the dispatch function which would simply "return type(A)", then use the ``method`` function below to handle
-    types.
-    """
-    def _inner(*args, **kwargs):
-        return _inner.__multi__.get(
-            dispatch_fn(*args, **kwargs),
-            _inner.__multi_default__
-        )(*args, **kwargs)
-    _inner.__multi__ = {}
-    _inner.__multi_default__ = lambda *args, **kwargs: None  # Default default
-    return _inner
+    def wrapper(*args, **kw):
+        return dispatcher.dispatch(args[1].__class__)(*args, **kw)
+    wrapper.register = dispatcher.register
+    functools.update_wrapper(wrapper, dispatcher)
 
-
-def method(dispatch_fn, dispatch_key=None):
-    """
-    Decorator around the individual type handlers parsing a multimethod dispatch function decorated by the ``multi``
-    method from above.
-
-    Example
-    -------
-    Following the example from ``multi``, if you have the dispatch function "return type(A)", and you want to do
-    something under the condition of of X or Y and finally Else. Our dispatch function is called ``dispatch``
-
-    One function would be decorated with @method(dispatch, X) since ``dispatch`` would handle the "A is type X" method
-    One function would be decorated with @method(dispatch, Y) since ``dispatch`` would handle the "A is type Y" method
-    One function would be decorated with @method(dispatch) to handle the default "all other results" case.
-
-    Each function would accept its args and kwargs as normal and return as though they were their own functions. You
-    may find it helpful to then have each function call a common processing function once they are done doing their
-    unique things to avoid code repetition
-
-    The function names decorated by @method don't matter and can even be duplicates because they will be be absorbed
-    by the decorator and not made public, but because of how python handles
-    compiling, it will add them as method of ``dispatch`` in order they are found, so all @method's should come after
-    the @multi
-
-    """
-    def apply_decorator(fn):
-        if dispatch_key is None:
-            # Default case
-            dispatch_fn.__multi_default__ = fn
-        else:
-            dispatch_fn.__multi__[dispatch_key] = fn
-        return dispatch_fn
-    return apply_decorator
+    return wrapper
 
 
 # =======================================================================================
