@@ -2176,17 +2176,24 @@ class ExperimentBuilder(object):
             solvent_dsl = 'auto'  # Topography uses common solvent resnames.
         logger.debug('DSL string for the solvent: "{}"'.format(solvent_dsl))
 
-        # Determine complex and solvent phase solvents
+        # Determine complex and solvent phase solvents while also getting regions
+        system = self._db.systems[system_id]
         try:  # binding free energy calculations
-            solvent_ids = [self._db.systems[system_id]['solvent'],
-                           self._db.systems[system_id]['solvent']]
+            solvent_ids = [system['solvent'],
+                           system['solvent']]
+            ligand_regions = self._db.molecules[system['ligand']].get('regions', {})
+            receptor_regions = self._db.molecules[system['receptor']].get('regions', {})
+            # Name clashes have been resolved in the yaml validation
+            regions = {**ligand_regions, **receptor_regions}
         except KeyError:  # partition/solvation free energy calculations
             try:
-                solvent_ids = [self._db.systems[system_id]['solvent1'],
-                               self._db.systems[system_id]['solvent2']]
+                solvent_ids = [system['solvent1'],
+                               system['solvent2']]
+                regions = self._db.molecules[system['solute']].get('regions', {})
             except KeyError:  # from xml/pdb system files
-                assert 'phase1_path' in self._db.systems[system_id]
+                assert 'phase1_path' in system
                 solvent_ids = [None, None]
+                regions = {}
 
         # Obtain the protocol for this experiment. We need to load the
         # alchemical path from the single-experiment YAML file if it has
@@ -2249,6 +2256,10 @@ class ExperimentBuilder(object):
                 ligand_atoms = None
             topography = Topography(topology, ligand_atoms=ligand_atoms,
                                     solvent_atoms=solvent_dsl)
+
+            # Add regions
+            for region_name, region_description in regions.items():
+                topography.add_region(region_name, region_description)
 
             # Create reference thermodynamic state.
             if system.usesPeriodicBoundaryConditions():
