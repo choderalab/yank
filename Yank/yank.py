@@ -285,7 +285,8 @@ class Topography(object):
         Return the combined set of regions
         This is its own property despite its simplicity since several functions and methods call it
         """
-        return self._built_in_regions + self._regions.keys()
+        # Iterate over the dict_keys object since its a static view and should be thread-safe
+        return self._built_in_regions + [region for region in self._regions.keys()]
 
     def __contains__(self, item):
         """Check the in operator to see if region is in this class"""
