@@ -83,7 +83,7 @@ def test_topography_regions():
     assert 'A junk list' not in topography
     assert topography.get_region('A hard list') == [0, 1, 2]
     # Confirm that string typing is handled
-    topography.add_region('carbon', 'name C')
+    topography.add_region('carbon', 'element C')
     assert len(topography.get_region('carbon')) > 0
     with nose.tools.assert_raises(ValueError):
         topography.add_region('failure', 'Bad selection string')
@@ -101,7 +101,7 @@ def test_topography_serialization():
     assert topography.topology == restored_topography.topology
     assert topography.ligand_atoms == restored_topography.ligand_atoms
     assert topography.solvent_atoms == restored_topography.solvent_atoms
-    assert topography.get_region('atest') == restored_topography.regions['atest']
+    assert topography.get_region('atest') == restored_topography.get_region('atest')
 
 
 # ==============================================================================

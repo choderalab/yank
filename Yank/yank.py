@@ -202,7 +202,6 @@ class Topography(object):
         self._check_existing_regions(region_name)
         atom_selection = self._resolve_atom_indices(region_selection)
         self._regions[region_name] = atom_selection
-        pass
 
     def remove_region(self, region_name):
         """
