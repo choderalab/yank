@@ -1092,6 +1092,12 @@ class ExperimentBuilder(object):
                 return True
             return False
 
+        def regions_match_format(region_dict):
+            """Regions are formatted correctly"""
+
+        regions_schema = {Optional(str): Or(list, str)}
+
+
         validated_molecules = molecules_description.copy()
 
         # Define molecules Schema
@@ -1099,18 +1105,32 @@ class ExperimentBuilder(object):
                                                       update_keys={'select': int},
                                                       exclude_keys=['extract_range'])
 
-        common_schema = {Optional('leap'): cls._LEAP_PARAMETERS_SCHEMA,
-                         Optional('openeye'): {'quacpac': 'am1-bcc'},
-                         Optional('antechamber'): {'charge_method': Or(str, None)},
-                         Optional('epik'): epik_schema}
+        common_schema = {Optional('regions'): regions_schema}
+        small_molecule_schema = {Optional('leap'): cls._LEAP_PARAMETERS_SCHEMA,
+                                 Optional('openeye'): {'quacpac': 'am1-bcc'},
+                                 Optional('antechamber'): {'charge_method': Or(str, None)},
+                                 Optional('epik'): epik_schema}
+        peptide_schema = {'filepath': is_peptide, Optional('select'): Or(int, 'all'),
+                          Optional('leap'): cls._LEAP_PARAMETERS_SCHEMA,
+                          Optional('strip_protons'): bool}
+
+        molecules_schema = Or(
+            {**common_schema, **{'smiles': str}, **small_molecule_schema},  # Smiles small molecule
+            {**common_schema, **{'name': str}, **small_molecule_schema},  # Name small molecule
+            {**common_schema, **{'filepath': is_small_molecule, Optional('select'): Or(int, 'all')},
+             **small_molecule_schema},  # Filepath small molecule
+        )
+
         molecule_schema = Or(
+
             utils.merge_dict({'smiles': str}, common_schema),
             utils.merge_dict({'name': str}, common_schema),
             utils.merge_dict({'filepath': is_small_molecule, Optional('select'): Or(int, 'all')},
                              common_schema),
-            {'filepath': is_peptide, Optional('select'): Or(int, 'all'),
-             Optional('leap'): cls._LEAP_PARAMETERS_SCHEMA,
-             Optional('strip_protons'): bool}
+,
+            {'regions': regions_schema},
+            {'parameters': And(Use(lambda p: [p] if isinstance(p, str) else p), [str])}
+            restraint_schema = {'type': Or(str, None), Optional(str): object}
         )
 
         # Schema validation
