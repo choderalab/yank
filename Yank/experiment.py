@@ -2181,15 +2181,15 @@ class ExperimentBuilder(object):
         try:  # binding free energy calculations
             solvent_ids = [system['solvent'],
                            system['solvent']]
-            ligand_regions = self._db.molecules[system['ligand']].get('regions', {})
-            receptor_regions = self._db.molecules[system['receptor']].get('regions', {})
+            ligand_regions = self._db.molecules.get(system['ligand'], {}).get('regions', {})
+            receptor_regions = self._db.molecules.get(system['receptor'], {}).get('regions', {})
             # Name clashes have been resolved in the yaml validation
             regions = {**ligand_regions, **receptor_regions}
         except KeyError:  # partition/solvation free energy calculations
             try:
                 solvent_ids = [system['solvent1'],
                                system['solvent2']]
-                regions = self._db.molecules[system['solute']].get('regions', {})
+                regions = self._db.molecules.get(system['solute'], {}).get('regions', {})
             except KeyError:  # from xml/pdb system files
                 assert 'phase1_path' in system
                 solvent_ids = [None, None]
