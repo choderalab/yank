@@ -2179,7 +2179,7 @@ class ExperimentBuilder(object):
         # Determine complex and solvent phase solvents while also getting regions
         system_description = self._db.systems[system_id]
         try:  # binding free energy calculations
-            system_description = [system_description['solvent'],
+            solvent_ids = [system_description['solvent'],
                                   system_description['solvent']]
             ligand_regions = self._db.molecules.get(system_description.get('ligand'), {}).get('regions', {})
             receptor_regions = self._db.molecules.get(system_description.get('receptor'), {}).get('regions', {})
