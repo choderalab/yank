@@ -420,7 +420,24 @@ def test_validation_correct_molecules():
         {'filepath': paths['abl'], 'leap': {'parameters': 'leaprc.ff99SBildn'}, 'select': 1},
         {'filepath': paths['abl'], 'select': 'all'},
         {'filepath': paths['toluene'], 'leap': {'parameters': 'leaprc.gaff'}},
-        {'filepath': paths['benzene'], 'epik': {'select': 1, 'tautomerize': False}}
+        {'filepath': paths['benzene'], 'epik': {'select': 1, 'tautomerize': False}},
+        # Regions tests, make sure all other combos still work
+        {'name': 'toluene', 'regions': {'a_region': 4}},
+        {'name': 'toluene', 'regions': {'a_region': 'dsl string'}},
+        {'name': 'toluene', 'regions': {'a_region': [0, 2, 3]}},
+        {'name': 'toluene', 'regions': {'a_region': [0, 2, 3], 'another_region': [5, 4, 3]}},
+        {'smiles': 'Cc1ccccc1', 'regions': {'a_region': 4}},
+        {'smiles': 'Cc1ccccc1', 'regions': {'a_region': 'dsl string'}},
+        {'smiles': 'Cc1ccccc1', 'regions': {'a_region': [0, 2, 3]}},
+        {'smiles': 'Cc1ccccc1', 'regions': {'a_region': [0, 2, 3], 'another_region': [5, 4, 3]}},
+        {'filepath': paths['abl'], 'regions': {'a_region': 4}},
+        {'filepath': paths['abl'], 'regions': {'a_region': 'dsl string'}},
+        {'filepath': paths['abl'], 'regions': {'a_region': [0, 2, 3]}},
+        {'filepath': paths['abl'], 'regions': {'a_region': [0, 2, 3], 'another_region': [5, 4, 3]}},
+        {'filepath': paths['toluene'], 'regions': {'a_region': 4}},
+        {'filepath': paths['toluene'], 'regions': {'a_region': 'dsl string'}},
+        {'filepath': paths['toluene'], 'regions': {'a_region': [0, 2, 3]}},
+        {'filepath': paths['toluene'], 'regions': {'a_region': [0, 2, 3], 'another_region': [5, 4, 3]}}
     ]
     for molecule in molecules:
         yield ExperimentBuilder._validate_molecules, {'mol': molecule}
@@ -451,6 +468,8 @@ def test_validation_wrong_molecules():
         {'smiles': 'Cc1ccccc1', 'select': 1},
         {'name': 'Cc1ccccc1', 'select': 1},
         {'filepath': paths['abl'], 'leap': {'parameters': 'oldff/leaprc.ff14SB'}, 'select': 'notanoption'},
+        {'filepath': paths['abl'], 'regions': 5},
+        {'filepath': paths['abl'], 'regions': {'a_region': [-56, 5.23]}},
     ]
     for molecule in molecules:
         yield assert_raises, YamlParseError, ExperimentBuilder._validate_molecules, {'mol': molecule}
@@ -497,8 +516,10 @@ def test_validation_correct_systems():
     basic_script = """
     ---
     molecules:
-        rec: {{filepath: {}, leap: {{parameters: leaprc.ff14SB}}}}
+        rec: {{filepath: {0}, leap: {{parameters: leaprc.ff14SB}}}}
+        rec_reg: {{filepath: {0}, regions: {{receptregion: 'some dsl'}}, leap: {{parameters: leaprc.ff14SB}}}}
         lig: {{name: lig, leap: {{parameters: leaprc.gaff}}}}
+        lig_reg: {{name: lig, regions: {{ligregion: [143, 123]}}, leap: {{parameters: leaprc.gaff}}}}
     solvents:
         solv: {{nonbonded_method: NoCutoff}}
         solv2: {{nonbonded_method: NoCutoff, implicit_solvent: OBC2}}
@@ -509,6 +530,8 @@ def test_validation_correct_systems():
 
     systems = [
         {'receptor': 'rec', 'ligand': 'lig', 'solvent': 'solv'},
+        {'receptor': 'rec_reg', 'ligand': 'lig_reg', 'solvent': 'solv'},
+        {'receptor': 'rec_reg', 'ligand': 'lig', 'solvent': 'solv'},
         {'receptor': 'rec', 'ligand': 'lig', 'solvent': 'solv', 'pack': True},
         {'receptor': 'rec', 'ligand': 'lig', 'solvent': 'solv3',
             'leap': {'parameters': ['leaprc.gaff', 'leaprc.ff14SB']}},
@@ -540,6 +563,7 @@ def test_validation_correct_systems():
          'ligand_dsl': 'resname TOL', 'solvent_dsl': 'not resname TOL'},
 
         {'solute': 'lig', 'solvent1': 'solv', 'solvent2': 'solv'},
+        {'solute': 'lig_reg', 'solvent1': 'solv', 'solvent2': 'solv'},
         {'solute': 'lig', 'solvent1': 'solv', 'solvent2': 'solv',
             'leap': {'parameters': 'leaprc.gaff'}}
     ]
@@ -556,8 +580,10 @@ def test_validation_wrong_systems():
     basic_script = """
     ---
     molecules:
-        rec: {{filepath: {}, leap: {{parameters: oldff/leaprc.ff14SB}}}}
+        rec: {{filepath: {0}, leap: {{parameters: oldff/leaprc.ff14SB}}}}
+        rec_region: {{filepath: {0}, regions: {{a_region: 'some string'}}, leap: {{parameters: oldff/leaprc.ff14SB}}}}
         lig: {{name: lig, leap: {{parameters: leaprc.gaff}}}}
+        lig_region: {{name: lig, regions: {{a_region: 'some string'}}, leap: {{parameters: leaprc.gaff}}}}
     solvents:
         solv: {{nonbonded_method: NoCutoff}}
         solv2: {{nonbonded_method: NoCutoff, implicit_solvent: OBC2}}
@@ -568,6 +594,7 @@ def test_validation_wrong_systems():
 
     systems = [
         {'receptor': 'rec', 'ligand': 'lig'},
+        {'receptor': 'rec_region', 'ligand': 'lig_region', 'solvent': 'solv'},
         {'receptor': 'rec', 'ligand': 1, 'solvent': 'solv'},
         {'receptor': 'rec', 'ligand': 'lig', 'solvent': ['solv', 'solv']},
         {'receptor': 'rec', 'ligand': 'lig', 'solvent': 'unknown'},

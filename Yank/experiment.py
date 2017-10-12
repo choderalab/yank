@@ -1092,6 +1092,15 @@ class ExperimentBuilder(object):
                 return True
             return False
 
+        def region_iterable_validator(region_iter):
+            for p in region_iter:
+                if not p >= 0 or not isinstance(p, int):
+                    raise SchemaError("{} of region list must be a positive integer!".format(p))
+            return True
+
+        regions_schema = {Optional(str): Or(And(list, region_iterable_validator), str, And(int, lambda p: p >= 0))}
+
+
         validated_molecules = molecules_description.copy()
 
         # Define molecules Schema
@@ -1099,18 +1108,21 @@ class ExperimentBuilder(object):
                                                       update_keys={'select': int},
                                                       exclude_keys=['extract_range'])
 
-        common_schema = {Optional('leap'): cls._LEAP_PARAMETERS_SCHEMA,
-                         Optional('openeye'): {'quacpac': 'am1-bcc'},
-                         Optional('antechamber'): {'charge_method': Or(str, None)},
-                         Optional('epik'): epik_schema}
+        common_schema = {Optional('regions'): regions_schema}
+        small_molecule_schema = {Optional('leap'): cls._LEAP_PARAMETERS_SCHEMA,
+                                 Optional('openeye'): {'quacpac': 'am1-bcc'},
+                                 Optional('antechamber'): {'charge_method': Or(str, None)},
+                                 Optional('epik'): epik_schema}
+        peptide_schema = {'filepath': is_peptide, Optional('select'): Or(int, 'all'),
+                          Optional('leap'): cls._LEAP_PARAMETERS_SCHEMA,
+                          Optional('strip_protons'): bool}
+
         molecule_schema = Or(
-            utils.merge_dict({'smiles': str}, common_schema),
-            utils.merge_dict({'name': str}, common_schema),
-            utils.merge_dict({'filepath': is_small_molecule, Optional('select'): Or(int, 'all')},
-                             common_schema),
-            {'filepath': is_peptide, Optional('select'): Or(int, 'all'),
-             Optional('leap'): cls._LEAP_PARAMETERS_SCHEMA,
-             Optional('strip_protons'): bool}
+            {**common_schema, **{'smiles': str}, **small_molecule_schema},  # Smiles small molecule
+            {**common_schema, **{'name': str}, **small_molecule_schema},  # Name small molecule
+            {**common_schema, **{'filepath': is_small_molecule, Optional('select'): Or(int, 'all')},
+             **small_molecule_schema},  # File path small molecule
+            {**common_schema, **peptide_schema}  # Peptide schema
         )
 
         # Schema validation
@@ -1351,6 +1363,25 @@ class ExperimentBuilder(object):
                 return [filepath for (ext, filepath) in sorted(zip(provided_extensions, files))]
             return _system_files
 
+        def check_regions_clash(system_dict, mol_class1, mol_class2=None):
+            """
+            Check that the regions have non clashing names by looking at regions in each molecule for a given
+            system
+            """
+            mol_description1 = self._db.molecules[system_dict[mol_class1]]
+            mol_description2 = self._db.molecules[system_dict[mol_class2]] if mol_class2 is not None else {}
+            # Fetch the regions or an empty dict
+            regions_1_names = mol_description1.get('regions', {}).keys()
+            regions_2_names = mol_description2.get('regions', {}).keys()
+            for region_1_name in regions_1_names:
+                if region_1_name in regions_2_names:
+                    raise YamlParseError("Cannot resolve molecular regions! "
+                                         "Found clashing region name {} for a {}/{} pair!".format(region_1_name,
+                                                                                                  mol_class1,
+                                                                                                  mol_class2))
+            return True
+
+
         # Define experiment Schema
         validated_systems = systems_description.copy()
 
@@ -1359,12 +1390,14 @@ class ExperimentBuilder(object):
 
         # System schema.
         system_schema = Schema(Or(
-            {'receptor': is_known_molecule, 'ligand': is_known_molecule,
-             'solvent': is_pipeline_solvent, Optional('pack', default=False): bool,
-             Optional('leap'): self._LEAP_PARAMETERS_SCHEMA},
+            And({'receptor': is_known_molecule, 'ligand': is_known_molecule,
+                 'solvent': is_pipeline_solvent, Optional('pack', default=False): bool,
+                 Optional('leap'): self._LEAP_PARAMETERS_SCHEMA},
+                lambda d: check_regions_clash(d, 'ligand', 'receptor')),
 
-            {'solute': is_known_molecule, 'solvent1': is_pipeline_solvent,
-             'solvent2': is_pipeline_solvent, Optional('leap'): self._LEAP_PARAMETERS_SCHEMA},
+            And({'solute': is_known_molecule, 'solvent1': is_pipeline_solvent,
+                'solvent2': is_pipeline_solvent, Optional('leap'): self._LEAP_PARAMETERS_SCHEMA},
+                lambda d: check_regions_clash(d, 'solute')),
 
             utils.merge_dict(dsl_schema, {'phase1_path': Use(system_files('amber')),
                                           'phase2_path': Use(system_files('amber')),
@@ -2143,17 +2176,24 @@ class ExperimentBuilder(object):
             solvent_dsl = 'auto'  # Topography uses common solvent resnames.
         logger.debug('DSL string for the solvent: "{}"'.format(solvent_dsl))
 
-        # Determine complex and solvent phase solvents
+        # Determine complex and solvent phase solvents while also getting regions
+        system_description = self._db.systems[system_id]
         try:  # binding free energy calculations
-            solvent_ids = [self._db.systems[system_id]['solvent'],
-                           self._db.systems[system_id]['solvent']]
+            solvent_ids = [system_description['solvent'],
+                                  system_description['solvent']]
+            ligand_regions = self._db.molecules.get(system_description.get('ligand'), {}).get('regions', {})
+            receptor_regions = self._db.molecules.get(system_description.get('receptor'), {}).get('regions', {})
+            # Name clashes have been resolved in the yaml validation
+            regions = {**ligand_regions, **receptor_regions}
         except KeyError:  # partition/solvation free energy calculations
             try:
-                solvent_ids = [self._db.systems[system_id]['solvent1'],
-                               self._db.systems[system_id]['solvent2']]
+                solvent_ids = [system_description['solvent1'],
+                               system_description['solvent2']]
+                regions = self._db.molecules.get(system_description.get('solute'), {}).get('regions', {})
             except KeyError:  # from xml/pdb system files
-                assert 'phase1_path' in self._db.systems[system_id]
+                assert 'phase1_path' in system_description
                 solvent_ids = [None, None]
+                regions = {}
 
         # Obtain the protocol for this experiment. We need to load the
         # alchemical path from the single-experiment YAML file if it has
@@ -2216,6 +2256,10 @@ class ExperimentBuilder(object):
                 ligand_atoms = None
             topography = Topography(topology, ligand_atoms=ligand_atoms,
                                     solvent_atoms=solvent_dsl)
+
+            # Add regions
+            for region_name, region_description in regions.items():
+                topography.add_region(region_name, region_description)
 
             # Create reference thermodynamic state.
             if system.usesPeriodicBoundaryConditions():

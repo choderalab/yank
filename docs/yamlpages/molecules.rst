@@ -266,6 +266,50 @@ Filepaths are relative to either the AmberTools default paths or to the folder t
           ph_tolerance: 0.7
           tautomerize: no
 
-Run Schrodinger's tool Epik with to select the most likely protonation state for the molecule in solution. Parameters in this call are direct reflections of the function to invoke epik from OpenMolTools.
+Run Schrodinger's tool Epik with to select the most likely protonation state for the molecule in solution. Parameters
+in this call are direct reflections of the function to invoke ``epik`` from OpenMolTools.
+
+**OPTIONAL**
+
+
+.. _yaml_molecules_regions:
+
+.. rst-class:: html-toggle
+
+``regions``
+-----------
+.. code-block:: yaml
+
+   molecules:
+     {UserDefinedMolecule}:
+        regions:
+           {UserDefinedRegion}: region_string
+           ...
+
+Define molecular regions in the molecule which can be used in upcoming features such as defining restraint regions in
+more general ways, or specific atom subsets you want to track through the :class:`yank.yank.Topography` object which is
+stored as part of the simulation's metadata, accessible through :class:`yank.repex.Reporter`.
+
+Any number of user defined regions can be specified for every molecule, so long as their name is unique between all
+molecules which ultimately wind up in a :doc:`system <systems>`. E.g. If you have 2 ligands you want to bind to a
+receptor in a combinatorial setup, both ligands can have a region named "my_region" since they will never be in the
+same system together. However, the receptor cannot have a region named "my_region" as well, as that will
+be ambiguous as to which region, ligand or receptor, to define.
+
+It is possible to select regions with
+
+The regions right now apply to the **combined system**, although there are plans to have the region per molecule
+apply to only the subset molecule.
+
+The region definition supports multiple selection formats:
+
+* DSL String: An MDTraj DSL string which identifies will identify a region.
+* **Future Ability** SMARTS String: Molecular selection format similar to regular expression for strings, but for
+  molecules instead. This feature is not in yet, but is planned. The regions framework is the pre-cursor to this
+  feature. See
+  `Daylight's website for more information on SMARTS <http://www.daylight.com/dayhtml/doc/theory/theory.smarts.html>`_.
+* List of Ints: Select atoms by integers, this applies only to the final system, so numbers will probably not align
+  with the atom numbers from the input files.
+* Single Int: Same as the list of ints, but with a single entry, subject to same rules
 
 **OPTIONAL**
