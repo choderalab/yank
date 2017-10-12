@@ -2177,21 +2177,21 @@ class ExperimentBuilder(object):
         logger.debug('DSL string for the solvent: "{}"'.format(solvent_dsl))
 
         # Determine complex and solvent phase solvents while also getting regions
-        db_system = self._db.systems[system_id]
+        system_description = self._db.systems[system_id]
         try:  # binding free energy calculations
-            solvent_ids = [db_system['solvent'],
-                           db_system['solvent']]
-            ligand_regions = self._db.molecules.get(db_system.get('ligand'), {}).get('regions', {})
-            receptor_regions = self._db.molecules.get(db_system.get('receptor'), {}).get('regions', {})
+            system_description = [system_description['solvent'],
+                                  system_description['solvent']]
+            ligand_regions = self._db.molecules.get(system_description.get('ligand'), {}).get('regions', {})
+            receptor_regions = self._db.molecules.get(system_description.get('receptor'), {}).get('regions', {})
             # Name clashes have been resolved in the yaml validation
             regions = {**ligand_regions, **receptor_regions}
         except KeyError:  # partition/solvation free energy calculations
             try:
-                solvent_ids = [db_system['solvent1'],
-                               db_system['solvent2']]
-                regions = self._db.molecules.get(db_system.get('solute'), {}).get('regions', {})
+                solvent_ids = [system_description['solvent1'],
+                               system_description['solvent2']]
+                regions = self._db.molecules.get(system_description.get('solute'), {}).get('regions', {})
             except KeyError:  # from xml/pdb system files
-                assert 'phase1_path' in db_system
+                assert 'phase1_path' in system_description
                 solvent_ids = [None, None]
                 regions = {}
 
