@@ -111,6 +111,7 @@ Detailed Options List
  
     * :ref:`leap <yaml_molecules_leap>`
     * :ref:`epik <yaml_molecules_epik>`
+    * :ref:`regions <yaml_molecules_regions>`
 
 * :doc:`solvents <solvents>`
 
