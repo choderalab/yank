@@ -25,6 +25,7 @@ import math
 import random
 import inspect
 import logging
+import functools
 import itertools
 
 import numpy as np
@@ -34,6 +35,7 @@ import openmmtools as mmtools
 from simtk import openmm, unit
 
 from . import pipeline
+from .utils import methoddispatch
 
 logger = logging.getLogger(__name__)
 
@@ -451,9 +453,6 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
         This can temporarily be left undefined, but :func:`determine_missing_parameters`
         must be called before using the Restraint object. The same if a DSL
         expression is provided without passing the topology (default is None).
-    topology : simtk.openmm.app.Topology or mdtraj.Topology, optional
-        The topology used to resolve the DSL string. If not provided, the atom
-        selection expressions will be resolved by :func:`determine_missing_parameters`.
 
     Attributes
     ----------
@@ -476,10 +475,9 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
         function to automatically determine these parameters from the atoms positions.
 
     """
-    def __init__(self, restrained_receptor_atoms=None, restrained_ligand_atoms=None, topology=None):
+    def __init__(self, restrained_receptor_atoms=None, restrained_ligand_atoms=None):
         self.restrained_receptor_atoms = restrained_receptor_atoms
         self.restrained_ligand_atoms = restrained_ligand_atoms
-        self.topology = topology
 
     # -------------------------------------------------------------------------
     # Public properties.
@@ -493,41 +491,54 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
 
         """
         def __init__(self, atoms_type):
-            self._attribute_name = '_restrained_' + atoms_type + '_atoms'
+            self._atoms_type = atoms_type
 
         def __get__(self, instance, owner_class=None):
-            restrained_atoms = getattr(instance, self._attribute_name)
-
-            # On-demand resolution of restrained receptor atoms.
-            if isinstance(restrained_atoms, str):
-                if instance.topology is None:
-                    raise RestraintParameterError('Cannot resolve receptor DSL expression "{}" '
-                                                  'without topology'.format(restrained_atoms))
-                restrained_atoms = instance.topology.select(restrained_atoms).tolist()
-                setattr(instance, self._attribute_name, restrained_atoms)
-
-            # Return None if an empty list.
-            if restrained_atoms is None or len(restrained_atoms) == 0:
-                return None
-            return restrained_atoms
+            attribute_name = self._full_atoms_type
+            return getattr(instance, attribute_name)
 
         def __set__(self, instance, new_restrained_atoms):
-            setattr(instance, self._attribute_name, new_restrained_atoms)
+            attribute_name = self._full_atoms_type
+
+            # If we set the restrained attributes to None, no reason to check things.
+            if new_restrained_atoms is None:
+                setattr(instance, attribute_name, new_restrained_atoms)
+                return
+            new_restrained_atoms = self._cast_atoms(new_restrained_atoms)
+            # Make sure this is a list to support concatenation.
+
+            setattr(instance, attribute_name, new_restrained_atoms)
+
+        _centroid_compute_string = ("You are specifying {} {} atoms, "
+                                    "the final atoms will be chosen as the centroid of this set.")
+
+        @methoddispatch
+        def _cast_atoms(self, restrained_atoms):
+            try:
+                restrained_atoms = restrained_atoms.tolist()
+            except AttributeError:
+                restrained_atoms = list(restrained_atoms)
+            if len(restrained_atoms) > 1:
+                logger.debug(self._centroid_compute_string.format("more than one", self._atoms_type))
+            return restrained_atoms
+
+        @_cast_atoms.register(str)
+        def _cast_atom_string(self, restrained_atoms):
+            warn_string = self._centroid_compute_string.format("a string for", self._atoms_type)
+            warn_string += "but you MUST run \"determine_missing_parameters\" to process the string"
+            logger.warning(warn_string)
+            return restrained_atoms
+
+        @_cast_atoms.register(int)
+        def _cast_atom_int(self, restrained_atoms):
+            return restrained_atoms
+
+        @property
+        def _full_atoms_type(self):
+            return '_restrained_' + self._atoms_type + '_atoms'
 
     restrained_receptor_atoms = _RestrainedAtomsProperty('receptor')
     restrained_ligand_atoms = _RestrainedAtomsProperty('ligand')
-
-    @property
-    def topology(self):
-        """The topology used to solve DSL atom selection"""
-        # On-demand conversion of OpenMM topology to mdtraj topology.
-        if isinstance(self._topology, openmm.app.Topology):
-            self._topology = md.Topology.from_openmm(self._topology)
-        return self._topology
-
-    @topology.setter
-    def topology(self, new_topology):
-        self._topology = new_topology
 
     # -------------------------------------------------------------------------
     # Public methods.
@@ -551,7 +562,7 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
 
         """
         # Check that restrained atoms are defined.
-        if self.restrained_receptor_atoms is None or self.restrained_ligand_atoms is None:
+        if not self._are_restrained_atoms_defined:
             raise RestraintParameterError('Restraint {}: Undefined restrained '
                                           'atoms.'.format(self.__class__.__name__))
 
@@ -669,8 +680,6 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
             The topography with labeled receptor and ligand atoms.
 
         """
-        if self.topology is None:
-            self.topology = topography.topology
 
         # Determine restrained atoms, if needed.
         self._determine_restrained_atoms(sampler_state, topography)
@@ -731,6 +740,15 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
     # Internal-usage
     # -------------------------------------------------------------------------
 
+    @property
+    def _are_restrained_atoms_defined(self):
+        """Check if the restrained atoms are defined well enough to make a restraint"""
+        for atoms in [self.restrained_receptor_atoms, self.restrained_ligand_atoms]:
+            # Atoms should be a list or None at this point due to the _RestrainedAtomsProperty class
+            if atoms is None or not (isinstance(atoms, list) and len(atoms) > 0):
+                return False
+        return True
+
     def _determine_restrained_atoms(self, sampler_state, topography):
         """Determine the atoms to restrain.
 
@@ -747,23 +765,97 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
 
         """
         debug_msg = ('Restraint {}: Automatically picked restrained '
-                     'receptor atom: {{}}'.format(self.__class__.__name__))
+                     '{{0}} atom: {{0}}'.format(self.__class__.__name__))
+
+        # No need to determine parameters if atoms have been given.
+        if self._are_restrained_atoms_defined:
+            return
 
         # Shortcuts
         positions = sampler_state.positions
-        ligand_atoms = topography.ligand_atoms
-        receptor_atoms = topography.receptor_atoms
 
-        # Automatically determine receptor atom to restrain only
-        # if the user has not defined specific atoms to restrain.
-        if self.restrained_receptor_atoms is None:
-            self.restrained_receptor_atoms = [self._closest_atom_to_centroid(positions, receptor_atoms)]
-            logger.debug(debug_msg.format(self.restrained_receptor_atoms))
+        # If receptor and ligand atoms are explicitly provided, use those.
+        restrained_ligand_atoms = self.restrained_ligand_atoms
+        restrained_receptor_atoms = self.restrained_receptor_atoms
 
-        # Same for ligand atom.
-        if self.restrained_ligand_atoms is None:
-            self.restrained_ligand_atoms = [self._closest_atom_to_centroid(positions, ligand_atoms)]
-            logger.debug(debug_msg.format(self.restrained_ligand_atoms))
+        @functools.singledispatch
+        def compute_atom_set(input_atoms, topography_key, mapping_function):
+            """
+            Helper function for doing set operations on heavy ligand atoms of all other types
+            mapping_function not used in the generic catch-all, but is used in the None register
+            """
+            # Ensure the input atoms are only part of the topography_key atoms. Make no changes if they are
+            input_atoms_set = set(input_atoms)
+            set_topography_atoms = set(getattr(topography, topography_key))
+            intersect_set = input_atoms_set & set_topography_atoms
+            if intersect_set != input_atoms_set:
+                logger.warning("Some atoms specified by {0} were not actual {0}! "
+                               "Atoms not part of {0} will be ignored.".format(topography_key))
+                final_atoms = list(intersect_set)
+            else:
+                final_atoms = list(input_atoms)
+            return final_atoms
+
+        @compute_atom_set.register(type(None))
+        def compute_atom_none(_, topography_key, mapping_function):
+            """Helper for None type parsing"""
+            # Can't use list() here since mapping function returns a single integer.
+            atom_selection = [mapping_function(positions, getattr(topography, topography_key))]
+            logger.debug(debug_msg.format(topography_key, atom_selection))
+            return atom_selection
+
+        @compute_atom_set.register(str)
+        def compute_atom_str(input_string, topography_key, _):
+            """Helper for string parsing"""
+            # Check the MDTraj string possible input first
+            try:
+                mdtraj_output = (set(topography.topology.select(input_string)) &
+                                 set(getattr(topography, topography_key)))
+            except ValueError as e:
+                # Make this a local variable
+                mdtraj_error = e
+                mdtraj_output = None
+            else:
+                mdtraj_error = None
+            # Check the topography wrapped region selection
+            try:
+                # Wrap the input to avoid breaking the logic flow
+                wrapped_string = "(" + input_string + ") and " + topography_key
+                region_output = topography.get_region_set(wrapped_string)
+            except (SyntaxError, ValueError) as e:
+                # Make this a local variable
+                region_error = e
+                region_output = None
+            else:
+                region_error = None
+            # Check outputs
+            if mdtraj_error and region_error:
+                # Condition both errored
+                raise ValueError('Atom selection \"{}\" was neither and MDTraj selection string nor a valid Topography'
+                                 'region selection string for {}!'.format(input_string, topography_key))
+            elif not mdtraj_error and not region_error:
+                # Condition *neither* errored, check they are the same
+                if mdtraj_output != region_output:
+                    raise ValueError("Atom selection string \"{}\" was a valid MDTraj and Region selection string, but "
+                                     "give different results for {}, output is ambiguous! Please consider refining "
+                                     "your region names to not match MDTRaj "
+                                     "selections.".format(input_string, topography_key))
+            # Force output to be a normal int, dont need to worry about floats at this point, there should not be any
+            # If they come out as np.int64's, OpenMM complains
+            return [*map(int, mdtraj_output)] if mdtraj_output is not None else [*map(int, region_output)]
+
+        @compute_atom_set.register(int)
+        def compute_atom_int(input_atom, topography_key, _):
+            """Helper for int parsing, ensures the atom you restrain is actually part of the molecule you chose"""
+            assert set(input_atom) & set(getattr(topography, topography_key))
+            return [input_atom]
+
+        self.restrained_ligand_atoms = compute_atom_set(restrained_ligand_atoms,
+                                                        'ligand_atoms',
+                                                        self._closest_atom_to_centroid)
+        self.restrained_receptor_atoms = compute_atom_set(restrained_receptor_atoms,
+                                                          'receptor_atoms',
+                                                          self._closest_atom_to_centroid)
 
     def _create_restraint_force(self, particles1, particles2):
         """Create a new restraint force between specified atoms.
@@ -1259,8 +1351,10 @@ class Boresch(ReceptorLigandRestraint):
     ----------
     restrained_receptor_atoms : iterable of int, optional
         The indices of the receptor atoms to restrain, in order r1, r2, r3.
+        If there are more than 3 entires, they will be randomly selected
     restrained_ligand_atoms : iterable of int, optional
         The indices of the ligand atoms to restrain, in order l1, l2, l3.
+        If there are more than 3 entires, they will be randomly selected
     K_r : simtk.unit.Quantity, optional
         The spring constant for the restrained distance ``|r3 - l1|`` (units
         compatible with kilocalories_per_mole/angstrom**2).
@@ -1354,7 +1448,7 @@ class Boresch(ReceptorLigandRestraint):
         self.theta_A0, self.theta_B0 = theta_A0, theta_B0
         self.K_phiA, self.K_phiB, self.K_phiC = K_phiA, K_phiB, K_phiC
         self.phi_A0, self.phi_B0, self.phi_C0 = phi_A0, phi_B0, phi_C0
-        self.standard_state_correction_method = standard_state_correction_method
+        self._standard_state_correction_method = standard_state_correction_method
 
     # -------------------------------------------------------------------------
     # Public properties.
@@ -1364,33 +1458,53 @@ class Boresch(ReceptorLigandRestraint):
         """
         Descriptor of restrained atoms.
 
-        It guarantees that the property is a list of ints to support concatenation.
+        It guarantees that the property is a list of ints to support concatenation or a string which must be computed.
 
         """
         def __init__(self, atoms_type):
-            self._atoms_type = '_restrained_' + atoms_type + '_atoms'
+            self._atoms_type = atoms_type
 
         def __get__(self, instance, owner_class=None):
-            attribute_name = '_restrained_' + self._atoms_type + '_atoms'
+            attribute_name = self._full_atoms_type
             return getattr(instance, attribute_name)
 
         def __set__(self, instance, new_restrained_atoms):
-            attribute_name = '_restrained_' + self._atoms_type + '_atoms'
+            attribute_name = self._full_atoms_type
 
             # If we set the restrained attributes to None, no reason to check things.
             if new_restrained_atoms is None:
                 setattr(instance, attribute_name, new_restrained_atoms)
                 return
-            if len(new_restrained_atoms) != 3:
-                raise ValueError('Three {} atoms are required to impose a '
-                                 'Boresch-style restraint.'.format(self._atoms_type))
+            new_restrained_atoms = self._cast_atoms(new_restrained_atoms)
             # Make sure this is a list to support concatenation.
-            try:
-                new_restrained_atoms = new_restrained_atoms.tolist()
-            except AttributeError:
-                new_restrained_atoms = list(new_restrained_atoms)
 
             setattr(instance, attribute_name, new_restrained_atoms)
+
+        _must_compute_string = ("You are specifying {} {} atoms, "
+                                "the final atoms will be chosen at from this set but you MUST "
+                                "run \"determine_missing_parameters\"")
+
+        @methoddispatch
+        def _cast_atoms(self, restrained_atoms):
+            try:
+                restrained_atoms = restrained_atoms.tolist()
+            except AttributeError:
+                restrained_atoms = list(restrained_atoms)
+            if len(restrained_atoms) < 3:
+                raise ValueError('At least three {} atoms are required to impose a '
+                                 'Boresch-style restraint.'.format(self._atoms_type))
+            elif len(restrained_atoms) > 3:
+                logger.warning(self._must_compute_string.format("more than three", self._atoms_type))
+            return restrained_atoms
+
+        @_cast_atoms.register(str)
+        def _cast_atom_string(self, restrained_atoms):
+            logger.warning(self._must_compute_string.format("a string for", self._atoms_type))
+            return restrained_atoms
+
+        @property
+        def _full_atoms_type(self):
+            return '_restrained_' + self._atoms_type + '_atoms'
 
     restrained_receptor_atoms = _RestrainedAtomsProperty('receptor')
     restrained_ligand_atoms = _RestrainedAtomsProperty('ligand')
@@ -1506,7 +1620,7 @@ class Boresch(ReceptorLigandRestraint):
         logger.debug('Automatically selecting restraint atoms and parameters:')
 
         # If restrained atoms are already specified, we only need to determine parameters.
-        if self.restrained_receptor_atoms is not None and self.restrained_ligand_atoms is not None:
+        if self._are_restrained_atoms_defined:
             self._determine_restraint_parameters(sampler_state, topography)
         else:
             # Keep selecting random retrained atoms until the parameters
@@ -1518,7 +1632,7 @@ class Boresch(ReceptorLigandRestraint):
                 # Randomly pick non-collinear atoms.
                 restrained_atoms = self._pick_restrained_atoms(sampler_state, topography)
                 self.restrained_receptor_atoms = restrained_atoms[:3]
-                self.restrained_ligand_atoms =  restrained_atoms[3:]
+                self.restrained_ligand_atoms = restrained_atoms[3:]
 
                 # Determine restraint parameters for these atoms.
                 self._determine_restraint_parameters(sampler_state, topography)
@@ -1557,7 +1671,7 @@ class Boresch(ReceptorLigandRestraint):
 
     def _check_parameters_defined(self):
         """Raise an exception there are still parameters undefined."""
-        if self.restrained_receptor_atoms is None or self.restrained_ligand_atoms is None:
+        if not self._are_restrained_atoms_defined:
             raise RestraintParameterError('Undefined restrained atoms.')
 
         # Find undefined parameters and raise error.
@@ -1565,6 +1679,15 @@ class Boresch(ReceptorLigandRestraint):
         if len(undefined_parameters) > 0:
             err_msg = 'Undefined parameters for Boresch restraint: {}'.format(undefined_parameters)
             raise RestraintParameterError(err_msg)
+
+    @property
+    def _are_restrained_atoms_defined(self):
+        """Check if the restrained atoms are defined well enough to make a restraint"""
+        for atoms in [self.restrained_receptor_atoms, self.restrained_ligand_atoms]:
+            # Atoms should be a list or None at this point due to the _RestrainedAtomsProperty class
+            if atoms is None or not (isinstance(atoms, list) and len(atoms) == 3):
+                return False
+        return True
 
     def _is_analytical_correction_robust(self, kT):
         """Check that the analytical standard state correction is valid for the current parameters."""
@@ -1738,7 +1861,7 @@ class Boresch(ReceptorLigandRestraint):
 
         """
         # No need to determine parameters if atoms have been given.
-        if self.restrained_receptor_atoms is not None and self.restrained_ligand_atoms is not None:
+        if self._are_restrained_atoms_defined:
             return self.restrained_receptor_atoms + self.restrained_ligand_atoms
 
         # If receptor and ligand atoms are explicitly provided, use those.
@@ -1748,10 +1871,68 @@ class Boresch(ReceptorLigandRestraint):
         # Otherwise we restrain only heavy atoms.
         heavy_atoms = set(topography.topology.select('not element H').tolist())
         # Intersect heavy atoms with receptor/ligand atoms (s1&s2 is intersect).
-        if heavy_ligand_atoms is None:
-            heavy_ligand_atoms = set(topography.ligand_atoms) & heavy_atoms
-        if heavy_receptor_atoms is None:
-            heavy_receptor_atoms = set(topography.receptor_atoms) & heavy_atoms
+
+        @functools.singledispatch
+        def compute_atom_set(input_atoms, topography_key):
+            """Helper function for doing set operations on heavy ligand atoms of all other types"""
+            # If the length is 3, we don't want to make ANY changes, so don't modify the set
+            input_set = set(input_atoms)
+            topography_set = set(getattr(topography, topography_key))
+            intersect_set = input_set & heavy_atoms & topography_set
+            if intersect_set != input_set:
+                logger.warning("Some atoms specified by {0} were not actual {0} and heavy atoms! "
+                               "Atoms not meeting these criteria will be ignored.".format(topography_key))
+                return intersect_set
+            else:
+                # The return types are intentionally different types to handle some r3-l1 logic later
+                return input_atoms
+
+        @compute_atom_set.register(type(None))
+        def compute_atom_none(_, topography_key):
+            """Helper for None type parsing"""
+            return set(getattr(topography, topography_key)) & heavy_atoms
+
+        @compute_atom_set.register(str)
+        def compute_atom_str(input_string, topography_key):
+            """Helper for string parsing"""
+            # Check the MDTraj string possible input first
+            mdtraj_error = None
+            mdtraj_output = None
+            try:
+                mdtraj_output = (set(topography.topology.select(input_string)) &
+                                 set(getattr(topography, topography_key)) &
+                                 heavy_atoms)
+            except ValueError as mdtraj_error:
+                # Make this a local variable
+                mdtraj_error = mdtraj_error
+            # Check the topography wrapped region selection
+            region_error = None
+            region_output = None
+            try:
+                # Wrap the input to avoid breaking the logic flow
+                wrapped_string = "(" + input_string + ") and " + topography_key
+                region_output = topography.get_region_set(wrapped_string) & heavy_atoms
+            except (SyntaxError, ValueError) as region_error:
+                # Make this a local variable
+                region_error = region_error
+            # Check outputs
+            if mdtraj_error and region_error:
+                # Condition both erored
+                raise ValueError('Atom selection \"{}\" was neither and MDTraj selection string nor a valid Topography'
+                                 'region selection string for {}!'.format(input_string, topography_key))
+            elif not mdtraj_error and not region_error:
+                # Condition *neither* erored, check they are the same
+                if mdtraj_output != region_output:
+                    raise ValueError("Atom selection string \"{}\" was a valid MDTraj and Region selection string, but "
+                                     "give different results for {}, output is ambiguous! Please consider refining "
+                                     "your region names to not match MDTRaj "
+                                     "selections.".format(input_string, topography_key))
+            # Force output to be a normal int, dont need to worry about floats at this point, there should not be any
+            # If they come out as np.int64's, OpenMM complains
+            return [*map(int, mdtraj_output)] if mdtraj_output is not None else [*map(int, region_output)]
+
+        heavy_ligand_atoms = compute_atom_set(heavy_ligand_atoms, 'ligand_atoms')
+        heavy_receptor_atoms = compute_atom_set(heavy_receptor_atoms, 'receptor_atoms')
 
         if len(heavy_receptor_atoms) < 3 or len(heavy_ligand_atoms) < 3:
             raise ValueError('There must be at least three heavy atoms in receptor_atoms '

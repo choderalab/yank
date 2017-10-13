@@ -76,6 +76,7 @@ class Topography(object):
 
     # Built in class attributes
     _BUILT_IN_REGIONS = ('ligand_atoms', 'receptor_atoms', 'solute_atoms', 'solvent_atoms', 'ion_atoms')
+    _PROTECTED_REGION_NAMES = ('and', 'or')
 
     def __init__(self, topology, ligand_atoms=None, solvent_atoms='auto'):
         # Determine if we need to convert the topology to mdtraj.
@@ -203,6 +204,7 @@ class Topography(object):
 
         """
         self._check_existing_regions(region_name)
+        self._check_reserved_words(region_name)
         atom_selection = self._resolve_atom_indices(region_selection)
         self._regions[region_name] = atom_selection
 
@@ -245,6 +247,44 @@ class Topography(object):
         # Return a copy to ensure people cant tweak the region outside of the api
         return copy.copy(self._regions[region_name])
 
+    def get_region_set(self, region_set_string):
+        """
+        Get a new region as a logical combination of several region sets.
+
+        This method accepts a string and returns an the set of atoms derived from the arguments using logical operators
+        ``and`` and ``or``
+        along with grouping through parenthesis . For example, assume you
+        have two regions ``regionA = [0,1,2,3]`` and ``regionB = [2,3,4,5]``. You can do operations such as the
+        following:
+
+             ``regionA and regionB`` yields ``[2,3]``, which is the intersection of the regions.
+
+             ``regionA or regionB`` yields ``[0,1,2,3,4,5]``, which is the union of the regions.
+
+        More complex statements with more regions will also work, and statements can be grouped with ``()``.
+
+        Each region is cast to a set before operations are computed and returned as one. Sets do not preserve order
+        so the conversion process does not ensure the output will always have the same order, but it will always
+        have the same elements.
+
+        Parameters
+        ----------
+        region_set_string : str
+            Region combination string using region names, logical operators, and parenthesis grouping.
+
+        Returns
+        -------
+        combined_region : set
+            Set of combined regions
+
+        """
+        # Combine regions, start with keys only since we are converting to a set
+        combined_region_keys = tuple(self._regions.keys()) + self._BUILT_IN_REGIONS
+        # Cast regions to set, but only if they are in the region_set_string
+        variables = {key: set(self.get_region(key)) for key in combined_region_keys if key in region_set_string}
+        parsed_output = mmtools.utils.math_eval(region_set_string, variables=variables)
+        return parsed_output
+
     # -------------------------------------------------------------------------
     # Serialization
     # -------------------------------------------------------------------------
@@ -280,6 +320,12 @@ class Topography(object):
         if region_string in self:
             raise KeyError("{} is already part of this Topology! "
                            "Cannot overwrite built-in regions!".format(region_string))
+
+    def _check_reserved_words(self, region_string):
+        """Make sure region is NOT a protected name"""
+        if region_string in self._PROTECTED_REGION_NAMES:
+            raise KeyError("{} is a protected keyword for logical operations and "
+                           "cannot be used as a region name".format(region_string))
 
     def __contains__(self, item):
         """Check the in operator to see if region is in this class"""

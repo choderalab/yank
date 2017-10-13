@@ -264,14 +264,14 @@ def test_restraint_dsl_selection():
     thermodynamic_state = states.ThermodynamicState(test_system.system,
                                                     temperature=300.0*unit.kelvin)
 
-    # Iniialize with DSL and without topology raises an error.
+    # Iniialize with DSL and without processing the string raises an error.
     restraint = yank.restraints.Harmonic(spring_constant=2.0*unit.kilojoule_per_mole/unit.nanometer**2,
                                          restrained_receptor_atoms="(resname CUC) and (name =~ 'O[0-9]+')",
                                          restrained_ligand_atoms='resname B2')
     with nose.tools.assert_raises(yank.restraints.RestraintParameterError):
             restraint.restrain_state(thermodynamic_state)
 
-    # After oarameter determination, the indices of the restrained atoms are correct.
+    # After parameter determination, the indices of the restrained atoms are correct.
     restraint.determine_missing_parameters(thermodynamic_state, sampler_state, topography)
     assert len(restraint.restrained_receptor_atoms) == 14
     assert len(restraint.restrained_ligand_atoms) == 30
