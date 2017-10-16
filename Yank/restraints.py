@@ -444,27 +444,27 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
     Parameters
     ----------
     restrained_receptor_atoms : list of int or str, optional
-        The indices of the receptor atoms to restrain, an MDTraj DSL expression, a
+        The indices of the receptor atoms to restrain, an MDTraj DSL expression, any other
         :class:`Topography <yank.Topography>` region name,
-        or :func:`Topography Region Set <yank.Topography.get_region_set>`.
+        or :func:`Topography Selection <yank.Topography.select>`.
         This can temporarily be left undefined, but :func:`determine_missing_parameters`
         must be called before using the Restraint object. The same if a DSL
-        expression or Topography region is provided (default is None).
+        expression or Topography selection is provided (default is None).
     restrained_ligand_atoms : list of int or str, optional
         The indices of the ligand atoms to restrain, an MDTraj DSL expression, or a
-        :class:`Topography <yank.Topography>`  region name,
-        or :func:`Topography Region Set <yank.Topography.get_region_set>`.
+        :class:`Topography <yank.Topography>` region name,
+        or :func:`Topography Selection <yank.Topography.select>`.
         This can temporarily be left undefined, but :func:`determine_missing_parameters`
         must be called before using the Restraint object. The same if a DSL
-        expression or Topography region is provided (default is None).
+        expression or Topography selection is provided (default is None).
 
     Attributes
     ----------
     restrained_receptor_atoms : list of int, str, or None
-        The indices of the receptor atoms to restrain, an MDTraj selection string, or a Topography region selection
+        The indices of the receptor atoms to restrain, an MDTraj selection string, or a Topography selection
         string.
     restrained_ligand_atoms : list of int, str, None
-        The indices of the receptor atoms to restrain, an MDTraj selection string, or a Topography region selection
+        The indices of the receptor atoms to restrain, an MDTraj selection string, or a Topography selection
         string.
 
     Notes
@@ -809,42 +809,11 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
         @compute_atom_set.register(str)
         def compute_atom_str(input_string, topography_key, _):
             """Helper for string parsing"""
-            # Check the MDTraj string possible input first
-            try:
-                mdtraj_output = (set(topography.topology.select(input_string)) &
-                                 set(getattr(topography, topography_key)))
-            except ValueError as e:
-                # Make this a local variable
-                mdtraj_error = e
-                mdtraj_output = None
-            else:
-                mdtraj_error = None
-            # Check the topography wrapped region selection
-            try:
-                # Wrap the input to avoid breaking the logic flow
-                wrapped_string = "(" + input_string + ") and " + topography_key
-                region_output = topography.get_region_set(wrapped_string)
-            except (SyntaxError, ValueError) as e:
-                # Make this a local variable
-                region_error = e
-                region_output = None
-            else:
-                region_error = None
-            # Check outputs
-            if mdtraj_error and region_error:
-                # Condition both errored
-                raise ValueError('Atom selection \"{}\" was neither and MDTraj selection string nor a valid Topography'
-                                 'region selection string for {}!'.format(input_string, topography_key))
-            elif not mdtraj_error and not region_error:
-                # Condition *neither* errored, check they are the same
-                if mdtraj_output != region_output:
-                    raise ValueError("Atom selection string \"{}\" was a valid MDTraj and Region selection string, but "
-                                     "give different results for {}, output is ambiguous! Please consider refining "
-                                     "your region names to not match MDTRaj "
-                                     "selections.".format(input_string, topography_key))
+            selection = topography.select(input_string, as_set=True)
+            selection_with_top = selection & set(getattr(topography, topography_key))
             # Force output to be a normal int, dont need to worry about floats at this point, there should not be any
             # If they come out as np.int64's, OpenMM complains
-            return [*map(int, mdtraj_output)] if mdtraj_output is not None else [*map(int, region_output)]
+            return [*map(int, selection_with_top)]
 
         @compute_atom_set.register(int)
         def compute_atom_int(input_atom, topography_key, _):
@@ -1893,6 +1862,9 @@ class Boresch(ReceptorLigandRestraint):
         heavy_atoms = set(topography.topology.select('not element H').tolist())
         # Intersect heavy atoms with receptor/ligand atoms (s1&s2 is intersect).
 
+        atom_inclusion_warning = ("Some atoms specified by {0} were not actual {0} and heavy atoms! "
+                                  "Atoms not meeting these criteria will be ignored.")
+
         @functools.singledispatch
         def compute_atom_set(input_atoms, topography_key):
             """Helper function for doing set operations on heavy ligand atoms of all other types"""
@@ -1901,8 +1873,7 @@ class Boresch(ReceptorLigandRestraint):
             topography_set = set(getattr(topography, topography_key))
             intersect_set = input_set & heavy_atoms & topography_set
             if intersect_set != input_set:
-                logger.warning("Some atoms specified by {0} were not actual {0} and heavy atoms! "
-                               "Atoms not meeting these criteria will be ignored.".format(topography_key))
+                logger.warning(atom_inclusion_warning.format(topography_key))
                 return intersect_set
             else:
                 # The return types are intentionally different types to handle some r3-l1 logic later
@@ -1916,41 +1887,17 @@ class Boresch(ReceptorLigandRestraint):
         @compute_atom_set.register(str)
         def compute_atom_str(input_string, topography_key):
             """Helper for string parsing"""
-            # Check the MDTraj string possible input first
-            mdtraj_error = None
-            mdtraj_output = None
-            try:
-                mdtraj_output = (set(topography.topology.select(input_string)) &
-                                 set(getattr(topography, topography_key)) &
-                                 heavy_atoms)
-            except ValueError as mdtraj_error:
-                # Make this a local variable
-                mdtraj_error = mdtraj_error
-            # Check the topography wrapped region selection
-            region_error = None
-            region_output = None
-            try:
-                # Wrap the input to avoid breaking the logic flow
-                wrapped_string = "(" + input_string + ") and " + topography_key
-                region_output = topography.get_region_set(wrapped_string) & heavy_atoms
-            except (SyntaxError, ValueError) as region_error:
-                # Make this a local variable
-                region_error = region_error
-            # Check outputs
-            if mdtraj_error and region_error:
-                # Condition both erored
-                raise ValueError('Atom selection \"{}\" was neither and MDTraj selection string nor a valid Topography'
-                                 'region selection string for {}!'.format(input_string, topography_key))
-            elif not mdtraj_error and not region_error:
-                # Condition *neither* erored, check they are the same
-                if mdtraj_output != region_output:
-                    raise ValueError("Atom selection string \"{}\" was a valid MDTraj and Region selection string, but "
-                                     "give different results for {}, output is ambiguous! Please consider refining "
-                                     "your region names to not match MDTRaj "
-                                     "selections.".format(input_string, topography_key))
+            output = topography.select(topography_key, as_set=False)  # Preserve order
+            set_output = set(output)
+            set_topography = set(getattr(topography, topography_key))
+            # Ensure the selection is in the correct set
+            set_combined = set_output & set_topography & heavy_atoms
+            final_output = [particle for particle in output if particle in set_combined]
+            if len(final_output) < len(output):
+                logger.warning(atom_inclusion_warning.format(topography_key))
             # Force output to be a normal int, dont need to worry about floats at this point, there should not be any
             # If they come out as np.int64's, OpenMM complains
-            return [*map(int, mdtraj_output)] if mdtraj_output is not None else [*map(int, region_output)]
+            return [*map(int, final_output)]
 
         heavy_ligand_atoms = compute_atom_set(heavy_ligand_atoms, 'ligand_atoms')
         heavy_receptor_atoms = compute_atom_set(heavy_receptor_atoms, 'receptor_atoms')
