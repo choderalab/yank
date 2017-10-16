@@ -552,6 +552,7 @@ class Topography(object):
         parsed_output = mmtools.utils.math_eval(region_set_string, variables=variables)
         return parsed_output
 
+
 # ==============================================================================
 # Class that define a single thermodynamic leg (phase) of the calculation
 # ==============================================================================
