@@ -256,20 +256,26 @@ def test_partial_parametrization():
                 assert particles == tuple(restraint.restrained_receptor_atoms + restraint.restrained_ligand_atoms)
 
 
-def test_restraint_dsl_selection():
+def restraint_selection_template(topography_ligand_atoms=None,
+                                 restrained_receptor_atoms=None,
+                                 restrained_ligand_atoms=None,
+                                 topography_regions=None):
     """The DSL atom selection works as expected."""
     test_system = testsystems.HostGuestVacuum()
-    topography = Topography(test_system.topology, ligand_atoms='resname B2')
+    topography = Topography(test_system.topology, ligand_atoms=topography_ligand_atoms)
+    if topography_regions is not None:
+        for region, selection in topography_regions.items():
+            topography.add_region(region, selection)
     sampler_state = states.SamplerState(positions=test_system.positions)
     thermodynamic_state = states.ThermodynamicState(test_system.system,
-                                                    temperature=300.0*unit.kelvin)
+                                                    temperature=300.0 * unit.kelvin)
 
     # Iniialize with DSL and without processing the string raises an error.
-    restraint = yank.restraints.Harmonic(spring_constant=2.0*unit.kilojoule_per_mole/unit.nanometer**2,
-                                         restrained_receptor_atoms="(resname CUC) and (name =~ 'O[0-9]+')",
-                                         restrained_ligand_atoms='resname B2')
+    restraint = yank.restraints.Harmonic(spring_constant=2.0 * unit.kilojoule_per_mole / unit.nanometer ** 2,
+                                         restrained_receptor_atoms=restrained_receptor_atoms,
+                                         restrained_ligand_atoms=restrained_ligand_atoms)
     with nose.tools.assert_raises(yank.restraints.RestraintParameterError):
-            restraint.restrain_state(thermodynamic_state)
+        restraint.restrain_state(thermodynamic_state)
 
     # After parameter determination, the indices of the restrained atoms are correct.
     restraint.determine_missing_parameters(thermodynamic_state, sampler_state, topography)
@@ -285,6 +291,33 @@ def test_restraint_dsl_selection():
             assert len(force.getGroupParameters(0)[0]) == 14
             assert len(force.getGroupParameters(1)[0]) == 30
     assert isinstance(force, openmm.CustomCentroidBondForce)  # We have found a force.
+
+
+def test_restraint_dsl_selection():
+    """The DSL atom selection works as expected."""
+    restraint_selection_template(topography_ligand_atoms='resname B2',
+                                 restrained_receptor_atoms="(resname CUC) and (name =~ 'O[0-9]+')",
+                                 restrained_ligand_atoms='resname B2')
+
+
+def test_restraint_region_selection():
+    """Test that the region atom selection works as expected"""
+    restraint_selection_template(topography_ligand_atoms='resname B2',
+                                 restrained_receptor_atoms='choice_res_residue and the_oxygen',
+                                 restrained_ligand_atoms='choice_lig_residue',
+                                 topography_regions={'choice_lig_residue': 'resname B2',
+                                                     'choice_res_residue': 'resname CUC',
+                                                     'the_oxygen': "name =~ 'O[0-9]+'"})
+
+
+def test_restraint_region_dsl_mix():
+    """Test that the region atom selection works as expected"""
+    restraint_selection_template(topography_ligand_atoms='resname B2',
+                                 restrained_receptor_atoms='choice_res_residue and the_oxygen',
+                                 restrained_ligand_atoms='resname B2',
+                                 topography_regions={'choice_lig_residue': 'resname B2',
+                                                     'choice_res_residue': 'resname CUC',
+                                                     'the_oxygen': "name =~ 'O[0-9]+'"})
 
 
 # ==============================================================================

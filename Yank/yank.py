@@ -351,7 +351,7 @@ class Topography(object):
             # TODO: Handle SMIRKS in the future
             pass
         raise ValueError("Either your atoms_description was messed up or you don't have OpenEye OEChem installed! "
-                         "String based atom description could not be processed")
+                         "String based atom description {} could not be processed".format(atoms_description))
 
 # ==============================================================================
 # Class that define a single thermodynamic leg (phase) of the calculation

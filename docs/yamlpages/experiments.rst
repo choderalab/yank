@@ -49,6 +49,11 @@ are accepted as arguments in the YAML file:
 The ``options`` directive lets you overwrite :doc:`any global setting <options>` specified in the header ``options`` for
 this specific experiment.
 
+One option is to select restrained atoms through :class:`Topgraphical Regions <yank.Topography>` defined as part of your
+:ref:`molecule's regions <yaml_molecules_regions>`. You can also select atoms through a
+:func:`compound region <yank.Topography.get_region_set>` where regions are combined through set operators
+``and``/``or``.
+
 **Note:** The Boresch restraints require that the ligand and receptor are close to eachother to make sure the standard
 state correction computation is stable. We recommend only using the ``Boresch`` options if you know the binding mode of
 your system already!

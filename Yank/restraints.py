@@ -444,23 +444,28 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
     Parameters
     ----------
     restrained_receptor_atoms : list of int or str, optional
-        The indices of the receptor atoms to restrain, or an MDTraj DSL expression.
+        The indices of the receptor atoms to restrain, an MDTraj DSL expression, a
+        :class:`Topography <yank.Topography>` region name,
+        or :func:`Topography Region Set <yank.Topography.get_region_set>`.
         This can temporarily be left undefined, but :func:`determine_missing_parameters`
         must be called before using the Restraint object. The same if a DSL
-        expression is provided without passing the topology (default is None).
+        expression or Topography region is provided (default is None).
     restrained_ligand_atoms : list of int or str, optional
-        The indices of the ligand atoms to restrain, or an MDTraj DSL expression.
+        The indices of the ligand atoms to restrain, an MDTraj DSL expression, or a
+        :class:`Topography <yank.Topography>`  region name,
+        or :func:`Topography Region Set <yank.Topography.get_region_set>`.
         This can temporarily be left undefined, but :func:`determine_missing_parameters`
         must be called before using the Restraint object. The same if a DSL
-        expression is provided without passing the topology (default is None).
+        expression or Topography region is provided (default is None).
 
     Attributes
     ----------
-    restrained_receptor_atoms : list of int or None
-        The indices of the receptor atoms to restrain.
-    restrained_ligand_atoms : list of int or None
-        The indieces of the ligand atoms to restrain.
-    topology : mdtraj.Topology
+    restrained_receptor_atoms : list of int, str, or None
+        The indices of the receptor atoms to restrain, an MDTraj selection string, or a Topography region selection
+        string.
+    restrained_ligand_atoms : list of int, str, None
+        The indices of the receptor atoms to restrain, an MDTraj selection string, or a Topography region selection
+        string.
 
     Notes
     -----
@@ -486,9 +491,6 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
     class _RestrainedAtomsProperty(object):
         """
         Descriptor of restrained atoms.
-
-        Evaluate DSL atoms selections at runtime to allow partially specified restraints.
-
         """
         def __init__(self, atoms_type):
             self._atoms_type = atoms_type
@@ -728,7 +730,7 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
         sampler_state : openmmtools.states.SamplerState
             The sampler state holding the positions of all atoms.
         topography : yank.Topography
-            The topography with labeled receptor and ligand atoms.
+            The topography with labeled receptor, ligand atoms, and any regions defined.
 
         """
         # Raise exception only if the subclass doesn't already defines parameters.
@@ -761,7 +763,7 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
         sampler_state : openmmtools.states.SamplerState, optional
             The sampler state holding the positions of all atoms.
         topography : yank.Topography, optional
-            The topography with labeled receptor and ligand atoms.
+            The topography with labeled receptor, ligand atoms, and any regions defined.
 
         """
         debug_msg = ('Restraint {}: Automatically picked restrained '
@@ -781,7 +783,7 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
         @functools.singledispatch
         def compute_atom_set(input_atoms, topography_key, mapping_function):
             """
-            Helper function for doing set operations on heavy ligand atoms of all other types
+            Helper function for doing set operations on generic atom types.
             mapping_function not used in the generic catch-all, but is used in the None register
             """
             # Ensure the input atoms are only part of the topography_key atoms. Make no changes if they are
@@ -978,7 +980,7 @@ class Harmonic(RadiallySymmetricRestraint):
     can be used to control the strength of the restraint. You can control
     ``lambda_restraints`` through :class:`RestraintState` class.
 
-    The class supports automatic determination of the parameters left undefined
+    The class supports automatic determination of the parameters left undefined or defined by strings
     in the constructor through :func:`determine_missing_parameters`.
 
     With OpenCL, groups with more than 1 atom are supported only on 64bit
@@ -990,26 +992,28 @@ class Harmonic(RadiallySymmetricRestraint):
         The spring constant K (see energy expression above) in units compatible
         with joule/nanometer**2/mole (default is None).
     restrained_receptor_atoms : list of int or str, optional
-        The indices of the receptor atoms to restrain, or an MDTraj DSL expression.
+        The indices of the receptor atoms to restrain, an MDTraj DSL expression, or a
+        :class:`Topography <yank.Topography>` region name,
+        or :func:`Topography Region Set <yank.Topography.get_region_set>`.
         This can temporarily be left undefined, but ``determine_missing_parameters()``
         must be called before using the Restraint object. The same if a DSL
-        expression is provided without passing the topology (default is None).
+        expression or Topography region is provided (default is None).
     restrained_ligand_atoms : list of int or str, optional
-        The indices of the ligand atoms to restrain, or an MDTraj DSL expression.
+        The indices of the ligand atoms to restrain, an MDTraj DSL expression.
+        or a :class:`Topography <yank.Topography>` region name,
+        or :func:`Topography Region Set <yank.Topography.get_region_set>`.
         This can temporarily be left undefined, but ``determine_missing_parameters()``
         must be called before using the Restraint object. The same if a DSL
-        expression is provided without passing the topology (default is None).
-    topology : simtk.openmm.app.Topology or mdtraj.Topology, optional
-        The topology used to resolve the DSL string. If not provided, the atom
-        selection expressions will be resolved by ``determine_missing_parameters()``.
+        expression or Topography region is provided (default is None).
 
     Attributes
     ----------
-    restrained_receptor_atoms : list of int or None
-        The indices of the receptor atoms to restrain.
-    restrained_ligand_atoms : list of int or None
-        The indieces of the ligand atoms to restrain.
-    topology : mdtraj.Topology
+    restrained_receptor_atoms : list of int, str, or None
+        The indices of the receptor atoms to restrain, an MDTraj selection string, or a Topography region selection
+        string.
+    restrained_ligand_atoms : list of int, str, or None
+        The indices of the ligand atoms to restrain, an MDTraj selection string, or a Topography region selection
+        string.
 
     Examples
     --------
@@ -1141,26 +1145,28 @@ class FlatBottom(RadiallySymmetricRestraint):
         The distance r0 (see energy expression above) at which the harmonic
         restraint is imposed in units of distance (default is None).
     restrained_receptor_atoms : list of int or str, optional
-        The indices of the receptor atoms to restrain, or an MDTraj DSL expression.
+        The indices of the receptor atoms to restrain, an MDTraj DSL expression, or a
+        :class:`Topography <yank.Topography>` region name,
+        or :func:`Topography Region Set <yank.Topography.get_region_set>`.
         This can temporarily be left undefined, but ``determine_missing_parameters()``
         must be called before using the Restraint object. The same if a DSL
-        expression is provided without passing the topology (default is None).
+        expression or Topography region is provided (default is None).
     restrained_ligand_atoms : list of int or str, optional
-        The indices of the ligand atoms to restrain, or an MDTraj DSL expression.
+        The indices of the ligand atoms to restrain, an MDTraj DSL expression.
+        or a :class:`Topography <yank.Topography>` region name,
+        or :func:`Topography Region Set <yank.Topography.get_region_set>`.
         This can temporarily be left undefined, but ``determine_missing_parameters()``
         must be called before using the Restraint object. The same if a DSL
-        expression is provided without passing the topology (default is None).
-    topology : simtk.openmm.app.Topology or mdtraj.Topology, optional
-        The topology used to resolve the DSL string. If not provided, the atom
-        selection expressions will be resolved by ``determine_missing_parameters()``.
+        expression or Topography region is provided (default is None).
 
     Attributes
     ----------
     restrained_receptor_atoms : list of int or None
-        The indices of the receptor atoms to restrain.
+        The indices of the receptor atoms to restrain, an MDTraj selection string, or a Topography region selection
+        string.
     restrained_ligand_atoms : list of int or None
-        The indieces of the ligand atoms to restrain.
-    topology : mdtraj.Topology
+        The indices of the ligand atoms to restrain, an MDTraj selection string, or a Topography region selection
+        string.
 
     Examples
     --------
@@ -1347,14 +1353,30 @@ class Boresch(ReceptorLigandRestraint):
     *Warning*: Symmetry corrections for symmetric ligands are not automatically applied.
     See Ref [1] and [2] for more information on correcting for ligand symmetry.
 
+    *Warning*: Only heavy atoms can be restrained. Hydrogens will automatically be excluded.
+
     Parameters
     ----------
-    restrained_receptor_atoms : iterable of int, optional
-        The indices of the receptor atoms to restrain, in order r1, r2, r3.
-        If there are more than 3 entires, they will be randomly selected
-    restrained_ligand_atoms : iterable of int, optional
-        The indices of the ligand atoms to restrain, in order l1, l2, l3.
-        If there are more than 3 entires, they will be randomly selected
+    restrained_receptor_atoms : iterable of int, str, or None; Optional
+        The indices of the receptor atoms to restrain, an MDTraj DSL expression, or a
+        :class:`Topography <yank.Topography>` region name,
+        or :func:`Topography Region Set <yank.Topography.get_region_set>`.
+        If this is a list of three ints, the receptor atoms will be restrained in order, r1, r2, r3. If there are more
+        than three entries or the selection string resolves more than three atoms, the three restrained atoms will
+        be chosen at random from the selection.
+        This can temporarily be left undefined, but ``determine_missing_parameters()``
+        must be called before using the Restraint object. The same if a DSL
+        expression or Topography region is provided (default is None).
+    restrained_ligand_atoms : iterable of int, str, or None; Optional
+        The indices of the ligand atoms to restrain, an MDTraj DSL expression, or a
+        :class:`Topography <yank.Topography>` region name,
+        or :func:`Topography Region Set <yank.Topography.get_region_set>`.
+        If this is a list of three ints, the receptor atoms will be restrained in order, l1, l2, l3. If there are more
+        than three entries or the selection string resolves more than three atoms, the three restrained atoms will
+        be chosen at random from the selection.
+        This can temporarily be left undefined, but ``determine_missing_parameters()``
+        must be called before using the Restraint object. The same if a DSL
+        expression or Topography region is provided (default is None).
     K_r : simtk.unit.Quantity, optional
         The spring constant for the restrained distance ``|r3 - l1|`` (units
         compatible with kilocalories_per_mole/angstrom**2).
@@ -1383,7 +1405,6 @@ class Boresch(ReceptorLigandRestraint):
         The indices of the 3 receptor atoms to restrain [r1, r2, r3].
     restrained_ligand_atoms : list of int
         The indices of the 3 ligand atoms to restrain [l1, l2, l3].
-    restrained_atoms
     standard_state_correction_method
 
     References
@@ -1829,8 +1850,8 @@ class Boresch(ReceptorLigandRestraint):
         """
         result = False
         for i in range(len(atoms)-2):
-            v1 = positions[atoms[i+1],:] - positions[atoms[i],:]
-            v2 = positions[atoms[i+2],:] - positions[atoms[i+1],:]
+            v1 = positions[atoms[i+1], :] - positions[atoms[i], :]
+            v2 = positions[atoms[i+2], :] - positions[atoms[i+1], :]
             normalized_inner_product = np.dot(v1, v2) / np.sqrt(np.dot(v1, v1) * np.dot(v2, v2))
             result = result or (normalized_inner_product > threshold)
 
