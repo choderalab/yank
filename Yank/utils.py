@@ -252,7 +252,7 @@ def _with_profile(output_file='profile.log'):
 
 
 # =======================================================================================
-# Methoddispatch wrapping to better handle cyclomatic complexity with input types
+# Method dispatch wrapping to better handle cyclomatic complexity with input types
 # Relies on functools.singledispatch (Python 3.5+ only)
 # https://stackoverflow.com/questions/24601722/how-can-i-use-functools-singledispatch-with-instance-methods/24602374#24602374
 # And the comment to use update_wrapper(wrapper, dispatcher) instead
