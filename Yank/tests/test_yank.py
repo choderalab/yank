@@ -102,22 +102,22 @@ def test_topography_region_ordering():
     region_set = topography.select('region_A and region_B', as_set=True)
     assert region_set == set(region_A) & set(region_B)
     # Test ordered sorting
-    region_A_and_B_ordered = topography.select('region_A and region_B', sort_by='ordered')
-    region_B_and_A_ordered = topography.select('region_B and region_A', sort_by='ordered')
+    region_A_and_B_ordered = topography.select('region_A and region_B', sort_by='index')
+    region_B_and_A_ordered = topography.select('region_B and region_A', sort_by='index')
     assert region_A_and_B_ordered == [2, 3]
     assert region_A_and_B_ordered == region_B_and_A_ordered
     # Test by region
-    region_A_and_B_inferred = topography.select('region_A and region_B', sort_by='inferred_by_region')
-    region_B_and_A_inferred = topography.select('region_B and region_A', sort_by='inferred_by_region')
+    region_A_and_B_inferred = topography.select('region_A and region_B', sort_by='region_order')
+    region_B_and_A_inferred = topography.select('region_B and region_A', sort_by='region_order')
     assert region_A_and_B_inferred == [2, 3]
     assert region_B_and_A_inferred == [3, 2]
     # Test the or sorting
-    region_A_or_B_ordered = topography.select('region_A or region_B', sort_by='ordered')
-    region_B_or_A_ordered = topography.select('region_B or region_A', sort_by='ordered')
+    region_A_or_B_ordered = topography.select('region_A or region_B', sort_by='index')
+    region_B_or_A_ordered = topography.select('region_B or region_A', sort_by='index')
     assert region_A_or_B_ordered == sorted(list(set(region_A) | set(region_B)))
     assert region_A_or_B_ordered == region_B_or_A_ordered
-    region_A_or_B_inferred = topography.select('region_A or region_B', sort_by='inferred_by_region')
-    region_B_or_A_inferred = topography.select('region_B or region_A', sort_by='inferred_by_region')
+    region_A_or_B_inferred = topography.select('region_A or region_B', sort_by='region_order')
+    region_B_or_A_inferred = topography.select('region_B or region_A', sort_by='region_order')
     assert region_A_or_B_inferred == region_A + [i for i in region_B if i not in region_A]
     assert region_B_or_A_inferred == region_B + [i for i in region_A if i not in region_B]
 

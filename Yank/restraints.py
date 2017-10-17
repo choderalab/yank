@@ -492,27 +492,28 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
         """
         Descriptor of restrained atoms.
         """
+
+        _CENTROID_COMPUTE_STRING = ("You are specifying {} {} atoms, "
+                                    "the final atoms will be chosen as the centroid of this set.")
+
         def __init__(self, atoms_type):
             self._atoms_type = atoms_type
+            self._attribute_name = '_restrained_' + self._atoms_type + '_atoms'
 
         def __get__(self, instance, owner_class=None):
-            attribute_name = self._full_atoms_type
-            return getattr(instance, attribute_name)
+            return getattr(instance, self._attribute_name)
 
         def __set__(self, instance, new_restrained_atoms):
-            attribute_name = self._full_atoms_type
 
             # If we set the restrained attributes to None, no reason to check things.
             if new_restrained_atoms is None:
-                setattr(instance, attribute_name, new_restrained_atoms)
+                setattr(instance, self._attribute_name, new_restrained_atoms)
                 return
             new_restrained_atoms = self._cast_atoms(new_restrained_atoms)
             # Make sure this is a list to support concatenation.
 
-            setattr(instance, attribute_name, new_restrained_atoms)
+            setattr(instance, self._attribute_name, new_restrained_atoms)
 
-        _centroid_compute_string = ("You are specifying {} {} atoms, "
-                                    "the final atoms will be chosen as the centroid of this set.")
 
         @methoddispatch
         def _cast_atoms(self, restrained_atoms):
@@ -521,12 +522,12 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
             except AttributeError:
                 restrained_atoms = list(restrained_atoms)
             if len(restrained_atoms) > 1:
-                logger.debug(self._centroid_compute_string.format("more than one", self._atoms_type))
+                logger.debug(self._CENTROID_COMPUTE_STRING.format("more than one", self._atoms_type))
             return restrained_atoms
 
         @_cast_atoms.register(str)
         def _cast_atom_string(self, restrained_atoms):
-            warn_string = self._centroid_compute_string.format("a string for", self._atoms_type)
+            warn_string = self._CENTROID_COMPUTE_STRING.format("a string for", self._atoms_type)
             warn_string += "but you MUST run \"determine_missing_parameters\" to process the string"
             logger.warning(warn_string)
             return restrained_atoms
@@ -534,10 +535,6 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
         @_cast_atoms.register(int)
         def _cast_atom_int(self, restrained_atoms):
             return restrained_atoms
-
-        @property
-        def _full_atoms_type(self):
-            return '_restrained_' + self._atoms_type + '_atoms'
 
     restrained_receptor_atoms = _RestrainedAtomsProperty('receptor')
     restrained_ligand_atoms = _RestrainedAtomsProperty('ligand')
@@ -963,14 +960,14 @@ class Harmonic(RadiallySymmetricRestraint):
     restrained_receptor_atoms : list of int or str, optional
         The indices of the receptor atoms to restrain, an MDTraj DSL expression, or a
         :class:`Topography <yank.Topography>` region name,
-        or :func:`Topography Region Set <yank.Topography.get_region_set>`.
+        or :func:`Topography Select String <yank.Topography.select>`.
         This can temporarily be left undefined, but ``determine_missing_parameters()``
         must be called before using the Restraint object. The same if a DSL
         expression or Topography region is provided (default is None).
     restrained_ligand_atoms : list of int or str, optional
         The indices of the ligand atoms to restrain, an MDTraj DSL expression.
         or a :class:`Topography <yank.Topography>` region name,
-        or :func:`Topography Region Set <yank.Topography.get_region_set>`.
+        or :func:`Topography Select String <yank.Topography.select>`.
         This can temporarily be left undefined, but ``determine_missing_parameters()``
         must be called before using the Restraint object. The same if a DSL
         expression or Topography region is provided (default is None).
@@ -1116,14 +1113,14 @@ class FlatBottom(RadiallySymmetricRestraint):
     restrained_receptor_atoms : list of int or str, optional
         The indices of the receptor atoms to restrain, an MDTraj DSL expression, or a
         :class:`Topography <yank.Topography>` region name,
-        or :func:`Topography Region Set <yank.Topography.get_region_set>`.
+        or :func:`Topography Select String <yank.Topography.select>`.
         This can temporarily be left undefined, but ``determine_missing_parameters()``
         must be called before using the Restraint object. The same if a DSL
         expression or Topography region is provided (default is None).
     restrained_ligand_atoms : list of int or str, optional
         The indices of the ligand atoms to restrain, an MDTraj DSL expression.
         or a :class:`Topography <yank.Topography>` region name,
-        or :func:`Topography Region Set <yank.Topography.get_region_set>`.
+        or :func:`Topography Select String <yank.Topography.select>`.
         This can temporarily be left undefined, but ``determine_missing_parameters()``
         must be called before using the Restraint object. The same if a DSL
         expression or Topography region is provided (default is None).
@@ -1329,7 +1326,7 @@ class Boresch(ReceptorLigandRestraint):
     restrained_receptor_atoms : iterable of int, str, or None; Optional
         The indices of the receptor atoms to restrain, an MDTraj DSL expression, or a
         :class:`Topography <yank.Topography>` region name,
-        or :func:`Topography Region Set <yank.Topography.get_region_set>`.
+        or :func:`Topography Select String <yank.Topography.select>`.
         If this is a list of three ints, the receptor atoms will be restrained in order, r1, r2, r3. If there are more
         than three entries or the selection string resolves more than three atoms, the three restrained atoms will
         be chosen at random from the selection.
@@ -1339,7 +1336,7 @@ class Boresch(ReceptorLigandRestraint):
     restrained_ligand_atoms : iterable of int, str, or None; Optional
         The indices of the ligand atoms to restrain, an MDTraj DSL expression, or a
         :class:`Topography <yank.Topography>` region name,
-        or :func:`Topography Region Set <yank.Topography.get_region_set>`.
+        or :func:`Topography Select String <yank.Topography.select>`.
         If this is a list of three ints, the receptor atoms will be restrained in order, l1, l2, l3. If there are more
         than three entries or the selection string resolves more than three atoms, the three restrained atoms will
         be chosen at random from the selection.
@@ -1438,7 +1435,7 @@ class Boresch(ReceptorLigandRestraint):
         self.theta_A0, self.theta_B0 = theta_A0, theta_B0
         self.K_phiA, self.K_phiB, self.K_phiC = K_phiA, K_phiB, K_phiC
         self.phi_A0, self.phi_B0, self.phi_C0 = phi_A0, phi_B0, phi_C0
-        self._standard_state_correction_method = standard_state_correction_method
+        self.standard_state_correction_method = standard_state_correction_method
 
     # -------------------------------------------------------------------------
     # Public properties.
@@ -1451,28 +1448,27 @@ class Boresch(ReceptorLigandRestraint):
         It guarantees that the property is a list of ints to support concatenation or a string which must be computed.
 
         """
+
+        _MUST_COMPUTE_STRING = ("You are specifying {} {} atoms, "
+                                "the final atoms will be chosen at from this set but you MUST "
+                                "run \"determine_missing_parameters\"")
+
         def __init__(self, atoms_type):
             self._atoms_type = atoms_type
+            self._attribute_name = '_restrained_' + self._atoms_type + '_atoms'
 
         def __get__(self, instance, owner_class=None):
-            attribute_name = self._full_atoms_type
-            return getattr(instance, attribute_name)
+            return getattr(instance, self._attribute_name)
 
         def __set__(self, instance, new_restrained_atoms):
-            attribute_name = self._full_atoms_type
-
             # If we set the restrained attributes to None, no reason to check things.
             if new_restrained_atoms is None:
-                setattr(instance, attribute_name, new_restrained_atoms)
+                setattr(instance, self._attribute_name, new_restrained_atoms)
                 return
             new_restrained_atoms = self._cast_atoms(new_restrained_atoms)
             # Make sure this is a list to support concatenation.
 
-            setattr(instance, attribute_name, new_restrained_atoms)
-
-        _must_compute_string = ("You are specifying {} {} atoms, "
-                                "the final atoms will be chosen at from this set but you MUST "
-                                "run \"determine_missing_parameters\"")
+            setattr(instance, self._attribute_name, new_restrained_atoms)
 
         @methoddispatch
         def _cast_atoms(self, restrained_atoms):
@@ -1484,17 +1480,13 @@ class Boresch(ReceptorLigandRestraint):
                 raise ValueError('At least three {} atoms are required to impose a '
                                  'Boresch-style restraint.'.format(self._atoms_type))
             elif len(restrained_atoms) > 3:
-                logger.warning(self._must_compute_string.format("more than three", self._atoms_type))
+                logger.warning(self._MUST_COMPUTE_STRING.format("more than three", self._atoms_type))
             return restrained_atoms
 
         @_cast_atoms.register(str)
         def _cast_atom_string(self, restrained_atoms):
-            logger.warning(self._must_compute_string.format("a string for", self._atoms_type))
+            logger.warning(self._MUST_COMPUTE_STRING.format("a string for", self._atoms_type))
             return restrained_atoms
-
-        @property
-        def _full_atoms_type(self):
-            return '_restrained_' + self._atoms_type + '_atoms'
 
     restrained_receptor_atoms = _RestrainedAtomsProperty('receptor')
     restrained_ligand_atoms = _RestrainedAtomsProperty('ligand')

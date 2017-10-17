@@ -16,7 +16,6 @@ Interface for automated free energy calculations.
 # GLOBAL IMPORTS
 # ==============================================================================
 
-import re
 import abc
 import copy
 import time
@@ -251,7 +250,7 @@ class Topography(object):
         # Return a copy to ensure people cant tweak the region outside of the api
         return copy.copy(self._regions[region_name])
 
-    def select(self, selection, as_set=False, sort_by='auto') -> Union[List[int], Set[int]]:
+    def select(self, selection, as_set=False, sort_by='auto') -> Union[List[int, ...], Set[int, ...]]:
         """
         Select atoms based on selection format which can be a number of formats:
 
@@ -288,8 +287,8 @@ class Topography(object):
             Determine how to sort the output if ``as_set`` is False.
 
             * 'auto': Let the selection string determine how to sort it out based on its priorities
-            * 'ordered': Atoms are sorted index, smallest to largest
-            * 'inferred_by_region': Atoms are sorted by which region in the provided ``selection_string`` occurs first.
+            * 'index': Atoms are sorted index, smallest to largest
+            * 'region_order': Atoms are sorted by which region in the provided ``selection_string`` occurs first.
                 So if your expression is ``region1 and region2``, then the output will be atoms which appear in
                 ``region1`` first. Parenthesis are **ignored** so the expression ``region1 and (region2 or region3)``
                 will prioritize ``region1`` first for sorting. This option only works for expressions on Regions,
@@ -307,41 +306,32 @@ class Topography(object):
         """
 
         # Helper functions for handling the sorting
-        def sort_output_ordered(sortable):
+        def sort_output_index(sortable):
             # Dont do list.sort, its an in place action.
             return sorted(list(sortable))
 
-        def sort_output_inferred_by_region(sortable):
+        def sort_output_region_order(sortable):
             # Only valid when selection is a string
             final_output = []
             # Determine which regions are in the list
-            all_regions = tuple(self._regions.keys()) + self._BUILT_IN_REGIONS
-            region_order = {}
-            for region_name in all_regions:
-                # Search for the region name
-                region_in_string = re.search(r'\b{}\b'.format(region_name), selection)
-                if region_in_string:  # This is None if region not in the search
-                    # Use the index as key because then sorted(.keys)
-                    region_order[region_in_string.start()] = region_name
-            # Sift through the regions first (they are priority)
-            for region_index_key in sorted(region_order.keys()):
-                region = self.get_region(region_order[region_index_key])
-                key_order = {}
-                for index, entry in enumerate(region):
-                    key_order[index] = entry
-                # Because only "and" and "or" arguments are allowed, every value in the sortable input is ensured to be
-                # regions
-                for key in sorted(key_order.keys()):
-                    value = key_order[key]
-                    if value in sortable and value not in final_output:
-                        final_output.append(value)
+            region_order = [region_name for region_name in selection.split() if region_name in self]
+            # Cycle through regions
+            for region_name in region_order:
+                region = self.get_region(region_name)
+                # Cycle through atom in region
+                for atom_number in region:
+                    # Ensure atom is part of selection output and not previously added
+                    # Because only "and" and "or" arguments are allowed, every value in the sortable input is ensured
+                    # to be in the regions
+                    if atom_number in sortable and atom_number not in final_output:
+                        final_output.append(atom_number)
             return final_output
 
         def sort_output_none(sortable):
             return list(sortable)
 
-        sortable_dispatch = {'ordered': sort_output_ordered,
-                             'inferred_by_region': sort_output_inferred_by_region,
+        sortable_dispatch = {'index': sort_output_index,
+                             'region_order': sort_output_region_order,
                              None: sort_output_none}
 
         class Selector(abc.ABC):
@@ -354,12 +344,12 @@ class Topography(object):
 
             @classmethod
             @abc.abstractmethod
-            def select(cls, selection_input) -> Union[Tuple[List[int], None], Tuple[None, Exception]]:
+            def select(cls, selection_input) -> Union[Tuple[List[int, ...], None], Tuple[None, Exception]]:
                 """Implement this to convert select_string to the output, returning both the output, and the error"""
                 return [0], None
 
             @classmethod
-            def sort_selection(cls, selected_atoms) -> Union[List[int], Set[int]]:
+            def sort_selection(cls, selected_atoms) -> Union[List[int, ...], Set[int, ...]]:
                 if as_set:
                     return set(selected_atoms)
                 elif sort_by in cls.SORT_PRIORITY:
@@ -369,7 +359,7 @@ class Topography(object):
 
         # Helper functions for unifying string selection processing
         class SelectRegion(Selector):
-            SORT_PRIORITY = ('ordered', 'inferred_by_region', None)
+            SORT_PRIORITY = ('index', 'region_order', None)
 
             @classmethod
             def select(cls, region_string):
@@ -385,7 +375,7 @@ class Topography(object):
                 return region_output, region_error
 
         class SelectDsl(Selector):
-            SORT_PRIORITY = ('ordered', None)
+            SORT_PRIORITY = ('index', None)
 
             @classmethod
             def select(cls, dsl_string):
@@ -435,24 +425,21 @@ class Topography(object):
 
         # Dispatcher to parse the selection type and return the valid selection classes
         @functools.singledispatch
-        def selector_picker(selection_input):
-            try:
-                # Catch both the numpy and built in integers
-                assert all([isinstance(i, np.integer) or isinstance(i, int) for i in selection_input])
-            except AssertionError:
-                raise AssertionError("Selection {} is not iterable of ints or any other readable type such as string! "
-                                     "Unable to parse!".format(selection))
-            return SelectIterable,  # Ensure tuple return
+        def selector_picker(selection_input) -> Tuple[Tuple[Selector, ...], str]:
+            if not all([isinstance(i, np.integer) or isinstance(i, int) for i in selection_input]):
+                raise ValueError("Selection {} is not iterable of ints or any other readable type such as string!"
+                                 "Unable to parse!".format(selection))
+            return (SelectIterable,), 'iterable'
 
         @selector_picker.register(int)
-        def int_selector(_):
-            return SelectInt,  # Ensure tuple return
+        def int_selector(_) -> Tuple[Tuple[Selector, ...], str]:
+            return (SelectInt,), 'integer'
 
         @selector_picker.register(str)
-        def string_selection(_):
-            return SelectRegion, SelectDsl, SelectSmarts
+        def string_selection(_) -> Tuple[Tuple[Selector, ...], str]:
+            return (SelectRegion, SelectDsl, SelectSmarts), "string"
 
-        registered_selectors = selector_picker(selection)
+        registered_selectors, region_selector_types = selector_picker(selection)
 
         selector_outputs = []
         selector_errors = []
@@ -478,7 +465,13 @@ class Topography(object):
             # If we made it here, it does means the selectors are the same, does not mater which we pull from, so
             # we'll draw from the 0th index at the end
         elif len(valid_selectors) == 0:
-            raise ValueError("The selection {} could not be parsed by any selector!".format(selection))
+            base_error_string = "The selection {} could not be parsed by any " \
+                                "selector in the {} class!".format(selection, region_selector_types)
+            base_error_string += ("\nThe following errors were thrown by the selectors which may help you determine "
+                                  "why the selection was not parsed:")
+            for selector_name, selector_error in zip(selector_names, selector_errors):
+                base_error_string += "\n    {}: {}".format(selector_name, selector_error)
+            raise ValueError(base_error_string)
 
         return registered_selectors[valid_selectors[0]].sort_selection(selector_outputs[valid_selectors[0]])
 
