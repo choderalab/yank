@@ -250,7 +250,7 @@ class Topography(object):
         # Return a copy to ensure people cant tweak the region outside of the api
         return copy.copy(self._regions[region_name])
 
-    def select(self, selection, as_set=False, sort_by='auto') -> Union[List[int, ...], Set[int, ...]]:
+    def select(self, selection, as_set=False, sort_by='auto') -> Union[List[int], Set[int]]:
         """
         Select atoms based on selection format which can be a number of formats:
 
@@ -344,12 +344,12 @@ class Topography(object):
 
             @classmethod
             @abc.abstractmethod
-            def select(cls, selection_input) -> Union[Tuple[List[int, ...], None], Tuple[None, Exception]]:
+            def select(cls, selection_input) -> Union[Tuple[List[int], None], Tuple[None, Exception]]:
                 """Implement this to convert select_string to the output, returning both the output, and the error"""
                 return [0], None
 
             @classmethod
-            def sort_selection(cls, selected_atoms) -> Union[List[int, ...], Set[int, ...]]:
+            def sort_selection(cls, selected_atoms) -> Union[List[int], Set[int]]:
                 if as_set:
                     return set(selected_atoms)
                 elif sort_by in cls.SORT_PRIORITY:
