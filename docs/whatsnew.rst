@@ -6,6 +6,14 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the GitHub yank releases page <https://github.com/choderalab/yank/releases>`_.
 
+0.19.0 In Development (Current)
+-------------------------------
+- Added custom region selection to Topography
+- Custom regions can now be defined through YAML
+- Compound custom Topography regions can now be selected
+- Restraints atom selection can now use Topography Regions
+- Topography now can select from arbitrary string, either complex regions, DSL strings, and in the future SMARTS strings
+
 0.18.0 Python 2 Dropped, Solute Only Trajectories, and Trailblaze Bugfixes
 --------------------------------------------------------------------------
 - Python 2.X Support officially *removed*

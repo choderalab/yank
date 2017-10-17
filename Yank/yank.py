@@ -20,6 +20,7 @@ import abc
 import copy
 import time
 import logging
+import functools
 import importlib
 import collections
 
@@ -31,6 +32,8 @@ from simtk import unit, openmm
 
 from . import utils, pipeline, repex, mpi
 from .restraints import RestraintState, RestraintParameterError, V0
+
+from typing import Union, Tuple, List, Set
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +79,7 @@ class Topography(object):
 
     # Built in class attributes
     _BUILT_IN_REGIONS = ('ligand_atoms', 'receptor_atoms', 'solute_atoms', 'solvent_atoms', 'ion_atoms')
+    _PROTECTED_REGION_NAMES = ('and', 'or')
 
     def __init__(self, topology, ligand_atoms=None, solvent_atoms='auto'):
         # Determine if we need to convert the topology to mdtraj.
@@ -84,6 +88,9 @@ class Topography(object):
         else:
             self._topology = mdtraj.Topology.from_openmm(topology)
 
+        # Initialize regions, this has to come before solvent/ligand atoms to ensure
+        self._regions = {}
+
         # Handle default ligand atoms.
         if ligand_atoms is None:
             ligand_atoms = []
@@ -91,9 +98,6 @@ class Topography(object):
         # Once ligand and solvent atoms are defined, every other region is implied.
         self.solvent_atoms = solvent_atoms
         self.ligand_atoms = ligand_atoms
-
-        # Initialize regions
-        self._regions = {}
 
     @property
     def topology(self):
@@ -116,7 +120,7 @@ class Topography(object):
 
     @ligand_atoms.setter
     def ligand_atoms(self, value):
-        self._ligand_atoms = self._resolve_atom_indices(value)
+        self._ligand_atoms = self.select(value)
 
         # Safety check: with a ligand there should always be a receptor.
         if len(self._ligand_atoms) > 0 and len(self.receptor_atoms) == 0:
@@ -176,7 +180,7 @@ class Topography(object):
             self._solvent_atoms = [atom.index for atom in self._topology.atoms
                                    if atom.residue.name in solvent_resnames]
         else:
-            self._solvent_atoms = self._resolve_atom_indices(value)
+            self._solvent_atoms = self.select(value)
 
     @property
     def ions_atoms(self):
@@ -197,13 +201,14 @@ class Topography(object):
         region_name : str
             Name of the region. This must be unique and also not the name of an existing method
         region_selection : str or list of ints
-            Atom selection identifier, either a MDTraj DSL string, a SMIRKS string, or a hard-coded list of ints
-            The SMIRKS string requires the OpenEye OEChem library to correctly use
-            TODO: SMIRKS is not implemented in this build, but is planned
+            Atom selection identifier, either a MDTraj DSL string, a SMARTS string, or a hard-coded list of ints
+            The SMARTS string requires the OpenEye OEChem library to correctly use
+            TODO: SMARTS is not implemented in this build, but is planned
 
         """
         self._check_existing_regions(region_name)
-        atom_selection = self._resolve_atom_indices(region_selection)
+        self._check_reserved_words(region_name)
+        atom_selection = self.select(region_selection)
         self._regions[region_name] = atom_selection
 
     def remove_region(self, region_name):
@@ -245,6 +250,231 @@ class Topography(object):
         # Return a copy to ensure people cant tweak the region outside of the api
         return copy.copy(self._regions[region_name])
 
+    def select(self, selection, as_set=False, sort_by='auto') -> Union[List[int], Set[int]]:
+        """
+        Select atoms based on selection format which can be a number of formats:
+
+        * Single integer (a bit redundant)
+        * Iterable of integer (also a bit redundant)
+        * Complex Region selection
+        * MDTraj String
+        * **Future Feature** SMARTS Selection
+
+        This method will never return duplicate atom numbers.
+
+        The ``sort_by`` method controls how the output is sorted before being returned, see the details in the
+        Parameters block for information about each option
+
+        The Complex Region string returns an the set of atoms derived from the arguments using logical operators
+        ``and`` and ``or``
+        along with grouping through parenthesis . For example, assume you
+        have two regions ``regionA = [0,1,2,3]`` and ``regionB = [2,3,4,5]``. You can do operations such as the
+        following:
+
+             ``regionA and regionB`` yields ``[2,3]``, which is the intersection of the regions.
+
+             ``regionA or regionB`` yields ``[0,1,2,3,4,5]``, which is the union of the regions.
+
+        More complex statements with more regions will also work, and statements can be grouped with ``()``.
+
+        Parameters
+        ----------
+        selection : str or
+            String defining the selection
+        as_set : bool, Default False
+            Determines output format. Returns a Set if True, otherwise output is a list.
+        sort_by : str or None, Default: 'auto'
+            Determine how to sort the output if ``as_set`` is False.
+
+            * 'auto': Let the selection string determine how to sort it out based on its priorities
+            * 'index': Atoms are sorted index, smallest to largest
+            * 'region_order': Atoms are sorted by which region in the provided ``selection_string`` occurs first.
+                So if your expression is ``region1 and region2``, then the output will be atoms which appear in
+                ``region1`` first. Parenthesis are **ignored** so the expression ``region1 and (region2 or region3)``
+                will prioritize ``region1`` first for sorting. This option only works for expressions on Regions,
+                other selections will fall back to ``None``
+            * ``None``: Sorting is left up to however the selection string is processed by their respective drivers,
+                or by whatever order the set operations returns it. Not guaranteed to be deterministic in all cases.
+
+        Returns
+        -------
+        selection : list or set
+            Returns the selected atoms as either a list or set based on ``as_set`` keyword.
+            Order of the output is determined by the ``sort_by`` keyword. If a ``as_set`` is ``True``, this option has
+            no effect.
+
+        """
+
+        # Helper functions for handling the sorting
+        def sort_output_index(sortable):
+            # Dont do list.sort, its an in place action.
+            return sorted(list(sortable))
+
+        def sort_output_region_order(sortable):
+            # Only valid when selection is a string
+            final_output = []
+            # Determine which regions are in the list
+            region_order = [region_name for region_name in selection.split() if region_name in self]
+            # Cycle through regions
+            for region_name in region_order:
+                region = self.get_region(region_name)
+                # Cycle through atom in region
+                for atom_number in region:
+                    # Ensure atom is part of selection output and not previously added
+                    # Because only "and" and "or" arguments are allowed, every value in the sortable input is ensured
+                    # to be in the regions
+                    if atom_number in sortable and atom_number not in final_output:
+                        final_output.append(atom_number)
+            return final_output
+
+        def sort_output_none(sortable):
+            return list(sortable)
+
+        sortable_dispatch = {'index': sort_output_index,
+                             'region_order': sort_output_region_order,
+                             None: sort_output_none}
+
+        class Selector(abc.ABC):
+            # Implement this to get the valid sort priority. If the sortable is valid, don't include it
+            SORT_PRIORITY = (None,)
+
+            def __init__(self):
+                """This class and its subclasses are not meant to be used as an instance."""
+                pass
+
+            @classmethod
+            @abc.abstractmethod
+            def select(cls, selection_input) -> Union[Tuple[List[int], None], Tuple[None, Exception]]:
+                """Implement this to convert select_string to the output, returning both the output, and the error"""
+                return [0], None
+
+            @classmethod
+            def sort_selection(cls, selected_atoms) -> Union[List[int], Set[int]]:
+                if as_set:
+                    return set(selected_atoms)
+                elif sort_by in cls.SORT_PRIORITY:
+                    return sortable_dispatch[sort_by](selected_atoms)
+                else:
+                    return sortable_dispatch[cls.SORT_PRIORITY[0]](selected_atoms)
+
+        # Helper functions for unifying string selection processing
+        class SelectRegion(Selector):
+            SORT_PRIORITY = ('index', 'region_order', None)
+
+            @classmethod
+            def select(cls, region_string):
+                try:
+                    # The self here is inherited from the outer scope
+                    region_output = list(self._get_region_set(region_string))
+                except (SyntaxError, ValueError) as e:
+                    # Make this a local variable
+                    region_error = e
+                    region_output = None
+                else:
+                    region_error = None
+                return region_output, region_error
+
+        class SelectDsl(Selector):
+            SORT_PRIORITY = ('index', None)
+
+            @classmethod
+            def select(cls, dsl_string):
+                try:
+                    mdtraj_output = (self.topology.select(dsl_string)).tolist()
+                except ValueError as e:
+                    # Make this a local variable
+                    mdtraj_error = e
+                    mdtraj_output = None
+                else:
+                    mdtraj_error = None
+                return mdtraj_output, mdtraj_error
+
+        class SelectSmarts(Selector):
+
+            @classmethod
+            def select(cls, smarts_string):
+
+                try:
+                    # Skeletal structure, not used yet
+                    raise NotImplementedError("This method has not been implemented yet")
+                except (NotImplementedError, ValueError) as e:
+                    smarts_error = e
+                    smarts_output = None
+                return smarts_output, smarts_error
+
+        class SelectIterable(Selector):
+            # Do not allow these to be sorted as they have been manually specified by integer
+
+            @classmethod
+            def select(cls, iterable):
+                try:
+                    iterable_output = iterable.tolist()
+                except AttributeError:
+                    iterable_output = list(iterable)
+                    iterable_error = None
+                except Exception as e:
+                    iterable_error = e
+                    iterable_output = None
+                else:
+                    iterable_error = None
+                return iterable_output, iterable_error
+
+        class SelectInt(SelectIterable):
+            # Verbatim copy of Iterable, but change name to help error processing
+            pass
+
+        # Dispatcher to parse the selection type and return the valid selection classes
+        @functools.singledispatch
+        def selector_picker(selection_input) -> Tuple[Tuple[Selector, ...], str]:
+            if not all([isinstance(i, np.integer) or isinstance(i, int) for i in selection_input]):
+                raise ValueError("Selection {} is not iterable of ints or any other readable type such as string!"
+                                 "Unable to parse!".format(selection))
+            return (SelectIterable,), 'iterable'
+
+        @selector_picker.register(int)
+        def int_selector(_) -> Tuple[Tuple[Selector, ...], str]:
+            return (SelectInt,), 'integer'
+
+        @selector_picker.register(str)
+        def string_selection(_) -> Tuple[Tuple[Selector, ...], str]:
+            return (SelectRegion, SelectDsl, SelectSmarts), "string"
+
+        registered_selectors, region_selector_types = selector_picker(selection)
+
+        selector_outputs = []
+        selector_errors = []
+        selector_names = []  # For handling error messages
+        for selector in registered_selectors:
+            selector_names.append(selector.__name__)
+            selection_output, errors = selector.select(selection)
+            selector_outputs.append(selection_output)
+            selector_errors.append(errors)
+        # Show only the valid selectors
+        valid_selectors = [index for index, output in enumerate(selector_outputs) if output is not None]
+        if len(valid_selectors) > 1:
+            # Choose a baseline selector
+            base_selection = selector_outputs[valid_selectors[0]]
+            for index in valid_selectors[1:]:
+                comparison_selection = selector_outputs[valid_selectors[index]]
+                if base_selection != comparison_selection:
+                    raise ValueError("The selection {} was ambiguous as the following selectors returned valid "
+                                     "outputs, but they were different! Consider refining your selection string or "
+                                     "changing region names to not align with other selection string: \n"
+                                     "    {}".format(selection,
+                                                     [selector_names[index] for index in valid_selectors]))
+            # If we made it here, it does means the selectors are the same, does not mater which we pull from, so
+            # we'll draw from the 0th index at the end
+        elif len(valid_selectors) == 0:
+            base_error_string = "The selection {} could not be parsed by any " \
+                                "selector in the {} class!".format(selection, region_selector_types)
+            base_error_string += ("\nThe following errors were thrown by the selectors which may help you determine "
+                                  "why the selection was not parsed:")
+            for selector_name, selector_error in zip(selector_names, selector_errors):
+                base_error_string += "\n    {}: {}".format(selector_name, selector_error)
+            raise ValueError(base_error_string)
+
+        return registered_selectors[valid_selectors[0]].sort_selection(selector_outputs[valid_selectors[0]])
+
     # -------------------------------------------------------------------------
     # Serialization
     # -------------------------------------------------------------------------
@@ -281,31 +511,40 @@ class Topography(object):
             raise KeyError("{} is already part of this Topology! "
                            "Cannot overwrite built-in regions!".format(region_string))
 
+    def _check_reserved_words(self, region_string):
+        """Make sure region is NOT a protected name"""
+        if region_string in self._PROTECTED_REGION_NAMES:
+            raise KeyError("{} is a protected keyword for logical operations and "
+                           "cannot be used as a region name".format(region_string))
+
     def __contains__(self, item):
         """Check the in operator to see if region is in this class"""
         return item in self._regions or item in self._BUILT_IN_REGIONS
 
-    @utils.methoddispatch
-    def _resolve_atom_indices(self, atom_description):
-        """Fallback method to handle all other atom_descriptions"""
-        return atom_description
+    def _get_region_set(self, region_set_string):
+        """
+        Get a new region as a logical combination of several region sets.
 
-    @_resolve_atom_indices.register(str)
-    def _resolve_atom_string(self, atoms_description):
-        """Handle atoms_descriptions which are string based, try MDTraj, then OpenEye SMIRKS"""
-        try:
-            # Assume this is DSL selection. select() returns a numpy array
-            # of int64 that we convert to python integers.
-            return self._topology.select(atoms_description).tolist()
-        except ValueError:
-            # Selection string failed, do nothing for now
-            pass
-        # Resolve SMIRKS/SMILES String
-        if utils.is_openeye_installed('oechem'):
-            # TODO: Handle SMIRKS in the future
-            pass
-        raise ValueError("Either your atoms_description was messed up or you don't have OpenEye OEChem installed! "
-                         "String based atom description could not be processed")
+        See docs in :func:`select` for details about the logic in Complex
+
+        Parameters
+        ----------
+        region_set_string : str
+            Region combination string using region names, logical operators, and parenthesis grouping.
+
+        Returns
+        -------
+        combined_region : set
+            Set of combined regions
+
+        """
+        # Combine regions, start with keys only since we are converting to a set
+        combined_region_keys = tuple(self._regions.keys()) + self._BUILT_IN_REGIONS
+        # Cast regions to set, but only if they are in the region_set_string
+        variables = {key: set(self.get_region(key)) for key in combined_region_keys if key in region_set_string}
+        parsed_output = mmtools.utils.math_eval(region_set_string, variables=variables)
+        return parsed_output
+
 
 # ==============================================================================
 # Class that define a single thermodynamic leg (phase) of the calculation
