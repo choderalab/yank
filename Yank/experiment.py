@@ -2184,12 +2184,13 @@ class ExperimentBuilder(object):
             ligand_regions = self._db.molecules.get(system_description.get('ligand'), {}).get('regions', {})
             receptor_regions = self._db.molecules.get(system_description.get('receptor'), {}).get('regions', {})
             # Name clashes have been resolved in the yaml validation
-            regions = {**ligand_regions, **receptor_regions}
+            regions = {'ligand_atoms': ligand_regions, 'receptor_atoms': receptor_regions}
         except KeyError:  # partition/solvation free energy calculations
             try:
                 solvent_ids = [system_description['solvent1'],
                                system_description['solvent2']]
-                regions = self._db.molecules.get(system_description.get('solute'), {}).get('regions', {})
+                regions = {'solute_atoms':
+                               self._db.molecules.get(system_description.get('solute'), {}).get('regions', {})}
             except KeyError:  # from xml/pdb system files
                 assert 'phase1_path' in system_description
                 solvent_ids = [None, None]
@@ -2258,8 +2259,9 @@ class ExperimentBuilder(object):
                                     solvent_atoms=solvent_dsl)
 
             # Add regions
-            for region_name, region_description in regions.items():
-                topography.add_region(region_name, region_description)
+            for sub_region, specific_regions in regions.items():
+                for region_name, region_description in specific_regions.items():
+                    topography.add_region(region_name, region_description, subset=sub_region)
 
             # Create reference thermodynamic state.
             if system.usesPeriodicBoundaryConditions():

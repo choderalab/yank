@@ -70,6 +70,43 @@ def test_topography():
     assert len(topography.ions_atoms) == 0
 
 
+def test_topography_subset_regions():
+    """Test that topography subset region selection works"""
+    # This test relies on all other tests for topography passing
+    host_guest_explicit = testsystems.HostGuestExplicit()
+    topography = Topography(host_guest_explicit.topology, ligand_atoms='resname B2')
+    ligand_list = list(range(126, 156))
+    receptor_list = list(range(126))
+    n_slice = 3  # Number of atoms to slice from front and back
+    assert topography.ligand_atoms == ligand_list
+    topography.add_region('lig_dsl', 'resname B2')
+    topography.add_region('lig_list', ligand_list)
+    topography.add_region('rec_list', receptor_list)
+    topography.add_region('rec_lig_slice', receptor_list[-n_slice:] + ligand_list[:n_slice])
+    # Selection list: selection, subset, sort_by, result
+    selections = (
+        # DSL select, same DSL subset, small to large
+        ('resname B2', 'resname B2', 'index', ligand_list),
+        # DSL select, region subset
+        ('resname B2', 'lig_list', 'index', ligand_list),
+        # region, dsl, small to large
+        ('lig_list', 'resname B2', 'index', ligand_list),
+        # region, region that is subset, small to large
+        ('lig_list', 'rec_lig_slice', 'index', ligand_list[:n_slice]),
+        # indices, region thats a subset, index. Remember, if given a subset: selection is RELATIVE
+        (receptor_list, 'rec_lig_slice', 'index', topography.get_region('rec_lig_slice')),
+        # region, region that is NOT part of selection, index
+        ('lig_list', 'resname CB7', 'index', []),
+        # compound Region, partial subset in bad order, order of region
+        ('lig_list or rec_list', 'rec_lig_slice', 'region_order', ligand_list[:n_slice] + receptor_list[-n_slice:])
+                )
+    for selection, subset, sort_by, result in selections:
+        selected = topography.select(selection, sort_by=sort_by, subset=subset, as_set=False)
+        assert result == selected, "Failed to match {}, subset {}, by {} to {},\ngot {}".format(selection, subset,
+                                                                                                sort_by, result,
+                                                                                                selected)
+
+
 def test_topography_regions():
     """Test that topography regions are created and fetched"""
     toluene_vacuum = testsystems.TolueneVacuum()
