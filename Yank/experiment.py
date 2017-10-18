@@ -1550,7 +1550,7 @@ class ExperimentBuilder(object):
             log_file_name = 'experiments'
         else:
             # Normalize path to drop eventual final slash character.
-            log_file_name = os.path.normpath(os.path.basename(experiment_path))
+            log_file_name = os.path.basename(os.path.normpath(experiment_path))
         return os.path.join(experiment_dir, log_file_name)
 
     def _get_generated_yaml_script_path(self, experiment_path):
