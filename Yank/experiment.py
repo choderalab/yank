@@ -763,12 +763,8 @@ class ExperimentBuilder(object):
 
     def setup_experiments(self):
         """
-        Set up all Yank experiments without running them
+        Set up all systems required for the Yank experiments without running them.
         """
-        # Throw exception if there are no experiments
-        if len(self._experiments) == 0:
-            raise YamlParseError('No experiments specified!')
-
         # All paths must be relative to the script directory
         with moltools.utils.temporary_cd(self._script_dir):
             self._check_resume(check_experiments=False)
