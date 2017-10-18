@@ -190,7 +190,7 @@ class Topography(object):
                 if '-' in self._topology.atom(i).residue.name or
                 '+' in self._topology.atom(i).residue.name]
 
-    def add_region(self, region_name, region_selection):
+    def add_region(self, region_name, region_selection, subset=None):
         """
         Add a region to the Topography based on a selection string of atoms. The selection accepts multiple formats
         such as a DSL string, a SMIRKS selection string, or hard coded atom indices. The selection string is converted
@@ -201,14 +201,17 @@ class Topography(object):
         region_name : str
             Name of the region. This must be unique and also not the name of an existing method
         region_selection : str or list of ints
-            Atom selection identifier, either a MDTraj DSL string, a SMARTS string, or a hard-coded list of ints
-            The SMARTS string requires the OpenEye OEChem library to correctly use
-            TODO: SMARTS is not implemented in this build, but is planned
+            Atom selection identifier, either a MDTraj DSL string, a SMARTS string, a compound region selection,
+            or a hard-coded list of ints.
+            The SMARTS string requires the OpenEye OEChem library to correctly select
+        subset : str or list of ints, or None
+            Atom selection sub-region to filter the atom selection through. This is a way to define your new region
+            as a relative selection to the subset. Follows the same conditions as ``region_selection``.
 
         """
         self._check_existing_regions(region_name)
         self._check_reserved_words(region_name)
-        atom_selection = self.select(region_selection)
+        atom_selection = self.select(region_selection, subset=subset)
         self._regions[region_name] = atom_selection
 
     def remove_region(self, region_name):
@@ -226,16 +229,19 @@ class Topography(object):
         """
         self._regions.pop(region_name, None)
 
-    def get_region(self, region_name):
+    def get_region(self, region_name) -> List[int]:
         """
         Retrieve the atom indices of the given region. This function will also fetch the built-in regions
 
         Parameters
         ----------
-        region_name
+        region_name : str
+            Name of the region to fetch. Can use both custom regions or built in ones such as "ligand_atoms"
 
         Returns
         -------
+        region : list of ints
+            Atom integers which comprise the region
 
         Raises
         ------
@@ -250,7 +256,7 @@ class Topography(object):
         # Return a copy to ensure people cant tweak the region outside of the api
         return copy.copy(self._regions[region_name])
 
-    def select(self, selection, as_set=False, sort_by='auto') -> Union[List[int], Set[int]]:
+    def select(self, selection, as_set=False, sort_by='auto', subset=None) -> Union[List[int], Set[int]]:
         """
         Select atoms based on selection format which can be a number of formats:
 
@@ -258,7 +264,7 @@ class Topography(object):
         * Iterable of integer (also a bit redundant)
         * Complex Region selection
         * MDTraj String
-        * **Future Feature** SMARTS Selection
+        * SMARTS Selection
 
         This method will never return duplicate atom numbers.
 
@@ -277,9 +283,17 @@ class Topography(object):
 
         More complex statements with more regions will also work, and statements can be grouped with ``()``.
 
+        The ``subset`` keyword filters the ``selection`` relative to this subset selection. If not None, the subset is
+        processed first through this same function, then the primary selection is processed relative to it.
+        ``subset`` follows the same conditions as ``selection``, but sort order for subset is ignored
+        If your ``selection`` would pick atoms that are NOT part of the subset, then those atoms are NOT RETURNED.
+        If your ``selection`` is an integer or some sequence of integer, then the indices are relative to the
+        ``subset``.
+        Final atom numbers will be absolute to the whole Topography.
+
         Parameters
         ----------
-        selection : str or
+        selection : str, list of ints, or int
             String defining the selection
         as_set : bool, Default False
             Determines output format. Returns a Set if True, otherwise output is a list.
@@ -296,6 +310,11 @@ class Topography(object):
             * ``None``: Sorting is left up to however the selection string is processed by their respective drivers,
                 or by whatever order the set operations returns it. Not guaranteed to be deterministic in all cases.
 
+        subset : None, str, list of ints, or int; Optional; Default: None
+            Set of atoms to make a relative selection to. Follows the same rules as ``selection`` for valid inputs.
+            If None, ``selection`` is on whole Topography.
+
+
         Returns
         -------
         selection : list or set
@@ -305,7 +324,43 @@ class Topography(object):
 
         """
 
-        # Helper functions for handling the sorting
+        # Handle subset. Define a subset topology to manipulate, then define a common call to convert subset atom
+        # into absolute atom
+        if subset is not None:
+            subset_atoms = self.select(subset, sort_by='index', as_set=False, subset=None)
+            topology = self.topology.subset(subset_atoms)
+        else:
+            subset_atoms = None
+            topology = self.topology
+
+        class AtomMap(object):
+            """Atom mapper class"""
+            def __init__(self, subset_atoms):
+                self.subset_atoms = subset_atoms
+
+            def atom_mapping(self, atom):
+                """Use a "given x, return x" mapping instead of list(range(n_atoms)) or something memory intensive"""
+                if self.subset_atoms is None:
+                    return atom
+                else:
+                    # Return the mapped atom, only if the atom is actually part of the atom map
+                    try:
+                        return_atom = self.subset_atoms[atom]
+                    except IndexError:
+                        return_atom = None
+                    return return_atom
+
+            def __contains__(self, item):
+                if self.subset_atoms is None:
+                    return 0 <= item < topology.n_atoms
+                else:
+                    return item in self.subset_atoms
+
+        atom_map = AtomMap(subset_atoms)
+        # Shorthand for later
+        atom_mapping = atom_map.atom_mapping
+
+        # Helper functions for handling the sorting, atoms should be in absolute terms at this point
         def sort_output_index(sortable):
             # Dont do list.sort, its an in place action.
             return sorted(list(sortable))
@@ -365,7 +420,8 @@ class Topography(object):
             def select(cls, region_string):
                 try:
                     # The self here is inherited from the outer scope
-                    region_output = list(self._get_region_set(region_string))
+                    region_output_unmapped = list(self._get_region_set(region_string))
+                    region_output = [item for item in region_output_unmapped if item in atom_map]
                 except (SyntaxError, ValueError) as e:
                     # Make this a local variable
                     region_error = e
@@ -380,7 +436,9 @@ class Topography(object):
             @classmethod
             def select(cls, dsl_string):
                 try:
-                    mdtraj_output = (self.topology.select(dsl_string)).tolist()
+                    mdtraj_output_unmapped_output = (topology.select(dsl_string)).tolist()
+                    mdtraj_output = [item for item in map(atom_mapping, mdtraj_output_unmapped_output)
+                                     if item is not None]
                 except ValueError as e:
                     # Make this a local variable
                     mdtraj_error = e
@@ -393,7 +451,6 @@ class Topography(object):
 
             @classmethod
             def select(cls, smarts_string):
-
                 try:
                     # Skeletal structure, not used yet
                     raise NotImplementedError("This method has not been implemented yet")
@@ -417,6 +474,9 @@ class Topography(object):
                     iterable_output = None
                 else:
                     iterable_error = None
+                if iterable_output is not None:
+                    iterable_map = [item for item in map(atom_mapping, iterable_output) if item is not None]
+                    iterable_output = iterable_map
                 return iterable_output, iterable_error
 
         class SelectInt(SelectIterable):

@@ -296,10 +296,8 @@ receptor in a combinatorial setup, both ligands can have a region named "my_regi
 same system together. However, the receptor cannot have a region named "my_region" as well, as that will
 be ambiguous as to which region, ligand or receptor, to define.
 
-It is possible to select regions with
-
-The regions right now apply to the **combined system**, although there are plans to have the region per molecule
-apply to only the subset molecule.
+The regions apply only to the molecule the ``regions`` section is under, so even if the atom index changes in the
+:class:`yank.yank.Topography`, the atomic indices defined in the ``region`` entry will be converted.
 
 The region definition supports multiple selection formats:
 
