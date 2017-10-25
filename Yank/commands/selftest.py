@@ -133,6 +133,19 @@ def dispatch(args):
     else:
         n_cards = 0
         card_modes = []
+        # Cast subprocess output to str
+        try:
+            # Try decoding byte string
+            nvidia_output = nvidia_output.decode()
+        except AttributeError:
+            # Already a string
+            pass
+        finally:
+            # Ensure its a string in case decode didn't work
+            # Only a problem in case of odd encoding but all it should do is add odd character to the start of string
+            # which is not really a problem since its not what we are searching for here
+            nvidia_output = str(nvidia_output)
+
         split_nvidia_output = nvidia_output.split('\n')
         for line in split_nvidia_output:
             match = re.search('(?:Compute[^:]*:\s+)(\w+)', line)
