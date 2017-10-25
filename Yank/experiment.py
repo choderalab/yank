@@ -201,8 +201,7 @@ class AlchemicalPhaseFactory(object):
         'number_of_equilibration_iterations': 0,
         'equilibration_timestep': 1.0 * unit.femtosecond,
         'checkpoint_interval': 10,
-        'store_solute_trajectory': True,
-        'integrator_splitting': "V R O R V",
+        'store_solute_trajectory': True
     }
 
     def __init__(self, sampler, thermodynamic_state, sampler_states, topography,
@@ -294,19 +293,30 @@ class AlchemicalPhaseFactory(object):
         # Equilibrate if requested.
         if self.options['number_of_equilibration_iterations'] > 0:
             n_iterations = self.options['number_of_equilibration_iterations']
-            if self.options['integrator_splitting'] is not None:
-                mcmc_move = mmtools.mcmc.LangevinSplittingDynamicsMove(timestep=self.options['equilibration_timestep'],
-                                                                       collision_rate=90.0 / unit.picosecond,
-                                                                       n_steps=500, reassign_velocities=True,
-                                                                       n_restart_attempts=6,
-                                                                       splitting=self.options['integrator_splitting'],
-                                                                       measure_shadow_work=False,
-                                                                       measure_heat=False)
-            else:
-                mcmc_move = mmtools.mcmc.LangevinDynamicsMove(timestep=self.options['equilibration_timestep'],
-                                                              collision_rate=90.0/unit.picosecond,
-                                                              n_steps=500, reassign_velocities=True,
-                                                              n_restart_attempts=6)
+            # Get main propagation move. If this is a sequence, find first IntegratorMove.
+            mcmc_move = self.sampler.mcmc_moves[0]
+            try:
+                integrator_moves = [move for move in mcmc_move.move_list
+                                    if isinstance(move, mmtools.mcmc.BaseIntegratorMove)]
+                mcmc_move = copy.deepcopy(integrator_moves[0])
+            except AttributeError:
+                mcmc_move = copy.deepcopy(mcmc_move)
+            logger.debug('Using {} for equilibration.'.format(mcmc_move))
+
+            # Fix move parameters for equilibration.
+            move_parameters = dict(
+                n_steps=500,
+                n_restart_attempts=6,
+                timestep=self.options['equilibration_timestep'],
+                collision_rate=90.0/unit.picosecond,
+                measure_shadow_work=False,
+                measure_heat=False
+            )
+            for parameter_name, parameter_value in move_parameters.items():
+                if hasattr(mcmc_move, parameter_name):
+                    setattr(mcmc_move, parameter_name, parameter_value)
+
+            # Run equilibration.
             alchemical_phase.equilibrate(n_iterations, mcmc_moves=mcmc_move)
 
         return alchemical_phase
@@ -545,7 +555,8 @@ class ExperimentBuilder(object):
         'nsteps_per_iteration': 500,
         'timestep': 2.0 * unit.femtosecond,
         'collision_rate': 1.0 / unit.picosecond,
-        'mc_displacement_sigma': 10.0 * unit.angstroms
+        'mc_displacement_sigma': 10.0 * unit.angstroms,
+        'integrator_splitting': 'V R O R V'
     }
 
     def __init__(self, script=None, job_id=None, n_jobs=None):
@@ -2296,8 +2307,11 @@ class ExperimentBuilder(object):
                 ]
             else:
                 move_list = []
-            integrator_splitting = phase_opts['integrator_splitting'] if 'integrator_splitting' in phase_opts else None
-            if integrator_splitting is not None:
+
+            # Creating Langevin integrator move.
+            integrator_splitting = exp_opts['integrator_splitting']
+            if exp_opts['integrator_splitting'] is not None:
+                logger.debug('Using Langevin integrator with splitting {}'.format(integrator_splitting))
                 move_list.append(mmtools.mcmc.LangevinSplittingDynamicsMove(timestep=exp_opts['timestep'],
                                                                             collision_rate=exp_opts['collision_rate'],
                                                                             n_steps=exp_opts['nsteps_per_iteration'],
@@ -2307,6 +2321,7 @@ class ExperimentBuilder(object):
                                                                             measure_shadow_work=False,
                                                                             measure_heat=False))
             else:
+                logger.debug('Using OpenMM Langevin integrator.')
                 move_list.append(mmtools.mcmc.LangevinDynamicsMove(timestep=exp_opts['timestep'],
                                                                    collision_rate=exp_opts['collision_rate'],
                                                                    n_steps=exp_opts['nsteps_per_iteration'],

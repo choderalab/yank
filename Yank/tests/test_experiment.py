@@ -359,7 +359,7 @@ def test_yaml_parsing():
     """
 
     exp_builder = ExperimentBuilder(textwrap.dedent(yaml_content))
-    assert len(exp_builder._options) == 32
+    assert len(exp_builder._options) == 33
 
     # Check correct types
     assert exp_builder._options['output_dir'] == '/path/to/output/'
