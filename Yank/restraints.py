@@ -1232,12 +1232,13 @@ class FlatBottom(RadiallySymmetricRestraint):
         # Determine number of atoms.
         n_atoms = len(topography.receptor_atoms)
 
-        if n_atoms > 3:
-            # Check that restrained receptor atoms are in expected range.
-            if any(atom_id >= n_atoms for atom_id in self.restrained_receptor_atoms):
-                raise ValueError('Receptor atoms {} were selected for restraint, but system '
-                                 'only has {} atoms.'.format(self.restrained_receptor_atoms, n_atoms))
+        # Check that restrained receptor atoms are in expected range.
+        if any(atom_id >= n_atoms for atom_id in self.restrained_receptor_atoms):
+            raise ValueError('Receptor atoms {} were selected for restraint, but system '
+                             'only has {} atoms.'.format(self.restrained_receptor_atoms, n_atoms))
 
+        # Compute well radius if the user hasn't specified it in the constructor.
+        if self.well_radius is None:
             # Get positions of mass-weighted centroid atom.
             # (Working in non-unit-bearing floats for speed.)
             x_unit = sampler_state.positions.unit
@@ -1246,36 +1247,26 @@ class FlatBottom(RadiallySymmetricRestraint):
             masses = np.array([system.getParticleMass(i) / unit.dalton for i in self.restrained_receptor_atoms])
             x_centroid = np.average(x_restrained_atoms, axis=0, weights=masses)
 
-            # Compute median absolute distance to centroid atom.
-            # Get dimensionless receptor positions.
-            x = sampler_state.positions[topography.receptor_atoms, :] / x_unit
-            # distances[i] is the distance from the centroid to particle i
-            distances = np.sqrt(((x - np.tile(x_centroid, (n_atoms, 1)))**2).sum(1))
-            median_absolute_distance = np.median(abs(distances))
+            # Get dimensionless receptor and ligand positions.
+            x_receptor = sampler_state.positions[topography.receptor_atoms, :] / x_unit
+            x_ligand = sampler_state.positions[topography.ligand_atoms, :] / x_unit
 
-            # Convert back to unit-bearing quantity.
-            median_absolute_distance *= x_unit
+            # Compute maximum square distance from the centroid to any receptor atom.
+            # dist2_centroid_receptor[i] is the squared distance from the centroid to receptor atom i.
+            dist2_centroid_receptor = pipeline.compute_squared_distances([x_centroid], x_receptor)
+            max_dist_receptor = np.sqrt(dist2_centroid_receptor.max()) * x_unit
 
-            # Convert to estimator of standard deviation for normal distribution.
-            sigma = 1.4826 * median_absolute_distance
+            # Compute maximum length of the ligand. dist2_ligand_ligand[i][j] is the
+            # squared distance between atoms i and j of the ligand.
+            dist2_ligand_ligand = pipeline.compute_squared_distances(x_ligand, x_ligand)
+            max_length_ligand = np.sqrt(dist2_ligand_ligand.max()) * x_unit
 
-            # Calculate r0, which is a multiple of sigma plus 5 A.
-            r0 = 2*sigma + 5.0 * unit.angstroms
-        else:
-            DEFAULT_DISTANCE = 15.0 * unit.angstroms
-            logger.warning("Receptor only contains {} atoms; using default "
-                           "distance of {}".format(n_atoms, str(DEFAULT_DISTANCE)))
-            r0 = DEFAULT_DISTANCE
+            # Compute the radius of the flat bottom restraint.
+            self.well_radius = max_dist_receptor + max_length_ligand/2 + 5*unit.angstrom
 
-        # Set default spring constant
-        # K = (2.0 * 0.0083144621 * 5.0 * 298.0 * 100) * unit.kilojoules_per_mole/unit.nanometers**2
-        K = 0.6 * unit.kilocalories_per_mole / unit.angstroms**2
-
-        # Store parameters if not already defined.
+        # Set default spring constant if the user hasn't specified it in the constructor.
         if self.spring_constant is None:
-            self.spring_constant = K
-        if self.well_radius is None:
-            self.well_radius = r0
+            self.spring_constant = 10.0 * thermodynamic_state.kT / unit.angstroms**2
 
         logger.debug('restraint distance r0 = {:.1f} A'.format(self.well_radius / unit.angstroms))
         logger.debug('K = {:.1f} kcal/mol/A^2'.format(
