@@ -645,15 +645,30 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
                                                                 r_max / unit.nanometers) * unit.nanometers**3
         logger.debug("shell_volume = %f nm^3" % (shell_volume / unit.nanometers**3))
 
-        # Compute standard-state volume for a single molecule in a box of size (1 L) / (avogadros number)
-        # Should also generate constant V0
+        # The restraint shell volume must be smaller than the
+        # system box volume or the restraint doesn't make sense.
+        if thermodynamic_state.is_periodic:
+            # Compute system volume in NVT/NPT ensemble.
+            system_box_volume = thermodynamic_state.volume
+            if system_box_volume is None:  # NPT ensemble
+                box_vectors = thermodynamic_state.system.getDefaultPeriodicBoxVectors()
+                system_box_volume = mmtools.states._box_vectors_volume(box_vectors)
+            logger.debug("System volume = {} nm^3".format(system_box_volume / unit.nanometers**3))
+
+            # Raise error if shell volume is too big.
+            if shell_volume > system_box_volume:
+                raise RuntimeError('The restraint does not limit the configurational '
+                                   'space within the solvation box.')
+
+        # Compute standard-state volume for a single molecule in a box of
+        # size (1 L) / (avogadros number). Should also generate constant V0.
         liter = 1000.0 * unit.centimeters**3  # one liter
-        box_volume = liter / (unit.AVOGADRO_CONSTANT_NA*unit.mole) # standard state volume
-        logger.debug("box_volume = %f nm^3" % (box_volume / unit.nanometers**3))
+        standard_state_volume = liter / (unit.AVOGADRO_CONSTANT_NA*unit.mole)  # standard state volume
+        logger.debug("Standard state volume = {} nm^3".format(standard_state_volume / unit.nanometers**3))
 
         # Compute standard state correction for releasing shell restraints into standard-state box (in units of kT).
-        DeltaG = - math.log(box_volume / shell_volume)
-        logger.debug("Standard state correction: %.3f kT" % DeltaG)
+        DeltaG = - math.log(standard_state_volume / shell_volume)
+        logger.debug('Standard state correction: {:.3f} kT'.format(DeltaG))
 
         # Report elapsed time.
         timer.stop(benchmark_id)
@@ -1062,10 +1077,13 @@ class Harmonic(RadiallySymmetricRestraint):
 
         receptor_positions = sampler_state.positions[topography.receptor_atoms]
         sigma = pipeline.compute_radius_of_gyration(receptor_positions)
-        logger.debug("Spring Constant Sigma, s = {:.3f} nm".format(sigma / unit.nanometers))
 
         # Compute corresponding spring constant.
         self.spring_constant = thermodynamic_state.kT / sigma**2
+
+        logger.debug('Spring constant sigma, s = {:.3f} nm'.format(sigma / unit.nanometers))
+        logger.debug('K = {:.1f} kcal/mol/A^2'.format(
+            self.spring_constant / unit.kilocalories_per_mole * unit.angstroms**2))
 
 
 # ==============================================================================
@@ -1214,12 +1232,13 @@ class FlatBottom(RadiallySymmetricRestraint):
         # Determine number of atoms.
         n_atoms = len(topography.receptor_atoms)
 
-        if n_atoms > 3:
-            # Check that restrained receptor atoms are in expected range.
-            if any(atom_id >= n_atoms for atom_id in self.restrained_receptor_atoms):
-                raise ValueError('Receptor atoms {} were selected for restraint, but system '
-                                 'only has {} atoms.'.format(self.restrained_receptor_atoms, n_atoms))
+        # Check that restrained receptor atoms are in expected range.
+        if any(atom_id >= n_atoms for atom_id in self.restrained_receptor_atoms):
+            raise ValueError('Receptor atoms {} were selected for restraint, but system '
+                             'only has {} atoms.'.format(self.restrained_receptor_atoms, n_atoms))
 
+        # Compute well radius if the user hasn't specified it in the constructor.
+        if self.well_radius is None:
             # Get positions of mass-weighted centroid atom.
             # (Working in non-unit-bearing floats for speed.)
             x_unit = sampler_state.positions.unit
@@ -1228,39 +1247,30 @@ class FlatBottom(RadiallySymmetricRestraint):
             masses = np.array([system.getParticleMass(i) / unit.dalton for i in self.restrained_receptor_atoms])
             x_centroid = np.average(x_restrained_atoms, axis=0, weights=masses)
 
-            # Compute median absolute distance to centroid atom.
-            # Get dimensionless receptor positions.
-            x = sampler_state.positions[topography.receptor_atoms, :] / x_unit
-            # distances[i] is the distance from the centroid to particle i
-            distances = np.sqrt(((x - np.tile(x_centroid, (n_atoms, 1)))**2).sum(1))
-            median_absolute_distance = np.median(abs(distances))
+            # Get dimensionless receptor and ligand positions.
+            x_receptor = sampler_state.positions[topography.receptor_atoms, :] / x_unit
+            x_ligand = sampler_state.positions[topography.ligand_atoms, :] / x_unit
 
-            # Convert back to unit-bearing quantity.
-            median_absolute_distance *= x_unit
+            # Compute maximum square distance from the centroid to any receptor atom.
+            # dist2_centroid_receptor[i] is the squared distance from the centroid to receptor atom i.
+            dist2_centroid_receptor = pipeline.compute_squared_distances([x_centroid], x_receptor)
+            max_dist_receptor = np.sqrt(dist2_centroid_receptor.max()) * x_unit
 
-            # Convert to estimator of standard deviation for normal distribution.
-            sigma = 1.4826 * median_absolute_distance
+            # Compute maximum length of the ligand. dist2_ligand_ligand[i][j] is the
+            # squared distance between atoms i and j of the ligand.
+            dist2_ligand_ligand = pipeline.compute_squared_distances(x_ligand, x_ligand)
+            max_length_ligand = np.sqrt(dist2_ligand_ligand.max()) * x_unit
 
-            # Calculate r0, which is a multiple of sigma plus 5 A.
-            r0 = 2*sigma + 5.0 * unit.angstroms
-        else:
-            DEFAULT_DISTANCE = 15.0 * unit.angstroms
-            logger.warning("Receptor only contains {} atoms; using default "
-                           "distance of {}".format(n_atoms, str(DEFAULT_DISTANCE)))
-            r0 = DEFAULT_DISTANCE
+            # Compute the radius of the flat bottom restraint.
+            self.well_radius = max_dist_receptor + max_length_ligand/2 + 5*unit.angstrom
 
-        logger.debug("restraint distance r0 = %.1f A" % (r0 / unit.angstroms))
-
-        # Set spring constant/
-        # K = (2.0 * 0.0083144621 * 5.0 * 298.0 * 100) * unit.kilojoules_per_mole/unit.nanometers**2
-        K = 0.6 * unit.kilocalories_per_mole / unit.angstroms**2
-        logger.debug("K = %.1f kcal/mol/A^2" % (K / (unit.kilocalories_per_mole / unit.angstroms**2)))
-
-        # Store parameters if not already defined.
+        # Set default spring constant if the user hasn't specified it in the constructor.
         if self.spring_constant is None:
-            self.spring_constant = K
-        if self.well_radius is None:
-            self.well_radius = r0
+            self.spring_constant = 10.0 * thermodynamic_state.kT / unit.angstroms**2
+
+        logger.debug('restraint distance r0 = {:.1f} A'.format(self.well_radius / unit.angstroms))
+        logger.debug('K = {:.1f} kcal/mol/A^2'.format(
+            self.spring_constant / unit.kilocalories_per_mole * unit.angstroms**2))
 
 
 # ==============================================================================

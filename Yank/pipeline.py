@@ -40,6 +40,32 @@ logger = logging.getLogger(__name__)
 # Utility functions
 # ==============================================================================
 
+def compute_squared_distances(molecule1_positions, molecule2_positions):
+    """Compute the squared distances between the atoms of two molecules.
+
+    All the positions must be expressed in the same unit of measure.
+
+    Parameters
+    ----------
+    molecule1_positions : numpy.ndarray
+        An Nx3 array where, N is the number of atoms, containing the positions of
+        the atoms of molecule1.
+    molecule2_positions : numpy.ndarray
+        An Mx3 array where, M is the number of atoms, containing the positions of
+        the atoms of the molecule2.
+
+    Returns
+    -------
+    squared_distances : numpy.ndarray
+        An NxM array of squared distances. distances_squared[i][j] is the squared
+        distance between atom i of molecule1 and atom j of molecule 2.
+
+    """
+    squared_distances = np.array([((molecule2_positions - atom_pos)**2).sum(1)
+                                  for atom_pos in molecule1_positions])
+    return squared_distances
+
+
 def compute_min_dist(mol_positions, *args):
     """Compute the minimum distance between a molecule and a set of other molecules.
 
@@ -64,10 +90,10 @@ def compute_min_dist(mol_positions, *args):
         The minimum distance between ``mol_positions`` and the other set of positions
 
     """
-    for pos1 in args:
-        # Compute squared distances
-        # Each row is an array of distances from a mol2 atom to all mol1 atoms
-        distances2 = np.array([((pos1 - pos2)**2).sum(1) for pos2 in mol_positions])
+    for argmol_positions in args:
+        # Compute squared distances.  Each row is an array of distances
+        # from a mol_positions atom to all argmol_positions atoms.
+        distances2 = compute_squared_distances(mol_positions, argmol_positions)
 
         # Find closest atoms and their distance
         min_idx = np.unravel_index(distances2.argmin(), distances2.shape)
@@ -118,10 +144,10 @@ def compute_min_max_dist(mol_positions, *args):
     """
     min_dist = None
 
-    for arg_pos in args:
-        # Compute squared distances of all atoms. Each row is an array
-        # of distances from an atom in arg_pos to all the atoms in arg_pos
-        distances2 = np.array([((mol_positions - atom)**2).sum(1) for atom in arg_pos])
+    for argmol_positions in args:
+        # Compute squared distances of all atoms. Each row is an array of distances
+        # from an atom in argmol_positions to all the atoms in mol_positions.
+        distances2 = compute_squared_distances(argmol_positions, mol_positions)
 
         # Find distances of each arg_pos atom to mol_positions
         distances2 = np.amin(distances2, axis=1)

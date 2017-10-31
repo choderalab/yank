@@ -2249,15 +2249,14 @@ class ReplicaExchange(object):
             mcmc_move.apply(thermodynamic_state, sampler_state)
         except mmtools.mcmc.IntegratorMoveError as e:
             # Save NaNnig context and MCMove before aborting.
-            prefix = 'nan-error-logs/iteration{}-replica{}-state{}'.format(
-                self._iteration, replica_id, thermodynamic_state_id)
-            e.serialize_error(prefix)
-            directory, file_template = os.path.split(prefix)
-            logger_message = "This Repex simulation threw a NaN!\nLook for error logs in:\n"
-            logger_message += "    Directory: {}".format(directory)
-            logger_message += "    File Name Base: {}".format(file_template)
-            logger.critical(logger_message)
-            raise utils.SimulationNaNError()
+            output_dir = os.path.join(os.path.dirname(self._reporter.filepath), 'nan-error-logs')
+            file_name = 'iteration{}-replica{}-state{}'.format(self._iteration, replica_id,
+                                                               thermodynamic_state_id)
+            e.serialize_error(os.path.join(output_dir, file_name))
+            message = ('This Repex simulation threw a NaN!\nLook for error logs in:\n'
+                       '\tDirectory: {}\tFile Name Base: {}').format(output_dir, file_name)
+            logger.critical(message)
+            raise utils.SimulationNaNError(message)
 
         # Return new positions and box vectors.
         return sampler_state.positions, sampler_state.box_vectors
