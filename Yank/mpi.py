@@ -111,14 +111,17 @@ def get_mpicomm():
     from mpi4py import MPI
     mpicomm = MPI.COMM_WORLD
 
-    # Override sys.excepthook to abort MPI on exception
+    # Override sys.excepthook to abort MPI on exception.
     def mpi_excepthook(type, value, traceback):
         sys.__excepthook__(type, value, traceback)
+        node_name = '{}/{}'.format(MPI.COMM_WORLD.rank+1, MPI.COMM_WORLD.size)
+        logger.exception('MPI node {} raised exception.'.format(node_name))
+        logger.critical('MPI node {} called Abort()!'.format(node_name))
         sys.stdout.flush()
         sys.stderr.flush()
-        if mpicomm.size > 1:
-            mpicomm.Abort(1)
-    # Use our eception handler
+        if MPI.COMM_WORLD.size > 1:
+            MPI.COMM_WORLD.Abort(1)
+    # Use our exception handler.
     sys.excepthook = mpi_excepthook
 
     # Catch sigterm signals
