@@ -255,7 +255,77 @@ def on_single_node(rank, broadcast_result=False, sync_nodes=False):
     return _on_single_node
 
 
-def distribute(task, distributed_args, *other_args, **kwargs):
+class _MpiProcessingUnit(object):
+
+    def __init__(self, group_size):
+        # Store original mpicomm that we'll have to restore later.
+        self._parent_mpicomm = get_mpicomm()
+
+        # No need to split the comm if group size is None.
+        if group_size is None:
+            self._exec_mpicomm = self._parent_mpicomm
+            self.rank = self._parent_mpicomm.rank
+            self.size = self._parent_mpicomm.size
+        else:
+            # Determine the color that will be assigned to this node.
+            node_color, n_groups = self._determine_node_color(group_size)
+            # Split the mpicomm among nodes. Maintain same order using mpicomm.rank as rank.
+            self._exec_mpicomm = self._parent_mpicomm.Split(color=node_color,
+                                                            key=self._parent_mpicomm.rank)
+            self.rank = node_color
+            self.size = n_groups
+
+    @property
+    def is_group(self):
+        return self._exec_mpicomm != self._parent_mpicomm
+
+    def exec_tasks(self, task, distributed_args, *other_args, **kwargs):
+        # Determine name for logging.
+        node_name = 'Node {}/{}'.format(self._exec_mpicomm.rank+1, self._exec_mpicomm.size)
+        if self.is_group:
+            node_name = 'Group {}/{} '.format(self.rank+1, self.size) + node_name
+
+        # Compute all the results assigned to this node.
+        results = []
+        for distributed_arg in distributed_args:
+            logger.debug('{}: execute {}({})'.format(node_name, task.__name__, distributed_arg))
+            results.append(task(distributed_arg, *other_args, **kwargs))
+
+        return results
+
+    def __enter__(self):
+        # Cache execution mpicomm so that tasks will access the split mpicomm.
+        get_mpicomm._mpicomm = self._exec_mpicomm
+        return self
+
+    def __exit__(self, exc_type, exc_value, exc_traceback):
+        # Restore the original mpicomm.
+        if self.is_group:
+            self._exec_mpicomm.Free()
+            get_mpicomm._mpicomm = self._parent_mpicomm
+
+    def _determine_node_color(self, group_size):
+        try:  # Check if this is an integer.
+            node_color = int(self._parent_mpicomm.rank / group_size)
+            n_groups = int(np.ceil(self._parent_mpicomm.size / group_size))
+        except TypeError:  # List of integers.
+            # Check that the group division requested make sense. The sum
+            # of all group sizes must be equal to the size of the mpicomm.
+            cumulative_sum_nodes = np.cumsum(group_size)
+            if cumulative_sum_nodes[-1] != self._parent_mpicomm.size:
+                raise ValueError('The group division requested cannot be performed.\n'
+                                 'Total number of nodes: {}\n'
+                                 'Group nodes: {}'.format(self._parent_mpicomm.size, group_size))
+
+            # The first group_size[0] nodes have color 0, the next group_size[1]
+            # nodes have color 1 etc.
+            node_color = next(i for i, v in enumerate(cumulative_sum_nodes)
+                              if v > self._parent_mpicomm.rank)
+            n_groups = len(group_size)
+        return node_color, n_groups
+
+
+def distribute(task, distributed_args, *other_args, send_results_to=None, sync_nodes=False, group_nodes=None, **kwargs):
     """Map the task on a sequence of arguments to be executed on different nodes.
 
     If MPI is not activated, this simply runs serially on this node. The
@@ -331,14 +401,10 @@ def distribute(task, distributed_args, *other_args, **kwargs):
     [[1, 4, 9], [16], [25, 36]]
 
     """
-    send_results_to = kwargs.pop('send_results_to', None)
-    sync_nodes = kwargs.pop('sync_nodes', False)
-    group_nodes = kwargs.pop('group_nodes', None)
-    mpicomm = get_mpicomm()
     n_jobs = len(distributed_args)
 
     # If MPI is not activated, just run serially.
-    if mpicomm is None:
+    if get_mpicomm() is None:
         logger.debug('Running {} serially.'.format(task.__name__))
         all_results = [task(job_args, *other_args, **kwargs) for job_args in distributed_args]
         if send_results_to == 'all':
@@ -346,69 +412,32 @@ def distribute(task, distributed_args, *other_args, **kwargs):
         else:
             return all_results, list(range(n_jobs))
 
-    # Determine the jobs that this node has to run.
-    # If we need to group nodes, split the default mpicomm.
-    if group_nodes is not None:
-        # Store original mpicomm that we'll have to restore later.
-        original_mpicomm = mpicomm
+    # Split the default mpicomm into group if necessary.
+    with _MpiProcessingUnit(group_nodes) as processing_unit:
+        # Determine the jobs that this node has to run.
+        node_job_ids = range(processing_unit.rank, n_jobs, processing_unit.size)
+        node_distributed_args = [distributed_args[job_id] for job_id in node_job_ids]
 
-        # Determine the color of this node.
-        try:  # Check if this is an integer.
-            color = int(mpicomm.rank / group_nodes)
-            n_groups = int(np.ceil(mpicomm.size / group_nodes))
-        except TypeError:  # List of integers.
-            # Check that the group division requested make sense.
-            cumulative_sum_nodes = np.cumsum(group_nodes)
-            if cumulative_sum_nodes[-1] != mpicomm.size:
-                raise ValueError('The group division requested cannot be performed.\n'
-                                 'Total number of nodes: {}\n'
-                                 'Group nodes: {}'.format(mpicomm.size, group_nodes))
-            # The first group_nodes[0] nodes have color 0, the next group_nodes[1] nodes
-            # have color 1 etc.
-            color = next(i for i, v in enumerate(cumulative_sum_nodes) if v > mpicomm.rank)
-            n_groups = len(group_nodes)
+        # Run all jobs.
+        results = processing_unit.exec_tasks(task, node_distributed_args,
+                                             *other_args, **kwargs)
 
-        # Split the mpicomm among nodes. Maintain same order using mpicomm.rank as rank.
-        mpicomm = original_mpicomm.Split(color=color, key=mpicomm.rank)
+        # If we have split the mpicomm, nodes belonging to the same group
+        # have duplicate results. We gather only results from one node.
+        if processing_unit.is_group and get_mpicomm().rank != 0:
+            results_to_send = []
+        else:
+            results_to_send = results
 
-        # Cache new mpicomm so that task() will access the split mpicomm.
-        get_mpicomm._mpicomm = mpicomm
-
-        # Distribute distributed_args by color.
-        node_job_ids = range(color, n_jobs, n_groups)
-        node_name = 'Group {}/{}, Node {}/{}'.format(color+1, n_groups,
-                                                     mpicomm.rank+1, mpicomm.size)
-    else:
-        # Distribute distributed_args by mpicomm.rank.
-        node_job_ids = range(mpicomm.rank, n_jobs, mpicomm.size)
-        node_name = 'Node {}/{}'.format(mpicomm.rank+1, mpicomm.size)
-
-    # Compute all the results assigned to this node.
-    results = []
-    for job_id in node_job_ids:
-        distributed_arg = distributed_args[job_id]
-        logger.debug('{}: execute {}({})'.format(node_name, task.__name__, distributed_arg))
-        results.append(task(distributed_arg, *other_args, **kwargs))
-
-    # If we have split the mpicomm, nodes belonging to the same group
-    # have duplicate results. We gather only results from one node.
-    if not group_nodes or mpicomm.rank == 0:
-        results_to_send = results
-    else:
-        results_to_send = []
-
-    # Restore the original mpicomm.
-    if group_nodes is not None:
-        mpicomm.Free()
-        mpicomm = original_mpicomm
-        get_mpicomm._mpicomm = original_mpicomm
-
-    # Share result as specified.
+    # Share result as requested.
+    mpicomm = get_mpicomm()
+    node_name = 'Node {}/{}'.format(mpicomm.rank+1, mpicomm.size)
     if send_results_to == 'all':
         logger.debug('{}: allgather results of {}'.format(node_name, task.__name__))
         all_results = mpicomm.allgather(results_to_send)
     elif isinstance(send_results_to, int):
-        logger.debug('{}: gather results of {}'.format(node_name, task.__name__))
+        logger.debug('{}: sending results of {} to {}'.format(node_name, task.__name__,
+                                                              send_results_to))
         all_results = mpicomm.gather(results_to_send, root=send_results_to)
 
         # If this is not the receiving node, we can safely return.
@@ -423,7 +452,7 @@ def distribute(task, distributed_args, *other_args, **kwargs):
 
     # all_results is a list of list of results. The internal lists of
     # results are ordered by rank. We need to reorder the results as a
-    # flat list or results ordered by job_id.
+    # flat list of results ordered by job_id.
 
     # job_indices[job_id] is the tuple of indices (rank, i). The result
     # of job_id is stored in all_results[rank][i].
