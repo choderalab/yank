@@ -721,7 +721,7 @@ class ExperimentBuilder(object):
         if len(self._experiments) == 0:
             raise YamlParseError('No experiments specified!')
 
-        # Setup and run all experiments with paths relative to the script directory
+        # Setup and run all experiments with paths relative to the script directory.
         with moltools.utils.temporary_cd(self._script_dir):
             self._check_resume()
             self._setup_experiments()
@@ -734,7 +734,7 @@ class ExperimentBuilder(object):
             # Cycle between experiments every switch_experiment_interval iterations
             # until all of them are done.
             while len(all_experiments) > 0:
-                # Distribute experiments across MPI communicators if requested
+                # Distribute experiments across MPI communicators if requested.
                 completed = [False] * len(all_experiments)
                 if processes_per_experiment is None:
                     for exp_index, exp in enumerate(all_experiments):
@@ -742,13 +742,12 @@ class ExperimentBuilder(object):
                 else:
                     completed = mpi.distribute(self._run_experiment,
                                                distributed_args=all_experiments,
-                                               group_nodes=processes_per_experiment,
+                                               group_size=processes_per_experiment,
                                                send_results_to='all')
-                # Remove any completed experiments, releasing possible parallel resources to be reused
-                # Evaluate in reverse order to avoid shuffling indices
+
+                # Remove any completed experiments, releasing possible parallel resources
+                # to be reused. Evaluate in reverse order to avoid shuffling indices.
                 for exp_index in range(len(all_experiments)-1, -1, -1):
-                    # This will evaluate True for any "True" entry, and any "SimulationNaNError" entries
-                    # NaN'd simulations handled within the experiment itself.
                     if completed[exp_index]:
                         all_experiments.pop(exp_index)
 
@@ -1870,7 +1869,7 @@ class ExperimentBuilder(object):
         # Parallelize generation of all protocols among nodes.
         mpi.distribute(self._generate_experiment_protocol,
                        distributed_args=experiments_to_generate,
-                       group_nodes=1, sync_nodes=True)
+                       send_results_to=None, group_size=1, sync_nodes=True)
 
     def _generate_experiment_protocol(self, experiment, constrain_receptor=True,
                                       n_equilibration_iterations=None, **kwargs):
@@ -2377,22 +2376,25 @@ class ExperimentBuilder(object):
             switch_experiment_interval = self._options['switch_experiment_interval']
 
         built_experiment = self._build_experiment(experiment_path, experiment)
+
         # Trap a NaN'd simulation by capturing only the error we can handle, let all others raise normally
         try:
             built_experiment.run(n_iterations=switch_experiment_interval)
-        except utils.SimulationNaNError as e:
-            nan_warning_string = '\n'  # initial blank line for spacing
-            nan_warning_string += ('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n'
-                                   '!     CRITICAL: Experiment NaN    !\n'
-                                   '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n'
-                                   'The following experiment threw a NaN! It should NOT be considered!\n'
-                                   )
-            nan_warning_string += 'Experiment: {}\n'.format(self._get_experiment_dir(experiment_path))
-            nan_warning_string += '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n' * 2
-            # Print out to critical logger
+        except utils.SimulationNaNError:
+            # Print out to critical logger.
+            nan_warning_string = ('\n\n'  # Initial blank line for spacing.
+                                  '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n'
+                                  '!     CRITICAL: Experiment NaN    !\n'
+                                  '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n'
+                                  'The following experiment threw a NaN! It should NOT be considered!\n'
+                                  'Experiment: {}\n'
+                                  '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n'
+                                  '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n'
+                                  ).format(self._get_experiment_dir(experiment_path))
             logger.critical(nan_warning_string)
-            # Return error at end to be handled by whatever invoked function
-            return e
+
+            # Flag the experiment as completed to avoid continuing in the next cycle.
+            return True
         return built_experiment.is_completed
 
 
