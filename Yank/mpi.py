@@ -256,7 +256,25 @@ def on_single_node(rank, broadcast_result=False, sync_nodes=False):
 
 
 class _MpiProcessingUnit(object):
+    """Context manager abstracting a single MPI processes and a group of nodes.
 
+    Parameters
+    ----------
+    group_size : None, int or list of int, optional, default is None
+        If not None, the ``distributed_args`` are distributed among groups of
+        nodes that are isolated from each other. If an integer, the nodes are
+        split into equal groups of ``group_size`` nodes. If a list of integers,
+        the nodes are split in possibly unequal groups.
+
+    Attributes
+    ----------
+    rank : int
+        Either the rank of the node, or the color of the group.
+    size : int
+        Either the size of the mpicomm, or the number of groups.
+    is_group
+
+    """
     def __init__(self, group_size):
         # Store original mpicomm that we'll have to restore later.
         self._parent_mpicomm = get_mpicomm()
@@ -277,10 +295,25 @@ class _MpiProcessingUnit(object):
 
     @property
     def is_group(self):
+        """True if this is a group of nodes (i.e. :func:`get_mpicomm` is split)."""
         return self._exec_mpicomm != self._parent_mpicomm
 
     def exec_tasks(self, task, distributed_args, propagate_exceptions_to,
                    *other_args, **kwargs):
+        """Run task on the given arguments.
+
+        Parameters
+        ----------
+        propagate_exceptions_to : 'all', 'group', or None
+            When one of the processes raise an exception during the task
+            execution, this controls which other processes raise it.
+
+        Returns
+        -------
+        results : list
+            The list of the return values of the task. One for each argument.
+
+        """
         # Determine where to propagate exceptions.
         if propagate_exceptions_to == 'all':
             exception_mpicomm = self._parent_mpicomm
@@ -336,6 +369,7 @@ class _MpiProcessingUnit(object):
             get_mpicomm._mpicomm = self._parent_mpicomm
 
     def _determine_node_color(self, group_size):
+        """Determine the color of this node."""
         try:  # Check if this is an integer.
             node_color = int(self._parent_mpicomm.rank / group_size)
             n_groups = int(np.ceil(self._parent_mpicomm.size / group_size))
@@ -372,11 +406,15 @@ def distribute(task, distributed_args, *other_args, send_results_to='all',
         to be distributed must the the first one.
     distributed_args : iterable
         The sequence of the parameters to distribute among nodes.
-    send_results_to : int or 'all', optional
+    send_results_to : int, 'all', or None, optional
         If the string 'all', the result will be sent to all nodes. If an
         int, the result will be send only to the node with rank ``send_results_to``.
         The return value of distribute depends on the value of this parameter
         (default is None).
+    propagate_exceptions_to : 'all', 'group', or None, optional
+        When one of the processes raise an exception during the task execution,
+        this controls which other processes raise it (default is 'all'). This
+        can be 'group' or None only if ``send_results_to`` is None.
     sync_nodes : bool, optional
         If True, the nodes will be synchronized at the end of the
         execution (i.e. the task will be blocking) even if the
