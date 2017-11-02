@@ -325,7 +325,7 @@ class _MpiProcessingUnit(object):
         return node_color, n_groups
 
 
-def distribute(task, distributed_args, *other_args, send_results_to=None, sync_nodes=False, group_nodes=None, **kwargs):
+def distribute(task, distributed_args, *other_args, send_results_to='all', sync_nodes=False, group_size=None, **kwargs):
     """Map the task on a sequence of arguments to be executed on different nodes.
 
     If MPI is not activated, this simply runs serially on this node. The
@@ -349,12 +349,12 @@ def distribute(task, distributed_args, *other_args, send_results_to=None, sync_n
         If True, the nodes will be synchronized at the end of the
         execution (i.e. the task will be blocking) even if the
         result is not shared (default is False).
-    group_nodes : None, int or list of int, optional, default is None
+    group_size : None, int or list of int, optional, default is None
         If not None, the ``distributed_args`` are distributed among groups of
         nodes that are isolated from each other. This is particularly useful
         if ``task`` also calls :func:`distribute`, since normally that would result
         in unexpected behavior. If an integer, the nodes are split into equal
-        groups of ``group_nodes`` nodes. If a list of integers, the nodes are
+        groups of ``group_size`` nodes. If a list of integers, the nodes are
         split in possibly unequal groups (see example below).
 
     Other Parameters
@@ -397,7 +397,7 @@ def distribute(task, distributed_args, *other_args, send_results_to=None, sync_n
     ...     return distribute(square, list_of_bases, send_results_to='all')
     >>> list_of_supertask_args = [[1, 2, 3], [4], [5, 6]]
     >>> distribute(supertask, distributed_args=list_of_supertask_args,
-    ...            send_results_to='all', group_nodes=2)
+    ...            send_results_to='all', group_size=2)
     [[1, 4, 9], [16], [25, 36]]
 
     """
@@ -413,7 +413,7 @@ def distribute(task, distributed_args, *other_args, send_results_to=None, sync_n
             return all_results, list(range(n_jobs))
 
     # Split the default mpicomm into group if necessary.
-    with _MpiProcessingUnit(group_nodes) as processing_unit:
+    with _MpiProcessingUnit(group_size) as processing_unit:
         # Determine the jobs that this node has to run.
         node_job_ids = range(processing_unit.rank, n_jobs, processing_unit.size)
         node_distributed_args = [distributed_args[job_id] for job_id in node_job_ids]
