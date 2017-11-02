@@ -279,7 +279,19 @@ class _MpiProcessingUnit(object):
     def is_group(self):
         return self._exec_mpicomm != self._parent_mpicomm
 
-    def exec_tasks(self, task, distributed_args, *other_args, **kwargs):
+    def exec_tasks(self, task, distributed_args, propagate_exceptions_to,
+                   *other_args, **kwargs):
+        # Determine where to propagate exceptions.
+        if propagate_exceptions_to == 'all':
+            exception_mpicomm = self._parent_mpicomm
+        elif propagate_exceptions_to == 'group':
+            exception_mpicomm = self._exec_mpicomm
+        elif propagate_exceptions_to is None:
+            exception_mpicomm = None
+        else:
+            raise ValueError('Unknown value for propagate_exceptions_to: '
+                             '{}'.format(propagate_exceptions_to))
+
         # Determine name for logging.
         node_name = 'Node {}/{}'.format(self._exec_mpicomm.rank+1, self._exec_mpicomm.size)
         if self.is_group:
@@ -287,9 +299,28 @@ class _MpiProcessingUnit(object):
 
         # Compute all the results assigned to this node.
         results = []
+        error = None
         for distributed_arg in distributed_args:
             logger.debug('{}: execute {}({})'.format(node_name, task.__name__, distributed_arg))
-            results.append(task(distributed_arg, *other_args, **kwargs))
+            try:
+                results.append(task(distributed_arg, *other_args, **kwargs))
+            except Exception as e:
+                # Create an exception with same type and traceback but with node info.
+                error = type(e)('{}: {}'.format(node_name, str(e)))
+                error.with_traceback(sys.exc_info()[2])
+                break
+
+        # Propagate eventual exceptions to other nodes before raising.
+        all_errors = []
+        if exception_mpicomm is not None:
+            all_errors = exception_mpicomm.allgather(error)
+            all_errors = [e for e in all_errors if e is not None]
+        # Each node raises its own exception first and then the others
+        # (if any). This way the logs will be more informative.
+        if error is not None:
+            raise error
+        elif len(all_errors) > 0:
+            raise all_errors[0]
 
         return results
 
@@ -325,7 +356,8 @@ class _MpiProcessingUnit(object):
         return node_color, n_groups
 
 
-def distribute(task, distributed_args, *other_args, send_results_to='all', sync_nodes=False, group_size=None, **kwargs):
+def distribute(task, distributed_args, *other_args, send_results_to='all',
+               propagate_exceptions_to='all', sync_nodes=False, group_size=None, **kwargs):
     """Map the task on a sequence of arguments to be executed on different nodes.
 
     If MPI is not activated, this simply runs serially on this node. The
@@ -401,6 +433,11 @@ def distribute(task, distributed_args, *other_args, send_results_to='all', sync_
     [[1, 4, 9], [16], [25, 36]]
 
     """
+    # We can't propagate exceptions to a subset of nodes if we need to send all the results.
+    if send_results_to is not None and propagate_exceptions_to != 'all':
+        raise ValueError('Cannot propagate exceptions to a subset of nodes '
+                         'with send_results_to != None')
+
     n_jobs = len(distributed_args)
 
     # If MPI is not activated, just run serially.
@@ -419,7 +456,7 @@ def distribute(task, distributed_args, *other_args, send_results_to='all', sync_
         node_distributed_args = [distributed_args[job_id] for job_id in node_job_ids]
 
         # Run all jobs.
-        results = processing_unit.exec_tasks(task, node_distributed_args,
+        results = processing_unit.exec_tasks(task, node_distributed_args, propagate_exceptions_to,
                                              *other_args, **kwargs)
 
         # If we have split the mpicomm, nodes belonging to the same group

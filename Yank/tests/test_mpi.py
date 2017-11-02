@@ -13,12 +13,8 @@ Test MPI utility functions in mpi.py.
 # GLOBAL IMPORTS
 # =============================================================================
 
-import json
-import shutil
-import contextlib
-
+import nose
 from simtk import unit
-from openmoltools.utils import temporary_cd
 
 from yank.mpi import *
 
@@ -27,7 +23,7 @@ from yank.mpi import *
 # GLOBAL VARIABLES
 # =============================================================================
 
-NODE_RANK = 1  # The node rank passed to rank or send_results_to.
+NODE_RANK = 0  # The node rank passed to rank or send_results_to.
 
 
 # =============================================================================
@@ -210,7 +206,7 @@ def test_distribute():
 def test_distribute_groups():
     """Test distribute jobs among groups of nodes."""
     # Configuration.
-    group_nodes = 2
+    group_size = 2
     list_of_supertask_args = [[1, 2], [3, 4, 5], [6, 7, 8, 9]]
 
     def supertask(list_of_bases):
@@ -225,15 +221,15 @@ def test_distribute_groups():
 
     # Super tasks will store results in the same temporary directory.
     all_results = distribute(supertask, distributed_args=list_of_supertask_args, sync_nodes=True,
-                             send_results_to='all', group_nodes=group_nodes)
+                             send_results_to='all', group_size=group_size)
 
     mpicomm = get_mpicomm()
     n_jobs = len(list_of_supertask_args)
 
     # Find the job_ids assigned to the last group and the size of its communicator.
     if mpicomm is not None:
-        n_groups = int(np.ceil(mpicomm.size / group_nodes))
-        last_group_size = group_nodes - mpicomm.size % group_nodes
+        n_groups = int(np.ceil(mpicomm.size / group_size))
+        last_group_size = group_size - mpicomm.size % group_size
         last_group_job_ids = set(range(n_groups-1, n_jobs, n_groups))
 
     # Verify all tasks.
@@ -253,3 +249,41 @@ def test_distribute_groups():
         else:
             expected_mpi_size = 2
         assert mpi_size == expected_mpi_size
+
+
+def test_exception_handling():
+    """distribute() propagates exceptions correctly."""
+    group_size = 2
+    mpicomm = get_mpicomm()
+
+    def task(arg):
+        if arg == 0 and (mpicomm is None or get_mpicomm().rank == 0):
+            raise RuntimeError(str(arg))
+        return
+
+    def call_distribute(propagate_exceptions_to, send_results_to=None):
+        distribute(task, distributed_args=list(range(2*group_size)), send_results_to=send_results_to,
+                   propagate_exceptions_to=propagate_exceptions_to, group_size=group_size)
+
+    # When propagate_exceptions_to is set to 'all', the exception is raised in all nodes.
+    with nose.tools.assert_raises(RuntimeError):
+        call_distribute(propagate_exceptions_to='all', send_results_to='all')
+
+    # It's impossible to send results and propagate exceptions to a subset of nodes.
+    if mpicomm is not None:
+        with nose.tools.assert_raises(ValueError):
+            call_distribute(propagate_exceptions_to='group', send_results_to='all')
+
+    # When propagate_exceptions_to is set to 'group', the exception is raised in the first group only.
+    if mpicomm is None or mpicomm.rank in list(range(group_size)):
+        with nose.tools.assert_raises(RuntimeError):
+            call_distribute(propagate_exceptions_to='group')
+    else:
+        call_distribute(propagate_exceptions_to='group')  # No exception raised.
+
+    # When propagate_exceptions_to is set to None, the exception is raised in the first node.
+    if mpicomm is None or mpicomm.rank == 0:
+        with nose.tools.assert_raises(RuntimeError):
+            call_distribute(propagate_exceptions_to=None)
+    else:
+        call_distribute(propagate_exceptions_to=None)  # No exception raised.
