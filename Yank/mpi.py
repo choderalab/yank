@@ -46,11 +46,10 @@ import os
 import sys
 import signal
 import logging
+import functools
 from contextlib import contextmanager
 
 import numpy as np
-# TODO drop this when we drop Python 2 support
-from openmoltools.utils import wraps_py2
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +58,7 @@ logger = logging.getLogger(__name__)
 # ==============================================================================
 
 disable_mpi = False
+
 
 
 # ==============================================================================
@@ -246,7 +246,7 @@ def on_single_node(rank, broadcast_result=False, sync_nodes=False):
 
     """
     def _on_single_node(task):
-        @wraps_py2(task)
+        @functools.wraps(task)
         def _wrapper(*args, **kwargs):
             kwargs['broadcast_result'] = broadcast_result
             kwargs['sync_nodes'] = sync_nodes
@@ -471,11 +471,6 @@ def distribute(task, distributed_args, *other_args, send_results_to='all',
     [[1, 4, 9], [16], [25, 36]]
 
     """
-    # We can't propagate exceptions to a subset of nodes if we need to send all the results.
-    if send_results_to is not None and propagate_exceptions_to != 'all':
-        raise ValueError('Cannot propagate exceptions to a subset of nodes '
-                         'with send_results_to != None')
-
     n_jobs = len(distributed_args)
 
     # If MPI is not activated, just run serially.
@@ -486,6 +481,11 @@ def distribute(task, distributed_args, *other_args, send_results_to='all',
             return all_results
         else:
             return all_results, list(range(n_jobs))
+
+    # We can't propagate exceptions to a subset of nodes if we need to send all the results.
+    if send_results_to is not None and propagate_exceptions_to != 'all':
+        raise ValueError('Cannot propagate exceptions to a subset of nodes '
+                         'with send_results_to != None')
 
     # Split the default mpicomm into group if necessary.
     with _MpiProcessingUnit(group_size) as processing_unit:
@@ -582,7 +582,7 @@ def delay_termination():
 
 def delayed_termination(func):
     """Decorator that runs the function with :func:`delay_termination`."""
-    @wraps_py2(func)
+    @functools.wraps(func)
     def _delayed_termination(*args, **kwargs):
         with delay_termination():
             return func(*args, **kwargs)
