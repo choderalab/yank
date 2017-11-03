@@ -2323,7 +2323,7 @@ def test_automatic_alchemical_path():
 
 
 def test_experiment_nan():
-    """Test that when an experiment NaN's, it returns a formal error when things go wrong"""
+    """Test that eventual NaN's are handled and that experiment is signal as completed."""
     with mmtools.utils.temporary_directory() as tmp_dir:
         yaml_script = get_functionality_script(output_directory=tmp_dir, experiment_repeats=0, number_nan_repeats=1)
         exp_builder = ExperimentBuilder(script=yaml_script)
@@ -2332,8 +2332,8 @@ def test_experiment_nan():
             exp_builder._setup_experiments()
             exp_builder._generate_experiments_protocols()
             for experiment in exp_builder._expand_experiments():
-                output = exp_builder._run_experiment(experiment)
-                assert isinstance(output, utils.SimulationNaNError)
+                is_completed = exp_builder._run_experiment(experiment)
+                assert is_completed
 
 
 def test_multi_experiment_nan():
