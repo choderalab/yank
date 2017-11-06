@@ -1,10 +1,6 @@
 import json
 
-try:
-    # Only works in Python 3
-    from urllib.request import urlopen
-except ImportError:
-    from urllib2 import urlopen
+from urllib.request import urlopen
 from yank import version
 
 if not version.release:

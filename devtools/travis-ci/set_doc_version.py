@@ -17,12 +17,12 @@ shutil.copytree("docs/_build", "docs/_deploy/{docversion}"
 
 # Only update latest if we are on a release version
 if version.release:
-    # Update the "latest" index file
-    base_index_string = """<html><head><meta http-equiv="refresh" content="0;URL='/{WHEREISLATEST}'"/></head></html>"""
-    index_html = base_index_string.format(WHEREISLATEST=docversion)
+    # Create the directory
     try:
         os.mkdir("docs/_deploy/latest")
     except:
+        # Directory exists, no need to make it
         pass
-    with open("docs/_deploy/latest/index.html", 'w') as index_file:
-        index_file.write(index_html)
+    # Copy the most recent version to the latest build
+    shutil.copytree("docs/_build", "docs/_deploy/latest"
+                    .format(docversion=docversion))
