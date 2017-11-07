@@ -472,18 +472,18 @@ class HealthReportData(object):
             elif 'solvent1' in phase:
                 calculation_type = ' of solvation'
 
-        print("Free energy{}: {:16.3f} +- {:.3f} kT ({:16.3f} +- {:.3f} kcal/mol)".format(
+        print('Free energy{:<13}: {:9.3f} +- {:.3f} kT ({:.3f} +- {:.3f} kcal/mol)'.format(
             calculation_type, DeltaF, dDeltaF, DeltaF * kT / units.kilocalories_per_mole,
                                                dDeltaF * kT / units.kilocalories_per_mole))
 
         for phase in self.phase_names:
-            print("DeltaG {:<25} : {:16.3f} +- {:.3f} kT".format(phase, data[phase]['DeltaF'],
-                                                                 data[phase]['dDeltaF']))
+            print('DeltaG {:<17}: {:9.3f} +- {:.3f} kT'.format(phase, data[phase]['DeltaF'],
+                                                               data[phase]['dDeltaF']))
             if data[phase]['DeltaF_standard_state_correction'] != 0.0:
-                print("DeltaG {:<25} : {:25.3f} kT".format('standard state correction',
-                                                           data[phase]['DeltaF_standard_state_correction']))
+                print('DeltaG {:<17}: {:18.3f} kT'.format('standard state correction',
+                                                          data[phase]['DeltaF_standard_state_correction']))
         print('')
-        print("Enthalpy{}: {:16.3f} +- {:.3f} kT ({:16.3f} +- {:.3f} kcal/mol)".format(
+        print('Enthalpy{:<16}: {:9.3f} +- {:.3f} kT ({:.3f} +- {:.3f} kcal/mol)'.format(
             calculation_type, DeltaH, dDeltaH, DeltaH * kT / units.kilocalories_per_mole,
                                                dDeltaH * kT / units.kilocalories_per_mole))
         self._free_energy_run = True
