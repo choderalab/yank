@@ -322,7 +322,8 @@ class HealthReportData(object):
             mixing_cutoff = 0
         if mixing_warning_threshold <= mixing_cutoff:
             raise ValueError("mixing_warning_threshold must be larger than mixing_cutoff")
-        if mixing_warning_threshold > 1 or mixing_cutoff > 1 or mixing_warning_threshold < 0 or mixing_cutoff < 0:
+        if (mixing_warning_threshold > 1 or mixing_cutoff > 1 or
+                    mixing_warning_threshold < 0 or mixing_cutoff < 0):
             raise ValueError("mixing_warning_threshold and mixing_cutoff must be between [0,1]")
         cdict = {'red': ((0.0, 1.0, 1.0),
                          (mixing_cutoff, 1.0, 1.0),
@@ -345,43 +346,57 @@ class HealthReportData(object):
             cmap = plt.get_cmap("Blues")
         else:
             cmap = LinearSegmentedColormap('BlueWarnRed', cdict)
+
+        # Plot a diffusing mixing map for each phase.
         for phase_name, subplot in zip(self.phase_names, subplots):
+            # Generate mixing statistics.
             analyzer = self.analyzers[phase_name]
-            mixing_data, mu = analyzer.generate_mixing_statistics(number_equilibrated=self.nequils[phase_name])
-            # Without vmin/vmax, the image normalizes the values to mixing_data.max which screws up the warning colormap
-            # Can also use norm=NoNorm(), but that makes the colorbar manipulation fail
-            output_image = subplot.imshow(mixing_data, aspect='equal', cmap=cmap, vmin=0, vmax=1)
-            # Add colorbr
+            mixing_statistics = analyzer.generate_mixing_statistics(
+                number_equilibrated=self.nequils[phase_name])
+            transition_matrix, eigenvalues, statistical_inefficiency = mixing_statistics
+
+            # Without vmin/vmax, the image normalizes the values to mixing_data.max
+            # which screws up the warning colormap.
+            # Can also use norm=NoNorm(), but that makes the colorbar manipulation fail.
+            output_image = subplot.imshow(mixing_statistics.transition_matrix, aspect='equal',
+                                          cmap=cmap, vmin=0, vmax=1)
+            # Add colorbar.
             decimal = 2  # Precision setting
             nticks = 11
-            # The color bar has to be configured indepenent of the source image or it cant be truncated to only
-            # show the data. i.e. it would instead go 0-1 always
-            ubound = np.min([np.around(mixing_data.max(), decimals=decimal) + 10 ** (-decimal), 1])
-            lbound = np.max([np.around(mixing_data.min(), decimals=decimal) - 10 ** (-decimal), 0])
+            # The color bar has to be configured independently of the source image
+            # or it cant be truncated to only show the data. i.e. it would instead
+            # go 0-1 always.
+            ubound = np.min([np.around(transition_matrix.max(), decimals=decimal) + 10 ** (-decimal), 1])
+            lbound = np.max([np.around(transition_matrix.min(), decimals=decimal) - 10 ** (-decimal), 0])
             boundslice = np.linspace(lbound, ubound, 256)
             cbar = plt.colorbar(output_image, ax=subplot, orientation='vertical',
                                 boundaries=boundslice,
                                 values=boundslice[1:],
                                 format='%.{}f'.format(decimal))
-            # Update ticks
+            # Update ticks.
             ticks = np.linspace(lbound, ubound, nticks)
             cbar.set_ticks(ticks)
-            # Labels
-            title_txt = phase_name + " phase" + "\n"
-            title_txt += "Perron eigenvalue {0:9.5f}\n".format(mu[1])
-            title_txt += "State equilibration timescale ~"
-            timescale_dnom = 1.0 - mu[1]
-            if timescale_dnom == 0:
-                title_txt += r"$\infty$ iterations"
+
+            # Title: Perron eigenvalue, equilibration time and statistical inefficiency.
+            perron_eigenvalue = eigenvalues[1]
+            title_txt = (phase_name + ' phase\n'
+                         'Perron eigenvalue: {}\n'
+                         'State equilibration timescale: ~{} iterations\n')
+            if perron_eigenvalue >= 1:
+                title_txt = title_txt.format('1.0', '$\infty$')
             else:
-                title_txt += "{0:.1f} iterations".format(1.0 / timescale_dnom)
+                equilibration_timescale = 1.0 / (1.0 - perron_eigenvalue)
+                title_txt = title_txt.format('{:.5f}', '{:.1f}')
+                title_txt = title_txt.format(perron_eigenvalue, equilibration_timescale)
+            title_txt += 'Replica state index statistical inefficiency: {:.3f}'.format(statistical_inefficiency)
             subplot.set_title(title_txt, fontsize=20, y=1.05)
-            # Display Warning
-            if np.any(mixing_data >= mixing_warning_threshold):
+
+            # Display Warning.
+            if np.any(transition_matrix >= mixing_warning_threshold):
                 subplot.text(
                     0.5, -0.2,
-                    "Warning!\nThere were states that less than {0:.2f}% swaps!\nConsider adding more states!".format(
-                        (1 - mixing_warning_threshold) * 100),
+                    ("Warning!\nThere were states that less than {0:.2f}% swaps!\n"
+                     "Consider adding more states!".format((1 - mixing_warning_threshold) * 100)),
                     verticalalignment='bottom', horizontalalignment='center',
                     transform=subplot.transAxes,
                     fontsize=20,
