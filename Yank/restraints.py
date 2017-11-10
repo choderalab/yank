@@ -443,14 +443,14 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
 
     Parameters
     ----------
-    restrained_receptor_atoms : list of int or str, optional
+    restrained_receptor_atoms : iterable of int, int, or str, optional
         The indices of the receptor atoms to restrain, an MDTraj DSL expression, any other
         :class:`Topography <yank.Topography>` region name,
         or :func:`Topography Selection <yank.Topography.select>`.
         This can temporarily be left undefined, but :func:`determine_missing_parameters`
         must be called before using the Restraint object. The same if a DSL
         expression or Topography selection is provided (default is None).
-    restrained_ligand_atoms : list of int or str, optional
+    restrained_ligand_atoms : iterable of int, int, or str, optional
         The indices of the ligand atoms to restrain, an MDTraj DSL expression, or a
         :class:`Topography <yank.Topography>` region name,
         or :func:`Topography Selection <yank.Topography.select>`.
@@ -491,6 +491,10 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
     class _RestrainedAtomsProperty(object):
         """
         Descriptor of restrained atoms.
+
+        It guarantees that the property is a list of indices or a string that
+        must be resolved by a Topography object during parameters determination.
+
         """
 
         _CENTROID_COMPUTE_STRING = ("You are specifying {} {} atoms, "
@@ -510,16 +514,14 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
                 setattr(instance, self._attribute_name, new_restrained_atoms)
                 return
             new_restrained_atoms = self._cast_atoms(new_restrained_atoms)
-            # Make sure this is a list to support concatenation.
-
             setattr(instance, self._attribute_name, new_restrained_atoms)
-
 
         @methoddispatch
         def _cast_atoms(self, restrained_atoms):
             try:
                 restrained_atoms = restrained_atoms.tolist()
             except AttributeError:
+                # Make sure this is a list to support concatenation.
                 restrained_atoms = list(restrained_atoms)
             if len(restrained_atoms) > 1:
                 logger.debug(self._CENTROID_COMPUTE_STRING.format("more than one", self._atoms_type))
@@ -534,7 +536,7 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
 
         @_cast_atoms.register(int)
         def _cast_atom_int(self, restrained_atoms):
-            return restrained_atoms
+            return [restrained_atoms]
 
     restrained_receptor_atoms = _RestrainedAtomsProperty('receptor')
     restrained_ligand_atoms = _RestrainedAtomsProperty('ligand')
@@ -827,12 +829,6 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
             # If they come out as np.int64's, OpenMM complains
             return [*map(int, selection_with_top)]
 
-        @compute_atom_set.register(int)
-        def compute_atom_int(input_atom, topography_key, _):
-            """Helper for int parsing, ensures the atom you restrain is actually part of the molecule you chose"""
-            assert set(input_atom) & set(getattr(topography, topography_key))
-            return [input_atom]
-
         self.restrained_ligand_atoms = compute_atom_set(restrained_ligand_atoms,
                                                         'ligand_atoms',
                                                         self._closest_atom_to_centroid)
@@ -972,14 +968,14 @@ class Harmonic(RadiallySymmetricRestraint):
     spring_constant : simtk.unit.Quantity, optional
         The spring constant K (see energy expression above) in units compatible
         with joule/nanometer**2/mole (default is None).
-    restrained_receptor_atoms : list of int or str, optional
+    restrained_receptor_atoms : iterable of int, int, or str, optional
         The indices of the receptor atoms to restrain, an MDTraj DSL expression, or a
         :class:`Topography <yank.Topography>` region name,
         or :func:`Topography Select String <yank.Topography.select>`.
         This can temporarily be left undefined, but ``determine_missing_parameters()``
         must be called before using the Restraint object. The same if a DSL
         expression or Topography region is provided (default is None).
-    restrained_ligand_atoms : list of int or str, optional
+    restrained_ligand_atoms : iterable of int, int, or str, optional
         The indices of the ligand atoms to restrain, an MDTraj DSL expression.
         or a :class:`Topography <yank.Topography>` region name,
         or :func:`Topography Select String <yank.Topography.select>`.
@@ -1128,14 +1124,14 @@ class FlatBottom(RadiallySymmetricRestraint):
     well_radius : simtk.unit.Quantity, optional
         The distance r0 (see energy expression above) at which the harmonic
         restraint is imposed in units of distance (default is None).
-    restrained_receptor_atoms : list of int or str, optional
+    restrained_receptor_atoms : iterable of int, int, or str, optional
         The indices of the receptor atoms to restrain, an MDTraj DSL expression, or a
         :class:`Topography <yank.Topography>` region name,
         or :func:`Topography Select String <yank.Topography.select>`.
         This can temporarily be left undefined, but ``determine_missing_parameters()``
         must be called before using the Restraint object. The same if a DSL
         expression or Topography region is provided (default is None).
-    restrained_ligand_atoms : list of int or str, optional
+    restrained_ligand_atoms : iterable of int, int, or str, optional
         The indices of the ligand atoms to restrain, an MDTraj DSL expression.
         or a :class:`Topography <yank.Topography>` region name,
         or :func:`Topography Select String <yank.Topography.select>`.
@@ -1455,7 +1451,8 @@ class Boresch(ReceptorLigandRestraint):
         """
         Descriptor of restrained atoms.
 
-        It guarantees that the property is a list of ints to support concatenation or a string which must be computed.
+        It guarantees that the property is a list of indices or a string that
+        must be resolved by a Topography object during parameters determination.
 
         """
 
@@ -1476,8 +1473,6 @@ class Boresch(ReceptorLigandRestraint):
                 setattr(instance, self._attribute_name, new_restrained_atoms)
                 return
             new_restrained_atoms = self._cast_atoms(new_restrained_atoms)
-            # Make sure this is a list to support concatenation.
-
             setattr(instance, self._attribute_name, new_restrained_atoms)
 
         @methoddispatch
