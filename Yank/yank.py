@@ -914,7 +914,7 @@ class AlchemicalPhase(object):
         # ligand randomization.
         if metadata is None:
             metadata = dict()
-        sampler_full_name = utils.typename(self._sampler.__class__)
+        sampler_full_name = mmtools.utils.typename(self._sampler.__class__)
         metadata['sampler_full_name'] = sampler_full_name
         metadata['reference_state'] = mmtools.utils.serialize(thermodynamic_state)
         metadata['topography'] = mmtools.utils.serialize(topography)

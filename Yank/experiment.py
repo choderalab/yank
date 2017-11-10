@@ -29,10 +29,12 @@ import openmmtools as mmtools
 import openmoltools as moltools
 from simtk import unit, openmm
 from simtk.openmm.app import PDBFile, AmberPrmtopFile
-from schema import Schema, And, Or, Use, Optional, SchemaError
+#from schema import Schema, And, Or, Use, Optional, SchemaError
+import cerberus
 
 from . import utils, pipeline, mpi, restraints, repex
 from .yank import AlchemicalPhase, Topography
+from .schema_tools.yank_schema import YANKCerberusValidator, YANKCerberusValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -994,7 +996,13 @@ class ExperimentBuilder(object):
 
     # Shared schema for leap parameters. Molecules, solvents and systems use it.
     # Simple strings are converted to list of strings.
-    _LEAP_PARAMETERS_SCHEMA = {'parameters': And(Use(lambda p: [p] if isinstance(p, str) else p), [str])}
+    _LEAP_PARAMETERS_SCHEMA = yaml.load("""
+    parameters:
+        type: list
+        coerce: single_str_to_list
+        schema:
+            type: string
+    """)
 
     @classmethod
     def _validate_options(cls, options, validate_general_options):
@@ -1079,46 +1087,89 @@ class ExperimentBuilder(object):
             If the syntax for any molecule is not valid.
 
         """
-        def is_peptide(filepath):
-            """Input file is a peptide."""
-            if not os.path.isfile(filepath):
-                raise SchemaError('File path does not exist.')
-            extension = os.path.splitext(filepath)[1]
-            if extension == '.pdb':
-                return True
-            return False
-
-        def is_small_molecule(filepath):
-            """Input file is a small molecule."""
-            file_formats = frozenset(['mol2', 'sdf', 'smiles', 'csv'])
-            if not os.path.isfile(filepath):
-                raise SchemaError('File path does not exist.')
-            extension = os.path.splitext(filepath)[1][1:]
-            if extension in file_formats:
-                return True
-            return False
-
-        def region_iterable_validator(region_iter):
-            for p in region_iter:
-                if not p >= 0 or not isinstance(p, int):
-                    raise SchemaError("{} of region list must be a positive integer!".format(p))
-            return True
-
-        regions_schema = {Optional(str): Or(And(list, region_iterable_validator), str, And(int, lambda p: p >= 0))}
-
-
-        validated_molecules = molecules_description.copy()
-
-        # Define molecules Schema
+        regions_schema_yaml = '''
+        regions:
+            type: dict
+            required: no
+            keyschema:
+                type: string
+            valueschema:
+                anyof:
+                    - type: list
+                      validator: positive_int_list
+                    - type: string
+                    - type: integer
+                      min: 0
+        '''
+        regions_schema = yaml.load(regions_schema_yaml)
+        # Define the LEAP schema
+        leap_schema = {'leap': {
+            'required': False,
+            'type': 'dict',
+            'schema': cls._LEAP_PARAMETERS_SCHEMA
+            }
+        }
+        # Setup the common schema across ALL molecules
+        common_molecules_schema = {**leap_schema, **regions_schema}
+        # Setup the small molecules schemas
+        small_molecule_schema_yaml = """
+        smiles:
+            type: str
+            excludes: [name, filepath]
+            required: yes
+        name:
+            type: str
+            excludes: [smiles, filepath]
+            required: yes
+        filepath:
+            type: str
+            excludes: [smiles, name]
+            required: yes
+            validator: is_small_molecule
+        openeye:
+            required: no
+            type: dict
+            schema:
+                quacpac:
+                    required: yes
+                    type: string
+                    allowed: [am1-bcc]
+        antechamber:
+            required: no
+            type: dict:
+            schema:
+                charge_method:
+                    required: yes
+                    type: string
+                    nullable: yes
+        select:
+            required: no
+            dependencies: filepath
+            validator: int_or_all_string
+        """
+        # Build small molecule Epik by hand as dict since we are fetching from another source
         epik_schema = utils.generate_signature_schema(moltools.schrodinger.run_epik,
                                                       update_keys={'select': int},
                                                       exclude_keys=['extract_range'])
+        epik_schema = {'epik': {
+            'required': False,
+            'type': 'dict',
+            'schema': epik_schema
+            }
+        }
+        small_molecule_schema = {**yaml.load(small_molecule_schema_yaml), **epik_schema}
 
-        common_schema = {Optional('regions'): regions_schema}
-        small_molecule_schema = {Optional('leap'): cls._LEAP_PARAMETERS_SCHEMA,
-                                 Optional('openeye'): {'quacpac': 'am1-bcc'},
-                                 Optional('antechamber'): {'charge_method': Or(str, None)},
-                                 Optional('epik'): epik_schema}
+        peptide_schema_yaml="""
+        filepath:
+            required: yes
+            type: string
+            validator: is_peptide
+        select:
+            required: no
+            dependencies: filepath
+            validator: int_or_all_string
+        """
+        # TODO: Figure out how to make top level keys optional
         peptide_schema = {'filepath': is_peptide, Optional('select'): Or(int, 'all'),
                           Optional('leap'): cls._LEAP_PARAMETERS_SCHEMA,
                           Optional('strip_protons'): bool}
@@ -1131,6 +1182,7 @@ class ExperimentBuilder(object):
             {**common_schema, **peptide_schema}  # Peptide schema
         )
 
+        validated_molecules = molecules_description.copy()
         # Schema validation
         for molecule_id, molecule_descr in utils.dictiter(molecules_description):
             try:

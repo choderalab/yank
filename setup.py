@@ -149,7 +149,7 @@ setup(
         'openmmtools>=0.13.2',
         'docopt>=0.6.1',
         'netcdf4',
-        'schema',
+        'cerberus',
         'openmoltools>=0.7.5',
         'mdtraj',
         'pyyaml',

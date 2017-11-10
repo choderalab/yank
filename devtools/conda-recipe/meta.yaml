@@ -26,7 +26,7 @@ requirements:
     - docopt
     - openmoltools
     - sphinxcontrib-bibtex
-    - schema >=0.6.2
+    - cerberus
     - matplotlib
     - jupyter
     #- gcc 4.8.2 # [linux]
@@ -50,7 +50,7 @@ requirements:
     - pyyaml
     - clusterutils
     - sphinxcontrib-bibtex
-    - schema >=0.6.2
+    - cerberus
     - matplotlib
     - jupyter
     #- libgcc

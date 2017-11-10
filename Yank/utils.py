@@ -39,7 +39,7 @@ import mdtraj
 import parmed
 import numpy as np
 from simtk import unit
-from schema import Optional, Use
+from .schema_tools import cerberus_utils
 
 import openmmtools as mmtools
 from openmoltools.utils import unwrap_py2  # Shortcuts for other modules
@@ -775,45 +775,6 @@ def update_nested_dict(original, updated):
 # Conversion utilities
 # ==============================================================================
 
-def typename(atype):
-    """Convert a type object into a fully qualified typename string
-
-    Parameters
-    ----------
-    atype : type
-        The type to convert
-
-    Returns
-    -------
-    typename : str
-        The string typename.
-
-
-    Examples
-    --------
-    >>> typename(type(1))
-    'int'
-
-    >>> import numpy
-    >>> x = numpy.array([1,2,3], numpy.float32)
-    >>> typename(type(x))
-    'numpy.ndarray'
-
-    """
-    if not isinstance(atype, type):
-        raise Exception('Argument is not a type')
-
-    modulename = atype.__module__
-    typename = atype.__name__
-
-    # TODO remove __builtin__ when we drop Python 2 support.
-    # TODO use openmmtools.utils.typename when it'll get merged.
-    if modulename != '__builtin__' and modulename != 'builtins':
-        typename = modulename + '.' + typename
-
-    return typename
-
-
 def merge_dict(dict1, dict2):
     """Return the union of two dictionaries in through Python version agnostic code.
 
@@ -995,14 +956,14 @@ def process_unit_bearing_str(quantity_str, compatible_units):
 
 
 def to_unit_validator(compatible_units):
-    """Function generator to test unit bearing strings with Schema."""
+    """Function generator to test unit bearing strings with Cerberus."""
     def _to_unit_validator(quantity_str):
         return process_unit_bearing_str(quantity_str, compatible_units)
     return _to_unit_validator
 
 
 def generate_signature_schema(func, update_keys=None, exclude_keys=frozenset()):
-    """Generate a dictionary to test function signatures with Schema.
+    """Generate a dictionary to test function signatures with Cerberus' Schema.
 
     Parameters
     ----------
@@ -1017,7 +978,7 @@ def generate_signature_schema(func, update_keys=None, exclude_keys=frozenset()):
     Returns
     -------
     func_schema : dict
-        The dictionary to be used as Schema type. Contains all keyword
+        The dictionary to be used as Cerberus Validator schema. Contains all keyword
         variables in the function signature as optional argument with
         the default type as validator. Unit bearing strings are converted.
         Argument with default None are always accepted. Camel case
@@ -1025,6 +986,7 @@ def generate_signature_schema(func, update_keys=None, exclude_keys=frozenset()):
 
     Examples
     --------
+    TODO: Update docstring
     >>> from schema import Schema
     >>> def f(a, b, camelCase=True, none=None, quantity=3.0*unit.angstroms):
     ...     pass
@@ -1043,27 +1005,31 @@ def generate_signature_schema(func, update_keys=None, exclude_keys=frozenset()):
         update_keys = {}
 
     func_schema = {}
-    args, _, _, defaults = inspect.getargspec(unwrap_py2(func))
+    args, _, _, defaults = inspect.getfullargspec(unwrap_py2(func))
 
     # Check keys that must be excluded from first pass
     exclude_keys = set(exclude_keys)
     exclude_keys.update(update_keys)
-    exclude_keys.update({k._schema for k in update_keys if isinstance(k, Optional)})
+    # TODO: Make sure we dont need to convert this line
+    # exclude_keys.update({k._schema for k in update_keys if isinstance(k, Optional)})
 
     # Transform camelCase to underscore
-    # TODO: Make sure this is working from the Py3.X conversion
-    args = [camelcase_to_underscore(arg) for arg in args ]
+    args = [camelcase_to_underscore(arg) for arg in args]
 
     # Build schema
+    optional_validator = {'required': False}  # Keys are always optional for this type
     for arg, default_value in zip(args[-len(defaults):], defaults):
         if arg not in exclude_keys:  # User defined keys are added later
             if default_value is None:  # None defaults are always accepted
-                validator = object
+                validator = {}
             elif isinstance(default_value, unit.Quantity):  # Convert unit strings
-                validator = Use(to_unit_validator(default_value.unit))
+                validator = {'validator': to_unit_validator(default_value.unit)}
             else:
-                validator = type(default_value)
-            func_schema[Optional(arg)] = validator
+                validator = cerberus_utils.type_to_cerberus_map(default_value)
+            # Add the argument to the existing schema as a keyword
+            # To the new keyword, add the optional flag and the "validator" flag
+            # of either 'validator' or 'type' depending on how it was processed
+            func_schema = {**func_schema, **{arg: {**optional_validator, **validator}}}
 
     # Add special user keys
     func_schema.update(update_keys)
