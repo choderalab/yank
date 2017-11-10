@@ -785,8 +785,8 @@ class ReplicaExchangeAnalyzer(YankPhaseAnalyzer):
             )
 
         # Print information about replica state index statistical efficiency.
-        logger.info('Replica state index statistical efficiency is '
-                    '{:.3f}'.format(mixing_statistics.statistical_efficiency))
+        logger.info('Replica state index statistical inefficiency is '
+                    '{:.3f}'.format(mixing_statistics.statistical_inefficiency))
 
     def get_states_energies(self):
         """
