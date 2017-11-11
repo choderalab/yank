@@ -800,8 +800,7 @@ class SetupDatabase:
     CLASH_THRESHOLD = 1.5  #: distance in Angstroms to consider two atoms clashing
 
     def __init__(self, setup_dir, molecules=None, solvents=None, systems=None):
-        """Initialize the database.
-        """
+        """Initialize the database."""
         self.setup_dir = setup_dir
         self.molecules = molecules
         self.solvents = solvents
@@ -1112,6 +1111,43 @@ class SetupDatabase:
 
         return molecule
 
+    def _generate_residue_name(self, molecule_id):
+        """Generates a residue name for a molecule.
+
+        The function guarantees to not generate twice the same residue name.
+        Purely numeric residue names mess up the pipeline, so we generate
+        residue names of the form YXX, where Y is a letter and X are digits
+        (e.g. A01, A02, ..., Z99).
+
+        The order of the generated residue name is not guaranteed.
+
+        WARNING: The algorithm may fail when new molecules are added to
+        self.molecules after construction. This is not the case right now,
+        but it's good to keep in mind.
+
+        Parameters
+        ----------
+        molecule_id : str
+            The molecule identifier.
+
+        Returns
+        -------
+        residue_name : str
+            A three-character residue name.
+        """
+        # We need to associate a unique number to this molecule, and do
+        # so in such a way that distributing molecule setups over multiple
+        # MPI process still ends up in unique residue names for each molecule.
+        molecule_ids = sorted(self.molecules.keys())
+        n_molecule = molecule_ids.index(molecule_id)
+        assert n_molecule < 2600
+
+        # Build 3-character identifier.
+        character = chr(n_molecule // 100 + 65)
+        digits = str(n_molecule % 100)
+        residue_name = character + digits.zfill(2)
+        return residue_name
+
     def _setup_molecules(self, *args):
         """Set up the files needed to generate the system for all the molecules.
 
@@ -1248,8 +1284,8 @@ class SetupDatabase:
                 # We update the 'filepath' key in the molecule description
                 mol_descr['filepath'] = os.path.join(mol_dir, mol_id + '.mol2')
 
-                # We set the residue name as the first three uppercase letters of mol_id
-                residue_name = re.sub('[^A-Za-z]+', '', mol_id.upper())[:3]
+                # Generate a residue name for the SMILES molecule.
+                residue_name = self._generate_residue_name(mol_id)
                 moltools.openeye.molecule_to_mol2(oe_molecule, mol_descr['filepath'],
                                                   residue_name=residue_name)
 
@@ -1281,8 +1317,8 @@ class SetupDatabase:
                 mol2_file_path = os.path.join(mol_dir, mol_id + '.mol2')
                 oe_molecule = utils.load_oe_molecules(mol_descr['filepath'], molecule_idx=0)
 
-                # We set the residue name as the first three uppercase letters of mol_id
-                residue_name = re.sub('[^A-Za-z]+', '', mol_id.upper())[:3]
+                # Generate a residue name for the sdf molecule.
+                residue_name = self._generate_residue_name(mol_id)
                 moltools.openeye.molecule_to_mol2(oe_molecule, mol2_file_path,
                                                   residue_name=residue_name)
 
