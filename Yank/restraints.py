@@ -420,6 +420,40 @@ class ReceptorLigandRestraint(ABC):
                                   'restraint parameters'.format(self.__class__.__name__))
 
 
+class _RestrainedAtomsProperty(object):
+    """
+    Descriptor of restrained atoms.
+
+    Casts generic iterables of ints into lists.
+    """
+
+    def __init__(self, atoms_type):
+        self._atoms_type = atoms_type
+
+    @property
+    def _attribute_name(self):
+        """Name of the internally stored variable (read-only)."""
+        return '_restrained_' + self._atoms_type + '_atoms'
+
+    def __get__(self, instance, owner_class=None):
+        return getattr(instance, self._attribute_name)
+
+    def __set__(self, instance, new_restrained_atoms):
+        # If we set the restrained attributes to None, no reason to check things.
+        if new_restrained_atoms is not None:
+            new_restrained_atoms = self._validate_atoms(new_restrained_atoms)
+        setattr(instance, self._attribute_name, new_restrained_atoms)
+
+    @methoddispatch
+    def _validate_atoms(self, restrained_atoms):
+        """Casts a generic iterable of ints into a list to support concatenation."""
+        try:
+            restrained_atoms = restrained_atoms.tolist()
+        except AttributeError:
+            restrained_atoms = list(restrained_atoms)
+        return restrained_atoms
+
+
 # ==============================================================================
 # Base class for radially-symmetric receptor-ligand restraints.
 # ==============================================================================
@@ -488,58 +522,35 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
     # Public properties.
     # -------------------------------------------------------------------------
 
-    class _RestrainedAtomsProperty(object):
+    class _RadiallySymmetricRestrainedAtomsProperty(_RestrainedAtomsProperty):
         """
         Descriptor of restrained atoms.
 
-        It guarantees that the property is a list of indices or a string that
-        must be resolved by a Topography object during parameters determination.
-
+        Extends `_RestrainedAtomsProperty` to handle single integers and strings.
         """
-
         _CENTROID_COMPUTE_STRING = ("You are specifying {} {} atoms, "
                                     "the final atoms will be chosen as the centroid of this set.")
 
-        def __init__(self, atoms_type):
-            self._atoms_type = atoms_type
-            self._attribute_name = '_restrained_' + self._atoms_type + '_atoms'
-
-        def __get__(self, instance, owner_class=None):
-            return getattr(instance, self._attribute_name)
-
-        def __set__(self, instance, new_restrained_atoms):
-
-            # If we set the restrained attributes to None, no reason to check things.
-            if new_restrained_atoms is None:
-                setattr(instance, self._attribute_name, new_restrained_atoms)
-                return
-            new_restrained_atoms = self._cast_atoms(new_restrained_atoms)
-            setattr(instance, self._attribute_name, new_restrained_atoms)
-
         @methoddispatch
-        def _cast_atoms(self, restrained_atoms):
-            try:
-                restrained_atoms = restrained_atoms.tolist()
-            except AttributeError:
-                # Make sure this is a list to support concatenation.
-                restrained_atoms = list(restrained_atoms)
+        def _validate_atoms(self, restrained_atoms):
+            restrained_atoms = super()._validate_atoms(restrained_atoms)
             if len(restrained_atoms) > 1:
                 logger.debug(self._CENTROID_COMPUTE_STRING.format("more than one", self._atoms_type))
             return restrained_atoms
 
-        @_cast_atoms.register(str)
-        def _cast_atom_string(self, restrained_atoms):
+        @_validate_atoms.register(str)
+        def _validate_atoms_string(self, restrained_atoms):
             warn_string = self._CENTROID_COMPUTE_STRING.format("a string for", self._atoms_type)
-            warn_string += "but you MUST run \"determine_missing_parameters\" to process the string"
+            warn_string += 'but you MUST run "determine_missing_parameters" to process the string'
             logger.warning(warn_string)
             return restrained_atoms
 
-        @_cast_atoms.register(int)
-        def _cast_atom_int(self, restrained_atoms):
+        @_validate_atoms.register(int)
+        def _validate_atoms_int(self, restrained_atoms):
             return [restrained_atoms]
 
-    restrained_receptor_atoms = _RestrainedAtomsProperty('receptor')
-    restrained_ligand_atoms = _RestrainedAtomsProperty('ligand')
+    restrained_receptor_atoms = _RadiallySymmetricRestrainedAtomsProperty('receptor')
+    restrained_ligand_atoms = _RadiallySymmetricRestrainedAtomsProperty('ligand')
 
     # -------------------------------------------------------------------------
     # Public methods.
@@ -1447,40 +1458,20 @@ class Boresch(ReceptorLigandRestraint):
     # Public properties.
     # -------------------------------------------------------------------------
 
-    class _RestrainedAtomsProperty(object):
+    class _BoreschRestrainedAtomsProperty(_RestrainedAtomsProperty):
         """
         Descriptor of restrained atoms.
 
-        It guarantees that the property is a list of indices or a string that
-        must be resolved by a Topography object during parameters determination.
-
+        Extends `_RestrainedAtomsProperty` to handle single integers and strings.
         """
 
-        _MUST_COMPUTE_STRING = ("You are specifying {} {} atoms, "
-                                "the final atoms will be chosen at from this set but you MUST "
-                                "run \"determine_missing_parameters\"")
-
-        def __init__(self, atoms_type):
-            self._atoms_type = atoms_type
-            self._attribute_name = '_restrained_' + self._atoms_type + '_atoms'
-
-        def __get__(self, instance, owner_class=None):
-            return getattr(instance, self._attribute_name)
-
-        def __set__(self, instance, new_restrained_atoms):
-            # If we set the restrained attributes to None, no reason to check things.
-            if new_restrained_atoms is None:
-                setattr(instance, self._attribute_name, new_restrained_atoms)
-                return
-            new_restrained_atoms = self._cast_atoms(new_restrained_atoms)
-            setattr(instance, self._attribute_name, new_restrained_atoms)
+        _MUST_COMPUTE_STRING = ('You are specifying {} {} atoms, '
+                                'the final atoms will be chosen at from this set but you MUST '
+                                'run "determine_missing_parameters"')
 
         @methoddispatch
-        def _cast_atoms(self, restrained_atoms):
-            try:
-                restrained_atoms = restrained_atoms.tolist()
-            except AttributeError:
-                restrained_atoms = list(restrained_atoms)
+        def _validate_atoms(self, restrained_atoms):
+            restrained_atoms = super()._validate_atoms(restrained_atoms)
             if len(restrained_atoms) < 3:
                 raise ValueError('At least three {} atoms are required to impose a '
                                  'Boresch-style restraint.'.format(self._atoms_type))
@@ -1488,13 +1479,13 @@ class Boresch(ReceptorLigandRestraint):
                 logger.warning(self._MUST_COMPUTE_STRING.format("more than three", self._atoms_type))
             return restrained_atoms
 
-        @_cast_atoms.register(str)
+        @_validate_atoms.register(str)
         def _cast_atom_string(self, restrained_atoms):
             logger.warning(self._MUST_COMPUTE_STRING.format("a string for", self._atoms_type))
             return restrained_atoms
 
-    restrained_receptor_atoms = _RestrainedAtomsProperty('receptor')
-    restrained_ligand_atoms = _RestrainedAtomsProperty('ligand')
+    restrained_receptor_atoms = _BoreschRestrainedAtomsProperty('receptor')
+    restrained_ligand_atoms = _BoreschRestrainedAtomsProperty('ligand')
 
     @property
     def standard_state_correction_method(self):
