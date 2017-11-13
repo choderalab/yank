@@ -1,5 +1,6 @@
-import cerberus
 import os
+import cerberus
+import simtk.unit as unit
 
 
 class YANKCerberusValidationError(Exception):
@@ -48,3 +49,10 @@ class YANKCerberusValidator(cerberus.Validator):
         if value != 'all' and not isinstance(value, int):
             self._error(field, "{} must be an int or the string 'all'".format(value))
 
+    # ====================================================
+    # DATA TYPES
+    # ====================================================
+
+    def _validate_type_quantity(self, value):
+        if isinstance(value, unit.Quantity):
+            return True

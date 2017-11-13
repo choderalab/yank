@@ -49,6 +49,40 @@ HIGHEST_VERSION = '1.3'  # highest version of YAML syntax
 # UTILITY FUNCTIONS
 # =============================================================================
 
+def get_openmm_nonbonded_methods_strings():
+    """
+    Get the list of valid OpenMM Nonbonded methods YANK can process
+
+    Returns
+    -------
+    valid_methods : list of str
+
+    """
+    return ['NoCutoff', 'CutoffPeriodic', 'CutoffNonPeriodic', 'Ewald', 'PME']
+
+
+def get_openmm_implicit_nb_method_strings():
+    """
+    Get the subset of nonbonded method strings which work for implicit solvent
+
+    Returns
+    -------
+    valid_methods : list of str
+    """
+    return get_openmm_nonbonded_methods_strings()[:1]
+
+
+def get_openmm_explicit_nb_method_strings():
+    """
+    Get the subset of nonbonded method strings which work for explicit solvent
+
+    Returns
+    -------
+    valid_methods : list of str
+    """
+    return get_openmm_nonbonded_methods_strings()[1:]
+
+
 def to_openmm_app(input_string):
     """
     Converter function to be used with :func:`yank.utils.validate_parameters`.
@@ -1005,6 +1039,23 @@ class ExperimentBuilder(object):
     """)
 
     @classmethod
+    def _get_leap_default_schema(cls):
+        """
+        Get the Cerberus schema key for the ``leap`` entry many of the sections use
+
+        Returns
+        -------
+        leap_default: dict
+
+        """
+        return {'leap': {
+            'required': False,
+            'type': 'dict',
+            'schema': cls._LEAP_PARAMETERS_SCHEMA,
+            'default': {'parameters': []}}  # Default for if the parameter is missing
+            }
+
+    @classmethod
     def _validate_options(cls, options, validate_general_options):
         """Validate molecules syntax.
 
@@ -1103,12 +1154,7 @@ class ExperimentBuilder(object):
         '''
         regions_schema = yaml.load(regions_schema_yaml)
         # Define the LEAP schema
-        leap_schema = {'leap': {
-            'required': False,
-            'type': 'dict',
-            'schema': cls._LEAP_PARAMETERS_SCHEMA,
-            'default': {'parameters': []}}  # Default for if the parameter is missing
-        }
+        leap_schema = cls._get_leap_default_schema()
         # Setup the common schema across ALL molecules
         common_molecules_schema = {**leap_schema, **regions_schema}
         # Setup the small molecules schemas
@@ -1257,58 +1303,151 @@ class ExperimentBuilder(object):
             If the syntax for any solvent is not valid.
 
         """
-        def to_explicit_solvent(nonbonded_method_str):
-            """Check OpenMM explicit solvent."""
-            openmm_app = to_openmm_app(nonbonded_method_str)
-            if openmm_app == openmm.app.NoCutoff:
-                raise ValueError('Nonbonded method cannot be NoCutoff.')
-            return openmm_app
+        openmm_nonbonded_strings = get_openmm_nonbonded_methods_strings()
+        mapped_openmm_nonbonded_methods = {nb_method: to_openmm_app(nb_method) for
+                                           nb_method in openmm_nonbonded_strings}
 
-        def to_no_cutoff(nonbonded_method_str):
-            """Check OpenMM implicit solvent or vacuum."""
-            openmm_app = to_openmm_app(nonbonded_method_str)
-            if openmm_app != openmm.app.NoCutoff:
-                raise ValueError('Nonbonded method must be NoCutoff.')
-            return openmm_app
-
-        def is_supported_solvent_model(solvent_model):
+        def is_supported_solvent_model(field, solvent_model, error):
             """Check that solvent model name is supported."""
-            return solvent_model in pipeline._OPENMM_LEAP_SOLVENT_MODELS_MAP
+            if solvent_model not in pipeline._OPENMM_LEAP_SOLVENT_MODELS_MAP:
+                error(field, "{} not in the known solvent models map!".format(solvent_model))
+
+        def ionic_strength_if_explicit_else_none(document, default=0.0*unit.molar):
+            """Set the ionic strength IFF solvent model is explicit"""
+            if document['nonbonded_method'] in [mapped_openmm_nonbonded_methods[method] for
+                                                method in get_openmm_explicit_nb_method_strings()]:
+                return default
+            else:
+                return None
+
+        def solvent_model_if_explicit_else_none(document, default='tip4pew'):
+            """Set the solvent_model IFF solvent model is explicit"""
+            if document['nonbonded_method'] in [mapped_openmm_nonbonded_methods[method] for
+                                                method in get_openmm_explicit_nb_method_strings()]:
+                return default
+            else:
+                return None
+
+        def implicit_solvent_if_implicit_else_none(document, default=to_openmm_app('OBC2')):
+            """Set the solvent_model IFF solvent model is explicit"""
+            if document['nonbonded_method'] in [mapped_openmm_nonbonded_methods[method] for
+                                                method in get_openmm_implicit_nb_method_strings()]:
+                return default
+            else:
+                return None
+
+        def to_openmm_app_unless_none(input):
+            """
+            Extension method of the :func:`to_openmm_app` method which returns None if None is given
+            Primarily used by the schema validators
+
+            Parameters
+            ----------
+            input : str or None
+                Method name of openmm.app to fetch
+
+            Returns
+            -------
+            method : Method of openmm.app or None
+                Returns openmm.app.{input_string}
+            """
+            return to_openmm_app(input) if input is not None else None
+
+        def to_unit_validator_unless_none(compatible_units):
+            """
+            Extension to the :func:`utils.to_unit_validator` method which also allows a None object to be set
+
+            See call to :func:`utils.to_unit_validator` for call
+            """
+            unit_validator = utils.to_unit_validator(compatible_units)
+            def _to_unit_unless_none(input_quantity):
+                if input_quantity is None:
+                    return None
+                else:
+                    return unit_validator(input_quantity)
+            return _to_unit_unless_none
+
+        # Define solvents Schema
+        # Create the basic solvent schema, ignoring things which have a dependency
+        # Some keys we manually tweak
+        base_solvent_schema = utils.generate_signature_schema(AmberPrmtopFile.createSystem,
+                                                              exclude_keys=['nonbonded_method'])
+        implicit_solvent_default_schema = {'implicit_solvent': base_solvent_schema.pop('implicit_solvent')}
+        rigid_water_default_schema = {'rigid_water': base_solvent_schema.pop('rigid_water')}
+        nonbonded_cutoff_default_schema = {'nonbonded_cutoff': base_solvent_schema.pop('nonbonded_cutoff')}
+        # Cerberus Schema Processing hierarchy:
+        # Input Value -> {default value} -> default setter -> coerce -> allowed/validate
+        #  Handle the use cases for special keys
+        # nonbonded_method
+        base_solvent_schema['nonbonded_method'] = {
+            'allowed': [value for _, value in mapped_openmm_nonbonded_methods.items()],  # Only use valid openmm methods
+            'coerce': to_openmm_app,  # Cast the string first to valid method
+            'required': True,  # This must be set
+            'default': openmm_nonbonded_strings[0],  # Choose a default mapping
+        }
+        # Explicit solvent keys, populate required and dependencies in batch
+        explicit_only_keys = {
+            'clearance': {
+                'type': 'quantity',
+                'coerce': utils.to_unit_validator(unit.angstrom),
+            },
+            'solvent_model': {
+                'type': 'string',
+                'nullable': True,
+                'validator': is_supported_solvent_model,
+                'default_setter': solvent_model_if_explicit_else_none
+            },
+            'positive_ion': {
+                'type': 'string'
+            },
+            'negative_ion': {
+                'type': 'string'
+            },
+            'ionic_strength': {
+                'type': 'quantity',
+                'coerce': to_unit_validator_unless_none(unit.molar),
+                'default_setter': ionic_strength_if_explicit_else_none,
+                'nullable': True
+            },
+            **nonbonded_cutoff_default_schema
+        }
+        # Batch the explicit dependencies
+        for key in explicit_only_keys.keys():
+            explicit_only_keys[key]['dependencies'] = {'nonbonded_method': [mapped_openmm_nonbonded_methods[value] for
+                                                                            value in
+                                                                            get_openmm_explicit_nb_method_strings()]}
+            explicit_only_keys[key]['required'] = False
+
+        # Implicit solvent keys
+        implicit_only_keys = {**implicit_solvent_default_schema}
+        implicit_only_keys['implicit_solvent']['nullable'] = True
+        implicit_only_keys['implicit_solvent']['coerce'] = to_openmm_app_unless_none
+        implicit_only_keys['implicit_solvent']['default_setter'] = implicit_solvent_if_implicit_else_none
+        # Batch the implicit dependencies
+        for key in implicit_only_keys.keys():
+            implicit_only_keys[key]['dependencies'] = {'nonbonded_method': [mapped_openmm_nonbonded_methods[value] for
+                                                                            value in
+                                                                            get_openmm_implicit_nb_method_strings()]}
+            implicit_only_keys[key]['required'] = False
+
+        # Vacuum solvent is implicitly defined when the `NoCutoff` scheme is selected and `implicit_solvent` is None
+
+        # Finally, stitch the schema together
+        solvent_schema = {**base_solvent_schema, **explicit_only_keys, **implicit_only_keys,
+                          **rigid_water_default_schema, **cls._get_leap_default_schema()}
+
+        solvent_validator = YANKCerberusValidator(solvent_schema)
 
         validated_solvents = solvents_description.copy()
 
-        # Define solvents Schema
-        explicit_schema = utils.generate_signature_schema(AmberPrmtopFile.createSystem,
-                                update_keys={'nonbonded_method': Use(to_explicit_solvent)},
-                                exclude_keys=['implicit_solvent'])
-        explicit_schema.update({Optional('clearance'): Use(utils.to_unit_validator(unit.angstrom)),
-                                Optional('solvent_model', default='tip4pew'): is_supported_solvent_model,
-                                Optional('positive_ion'): str, Optional('negative_ion'): str,
-                                Optional('ionic_strength', default=0.0*unit.molar): Use(utils.to_unit_validator(unit.molar))})
-        implicit_schema = utils.generate_signature_schema(AmberPrmtopFile.createSystem,
-                                update_keys={'implicit_solvent': Use(to_openmm_app),
-                                             Optional('nonbonded_method'): Use(to_no_cutoff)},
-                                exclude_keys=['rigid_water'])
-        vacuum_schema = utils.generate_signature_schema(AmberPrmtopFile.createSystem,
-                                update_keys={'nonbonded_method': Use(to_no_cutoff)},
-                                exclude_keys=['rigid_water', 'implicit_solvent'])
-
-        # Common schema to all types of solvents
-        for schema in [explicit_schema, implicit_schema, vacuum_schema]:
-            schema.update({Optional('leap'): cls._LEAP_PARAMETERS_SCHEMA})
-
-        solvent_schema = Schema(Or(explicit_schema, implicit_schema, vacuum_schema))
-
         # Schema validation
         for solvent_id, solvent_descr in solvents_description.items():
-            try:
-                validated_solvents[solvent_id] = solvent_schema.validate(solvent_descr)
-            except SchemaError as e:
-                raise YamlParseError('Solvent {}: {}'.format(solvent_id, e.autos[-1]))
+            if solvent_validator.validate(solvent_descr):
+                validated_solvents[solvent_id] = solvent_validator.document
+            else:
+                error = "Solvent '{}' did not validate! Check the schema error below for details\n{}"
+                raise YamlParseError(error.format(solvent_id, yaml.dump(solvent_validator.errors)))
 
-            # Create empty parameters list if not specified
-            if 'leap' not in validated_solvents[solvent_id]:
-                validated_solvents[solvent_id]['leap'] = {'parameters': []}
         return validated_solvents
 
     @staticmethod

@@ -478,7 +478,7 @@ def test_validation_wrong_molecules():
 def test_validation_correct_solvents():
     """Correct solvents YAML validation."""
     solvents = [
-        {'nonbonded_method': 'NoCutoff', 'nonbonded_cutoff': '3*nanometers'},
+        {'nonbonded_method': 'Ewald', 'nonbonded_cutoff': '3*nanometers'},
         {'nonbonded_method': 'PME', 'solvent_model': 'tip4pew'},
         {'nonbonded_method': 'PME', 'solvent_model': 'tip3p', 'leap': {'parameters': 'leaprc.water.tip3p'}},
         {'nonbonded_method': 'PME', 'clearance': '3*angstroms'},
@@ -497,7 +497,7 @@ def test_validation_correct_solvents():
 def test_validation_wrong_solvents():
     """YAML validation raises exception with wrong solvents."""
     solvents = [
-        {'nonbonded_cutoff: 3*nanometers'},
+        {'nonbonded_cutoff': '3*nanometers'},
         {'nonbonded_method': 'PME', 'solvent_model': 'unknown_solvent_model'},
         {'nonbonded_method': 'PME', 'solvent_model': 'tip3p', 'leap': 'leaprc.water.tip3p'},
         {'nonbonded_method': 'PME', 'clearance': '3*angstroms', 'implicit_solvent': 'OBC2'},

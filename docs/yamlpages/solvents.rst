@@ -40,6 +40,8 @@ OpenMM System Creation Options
 Specify the nonbonded scheme that the solvent is put in. This argument defines the type of solvent (none, implicit, explicit). 
 Although technically optional, this is the most important setting in this header.
 Because each option has very different behavior, we list each of them here and subsequent options will note which mode they apply to.
+*Note*: We do not recommend the ``nonbonded_methods`` not listed here, even though they may be available in OpenMM;
+as such, we do not list them.
 
 * ``NoCutoff``: **Default**. Specifies a non-periodic system with no cutoff. 
   This is the de facto choice for vacuum and implicit solvent.

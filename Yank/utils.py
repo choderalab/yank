@@ -1022,10 +1022,10 @@ def generate_signature_schema(func, update_keys=None, exclude_keys=frozenset()):
     optional_validator = {'required': False}  # Keys are always optional for this type
     for arg, default_value in zip(args[-len(defaults):], defaults):
         if arg not in exclude_keys:  # User defined keys are added later
-            if default_value is None:  # None defaults are always accepted
-                validator = {}
+            if default_value is None:  # None defaults are always accepted, and considered nullable
+                validator = {'nullable': True}
             elif isinstance(default_value, unit.Quantity):  # Convert unit strings
-                validator = {'validator': to_unit_validator(default_value.unit)}
+                validator = {'coerce': to_unit_validator(default_value.unit)}
             else:
                 validator = cerberus_utils.type_to_cerberus_map(type(default_value))
             # Add the argument to the existing schema as a keyword
