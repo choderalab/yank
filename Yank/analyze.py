@@ -1614,10 +1614,11 @@ def extract_trajectory(nc_path, nc_checkpoint_file=None, state_index=None, repli
                 n_equil_frames = n_equil_iterations
             frame_indices = frame_indices[n_equil_frames:-1]
 
-        # Extract state positions and box vectors
-        positions = np.zeros((len(frame_indices), n_atoms, 3))
+        # Extract state positions and box vectors.
+        # MDTraj Cython code expects float32 positions.
+        positions = np.zeros((len(frame_indices), n_atoms, 3), dtype=np.float32)
         if is_periodic:
-            box_vectors = np.zeros((len(frame_indices), 3, 3))
+            box_vectors = np.zeros((len(frame_indices), 3, 3), dtype=np.float32)
         if state_index is not None:
             logger.info('Extracting positions of state {}...'.format(state_index))
 
