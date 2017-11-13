@@ -1175,6 +1175,9 @@ class ExperimentBuilder(object):
         antechamber:
             required: no
             excludes: filepath
+        epik:
+            required: no
+            excludes: filepath
         """
         peptide_schema = {**yaml.load(peptide_schema_yaml), **common_molecules_schema}
 
@@ -1193,8 +1196,13 @@ class ExperimentBuilder(object):
                 # Both failed, lets figure out why
                 # Check the is peptide w/ only excluded errors
                 if (cerberus.errors.EXCLUDES_FIELD in peptide_validator._errors and
-                        'filepath' not in peptide_validator.document_error_tree):
-                    error = "Molecule {} appears to be a peptide, but uses items exclusive to small molecules:\n{}"
+                        peptide_validator.document_error_tree['filepath'] is None):
+                    error = ("Molecule {} appears to be a peptide, but uses items exclusive to small molecules:\n"
+                             "Please change either the options to peptide-only entries, or your molecule to a "
+                             "small molecule.\n"
+                             "====== Peptide Schema =====\n"
+                             "{}\n"
+                             "===========================\n")
                     error = error.format(molecule_id, yaml.dump(peptide_validator.errors))
                 # We don't know exactly what went wrong, run both error blocks
                 else:
