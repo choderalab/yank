@@ -620,7 +620,7 @@ class CombinatorialTree(collections.MutableMapping):
         def recursive_find_leaves(node):
             leaf_paths = []
             leaf_vals = []
-            for child_key, child_val in dictiter(node):
+            for child_key, child_val in node.items():
                 if isinstance(child_val, collections.Mapping):
                     subleaf_paths, subleaf_vals = recursive_find_leaves(child_val)
                     # prepend child key to path
@@ -994,7 +994,7 @@ def generate_signature_schema(func, update_keys=None, exclude_keys=frozenset()):
     >>> print(isinstance(f_dict, dict))
     True
     >>> # Print (key, values) in the correct order
-    >>> print(sorted(dictiter(f_dict), key=lambda x: x[1]))
+    >>> print(sorted(f_dict.items(), key=lambda x: x[1]))
     [(Optional('camel_case'), <type 'bool'>), (Optional('none'), <type 'object'>)]
     >>> f_schema = Schema(generate_signature_schema(f))
     >>> f_schema.validate({'quantity': '1.0*nanometer'})
@@ -1005,7 +1005,9 @@ def generate_signature_schema(func, update_keys=None, exclude_keys=frozenset()):
         update_keys = {}
 
     func_schema = {}
-    args, _, _, defaults = inspect.getfullargspec(unwrap_py2(func))
+    arg_spec = inspect.getfullargspec(unwrap_py2(func))
+    args = arg_spec.args
+    defaults = arg_spec.defaults
 
     # Check keys that must be excluded from first pass
     exclude_keys = set(exclude_keys)
@@ -1025,7 +1027,7 @@ def generate_signature_schema(func, update_keys=None, exclude_keys=frozenset()):
             elif isinstance(default_value, unit.Quantity):  # Convert unit strings
                 validator = {'validator': to_unit_validator(default_value.unit)}
             else:
-                validator = cerberus_utils.type_to_cerberus_map(default_value)
+                validator = cerberus_utils.type_to_cerberus_map(type(default_value))
             # Add the argument to the existing schema as a keyword
             # To the new keyword, add the optional flag and the "validator" flag
             # of either 'validator' or 'type' depending on how it was processed
@@ -1149,7 +1151,7 @@ def validate_parameters(parameters, template_parameters, check_unknown=False,
         diff = set(parameters) - set(template_parameters)
         raise TypeError("found unknown parameter {}".format(', '.join(diff)))
 
-    for par, value in dictiter(validated_par):
+    for par, value in validated_par.items():
         templ_value = template_parameters[par]
 
         # Convert requested types
@@ -1722,18 +1724,18 @@ class TLeap:
 
         # Transform paths in absolute paths since we'll change the working directory
         input_files = {local + os.path.splitext(path)[1]: os.path.abspath(path)
-                       for local, path in dictiter(self._file_paths) if 'moli' in local}
+                       for local, path in self._file_paths.items() if 'moli' in local}
         output_files = {local + os.path.splitext(path)[1]: os.path.abspath(path)
-                        for local, path in dictiter(self._file_paths) if 'molo' in local}
+                        for local, path in self._file_paths.items() if 'molo' in local}
 
         # Resolve all the names in the script
         local_files = {local: local + os.path.splitext(path)[1]
-                       for local, path in dictiter(self._file_paths)}
+                       for local, path in self._file_paths.items()}
         script = self._script.format(**local_files) + 'quit\n'
 
         with mdtraj.utils.enter_temp_directory():
             # Copy input files
-            for local_file, file_path in dictiter(input_files):
+            for local_file, file_path in input_files.items():
                 shutil.copy(file_path, local_file)
 
             # Save script and run tleap
@@ -1755,7 +1757,7 @@ class TLeap:
             # Copy back output files. If something goes wrong, some files may not exist
             error_msg = ''
             try:
-                for local_file, file_path in dictiter(output_files):
+                for local_file, file_path in output_files.items():
                     create_dirs_and_copy(local_file, file_path)
             except IOError:
                 error_msg = "Could not create one of the system files."
@@ -1782,24 +1784,6 @@ class TLeap:
 class SimulationNaNError(Exception):
     """Error when a simulation goes to NaN"""
     pass
-
-
-# =============================================================================================
-# Python 2/3 compatibility
-# =============================================================================================
-
-"""
-Generate same behavior for dict.item in both versions of Python
-Avoids external dependencies on future.utils or six
-"""
-try:
-    dict.iteritems
-except AttributeError:  # Python 3
-    def dictiter(d):
-        return d.items()
-else:  # Python 2
-    def dictiter(d):
-        return d.iteritems()
 
 
 # =============================================================================================

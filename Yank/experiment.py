@@ -30,7 +30,7 @@ import openmoltools as moltools
 from simtk import unit, openmm
 from simtk.openmm.app import PDBFile, AmberPrmtopFile
 #from schema import Schema, And, Or, Use, Optional, SchemaError
-import cerberus
+import cerberus, cerberus.errors
 
 from . import utils, pipeline, mpi, restraints, repex
 from .yank import AlchemicalPhase, Topography
@@ -884,7 +884,7 @@ class ExperimentBuilder(object):
             return expanded_content
 
         # First substitute all 'select: all' with the correct combination of indices
-        for comb_mol_name, comb_molecule in utils.dictiter(expanded_content['molecules']):
+        for comb_mol_name, comb_molecule in expanded_content['molecules'].items():
             if 'select' in comb_molecule and comb_molecule['select'] == 'all':
                 # Get the number of models in the file
                 extension = os.path.splitext(comb_molecule['filepath'])[1][1:]  # remove dot
@@ -980,7 +980,7 @@ class ExperimentBuilder(object):
         experiment_id = 0
 
         output_dir = ''
-        for exp_name, experiment in utils.dictiter(self._experiments):
+        for exp_name, experiment in self._experiments.items():
             if len(self._experiments) > 1:
                 output_dir = exp_name
 
@@ -1106,23 +1106,23 @@ class ExperimentBuilder(object):
         leap_schema = {'leap': {
             'required': False,
             'type': 'dict',
-            'schema': cls._LEAP_PARAMETERS_SCHEMA
-            }
+            'schema': cls._LEAP_PARAMETERS_SCHEMA,
+            'default': {'parameters': []}}  # Default for if the parameter is missing
         }
         # Setup the common schema across ALL molecules
         common_molecules_schema = {**leap_schema, **regions_schema}
         # Setup the small molecules schemas
         small_molecule_schema_yaml = """
         smiles:
-            type: str
+            type: string
             excludes: [name, filepath]
             required: yes
         name:
-            type: str
+            type: string
             excludes: [smiles, filepath]
             required: yes
         filepath:
-            type: str
+            type: string
             excludes: [smiles, name]
             required: yes
             validator: is_small_molecule
@@ -1136,7 +1136,7 @@ class ExperimentBuilder(object):
                     allowed: [am1-bcc]
         antechamber:
             required: no
-            type: dict:
+            type: dict
             schema:
                 charge_method:
                     required: yes
@@ -1149,7 +1149,7 @@ class ExperimentBuilder(object):
         """
         # Build small molecule Epik by hand as dict since we are fetching from another source
         epik_schema = utils.generate_signature_schema(moltools.schrodinger.run_epik,
-                                                      update_keys={'select': int},
+                                                      update_keys={'select': {'required': False, 'type': 'integer'}},
                                                       exclude_keys=['extract_range'])
         epik_schema = {'epik': {
             'required': False,
@@ -1157,9 +1157,10 @@ class ExperimentBuilder(object):
             'schema': epik_schema
             }
         }
-        small_molecule_schema = {**yaml.load(small_molecule_schema_yaml), **epik_schema}
+        small_molecule_schema = {**yaml.load(small_molecule_schema_yaml), **epik_schema, **common_molecules_schema}
 
-        peptide_schema_yaml="""
+        # Peptide schema has some keys excluded from small_molecule checks
+        peptide_schema_yaml = """
         filepath:
             required: yes
             type: string
@@ -1168,46 +1169,63 @@ class ExperimentBuilder(object):
             required: no
             dependencies: filepath
             validator: int_or_all_string
+        openeye:
+            required: no
+            excludes: filepath
+        antechamber:
+            required: no
+            excludes: filepath
         """
-        # TODO: Figure out how to make top level keys optional
-        peptide_schema = {'filepath': is_peptide, Optional('select'): Or(int, 'all'),
-                          Optional('leap'): cls._LEAP_PARAMETERS_SCHEMA,
-                          Optional('strip_protons'): bool}
-
-        molecule_schema = Or(
-            {**common_schema, **{'smiles': str}, **small_molecule_schema},  # Smiles small molecule
-            {**common_schema, **{'name': str}, **small_molecule_schema},  # Name small molecule
-            {**common_schema, **{'filepath': is_small_molecule, Optional('select'): Or(int, 'all')},
-             **small_molecule_schema},  # File path small molecule
-            {**common_schema, **peptide_schema}  # Peptide schema
-        )
+        peptide_schema = {**yaml.load(peptide_schema_yaml), **common_molecules_schema}
 
         validated_molecules = molecules_description.copy()
         # Schema validation
-        for molecule_id, molecule_descr in utils.dictiter(molecules_description):
+        for molecule_id, molecule_descr in molecules_description.items():
+            small_molecule_validator = YANKCerberusValidator(small_molecule_schema)
+            peptide_validator = YANKCerberusValidator(peptide_schema)
+            # Test for small molecule
+            if small_molecule_validator.validate(molecule_descr):
+                validated_molecules[molecule_id] = small_molecule_validator.document
+            # Test for peptide
+            elif peptide_validator.validate(molecule_descr):
+                validated_molecules[molecule_id] = peptide_validator.document
+            else:
+                # Both failed, lets figure out why
+                # Check the is peptide w/ only excluded errors
+                if (cerberus.errors.EXCLUDES_FIELD in peptide_validator._errors and
+                        'filepath' not in peptide_validator.document_error_tree):
+                    error = "Molecule {} appears to be a peptide, but uses items exclusive to small molecules:\n{}"
+                    error = error.format(molecule_id, yaml.dump(peptide_validator.errors))
+                # We don't know exactly what went wrong, run both error blocks
+                else:
+                    error = ("Molecule {} failed to validate against one of the following schemes\n"
+                             "Please check the following schemes for errors:\n"
+                             "===========================\n"
+                             "== Small Molecule Schema ==\n"
+                             "{}\n"
+                             "===========================\n\n"  # Blank line
+                             "===========================\n"
+                             "====== Peptide Schema =====\n"
+                             "{}\n"
+                             "===========================\n")
+                    error = error.format(molecule_id, yaml.dump(small_molecule_validator.errors),
+                                         yaml.dump(peptide_validator.errors))
+                raise YamlParseError(error)
+
+            # Check OpenEye charges - antechamber consistency
+            if 'openeye' in validated_molecules[molecule_id]:
+                if 'antechamber' not in validated_molecules[molecule_id]:
+                    raise YamlParseError('Cannot specify openeye charges without antechamber')
+                if validated_molecules[molecule_id]['antechamber']['charge_method'] is not None:
+                    raise YamlParseError('Antechamber charge_method must be "null" to read '
+                                         'OpenEye charges')
+
+            # Convert epik "select" to "extract_range" which is accepted by run_epik()
             try:
-                validated_molecules[molecule_id] = molecule_schema.validate(molecule_descr)
-
-                # Check OpenEye charges - antechamber consistency
-                if 'openeye' in validated_molecules[molecule_id]:
-                    if not 'antechamber' in validated_molecules[molecule_id]:
-                        raise YamlParseError('Cannot specify openeye charges without antechamber')
-                    if validated_molecules[molecule_id]['antechamber']['charge_method'] is not None:
-                        raise YamlParseError('Antechamber charge_method must be "null" to read '
-                                             'OpenEye charges')
-
-                # Convert epik "select" to "extract_range" which is accepted by run_epik()
-                try:
-                    extract_range = validated_molecules[molecule_id]['epik'].pop('select')
-                    validated_molecules[molecule_id]['epik']['extract_range'] = extract_range
-                except (AttributeError, KeyError):
-                    pass
-
-                # Create empty parameters list if not specified
-                if 'leap' not in validated_molecules[molecule_id]:
-                    validated_molecules[molecule_id]['leap'] = {'parameters': []}
-            except SchemaError as e:
-                raise YamlParseError('Molecule {}: {}'.format(molecule_id, e.autos[-1]))
+                extract_range = validated_molecules[molecule_id]['epik'].pop('select')
+                validated_molecules[molecule_id]['epik']['extract_range'] = extract_range
+            except (AttributeError, KeyError):
+                pass
 
         return validated_molecules
 
@@ -1274,7 +1292,7 @@ class ExperimentBuilder(object):
         solvent_schema = Schema(Or(explicit_schema, implicit_schema, vacuum_schema))
 
         # Schema validation
-        for solvent_id, solvent_descr in utils.dictiter(solvents_description):
+        for solvent_id, solvent_descr in solvents_description.items():
             try:
                 validated_solvents[solvent_id] = solvent_schema.validate(solvent_descr)
             except SchemaError as e:
@@ -1310,9 +1328,9 @@ class ExperimentBuilder(object):
             sortables = [('complex', 'solvent'), ('solvent1', 'solvent2')]
             for sortable in sortables:
                 # Phases names must be unambiguous, they can't contain both names
-                phase1 = [(k, v) for k, v in utils.dictiter(protocol)
+                phase1 = [(k, v) for k, v in protocol.items()
                           if (sortable[0] in k and sortable[1] not in k)]
-                phase2 = [(k, v) for k, v in utils.dictiter(protocol)
+                phase2 = [(k, v) for k, v in protocol.items()
                           if (sortable[1] in k and sortable[0] not in k)]
 
                 # Phases names must be unique
@@ -1339,7 +1357,7 @@ class ExperimentBuilder(object):
         ))
 
         # Schema validation
-        for protocol_id, protocol_descr in utils.dictiter(protocols_description):
+        for protocol_id, protocol_descr in protocols_description.items():
             try:
                 validated_protocols[protocol_id] = protocol_schema.validate(protocol_descr)
             except SchemaError as e:
@@ -1482,7 +1500,7 @@ class ExperimentBuilder(object):
         ))
 
         # Schema validation
-        for system_id, system_descr in utils.dictiter(systems_description):
+        for system_id, system_descr in systems_description.items():
             try:
                 validated_systems[system_id] = system_schema.validate(system_descr)
 

@@ -41,7 +41,7 @@ class YANKCerberusValidator(cerberus.Validator):
 
     def _validator_positive_int_list(self, field, value):
         for p in value:
-            if not not isinstance(p, int) or p >= 0:
+            if not isinstance(p, int) or not p >= 0:
                 self._error(field, "{} of must be a positive integer!".format(p))
 
     def _validator_int_or_all_string(self, field, value):

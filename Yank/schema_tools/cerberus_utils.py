@@ -57,19 +57,19 @@ def type_to_cerberus_map(a_type):
     YANKCerberusUtilsError
         When the type has no known map
     """
-    known_types = {bool, 'boolean',
-                   bytes, 'binary',
-                   bytearray, 'binary',
-                   date, 'date',
-                   Mapping, 'dict',
-                   dict, 'dict',
-                   float, 'float',
-                   int, 'integer',
-                   tuple, 'list',
-                   list, 'list',
-                   Sequence, 'list',
-                   str, 'string',
-                   set, 'set'}
+    known_types = {bool: 'boolean',
+                   bytes: 'binary',
+                   bytearray: 'binary',
+                   date: 'date',
+                   Mapping: 'dict',
+                   dict: 'dict',
+                   float: 'float',
+                   int: 'integer',
+                   tuple: 'list',
+                   list: 'list',
+                   Sequence: 'list',
+                   str: 'string',
+                   set: 'set'}
     try:
         type_map = {'type': known_types[a_type]}
     except KeyError:
