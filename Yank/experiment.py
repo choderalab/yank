@@ -24,17 +24,17 @@ import copy
 import yaml
 import logging
 import collections
+import cerberus
+import cerberus.errors
 
 import openmmtools as mmtools
 import openmoltools as moltools
 from simtk import unit, openmm
 from simtk.openmm.app import PDBFile, AmberPrmtopFile
-#from schema import Schema, And, Or, Use, Optional, SchemaError
-import cerberus, cerberus.errors
 
 from . import utils, pipeline, mpi, restraints, repex
 from .yank import AlchemicalPhase, Topography
-from .schema_tools.yank_schema import YANKCerberusValidator, YANKCerberusValidationError
+from .schema_tools.yank_schema import YANKCerberusValidator
 
 logger = logging.getLogger(__name__)
 
@@ -1306,32 +1306,36 @@ class ExperimentBuilder(object):
         openmm_nonbonded_strings = get_openmm_nonbonded_methods_strings()
         mapped_openmm_nonbonded_methods = {nb_method: to_openmm_app(nb_method) for
                                            nb_method in openmm_nonbonded_strings}
+        explicit_strings = get_openmm_explicit_nb_method_strings()
+        mapped_explicit_methods = [mapped_openmm_nonbonded_methods[method] for method in explicit_strings]
+        all_valid_explicit = explicit_strings + mapped_explicit_methods
+        implicit_strings = get_openmm_implicit_nb_method_strings()
+        mapped_implicit_methods = [mapped_openmm_nonbonded_methods[method] for method in implicit_strings]
+        all_valid_implicit = implicit_strings + mapped_implicit_methods
 
         def is_supported_solvent_model(field, solvent_model, error):
             """Check that solvent model name is supported."""
             if solvent_model not in pipeline._OPENMM_LEAP_SOLVENT_MODELS_MAP:
                 error(field, "{} not in the known solvent models map!".format(solvent_model))
 
-        def ionic_strength_if_explicit_else_none(document, default=0.0*unit.molar):
+        def ionic_strength_if_explicit_else_none(document, default="0.0*molar"):
             """Set the ionic strength IFF solvent model is explicit"""
-            if document['nonbonded_method'] in [mapped_openmm_nonbonded_methods[method] for
-                                                method in get_openmm_explicit_nb_method_strings()]:
+            if document['nonbonded_method'] in all_valid_explicit:
                 return default
             else:
                 return None
 
         def solvent_model_if_explicit_else_none(document, default='tip4pew'):
             """Set the solvent_model IFF solvent model is explicit"""
-            if document['nonbonded_method'] in [mapped_openmm_nonbonded_methods[method] for
-                                                method in get_openmm_explicit_nb_method_strings()]:
+
+            if document['nonbonded_method'] in all_valid_explicit:
                 return default
             else:
                 return None
 
-        def implicit_solvent_if_implicit_else_none(document, default=to_openmm_app('OBC2')):
+        def implicit_solvent_if_implicit_else_none(document, default='OBC2'):
             """Set the solvent_model IFF solvent model is explicit"""
-            if document['nonbonded_method'] in [mapped_openmm_nonbonded_methods[method] for
-                                                method in get_openmm_implicit_nb_method_strings()]:
+            if document['nonbonded_method'] in all_valid_implicit:
                 return default
             else:
                 return None
@@ -1800,18 +1804,28 @@ class ExperimentBuilder(object):
             If the syntax for any experiment is not valid.
 
         """
-        def is_known_system(system_id):
-            if system_id in self._db.systems:
-                return True
-            raise SchemaError('System ' + system_id + ' is unknown.')
 
-        def is_known_protocol(protocol_id):
-            if protocol_id in self._protocols:
-                return True
-            raise SchemaError('Protocol ' + protocol_id + ' is unknown')
+        def coerce_and_validate_options_here_against_existing(options):
+            coerced_and_validated = {}
+            errors = ""
+            for option, value in options.items():
+                try:
+                    validated = ExperimentBuilder._validate_options({option:value}, validate_general_options=False)
+                    coerced_and_validated = {**coerced_and_validated, **validated}
+                except YamlParseError as yaml_err:
+                    # collecte all errors
+                    coerced_and_validated[option] = value
+                    errors += "\n{}".format(yaml_err)
+            if errors != "":
+                raise YamlParseError(errors)
+            return coerced_and_validated
 
-        def validate_experiment_options(options):
-            return ExperimentBuilder._validate_options(options, validate_general_options=False)
+        def ensure_restraint_type_is_key(field, restraints_dict, error):
+            if 'type' not in restraints_dict:
+                error(field, "'type' must be a sub-key in the `restraints` dict")
+            rest_type = restraints_dict.get('type')
+            if rest_type is not None and not isinstance(rest_type, str):
+                error(field, "Restraint type must be a string or None")
 
         # Check if there is a sequence of experiments or a single one.
         # We need to have a deterministic order of experiments so that
@@ -1828,20 +1842,52 @@ class ExperimentBuilder(object):
             self._experiments = collections.OrderedDict()
             return
 
-        # Restraint schema contains type and optional parameters.
-        restraint_schema = {'type': Or(str, None), Optional(str): object}
+        # Experiments Schema
+        experiment_schema_yaml = """
+        system:
+            required: yes
+            type: string
+            allowed: SYSTEM_IDS_POPULATED_AT_RUNTIME
+        protocol:
+            required: yes
+            type: string
+            allowed: PROTOCOL_IDS_POPULATED_AT_RUNTIME
+        options:
+            required: no
+            type: dict
+            coerce: coerce_and_validate_options_here_against_existing
+        restraint:
+            required: no
+            type: dict
+            validator: ensure_type_is_key
+            keyschema:
+                type: string
+        """
 
-        # Define experiment Schema
-        experiment_schema = Schema({'system': is_known_system, 'protocol': is_known_protocol,
-                                    Optional('options'): Use(validate_experiment_options),
-                                    Optional('restraint'): restraint_schema})
+        experiment_schema = yaml.load(experiment_schema_yaml)
+        # Populate valid types
+        experiment_schema['system']['allowed'] = [str(key) for key in self._db.systems.keys()]
+        experiment_schema['protocol']['allowed'] = [str(key) for key in self._protocols.keys()]
+        # Options validator
+        experiment_schema['options']['coerce'] = coerce_and_validate_options_here_against_existing
+        # Restraint requirements
+        experiment_schema['restraint']['validator'] = ensure_restraint_type_is_key
 
+
+        # # Restraint schema contains type and optional parameters.
+        # restraint_schema = {'type': Or(str, None), Optional(str): object}
+        #
+        # # Define experiment Schema
+        # experiment_schema = Schema({'system': is_known_system, 'protocol': is_known_protocol,
+        #                             Optional('options'): Use(validate_experiment_options),
+        #                             Optional('restraint'): restraint_schema})
+
+        experiment_validator = YANKCerberusValidator(experiment_schema)
         # Schema validation
         for experiment_path, experiment_descr in self._expand_experiments():
-            try:
-                experiment_schema.validate(experiment_descr)
-            except SchemaError as e:
-                raise YamlParseError('Experiment {}: {}'.format(experiment_path, e.autos[-1]))
+            if not experiment_validator.validate(experiment_descr):
+                error = "Experiment '{}' did not validate! Check the schema error below for details\n{}"
+                raise YamlParseError(error.format(experiment_path, yaml.dump(experiment_validator.errors)))
 
     # --------------------------------------------------------------------------
     # File paths utilities

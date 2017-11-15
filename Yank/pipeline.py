@@ -383,7 +383,7 @@ def create_system(parameters_file, box_vectors, create_system_args, system_optio
     err_msg = ''
     nonbonded_method = system_options['nonbondedMethod']
     if is_periodic:
-        if 'implicitSolvent' in system_options:
+        if 'implicitSolvent' in system_options and system_options['implicitSolvent'] is not None:
             err_msg = 'Found periodic box in positions file and implicitSolvent specified.'
         if nonbonded_method in _NONPERIODIC_NONBONDED_METHODS:
             err_msg = ('Found periodic box in positions file but '

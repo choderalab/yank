@@ -39,12 +39,13 @@ import mdtraj
 import parmed
 import numpy as np
 from simtk import unit
-from .schema_tools import cerberus_utils
+
 
 import openmmtools as mmtools
 from openmoltools.utils import unwrap_py2  # Shortcuts for other modules
 
 from . import mpi
+from .schema_tools import yank_schema
 
 
 # ========================================================================================
@@ -987,17 +988,14 @@ def generate_signature_schema(func, update_keys=None, exclude_keys=frozenset()):
     Examples
     --------
     TODO: Update docstring
-    >>> from schema import Schema
+    >>> from cerberus import Validator
     >>> def f(a, b, camelCase=True, none=None, quantity=3.0*unit.angstroms):
     ...     pass
     >>> f_dict = generate_signature_schema(f, exclude_keys=['quantity'])
     >>> print(isinstance(f_dict, dict))
     True
-    >>> # Print (key, values) in the correct order
-    >>> print(sorted(f_dict.items(), key=lambda x: x[1]))
-    [(Optional('camel_case'), <type 'bool'>), (Optional('none'), <type 'object'>)]
-    >>> f_schema = Schema(generate_signature_schema(f))
-    >>> f_schema.validate({'quantity': '1.0*nanometer'})
+    >>> f_validator = Validator(generate_signature_schema(f))
+    >>> f_validator.validated({'quantity': '1.0*nanometer'})
     {'quantity': Quantity(value=1.0, unit=nanometer)}
 
     """
@@ -1027,7 +1025,7 @@ def generate_signature_schema(func, update_keys=None, exclude_keys=frozenset()):
             elif isinstance(default_value, unit.Quantity):  # Convert unit strings
                 validator = {'coerce': to_unit_validator(default_value.unit)}
             else:
-                validator = cerberus_utils.type_to_cerberus_map(type(default_value))
+                validator = yank_schema.type_to_cerberus_map(type(default_value))
             # Add the argument to the existing schema as a keyword
             # To the new keyword, add the optional flag and the "validator" flag
             # of either 'validator' or 'type' depending on how it was processed
