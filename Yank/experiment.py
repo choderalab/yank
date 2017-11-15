@@ -1171,7 +1171,7 @@ class ExperimentBuilder(object):
             type: string
             excludes: [smiles, name]
             required: yes
-            validator: is_small_molecule
+            validator: [is_small_molecule, file_exists]
         openeye:
             required: no
             type: dict
@@ -1210,7 +1210,7 @@ class ExperimentBuilder(object):
         filepath:
             required: yes
             type: string
-            validator: is_peptide
+            validator: [is_peptide, file_exists]
         select:
             required: no
             dependencies: filepath
@@ -1611,129 +1611,174 @@ class ExperimentBuilder(object):
             If the syntax for any experiment is not valid.
 
         """
-        def is_known_molecule(molecule_id):
-            if molecule_id in self._db.molecules:
-                return True
-            raise SchemaError('Molecule ' + molecule_id + ' is unknown.')
 
-        def is_known_solvent(solvent_id):
-            if solvent_id in self._db.solvents:
-                return True
-            raise SchemaError('Solvent ' + solvent_id + ' is unknown.')
-
-        def is_pipeline_solvent(solvent_id):
-            is_known_solvent(solvent_id)
-            solvent = self._db.solvents[solvent_id]
-            if (solvent['nonbonded_method'] != openmm.app.NoCutoff and
-                    'clearance' not in solvent):
-                raise SchemaError('Explicit solvent {} does not specify '
-                                  'clearance.'.format(solvent_id))
-            return True
-
-        def system_files(type):
-            def _system_files(files):
-                """Paths to amber/gromacs/xml files. Return them in alphabetical
-                order of extension [*.inpcrd/gro/pdb, *.prmtop/top/xml]."""
-                provided_extensions = [os.path.splitext(filepath)[1][1:] for filepath in files]
-                if type == 'amber':
-                    expected_extensions = ['inpcrd', 'prmtop']
-                elif type == 'gromacs':
-                    expected_extensions = ['gro', 'top']
-                elif type == 'openmm':
-                    expected_extensions = ['pdb', 'xml']
-
-                # Check if extensions are expected.
-                correct_type = sorted(provided_extensions) == sorted(expected_extensions)
-                if not correct_type:
-                    err_msg = ('Wrong system file types provided.\n'
-                               'Extensions provided: {}\n'
-                               'Expected extensions: {}').format(
-                        sorted(provided_extensions), sorted(expected_extensions))
-                    logger.debug(err_msg)
-                    raise SchemaError(err_msg)
-                else:
-                    logger.debug('Correctly recognized files {} as {}'.format(files, expected_extensions))
-
-                # Check if given files exist.
-                for filepath in files:
-                    if not os.path.isfile(filepath):
-                        raise YamlParseError('File path {} does not exist.'.format(filepath))
-
-                # Return files in alphabetical order of extension.
-                return [filepath for (ext, filepath) in sorted(zip(provided_extensions, files))]
-            return _system_files
-
-        def check_regions_clash(system_dict, mol_class1, mol_class2=None):
+        def generate_region_clash_validator(system_descr, mol_class1, mol_class2=None):
             """
             Check that the regions have non clashing names by looking at regions in each molecule for a given
-            system
+            system, this is generated at run time per-system
             """
-            mol_description1 = self._db.molecules[system_dict[mol_class1]]
-            mol_description2 = self._db.molecules[system_dict[mol_class2]] if mol_class2 is not None else {}
+            base_error = ("Cannot resolve molecular regions! "
+                          "Found regions(s) clashing for a {}/{} pair!".format(mol_class1, mol_class2))
+            error_collection = []
+            mol_description1 = self._db.molecules.get(system_descr.get(mol_class1, ''), {})
+            mol_description2 = self._db.molecules.get(
+                system_descr.get(mol_class2, ''), {}) if mol_class2 is not None else {}
             # Fetch the regions or an empty dict
             regions_1_names = mol_description1.get('regions', {}).keys()
             regions_2_names = mol_description2.get('regions', {}).keys()
             for region_1_name in regions_1_names:
                 if region_1_name in regions_2_names:
-                    raise YamlParseError("Cannot resolve molecular regions! "
-                                         "Found clashing region name {} for a {}/{} pair!".format(region_1_name,
-                                                                                                  mol_class1,
-                                                                                                  mol_class2))
-            return True
+                    error_collection.append("\n- Region {}".format(region_1_name))
 
+            def _region_clash_validator(field, value, error):
+                if len(error_collection) > 0:
+                    error(field, base_error + ''.join(error_collection))
+            return _region_clash_validator
 
-        # Define experiment Schema
+        def generate_is_pipeline_solvent_with_receptor_validator(system_descr, cross_id):
+
+            def _is_pipeline_solvent_with_receptor(field, solvent_id, error):
+                if cross_id in system_descr:
+                    solvent = self._db.solvents.get(solvent_id, {})
+                    if (solvent.get('nonbonded_method') != openmm.app.NoCutoff and
+                        'clearance' not in solvent):
+                        error(field, 'Explicit solvent {} does not specify clearance.'.format(solvent_id))
+            return _is_pipeline_solvent_with_receptor
+
+        # Define systems Schema
+        systems_schema_yaml = """
+        # DSL Schema
+        ligand_dsl:
+            required: no
+            type: string
+            dependencies: [phase1_path, phase2_path]
+        solvent_dsl:
+            required: no
+            type: string
+            dependencies: [phase1_path, phase2_path]
+
+        # Phase paths
+        phase1_path:
+            required: no
+            type: list
+            schema:
+                type: string
+                validator: file_exists
+            dependencies: phase2_path
+            coerce: sort_alphabetically_by_extension
+        phase2_path:
+            required: no
+            type: list
+            schema:
+                type: string
+                validator: file_exists
+            validator: is_system_files_matching_phase1
+            coerce: sort_alphabetically_by_extension
+        solvent:
+            required: no
+            type: string
+            excludes: [solvent1, solvent2]
+            allowed: SOLVENT_IDS_POPULATED_AT_RUNTIME
+            validator: PIPELINE_SOLVENT_DETERMINED_AT_RUNTIME_WITH_RECEPTOR
+            oneof:
+                - dependencies: [phase1_path, phase2_path]
+                - dependencies: [receptor, ligand]
+        solvent1:
+            required: no
+            type: string
+            excludes: solvent
+            allowed: SOLVENT_IDS_POPULATED_AT_RUNTIME
+            validator: PIPELINE_SOLVENT_DETERMINED_AT_RUNTIME_WITH_SOLUTE
+            oneof:
+                - dependencies: [phase1_path, phase2_path, solvent2]
+                - dependencies: [solute, solvent2]
+        solvent2:
+            required: no
+            type: string
+            excludes: solvent
+            allowed: SOLVENT_IDS_POPULATED_AT_RUNTIME
+            validator: PIPELINE_SOLVENT_DETERMINED_AT_RUNTIME_WITH_SOLUTE
+            oneof:
+                - dependencies: [phase1_path, phase2_path, solvent2]
+                - dependencies: [solute, solvent2]
+        gromacs_include_dir:
+            required: no
+            type: string
+            dependencies: [phase1_path, phase2_path]
+            validator: directory_exists
+
+        # Non-Prebuilt setup
+        receptor:
+            required: no
+            type: string
+            dependencies: [ligand, solvent]
+            allowed: MOLECULE_IDS_POPULATED_AT_RUNTIME
+            excludes: [solute, phase1_path, phase2_path]
+            validator: REGION_CLASH_DETERMINED_AT_RUNTIME_WITH_LIGAND
+        ligand:
+            required: no
+            type: string
+            dependencies: [ligand, solvent]
+            allowed: MOLECULE_IDS_POPULATED_AT_RUNTIME
+            excludes: [solute, phase1_path, phase2_path]
+        pack:
+            # Technically requires receptor, but with default interjects itself even if receptor is not present
+            required: no
+            type: boolean
+            default: no
+        solute:
+            required: no
+            type: string
+            allowed: MOLECULE_IDS_POPULATED_AT_RUNTIME
+            dependencies: [solvent1, solvent2]
+            validator: REGION_CLASH_DETERMINED_AT_RUNTIME
+            excludes: [receptor, ligand]
+        """
+        # Load the YAML into a schema into dict format
+        system_schema = yaml.load(systems_schema_yaml)
+        # Add the LEAP schema
+        leap_schema = self._get_leap_default_schema()
+        # Handle dependencies
+        # This does nothing in the case of phase1_path/phase2_path, but I wanted to leave this here in case
+        # we decide to actually make these required. The problem is that because this has a `default` key, it inserts
+        # itself into the scheme, but then fails if its a phase1_path and phase2_path set. So I silenced the line for
+        # now if we decided to engineer this in later.
+        # leap_schema['leap']['oneof'] = [{'dependencies': ['receptor', 'ligand']}, {'dependencies': 'solute'}]
+        system_schema = {**system_schema, **leap_schema}
+        # Handle the populations
+        # Molecules
+        for molecule_id_key in ['receptor', 'ligand', 'solute']:
+            system_schema[molecule_id_key]['allowed'] = [str(key) for key in self._db.molecules.keys()]
+        # Solvents
+        for solvent_id_key in ['solvent', 'solvent1', 'solvent2']:
+            system_schema[solvent_id_key]['allowed'] = [str(key) for key in self._db.solvents.keys()]
+
+        def generate_runtime_schema_for_system(system_descr):
+            new_schema = system_schema.copy()
+            # Handle the validators
+            # Spin up the region clash calculators
+            new_schema['receptor']['validator'] = generate_region_clash_validator(system_descr, 'ligand', 'receptor')
+            new_schema['solute']['validator'] = generate_region_clash_validator(system_descr, 'solute')
+            # "solvent"
+            new_schema['solvent']['validator'] = generate_is_pipeline_solvent_with_receptor_validator(system_descr,
+                                                                                                      'receptor')
+            # "solvent1" and "solvent2
+            new_schema['solvent1']['validator'] = generate_is_pipeline_solvent_with_receptor_validator(system_descr,
+                                                                                                       'solute')
+            new_schema['solvent2']['validator'] = generate_is_pipeline_solvent_with_receptor_validator(system_descr,
+                                                                                                       'solute')
+            return new_schema
+
         validated_systems = systems_description.copy()
-
-        # Schema for DSL specification with system files.
-        dsl_schema = {Optional('ligand_dsl'): str, Optional('solvent_dsl'): str}
-
-        # System schema.
-        system_schema = Schema(Or(
-            And({'receptor': is_known_molecule, 'ligand': is_known_molecule,
-                 'solvent': is_pipeline_solvent, Optional('pack', default=False): bool,
-                 Optional('leap'): self._LEAP_PARAMETERS_SCHEMA},
-                lambda d: check_regions_clash(d, 'ligand', 'receptor')),
-
-            And({'solute': is_known_molecule, 'solvent1': is_pipeline_solvent,
-                'solvent2': is_pipeline_solvent, Optional('leap'): self._LEAP_PARAMETERS_SCHEMA},
-                lambda d: check_regions_clash(d, 'solute')),
-
-            utils.merge_dict(dsl_schema, {'phase1_path': Use(system_files('amber')),
-                                          'phase2_path': Use(system_files('amber')),
-                                          'solvent': is_known_solvent}),
-
-            utils.merge_dict(dsl_schema, {'phase1_path': Use(system_files('amber')),
-                                          'phase2_path': Use(system_files('amber')),
-                                          'solvent1': is_known_solvent,
-                                          'solvent2': is_known_solvent}),
-
-            utils.merge_dict(dsl_schema, {'phase1_path': Use(system_files('gromacs')),
-                                          'phase2_path': Use(system_files('gromacs')),
-                                          'solvent': is_known_solvent,
-                                          Optional('gromacs_include_dir'): os.path.isdir}),
-
-            utils.merge_dict(dsl_schema, {'phase1_path': Use(system_files('gromacs')),
-                                          'phase2_path': Use(system_files('gromacs')),
-                                          'solvent1': is_known_solvent,
-                                          'solvent2': is_known_solvent,
-                                          Optional('gromacs_include_dir'): os.path.isdir}),
-
-            utils.merge_dict(dsl_schema, {'phase1_path': Use(system_files('openmm')),
-                                          'phase2_path': Use(system_files('openmm'))})
-        ))
-
         # Schema validation
         for system_id, system_descr in systems_description.items():
-            try:
-                validated_systems[system_id] = system_schema.validate(system_descr)
-
-                # Create empty parameters list if not specified
-                if 'leap' not in validated_systems[system_id]:
-                    validated_systems[system_id]['leap'] = {'parameters': []}
-            except SchemaError as e:
-                raise YamlParseError('System {}: {}'.format(system_id, e.autos[-1]))
-
+            runtime_system_schema = generate_runtime_schema_for_system(system_descr)
+            system_validator = YANKCerberusValidator(runtime_system_schema)
+            if system_validator.validate(system_descr):
+                validated_systems[system_id] = system_validator.document
+            else:
+                error = "System '{}' did not validate! Check the schema error below for details\n{}"
+                raise YamlParseError(error.format(system_id, yaml.dump(system_validator.errors)))
         return validated_systems
 
     def _parse_experiments(self, yaml_content):
