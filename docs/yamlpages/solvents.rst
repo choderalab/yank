@@ -189,7 +189,7 @@ Valid Options (0.0 * moles / liter): <Quantity Moles / Volume> OR <Quantity Temp
 .. rst-class:: html-toggle
 
 ``solute_dielectric``
-----------------------
+---------------------
 .. code-block:: yaml
    
    solvents:
@@ -371,7 +371,7 @@ Valid Options (0 * molar): <Quantity Concentration> [1]_
    solvents:
      {UserDefinedSolvent}:
        leap:
-         parameters: [leaprc.water.tip3p]
+         parameters: [leaprc.water.tip4pew]
 
 Load solvent-specific force field parameters. This is useful if you plan to run a combinatorial experiment over
 multiple solvent models that require different parameters.

@@ -518,6 +518,24 @@ _OPENMM_LEAP_SOLVENT_MODELS_MAP = {
     'spce': 'SPCBOX',
 }
 
+# Map the OpenMM-style name for solvent to the tleap
+# name for a list of files which would enable the
+# solvent model to work. Servers as error checking,
+# but is not foolproof
+
+_OPENMM_LEAP_SOLVENT_FILES_MAP = {
+    'tip3p': 'leaprc.water.tip3p',
+    'tip3pfb': 'leaprc.water.tip3p',
+    'tip4pew': 'leaprc.water.tip4pew',
+    'tip5p': 'leaprc.water.tip4pew',  # Enables the EP atom type
+    'spce': 'leaprc.water.spce',
+}
+
+# Reverse map which helps in some cases
+_OPENMM_LEAP_SOLVENT_FILES_MAP_R = {
+    v: k for k, v in _OPENMM_LEAP_SOLVENT_FILES_MAP.items()
+}
+
 
 def remove_overlap(mol_positions, *args, **kwargs):
     """Remove any eventual overlap between a molecule and a set of others.
@@ -1372,6 +1390,7 @@ class SetupDatabase:
             List the IDs of the molecules to pack together in the system.
 
         """
+
         # Get kwargs
         ignore_ionic_strength = kwargs.pop('ignore_ionic_strength', False)
         save_amber_files = kwargs.pop('save_amber_files', True)
@@ -1380,6 +1399,17 @@ class SetupDatabase:
         # Make sure molecules are set up
         self._setup_molecules(*molecule_ids)
         solvent = self.solvents[solvent_id]
+
+        # Start error tracking variables
+        # Water
+        known_solvent_files = [file for file in _OPENMM_LEAP_SOLVENT_FILES_MAP_R.keys()]
+        loaded_water_files = []  # Detected loaded water files
+
+        def extend_list_of_waters(leap_parameters):
+            """Extend the loaded_water_files list given the leap_parameters"""
+            loaded_water_files.extend([water for water
+                                       in leap_parameters
+                                       if water in known_solvent_files])
 
         # Create tleap script
         tleap = utils.TLeap()
@@ -1390,10 +1420,15 @@ class SetupDatabase:
 
         for mol_id in molecule_ids:
             molecule_parameters = self.molecules[mol_id]['leap']['parameters']
+            # Track loaded water models
+            extend_list_of_waters(molecule_parameters)
             tleap.load_parameters(*molecule_parameters)
 
+        extend_list_of_waters(system_parameters)
         tleap.load_parameters(*system_parameters)
-        tleap.load_parameters(*solvent['leap']['parameters'])
+        solvent_leap = solvent['leap']['parameters']
+        extend_list_of_waters(solvent_leap)
+        tleap.load_parameters(*solvent_leap)
 
         # Load molecules and create complexes
         # ------------------------------------
@@ -1451,6 +1486,19 @@ class SetupDatabase:
 
             # Solvate unit. Solvent models different than tip3p need parameter modifications.
             solvent_model = solvent['solvent_model']
+            # Check that solvent model has loaded the appropriate leap parameters.
+            # This does guarantee a failure, but is a good sign of it.
+            solvent_warning = None
+            if _OPENMM_LEAP_SOLVENT_FILES_MAP[solvent_model] not in loaded_water_files:
+                solvent_warning = ("WARNING: The solvent_model {} may not work for loaded "
+                                   "leaprc.water.X files.\n We expected {} to make your "
+                                   "solvent model work, but did not find it.\n "
+                                   "This is okay for tip4pew leaprc file with tip3p solvent_model, "
+                                   "but not the other way around.\nThis does "
+                                   "not mean the system will not build, but it may throw "
+                                   "an error.".format(solvent_model,
+                                                      _OPENMM_LEAP_SOLVENT_FILES_MAP[solvent_model]))
+                logger.warning(solvent_warning)
             leap_solvent_model = _OPENMM_LEAP_SOLVENT_MODELS_MAP[solvent_model]
             clearance = float(solvent['clearance'].value_in_unit(unit.angstroms))
             tleap.solvate(leap_unit=unit_to_solvate, solvent_model=leap_solvent_model, clearance=clearance)
@@ -1531,7 +1579,32 @@ class SetupDatabase:
         tleap.export_script(base_file_path + '.leap.in')
 
         # Run tleap and log warnings
-        warnings = tleap.run()
+        # Handle common errors we know of
+        try:
+            warnings = tleap.run()
+        except RuntimeError as e:
+            # Try to find the log file
+            m = re.search('Check log file (.*)', str(e))
+            if m is not None:
+                log_file_string = m.group(1)
+                try:
+                    with open(log_file_string, 'r') as log_file:
+                        log_file_data = log_file.read()
+                    # Analyze log file for water mismatch
+                    if "EP - OW" in log_file_data:
+                        # Found mismatch water and missing parameters
+                        error = ("Solvent {}: "
+                                 "It looks like the water used has virtual sites, but "
+                                 "missing parameters.\nMake sure your leap parameters "
+                                 "use the correct water model as specified by "
+                                 "solvent_model.\nPlease see the log file for LEaP "
+                                 "for more info as there may be more wrong:\n{}")
+                        raise RuntimeError(error.format(solvent_id, e))
+                except IOError:
+                    pass
+            # If no other condition was found, raise the original error
+            raise e
+
         for warning in warnings:
             logger.warning('TLeap: ' + warning)
 
