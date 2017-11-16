@@ -358,7 +358,7 @@ class HealthReportData(object):
             # Without vmin/vmax, the image normalizes the values to mixing_data.max
             # which screws up the warning colormap.
             # Can also use norm=NoNorm(), but that makes the colorbar manipulation fail.
-            output_image = subplot.imshow(mixing_statistics.transition_matrix, aspect='equal',
+            output_image = subplot.imshow(transition_matrix, aspect='equal',
                                           cmap=cmap, vmin=0, vmax=1)
             # Add colorbar.
             decimal = 2  # Precision setting
