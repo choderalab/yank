@@ -1435,7 +1435,7 @@ class SetupDatabase:
         # ------------------------------------
         tleap.new_section('Load molecules')
         for mol_id in molecule_ids:
-            tleap.load_unit(name=mol_id, file_path=self.molecules[mol_id]['filepath'])
+            tleap.load_unit(unit_name=mol_id, file_path=self.molecules[mol_id]['filepath'])
 
         if len(molecule_ids) > 1:
             # Check that molecules don't have clashing atoms. Also, if the ligand
@@ -1489,7 +1489,7 @@ class SetupDatabase:
             solvent_model = solvent['solvent_model']
             leap_solvent_model = _OPENMM_LEAP_SOLVENT_MODELS_MAP[solvent_model]
             clearance = float(solvent['clearance'].value_in_unit(unit.angstroms))
-            tleap.solvate(leap_unit=unit_to_solvate, solvent_model=leap_solvent_model, clearance=clearance)
+            tleap.solvate(unit_name=unit_to_solvate, solvent_model=leap_solvent_model, clearance=clearance)
 
             # First, determine how many ions we need to add for the ionic strength.
             if not ignore_ionic_strength and solvent['ionic_strength'] != 0.0*unit.molar:
@@ -1523,24 +1523,24 @@ class SetupDatabase:
                                'solvent {}').format(solvent_id)
                     logger.error(err_msg)
                     raise RuntimeError(err_msg)
-                tleap.add_ions(leap_unit=unit_to_solvate, ion=ion,
+                tleap.add_ions(unit_name=unit_to_solvate, ion=ion,
                                num_ions=n_alchemical_ions, replace_solvent=True)
                 logging.debug('Adding {} {} ion to neutralize ligand charge of {}'
                               ''.format(n_alchemical_ions, ion, alchemical_charge))
 
             # Neutralizing solvation box
             if 'positive_ion' in solvent:
-                tleap.add_ions(leap_unit=unit_to_solvate, ion=solvent['positive_ion'],
+                tleap.add_ions(unit_name=unit_to_solvate, ion=solvent['positive_ion'],
                                replace_solvent=True)
             if 'negative_ion' in solvent:
-                tleap.add_ions(leap_unit=unit_to_solvate, ion=solvent['negative_ion'],
+                tleap.add_ions(unit_name=unit_to_solvate, ion=solvent['negative_ion'],
                                replace_solvent=True)
 
             # Ions for the ionic strength must be added AFTER neutralization.
             if n_ions_ionic_strength != 0:
-                tleap.add_ions(leap_unit=unit_to_solvate, ion=solvent['positive_ion'],
+                tleap.add_ions(unit_name=unit_to_solvate, ion=solvent['positive_ion'],
                                num_ions=n_ions_ionic_strength, replace_solvent=True)
-                tleap.add_ions(leap_unit=unit_to_solvate, ion=solvent['negative_ion'],
+                tleap.add_ions(unit_name=unit_to_solvate, ion=solvent['negative_ion'],
                                num_ions=n_ions_ionic_strength, replace_solvent=True)
 
         # Check charge
