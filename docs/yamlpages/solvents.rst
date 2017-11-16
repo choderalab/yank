@@ -15,6 +15,9 @@ Most of the solvent options are tied directly to OpenMM options of the same name
 Similarly, the ``solvents`` section is where you specify Periodic Boundary Conditions (PBC) and long range electrostatic treatments.
 Each of the arguments in this category is optional and the default option will be assumed if not specified.
 
+All of the solvents will be built, even if they are not used in a later system, so ensure your solvents do not
+have errors or are commented out.
+
 
 ----
 

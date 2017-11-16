@@ -8,7 +8,8 @@ No longer do you need to remember long command line arguments with many ``--`` f
 ``yank.yaml`` file and call ``yank script --yaml=yank.yaml`` to carry out all your preparation and simulations.
 Below are the valid YAML options. We also have example YANK simulations which use YAML files to run.
 
-To see examples and some of the recommended stock settings, check out the :doc:`cookbook`! To see *all* options available to the YAML scripts: check out the detailed list below.
+To see examples and some of the recommended stock settings, check out the :doc:`cookbook`! To see *all* options
+available to the YAML scripts: check out the detailed list below.
 
 All Pages
 ---------
@@ -94,7 +95,7 @@ Detailed Options List
 
 * :doc:`molecules <molecules>`
 
-  * :ref:`Specifying Molecule Names <yaml_molecules_specifiy_names>`
+  * :ref:`Specifying Molecule Names <yaml_molecules_specify_names>`
 
     * :ref:`filepath <yaml_molecules_filepath>` 
     * :ref:`smiles <yaml_molecules_smiles>`

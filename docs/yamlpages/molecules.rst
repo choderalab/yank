@@ -15,10 +15,12 @@ many of these settings are optional and do nothing if not specified.
 The mandatory/optional of each setting (and what conditionals), 
 as well as the default behavior of each setting is explicitly stated in the setting's description.
 
+All of the molecules will be built, even if they are not used in a later system, so ensure your molecules do not
+have errors or are commented out.
 
 ----
 
-.. _yaml_molecules_specifiy_names:
+.. _yaml_molecules_specify_names:
 
 Specifying Molecule Names
 =========================
