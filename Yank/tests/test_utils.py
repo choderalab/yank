@@ -5,23 +5,22 @@ Test various utility functions.
 
 """
 
-#=============================================================================================
+# =============================================================================================
 # GLOBAL IMPORTS
-#=============================================================================================
+# =============================================================================================
 
 import textwrap
 
 import openmoltools as omt
-from schema import Schema
-from openmmtools import testsystems
 
 from nose import tools
 from yank.utils import *
+from yank.schema.validator import *
 
 
-#=============================================================================================
+# =============================================================================================
 # TESTING FUNCTIONS
-#=============================================================================================
+# =============================================================================================
 
 def test_set_tree_path():
     """Test getting and setting of CombinatorialTree paths."""
@@ -132,24 +131,27 @@ def test_generate_signature_schema():
 
     f_schema = generate_signature_schema(f)
     assert len(f_schema) == 3
-    for k in f_schema.keys():
-        assert isinstance(k, Optional)
+    for v in f_schema.values():
+        assert isinstance(v, dict)
+        assert v['required'] is False
 
     # Remove Optional() marker for comparison
-    stripped_schema = {k._schema: v for k, v in f_schema.items() if k._schema != 'quantity'}
-    assert {'camel_case': bool, 'none': object} == stripped_schema
+    assert f_schema['camel_case']['type'] == 'boolean'
+    assert f_schema['none']['nullable'] is True
+    assert hasattr(f_schema['quantity']['coerce'], '__call__')  # Callable validator
 
     # Check conversion
-    f_schema = Schema(f_schema)
-    assert f_schema.validate({'quantity': '5*angstrom'}) == {'quantity': 5*unit.angstrom}
+    f_validator = YANKCerberusValidator(f_schema)
+    assert f_validator.validated({'quantity': '5*angstrom'}) == {'quantity': 5*unit.angstrom}
 
     # Check update
-    optional_instance = Optional('camel_case')
-    updated_schema = generate_signature_schema(f, update_keys={'none': float, optional_instance: int},
+    optional_instance = {'camel_case': {'type': 'integer'}, 'none': {'type': 'float'}}
+    updated_schema = generate_signature_schema(f, update_keys=optional_instance,
                                                exclude_keys={'quantity'})
     assert len(updated_schema) == 2
-    assert updated_schema['none'] == float
-    assert updated_schema[optional_instance] == int
+    assert updated_schema['none'].get('nullable') is None
+    assert updated_schema['none'].get('type') == 'float'
+    assert updated_schema['camel_case'].get('type') == 'integer'
 
 
 def test_get_keyword_args():
@@ -289,6 +291,7 @@ def test_TLeap_script():
     tleap.save_unit(leap_unit='ligand', output_path='solvent.pdb')
 
     assert tleap.script == expected_script
+
 
 def test_TLeap_export_run():
     """Check that TLeap saves and runs scripts correctly."""

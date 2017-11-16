@@ -39,12 +39,13 @@ import mdtraj
 import parmed
 import numpy as np
 from simtk import unit
-from schema import Optional, Use
+
 
 import openmmtools as mmtools
 from openmoltools.utils import unwrap_py2  # Shortcuts for other modules
 
 from . import mpi
+from .schema import type_to_cerberus_map
 
 
 # ========================================================================================
@@ -620,7 +621,7 @@ class CombinatorialTree(collections.MutableMapping):
         def recursive_find_leaves(node):
             leaf_paths = []
             leaf_vals = []
-            for child_key, child_val in dictiter(node):
+            for child_key, child_val in node.items():
                 if isinstance(child_val, collections.Mapping):
                     subleaf_paths, subleaf_vals = recursive_find_leaves(child_val)
                     # prepend child key to path
@@ -774,45 +775,6 @@ def update_nested_dict(original, updated):
 # ==============================================================================
 # Conversion utilities
 # ==============================================================================
-
-def typename(atype):
-    """Convert a type object into a fully qualified typename string
-
-    Parameters
-    ----------
-    atype : type
-        The type to convert
-
-    Returns
-    -------
-    typename : str
-        The string typename.
-
-
-    Examples
-    --------
-    >>> typename(type(1))
-    'int'
-
-    >>> import numpy
-    >>> x = numpy.array([1,2,3], numpy.float32)
-    >>> typename(type(x))
-    'numpy.ndarray'
-
-    """
-    if not isinstance(atype, type):
-        raise Exception('Argument is not a type')
-
-    modulename = atype.__module__
-    typename = atype.__name__
-
-    # TODO remove __builtin__ when we drop Python 2 support.
-    # TODO use openmmtools.utils.typename when it'll get merged.
-    if modulename != '__builtin__' and modulename != 'builtins':
-        typename = modulename + '.' + typename
-
-    return typename
-
 
 def merge_dict(dict1, dict2):
     """Return the union of two dictionaries in through Python version agnostic code.
@@ -995,14 +957,14 @@ def process_unit_bearing_str(quantity_str, compatible_units):
 
 
 def to_unit_validator(compatible_units):
-    """Function generator to test unit bearing strings with Schema."""
+    """Function generator to test unit bearing strings with Cerberus."""
     def _to_unit_validator(quantity_str):
         return process_unit_bearing_str(quantity_str, compatible_units)
     return _to_unit_validator
 
 
 def generate_signature_schema(func, update_keys=None, exclude_keys=frozenset()):
-    """Generate a dictionary to test function signatures with Schema.
+    """Generate a dictionary to test function signatures with Cerberus' Schema.
 
     Parameters
     ----------
@@ -1017,7 +979,7 @@ def generate_signature_schema(func, update_keys=None, exclude_keys=frozenset()):
     Returns
     -------
     func_schema : dict
-        The dictionary to be used as Schema type. Contains all keyword
+        The dictionary to be used as Cerberus Validator schema. Contains all keyword
         variables in the function signature as optional argument with
         the default type as validator. Unit bearing strings are converted.
         Argument with default None are always accepted. Camel case
@@ -1025,17 +987,14 @@ def generate_signature_schema(func, update_keys=None, exclude_keys=frozenset()):
 
     Examples
     --------
-    >>> from schema import Schema
+    >>> from cerberus import Validator
     >>> def f(a, b, camelCase=True, none=None, quantity=3.0*unit.angstroms):
     ...     pass
     >>> f_dict = generate_signature_schema(f, exclude_keys=['quantity'])
     >>> print(isinstance(f_dict, dict))
     True
-    >>> # Print (key, values) in the correct order
-    >>> print(sorted(dictiter(f_dict), key=lambda x: x[1]))
-    [(Optional('camel_case'), <type 'bool'>), (Optional('none'), <type 'object'>)]
-    >>> f_schema = Schema(generate_signature_schema(f))
-    >>> f_schema.validate({'quantity': '1.0*nanometer'})
+    >>> f_validator = Validator(generate_signature_schema(f))
+    >>> f_validator.validated({'quantity': '1.0*nanometer'})
     {'quantity': Quantity(value=1.0, unit=nanometer)}
 
     """
@@ -1043,27 +1002,33 @@ def generate_signature_schema(func, update_keys=None, exclude_keys=frozenset()):
         update_keys = {}
 
     func_schema = {}
-    args, _, _, defaults = inspect.getargspec(unwrap_py2(func))
+    arg_spec = inspect.getfullargspec(unwrap_py2(func))
+    args = arg_spec.args
+    defaults = arg_spec.defaults
 
     # Check keys that must be excluded from first pass
     exclude_keys = set(exclude_keys)
     exclude_keys.update(update_keys)
-    exclude_keys.update({k._schema for k in update_keys if isinstance(k, Optional)})
+    # TODO: Make sure we dont need to convert this line
+    # exclude_keys.update({k._schema for k in update_keys if isinstance(k, Optional)})
 
     # Transform camelCase to underscore
-    # TODO: Make sure this is working from the Py3.X conversion
-    args = [camelcase_to_underscore(arg) for arg in args ]
+    args = [camelcase_to_underscore(arg) for arg in args]
 
     # Build schema
+    optional_validator = {'required': False}  # Keys are always optional for this type
     for arg, default_value in zip(args[-len(defaults):], defaults):
         if arg not in exclude_keys:  # User defined keys are added later
-            if default_value is None:  # None defaults are always accepted
-                validator = object
+            if default_value is None:  # None defaults are always accepted, and considered nullable
+                validator = {'nullable': True}
             elif isinstance(default_value, unit.Quantity):  # Convert unit strings
-                validator = Use(to_unit_validator(default_value.unit))
+                validator = {'coerce': to_unit_validator(default_value.unit)}
             else:
-                validator = type(default_value)
-            func_schema[Optional(arg)] = validator
+                validator = type_to_cerberus_map(type(default_value))
+            # Add the argument to the existing schema as a keyword
+            # To the new keyword, add the optional flag and the "validator" flag
+            # of either 'validator' or 'type' depending on how it was processed
+            func_schema = {**func_schema, **{arg: {**optional_validator, **validator}}}
 
     # Add special user keys
     func_schema.update(update_keys)
@@ -1183,7 +1148,7 @@ def validate_parameters(parameters, template_parameters, check_unknown=False,
         diff = set(parameters) - set(template_parameters)
         raise TypeError("found unknown parameter {}".format(', '.join(diff)))
 
-    for par, value in dictiter(validated_par):
+    for par, value in validated_par.items():
         templ_value = template_parameters[par]
 
         # Convert requested types
@@ -1756,18 +1721,18 @@ class TLeap:
 
         # Transform paths in absolute paths since we'll change the working directory
         input_files = {local + os.path.splitext(path)[1]: os.path.abspath(path)
-                       for local, path in dictiter(self._file_paths) if 'moli' in local}
+                       for local, path in self._file_paths.items() if 'moli' in local}
         output_files = {local + os.path.splitext(path)[1]: os.path.abspath(path)
-                        for local, path in dictiter(self._file_paths) if 'molo' in local}
+                        for local, path in self._file_paths.items() if 'molo' in local}
 
         # Resolve all the names in the script
         local_files = {local: local + os.path.splitext(path)[1]
-                       for local, path in dictiter(self._file_paths)}
+                       for local, path in self._file_paths.items()}
         script = self._script.format(**local_files) + 'quit\n'
 
         with mdtraj.utils.enter_temp_directory():
             # Copy input files
-            for local_file, file_path in dictiter(input_files):
+            for local_file, file_path in input_files.items():
                 shutil.copy(file_path, local_file)
 
             # Save script and run tleap
@@ -1789,7 +1754,7 @@ class TLeap:
             # Copy back output files. If something goes wrong, some files may not exist
             error_msg = ''
             try:
-                for local_file, file_path in dictiter(output_files):
+                for local_file, file_path in output_files.items():
                     create_dirs_and_copy(local_file, file_path)
             except IOError:
                 error_msg = "Could not create one of the system files."
@@ -1816,24 +1781,6 @@ class TLeap:
 class SimulationNaNError(Exception):
     """Error when a simulation goes to NaN"""
     pass
-
-
-# =============================================================================================
-# Python 2/3 compatibility
-# =============================================================================================
-
-"""
-Generate same behavior for dict.item in both versions of Python
-Avoids external dependencies on future.utils or six
-"""
-try:
-    dict.iteritems
-except AttributeError:  # Python 3
-    def dictiter(d):
-        return d.items()
-else:  # Python 2
-    def dictiter(d):
-        return d.iteritems()
 
 
 # =============================================================================================

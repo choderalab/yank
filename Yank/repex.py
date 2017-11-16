@@ -315,19 +315,19 @@ class Reporter(object):
         # Uses uuid4 to avoid assigning hostname information
         primary_uuid = str(uuid.uuid4())
         ncfile_ever_built = False
-        for nc_name, ncfile in utils.dictiter(primary_ncfiles):
+        for nc_name, ncfile in primary_ncfiles.items():
             ncfile_built = check_and_build_storage_file(ncfile, nc_name, self._checkpoint_interval)
             if ncfile_built:
                 ncfile_ever_built = True
             # Assign ncfile to class property
             setattr(self, '_storage_' + nc_name, ncfile)
         if ncfile_ever_built:  # Assign the same UUID to all primary files
-            for _, ncfile in utils.dictiter(primary_ncfiles):
+            for _, ncfile in primary_ncfiles.items():
                 ncfile.UUID = primary_uuid
         else:
             primary_uuid = primary_ncfiles['analysis'].UUID
         # Handle Subfiles
-        for nc_name, ncfile in utils.dictiter(sub_ncfiles):
+        for nc_name, ncfile in sub_ncfiles.items():
             # If they are in the sub_ncfiles dict, they exist and are open
             ncfile_built = check_and_build_storage_file(ncfile, nc_name, self._checkpoint_interval)
             if ncfile_built:
@@ -364,7 +364,7 @@ class Reporter(object):
 
     def close(self):
         """Close the storage files"""
-        for storage_name, storage in utils.dictiter(self._storage_dict):
+        for storage_name, storage in self._storage_dict.items():
             if storage is not None:
                 if storage.isopen():
                     storage.sync()

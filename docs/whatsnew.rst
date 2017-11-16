@@ -13,6 +13,7 @@ The full release history can be viewed `at the GitHub yank releases page <https:
 - Compound custom Topography regions can now be selected
 - Restraints atom selection can now use Topography Regions
 - Topography now can select from arbitrary string, either complex regions, DSL strings, and in the future SMARTS strings
+- Changed to Cerberus for data validation (was Schema), public facing validation schemas in the future
 
 0.18.0 Python 2 Dropped, Solute Only Trajectories, and Trailblaze Bugfixes
 --------------------------------------------------------------------------

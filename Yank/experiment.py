@@ -24,14 +24,15 @@ import copy
 import yaml
 import logging
 import collections
+import cerberus
+import cerberus.errors
 
 import openmmtools as mmtools
 import openmoltools as moltools
 from simtk import unit, openmm
 from simtk.openmm.app import PDBFile, AmberPrmtopFile
-from schema import Schema, And, Or, Use, Optional, SchemaError
 
-from . import utils, pipeline, mpi, restraints, repex
+from . import utils, pipeline, mpi, restraints, repex, schema
 from .yank import AlchemicalPhase, Topography
 
 logger = logging.getLogger(__name__)
@@ -46,6 +47,40 @@ HIGHEST_VERSION = '1.3'  # highest version of YAML syntax
 # =============================================================================
 # UTILITY FUNCTIONS
 # =============================================================================
+
+def get_openmm_nonbonded_methods_strings():
+    """
+    Get the list of valid OpenMM Nonbonded methods YANK can process
+
+    Returns
+    -------
+    valid_methods : list of str
+
+    """
+    return ['NoCutoff', 'CutoffPeriodic', 'CutoffNonPeriodic', 'Ewald', 'PME']
+
+
+def get_openmm_implicit_nb_method_strings():
+    """
+    Get the subset of nonbonded method strings which work for implicit solvent
+
+    Returns
+    -------
+    valid_methods : list of str
+    """
+    return get_openmm_nonbonded_methods_strings()[:1]
+
+
+def get_openmm_explicit_nb_method_strings():
+    """
+    Get the subset of nonbonded method strings which work for explicit solvent
+
+    Returns
+    -------
+    valid_methods : list of str
+    """
+    return get_openmm_nonbonded_methods_strings()[1:]
+
 
 def to_openmm_app(input_string):
     """
@@ -882,7 +917,7 @@ class ExperimentBuilder(object):
             return expanded_content
 
         # First substitute all 'select: all' with the correct combination of indices
-        for comb_mol_name, comb_molecule in utils.dictiter(expanded_content['molecules']):
+        for comb_mol_name, comb_molecule in expanded_content['molecules'].items():
             if 'select' in comb_molecule and comb_molecule['select'] == 'all':
                 # Get the number of models in the file
                 extension = os.path.splitext(comb_molecule['filepath'])[1][1:]  # remove dot
@@ -978,7 +1013,7 @@ class ExperimentBuilder(object):
         experiment_id = 0
 
         output_dir = ''
-        for exp_name, experiment in utils.dictiter(self._experiments):
+        for exp_name, experiment in self._experiments.items():
             if len(self._experiments) > 1:
                 output_dir = exp_name
 
@@ -994,7 +1029,20 @@ class ExperimentBuilder(object):
 
     # Shared schema for leap parameters. Molecules, solvents and systems use it.
     # Simple strings are converted to list of strings.
-    _LEAP_PARAMETERS_SCHEMA = {'parameters': And(Use(lambda p: [p] if isinstance(p, str) else p), [str])}
+    _LEAP_PARAMETERS_SCHEMA = yaml.load("""
+    parameters:
+        type: list
+        coerce: single_str_to_list
+        schema:
+            type: string
+    """)
+
+    _LEAP_PARAMETERS_DEFAULT_SCHEMA = {'leap': {
+            'required': False,
+            'type': 'dict',
+            'schema': _LEAP_PARAMETERS_SCHEMA,
+            'default': {'parameters': []}}  # Default for if the parameter is missing
+            }
 
     @classmethod
     def _validate_options(cls, options, validate_general_options):
@@ -1079,83 +1127,152 @@ class ExperimentBuilder(object):
             If the syntax for any molecule is not valid.
 
         """
-        def is_peptide(filepath):
-            """Input file is a peptide."""
-            if not os.path.isfile(filepath):
-                raise SchemaError('File path does not exist.')
-            extension = os.path.splitext(filepath)[1]
-            if extension == '.pdb':
-                return True
-            return False
+        regions_schema_yaml = '''
+        regions:
+            type: dict
+            required: no
+            keyschema:
+                type: string
+            valueschema:
+                anyof:
+                    - type: list
+                      validator: positive_int_list
+                    - type: string
+                    - type: integer
+                      min: 0
+        '''
+        regions_schema = yaml.load(regions_schema_yaml)
+        # Define the LEAP schema
+        leap_schema = cls._LEAP_PARAMETERS_DEFAULT_SCHEMA
+        # Setup the common schema across ALL molecules
+        common_molecules_schema = {**leap_schema, **regions_schema}
+        # Setup the small molecules schemas
+        small_molecule_schema_yaml = """
+        smiles:
+            type: string
+            excludes: [name, filepath]
+            required: yes
+        name:
+            type: string
+            excludes: [smiles, filepath]
+            required: yes
+        filepath:
+            type: string
+            excludes: [smiles, name]
+            required: yes
+            validator: [is_small_molecule, file_exists]
+        openeye:
+            required: no
+            type: dict
+            schema:
+                quacpac:
+                    required: yes
+                    type: string
+                    allowed: [am1-bcc]
+        antechamber:
+            required: no
+            type: dict
+            schema:
+                charge_method:
+                    required: yes
+                    type: string
+                    nullable: yes
+        select:
+            required: no
+            dependencies: filepath
+            validator: int_or_all_string
+        """
+        # Build small molecule Epik by hand as dict since we are fetching from another source
+        epik_schema = utils.generate_signature_schema(moltools.schrodinger.run_epik,
+                                                      update_keys={'select': {'required': False, 'type': 'integer'}},
+                                                      exclude_keys=['extract_range'])
+        epik_schema = {'epik': {
+            'required': False,
+            'type': 'dict',
+            'schema': epik_schema
+            }
+        }
+        small_molecule_schema = {**yaml.load(small_molecule_schema_yaml), **epik_schema, **common_molecules_schema}
 
-        def is_small_molecule(filepath):
-            """Input file is a small molecule."""
-            file_formats = frozenset(['mol2', 'sdf', 'smiles', 'csv'])
-            if not os.path.isfile(filepath):
-                raise SchemaError('File path does not exist.')
-            extension = os.path.splitext(filepath)[1][1:]
-            if extension in file_formats:
-                return True
-            return False
-
-        def region_iterable_validator(region_iter):
-            for p in region_iter:
-                if not p >= 0 or not isinstance(p, int):
-                    raise SchemaError("{} of region list must be a positive integer!".format(p))
-            return True
-
-        regions_schema = {Optional(str): Or(And(list, region_iterable_validator), str, And(int, lambda p: p >= 0))}
-
+        # Peptide schema has some keys excluded from small_molecule checks
+        peptide_schema_yaml = """
+        filepath:
+            required: yes
+            type: string
+            validator: [is_peptide, file_exists]
+        select:
+            required: no
+            dependencies: filepath
+            validator: int_or_all_string
+        strip_protons:
+            required: no
+            type: boolean
+            dependencies: filepath
+        openeye:
+            required: no
+            excludes: filepath
+        antechamber:
+            required: no
+            excludes: filepath
+        epik:
+            required: no
+            excludes: filepath
+        """
+        peptide_schema = {**yaml.load(peptide_schema_yaml), **common_molecules_schema}
 
         validated_molecules = molecules_description.copy()
-
-        # Define molecules Schema
-        epik_schema = utils.generate_signature_schema(moltools.schrodinger.run_epik,
-                                                      update_keys={'select': int},
-                                                      exclude_keys=['extract_range'])
-
-        common_schema = {Optional('regions'): regions_schema}
-        small_molecule_schema = {Optional('leap'): cls._LEAP_PARAMETERS_SCHEMA,
-                                 Optional('openeye'): {'quacpac': 'am1-bcc'},
-                                 Optional('antechamber'): {'charge_method': Or(str, None)},
-                                 Optional('epik'): epik_schema}
-        peptide_schema = {'filepath': is_peptide, Optional('select'): Or(int, 'all'),
-                          Optional('leap'): cls._LEAP_PARAMETERS_SCHEMA,
-                          Optional('strip_protons'): bool}
-
-        molecule_schema = Or(
-            {**common_schema, **{'smiles': str}, **small_molecule_schema},  # Smiles small molecule
-            {**common_schema, **{'name': str}, **small_molecule_schema},  # Name small molecule
-            {**common_schema, **{'filepath': is_small_molecule, Optional('select'): Or(int, 'all')},
-             **small_molecule_schema},  # File path small molecule
-            {**common_schema, **peptide_schema}  # Peptide schema
-        )
-
         # Schema validation
-        for molecule_id, molecule_descr in utils.dictiter(molecules_description):
+        for molecule_id, molecule_descr in molecules_description.items():
+            small_molecule_validator = schema.YANKCerberusValidator(small_molecule_schema)
+            peptide_validator = schema.YANKCerberusValidator(peptide_schema)
+            # Test for small molecule
+            if small_molecule_validator.validate(molecule_descr):
+                validated_molecules[molecule_id] = small_molecule_validator.document
+            # Test for peptide
+            elif peptide_validator.validate(molecule_descr):
+                validated_molecules[molecule_id] = peptide_validator.document
+            else:
+                # Both failed, lets figure out why
+                # Check the is peptide w/ only excluded errors
+                if (cerberus.errors.EXCLUDES_FIELD in peptide_validator._errors and
+                        peptide_validator.document_error_tree['filepath'] is None):
+                    error = ("Molecule {} appears to be a peptide, but uses items exclusive to small molecules:\n"
+                             "Please change either the options to peptide-only entries, or your molecule to a "
+                             "small molecule.\n"
+                             "====== Peptide Schema =====\n"
+                             "{}\n"
+                             "===========================\n")
+                    error = error.format(molecule_id, yaml.dump(peptide_validator.errors))
+                # We don't know exactly what went wrong, run both error blocks
+                else:
+                    error = ("Molecule {} failed to validate against one of the following schemes\n"
+                             "Please check the following schemes for errors:\n"
+                             "===========================\n"
+                             "== Small Molecule Schema ==\n"
+                             "{}\n"
+                             "===========================\n\n"  # Blank line
+                             "===========================\n"
+                             "====== Peptide Schema =====\n"
+                             "{}\n"
+                             "===========================\n")
+                    error = error.format(molecule_id, yaml.dump(small_molecule_validator.errors),
+                                         yaml.dump(peptide_validator.errors))
+                raise YamlParseError(error)
+
+            # Check OpenEye charges - antechamber consistency
+            if 'openeye' in validated_molecules[molecule_id]:
+                if 'antechamber' not in validated_molecules[molecule_id]:
+                    raise YamlParseError('Cannot specify openeye charges without antechamber')
+                if validated_molecules[molecule_id]['antechamber']['charge_method'] is not None:
+                    raise YamlParseError('Antechamber charge_method must be "null" to read '
+                                         'OpenEye charges')
+
+            # Convert epik "select" to "extract_range" which is accepted by run_epik()
             try:
-                validated_molecules[molecule_id] = molecule_schema.validate(molecule_descr)
-
-                # Check OpenEye charges - antechamber consistency
-                if 'openeye' in validated_molecules[molecule_id]:
-                    if not 'antechamber' in validated_molecules[molecule_id]:
-                        raise YamlParseError('Cannot specify openeye charges without antechamber')
-                    if validated_molecules[molecule_id]['antechamber']['charge_method'] is not None:
-                        raise YamlParseError('Antechamber charge_method must be "null" to read '
-                                             'OpenEye charges')
-
-                # Convert epik "select" to "extract_range" which is accepted by run_epik()
-                try:
-                    extract_range = validated_molecules[molecule_id]['epik'].pop('select')
-                    validated_molecules[molecule_id]['epik']['extract_range'] = extract_range
-                except (AttributeError, KeyError):
-                    pass
-
-                # Create empty parameters list if not specified
-                if 'leap' not in validated_molecules[molecule_id]:
-                    validated_molecules[molecule_id]['leap'] = {'parameters': []}
-            except SchemaError as e:
-                raise YamlParseError('Molecule {}: {}'.format(molecule_id, e.autos[-1]))
+                extract_range = validated_molecules[molecule_id]['epik'].pop('select')
+                validated_molecules[molecule_id]['epik']['extract_range'] = extract_range
+            except (AttributeError, KeyError):
+                pass
 
         return validated_molecules
 
@@ -1179,58 +1296,150 @@ class ExperimentBuilder(object):
             If the syntax for any solvent is not valid.
 
         """
-        def to_explicit_solvent(nonbonded_method_str):
-            """Check OpenMM explicit solvent."""
-            openmm_app = to_openmm_app(nonbonded_method_str)
-            if openmm_app == openmm.app.NoCutoff:
-                raise ValueError('Nonbonded method cannot be NoCutoff.')
-            return openmm_app
+        openmm_nonbonded_strings = get_openmm_nonbonded_methods_strings()
+        mapped_openmm_nonbonded_methods = {nb_method: to_openmm_app(nb_method) for
+                                           nb_method in openmm_nonbonded_strings}
+        explicit_strings = get_openmm_explicit_nb_method_strings()
+        mapped_explicit_methods = [mapped_openmm_nonbonded_methods[method] for method in explicit_strings]
+        all_valid_explicit = explicit_strings + mapped_explicit_methods
+        implicit_strings = get_openmm_implicit_nb_method_strings()
+        mapped_implicit_methods = [mapped_openmm_nonbonded_methods[method] for method in implicit_strings]
+        all_valid_implicit = implicit_strings + mapped_implicit_methods
 
-        def to_no_cutoff(nonbonded_method_str):
-            """Check OpenMM implicit solvent or vacuum."""
-            openmm_app = to_openmm_app(nonbonded_method_str)
-            if openmm_app != openmm.app.NoCutoff:
-                raise ValueError('Nonbonded method must be NoCutoff.')
-            return openmm_app
-
-        def is_supported_solvent_model(solvent_model):
+        def is_supported_solvent_model(field, solvent_model, error):
             """Check that solvent model name is supported."""
-            return solvent_model in pipeline._OPENMM_LEAP_SOLVENT_MODELS_MAP
+            if solvent_model not in pipeline._OPENMM_LEAP_SOLVENT_MODELS_MAP:
+                error(field, "{} not in the known solvent models map!".format(solvent_model))
+
+        def ionic_strength_if_explicit_else_none(document, default="0.0*molar"):
+            """Set the ionic strength IFF solvent model is explicit"""
+            if document['nonbonded_method'] in all_valid_explicit:
+                return default
+            else:
+                return None
+
+        def solvent_model_if_explicit_else_none(document, default='tip4pew'):
+            """Set the solvent_model IFF solvent model is explicit"""
+
+            if document['nonbonded_method'] in all_valid_explicit:
+                return default
+            else:
+                return None
+
+        def to_openmm_app_unless_none(input_string):
+            """
+            Extension method of the :func:`to_openmm_app` method which returns None if None is given
+            Primarily used by the schema validators
+
+            Parameters
+            ----------
+            input_string : str or None
+                Method name of openmm.app to fetch
+
+            Returns
+            -------
+            method : Method of openmm.app or None
+                Returns openmm.app.{input_string}
+            """
+            return to_openmm_app(input_string) if input_string is not None else None
+
+        def to_unit_validator_unless_none(compatible_units):
+            """
+            Extension to the :func:`utils.to_unit_validator` method which also allows a None object to be set
+
+            See call to :func:`utils.to_unit_validator` for call
+            """
+            unit_validator = utils.to_unit_validator(compatible_units)
+
+            def _to_unit_unless_none(input_quantity):
+                if input_quantity is None:
+                    return None
+                else:
+                    return unit_validator(input_quantity)
+            return _to_unit_unless_none
+
+        # Define solvents Schema
+        # Create the basic solvent schema, ignoring things which have a dependency
+        # Some keys we manually tweak
+        base_solvent_schema = utils.generate_signature_schema(AmberPrmtopFile.createSystem,
+                                                              exclude_keys=['nonbonded_method'])
+        implicit_solvent_default_schema = {'implicit_solvent': base_solvent_schema.pop('implicit_solvent')}
+        rigid_water_default_schema = {'rigid_water': base_solvent_schema.pop('rigid_water')}
+        nonbonded_cutoff_default_schema = {'nonbonded_cutoff': base_solvent_schema.pop('nonbonded_cutoff')}
+        # Cerberus Schema Processing hierarchy:
+        # Input Value -> {default value} -> default setter -> coerce -> allowed/validate
+        #  Handle the use cases for special keys
+        # nonbonded_method
+        base_solvent_schema['nonbonded_method'] = {
+            'allowed': [value for _, value in mapped_openmm_nonbonded_methods.items()],  # Only use valid openmm methods
+            'coerce': to_openmm_app,  # Cast the string first to valid method
+            'required': True,  # This must be set
+            'default': openmm_nonbonded_strings[0],  # Choose a default mapping
+        }
+        # Explicit solvent keys, populate required and dependencies in batch
+        explicit_only_keys = {
+            'clearance': {
+                'type': 'quantity',
+                'coerce': utils.to_unit_validator(unit.angstrom),
+            },
+            'solvent_model': {
+                'type': 'string',
+                'nullable': True,
+                'validator': is_supported_solvent_model,
+                'default_setter': solvent_model_if_explicit_else_none
+            },
+            'positive_ion': {
+                'type': 'string'
+            },
+            'negative_ion': {
+                'type': 'string'
+            },
+            'ionic_strength': {
+                'type': 'quantity',
+                'coerce': to_unit_validator_unless_none(unit.molar),
+                'default_setter': ionic_strength_if_explicit_else_none,
+                'nullable': True
+            },
+            **nonbonded_cutoff_default_schema
+        }
+        # Batch the explicit dependencies
+        for key in explicit_only_keys.keys():
+            explicit_only_keys[key]['dependencies'] = {'nonbonded_method': [mapped_openmm_nonbonded_methods[value] for
+                                                                            value in
+                                                                            get_openmm_explicit_nb_method_strings()]}
+            explicit_only_keys[key]['required'] = False
+
+        # Implicit solvent keys
+        # Input Value -> {default value} -> default setter -> coerce -> allowed/validate
+        implicit_only_keys = {**implicit_solvent_default_schema}
+        implicit_only_keys['implicit_solvent']['coerce'] = to_openmm_app_unless_none
+        implicit_only_keys['implicit_solvent']['dependencies'] = {'nonbonded_method': all_valid_implicit}
+        # Batch the implicit dependencies
+        for key in implicit_only_keys.keys():
+            implicit_only_keys[key]['dependencies'] = {'nonbonded_method': [mapped_openmm_nonbonded_methods[value] for
+                                                                            value in
+                                                                            get_openmm_implicit_nb_method_strings()]}
+            implicit_only_keys[key]['required'] = False
+
+        # Vacuum solvent is implicitly defined when the `NoCutoff` scheme is selected and `implicit_solvent` is None
+
+        # Finally, stitch the schema together
+        solvent_schema = {**base_solvent_schema, **explicit_only_keys, **implicit_only_keys,
+                          **rigid_water_default_schema, **cls._LEAP_PARAMETERS_DEFAULT_SCHEMA}
+
+        solvent_validator = schema.YANKCerberusValidator(solvent_schema)
 
         validated_solvents = solvents_description.copy()
 
-        # Define solvents Schema
-        explicit_schema = utils.generate_signature_schema(AmberPrmtopFile.createSystem,
-                                update_keys={'nonbonded_method': Use(to_explicit_solvent)},
-                                exclude_keys=['implicit_solvent'])
-        explicit_schema.update({Optional('clearance'): Use(utils.to_unit_validator(unit.angstrom)),
-                                Optional('solvent_model', default='tip4pew'): is_supported_solvent_model,
-                                Optional('positive_ion'): str, Optional('negative_ion'): str,
-                                Optional('ionic_strength', default=0.0*unit.molar): Use(utils.to_unit_validator(unit.molar))})
-        implicit_schema = utils.generate_signature_schema(AmberPrmtopFile.createSystem,
-                                update_keys={'implicit_solvent': Use(to_openmm_app),
-                                             Optional('nonbonded_method'): Use(to_no_cutoff)},
-                                exclude_keys=['rigid_water'])
-        vacuum_schema = utils.generate_signature_schema(AmberPrmtopFile.createSystem,
-                                update_keys={'nonbonded_method': Use(to_no_cutoff)},
-                                exclude_keys=['rigid_water', 'implicit_solvent'])
-
-        # Common schema to all types of solvents
-        for schema in [explicit_schema, implicit_schema, vacuum_schema]:
-            schema.update({Optional('leap'): cls._LEAP_PARAMETERS_SCHEMA})
-
-        solvent_schema = Schema(Or(explicit_schema, implicit_schema, vacuum_schema))
-
         # Schema validation
-        for solvent_id, solvent_descr in utils.dictiter(solvents_description):
-            try:
-                validated_solvents[solvent_id] = solvent_schema.validate(solvent_descr)
-            except SchemaError as e:
-                raise YamlParseError('Solvent {}: {}'.format(solvent_id, e.autos[-1]))
+        for solvent_id, solvent_descr in solvents_description.items():
+            if solvent_validator.validate(solvent_descr):
+                validated_solvents[solvent_id] = solvent_validator.document
+                print(solvent_validator.document)
+            else:
+                error = "Solvent '{}' did not validate! Check the schema error below for details\n{}"
+                raise YamlParseError(error.format(solvent_id, yaml.dump(solvent_validator.errors)))
 
-            # Create empty parameters list if not specified
-            if 'leap' not in validated_solvents[solvent_id]:
-                validated_solvents[solvent_id]['leap'] = {'parameters': []}
         return validated_solvents
 
     @staticmethod
@@ -1258,9 +1467,9 @@ class ExperimentBuilder(object):
             sortables = [('complex', 'solvent'), ('solvent1', 'solvent2')]
             for sortable in sortables:
                 # Phases names must be unambiguous, they can't contain both names
-                phase1 = [(k, v) for k, v in utils.dictiter(protocol)
+                phase1 = [(k, v) for k, v in protocol.items()
                           if (sortable[0] in k and sortable[1] not in k)]
-                phase2 = [(k, v) for k, v in utils.dictiter(protocol)
+                phase2 = [(k, v) for k, v in protocol.items()
                           if (sortable[1] in k and sortable[0] not in k)]
 
                 # Phases names must be unique
@@ -1268,30 +1477,106 @@ class ExperimentBuilder(object):
                     return collections.OrderedDict([phase1[0], phase2[0]])
 
             # Could not find any sortable
-            raise SchemaError('Phases must contain either "complex" and "solvent"'
-                              'or "solvent1" and "solvent2"')
+            raise YamlParseError('Non-ordered phases must contain either "complex" and "solvent" '
+                                 'OR "solvent1" and "solvent2", the phase names must also be non-ambiguous so each '
+                                 'keyword can only appear in a single phase, not multiple.')
 
-        validated_protocols = protocols_description.copy()
+        def validate_string_auto(field, value, error):
+            if isinstance(value, str) and value != 'auto':
+                error(field, "Only the exact string 'auto' is accepted as a string argument, not {}.".format(value))
+
+        def cast_quantity_strings(value):
+            """Take an object and try to cast quantity strings to quantity, otherwise return object"""
+            if isinstance(value, str):
+                value = utils.quantity_from_string(value)
+            return value
+
+        def validate_required_entries_dict(field, value, error):
+            """Ensure the required entries are in the dict, string is checked by a separate validator"""
+            if isinstance(value, dict) or isinstance(value, collections.OrderedDict):
+                if 'lambda_sterics' not in value.keys() or 'lambda_electrostatics' not in value.keys():
+                    error(field, "Missing required keys lambda_sterics and/or lambda_electrostatics")
+
+        def validate_lambda_min_max(field, value, error):
+            """Ensure keys which are lambda values are in fact between 0 and 1"""
+            base_error = "Entries with a 'lambda_' must be a float between 0 and 1, inclusive. Values {} are not."
+            collected_bad_values = []
+            if "lambda_" in field:
+                for single_value in value:
+                    if not (isinstance(single_value, float) and 0 <= single_value <= 1.0):
+                        collected_bad_values.append(single_value)
+            if len(collected_bad_values):
+                error(field, base_error.format(collected_bad_values))
 
         # Define protocol Schema
-        lambda_list = [And(float, lambda l: 0.0 <= l <= 1.0)]
-        quantity_list = [Use(utils.quantity_from_string)]
-        alchemical_path_schema = {'alchemical_path': Or(
-            'auto',
-            {'lambda_sterics': lambda_list, 'lambda_electrostatics': lambda_list,
-             Optional(str): Or(lambda_list, quantity_list)}
-        )}
-        protocol_schema = Schema(And(
-            lambda v: len(v) == 2, {str: alchemical_path_schema},
-            Or(collections.OrderedDict, Use(sort_protocol))
-        ))
+        # Note: Cannot cleanly do yaml.dump(v.errors) for nested `schema`/`*of` logic from Cerberus until its 1.2
+        protocol_value_schema = {
+            'alchemical_path': {  # The only literal key
+                'required': True,  # Key is required
+                'type': ['string', 'dict'],  # Must be a string or dictionary
+                # Use this to check the string value until Cerberus 1.2 for `oneof`
+                # Check string with validate_string_auto, pass other values to next validator
+                # Check the dict values with validate_required_entries_doct, ignore other values
+                'validator': [validate_string_auto, validate_required_entries_dict],
+                'keyschema': {  # Validate the keys of this sub-dictionary against this schema
+                    'type': 'string'
+                },
+                'valueschema': {  # Validate the values of this sub-dictionary against this schema
+                    'type': 'list',  # They must be a list (dont accept single values)
+                    # Check if it has the `lambda_` string that its a float within [0,1]
+                    'validator': validate_lambda_min_max,
+                    'schema': {
+                        'type': ['float', 'quantity'],  # Ensure the output type is float or quantity
+                        # Cast strings to quantity. Everything else had to validate down to this point
+                        'coerce': cast_quantity_strings,
+                    }
+                }
+            }
+        }
 
+        # Validate the top level keys (cannot be done with Cerberus)
+        def validate_protocol_keys_and_values(protocol_id, protocol):
+            # Ensure the protocol is 2 keys
+            if len(protocol) != 2:
+                raise YamlParseError('Protocol {} must only have two phases, found {}'.format(protocol_id,
+                                                                                              len(protocol)))
+            # Ensure the protocol keys are in fact strings
+            keys_not_strings = []
+            key_string_error = 'Protocol {} has keys which are not strings: '.format(protocol_id)
+            for key in protocol.keys():
+                if not isinstance(key, str):
+                    keys_not_strings.append(key)
+            if len(keys_not_strings) > 0:
+                # The join(list_comprehension) forces invalid keys to a string so the join command works
+                raise YamlParseError(key_string_error + ', '.join(['{}'.format(key) for key in keys_not_strings]))
+            # Check for ordered dict or the sorted keys
+            if not isinstance(protocol, collections.OrderedDict):
+                protocol = sort_protocol(protocol)
+            # Now user cerberus to validate the alchemical path part
+            errored_phases = []
+            for phase_key, phase_entry in protocol.items():
+                phase_validator = schema.YANKCerberusValidator(protocol_value_schema)
+                # test the phase
+                if phase_validator.validate(phase_entry):
+                    protocol[phase_key] = phase_validator.document
+                else:
+                    # collect the errors
+                    errored_phases.append([phase_key, yaml.dump(phase_validator.errors)])
+            if len(errored_phases) > 0:
+                # Throw error
+                error = "Protocol {} failed because one or more of the phases did not validate, see the errors below " \
+                        "for more information.\n".format(protocol_id)
+                for phase_id, phase_error in errored_phases:
+                    error += "Phase: {}\n----\n{}\n====\n".format(phase_id, phase_error)
+                raise YamlParseError(error)
+            # Finally return if everything is fine
+            return protocol
+
+        validated_protocols = protocols_description.copy()
         # Schema validation
-        for protocol_id, protocol_descr in utils.dictiter(protocols_description):
-            try:
-                validated_protocols[protocol_id] = protocol_schema.validate(protocol_descr)
-            except SchemaError as e:
-                raise YamlParseError('Protocol {}: {}'.format(protocol_id, e.autos[-1]))
+        for protocol_id, protocol_descr in protocols_description.items():
+            # Error is raised in the function
+            validated_protocols[protocol_id] = validate_protocol_keys_and_values(protocol_id, protocol_descr)
 
         return validated_protocols
 
@@ -1317,129 +1602,174 @@ class ExperimentBuilder(object):
             If the syntax for any experiment is not valid.
 
         """
-        def is_known_molecule(molecule_id):
-            if molecule_id in self._db.molecules:
-                return True
-            raise SchemaError('Molecule ' + molecule_id + ' is unknown.')
 
-        def is_known_solvent(solvent_id):
-            if solvent_id in self._db.solvents:
-                return True
-            raise SchemaError('Solvent ' + solvent_id + ' is unknown.')
-
-        def is_pipeline_solvent(solvent_id):
-            is_known_solvent(solvent_id)
-            solvent = self._db.solvents[solvent_id]
-            if (solvent['nonbonded_method'] != openmm.app.NoCutoff and
-                    'clearance' not in solvent):
-                raise SchemaError('Explicit solvent {} does not specify '
-                                  'clearance.'.format(solvent_id))
-            return True
-
-        def system_files(type):
-            def _system_files(files):
-                """Paths to amber/gromacs/xml files. Return them in alphabetical
-                order of extension [*.inpcrd/gro/pdb, *.prmtop/top/xml]."""
-                provided_extensions = [os.path.splitext(filepath)[1][1:] for filepath in files]
-                if type == 'amber':
-                    expected_extensions = ['inpcrd', 'prmtop']
-                elif type == 'gromacs':
-                    expected_extensions = ['gro', 'top']
-                elif type == 'openmm':
-                    expected_extensions = ['pdb', 'xml']
-
-                # Check if extensions are expected.
-                correct_type = sorted(provided_extensions) == sorted(expected_extensions)
-                if not correct_type:
-                    err_msg = ('Wrong system file types provided.\n'
-                               'Extensions provided: {}\n'
-                               'Expected extensions: {}').format(
-                        sorted(provided_extensions), sorted(expected_extensions))
-                    logger.debug(err_msg)
-                    raise SchemaError(err_msg)
-                else:
-                    logger.debug('Correctly recognized files {} as {}'.format(files, expected_extensions))
-
-                # Check if given files exist.
-                for filepath in files:
-                    if not os.path.isfile(filepath):
-                        raise YamlParseError('File path {} does not exist.'.format(filepath))
-
-                # Return files in alphabetical order of extension.
-                return [filepath for (ext, filepath) in sorted(zip(provided_extensions, files))]
-            return _system_files
-
-        def check_regions_clash(system_dict, mol_class1, mol_class2=None):
+        def generate_region_clash_validator(system_descr, mol_class1, mol_class2=None):
             """
             Check that the regions have non clashing names by looking at regions in each molecule for a given
-            system
+            system, this is generated at run time per-system
             """
-            mol_description1 = self._db.molecules[system_dict[mol_class1]]
-            mol_description2 = self._db.molecules[system_dict[mol_class2]] if mol_class2 is not None else {}
+            base_error = ("Cannot resolve molecular regions! "
+                          "Found regions(s) clashing for a {}/{} pair!".format(mol_class1, mol_class2))
+            error_collection = []
+            mol_description1 = self._db.molecules.get(system_descr.get(mol_class1, ''), {})
+            mol_description2 = self._db.molecules.get(
+                system_descr.get(mol_class2, ''), {}) if mol_class2 is not None else {}
             # Fetch the regions or an empty dict
             regions_1_names = mol_description1.get('regions', {}).keys()
             regions_2_names = mol_description2.get('regions', {}).keys()
             for region_1_name in regions_1_names:
                 if region_1_name in regions_2_names:
-                    raise YamlParseError("Cannot resolve molecular regions! "
-                                         "Found clashing region name {} for a {}/{} pair!".format(region_1_name,
-                                                                                                  mol_class1,
-                                                                                                  mol_class2))
-            return True
+                    error_collection.append("\n- Region {}".format(region_1_name))
 
+            def _region_clash_validator(field, value, error):
+                if len(error_collection) > 0:
+                    error(field, base_error + ''.join(error_collection))
+            return _region_clash_validator
 
-        # Define experiment Schema
+        def generate_is_pipeline_solvent_with_receptor_validator(system_descr, cross_id):
+
+            def _is_pipeline_solvent_with_receptor(field, solvent_id, error):
+                if cross_id in system_descr:
+                    solvent = self._db.solvents.get(solvent_id, {})
+                    if (solvent.get('nonbonded_method') != openmm.app.NoCutoff and
+                        'clearance' not in solvent):
+                        error(field, 'Explicit solvent {} does not specify clearance.'.format(solvent_id))
+            return _is_pipeline_solvent_with_receptor
+
+        # Define systems Schema
+        systems_schema_yaml = """
+        # DSL Schema
+        ligand_dsl:
+            required: no
+            type: string
+            dependencies: [phase1_path, phase2_path]
+        solvent_dsl:
+            required: no
+            type: string
+            dependencies: [phase1_path, phase2_path]
+
+        # Phase paths
+        phase1_path:
+            required: no
+            type: list
+            schema:
+                type: string
+                validator: file_exists
+            dependencies: phase2_path
+            coerce: sort_alphabetically_by_extension
+        phase2_path:
+            required: no
+            type: list
+            schema:
+                type: string
+                validator: file_exists
+            validator: is_system_files_matching_phase1
+            coerce: sort_alphabetically_by_extension
+        solvent:
+            required: no
+            type: string
+            excludes: [solvent1, solvent2]
+            allowed: SOLVENT_IDS_POPULATED_AT_RUNTIME
+            validator: PIPELINE_SOLVENT_DETERMINED_AT_RUNTIME_WITH_RECEPTOR
+            oneof:
+                - dependencies: [phase1_path, phase2_path]
+                - dependencies: [receptor, ligand]
+        solvent1:
+            required: no
+            type: string
+            excludes: solvent
+            allowed: SOLVENT_IDS_POPULATED_AT_RUNTIME
+            validator: PIPELINE_SOLVENT_DETERMINED_AT_RUNTIME_WITH_SOLUTE
+            oneof:
+                - dependencies: [phase1_path, phase2_path, solvent2]
+                - dependencies: [solute, solvent2]
+        solvent2:
+            required: no
+            type: string
+            excludes: solvent
+            allowed: SOLVENT_IDS_POPULATED_AT_RUNTIME
+            validator: PIPELINE_SOLVENT_DETERMINED_AT_RUNTIME_WITH_SOLUTE
+            oneof:
+                - dependencies: [phase1_path, phase2_path, solvent1]
+                - dependencies: [solute, solvent1]
+        gromacs_include_dir:
+            required: no
+            type: string
+            dependencies: [phase1_path, phase2_path]
+            validator: directory_exists
+
+        # Non-Prebuilt setup
+        receptor:
+            required: no
+            type: string
+            dependencies: [ligand, solvent]
+            allowed: MOLECULE_IDS_POPULATED_AT_RUNTIME
+            excludes: [solute, phase1_path, phase2_path]
+            validator: REGION_CLASH_DETERMINED_AT_RUNTIME_WITH_LIGAND
+        ligand:
+            required: no
+            type: string
+            dependencies: [receptor, solvent]
+            allowed: MOLECULE_IDS_POPULATED_AT_RUNTIME
+            excludes: [solute, phase1_path, phase2_path]
+        pack:
+            # Technically requires receptor, but with default interjects itself even if receptor is not present
+            required: no
+            type: boolean
+            default: no
+        solute:
+            required: no
+            type: string
+            allowed: MOLECULE_IDS_POPULATED_AT_RUNTIME
+            dependencies: [solvent1, solvent2]
+            validator: REGION_CLASH_DETERMINED_AT_RUNTIME
+            excludes: [receptor, ligand]
+        """
+        # Load the YAML into a schema into dict format
+        system_schema = yaml.load(systems_schema_yaml)
+        # Add the LEAP schema
+        leap_schema = self._LEAP_PARAMETERS_DEFAULT_SCHEMA
+        # Handle dependencies
+        # This does nothing in the case of phase1_path/phase2_path, but I wanted to leave this here in case
+        # we decide to actually make these required. The problem is that because this has a `default` key, it inserts
+        # itself into the scheme, but then fails if its a phase1_path and phase2_path set. So I silenced the line for
+        # now if we decided to engineer this in later.
+        # leap_schema['leap']['oneof'] = [{'dependencies': ['receptor', 'ligand']}, {'dependencies': 'solute'}]
+        system_schema = {**system_schema, **leap_schema}
+        # Handle the populations
+        # Molecules
+        for molecule_id_key in ['receptor', 'ligand', 'solute']:
+            system_schema[molecule_id_key]['allowed'] = [str(key) for key in self._db.molecules.keys()]
+        # Solvents
+        for solvent_id_key in ['solvent', 'solvent1', 'solvent2']:
+            system_schema[solvent_id_key]['allowed'] = [str(key) for key in self._db.solvents.keys()]
+
+        def generate_runtime_schema_for_system(system_descr):
+            new_schema = system_schema.copy()
+            # Handle the validators
+            # Spin up the region clash calculators
+            new_schema['receptor']['validator'] = generate_region_clash_validator(system_descr, 'ligand', 'receptor')
+            new_schema['solute']['validator'] = generate_region_clash_validator(system_descr, 'solute')
+            # "solvent"
+            new_schema['solvent']['validator'] = generate_is_pipeline_solvent_with_receptor_validator(system_descr,
+                                                                                                      'receptor')
+            # "solvent1" and "solvent2
+            new_schema['solvent1']['validator'] = generate_is_pipeline_solvent_with_receptor_validator(system_descr,
+                                                                                                       'solute')
+            new_schema['solvent2']['validator'] = generate_is_pipeline_solvent_with_receptor_validator(system_descr,
+                                                                                                       'solute')
+            return new_schema
+
         validated_systems = systems_description.copy()
-
-        # Schema for DSL specification with system files.
-        dsl_schema = {Optional('ligand_dsl'): str, Optional('solvent_dsl'): str}
-
-        # System schema.
-        system_schema = Schema(Or(
-            And({'receptor': is_known_molecule, 'ligand': is_known_molecule,
-                 'solvent': is_pipeline_solvent, Optional('pack', default=False): bool,
-                 Optional('leap'): self._LEAP_PARAMETERS_SCHEMA},
-                lambda d: check_regions_clash(d, 'ligand', 'receptor')),
-
-            And({'solute': is_known_molecule, 'solvent1': is_pipeline_solvent,
-                'solvent2': is_pipeline_solvent, Optional('leap'): self._LEAP_PARAMETERS_SCHEMA},
-                lambda d: check_regions_clash(d, 'solute')),
-
-            utils.merge_dict(dsl_schema, {'phase1_path': Use(system_files('amber')),
-                                          'phase2_path': Use(system_files('amber')),
-                                          'solvent': is_known_solvent}),
-
-            utils.merge_dict(dsl_schema, {'phase1_path': Use(system_files('amber')),
-                                          'phase2_path': Use(system_files('amber')),
-                                          'solvent1': is_known_solvent,
-                                          'solvent2': is_known_solvent}),
-
-            utils.merge_dict(dsl_schema, {'phase1_path': Use(system_files('gromacs')),
-                                          'phase2_path': Use(system_files('gromacs')),
-                                          'solvent': is_known_solvent,
-                                          Optional('gromacs_include_dir'): os.path.isdir}),
-
-            utils.merge_dict(dsl_schema, {'phase1_path': Use(system_files('gromacs')),
-                                          'phase2_path': Use(system_files('gromacs')),
-                                          'solvent1': is_known_solvent,
-                                          'solvent2': is_known_solvent,
-                                          Optional('gromacs_include_dir'): os.path.isdir}),
-
-            utils.merge_dict(dsl_schema, {'phase1_path': Use(system_files('openmm')),
-                                          'phase2_path': Use(system_files('openmm'))})
-        ))
-
         # Schema validation
-        for system_id, system_descr in utils.dictiter(systems_description):
-            try:
-                validated_systems[system_id] = system_schema.validate(system_descr)
-
-                # Create empty parameters list if not specified
-                if 'leap' not in validated_systems[system_id]:
-                    validated_systems[system_id]['leap'] = {'parameters': []}
-            except SchemaError as e:
-                raise YamlParseError('System {}: {}'.format(system_id, e.autos[-1]))
-
+        for system_id, system_descr in systems_description.items():
+            runtime_system_schema = generate_runtime_schema_for_system(system_descr)
+            system_validator = schema.YANKCerberusValidator(runtime_system_schema)
+            if system_validator.validate(system_descr):
+                validated_systems[system_id] = system_validator.document
+            else:
+                error = "System '{}' did not validate! Check the schema error below for details\n{}"
+                raise YamlParseError(error.format(system_id, yaml.dump(system_validator.errors)))
         return validated_systems
 
     def _parse_experiments(self, yaml_content):
@@ -1461,18 +1791,28 @@ class ExperimentBuilder(object):
             If the syntax for any experiment is not valid.
 
         """
-        def is_known_system(system_id):
-            if system_id in self._db.systems:
-                return True
-            raise SchemaError('System ' + system_id + ' is unknown.')
 
-        def is_known_protocol(protocol_id):
-            if protocol_id in self._protocols:
-                return True
-            raise SchemaError('Protocol ' + protocol_id + ' is unknown')
+        def coerce_and_validate_options_here_against_existing(options):
+            coerced_and_validated = {}
+            errors = ""
+            for option, value in options.items():
+                try:
+                    validated = ExperimentBuilder._validate_options({option:value}, validate_general_options=False)
+                    coerced_and_validated = {**coerced_and_validated, **validated}
+                except YamlParseError as yaml_err:
+                    # collecte all errors
+                    coerced_and_validated[option] = value
+                    errors += "\n{}".format(yaml_err)
+            if errors != "":
+                raise YamlParseError(errors)
+            return coerced_and_validated
 
-        def validate_experiment_options(options):
-            return ExperimentBuilder._validate_options(options, validate_general_options=False)
+        def ensure_restraint_type_is_key(field, restraints_dict, error):
+            if 'type' not in restraints_dict:
+                error(field, "'type' must be a sub-key in the `restraints` dict")
+            rest_type = restraints_dict.get('type')
+            if rest_type is not None and not isinstance(rest_type, str):
+                error(field, "Restraint type must be a string or None")
 
         # Check if there is a sequence of experiments or a single one.
         # We need to have a deterministic order of experiments so that
@@ -1489,20 +1829,43 @@ class ExperimentBuilder(object):
             self._experiments = collections.OrderedDict()
             return
 
-        # Restraint schema contains type and optional parameters.
-        restraint_schema = {'type': Or(str, None), Optional(str): object}
+        # Experiments Schema
+        experiment_schema_yaml = """
+        system:
+            required: yes
+            type: string
+            allowed: SYSTEM_IDS_POPULATED_AT_RUNTIME
+        protocol:
+            required: yes
+            type: string
+            allowed: PROTOCOL_IDS_POPULATED_AT_RUNTIME
+        options:
+            required: no
+            type: dict
+            coerce: coerce_and_validate_options_here_against_existing
+        restraint:
+            required: no
+            type: dict
+            validator: ensure_type_is_key
+            keyschema:
+                type: string
+        """
 
-        # Define experiment Schema
-        experiment_schema = Schema({'system': is_known_system, 'protocol': is_known_protocol,
-                                    Optional('options'): Use(validate_experiment_options),
-                                    Optional('restraint'): restraint_schema})
+        experiment_schema = yaml.load(experiment_schema_yaml)
+        # Populate valid types
+        experiment_schema['system']['allowed'] = [str(key) for key in self._db.systems.keys()]
+        experiment_schema['protocol']['allowed'] = [str(key) for key in self._protocols.keys()]
+        # Options validator
+        experiment_schema['options']['coerce'] = coerce_and_validate_options_here_against_existing
+        # Restraint requirements
+        experiment_schema['restraint']['validator'] = ensure_restraint_type_is_key
 
+        experiment_validator = schema.YANKCerberusValidator(experiment_schema)
         # Schema validation
         for experiment_path, experiment_descr in self._expand_experiments():
-            try:
-                experiment_schema.validate(experiment_descr)
-            except SchemaError as e:
-                raise YamlParseError('Experiment {}: {}'.format(experiment_path, e.autos[-1]))
+            if not experiment_validator.validate(experiment_descr):
+                error = "Experiment '{}' did not validate! Check the schema error below for details\n{}"
+                raise YamlParseError(error.format(experiment_path, yaml.dump(experiment_validator.errors)))
 
     # --------------------------------------------------------------------------
     # File paths utilities

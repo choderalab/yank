@@ -419,6 +419,7 @@ def test_validation_correct_molecules():
         {'filepath': paths['abl'], 'leap': {'parameters': 'leaprc.ff99SBildn'}},
         {'filepath': paths['abl'], 'leap': {'parameters': 'leaprc.ff99SBildn'}, 'select': 1},
         {'filepath': paths['abl'], 'select': 'all'},
+        {'filepath': paths['abl'], 'select': 'all', 'strip_protons': True},
         {'filepath': paths['toluene'], 'leap': {'parameters': 'leaprc.gaff'}},
         {'filepath': paths['benzene'], 'epik': {'select': 1, 'tautomerize': False}},
         # Regions tests, make sure all other combos still work
@@ -470,6 +471,7 @@ def test_validation_wrong_molecules():
         {'filepath': paths['abl'], 'leap': {'parameters': 'oldff/leaprc.ff14SB'}, 'select': 'notanoption'},
         {'filepath': paths['abl'], 'regions': 5},
         {'filepath': paths['abl'], 'regions': {'a_region': [-56, 5.23]}},
+        {'filepath': paths['toluene'], 'leap': {'parameters': 'leaprc.gaff'}, 'strip_protons': True},
     ]
     for molecule in molecules:
         yield assert_raises, YamlParseError, ExperimentBuilder._validate_molecules, {'mol': molecule}
@@ -478,7 +480,7 @@ def test_validation_wrong_molecules():
 def test_validation_correct_solvents():
     """Correct solvents YAML validation."""
     solvents = [
-        {'nonbonded_method': 'NoCutoff', 'nonbonded_cutoff': '3*nanometers'},
+        {'nonbonded_method': 'Ewald', 'nonbonded_cutoff': '3*nanometers'},
         {'nonbonded_method': 'PME', 'solvent_model': 'tip4pew'},
         {'nonbonded_method': 'PME', 'solvent_model': 'tip3p', 'leap': {'parameters': 'leaprc.water.tip3p'}},
         {'nonbonded_method': 'PME', 'clearance': '3*angstroms'},
@@ -497,7 +499,7 @@ def test_validation_correct_solvents():
 def test_validation_wrong_solvents():
     """YAML validation raises exception with wrong solvents."""
     solvents = [
-        {'nonbonded_cutoff: 3*nanometers'},
+        {'nonbonded_cutoff': '3*nanometers'},
         {'nonbonded_method': 'PME', 'solvent_model': 'unknown_solvent_model'},
         {'nonbonded_method': 'PME', 'solvent_model': 'tip3p', 'leap': 'leaprc.water.tip3p'},
         {'nonbonded_method': 'PME', 'clearance': '3*angstroms', 'implicit_solvent': 'OBC2'},
