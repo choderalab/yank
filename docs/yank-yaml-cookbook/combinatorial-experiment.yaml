@@ -92,7 +92,7 @@ molecules:
       select: 0                                     # select the most likely protonation state for the molecule
       tautomerize: no                               # (in solution). More control over epik parameters is
       ph: 7.6                                       # possible (see YAML documentation).
-      ph_tolerance: 0.7
+      ph_tolerance: 7.0
 
   bosutinib:
     filepath: molecule_dir/bosutinib.mol2

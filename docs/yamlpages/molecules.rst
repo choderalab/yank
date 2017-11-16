@@ -263,7 +263,7 @@ Filepaths are relative to either the AmberTools default paths or to the folder t
         epik:
           select: 0
           ph: 7.6
-          ph_tolerance: 0.7
+          ph_tolerance: 7.0
           tautomerize: no
 
 Run Schrodinger's tool Epik with to select the most likely protonation state for the molecule in solution. Parameters
