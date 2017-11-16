@@ -419,6 +419,7 @@ def test_validation_correct_molecules():
         {'filepath': paths['abl'], 'leap': {'parameters': 'leaprc.ff99SBildn'}},
         {'filepath': paths['abl'], 'leap': {'parameters': 'leaprc.ff99SBildn'}, 'select': 1},
         {'filepath': paths['abl'], 'select': 'all'},
+        {'filepath': paths['abl'], 'select': 'all', 'strip_protons': True},
         {'filepath': paths['toluene'], 'leap': {'parameters': 'leaprc.gaff'}},
         {'filepath': paths['benzene'], 'epik': {'select': 1, 'tautomerize': False}},
         # Regions tests, make sure all other combos still work
@@ -470,6 +471,7 @@ def test_validation_wrong_molecules():
         {'filepath': paths['abl'], 'leap': {'parameters': 'oldff/leaprc.ff14SB'}, 'select': 'notanoption'},
         {'filepath': paths['abl'], 'regions': 5},
         {'filepath': paths['abl'], 'regions': {'a_region': [-56, 5.23]}},
+        {'filepath': paths['toluene'], 'leap': {'parameters': 'leaprc.gaff'}, 'strip_protons': True},
     ]
     for molecule in molecules:
         yield assert_raises, YamlParseError, ExperimentBuilder._validate_molecules, {'mol': molecule}

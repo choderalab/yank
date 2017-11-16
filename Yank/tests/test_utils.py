@@ -15,7 +15,7 @@ import openmoltools as omt
 
 from nose import tools
 from yank.utils import *
-from yank.schema_tools.yank_schema import *
+from yank.schema.validator import *
 
 
 # =============================================================================================

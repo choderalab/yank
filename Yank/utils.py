@@ -45,7 +45,7 @@ import openmmtools as mmtools
 from openmoltools.utils import unwrap_py2  # Shortcuts for other modules
 
 from . import mpi
-from .schema_tools import yank_schema
+from .schema import type_to_cerberus_map
 
 
 # ========================================================================================
@@ -987,7 +987,6 @@ def generate_signature_schema(func, update_keys=None, exclude_keys=frozenset()):
 
     Examples
     --------
-    TODO: Update docstring
     >>> from cerberus import Validator
     >>> def f(a, b, camelCase=True, none=None, quantity=3.0*unit.angstroms):
     ...     pass
@@ -1025,7 +1024,7 @@ def generate_signature_schema(func, update_keys=None, exclude_keys=frozenset()):
             elif isinstance(default_value, unit.Quantity):  # Convert unit strings
                 validator = {'coerce': to_unit_validator(default_value.unit)}
             else:
-                validator = yank_schema.type_to_cerberus_map(type(default_value))
+                validator = type_to_cerberus_map(type(default_value))
             # Add the argument to the existing schema as a keyword
             # To the new keyword, add the optional flag and the "validator" flag
             # of either 'validator' or 'type' depending on how it was processed

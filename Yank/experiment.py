@@ -32,9 +32,8 @@ import openmoltools as moltools
 from simtk import unit, openmm
 from simtk.openmm.app import PDBFile, AmberPrmtopFile
 
-from . import utils, pipeline, mpi, restraints, repex
+from . import utils, pipeline, mpi, restraints, repex, schema
 from .yank import AlchemicalPhase, Topography
-from .schema_tools.yank_schema import YANKCerberusValidator
 
 logger = logging.getLogger(__name__)
 
@@ -1038,20 +1037,10 @@ class ExperimentBuilder(object):
             type: string
     """)
 
-    @classmethod
-    def _get_leap_default_schema(cls):
-        """
-        Get the Cerberus schema key for the ``leap`` entry many of the sections use
-
-        Returns
-        -------
-        leap_default: dict
-
-        """
-        return {'leap': {
+    _LEAP_PARAMETERS_DEFAULT_SCHEMA = {'leap': {
             'required': False,
             'type': 'dict',
-            'schema': cls._LEAP_PARAMETERS_SCHEMA,
+            'schema': _LEAP_PARAMETERS_SCHEMA,
             'default': {'parameters': []}}  # Default for if the parameter is missing
             }
 
@@ -1154,7 +1143,7 @@ class ExperimentBuilder(object):
         '''
         regions_schema = yaml.load(regions_schema_yaml)
         # Define the LEAP schema
-        leap_schema = cls._get_leap_default_schema()
+        leap_schema = cls._LEAP_PARAMETERS_DEFAULT_SCHEMA
         # Setup the common schema across ALL molecules
         common_molecules_schema = {**leap_schema, **regions_schema}
         # Setup the small molecules schemas
@@ -1215,6 +1204,10 @@ class ExperimentBuilder(object):
             required: no
             dependencies: filepath
             validator: int_or_all_string
+        strip_protons:
+            required: no
+            type: boolean
+            dependencies: filepath
         openeye:
             required: no
             excludes: filepath
@@ -1230,8 +1223,8 @@ class ExperimentBuilder(object):
         validated_molecules = molecules_description.copy()
         # Schema validation
         for molecule_id, molecule_descr in molecules_description.items():
-            small_molecule_validator = YANKCerberusValidator(small_molecule_schema)
-            peptide_validator = YANKCerberusValidator(peptide_schema)
+            small_molecule_validator = schema.YANKCerberusValidator(small_molecule_schema)
+            peptide_validator = schema.YANKCerberusValidator(peptide_schema)
             # Test for small molecule
             if small_molecule_validator.validate(molecule_descr):
                 validated_molecules[molecule_id] = small_molecule_validator.document
@@ -1333,21 +1326,14 @@ class ExperimentBuilder(object):
             else:
                 return None
 
-        def implicit_solvent_if_implicit_else_none(document, default='OBC2'):
-            """Set the solvent_model IFF solvent model is explicit"""
-            if document['nonbonded_method'] in all_valid_implicit:
-                return default
-            else:
-                return None
-
-        def to_openmm_app_unless_none(input):
+        def to_openmm_app_unless_none(input_string):
             """
             Extension method of the :func:`to_openmm_app` method which returns None if None is given
             Primarily used by the schema validators
 
             Parameters
             ----------
-            input : str or None
+            input_string : str or None
                 Method name of openmm.app to fetch
 
             Returns
@@ -1355,7 +1341,7 @@ class ExperimentBuilder(object):
             method : Method of openmm.app or None
                 Returns openmm.app.{input_string}
             """
-            return to_openmm_app(input) if input is not None else None
+            return to_openmm_app(input_string) if input_string is not None else None
 
         def to_unit_validator_unless_none(compatible_units):
             """
@@ -1424,10 +1410,10 @@ class ExperimentBuilder(object):
             explicit_only_keys[key]['required'] = False
 
         # Implicit solvent keys
+        # Input Value -> {default value} -> default setter -> coerce -> allowed/validate
         implicit_only_keys = {**implicit_solvent_default_schema}
-        implicit_only_keys['implicit_solvent']['nullable'] = True
         implicit_only_keys['implicit_solvent']['coerce'] = to_openmm_app_unless_none
-        implicit_only_keys['implicit_solvent']['default_setter'] = implicit_solvent_if_implicit_else_none
+        implicit_only_keys['implicit_solvent']['dependencies'] = {'nonbonded_method': all_valid_implicit}
         # Batch the implicit dependencies
         for key in implicit_only_keys.keys():
             implicit_only_keys[key]['dependencies'] = {'nonbonded_method': [mapped_openmm_nonbonded_methods[value] for
@@ -1439,9 +1425,9 @@ class ExperimentBuilder(object):
 
         # Finally, stitch the schema together
         solvent_schema = {**base_solvent_schema, **explicit_only_keys, **implicit_only_keys,
-                          **rigid_water_default_schema, **cls._get_leap_default_schema()}
+                          **rigid_water_default_schema, **cls._LEAP_PARAMETERS_DEFAULT_SCHEMA}
 
-        solvent_validator = YANKCerberusValidator(solvent_schema)
+        solvent_validator = schema.YANKCerberusValidator(solvent_schema)
 
         validated_solvents = solvents_description.copy()
 
@@ -1449,6 +1435,7 @@ class ExperimentBuilder(object):
         for solvent_id, solvent_descr in solvents_description.items():
             if solvent_validator.validate(solvent_descr):
                 validated_solvents[solvent_id] = solvent_validator.document
+                print(solvent_validator.document)
             else:
                 error = "Solvent '{}' did not validate! Check the schema error below for details\n{}"
                 raise YamlParseError(error.format(solvent_id, yaml.dump(solvent_validator.errors)))
@@ -1568,7 +1555,7 @@ class ExperimentBuilder(object):
             # Now user cerberus to validate the alchemical path part
             errored_phases = []
             for phase_key, phase_entry in protocol.items():
-                phase_validator = YANKCerberusValidator(protocol_value_schema)
+                phase_validator = schema.YANKCerberusValidator(protocol_value_schema)
                 # test the phase
                 if phase_validator.validate(phase_entry):
                     protocol[phase_key] = phase_validator.document
@@ -1703,8 +1690,8 @@ class ExperimentBuilder(object):
             allowed: SOLVENT_IDS_POPULATED_AT_RUNTIME
             validator: PIPELINE_SOLVENT_DETERMINED_AT_RUNTIME_WITH_SOLUTE
             oneof:
-                - dependencies: [phase1_path, phase2_path, solvent2]
-                - dependencies: [solute, solvent2]
+                - dependencies: [phase1_path, phase2_path, solvent1]
+                - dependencies: [solute, solvent1]
         gromacs_include_dir:
             required: no
             type: string
@@ -1722,7 +1709,7 @@ class ExperimentBuilder(object):
         ligand:
             required: no
             type: string
-            dependencies: [ligand, solvent]
+            dependencies: [receptor, solvent]
             allowed: MOLECULE_IDS_POPULATED_AT_RUNTIME
             excludes: [solute, phase1_path, phase2_path]
         pack:
@@ -1741,7 +1728,7 @@ class ExperimentBuilder(object):
         # Load the YAML into a schema into dict format
         system_schema = yaml.load(systems_schema_yaml)
         # Add the LEAP schema
-        leap_schema = self._get_leap_default_schema()
+        leap_schema = self._LEAP_PARAMETERS_DEFAULT_SCHEMA
         # Handle dependencies
         # This does nothing in the case of phase1_path/phase2_path, but I wanted to leave this here in case
         # we decide to actually make these required. The problem is that because this has a `default` key, it inserts
@@ -1777,7 +1764,7 @@ class ExperimentBuilder(object):
         # Schema validation
         for system_id, system_descr in systems_description.items():
             runtime_system_schema = generate_runtime_schema_for_system(system_descr)
-            system_validator = YANKCerberusValidator(runtime_system_schema)
+            system_validator = schema.YANKCerberusValidator(runtime_system_schema)
             if system_validator.validate(system_descr):
                 validated_systems[system_id] = system_validator.document
             else:
@@ -1873,16 +1860,7 @@ class ExperimentBuilder(object):
         # Restraint requirements
         experiment_schema['restraint']['validator'] = ensure_restraint_type_is_key
 
-
-        # # Restraint schema contains type and optional parameters.
-        # restraint_schema = {'type': Or(str, None), Optional(str): object}
-        #
-        # # Define experiment Schema
-        # experiment_schema = Schema({'system': is_known_system, 'protocol': is_known_protocol,
-        #                             Optional('options'): Use(validate_experiment_options),
-        #                             Optional('restraint'): restraint_schema})
-
-        experiment_validator = YANKCerberusValidator(experiment_schema)
+        experiment_validator = schema.YANKCerberusValidator(experiment_schema)
         # Schema validation
         for experiment_path, experiment_descr in self._expand_experiments():
             if not experiment_validator.validate(experiment_descr):
