@@ -253,11 +253,11 @@ def test_TLeap_script():
     expected_script = """
     source oldff/leaprc.ff99SBildn
     source leaprc.gaff
-    receptor = loadPdb receptor.pdbfixer.pdb
+    M5receptor = loadPdb receptor.pdbfixer.pdb
     loadAmberParams ligand.gaff.frcmod
     ligand = loadMol2 path/to/ligand.gaff.mol2
     transform ligand {{ 1 0 0 6} { 0 -1 0 0} { 0 0 1 0} { 0 0 0 1}}
-    complex = combine { receptor ligand }
+    complex = combine { M5receptor ligand }
     solvateBox complex TIP3PBOX 10.0 iso
     check complex
     charge complex
@@ -275,20 +275,21 @@ def test_TLeap_script():
 
     tleap = TLeap()
     tleap.load_parameters('oldff/leaprc.ff99SBildn', 'leaprc.gaff')
-    tleap.load_unit(name='receptor', file_path='receptor.pdbfixer.pdb')
+    # TLeap should prepend a character to names starting with a digit.
+    tleap.load_unit(unit_name='5receptor', file_path='receptor.pdbfixer.pdb')
     tleap.load_parameters('ligand.gaff.frcmod')
     tleap.load_parameters('ligand.gaff.frcmod')  # tLeap should not load this twice
-    tleap.load_unit(name='ligand', file_path='path/to/ligand.gaff.mol2')
+    tleap.load_unit(unit_name='ligand', file_path='path/to/ligand.gaff.mol2')
     tleap.transform('ligand', np.array([[1, 0, 0, 6], [0, -1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]))
-    tleap.combine('complex', 'receptor', 'ligand')
-    tleap.solvate(leap_unit='complex', solvent_model='TIP3PBOX', clearance=10.0)
+    tleap.combine('complex', '5receptor', 'ligand')
+    tleap.solvate(unit_name='complex', solvent_model='TIP3PBOX', clearance=10.0)
     tleap.add_commands('check complex', 'charge complex')
     tleap.new_section('New section')
-    tleap.save_unit(leap_unit='complex', output_path='complex.prmtop')
-    tleap.save_unit(leap_unit='complex', output_path='complex.pdb')
-    tleap.solvate(leap_unit='ligand', solvent_model='TIP3PBOX', clearance=10.0)
-    tleap.save_unit(leap_unit='ligand', output_path='solvent.inpcrd')
-    tleap.save_unit(leap_unit='ligand', output_path='solvent.pdb')
+    tleap.save_unit(unit_name='complex', output_path='complex.prmtop')
+    tleap.save_unit(unit_name='complex', output_path='complex.pdb')
+    tleap.solvate(unit_name='ligand', solvent_model='TIP3PBOX', clearance=10.0)
+    tleap.save_unit(unit_name='ligand', output_path='solvent.inpcrd')
+    tleap.save_unit(unit_name='ligand', output_path='solvent.pdb')
 
     assert tleap.script == expected_script
 
@@ -300,14 +301,17 @@ def test_TLeap_export_run():
     benzene_gaff = os.path.join(setup_dir, 'benzene.gaff.mol2')
     benzene_frcmod = os.path.join(setup_dir, 'benzene.frcmod')
 
+    # Leap has problems with unit names that contain too many numbers.
+    # Test if we are able to run even with something like this.
+    unit_name = '534E56'
     tleap = TLeap()
     tleap.load_parameters('oldff/leaprc.ff99SB', 'leaprc.gaff')
-    tleap.load_unit(name='benzene', file_path=benzene_gaff)
+    tleap.load_unit(unit_name=unit_name, file_path=benzene_gaff)
     tleap.load_parameters(benzene_frcmod)
 
     with omt.utils.temporary_directory() as tmp_dir:
         output_path = os.path.join(tmp_dir, 'benzene')
-        tleap.save_unit(leap_unit='benzene', output_path=output_path + '.prmtop')
+        tleap.save_unit(unit_name=unit_name, output_path=output_path + '.prmtop')
 
         export_path = os.path.join(tmp_dir, 'leap.in')
         tleap.export_script(export_path)

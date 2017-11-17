@@ -2182,10 +2182,10 @@ class ExperimentBuilder(object):
 
         """
         # Create setup directory if it doesn't exist.
-        os.makedirs(self.setup_dir, exist_ok=True)
+        os.makedirs(self._db.setup_dir, exist_ok=True)
 
         # Configure log file for setup.
-        setup_log_file_path = os.path.join(self.setup_dir, 'setup.log')
+        setup_log_file_path = os.path.join(self._db.setup_dir, 'setup.log')
         utils.config_root_logger(self._options['verbose'], setup_log_file_path)
 
         # Setup all systems.

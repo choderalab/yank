@@ -182,7 +182,7 @@ class TestPhaseAnalyzer(object):
     def test_repex_mixing_stats(self):
         """Test that the Repex Phase yields mixing stats that make sense"""
         phase = analyze.ReplicaExchangeAnalyzer(self.reporter, name=self.repex_name)
-        t, mu = phase.generate_mixing_statistics()
+        t, mu, g = phase.generate_mixing_statistics()
         # Output is the correct number of states
         assert t.shape == (self.n_states, self.n_states)
         # Assert transition matrix values are all 0 <= x <= 1

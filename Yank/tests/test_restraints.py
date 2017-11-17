@@ -183,7 +183,7 @@ def test_harmonic_standard_state():
     LJ_fluid = testsystems.LennardJonesFluid()
 
     # Create Harmonic restraint.
-    restraint = yank.restraints.create_restraint('Harmonic', restrained_receptor_atoms=[1])
+    restraint = yank.restraints.create_restraint('Harmonic', restrained_receptor_atoms=1)
 
     # Determine other parameters.
     ligand_atoms = [3, 4, 5]

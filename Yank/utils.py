@@ -1471,6 +1471,23 @@ def get_oe_mol_positions(molecule, conformer_idx=0):
     return molecule_pos
 
 
+def _sanitize_tleap_unit_name(func):
+    """Decorator version of TLeap._sanitize_unit_name.
+
+    This takes as unit name a keyword argument called "unit_name" or the
+    second sequential argument (skipping self).
+    """
+    @functools.wraps(func)
+    def _wrapper(*args, **kwargs):
+        try:
+            kwargs['unit_name'] = TLeap._sanitize_unit_name(kwargs['unit_name'])
+        except KeyError:
+            # Tuples are immutable so we need to use concatenation.
+            args = args[:1] + (TLeap._sanitize_unit_name(args[1]), ) + args[2:]
+        func(*args, **kwargs)
+    return _wrapper
+
+
 class TLeap:
     """
     Programmatic interface to write and run AmberTools' ``tLEaP`` scripts.
@@ -1556,7 +1573,8 @@ class TLeap:
             # Update loaded parameters cache
             self._loaded_parameters.add(par_file)
 
-    def load_unit(self, name, file_path):
+    @_sanitize_tleap_unit_name
+    def load_unit(self, unit_name, file_path):
         """
         Load a Unit into LEaP, this is typically a molecule or small complex.
 
@@ -1566,7 +1584,7 @@ class TLeap:
 
         Parameters
         ----------
-        name : str
+        unit_name : str
             Name of the unit as it should be represented in LEaP
         file_path : str
             Full file path with extension of the file to read into LEaP as a new unit
@@ -1579,12 +1597,13 @@ class TLeap:
         else:
             raise ValueError('cannot load format {} in tLeap'.format(extension))
         local_name = 'moli{}'.format(len(self._file_paths))
-        self.add_commands('{} = {} {{{}}}'.format(name, load_command, local_name))
+        self.add_commands('{} = {} {{{}}}'.format(unit_name, load_command, local_name))
 
         # Update list of input files to copy in temporary folder before run
         self._file_paths[local_name] = file_path
 
-    def combine(self, leap_unit, *args):
+    @_sanitize_tleap_unit_name
+    def combine(self, unit_name, *args):
         """
         Combine units in LEaP
 
@@ -1592,15 +1611,19 @@ class TLeap:
 
         Parameters
         ----------
-        leap_unit : str
+        unit_name : str
             Name of LEaP unit to assign the combination to
         args : iterable of strings
             Name of LEaP units to combine into a single unit called leap_name
-        """
-        components = ' '.join(args)
-        self.add_commands('{} = combine {{{{ {} }}}}'.format(leap_unit, components))
 
-    def add_ions(self, leap_unit, ion, num_ions=0, replace_solvent=False):
+        """
+        # Sanitize unit names.
+        args = [self._sanitize_unit_name(arg) for arg in args]
+        components = ' '.join(args)
+        self.add_commands('{} = combine {{{{ {} }}}}'.format(unit_name, components))
+
+    @_sanitize_tleap_unit_name
+    def add_ions(self, unit_name, ion, num_ions=0, replace_solvent=False):
         """
         Add ions to a unit in LEaP
 
@@ -1608,23 +1631,24 @@ class TLeap:
 
         Parameters
         ----------
-        leap_unit : str
+        unit_name : str
             Name of the existing LEaP unit which Ions will be added into
         ion : str
             LEaP recognized name of ion to add
         num_ions : int, optional
-            Number of ions of type ion to add to leap_unit. If 0, the unit
+            Number of ions of type ion to add to unit_name. If 0, the unit
             is neutralized (default is 0).
         replace_solvent : bool, optional
             If True, ions will replace solvent molecules rather than being
             added.
         """
         if replace_solvent:
-            self.add_commands('addIonsRand {} {} {}'.format(leap_unit, ion, num_ions))
+            self.add_commands('addIonsRand {} {} {}'.format(unit_name, ion, num_ions))
         else:
-            self.add_commands('addIons2 {} {} {}'.format(leap_unit, ion, num_ions))
+            self.add_commands('addIons2 {} {} {}'.format(unit_name, ion, num_ions))
 
-    def solvate(self, leap_unit, solvent_model, clearance):
+    @_sanitize_tleap_unit_name
+    def solvate(self, unit_name, solvent_model, clearance):
         """
         Solvate a unit in LEaP isometrically
 
@@ -1632,17 +1656,18 @@ class TLeap:
 
         Parameters
         ----------
-        leap_unit : str
+        unit_name : str
             Name of the existing LEaP unit which will be solvated
         solvent_model : str
             LEaP recognized name of the solvent model to use, e.g. "TIP3PBOX"
         clearance : float
-            Add solvent up to clearance distance away from the leap_unit (radial)
+            Add solvent up to clearance distance away from the unit_name (radial)
         """
-        self.add_commands('solvateBox {} {} {} iso'.format(leap_unit, solvent_model,
+        self.add_commands('solvateBox {} {} {} iso'.format(unit_name, solvent_model,
                                                            str(clearance)))
 
-    def save_unit(self, leap_unit, output_path):
+    @_sanitize_tleap_unit_name
+    def save_unit(self, unit_name, output_path):
         """
         Write a LEaP unit to file.
 
@@ -1652,7 +1677,7 @@ class TLeap:
 
         Parameters
         ----------
-        leap_unit : str
+        unit_name : str
             Name of the unit to save
         output_path : str
             Full file path with extension to save.
@@ -1668,7 +1693,7 @@ class TLeap:
         # Add command
         if extension == '.prmtop' or extension == '.inpcrd':
             local_name2 = 'molo{}'.format(len(self._file_paths))
-            command = 'saveAmberParm ' + leap_unit + ' {{{}}} {{{}}}'
+            command = 'saveAmberParm ' + unit_name + ' {{{}}} {{{}}}'
 
             # Update list of output files with the one not explicit
             if extension == '.inpcrd':
@@ -1682,13 +1707,14 @@ class TLeap:
 
             self.add_commands(command)
         elif extension == '.pdb':
-            self.add_commands('savePDB {} {{{}}}'.format(leap_unit, local_name))
+            self.add_commands('savePDB {} {{{}}}'.format(unit_name, local_name))
         else:
             raise ValueError('cannot export format {} from tLeap'.format(extension[1:]))
 
-    def transform(self, leap_unit, transformation):
+    @_sanitize_tleap_unit_name
+    def transform(self, unit_name, transformation):
         """Transformation is an array-like representing the affine transformation matrix."""
-        command = 'transform {} {}'.format(leap_unit, transformation)
+        command = 'transform {} {}'.format(unit_name, transformation)
         command = command.replace(r'[', '{{').replace(r']', '}}')
         command = command.replace('\n', '').replace('  ', ' ')
         self.add_commands(command)
@@ -1772,6 +1798,20 @@ class TLeap:
 
             # Check for and return warnings
             return re.findall('WARNING: (.+)', leap_output)
+
+    @staticmethod
+    def _sanitize_unit_name(unit_name):
+        """Sanitize tleap unit names.
+
+        Leap doesn't like names that start with digits so, in this case, we
+        prepend an arbitrary character.
+
+        This takes as unit name a keyword argument called "unit_name" or the
+        second sequential argument (skipping self).
+        """
+        if unit_name[0].isdigit():
+            unit_name = 'M' + unit_name
+        return unit_name
 
 
 # =============================================================================================

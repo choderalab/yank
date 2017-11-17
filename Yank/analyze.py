@@ -21,10 +21,11 @@ Fully extensible to support new samplers and observables.
 # =============================================================================================
 
 import os
-import os.path
-
 import abc
 import copy
+import typing
+from typing import Union
+
 import yaml
 import numpy as np
 
@@ -666,25 +667,36 @@ class ReplicaExchangeAnalyzer(YankPhaseAnalyzer):
 
     """
 
-    def generate_mixing_statistics(self, number_equilibrated=None):
+    # TODO use class syntax and add docstring after dropping python 3.5 support.
+    _MixingStatistics = typing.NamedTuple('MixingStatistics', [
+        ('transition_matrix', np.ndarray),
+        ('eigenvalues', np.ndarray),
+        ('statistical_inefficiency', np.ndarray)
+    ])
+
+    def generate_mixing_statistics(self, number_equilibrated: Union[int, None] = None) -> typing.NamedTuple:
         """
-        Generate the Transition state matrix and sorted eigenvalues
+        Compute and return replica mixing statistics.
+
+        Compute the transition state matrix, its eigenvalues sorted from
+        greatest to least, and the state index correlation function.
 
         Parameters
         ----------
         number_equilibrated : int, optional, default=None
-           If specified, only samples number_equilibrated:end will be used in analysis
-           If not specified, automatically retrieves the number from equilibration data or generates it from the
-           internal energy.
+            If specified, only samples ``number_equilibrated:end`` will
+            be used in analysis. If not specified, automatically retrieves
+            the number from equilibration data or generates it from the
+            internal energy.
 
         Returns
         -------
-        mixing_stats : np.array of shape [nstates, nstates]
-            Transition matrix estimate
-        mu : np.array
-            Eigenvalues of the Transition matrix sorted in descending order
+        mixing_statistics : namedtuple
+            A namedtuple containing the following attributes:
+            - ``transition_matrix``: (nstates by nstates ``np.array``)
+            - ``eigenvalues``: (nstates-dimensional ``np.array``)
+            - ``statistical_inefficiency``: float
         """
-
         # Read data from disk
         if number_equilibrated is None:
             if self._equilibration_data is None:
@@ -717,7 +729,14 @@ class ReplicaExchangeAnalyzer(YankPhaseAnalyzer):
         mu = np.linalg.eigvals(t_ij)
         mu = -np.sort(-mu)  # Sort in descending order
 
-        return t_ij, mu
+        # Compute state index statistical inefficiency of stationary data.
+        # states[n][k] is the state index of replica k at iteration n, but
+        # the functions wants a list of timeseries states[k][n].
+        states_kn = np.transpose(states[number_equilibrated:])
+        g = timeseries.statisticalInefficiencyMultiple(states_kn)
+
+        return self._MixingStatistics(transition_matrix=t_ij, eigenvalues=mu,
+                                      statistical_inefficiency=g)
 
     def show_mixing_statistics(self, cutoff=0.05, number_equilibrated=None):
         """
@@ -734,10 +753,10 @@ class ReplicaExchangeAnalyzer(YankPhaseAnalyzer):
 
         """
 
-        Tij, mu = self.generate_mixing_statistics(number_equilibrated=number_equilibrated)
+        mixing_statistics = self.generate_mixing_statistics(number_equilibrated=number_equilibrated)
 
         # Print observed transition probabilities.
-        nstates = Tij.shape[1]
+        nstates = mixing_statistics.transition_matrix.shape[1]
         logger.info("Cumulative symmetrized state mixing transition matrix:")
         str_row = "{:6s}".format("")
         for jstate in range(nstates):
@@ -748,7 +767,7 @@ class ReplicaExchangeAnalyzer(YankPhaseAnalyzer):
             str_row = ""
             str_row += "{:-6d}".format(istate)
             for jstate in range(nstates):
-                P = Tij[istate, jstate]
+                P = mixing_statistics.transition_matrix[istate, jstate]
                 if P >= cutoff:
                     str_row += "{:6.3f}".format(P)
                 else:
@@ -756,12 +775,18 @@ class ReplicaExchangeAnalyzer(YankPhaseAnalyzer):
             logger.info(str_row)
 
         # Estimate second eigenvalue and equilibration time.
-        if mu[1] >= 1:
-            logger.info("Perron eigenvalue is unity; Markov chain is decomposable.")
+        perron_eigenvalue = mixing_statistics.eigenvalues[1]
+        if perron_eigenvalue >= 1:
+            logger.info('Perron eigenvalue is unity; Markov chain is decomposable.')
         else:
-            logger.info("Perron eigenvalue is {0:9.5f}; state equilibration timescale is ~ {1:.1f} iterations".format(
-                mu[1], 1.0 / (1.0 - mu[1]))
+            equilibration_timescale = 1.0 / (1.0 - perron_eigenvalue)
+            logger.info('Perron eigenvalue is {0:.5f}; state equilibration timescale '
+                        'is ~ {1:.1f} iterations'.format(perron_eigenvalue, equilibration_timescale)
             )
+
+        # Print information about replica state index statistical efficiency.
+        logger.info('Replica state index statistical inefficiency is '
+                    '{:.3f}'.format(mixing_statistics.statistical_inefficiency))
 
     def get_states_energies(self):
         """
@@ -1408,20 +1433,20 @@ def analyze_directory(source_directory):
             calculation_type = ' of solvation'
 
     # Print energies
-    logger.info("")
-    logger.info("Free energy{}: {:16.3f} +- {:.3f} kT ({:16.3f} +- {:.3f} kcal/mol)".format(
+    logger.info('')
+    logger.info('Free energy{:<13}: {:9.3f} +- {:.3f} kT ({:.3f} +- {:.3f} kcal/mol)'.format(
         calculation_type, DeltaF, dDeltaF, DeltaF * kT / units.kilocalories_per_mole,
         dDeltaF * kT / units.kilocalories_per_mole))
-    logger.info("")
+    logger.info('')
 
     for phase in phase_names:
-        logger.info("DeltaG {:<25} : {:16.3f} +- {:.3f} kT".format(phase, data[phase]['DeltaF'],
-                                                                   data[phase]['dDeltaF']))
+        logger.info('DeltaG {:<17}: {:9.3f} +- {:.3f} kT'.format(phase, data[phase]['DeltaF'],
+                                                                 data[phase]['dDeltaF']))
         if data[phase]['DeltaF_standard_state_correction'] != 0.0:
-            logger.info("DeltaG {:<25} : {:25.3f} kT".format('restraint',
-                                                             data[phase]['DeltaF_standard_state_correction']))
-    logger.info("")
-    logger.info("Enthalpy{}: {:16.3f} +- {:.3f} kT ({:16.3f} +- {:.3f} kcal/mol)".format(
+            logger.info('DeltaG {:<17}: {:18.3f} kT'.format('restraint',
+                                                            data[phase]['DeltaF_standard_state_correction']))
+    logger.info('')
+    logger.info('Enthalpy{:<16}: {:9.3f} +- {:.3f} kT ({:.3f} +- {:.3f} kcal/mol)'.format(
         calculation_type, DeltaH, dDeltaH, DeltaH * kT / units.kilocalories_per_mole,
         dDeltaH * kT / units.kilocalories_per_mole))
 
@@ -1589,10 +1614,11 @@ def extract_trajectory(nc_path, nc_checkpoint_file=None, state_index=None, repli
                 n_equil_frames = n_equil_iterations
             frame_indices = frame_indices[n_equil_frames:-1]
 
-        # Extract state positions and box vectors
-        positions = np.zeros((len(frame_indices), n_atoms, 3))
+        # Extract state positions and box vectors.
+        # MDTraj Cython code expects float32 positions.
+        positions = np.zeros((len(frame_indices), n_atoms, 3), dtype=np.float32)
         if is_periodic:
-            box_vectors = np.zeros((len(frame_indices), 3, 3))
+            box_vectors = np.zeros((len(frame_indices), 3, 3), dtype=np.float32)
         if state_index is not None:
             logger.info('Extracting positions of state {}...'.format(state_index))
 
