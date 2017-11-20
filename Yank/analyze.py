@@ -1631,17 +1631,17 @@ def extract_trajectory(nc_path, nc_checkpoint_file=None, state_index=None, repli
             # Extract state positions and box vectors
             for i, iteration in enumerate(frame_indices):
                 replica_index = state_indices[i]
-                positions[i, :, :] = trajectory_storage.variables['positions'][i, replica_index, :, :].astype(np.float32)
+                positions[i, :, :] = trajectory_storage.variables['positions'][iteration, replica_index, :, :].astype(np.float32)
                 if is_periodic:
-                    box_vectors[i, :, :] = trajectory_storage.variables['box_vectors'][i, replica_index, :, :].astype(np.float32)
+                    box_vectors[i, :, :] = trajectory_storage.variables['box_vectors'][iteration, replica_index, :, :].astype(np.float32)
 
         else:  # Extract replica positions and box vectors
             logger.info('Extracting positions of replica {}...'.format(replica_index))
 
             for i, iteration in enumerate(frame_indices):
-                positions[i, :, :] = trajectory_storage.variables['positions'][i, replica_index, :, :].astype(np.float32)
+                positions[i, :, :] = trajectory_storage.variables['positions'][iteration, replica_index, :, :].astype(np.float32)
                 if is_periodic:
-                    box_vectors[i, :, :] = trajectory_storage.variables['box_vectors'][i, replica_index, :, :].astype(np.float32)
+                    box_vectors[i, :, :] = trajectory_storage.variables['box_vectors'][iteration, replica_index, :, :].astype(np.float32)
     finally:
         reporter.close()
 
