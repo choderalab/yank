@@ -18,6 +18,7 @@ Utility functions to help setting up Yank configurations.
 
 import os
 import re
+import sys
 import copy
 import inspect
 import logging
@@ -529,11 +530,6 @@ _OPENMM_LEAP_SOLVENT_FILES_MAP = {
     'tip4pew': 'leaprc.water.tip4pew',
     'tip5p': 'leaprc.water.tip4pew',  # Enables the EP atom type
     'spce': 'leaprc.water.spce',
-}
-
-# Reverse map which helps in some cases
-_OPENMM_LEAP_SOLVENT_FILES_MAP_R = {
-    v: k for k, v in _OPENMM_LEAP_SOLVENT_FILES_MAP.items()
 }
 
 
@@ -1402,7 +1398,7 @@ class SetupDatabase:
 
         # Start error tracking variables
         # Water
-        known_solvent_files = [file for file in _OPENMM_LEAP_SOLVENT_FILES_MAP_R.keys()]
+        known_solvent_files = [file for file in _OPENMM_LEAP_SOLVENT_FILES_MAP.values()]
         loaded_water_files = []  # Detected loaded water files
 
         def extend_list_of_waters(leap_parameters):
@@ -1488,7 +1484,6 @@ class SetupDatabase:
             solvent_model = solvent['solvent_model']
             # Check that solvent model has loaded the appropriate leap parameters.
             # This does guarantee a failure, but is a good sign of it.
-            solvent_warning = None
             if _OPENMM_LEAP_SOLVENT_FILES_MAP[solvent_model] not in loaded_water_files:
                 solvent_warning = ("WARNING: The solvent_model {} may not work for loaded "
                                    "leaprc.water.X files.\n We expected {} to make your "
@@ -1583,27 +1578,9 @@ class SetupDatabase:
         try:
             warnings = tleap.run()
         except RuntimeError as e:
-            # Try to find the log file
-            m = re.search('Check log file (.*)', str(e))
-            if m is not None:
-                log_file_string = m.group(1)
-                try:
-                    with open(log_file_string, 'r') as log_file:
-                        log_file_data = log_file.read()
-                    # Analyze log file for water mismatch
-                    if "EP - OW" in log_file_data:
-                        # Found mismatch water and missing parameters
-                        error = ("Solvent {}: "
-                                 "It looks like the water used has virtual sites, but "
-                                 "missing parameters.\nMake sure your leap parameters "
-                                 "use the correct water model as specified by "
-                                 "solvent_model.\nPlease see the log file for LEaP "
-                                 "for more info as there may be more wrong:\n{}")
-                        raise RuntimeError(error.format(solvent_id, e))
-                except IOError:
-                    pass
-            # If no other condition was found, raise the original error
-            raise e
+            error = RuntimeError('Solvent {}: {}'.format(solvent_id, str(e)))
+            error.with_traceback(sys.exc_info()[2])
+            raise error
 
         for warning in warnings:
             logger.warning('TLeap: ' + warning)
