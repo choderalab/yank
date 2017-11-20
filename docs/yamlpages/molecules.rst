@@ -269,7 +269,13 @@ Filepaths are relative to either the AmberTools default paths or to the folder t
           tautomerize: no
 
 Run Schrodinger's tool Epik with to select the most likely protonation state for the molecule in solution. Parameters
-in this call are direct reflections of the function to invoke ``epik`` from OpenMolTools.
+in this call are direct reflections of the function to invoke ``epik`` from OpenMolTools. Each of the parameters in this
+list (with the exception of ``select``) are optional.
+
+We note that the option ``ph_tolerance`` set to a value here of
+``7.0``, the pH range which will be searched will be ``pH +- 7.0``, which is a 14 log unit range, which may take a
+substantial time to enumerate, although will likely be less than the simulation overall. Should you feel this time is
+too long, you might consider reducing the ``ph_tolerance``.
 
 **OPTIONAL**
 
