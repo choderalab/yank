@@ -17,12 +17,7 @@ shutil.copytree("docs/_build", "docs/_deploy/{docversion}"
 
 # Only update latest if we are on a release version
 if version.release:
-    # Create the directory
-    try:
-        os.mkdir("docs/_deploy/latest")
-    except:
-        # Directory exists, no need to make it
-        pass
     # Copy the most recent version to the latest build
+    # copytree will make the directory for us
     shutil.copytree("docs/_build", "docs/_deploy/latest"
                     .format(docversion=docversion))
