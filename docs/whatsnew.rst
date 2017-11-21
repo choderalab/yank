@@ -6,8 +6,8 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the GitHub yank releases page <https://github.com/choderalab/yank/releases>`_.
 
-0.19.0 In Development (Current)
--------------------------------
+0.19.0 Regions, Cerberus, and Errors
+------------------------------------
 - Added custom region selection to Topography
 - Custom regions can now be defined through YAML
 - Compound custom Topography regions can now be selected
@@ -16,6 +16,7 @@ The full release history can be viewed `at the GitHub yank releases page <https:
 - Changed to Cerberus for data validation (was Schema), public facing validation schemas in the future
 - Added better error handling of known LEaP Errors
 - Fixed issue for ``start_frame`` and ``end_frame`` were ignored for trajectory extraction
+- OpenMMTools 0.13.3 now required to fix bug in ``SamplerState``
 
 0.18.0 Python 2 Dropped, Solute Only Trajectories, and Trailblaze Bugfixes
 --------------------------------------------------------------------------
