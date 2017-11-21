@@ -30,6 +30,13 @@ Frequently Asked Questions (FAQ)
    See the :ref:`protocols documentation <yaml_protocols_alchemical_path>` for more information or
    `watch our video guide to see how to add a state <https://youtu.be/nVVl6if6g0w?t=2m46s>`_
 
+#. I tried to run a YAML file but it had issues setting up molecule/system/solvent that I am not using in my experiment,
+   What happened?
+
+   YANK's YAML setup process will try to build all of the molecules, systems, and solvents specified, even if they
+   don't ultimately get used in a current experiment. If you don't want to process a particular object because it has
+   typos, missing files, or any other issue; you can always remove the lines or comment them out with "#"
+
 #. I found a bug or want a feature. Where do I tell you?
 
    Head to `YANK's GitHub page <https://github.com/choderalab/yank>`_ and post an issue.

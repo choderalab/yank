@@ -20,6 +20,9 @@ They will be referenced as ``{UserDefinedMolecule}`` and ``{UserDefinedSolvent}`
 We sort the options by type of free energy calculation due to how the 
 arguments change between each type, each requiring their own mandatory arguments.
 
+All of the systems will be built, even if they are not used in a later experiment, so ensure your systems do not
+have errors or are commented out.
+
 ----
 
 .. _yaml_systems_receptor_ligand:

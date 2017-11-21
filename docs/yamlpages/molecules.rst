@@ -15,10 +15,12 @@ many of these settings are optional and do nothing if not specified.
 The mandatory/optional of each setting (and what conditionals), 
 as well as the default behavior of each setting is explicitly stated in the setting's description.
 
+All of the molecules will be built, even if they are not used in a later system, so ensure your molecules do not
+have errors or are commented out.
 
 ----
 
-.. _yaml_molecules_specifiy_names:
+.. _yaml_molecules_specify_names:
 
 Specifying Molecule Names
 =========================
@@ -263,11 +265,17 @@ Filepaths are relative to either the AmberTools default paths or to the folder t
         epik:
           select: 0
           ph: 7.6
-          ph_tolerance: 0.7
+          ph_tolerance: 3.0
           tautomerize: no
 
 Run Schrodinger's tool Epik with to select the most likely protonation state for the molecule in solution. Parameters
-in this call are direct reflections of the function to invoke ``epik`` from OpenMolTools.
+in this call are direct reflections of the function to invoke ``epik`` from OpenMolTools. Each of the parameters in this
+list (with the exception of ``select``) are optional.
+
+We note that the option ``ph_tolerance`` set to a value here of
+``3.0``, the pH range which will be searched will be ``pH +- 3.0``, which is a 7 log unit range, which may take a
+some time to enumerate, although will likely be less than the simulation overall. Should you feel this time is
+too long, you might consider reducing the ``ph_tolerance``.
 
 **OPTIONAL**
 

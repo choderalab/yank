@@ -14,6 +14,8 @@ The full release history can be viewed `at the GitHub yank releases page <https:
 - Restraints atom selection can now use Topography Regions
 - Topography now can select from arbitrary string, either complex regions, DSL strings, and in the future SMARTS strings
 - Changed to Cerberus for data validation (was Schema), public facing validation schemas in the future
+- Added better error handling of known LEaP Errors
+- Fixed issue for ``start_frame`` and ``end_frame`` were ignored for trajectory extraction
 
 0.18.0 Python 2 Dropped, Solute Only Trajectories, and Trailblaze Bugfixes
 --------------------------------------------------------------------------
