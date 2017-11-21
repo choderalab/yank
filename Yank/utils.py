@@ -1767,8 +1767,9 @@ class TLeap:
             leap_output = subprocess.check_output(['tleap', '-f', 'leap.in']).decode()
 
             # Save leap.log in directory of first output file
+            log_path = ''
             if len(output_files) > 0:
-                #Get first output path in Py 3.X way that is also thread-safe
+                # Get first output path in Py 3.X way that is also thread-safe
                 for val in output_files.values():
                     first_output_path = val
                     break
@@ -1778,23 +1779,34 @@ class TLeap:
                 create_dirs_and_copy('leap.log', log_path)
 
             # Copy back output files. If something goes wrong, some files may not exist
-            error_msg = ''
+            known_error_msg = []
             try:
                 for local_file, file_path in output_files.items():
                     create_dirs_and_copy(local_file, file_path)
             except IOError:
-                error_msg = "Could not create one of the system files."
+                known_error_msg.append("Could not create one of the system files.")
 
             # Look for errors in log that don't raise CalledProcessError
             error_patterns = ['Argument #\d+ is type \S+ must be of type: \S+']
             for pattern in error_patterns:
                 m = re.search(pattern, leap_output)
                 if m is not None:
-                    error_msg = m.group(0)
+                    known_error_msg.append(m.group(0))
                     break
 
-            if error_msg != '':
-                raise RuntimeError(error_msg + ' Check log file {}'.format(log_path))
+            # Analyze log file for water mismatch
+            m = re.search("Could not find bond parameter for: EP - \w+W", leap_output)
+            if m is not None:
+                # Found mismatch water and missing parameters
+                known_error_msg.append('It looks like the water used has virtual sites, but '
+                                       'missing parameters.\nMake sure your leap parameters '
+                                       'use the correct water model as specified by '
+                                       'solvent_model.')
+
+            if len(known_error_msg) > 0:
+                final_error = ('Some things went wrong with LEaP\nWe caught a few but their may be more.\n'
+                               'Please see the log file for LEaP for more info:\n{}\n============\n{}')
+                raise RuntimeError(final_error.format(log_path, '\n---------\n'.join(known_error_msg)))
 
             # Check for and return warnings
             return re.findall('WARNING: (.+)', leap_output)

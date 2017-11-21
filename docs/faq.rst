@@ -8,6 +8,14 @@ Frequently Asked Questions (FAQ)
    Yes! Either specify the :ref:`yaml_options_resume_simulation` in the YAML file, or use the
    :func:`yank.yank.AlchemicalPhase.from_storage` function to resume from existing file.
 
+#. My setup keeps saying the system failed to create and my logfile says a bunch of things about missing "EP - OW" parameters
+
+   The likely cause is you did choose a :ref:`solvent_model <yaml_solvents_solvent_model>` which was supported by
+   the LEaP Parameters you loaded. You probably need to choose a LEaP parameter file to support your solvent model.
+   E.g. the ``solvent_model`` ``tip4pew`` should have a ``leaprc.water.tip4pew`` parameter set by either a
+   :ref:`molecule <yaml_molecules_leap>`, :ref:`solvent <yaml_solvents_leap>`,
+   or :ref:`system wide parameter's <yaml_systems_head>` file. YANK uses the TIP4P-EW model by default.
+
 #. Which MPI program should I use?
 
    We recommend the ``mpich`` and ``mpi4py`` packages that come from the ``conda-forge`` channel of ``conda``.
