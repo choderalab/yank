@@ -6,6 +6,13 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the GitHub yank releases page <https://github.com/choderalab/yank/releases>`_.
 
+0.19.1 Trailblaze fix and restart stability from OpenMMTools
+------------------------------------------------------------
+- OpenMMTools 0.13.4 now required to fix issues listed below
+- Restrained atoms to absolute coordinates caused issue in Trailblaze
+  with a Barostat
+- Last restart attempt uses a slower, but more robust restart method
+
 0.19.0 Regions, Cerberus, and Errors
 ------------------------------------
 - Added custom region selection to Topography
