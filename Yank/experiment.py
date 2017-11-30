@@ -280,7 +280,9 @@ class AlchemicalPhaseFactory(object):
             checkpoint_interval = self.options['checkpoint_interval']
             # Get the solute atoms
             if self.options['store_solute_trajectory']:
-                solute_atoms = self.topography.solute_atoms
+                # "Solute" is basically just not water. Includes all non-water atoms and ions
+                # Use set union (|) cast back to list to get output
+                solute_atoms = list(frozenset(self.topography.solute_atoms) | frozenset(self.topography.ions_atoms))
                 if checkpoint_interval == 1:
                     logger.warning("WARNING! You have specified both a solute-only trajectory AND a checkpoint "
                                    "interval of 1! You are about write the trajectory of the solute twice!\n"
