@@ -6,6 +6,10 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the GitHub yank releases page <https://github.com/choderalab/yank/releases>`_.
 
+0.19.2 Include ions in solute-only trajectory
+---------------------------------------------
+- Ions are now included in the solute-only trajectories.
+
 0.19.1 Trailblaze fix and restart stability from OpenMMTools
 ------------------------------------------------------------
 - OpenMMTools 0.13.4 now required to fix issues listed below
