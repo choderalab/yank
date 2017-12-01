@@ -1875,11 +1875,11 @@ def test_expand_experiments():
     experiment_systems = utils.CombinatorialLeaf(['explicit-system', 'implicit-system', 'hydration-system'])
     template_script['experiments']['system'] = experiment_systems
 
-    exp_builder = ExperimentBuilder(script=template_script, job_id=0, n_jobs=2)
+    exp_builder = ExperimentBuilder(script=template_script, job_id=1, n_jobs=2)
     experiments = list(exp_builder._expand_experiments())
     assert len(experiments) == 2
 
-    exp_builder = ExperimentBuilder(script=template_script, job_id=1, n_jobs=2)
+    exp_builder = ExperimentBuilder(script=template_script, job_id=2, n_jobs=2)
     experiments = list(exp_builder._expand_experiments())
     assert len(experiments) == 1
 

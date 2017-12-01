@@ -35,7 +35,7 @@ Required Arguments:
 
 Optional Arguments:
   --jobid=INTEGER               You can run only a subset of the experiments by specifying jobid and njobs, where
-                                0 <= job_id <= n_jobs-1. In this case, njobs must be specified as well and YANK will
+                                1 <= job_id <= n_jobs. In this case, njobs must be specified as well and YANK will
                                 run only 1/n_jobs of the experiments. This can be used to run several separate YANK
                                 executions in parallel starting from the same script.
   --njobs=INTEGER               Specify the total number of parallel executions. jobid has to be specified too.
