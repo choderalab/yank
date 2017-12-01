@@ -1437,7 +1437,6 @@ class ExperimentBuilder(object):
         for solvent_id, solvent_descr in solvents_description.items():
             if solvent_validator.validate(solvent_descr):
                 validated_solvents[solvent_id] = solvent_validator.document
-                print(solvent_validator.document)
             else:
                 error = "Solvent '{}' did not validate! Check the schema error below for details\n{}"
                 raise YamlParseError(error.format(solvent_id, yaml.dump(solvent_validator.errors)))
