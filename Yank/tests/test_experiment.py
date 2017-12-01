@@ -23,7 +23,7 @@ import itertools
 import mdtraj
 import numpy as np
 
-from nose.tools import assert_raises, assert_equal
+from nose.tools import assert_raises, assert_equal, assert_raises_regexp
 from nose.plugins.attrib import attr
 
 from yank.experiment import *
@@ -594,48 +594,70 @@ def test_validation_wrong_systems():
     """.format(data_paths['lysozyme'])
     basic_script = yaml.load(textwrap.dedent(basic_script))
 
+    # Each test case is a pair (regexp_error, system_description).
     systems = [
-        {'receptor': 'rec', 'ligand': 'lig'},
-        {'receptor': 'rec_region', 'ligand': 'lig_region', 'solvent': 'solv'},
-        {'receptor': 'rec', 'ligand': 1, 'solvent': 'solv'},
-        {'receptor': 'rec', 'ligand': 'lig', 'solvent': ['solv', 'solv']},
-        {'receptor': 'rec', 'ligand': 'lig', 'solvent': 'unknown'},
-        {'receptor': 'rec', 'ligand': 'lig', 'solvent': 'solv4',
-            'leap': {'parameters': ['leaprc.gaff', 'leaprc.ff14SB']}},
-        {'receptor': 'rec', 'ligand': 'lig', 'solvent': 'solv3',
-            'parameters': 'leaprc.ff14SB'},
+        ("'solvent' is required",
+            {'receptor': 'rec', 'ligand': 'lig'}),
 
-        {'phase1_path': data_paths['bentol-complex'][0],
-         'phase2_path': data_paths['bentol-solvent'],
-         'ligand_dsl': 'resname BEN', 'solvent': 'solv'},
-        {'phase1_path': ['nonexistingpath.prmtop', 'nonexistingpath.inpcrd'],
-         'phase2_path': data_paths['bentol-solvent'],
-         'ligand_dsl': 'resname BEN', 'solvent': 'solv'},
-        {'phase1_path': data_paths['bentol-complex'],
-         'phase2_path': data_paths['bentol-solvent'],
-         'ligand_dsl': 3.4, 'solvent': 'solv'},
-        {'phase1_path': data_paths['bentol-complex'],
-         'phase2_path': data_paths['bentol-solvent'],
-         'ligand_dsl': 'resname BEN', 'solvent1': 'unknown',
-         'solvent2': 'solv2'},
+        ("regions\(s\) clashing",
+            {'receptor': 'rec_region', 'ligand': 'lig_region', 'solvent': 'solv'}),
 
-        {'phase1_path': data_paths['bentol-complex'],
-         'phase2_path': data_paths['pxylene-solvent'],
-         'ligand_dsl': 'resname p-xylene', 'solvent': 'solv',
-         'gromacs_include_dir': data_paths['pxylene-gro-include']},
+        ("ligand: \[must be of string type\]",
+            {'receptor': 'rec', 'ligand': 1, 'solvent': 'solv'}),
 
-        {'phase1_path': data_paths['toluene-solvent'],
-         'phase2_path': data_paths['toluene-vacuum'],
-         'ligand_dsl': 'resname TOL', 'solvent': 'cantbespecified'},
+        ("solvent: \[must be of string type\]",
+            {'receptor': 'rec', 'ligand': 'lig', 'solvent': ['solv', 'solv']}),
 
-        {'receptor': 'rec', 'solute': 'lig', 'solvent1': 'solv', 'solvent2': 'solv'},
-        {'ligand': 'lig', 'solute': 'lig', 'solvent1': 'solv', 'solvent2': 'solv'},
-        {'solute': 'lig', 'solvent1': 'solv', 'solvent2': 'solv', 'leap': 'leaprc.gaff'}
+        ("unallowed value unknown",
+            {'receptor': 'rec', 'ligand': 'lig', 'solvent': 'unknown'}),
+
+        ("solv4 does not specify clearance",
+            {'receptor': 'rec', 'ligand': 'lig', 'solvent': 'solv4',
+             'leap': {'parameters': ['leaprc.gaff', 'leaprc.ff14SB']}}),
+
+        ("parameters: \[unknown field\]",
+            {'receptor': 'rec', 'ligand': 'lig', 'solvent': 'solv3',
+             'parameters': 'leaprc.ff14SB'}),
+
+        ("list of paths",
+            {'phase1_path': data_paths['bentol-complex'][0],
+             'phase2_path': data_paths['bentol-solvent'],
+             'ligand_dsl': 'resname BEN', 'solvent': 'solv'}),
+
+        ("File path nonexistingpath.prmtop does not exist.",
+            {'phase1_path': ['nonexistingpath.prmtop', 'nonexistingpath.inpcrd'],
+            'phase2_path': data_paths['bentol-solvent'],
+            'ligand_dsl': 'resname BEN', 'solvent': 'solv'}),
+
+        ("ligand_dsl: \[must be of string type\]",
+            {'phase1_path': data_paths['bentol-complex'],
+             'phase2_path': data_paths['bentol-solvent'],
+             'ligand_dsl': 3.4, 'solvent': 'solv'}),
+
+        ("unallowed value unknown",
+            {'phase1_path': data_paths['bentol-complex'],
+             'phase2_path': data_paths['bentol-solvent'],
+             'ligand_dsl': 'resname BEN', 'solvent1': 'unknown',
+             'solvent2': 'solv2'}),
+
+        ("unallowed value cantbespecified",
+            {'phase1_path': data_paths['toluene-solvent'],
+             'phase2_path': data_paths['toluene-vacuum'],
+             'ligand_dsl': 'resname TOL', 'solvent': 'cantbespecified'}),
+
+        ("field 'ligand' is required",
+            {'receptor': 'rec', 'solute': 'lig', 'solvent1': 'solv', 'solvent2': 'solv'}),
+
+        ("''ligand'' must not be present with ''solute''",
+            {'ligand': 'lig', 'solute': 'lig', 'solvent1': 'solv', 'solvent2': 'solv'}),
+
+        ("leap: \[must be of dict type\]",
+            {'solute': 'lig', 'solvent1': 'solv', 'solvent2': 'solv', 'leap': 'leaprc.gaff'})
     ]
-    for system in systems:
+    for regexp, system in systems:
         modified_script = basic_script.copy()
         modified_script['systems'] = {'sys': system}
-        yield assert_raises, YamlParseError, exp_builder.parse, modified_script
+        yield assert_raises_regexp, YamlParseError, regexp, exp_builder.parse, modified_script
 
 
 def test_order_phases():
