@@ -1657,7 +1657,6 @@ class ExperimentBuilder(object):
                 type: string
                 validator: file_exists
             validator: supported_system_files
-            coerce: sort_system_files_by_type
         phase2_path:
             required: no
             type: list
@@ -1665,7 +1664,6 @@ class ExperimentBuilder(object):
                 type: string
                 validator: file_exists
             validator: supported_system_files
-            coerce: sort_system_files_by_type
         gromacs_include_dir:
             required: no
             type: string

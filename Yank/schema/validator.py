@@ -24,17 +24,6 @@ class YANKCerberusValidator(cerberus.Validator):
         """Cast a single string to a list of string"""
         return [value] if isinstance(value, str) else value
 
-    def _normalize_coerce_sort_system_files_by_type(self, file_paths):
-        """Sort the system files path to have positions first and parameters second."""
-        file_extensions = [os.path.splitext(file_path)[1][1:] for file_path in file_paths]
-
-        # In all cases but for the pair (rst7, prmtop) we can just sort alphabetically.
-        sorted_file_paths = [file_path for ext, file_path in sorted(zip(file_extensions, file_paths))]
-        if 'rst7' not in file_extensions:
-            # reversed() return an iterator.
-            return list(reversed(sorted_file_paths))
-        return sorted_file_paths
-
     # ====================================================
     # DATA VALIDATORS
     # ====================================================
@@ -73,12 +62,6 @@ class YANKCerberusValidator(cerberus.Validator):
 
     def _validator_supported_system_files(self, field, file_paths):
         """Ensure the input system files are supported."""
-        # Check that this is a list of two file_paths.
-        if len(file_paths) != 2:
-            self._error(field, '{} must be a list of paths to the position '
-                               'and parameter files'.format(field))
-            return
-
         # Obtain the extension of the system files.
         file_extensions = {os.path.splitext(file_path)[1][1:] for file_path in file_paths}
 

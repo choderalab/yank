@@ -619,7 +619,7 @@ def test_validation_wrong_systems():
             {'receptor': 'rec', 'ligand': 'lig', 'solvent': 'solv3',
              'parameters': 'leaprc.ff14SB'}),
 
-        ("list of paths",
+        ("phase1_path: \[must be of list type\]",
             {'phase1_path': data_paths['bentol-complex'][0],
              'phase2_path': data_paths['bentol-solvent'],
              'ligand_dsl': 'resname BEN', 'solvent': 'solv'}),
