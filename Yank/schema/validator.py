@@ -15,20 +15,30 @@ class YANKCerberusValidator(cerberus.Validator):
     Custom cerberus.Validator class for YANK extending the Validator to include all the methods needed
     by YANK
     """
+
     # ====================================================
     # DATA COERCION
     # ====================================================
+
     def _normalize_coerce_single_str_to_list(self, value):
         """Cast a single string to a list of string"""
         return [value] if isinstance(value, str) else value
 
-    def _normalize_coerce_sort_alphabetically_by_extension(self, files):
-        provided_extensions = [os.path.splitext(filepath)[1][1:] for filepath in files]
-        return [filepath for (ext, filepath) in sorted(zip(provided_extensions, files))]
+    def _normalize_coerce_sort_system_files_by_type(self, file_paths):
+        """Sort the system files path to have positions first and parameters second."""
+        file_extensions = [os.path.splitext(file_path)[1][1:] for file_path in file_paths]
+
+        # In all cases but for the pair (rst7, prmtop) we can just sort alphabetically.
+        sorted_file_paths = [file_path for ext, file_path in sorted(zip(file_extensions, file_paths))]
+        if 'rst7' not in file_extensions:
+            # reversed() return an iterator.
+            return list(reversed(sorted_file_paths))
+        return sorted_file_paths
 
     # ====================================================
     # DATA VALIDATORS
     # ====================================================
+
     def _validator_file_exists(self, field, filepath):
         """Assert that the file is in fact, a file!"""
         if not os.path.isfile(filepath):
@@ -61,47 +71,38 @@ class YANKCerberusValidator(cerberus.Validator):
         if value != 'all' and not isinstance(value, int):
             self._error(field, "{} must be an int or the string 'all'".format(value))
 
-    def _validator_is_system_files_matching_phase1(self, field, phase2):
-        """Ensure the phase2_filepaths match the type of the phase1 paths"""
-        phase1 = self.document.get('phase1_path')
-        # Handle non-existant
-        if phase1 is None:
-            self._error(field, "phase1_path must be present to use phase2_path")
-            return
-        # Handle the not iterable type
-        try:
-            _ = [f for f in phase1]
-            _ = [f for f in phase2]
-        except TypeError:
-            self._error(field, 'phase1_path and phase2_path must be a list of file paths')
-            return
-        # Now process
-        provided_phase1_extensions = [os.path.splitext(filepath)[1][1:] for filepath in phase1]
-        provided_phase2_extensions = [os.path.splitext(filepath)[1][1:] for filepath in phase2]
-        # Check phase1 extensions
-        phase1_type = None
-        valid_extensions = None
-        expected_extensions = {
-            'amber': ['inpcrd', 'prmtop'],
-            'gromacs': ['gro', 'top'],
-            'openmm': ['pdb', 'xml']
-        }
-        for extension_type, valid_extensions in expected_extensions.items():
-            if sorted(provided_phase1_extensions) == sorted(valid_extensions):
-                phase1_type = extension_type
-                break
-        if phase1_type is None:
-            self._error(field, 'phase1_path must have file extensions matching one of the following types: '
-                               '{}'.format(expected_extensions))
-            return
-        # Ensure phase 2 is of the same type
-        if sorted(provided_phase2_extensions) != sorted(valid_extensions):
-            self._error(field, 'phase2_path must have files of the same extensions as phase1_path ({}) to ensure '
-                               'phases came from the same setup pipeline.'.format(phase1_type))
+    def _validator_supported_system_files(self, field, file_paths):
+        """Ensure the input system files are supported."""
+        # Check that this is a list of two file_paths.
+        if len(file_paths) != 2:
+            self._error(field, '{} must be a list of paths to the position '
+                               'and parameter files'.format(field))
             return
 
-        logger.debug('Correctly recognized phase1_path files ({}) and phase2_path files ({}) '
-                     'as {} files'.format(phase1, phase2, phase1_type))
+        # Obtain the extension of the system files.
+        file_extensions = {os.path.splitext(file_path)[1][1:] for file_path in file_paths}
+
+        # Find a match for the extensions.
+        expected_extensions = [
+            ('amber', {'inpcrd', 'prmtop'}),
+            ('amber', {'rst7', 'prmtop'}),
+            ('gromacs', {'gro', 'top'}),
+            ('openmm', {'pdb', 'xml'})
+        ]
+        file_extension_type = None
+        for extension_type, valid_extensions in expected_extensions:
+            if file_extensions == valid_extensions:
+                file_extension_type = extension_type
+                break
+
+        # Verify we found a match.
+        if file_extension_type is None:
+            self._error(field, '{} must have file extensions matching one of the '
+                               'following types: {}'.format(field, expected_extensions))
+            return
+
+        logger.debug('Correctly recognized {}files ({}) as {} '
+                     'files'.format(field, file_paths, file_extension_type))
 
     # ====================================================
     # DATA TYPES

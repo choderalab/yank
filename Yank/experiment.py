@@ -1657,16 +1657,23 @@ class ExperimentBuilder(object):
             schema:
                 type: string
                 validator: file_exists
-            dependencies: phase2_path
-            coerce: sort_alphabetically_by_extension
+            validator: supported_system_files
+            coerce: sort_system_files_by_type
         phase2_path:
             required: no
             type: list
             schema:
                 type: string
                 validator: file_exists
-            validator: is_system_files_matching_phase1
-            coerce: sort_alphabetically_by_extension
+            validator: supported_system_files
+            coerce: sort_system_files_by_type
+        gromacs_include_dir:
+            required: no
+            type: string
+            dependencies: [phase1_path, phase2_path]
+            validator: directory_exists
+
+        # Solvents
         solvent:
             required: no
             type: string
@@ -1694,13 +1701,8 @@ class ExperimentBuilder(object):
             oneof:
                 - dependencies: [phase1_path, phase2_path, solvent1]
                 - dependencies: [solute, solvent1]
-        gromacs_include_dir:
-            required: no
-            type: string
-            dependencies: [phase1_path, phase2_path]
-            validator: directory_exists
 
-        # Non-Prebuilt setup
+        # Automatic pipeline
         receptor:
             required: no
             type: string
