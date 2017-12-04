@@ -1659,6 +1659,7 @@ class ExperimentBuilder(object):
             schema:
                 type: string
                 validator: file_exists
+            dependencies: phase2_path
             validator: supported_system_files
         phase2_path:
             required: no
