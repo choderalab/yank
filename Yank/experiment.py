@@ -502,7 +502,7 @@ class ExperimentBuilder(object):
         can load it later by using :func:`parse` (default is None).
     job_id : None or int
         If you want to split the experiments among different executions,
-        you can set this to an integer 0 <= job_id <= n_jobs-1, and this
+        you can set this to an integer 1 <= job_id <= n_jobs, and this
         :class:`ExperimentBuilder` will run only 1/n_jobs of the experiments.
     n_jobs : None or int
         If ``job_id`` is specified, this is the total number of jobs that
@@ -606,8 +606,8 @@ class ExperimentBuilder(object):
         if job_id is not None:
             if n_jobs is None:
                 raise ValueError('n_jobs must be specified together with job_id')
-            if not 0 <= job_id <= n_jobs:
-                raise ValueError('job_id must be between 0 and n_jobs ({})'.format(n_jobs))
+            if not 1 <= job_id <= n_jobs:
+                raise ValueError('job_id must be between 1 and n_jobs ({})'.format(n_jobs))
 
         self._job_id = job_id
         self._n_jobs = n_jobs
@@ -1021,7 +1021,10 @@ class ExperimentBuilder(object):
 
             # Loop over all combinations
             for name, combination in experiment.named_combinations(separator='_', max_name_length=50):
-                if self._job_id is None or experiment_id % self._n_jobs == self._job_id:
+                # Both self._job_id and self._job_id-1 work (self._job_id is 1-based),
+                # but we use the latter just because it makes it easier to identify in
+                # advance which job ids are associated to which experiments.
+                if self._job_id is None or experiment_id % self._n_jobs == self._job_id-1:
                     yield os.path.join(output_dir, name), combination
                 experiment_id += 1
 
@@ -1437,7 +1440,6 @@ class ExperimentBuilder(object):
         for solvent_id, solvent_descr in solvents_description.items():
             if solvent_validator.validate(solvent_descr):
                 validated_solvents[solvent_id] = solvent_validator.document
-                print(solvent_validator.document)
             else:
                 error = "Solvent '{}' did not validate! Check the schema error below for details\n{}"
                 raise YamlParseError(error.format(solvent_id, yaml.dump(solvent_validator.errors)))
@@ -1658,15 +1660,21 @@ class ExperimentBuilder(object):
                 type: string
                 validator: file_exists
             dependencies: phase2_path
-            coerce: sort_alphabetically_by_extension
+            validator: supported_system_files
         phase2_path:
             required: no
             type: list
             schema:
                 type: string
                 validator: file_exists
-            validator: is_system_files_matching_phase1
-            coerce: sort_alphabetically_by_extension
+            validator: supported_system_files
+        gromacs_include_dir:
+            required: no
+            type: string
+            dependencies: [phase1_path, phase2_path]
+            validator: directory_exists
+
+        # Solvents
         solvent:
             required: no
             type: string
@@ -1694,13 +1702,8 @@ class ExperimentBuilder(object):
             oneof:
                 - dependencies: [phase1_path, phase2_path, solvent1]
                 - dependencies: [solute, solvent1]
-        gromacs_include_dir:
-            required: no
-            type: string
-            dependencies: [phase1_path, phase2_path]
-            validator: directory_exists
 
-        # Non-Prebuilt setup
+        # Automatic pipeline
         receptor:
             required: no
             type: string

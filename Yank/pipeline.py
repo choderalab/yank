@@ -857,6 +857,7 @@ class SetupDatabase:
         """
         Paths = collections.namedtuple('Paths', ['position_path', 'parameters_path'])
         system_dir = os.path.join(self.setup_dir, self.SYSTEMS_DIR, system_id)
+
         if 'receptor' in self.systems[system_id]:
             system_files_paths = [
                 Paths(position_path=os.path.join(system_dir, 'complex.inpcrd'),
@@ -872,13 +873,20 @@ class SetupDatabase:
                       parameters_path=os.path.join(system_dir, 'solvent2.prmtop'))
             ]
         else:
-            system_files_paths = [
-                Paths(position_path=self.systems[system_id]['phase1_path'][0],
-                      parameters_path=self.systems[system_id]['phase1_path'][1]),
-                Paths(position_path=self.systems[system_id]['phase2_path'][0],
-                      parameters_path=self.systems[system_id]['phase2_path'][1])
-            ]
+            parameter_file_extensions = {'prmtop', 'top', 'xml'}
+            system_files_paths = []
+            for phase_path_name in ['phase1_path', 'phase2_path']:
+                file_paths = self.systems[system_id][phase_path_name]
+                assert len(file_paths) == 2
 
+                # Make sure that the position file is first.
+                first_file_extension = os.path.splitext(file_paths[0])[1][1:]
+                if first_file_extension in parameter_file_extensions:
+                    file_paths = list(reversed(file_paths))
+
+                # Append Paths object.
+                system_files_paths.append(Paths(position_path=file_paths[0],
+                                                parameters_path=file_paths[1]))
         return system_files_paths
 
     def is_molecule_setup(self, molecule_id):
