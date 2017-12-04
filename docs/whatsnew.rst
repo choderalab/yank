@@ -6,6 +6,11 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the GitHub yank releases page <https://github.com/choderalab/yank/releases>`_.
 
+0.19.3 Support for Amber restart files
+--------------------------------------
+- Added support for Amber ``rst7`` files in ``phase1_path``/``phase2_path``.
+- The CLI option ``jobid`` now uses 1-based numbering like Torque and LSF do for array jobs.
+
 0.19.2 Include ions in solute-only trajectory
 ---------------------------------------------
 - Ions are now included in the solute-only trajectories.
