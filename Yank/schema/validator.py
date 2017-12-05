@@ -17,6 +17,13 @@ class YANKCerberusValidator(cerberus.Validator):
     """
 
     # ====================================================
+    # DEFAULT SETTERS
+    # ====================================================
+
+    def _normalize_default_setter_no_parameters(self, document):
+        return dict(parameters=list())
+
+    # ====================================================
     # DATA COERCION
     # ====================================================
 
