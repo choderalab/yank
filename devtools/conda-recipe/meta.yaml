@@ -53,6 +53,7 @@ requirements:
     - cerberus
     - matplotlib
     - jupyter
+    - networkx
     #- libgcc
 
 test:
