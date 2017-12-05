@@ -2006,6 +2006,7 @@ class Boresch(ReceptorLigandRestraint):
                             atom_indices.append(p[0:4])
                             rotatable_bonds.remove( (p[1], p[2]) )
                             rotatable_bonds.remove( (p[2], p[1]) )
+            ntorsions = len(atom_indices)
             if ntorsions > 0:
                 dihedrals = md.compute_dihedrals(t, np.array(atom_indices))
                 self.torsions = [ (atom_indices[torsion_index], float(dihedrals[0,torsion_index])) for torsion_index in range(ntorsions) ]
