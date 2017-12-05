@@ -1563,6 +1563,7 @@ class Boresch(ReceptorLigandRestraint):
                 E = kappa*cos(theta-theta0);
             """
             restraint_force = openmm.CustomTorsionForce(energy_function)
+            restraint_force.addGlobalParameter('lambda_restraints', 1.0)
             restraint_force.addGlobalParameter('kappa', kappa)
             restraint_force.addPerTorsionParameter('theta0')
             for (torsion_atoms, theta0) in self.torsions:
