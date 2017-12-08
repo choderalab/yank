@@ -1081,9 +1081,10 @@ class SetupDatabase:
         """
         # Find all molecules that need to be set up.
         molecules_to_setup = []
-        for molecule_id, molecule_description in self.molecules.items():
+        for molecule_id in self.molecules:
             if not self.is_molecule_setup(molecule_id)[0]:
                 molecules_to_setup.append(molecule_id)
+        molecules_to_setup.sort()
 
         # Parallelize generation of all molecules among nodes.
         mpi.distribute(self._setup_molecules,
@@ -1092,9 +1093,10 @@ class SetupDatabase:
 
         # Find all systems that need to be set up.
         systems_to_setup = []
-        for system_id, system_description in self.systems.items():
+        for system_id in self.systems:
             if not self.is_system_setup(system_id)[0]:
                 systems_to_setup.append(system_id)
+        systems_to_setup.sort()
 
         # Parallelize generation of all systems among nodes.
         mpi.distribute(self.get_system,
