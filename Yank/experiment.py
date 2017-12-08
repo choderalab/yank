@@ -1033,21 +1033,19 @@ class ExperimentBuilder(object):
     # --------------------------------------------------------------------------
 
     # Shared schema for leap parameters. Molecules, solvents and systems use it.
-    # Simple strings are converted to list of strings.
-    _LEAP_PARAMETERS_SCHEMA = yaml.load("""
-    parameters:
-        type: list
-        coerce: single_str_to_list
+    # Simple strings in "parameters" are converted to list of strings.
+    _LEAP_PARAMETERS_DEFAULT_SCHEMA = yaml.load("""
+    leap:
+        required: no
+        type: dict
+        default_setter: no_parameters
         schema:
-            type: string
+            parameters:
+                type: list
+                coerce: single_str_to_list
+                schema:
+                    type: string
     """)
-
-    _LEAP_PARAMETERS_DEFAULT_SCHEMA = {'leap': {
-            'required': False,
-            'type': 'dict',
-            'schema': _LEAP_PARAMETERS_SCHEMA,
-            'default': {'parameters': []}}  # Default for if the parameter is missing
-            }
 
     @classmethod
     def _validate_options(cls, options, validate_general_options):

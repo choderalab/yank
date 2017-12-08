@@ -1052,7 +1052,7 @@ class SetupDatabase:
             logger.debug('Setting up complex phase')
             self._setup_system(system_files_paths[0].position_path,
                                system_descr['pack'], alchemical_charge,
-                               system_parameters,  solvent_id, receptor_id,
+                               system_parameters, solvent_id, receptor_id,
                                ligand_id)
         else:  # partition/solvation free energy calculation
             solute_id = system_descr['solute']
