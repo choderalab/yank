@@ -462,6 +462,12 @@ class TestReporter(object):
 
     def test_store_dict(self):
         """Check correct storage and restore of dictionaries."""
+        def compare_dicts(reference, restored):
+            # We need a deterministically-ordered dict to compare pickles.
+            sorted_reference = sorted(reference.items())
+            sorted_restored = sorted(restored.items())
+            assert pickle.dumps(sorted_reference) == pickle.dumps(sorted_restored)
+
         data = {
             'mybool': False,
             'mystring': 'test',
@@ -472,33 +478,38 @@ class TestReporter(object):
             'myquantityarray': unit.Quantity(np.array([[1, 2, 3], [4.0, 5, 6]]), unit=unit.angstrom),
             'mynesteddict': {'field1': 'string', 'field2': {'field21': 3.0, 'field22': True}}
         }
+
         with self.temporary_reporter() as reporter:
+            # Test both nested and single-string representations.
+            for name, nested in [('testdict', False), ('nested', True)]:
+                reporter._write_dict(name, data, nested=nested)
+                restored_data = reporter.read_dict(name)
+                compare_dicts(data, restored_data)
 
-            def compare_dicts(reference, check):
-                for key, value in reference.items():
-                    restored_value = check[key]
-                    err_msg = '{}, {}'.format(value, restored_value)
-                    try:
-                        assert value == restored_value, err_msg
-                    except ValueError:  # array-like
-                        assert np.all(value == restored_value)
-                    else:
-                        assert type(value) == type(restored_value), err_msg
+                # Test reading a keyword inside a dict.
+                restored_data = reporter.read_dict(name + '/mynesteddict/field2')
+                compare_dicts(data['mynesteddict']['field2'], restored_data)
 
-            reporter.write_dict('testdict', data)
-            restored_data = reporter.read_dict('testdict')
-            compare_dicts(data, restored_data)
+                # write_dict supports updates, even with the nested representation
+                # if the structure of the dictionary doesn't change.
+                data['mybool'] = True
+                data['mystring'] = 'substituted'
+                reporter._write_dict(name, data, nested=nested)
+                restored_data = reporter.read_dict(name)
+                assert restored_data['mybool'] is True
+                assert restored_data['mystring'] == 'substituted'
 
-            # write_dict supports updates.
-            data['mybool'] = True
-            data['mystring'] = 'substituted'
-            reporter.write_dict('testdict', data)
-            restored_data = reporter.read_dict('testdict')
-            assert restored_data['mybool'] is True
-            assert restored_data['mystring'] == 'substituted'
+                # In nested representation, dictionaries are stored as groups and
+                # values as variables. Otherwise, there's only a single variable.
+                if nested:
+                    dict_group = reporter._storage_analysis.groups[name]
+                    assert 'mynesteddict' in dict_group.groups
+                    assert 'mylist' in dict_group.variables
+                else:
+                    assert name in reporter._storage_analysis.variables
 
             # Write dict fixed_dimension creates static dimensions and read/writes correctly
-            reporter.write_dict('fixed', data, fixed_dimension=True)
+            reporter._write_dict('fixed', data, fixed_dimension=True)
             restored_fixed_data = reporter.read_dict('fixed')
             compare_dicts(data, restored_fixed_data)
 

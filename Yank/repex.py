@@ -42,9 +42,6 @@ This code is licensed under the latest available version of the MIT License.
 # GLOBAL IMPORTS
 # ==============================================================================
 
-from simtk import openmm
-from simtk import unit
-
 import os
 import math
 import copy
@@ -59,6 +56,7 @@ import collections
 import numpy as np
 import mdtraj as md
 import netCDF4 as netcdf
+from simtk import unit, openmm
 
 import openmmtools as mmtools
 from openmmtools.states import ThermodynamicState
@@ -500,8 +498,9 @@ class Reporter(object):
                         reference_state_name, len_serialization, len_serialization/1024.0,
                         len_serialization/1024.0/1024.0))
 
-                # Finally write the dictionary
-                self.write_dict('{}/state{}'.format(state_type, state_id), serialized_state, fixed_dimension=True)
+                # Finally write the dictionary with fixed dimension to improve compression.
+                self._write_dict('{}/state{}'.format(state_type, state_id),
+                                 serialized_state, fixed_dimension=True)
 
     def read_sampler_states(self, iteration, analysis_particles_only=False):
         """Retrieve the stored sampler states on the checkpoint file
@@ -856,92 +855,107 @@ class Reporter(object):
         if checkpoint_iteration is not None:
             self._storage_checkpoint.variables['timestamp'][checkpoint_iteration] = timestamp
 
-    def read_dict(self, name):
+    def read_dict(self, path):
         """Restore a dictionary from the storage file.
+
+        The method supports reading only specific dictionary keywords in
+        path notation. If the dictionary is large, this can be quicker.
+        However, note that, depending on how the dictionary was saved,
+        this may end up reading the whole dictionary anyway.
 
         Parameters
         ----------
-        name : str
-            The identifier of the dictionary used to stored the data.
+        path : str
+            The path to the dictionary or a keyword in the dictionary.
 
         Returns
         -------
         data : dict
             The restored data as a dict.
 
+        Examples
+        --------
+        >>> import os
+        >>> import openmmtools as mmtools
+        >>> data = {'info': [1, 2, 3]}
+        >>> with mmtools.utils.temporary_directory() as temp_dir_path:
+        ...     temp_file_path = os.path.join(temp_dir_path, 'temp.nc')
+        ...     reporter = Reporter(temp_file_path, open_mode='w')
+        ...     reporter.write_dict('data', data)
+        ...     reporter.read_dict('data')
+        {'info': [1, 2, 3]}
+        ...     reporter.read_dict('data/info')
+        [1, 2, 3]
+
         """
-        # Leaving the skeleton to extend this in for now
         storage = 'analysis'
-        if storage not in ['analysis', 'checkpoint']:
-            raise ValueError("storage must be either 'analysis' or 'checkpoint'!")
-        # Get NC variable.
-        nc_variable = self._resolve_variable_path(name, storage)
-        if nc_variable.dtype == 'S1':
-            # Handle variables stored in fixed_dimensions
-            data_chars = nc_variable[:]
-            data_str = data_chars.tostring().decode()
+
+        # Get lowest possible NC variable/group. The path might refer
+        # to the keyword of a dictionary that was saved in a single variable.
+        dict_path = []
+        nc_element = None
+        while nc_element is None:
+            try:
+                nc_element = self._resolve_nc_path(path, storage)
+            except KeyError:
+                # Try the higher level.
+                path, dict_key = path.rsplit(sep='/', maxsplit=1)
+                dict_path.insert(0, dict_key)
+
+        # If this is a group, the dictionary has been nested.
+        if isinstance(nc_element, netcdf.Group):
+            data = {}
+            for elements in [nc_element.groups, nc_element.variables]:
+                for key in elements:
+                    data.update({key: self.read_dict(path + '/' + key)})
+
+        # Otherwise this is a variable.
         else:
-            data_str = str(nc_variable[0])
-        data = yaml.load(data_str, Loader=_DictYamlLoader)
+            if nc_element.dtype == 'S1':
+                # Handle variables stored in fixed_dimensions
+                data_chars = nc_element[:]
+                data_str = data_chars.tostring().decode()
+            else:
+                data_str = str(nc_element[0])
+            data = yaml.load(data_str, Loader=_DictYamlLoader)
 
         # Restore the title in the metadata.
-        if name == 'metadata':
+        if path == 'metadata':
             data['title'] = self._storage_dict[storage].title
+
+        # Resolve the rest of the path that was saved unnested.
+        for dict_key in dict_path:
+            data = data[dict_key]
         return data
 
-    def write_dict(self, name, data, fixed_dimension=False):
+    def write_dict(self, path, data):
         """Store the contents of a dict.
 
         Parameters
         ----------
-        name : str
-            The identifier of the dictionary in the storage file.
+        path : str
+            The path to the dictionary in the storage file.
         data : dict
             The dict to store.
-        fixed_dimension: bool, Defautlt: False
-            Use a fixed length dimension instead of variable length one. A unique dimension name (sharing a name with
-            "name") will be created and its length will be set equal to ``"fixedL{}".format(len(data_string))``
-
-            This method seems to allow NetCDF to actually compress strings.
-
-            Do NOT use this flag if you expect to constantly be changing the length of the data fed in, use only for
-            static data
 
         """
-        # Leaving the skeleton to extend this in for now
-        storage = 'analysis'
-        if storage not in ['analysis', 'checkpoint']:
-            raise ValueError("storage must be either 'analysis' or 'checkpoint'!")
-        storage_nc = self._storage_dict[storage]
-        # General NetCDF conventions assume the title of the dataset to be
-        # specified as a global attribute, but the user can specify their
-        # own titles only in metadata.
-        if name == 'metadata':
+        storage_name = 'analysis'
+
+        if path == 'metadata':
+            # General NetCDF conventions assume the title of the dataset
+            # to be specified as a global attribute, but the user can
+            # specify their own titles only in metadata.
             data = copy.deepcopy(data)
-            self._storage_dict[storage].title = data.pop('title')
+            self._storage_dict[storage_name].title = data.pop('title')
 
-        # Activate flow style to save space.
-        data_str = yaml.dump(data, Dumper=_DictYamlDumper)#, default_flow_style=True)
-
-        # Check if we are updating the dictionary or creating it.
-        try:
-            nc_variable = self._resolve_variable_path(name, storage)
-        except KeyError:
-            if fixed_dimension:
-                len_dim = len(data_str)
-                dim_str = "fixedL{}".format(len_dim)
-                if dim_str not in storage_nc.dimensions:
-                    storage_nc.createDimension(dim_str, len_dim)
-                nc_variable = storage_nc.createVariable(name, 'S1', dim_str, zlib=True)
-            else:
-                nc_variable = storage_nc.createVariable(name, str, 'scalar', zlib=True)
-        if fixed_dimension:
-            data_char_array = np.array(list(data_str), dtype='S1')
-            nc_variable[:] = data_char_array
+            # Metadata is pretty big, read-only attribute (it contains the
+            # reference state and the topography), and AlchemicalPhase has
+            # to read the name of the sampler for resuming and checking the
+            # status, so we store it compressed and in nested form.
+            self._write_dict(path, data, storage_name=storage_name,
+                             fixed_dimension=True, nested=True)
         else:
-            packed_data = np.empty(1, 'O')
-            packed_data[0] = data_str
-            nc_variable[:] = packed_data
+            self._write_dict(path, data, storage_name=storage_name)
 
     def read_last_iteration(self, full_iteration=True):
         """
@@ -1059,17 +1073,23 @@ class Reporter(object):
     # Internal-usage.
     # -------------------------------------------------------------------------
 
-    def _resolve_variable_path(self, path, storage):
-        """Return the NC variable at the end of the path.
+    def _resolve_nc_path(self, path, storage):
+        """Return the NC group or variable at the end of the path.
 
-        This can be used to retrieve variables inside one or more groups.
+        This can be used to retrieve groups or variables that are nested
+        inside one or more groups.
 
         """
         path_split = path.split('/')
         nc_group = self._storage_dict[storage]
         for group_name in path_split[:-1]:
             nc_group = nc_group.groups[group_name]
-        return nc_group.variables[path_split[-1]]
+
+        # Check if this is a path to a group or a variable.
+        try:
+            return nc_group.groups[path_split[-1]]
+        except KeyError:
+            return nc_group.variables[path_split[-1]]
 
     def _calculate_checkpoint_iteration(self, iteration):
         """Compute the iteration on disk of the checkpoint file matching the iteration linked on the analysis iteration.
@@ -1287,6 +1307,76 @@ class Reporter(object):
             return sampler_states
         else:
             return None
+
+    def _write_dict(self, path, data, storage_name='analysis',
+                    fixed_dimension=False, nested=False):
+        """Store the contents of a dict.
+
+        Parameters
+        ----------
+        path : str
+            The path to the dictionary in the storage file.
+        data : dict
+            The dict to store.
+        storage_name : 'analysis' or 'checkpoint'
+            The name of the storage file where to save the dict.
+        fixed_dimension : bool, default: False
+            Use a fixed length dimension instead of variable length one.
+            This method seems to allow NetCDF to actually compress strings.
+
+            A unique dimension name called ``"fixedL{}".format(len(data))``
+            will be created.
+
+            Do NOT use this flag if you expect to constantly be changing
+            the length of the data fed in. Use only for static data.
+        nested : bool, default False
+            In nested representation, dictionaries are represented as
+            groups, and values as strings. In this mode, it is possible
+            to retrieve a keyword without reading the whole dictionary.
+
+            In this mode, the dictionary can be overwritten, but ONLY if
+            the structure of the dict doesn't change, as it's impossible
+            to delete groups/variables from a netcdf database.
+
+        """
+        storage_nc = self._storage_dict[storage_name]
+
+        # Save nested dictionary into a group if requested, unless the dictionary is empty.
+        if nested and isinstance(data, dict) and len(data) > 0:
+            for key, value in data.items():
+                if not isinstance(key, str):
+                    raise ValueError('Cannot store dict in nested form with non-string keys.')
+                self._write_dict(path + '/' + key, value, storage_name,
+                                 fixed_dimension, nested)
+            return
+
+        # Activate flow style to save space.
+        data_str = yaml.dump(data, Dumper=_DictYamlDumper)#, default_flow_style=True)
+
+        # Check if we are updating the dictionary or creating it.
+        try:
+            nc_variable = self._resolve_nc_path(path, storage_name)
+        except KeyError:
+            if fixed_dimension:
+                variable_type = 'S1'
+                dimension_name = "fixedL{}".format(len(data_str))
+                # Create a new fixed dimension if necessary.
+                if dimension_name not in storage_nc.dimensions:
+                    storage_nc.createDimension(dimension_name, len(data_str))
+            else:
+                variable_type = str
+                dimension_name = 'scalar'
+            # Create variable.
+            nc_variable = storage_nc.createVariable(path, variable_type,
+                                                    dimension_name, zlib=True)
+
+        # Assign the value to the variable.
+        if fixed_dimension:
+            packed_data = np.array(list(data_str), dtype='S1')
+        else:
+            packed_data = np.empty(1, 'O')
+            packed_data[0] = data_str
+        nc_variable[:] = packed_data
 
 
 # ==============================================================================
