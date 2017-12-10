@@ -876,7 +876,8 @@ class ExperimentBuilder(object):
                    if name not in self.GENERAL_DEFAULT_OPTIONS}
 
         # Then update with specific experiment options.
-        options.update(experiment.get('options', {}))
+        options.update(self._validate_options(experiment.get('options', {}),
+                                              validate_general_options=False))
 
         def _filter_options(reference_options):
             return {name: value for name, value in options.items()
@@ -1803,7 +1804,7 @@ class ExperimentBuilder(object):
                     validated = ExperimentBuilder._validate_options({option:value}, validate_general_options=False)
                     coerced_and_validated = {**coerced_and_validated, **validated}
                 except YamlParseError as yaml_err:
-                    # collecte all errors
+                    # Collect all errors.
                     coerced_and_validated[option] = value
                     errors += "\n{}".format(yaml_err)
             if errors != "":
