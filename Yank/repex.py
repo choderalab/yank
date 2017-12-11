@@ -48,6 +48,7 @@ import copy
 import time
 import uuid
 import yaml
+import typing
 import inspect
 import logging
 import datetime
@@ -1599,18 +1600,11 @@ class ReplicaExchange(object):
             last stored iteration.
 
         """
-        # Check if netcdf file exists, open data for read if it does
-        if type(storage) is str:
-            # Open a reporter to read the data.
-            reporter = Reporter(storage, open_mode='r')
-            file_name = storage
-        else:
-            reporter = storage
-            reporter.open(mode='r')
-            file_name = reporter.filepath
-        if not reporter.storage_exists():
-            reporter.close()
-            raise RuntimeError('Storage file {} or its subfiles do not exist; cannot resume.'.format(file_name))
+        # Handle case in which storage is a string.
+        reporter = cls._reporter_from_storage(storage, check_exist=True)
+
+        # Open a reporter to read the data.
+        reporter.open(mode='r')
 
         # Retrieve options and create new simulation.
         options = reporter.read_dict('options')
@@ -1625,7 +1619,7 @@ class ReplicaExchange(object):
         iteration = reporter.read_last_iteration()
 
         # Retrieve other attributes.
-        logger.debug("Reading storage file {}...".format(file_name))
+        logger.debug("Reading storage file {}...".format(reporter.filepath))
         thermodynamic_states, unsampled_states = reporter.read_thermodynamic_states()
         sampler_states = reporter.read_sampler_states(iteration=iteration)
         state_indices = reporter.read_replica_thermodynamic_states(iteration=iteration)
@@ -1634,11 +1628,11 @@ class ReplicaExchange(object):
         metadata = reporter.read_dict('metadata')
 
         # Search for last cached free energies only if online analysis is activated.
-        if repex._online_analysis_interval is not None:
-            online_anaysis_info = repex._get_last_written_free_energy(reporter, iteration)
-            last_mbar_f_k, (_, last_err_free_energy) = online_anaysis_info
+        if repex.online_analysis_interval is not None:
+            online_analysis_info = repex._read_last_free_energy(reporter, iteration)
+            last_mbar_f_k, (_, last_err_free_energy) = online_analysis_info
         else:
-            last_mbar_f_k, (_, last_err_free_energy) = None, (None, None)
+            last_mbar_f_k, last_err_free_energy = None, None
 
         # Close reading reporter.
         reporter.close()
@@ -1664,6 +1658,59 @@ class ReplicaExchange(object):
                             broadcast_result=False, sync_nodes=False)
         # Don't write the new last iteration, we have not technically written anything yet, so there is no "junk"
         return repex
+
+    # TODO use Python 3.6 namedtuple syntax when we drop Python 3.5 support.
+    Status = typing.NamedTuple('Status', [
+        ('iteration', int),
+        ('target_error', float),
+        ('is_completed', bool)
+    ])
+
+    @classmethod
+    def read_status(cls, storage):
+        """Read the status of the calculation from the storage file.
+
+        This class method can be used to quickly check the status of the
+        simulation before loading the full ``ReplicaExchange`` object
+        from disk.
+
+        Parameters
+        ----------
+        storage : str or Reporter
+            The path to the storage file or the reporter object.
+
+        Returns
+        -------
+        status : ReplicaExchange.Status
+            The status of the replica-exchange calculation. It has three
+            fields: ``iteration``, ``target_error``, and ``is_completed``.
+
+        """
+        # Handle case in which storage is a string.
+        reporter = cls._reporter_from_storage(storage, check_exist=True)
+
+        # Read iteration and online analysis info.
+        reporter.open(mode='r')
+        options = reporter.read_dict('options')
+        iteration = reporter.read_last_iteration()
+        # Search for last cached free energies only if online analysis is activated.
+        if options['online_analysis_interval'] is not None:
+            target_error = options['online_analysis_target_error']
+            last_err_free_energy = cls._read_last_free_energy(reporter, iteration)[1][1]
+        else:
+            target_error = None
+            last_err_free_energy = None
+        reporter.close()
+
+        # Check if the calculation is done.
+        number_of_iterations = options['number_of_iterations']
+        online_analysis_target_error = options['online_analysis_target_error']
+        is_completed = cls._is_completed_static(number_of_iterations, iteration,
+                                                last_err_free_energy,
+                                                online_analysis_target_error)
+
+        return cls.Status(iteration=iteration, target_error=target_error,
+                          is_completed=is_completed)
 
     # -------------------------------------------------------------------------
     # Public properties.
@@ -1808,6 +1855,7 @@ class ReplicaExchange(object):
                                                    validate_function=_StoredProperty._oa_target_error_validator)
     online_analysis_minimum_iterations = _StoredProperty('online_analysis_minimum_iterations',
                                                          validate_function=_StoredProperty._oa_min_iter_validator)
+
     @property
     def metadata(self):
         """A copy of the metadata dictionary passed on creation (read-only)."""
@@ -1845,23 +1893,16 @@ class ReplicaExchange(object):
         metadata : dict, optional
            Simulation metadata to be stored in the file.
         """
+        # Handle case in which storage is a string.
+        reporter = self._reporter_from_storage(storage, check_exist=False)
+
         # Check if netcdf files exist. This is run only on MPI node 0 and
         # broadcasted. This is to avoid the case where the other nodes
         # arrive to this line after node 0 has already created the storage
         # file, causing an error.
-        files_exist = False
-        # Create temporary reporter
-        if type(storage) is str:
-            reporter = Reporter(storage, open_mode=None)
-            file_string = storage
-        else:
-            reporter = storage
-            file_string = reporter.filepath
         if mpi.run_single_node(0, reporter.storage_exists, broadcast_result=True):
-            files_exist = True
-        if files_exist:
-            raise RuntimeError("Storage file {} already exists; cowardly "
-                               "refusing to overwrite.".format(file_string))
+            raise RuntimeError('Storage file {} already exists; cowardly '
+                               'refusing to overwrite.'.format(reporter.filepath))
 
         # Make sure sampler_states is an iterable of SamplerStates for later.
         if isinstance(sampler_states, mmtools.states.SamplerState):
@@ -2238,6 +2279,26 @@ class ReplicaExchange(object):
     def _does_file_exist(file_path):
         """Check if there is a file at the given path."""
         return os.path.exists(file_path) and os.path.getsize(file_path) > 0
+
+    @staticmethod
+    def _reporter_from_storage(storage, check_exist=True):
+        """Return the Reporter object associated to this storage.
+
+        If check_exist is True, FileNotFoundError is raised if the files
+        are not found.
+        """
+        if isinstance(storage, str):
+            # Open a reporter to read the data.
+            reporter = Reporter(storage)
+        else:
+            reporter = storage
+
+        # Check if netcdf file exists.
+        if check_exist and not reporter.storage_exists():
+            reporter.close()
+            raise FileNotFoundError('Storage file {} or its subfiles do not exist; '
+                                    'cannot read status.'.format(reporter.filepath))
+        return reporter
 
     @mpi.on_single_node(rank=0, broadcast_result=False, sync_nodes=True)
     def _initialize_reporter(self):
@@ -2622,30 +2683,42 @@ class ReplicaExchange(object):
         return self._last_err_free_energy
 
     @staticmethod
-    def _get_last_written_free_energy(reporter, iteration):
+    def _read_last_free_energy(reporter, iteration):
         """Get the last free energy computed from online analysis"""
         last_f_k = None
         last_free_energy = None
-        try:
-            for index in range(iteration, 0, -1):
+
+        # Search for a valid free energy from the given iteration
+        # to the start of the calculation.
+        for index in range(iteration, 0, -1):
+            try:
                 last_f_k, last_free_energy = reporter.read_mbar_free_energies(index)
-                # Find an f_k that is not all zeros (or masked and empty)
-                if not (np.ma.is_masked(last_f_k) or np.all(last_f_k == 0)):
-                    break  # Don't need to continue the loop if we already found one
-        except (IndexError, KeyError):  # No such f_k written yet (or variable created), no need to do anything
-            pass
+            except (IndexError, KeyError):
+                # No such f_k written yet (or variable created).
+                break
+            # Find an f_k that is not all zeros (or masked and empty)
+            if not (np.ma.is_masked(last_f_k) or np.all(last_f_k == 0)):
+                break  # Don't need to continue the loop if we already found one
+
         return last_f_k, last_free_energy
 
     def _is_completed(self, iteration_limit=None):
         """Check if we have reached the required number of iterations or statistical error."""
         if iteration_limit is None:
-            iteration_limit = self._number_of_iterations
+            iteration_limit = self.number_of_iterations
+        return self._is_completed_static(iteration_limit, self._iteration,
+                                         self._last_err_free_energy,
+                                         self.online_analysis_target_error)
 
+    @staticmethod
+    def _is_completed_static(iteration_limit, iteration, last_err_free_energy,
+                             online_analysis_target_error):
+        """Check if we have reached the required number of iterations or statistical error."""
         # Return if we have reached the number of iterations
         # or the statistical error target required.
-        if (self._iteration >= iteration_limit or
-                (self._last_err_free_energy is not None and
-                         self._last_err_free_energy <= self._online_analysis_target_error)):
+        if (iteration >= iteration_limit or
+                (last_err_free_energy is not None and
+                         last_err_free_energy <= online_analysis_target_error)):
             return True
         return False
 

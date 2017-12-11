@@ -1223,7 +1223,7 @@ class TestReplicaExchange(object):
             repex.run()
 
             # The stored values of online analysis should be up to date.
-            last_written_free_energy = ReplicaExchange._get_last_written_free_energy(repex._reporter, repex.iteration)
+            last_written_free_energy = ReplicaExchange._read_last_free_energy(repex._reporter, repex.iteration)
             last_mbar_f_k, (last_free_energy, last_err_free_energy) = last_written_free_energy
 
             assert len(repex._last_mbar_f_k) == len(thermodynamic_states)
