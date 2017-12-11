@@ -139,11 +139,12 @@ def _is_phase_completed(status, number_of_iterations):
 
     """
     # TODO allow users to change online analysis options on resuming.
-    if status.target_error is None and status.iteration == number_of_iterations:
-        is_completed = True
+    if status.target_error is None and status.iteration < number_of_iterations:
+        is_completed = False
     else:
         is_completed = status.is_completed
     return is_completed
+
 
 # ==============================================================================
 # UTILITY CLASSES
@@ -886,7 +887,6 @@ class ExperimentBuilder(object):
             'job_id'
         ])
 
-        status = collections.OrderedDict()
         for experiment_idx, (exp_path, exp_description) in enumerate(self._expand_experiments()):
             # Determine the final number of iterations for this experiment.
             _, _, sampler_options, _ = self._determine_experiment_options(exp_description)
