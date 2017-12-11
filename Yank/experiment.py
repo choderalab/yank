@@ -24,6 +24,7 @@ import copy
 import yaml
 import logging
 import collections
+
 import cerberus
 import cerberus.errors
 
@@ -121,6 +122,28 @@ def convert_if_quantity(value):
         return value
     return quantity
 
+
+def _is_phase_completed(status, number_of_iterations):
+    """Check if the stored simulation is completed.
+
+    When the simulation is resumed, the number of iterations to run
+    in the YAML script could be updated, so we can't rely entirely on
+    the is_completed field in the ReplicaExchange.Status object.
+
+    Parameters
+    ----------
+    status : namedtuple
+        The status object returned by ``yank.AlchemicalPhase``.
+    number_of_iterations : int
+        The total number of iterations that the simulation must perform.
+
+    """
+    # TODO allow users to change online analysis options on resuming.
+    if status.target_error is None and status.iteration == number_of_iterations:
+        is_completed = True
+    else:
+        is_completed = status.is_completed
+    return is_completed
 
 # ==============================================================================
 # UTILITY CLASSES
@@ -446,9 +469,16 @@ class Experiment(object):
                 if isinstance(phase, AlchemicalPhaseFactory):
                     alchemical_phase = phase.initialize_alchemical_phase()
                     self.phases[phase_id] = phase.storage  # Should automatically be a Reporter class
-                else:  # Resume previous simulation.
+                else:  # Resume previously created simulation.
+                    # Check the status before loading the full alchemical phase object.
+                    status = AlchemicalPhase.read_status(phase)
+                    if _is_phase_completed(status, self.number_of_iterations):
+                        self._are_phases_completed[phase_id] = True
+                        iterations_left[phase_id] = 0
+                        continue
                     alchemical_phase = AlchemicalPhase.from_storage(phase)
 
+                # TODO allow users to change online analysis options on resuming.
                 # Update total number of iterations. This may write the new number
                 # of iterations in the storage file so we do it only if necessary.
                 if alchemical_phase.number_of_iterations != self.number_of_iterations:
@@ -598,8 +628,7 @@ class ExperimentBuilder(object):
 
     def __init__(self, script=None, job_id=None, n_jobs=None):
         """
-        Constructor
-
+        Constructor.
 
         """
         # Check consistency job_id and n_jobs.
@@ -817,9 +846,102 @@ class ExperimentBuilder(object):
             self._check_resume(check_experiments=False)
             self._setup_experiments()
 
+    def status(self):
+        """Iterate over the status of all experiments in dictionary form.
+
+        The status of each experiment is set to "completed" if both phases
+        in the experiments have been completed, "pending" if they are both
+        pending, and "ongoing" otherwise.
+
+        Yields
+        ------
+        experiment_status : namedtuple
+            The status of the experiment. It contains the following fields:
+
+            name : str
+                The name of the experiment.
+            status : str
+                One between "completed", "ongoing", or "pending".
+            number_of_iterations : int
+                The total number of iteration set for this experiment.
+            job_id : int or None
+                If njobs is specified, this includes the job id associated
+                to this experiment.
+            phases : dict
+                phases[phase_name] is a namedtuple describing the status
+                of phase ``phase_name``. The namedtuple has two fields:
+                ``iteration`` and ``status``.
+
+        """
+        # TODO use Python 3.6 namedtuple syntax when we drop Python 3.5 support.
+        PhaseStatus = collections.namedtuple('PhaseStatus', [
+            'status',
+            'iteration'
+        ])
+        ExperimentStatus = collections.namedtuple('ExperimentStatus', [
+            'name',
+            'status',
+            'phases',
+            'number_of_iterations',
+            'job_id'
+        ])
+
+        status = collections.OrderedDict()
+        for experiment_idx, (exp_path, exp_description) in enumerate(self._expand_experiments()):
+            # Determine the final number of iterations for this experiment.
+            _, _, sampler_options, _ = self._determine_experiment_options(exp_description)
+            number_of_iterations = sampler_options['number_of_iterations']
+
+            # Determine the phases status.
+            phases = collections.OrderedDict()
+            for phase_nc_path in self._get_nc_file_paths(exp_path, exp_description):
+
+                # Determine the status of the phase.
+                try:
+                    phase_status = AlchemicalPhase.read_status(phase_nc_path)
+                except FileNotFoundError:
+                    iteration = None
+                    phase_status = 'pending'
+                else:
+                    iteration = phase_status.iteration
+                    if _is_phase_completed(phase_status, number_of_iterations):
+                        phase_status = 'completed'
+                    else:
+                        phase_status = 'ongoing'
+                phase_name = os.path.splitext(os.path.basename(phase_nc_path))[0]
+                phases[phase_name] = PhaseStatus(status=phase_status, iteration=iteration)
+
+            # Determine the status of the whole experiment.
+            phase_statuses = [phase.status for phase in phases.values()]
+            if phase_statuses[0] == phase_statuses[1]:
+                # This covers the completed and pending status.
+                exp_status = phase_statuses[0]
+            else:
+                exp_status = 'ongoing'
+
+            # Determine jobid if requested.
+            if self._n_jobs is not None:
+                job_id = experiment_idx % self._n_jobs + 1
+            else:
+                job_id = None
+
+            yield ExperimentStatus(name=exp_path, status=exp_status,
+                                   phases=phases, job_id=job_id,
+                                   number_of_iterations=number_of_iterations)
+
     # --------------------------------------------------------------------------
     # Properties
     # --------------------------------------------------------------------------
+
+    @property
+    def verbose(self):
+        """bool: the log verbosity."""
+        return self._options['verbose']
+
+    @verbose.setter
+    def verbose(self, new_verbose):
+        self._options['verbose'] = new_verbose
+        utils.config_root_logger(self._options['verbose'], log_file_path=None)
 
     @property
     def output_dir(self):
@@ -876,7 +998,8 @@ class ExperimentBuilder(object):
                    if name not in self.GENERAL_DEFAULT_OPTIONS}
 
         # Then update with specific experiment options.
-        options.update(experiment.get('options', {}))
+        options.update(self._validate_options(experiment.get('options', {}),
+                                              validate_general_options=False))
 
         def _filter_options(reference_options):
             return {name: value for name, value in options.items()
@@ -1803,7 +1926,7 @@ class ExperimentBuilder(object):
                     validated = ExperimentBuilder._validate_options({option:value}, validate_general_options=False)
                     coerced_and_validated = {**coerced_and_validated, **validated}
                 except YamlParseError as yaml_err:
-                    # collecte all errors
+                    # Collect all errors.
                     coerced_and_validated[option] = value
                     errors += "\n{}".format(yaml_err)
             if errors != "":
@@ -2582,7 +2705,7 @@ class ExperimentBuilder(object):
             try:
                 with open(yaml_script_file_path, 'r') as f:
                     yaml_script = yaml.load(f, Loader=YankLoader)
-            except EnvironmentError:  # TODO replace with FileNotFoundError when dropping Python 2 support
+            except FileNotFoundError:
                 for phase_name in generated_alchemical_paths:
                     protocol[phase_name]['alchemical_path'] = {}
             else:

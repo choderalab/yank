@@ -626,22 +626,46 @@ class IMultiStateSampler(mmtools.utils.SubhookedABCMeta):
 
     """
 
+    @classmethod
+    @abc.abstractmethod
+    def read_status(cls, storage):
+        """Read the status of the calculation from the storage file.
+
+        Parameters
+        ----------
+        storage : str or Reporter
+            The path to the storage file or the reporter object to forward
+            to the sampler. In the future, this will be able to take a Storage
+            class as well.
+
+        Returns
+        -------
+        status : namedtuple
+            The status of the calculation.
+
+        """
+        pass
+
     @property
+    @abc.abstractmethod
     def number_of_iterations(self):
         """int: the total number of iterations to run."""
         pass
 
-    @abc.abstractproperty
+    @property
+    @abc.abstractmethod
     def iteration(self):
         """int: the current iteration."""
         pass
 
-    @abc.abstractproperty
+    @property
+    @abc.abstractmethod
     def metadata(self):
         """dict: a copy of the metadata dictionary passed on creation."""
         pass
 
-    @abc.abstractproperty
+    @property
+    @abc.abstractmethod
     def sampler_states(self):
         """list of SamplerState: the sampler states at the current iteration."""
         pass
@@ -659,11 +683,9 @@ class IMultiStateSampler(mmtools.utils.SubhookedABCMeta):
             One or more sets of initial sampler states. If a list of SamplerStates,
             they will be assigned to thermodynamic states in a round-robin fashion.
         storage : str or Reporter
-            If str: The path to the storage file. Reads defaults from the :class:`yank.repex.Reporter` class
-
-            If :class:`yank.repex.Reporter`: Reads the reporter settings for files and options
-
-            In the future this will be able to take a Storage class as well.
+            The path to the storage file or a Reporter object to forward
+            to the sampler. In the future, this will be able to take a
+            Storage class as well.
         unsampled_thermodynamic_states : list of openmmtools.states.ThermodynamicState
             These are ThermodynamicStates that are not propagated, but their
             reduced potential is computed at each iteration for each replica.
@@ -745,7 +767,7 @@ class AlchemicalPhase(object):
 
     Parameters
     ----------
-    sampler : MultiStateSampler
+    sampler : IMultiStateSampler
         The sampler instance implementing the :class:`IMultiStateSampler` interface.
 
     Attributes
@@ -758,18 +780,16 @@ class AlchemicalPhase(object):
     def __init__(self, sampler):
         self._sampler = sampler
 
-    @staticmethod
-    def from_storage(storage):
+    @classmethod
+    def from_storage(cls, storage):
         """Static constructor from an existing storage file.
 
         Parameters
         ----------
         storage : str or Reporter
-            If str: The path to the primary storage file. Default checkpointing options are stored in this case
-
-            If :class:`yank.repex.Reporter`: loads from the reporter class, including checkpointing information
-
-            In the future this will be able to take a Storage class as well.
+            The path to the storage file or the reporter object to forward
+            to the sampler. In the future, this will be able to take a Storage
+            class as well.
 
         Returns
         -------
@@ -778,30 +798,37 @@ class AlchemicalPhase(object):
             last stored iteration.
 
         """
-        # Check if netcdf file exists.
-        if type(storage) is str:
-            reporter = repex.Reporter(storage)
-        else:
-            reporter = storage
-        if not reporter.storage_exists():
-            reporter.close()
-            raise RuntimeError('Storage file at {} does not exists; cannot resume.'.format(reporter.filepath))
-
-        # TODO: this should skip the Reporter and use the Storage to read storage.metadata.
-        # Open Reporter for reading and read metadata.
-        reporter.open(mode='r')
-        metadata = reporter.read_dict('metadata')
-        reporter.close()
-
-        # Retrieve the sampler class.
-        sampler_full_name = metadata['sampler_full_name']
-        module_name, cls_name = sampler_full_name.rsplit('.', 1)
-        module = importlib.import_module(module_name)
-        cls = getattr(module, cls_name)
-
+        # Read the MultiStateSampler class from the storage.
+        sampler_class = cls._read_sampler_class(storage)
         # Resume sampler and return new AlchemicalPhase.
-        sampler = cls.from_storage(reporter)
+        sampler = sampler_class.from_storage(storage)
         return AlchemicalPhase(sampler)
+
+    @classmethod
+    def read_status(cls, storage):
+        """Read the status of the calculation from the storage file.
+
+        This method can be used to quickly check the status of the
+        simulation before loading the full ``ReplicaExchange`` object
+        from disk.
+
+        Parameters
+        ----------
+        storage : str or Reporter
+            The path to the storage file or the reporter object to forward
+            to the sampler. In the future, this will be able to take a Storage
+            class as well.
+
+        Returns
+        -------
+        status : namedtuple
+            The status of the calculation.
+
+        """
+        # Read the MultiStateSampler class from the storage.
+        sampler_class = cls._read_sampler_class(storage)
+        # Read sampler status.
+        return sampler_class.read_status(storage)
 
     @property
     def iteration(self):
@@ -858,11 +885,10 @@ class AlchemicalPhase(object):
             The dictionary ``{parameter_name: list_of_parameter_values}`` defining
             the protocol. All the parameter values list must have the same
             number of elements.
-        storage : str or initialized Reporter class
-            If str: Path to the storage file. The default checkpointing options (see the :class:`yank.repex.Reporter`
-            class) will be used in this case
-
-            If :class:`yank.repex.Reporter`: Uses files and checkpointing options of the reporter class passed in
+        storage : str or Reporter
+            The path to the storage file or a Reporter object to forward
+            to the sampler. In the future, this will be able to take a
+            Storage class as well.
         restraint : ReceptorLigandRestraint, optional
             Restraint to add between protein and ligand. This must be specified
             for ligand-receptor systems in non-periodic boxes.
@@ -1187,6 +1213,33 @@ class AlchemicalPhase(object):
     # -------------------------------------------------------------------------
     # Internal-usage
     # -------------------------------------------------------------------------
+
+    @staticmethod
+    def _read_sampler_class(storage):
+        """Retrieve the MultiStateSampler class used from the storage."""
+        # Handle str and Reporter argument value.
+        if isinstance(storage, str):
+            reporter = repex.Reporter(storage)
+        else:
+            reporter = storage
+
+        # Check if netcdf file exists.
+        if not reporter.storage_exists():
+            reporter.close()
+            raise FileNotFoundError('Storage file at {} does not exists; '
+                                    'cannot resume.'.format(reporter.filepath))
+
+        # TODO: this should skip the Reporter and use the Storage to read storage.metadata.
+        # Open Reporter for reading and read sampler class name.
+        reporter.open(mode='r')
+        sampler_full_name = reporter.read_dict('metadata/sampler_full_name')
+        reporter.close()
+
+        # Retrieve the sampler class.
+        module_name, sampler_class_name = sampler_full_name.rsplit('.', 1)
+        module = importlib.import_module(module_name)
+        sampler_class = getattr(module, sampler_class_name)
+        return sampler_class
 
     @staticmethod
     def _expand_state_cutoff(thermodynamic_state, expanded_cutoff_distance,
