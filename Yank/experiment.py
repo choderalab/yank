@@ -24,6 +24,7 @@ import copy
 import yaml
 import logging
 import collections
+
 import cerberus
 import cerberus.errors
 
@@ -121,6 +122,28 @@ def convert_if_quantity(value):
         return value
     return quantity
 
+
+def _is_phase_completed(status, number_of_iterations):
+    """Check if the stored simulation is completed.
+
+    When the simulation is resumed, the number of iterations to run
+    in the YAML script could be updated, so we can't rely entirely on
+    the is_completed field in the ReplicaExchange.Status object.
+
+    Parameters
+    ----------
+    status : namedtuple
+        The status object returned by ``yank.AlchemicalPhase``.
+    number_of_iterations : int
+        The total number of iterations that the simulation must perform.
+
+    """
+    # TODO allow users to change online analysis options on resuming.
+    if status.target_error is None and status.iteration == number_of_iterations:
+        is_completed = True
+    else:
+        is_completed = status.is_completed
+    return is_completed
 
 # ==============================================================================
 # UTILITY CLASSES
@@ -446,9 +469,16 @@ class Experiment(object):
                 if isinstance(phase, AlchemicalPhaseFactory):
                     alchemical_phase = phase.initialize_alchemical_phase()
                     self.phases[phase_id] = phase.storage  # Should automatically be a Reporter class
-                else:  # Resume previous simulation.
+                else:  # Resume previously created simulation.
+                    # Check the status before loading the full alchemical phase object.
+                    status = AlchemicalPhase.read_status(phase)
+                    if _is_phase_completed(status, self.number_of_iterations):
+                        self._are_phases_completed[phase_id] = True
+                        iterations_left[phase_id] = 0
+                        continue
                     alchemical_phase = AlchemicalPhase.from_storage(phase)
 
+                # TODO allow users to change online analysis options on resuming.
                 # Update total number of iterations. This may write the new number
                 # of iterations in the storage file so we do it only if necessary.
                 if alchemical_phase.number_of_iterations != self.number_of_iterations:
@@ -598,8 +628,7 @@ class ExperimentBuilder(object):
 
     def __init__(self, script=None, job_id=None, n_jobs=None):
         """
-        Constructor
-
+        Constructor.
 
         """
         # Check consistency job_id and n_jobs.
@@ -2583,7 +2612,7 @@ class ExperimentBuilder(object):
             try:
                 with open(yaml_script_file_path, 'r') as f:
                     yaml_script = yaml.load(f, Loader=YankLoader)
-            except EnvironmentError:  # TODO replace with FileNotFoundError when dropping Python 2 support
+            except FileNotFoundError:
                 for phase_name in generated_alchemical_paths:
                     protocol[phase_name]['alchemical_path'] = {}
             else:
