@@ -42,15 +42,13 @@ This code is licensed under the latest available version of the MIT License.
 # GLOBAL IMPORTS
 # ==============================================================================
 
-from simtk import openmm
-from simtk import unit
-
 import os
 import math
 import copy
 import time
 import uuid
 import yaml
+import typing
 import inspect
 import logging
 import datetime
@@ -59,6 +57,7 @@ import collections
 import numpy as np
 import mdtraj as md
 import netCDF4 as netcdf
+from simtk import unit, openmm
 
 import openmmtools as mmtools
 from openmmtools.states import ThermodynamicState
@@ -500,8 +499,9 @@ class Reporter(object):
                         reference_state_name, len_serialization, len_serialization/1024.0,
                         len_serialization/1024.0/1024.0))
 
-                # Finally write the dictionary
-                self.write_dict('{}/state{}'.format(state_type, state_id), serialized_state, fixed_dimension=True)
+                # Finally write the dictionary with fixed dimension to improve compression.
+                self._write_dict('{}/state{}'.format(state_type, state_id),
+                                 serialized_state, fixed_dimension=True)
 
     def read_sampler_states(self, iteration, analysis_particles_only=False):
         """Retrieve the stored sampler states on the checkpoint file
@@ -856,92 +856,107 @@ class Reporter(object):
         if checkpoint_iteration is not None:
             self._storage_checkpoint.variables['timestamp'][checkpoint_iteration] = timestamp
 
-    def read_dict(self, name):
+    def read_dict(self, path):
         """Restore a dictionary from the storage file.
+
+        The method supports reading only specific dictionary keywords in
+        path notation. If the dictionary is large, this can be quicker.
+        However, note that, depending on how the dictionary was saved,
+        this may end up reading the whole dictionary anyway.
 
         Parameters
         ----------
-        name : str
-            The identifier of the dictionary used to stored the data.
+        path : str
+            The path to the dictionary or a keyword in the dictionary.
 
         Returns
         -------
         data : dict
             The restored data as a dict.
 
+        Examples
+        --------
+        >>> import os
+        >>> import openmmtools as mmtools
+        >>> data = {'info': [1, 2, 3]}
+        >>> with mmtools.utils.temporary_directory() as temp_dir_path:
+        ...     temp_file_path = os.path.join(temp_dir_path, 'temp.nc')
+        ...     reporter = Reporter(temp_file_path, open_mode='w')
+        ...     reporter.write_dict('data', data)
+        ...     reporter.read_dict('data')
+        {'info': [1, 2, 3]}
+        ...     reporter.read_dict('data/info')
+        [1, 2, 3]
+
         """
-        # Leaving the skeleton to extend this in for now
         storage = 'analysis'
-        if storage not in ['analysis', 'checkpoint']:
-            raise ValueError("storage must be either 'analysis' or 'checkpoint'!")
-        # Get NC variable.
-        nc_variable = self._resolve_variable_path(name, storage)
-        if nc_variable.dtype == 'S1':
-            # Handle variables stored in fixed_dimensions
-            data_chars = nc_variable[:]
-            data_str = data_chars.tostring().decode()
+
+        # Get lowest possible NC variable/group. The path might refer
+        # to the keyword of a dictionary that was saved in a single variable.
+        dict_path = []
+        nc_element = None
+        while nc_element is None:
+            try:
+                nc_element = self._resolve_nc_path(path, storage)
+            except KeyError:
+                # Try the higher level.
+                path, dict_key = path.rsplit(sep='/', maxsplit=1)
+                dict_path.insert(0, dict_key)
+
+        # If this is a group, the dictionary has been nested.
+        if isinstance(nc_element, netcdf.Group):
+            data = {}
+            for elements in [nc_element.groups, nc_element.variables]:
+                for key in elements:
+                    data.update({key: self.read_dict(path + '/' + key)})
+
+        # Otherwise this is a variable.
         else:
-            data_str = str(nc_variable[0])
-        data = yaml.load(data_str, Loader=_DictYamlLoader)
+            if nc_element.dtype == 'S1':
+                # Handle variables stored in fixed_dimensions
+                data_chars = nc_element[:]
+                data_str = data_chars.tostring().decode()
+            else:
+                data_str = str(nc_element[0])
+            data = yaml.load(data_str, Loader=_DictYamlLoader)
 
         # Restore the title in the metadata.
-        if name == 'metadata':
+        if path == 'metadata':
             data['title'] = self._storage_dict[storage].title
+
+        # Resolve the rest of the path that was saved unnested.
+        for dict_key in dict_path:
+            data = data[dict_key]
         return data
 
-    def write_dict(self, name, data, fixed_dimension=False):
+    def write_dict(self, path, data):
         """Store the contents of a dict.
 
         Parameters
         ----------
-        name : str
-            The identifier of the dictionary in the storage file.
+        path : str
+            The path to the dictionary in the storage file.
         data : dict
             The dict to store.
-        fixed_dimension: bool, Defautlt: False
-            Use a fixed length dimension instead of variable length one. A unique dimension name (sharing a name with
-            "name") will be created and its length will be set equal to ``"fixedL{}".format(len(data_string))``
-
-            This method seems to allow NetCDF to actually compress strings.
-
-            Do NOT use this flag if you expect to constantly be changing the length of the data fed in, use only for
-            static data
 
         """
-        # Leaving the skeleton to extend this in for now
-        storage = 'analysis'
-        if storage not in ['analysis', 'checkpoint']:
-            raise ValueError("storage must be either 'analysis' or 'checkpoint'!")
-        storage_nc = self._storage_dict[storage]
-        # General NetCDF conventions assume the title of the dataset to be
-        # specified as a global attribute, but the user can specify their
-        # own titles only in metadata.
-        if name == 'metadata':
+        storage_name = 'analysis'
+
+        if path == 'metadata':
+            # General NetCDF conventions assume the title of the dataset
+            # to be specified as a global attribute, but the user can
+            # specify their own titles only in metadata.
             data = copy.deepcopy(data)
-            self._storage_dict[storage].title = data.pop('title')
+            self._storage_dict[storage_name].title = data.pop('title')
 
-        # Activate flow style to save space.
-        data_str = yaml.dump(data, Dumper=_DictYamlDumper)#, default_flow_style=True)
-
-        # Check if we are updating the dictionary or creating it.
-        try:
-            nc_variable = self._resolve_variable_path(name, storage)
-        except KeyError:
-            if fixed_dimension:
-                len_dim = len(data_str)
-                dim_str = "fixedL{}".format(len_dim)
-                if dim_str not in storage_nc.dimensions:
-                    storage_nc.createDimension(dim_str, len_dim)
-                nc_variable = storage_nc.createVariable(name, 'S1', dim_str, zlib=True)
-            else:
-                nc_variable = storage_nc.createVariable(name, str, 'scalar', zlib=True)
-        if fixed_dimension:
-            data_char_array = np.array(list(data_str), dtype='S1')
-            nc_variable[:] = data_char_array
+            # Metadata is pretty big, read-only attribute (it contains the
+            # reference state and the topography), and AlchemicalPhase has
+            # to read the name of the sampler for resuming and checking the
+            # status, so we store it compressed and in nested form.
+            self._write_dict(path, data, storage_name=storage_name,
+                             fixed_dimension=True, nested=True)
         else:
-            packed_data = np.empty(1, 'O')
-            packed_data[0] = data_str
-            nc_variable[:] = packed_data
+            self._write_dict(path, data, storage_name=storage_name)
 
     def read_last_iteration(self, full_iteration=True):
         """
@@ -1059,17 +1074,23 @@ class Reporter(object):
     # Internal-usage.
     # -------------------------------------------------------------------------
 
-    def _resolve_variable_path(self, path, storage):
-        """Return the NC variable at the end of the path.
+    def _resolve_nc_path(self, path, storage):
+        """Return the NC group or variable at the end of the path.
 
-        This can be used to retrieve variables inside one or more groups.
+        This can be used to retrieve groups or variables that are nested
+        inside one or more groups.
 
         """
         path_split = path.split('/')
         nc_group = self._storage_dict[storage]
         for group_name in path_split[:-1]:
             nc_group = nc_group.groups[group_name]
-        return nc_group.variables[path_split[-1]]
+
+        # Check if this is a path to a group or a variable.
+        try:
+            return nc_group.groups[path_split[-1]]
+        except KeyError:
+            return nc_group.variables[path_split[-1]]
 
     def _calculate_checkpoint_iteration(self, iteration):
         """Compute the iteration on disk of the checkpoint file matching the iteration linked on the analysis iteration.
@@ -1287,6 +1308,76 @@ class Reporter(object):
             return sampler_states
         else:
             return None
+
+    def _write_dict(self, path, data, storage_name='analysis',
+                    fixed_dimension=False, nested=False):
+        """Store the contents of a dict.
+
+        Parameters
+        ----------
+        path : str
+            The path to the dictionary in the storage file.
+        data : dict
+            The dict to store.
+        storage_name : 'analysis' or 'checkpoint'
+            The name of the storage file where to save the dict.
+        fixed_dimension : bool, default: False
+            Use a fixed length dimension instead of variable length one.
+            This method seems to allow NetCDF to actually compress strings.
+
+            A unique dimension name called ``"fixedL{}".format(len(data))``
+            will be created.
+
+            Do NOT use this flag if you expect to constantly be changing
+            the length of the data fed in. Use only for static data.
+        nested : bool, default False
+            In nested representation, dictionaries are represented as
+            groups, and values as strings. In this mode, it is possible
+            to retrieve a keyword without reading the whole dictionary.
+
+            In this mode, the dictionary can be overwritten, but ONLY if
+            the structure of the dict doesn't change, as it's impossible
+            to delete groups/variables from a netcdf database.
+
+        """
+        storage_nc = self._storage_dict[storage_name]
+
+        # Save nested dictionary into a group if requested, unless the dictionary is empty.
+        if nested and isinstance(data, dict) and len(data) > 0:
+            for key, value in data.items():
+                if not isinstance(key, str):
+                    raise ValueError('Cannot store dict in nested form with non-string keys.')
+                self._write_dict(path + '/' + key, value, storage_name,
+                                 fixed_dimension, nested)
+            return
+
+        # Activate flow style to save space.
+        data_str = yaml.dump(data, Dumper=_DictYamlDumper)#, default_flow_style=True)
+
+        # Check if we are updating the dictionary or creating it.
+        try:
+            nc_variable = self._resolve_nc_path(path, storage_name)
+        except KeyError:
+            if fixed_dimension:
+                variable_type = 'S1'
+                dimension_name = "fixedL{}".format(len(data_str))
+                # Create a new fixed dimension if necessary.
+                if dimension_name not in storage_nc.dimensions:
+                    storage_nc.createDimension(dimension_name, len(data_str))
+            else:
+                variable_type = str
+                dimension_name = 'scalar'
+            # Create variable.
+            nc_variable = storage_nc.createVariable(path, variable_type,
+                                                    dimension_name, zlib=True)
+
+        # Assign the value to the variable.
+        if fixed_dimension:
+            packed_data = np.array(list(data_str), dtype='S1')
+        else:
+            packed_data = np.empty(1, 'O')
+            packed_data[0] = data_str
+        nc_variable[:] = packed_data
 
 
 # ==============================================================================
@@ -1509,18 +1600,11 @@ class ReplicaExchange(object):
             last stored iteration.
 
         """
-        # Check if netcdf file exists, open data for read if it does
-        if type(storage) is str:
-            # Open a reporter to read the data.
-            reporter = Reporter(storage, open_mode='r')
-            file_name = storage
-        else:
-            reporter = storage
-            reporter.open(mode='r')
-            file_name = reporter.filepath
-        if not reporter.storage_exists():
-            reporter.close()
-            raise RuntimeError('Storage file {} or its subfiles do not exist; cannot resume.'.format(file_name))
+        # Handle case in which storage is a string.
+        reporter = cls._reporter_from_storage(storage, check_exist=True)
+
+        # Open a reporter to read the data.
+        reporter.open(mode='r')
 
         # Retrieve options and create new simulation.
         options = reporter.read_dict('options')
@@ -1535,7 +1619,7 @@ class ReplicaExchange(object):
         iteration = reporter.read_last_iteration()
 
         # Retrieve other attributes.
-        logger.debug("Reading storage file {}...".format(file_name))
+        logger.debug("Reading storage file {}...".format(reporter.filepath))
         thermodynamic_states, unsampled_states = reporter.read_thermodynamic_states()
         sampler_states = reporter.read_sampler_states(iteration=iteration)
         state_indices = reporter.read_replica_thermodynamic_states(iteration=iteration)
@@ -1544,11 +1628,11 @@ class ReplicaExchange(object):
         metadata = reporter.read_dict('metadata')
 
         # Search for last cached free energies only if online analysis is activated.
-        if repex._online_analysis_interval is not None:
-            online_anaysis_info = repex._get_last_written_free_energy(reporter, iteration)
-            last_mbar_f_k, (_, last_err_free_energy) = online_anaysis_info
+        if repex.online_analysis_interval is not None:
+            online_analysis_info = repex._read_last_free_energy(reporter, iteration)
+            last_mbar_f_k, (_, last_err_free_energy) = online_analysis_info
         else:
-            last_mbar_f_k, (_, last_err_free_energy) = None, (None, None)
+            last_mbar_f_k, last_err_free_energy = None, None
 
         # Close reading reporter.
         reporter.close()
@@ -1574,6 +1658,59 @@ class ReplicaExchange(object):
                             broadcast_result=False, sync_nodes=False)
         # Don't write the new last iteration, we have not technically written anything yet, so there is no "junk"
         return repex
+
+    # TODO use Python 3.6 namedtuple syntax when we drop Python 3.5 support.
+    Status = typing.NamedTuple('Status', [
+        ('iteration', int),
+        ('target_error', float),
+        ('is_completed', bool)
+    ])
+
+    @classmethod
+    def read_status(cls, storage):
+        """Read the status of the calculation from the storage file.
+
+        This class method can be used to quickly check the status of the
+        simulation before loading the full ``ReplicaExchange`` object
+        from disk.
+
+        Parameters
+        ----------
+        storage : str or Reporter
+            The path to the storage file or the reporter object.
+
+        Returns
+        -------
+        status : ReplicaExchange.Status
+            The status of the replica-exchange calculation. It has three
+            fields: ``iteration``, ``target_error``, and ``is_completed``.
+
+        """
+        # Handle case in which storage is a string.
+        reporter = cls._reporter_from_storage(storage, check_exist=True)
+
+        # Read iteration and online analysis info.
+        reporter.open(mode='r')
+        options = reporter.read_dict('options')
+        iteration = reporter.read_last_iteration(full_iteration=False)
+        # Search for last cached free energies only if online analysis is activated.
+        if options['online_analysis_interval'] is not None:
+            target_error = options['online_analysis_target_error']
+            last_err_free_energy = cls._read_last_free_energy(reporter, iteration)[1][1]
+        else:
+            target_error = None
+            last_err_free_energy = None
+        reporter.close()
+
+        # Check if the calculation is done.
+        number_of_iterations = options['number_of_iterations']
+        online_analysis_target_error = options['online_analysis_target_error']
+        is_completed = cls._is_completed_static(number_of_iterations, iteration,
+                                                last_err_free_energy,
+                                                online_analysis_target_error)
+
+        return cls.Status(iteration=iteration, target_error=target_error,
+                          is_completed=is_completed)
 
     # -------------------------------------------------------------------------
     # Public properties.
@@ -1718,6 +1855,7 @@ class ReplicaExchange(object):
                                                    validate_function=_StoredProperty._oa_target_error_validator)
     online_analysis_minimum_iterations = _StoredProperty('online_analysis_minimum_iterations',
                                                          validate_function=_StoredProperty._oa_min_iter_validator)
+
     @property
     def metadata(self):
         """A copy of the metadata dictionary passed on creation (read-only)."""
@@ -1755,23 +1893,16 @@ class ReplicaExchange(object):
         metadata : dict, optional
            Simulation metadata to be stored in the file.
         """
+        # Handle case in which storage is a string.
+        reporter = self._reporter_from_storage(storage, check_exist=False)
+
         # Check if netcdf files exist. This is run only on MPI node 0 and
         # broadcasted. This is to avoid the case where the other nodes
         # arrive to this line after node 0 has already created the storage
         # file, causing an error.
-        files_exist = False
-        # Create temporary reporter
-        if type(storage) is str:
-            reporter = Reporter(storage, open_mode=None)
-            file_string = storage
-        else:
-            reporter = storage
-            file_string = reporter.filepath
         if mpi.run_single_node(0, reporter.storage_exists, broadcast_result=True):
-            files_exist = True
-        if files_exist:
-            raise RuntimeError("Storage file {} already exists; cowardly "
-                               "refusing to overwrite.".format(file_string))
+            raise RuntimeError('Storage file {} already exists; cowardly '
+                               'refusing to overwrite.'.format(reporter.filepath))
 
         # Make sure sampler_states is an iterable of SamplerStates for later.
         if isinstance(sampler_states, mmtools.states.SamplerState):
@@ -2148,6 +2279,26 @@ class ReplicaExchange(object):
     def _does_file_exist(file_path):
         """Check if there is a file at the given path."""
         return os.path.exists(file_path) and os.path.getsize(file_path) > 0
+
+    @staticmethod
+    def _reporter_from_storage(storage, check_exist=True):
+        """Return the Reporter object associated to this storage.
+
+        If check_exist is True, FileNotFoundError is raised if the files
+        are not found.
+        """
+        if isinstance(storage, str):
+            # Open a reporter to read the data.
+            reporter = Reporter(storage)
+        else:
+            reporter = storage
+
+        # Check if netcdf file exists.
+        if check_exist and not reporter.storage_exists():
+            reporter.close()
+            raise FileNotFoundError('Storage file {} or its subfiles do not exist; '
+                                    'cannot read status.'.format(reporter.filepath))
+        return reporter
 
     @mpi.on_single_node(rank=0, broadcast_result=False, sync_nodes=True)
     def _initialize_reporter(self):
@@ -2532,30 +2683,42 @@ class ReplicaExchange(object):
         return self._last_err_free_energy
 
     @staticmethod
-    def _get_last_written_free_energy(reporter, iteration):
+    def _read_last_free_energy(reporter, iteration):
         """Get the last free energy computed from online analysis"""
         last_f_k = None
         last_free_energy = None
-        try:
-            for index in range(iteration, 0, -1):
+
+        # Search for a valid free energy from the given iteration
+        # to the start of the calculation.
+        for index in range(iteration, 0, -1):
+            try:
                 last_f_k, last_free_energy = reporter.read_mbar_free_energies(index)
-                # Find an f_k that is not all zeros (or masked and empty)
-                if not (np.ma.is_masked(last_f_k) or np.all(last_f_k == 0)):
-                    break  # Don't need to continue the loop if we already found one
-        except (IndexError, KeyError):  # No such f_k written yet (or variable created), no need to do anything
-            pass
+            except (IndexError, KeyError):
+                # No such f_k written yet (or variable created).
+                break
+            # Find an f_k that is not all zeros (or masked and empty)
+            if not (np.ma.is_masked(last_f_k) or np.all(last_f_k == 0)):
+                break  # Don't need to continue the loop if we already found one
+
         return last_f_k, last_free_energy
 
     def _is_completed(self, iteration_limit=None):
         """Check if we have reached the required number of iterations or statistical error."""
         if iteration_limit is None:
-            iteration_limit = self._number_of_iterations
+            iteration_limit = self.number_of_iterations
+        return self._is_completed_static(iteration_limit, self._iteration,
+                                         self._last_err_free_energy,
+                                         self.online_analysis_target_error)
 
+    @staticmethod
+    def _is_completed_static(iteration_limit, iteration, last_err_free_energy,
+                             online_analysis_target_error):
+        """Check if we have reached the required number of iterations or statistical error."""
         # Return if we have reached the number of iterations
         # or the statistical error target required.
-        if (self._iteration >= iteration_limit or
-                (self._last_err_free_energy is not None and
-                         self._last_err_free_energy <= self._online_analysis_target_error)):
+        if (iteration >= iteration_limit or
+                (last_err_free_energy is not None and
+                         last_err_free_energy <= online_analysis_target_error)):
             return True
         return False
 

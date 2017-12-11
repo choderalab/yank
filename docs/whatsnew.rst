@@ -6,6 +6,14 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the GitHub yank releases page <https://github.com/choderalab/yank/releases>`_.
 
+0.19.4 Schema and Parallel Setup Fixes
+--------------------------------------
+- Fixed bug in parallel molecule setup which caused the same molecule to be setup multiple times.
+- Fixed bug in Cerberus schema for LEaP where molecule parameters accumulated.
+- Fixed bug where options in experiment section were not coerced.
+- Fixed status command to print information about all combinatorial experiments.
+- Faster restart with combinatorial experiments.
+
 0.19.3 Support for Amber restart files
 --------------------------------------
 - Added support for Amber ``rst7`` files in ``phase1_path``/``phase2_path``.

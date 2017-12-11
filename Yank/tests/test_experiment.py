@@ -2197,6 +2197,8 @@ def test_run_experiment():
                 well_radius: 5.2*nanometers
                 restrained_receptor_atoms: 1644
                 restrained_ligand_atoms: 2609
+            options:
+                temperature: 302.0*kelvin
         """.format(tmp_dir, examples_paths()['lysozyme'], examples_paths()['p-xylene'],
                    indent(standard_protocol))
 
