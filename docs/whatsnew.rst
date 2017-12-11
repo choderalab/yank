@@ -8,8 +8,11 @@ The full release history can be viewed `at the GitHub yank releases page <https:
 
 0.19.4 Schema and Parallel Setup Fixes
 --------------------------------------
-- Fixed bug in parallel molecule setup which caused the same molecule to be setup multiple times
-- Fixed bug in Cerberus schema for LEaP where molecule parameters accumulated
+- Fixed bug in parallel molecule setup which caused the same molecule to be setup multiple times.
+- Fixed bug in Cerberus schema for LEaP where molecule parameters accumulated.
+- Fixed bug where options in experiment section were not coerced.
+- Fixed status command to print information about all combinatorial experiments.
+- Faster restart with combinatorial experiments.
 
 0.19.3 Support for Amber restart files
 --------------------------------------
