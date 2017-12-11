@@ -462,10 +462,19 @@ class TestReporter(object):
 
     def test_store_dict(self):
         """Check correct storage and restore of dictionaries."""
+
+        def sorted_dict(d):
+            d = copy.deepcopy(d)
+            # Sort internal dictionaries.
+            for k, v in d.items():
+                if isinstance(v, dict):
+                    d[k] = sorted_dict(v)
+            return sorted(d.items())
+
         def compare_dicts(reference, restored):
             # We need a deterministically-ordered dict to compare pickles.
-            sorted_reference = sorted(reference.items())
-            sorted_restored = sorted(restored.items())
+            sorted_reference = sorted_dict(reference)
+            sorted_restored = sorted_dict(restored)
             assert pickle.dumps(sorted_reference) == pickle.dumps(sorted_restored)
 
         data = {
