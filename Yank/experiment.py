@@ -847,19 +847,30 @@ class ExperimentBuilder(object):
             self._setup_experiments()
 
     def status(self):
-        """Return the status of all experiments in dictionary form.
+        """Iterate over the status of all experiments in dictionary form.
+
+        The status of each experiment is set to "completed" if both phases
+        in the experiments have been completed, "pending" if they are both
+        pending, and "ongoing" otherwise.
 
         Yields
         ------
-        experiment_status : named_tuple
-            status[experiment_name][phase_name] is an ExperimentBuilder.Status
-            object containing the information about the status of a specific
-            phase of an experiment. The namedtuple exposes the fields
-            ``status``, ``iteration``, ``number_of_iterations`` and ``job_id``.
+        experiment_status : namedtuple
+            The status of the experiment. It contains the following fields:
 
-            status[experiment_name]['status'] is 'completed' if both phases
-            in the experiments have been completed, 'pending' if they are
-            both pending, and 'ongoing' otherwise.
+            name : str
+                The name of the experiment.
+            status : str
+                One between "completed", "ongoing", or "pending".
+            number_of_iterations : int
+                The total number of iteration set for this experiment.
+            job_id : int or None
+                If njobs is specified, this includes the job id associated
+                to this experiment.
+            phases : dict
+                phases[phase_name] is a namedtuple describing the status
+                of phase ``phase_name``. The namedtuple has two fields:
+                ``iteration`` and ``status``.
 
         """
         # TODO use Python 3.6 namedtuple syntax when we drop Python 3.5 support.
