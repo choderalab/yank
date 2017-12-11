@@ -846,6 +846,78 @@ class ExperimentBuilder(object):
             self._check_resume(check_experiments=False)
             self._setup_experiments()
 
+    def status(self):
+        """Return the status of all experiments in dictionary form.
+
+        Yields
+        ------
+        experiment_status : named_tuple
+            status[experiment_name][phase_name] is an ExperimentBuilder.Status
+            object containing the information about the status of a specific
+            phase of an experiment. The namedtuple exposes the fields
+            ``status``, ``iteration``, ``number_of_iterations`` and ``job_id``.
+
+            status[experiment_name]['status'] is 'completed' if both phases
+            in the experiments have been completed, 'pending' if they are
+            both pending, and 'running' otherwise.
+
+        """
+        # TODO use Python 3.6 namedtuple syntax when we drop Python 3.5 support.
+        PhaseStatus = collections.namedtuple('PhaseStatus', [
+            'status',
+            'iteration'
+        ])
+        ExperimentStatus = collections.namedtuple('ExperimentStatus', [
+            'name',
+            'status',
+            'phases',
+            'number_of_iterations',
+            'job_id'
+        ])
+
+        status = collections.OrderedDict()
+        for experiment_idx, (exp_path, exp_description) in self._expand_experiments():
+            # Determine the final number of iterations for this experiment.
+            _, _, sampler_options, _ = self._determine_experiment_options(exp_description)
+            number_of_iterations = sampler_options['number_of_iterations']
+
+            # Determine the phases status.
+            phases = collections.OrderedDict()
+            for phase_nc_path in self._get_nc_file_paths(exp_path, exp_description):
+
+                # Determine the status of the phase.
+                try:
+                    phase_status = AlchemicalPhase.read_status(phase_nc_path)
+                except FileNotFoundError:
+                    iteration = None
+                    phase_status = 'pending'
+                else:
+                    iteration = phase_status.iteration
+                    if _is_phase_completed(phase_status, number_of_iterations):
+                        phase_status = 'completed'
+                    else:
+                        phase_status = 'running'
+                phase_name = os.path.splitext(os.path.basename(phase_nc_path))[0]
+                phases[phase_name] = PhaseStatus(status=phase_status, iteration=iteration)
+
+            # Determine the status of the whole experiment.
+            phase_statuses = [phase.status for phase in phases.values()]
+            if phase_statuses[0] == phase_statuses[1]:
+                # This covers the completed and pending status.
+                exp_status = phase_statuses[0]
+            else:
+                exp_status = 'running'
+
+            # Determine jobid if requested.
+            if self._n_jobs is not None:
+                job_id = experiment_idx % self._n_jobs + 1
+            else:
+                job_id = None
+
+            yield ExperimentStatus(name=exp_path, status=exp_status,
+                                   phases=phases, job_id=job_id,
+                                   number_of_iterations=number_of_iterations)
+
     # --------------------------------------------------------------------------
     # Properties
     # --------------------------------------------------------------------------
