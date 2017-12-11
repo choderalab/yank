@@ -13,6 +13,8 @@ Query output files for quick status.
 # MODULE IMPORTS
 # =============================================================================================
 
+import operator
+import itertools
 import collections
 
 from .. import experiment
@@ -39,17 +41,36 @@ General Options:
                                 are "completed", "ongoing", and "pending". This works only
                                 if verbose is set.
   --njobs=INTEGER               Print the job id associated to each experiment assuming
-                                njobs to be the one specified here. This works only if
-                                verbose is set.
+                                njobs to be the one specified here.
   -v, --verbose                 Print status of each experiment individually. If this is
                                 not set, only a summary of the status of all experiments
                                 is printed.
 
 """
 
+
 # =============================================================================================
 # COMMAND DISPATCH
 # =============================================================================================
+
+def find_contiguous_ids(job_ids):
+    """Return the contiguous job ids in the given list.
+
+    Returns
+    -------
+    contiguous_job_ids : str
+        The job ids organized in contiguous sets.
+
+    """
+    contiguous_job_ids = []
+    for k, g in itertools.groupby(enumerate(job_ids), lambda x:x[0]-x[1]):
+        group = list(map(operator.itemgetter(1), g))
+        if len(group) == 1:
+            contiguous_job_ids.append(str(group[0]))
+        else:
+            contiguous_job_ids.append('{}-{}'.format(group[0], group[-1]))
+    return ','.join(contiguous_job_ids)
+
 
 def dispatch(args):
     # Handle optional arguments.
@@ -61,9 +82,17 @@ def dispatch(args):
     exp_builder = experiment.ExperimentBuilder(args['--yaml'], n_jobs=n_jobs)
 
     # Count all experiment status.
+    job_ids_by_status = {
+        'completed': [],
+        'ongoing': [],
+        'pending': []
+    }
     counter = collections.Counter()
     for exp_status in exp_builder.status():
         counter[exp_status.status] += 1
+
+        # Store job id.
+        job_ids_by_status[exp_status.status].append(exp_status.job_id)
 
         # Print experiment and phases details.
         if args['--verbose']:
@@ -89,7 +118,11 @@ def dispatch(args):
 
     # Print summary.
     tot_n_experiments = sum(count for count in counter.values())
-    print('Total number of experiments: {} ({} completed, {} ongoing, '
-          '{} pending)'.format(tot_n_experiments, counter['completed'],
-                               counter['ongoing'], counter['pending']))
+    summary_msg = ', '.join('{} {}'.format(count, status) for status, count in counter.items())
+    print('Total number of experiments: {} ({})'.format(tot_n_experiments, summary_msg))
+
+    if n_jobs is not None:
+        for status, job_ids in job_ids_by_status.items():
+            print('{} job ids: {}'.format(status, find_contiguous_ids(job_ids)))
+
     return True
