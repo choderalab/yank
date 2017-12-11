@@ -859,7 +859,7 @@ class ExperimentBuilder(object):
 
             status[experiment_name]['status'] is 'completed' if both phases
             in the experiments have been completed, 'pending' if they are
-            both pending, and 'running' otherwise.
+            both pending, and 'ongoing' otherwise.
 
         """
         # TODO use Python 3.6 namedtuple syntax when we drop Python 3.5 support.
@@ -876,7 +876,7 @@ class ExperimentBuilder(object):
         ])
 
         status = collections.OrderedDict()
-        for experiment_idx, (exp_path, exp_description) in self._expand_experiments():
+        for experiment_idx, (exp_path, exp_description) in enumerate(self._expand_experiments()):
             # Determine the final number of iterations for this experiment.
             _, _, sampler_options, _ = self._determine_experiment_options(exp_description)
             number_of_iterations = sampler_options['number_of_iterations']
@@ -896,7 +896,7 @@ class ExperimentBuilder(object):
                     if _is_phase_completed(phase_status, number_of_iterations):
                         phase_status = 'completed'
                     else:
-                        phase_status = 'running'
+                        phase_status = 'ongoing'
                 phase_name = os.path.splitext(os.path.basename(phase_nc_path))[0]
                 phases[phase_name] = PhaseStatus(status=phase_status, iteration=iteration)
 
@@ -906,7 +906,7 @@ class ExperimentBuilder(object):
                 # This covers the completed and pending status.
                 exp_status = phase_statuses[0]
             else:
-                exp_status = 'running'
+                exp_status = 'ongoing'
 
             # Determine jobid if requested.
             if self._n_jobs is not None:

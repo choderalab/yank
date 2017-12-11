@@ -1692,7 +1692,7 @@ class ReplicaExchange(object):
         # Read iteration and online analysis info.
         reporter.open(mode='r')
         options = reporter.read_dict('options')
-        iteration = reporter.read_last_iteration()
+        iteration = reporter.read_last_iteration(full_iteration=False)
         # Search for last cached free energies only if online analysis is activated.
         if options['online_analysis_interval'] is not None:
             target_error = options['online_analysis_target_error']
