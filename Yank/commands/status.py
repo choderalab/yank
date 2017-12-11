@@ -79,7 +79,9 @@ def dispatch(args):
     else:
         n_jobs = None
 
+    # Turn off verbosity.
     exp_builder = experiment.ExperimentBuilder(args['--yaml'], n_jobs=n_jobs)
+    exp_builder.verbose = False
 
     # Count all experiment status.
     job_ids_by_status = {

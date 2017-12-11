@@ -923,6 +923,16 @@ class ExperimentBuilder(object):
     # --------------------------------------------------------------------------
 
     @property
+    def verbose(self):
+        """bool: the log verbosity."""
+        return self._options['verbose']
+
+    @verbose.setter
+    def verbose(self, new_verbose):
+        self._options['verbose'] = new_verbose
+        utils.config_root_logger(self._options['verbose'], log_file_path=None)
+
+    @property
     def output_dir(self):
         """The path to the main output directory."""
         return self._options['output_dir']
