@@ -1201,7 +1201,8 @@ class Reporter(object):
 
             # Create dimensions. Replica dimension could have been created before.
             dataset.createDimension('atom', n_atoms)
-            self._create_dimension_if_needed('replica', n_replicas)
+            if 'replica' not in dataset.dimensions:
+                dataset.createDimension('replica', n_replicas)
 
             # Create variables.
             ncvar_positions = dataset.createVariable('positions', 'f4',
