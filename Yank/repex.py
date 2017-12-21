@@ -222,7 +222,7 @@ class Reporter(object):
                 open_check_list.append(storage.isopen())
         return np.all(open_check_list)
 
-    def open(self, mode='r'):
+    def open(self, mode='r', convention='ReplicaExchange'):
         """
         Open the storage file for reading/writing.
 
@@ -234,6 +234,8 @@ class Reporter(object):
         ----------
         mode : str, Optional, Default: 'r'
             The mode of the file between 'r', 'w', and 'a' (or equivalently 'r+').
+        converntion : str, Optional, Default: 'ReplicaExchange'
+            NetCDF convention to write
 
         """
         # Ensure we don't have already another file
@@ -281,7 +283,7 @@ class Reporter(object):
                               "Analysis UUID: {}"
                               "Checkpoint UUID: {}".format(primary_uuid, check_uuid))
 
-        def check_and_build_storage_file(ncfile, nc_name, checkpoint_interval):
+        def check_and_build_storage_file(ncfile, nc_name, checkpoint_interval, convention):
             """
             Helper function to build default file settings
             Returns a bool depending on if it ran through the setup to indicate file needs additional data or not
@@ -296,7 +298,7 @@ class Reporter(object):
                 ncfile.application = 'YANK'
                 ncfile.program = 'yank.py'
                 ncfile.programVersion = version.short_version
-                ncfile.Conventions = 'ReplicaExchange'
+                ncfile.Conventions = convention
                 ncfile.ConventionVersion = '0.2'
                 ncfile.DataUsedFor = nc_name
                 ncfile.CheckpointInterval = checkpoint_interval
@@ -315,7 +317,7 @@ class Reporter(object):
         primary_uuid = str(uuid.uuid4())
         ncfile_ever_built = False
         for nc_name, ncfile in primary_ncfiles.items():
-            ncfile_built = check_and_build_storage_file(ncfile, nc_name, self._checkpoint_interval)
+            ncfile_built = check_and_build_storage_file(ncfile, nc_name, self._checkpoint_interval, convention)
             if ncfile_built:
                 ncfile_ever_built = True
             # Assign ncfile to class property
@@ -328,7 +330,7 @@ class Reporter(object):
         # Handle Subfiles
         for nc_name, ncfile in sub_ncfiles.items():
             # If they are in the sub_ncfiles dict, they exist and are open
-            ncfile_built = check_and_build_storage_file(ncfile, nc_name, self._checkpoint_interval)
+            ncfile_built = check_and_build_storage_file(ncfile, nc_name, self._checkpoint_interval, convention)
             if ncfile_built:
                 # Assign the UUID to the subfile
                 ncfile.UUID = primary_uuid
@@ -1290,6 +1292,7 @@ class Reporter(object):
         else:
             read_iteration = iteration
         if read_iteration is not None:
+            # TODO: Restore n_replicas instead
             n_states = storage.dimensions['replica'].size
 
             sampler_states = list()
