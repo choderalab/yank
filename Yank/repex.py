@@ -222,6 +222,21 @@ class Reporter(object):
                 open_check_list.append(storage.isopen())
         return np.all(open_check_list)
 
+    def _create_dimension_if_needed(self, dimname, dimsize):
+        """
+        Create a dimension if it does not already exist.
+
+        Parameters
+        ----------
+        dimname : str
+            The dimension name
+        dimsize : int
+            The dimension size
+
+        """
+        if dimname not in self._storage_analysis.dimensions:
+            self._storage_analysis.createDimension(dimname, dimsize)
+
     def open(self, mode='r', convention='ReplicaExchange', netcdf_format='NETCDF4'):
         """
         Open the storage file for reading/writing.
@@ -599,7 +614,7 @@ class Reporter(object):
 
         Parameters
         ----------
-        state_indices : list of int
+        state_indices : list of int of size n_replicas
             At the given iteration, replica ``i`` propagated the system in
             SamplerState ``sampler_states[i]`` and ThermodynamicState
             ``thermodynamic_states[replica_thermodynamic_states[i]]``.
@@ -609,15 +624,14 @@ class Reporter(object):
         """
         # Initialize schema if needed.
         if 'states' not in self._storage_analysis.variables:
-            n_states = len(state_indices)
+            n_replicas = len(state_indices)
 
             # Create dimension if they don't exist.
-            if 'replica' not in self._storage_analysis.dimensions:
-                self._storage_analysis.createDimension('replica', n_states)
+            self._create_dimension_if_needed('replica', n_replicas)
 
             # Create variables and attach units and description.
             ncvar_states = self._storage_analysis.createVariable('states', 'i4', ('iteration', 'replica'),
-                                                                 zlib=False, chunksizes=(1, n_states))
+                                                                 zlib=False, chunksizes=(1, n_replicas))
             setattr(ncvar_states, 'units', 'none')
             setattr(ncvar_states, "long_name", ("states[iteration][replica] is the thermodynamic state index "
                                                 "(0..nstates-1) of replica 'replica' of iteration 'iteration'."))
@@ -666,7 +680,7 @@ class Reporter(object):
 
         Returns
         -------
-        energy_thermodynamic_states : n_replicas x n_replicas numpy.ndarray
+        energy_thermodynamic_states : n_replicas x n_states numpy.ndarray
             ``energy_thermodynamic_states[iteration, i, j]`` is the reduced potential computed at
             SamplerState ``sampler_states[iteration, i]`` and ThermodynamicState ``thermodynamic_states[iteration, j]``.
         energy_unsampled_states : n_replicas x n_unsampled_states numpy.ndarray
@@ -689,7 +703,7 @@ class Reporter(object):
 
         Parameters
         ----------
-        energy_thermodynamic_states : n_replicas x n_replicas numpy.ndarray
+        energy_thermodynamic_states : n_replicas x n_states numpy.ndarray
             ``energy_thermodynamic_states[i][j]`` is the reduced potential computed at
             SamplerState ``sampler_states[i]`` and ThermodynamicState ``thermodynamic_states[j]``.
         energy_unsampled_states : n_replicas x n_unsampled_states numpy.ndarray
@@ -701,18 +715,18 @@ class Reporter(object):
         """
         # Initialize schema if needed.
         if 'energies' not in self._storage_analysis.variables:
-            n_replicas = len(energy_thermodynamic_states)
+            n_replicas, n_states = energy_thermodynamic_states.shape
 
-            # Create replica dimension if it wasn't created by other functions.
-            if 'replica' not in self._storage_analysis.dimensions:
-                self._storage_analysis.createDimension('replica', n_replicas)
+            # Create dimensions if they weren't created by other functions.
+            self._create_dimension_if_needed('replica', n_replicas)
+            self._create_dimension_if_needed('state', n_states)
 
             # Create variable for thermodynamic state energies with units and descriptions.
             ncvar_energies = self._storage_analysis.createVariable('energies',
                                                                    'f8',
-                                                                   ('iteration', 'replica', 'replica'),
+                                                                   ('iteration', 'replica', 'state'),
                                                                    zlib=False,
-                                                                   chunksizes=(1, n_replicas, n_replicas))
+                                                                   chunksizes=(1, n_replicas, n_states))
             ncvar_energies.units = 'kT'
             ncvar_energies.long_name = ("energies[iteration][replica][state] is the reduced (unitless) "
                                         "energy of replica 'replica' from iteration 'iteration' evaluated "
@@ -724,8 +738,7 @@ class Reporter(object):
                     n_unsampled_states = len(energy_unsampled_states[0])
 
                     # Create replica dimension if it wasn't created by other functions.
-                    if 'unsampled' not in self._storage_analysis.dimensions:
-                        self._storage_analysis.createDimension('unsampled', n_unsampled_states)
+                    self._create_dimension_if_needed('unsampled', n_unsampled_states)
 
                     # Create variable for thermodynamic state energies with units and descriptions.
                     ncvar_unsampled = self._storage_analysis.createVariable('unsampled_energies',
@@ -756,11 +769,11 @@ class Reporter(object):
 
         Returns
         -------
-        n_accepted_matrix : kxk numpy.ndarray
+        n_accepted_matrix : numpy.ndarray with shape (n_states, n_states)
             ``n_accepted_matrix[i][j]`` is the number of accepted moves from
             state ``thermodynamic_states[i]`` to ``thermodynamic_states[j]`` going
             from ``iteration-1`` to ``iteration`` (not cumulative).
-        n_proposed_matrix : kxk numpy.ndarray
+        n_proposed_matrix : numpy.ndarray with shape (n_states, n_states)
             ``n_proposed_matrix[i][j]`` is the number of proposed moves from
             state ``thermodynamic_states[i]`` to ``thermodynamic_states[j]`` going
             from ``iteration-1`` to ``iteration`` (not cumulative).
@@ -776,36 +789,35 @@ class Reporter(object):
 
         Parameters
         ----------
-        n_accepted_matrix : kxk numpy.ndarray
+        n_accepted_matrix : numpy.ndarray with shape (n_states, n_states)
             ``n_accepted_matrix[i][j]`` is the number of accepted moves from
             state ``thermodynamic_states[i]`` to ``thermodynamic_states[j]`` going
             from iteration-1 to iteration (not cumulative).
-        n_proposed_matrix : kxk numpy.ndarray
+        n_proposed_matrix : numpy.ndarray with shape (n_states, n_states)
             ``n_proposed_matrix[i][j]`` is the number of proposed moves from
             state ``thermodynamic_states[i]`` to ``thermodynamic_states[j]`` going
             from ``iteration-1`` to ``iteration`` (not cumulative).
         iteration : int
-            The iteration at which to store the data.
+            The iteration for which to store the data.
 
         """
         # Create schema if necessary.
         if 'accepted' not in self._storage_analysis.variables:
-            n_states = len(n_accepted_matrix)
+            n_states = n_accepted_matrix.shape[0]
 
-            # Create replica dimension if it wasn't already created.
-            if 'replica' not in self._storage_analysis.dimensions:
-                self._storage_analysis.createDimension('replica', n_states)
+            # Create dimension if it doesn't already exist
+            self._create_dimension_if_needed('state', n_states)
 
             # Create variables with units and descriptions.
             ncvar_accepted = self._storage_analysis.createVariable('accepted',
                                                                    'i4',
-                                                                   ('iteration', 'replica', 'replica'),
+                                                                   ('iteration', 'state', 'state'),
                                                                    zlib=False,
                                                                    chunksizes=(1, n_states, n_states)
                                                                    )
             ncvar_proposed = self._storage_analysis.createVariable('proposed',
                                                                    'i4',
-                                                                   ('iteration', 'replica', 'replica'),
+                                                                   ('iteration', 'state', 'state'),
                                                                    zlib=False,
                                                                    chunksizes=(1, n_states, n_states)
                                                                    )
@@ -1171,7 +1183,7 @@ class Reporter(object):
         return cast_iteration
 
     @staticmethod
-    def _initilize_sampler_variables_on_file(dataset, n_atoms, n_states):
+    def _initilize_sampler_variables_on_file(dataset, n_atoms, n_replicas):
         """
         Initialize the NetCDF variables on the storage file needed to store sampler states.
         Does nothing if file already initilzied
@@ -1182,25 +1194,24 @@ class Reporter(object):
             Dataset to validate
         n_atoms : int
             Number of atoms which will be stored
-        n_states : int
+        n_replicas : int
             Number of Sampler states which will be written
         """
         if 'positions' not in dataset.variables:
 
             # Create dimensions. Replica dimension could have been created before.
             dataset.createDimension('atom', n_atoms)
-            if 'replica' not in dataset.dimensions:
-                dataset.createDimension('replica', n_states)
+            self._create_dimension_if_needed('replica', n_replicas)
 
             # Create variables.
             ncvar_positions = dataset.createVariable('positions', 'f4',
                                                      ('iteration', 'replica', 'atom', 'spatial'),
-                                                     zlib=True, chunksizes=(1, n_states, n_atoms, 3))
+                                                     zlib=True, chunksizes=(1, n_replicas, n_atoms, 3))
             ncvar_box_vectors = dataset.createVariable('box_vectors', 'f4',
                                                        ('iteration', 'replica', 'spatial', 'spatial'),
-                                                       zlib=False, chunksizes=(1, n_states, 3, 3))
+                                                       zlib=False, chunksizes=(1, n_replicas, 3, 3))
             ncvar_volumes = dataset.createVariable('volumes', 'f8', ('iteration', 'replica'),
-                                                   zlib=False, chunksizes=(1, n_states))
+                                                   zlib=False, chunksizes=(1, n_replicas))
 
             # Define units for variables.
             setattr(ncvar_positions, 'units', 'nm')
@@ -1295,10 +1306,10 @@ class Reporter(object):
             read_iteration = iteration
         if read_iteration is not None:
             # TODO: Restore n_replicas instead
-            n_states = storage.dimensions['replica'].size
+            n_replicas = storage.dimensions['replica'].size
 
             sampler_states = list()
-            for replica_index in range(n_states):
+            for replica_index in range(n_replicas):
                 # Restore positions.
                 x = storage.variables['positions'][read_iteration, replica_index, :, :].astype(np.float64)
                 positions = unit.Quantity(x, unit.nanometers)
