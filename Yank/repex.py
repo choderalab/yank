@@ -27,7 +27,7 @@ Provided classes include:
 COPYRIGHT
 
 Current version by Andrea Rizzi <andrea.rizzi@choderalab.org>, Levi N. Naden <levi.naden@choderalab.org> and
-John D. Chodera<john.chodera@choderalab.org> while at Memorial Sloan-Kettering Cancer Center.
+John D. Chodera <john.chodera@choderalab.org> while at Memorial Sloan Kettering Cancer Center.
 
 Original version by John D. Chodera <jchodera@gmail.com> while at the University of
 California Berkeley.
@@ -1413,19 +1413,16 @@ class Reporter(object):
 # REPLICA-EXCHANGE SIMULATION
 # ==============================================================================
 
-class ReplicaExchange(object):
-    """Replica-exchange simulation facility.
+class MultiStateSampler(object):
+    """
+    Base class for samplers that sample multiple thermodynamic states using
+    one or more replicas.
 
-    This base class provides a general replica-exchange simulation facility,
-    allowing any set of thermodynamic states to be specified, along with a
-    set of initial positions to be assigned to the replicas in a round-robin
-    fashion.
-
-    No distinction is made between one-dimensional and multidimensional replica
-    layout. By default, the replica mixing scheme attempts to mix *all* replicas
-    to minimize slow diffusion normally found in multidimensional replica exchange
-    simulations (Modification of the 'replica_mixing_scheme' setting will allow
-    the traditional 'neighbor swaps only' scheme to be used.)
+    This base class provides a general simulation facility for sampling from multiple
+    thermodynamic states, allowing any set of thermodynamic states to be specified.
+    If instantiated on its own, the thermodynamic state indices associated with each
+    state are specified and replica mixing does not change any thermodynamic states,
+    meaning that each replica remains in its original thermodynamic state.
 
     Stored configurations, energies, swaps, and restart information are all written
     to a single output file using the platform portable, robust, and efficient
@@ -1442,8 +1439,6 @@ class ReplicaExchange(object):
         The number of iterations to perform. Both ``float('inf')`` and
         ``numpy.inf`` are accepted for infinity. If you set this to infinity,
         be sure to set also ``online_analysis_interval``.
-    replica_mixing_scheme : 'swap-all', 'swap-neighbors' or None, Default: 'swap-all'
-        The scheme used to swap thermodynamic states between replicas.
     online_analysis_interval : None or Int >= 1, optional, default None
         Choose the interval at which to perform online analysis of the free energy.
 
@@ -1468,82 +1463,14 @@ class ReplicaExchange(object):
     Attributes
     ----------
     n_replicas
+    n_states
     iteration
     mcmc_moves
     sampler_states
     metadata
     is_completed
 
-    Examples
-    --------
-    Parallel tempering simulation of alanine dipeptide in implicit solvent (replica
-    exchange among temperatures). This is just an illustrative example; use :class:`ParallelTempering`
-    class for actual production parallel tempering simulations.
-
-    Create the system.
-
-    >>> import math
-    >>> from simtk import unit
-    >>> from openmmtools import testsystems, states, mcmc
-    >>> testsystem = testsystems.AlanineDipeptideImplicit()
-
-    Create thermodynamic states for parallel tempering with exponentially-spaced schedule.
-
-    >>> n_replicas = 3  # Number of temperature replicas.
-    >>> T_min = 298.0 * unit.kelvin  # Minimum temperature.
-    >>> T_max = 600.0 * unit.kelvin  # Maximum temperature.
-    >>> temperatures = [T_min + (T_max - T_min) * (math.exp(float(i) / float(nreplicas-1)) - 1.0) / (math.e - 1.0)
-    ...                 for i in range(n_replicas)]
-    >>> thermodynamic_states = [states.ThermodynamicState(system=testsystem.system, temperature=T)
-    ...                         for T in temperatures]
-
-    Initialize simulation object with options. Run with a GHMC integrator.
-
-    >>> move = mcmc.GHMCMove(timestep=2.0*unit.femtoseconds, n_steps=50)
-    >>> simulation = ReplicaExchange(mcmc_moves=move, number_of_iterations=2)
-
-    Create simulation with its storage file (in a temporary directory) and run.
-
-    >>> storage_path = tempfile.NamedTemporaryFile(delete=False).name + '.nc'
-    >>> reporter = Reporter(storage_path, checkpoint_interval=1)
-    >>> simulation.create(thermodynamic_states=thermodynamic_states,
-    >>>                   sampler_states=states.SamplerState(testsystem.positions),
-    >>>                   storage=reporter)
-    >>> simulation.run()  # This runs for a maximum of 2 iterations.
-    >>> simulation.iteration
-    2
-    >>> simulation.run(n_iterations=1)
-    >>> simulation.iteration
-    2
-
-    To resume a simulation from an existing storage file and extend it beyond
-    the original number of iterations.
-
-    >>> del simulation
-    >>> simulation = ReplicaExchange.from_storage(reporter)
-    >>> simulation.extend(n_iterations=1)
-    >>> simulation.iteration
-    3
-
-    You can extract several information from the NetCDF file using the Reporter
-    class while the simulation is running. This reads the SamplerStates of every
-    run iteration.
-
-    >>> reporter = Reporter(storage=storage_path, open_mode='r', checkpoint_interval=1)
-    >>> sampler_states = reporter.read_sampler_states(iteration=range(1, 4))
-    >>> len(sampler_states)
-    3
-    >>> sampler_states[-1].positions.shape  # Alanine dipeptide has 22 atoms.
-    (22, 3)
-
-    Clean up.
-
-    >>> os.remove(storage_path)
-
-
     :param number_of_iterations: Maximum number of integer iterations that will be run
-
-    :param replica_mixing_scheme: Scheme which describes how replicas are exchanged each iteration as string
 
     :param online_analysis_interval: How frequently to carry out online analysis in number of iterations
 
@@ -1557,7 +1484,7 @@ class ReplicaExchange(object):
     # Constructors.
     # -------------------------------------------------------------------------
 
-    def __init__(self, mcmc_moves=None, number_of_iterations=1, replica_mixing_scheme='swap-all',
+    def __init__(self, mcmc_moves=None, number_of_iterations=1,
                  online_analysis_interval=None, online_analysis_target_error=0.2,
                  online_analysis_minimum_iterations=50):
         # These will be set on initialization. See function
@@ -1588,7 +1515,6 @@ class ReplicaExchange(object):
         # usage because any change to these attribute implies a change
         # in the storage file as well. Use properties for checks.
         self.number_of_iterations = number_of_iterations
-        self.replica_mixing_scheme = replica_mixing_scheme
 
         # Online analysis options.
         self.online_analysis_interval = online_analysis_interval
@@ -1624,8 +1550,8 @@ class ReplicaExchange(object):
 
         Returns
         -------
-        repex : ReplicaExchange
-            A new instance of ReplicaExchange in the same state of the
+        sampler : MultiStateSampler
+            A new instance of MultiStateSampler (or subclass) in the same state of the
             last stored iteration.
 
         """
@@ -1638,10 +1564,10 @@ class ReplicaExchange(object):
         # Retrieve options and create new simulation.
         options = reporter.read_dict('options')
         options['mcmc_moves'] = reporter.read_mcmc_moves()
-        repex = cls(**options)
+        sampler = cls(**options)
 
         # Display papers to be cited.
-        repex._display_citations()
+        sampler._display_citations()
 
         # Read the last iteration reported to ensure we don't include junk
         # data written just before a crash.
@@ -1657,8 +1583,8 @@ class ReplicaExchange(object):
         metadata = reporter.read_dict('metadata')
 
         # Search for last cached free energies only if online analysis is activated.
-        if repex.online_analysis_interval is not None:
-            online_analysis_info = repex._read_last_free_energy(reporter, iteration)
+        if sampler.online_analysis_interval is not None:
+            online_analysis_info = sampler._read_last_free_energy(reporter, iteration)
             last_mbar_f_k, (_, last_err_free_energy) = online_analysis_info
         else:
             last_mbar_f_k, last_err_free_energy = None, None
@@ -1667,26 +1593,27 @@ class ReplicaExchange(object):
         reporter.close()
 
         # Assign attributes.
-        repex._iteration = iteration
-        repex._thermodynamic_states = thermodynamic_states
-        repex._unsampled_states = unsampled_states
-        repex._sampler_states = sampler_states
-        repex._replica_thermodynamic_states = state_indices
-        repex._energy_thermodynamic_states = energy_thermodynamic_states
-        repex._energy_unsampled_states = energy_unsampled_states
-        repex._n_accepted_matrix = n_accepted_matrix
-        repex._n_proposed_matrix = n_proposed_matrix
-        repex._metadata = metadata
+        sampler._iteration = iteration
+        sampler._thermodynamic_states = thermodynamic_states
+        sampler._unsampled_states = unsampled_states
+        sampler._sampler_states = sampler_states
+        sampler._replica_thermodynamic_states = state_indices
+        sampler._energy_thermodynamic_states = energy_thermodynamic_states
+        sampler._energy_unsampled_states = energy_unsampled_states
+        sampler._n_accepted_matrix = n_accepted_matrix
+        sampler._n_proposed_matrix = n_proposed_matrix
+        sampler._metadata = metadata
 
-        repex._last_mbar_f_k = last_mbar_f_k
-        repex._last_err_free_energy = last_err_free_energy
+        sampler._last_mbar_f_k = last_mbar_f_k
+        sampler._last_err_free_energy = last_err_free_energy
 
         # We open the reporter only in node 0.
-        repex._reporter = reporter
-        mpi.run_single_node(0, repex._reporter.open, mode='a',
+        sampler._reporter = reporter
+        mpi.run_single_node(0, sampler._reporter.open, mode='a',
                             broadcast_result=False, sync_nodes=False)
+
         # Don't write the new last iteration, we have not technically written anything yet, so there is no "junk"
-        return repex
+        return sampler
 
     # TODO use Python 3.6 namedtuple syntax when we drop Python 3.5 support.
     Status = typing.NamedTuple('Status', [
@@ -1746,12 +1673,20 @@ class ReplicaExchange(object):
     # -------------------------------------------------------------------------
 
     @property
-    def n_replicas(self):
-        """The integer number of replicas (read-only)."""
+    def n_states(self):
+        """The integer number of thermodynamic states (read-only)."""
         if self._thermodynamic_states is None:
             return 0
         else:
             return len(self._thermodynamic_states)
+
+    @property
+    def n_replicas(self):
+        """The integer number of replicas (read-only)."""
+        if self._sampler_states is None:
+            return 0
+        else:
+            return len(self._sampler_states)
 
     @property
     def iteration(self):
@@ -1843,14 +1778,6 @@ class ReplicaExchange(object):
             return number_of_iterations
 
         @staticmethod
-        def _repex_mixing_scheme_validator(instance, replica_mixing_scheme):
-            supported_schemes = ['swap-all', 'swap-neighbors', None]
-            if replica_mixing_scheme not in supported_schemes:
-                raise ValueError("Unknown replica mixing scheme '{}'. Supported values "
-                                 "are {}.".format(replica_mixing_scheme, supported_schemes))
-            return replica_mixing_scheme
-
-        @staticmethod
         def _oa_interval_validator(instance, online_analysis_interval):
             """Check the online_analysis_interval value for consistency"""
             if online_analysis_interval is not None and (
@@ -1876,8 +1803,6 @@ class ReplicaExchange(object):
 
     number_of_iterations = _StoredProperty('number_of_iterations',
                                            validate_function=_StoredProperty._number_of_iterations_validator)
-    replica_mixing_scheme = _StoredProperty('replica_mixing_scheme',
-                                            validate_function=_StoredProperty._repex_mixing_scheme_validator)
     online_analysis_interval = _StoredProperty('online_analysis_interval',
                                                validate_function=_StoredProperty._oa_interval_validator) #:interval to carry out online analysis
     online_analysis_target_error = _StoredProperty('online_analysis_target_error',
@@ -1899,8 +1824,13 @@ class ReplicaExchange(object):
     # Main public interface.
     # -------------------------------------------------------------------------
 
-    def create(self, thermodynamic_states, sampler_states, storage, unsampled_thermodynamic_states=None, metadata=None):
-        """Create new replica-exchange simulation.
+    title_template = 'Multi-state sampler simulation created using MultiStateSampler class '
+                     'of yank.repex on {}'
+
+    def create(self, thermodynamic_states, sampler_states, storage,
+               initial_thermodynamic_states, unsampled_thermodynamic_states=None,
+               metadata=None):
+        """Create new multistate sampler simulation.
 
         Parameters
         ----------
@@ -1908,20 +1838,35 @@ class ReplicaExchange(object):
             Thermodynamic states to simulate, where one replica is allocated per state.
             Each state must have a system with the same number of atoms.
         sampler_states : openmmtools.states.SamplerState or list
-            One or more sets of initial sampler states. If a list of SamplerStates,
-            they will be assigned to replicas in a round-robin fashion.
+            One or more sets of initial sampler states.
+            The number of replicas is taken to be the number of sampler states provided.
         storage : str or instanced Reporter
             If str: the path to the storage file. Default checkpoint options from Reporter class are used
             If Reporter: Uses the reporter options and storage path
             In the future this will be able to take a Storage class as well.
-        unsampled_thermodynamic_states : list of openmmtools.states.ThermodynamicState, optional
+        initial_thermodynamic_states : list or array-like of int of length len(sampler_states)
+            Initial thermodynamic_state index for each sampler_state.
+        unsampled_thermodynamic_states : list of openmmtools.states.ThermodynamicState, optional, default=None
             These are ThermodynamicStates that are not propagated, but their
             reduced potential is computed at each iteration for each replica.
             These energy can be used as data for reweighting schemes (default
             is None).
-        metadata : dict, optional
+        metadata : dict, optional, default=None
            Simulation metadata to be stored in the file.
         """
+        # Make sure there are no more sampler states than thermodynamic states.
+        # TODO: Move this to ReplicaExchange
+        if len(sampler_states) > len(thermodynamic_states):
+            raise ValueError('Passed {} SamplerStates but only {} ThermodynamicStates'.format(
+                len(sampler_states), len(thermodynamic_states)))
+
+        # Distribute sampler states to replicas in a round-robin fashion.
+        # TODO: Move this to ReplicaExchange
+        sampler_states = [copy.deepcopy(sampler_states[i % len(sampler_states)])
+                                for i in range(len(thermodynamic_states))]
+
+        ####
+
         # Handle case in which storage is a string.
         reporter = self._reporter_from_storage(storage, check_exist=False)
 
@@ -1937,11 +1882,6 @@ class ReplicaExchange(object):
         if isinstance(sampler_states, mmtools.states.SamplerState):
             sampler_states = [sampler_states]
 
-        # Make sure there are no more sampler states than thermodynamic states.
-        if len(sampler_states) > len(thermodynamic_states):
-            raise ValueError('Passed {} SamplerStates but only {} ThermodynamicStates'.format(
-                len(sampler_states), len(thermodynamic_states)))
-
         # Make sure all states have same number of particles. We don't
         # currently support writing storage with different n_particles
         n_particles = thermodynamic_states[0].n_particles
@@ -1952,8 +1892,7 @@ class ReplicaExchange(object):
                                      'have the same number of particles')
 
         # Handle default argument for metadata and add default simulation title.
-        default_title = ('Replica-exchange simulation created using ReplicaExchange class '
-                         'of yank.repex.py on {}'.format(time.asctime(time.localtime())))
+        default_title = (self.title_template.format(time.asctime(time.localtime())))
         if metadata is None:
             metadata = dict(title=default_title)
         elif 'title' not in metadata:
@@ -1969,16 +1908,11 @@ class ReplicaExchange(object):
         else:
             self._unsampled_states = copy.deepcopy(unsampled_thermodynamic_states)
 
-        # Distribute sampler states to replicas in a round-robin fashion.
-        self._sampler_states = [copy.deepcopy(sampler_states[i % len(sampler_states)])
-                                for i in range(self.n_replicas)]
+        # Deep copy sampler states.
+        self._sampler_states = [copy.deepcopy(sampler_state) for sampler_state in sampler_states]
 
-        # Map each thermodynamic state to a replica. Replica i at each iteration is
-        # in ThermodynamicState thermodynamic_states[replica_thermodynamic_states[i]]
-        # and SamplerState sampler_states[i]. During mixing, we exchange the indices
-        # of the ThermodynamicState, but we keep the SamplerStates (i.e. positions,
-        # velocities, box_vectors) bound to the same replica.
-        self._replica_thermodynamic_states = np.array([i for i in range(self.n_replicas)], np.int64)
+        # Set initial thermodynamic state indices if not specified
+        self._replica_thermodynamic_states = np.array(initial_thermodynamic_states, np.int64)
 
         # Assign default system box vectors if None has been specified.
         for replica_id, thermodynamic_state_id in enumerate(self._replica_thermodynamic_states):
@@ -2001,13 +1935,13 @@ class ReplicaExchange(object):
         # Reset statistics.
         # _n_accepted_matrix[i][j] is the number of swaps proposed between thermodynamic states i and j.
         # _n_proposed_matrix[i][j] is the number of swaps proposed between thermodynamic states i and j.
-        self._n_accepted_matrix = np.zeros([self.n_replicas, self.n_replicas], np.int64)
-        self._n_proposed_matrix = np.zeros([self.n_replicas, self.n_replicas], np.int64)
+        self._n_accepted_matrix = np.zeros([self.n_states, self.n_states], np.int64)
+        self._n_proposed_matrix = np.zeros([self.n_states, self.n_states], np.int64)
 
         # Allocate memory for energy matrix. energy_thermodynamic/unsampled_states[k][l]
         # is the reduced potential computed at the positions of SamplerState sampler_states[k]
         # and ThermodynamicState thermodynamic/unsampled_states[l].
-        self._energy_thermodynamic_states = np.zeros([self.n_replicas, self.n_replicas], np.float64)
+        self._energy_thermodynamic_states = np.zeros([self.n_replicas, self.n_states], np.float64)
         self._energy_unsampled_states = np.zeros([self.n_replicas, len(self._unsampled_states)], np.float64)
 
         # Display papers to be cited.
@@ -2503,7 +2437,7 @@ class ReplicaExchange(object):
     def _compute_replica_energies(self, replica_id):
         """Compute the energy for the replica in every ThermodynamicState."""
         # Initialize replica energies for each thermodynamic state.
-        energy_thermodynamic_states = np.zeros(self.n_replicas)
+        energy_thermodynamic_states = np.zeros(self.n_states)
         energy_unsampled_states = np.zeros(len(self._unsampled_states))
 
         # Retrieve sampler state associated to this replica.
@@ -2537,6 +2471,349 @@ class ReplicaExchange(object):
     # -------------------------------------------------------------------------
     # Internal-usage: Replicas mixing.
     # -------------------------------------------------------------------------
+
+    @mpi.on_single_node(0, broadcast_result=True)
+    def _mix_replicas(self):
+        """Do nothing to replicas."""
+        logger.debug("Mixing replicas (does nothing)...")
+
+        # Reset storage to keep track of swap attempts this iteration.
+        self._n_accepted_matrix[:, :] = 0
+        self._n_proposed_matrix[:, :] = 0
+
+        # Determine fraction of swaps accepted this iteration.
+        n_swaps_proposed = self._n_proposed_matrix.sum()
+        n_swaps_accepted = self._n_accepted_matrix.sum()
+        swap_fraction_accepted = 0.0
+        if n_swaps_proposed > 0:
+            # TODO drop casting to float when dropping Python 2 support.
+            swap_fraction_accepted = float(n_swaps_accepted) / n_swaps_proposed
+        logger.debug("Accepted {}/{} attempted swaps ({:.1f}%)".format(n_swaps_accepted, n_swaps_proposed,
+                                                                       swap_fraction_accepted * 100.0))
+
+        # Return new states indices for MPI broadcasting.
+        return self._replica_thermodynamic_states
+
+    # -------------------------------------------------------------------------
+    # Internal-usage: Online Analysis.
+    # -------------------------------------------------------------------------
+
+    @mpi.on_single_node(rank=0, broadcast_result=True)
+    @mpi.delayed_termination
+    @mmtools.utils.with_timer('Computing online free energy estimate')
+    def _run_online_analysis(self):
+        """Compute the free energy during simulation run"""
+        # This relative import is down here because having it at the top causes an ImportError.
+        # __init__ pulls in repex, which pulls in analyze, which pulls in repex. Because the first repex never finished
+        # importing, its not in the name space which causes relative analyze import of repex to crash as neither of them
+        # are the __main__ package.
+        # https://stackoverflow.com/questions/6351805/cyclic-module-dependencies-and-relative-imports-in-python
+        from .analyze import MultiStateSamplerAnalyzer
+
+        # Start the analysis
+        bump_error_counter = False
+        analysis = MultiStateSamplerAnalyzer(self._reporter, analysis_kwargs={'initial_f_k': self._last_mbar_f_k})
+
+        # Indices for online analysis, "i'th index, j'th index"
+        idx, jdx = 0, -1
+        timer = mmtools.utils.Timer()
+        timer.start("MBAR")
+        logger.debug("Computing free energy with MBAR...")
+        try:  # Trap errors for MBAR being under sampled and the W_nk matrix not being normalized correctly
+            mbar = analysis.mbar
+            free_energy, err_free_energy = analysis.get_free_energy()
+        except ParameterError as e:
+            # We don't update self._last_err_free_energy here since if it
+            # wasn't below the target threshold before, it won't stop repex now.
+            bump_error_counter = True
+            self._online_error_bank.append(e)
+        else:
+            self._last_mbar_f_k = mbar.f_k
+            free_energy = free_energy[idx, jdx]
+            self._last_err_free_energy = err_free_energy[idx, jdx]
+            logger.debug("Current Free Energy Estimate is {} +- {} kT".format(free_energy,
+                                                                              self._last_err_free_energy))
+            # Trap a case when errors don't converge (usually due to under sampling)
+            if np.isnan(self._last_err_free_energy):
+                self._last_err_free_energy = np.inf
+        timer.stop("MBAR")
+
+        # Raise an exception after 6 times MBAR gave an error.
+        if bump_error_counter:
+            self._online_error_trap_counter += 1
+            if self._online_error_trap_counter >= 6:
+                logger.debug("Thrown MBAR Errors:")
+                for err in self._online_error_bank:
+                    logger.debug(str(err))
+                raise RuntimeError("Online Analysis has failed too many times! Please "
+                                   "check the latest logs to see the thrown errors!")
+            # Don't write out the free energy in case of error.
+            return
+
+        # Write out the numbers
+        self._reporter.write_mbar_free_energies(self._iteration, self._last_mbar_f_k,
+                                                (free_energy, self._last_err_free_energy))
+
+        # Broadcast the last free energy used to determine completion.
+        return self._last_err_free_energy
+
+    @staticmethod
+    def _read_last_free_energy(reporter, iteration):
+        """Get the last free energy computed from online analysis"""
+        last_f_k = None
+        last_free_energy = None
+
+        # Search for a valid free energy from the given iteration
+        # to the start of the calculation.
+        for index in range(iteration, 0, -1):
+            try:
+                last_f_k, last_free_energy = reporter.read_mbar_free_energies(index)
+            except (IndexError, KeyError):
+                # No such f_k written yet (or variable created).
+                break
+            # Find an f_k that is not all zeros (or masked and empty)
+            if not (np.ma.is_masked(last_f_k) or np.all(last_f_k == 0)):
+                break  # Don't need to continue the loop if we already found one
+
+        return last_f_k, last_free_energy
+
+    def _is_completed(self, iteration_limit=None):
+        """Check if we have reached the required number of iterations or statistical error."""
+        if iteration_limit is None:
+            iteration_limit = self.number_of_iterations
+        return self._is_completed_static(iteration_limit, self._iteration,
+                                         self._last_err_free_energy,
+                                         self.online_analysis_target_error)
+
+    @staticmethod
+    def _is_completed_static(iteration_limit, iteration, last_err_free_energy,
+                             online_analysis_target_error):
+        """Check if we have reached the required number of iterations or statistical error."""
+        # Return if we have reached the number of iterations
+        # or the statistical error target required.
+        if (iteration >= iteration_limit or
+                (last_err_free_energy is not None and
+                         last_err_free_energy <= online_analysis_target_error)):
+            return True
+        return False
+
+    # -------------------------------------------------------------------------
+    # Internal-usage: Test globals
+    # -------------------------------------------------------------------------
+    _global_citation_silence = False
+
+
+# ==============================================================================
+# REPLICA-EXCHANGE SIMULATION
+# ==============================================================================
+
+class ReplicaExchange(MultiStateSampler):
+    """Replica-exchange simulation facility.
+
+    This MultiStateSampler class provides a general replica-exchange simulation facility,
+    allowing any set of thermodynamic states to be specified, along with a
+    set of initial positions to be assigned to the replicas in a round-robin
+    fashion.
+
+    No distinction is made between one-dimensional and multidimensional replica
+    layout. By default, the replica mixing scheme attempts to mix *all* replicas
+    to minimize slow diffusion normally found in multidimensional replica exchange
+    simulations (Modification of the 'replica_mixing_scheme' setting will allow
+    the traditional 'neighbor swaps only' scheme to be used.)
+
+    Stored configurations, energies, swaps, and restart information are all written
+    to a single output file using the platform portable, robust, and efficient
+    NetCDF4 library.
+
+    Parameters
+    ----------
+    mcmc_moves : MCMCMove or list of MCMCMove, optional
+        The MCMCMove used to propagate the states. If a list of MCMCMoves,
+        they will be assigned to the correspondent thermodynamic state on
+        creation. If None is provided, Langevin dynamics with 2fm timestep, 5.0/ps collision rate,
+        and 500 steps per iteration will be used.
+    number_of_iterations : int or infinity, optional, default: 1
+        The number of iterations to perform. Both ``float('inf')`` and
+        ``numpy.inf`` are accepted for infinity. If you set this to infinity,
+        be sure to set also ``online_analysis_interval``.
+    replica_mixing_scheme : 'swap-all', 'swap-neighbors' or None, Default: 'swap-all'
+        The scheme used to swap thermodynamic states between replicas.
+    online_analysis_interval : None or Int >= 1, optional, default None
+        Choose the interval at which to perform online analysis of the free energy.
+
+        After every interval, the simulation will be stopped and the free energy estimated.
+
+        If the error in the free energy estimate is at or below ``online_analysis_target_error``, then the simulation
+        will be considered completed.
+
+    online_analysis_target_error : float >= 0, optional, default 0.2
+        The target error for the online analysis measured in kT per phase.
+
+        Once the free energy is at or below this value, the phase will be considered complete.
+
+        If ``online_analysis_interval`` is None, this option does nothing.
+
+    online_analysis_minimum_iterations : int >= 0, optional, default 50
+        Set the minimum number of iterations which must pass before online analysis is carried out.
+
+        Since the initial samples likely not to yield a good estimate of free energy, save time and just skip them
+        If ``online_analysis_interval`` is None, this does nothing
+
+    Attributes
+    ----------
+    n_replicas
+    iteration
+    mcmc_moves
+    sampler_states
+    metadata
+    is_completed
+
+    Examples
+    --------
+    Parallel tempering simulation of alanine dipeptide in implicit solvent (replica
+    exchange among temperatures). This is just an illustrative example; use :class:`ParallelTempering`
+    class for actual production parallel tempering simulations.
+
+    Create the system.
+
+    >>> import math
+    >>> from simtk import unit
+    >>> from openmmtools import testsystems, states, mcmc
+    >>> testsystem = testsystems.AlanineDipeptideImplicit()
+
+    Create thermodynamic states for parallel tempering with exponentially-spaced schedule.
+
+    >>> n_replicas = 3  # Number of temperature replicas.
+    >>> T_min = 298.0 * unit.kelvin  # Minimum temperature.
+    >>> T_max = 600.0 * unit.kelvin  # Maximum temperature.
+    >>> temperatures = [T_min + (T_max - T_min) * (math.exp(float(i) / float(nreplicas-1)) - 1.0) / (math.e - 1.0)
+    ...                 for i in range(n_replicas)]
+    >>> thermodynamic_states = [states.ThermodynamicState(system=testsystem.system, temperature=T)
+    ...                         for T in temperatures]
+
+    Initialize simulation object with options. Run with a GHMC integrator.
+
+    >>> move = mcmc.GHMCMove(timestep=2.0*unit.femtoseconds, n_steps=50)
+    >>> simulation = ReplicaExchange(mcmc_moves=move, number_of_iterations=2)
+
+    Create simulation with its storage file (in a temporary directory) and run.
+
+    >>> storage_path = tempfile.NamedTemporaryFile(delete=False).name + '.nc'
+    >>> reporter = Reporter(storage_path, checkpoint_interval=1)
+    >>> simulation.create(thermodynamic_states=thermodynamic_states,
+    >>>                   sampler_states=states.SamplerState(testsystem.positions),
+    >>>                   storage=reporter)
+    >>> simulation.run()  # This runs for a maximum of 2 iterations.
+    >>> simulation.iteration
+    2
+    >>> simulation.run(n_iterations=1)
+    >>> simulation.iteration
+    2
+
+    To resume a simulation from an existing storage file and extend it beyond
+    the original number of iterations.
+
+    >>> del simulation
+    >>> simulation = ReplicaExchange.from_storage(reporter)
+    >>> simulation.extend(n_iterations=1)
+    >>> simulation.iteration
+    3
+
+    You can extract several information from the NetCDF file using the Reporter
+    class while the simulation is running. This reads the SamplerStates of every
+    run iteration.
+
+    >>> reporter = Reporter(storage=storage_path, open_mode='r', checkpoint_interval=1)
+    >>> sampler_states = reporter.read_sampler_states(iteration=range(1, 4))
+    >>> len(sampler_states)
+    3
+    >>> sampler_states[-1].positions.shape  # Alanine dipeptide has 22 atoms.
+    (22, 3)
+
+    Clean up.
+
+    >>> os.remove(storage_path)
+
+
+    :param number_of_iterations: Maximum number of integer iterations that will be run
+
+    :param replica_mixing_scheme: Scheme which describes how replicas are exchanged each iteration as string
+
+    :param online_analysis_interval: How frequently to carry out online analysis in number of iterations
+
+    :param online_analysis_target_error: Target free energy difference error float at which simulation will be stopped during online analysis, in dimensionless energy
+
+    :param online_analysis_minimum_iterations: Minimum number of iterations needed before online analysis is run as int
+
+    """
+
+    # -------------------------------------------------------------------------
+    # Constructors.
+    # -------------------------------------------------------------------------
+
+    def __init__(self, replica_mixing_scheme='swap-all', **kwargs):
+
+        # Initialize multi-state sampler simulation.
+        super(ReplicaExchange, self).__init__(**kwargs)
+        self.replica_mixing_scheme = replica_mixing_scheme
+
+    @staticmethod
+    def _repex_mixing_scheme_validator(instance, replica_mixing_scheme):
+        supported_schemes = ['swap-all', 'swap-neighbors', None]
+        if replica_mixing_scheme not in supported_schemes:
+            raise ValueError("Unknown replica mixing scheme '{}'. Supported values "
+                             "are {}.".format(replica_mixing_scheme, supported_schemes))
+        return replica_mixing_scheme
+
+    replica_mixing_scheme = MultiStateSampler._StoredProperty('replica_mixing_scheme',
+                                            validate_function=MultiStateSampler._StoredProperty._repex_mixing_scheme_validator)
+
+    title_template = 'Replica-exchange sampler simulation created using ReplicaExchange class '
+                     'of yank.repex.py on {}'
+
+    def create(self, thermodynamic_states, sampler_states, storage, **kwargs):
+        """Create new multistate sampler simulation.
+
+        Parameters
+        ----------
+        thermodynamic_states : list of openmmtools.states.ThermodynamicState
+            Thermodynamic states to simulate, where one replica is allocated per state.
+            Each state must have a system with the same number of atoms.
+        sampler_states : openmmtools.states.SamplerState or list
+            One or more sets of initial sampler states. If a list of SamplerStates,
+            they will be assigned to replicas in a round-robin fashion.
+            The number of replicas is taken to be the number of sampler states provided.
+        storage : str or instanced Reporter
+            If str: the path to the storage file. Default checkpoint options from Reporter class are used
+            If Reporter: Uses the reporter options and storage path
+            In the future this will be able to take a Storage class as well.
+        unsampled_thermodynamic_states : list of openmmtools.states.ThermodynamicState, optional, default=None
+            These are ThermodynamicStates that are not propagated, but their
+            reduced potential is computed at each iteration for each replica.
+            These energy can be used as data for reweighting schemes (default
+            is None).
+        metadata : dict, optional, default=None
+           Simulation metadata to be stored in the file.
+        """
+
+        # Get number of thermodynamic states
+        n_states = len(sampler_states)
+
+        # Make sure there are no more sampler states than thermodynamic states.
+        if len(sampler_states) > n_states:
+            raise ValueError('Passed {} SamplerStates but only {} ThermodynamicStates'.format(
+                len(sampler_states), n_states))
+
+        # Distribute sampler states to replicas in a round-robin fashion.
+        sampler_states = [copy.deepcopy(sampler_states[i % n_states])
+                                for i in range(n_states)]
+
+        # Assign initial thermodynamic states for replicas
+        initial_thermodynamic_states = np.array([i for i in range(n_states)], np.int64)
+
+        super(ReplicaExchange, self).create(thermodynamic_states, sampler_states,
+                                            storage, initial_thermodynamic_states,
+                                            **kwargs)
 
     @mpi.on_single_node(0, broadcast_result=True)
     def _mix_replicas(self):
@@ -2647,115 +2924,6 @@ class ReplicaExchange(object):
             # Accumulate statistics.
             self._n_accepted_matrix[thermodynamic_state_i, thermodynamic_state_j] += 1
             self._n_accepted_matrix[thermodynamic_state_j, thermodynamic_state_i] += 1
-
-    # -------------------------------------------------------------------------
-    # Internal-usage: Online Analysis.
-    # -------------------------------------------------------------------------
-
-    @mpi.on_single_node(rank=0, broadcast_result=True)
-    @mpi.delayed_termination
-    @mmtools.utils.with_timer('Computing online free energy estimate')
-    def _run_online_analysis(self):
-        """Compute the free energy during simulation run"""
-        # This relative import is down here because having it at the top causes an ImportError.
-        # __init__ pulls in repex, which pulls in analyze, which pulls in repex. Because the first repex never finished
-        # importing, its not in the name space which causes relative analyze import of repex to crash as neither of them
-        # are the __main__ package.
-        # https://stackoverflow.com/questions/6351805/cyclic-module-dependencies-and-relative-imports-in-python
-        from .analyze import ReplicaExchangeAnalyzer
-
-        # Start the analysis
-        bump_error_counter = False
-        analysis = ReplicaExchangeAnalyzer(self._reporter, analysis_kwargs={'initial_f_k': self._last_mbar_f_k})
-
-        # Indices for online analysis, "i'th index, j'th index"
-        idx, jdx = 0, -1
-        timer = mmtools.utils.Timer()
-        timer.start("MBAR")
-        logger.debug("Computing free energy with MBAR...")
-        try:  # Trap errors for MBAR being under sampled and the W_nk matrix not being normalized correctly
-            mbar = analysis.mbar
-            free_energy, err_free_energy = analysis.get_free_energy()
-        except ParameterError as e:
-            # We don't update self._last_err_free_energy here since if it
-            # wasn't below the target threshold before, it won't stop repex now.
-            bump_error_counter = True
-            self._online_error_bank.append(e)
-        else:
-            self._last_mbar_f_k = mbar.f_k
-            free_energy = free_energy[idx, jdx]
-            self._last_err_free_energy = err_free_energy[idx, jdx]
-            logger.debug("Current Free Energy Estimate is {} +- {} kT".format(free_energy,
-                                                                              self._last_err_free_energy))
-            # Trap a case when errors don't converge (usually due to under sampling)
-            if np.isnan(self._last_err_free_energy):
-                self._last_err_free_energy = np.inf
-        timer.stop("MBAR")
-
-        # Raise an exception after 6 times MBAR gave an error.
-        if bump_error_counter:
-            self._online_error_trap_counter += 1
-            if self._online_error_trap_counter >= 6:
-                logger.debug("Thrown MBAR Errors:")
-                for err in self._online_error_bank:
-                    logger.debug(str(err))
-                raise RuntimeError("Online Analysis has failed too many times! Please "
-                                   "check the latest logs to see the thrown errors!")
-            # Don't write out the free energy in case of error.
-            return
-
-        # Write out the numbers
-        self._reporter.write_mbar_free_energies(self._iteration, self._last_mbar_f_k,
-                                                (free_energy, self._last_err_free_energy))
-
-        # Broadcast the last free energy used to determine completion.
-        return self._last_err_free_energy
-
-    @staticmethod
-    def _read_last_free_energy(reporter, iteration):
-        """Get the last free energy computed from online analysis"""
-        last_f_k = None
-        last_free_energy = None
-
-        # Search for a valid free energy from the given iteration
-        # to the start of the calculation.
-        for index in range(iteration, 0, -1):
-            try:
-                last_f_k, last_free_energy = reporter.read_mbar_free_energies(index)
-            except (IndexError, KeyError):
-                # No such f_k written yet (or variable created).
-                break
-            # Find an f_k that is not all zeros (or masked and empty)
-            if not (np.ma.is_masked(last_f_k) or np.all(last_f_k == 0)):
-                break  # Don't need to continue the loop if we already found one
-
-        return last_f_k, last_free_energy
-
-    def _is_completed(self, iteration_limit=None):
-        """Check if we have reached the required number of iterations or statistical error."""
-        if iteration_limit is None:
-            iteration_limit = self.number_of_iterations
-        return self._is_completed_static(iteration_limit, self._iteration,
-                                         self._last_err_free_energy,
-                                         self.online_analysis_target_error)
-
-    @staticmethod
-    def _is_completed_static(iteration_limit, iteration, last_err_free_energy,
-                             online_analysis_target_error):
-        """Check if we have reached the required number of iterations or statistical error."""
-        # Return if we have reached the number of iterations
-        # or the statistical error target required.
-        if (iteration >= iteration_limit or
-                (last_err_free_energy is not None and
-                         last_err_free_energy <= online_analysis_target_error)):
-            return True
-        return False
-
-    # -------------------------------------------------------------------------
-    # Internal-usage: Test globals
-    # -------------------------------------------------------------------------
-    _global_citation_silence = False
-
 
 # ==============================================================================
 # PARALLEL TEMPERING
