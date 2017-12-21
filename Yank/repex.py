@@ -244,10 +244,10 @@ class Reporter(object):
             dimension = self._storage_analysis.dimensions[dimname]
             if dimsize == 0:
                 if not dimension.isunlimited():
-                    raise ValueError("NetCDF dimension '%s' already exists: was previously unlimited, but tried to declare it with size %d" % (dimension.name, dimsize))
+                    raise ValueError("NetCDF dimension {} already exists: was previously unlimited, but tried to redeclare it with size {}".format(dimension.name, dimsize))
             else:
                 if not int(dimension.size) == int(dimsize):
-                    raise ValueError("NetCDF dimension '%s' already exists: was previously size %d, but tried to declare it with dimension %d" % (dimension.name, dimension.size, dimsize))
+                    raise ValueError("NetCDF dimension {} already exists: was previously size {}, but tried to redeclare it with dimension {}".format(dimension.name, dimension.size, dimsize))
 
     def open(self, mode='r', convention='ReplicaExchange', netcdf_format='NETCDF4'):
         """
