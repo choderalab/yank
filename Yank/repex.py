@@ -320,7 +320,7 @@ class Reporter(object):
                 ncfile.DataUsedFor = nc_name
                 ncfile.CheckpointInterval = checkpoint_interval
 
-                # Create and initilize the global variables
+                # Create and initialize the global variables
                 nc_last_good_iter = ncfile.createVariable('last_iteration', int, 'scalar')
                 nc_last_good_iter[0] = 0
                 return True
@@ -1183,7 +1183,7 @@ class Reporter(object):
         return cast_iteration
 
     @staticmethod
-    def _initilize_sampler_variables_on_file(dataset, n_atoms, n_replicas):
+    def _initialize_sampler_variables_on_file(dataset, n_atoms, n_replicas):
         """
         Initialize the NetCDF variables on the storage file needed to store sampler states.
         Does nothing if file already initilzied
@@ -1250,7 +1250,7 @@ class Reporter(object):
 
         storage = self._storage_dict[storage_file]
         # Check if the schema must be initialized, do this regardless of the checkpoint_interval for consistency
-        self._initilize_sampler_variables_on_file(storage, sampler_states[0].n_particles, len(sampler_states))
+        self._initialize_sampler_variables_on_file(storage, sampler_states[0].n_particles, len(sampler_states))
         if obey_checkpoint_interval:
             write_iteration = self._calculate_checkpoint_iteration(iteration)
         else:

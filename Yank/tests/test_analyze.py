@@ -173,7 +173,7 @@ class TestPhaseAnalyzer(object):
     def teardown_class(cls):
         shutil.rmtree(cls.tmp_dir)
 
-    def test_repex_phase_initilize(self):
+    def test_repex_phase_initialize(self):
         """Test that the Repex Phase analyzer initializes correctly"""
         phase = analyze.ReplicaExchangeAnalyzer(self.reporter, name=self.repex_name)
         assert phase.reporter is self.reporter
@@ -304,4 +304,3 @@ class TestPhaseAnalyzer(object):
         solute_trajectory = analyze.extract_trajectory(self.reporter.filepath, state_index=0, keep_solvent=False)
         assert len(solute_trajectory) == self.n_steps - 1
         assert solute_trajectory.n_atoms == len(self.analysis_atoms)
-
