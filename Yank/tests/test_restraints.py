@@ -222,7 +222,8 @@ def test_partial_parametrization():
                           restrained_receptor_atoms=[5])),
         ('FlatBottom', dict(well_radius=1.0*unit.angstrom, restrained_ligand_atoms=[130])),
         ('Boresch', dict(restrained_ligand_atoms=[130, 131, 136],
-                         K_r=1.0*unit.kilojoule_per_mole/unit.angstroms**2))
+                         K_r=1.0*unit.kilojoule_per_mole/unit.angstroms**2)),
+        ('Boresch', dict(rigidify=15*unit.degrees))
     ]
 
     for restraint_type, kwargs in test_cases:

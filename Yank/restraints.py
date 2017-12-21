@@ -1381,6 +1381,9 @@ class Boresch(ReceptorLigandRestraint):
     standard_state_correction_method : 'analytical' or 'numeric', optional
         The method to use to estimate the standard state correction (default
         is 'analytical').
+    rigidify : simtk.unit.Quantity, optional, default=None
+        If specified, will rigidify the ligand as restraints are turned on by
+        adding internal torsion barriers to lock initial configuration.
 
     Attributes
     ----------
@@ -1443,7 +1446,8 @@ class Boresch(ReceptorLigandRestraint):
                  K_phiA=None, phi_A0=None,
                  K_phiB=None, phi_B0=None,
                  K_phiC=None, phi_C0=None,
-                 standard_state_correction_method='analytical'):
+                 standard_state_correction_method='analytical',
+                 rigidify=0*unit.radians):
         self.restrained_receptor_atoms = restrained_receptor_atoms
         self.restrained_ligand_atoms = restrained_ligand_atoms
         self.K_r = K_r
@@ -1453,6 +1457,7 @@ class Boresch(ReceptorLigandRestraint):
         self.K_phiA, self.K_phiB, self.K_phiC = K_phiA, K_phiB, K_phiC
         self.phi_A0, self.phi_B0, self.phi_C0 = phi_A0, phi_B0, phi_C0
         self.standard_state_correction_method = standard_state_correction_method
+        self.rigidify = rigidify
 
     # -------------------------------------------------------------------------
     # Public properties.
@@ -1551,6 +1556,23 @@ class Boresch(ReceptorLigandRestraint):
         system.addForce(restraint_force)
         thermodynamic_state.system = system
 
+        if self.rigidify:
+            kappa = self.rigidify**(-2)
+            energy_function = """
+                lambda_restraints * E;
+                E = kappa*cos(theta-theta0);
+            """
+            restraint_force = openmm.CustomTorsionForce(energy_function)
+            restraint_force.addGlobalParameter('lambda_restraints', 1.0)
+            restraint_force.addGlobalParameter('kappa', kappa)
+            restraint_force.addPerTorsionParameter('theta0')
+            for (torsion_atoms, theta0) in self.torsions:
+                restraint_force.addTorsion(*torsion_atoms, [theta0])
+
+            system = thermodynamic_state.system
+            system.addForce(restraint_force)
+            thermodynamic_state.system = system
+
     def get_standard_state_correction(self, thermodynamic_state):
         """Return the standard state correction.
 
@@ -1608,7 +1630,7 @@ class Boresch(ReceptorLigandRestraint):
                              'restraint parameters...'.format(attempt, MAX_ATTEMPTS))
 
                 # Randomly pick non-collinear atoms.
-                restrained_atoms = self._pick_restrained_atoms(sampler_state, topography)
+                restrained_atoms = self._pick_restrained_atoms(thermodynamic_state, sampler_state, topography)
                 self.restrained_receptor_atoms = restrained_atoms[:3]
                 self.restrained_ligand_atoms = restrained_atoms[3:]
 
@@ -1627,6 +1649,7 @@ class Boresch(ReceptorLigandRestraint):
             logger.warning('The provided restrained atoms do not guarantee a robust calculation of '
                            'the standard state correction. Switching to the numerical scheme.')
             self.standard_state_correction_method = 'numerical'
+
 
     # -------------------------------------------------------------------------
     # Internal-usage
@@ -1814,11 +1837,13 @@ class Boresch(ReceptorLigandRestraint):
 
         return result
 
-    def _pick_restrained_atoms(self, sampler_state, topography):
+    def _pick_restrained_atoms(self, thermodynamic_state, sampler_state, topography):
         """Select atoms to be used in restraint.
 
         Parameters
         ----------
+        thermodynamic_state : openmmtools.states.ThermodynamicState
+            The thermodynamic state holding the system to modify.
         sampler_state : openmmtools.states.SamplerState, optional
             The sampler state holding the positions of all atoms.
         topography : yank.Topography, optional
@@ -1853,6 +1878,7 @@ class Boresch(ReceptorLigandRestraint):
         atom_inclusion_warning = ("Some atoms specified by {0} were not actual {0} and heavy atoms! "
                                   "Atoms not meeting these criteria will be ignored.")
 
+        # TODO: Migrate useful functionality to Topography object
         @functools.singledispatch
         def compute_atom_set(input_atoms, topography_key):
             """Helper function for doing set operations on heavy ligand atoms of all other types"""
@@ -1942,6 +1968,53 @@ class Boresch(ReceptorLigandRestraint):
             accepted = not self._is_collinear(sampler_state.positions, restrained_atoms)
 
         logger.debug('Selected atoms to restrain: {}'.format(restrained_atoms))
+
+        if self.rigidify:
+            logger.debug('Creating bond graph from {} ligand heavy atoms'.format(len(heavy_ligand_atoms)))
+            # Create ligand bond graph
+            import networkx as nx
+            ligand_graph = nx.Graph()
+            for bond in topography.topology.bonds:
+                if (bond[0].index in heavy_ligand_atoms) and (bond[1].index in heavy_ligand_atoms):
+                    ligand_graph.add_edge(bond[0].index, bond[1].index)
+            # Remove all edges involved in cycles, leaving rotatable bonds
+            cycle_basis = nx.cycle_basis(ligand_graph)
+            logger.debug('{} edges initially'.format(len(ligand_graph.edges)))
+            for cycle in cycle_basis:
+                cycle_length = len(cycle)
+                for i in range(cycle_length):
+                    edge = (cycle[i], cycle[(i+1)%cycle_length])
+                    if edge in ligand_graph.edges:
+                        ligand_graph.remove_edge(*edge)
+            ntorsions = len(ligand_graph.edges)
+            logger.debug('{} rotatable bonds were identified'.format(ntorsions))
+            # Keep track of all remaining rotatable bonds
+            rotatable_bonds = set()
+            for edge in ligand_graph.edges:
+                rotatable_bonds.add( (edge[0], edge[1]) )
+                rotatable_bonds.add( (edge[1], edge[0]) )
+            # Add a torsion associated with each rotatable bond
+            atom_indices = list()
+            system = thermodynamic_state.system
+            for force in system.getForces():
+                if hasattr(force, 'getNumTorsions'):
+                    # build index of torsion_atoms
+                    print(force.getNumTorsions())
+                    logger.debug('{} torsions'.format(force.getNumTorsions()))
+                    for torsion_index in range(force.getNumTorsions()):
+                        p = force.getTorsionParameters(torsion_index)
+                        if (p[1], p[2]) in rotatable_bonds:
+                            atom_indices.append(p[0:4])
+                            rotatable_bonds.remove( (p[1], p[2]) )
+                            rotatable_bonds.remove( (p[2], p[1]) )
+            ntorsions = len(atom_indices)
+            logger.debug('{} rotatable bonds were restrained'.format(ntorsions))
+            if ntorsions > 0:
+                dihedrals = md.compute_dihedrals(t, np.array(atom_indices))
+                self.torsions = [ (atom_indices[torsion_index], float(dihedrals[0,torsion_index])) for torsion_index in range(ntorsions) ]
+            else:
+                self.torsions = []
+
         return restrained_atoms
 
     def _determine_restraint_parameters(self, sampler_states, topography):
