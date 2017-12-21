@@ -222,7 +222,34 @@ class Reporter(object):
                 open_check_list.append(storage.isopen())
         return np.all(open_check_list)
 
-    def open(self, mode='r', convention='ReplicaExchange'):
+    def _ensure_dimension_exists(self, dimname, dimsize):
+        """
+        Ensure a dimension exists and is of the appropriate size,
+        creating it if it does not already exist.
+
+        A ``ValueError`` is raised if ``dimsize`` does not match the existing dimension size.
+
+        Parameters
+        ----------
+        dimname : str
+            The dimension name
+        dimsize : int
+            The dimension size
+
+        """
+        if dimname not in self._storage_analysis.dimensions:
+            self._storage_analysis.createDimension(dimname, dimsize)
+        else:
+            # Check dimension matches expected size
+            dimension = self._storage_analysis.dimensions[dimname]
+            if dimsize == 0:
+                if not dimension.isunlimited():
+                    raise ValueError("NetCDF dimension {} already exists: was previously unlimited, but tried to redeclare it with size {}".format(dimension.name, dimsize))
+            else:
+                if not int(dimension.size) == int(dimsize):
+                    raise ValueError("NetCDF dimension {} already exists: was previously size {}, but tried to redeclare it with dimension {}".format(dimension.name, dimension.size, dimsize))
+
+    def open(self, mode='r', convention='ReplicaExchange', netcdf_format='NETCDF4'):
         """
         Open the storage file for reading/writing.
 
@@ -234,8 +261,10 @@ class Reporter(object):
         ----------
         mode : str, Optional, Default: 'r'
             The mode of the file between 'r', 'w', and 'a' (or equivalently 'r+').
-        converntion : str, Optional, Default: 'ReplicaExchange'
+        convention : str, Optional, Default: 'ReplicaExchange'
             NetCDF convention to write
+        netcdf_format : str, Optional, Default: 'NETCDF4'
+            The NetCDF file format to use
 
         """
         # Ensure we don't have already another file
@@ -260,13 +289,13 @@ class Reporter(object):
         sub_ncfiles = {}
         # TODO: Figure out how to move around the analysis file without the checkpoint file
         # Cast this to a common name space for operation below
-        primary_ncfiles['analysis'] = netcdf.Dataset(self._storage_file_analysis, mode, version='NETCDF4')
+        primary_ncfiles['analysis'] = netcdf.Dataset(self._storage_file_analysis, mode, version=netcdf_format)
         if mode == 'w':
-            sub_ncfiles['checkpoint'] = netcdf.Dataset(self._storage_file_checkpoint, mode, version='NETCDF4')
+            sub_ncfiles['checkpoint'] = netcdf.Dataset(self._storage_file_checkpoint, mode, version=netcdf_format)
         else:  # Read/append mode
             # Try to open the files in read mode, its okay if they are not there
             try:
-                sub_ncfiles['checkpoint'] = netcdf.Dataset(self._storage_file_checkpoint, mode, version='NETCDF4')
+                sub_ncfiles['checkpoint'] = netcdf.Dataset(self._storage_file_checkpoint, mode, version=netcdf_format)
                 primary_uuid = primary_ncfiles['analysis'].UUID
                 assert primary_uuid == sub_ncfiles['checkpoint'].UUID
             except IOError:  # Trap the "not on disk" warning
@@ -303,7 +332,7 @@ class Reporter(object):
                 ncfile.DataUsedFor = nc_name
                 ncfile.CheckpointInterval = checkpoint_interval
 
-                # Create and initilize the global variables
+                # Create and initialize the global variables
                 nc_last_good_iter = ncfile.createVariable('last_iteration', int, 'scalar')
                 nc_last_good_iter[0] = 0
                 return True
@@ -597,7 +626,7 @@ class Reporter(object):
 
         Parameters
         ----------
-        state_indices : list of int
+        state_indices : list of int of size n_replicas
             At the given iteration, replica ``i`` propagated the system in
             SamplerState ``sampler_states[i]`` and ThermodynamicState
             ``thermodynamic_states[replica_thermodynamic_states[i]]``.
@@ -607,15 +636,14 @@ class Reporter(object):
         """
         # Initialize schema if needed.
         if 'states' not in self._storage_analysis.variables:
-            n_states = len(state_indices)
+            n_replicas = len(state_indices)
 
             # Create dimension if they don't exist.
-            if 'replica' not in self._storage_analysis.dimensions:
-                self._storage_analysis.createDimension('replica', n_states)
+            self._ensure_dimension_exists('replica', n_replicas)
 
             # Create variables and attach units and description.
             ncvar_states = self._storage_analysis.createVariable('states', 'i4', ('iteration', 'replica'),
-                                                                 zlib=False, chunksizes=(1, n_states))
+                                                                 zlib=False, chunksizes=(1, n_replicas))
             setattr(ncvar_states, 'units', 'none')
             setattr(ncvar_states, "long_name", ("states[iteration][replica] is the thermodynamic state index "
                                                 "(0..nstates-1) of replica 'replica' of iteration 'iteration'."))
@@ -664,7 +692,7 @@ class Reporter(object):
 
         Returns
         -------
-        energy_thermodynamic_states : n_replicas x n_replicas numpy.ndarray
+        energy_thermodynamic_states : n_replicas x n_states numpy.ndarray
             ``energy_thermodynamic_states[iteration, i, j]`` is the reduced potential computed at
             SamplerState ``sampler_states[iteration, i]`` and ThermodynamicState ``thermodynamic_states[iteration, j]``.
         energy_unsampled_states : n_replicas x n_unsampled_states numpy.ndarray
@@ -687,7 +715,7 @@ class Reporter(object):
 
         Parameters
         ----------
-        energy_thermodynamic_states : n_replicas x n_replicas numpy.ndarray
+        energy_thermodynamic_states : n_replicas x n_states numpy.ndarray
             ``energy_thermodynamic_states[i][j]`` is the reduced potential computed at
             SamplerState ``sampler_states[i]`` and ThermodynamicState ``thermodynamic_states[j]``.
         energy_unsampled_states : n_replicas x n_unsampled_states numpy.ndarray
@@ -699,18 +727,18 @@ class Reporter(object):
         """
         # Initialize schema if needed.
         if 'energies' not in self._storage_analysis.variables:
-            n_replicas = len(energy_thermodynamic_states)
+            n_replicas, n_states = energy_thermodynamic_states.shape
 
-            # Create replica dimension if it wasn't created by other functions.
-            if 'replica' not in self._storage_analysis.dimensions:
-                self._storage_analysis.createDimension('replica', n_replicas)
+            # Create dimensions if they weren't created by other functions.
+            self._ensure_dimension_exists('replica', n_replicas)
+            self._ensure_dimension_exists('state', n_states)
 
             # Create variable for thermodynamic state energies with units and descriptions.
             ncvar_energies = self._storage_analysis.createVariable('energies',
                                                                    'f8',
-                                                                   ('iteration', 'replica', 'replica'),
+                                                                   ('iteration', 'replica', 'state'),
                                                                    zlib=False,
-                                                                   chunksizes=(1, n_replicas, n_replicas))
+                                                                   chunksizes=(1, n_replicas, n_states))
             ncvar_energies.units = 'kT'
             ncvar_energies.long_name = ("energies[iteration][replica][state] is the reduced (unitless) "
                                         "energy of replica 'replica' from iteration 'iteration' evaluated "
@@ -722,8 +750,7 @@ class Reporter(object):
                     n_unsampled_states = len(energy_unsampled_states[0])
 
                     # Create replica dimension if it wasn't created by other functions.
-                    if 'unsampled' not in self._storage_analysis.dimensions:
-                        self._storage_analysis.createDimension('unsampled', n_unsampled_states)
+                    self._ensure_dimension_exists('unsampled', n_unsampled_states)
 
                     # Create variable for thermodynamic state energies with units and descriptions.
                     ncvar_unsampled = self._storage_analysis.createVariable('unsampled_energies',
@@ -754,11 +781,11 @@ class Reporter(object):
 
         Returns
         -------
-        n_accepted_matrix : kxk numpy.ndarray
+        n_accepted_matrix : numpy.ndarray with shape (n_states, n_states)
             ``n_accepted_matrix[i][j]`` is the number of accepted moves from
             state ``thermodynamic_states[i]`` to ``thermodynamic_states[j]`` going
             from ``iteration-1`` to ``iteration`` (not cumulative).
-        n_proposed_matrix : kxk numpy.ndarray
+        n_proposed_matrix : numpy.ndarray with shape (n_states, n_states)
             ``n_proposed_matrix[i][j]`` is the number of proposed moves from
             state ``thermodynamic_states[i]`` to ``thermodynamic_states[j]`` going
             from ``iteration-1`` to ``iteration`` (not cumulative).
@@ -774,36 +801,35 @@ class Reporter(object):
 
         Parameters
         ----------
-        n_accepted_matrix : kxk numpy.ndarray
+        n_accepted_matrix : numpy.ndarray with shape (n_states, n_states)
             ``n_accepted_matrix[i][j]`` is the number of accepted moves from
             state ``thermodynamic_states[i]`` to ``thermodynamic_states[j]`` going
             from iteration-1 to iteration (not cumulative).
-        n_proposed_matrix : kxk numpy.ndarray
+        n_proposed_matrix : numpy.ndarray with shape (n_states, n_states)
             ``n_proposed_matrix[i][j]`` is the number of proposed moves from
             state ``thermodynamic_states[i]`` to ``thermodynamic_states[j]`` going
             from ``iteration-1`` to ``iteration`` (not cumulative).
         iteration : int
-            The iteration at which to store the data.
+            The iteration for which to store the data.
 
         """
         # Create schema if necessary.
         if 'accepted' not in self._storage_analysis.variables:
-            n_states = len(n_accepted_matrix)
+            n_states = n_accepted_matrix.shape[0]
 
-            # Create replica dimension if it wasn't already created.
-            if 'replica' not in self._storage_analysis.dimensions:
-                self._storage_analysis.createDimension('replica', n_states)
+            # Create dimension if it doesn't already exist
+            self._ensure_dimension_exists('state', n_states)
 
             # Create variables with units and descriptions.
             ncvar_accepted = self._storage_analysis.createVariable('accepted',
                                                                    'i4',
-                                                                   ('iteration', 'replica', 'replica'),
+                                                                   ('iteration', 'state', 'state'),
                                                                    zlib=False,
                                                                    chunksizes=(1, n_states, n_states)
                                                                    )
             ncvar_proposed = self._storage_analysis.createVariable('proposed',
                                                                    'i4',
-                                                                   ('iteration', 'replica', 'replica'),
+                                                                   ('iteration', 'state', 'state'),
                                                                    zlib=False,
                                                                    chunksizes=(1, n_states, n_states)
                                                                    )
@@ -1169,7 +1195,7 @@ class Reporter(object):
         return cast_iteration
 
     @staticmethod
-    def _initilize_sampler_variables_on_file(dataset, n_atoms, n_states):
+    def _initialize_sampler_variables_on_file(dataset, n_atoms, n_replicas):
         """
         Initialize the NetCDF variables on the storage file needed to store sampler states.
         Does nothing if file already initilzied
@@ -1180,7 +1206,7 @@ class Reporter(object):
             Dataset to validate
         n_atoms : int
             Number of atoms which will be stored
-        n_states : int
+        n_replicas : int
             Number of Sampler states which will be written
         """
         if 'positions' not in dataset.variables:
@@ -1188,17 +1214,17 @@ class Reporter(object):
             # Create dimensions. Replica dimension could have been created before.
             dataset.createDimension('atom', n_atoms)
             if 'replica' not in dataset.dimensions:
-                dataset.createDimension('replica', n_states)
+                dataset.createDimension('replica', n_replicas)
 
             # Create variables.
             ncvar_positions = dataset.createVariable('positions', 'f4',
                                                      ('iteration', 'replica', 'atom', 'spatial'),
-                                                     zlib=True, chunksizes=(1, n_states, n_atoms, 3))
+                                                     zlib=True, chunksizes=(1, n_replicas, n_atoms, 3))
             ncvar_box_vectors = dataset.createVariable('box_vectors', 'f4',
                                                        ('iteration', 'replica', 'spatial', 'spatial'),
-                                                       zlib=False, chunksizes=(1, n_states, 3, 3))
+                                                       zlib=False, chunksizes=(1, n_replicas, 3, 3))
             ncvar_volumes = dataset.createVariable('volumes', 'f8', ('iteration', 'replica'),
-                                                   zlib=False, chunksizes=(1, n_states))
+                                                   zlib=False, chunksizes=(1, n_replicas))
 
             # Define units for variables.
             setattr(ncvar_positions, 'units', 'nm')
@@ -1236,7 +1262,7 @@ class Reporter(object):
 
         storage = self._storage_dict[storage_file]
         # Check if the schema must be initialized, do this regardless of the checkpoint_interval for consistency
-        self._initilize_sampler_variables_on_file(storage, sampler_states[0].n_particles, len(sampler_states))
+        self._initialize_sampler_variables_on_file(storage, sampler_states[0].n_particles, len(sampler_states))
         if obey_checkpoint_interval:
             write_iteration = self._calculate_checkpoint_iteration(iteration)
         else:
@@ -1293,10 +1319,10 @@ class Reporter(object):
             read_iteration = iteration
         if read_iteration is not None:
             # TODO: Restore n_replicas instead
-            n_states = storage.dimensions['replica'].size
+            n_replicas = storage.dimensions['replica'].size
 
             sampler_states = list()
-            for replica_index in range(n_states):
+            for replica_index in range(n_replicas):
                 # Restore positions.
                 x = storage.variables['positions'][read_iteration, replica_index, :, :].astype(np.float64)
                 positions = unit.Quantity(x, unit.nanometers)

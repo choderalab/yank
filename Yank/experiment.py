@@ -217,7 +217,7 @@ class AlchemicalPhaseFactory(object):
     thermodynamic_state : openmmtools.states.ThermodynamicState
         Reference thermodynamic state without any alchemical modifications
     sampler_states : openmmtools.states.SamplerState
-        Sampler state to initilize from, including the positions of the atoms
+        Sampler state to initialize from, including the positions of the atoms
     topography : yank.yank.Topography
         Topography defining the ligand atoms and other atoms
     protocol : dict of lists
