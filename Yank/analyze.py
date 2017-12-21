@@ -658,7 +658,7 @@ class YankPhaseAnalyzer(ABC):
 class ReplicaExchangeAnalyzer(YankPhaseAnalyzer):
 
     """
-    The ReplicaExchangeAnalyzer is the analyzer for a simulation generated from a Replica Exchange sampler simulation,
+    The MultiStateSamplerAnalyzer is the analyzer for a simulation generated from a MultiStateSampler simulation,
     implemented as an instance of the :class:`YankPhaseAnalyzer`.
 
     See Also
@@ -703,12 +703,13 @@ class ReplicaExchangeAnalyzer(YankPhaseAnalyzer):
                 self._get_equilibration_data_auto()
             number_equilibrated, _, _ = self._equilibration_data
         states = self._reporter.read_replica_thermodynamic_states()
-        n_iterations, n_states = states.shape
+        n_iterations, n_replicas = states.shape
+        n_states = self._reporter.read_mixing_statistics().shape[0]
         n_ij = np.zeros([n_states, n_states], np.int64)
 
         # Compute empirical transition count matrix.
         for iteration in range(number_equilibrated, n_iterations - 1):
-            for i_replica in range(n_states):
+            for i_replica in range(n_replicas):
                 i_state = states[iteration, i_replica]
                 j_state = states[iteration + 1, i_replica]
                 n_ij[i_state, j_state] += 1
@@ -805,10 +806,10 @@ class ReplicaExchangeAnalyzer(YankPhaseAnalyzer):
         """
         logger.info("Reading energies...")
         energy_thermodynamic_states, energy_unsampled_states = self._reporter.read_energies()
-        n_iterations, _, n_states = energy_thermodynamic_states.shape
+        n_iterations, n_replicas, n_states = energy_thermodynamic_states.shape
         _, _, n_unsampled_states = energy_unsampled_states.shape
-        energy_matrix_replica = np.zeros([n_states, n_states, n_iterations], np.float64)
-        unsampled_energy_matrix_replica = np.zeros([n_states, n_unsampled_states, n_iterations], np.float64)
+        energy_matrix_replica = np.zeros([n_replicas, n_states, n_iterations], np.float64)
+        unsampled_energy_matrix_replica = np.zeros([n_replicas, n_unsampled_states, n_iterations], np.float64)
         for n in range(n_iterations):
             energy_matrix_replica[:, :, n] = energy_thermodynamic_states[n, :, :]
             unsampled_energy_matrix_replica[:, :, n] = energy_unsampled_states[n, :, :]
@@ -1054,6 +1055,19 @@ class ReplicaExchangeAnalyzer(YankPhaseAnalyzer):
         data['dDeltaH'] = dDeltaH_ij[self.reference_states[0], self.reference_states[1]]
         data['DeltaF_standard_state_correction'] = self.get_standard_state_correction()
         return data
+
+class ReplicaExchangeAnalyzer(MultiStateSamplerAnalyzer):
+
+    """
+    The ReplicaExchangeAnalyzer is the analyzer for a simulation generated from a Replica Exchange sampler simulation,
+    implemented as an instance of the :class:`YankPhaseAnalyzer`.
+
+    See Also
+    --------
+    YankPhaseAnalyzer
+
+    """
+    pass
 
 
 # https://choderalab.slack.com/files/levi.naden/F4G6L9X8S/quick_diagram.png

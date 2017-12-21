@@ -2980,9 +2980,10 @@ class ParallelTempering(ReplicaExchange):
 
     """
 
-    def create(self, thermodynamic_state, sampler_states,
-               storage, min_temperature=None, max_temperature=None, n_temperatures=None, temperatures=None,
-               metadata=None):
+    def create(self, thermodynamic_state, sampler_states, storage,
+               min_temperature=None, max_temperature=None, n_temperatures=None,
+               temperatures=None,
+               **kwargs):
         """Initialize a parallel tempering simulation object.
 
         Parameters
@@ -3043,7 +3044,7 @@ class ParallelTempering(ReplicaExchange):
             metadata['title'] = default_title
 
         # Initialize replica-exchange simlulation.
-        super(ParallelTempering, self).create(thermodynamic_states, sampler_states, storage=storage, metadata=metadata)
+        super(ParallelTempering, self).create(thermodynamic_states, sampler_states, storage=storage, **kwargs)
 
     def _compute_replica_energies(self, replica_id):
         """Compute the energy for the replica at every temperature.
