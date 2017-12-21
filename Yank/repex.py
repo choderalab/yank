@@ -175,6 +175,11 @@ class Reporter(object):
         return {'checkpoint': self._storage_checkpoint, 'analysis': self._storage_analysis}
 
     @property
+    def _storage_chunks(self):
+        """Known NetCDF storage chunk sizes"""
+        return {'checkpoint': 1, 'analysis': self._checkpoint_interval}
+
+    @property
     def analysis_particle_indices(self):
         """Return the tuple of indices of the particles which additional information is stored on for analysis"""
         return self._analysis_particle_indices
@@ -615,7 +620,8 @@ class Reporter(object):
 
             # Create variables and attach units and description.
             ncvar_states = self._storage_analysis.createVariable('states', 'i4', ('iteration', 'replica'),
-                                                                 zlib=False, chunksizes=(1, n_states))
+                                                                 zlib=False,
+                                                                 chunksizes=(self._checkpoint_interval, n_states))
             setattr(ncvar_states, 'units', 'none')
             setattr(ncvar_states, "long_name", ("states[iteration][replica] is the thermodynamic state index "
                                                 "(0..nstates-1) of replica 'replica' of iteration 'iteration'."))
@@ -710,7 +716,9 @@ class Reporter(object):
                                                                    'f8',
                                                                    ('iteration', 'replica', 'replica'),
                                                                    zlib=False,
-                                                                   chunksizes=(1, n_replicas, n_replicas))
+                                                                   chunksizes=(self._checkpoint_interval,
+                                                                               n_replicas,
+                                                                               n_replicas))
             ncvar_energies.units = 'kT'
             ncvar_energies.long_name = ("energies[iteration][replica][state] is the reduced (unitless) "
                                         "energy of replica 'replica' from iteration 'iteration' evaluated "
@@ -730,7 +738,7 @@ class Reporter(object):
                                                                             'f8',
                                                                             ('iteration', 'replica', 'unsampled'),
                                                                             zlib=False,
-                                                                            chunksizes=(1,
+                                                                            chunksizes=(self._checkpoint_interval,
                                                                                         n_replicas,
                                                                                         n_unsampled_states)
                                                                             )
@@ -799,13 +807,17 @@ class Reporter(object):
                                                                    'i4',
                                                                    ('iteration', 'replica', 'replica'),
                                                                    zlib=False,
-                                                                   chunksizes=(1, n_states, n_states)
+                                                                   chunksizes=(self._checkpoint_interval,
+                                                                               n_states,
+                                                                               n_states)
                                                                    )
             ncvar_proposed = self._storage_analysis.createVariable('proposed',
                                                                    'i4',
                                                                    ('iteration', 'replica', 'replica'),
                                                                    zlib=False,
-                                                                   chunksizes=(1, n_states, n_states)
+                                                                   chunksizes=(self._checkpoint_interval,
+                                                                               n_states,
+                                                                               n_states)
                                                                    )
             setattr(ncvar_accepted, 'units', 'none')
             setattr(ncvar_proposed, 'units', 'none')
@@ -851,6 +863,7 @@ class Reporter(object):
         # Create variable if needed.
         for storage in self._storage:
             if 'timestamp' not in storage.variables:
+                # Timestamp chunksizes should be 1, not accessed in bulk
                 storage.createVariable('timestamp', str, ('iteration',), zlib=False, chunksizes=(1,))
         timestamp = time.ctime()
         self._storage_analysis.variables['timestamp'][iteration] = timestamp
@@ -1064,6 +1077,7 @@ class Reporter(object):
             analysis_nc.createDimension('Df', 2)
             online_group = analysis_nc.createGroup('online_analysis')
             # larger chunks, faster operations, small matrix anyways
+            # Online group chunk size should be 1 since we will typically only access this one at a time.
             online_group.createVariable('f_k', float, dimensions=('iteration', 'f_k_length'),
                                        zlib=True, chunksizes=(1, len(f_k)), fill_value=np.inf)
             online_group.createVariable('free_energy', float, dimensions=('iteration', 'Df'),
@@ -1169,7 +1183,7 @@ class Reporter(object):
         return cast_iteration
 
     @staticmethod
-    def _initilize_sampler_variables_on_file(dataset, n_atoms, n_states):
+    def _initilize_sampler_variables_on_file(dataset, n_atoms, n_states, chunksize):
         """
         Initialize the NetCDF variables on the storage file needed to store sampler states.
         Does nothing if file already initilzied
@@ -1193,12 +1207,12 @@ class Reporter(object):
             # Create variables.
             ncvar_positions = dataset.createVariable('positions', 'f4',
                                                      ('iteration', 'replica', 'atom', 'spatial'),
-                                                     zlib=True, chunksizes=(1, n_states, n_atoms, 3))
+                                                     zlib=True, chunksizes=(chunksize, n_states, n_atoms, 3))
             ncvar_box_vectors = dataset.createVariable('box_vectors', 'f4',
                                                        ('iteration', 'replica', 'spatial', 'spatial'),
-                                                       zlib=False, chunksizes=(1, n_states, 3, 3))
+                                                       zlib=False, chunksizes=(chunksize, n_states, 3, 3))
             ncvar_volumes = dataset.createVariable('volumes', 'f8', ('iteration', 'replica'),
-                                                   zlib=False, chunksizes=(1, n_states))
+                                                   zlib=False, chunksizes=(chunksize, n_states))
 
             # Define units for variables.
             setattr(ncvar_positions, 'units', 'nm')
@@ -1236,7 +1250,10 @@ class Reporter(object):
 
         storage = self._storage_dict[storage_file]
         # Check if the schema must be initialized, do this regardless of the checkpoint_interval for consistency
-        self._initilize_sampler_variables_on_file(storage, sampler_states[0].n_particles, len(sampler_states))
+        self._initilize_sampler_variables_on_file(storage,
+                                                  sampler_states[0].n_particles,
+                                                  len(sampler_states),
+                                                  self._storage_chunks[storage_file])
         if obey_checkpoint_interval:
             write_iteration = self._calculate_checkpoint_iteration(iteration)
         else:
