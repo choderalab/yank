@@ -460,6 +460,16 @@ class TestReporter(object):
             assert np.all(thermodynamic_states_energies == restored_ts)
             assert np.all(unsampled_states_energies == restored_us)
 
+    def test_ensure_dimension_exists(self):
+        """Test ensuring that a dimension exists works as expected."""
+        with self.temporary_reporter() as reporter:
+            # These should work fine
+            reporter._ensure_dimension_exists('dim1', 0)
+            reporter._ensure_dimension_exists('dim2', 1)
+            # These should raise an exception
+            assert_raises(ValueError, reporter._ensure_dimension_exists, 'dim1', 1)
+            assert_raises(ValueError, reporter._ensure_dimension_exists, 'dim2', 2)
+
     def test_store_dict(self):
         """Check correct storage and restore of dictionaries."""
 

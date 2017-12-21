@@ -222,9 +222,12 @@ class Reporter(object):
                 open_check_list.append(storage.isopen())
         return np.all(open_check_list)
 
-    def _create_dimension_if_needed(self, dimname, dimsize):
+    def _ensure_dimension_exists(self, dimname, dimsize):
         """
-        Create a dimension if it does not already exist.
+        Ensure a dimension exists and is of the appropriate size,
+        creating it if it does not already exist.
+
+        A ``ValueError`` is raised if ``dimsize`` does not match the existing dimension size.
 
         Parameters
         ----------
@@ -236,6 +239,15 @@ class Reporter(object):
         """
         if dimname not in self._storage_analysis.dimensions:
             self._storage_analysis.createDimension(dimname, dimsize)
+        else:
+            # Check dimension matches expected size
+            dimension = self._storage_analysis.dimensions[dimname]
+            if dimsize == 0:
+                if not dimension.isunlimited():
+                    raise ValueError("NetCDF dimension '%s' already exists: was previously unlimited, but tried to declare it with size %d" % (dimension.name, dimsize))
+            else:
+                if not int(dimension.size) == int(dimsize):
+                    raise ValueError("NetCDF dimension '%s' already exists: was previously size %d, but tried to declare it with dimension %d" % (dimension.name, dimension.size, dimsize))
 
     def open(self, mode='r', convention='ReplicaExchange', netcdf_format='NETCDF4'):
         """
@@ -627,7 +639,7 @@ class Reporter(object):
             n_replicas = len(state_indices)
 
             # Create dimension if they don't exist.
-            self._create_dimension_if_needed('replica', n_replicas)
+            self._ensure_dimension_exists('replica', n_replicas)
 
             # Create variables and attach units and description.
             ncvar_states = self._storage_analysis.createVariable('states', 'i4', ('iteration', 'replica'),
@@ -718,8 +730,8 @@ class Reporter(object):
             n_replicas, n_states = energy_thermodynamic_states.shape
 
             # Create dimensions if they weren't created by other functions.
-            self._create_dimension_if_needed('replica', n_replicas)
-            self._create_dimension_if_needed('state', n_states)
+            self._ensure_dimension_exists('replica', n_replicas)
+            self._ensure_dimension_exists('state', n_states)
 
             # Create variable for thermodynamic state energies with units and descriptions.
             ncvar_energies = self._storage_analysis.createVariable('energies',
@@ -738,7 +750,7 @@ class Reporter(object):
                     n_unsampled_states = len(energy_unsampled_states[0])
 
                     # Create replica dimension if it wasn't created by other functions.
-                    self._create_dimension_if_needed('unsampled', n_unsampled_states)
+                    self._ensure_dimension_exists('unsampled', n_unsampled_states)
 
                     # Create variable for thermodynamic state energies with units and descriptions.
                     ncvar_unsampled = self._storage_analysis.createVariable('unsampled_energies',
@@ -806,7 +818,7 @@ class Reporter(object):
             n_states = n_accepted_matrix.shape[0]
 
             # Create dimension if it doesn't already exist
-            self._create_dimension_if_needed('state', n_states)
+            self._ensure_dimension_exists('state', n_states)
 
             # Create variables with units and descriptions.
             ncvar_accepted = self._storage_analysis.createVariable('accepted',
