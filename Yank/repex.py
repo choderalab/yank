@@ -222,7 +222,7 @@ class Reporter(object):
                 open_check_list.append(storage.isopen())
         return np.all(open_check_list)
 
-    def open(self, mode='r', convention='ReplicaExchange'):
+    def open(self, mode='r', convention='ReplicaExchange', netcdf_format='NETCDF4'):
         """
         Open the storage file for reading/writing.
 
@@ -234,8 +234,10 @@ class Reporter(object):
         ----------
         mode : str, Optional, Default: 'r'
             The mode of the file between 'r', 'w', and 'a' (or equivalently 'r+').
-        converntion : str, Optional, Default: 'ReplicaExchange'
+        convention : str, Optional, Default: 'ReplicaExchange'
             NetCDF convention to write
+        netcdf_format : str, Optional, Default: 'NETCDF4'
+            The NetCDF file format to use
 
         """
         # Ensure we don't have already another file
@@ -260,13 +262,13 @@ class Reporter(object):
         sub_ncfiles = {}
         # TODO: Figure out how to move around the analysis file without the checkpoint file
         # Cast this to a common name space for operation below
-        primary_ncfiles['analysis'] = netcdf.Dataset(self._storage_file_analysis, mode, version='NETCDF4')
+        primary_ncfiles['analysis'] = netcdf.Dataset(self._storage_file_analysis, mode, version=netcdf_format)
         if mode == 'w':
-            sub_ncfiles['checkpoint'] = netcdf.Dataset(self._storage_file_checkpoint, mode, version='NETCDF4')
+            sub_ncfiles['checkpoint'] = netcdf.Dataset(self._storage_file_checkpoint, mode, version=netcdf_format)
         else:  # Read/append mode
             # Try to open the files in read mode, its okay if they are not there
             try:
-                sub_ncfiles['checkpoint'] = netcdf.Dataset(self._storage_file_checkpoint, mode, version='NETCDF4')
+                sub_ncfiles['checkpoint'] = netcdf.Dataset(self._storage_file_checkpoint, mode, version=netcdf_format)
                 primary_uuid = primary_ncfiles['analysis'].UUID
                 assert primary_uuid == sub_ncfiles['checkpoint'].UUID
             except IOError:  # Trap the "not on disk" warning
