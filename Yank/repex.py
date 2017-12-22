@@ -2757,16 +2757,18 @@ class ReplicaExchange(MultiStateSampler):
         super(ReplicaExchange, self).__init__(**kwargs)
         self.replica_mixing_scheme = replica_mixing_scheme
 
-    @staticmethod
-    def _repex_mixing_scheme_validator(instance, replica_mixing_scheme):
-        supported_schemes = ['swap-all', 'swap-neighbors', None]
-        if replica_mixing_scheme not in supported_schemes:
-            raise ValueError("Unknown replica mixing scheme '{}'. Supported values "
-                             "are {}.".format(replica_mixing_scheme, supported_schemes))
-        return replica_mixing_scheme
+    class _StoredProperty(MultiStateSampler._StoredProperty):
 
-    replica_mixing_scheme = MultiStateSampler._StoredProperty('replica_mixing_scheme',
-                                            validate_function=_repex_mixing_scheme_validator)
+        @staticmethod
+        def _repex_mixing_scheme_validator(instance, replica_mixing_scheme):
+            supported_schemes = ['swap-all', 'swap-neighbors', None]
+            if replica_mixing_scheme not in supported_schemes:
+                raise ValueError("Unknown replica mixing scheme '{}'. Supported values "
+                                 "are {}.".format(replica_mixing_scheme, supported_schemes))
+            return replica_mixing_scheme
+
+    replica_mixing_scheme = _StoredProperty('replica_mixing_scheme',
+                                            validate_function=_StoredProperty._repex_mixing_scheme_validator)
 
     title_template = ('Replica-exchange sampler simulation created using ReplicaExchange class '
                       'of yank.repex.py on {}')
