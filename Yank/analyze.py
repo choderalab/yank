@@ -700,7 +700,7 @@ class YankPhaseAnalyzer(ABC):
         return self
 
 
-class ReplicaExchangeAnalyzer(YankPhaseAnalyzer):
+class MultiStateSamplerAnalyzer(YankPhaseAnalyzer):
 
     """
     The MultiStateSamplerAnalyzer is the analyzer for a simulation generated from a MultiStateSampler simulation,

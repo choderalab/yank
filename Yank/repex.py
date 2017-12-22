@@ -2766,7 +2766,7 @@ class ReplicaExchange(MultiStateSampler):
         return replica_mixing_scheme
 
     replica_mixing_scheme = MultiStateSampler._StoredProperty('replica_mixing_scheme',
-                                            validate_function=MultiStateSampler._StoredProperty._repex_mixing_scheme_validator)
+                                            validate_function=_repex_mixing_scheme_validator)
 
     title_template = ('Replica-exchange sampler simulation created using ReplicaExchange class '
                       'of yank.repex.py on {}')
