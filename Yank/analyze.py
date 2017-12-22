@@ -567,7 +567,7 @@ class YankPhaseAnalyzer(ABC):
         raise NotImplementedError("This class has not implemented this function")
 
     @staticmethod
-    def sampler_state_sample_to_state_sample(u_kln: np.ndarray, n_k: Optional[np.ndarray]=None) -> np.ndarray:
+    def reformat_energies_for_mbar(u_kln: np.ndarray, n_k: Optional[np.ndarray]=None) -> np.ndarray:
         """
         Convert u_kln formatted energies into u_ln formatted energies.
 
@@ -910,11 +910,11 @@ class ReplicaExchangeAnalyzer(YankPhaseAnalyzer):
         N_k = np.zeros(nstates, np.int32)
         N = niterations  # number of uncorrelated samples
         N_k[:] = N
-        mbar_ready_energy_matrix = self.sampler_state_sample_to_state_sample(sampled_energy_matrix)
+        mbar_ready_energy_matrix = self.reformat_energies_for_mbar(sampled_energy_matrix)
         if nunsampled > 0:
             new_energy_matrix = np.zeros([nstates + 2, N_k.sum()])
             N_k_new = np.zeros(nstates + 2, np.int32)
-            unsampled_kn = self.sampler_state_sample_to_state_sample(unsampled_energy_matrix)
+            unsampled_kn = self.reformat_energies_for_mbar(unsampled_energy_matrix)
             # Add augmented unsampled energies to the new matrix
             new_energy_matrix[[0, -1], :] = unsampled_kn[[0, -1], :]
             # Fill in the old energies to the middle states
