@@ -1824,8 +1824,8 @@ class MultiStateSampler(object):
     # Main public interface.
     # -------------------------------------------------------------------------
 
-    title_template = 'Multi-state sampler simulation created using MultiStateSampler class '
-                     'of yank.repex on {}'
+    title_template = ('Multi-state sampler simulation created using MultiStateSampler class '
+                      'of yank.repex on {}')
 
     def create(self, thermodynamic_states, sampler_states, storage,
                initial_thermodynamic_states, unsampled_thermodynamic_states=None,
@@ -2768,8 +2768,8 @@ class ReplicaExchange(MultiStateSampler):
     replica_mixing_scheme = MultiStateSampler._StoredProperty('replica_mixing_scheme',
                                             validate_function=MultiStateSampler._StoredProperty._repex_mixing_scheme_validator)
 
-    title_template = 'Replica-exchange sampler simulation created using ReplicaExchange class '
-                     'of yank.repex.py on {}'
+    title_template = ('Replica-exchange sampler simulation created using ReplicaExchange class '
+                      'of yank.repex.py on {}')
 
     def create(self, thermodynamic_states, sampler_states, storage, **kwargs):
         """Create new multistate sampler simulation.

@@ -24,7 +24,7 @@ import os
 import abc
 import copy
 import typing
-from typing import Union
+from typing import Union, Optional
 
 import yaml
 import numpy as np
@@ -514,14 +514,13 @@ class YankPhaseAnalyzer(ABC):
 
         Returns
         -------
-        energy_matrix : energy matrix of shape (K,L,N), indexed by k,l,n
-            K is the total number of sampled states
-            L is the total states we want MBAR to analyze
-            N is the total number of samples
-            The kth sample was drawn from state k at iteration n,
-                the nth configuration of kth state is evaluated in thermodynamic state l
-        samples_per_state : 1-D iterable of shape L
-            The total number of samples drawn from each lth state
+        energy_matrix : energy matrix of shape (K,N) indexed by k,n
+            K is the total number of states observables are desired
+            N is the total number of samples drawn from ALL states
+            The nth configuration is the energy evaluated in the kth thermodynamic state
+        samples_per_state : 1-D iterable of shape K
+            The number of samples drawn from each kth state
+            The \sum samples_per_state = N
         """
         raise NotImplementedError()
 
@@ -534,25 +533,27 @@ class YankPhaseAnalyzer(ABC):
 
         Returns
         -------
-        sampled_energy_matrix : numpy.ndarray of shape K,K,N
+        sampled_energy_matrix : numpy.ndarray of shape K,L,N'
             Deconvoluted energy of sampled states evaluated at other sampled states.
 
-            Has shape (K,K,N) = (number of sampled states, number of sampled states, number of iterations)
+            Has shape (K,L,N') = (number of replica samplers,
+                                 number of sampled thermodynamic states,
+                                 number of iterations from state k)
 
-            Indexed by [k,l,n] where an energy drawn from sampled state [k] is evaluated in sampled state [l] at
+            Indexed by [k,l,n] where an energy drawn from replica sampler [k] is evaluated in thermodynamic state [l] at
             iteration [n]
         unsampled_energy_matrix : numpy.ndarray of shape K,L,N
-            Has shape (K, L, N) = (number of sampled states, number of UN-sampled states, number of iterations)
+            Has shape (K, L, N) = (number of replica samplers,
+                                   number of UN-sampled thermodynamic states,
+                                   number of iterations)
 
             Indexed by [k,l,n]
-            where an energy drawn from sampled state [k] is evaluated in un-sampled state [l] at iteration [n]
+            where an energy drawn from replica state [k] is evaluated in un-sampled state [l] at iteration [n]
         """
         raise NotImplementedError()
 
-    # This SHOULD be an abstract static method since its related to the analyzer, but could handle any input data
-    # Until we drop Python 2.7, we have to keep this method
-    # @abc.abstractmethod
     @staticmethod
+    @abc.abstractmethod
     def get_timeseries(passed_timeseries):
         """
         Generate the timeseries that is generated for this phase
@@ -564,6 +565,50 @@ class YankPhaseAnalyzer(ABC):
         """
 
         raise NotImplementedError("This class has not implemented this function")
+
+    @staticmethod
+    def sampler_state_sample_to_state_sample(u_kln: np.ndarray, n_k: Optional[np.ndarray]=None) -> np.ndarray:
+        """
+        Convert u_kln formatted energies into u_ln formatted energies.
+
+        This method assumes that the first dimension are all samplers,
+        the second dimension are all the thermodynamic states energies were evaluated at
+        and an equal number of samples were drawn from each k'th sampler, UNLESS N_k is specified.
+
+        Parameters
+        ----------
+        u_kln : np.ndarray of shape (K,L,N')
+            K = number of replica samplers
+            L = number of thermodynamic states,
+            N' = number of iterations from state k
+        n_k : np.ndarray of shape K or None
+            Number of samples each _SAMPLER_ (k) has drawn
+            This allows you to have trailing entries on a given kth row in the n'th (n prime) index
+            which do not contribute to the conversion.
+
+            If this is None, assumes ALL samplers have the same number of samples
+            such that N_k = N' for all k
+
+            **WARNING**: N_k is number of samples the SAMPLER drew,
+            NOT how many samples were drawn from each thermodynamic state L.
+            This method knows nothing of how many samples were drawn from each state.
+
+        Returns
+        -------
+        u_ln : np.ndarray of shape (L, N)
+            Reduced, non-sparse data format
+            L = number of thermodynamic states
+            N = \sum_k N_k. note this is not N'
+        """
+        k, l, n = u_kln.shape
+        if n_k is None:
+            n_k = np.ones(k, dtype=np.int32)*n
+        u_ln = np.zeros([l, n_k.sum()])
+        n_counter = 0
+        for k_index in range(k):
+            u_ln[:, n_counter:n_counter + n_k[k_index]] = u_kln[k_index, :, :n_k[k_index]]
+            n_counter += n_k[k_index]
+        return u_ln
 
     # Private Class Methods
     def _create_mbar(self, energy_matrix, samples_per_state):
@@ -795,16 +840,17 @@ class ReplicaExchangeAnalyzer(YankPhaseAnalyzer):
 
         Returns
         -------
-        energy_matrix : ndarray of shape (K,K,N)
+        energy_matrix : ndarray of shape (K,N)
             Potential energy matrix of the sampled states
-            Energy is from each sample n, drawn from state (first k), and evaluated at every sampled state (second k)
-        unsampled_energy_matrix : ndarray of shape (K,L,N)
+            Energy is from each drawn sample n, evaluated at every sampled state k
+        unsampled_energy_matrix : ndarray of shape (L,N)
             Potential energy matrix of the unsampled states
-            Energy from each sample n, drawn from sampled state k, evaluated at unsampled state l
-            If no unsampled states were drawn, this will be shape (K,0,N)
+            Energy from each drawn sample n, evaluated at unsampled state l
+            If no unsampled states were drawn, this will be shape (0,N)
 
         """
         logger.info("Reading energies...")
+        # Returns the energies in kln format
         energy_thermodynamic_states, energy_unsampled_states = self._reporter.read_energies()
         n_iterations, n_replicas, n_states = energy_thermodynamic_states.shape
         _, _, n_unsampled_states = energy_unsampled_states.shape
@@ -864,23 +910,20 @@ class ReplicaExchangeAnalyzer(YankPhaseAnalyzer):
         N_k = np.zeros(nstates, np.int32)
         N = niterations  # number of uncorrelated samples
         N_k[:] = N
-        mbar_ready_energy_matrix = sampled_energy_matrix
+        mbar_ready_energy_matrix = self.sampler_state_sample_to_state_sample(sampled_energy_matrix)
         if nunsampled > 0:
-            fully_interacting_u_ln = unsampled_energy_matrix[:, 0, :]
-            noninteracting_u_ln = unsampled_energy_matrix[:, 1, :]
-            # Augment u_kln to accept the new state
-            new_energy_matrix = np.zeros([nstates + 2, nstates + 2, N], np.float64)
+            new_energy_matrix = np.zeros([nstates + 2, N_k.sum()])
             N_k_new = np.zeros(nstates + 2, np.int32)
-            # Insert energies
-            new_energy_matrix[1:-1, 0, :] = fully_interacting_u_ln
-            new_energy_matrix[1:-1, -1, :] = noninteracting_u_ln
-            # Fill in other energies
-            new_energy_matrix[1:-1, 1:-1, :] = sampled_energy_matrix
+            unsampled_kn = self.sampler_state_sample_to_state_sample(unsampled_energy_matrix)
+            # Add augmented unsampled energies to the new matrix
+            new_energy_matrix[[0, -1], :] = unsampled_kn[[0, -1], :]
+            # Fill in the old energies to the middle states
+            new_energy_matrix[1:-1, :] = mbar_ready_energy_matrix
             N_k_new[1:-1] = N_k
             # Notify users
             logger.info("Found expanded cutoff states in the energies!")
             logger.info("Free energies will be reported relative to them instead!")
-            # Reset values, last step in case something went wrong so we dont overwrite u_kln on accident
+            # Reset values, last step in case something went wrong so we dont overwrite u_kn on accident
             mbar_ready_energy_matrix = new_energy_matrix
             N_k = N_k_new
         return mbar_ready_energy_matrix, N_k
@@ -1037,8 +1080,8 @@ class ReplicaExchangeAnalyzer(YankPhaseAnalyzer):
         # decorrelate_data subsample the energies only based on g_t so both ends up with same indices.
         u_kln = subsample_data_along_axis(u_kln, g_t, -1)
         unsampled_u_kln = subsample_data_along_axis(unsampled_u_kln, g_t, -1)
-        mbar_ukln, mbar_N_k = self._prepare_mbar_input_data(u_kln, unsampled_u_kln)
-        self._create_mbar(mbar_ukln, mbar_N_k)
+        mbar_ukn, mbar_N_k = self._prepare_mbar_input_data(u_kln, unsampled_u_kln)
+        self._create_mbar(mbar_ukn, mbar_N_k)
 
     def analyze_phase(self, cutoff=0.05):
         if self._mbar is None:
