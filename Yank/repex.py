@@ -2310,21 +2310,38 @@ class MultiStateSampler(object):
         self._reporter.write_last_iteration(self._iteration)
         self._reporter.sync()
 
-    def _store_options(self):
-        """Store __init__ parameters (beside MCMCMoves) in storage file."""
-        logger.debug("Storing general ReplicaExchange options...")
+    @classmethod
+    def default_options(cls):
+        """
+        dict of all default class options (keyword arguments for __init__ for class and superclasses)
+        """
+        options_to_report = dict()
+        for c in inspect.getmro(cls):
+            parameter_names, _, _, defaults = inspect.getargspec(c.__init__)
+            if defaults:
+                class_options = { parameter_name : defaults[index] for (index, parameter_name) in enumerate(parameter_names[-len(defaults):]) }
+                options_to_report.update(class_options)
+        options_to_report.pop('mcmc_moves')
+        return options_to_report
 
-        # Inspect __init__ of this class and superclasses for parameters to store.
-        options_to_store = dict()
+    @property
+    def options(self):
+        """
+        dict of all class options (keyword arguments for __init__ for class and superclasses)
+        """
+        options_to_report = dict()
         for cls in inspect.getmro(type(self)):
             parameter_names, _, _, defaults = inspect.getargspec(cls.__init__)
             if defaults:
-                for parameter_name in parameter_names[-len(defaults):]:
-                    options_to_store[parameter_name] = getattr(self, '_' + parameter_name)
+                class_options = { parameter_name : getattr(self, '_' + parameter_name) for parameter_name in parameter_names[-len(defaults):] }
+                options_to_report.update(class_options)
+        options_to_report.pop('mcmc_moves')
+        return options_to_report
 
-        # We store the MCMCMoves separately.
-        options_to_store.pop('mcmc_moves')
-        self._reporter.write_dict('options', options_to_store)
+    def _store_options(self):
+        """Store __init__ parameters (beside MCMCMoves) in storage file."""
+        logger.debug("Storing general ReplicaExchange options...")
+        self._reporter.write_dict('options', self.options)
 
     # -------------------------------------------------------------------------
     # Internal-usage: Distributed tasks.

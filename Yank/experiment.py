@@ -1196,13 +1196,12 @@ class ExperimentBuilder(object):
         template_options = cls.EXPERIMENT_DEFAULT_OPTIONS.copy()
         template_options.update(AlchemicalPhaseFactory.DEFAULT_OPTIONS)
         template_options.update(mmtools.alchemy._ALCHEMICAL_REGION_ARGS)
-        template_options.update(utils.get_keyword_args(repex.ReplicaExchange.__init__))
+        template_options.update(repex.ReplicaExchange.default_options())
 
         if validate_general_options is True:
             template_options.update(cls.GENERAL_DEFAULT_OPTIONS.copy())
 
         # Remove options that are not supported.
-        template_options.pop('mcmc_moves')  # ReplicaExchange
         template_options.pop('alchemical_atoms')  # AlchemicalRegion
         template_options.pop('alchemical_bonds')
         template_options.pop('alchemical_angles')
