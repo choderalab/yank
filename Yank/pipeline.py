@@ -1029,7 +1029,7 @@ class SetupDatabase:
             return system_files_paths
 
         system_descr = self.systems[system_id]
-        log_message = 'Setting up the systems for {}, {} and {}'
+        log_message = 'Setting up the systems for {} and {} using solvent {}'
 
         if 'receptor' in system_descr:  # binding free energy calculation
             receptor_id = system_descr['receptor']
