@@ -1007,7 +1007,7 @@ class ExperimentBuilder(object):
 
         experiment_options = _filter_options(self.EXPERIMENT_DEFAULT_OPTIONS)
         phase_options = _filter_options(AlchemicalPhaseFactory.DEFAULT_OPTIONS)
-        sampler_options = _filter_options(utils.get_keyword_args(repex.ReplicaExchange.__init__))
+        sampler_options = _filter_options(repex.ReplicaExchange.default_options())
         alchemical_region_options = _filter_options(mmtools.alchemy._ALCHEMICAL_REGION_ARGS)
 
         return experiment_options, phase_options, sampler_options, alchemical_region_options

@@ -195,7 +195,7 @@ class TestAlchemicalPhase(object):
         test_system = testsystems.HostGuestImplicit()
         thermodynamic_state = states.ThermodynamicState(test_system.system,
                                                         temperature=temperature)
-        sampler_state = states.SamplerState(test_system.positions)
+        sampler_state = states.SamplerState(positions=test_system.positions, box_vectors=test_system.system.getDefaultPeriodicBoxVectors())
         topography = Topography(test_system.topology, ligand_atoms='resname B2')
         cls.host_guest_implicit = ('Host-guest implicit', thermodynamic_state, sampler_state, topography)
 
@@ -203,7 +203,9 @@ class TestAlchemicalPhase(object):
         test_system = testsystems.HostGuestExplicit()
         thermodynamic_state = states.ThermodynamicState(test_system.system,
                                                         temperature=temperature)
-        sampler_state = states.SamplerState(test_system.positions)
+        positions = test_system.positions
+        box_vectors = test_system.system.getDefaultPeriodicBoxVectors()
+        sampler_state = states.SamplerState(positions=positions, box_vectors=box_vectors)
         topography = Topography(test_system.topology, ligand_atoms='resname B2')
         cls.host_guest_explicit = ('Host-guest explicit', thermodynamic_state, sampler_state, topography)
 
@@ -211,7 +213,9 @@ class TestAlchemicalPhase(object):
         test_system = testsystems.AlanineDipeptideExplicit()
         thermodynamic_state = states.ThermodynamicState(test_system.system,
                                                         temperature=temperature)
-        sampler_state = states.SamplerState(test_system.positions)
+        positions = test_system.positions
+        box_vectors = test_system.system.getDefaultPeriodicBoxVectors()
+        sampler_state = states.SamplerState(positions=positions, box_vectors=box_vectors)
         topography = Topography(test_system.topology)
         cls.alanine_explicit = ('Alanine dipeptide explicit', thermodynamic_state, sampler_state, topography)
 
@@ -503,9 +507,10 @@ class TestAlchemicalPhase(object):
         displacement_vector = np.ones(3) * unit.nanometer
         positions2 = test_system.positions + displacement_vector
         positions3 = positions2 + displacement_vector
-        sampler_state1 = states.SamplerState(test_system.positions)
-        sampler_state2 = states.SamplerState(positions2)
-        sampler_state3 = states.SamplerState(positions3)
+        box_vectors = test_system.system.getDefaultPeriodicBoxVectors()
+        sampler_state1 = states.SamplerState(positions=test_system.positions, box_vectors=box_vectors)
+        sampler_state2 = states.SamplerState(positions=positions2, box_vectors=box_vectors)
+        sampler_state3 = states.SamplerState(positions=positions3, box_vectors=box_vectors)
         sampler_states = [sampler_state1, sampler_state2, sampler_state3]
 
         with self.temporary_storage_path() as storage_path:
