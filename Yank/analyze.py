@@ -749,7 +749,7 @@ class MultiStateSamplerAnalyzer(YankPhaseAnalyzer):
             number_equilibrated, _, _ = self._equilibration_data
         states = self._reporter.read_replica_thermodynamic_states()
         n_iterations, n_replicas = states.shape
-        n_states = self._reporter.read_mixing_statistics().shape[0]
+        n_states = self._reporter.n_states    
         n_ij = np.zeros([n_states, n_states], np.int64)
 
         # Compute empirical transition count matrix.

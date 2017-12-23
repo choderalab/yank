@@ -170,6 +170,18 @@ class Reporter(object):
         return self._storage_file_analysis, self._storage_file_checkpoint
 
     @property
+    def n_states(self):
+        if not self.is_open():
+            return None
+        return self._storage_analysis.dimensions['state'].size
+
+    @property
+    def n_replicas(self):
+        if not self.is_open():
+            return None
+        return self._storage_analysis.dimensions['replica'].size
+
+    @property
     def _storage_dict(self):
         """Return an iterable dictionary of the self._storage_X objects"""
         return {'checkpoint': self._storage_checkpoint, 'analysis': self._storage_analysis}

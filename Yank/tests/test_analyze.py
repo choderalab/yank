@@ -108,7 +108,9 @@ class TestPhaseAnalyzer(object):
         hostguest_alchemical = factory.create_alchemical_system(hostguest_test.system, alchemical_region)
 
         # Translate the sampler states to be different one from each other.
-        hostguest_sampler_states = [mmtools.states.SamplerState(hostguest_test.positions + 10*i*unit.nanometers)
+        positions = hostguest_test.positions
+        box_vectors = hostguest_test.system.getDefaultPeriodicBoxVectors()
+        hostguest_sampler_states = [mmtools.states.SamplerState(positions=positions + 10*i*unit.nanometers, box_vectors=box_vectors)
                                     for i in range(n_states)]
 
         # Create the three basic thermodynamic states.
