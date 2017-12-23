@@ -182,6 +182,14 @@ class Reporter(object):
         return self._storage_analysis.dimensions['replica'].size
 
     @property
+    def is_periodic(self):
+        if not self.is_open():
+            return None
+        if 'box_vectors' in self._storage_analysis.variables:
+            return True
+        return False
+
+    @property
     def _storage_dict(self):
         """Return an iterable dictionary of the self._storage_X objects"""
         return {'checkpoint': self._storage_checkpoint, 'analysis': self._storage_analysis}
@@ -1207,7 +1215,7 @@ class Reporter(object):
         return cast_iteration
 
     @staticmethod
-    def _initialize_sampler_variables_on_file(dataset, n_atoms, n_replicas):
+    def _initialize_sampler_variables_on_file(dataset, n_atoms, n_replicas, is_periodic):
         """
         Initialize the NetCDF variables on the storage file needed to store sampler states.
         Does nothing if file already initilzied
@@ -1220,6 +1228,8 @@ class Reporter(object):
             Number of atoms which will be stored
         n_replicas : int
             Number of Sampler states which will be written
+        is_periodic : bool
+            True if system is periodic; False otherwise.
         """
         if 'positions' not in dataset.variables:
 
@@ -1228,30 +1238,30 @@ class Reporter(object):
             if 'replica' not in dataset.dimensions:
                 dataset.createDimension('replica', n_replicas)
 
-            # Create variables.
+            # Define position variables
             ncvar_positions = dataset.createVariable('positions', 'f4',
                                                      ('iteration', 'replica', 'atom', 'spatial'),
                                                      zlib=True, chunksizes=(1, n_replicas, n_atoms, 3))
-            ncvar_box_vectors = dataset.createVariable('box_vectors', 'f4',
-                                                       ('iteration', 'replica', 'spatial', 'spatial'),
-                                                       zlib=False, chunksizes=(1, n_replicas, 3, 3))
-            ncvar_volumes = dataset.createVariable('volumes', 'f8', ('iteration', 'replica'),
-                                                   zlib=False, chunksizes=(1, n_replicas))
-
-            # Define units for variables.
             setattr(ncvar_positions, 'units', 'nm')
-            setattr(ncvar_box_vectors, 'units', 'nm')
-            setattr(ncvar_volumes, 'units', 'nm**3')
-
-            # Define long (human-readable) names for variables.
             setattr(ncvar_positions, "long_name", ("positions[iteration][replica][atom][spatial] is position of "
-                                                   "coordinate 'spatial' of atom 'atom' from replica 'replica' for "
-                                                   "iteration 'iteration'."))
+                                       "coordinate 'spatial' of atom 'atom' from replica 'replica' for "
+                                       "iteration 'iteration'."))
 
-            setattr(ncvar_box_vectors, "long_name", ("box_vectors[iteration][replica][i][j] is dimension j of box "
-                                                     "vector i for replica 'replica' from iteration 'iteration-1'."))
-            setattr(ncvar_volumes, "long_name", ("volume[iteration][replica] is the box volume for replica 'replica' "
-                                                 "from iteration 'iteration-1'."))
+            # Define variables for periodic systems
+            if is_periodic:
+                ncvar_box_vectors = dataset.createVariable('box_vectors', 'f4',
+                                                           ('iteration', 'replica', 'spatial', 'spatial'),
+                                                           zlib=False, chunksizes=(1, n_replicas, 3, 3))
+                ncvar_volumes = dataset.createVariable('volumes', 'f8', ('iteration', 'replica'),
+                                                       zlib=False, chunksizes=(1, n_replicas))
+
+                setattr(ncvar_box_vectors, 'units', 'nm')
+                setattr(ncvar_volumes, 'units', 'nm**3')
+
+                setattr(ncvar_box_vectors, "long_name", ("box_vectors[iteration][replica][i][j] is dimension j of box "
+                                                         "vector i for replica 'replica' from iteration 'iteration-1'."))
+                setattr(ncvar_volumes, "long_name", ("volume[iteration][replica] is the box volume for replica 'replica' "
+                                                     "from iteration 'iteration-1'."))
 
     def _write_sampler_states_to_given_file(self, sampler_states, iteration,
                                             storage_file='checkpoint', obey_checkpoint_interval=True):
@@ -1274,7 +1284,8 @@ class Reporter(object):
 
         storage = self._storage_dict[storage_file]
         # Check if the schema must be initialized, do this regardless of the checkpoint_interval for consistency
-        self._initialize_sampler_variables_on_file(storage, sampler_states[0].n_particles, len(sampler_states))
+        is_periodic = True if (sampler_states[0].box_vectors is not None) else False
+        self._initialize_sampler_variables_on_file(storage, sampler_states[0].n_particles, len(sampler_states), is_periodic)
         if obey_checkpoint_interval:
             write_iteration = self._calculate_checkpoint_iteration(iteration)
         else:
@@ -1287,12 +1298,13 @@ class Reporter(object):
                 x = sampler_state.positions / unit.nanometers
                 storage.variables['positions'][write_iteration, replica_index, :, :] = x[:, :]
 
-                # Store box vectors and volume.
-                for i in range(3):
-                    vector_i = sampler_state.box_vectors[i] / unit.nanometers
-                    storage.variables['box_vectors'][write_iteration, replica_index, i, :] = vector_i
-                    storage.variables['volumes'][write_iteration, replica_index] = \
-                        sampler_state.volume / unit.nanometers ** 3
+                if is_periodic:
+                    # Store box vectors and volume.
+                    for i in range(3):
+                        vector_i = sampler_state.box_vectors[i] / unit.nanometers
+                        storage.variables['box_vectors'][write_iteration, replica_index, i, :] = vector_i
+                        storage.variables['volumes'][write_iteration, replica_index] = \
+                            sampler_state.volume / unit.nanometers ** 3
         else:
             logger.debug("Iteration {} not on the Checkpoint Interval of {}. "
                          "Sampler State not written.".format(iteration, self._checkpoint_interval))
@@ -1339,9 +1351,12 @@ class Reporter(object):
                 x = storage.variables['positions'][read_iteration, replica_index, :, :].astype(np.float64)
                 positions = unit.Quantity(x, unit.nanometers)
 
-                # Restore box vectors.
-                x = storage.variables['box_vectors'][read_iteration, replica_index, :, :].astype(np.float64)
-                box_vectors = unit.Quantity(x, unit.nanometers)
+                if 'box_vectors' in storage.variables:
+                    # Restore box vectors.
+                    x = storage.variables['box_vectors'][read_iteration, replica_index, :, :].astype(np.float64)
+                    box_vectors = unit.Quantity(x, unit.nanometers)
+                else:
+                    box_vectors = None
 
                 # Create SamplerState.
                 sampler_states.append(mmtools.states.SamplerState(positions=positions, box_vectors=box_vectors))
@@ -1751,6 +1766,13 @@ class MultiStateSampler(object):
         mpi.run_single_node(0, self._reporter.write_sampler_states,
                             self._sampler_states, self._iteration)
 
+    @property
+    def is_periodic(self):
+        """Return True if system is periodic, False if not, and None if not initialized"""
+        if self._sampler_states is None:
+            return None
+        return self._thermodynamic_states[0].is_periodic
+
     class _StoredProperty(object):
         """
         Descriptor of a property stored as an option.
@@ -1852,6 +1874,8 @@ class MultiStateSampler(object):
         sampler_states : openmmtools.states.SamplerState or list
             One or more sets of initial sampler states.
             The number of replicas is taken to be the number of sampler states provided.
+            If the sampler states do not have box_vectors attached and the system is periodic,
+            an exception will be thrown.
         storage : str or instanced Reporter
             If str: the path to the storage file. Default checkpoint options from Reporter class are used
             If Reporter: Uses the reporter options and storage path
@@ -1867,11 +1891,30 @@ class MultiStateSampler(object):
            Simulation metadata to be stored in the file.
         """
 
-        # We currently require box vectors
-        # TODO: Can we refactor so that we don't require box vectors?
-        for sampler_state in sampler_states:
-            if sampler_state.box_vectors is None:
-                raise Exception('All sampler states must have box_vectors defined.')
+        # Make sure sampler_states is an iterable of SamplerStates for later.
+        if isinstance(sampler_states, mmtools.states.SamplerState):
+            sampler_states = [sampler_states]
+
+        # Check all systems are either periodic or not.
+        is_periodic = thermodynamic_states[0].is_periodic
+        for thermodynamic_state in thermodynamic_states:
+            if thermodynamic_state.is_periodic != is_periodic:
+                raise Exception('Thermodynamic states contain a mixture of systems with and without periodic boundary conditions.')
+
+        # Check that sampler states specify box vectors if the system is periodic
+        if is_periodic:
+            for sampler_state in sampler_states:
+                if (sampler_state.box_vectors is None):
+                    raise Exception('All sampler states must have box_vectors defined if the system is periodic.')
+
+        # Make sure all states have same number of particles. We don't
+        # currently support writing storage with different n_particles
+        n_particles = thermodynamic_states[0].n_particles
+        for states in [thermodynamic_states, sampler_states]:
+            for state in states:
+                if state.n_particles != n_particles:
+                    raise ValueError('All ThermodynamicStates and SamplerStates must '
+                                     'have the same number of particles')
 
         # Handle case in which storage is a string.
         reporter = self._reporter_from_storage(storage, check_exist=False)
@@ -1884,18 +1927,6 @@ class MultiStateSampler(object):
             raise RuntimeError('Storage file {} already exists; cowardly '
                                'refusing to overwrite.'.format(reporter.filepath))
 
-        # Make sure sampler_states is an iterable of SamplerStates for later.
-        if isinstance(sampler_states, mmtools.states.SamplerState):
-            sampler_states = [sampler_states]
-
-        # Make sure all states have same number of particles. We don't
-        # currently support writing storage with different n_particles
-        n_particles = thermodynamic_states[0].n_particles
-        for states in [thermodynamic_states, sampler_states]:
-            for state in states:
-                if state.n_particles != n_particles:
-                    raise ValueError('All ThermodynamicStates and SamplerStates must '
-                                     'have the same number of particles')
 
         # Handle default argument for metadata and add default simulation title.
         default_title = (self.title_template.format(time.asctime(time.localtime())))
@@ -1916,6 +1947,12 @@ class MultiStateSampler(object):
 
         # Deep copy sampler states.
         self._sampler_states = [copy.deepcopy(sampler_state) for sampler_state in sampler_states]
+
+        # Make sure all sampler states have box vectors defined; add dummies if needed.
+        default_box_vectors = thermodynamic_states[0].system.getDefaultPeriodicBoxVectors()
+        for sampler_state in self._sampler_states:
+            if sampler_state.box_vectors is None:
+                sampler_state.box_vectors = default_box_vectors
 
         # Set initial thermodynamic state indices if not specified
         self._replica_thermodynamic_states = np.array(initial_thermodynamic_states, np.int64)

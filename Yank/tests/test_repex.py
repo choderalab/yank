@@ -361,8 +361,7 @@ class TestReporter(object):
             # Create sampler states.
             alanine_test = testsystems.AlanineDipeptideVacuum()
             positions = alanine_test.positions
-            box_vectors = alanine_test.system.getDefaultPeriodicBoxVectors()
-            sampler_states = [mmtools.states.SamplerState(positions=positions, box_vectors=box_vectors)
+            sampler_states = [mmtools.states.SamplerState(positions=positions)
                               for _ in range(2)]
 
             # Check that after writing and reading, states are identical.
@@ -560,8 +559,7 @@ class TestReplicaExchange(object):
         alanine_test = testsystems.AlanineDipeptideVacuum()
 
         # Translate the sampler states to be different one from each other.
-        box_vectors = alanine_test.system.getDefaultPeriodicBoxVectors()
-        alanine_sampler_states = [mmtools.states.SamplerState(positions=alanine_test.positions + 10*i*unit.nanometers, box_vectors=box_vectors)
+        alanine_sampler_states = [mmtools.states.SamplerState(positions=alanine_test.positions + 10*i*unit.nanometers)
                                   for i in range(n_states)]
 
         # Set increasing temperature.
@@ -580,8 +578,7 @@ class TestReplicaExchange(object):
         hostguest_alchemical = factory.create_alchemical_system(hostguest_test.system, alchemical_region)
 
         # Translate the sampler states to be different one from each other.
-        box_vectors = hostguest_test.system.getDefaultPeriodicBoxVectors()
-        hostguest_sampler_states = [mmtools.states.SamplerState(positions=hostguest_test.positions + 10*i*unit.nanometers, box_vectors=box_vectors)
+        hostguest_sampler_states = [mmtools.states.SamplerState(positions=hostguest_test.positions + 10*i*unit.nanometers)
                                     for i in range(n_states)]
 
         # Create the three basic thermodynamic states.
