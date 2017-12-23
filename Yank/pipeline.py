@@ -491,7 +491,7 @@ def read_system_files(positions_file_path, parameters_file_path, system_options,
 
     # Store numpy positions and create SamplerState.
     positions = positions_file.getPositions(asNumpy=True)
-    sampler_state = mmtools.states.SamplerState(positions=positions)
+    sampler_state = mmtools.states.SamplerState(positions=positions, box_vectors=box_vectors)
 
     # Check to make sure number of atoms match between prmtop and inpcrd.
     n_atoms_system = system.getNumParticles()
