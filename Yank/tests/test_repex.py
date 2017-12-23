@@ -560,7 +560,8 @@ class TestReplicaExchange(object):
         alanine_test = testsystems.AlanineDipeptideVacuum()
 
         # Translate the sampler states to be different one from each other.
-        alanine_sampler_states = [mmtools.states.SamplerState(alanine_test.positions + 10*i*unit.nanometers)
+        box_vectors = alanine_test.system.getDefaultPeriodicBoxVectors()
+        alanine_sampler_states = [mmtools.states.SamplerState(positions=alanine_test.positions + 10*i*unit.nanometers, box_vectors=box_vectors)
                                   for i in range(n_states)]
 
         # Set increasing temperature.
@@ -579,7 +580,8 @@ class TestReplicaExchange(object):
         hostguest_alchemical = factory.create_alchemical_system(hostguest_test.system, alchemical_region)
 
         # Translate the sampler states to be different one from each other.
-        hostguest_sampler_states = [mmtools.states.SamplerState(hostguest_test.positions + 10*i*unit.nanometers)
+        box_vectors = hostguest_test.system.getDefaultPeriodicBoxVectors()
+        hostguest_sampler_states = [mmtools.states.SamplerState(positions=hostguest_test.positions + 10*i*unit.nanometers, box_vectors=box_vectors)
                                     for i in range(n_states)]
 
         # Create the three basic thermodynamic states.
@@ -665,7 +667,8 @@ class TestReplicaExchange(object):
 
             # The n_states-1 sampler states have been distributed to n_states replica.
             restored_sampler_states = reporter.read_sampler_states(iteration=0)
-            assert len(repex._sampler_states) == n_states
+            assert repex.n_states == n_states, "Mismatch: repex.n_states = {} but n_states = {}".format(repex.n_states, n_states)
+            assert repex.n_replicas == n_states, "Mismatch: repex.n_replicas = {} but n_states = {}".format(repex.n_replicas, n_states)
             assert len(restored_sampler_states) == n_states
             assert np.allclose(restored_sampler_states[0].positions, repex._sampler_states[0].positions)
 
@@ -678,13 +681,16 @@ class TestReplicaExchange(object):
                 assert isinstance(restored_move, mmtools.mcmc.LangevinDynamicsMove)
 
             # Options have been stored.
-            option_names, _, _, defaults = inspect.getargspec(repex.__init__)
-            option_names = option_names[2:]  # Discard 'self' and 'mcmc_moves' arguments.
-            defaults = defaults[1:]  # Discard 'mcmc_moves' default.
-            options = reporter.read_dict('options')
-            assert len(options) == len(defaults)
-            for key, value in zip(option_names, defaults):
-                assert options[key] == value
+            stored_options = reporter.read_dict('options')
+            options_to_store = dict()
+            for cls in inspect.getmro(type(repex)):
+                parameter_names, _, _, defaults = inspect.getargspec(cls.__init__)
+                if defaults:
+                    for parameter_name in parameter_names[-len(defaults):]:
+                        options_to_store[parameter_name] = getattr(repex, '_' + parameter_name)
+            options_to_store.pop('mcmc_moves') # mcmc_moves are stored separately
+            for key, value in options_to_store.items():
+                assert stored_options[key] == value
                 assert getattr(repex, '_' + key) == value
 
             # A default title has been added to the stored metadata.

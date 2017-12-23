@@ -1854,18 +1854,12 @@ class MultiStateSampler(object):
         metadata : dict, optional, default=None
            Simulation metadata to be stored in the file.
         """
-        # Make sure there are no more sampler states than thermodynamic states.
-        # TODO: Move this to ReplicaExchange
-        if len(sampler_states) > len(thermodynamic_states):
-            raise ValueError('Passed {} SamplerStates but only {} ThermodynamicStates'.format(
-                len(sampler_states), len(thermodynamic_states)))
 
-        # Distribute sampler states to replicas in a round-robin fashion.
-        # TODO: Move this to ReplicaExchange
-        sampler_states = [copy.deepcopy(sampler_states[i % len(sampler_states)])
-                                for i in range(len(thermodynamic_states))]
-
-        ####
+        # We currently require box vectors
+        # TODO: Can we refactor so that we don't require box vectors?
+        for sampler_state in sampler_states:
+            if sampler_state.box_vectors is None:
+                raise Exception('All sampler states must have box_vectors defined.')
 
         # Handle case in which storage is a string.
         reporter = self._reporter_from_storage(storage, check_exist=False)
@@ -2308,12 +2302,14 @@ class MultiStateSampler(object):
         """Store __init__ parameters (beside MCMCMoves) in storage file."""
         logger.debug("Storing general ReplicaExchange options...")
 
-        # Inspect __init__ parameters to store.
-        parameter_names, _, _, defaults = inspect.getargspec(self.__init__)
+        # Inspect __init__ of this class and superclasses for parameters to store.
+        options_to_store = dict()
+        for cls in inspect.getmro(type(self)):
+            parameter_names, _, _, defaults = inspect.getargspec(cls.__init__)
+            if defaults:
+                for parameter_name in parameter_names[-len(defaults):]:
+                    options_to_store[parameter_name] = getattr(self, '_' + parameter_name)
 
-        # Retrieve and store options.
-        options_to_store = {parameter_name: getattr(self, '_' + parameter_name)
-                            for parameter_name in parameter_names[-len(defaults):]}
         # We store the MCMCMoves separately.
         options_to_store.pop('mcmc_moves')
         self._reporter.write_dict('options', options_to_store)
@@ -2799,7 +2795,7 @@ class ReplicaExchange(MultiStateSampler):
         """
 
         # Get number of thermodynamic states
-        n_states = len(sampler_states)
+        n_states = len(thermodynamic_states)
 
         # Make sure there are no more sampler states than thermodynamic states.
         if len(sampler_states) > n_states:
@@ -2807,8 +2803,7 @@ class ReplicaExchange(MultiStateSampler):
                 len(sampler_states), n_states))
 
         # Distribute sampler states to replicas in a round-robin fashion.
-        sampler_states = [copy.deepcopy(sampler_states[i % n_states])
-                                for i in range(n_states)]
+        sampler_states = [copy.deepcopy(sampler_states[i % len(sampler_states)]) for i in range(n_states)]
 
         # Assign initial thermodynamic states for replicas
         initial_thermodynamic_states = np.array([i for i in range(n_states)], np.int64)
