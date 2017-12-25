@@ -420,6 +420,7 @@ def test_validation_correct_molecules():
         {'filepath': paths['abl'], 'leap': {'parameters': 'leaprc.ff99SBildn'}, 'select': 1},
         {'filepath': paths['abl'], 'select': 'all'},
         {'filepath': paths['abl'], 'select': 'all', 'strip_protons': True},
+        {'filepath': paths['abl'], 'select': 'all', 'make_mutations': {'chain' : 'A', 'mutations' : 'T85I'} },
         {'filepath': paths['toluene'], 'leap': {'parameters': 'leaprc.gaff'}},
         {'filepath': paths['benzene'], 'epik': {'select': 1, 'tautomerize': False}},
         # Regions tests, make sure all other combos still work
@@ -1003,6 +1004,47 @@ def test_strip_protons():
                     break
         assert not has_hydrogen
 
+
+def test_make_mutations():
+    """Test that mutations are made correctly."""
+    mol_id = 'Abl'
+    abl_path = examples_paths()['abl']
+    with mmtools.utils.temporary_directory() as tmp_dir:
+        # Safety check: protein must have WT residue: THR at residue 85 in chain A
+        has_wt_residue = False
+        with open(abl_path, 'r') as f:
+            for line in f:
+                if (line[:6] == 'ATOM  ') and (line[21] == 'A') and (int(line[22:26]) == 85) and (line[17:20]=='THR'):
+                    has_wt_residue = True
+                    break
+        assert has_wt_residue
+
+        yaml_content = get_template_script(tmp_dir)
+        exp_builder = ExperimentBuilder(yaml_content)
+        output_dir = exp_builder._db.get_molecule_dir(mol_id)
+        output_path = os.path.join(output_dir, 'Abl.pdb')
+
+        # We haven't set the strip_protons options, so this shouldn't do anything
+        exp_builder._db._setup_molecules(mol_id)
+        assert not os.path.exists(output_path)
+
+        # Now we set the strip_protons options and repeat
+        exp_builder._db.molecules[mol_id]['make_mutations'] = {
+            'chain' : 'A',
+            'mutations' : 'T85I',
+        }
+        exp_builder._db._setup_molecules(mol_id)
+        assert os.path.exists(output_path)
+        assert os.path.getsize(output_path) > 0
+
+        # Safety check: protein must have mutated residue: ILE at residue 85 in chain A
+        has_mut_residue = False
+        with open(abl_path, 'r') as f:
+            for line in f:
+                if (line[:6] == 'ATOM  ') and (line[21] == 'A') and (int(line[22:26]) == 85) and (line[17:20]=='ILE'):
+                    has_mut_residue = True
+                    break
+        assert has_mut_residue
 
 # ==============================================================================
 # Combinatorial expansion
@@ -1605,7 +1647,7 @@ def get_number_of_ions(exp_builder, phase, system_id):
 
     return n_pos_ions, n_neg_ions, n_ionic_strength_ions
 
-  
+
 @unittest.skipIf(not utils.is_openeye_installed(), "This test requires OpenEye toolkit")
 def test_charged_ligand():
     """Check that there are alchemical counterions for charged ligands."""

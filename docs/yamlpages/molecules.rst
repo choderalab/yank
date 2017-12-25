@@ -3,16 +3,16 @@
 Molecules Header for YAML Files
 *******************************
 
-Everything under the ``molecules`` defines what molecules are in your systems. 
-You can specify your own molecule names. 
+Everything under the ``molecules`` defines what molecules are in your systems.
+You can specify your own molecule names.
 Because of this user defined names in the syntax examples are marked as ``{UserDefinedMolecule}``.
 
-You can define as many ``{UserDefinedMolecule}`` as you like. 
+You can define as many ``{UserDefinedMolecule}`` as you like.
 These molecules will be used in other YAML headed sections.
 
-Unlike the primary :doc:`options <options>` for YAML files, 
-many of these settings are optional and do nothing if not specified. 
-The mandatory/optional of each setting (and what conditionals), 
+Unlike the primary :doc:`options <options>` for YAML files,
+many of these settings are optional and do nothing if not specified.
+The mandatory/optional of each setting (and what conditionals),
 as well as the default behavior of each setting is explicitly stated in the setting's description.
 
 All of the molecules will be built, even if they are not used in a later system, so ensure your molecules do not
@@ -45,8 +45,8 @@ way to specify the charges, proteins however can rely on built in force field pa
 
 Valid Filetypes: PDB, mol2, sdf, cvs
 
-**Note:** If CVS is specified and there is only one moleucle, the first column must be a SMILES string. 
-If multiple molecules are to be used (for the :doc:`!Combinatorial <combinatorial>` ability), 
+**Note:** If CVS is specified and there is only one moleucle, the first column must be a SMILES string.
+If multiple molecules are to be used (for the :doc:`!Combinatorial <combinatorial>` ability),
 then each row is its own molecule where the second column is the SMILES string.
 
 
@@ -63,7 +63,7 @@ then each row is its own molecule where the second column is the SMILES string.
      {UserDefinedMolecule}:
        smiles: c1ccccc1
 
-YANK can process SMILES stings to build the molecule as well. Usually only recommended for small ligands. 
+YANK can process SMILES stings to build the molecule as well. Usually only recommended for small ligands.
 Requires that the OpenEye Toolkits are installed.
 
 **MANDATORY** but exclusive with :ref:`filepath <yaml_molecules_filepath>` and :ref:`name <yaml_molecules_name>`
@@ -101,13 +101,41 @@ YANK can process raw molecule name if the OpenEye Toolkits are installed
      {UserDefinedMolecule}:
        strip_protons: no
 
-Specifies if LEaP will re-add all hydrogen atoms. 
-This is helpful if the PDB contains atom names for hydrogens that AMBER does not recognize. 
+Specifies if LEaP will re-add all hydrogen atoms.
+This is helpful if the PDB contains atom names for hydrogens that AMBER does not recognize.
 Primarily for proteins, not small molecules.
 
 **OPTIONAL** and defaults to ``no``
 
 Valid Options: [no]/yes
+
+
+
+
+.. _yaml_molecules_mutations:
+
+.. rst-class:: html-toggle
+
+``mutations``
+-----------------
+.. code-block:: yaml
+
+   molecules:
+     {UserDefinedMolecule}:
+       make_mutations:
+         chain: A
+         mutations: T315I
+
+Specifies whether PDBFixer should be used to mutate sidechain residues.
+Can only be used on proteins with standard amino acids with .pdb file extensions.
+If ``chain`` is not specified, it defaults to ``null`` (no chain designator)
+Mutation format is ``T315I`` for single mutations, ``L858R/T790M`` for double mutations.
+An arbitrary number of mutations can be made using ``/`` as the separator.
+The initial PDB file numbering is used.
+
+**OPTIONAL** and defaults to ``no``
+
+Valid Options: [no]/<String>
 
 
 
@@ -126,8 +154,8 @@ Valid Options: [no]/yes
        antechamber:
            charge_method: bcc
        select: !Combinatorial [0, 3]
-       
-The "select" keyword works the same way if you specify a 
+
+The "select" keyword works the same way if you specify a
 pdb, mol2, sdf, or cvs file containing multiple structures.
 ``select`` has 3 modes:
 
@@ -234,17 +262,17 @@ Assigning Extra Information
        leap:
          parameters: [mymol.frcmod, mymol.off]
 
-Load molecule-specific force field parameters into the molecule. 
-These can be created from any source so long as leap can parse them. 
-It is possible to assign partial charges with the files read in this way, 
-which would supersede the options of 
-:ref:`antechamber <yaml_molecules_antechamber>` 
+Load molecule-specific force field parameters into the molecule.
+These can be created from any source so long as leap can parse them.
+It is possible to assign partial charges with the files read in this way,
+which would supersede the options of
+:ref:`antechamber <yaml_molecules_antechamber>`
 and :ref:`openeye <yaml_molecules_openeye>`.
 
-This command has only one mandatory subargument ``parameters``, 
-which can accept both single files as a string, 
-or can accept a comma separated list of files enclosed by [ ]. 
-Filepaths are relative to either the AmberTools default paths or to the folder the YAML script is in. 
+This command has only one mandatory subargument ``parameters``,
+which can accept both single files as a string,
+or can accept a comma separated list of files enclosed by [ ].
+Filepaths are relative to either the AmberTools default paths or to the folder the YAML script is in.
 
 *Note*: Proteins do not necessarily   need this command if the force fields given to the :ref:`leap argument in systems <yaml_systems_head>` will fully describe them.
 

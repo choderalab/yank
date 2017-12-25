@@ -751,6 +751,95 @@ def strip_protons(input_file_path, output_file_path):
                 output_file.write(line)
     output_file.close()
 
+# For mutate_protein
+three_letter_code = {
+    'A' : 'ALA',
+    'C' : 'CYS',
+    'D' : 'ASP',
+    'E' : 'GLU',
+    'F' : 'PHE',
+    'G' : 'GLY',
+    'H' : 'HIS',
+    'I' : 'ILE',
+    'K' : 'LYS',
+    'L' : 'LEU',
+    'M' : 'MET',
+    'N' : 'ASN',
+    'P' : 'PRO',
+    'Q' : 'GLN',
+    'R' : 'ARG',
+    'S' : 'SER',
+    'T' : 'THR',
+    'V' : 'VAL',
+    'W' : 'TRP',
+    'Y' : 'TYR'
+}
+
+one_letter_code = dict()
+for one_letter in three_letter_code.keys():
+    three_letter = three_letter_code[one_letter]
+    one_letter_code[three_letter] = one_letter
+
+def decompose_mutation(mutation):
+    import re
+    match = re.match('(\D)(\d+)(\D)', mutation)
+    original_residue_name = three_letter_code[match.group(1)]
+    residue_index = int(match.group(2))
+    mutated_residue_name = three_letter_code[match.group(3)]
+    return (original_residue_name, residue_index, mutated_residue_name)
+
+def generate_pdbfixer_mutation_code(original_residue_name, residue_index, mutated_residue_name):
+    return '%s-%d-%s' % (original_residue_name, residue_index, mutated_residue_name)
+
+def make_mutations(input_file_path, output_file_path, mutations='WT', chain=None, **kwargs):
+    """
+    Make mutations in target molecule.
+
+    Single mutants are supported in the form "T315I"
+    Double mutants are supported in the form "L858R/T790M"
+
+    The string "WT" still pushes the molecule through PDBFixer, but makes no mutations.
+    This is useful for testing.
+
+    Original PDB file numbering scheme is used.
+
+    Currently, only PDB files are supported.
+    pdbfixer is used to make the mutations
+
+    Parameters
+    ----------
+    input_file_path : str
+        Full file path to the file to read, including extensions
+    output_file_path : str
+        Full file path to the file to save, including extensions
+    mutations : str, optional, default='WT'
+        String specifying which mutations to make, or 'WT' if no mutations are to be made
+        (but pdbfixer is still invoked).
+    chain : str, optional, default=None
+        Chain designator for mutations to make, or None if no chain specified
+    """
+    if len(kwargs) > 0:
+        raise Exception('make_mutations: Some arguments not recognized: {}'.format(kwargs))
+
+    # Convert mutations to PDBFixer format
+    pdbfixer_mutations = [ generate_pdbfixer_mutation_code for mutation in mutations.split('/') ]
+
+    # Mutate the protein
+    import pdbfixer
+    from pdbfixer import PDBFixer
+    from simtk.openmm.app import PDBFile
+    fixer = PDBFixer(input_file_path)
+    fixer.findMissingResidues()
+    #fixer.findNonstandardResidues()
+    #fixer.replaceNonstandardResidues()
+    if mutations != 'WT':
+        fixer.applyMutations(pdbfixer_mutations, chain)
+    #fixer.removeHeterogens(True)
+    fixer.findMissingAtoms()
+    fixer.addMissingAtoms()
+    #fixer.addMissingHydrogens(7.0)
+    PDBFile.writeFile(fixer.topology, fixer.positions, open(output_file_path, 'w'))
+
 
 def read_csv_lines(file_path, lines):
     """Return a list of CSV records.
@@ -946,6 +1035,10 @@ class SetupDatabase:
 
         # If we have to strip the protons off a PDB, a new PDB should have been created
         elif 'strip_protons' in molecule_descr and molecule_descr['strip_protons']:
+            files_to_check = [('filepath', molecule_id_path + '.pdb')]
+
+        # If we have to make mutations, a new PDB should be created
+        elif 'mutations' in molecule_descr and molecule_descr['mutations']:
             files_to_check = [('filepath', molecule_id_path + '.pdb')]
 
         # If a single structure must be extracted we search for output
@@ -1253,9 +1346,17 @@ class SetupDatabase:
             # Strip off protons if required
             if 'strip_protons' in mol_descr and mol_descr['strip_protons']:
                 if extension != '.pdb':
-                    raise RuntimeError('Cannot strip protons off {} files.'.format(extension[1:]))
+                    raise RuntimeError('Cannot strip protons from {} files.'.format(extension[1:]))
                 output_file_path = os.path.join(mol_dir, mol_id + '.pdb')
                 strip_protons(mol_descr['filepath'], output_file_path)
+                mol_descr['filepath'] = output_file_path
+
+            # Make mutations if required
+            if 'make_mutations' in mol_descr and mol_descr['make_mutations']:
+                if extension != '.pdb':
+                    raise RuntimeError('Cannot make mutations in {} files.'.format(extension[1:]))
+                output_file_path = os.path.join(mol_dir, mol_id + '.pdb')
+                make_mutations(mol_descr['filepath'], output_file_path, **mol_descr['make_mutations'])
                 mol_descr['filepath'] = output_file_path
 
             # Generate missing molecules with OpenEye. At the end of parametrization
