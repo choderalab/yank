@@ -29,6 +29,7 @@ import mdtraj
 import numpy as np
 import openmmtools as mmtools
 import openmoltools as moltools
+from pdbfixer import PDBFixer
 from simtk import openmm, unit
 from simtk.openmm.app import PDBFile
 
@@ -752,44 +753,46 @@ def strip_protons(input_file_path, output_file_path):
     output_file.close()
 
 # For mutate_protein
-three_letter_code = {
-    'A' : 'ALA',
-    'C' : 'CYS',
-    'D' : 'ASP',
-    'E' : 'GLU',
-    'F' : 'PHE',
-    'G' : 'GLY',
-    'H' : 'HIS',
-    'I' : 'ILE',
-    'K' : 'LYS',
-    'L' : 'LEU',
-    'M' : 'MET',
-    'N' : 'ASN',
-    'P' : 'PRO',
-    'Q' : 'GLN',
-    'R' : 'ARG',
-    'S' : 'SER',
-    'T' : 'THR',
-    'V' : 'VAL',
-    'W' : 'TRP',
-    'Y' : 'TYR'
+_three_letter_code = {
+    'A': 'ALA',
+    'C': 'CYS',
+    'D': 'ASP',
+    'E': 'GLU',
+    'F': 'PHE',
+    'G': 'GLY',
+    'H': 'HIS',
+    'I': 'ILE',
+    'K': 'LYS',
+    'L': 'LEU',
+    'M': 'MET',
+    'N': 'ASN',
+    'P': 'PRO',
+    'Q': 'GLN',
+    'R': 'ARG',
+    'S': 'SER',
+    'T': 'THR',
+    'V': 'VAL',
+    'W': 'TRP',
+    'Y': 'TYR'
 }
 
-one_letter_code = dict()
-for one_letter in three_letter_code.keys():
-    three_letter = three_letter_code[one_letter]
-    one_letter_code[three_letter] = one_letter
+_one_letter_code = dict()
+for one_letter in _three_letter_code.keys():
+    three_letter = _three_letter_code[one_letter]
+    _one_letter_code[three_letter] = one_letter
+
 
 def decompose_mutation(mutation):
-    import re
     match = re.match('(\D)(\d+)(\D)', mutation)
-    original_residue_name = three_letter_code[match.group(1)]
+    original_residue_name = _three_letter_code[match.group(1)]
     residue_index = int(match.group(2))
-    mutated_residue_name = three_letter_code[match.group(3)]
-    return (original_residue_name, residue_index, mutated_residue_name)
+    mutated_residue_name = _three_letter_code[match.group(3)]
+    return original_residue_name, residue_index, mutated_residue_name
+
 
 def generate_pdbfixer_mutation_code(original_residue_name, residue_index, mutated_residue_name):
-    return '%s-%d-%s' % (original_residue_name, residue_index, mutated_residue_name)
+    return '{0:s}-{1:d}-{2:s}'.format(original_residue_name, residue_index, mutated_residue_name)
+
 
 def make_mutations(input_file_path, output_file_path, mutations='WT', chain=None, **kwargs):
     """
@@ -822,12 +825,10 @@ def make_mutations(input_file_path, output_file_path, mutations='WT', chain=None
         raise Exception('make_mutations: Some arguments not recognized: {}'.format(kwargs))
 
     # Convert mutations to PDBFixer format
-    pdbfixer_mutations = [ generate_pdbfixer_mutation_code for mutation in mutations.split('/') ]
+    pdbfixer_mutations = [generate_pdbfixer_mutation_code(*decompose_mutation(mutation))
+                          for mutation in mutations.split('/')]
 
     # Mutate the protein
-    import pdbfixer
-    from pdbfixer import PDBFixer
-    from simtk.openmm.app import PDBFile
     fixer = PDBFixer(input_file_path)
     fixer.findMissingResidues()
     #fixer.findNonstandardResidues()
@@ -1038,7 +1039,7 @@ class SetupDatabase:
             files_to_check = [('filepath', molecule_id_path + '.pdb')]
 
         # If we have to make mutations, a new PDB should be created
-        elif 'mutations' in molecule_descr and molecule_descr['mutations']:
+        elif 'make_mutations' in molecule_descr and 'mutations' in molecule_descr['make_mutations']:
             files_to_check = [('filepath', molecule_id_path + '.pdb')]
 
         # If a single structure must be extracted we search for output
