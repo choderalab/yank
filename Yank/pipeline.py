@@ -784,9 +784,14 @@ for one_letter in _three_letter_code.keys():
 
 def decompose_mutation(mutation):
     match = re.match('(\D)(\d+)(\D)', mutation)
-    original_residue_name = _three_letter_code[match.group(1)]
-    residue_index = int(match.group(2))
-    mutated_residue_name = _three_letter_code[match.group(3)]
+    try:
+        original_residue_name = _three_letter_code[match.group(1)]
+        residue_index = int(match.group(2))
+        mutated_residue_name = _three_letter_code[match.group(3)]
+    except AttributeError:
+        error_string = 'Mutation "{}" could not be parsed! '.format(mutation)
+        error_string += 'Should be of form {single letter}{integer}{another single letter}'
+        raise ValueError(error_string)
     return original_residue_name, residue_index, mutated_residue_name
 
 
