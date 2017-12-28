@@ -34,6 +34,7 @@ from simtk import openmm, unit
 from simtk.openmm.app import PDBFile
 
 from . import utils, mpi
+from .experiment import YamlParseError
 
 logger = logging.getLogger(__name__)
 
@@ -837,6 +838,7 @@ def apply_pdbfixer(input_file_path, output_file_path, directives):
     if option in directives:
         try:
             pH = float(directives[option])
+            logger.info('pdbfixer: Will use user-specified pH {}'.format(pH))
         except:
             raise YamlParseError("'ph' must be a floating-point number")
         # Delete the key once we've processed it
@@ -858,6 +860,7 @@ def apply_pdbfixer(input_file_path, output_file_path, directives):
         # Apply options
         if value == 'yes':
             fixer.findMissingResidues()
+            logger.info('pdbfixer: Will add missing residues specified in SEQRES')
         # Delete the key once we've processed it
         del directives[option]
 
@@ -880,8 +883,10 @@ def apply_pdbfixer(input_file_path, output_file_path, directives):
         if mutations != 'WT':
             pdbfixer_mutations = [generate_pdbfixer_mutation_code(*decompose_mutation(mutation))
                                   for mutation in mutations.split('/')]
-
+            logger.info('pdbfixer: Will make mutations {} to chain_id {}.'.format(pdbfixer_mutations, chain_id))
             fixer.applyMutations(pdbfixer_mutations, chain_id)
+        else:
+            logger.info('pdbfixer: No mutations will be applied since "WT" specified.')
         # Delete the key once we've processed it
         del directives[option]
 
@@ -895,6 +900,7 @@ def apply_pdbfixer(input_file_path, output_file_path, directives):
             raise YamlParseError("'{}' must be one of {}".format(option, allowed_values))
         # Apply options
         if value == 'yes':
+            logger.info('pdbfixer: Will replace nonstandard residues.')
             fixer.findNonstandardResidues()
             fixer.replaceNonstandardResidues()
         # Delete the key once we've processed it
@@ -910,8 +916,10 @@ def apply_pdbfixer(input_file_path, output_file_path, directives):
             raise YamlParseError("'{}' must be one of {}".format(option, allowed_values))
         # Apply options
         if value == 'water':
+            logger.info('pdbfixer: Will remove heterogens, retaining water.')
             fixer.removeHeterogens(keepWater=True)
         elif value == 'all':
+            logger.info('pdbfixer: Will remove heterogens, discarding water.')
             fixer.removeHeterogens(keepWater=False)
         # Delete the key once we've processed it
         del directives[option]
@@ -929,8 +937,10 @@ def apply_pdbfixer(input_file_path, output_file_path, directives):
         if value not in ('all', 'heavy'):
             fixer.missingAtoms = {}
             fixer.missingTerminals = {}
+        logger.info('pdbfixer: Will add missing atoms: {}.'.format(value))
         fixer.addMissingAtoms()
         if value in ('all', 'hydrogens'):
+            logger.info('pdbfixer: Will add hydrogens in default protonation state for pH {}.'.format(pH))
             fixer.addMissingHydrogens(pH)
         # Delete the key once we've processed it
         del directives[option]
@@ -1139,7 +1149,7 @@ class SetupDatabase:
             files_to_check = [('filepath', molecule_id_path + '.pdb')]
 
         # If we have to make mutations, a new PDB should be created
-        elif 'pdbfixer' in molecule_descr and 'pdbfixer' in molecule_descr['pdbfixer']:
+        elif 'pdbfixer' in molecule_descr:
             files_to_check = [('filepath', molecule_id_path + '.pdb')]
 
         # If a single structure must be extracted we search for output
@@ -1396,6 +1406,7 @@ class SetupDatabase:
             # Have we already processed this molecule? Do we have to do it at all?
             # We don't want to create the output folder if we don't need to
             if self.is_molecule_setup(mol_id)[0]:
+                print('Molecule has already been set up')
                 continue
 
             # Create output directory if it doesn't exist
@@ -1453,7 +1464,7 @@ class SetupDatabase:
                 mol_descr['filepath'] = output_file_path
 
             # Apply PDBFixer if requested
-            if 'pdbfixer' in mol_descr and mol_descr['pdbfixer']:
+            if 'pdbfixer' in mol_descr:
                 if extension not in ['.pdb', '.PDB']:
                     raise RuntimeError('Cannot apply PDBFixer to {} files; a .pdb file is required.'.format(extension[1:]))
                 output_file_path = os.path.join(mol_dir, mol_id + '.pdb')
