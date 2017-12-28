@@ -1011,8 +1011,8 @@ def test_strip_protons():
         assert not has_hydrogen
 
 
-def test_pdbfixer_make_mutations():
-    """Test that pdbfixer can make mutations correctly."""
+def test_pdbfixer_mutations():
+    """Test that pdbfixer can apply mutations correctly."""
     mol_id = 'Abl'
     abl_path = examples_paths()['abl']
     with mmtools.utils.temporary_directory() as tmp_dir:
@@ -1036,7 +1036,7 @@ def test_pdbfixer_make_mutations():
 
         # Now we set the strip_protons options and repeat
         exp_builder._db.molecules[mol_id]['pdbfixer'] = {
-            'make_mutations' : {
+            'apply_mutations' : {
                 'chain_id' : 'A',
                 'mutations': 'T85I',
             }

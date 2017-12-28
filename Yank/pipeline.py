@@ -34,7 +34,6 @@ from simtk import openmm, unit
 from simtk.openmm.app import PDBFile
 
 from . import utils, mpi
-from .experiment import YamlParseError
 
 logger = logging.getLogger(__name__)
 
@@ -840,7 +839,7 @@ def apply_pdbfixer(input_file_path, output_file_path, directives):
             pH = float(directives[option])
             logger.info('pdbfixer: Will use user-specified pH {}'.format(pH))
         except:
-            raise YamlParseError("'ph' must be a floating-point number")
+            raise ValueError("'ph' must be a floating-point number")
         # Delete the key once we've processed it
         del directives[option]
 
@@ -856,7 +855,7 @@ def apply_pdbfixer(input_file_path, output_file_path, directives):
         # Validate options
         allowed_values = ['yes', 'no']
         if value not in allowed_values:
-            raise YamlParseError("'{}' must be one of {}".format(option, allowed_values))
+            raise ValueError("'{}' must be one of {}".format(option, allowed_values))
         # Apply options
         if value == 'yes':
             fixer.findMissingResidues()
@@ -870,7 +869,7 @@ def apply_pdbfixer(input_file_path, output_file_path, directives):
         value = directives[option]
         # Validate options
         if type(value) is not dict:
-            raise YamlParseError("'apply_mutations' must have a 'mutations:' node")
+            raise ValueError("'apply_mutations' must have a 'mutations:' node")
         # Extract chain id
         chain_id = None
         if 'chain_id' in value:
@@ -897,7 +896,7 @@ def apply_pdbfixer(input_file_path, output_file_path, directives):
         # Validate options
         allowed_values = ['yes', 'no']
         if value not in allowed_values:
-            raise YamlParseError("'{}' must be one of {}".format(option, allowed_values))
+            raise ValueError("'{}' must be one of {}".format(option, allowed_values))
         # Apply options
         if value == 'yes':
             logger.info('pdbfixer: Will replace nonstandard residues.')
@@ -913,7 +912,7 @@ def apply_pdbfixer(input_file_path, output_file_path, directives):
         # Validate options
         allowed_values = ['all', 'water', 'none']
         if value not in allowed_values:
-            raise YamlParseError("'{}' must be one of {}".format(option, allowed_values))
+            raise ValueError("'{}' must be one of {}".format(option, allowed_values))
         # Apply options
         if value == 'water':
             logger.info('pdbfixer: Will remove heterogens, retaining water.')
@@ -931,7 +930,7 @@ def apply_pdbfixer(input_file_path, output_file_path, directives):
         # Validate options
         allowed_values = ['all', 'heavy', 'hydrogens', 'none']
         if value not in allowed_values:
-            raise YamlParseError("'{}' must be one of {}".format(option, allowed_values))
+            raise ValueError("'{}' must be one of {}".format(option, allowed_values))
         # Apply options
         fixer.findMissingAtoms()
         if value not in ('all', 'heavy'):
@@ -947,7 +946,7 @@ def apply_pdbfixer(input_file_path, output_file_path, directives):
 
     # Check that there were no extra options
     if len(directives) > 0:
-        raise YamlParseError("The 'pdbfixer:' block contained some nodes that it doesn't know how to process:".format(directives))
+        raise ValueError("The 'pdbfixer:' block contained some nodes that it didn't know how to process: {}".format(directives))
 
     # Write the final structure
     PDBFile.writeFile(fixer.topology, fixer.positions, open(output_file_path, 'w'))
