@@ -823,53 +823,58 @@ def apply_pdbfixer(input_file_path, output_file_path, directives):
     directives : dict
         Dict containing directives for PDBFixer.
     """
+    DEFAULT_PH = 7.4 # default pH
+
     # Make a copy since we will delete from the dictionary to validate
     directives = copy.deepcopy(directives)
 
     # Create a PDBFixer object
     fixer = PDBFixer(input_file_path)
+    fixer.missingResidues = {}
 
-    # TODO: Refactor this to minimize code duplication
+    def process_directive(option, dispatch, allowed_values):
+        """Process a directive.
 
-    # Extract pH if specified
-    pH = 7.4
-    option = 'ph'
-    if option in directives:
+        Parameters
+        ----------
+        option : str
+           The name of the option to be processed.
+           Will remove this option from `directives` once processed.
+        dispatch : function
+           The function to call.
+        allowed_values : list
+           If not None, the value of directives[option] will be checked against this list
+        """
+        if option in directives:
+            value = directives[option]
+            # Validate options
+            if allowed_values is not None:
+                if value not in allowed_values:
+                    raise ValueError("'{}' must be one of {}".format(option, allowed_values))
+            # Dispatch
+            dispatch(value)
+            # Delete the key once we've processed it
+            del directives[option]
+
+    # Dispatch functions
+    # These won't be documented individually because they are so short
+    def dispatch_pH(value):
+        pH = DEFAULT_PH
         try:
-            pH = float(directives[option])
+            pH = float(value)
             logger.info('pdbfixer: Will use user-specified pH {}'.format(pH))
         except:
-            raise ValueError("'ph' must be a floating-point number")
-        # Delete the key once we've processed it
-        del directives[option]
+            raise ValueError("'ph' must be a floating-point number: found '{}'".format(value))
+        return pH
 
-    # Set default atom addition method
-    if 'add_missing_atoms' not in directives:
-        directives['add_missing_atoms'] = 'heavy'
+    pH = process_directive('ph', dispatch_pH, None)
 
-    # Add missing residues
-    option = 'add_missing_residues'
-    fixer.missingResidues = {}
-    if option in directives:
-        value = directives[option]
-        # Validate options
-        allowed_values = ['yes', 'no']
-        if value not in allowed_values:
-            raise ValueError("'{}' must be one of {}".format(option, allowed_values))
-        # Apply options
+    def add_missing_residues(value):
         if value == 'yes':
             fixer.findMissingResidues()
             logger.info('pdbfixer: Will add missing residues specified in SEQRES')
-        # Delete the key once we've processed it
-        del directives[option]
 
-    # Apply mutations
-    option = 'apply_mutations'
-    if option in directives:
-        value = directives[option]
-        # Validate options
-        if type(value) is not dict:
-            raise ValueError("'apply_mutations' must have a 'mutations:' node")
+    def apply_mutations(value):
         # Extract chain id
         chain_id = None
         if 'chain_id' in value:
@@ -886,52 +891,22 @@ def apply_pdbfixer(input_file_path, output_file_path, directives):
             fixer.applyMutations(pdbfixer_mutations, chain_id)
         else:
             logger.info('pdbfixer: No mutations will be applied since "WT" specified.')
-        # Delete the key once we've processed it
-        del directives[option]
 
-    # Replace nonstandard residues
-    option = 'replace_nonstandard_residues'
-    if option in directives:
-        value = directives[option]
-        # Validate options
-        allowed_values = ['yes', 'no']
-        if value not in allowed_values:
-            raise ValueError("'{}' must be one of {}".format(option, allowed_values))
-        # Apply options
+    def replace_nonstandard_residues(value):
         if value == 'yes':
             logger.info('pdbfixer: Will replace nonstandard residues.')
             fixer.findNonstandardResidues()
             fixer.replaceNonstandardResidues()
-        # Delete the key once we've processed it
-        del directives[option]
 
-    # Remove heterogens
-    option = 'remove_heterogens'
-    if option in directives:
-        value = directives[option]
-        # Validate options
-        allowed_values = ['all', 'water', 'none']
-        if value not in allowed_values:
-            raise ValueError("'{}' must be one of {}".format(option, allowed_values))
-        # Apply options
+    def remove_heterogens(value):
         if value == 'water':
             logger.info('pdbfixer: Will remove heterogens, retaining water.')
             fixer.removeHeterogens(keepWater=True)
         elif value == 'all':
             logger.info('pdbfixer: Will remove heterogens, discarding water.')
             fixer.removeHeterogens(keepWater=False)
-        # Delete the key once we've processed it
-        del directives[option]
 
-    # Add missing residues
-    option = 'add_missing_atoms'
-    if option in directives:
-        value = directives[option]
-        # Validate options
-        allowed_values = ['all', 'heavy', 'hydrogens', 'none']
-        if value not in allowed_values:
-            raise ValueError("'{}' must be one of {}".format(option, allowed_values))
-        # Apply options
+    def add_missing_atoms(value):
         fixer.findMissingAtoms()
         if value not in ('all', 'heavy'):
             fixer.missingAtoms = {}
@@ -941,8 +916,17 @@ def apply_pdbfixer(input_file_path, output_file_path, directives):
         if value in ('all', 'hydrogens'):
             logger.info('pdbfixer: Will add hydrogens in default protonation state for pH {}.'.format(pH))
             fixer.addMissingHydrogens(pH)
-        # Delete the key once we've processed it
-        del directives[option]
+
+    # Set default atom addition method
+    if 'add_missing_atoms' not in directives:
+        directives['add_missing_atoms'] = 'heavy'
+
+    # Dispatch directives
+    process_directive('add_missing_residues', add_missing_residues, ['yes', 'no'])
+    process_directive('apply_mutations', apply_mutations, None)
+    process_directive('replace_nonstandard_residues', replace_nonstandard_residues, ['yes', 'no'])
+    process_directive('remove_heterogens', remove_heterogens, ['all', 'water', 'none'])
+    process_directive('add_missing_atoms', add_missing_atoms, ['all', 'heavy', 'hydrogens', 'none'])
 
     # Check that there were no extra options
     if len(directives) > 0:
