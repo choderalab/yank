@@ -1389,7 +1389,6 @@ class SetupDatabase:
             # Have we already processed this molecule? Do we have to do it at all?
             # We don't want to create the output folder if we don't need to
             if self.is_molecule_setup(mol_id)[0]:
-                print('Molecule has already been set up')
                 continue
 
             # Create output directory if it doesn't exist
