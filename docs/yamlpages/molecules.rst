@@ -112,31 +112,128 @@ Valid Options: [no]/yes
 
 
 
-.. _yaml_molecules_mutations:
+.. _yaml_molecules_pdbfixer:
 
 .. rst-class:: html-toggle
 
-``mutations``
------------------
+``pdbfixer``
+------------
+
 .. code-block:: yaml
 
    molecules:
      {UserDefinedMolecule}:
-       make_mutations:
-         chain: A
-         mutations: T315I
+       pdbfixer:
+         replace_nonstandard_residues: no
+         remove_heterogens: none
+         add_missing_atoms: none
+         apply_mutations:
+           mutations: T315I
+           chain_id: A
 
-Specifies whether PDBFixer should be used to mutate sidechain residues.
-Can only be used on proteins with standard amino acids with .pdb file extensions.
-If ``chain`` is not specified, it defaults to ``null`` (no chain designator)
-Mutation format is ``T315I`` for single mutations, ``L858R/T790M`` for double mutations.
-An arbitrary number of mutations can be made using ``/`` as the separator.
-The initial PDB file numbering is used.
+Specifies whether PDBFixer should be used to modify the molecule.
+Can only be used on proteins, on files with ``.pdb`` file extensions.
 
-**OPTIONAL** and defaults to ``no``
+Replacing nonstandard residues
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Valid Options: [no]/<String>
+.. code-block:: yaml
 
+   molecules:
+     {UserDefinedMolecule}:
+       pdbfixer:
+         replace_nonstandard_residues: [no] | yes
+
+If ``yes`` is specified, nonstandard amino acid residues will be replaced with
+one of the 20 standard amino acids according to the scheme used by
+`PDBFixer <http://htmlpreview.github.io/?https://raw.github.com/pandegroup/pdbfixer/master/Manual.html>`_.
+
+**OPTIONAL** with default value of ``no``
+
+Valid Options: [no]/yes
+
+Removing heterogens
+^^^^^^^^^^^^^^^^^^^
+
+.. code-block:: yaml
+
+   molecules:
+     {UserDefinedMolecule}:
+       pdbfixer:
+         remove_heterogens: [none] | water | all
+
+This directs PDBFixer to remove some heterogen residues from the PDB file:
+
+* ``all`` : all heterogens (residues that are not one of the standard amino acids) will be removed
+* ``water`` : only water residues will be removed
+* ``none`` : no residues will be removed
+
+**OPTIONAL** with default value of ``none``
+
+Valid Options: [none]/water/all
+
+Adding missing residues and atoms atoms
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Add missing atoms (including entire residues, loops, and termini).
+
+**WARNING:** PDBFixer uses a very simple approach to adding missing residues that will only
+produce sensible geometries in the simplest of cases. Use this option with caution.
+
+.. code-block:: yaml
+
+   molecules:
+     {UserDefinedMolecule}:
+       pdbfixer:
+         add_missing_residues: [no] | yes
+         add_missing_atoms: none | [heavy] | hydrogens | all
+         ph: 7.4
+
+``add_missing_residues`` specifies whether missing residues should be added
+
+* ``no`` : only missing atoms in existing residues will be added (DEFAULT)
+* ``yes`` : missing residues specified in SEQRES will be added
+
+``add_missing_atoms`` specifies which detected missing atoms should be added:
+
+* ``none`` : no missing atoms will be added
+* ``heavy`` : only heavy atoms will be added (DEFAULT)
+* ``hydrogens`` : add only hydrogens (not recommended)
+* ``all`` : all missing atoms (including hydrogens) will be added (not recommended)
+
+``ph`` specifies the pH to be used for adding hydrogens (default: 7.4)
+
+**OPTIONAL**
+
+Mutations
+^^^^^^^^^
+
+Make the directed mutations to amino acid residues.
+
+.. code-block:: yaml
+
+   molecules:
+     {UserDefinedMolecule}:
+       pdbfixer:
+         apply_mutations:
+           mutations: T315I
+           chain_id: A
+
+Mutations are specified using the format ``<original-one-letter-code><resid><new-one-letter-code>``,
+with the character ``/`` being an optional separator if multiple mutations are desired.
+
+The initial PDB file numbering is used for residue identifier ``resid``.
+
+Examples for specifying ``mutations:``:
+
+* ``T315I`` : a single mutation that changes Thr at resid 315 to Ile
+* ``L858R/T790M`` : a double mutation
+
+If ``chain_id`` is not specified, it defaults to ``null`` (no chain designator).
+
+PDBFixer is applied after ``strip_protons`` if both are requested.
+
+**OPTIONAL**
 
 
 

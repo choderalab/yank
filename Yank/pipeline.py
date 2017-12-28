@@ -799,9 +799,9 @@ def generate_pdbfixer_mutation_code(original_residue_name, residue_index, mutate
     return '{0:s}-{1:d}-{2:s}'.format(original_residue_name, residue_index, mutated_residue_name)
 
 
-def make_mutations(input_file_path, output_file_path, mutations='WT', chain=None, **kwargs):
+def apply_pdbfixer(input_file_path, output_file_path, directives):
     """
-    Make mutations in target molecule.
+    Apply PDBFixer to make changes to the specified molecule.
 
     Single mutants are supported in the form "T315I"
     Double mutants are supported in the form "L858R/T790M"
@@ -820,32 +820,127 @@ def make_mutations(input_file_path, output_file_path, mutations='WT', chain=None
         Full file path to the file to read, including extensions
     output_file_path : str
         Full file path to the file to save, including extensions
-    mutations : str, optional, default='WT'
-        String specifying which mutations to make, or 'WT' if no mutations are to be made
-        (but pdbfixer is still invoked).
-    chain : str, optional, default=None
-        Chain designator for mutations to make, or None if no chain specified
+    directives : dict
+        Dict containing directives for PDBFixer.
     """
-    if len(kwargs) > 0:
-        raise Exception('make_mutations: Some arguments not recognized: {}'.format(kwargs))
+    # Make a copy since we will delete from the dictionary to validate
+    directives = copy.deepcopy(directives)
 
-    # Convert mutations to PDBFixer format
-    pdbfixer_mutations = [generate_pdbfixer_mutation_code(*decompose_mutation(mutation))
-                          for mutation in mutations.split('/')]
-
-    # Mutate the protein
+    # Create a PDBFixer object
     fixer = PDBFixer(input_file_path)
-    fixer.findMissingResidues()
-    #fixer.findNonstandardResidues()
-    #fixer.replaceNonstandardResidues()
-    if mutations != 'WT':
-        fixer.applyMutations(pdbfixer_mutations, chain)
-    #fixer.removeHeterogens(True)
-    fixer.findMissingAtoms()
-    fixer.addMissingAtoms()
-    #fixer.addMissingHydrogens(7.0)
-    PDBFile.writeFile(fixer.topology, fixer.positions, open(output_file_path, 'w'))
 
+    # TODO: Refactor this to minimize code duplication
+
+    # Extract pH if specified
+    pH = 7.4
+    option = 'ph'
+    if option in directives:
+        try:
+            pH = float(directives[option])
+        except:
+            raise YamlParseError("'ph' must be a floating-point number")
+        # Delete the key once we've processed it
+        del directives[option]
+
+    # Set default atom addition method
+    if 'add_missing_atoms' not in directives:
+        directives['add_missing_atoms'] = 'heavy'
+
+    # Add missing residues
+    option = 'add_missing_residues'
+    fixer.missingResidues = {}
+    if option in directives:
+        value = directives[option]
+        # Validate options
+        allowed_values = ['yes', 'no']
+        if value not in allowed_values:
+            raise YamlParseError("'{}' must be one of {}".format(option, allowed_values))
+        # Apply options
+        if value == 'yes':
+            fixer.findMissingResidues()
+        # Delete the key once we've processed it
+        del directives[option]
+
+    # Apply mutations
+    option = 'apply_mutations'
+    if option in directives:
+        value = directives[option]
+        # Validate options
+        if type(value) is not dict:
+            raise YamlParseError("'apply_mutations' must have a 'mutations:' node")
+        # Extract chain id
+        chain_id = None
+        if 'chain_id' in value:
+            chain_id = value['chain_id']
+            if chain_id == 'none':
+                chain_id = None
+        # Extract mutations
+        mutations = value['mutations']
+        # Convert mutations to PDBFixer format
+        if mutations != 'WT':
+            pdbfixer_mutations = [generate_pdbfixer_mutation_code(*decompose_mutation(mutation))
+                                  for mutation in mutations.split('/')]
+
+            fixer.applyMutations(pdbfixer_mutations, chain_id)
+        # Delete the key once we've processed it
+        del directives[option]
+
+    # Replace nonstandard residues
+    option = 'replace_nonstandard_residues'
+    if option in directives:
+        value = directives[option]
+        # Validate options
+        allowed_values = ['yes', 'no']
+        if value not in allowed_values:
+            raise YamlParseError("'{}' must be one of {}".format(option, allowed_values))
+        # Apply options
+        if value == 'yes':
+            fixer.findNonstandardResidues()
+            fixer.replaceNonstandardResidues()
+        # Delete the key once we've processed it
+        del directives[option]
+
+    # Remove heterogens
+    option = 'remove_heterogens'
+    if option in directives:
+        value = directives[option]
+        # Validate options
+        allowed_values = ['all', 'water', 'none']
+        if value not in allowed_values:
+            raise YamlParseError("'{}' must be one of {}".format(option, allowed_values))
+        # Apply options
+        if value == 'water':
+            fixer.removeHeterogens(keepWater=True)
+        elif value == 'all':
+            fixer.removeHeterogens(keepWater=False)
+        # Delete the key once we've processed it
+        del directives[option]
+
+    # Add missing residues
+    option = 'add_missing_atoms'
+    if option in directives:
+        value = directives[option]
+        # Validate options
+        allowed_values = ['all', 'heavy', 'hydrogens', 'none']
+        if value not in allowed_values:
+            raise YamlParseError("'{}' must be one of {}".format(option, allowed_values))
+        # Apply options
+        fixer.findMissingAtoms()
+        if value not in ('all', 'heavy'):
+            fixer.missingAtoms = {}
+            fixer.missingTerminals = {}
+        fixer.addMissingAtoms()
+        if value in ('all', 'hydrogens'):
+            fixer.addMissingHydrogens(pH)
+        # Delete the key once we've processed it
+        del directives[option]
+
+    # Check that there were no extra options
+    if len(directives) > 0:
+        raise YamlParseError("The 'pdbfixer:' block contained some nodes that it doesn't know how to process:".format(directives))
+
+    # Write the final structure
+    PDBFile.writeFile(fixer.topology, fixer.positions, open(output_file_path, 'w'))
 
 def read_csv_lines(file_path, lines):
     """Return a list of CSV records.
@@ -1044,7 +1139,7 @@ class SetupDatabase:
             files_to_check = [('filepath', molecule_id_path + '.pdb')]
 
         # If we have to make mutations, a new PDB should be created
-        elif 'make_mutations' in molecule_descr and 'mutations' in molecule_descr['make_mutations']:
+        elif 'pdbfixer' in molecule_descr and 'pdbfixer' in molecule_descr['pdbfixer']:
             files_to_check = [('filepath', molecule_id_path + '.pdb')]
 
         # If a single structure must be extracted we search for output
@@ -1357,12 +1452,12 @@ class SetupDatabase:
                 strip_protons(mol_descr['filepath'], output_file_path)
                 mol_descr['filepath'] = output_file_path
 
-            # Make mutations if required
-            if 'make_mutations' in mol_descr and mol_descr['make_mutations']:
-                if extension != '.pdb':
-                    raise RuntimeError('Cannot make mutations in {} files.'.format(extension[1:]))
+            # Apply PDBFixer if requested
+            if 'pdbfixer' in mol_descr and mol_descr['pdbfixer']:
+                if extension not in ['.pdb', '.PDB']:
+                    raise RuntimeError('Cannot apply PDBFixer to {} files; a .pdb file is required.'.format(extension[1:]))
                 output_file_path = os.path.join(mol_dir, mol_id + '.pdb')
-                make_mutations(mol_descr['filepath'], output_file_path, **mol_descr['make_mutations'])
+                apply_pdbfixer(mol_descr['filepath'], output_file_path, mol_descr['pdbfixer'])
                 mol_descr['filepath'] = output_file_path
 
             # Generate missing molecules with OpenEye. At the end of parametrization

@@ -1336,7 +1336,7 @@ class ExperimentBuilder(object):
             dependencies: filepath
         make_mutations:
             required: no
-            dependencies: filepath            
+            dependencies: filepath
         openeye:
             required: no
             excludes: filepath
