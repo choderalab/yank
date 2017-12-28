@@ -1334,7 +1334,7 @@ class ExperimentBuilder(object):
             required: no
             type: boolean
             dependencies: filepath
-        make_mutations:
+        pdbfixer:
             required: no
             dependencies: filepath
         openeye:
