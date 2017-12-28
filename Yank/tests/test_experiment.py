@@ -1031,7 +1031,7 @@ def test_make_mutations():
         # Now we set the strip_protons options and repeat
         exp_builder._db.molecules[mol_id]['make_mutations'] = {
             'chain' : 'A',
-            'mutations' : 'T85I',
+            'mutations': 'T85I',
         }
         exp_builder._db._setup_molecules(mol_id)
         assert os.path.exists(output_path)
@@ -1039,7 +1039,7 @@ def test_make_mutations():
 
         # Safety check: protein must have mutated residue: ILE at residue 85 in chain A
         has_mut_residue = False
-        with open(abl_path, 'r') as f:
+        with open(output_path, 'r') as f:
             for line in f:
                 if (line[:6] == 'ATOM  ') and (line[21] == 'A') and (int(line[22:26]) == 85) and (line[17:20]=='ILE'):
                     has_mut_residue = True
