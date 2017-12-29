@@ -126,6 +126,7 @@ Valid Options: [no]/yes
        pdbfixer:
          replace_nonstandard_residues: no
          remove_heterogens: none
+         add_missing_residues: no
          add_missing_atoms: none
          apply_mutations:
            mutations: T315I
