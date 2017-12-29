@@ -29,6 +29,7 @@ import mdtraj
 import numpy as np
 import openmmtools as mmtools
 import openmoltools as moltools
+from pdbfixer import PDBFixer
 from simtk import openmm, unit
 from simtk.openmm.app import PDBFile
 
@@ -751,6 +752,194 @@ def strip_protons(input_file_path, output_file_path):
                 output_file.write(line)
     output_file.close()
 
+# For mutate_protein
+_three_letter_code = {
+    'A': 'ALA',
+    'C': 'CYS',
+    'D': 'ASP',
+    'E': 'GLU',
+    'F': 'PHE',
+    'G': 'GLY',
+    'H': 'HIS',
+    'I': 'ILE',
+    'K': 'LYS',
+    'L': 'LEU',
+    'M': 'MET',
+    'N': 'ASN',
+    'P': 'PRO',
+    'Q': 'GLN',
+    'R': 'ARG',
+    'S': 'SER',
+    'T': 'THR',
+    'V': 'VAL',
+    'W': 'TRP',
+    'Y': 'TYR'
+}
+
+_one_letter_code = dict()
+for one_letter in _three_letter_code.keys():
+    three_letter = _three_letter_code[one_letter]
+    _one_letter_code[three_letter] = one_letter
+
+
+def decompose_mutation(mutation):
+    match = re.match('(\D)(\d+)(\D)', mutation)
+    try:
+        original_residue_name = _three_letter_code[match.group(1)]
+        residue_index = int(match.group(2))
+        mutated_residue_name = _three_letter_code[match.group(3)]
+    except AttributeError:
+        error_string = 'Mutation "{}" could not be parsed! '.format(mutation)
+        error_string += 'Should be of form {single letter}{integer}{another single letter}'
+        raise ValueError(error_string)
+    return original_residue_name, residue_index, mutated_residue_name
+
+
+def generate_pdbfixer_mutation_code(original_residue_name, residue_index, mutated_residue_name):
+    return '{0:s}-{1:d}-{2:s}'.format(original_residue_name, residue_index, mutated_residue_name)
+
+
+def apply_pdbfixer(input_file_path, output_file_path, directives):
+    """
+    Apply PDBFixer to make changes to the specified molecule.
+
+    Single mutants are supported in the form "T315I"
+    Double mutants are supported in the form "L858R/T790M"
+
+    The string "WT" still pushes the molecule through PDBFixer, but makes no mutations.
+    This is useful for testing.
+
+    Original PDB file numbering scheme is used.
+
+    Currently, only PDB files are supported.
+    pdbfixer is used to make the mutations
+
+    Parameters
+    ----------
+    input_file_path : str
+        Full file path to the file to read, including extensions
+    output_file_path : str
+        Full file path to the file to save, including extensions
+    directives : dict
+        Dict containing directives for PDBFixer.
+    """
+    DEFAULT_PH = 7.4 # default pH
+
+    # Make a copy since we will delete from the dictionary to validate
+    directives = copy.deepcopy(directives)
+
+    # Create a PDBFixer object
+    fixer = PDBFixer(input_file_path)
+    fixer.missingResidues = {}
+
+    def process_directive(option, dispatch, allowed_values, yields_value=False):
+        """Process a directive.
+
+        Parameters
+        ----------
+        option : str
+            The name of the option to be processed.
+            Will remove this option from `directives` once processed.
+        dispatch : function
+            The function to call.
+        allowed_values : list
+            If not None, the value of directives[option] will be checked against this list
+        yields_value : boolean, default False
+            Tells this function to expect a return from the dispatch function and give it back as needed
+        """
+        if option in directives:
+            value = directives[option]
+            # Validate options
+            if allowed_values is not None:
+                if value not in allowed_values:
+                    raise ValueError("'{}' must be one of {}".format(option, allowed_values))
+            # Dispatch
+            output = dispatch(value)
+            # Delete the key once we've processed it
+            del directives[option]
+            if yields_value:
+                return output
+            return
+
+    # Dispatch functions
+    # These won't be documented individually because they are so short
+    def dispatch_pH(value):
+        pH = DEFAULT_PH
+        try:
+            pH = float(value)
+            logger.info('pdbfixer: Will use user-specified pH {}'.format(pH))
+        except:
+            raise ValueError("'ph' must be a floating-point number: found '{}'".format(value))
+        return pH
+
+    pH = process_directive('ph', dispatch_pH, None, yields_value=True)
+
+    def add_missing_residues(value):
+        if value == 'yes':
+            fixer.findMissingResidues()
+            logger.info('pdbfixer: Will add missing residues specified in SEQRES')
+
+    def apply_mutations(value):
+        # Extract chain id
+        chain_id = None
+        if 'chain_id' in value:
+            chain_id = value['chain_id']
+            if chain_id == 'none':
+                chain_id = None
+        # Extract mutations
+        mutations = value['mutations']
+        # Convert mutations to PDBFixer format
+        if mutations != 'WT':
+            pdbfixer_mutations = [generate_pdbfixer_mutation_code(*decompose_mutation(mutation))
+                                  for mutation in mutations.split('/')]
+            logger.info('pdbfixer: Will make mutations {} to chain_id {}.'.format(pdbfixer_mutations, chain_id))
+            fixer.applyMutations(pdbfixer_mutations, chain_id)
+        else:
+            logger.info('pdbfixer: No mutations will be applied since "WT" specified.')
+
+    def replace_nonstandard_residues(value):
+        if value == 'yes':
+            logger.info('pdbfixer: Will replace nonstandard residues.')
+            fixer.findNonstandardResidues()
+            fixer.replaceNonstandardResidues()
+
+    def remove_heterogens(value):
+        if value == 'water':
+            logger.info('pdbfixer: Will remove heterogens, retaining water.')
+            fixer.removeHeterogens(keepWater=True)
+        elif value == 'all':
+            logger.info('pdbfixer: Will remove heterogens, discarding water.')
+            fixer.removeHeterogens(keepWater=False)
+
+    def add_missing_atoms(value):
+        fixer.findMissingAtoms()
+        if value not in ('all', 'heavy'):
+            fixer.missingAtoms = {}
+            fixer.missingTerminals = {}
+        logger.info('pdbfixer: Will add missing atoms: {}.'.format(value))
+        fixer.addMissingAtoms()
+        if value in ('all', 'hydrogens'):
+            logger.info('pdbfixer: Will add hydrogens in default protonation state for pH {}.'.format(pH))
+            fixer.addMissingHydrogens(pH)
+
+    # Set default atom addition method
+    if 'add_missing_atoms' not in directives:
+        directives['add_missing_atoms'] = 'heavy'
+
+    # Dispatch directives
+    process_directive('add_missing_residues', add_missing_residues, [True, False])
+    process_directive('apply_mutations', apply_mutations, None)
+    process_directive('replace_nonstandard_residues', replace_nonstandard_residues, [True, False])
+    process_directive('remove_heterogens', remove_heterogens, ['all', 'water', 'none'])
+    process_directive('add_missing_atoms', add_missing_atoms, ['all', 'heavy', 'hydrogens', 'none'])
+
+    # Check that there were no extra options
+    if len(directives) > 0:
+        raise ValueError("The 'pdbfixer:' block contained some nodes that it didn't know how to process: {}".format(directives))
+
+    # Write the final structure
+    PDBFile.writeFile(fixer.topology, fixer.positions, open(output_file_path, 'w'))
+
 
 def read_csv_lines(file_path, lines):
     """Return a list of CSV records.
@@ -946,6 +1135,10 @@ class SetupDatabase:
 
         # If we have to strip the protons off a PDB, a new PDB should have been created
         elif 'strip_protons' in molecule_descr and molecule_descr['strip_protons']:
+            files_to_check = [('filepath', molecule_id_path + '.pdb')]
+
+        # If we have to make mutations, a new PDB should be created
+        elif 'pdbfixer' in molecule_descr:
             files_to_check = [('filepath', molecule_id_path + '.pdb')]
 
         # If a single structure must be extracted we search for output
@@ -1253,9 +1446,17 @@ class SetupDatabase:
             # Strip off protons if required
             if 'strip_protons' in mol_descr and mol_descr['strip_protons']:
                 if extension != '.pdb':
-                    raise RuntimeError('Cannot strip protons off {} files.'.format(extension[1:]))
+                    raise RuntimeError('Cannot strip protons from {} files.'.format(extension[1:]))
                 output_file_path = os.path.join(mol_dir, mol_id + '.pdb')
                 strip_protons(mol_descr['filepath'], output_file_path)
+                mol_descr['filepath'] = output_file_path
+
+            # Apply PDBFixer if requested
+            if 'pdbfixer' in mol_descr:
+                if extension not in ['.pdb', '.PDB']:
+                    raise RuntimeError('Cannot apply PDBFixer to {} files; a .pdb file is required.'.format(extension[1:]))
+                output_file_path = os.path.join(mol_dir, mol_id + '.pdb')
+                apply_pdbfixer(mol_descr['filepath'], output_file_path, mol_descr['pdbfixer'])
                 mol_descr['filepath'] = output_file_path
 
             # Generate missing molecules with OpenEye. At the end of parametrization
