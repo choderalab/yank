@@ -22,8 +22,8 @@ have errors or are commented out.
 
 .. _yaml_molecules_specify_names:
 
-Specifying Molecule Names
-=========================
+Specifying Molecules
+====================
 
 .. _yaml_molecules_filepath:
 
@@ -142,11 +142,12 @@ Replacing nonstandard residues
    molecules:
      {UserDefinedMolecule}:
        pdbfixer:
-         replace_nonstandard_residues: [no] | yes
+         replace_nonstandard_residues: yes
 
-If ``yes`` is specified, nonstandard amino acid residues will be replaced with
-one of the 20 standard amino acids according to the scheme used by
-`PDBFixer <http://htmlpreview.github.io/?https://raw.github.com/pandegroup/pdbfixer/master/Manual.html>`_.
+Options are:
+
+* ``yes`` : replace nonstandard amino acid residues will be replaced with one of the 20 standard amino acids according to the scheme used by `PDBFixer <http://htmlpreview.github.io/?https://raw.github.com/pandegroup/pdbfixer/master/Manual.html>`_
+* ``no`` : don't replace residues
 
 **OPTIONAL** with default value of ``no``
 
@@ -160,7 +161,9 @@ Removing heterogens
    molecules:
      {UserDefinedMolecule}:
        pdbfixer:
-         remove_heterogens: [none] | water | all
+         remove_heterogens: all
+
+Valid options: ``[none] | water | all``
 
 This directs PDBFixer to remove some heterogen residues from the PDB file:
 
@@ -185,8 +188,8 @@ produce sensible geometries in the simplest of cases. Use this option with cauti
    molecules:
      {UserDefinedMolecule}:
        pdbfixer:
-         add_missing_residues: [no] | yes
-         add_missing_atoms: none | [heavy] | hydrogens | all
+         add_missing_residues: yes
+         add_missing_atoms: heavy
          ph: 7.4
 
 ``add_missing_residues`` specifies whether missing residues should be added
