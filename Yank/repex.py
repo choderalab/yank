@@ -1899,12 +1899,13 @@ class MultiStateSampler(object):
         is_periodic = thermodynamic_states[0].is_periodic
         for thermodynamic_state in thermodynamic_states:
             if thermodynamic_state.is_periodic != is_periodic:
-                raise Exception('Thermodynamic states contain a mixture of systems with and without periodic boundary conditions.')
+                raise Exception('Thermodynamic states contain a mixture of '
+                                'systems with and without periodic boundary conditions.')
 
         # Check that sampler states specify box vectors if the system is periodic
         if is_periodic:
             for sampler_state in sampler_states:
-                if (sampler_state.box_vectors is None):
+                if sampler_state.box_vectors is None:
                     raise Exception('All sampler states must have box_vectors defined if the system is periodic.')
 
         # Make sure all states have same number of particles. We don't
@@ -1926,7 +1927,6 @@ class MultiStateSampler(object):
         if mpi.run_single_node(0, reporter.storage_exists, broadcast_result=True):
             raise RuntimeError('Storage file {} already exists; cowardly '
                                'refusing to overwrite.'.format(reporter.filepath))
-
 
         # Handle default argument for metadata and add default simulation title.
         default_title = (self.title_template.format(time.asctime(time.localtime())))
@@ -2249,7 +2249,7 @@ class MultiStateSampler(object):
             raise utils.SimulationNaNError(err_msg)
 
     @mpi.on_single_node(rank=0, broadcast_result=False, sync_nodes=False)
-    def _display_citations(self, overwrite_global=False):
+    def _display_citations(self, overwrite_global=False, citation_stack=None):
         """
         Display papers to be cited.
         The overwrite_golbal command will force the citation to display even if the "have_citations_been_shown" variable
@@ -2263,18 +2263,19 @@ class MultiStateSampler(object):
         Eastman P and Pande VS. Efficient nonbonded interactions for molecular dynamics on a graphics processing unit. J. Comput. Chem. 31:1268, 2010. DOI: 10.1002/jcc.21413
         Eastman P and Pande VS. Constant constraint matrix approximation: A robust, parallelizable constraint method for molecular simulations. J. Chem. Theor. Comput. 6:434, 2010. DOI: 10.1021/ct900463w"""
 
-        gibbs_citations = """\
-        Chodera JD and Shirts MR. Replica exchange and expanded ensemble simulations as Gibbs sampling: Simple improvements for enhanced mixing. J. Chem. Phys., 135:194110, 2011. DOI:10.1063/1.3660669"""
-
         mbar_citations = """\
         Shirts MR and Chodera JD. Statistically optimal analysis of samples from multiple equilibrium states. J. Chem. Phys. 129:124105, 2008. DOI: 10.1063/1.2978177"""
+
+        if citation_stack is not None:
+            citation_stack = [openmm_citations] + citation_stack
+        else:
+            citation_stack = [openmm_citations]
 
         if overwrite_global or (not self._have_displayed_citations_before and not self._global_citation_silence):
             print("Please cite the following:")
             print("")
-            print(openmm_citations)
-            if self._replica_mixing_scheme == 'swap-all':
-                print(gibbs_citations)
+            for citation in citation_stack:
+                print(citation)
             self._have_displayed_citations_before = True
 
     # -------------------------------------------------------------------------
@@ -2987,6 +2988,24 @@ class ReplicaExchange(MultiStateSampler):
             # Accumulate statistics.
             self._n_accepted_matrix[thermodynamic_state_i, thermodynamic_state_j] += 1
             self._n_accepted_matrix[thermodynamic_state_j, thermodynamic_state_i] += 1
+
+    @mpi.on_single_node(rank=0, broadcast_result=False, sync_nodes=False)
+    def _display_citations(self, overwrite_global=False, citation_stack=None):
+        """
+        Display papers to be cited.
+        The overwrite_golbal command will force the citation to display even if the "have_citations_been_shown" variable
+            is True
+        """
+
+        gibbs_citations = """\
+        Chodera JD and Shirts MR. Replica exchange and expanded ensemble simulations as Gibbs sampling: Simple improvements for enhanced mixing. J. Chem. Phys., 135:194110, 2011. DOI:10.1063/1.3660669
+        """
+        if self._replica_mixing_scheme == 'swap-all':
+            if citation_stack is None:
+                citation_stack = [gibbs_citations]
+            else:
+                citation_stack = [gibbs_citations] + citation_stack
+        super()._display_citations(overwrite_global=overwrite_global, citation_stack=citation_stack)
 
 # ==============================================================================
 # PARALLEL TEMPERING
