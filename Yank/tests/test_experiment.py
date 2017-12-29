@@ -420,13 +420,13 @@ def test_validation_correct_molecules():
         {'filepath': paths['abl'], 'leap': {'parameters': 'leaprc.ff99SBildn'}, 'select': 1},
         {'filepath': paths['abl'], 'select': 'all'},
         {'filepath': paths['abl'], 'select': 'all', 'strip_protons': True},
-        {'filepath': paths['abl'], 'select': 'all', 'pdbfixer': {} },
-        {'filepath': paths['abl'], 'select': 'all', 'pdbfixer': {'add_missing_residues' : 'yes'} },
-        {'filepath': paths['abl'], 'select': 'all', 'pdbfixer': {'add_missing_atoms' : 'all', 'ph' : '8.0'} },
-        {'filepath': paths['abl'], 'select': 'all', 'pdbfixer': {'remove_heterogens' : 'all'} },
-        {'filepath': paths['abl'], 'select': 'all', 'pdbfixer': {'replace_nonstandard_residues' : 'yes'} },
-        {'filepath': paths['abl'], 'select': 'all', 'pdbfixer' : {'apply_mutations': {'chain_id' : 'A', 'mutations' : 'T85I'} }},
-        {'filepath': paths['abl'], 'select': 'all', 'pdbfixer' : {'apply_mutations': {'chain_id' : 'A', 'mutations' : 'I8A/T9A'} }},
+        {'filepath': paths['abl'], 'select': 'all', 'pdbfixer': {}},
+        {'filepath': paths['abl'], 'select': 'all', 'pdbfixer': {'add_missing_residues': True}},
+        {'filepath': paths['abl'], 'select': 'all', 'pdbfixer': {'add_missing_atoms': 'all', 'ph': '8.0'}},
+        {'filepath': paths['abl'], 'select': 'all', 'pdbfixer': {'remove_heterogens': 'all'}},
+        {'filepath': paths['abl'], 'select': 'all', 'pdbfixer': {'replace_nonstandard_residues': True}},
+        {'filepath': paths['abl'], 'select': 'all', 'pdbfixer': {'apply_mutations': {'chain_id': 'A', 'mutations': 'T85I'}}},
+        {'filepath': paths['abl'], 'select': 'all', 'pdbfixer': {'apply_mutations': {'chain_id': 'A', 'mutations': 'I8A/T9A'}}},
         {'filepath': paths['toluene'], 'leap': {'parameters': 'leaprc.gaff'}},
         {'filepath': paths['benzene'], 'epik': {'select': 1, 'tautomerize': False}},
         # Regions tests, make sure all other combos still work
@@ -972,6 +972,17 @@ def test_epik_enumeration():
             assert os.path.getsize(output_basename + 'sdf') > 0
 
 
+def setup_molecule_output_check(exp_builder_db, mol_id, output_path):
+    """
+    Helper function to check molecules which have to go through the setup pipeline
+    Accepts the experiment builder database, the mol_id, and the output_path
+    Tries to setup the given mol_id and makes sure the output exists and is non-zero
+    """
+    exp_builder_db._setup_molecules(mol_id)
+    assert os.path.exists(output_path)
+    assert os.path.getsize(output_path) > 0
+
+
 def test_strip_protons():
     """Test that protons are stripped correctly for tleap."""
     mol_id = 'Abl'
@@ -997,9 +1008,7 @@ def test_strip_protons():
 
         # Now we set the strip_protons options and repeat
         exp_builder._db.molecules[mol_id]['strip_protons'] = True
-        exp_builder._db._setup_molecules(mol_id)
-        assert os.path.exists(output_path)
-        assert os.path.getsize(output_path) > 0
+        setup_molecule_output_check(exp_builder._db, mol_id, output_path)
 
         # The new pdb does not have hydrogen atoms
         has_hydrogen = False
@@ -1041,9 +1050,7 @@ def test_pdbfixer_mutations():
                 'mutations': 'T85I',
             }
         }
-        exp_builder._db._setup_molecules(mol_id)
-        assert os.path.exists(output_path)
-        assert os.path.getsize(output_path) > 0
+        setup_molecule_output_check(exp_builder._db, mol_id, output_path)
 
         # Safety check: protein must have mutated residue: ILE at residue 85 in chain A
         has_mut_residue = False
@@ -1053,6 +1060,29 @@ def test_pdbfixer_mutations():
                     has_mut_residue = True
                     break
         assert has_mut_residue
+
+
+def test_pdbfixer_processing():
+    """Test that PDB fixer correctly parses and sets up the molecules"""
+    mol_id = 'Abl'
+    pdb_fixer_modifications = [
+        {'pdbfixer': {}},
+        {'pdbfixer': {'add_missing_residues': True}},
+        {'pdbfixer': {'add_missing_atoms': 'all', 'ph': '8.0'}},
+        {'pdbfixer': {'remove_heterogens': 'all'}},
+        {'pdbfixer': {'replace_nonstandard_residues': True}},
+        {'pdbfixer': {'apply_mutations': {'chain_id': 'A', 'mutations': 'T85I'}}},
+        {'pdbfixer': {'apply_mutations': {'chain_id': 'A', 'mutations': 'I8A/T9A'}}},
+    ]
+    for mod in pdb_fixer_modifications:
+        with mmtools.utils.temporary_directory() as tmp_dir:
+            yaml_content = get_template_script(tmp_dir)
+            exp_builder = ExperimentBuilder(yaml_content)
+            output_dir = exp_builder._db.get_molecule_dir(mol_id)
+            output_path = os.path.join(output_dir, 'Abl.pdb')
+            exp_builder._db.molecules[mol_id].update(mod)
+            yield setup_molecule_output_check, exp_builder._db, mol_id, output_path
+
 
 # ==============================================================================
 # Combinatorial expansion

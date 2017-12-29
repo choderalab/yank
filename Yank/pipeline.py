@@ -832,18 +832,20 @@ def apply_pdbfixer(input_file_path, output_file_path, directives):
     fixer = PDBFixer(input_file_path)
     fixer.missingResidues = {}
 
-    def process_directive(option, dispatch, allowed_values):
+    def process_directive(option, dispatch, allowed_values, yields_value=False):
         """Process a directive.
 
         Parameters
         ----------
         option : str
-           The name of the option to be processed.
-           Will remove this option from `directives` once processed.
+            The name of the option to be processed.
+            Will remove this option from `directives` once processed.
         dispatch : function
-           The function to call.
+            The function to call.
         allowed_values : list
-           If not None, the value of directives[option] will be checked against this list
+            If not None, the value of directives[option] will be checked against this list
+        yields_value : boolean, default False
+            Tells this function to expect a return from the dispatch function and give it back as needed
         """
         if option in directives:
             value = directives[option]
@@ -852,9 +854,12 @@ def apply_pdbfixer(input_file_path, output_file_path, directives):
                 if value not in allowed_values:
                     raise ValueError("'{}' must be one of {}".format(option, allowed_values))
             # Dispatch
-            dispatch(value)
+            output = dispatch(value)
             # Delete the key once we've processed it
             del directives[option]
+            if yields_value:
+                return output
+            return
 
     # Dispatch functions
     # These won't be documented individually because they are so short
@@ -867,7 +872,7 @@ def apply_pdbfixer(input_file_path, output_file_path, directives):
             raise ValueError("'ph' must be a floating-point number: found '{}'".format(value))
         return pH
 
-    pH = process_directive('ph', dispatch_pH, None)
+    pH = process_directive('ph', dispatch_pH, None, yields_value=True)
 
     def add_missing_residues(value):
         if value == 'yes':
@@ -922,9 +927,9 @@ def apply_pdbfixer(input_file_path, output_file_path, directives):
         directives['add_missing_atoms'] = 'heavy'
 
     # Dispatch directives
-    process_directive('add_missing_residues', add_missing_residues, ['yes', 'no'])
+    process_directive('add_missing_residues', add_missing_residues, [True, False])
     process_directive('apply_mutations', apply_mutations, None)
-    process_directive('replace_nonstandard_residues', replace_nonstandard_residues, ['yes', 'no'])
+    process_directive('replace_nonstandard_residues', replace_nonstandard_residues, [True, False])
     process_directive('remove_heterogens', remove_heterogens, ['all', 'water', 'none'])
     process_directive('add_missing_atoms', add_missing_atoms, ['all', 'heavy', 'hydrogens', 'none'])
 
@@ -934,6 +939,7 @@ def apply_pdbfixer(input_file_path, output_file_path, directives):
 
     # Write the final structure
     PDBFile.writeFile(fixer.topology, fixer.positions, open(output_file_path, 'w'))
+
 
 def read_csv_lines(file_path, lines):
     """Return a list of CSV records.
