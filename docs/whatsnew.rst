@@ -6,6 +6,11 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the GitHub yank releases page <https://github.com/choderalab/yank/releases>`_.
 
+0.20.0 Mutations and PDBFixer
+-----------------------------
+- Protein Mutations can be specified through PDBFixer calls
+- Generalized PDBFixer options through the YAML molecules with `pdbfixer` directive
+
 0.19.4 Schema and Parallel Setup Fixes
 --------------------------------------
 - Fixed bug in parallel molecule setup which caused the same molecule to be setup multiple times.
