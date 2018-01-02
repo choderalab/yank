@@ -176,8 +176,8 @@ This directs PDBFixer to remove some heterogen residues from the PDB file:
 
 Valid Options: [none]/water/all
 
-Adding missing residues and atoms atoms
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Adding missing residues and atoms
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Add missing atoms (including entire residues, loops, and termini).
 
