@@ -6,6 +6,18 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the GitHub yank releases page <https://github.com/choderalab/yank/releases>`_.
 
+0.20.0 Support for processing proteins through PDBFixer
+-------------------------------------------------------
+- Adds an optional ``pdbfixer`` directive to the ``molecules`` section of the YAML file
+  through `PDBFixer <https://github.com/pandegroup/pdbfixer>`_, a simple OpenMM-based protein structure processing tool.
+- The following options are accessible through the ``pdbfixer`` directive. `[docs] <http://getyank.org/latest/yamlpages/molecules.html#pdbfixer>`_
+
+  - ``replace_nonstandard_residues``: Replace nonstandard amino acids. `[docs] <http://getyank.org/latest/yamlpages/molecules.html#replacing-nonstandard-residues>`_
+  - ``remove_heterogens``: Remove heterogens (such as ligands and waters). `[docs] <http://getyank.org/latest/yamlpages/molecules.html#removing-heterogens>`_
+  - ``add_missing_residues``: Add missing residues from the SEQRES block. `[docs] <http://getyank.org/latest/yamlpages/molecules.html#adding-missing-residues-and-atoms-atoms>`_
+  - ``add_missing_atoms``: Add missing heavy atoms. `[docs] <http://getyank.org/latest/yamlpages/molecules.html#adding-missing-residues-and-atoms-atoms>`_
+  - ``apply_mutations``: Specify protein mutations (e.g., T315I). `[docs] <http://getyank.org/latest/yamlpages/molecules.html#mutations>`_
+
 0.19.4 Schema and Parallel Setup Fixes
 --------------------------------------
 - Fixed bug in parallel molecule setup which caused the same molecule to be setup multiple times.
@@ -186,4 +198,3 @@ v0.6.0 (development)
 v0.5.0 (development)
 --------------------
 - Release for deployment to collaborators
-

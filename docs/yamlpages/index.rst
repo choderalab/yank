@@ -95,21 +95,22 @@ Detailed Options List
 
 * :doc:`molecules <molecules>`
 
-  * :ref:`Specifying Molecule Names <yaml_molecules_specify_names>`
+  * :ref:`Specifying Molecules <yaml_molecules_specify_names>`
 
-    * :ref:`filepath <yaml_molecules_filepath>` 
+    * :ref:`filepath <yaml_molecules_filepath>`
     * :ref:`smiles <yaml_molecules_smiles>`
     * :ref:`name <yaml_molecules_name>`
     * :ref:`strip_protons <yaml_molecules_strip_protons>`
+    * :ref:`pdbfixer <yaml_molecules_pdbfixer>`
     * :ref:`select <yaml_molecules_select>`
-  
+
   * :ref:`Assigning Missing Parameters <yaml_molecules_assign_charges>`
 
     * :ref:`antechamber <yaml_molecules_antechamber>`
     * :ref:`openeye <yaml_molecules_openeye>`
 
   * :ref:`Assigning Extra Information <yaml_molecules_extras>`
- 
+
     * :ref:`leap <yaml_molecules_leap>`
     * :ref:`epik <yaml_molecules_epik>`
     * :ref:`regions <yaml_molecules_regions>`
@@ -138,13 +139,13 @@ Detailed Options List
 * :doc:`systems <systems>`
 
   * :ref:`Ligand/Receptor Free Energies Setup by YANK <yaml_systems_receptor_ligand>`
-    
+
     * :ref:`ligand <yaml_systems_receptor_ligand>`
     * :ref:`receptor <yaml_systems_receptor_ligand>`
     * :ref:`solvent <yaml_systems_receptor_ligand>`
     * :ref:`pack <yaml_systems_receptor_ligand>`
     * :ref:`leap <yaml_systems_receptor_ligand>`
- 
+
       * :ref:`parameters <yaml_systems_receptor_ligand>`
 
   * :ref:`Hydration Free Energies Setup by YANK <yaml_systems_hydration>`
@@ -166,7 +167,7 @@ Detailed Options List
 * :doc:`protocols <protocols>`
 
   * :ref:`Protocols Syntax <yaml_protocols_example>`
-  
+
     * :ref:`alchemical_path <yaml_protocols_example>`
 
       * :ref:`lambda_electrostatics <yaml_protocols_alchemical_path>`
@@ -175,11 +176,11 @@ Detailed Options List
     * :ref:`Automatic alchemical path Generation <yaml_protocols_auto>`
 
   * :ref:`How-To Video <yaml_protocols_video>`
-    
+
 * :doc:`experiements <experiments>`
 
   * :ref:`Experiments Syntax <yaml_experiments_syntax>`
- 
+
     * :ref:`system <yaml_experiments_syntax>`
     * :ref:`protocol <yaml_experiments_syntax>`
     * :ref:`options <yaml_experiments_syntax>`
