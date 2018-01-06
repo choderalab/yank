@@ -1,7 +1,7 @@
 #!/usr/local/bin/env python
 
 """
-Test repex.py facility.
+Test replicaexchangesampler.py facility.
 
 TODO
 
@@ -13,28 +13,28 @@ TODO
 # GLOBAL IMPORTS
 # =============================================================================================
 
-import os
-import sys
-import math
-import copy
-import pickle
-import inspect
 import contextlib
+import copy
+import inspect
+import math
+import os
+import pickle
+import sys
+from io import StringIO
 
-import yaml
 import numpy as np
+import openmmtools as mmtools
 import scipy.integrate
-from simtk import openmm, unit
+import yaml
 from nose.plugins.attrib import attr
 from nose.tools import assert_raises
-
-import openmmtools as mmtools
 from openmmtools import testsystems
+from simtk import openmm, unit
 
-from yank import mpi, utils, analyze
-from yank.repex import Reporter, MultiStateSampler, ReplicaExchange, ParallelTempering, _DictYamlLoader
-
-from io import StringIO
+from yank import mpi, analyze
+from yank.sampling import MultiStateReporter, MultiStateSampler, ReplicaExchangeSampler, ParallelTemperingSampler
+from yank.sampling.multistatereporter import _DictYamlLoader
+from yank.utils import config_root_logger  # This is only function tying these test to the main YANK code
 
 # quiet down some citation spam
 MultiStateSampler._global_citation_silence = True
@@ -181,17 +181,17 @@ def test_replica_exchange(verbose=False, verbose_simulation=False):
     move = mmtools.mcmc.LangevinDynamicsMove(timestep=2.0*unit.femtoseconds,
                                              collision_rate=20.0/unit.picosecond,
                                              n_steps=500, reassign_velocities=True)
-    simulation = ReplicaExchange(mcmc_moves=move, number_of_iterations=200)
+    simulation = ReplicaExchangeSampler(mcmc_moves=move, number_of_iterations=200)
 
     # Define file for temporary storage.
     with mmtools.utils.temporary_directory() as tmp_dir:
         storage = os.path.join(tmp_dir, 'test_storage.nc')
-        reporter = Reporter(storage, checkpoint_interval=1)
+        reporter = MultiStateReporter(storage, checkpoint_interval=1)
         simulation.create(thermodynamic_states, sampler_states, reporter)
 
         # Run simulation we keep the debug info off during the simulation
         # to not clog the output, and reactivate it for analysis.
-        utils.config_root_logger(verbose_simulation)
+        config_root_logger(verbose_simulation)
         simulation.run()
 
         # Create Analyzer.
@@ -253,10 +253,10 @@ class TestReporter(object):
         with mmtools.utils.temporary_directory() as tmp_dir_path:
             storage_file = os.path.join(tmp_dir_path, 'temp_dir/test_storage.nc')
             assert not os.path.isfile(storage_file)
-            reporter = Reporter(storage=storage_file, open_mode='w',
-                                checkpoint_interval=checkpoint_interval,
-                                checkpoint_storage=checkpoint_storage,
-                                analysis_particle_indices=analysis_particle_indices)
+            reporter = MultiStateReporter(storage=storage_file, open_mode='w',
+                                          checkpoint_interval=checkpoint_interval,
+                                          checkpoint_storage=checkpoint_storage,
+                                          analysis_particle_indices=analysis_particle_indices)
             assert reporter.storage_exists(skip_size=True)
             yield reporter
 
@@ -397,26 +397,26 @@ class TestReporter(object):
         with mmtools.utils.temporary_directory() as tmp_dir_path:
             # Test that starting with a blank analysis cannot be overwritten
             blank_file = os.path.join(tmp_dir_path, 'temp_dir/blank_analysis.nc')
-            reporter = Reporter(storage=blank_file, open_mode='w',
-                                analysis_particle_indices=blank_analysis_particles)
+            reporter = MultiStateReporter(storage=blank_file, open_mode='w',
+                                          analysis_particle_indices=blank_analysis_particles)
             reporter.close()
             del reporter
-            new_blank_reporter = Reporter(storage=blank_file, open_mode='r',
-                                          analysis_particle_indices=set1_analysis_particles)
+            new_blank_reporter = MultiStateReporter(storage=blank_file, open_mode='r',
+                                                    analysis_particle_indices=set1_analysis_particles)
             assert new_blank_reporter.analysis_particle_indices == blank_analysis_particles
             del new_blank_reporter
             # Test that starting from an initial set of particles and passing in a blank does not overwrite
             set1_file = os.path.join(tmp_dir_path, 'temp_dir/set1_analysis.nc')
-            set1_reporter = Reporter(storage=set1_file, open_mode='w',
-                                     analysis_particle_indices=set1_analysis_particles)
+            set1_reporter = MultiStateReporter(storage=set1_file, open_mode='w',
+                                               analysis_particle_indices=set1_analysis_particles)
             set1_reporter.close()  # Don't delete, we'll need it for another test
-            new_set1_reporter = Reporter(storage=set1_file, open_mode='r',
-                                         analysis_particle_indices=blank_analysis_particles)
+            new_set1_reporter = MultiStateReporter(storage=set1_file, open_mode='r',
+                                                   analysis_particle_indices=blank_analysis_particles)
             assert new_set1_reporter.analysis_particle_indices == set1_analysis_particles
             del new_set1_reporter
             # Test that passing in a different set than the initial returns the initial set
-            new2_set1_reporter = Reporter(storage=set1_file, open_mode='r',
-                                          analysis_particle_indices=set2_analysis_particles)
+            new2_set1_reporter = MultiStateReporter(storage=set1_file, open_mode='r',
+                                                    analysis_particle_indices=set2_analysis_particles)
             assert new2_set1_reporter.analysis_particle_indices == set1_analysis_particles
 
     def test_store_replica_thermodynamic_states(self):
@@ -553,7 +553,7 @@ class TestMultiStateSampler(object):
     N_SAMPLERS = 3
     N_STATES = 5
     SAMPLER = MultiStateSampler
-    REPORTER = Reporter
+    REPORTER = MultiStateReporter
 
     # --------------------------------------
     # Optional helper function to overwrite.
@@ -738,7 +738,7 @@ class TestMultiStateSampler(object):
                 assert not sampler._reporter.is_open()
 
             # Open reporter to read stored data.
-            reporter = Reporter(storage_path, open_mode='r', checkpoint_interval=1)
+            reporter = self.REPORTER(storage_path, open_mode='r', checkpoint_interval=1)
 
             # The n_states sampler states have been distributed
             restored_sampler_states = reporter.read_sampler_states(iteration=0)
@@ -956,7 +956,7 @@ class TestMultiStateSampler(object):
             mpicomm = mpi.get_mpicomm()
             if mpicomm is None or mpicomm.rank == 0:
                 reporter.close()
-                reporter = Reporter(storage_path, open_mode='r')
+                reporter = self.REPORTER(storage_path, open_mode='r')
                 restored_options = reporter.read_dict('options')
                 assert restored_options['number_of_iterations'] == float('inf')
                 if additional_properties is not None:
@@ -1306,7 +1306,7 @@ class TestMultiStateSampler(object):
             reporter_mod.close()
             del reporter_main, reporter_mod
             with assert_raises(IOError):
-                Reporter(storage_path, checkpoint_storage=cp_file_mod, open_mode='r')
+                self.REPORTER(storage_path, checkpoint_storage=cp_file_mod, open_mode='r')
 
     def test_analysis_opens_without_checkpoint(self):
         """Test that the analysis file can open without the checkpoint file"""
@@ -1399,7 +1399,7 @@ class TestExtraSamplersMultiStateSampler(TestMultiStateSampler):
     N_SAMPLERS = 8
     N_STATES = 5
     SAMPLER = MultiStateSampler
-    REPORTER = Reporter
+    REPORTER = MultiStateReporter
 
 
 class TestReplicaExchange(TestMultiStateSampler):
@@ -1411,8 +1411,8 @@ class TestReplicaExchange(TestMultiStateSampler):
 
     N_SAMPLERS = 3
     N_STATES = 3
-    SAMPLER = ReplicaExchange
-    REPORTER = Reporter
+    SAMPLER = ReplicaExchangeSampler
+    REPORTER = MultiStateReporter
 
     # --------------------------------------
     # Tests overwritten from base test suite
@@ -1433,8 +1433,8 @@ class TestParallelTempering(TestMultiStateSampler):
 
     N_SAMPLERS = 3
     N_STATES = 3
-    SAMPLER = ParallelTempering
-    REPORTER = Reporter
+    SAMPLER = ParallelTemperingSampler
+    REPORTER = MultiStateReporter
     MIN_TEMP = 300*unit.kelvin
     MAX_TEMP = 350*unit.kelvin
 
@@ -1498,19 +1498,8 @@ class TestParallelTempering(TestMultiStateSampler):
 
 if __name__ == "__main__":
     # Configure logger.
-    utils.config_root_logger(False)
-
-    # Try MPI, if possible.
-    try:
-        mpicomm = utils.initialize_mpi()
-        if mpicomm.rank == 0:
-            print("MPI initialized successfully.")
-    except Exception as e:
-        print(e)
-        print("Could not start MPI. Using serial code instead.")
-        mpicomm = None
+    config_root_logger(False)
 
     # Test simple system of harmonic oscillators.
     # Disabled until we fix the test
-    # test_hamiltonian_exchange(mpicomm)
-    test_replica_exchange(mpicomm)
+    test_replica_exchange()

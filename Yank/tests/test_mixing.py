@@ -4,12 +4,12 @@
 Test Cython and weave mixing code.
 """
 
-
-import scipy.stats as stats
-import yank.mixing._mix_replicas as mixing
-import yank.mixing._mix_replicas_old as mix_old
-import numpy as np
 import copy
+
+import numpy as np
+import scipy.stats as stats
+import yank.sampling.mixing._mix_replicas as mixing
+
 
 def mix_replicas(n_swaps=100, n_states=16, u_kl=None, nswap_attempts=None):
     """
@@ -45,8 +45,6 @@ def mix_replicas(n_swaps=100, n_states=16, u_kl=None, nswap_attempts=None):
     return permutation_list_np
 
 
-
-
 def calculate_state_counts(permutation_list, n_swaps, n_states):
     """
     This function accepts a list of permutation vectors, and for each replica,
@@ -74,7 +72,6 @@ def calculate_state_counts(permutation_list, n_swaps, n_states):
     return state_counts
 
 
-
 def test_even_mixing(verbose=True):
     """
     Testing Cython mixing code with 1000 swap attempts and uniform 0 energies
@@ -86,7 +83,7 @@ def test_even_mixing(verbose=True):
     permutation_list = mix_replicas(n_swaps=n_swaps, n_states=n_states)
     state_counts = calculate_state_counts(permutation_list, n_swaps, n_states)
     for replica in range(n_states):
-        _, p_val = stats.chisquare(state_counts[replica,:])
+        _, p_val = stats.chisquare(state_counts[replica, :])
         if p_val < corrected_threshold:
             print("Detected a significant difference between expected even mixing\n")
             print("and observed mixing, p=%f" % p_val)
@@ -95,4 +92,4 @@ def test_even_mixing(verbose=True):
 
 
 if __name__ == "__main__":
-   test_even_mixing()
+    test_even_mixing()

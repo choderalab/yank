@@ -2,12 +2,8 @@
 YANK is a testbed for experimenting with algorithms for the efficient computation of small molecule binding free energies to biomolecular targets using alchemical methods.
 YANK is built on OpenMM, the API for molecular simulation, and uses its GPU-accelerated library implementation for hardware acceleration.
 """
-from __future__ import print_function
-import os
-import sys
 import distutils.extension
-from setuptools import setup, Extension, find_packages
-import glob
+from setuptools import setup
 import os
 from os.path import relpath, join
 import subprocess
@@ -120,7 +116,8 @@ def find_package_data(data_root, package_root):
 # SETUP
 ################################################################################
 
-mixing_ext = distutils.extension.Extension("yank.mixing._mix_replicas", ['./Yank/mixing/_mix_replicas.pyx'])
+mixing_ext = distutils.extension.Extension("yank.sampling.mixing._mix_replicas",
+                                           ['./Yank/sampling/mixing/_mix_replicas.pyx'])
 
 write_version_py()
 setup(
@@ -135,7 +132,8 @@ setup(
     platforms=['Linux', 'Mac OS-X', 'Unix', 'Windows'],
     classifiers=CLASSIFIERS.splitlines(),
     package_dir={'yank': 'Yank'},
-    packages=['yank', "yank.tests", "yank.tests.data", "yank.commands", "yank.mixing", "yank.reports", "yank.schema"], #+ ['yank.{}'.format(package) for package in find_packages('yank')],
+    packages=['yank', "yank.tests", "yank.tests.data", "yank.commands", "yank.mixing", "yank.reports", "yank.schema",
+              'yank.sampling'],  # + ['yank.{}'.format(package) for package in find_packages('yank')],
     package_data={'yank': find_package_data('Yank/tests/data', 'yank') + ['reports/*.ipynb'],
                   },
     zip_safe=False,

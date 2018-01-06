@@ -21,18 +21,15 @@ This code is licensed under the latest available version of the MIT License.
 # GLOBAL IMPORTS
 # ==============================================================================
 
-import os
-import functools
 import contextlib
-
-from openmmtools.constants import kB
-from openmmtools import testsystems, states
+import os
 
 import nose
+from openmmtools import testsystems, states
+from openmmtools.constants import kB
 
 import yank.restraints
-from yank.repex import ReplicaExchange
-
+from Yank.sampling.repex import ReplicaExchange
 from yank.yank import *
 
 

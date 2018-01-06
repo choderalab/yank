@@ -20,25 +20,23 @@ Fully extensible to support new samplers and observables.
 # Analyze datafiles produced by YANK.
 # =============================================================================================
 
-import os
 import abc
 import copy
+import logging
+import os
 import typing
 from typing import Union, Optional
 
-import yaml
+import mdtraj
 import numpy as np
-
 import openmmtools as mmtools
-from .repex import Reporter
-
+import simtk.unit as units
+import yaml
 from pymbar import MBAR  # multi-state Bennett acceptance ratio
 from pymbar import timeseries  # for statistical inefficiency analysis
 
-import mdtraj
-import simtk.unit as units
+from .sampling import MultiStateReporter
 
-import logging
 logger = logging.getLogger(__name__)
 
 ABC = abc.ABCMeta('ABC', (object,), {})  # compatible with Python 2 *and* 3
@@ -110,7 +108,7 @@ def get_analyzer(file_base_path):
         Analyzer for the specific phase.
     """
     # Eventually extend this to get more reporters, but for now simple placeholder
-    reporter = Reporter(file_base_path, open_mode='r')
+    reporter = MultiStateReporter(file_base_path, open_mode='r')
     """
     storage = infer_storage_format_from_extension('complex.nc')  # This is always going to be nc for now.
     metadata = storage.metadata
@@ -763,7 +761,7 @@ class MultiStateSamplerAnalyzer(YankPhaseAnalyzer):
         # TODO: Replace with maximum likelihood reversible count estimator from msmbuilder or pyemma.
         t_ij = np.zeros([n_states, n_states], np.float64)
         for i_state in range(n_states):
-            # Cast to float to ensure we dont get integer division
+            # Cast to float to ensure we don't get integer division
             denominator = float((n_ij[i_state, :].sum() + n_ij[:, i_state].sum()))
             if denominator > 0:
                 for j_state in range(n_states):
@@ -1099,6 +1097,7 @@ class MultiStateSamplerAnalyzer(YankPhaseAnalyzer):
         data['DeltaF_standard_state_correction'] = self.get_standard_state_correction()
         return data
 
+
 class ReplicaExchangeAnalyzer(MultiStateSamplerAnalyzer):
 
     """
@@ -1107,6 +1106,21 @@ class ReplicaExchangeAnalyzer(MultiStateSamplerAnalyzer):
 
     See Also
     --------
+    YankPhaseAnalyzer
+
+    """
+    pass
+
+
+class ParallelTemperingAnalyzer(ReplicaExchangeAnalyzer):
+    """
+    The ParallelTemperingAnalyzer is the analyzer for a simulation generated from a Parallel Tempering sampler
+    simulation, implemented as an instance of the :class:`ReplicaExchangeAnalyzer` as the sampler is a subclass of
+    the :class:`yank.sampling.ReplicaExchangeSampler`
+
+    See Also
+    --------
+    ReplicaExchangeAnalyzer
     YankPhaseAnalyzer
 
     """
@@ -1617,7 +1631,7 @@ def extract_trajectory(nc_path, nc_checkpoint_file=None, state_index=None, repli
 
     # Import simulation data
     try:
-        reporter = Reporter(nc_path, open_mode='r', checkpoint_storage=nc_checkpoint_file)
+        reporter = MultiStateReporter(nc_path, open_mode='r', checkpoint_storage=nc_checkpoint_file)
         metadata = reporter.read_dict('metadata')
         reference_system = mmtools.utils.deserialize(metadata['reference_state']).system
         topology = mmtools.utils.deserialize(metadata['topography']).topology

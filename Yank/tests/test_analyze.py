@@ -9,22 +9,21 @@ Test analyze.py facility.
 # GLOBAL IMPORTS
 # =============================================================================================
 
-import os
 import copy
+import os
 import shutil
 import tempfile
 
-import pymbar
 import numpy as np
-from simtk import unit
-from nose.tools import assert_raises
-
 import openmmtools as mmtools
+import pymbar
+from nose.tools import assert_raises
 from openmmtools import testsystems
+from simtk import unit
 
 from yank import analyze
 from yank.yank import Topography
-from yank.repex import Reporter, ReplicaExchange
+from yank.sampling import MultiStateReporter, ReplicaExchangeSampler
 
 # ==============================================================================
 # MODULE CONSTANTS
@@ -110,7 +109,8 @@ class TestPhaseAnalyzer(object):
         # Translate the sampler states to be different one from each other.
         positions = hostguest_test.positions
         box_vectors = hostguest_test.system.getDefaultPeriodicBoxVectors()
-        hostguest_sampler_states = [mmtools.states.SamplerState(positions=positions + 10*i*unit.nanometers, box_vectors=box_vectors)
+        hostguest_sampler_states = [mmtools.states.SamplerState(positions=positions + 10*i*unit.nanometers,
+                                                                box_vectors=box_vectors)
                                     for i in range(n_states)]
 
         # Create the three basic thermodynamic states.
@@ -158,9 +158,9 @@ class TestPhaseAnalyzer(object):
         cls.tmp_dir = tempfile.mkdtemp()
         storage_path = os.path.join(cls.tmp_dir, 'test_analyze.nc')
         move = mmtools.mcmc.LangevinDynamicsMove(n_steps=1)
-        cls.repex = ReplicaExchange(mcmc_moves=move, number_of_iterations=n_steps)
-        cls.reporter = Reporter(storage_path, checkpoint_interval=checkpoint_interval,
-                                analysis_particle_indices=analysis_atoms)
+        cls.repex = ReplicaExchangeSampler(mcmc_moves=move, number_of_iterations=n_steps)
+        cls.reporter = MultiStateReporter(storage_path, checkpoint_interval=checkpoint_interval,
+                                          analysis_particle_indices=analysis_atoms)
         cls.repex.create(thermodynamic_states, sampler_states, storage=cls.reporter,
                          unsampled_thermodynamic_states=unsampled_states, metadata=metadata)
         # run some iterations
