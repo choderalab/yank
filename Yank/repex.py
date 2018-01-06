@@ -16,8 +16,11 @@ the states differ only in temperature).
 
 Provided classes include:
 
+- :class:`MultiStateSampler`
+    Base class for general, multi-thermodynamic state parallel sampling
 - :class:`ReplicaExchange`
-    Base class for general replica-exchange simulations.
+    Derived class from MultiStateSampler which allows sampled thermodynamic states
+    to swap based on Hamiltonian Replica Exchange
 - :class:`ParallelTempering`
     Convenience subclass of ReplicaExchange for parallel tempering simulations
     (one System object, many temperatures).
@@ -632,10 +635,11 @@ class Reporter(object):
 
         Returns
         -------
-        state_indices : list of int
+        state_indices : np.ndarray of int
             At the given iteration, replica ``i`` propagated the system in
             SamplerState ``sampler_states[i]`` and ThermodynamicState
             ``thermodynamic_states[states_indices[i]]``.
+            If a slice is given, returns shape ``[len(slice), `len(sampler_states)]``
 
         """
         iteration = self._calculate_last_iteration(iteration)
@@ -690,7 +694,7 @@ class Reporter(object):
         return mcmc_moves
 
     def write_mcmc_moves(self, mcmc_moves):
-        """Store the MCMCMoves of the :class:`yank.repex.ReplicaExchange` simulation on the checkpoint
+        """Store the MCMCMoves of the :class:`yank.repex.MultiStateSampler` simulation or subclasses on the checkpoint
 
         Parameters
         ----------
@@ -1458,7 +1462,7 @@ class MultiStateSampler(object):
     Parameters
     ----------
     mcmc_moves : MCMCMove or list of MCMCMove, optional
-        The MCMCMove used to propagate the states. If a list of MCMCMoves,
+        The MCMCMove used to propagate the thermodynamic states. If a list of MCMCMoves,
         they will be assigned to the correspondent thermodynamic state on
         creation. If None is provided, Langevin dynamics with 2fm timestep, 5.0/ps collision rate,
         and 500 steps per iteration will be used.
@@ -1858,11 +1862,11 @@ class MultiStateSampler(object):
     # Main public interface.
     # -------------------------------------------------------------------------
 
-    title_template = ('Multi-state sampler simulation created using MultiStateSampler class '
-                      'of yank.repex on {}')
+    _TITLE_TEMPLATE = ('Multi-state sampler simulation created using MultiStateSampler class '
+                       'of yank.repex on {}')
 
     def create(self, thermodynamic_states, sampler_states, storage,
-               initial_thermodynamic_states, unsampled_thermodynamic_states=None,
+               initial_thermodynamic_states=None, unsampled_thermodynamic_states=None,
                metadata=None):
         """Create new multistate sampler simulation.
 
@@ -1880,8 +1884,23 @@ class MultiStateSampler(object):
             If str: the path to the storage file. Default checkpoint options from Reporter class are used
             If Reporter: Uses the reporter options and storage path
             In the future this will be able to take a Storage class as well.
-        initial_thermodynamic_states : list or array-like of int of length len(sampler_states)
+        initial_thermodynamic_states : None or list or array-like of int of length len(sampler_states), optional,
+            default: None.
             Initial thermodynamic_state index for each sampler_state.
+            If no initial distribution is chosen, ``sampler_states`` are distributed between the
+            ``thermodynamic_states`` following these rules:
+
+                * If ``len(thermodynamic_states) == len(sampler_states)``: 1-to-1 distribution
+
+                * If ``len(thermodynamic_states) > len(sampler_states)``: First and last state distributed first
+                  remaining ``sampler_states`` spaced evenly by index until ``sampler_states`` are depleted.
+                  If there is only one ``sampler_state``, then the only first ``thermodynamic_state`` will be chosen
+
+                * If ``len(thermodynamic_states) < len(sampler_states)``, each ``thermodynamic_state`` receives an
+                  equal number of ``sampler_states`` until there are insufficient number of ``sampler_states`` remaining
+                  to give each ``thermodynamic_state`` an equal number. Then the rules from the previous point are
+                  followed.
+
         unsampled_thermodynamic_states : list of openmmtools.states.ThermodynamicState, optional, default=None
             These are ThermodynamicStates that are not propagated, but their
             reduced potential is computed at each iteration for each replica.
@@ -1929,7 +1948,7 @@ class MultiStateSampler(object):
                                'refusing to overwrite.'.format(reporter.filepath))
 
         # Handle default argument for metadata and add default simulation title.
-        default_title = (self.title_template.format(time.asctime(time.localtime())))
+        default_title = (self._TITLE_TEMPLATE.format(time.asctime(time.localtime())))
         if metadata is None:
             metadata = dict(title=default_title)
         elif 'title' not in metadata:
@@ -1955,6 +1974,9 @@ class MultiStateSampler(object):
                 sampler_state.box_vectors = default_box_vectors
 
         # Set initial thermodynamic state indices if not specified
+        if initial_thermodynamic_states is None:
+            initial_thermodynamic_states = self._default_initial_thermodynamic_states(thermodynamic_states,
+                                                                                      sampler_states)
         self._replica_thermodynamic_states = np.array(initial_thermodynamic_states, np.int64)
 
         # Assign default system box vectors if None has been specified.
@@ -1967,10 +1989,10 @@ class MultiStateSampler(object):
 
         # Ensure there is an MCMCMove for each thermodynamic state.
         if isinstance(self._mcmc_moves, mmtools.mcmc.MCMCMove):
-            self._mcmc_moves = [copy.deepcopy(self._mcmc_moves) for _ in range(self.n_replicas)]
-        elif len(self._mcmc_moves) != self.n_replicas:
+            self._mcmc_moves = [copy.deepcopy(self._mcmc_moves) for _ in range(self.n_states)]
+        elif len(self._mcmc_moves) != self.n_states:
             raise RuntimeError('The number of MCMCMoves ({}) and ThermodynamicStates ({}) must '
-                               'be the same.'.format(len(self._mcmc_moves), self.n_replicas))
+                               'be the same.'.format(len(self._mcmc_moves), self.n_states))
 
         # Reset iteration counter.
         self._iteration = 0
@@ -2058,10 +2080,10 @@ class MultiStateSampler(object):
 
         # Make sure there is one MCMCMove per thermodynamic state.
         if isinstance(mcmc_moves, mmtools.mcmc.MCMCMove):
-            mcmc_moves = [copy.deepcopy(mcmc_moves) for _ in range(self.n_replicas)]
-        elif len(mcmc_moves) != self.n_replicas:
+            mcmc_moves = [copy.deepcopy(mcmc_moves) for _ in range(self.n_states)]
+        elif len(mcmc_moves) != self.n_states:
             raise RuntimeError('The number of MCMCMoves ({}) and ThermodynamicStates ({}) for equilibration'
-                               ' must be the same.'.format(len(self._mcmc_moves), self.n_replicas))
+                               ' must be the same.'.format(len(self._mcmc_moves), self.n_states))
 
         # Temporarily set the equilibration MCMCMoves.
         production_mcmc_moves = self._mcmc_moves
@@ -2113,9 +2135,9 @@ class MultiStateSampler(object):
 
         # Handle default argument and determine number of iterations to run.
         if n_iterations is None:
-            iteration_limit = self._number_of_iterations - self._iteration
+            iteration_limit = self.number_of_iterations - self._iteration
         else:
-            iteration_limit = min(self._iteration + n_iterations, self._number_of_iterations)
+            iteration_limit = min(self._iteration + n_iterations, self.number_of_iterations)
 
         # Main loop.
         while not self._is_completed(iteration_limit):
@@ -2139,9 +2161,9 @@ class MultiStateSampler(object):
             self._report_iteration()
 
             # Compute online free energy
-            if (self._online_analysis_interval is not None and
-                    self._iteration > self._online_analysis_minimum_iterations and
-                    self._iteration % self._online_analysis_interval == 0):
+            if (self.online_analysis_interval is not None and
+                    self._iteration > self.online_analysis_minimum_iterations and
+                    self._iteration % self.online_analysis_interval == 0):
                 # Executed only by node 0 and broadcasted to be used in _is_completed().
                 self._last_err_free_energy = self._run_online_analysis()
 
@@ -2174,7 +2196,7 @@ class MultiStateSampler(object):
            The number of iterations to run.
 
         """
-        if self._iteration + n_iterations > self._number_of_iterations:
+        if self._iteration + n_iterations > self.number_of_iterations:
             # This MUST be assigned to a property or the storage won't be updated.
             self.number_of_iterations = self._iteration + n_iterations
         self.run(n_iterations)
@@ -2282,6 +2304,35 @@ class MultiStateSampler(object):
     # Internal-usage: Initialization and storage utilities.
     # -------------------------------------------------------------------------
 
+    def _default_initial_thermodynamic_states(self, thermodynamic_states, sampler_states):
+        """
+        Create the initial_thermodynamic_states obeying the following rules:
+
+        * If ``len(thermodynamic_states) == len(sampler_states)``: 1-to-1 distribution
+
+        * If ``len(thermodynamic_states) > len(sampler_states)``: First and last state distributed first
+          remaining ``sampler_states`` spaced evenly by index until ``sampler_states`` are depleted.
+          If there is only one ``sampler_state``, then the only first ``thermodynamic_state`` will be chosen
+
+        * If ``len(thermodynamic_states) < len(sampler_states)``, each ``thermodynamic_state`` receives an
+          equal number of ``sampler_states`` until there are insufficient number of ``sampler_states`` remaining
+          to give each ``thermodynamic_state`` an equal number. Then the rules from the previous point are
+          followed.
+        """
+        # Ignore IDE's saying this may be static because subclasses implement changes and need to call super()
+        # which does not work for staticmethods
+        n_thermo = len(thermodynamic_states)
+        n_sampler = len(sampler_states)
+        thermo_indices = np.arange(n_thermo, dtype=int)
+        initial_thermo_states = np.zeros(n_sampler, dtype=int)
+        # Determine how many loops we can do
+        loops = n_sampler // n_thermo  # Floor division (//)
+        n_looped = n_thermo*loops
+        initial_thermo_states[:n_looped] = np.tile(thermo_indices, loops)
+        # Distribute remaining values, -1 from n_thermo to handle indices correctly
+        initial_thermo_states[n_looped:] = np.linspace(0, n_thermo-1, n_sampler-n_looped, dtype=int)
+        return initial_thermo_states
+
     @staticmethod
     def _does_file_exist(file_path):
         """Check if there is a file at the given path."""
@@ -2357,7 +2408,8 @@ class MultiStateSampler(object):
         for c in inspect.getmro(cls):
             parameter_names, _, _, defaults = inspect.getargspec(c.__init__)
             if defaults:
-                class_options = { parameter_name : defaults[index] for (index, parameter_name) in enumerate(parameter_names[-len(defaults):]) }
+                class_options = {parameter_name: defaults[index] for (index, parameter_name) in
+                                 enumerate(parameter_names[-len(defaults):])}
                 options_to_report.update(class_options)
         options_to_report.pop('mcmc_moves')
         return options_to_report
@@ -2371,7 +2423,8 @@ class MultiStateSampler(object):
         for cls in inspect.getmro(type(self)):
             parameter_names, _, _, defaults = inspect.getargspec(cls.__init__)
             if defaults:
-                class_options = { parameter_name : getattr(self, '_' + parameter_name) for parameter_name in parameter_names[-len(defaults):] }
+                class_options = {parameter_name: getattr(self, '_' + parameter_name) for
+                                 parameter_name in parameter_names[-len(defaults):]}
                 options_to_report.update(class_options)
         options_to_report.pop('mcmc_moves')
         return options_to_report
@@ -2538,7 +2591,7 @@ class MultiStateSampler(object):
     @mpi.on_single_node(0, broadcast_result=True)
     def _mix_replicas(self):
         """Do nothing to replicas."""
-        logger.debug("Mixing replicas (does nothing)...")
+        logger.debug("Mixing replicas (does nothing for MultiStateSampler)...")
 
         # Reset storage to keep track of swap attempts this iteration.
         self._n_accepted_matrix[:, :] = 0
@@ -2549,8 +2602,7 @@ class MultiStateSampler(object):
         n_swaps_accepted = self._n_accepted_matrix.sum()
         swap_fraction_accepted = 0.0
         if n_swaps_proposed > 0:
-            # TODO drop casting to float when dropping Python 2 support.
-            swap_fraction_accepted = float(n_swaps_accepted) / n_swaps_proposed
+            swap_fraction_accepted = n_swaps_accepted / n_swaps_proposed  # Python 3 uses true division for /
         logger.debug("Accepted {}/{} attempted swaps ({:.1f}%)".format(n_swaps_accepted, n_swaps_proposed,
                                                                        swap_fraction_accepted * 100.0))
 
@@ -2833,8 +2885,8 @@ class ReplicaExchange(MultiStateSampler):
     replica_mixing_scheme = _StoredProperty('replica_mixing_scheme',
                                             validate_function=_StoredProperty._repex_mixing_scheme_validator)
 
-    title_template = ('Replica-exchange sampler simulation created using ReplicaExchange class '
-                      'of yank.repex.py on {}')
+    _TITLE_TEMPLATE = ('Replica-exchange sampler simulation created using ReplicaExchange class '
+                       'of yank.repex.py on {}')
 
     def create(self, thermodynamic_states, sampler_states, storage, **kwargs):
         """Create new multistate sampler simulation.
@@ -2852,6 +2904,22 @@ class ReplicaExchange(MultiStateSampler):
             If str: the path to the storage file. Default checkpoint options from Reporter class are used
             If Reporter: Uses the reporter options and storage path
             In the future this will be able to take a Storage class as well.
+        initial_thermodynamic_states : None or list or array-like of int of length len(sampler_states), optional,
+            default: None.
+            Initial thermodynamic_state index for each sampler_state.
+            If no initial distribution is chosen, ``sampler_states`` are distributed between the
+            ``thermodynamic_states`` following these rules:
+
+                * If ``len(thermodynamic_states) == len(sampler_states)``: 1-to-1 distribution
+
+                * If ``len(thermodynamic_states) > len(sampler_states)``: First and last state distributed first
+                  remaining ``sampler_states`` spaced evenly by index until ``sampler_states`` are depleted.
+                  If there is only one ``sampler_state``, then the only first ``thermodynamic_state`` will be chosen
+
+                * If ``len(thermodynamic_states) < len(sampler_states)``, each ``thermodynamic_state`` receives an
+                  equal number of ``sampler_states`` until there are insufficient number of ``sampler_states`` remaining
+                  to give each ``thermodynamic_state`` an equal number. Then the rules from the previous point are
+                  followed.
         unsampled_thermodynamic_states : list of openmmtools.states.ThermodynamicState, optional, default=None
             These are ThermodynamicStates that are not propagated, but their
             reduced potential is computed at each iteration for each replica.
@@ -2872,12 +2940,14 @@ class ReplicaExchange(MultiStateSampler):
         # Distribute sampler states to replicas in a round-robin fashion.
         sampler_states = [copy.deepcopy(sampler_states[i % len(sampler_states)]) for i in range(n_states)]
 
-        # Assign initial thermodynamic states for replicas
-        initial_thermodynamic_states = np.array([i for i in range(n_states)], np.int64)
+        # Initial thermodynamic states handled by the superclass and the _default_initial_thermodynamic_state method
+        super(ReplicaExchange, self).create(thermodynamic_states, sampler_states, storage, **kwargs)
 
-        super(ReplicaExchange, self).create(thermodynamic_states, sampler_states,
-                                            storage, initial_thermodynamic_states,
-                                            **kwargs)
+    def _default_initial_thermodynamic_states(self, thermodynamic_states, sampler_states):
+        """Special case for the ReplicaExchange class which needs equal thermodynamic and sampler states"""
+        if len(thermodynamic_states) != len(sampler_states):
+            raise ValueError("Number of thermodynamic_states must equal number of sampler_states!")
+        return super()._default_initial_thermodynamic_states(thermodynamic_states, sampler_states)
 
     @mpi.on_single_node(0, broadcast_result=True)
     def _mix_replicas(self):
@@ -3007,6 +3077,7 @@ class ReplicaExchange(MultiStateSampler):
                 citation_stack = [gibbs_citations] + citation_stack
         super()._display_citations(overwrite_global=overwrite_global, citation_stack=citation_stack)
 
+
 # ==============================================================================
 # PARALLEL TEMPERING
 # ==============================================================================
@@ -3062,10 +3133,12 @@ class ParallelTempering(ReplicaExchange):
 
     """
 
+    _TITLE_TEMPLATE = ('Parallel tempering simulation created using ParallelTempering '
+                       'class of yank.repex.py on {}')
+
     def create(self, thermodynamic_state, sampler_states, storage,
                min_temperature=None, max_temperature=None, n_temperatures=None,
-               temperatures=None,
-               **kwargs):
+               temperatures=None, **kwargs):
         """Initialize a parallel tempering simulation object.
 
         Parameters
@@ -3073,6 +3146,9 @@ class ParallelTempering(ReplicaExchange):
         thermodynamic_state : openmmtools.states.ThermodynamicState
             Reference thermodynamic state that will be simulated at the given
             temperatures.
+
+            WARNING: This is a SINGLE state, not a list of states!
+
         sampler_states : openmmtools.states.SamplerState or list
             One or more sets of initial sampler states. If a list of SamplerStates,
             they will be assigned to replicas in a round-robin fashion.
@@ -3101,31 +3177,26 @@ class ParallelTempering(ReplicaExchange):
 
         """
         # Create thermodynamic states from temperatures.
+        if not isinstance(thermodynamic_state, mmtools.states.ThermodynamicState):
+            raise ValueError("ParallelTempering only accepts a single ThermodynamicState!\n"
+                             "If you have already set temperatures in your list of states, please use the "
+                             "standard ReplicaExchange class with your list of states.")
         if temperatures is not None:
             logger.debug("Using provided temperatures")
         elif min_temperature is not None and max_temperature is not None and n_temperatures is not None:
-            # TODO drop casting to float when dropping Python 2 support.
             temperatures = [min_temperature + (max_temperature - min_temperature) *
-                            (math.exp(i / float(n_temperatures-1)) - 1.0) / (math.e - 1.0)
-                            for i in range(n_temperatures)]
+                            (math.exp(i / n_temperatures-1) - 1.0) / (math.e - 1.0)
+                            for i in range(n_temperatures)]  # Python 3 uses true division for /
             logger.debug('using temperatures {}'.format(temperatures))
         else:
-            raise ValueError("Either 'temperatures' or 'min_temperature', 'max_temperature', "
-                             "and 'n_temperatures' must be provided.")
+            raise ValueError("Either 'temperatures' or ('min_temperature', 'max_temperature', "
+                             "and 'n_temperatures') must be provided.")
 
         thermodynamic_states = [copy.deepcopy(thermodynamic_state) for _ in range(n_temperatures)]
         for state, temperature in zip(thermodynamic_states, temperatures):
             state.temperature = temperature
 
-        # Override default title.
-        default_title = ('Parallel tempering simulation created using ParallelTempering '
-                         'class of yank.repex.py on {}'.format(time.asctime(time.localtime())))
-        if metadata is None:
-            metadata = dict(title=default_title)
-        elif 'title' not in metadata:
-            metadata['title'] = default_title
-
-        # Initialize replica-exchange simlulation.
+        # Initialize replica-exchange simulation.
         super(ParallelTempering, self).create(thermodynamic_states, sampler_states, storage=storage, **kwargs)
 
     def _compute_replica_energies(self, replica_id):
@@ -3136,7 +3207,8 @@ class ParallelTempering(ReplicaExchange):
 
         """
         # Initialize replica energies for each thermodynamic state.
-        replica_energies = np.zeros(self.n_replicas)
+        energy_thermodynamic_states = np.zeros(self.n_states)
+        energy_unsampled_states = np.zeros(len(self._unsampled_states))
 
         # Retrieve sampler states associated to this replica.
         sampler_state = self._sampler_states[replica_id]
@@ -3160,10 +3232,29 @@ class ParallelTempering(ReplicaExchange):
         # Update potential energy by temperature.
         for thermodynamic_state_id, thermodynamic_state in enumerate(self._thermodynamic_states):
             beta = 1.0 / (mmtools.constants.kB * thermodynamic_state.temperature)
-            replica_energies[replica_id, thermodynamic_state_id] = beta * reference_reduced_potential
+            energy_thermodynamic_states[thermodynamic_state_id] = beta * reference_reduced_potential
+
+        # Since no assumptions can be made about the unsampled thermodynamic states, do it the hard way
+        for unsampled_id, state in enumerate(self._unsampled_states):
+            if unsampled_id == 0 or not state.is_state_compatible(context_state):
+                context_state = state
+
+                # Get the context, any Integrator works.
+                context, integrator = mmtools.cache.global_context_cache.get_context(state)
+
+                # Update positions and box vectors. We don't need
+                # to set Context velocities for the potential.
+                sampler_state.apply_to_context(context, ignore_velocities=True)
+            else:
+                # If this state is compatible with the context, just fix the
+                # thermodynamic state as positions/box vectors are the same.
+                state.apply_to_context(context)
+
+            # Compute energy.
+            energy_unsampled_states[unsampled_id] = state.reduced_potential(context)
 
         # Return the new energies.
-        return replica_energies
+        return energy_thermodynamic_states, energy_unsampled_states
 
 
 # ==============================================================================

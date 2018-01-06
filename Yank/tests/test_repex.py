@@ -32,12 +32,9 @@ import openmmtools as mmtools
 from openmmtools import testsystems
 
 from yank import mpi, utils, analyze
-from yank.repex import Reporter, MultiStateSampler, ReplicaExchange, _DictYamlLoader
+from yank.repex import Reporter, MultiStateSampler, ReplicaExchange, ParallelTempering, _DictYamlLoader
 
-if sys.version_info[0] == 2:
-    from io import BytesIO as StringIO
-else:
-    from io import StringIO
+from io import StringIO
 
 # quiet down some citation spam
 MultiStateSampler._global_citation_silence = True
@@ -554,22 +551,22 @@ class TestMultiStateSampler(object):
     # ------------------------------------
 
     N_SAMPLERS = 3
-    N_STATES = 3
+    N_STATES = 5
     SAMPLER = MultiStateSampler
     REPORTER = Reporter
+
+    # --------------------------------------
+    # Optional helper function to overwrite.
+    # --------------------------------------
 
     @classmethod
     def call_sampler_create(cls, sampler, reporter,
                             thermodynamic_states,
                             sampler_states,
                             unsampled_states):
-        """Helper function to call the create method for the reporter"""
-        n_states = len(thermodynamic_states)
-        n_sampler = len(sampler_states)
-        # Arrange initial thermodynamic states to be 0..n_states, repeated to fill in all samplers
-        init_thermo_states = np.tile(range(n_states), int(np.ceil(n_sampler/n_states)))[:n_sampler]
-        sampler.create(thermodynamic_states, sampler_states, reporter, init_thermo_states,
-                       unsampled_thermodynamic_states=unsampled_states)
+        """Helper function to call the create method for the sampler"""
+        # Allows initial thermodynamic states to be handled by the built in methods
+        sampler.create(thermodynamic_states, sampler_states, reporter, unsampled_thermodynamic_states=unsampled_states)
 
     # --------------------------------
     # Tests overwritten by sub-classes
@@ -578,6 +575,26 @@ class TestMultiStateSampler(object):
         """Test that storage is kept in sync with options."""
         # Intermediary step to testing stored properties
         self.actual_stored_properties_check()
+
+    @classmethod
+    def _compute_energies_independently(cls, thermodynamic_states, sampler_states, unsampled_states):
+        """
+        Helper function to compute energies by hand.
+        This is overwritten by subclasses
+        """
+        n_states = len(thermodynamic_states)
+        n_replicas = len(sampler_states)
+        # Compute the energies independently.
+        energy_thermodynamic_states = np.zeros((n_replicas, n_states))
+        energy_unsampled_states = np.zeros((n_replicas, len(unsampled_states)))
+        for energies, states in [(energy_thermodynamic_states, thermodynamic_states),
+                                 (energy_unsampled_states, unsampled_states)]:
+            for i, sampler_state in enumerate(sampler_states):
+                for j, state in enumerate(states):
+                    context, integrator = mmtools.cache.global_context_cache.get_context(state)
+                    sampler_state.apply_to_context(context)
+                    energies[i][j] = state.reduced_potential(context)
+        return energy_thermodynamic_states, energy_unsampled_states
 
     # --------------------------------
     # Common Test functions below here
@@ -723,19 +740,21 @@ class TestMultiStateSampler(object):
             # Open reporter to read stored data.
             reporter = Reporter(storage_path, open_mode='r', checkpoint_interval=1)
 
-            # The n_states-1 sampler states have been distributed to n_states replica.
+            # The n_states sampler states have been distributed
             restored_sampler_states = reporter.read_sampler_states(iteration=0)
+            restored_thermo_states, _ = reporter.read_thermodynamic_states()
             assert sampler.n_states == n_states, ("Mismatch: sampler.n_states = {} "
                                                   "but n_states = {}".format(sampler.n_states, n_states))
             assert sampler.n_replicas == n_samplers, ("Mismatch: sampler.n_replicas = {} "
                                                       "but n_samplers = {}".format(sampler.n_replicas, n_samplers))
-            assert len(restored_sampler_states) == n_states
+            assert len(restored_sampler_states) == n_samplers
+            assert len(restored_thermo_states) == n_states
             assert np.allclose(restored_sampler_states[0].positions, sampler._sampler_states[0].positions)
 
             # MCMCMove was stored correctly.
             restored_mcmc_moves = reporter.read_mcmc_moves()
-            assert len(sampler._mcmc_moves) == n_samplers
-            assert len(restored_mcmc_moves) == n_samplers
+            assert len(sampler._mcmc_moves) == n_states
+            assert len(restored_mcmc_moves) == n_states
             for sampler_move, restored_move in zip(sampler._mcmc_moves, restored_mcmc_moves):
                 assert isinstance(sampler_move, mmtools.mcmc.LangevinDynamicsMove)
                 assert isinstance(restored_move, mmtools.mcmc.LangevinDynamicsMove)
@@ -759,6 +778,7 @@ class TestMultiStateSampler(object):
             assert sampler.metadata['title'] == metadata['title']
 
     def test_citations(self):
+        """Test that citations are displayed and suppressed as needed."""
         thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(self.alanine_test)
 
         # Remove one sampler state to verify distribution over states.
@@ -949,7 +969,7 @@ class TestMultiStateSampler(object):
                                                                                                    on_disk_value)
                         else:
                             assert restored_value == on_disk_value, "Restored {} != {}".format(restored_value,
-                                                                                           on_disk_value)
+                                                                                               on_disk_value)
 
                 restored_sampler_states = reporter.read_sampler_states(iteration=0)
                 assert np.allclose(restored_sampler_states[0].positions,
@@ -1026,6 +1046,9 @@ class TestMultiStateSampler(object):
                         context, integrator = mmtools.cache.global_context_cache.get_context(state)
                         sampler_state.apply_to_context(context)
                         energies[i][j] = state.reduced_potential(context)
+
+            energy_thermodynamic_states, energy_unsampled_states = \
+                self._compute_energies_independently(thermodynamic_states, sampler_states, unsampled_states)
 
             # Only node 0 has all the energies.
             mpicomm = mpi.get_mpicomm()
@@ -1158,15 +1181,19 @@ class TestMultiStateSampler(object):
                 assert sampler.iteration == 2
                 assert sampler.is_completed
 
-                # ReplicaExchange.extend does.
+                # MultiStateSampler.extend does.
                 sampler.extend(n_iterations=2)
                 assert sampler.iteration == 4
 
+                # Extract the sampled thermodynamic states
+                # Only use propagated states since the last iteration is not subject to MCMC moves
+                sampled_states = list(reporter.read_replica_thermodynamic_states()[:-1].flat)
+
                 # All replicas must have moves with updated statistics.
-                for sequence_move in sampler._mcmc_moves:
-                    # LangevinDynamicsMove doesn't have statistics.
-                    for move_id in range(1, 2):
-                        assert sequence_move.move_list[move_id].n_proposed == 4
+                for state_index, sequence_move in enumerate(sampler._mcmc_moves):
+                    # LangevinDynamicsMove (index 0) doesn't have statistics.
+                    for move_id in [1, 2]:
+                        assert sequence_move.move_list[move_id].n_proposed == sampled_states.count(state_index)
 
                 # The MCMCMoves statistics in the storage are updated.
                 mpicomm = mpi.get_mpicomm()
@@ -1174,10 +1201,10 @@ class TestMultiStateSampler(object):
                     reporter.close()
                     reporter = self.REPORTER(storage_path, open_mode='r', checkpoint_interval=1)
                     restored_mcmc_moves = reporter.read_mcmc_moves()
-                    for sequence_move in restored_mcmc_moves:
-                        # LangevinDynamicsMove doesn't have statistics.
-                        for move_id in range(1, 2):
-                            assert sequence_move.move_list[move_id].n_proposed == 4
+                    for state_index, sequence_move in enumerate(restored_mcmc_moves):
+                        # LangevinDynamicsMove (index 0) doesn't have statistic
+                        for move_id in [1, 2]:
+                            assert sequence_move.move_list[move_id].n_proposed == sampled_states.count(state_index)
 
     def test_checkpointing(self):
         """Test that checkpointing writes infrequently"""
@@ -1362,6 +1389,19 @@ class TestMultiStateSampler(object):
 
 #############
 
+class TestExtraSamplersMultiStateSampler(TestMultiStateSampler):
+    """Test MultiStateSampler with more samplers than states"""
+
+    # ------------------------------------
+    # VARIABLES TO SET FOR EACH TEST CLASS
+    # ------------------------------------
+
+    N_SAMPLERS = 8
+    N_STATES = 5
+    SAMPLER = MultiStateSampler
+    REPORTER = Reporter
+
+
 class TestReplicaExchange(TestMultiStateSampler):
     """Test suite for ReplicaExchange class."""
 
@@ -1374,15 +1414,6 @@ class TestReplicaExchange(TestMultiStateSampler):
     SAMPLER = ReplicaExchange
     REPORTER = Reporter
 
-    @classmethod
-    def call_sampler_create(cls, sampler, reporter,
-                            thermodynamic_states,
-                            sampler_states,
-                            unsampled_states):
-        """Helper function to create the method for the current class"""
-        sampler.create(thermodynamic_states, sampler_states, reporter,
-                       unsampled_thermodynamic_states=unsampled_states)
-
     # --------------------------------------
     # Tests overwritten from base test suite
     # --------------------------------------
@@ -1393,6 +1424,73 @@ class TestReplicaExchange(TestMultiStateSampler):
         additional_values.update(self.property_creator('replica_mixing_scheme', 'replica_mixing_scheme', None, None))
         self.actual_stored_properties_check(additional_properties=additional_values)
 
+
+class TestParallelTempering(TestMultiStateSampler):
+
+    # ------------------------------------
+    # VARIABLES TO SET FOR EACH TEST CLASS
+    # ------------------------------------
+
+    N_SAMPLERS = 3
+    N_STATES = 3
+    SAMPLER = ParallelTempering
+    REPORTER = Reporter
+    MIN_TEMP = 300*unit.kelvin
+    MAX_TEMP = 350*unit.kelvin
+
+    # --------------------------------------
+    # Optional helper function to overwrite.
+    # --------------------------------------
+
+    @classmethod
+    def call_sampler_create(cls, sampler, reporter,
+                            thermodynamic_states,
+                            sampler_states,
+                            unsampled_states):
+        """
+        Helper function to call the create method for the sampler
+        ParallelTempering has a unique call
+        """
+        single_state = thermodynamic_states[0]
+        # Allows initial thermodynamic states to be handled by the built in methods
+        sampler.create(single_state, sampler_states, reporter,
+                       min_temperature=cls.MIN_TEMP, max_temperature=cls.MAX_TEMP, n_temperatures=cls.N_STATES,
+                       unsampled_thermodynamic_states=unsampled_states)
+
+    # ----------------------------------
+    # Methods overwritten from the Super
+    # ----------------------------------
+
+    @classmethod
+    def _compute_energies_independently(cls, thermodynamic_states, sampler_states, unsampled_states):
+        """
+        Helper function to compute energies by hand.
+        This is overwritten from Super.
+
+        There is faster way to compute sampled states with ParallelTempering that is O(N) as is done in production,
+        but the O(N^2) way should get it right as well and serves as a decent check
+        """
+        n_states = len(thermodynamic_states)
+        n_replicas = len(sampler_states)
+        reference_thermodynamic_state = thermodynamic_states[0]
+        temperatures = [cls.MIN_TEMP + (cls.MAX_TEMP - cls.MIN_TEMP) *
+                        (math.exp(i / n_states-1) - 1.0) / (math.e - 1.0)
+                        for i in range(n_states)]
+
+        thermodynamic_states = [copy.deepcopy(reference_thermodynamic_state) for _ in range(n_states)]
+        for temp, state in zip(temperatures, thermodynamic_states):
+            state.temperature = temp
+        # Compute the energies independently.
+        energy_thermodynamic_states = np.zeros((n_replicas, n_states))
+        energy_unsampled_states = np.zeros((n_replicas, len(unsampled_states)))
+        for energies, states in [(energy_thermodynamic_states, thermodynamic_states),
+                                 (energy_unsampled_states, unsampled_states)]:
+            for i, sampler_state in enumerate(sampler_states):
+                for j, state in enumerate(states):
+                    context, integrator = mmtools.cache.global_context_cache.get_context(state)
+                    sampler_state.apply_to_context(context)
+                    energies[i][j] = state.reduced_potential(context)
+        return energy_thermodynamic_states, energy_unsampled_states
 
 # ==============================================================================
 # MAIN AND TESTS
