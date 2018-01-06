@@ -132,8 +132,11 @@ setup(
     platforms=['Linux', 'Mac OS-X', 'Unix', 'Windows'],
     classifiers=CLASSIFIERS.splitlines(),
     package_dir={'yank': 'Yank'},
-    packages=['yank', "yank.tests", "yank.tests.data", "yank.commands", "yank.mixing", "yank.reports", "yank.schema",
-              'yank.sampling'],  # + ['yank.{}'.format(package) for package in find_packages('yank')],
+    # Helper line which did not work reliably for the packages key
+    # + ['yank.{}'.format(package) for package in find_packages('yank')],
+    packages=['yank', "yank.tests", "yank.tests.data", "yank.commands", "yank.reports", "yank.schema",
+              'yank.sampling', 'yank.sampling.mixing'],
+
     package_data={'yank': find_package_data('Yank/tests/data', 'yank') + ['reports/*.ipynb'],
                   },
     zip_safe=False,
