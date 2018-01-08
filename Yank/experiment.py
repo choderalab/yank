@@ -1333,6 +1333,9 @@ class ExperimentBuilder(object):
             required: no
             type: boolean
             dependencies: filepath
+        pdbfixer:
+            required: no
+            dependencies: filepath
         openeye:
             required: no
             excludes: filepath

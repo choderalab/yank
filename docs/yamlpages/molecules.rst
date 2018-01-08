@@ -3,16 +3,16 @@
 Molecules Header for YAML Files
 *******************************
 
-Everything under the ``molecules`` defines what molecules are in your systems. 
-You can specify your own molecule names. 
+Everything under the ``molecules`` defines what molecules are in your systems.
+You can specify your own molecule names.
 Because of this user defined names in the syntax examples are marked as ``{UserDefinedMolecule}``.
 
-You can define as many ``{UserDefinedMolecule}`` as you like. 
+You can define as many ``{UserDefinedMolecule}`` as you like.
 These molecules will be used in other YAML headed sections.
 
-Unlike the primary :doc:`options <options>` for YAML files, 
-many of these settings are optional and do nothing if not specified. 
-The mandatory/optional of each setting (and what conditionals), 
+Unlike the primary :doc:`options <options>` for YAML files,
+many of these settings are optional and do nothing if not specified.
+The mandatory/optional of each setting (and what conditionals),
 as well as the default behavior of each setting is explicitly stated in the setting's description.
 
 All of the molecules will be built, even if they are not used in a later system, so ensure your molecules do not
@@ -22,8 +22,8 @@ have errors or are commented out.
 
 .. _yaml_molecules_specify_names:
 
-Specifying Molecule Names
-=========================
+Specifying Molecules
+====================
 
 .. _yaml_molecules_filepath:
 
@@ -45,8 +45,8 @@ way to specify the charges, proteins however can rely on built in force field pa
 
 Valid Filetypes: PDB, mol2, sdf, cvs
 
-**Note:** If CVS is specified and there is only one moleucle, the first column must be a SMILES string. 
-If multiple molecules are to be used (for the :doc:`!Combinatorial <combinatorial>` ability), 
+**Note:** If CVS is specified and there is only one moleucle, the first column must be a SMILES string.
+If multiple molecules are to be used (for the :doc:`!Combinatorial <combinatorial>` ability),
 then each row is its own molecule where the second column is the SMILES string.
 
 
@@ -63,7 +63,7 @@ then each row is its own molecule where the second column is the SMILES string.
      {UserDefinedMolecule}:
        smiles: c1ccccc1
 
-YANK can process SMILES stings to build the molecule as well. Usually only recommended for small ligands. 
+YANK can process SMILES stings to build the molecule as well. Usually only recommended for small ligands.
 Requires that the OpenEye Toolkits are installed.
 
 **MANDATORY** but exclusive with :ref:`filepath <yaml_molecules_filepath>` and :ref:`name <yaml_molecules_name>`
@@ -101,14 +101,143 @@ YANK can process raw molecule name if the OpenEye Toolkits are installed
      {UserDefinedMolecule}:
        strip_protons: no
 
-Specifies if LEaP will re-add all hydrogen atoms. 
-This is helpful if the PDB contains atom names for hydrogens that AMBER does not recognize. 
+Specifies if LEaP will re-add all hydrogen atoms.
+This is helpful if the PDB contains atom names for hydrogens that AMBER does not recognize.
 Primarily for proteins, not small molecules.
 
 **OPTIONAL** and defaults to ``no``
 
 Valid Options: [no]/yes
 
+
+
+
+.. _yaml_molecules_pdbfixer:
+
+.. rst-class:: html-toggle
+
+``pdbfixer``
+------------
+
+.. code-block:: yaml
+
+   molecules:
+     {UserDefinedMolecule}:
+       pdbfixer:
+         replace_nonstandard_residues: no
+         remove_heterogens: none
+         add_missing_residues: no
+         add_missing_atoms: none
+         apply_mutations:
+           mutations: T315I
+           chain_id: A
+
+Specifies whether PDBFixer should be used to modify the molecule.
+Can only be used on proteins, on files with ``.pdb`` file extensions.
+
+Replacing nonstandard residues
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. code-block:: yaml
+
+   molecules:
+     {UserDefinedMolecule}:
+       pdbfixer:
+         replace_nonstandard_residues: yes
+
+Options are:
+
+* ``yes`` : replace nonstandard amino acid residues will be replaced with one of the 20 standard amino acids according to the scheme used by `PDBFixer <http://htmlpreview.github.io/?https://raw.github.com/pandegroup/pdbfixer/master/Manual.html>`_
+* ``no`` : don't replace residues
+
+**OPTIONAL** with default value of ``no``
+
+Valid Options: [no]/yes
+
+Removing heterogens
+^^^^^^^^^^^^^^^^^^^
+
+.. code-block:: yaml
+
+   molecules:
+     {UserDefinedMolecule}:
+       pdbfixer:
+         remove_heterogens: all
+
+Valid options: ``[none] | water | all``
+
+This directs PDBFixer to remove some heterogen residues from the PDB file:
+
+* ``all`` : all heterogens (residues that are not one of the standard amino acids) will be removed
+* ``water`` : only water residues will be removed
+* ``none`` : no residues will be removed
+
+**OPTIONAL** with default value of ``none``
+
+Valid Options: [none]/water/all
+
+Adding missing residues and atoms
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Add missing atoms (including entire residues, loops, and termini).
+
+**WARNING:** PDBFixer uses a very simple approach to adding missing residues that will only
+produce sensible geometries in the simplest of cases. Use this option with caution.
+
+.. code-block:: yaml
+
+   molecules:
+     {UserDefinedMolecule}:
+       pdbfixer:
+         add_missing_residues: yes
+         add_missing_atoms: heavy
+         ph: 7.4
+
+``add_missing_residues`` specifies whether missing residues should be added
+
+* ``no`` : only missing atoms in existing residues will be added (DEFAULT)
+* ``yes`` : missing residues specified in SEQRES will be added
+
+``add_missing_atoms`` specifies which detected missing atoms should be added:
+
+* ``none`` : no missing atoms will be added
+* ``heavy`` : only heavy atoms will be added (DEFAULT)
+* ``hydrogens`` : add only hydrogens (not recommended)
+* ``all`` : all missing atoms (including hydrogens) will be added (not recommended)
+
+``ph`` specifies the pH to be used for adding hydrogens (default: 7.4)
+
+**OPTIONAL**
+
+Mutations
+^^^^^^^^^
+
+Make the directed mutations to amino acid residues.
+
+.. code-block:: yaml
+
+   molecules:
+     {UserDefinedMolecule}:
+       pdbfixer:
+         apply_mutations:
+           mutations: T315I
+           chain_id: A
+
+Mutations are specified using the format ``<original-one-letter-code><resid><new-one-letter-code>``,
+with the character ``/`` being an optional separator if multiple mutations are desired.
+
+The initial PDB file numbering is used for residue identifier ``resid``.
+
+Examples for specifying ``mutations:``:
+
+* ``T315I`` : a single mutation that changes Thr at resid 315 to Ile
+* ``L858R/T790M`` : a double mutation
+
+If ``chain_id`` is not specified, it defaults to ``null`` (no chain designator).
+
+PDBFixer is applied after ``strip_protons`` if both are requested.
+
+**OPTIONAL**
 
 
 
@@ -126,8 +255,8 @@ Valid Options: [no]/yes
        antechamber:
            charge_method: bcc
        select: !Combinatorial [0, 3]
-       
-The "select" keyword works the same way if you specify a 
+
+The "select" keyword works the same way if you specify a
 pdb, mol2, sdf, or cvs file containing multiple structures.
 ``select`` has 3 modes:
 
@@ -234,17 +363,17 @@ Assigning Extra Information
        leap:
          parameters: [mymol.frcmod, mymol.off]
 
-Load molecule-specific force field parameters into the molecule. 
-These can be created from any source so long as leap can parse them. 
-It is possible to assign partial charges with the files read in this way, 
-which would supersede the options of 
-:ref:`antechamber <yaml_molecules_antechamber>` 
+Load molecule-specific force field parameters into the molecule.
+These can be created from any source so long as leap can parse them.
+It is possible to assign partial charges with the files read in this way,
+which would supersede the options of
+:ref:`antechamber <yaml_molecules_antechamber>`
 and :ref:`openeye <yaml_molecules_openeye>`.
 
-This command has only one mandatory subargument ``parameters``, 
-which can accept both single files as a string, 
-or can accept a comma separated list of files enclosed by [ ]. 
-Filepaths are relative to either the AmberTools default paths or to the folder the YAML script is in. 
+This command has only one mandatory subargument ``parameters``,
+which can accept both single files as a string,
+or can accept a comma separated list of files enclosed by [ ].
+Filepaths are relative to either the AmberTools default paths or to the folder the YAML script is in.
 
 *Note*: Proteins do not necessarily   need this command if the force fields given to the :ref:`leap argument in systems <yaml_systems_head>` will fully describe them.
 

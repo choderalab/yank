@@ -15,8 +15,8 @@ from Cython.Build import cythonize
 DOCLINES = __doc__.split("\n")
 
 ########################
-VERSION = "0.19.5"  # Primary base version of the build
-DEVBUILD = "0"  # Dev build status, Either None or Integer as string
+VERSION = "0.21.0"  # Primary base version of the build
+DEVBUILD = 0  # Dev build status, Either None or Integer
 ISRELEASED = False  # Are we releasing this as a full cut?
 __version__ = VERSION
 ########################
@@ -80,7 +80,7 @@ release = {isrelease:s}
     # otherwise the import of numpy.version messes up the build under Python 3.
     base_version = VERSION
     if DEVBUILD is not None and DEVBUILD != "None":
-        local_version = base_version + ".dev" + DEVBUILD
+        local_version = base_version + ".dev{}".format(DEVBUILD)
     else:
         local_version = base_version
     full_version = local_version
@@ -153,6 +153,7 @@ setup(
         'openmoltools>=0.7.5',
         'mdtraj',
         'pyyaml',
+        'pdbfixer'
         ],
     ext_modules=cythonize(mixing_ext),
     entry_points={'console_scripts': ['yank = yank.cli:main']})

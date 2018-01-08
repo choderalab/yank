@@ -29,6 +29,7 @@ requirements:
     - cerberus
     - matplotlib
     - jupyter
+    - pdbfixer
     #- gcc 4.8.2 # [linux]
     #- gcc 4.8.2 # [osx]
 
@@ -53,6 +54,7 @@ requirements:
     - cerberus
     - matplotlib
     - jupyter
+    - pdbfixer
     #- libgcc
 
 test:
