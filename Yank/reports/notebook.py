@@ -2,8 +2,8 @@
 YANK Health Report Notebook formatter
 
 This module handles all the figure formatting and processing to minimize the code shown in the Health Report Jupyter
-Notebook. All data processing and analysis is handled by the main analyze.py script, mainly image formatting is passed
-here.
+Notebook. All data processing and analysis is handled by the main multistate.analyzers package,
+mainly image formatting is passed here.
 """
 
 import os
@@ -14,7 +14,8 @@ from matplotlib import pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap, NoNorm
 from matplotlib import gridspec
 from simtk import unit as units
-from .. import analyze, version
+from .. import version
+from ..multistate import analyzers as analyze
 
 kB = units.BOLTZMANN_CONSTANT_kB * units.AVOGADRO_CONSTANT_NA
 

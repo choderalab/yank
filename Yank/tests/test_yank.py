@@ -28,7 +28,7 @@ import nose
 from openmmtools import testsystems, states
 
 import yank.restraints
-from yank.sampling import ReplicaExchangeSampler
+from yank.multistate import ReplicaExchangeSampler
 from yank.yank import *
 
 

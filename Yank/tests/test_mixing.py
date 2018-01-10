@@ -8,7 +8,7 @@ import copy
 
 import numpy as np
 import scipy.stats as stats
-import yank.sampling.mixing._mix_replicas as mixing
+import yank.multistate.mixing._mix_replicas as mixing
 
 
 def mix_replicas(n_swaps=100, n_states=16, u_kl=None, nswap_attempts=None):

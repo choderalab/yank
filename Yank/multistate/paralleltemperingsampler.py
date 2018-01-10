@@ -8,7 +8,7 @@
 ParallelTemperingSampler
 ========================
 
-Derived multi-thermodynamic state sampling class with exchanging configurations between replicas of different
+Derived multi-thermodynamic state multistate class with exchanging configurations between replicas of different
 temperatures. This is a special case which accepts a single thermodynamic_state and different temperatures to sample.
 If you want different temperatures and Hamiltonians, use ReplicaExchangeSampler with temperatures pre-set.
 
@@ -95,7 +95,7 @@ class ParallelTemperingSampler(ReplicaExchangeSampler):
     """
 
     _TITLE_TEMPLATE = ('Parallel tempering simulation created using ParallelTempering '
-                       'class of yank.sampling on {}')
+                       'class of yank.multistate on {}')
 
     def create(self, thermodynamic_state, sampler_states: list, storage,
                min_temperature=None, max_temperature=None, n_temperatures=None,

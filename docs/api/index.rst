@@ -8,14 +8,13 @@ YANK's API allows users to setup and run their own simulations in programmatic w
 YAML input files, please see the command line interface and the YAML options.
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: 2
 
-   analyze_api
    experiment_api
    mpi_api
+   multistate_api/index
    pipeline_api
    restraints_api
-   sampling_api
    utils_api
    yank_api
 

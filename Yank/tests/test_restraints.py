@@ -26,7 +26,8 @@ import nose
 from nose.plugins.attrib import attr
 
 import yank.restraints
-from yank import experiment, analyze, Topography
+from yank import experiment, Topography
+import yank.multistate.analyzers as analyze
 
 
 # =============================================================================================

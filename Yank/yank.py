@@ -31,7 +31,7 @@ import openmmtools as mmtools
 import pandas
 from simtk import unit, openmm
 
-from . import pipeline, mpi, sampling
+from . import pipeline, mpi, multistate
 from .restraints import RestraintState, RestraintParameterError, V0
 
 logger = logging.getLogger(__name__)
@@ -1223,7 +1223,7 @@ class AlchemicalPhase(object):
         """Retrieve the MultiStateSampler class used from the storage."""
         # Handle str and Reporter argument value.
         if isinstance(storage, str):
-            reporter = sampling.MultiStateReporter(storage)
+            reporter = multistate.MultiStateReporter(storage)
         else:
             reporter = storage
 

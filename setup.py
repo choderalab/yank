@@ -116,8 +116,8 @@ def find_package_data(data_root, package_root):
 # SETUP
 ################################################################################
 
-mixing_ext = distutils.extension.Extension("yank.sampling.mixing._mix_replicas",
-                                           ['./Yank/sampling/mixing/_mix_replicas.pyx'])
+mixing_ext = distutils.extension.Extension("yank.multistate.mixing._mix_replicas",
+                                           ['./Yank/multistate/mixing/_mix_replicas.pyx'])
 
 write_version_py()
 setup(
@@ -135,7 +135,7 @@ setup(
     # Helper line which did not work reliably for the packages key
     # + ['yank.{}'.format(package) for package in find_packages('yank')],
     packages=['yank', "yank.tests", "yank.tests.data", "yank.commands", "yank.reports", "yank.schema",
-              'yank.sampling', 'yank.sampling.mixing'],
+              'yank.multistate', 'yank.multistate.mixing', 'yank.multistate.analyzers'],
 
     package_data={'yank': find_package_data('Yank/tests/data', 'yank') + ['reports/*.ipynb'],
                   },

@@ -657,7 +657,7 @@ class MultiStateReporter(object):
         self._storage_analysis.variables['states'][iteration, :] = state_indices[:]
 
     def read_mcmc_moves(self):
-        """Return the MCMCMoves of the :class:`yank.repex.ReplicaExchange` simulation on the checkpoint
+        """Return the MCMCMoves of the :class:`yank.multistate.MultiStateSampler` simulation on the checkpoint
 
         Returns
         -------
@@ -675,7 +675,7 @@ class MultiStateReporter(object):
         return mcmc_moves
 
     def write_mcmc_moves(self, mcmc_moves):
-        """Store the MCMCMoves of the :class:`yank.repex.MultiStateSampler` simulation or subclasses on the checkpoint
+        """Store the MCMCMoves of the :class:`yank.multistate.MultiStateSampler` simulation or subclasses on the checkpoint
 
         Parameters
         ----------
@@ -1045,8 +1045,9 @@ class MultiStateReporter(object):
         The initial guess is often 0 for all states, so any state not written is returned as zeros for f_k, and
         infinity for
 
-        Used primarily in online analysis, and should be used in tandem with an :class:`yank.analyze.YankPhaseAnalyzer`
-        object from the :mod:`yank.analyze` module
+        Used primarily in online analysis, and should be used in tandem with an
+        :class:`yank.multistate.analyzers.PhaseAnalyzer`
+        object from the :mod:`yank.multistate.analyzers` module
 
         Parameters
         ----------
@@ -1072,8 +1073,9 @@ class MultiStateReporter(object):
         Write the mbar free energies at the current iteration. See :func:`read_mbar_free_energies` for more information
         about pymbar's f_k free energies
 
-        Used primarily in online analysis, and should be used in tandem with an :class:`yank.analyze.YankPhaseAnalyzer`
-        object from the :mod:`analyze` module.
+        Used primarily in online analysis, and should be used in tandem with an
+        :class:`yank.multistate.analyzers.PhaseAnalyzer`
+        object from the :mod:`yank.multistate.analyzers` module.
 
         Parameters
         ----------

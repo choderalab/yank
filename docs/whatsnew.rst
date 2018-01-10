@@ -10,13 +10,13 @@ The full release history can be viewed `at the GitHub yank releases page <https:
 -------------------------------------------------------
 - Adds an optional ``pdbfixer`` directive to the ``molecules`` section of the YAML file
   through `PDBFixer <https://github.com/pandegroup/pdbfixer>`_, a simple OpenMM-based protein structure processing tool.
-- The following options are accessible through the ``pdbfixer`` directive. `[docs] <http://getyank.org/latest/yamlpages/molecules.html#pdbfixer>`_
+- The following options are accessible through the ``pdbfixer`` directive. `(docs) <http://getyank.org/latest/yamlpages/molecules.html#pdbfixer>`__
 
-  - ``replace_nonstandard_residues``: Replace nonstandard amino acids. `[docs] <http://getyank.org/latest/yamlpages/molecules.html#replacing-nonstandard-residues>`_
-  - ``remove_heterogens``: Remove heterogens (such as ligands and waters). `[docs] <http://getyank.org/latest/yamlpages/molecules.html#removing-heterogens>`_
-  - ``add_missing_residues``: Add missing residues from the SEQRES block. `[docs] <http://getyank.org/latest/yamlpages/molecules.html#adding-missing-residues-and-atoms-atoms>`_
-  - ``add_missing_atoms``: Add missing heavy atoms. `[docs] <http://getyank.org/latest/yamlpages/molecules.html#adding-missing-residues-and-atoms-atoms>`_
-  - ``apply_mutations``: Specify protein mutations (e.g., T315I). `[docs] <http://getyank.org/latest/yamlpages/molecules.html#mutations>`_
+  - ``replace_nonstandard_residues``: Replace nonstandard amino acids. `(docs) <http://getyank.org/latest/yamlpages/molecules.html#replacing-nonstandard-residues>`__
+  - ``remove_heterogens``: Remove heterogens (such as ligands and waters). `(docs) <http://getyank.org/latest/yamlpages/molecules.html#removing-heterogens>`__
+  - ``add_missing_residues``: Add missing residues from the SEQRES block. `(docs) <http://getyank.org/latest/yamlpages/molecules.html#adding-missing-residues-and-atoms-atoms>`__
+  - ``add_missing_atoms``: Add missing heavy atoms. `(docs) <http://getyank.org/latest/yamlpages/molecules.html#adding-missing-residues-and-atoms-atoms>`__
+  - ``apply_mutations``: Specify protein mutations (e.g., T315I). `(docs) <http://getyank.org/latest/yamlpages/molecules.html#mutations>`__
 
 0.19.4 Schema and Parallel Setup Fixes
 --------------------------------------

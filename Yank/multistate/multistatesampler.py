@@ -8,7 +8,7 @@
 MultistateSampler
 =================
 
-Base multi-thermodynamic state sampling class
+Base multi-thermodynamic state multistate class
 
 COPYRIGHT
 
@@ -59,7 +59,7 @@ class MultiStateSampler(object):
     Base class for samplers that sample multiple thermodynamic states using
     one or more replicas.
 
-    This base class provides a general simulation facility for sampling from multiple
+    This base class provides a general simulation facility for multistate from multiple
     thermodynamic states, allowing any set of thermodynamic states to be specified.
     If instantiated on its own, the thermodynamic state indices associated with each
     state are specified and replica mixing does not change any thermodynamic states,
@@ -1206,11 +1206,11 @@ class MultiStateSampler(object):
     def _run_online_analysis(self):
         """Compute the free energy during simulation run"""
         # This relative import is down here because having it at the top causes an ImportError.
-        # __init__ pulls in repex, which pulls in analyze, which pulls in repex. Because the first repex never finished
-        # importing, its not in the name space which causes relative analyze import of repex to crash as neither of them
-        # are the __main__ package.
+        # __init__ pulls in multistate, which pulls in analyze, which pulls in MultiState. Because the first
+        # MultiStateSampler never finished importing, its not in the name space which causes relative analyze import of
+        # MultiStateSampler to crash as neither of them are the __main__ package.
         # https://stackoverflow.com/questions/6351805/cyclic-module-dependencies-and-relative-imports-in-python
-        from ..analyze import MultiStateSamplerAnalyzer
+        from .analyzers import MultiStateSamplerAnalyzer
 
         # Start the analysis
         bump_error_counter = False
@@ -1226,7 +1226,7 @@ class MultiStateSampler(object):
             free_energy, err_free_energy = analysis.get_free_energy()
         except ParameterError as e:
             # We don't update self._last_err_free_energy here since if it
-            # wasn't below the target threshold before, it won't stop repex now.
+            # wasn't below the target threshold before, it won't stop MultiStateSampler now.
             bump_error_counter = True
             self._online_error_bank.append(e)
         else:

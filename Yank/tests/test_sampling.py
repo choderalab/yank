@@ -31,9 +31,10 @@ from nose.tools import assert_raises
 from openmmtools import testsystems
 from simtk import openmm, unit
 
-from yank import mpi, analyze
-from yank.sampling import MultiStateReporter, MultiStateSampler, ReplicaExchangeSampler, ParallelTemperingSampler
-from yank.sampling.multistatereporter import _DictYamlLoader
+from yank import mpi
+from yank.multistate import MultiStateReporter, MultiStateSampler, ReplicaExchangeSampler, ParallelTemperingSampler
+from yank.multistate.multistatereporter import _DictYamlLoader
+import yank.multistate.analyzers as analyze
 from yank.utils import config_root_logger  # This is only function tying these test to the main YANK code
 
 # quiet down some citation spam
@@ -86,7 +87,7 @@ def compute_harmonic_oscillator_expectations(K, temperature):
 
     TODO
 
-    Replace this with built-in analytical expectations for new repex.testsystems classes.
+    Replace this with built-in analytical expectations
 
     """
 
@@ -1319,7 +1320,7 @@ class TestMultiStateSampler(object):
             self.REPORTER(storage_path, checkpoint_storage=cp_file_mod, open_mode='r')
 
     def test_storage_reporter_and_string(self):
-        """Test that creating a repex by storage string and reporter is the same"""
+        """Test that creating a MultiState by storage string and reporter is the same"""
         thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(self.alanine_test)
         with self.temporary_storage_path() as storage_path:
             n_iterations = 5

@@ -1,7 +1,7 @@
 #!/usr/local/bin/env python
 
 """
-Test analyze.py facility.
+Test multistate.analyzers facility.
 
 """
 
@@ -21,9 +21,9 @@ from nose.tools import assert_raises
 from openmmtools import testsystems
 from simtk import unit
 
-from yank import analyze
 from yank.yank import Topography
-from yank.sampling import MultiStateReporter, ReplicaExchangeSampler
+from yank.multistate import MultiStateReporter, ReplicaExchangeSampler
+import yank.multistate.analyzers as analyze
 
 # ==============================================================================
 # MODULE CONSTANTS
@@ -36,8 +36,11 @@ kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA  # Boltzmann constan
 # TEMPLATE PHASE CLASS WITH NO OBSERVABLES
 # ==============================================================================
 
-class BlankPhase(analyze.YankPhaseAnalyzer):
+class BlankPhase(analyze.PhaseAnalyzer):
     """Create a blank phase class with no get_X (observable) methods for testing the MultiPhaseAnalyzer"""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
     def analyze_phase(self, *args, **kwargs):
         pass
 
@@ -176,13 +179,13 @@ class TestPhaseAnalyzer(object):
         shutil.rmtree(cls.tmp_dir)
 
     def test_repex_phase_initialize(self):
-        """Test that the Repex Phase analyzer initializes correctly"""
+        """Test that the MultiState Phase analyzer initializes correctly"""
         phase = analyze.ReplicaExchangeAnalyzer(self.reporter, name=self.repex_name)
         assert phase.reporter is self.reporter
         assert phase.name == self.repex_name
 
     def test_repex_mixing_stats(self):
-        """Test that the Repex Phase yields mixing stats that make sense"""
+        """Test that the MultiState Phase yields mixing stats that make sense"""
         phase = analyze.ReplicaExchangeAnalyzer(self.reporter, name=self.repex_name)
         t, mu, g = phase.generate_mixing_statistics()
         # Output is the correct number of states

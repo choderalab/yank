@@ -8,7 +8,7 @@
 ReplicaExchangeSampler
 ======================
 
-Derived multi-thermodynamic state sampling class with exchanging configurations between replicas
+Derived multi-thermodynamic state multistate class with exchanging configurations between replicas
 
 COPYRIGHT
 
@@ -214,7 +214,7 @@ class ReplicaExchangeSampler(MultiStateSampler):
                                             validate_function=_StoredProperty._repex_mixing_scheme_validator)
 
     _TITLE_TEMPLATE = ('Replica-exchange sampler simulation created using ReplicaExchangeSampler class '
-                       'of yank.sampling on {}')
+                       'of yank.multistate on {}')
 
     def create(self, thermodynamic_states: list, sampler_states: list, storage, **kwargs):
         """Create new multistate sampler simulation.
@@ -396,7 +396,7 @@ class ReplicaExchangeSampler(MultiStateSampler):
         """
 
         gibbs_citations = """\
-        Chodera JD and Shirts MR. Replica exchange and expanded ensemble simulations as Gibbs sampling: Simple improvements for enhanced mixing. J. Chem. Phys., 135:194110, 2011. DOI:10.1063/1.3660669
+        Chodera JD and Shirts MR. Replica exchange and expanded ensemble simulations as Gibbs multistate: Simple improvements for enhanced mixing. J. Chem. Phys., 135:194110, 2011. DOI:10.1063/1.3660669
         """
         if self.replica_mixing_scheme == 'swap-all':
             if citation_stack is None:

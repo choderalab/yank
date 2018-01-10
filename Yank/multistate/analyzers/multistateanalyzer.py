@@ -8,38 +8,48 @@
 Analyze
 =======
 
-Analysis tools and module for YANK simulations. Provides programmatic and automatic "best practices" integration to
-determine free energy and other observables.
+Analysis tools and module for MultiStateSampler simulations. Provides programmatic and automatic
+"best practices" integration to determine free energy and other observables.
 
 Fully extensible to support new samplers and observables.
 
+
 """
 
-
 # =============================================================================================
-# Analyze datafiles produced by YANK.
+# MODULE IMPORTS
 # =============================================================================================
 
+import os
 import abc
 import copy
-import logging
-import os
-import typing
-from typing import Union, Optional
-
-import mdtraj
-import numpy as np
-import openmmtools as mmtools
-import simtk.unit as units
 import yaml
-from pymbar import MBAR  # multi-state Bennett acceptance ratio
-from pymbar import timeseries  # for statistical inefficiency analysis
+import mdtraj
+import logging
+import numpy as np
+import simtk.unit as units
+import openmmtools as mmtools
 
-from .sampling import MultiStateReporter
+from . import analyzerutils as autils
+from ..multistatereporter import MultiStateReporter
 
+from pymbar import MBAR, timeseries
+from typing import Optional, NamedTuple, Union
+
+ABC = abc.ABC
 logger = logging.getLogger(__name__)
 
-ABC = abc.ABCMeta('ABC', (object,), {})  # compatible with Python 2 *and* 3
+__all__ = [
+    'get_analyzer',
+    'PhaseAnalyzer',
+    'MultiStateSamplerAnalyzer',
+    'ReplicaExchangeAnalyzer',
+    'ParallelTemperingAnalyzer',
+    'MultiPhaseAnalyzer',
+    'analyze_directory',
+    'extract_u_n',
+    'extract_trajectory'
+]
 
 # =============================================================================================
 # PARAMETERS
@@ -51,44 +61,6 @@ kB = units.BOLTZMANN_CONSTANT_kB * units.AVOGADRO_CONSTANT_NA
 # =============================================================================================
 # MODULE FUNCTIONS
 # =============================================================================================
-
-def generate_phase_name(current_name, name_list):
-    """
-    Provide a regular way to generate unique human-readable names from base names.
-
-    Given a base name and a list of existing names, a number will be appended to the base name until a unique string
-    is generated.
-
-    Parameters
-    ----------
-    current_name : string
-        The base name you wish to ensure is unique. Numbers will be appended to this string until a unique string
-        not in the name_list is provided
-    name_list : iterable of strings
-        The current_name, and its modifiers, are compared against this list until a unique string is found
-
-    Returns
-    -------
-    name : string
-        Unique string derived from the current_name that is not in name_list.
-        If the parameter current_name is not already in the name_list, then current_name is returned unmodified.
-    """
-    base_name = 'phase{}'
-    counter = 0
-    if current_name is None:
-        name = base_name.format(counter)
-        while name in name_list:
-            counter += 1
-            name = base_name.format(counter)
-    elif current_name in name_list:
-        name = current_name + str(counter)
-        while name in name_list:
-            counter += 1
-            name = current_name + str(counter)
-    else:
-        name = current_name
-    return name
-
 
 def get_analyzer(file_base_path):
     """
@@ -104,7 +76,7 @@ def get_analyzer(file_base_path):
 
     Returns
     -------
-    analyzer : instance of implemented :class:`YankPhaseAnalyzer`
+    analyzer : instance of implemented :class:`PhaseAnalyzer`
         Analyzer for the specific phase.
     """
     # Eventually extend this to get more reporters, but for now simple placeholder
@@ -126,211 +98,17 @@ def get_analyzer(file_base_path):
     return analyzer
 
 
-def get_decorrelation_time(timeseries_to_analyze):
-    """
-    Compute the decorrelation times given a timeseries.
-
-    See the ``pymbar.timeseries.statisticalInefficiency`` for full documentation
-    """
-    return timeseries.statisticalInefficiency(timeseries_to_analyze)
-
-
-def get_equilibration_data(timeseries_to_analyze):
-    """
-    Compute equilibration method given a timeseries
-
-    See the ``pymbar.timeseries.detectEquilibration`` function for full documentation
-    """
-    [n_equilibration, g_t, n_effective_max] = timeseries.detectEquilibration(timeseries_to_analyze)
-    return n_equilibration, g_t, n_effective_max
-
-
-def get_equilibration_data_per_sample(timeseries_to_analyze, fast=True, nskip=1):
-    """
-    Compute the correlation time and n_effective per sample.
-
-    This is exactly what ``pymbar.timeseries.detectEquilibration`` does, but returns the per sample data
-
-    See the ``pymbar.timeseries.detectEquilibration`` function for full documentation
-    """
-    A_t = timeseries_to_analyze
-    T = A_t.size
-    g_t = np.ones([T - 1], np.float32)
-    Neff_t = np.ones([T - 1], np.float32)
-    for t in range(0, T - 1, nskip):
-        try:
-            g_t[t] = timeseries.statisticalInefficiency(A_t[t:T], fast=fast)
-        except:
-            g_t[t] = (T - t + 1)
-        Neff_t[t] = (T - t + 1) / g_t[t]
-    return g_t, Neff_t
-
-
-def remove_unequilibrated_data(data, number_equilibrated, axis):
-    """
-    Remove the number_equilibrated samples from a dataset
-
-    Discards number_equilibrated number of indices from given axis
-
-    Parameters
-    ----------
-    data : np.array-like of any dimension length
-        This is the data which will be paired down
-    number_equilibrated : int
-        Number of indices that will be removed from the given axis, i.e. axis will be shorter by number_equilibrated
-    axis : int
-        Axis index along which to remove samples from. This supports negative indexing as well
-
-    Returns
-    -------
-    equilibrated_data : ndarray
-        Data with the number_equilibrated number of indices removed from the beginning along axis
-
-    """
-    cast_data = np.asarray(data)
-    # Define the slice along an arbitrary dimension
-    slc = [slice(None)] * len(cast_data.shape)
-    # Set the dimension we are truncating
-    slc[axis] = slice(number_equilibrated, None)
-    # Slice
-    equilibrated_data = cast_data[slc]
-    return equilibrated_data
-
-
-def subsample_data_along_axis(data, subsample_rate, axis):
-    """
-    Generate a decorrelated version of a given input data and subsample_rate along a single axis.
-
-    Parameters
-    ----------
-    data : np.array-like of any dimension length
-    subsample_rate : float or int
-        Rate at which to draw samples. A sample is considered decorrelated after every ceil(subsample_rate) of
-        indices along data and the specified axis
-    axis : int
-        axis along which to apply the subsampling
-
-    Returns
-    -------
-    subsampled_data : ndarray of same number of dimensions as data
-        Data will be subsampled along the given axis
-
-    """
-    # TODO: find a name for the function that clarifies that decorrelation
-    # TODO:             is determined exclusively by subsample_rate?
-    cast_data = np.asarray(data)
-    data_shape = cast_data.shape
-    # Since we already have g, we can just pass any appropriate shape to the subsample function
-    indices = timeseries.subsampleCorrelatedData(np.zeros(data_shape[axis]), g=subsample_rate)
-    subsampled_data = np.take(cast_data, indices, axis=axis)
-    return subsampled_data
-
-
 # =============================================================================================
 # MODULE CLASSES
 # =============================================================================================
-
-class _ObservablesRegistry(object):
-    """
-    Registry of computable observables.
-
-    This is a hidden class accessed by the :class:`YankPhaseAnalyzer` and :class:`MultiPhaseAnalyzer` objects to check
-    which observables can be computed, and then provide a regular categorization of them. This is a static registry.
-
-    To define your own methods:
-    1) Choose a unique observable name.
-    2) Categorize the observable in one of the following ways by adding to the list in the "observables_X" method:
-     2a) "defined_by_phase": Depends on the Phase as a whole (state independent)
-     2b) "defined_by_single_state": Computed entirely from one state, e.g. Radius of Gyration
-     2c) "defined_by_two_states": Property is relative to some reference state, such as Free Energy Difference
-    3) Optionally categorize the error category calculation in the "observables_with_error_adding_Y" methods
-       If not placed in an error category, the observable will be assumed not to carry error
-       Examples: A, B, C are the observable in 3 phases, eA, eB, eC are the error of the observable in each phase
-     3a) "linear": Error between phases adds linearly.
-        If C = A + B, eC = eA + eB
-     3b) "quadrature": Error between phases adds in the square.
-        If C = A + B, eC = sqrt(eA^2 + eB^2)
-    4) Finally, to add this observable to the phase, implement a "get_{method name}" method to the subclass of
-       :class:`YankPhaseAnalyzer`. Any :class:`MultiPhaseAnalyzer` composed of this phase will automatically have the
-       "get_{method name}" if all other phases in the :class:`MultiPhaseAnalyzer` have the same method.
-    """
-
-    ########################
-    # Define the observables
-    ########################
-    @staticmethod
-    def observables():
-        """
-        Set of observables which are derived from the subsets below
-        """
-        observables = set()
-        for subset in (_ObservablesRegistry.observables_defined_by_two_states(),
-                       _ObservablesRegistry.observables_defined_by_single_state(),
-                       _ObservablesRegistry.observables_defined_by_phase()):
-            observables = observables.union(set(subset))
-        return tuple(observables)
-
-    # ------------------------------------------------
-    # Exclusive Observable categories
-    # The intersection of these should be the null set
-    # ------------------------------------------------
-    @staticmethod
-    def observables_defined_by_two_states():
-        """
-        Observables that require an i and a j state to define the observable accurately between phases
-        """
-        return 'entropy', 'enthalpy', 'free_energy'
-
-    @staticmethod
-    def observables_defined_by_single_state():
-        """
-        Defined observables which are fully defined by a single state, and not by multiple states such as differences
-        """
-        return tuple()
-
-    @staticmethod
-    def observables_defined_by_phase():
-        """
-        Observables which are defined by the phase as a whole, and not defined by any 1 or more states
-        e.g. Standard State Correction
-        """
-        return 'standard_state_correction',
-
-    ##########################################
-    # Define the observables which carry error
-    # This should be a subset of observables()
-    ##########################################
-    @staticmethod
-    def observables_with_error():
-        """Determine which observables have error by inspecting the the error subsets"""
-        observables = set()
-        for subset in (_ObservablesRegistry.observables_with_error_adding_quadrature(),
-                       _ObservablesRegistry.observables_with_error_adding_linear()):
-            observables = observables.union(set(subset))
-        return tuple(observables)
-
-    # ------------------------------------------------
-    # Exclusive Error categories
-    # The intersection of these should be the null set
-    # ------------------------------------------------
-    @staticmethod
-    def observables_with_error_adding_quadrature():
-        """Observable C = A + B, Error eC = sqrt(eA**2 + eB**2)"""
-        return 'entropy', 'enthalpy', 'free_energy'
-
-    @staticmethod
-    def observables_with_error_adding_linear():
-        """Observable C = A + B, Error eC = eA + eB"""
-        return tuple()
-
 
 # ---------------------------------------------------------------------------------------------
 # Phase Analyzers
 # ---------------------------------------------------------------------------------------------
 
-class YankPhaseAnalyzer(ABC):
+class PhaseAnalyzer(ABC):
     """
-    Analyzer for a single phase of a YANK simulation.
+    Analyzer for a single phase of a MultiState simulation.
 
     Uses the reporter from the simulation to determine the location
     of all variables.
@@ -344,8 +122,8 @@ class YankPhaseAnalyzer(ABC):
 
     Parameters
     ----------
-    reporter : Reporter instance
-        Reporter from Repex which ties to the simulation data on disk.
+    reporter : MultiStateReporter instance
+        Reporter from MultiState which ties to the simulation data on disk.
     name : str, Optional
         Unique name you want to assign this phase, this is the name that will appear in :class:`MultiPhaseAnalyzer`'s.
         If not set, it will be given the arbitrary name "phase#" where # is an integer, chosen in order that it is
@@ -378,6 +156,10 @@ class YankPhaseAnalyzer(ABC):
     kT
     reporter
 
+    See Also
+    --------
+    ObservableRegistry
+
     """
     def __init__(self, reporter, name=None, reference_states=(0, -1), analysis_kwargs=None):
         """
@@ -392,7 +174,7 @@ class YankPhaseAnalyzer(ABC):
         # We determine valid observables by negation instead of just having each child implement the method to enforce
         # uniform function naming conventions.
         self._computed_observables = {}  # Cache of observables so the phase can be retrieved once computed
-        for observable in _ObservablesRegistry.observables():
+        for observable in autils.ObservablesRegistry.observables:
             if hasattr(self, "get_" + observable):
                 observables.append(observable)
                 self._computed_observables[observable] = None
@@ -400,7 +182,7 @@ class YankPhaseAnalyzer(ABC):
         self._observables = tuple(observables)
         # Internal properties
         self._name = name
-        # Start as default sign +, handle all sign conversion at peration time
+        # Start as default sign +, handle all sign conversion at preparation time
         self._sign = '+'
         self._equilibration_data = None  # Internal tracker so the functions can get this data without recalculating it
         # External properties
@@ -480,7 +262,6 @@ class YankPhaseAnalyzer(ABC):
         Auto-analysis function for the phase
 
         Function which broadly handles "auto-analysis" for those that do not wish to call all the methods on their own.
-        This should be have like the old "analyze" function from versions of YANK pre-1.0.
 
         Returns a dictionary of analysis objects
         """
@@ -490,7 +271,7 @@ class YankPhaseAnalyzer(ABC):
     def _create_mbar_from_scratch(self):
         """
         This method should automatically do everything needed to make the MBAR object from file. It should make all
-        the assumptions needed to make the MBAR object.  Typically alot of these functions will be needed for the
+        the assumptions needed to make the MBAR object.  Typically many of these functions will be needed for the
         :func:`analyze_phase` function.
 
         Should call the :func:`_prepare_mbar_input_data` to get the data ready for
@@ -571,7 +352,7 @@ class YankPhaseAnalyzer(ABC):
 
         This method assumes that the first dimension are all samplers,
         the second dimension are all the thermodynamic states energies were evaluated at
-        and an equal number of samples were drawn from each k'th sampler, UNLESS N_k is specified.
+        and an equal number of samples were drawn from each k'th sampler, UNLESS n_k is specified.
 
         Parameters
         ----------
@@ -638,7 +419,7 @@ class YankPhaseAnalyzer(ABC):
     def _combine_phases(self, other, operator='+'):
         """
         Workhorse function when creating a :class:`MultiPhaseAnalyzer` object by combining single
-        :class:`YankPhaseAnalyzers`
+        :class:`PhaseAnalyzer`s
         """
         phases = [self]
         names = []
@@ -646,7 +427,7 @@ class YankPhaseAnalyzer(ABC):
         # Reset self._sign
         self._sign = '+'
         if self.name is None:
-            names.append(generate_phase_name(self, []))
+            names.append(autils.generate_phase_name(self.name, []))
         else:
             names.append(self.name)
         if isinstance(other, MultiPhaseAnalyzer):
@@ -656,7 +437,7 @@ class YankPhaseAnalyzer(ABC):
             final_new_names = []
             for name in new_names:
                 other_names = [n for n in new_names if n != name]
-                final_new_names.append(generate_phase_name(name, other_names + names))
+                final_new_names.append(autils.generate_phase_name(name, other_names + names))
             names.extend(final_new_names)
             for new_sign in new_signs:
                 if operator != '+' and new_sign == '+':
@@ -664,8 +445,8 @@ class YankPhaseAnalyzer(ABC):
                 else:
                     signs.append('+')
             phases.extend(new_phases)
-        elif isinstance(other, YankPhaseAnalyzer):
-            names.append(generate_phase_name(other.name, names))
+        elif isinstance(other, PhaseAnalyzer):
+            names.append(autils.generate_phase_name(other.name, names))
             if operator != '+' and other._sign == '+':
                 signs.append('-')
             else:
@@ -674,11 +455,11 @@ class YankPhaseAnalyzer(ABC):
             other._sign = '+'
             phases.append(other)
         else:
-            baseerr = "cannot {} 'YankPhaseAnalyzer' and '{}' objects"
+            base_err = "cannot {} 'PhaseAnalyzer' and '{}' objects"
             if operator == '+':
-                err = baseerr.format('add', type(other))
+                err = base_err.format('add', type(other))
             else:
-                err = baseerr.format('subtract', type(other))
+                err = base_err.format('subtract', type(other))
             raise TypeError(err)
         phase_pass = {'phases': phases, 'signs': signs, 'names': names}
         return MultiPhaseAnalyzer(phase_pass)
@@ -698,26 +479,26 @@ class YankPhaseAnalyzer(ABC):
         return self
 
 
-class MultiStateSamplerAnalyzer(YankPhaseAnalyzer):
+class MultiStateSamplerAnalyzer(PhaseAnalyzer):
 
     """
     The MultiStateSamplerAnalyzer is the analyzer for a simulation generated from a MultiStateSampler simulation,
-    implemented as an instance of the :class:`YankPhaseAnalyzer`.
+    implemented as an instance of the :class:`PhaseAnalyzer`.
 
     See Also
     --------
-    YankPhaseAnalyzer
+    PhaseAnalyzer
 
     """
 
     # TODO use class syntax and add docstring after dropping python 3.5 support.
-    _MixingStatistics = typing.NamedTuple('MixingStatistics', [
+    _MixingStatistics = NamedTuple('MixingStatistics', [
         ('transition_matrix', np.ndarray),
         ('eigenvalues', np.ndarray),
         ('statistical_inefficiency', np.ndarray)
     ])
 
-    def generate_mixing_statistics(self, number_equilibrated: Union[int, None] = None) -> typing.NamedTuple:
+    def generate_mixing_statistics(self, number_equilibrated: Union[int, None] = None) -> NamedTuple:
         """
         Compute and return replica mixing statistics.
 
@@ -747,7 +528,7 @@ class MultiStateSamplerAnalyzer(YankPhaseAnalyzer):
             number_equilibrated, _, _ = self._equilibration_data
         states = self._reporter.read_replica_thermodynamic_states()
         n_iterations, n_replicas = states.shape
-        n_states = self._reporter.n_states    
+        n_states = self._reporter.n_states
         n_ij = np.zeros([n_states, n_states], np.int64)
 
         # Compute empirical transition count matrix.
@@ -945,7 +726,7 @@ class MultiStateSamplerAnalyzer(YankPhaseAnalyzer):
             (Deltaf_ij, dDeltaf_ij) = self.mbar.getFreeEnergyDifferences()
         except ValueError:
             # pymbar 3
-            (Deltaf_ij, dDeltaf_ij, theta_ij) = self.mbar.getFreeEnergyDifferences()
+            (Deltaf_ij, dDeltaf_ij, _) = self.mbar.getFreeEnergyDifferences()
 
         # Matrix of free energy differences
         logger.info("Deltaf_ij:")
@@ -1067,17 +848,17 @@ class MultiStateSamplerAnalyzer(YankPhaseAnalyzer):
         # Discard equilibration samples.
         # TODO: if we include u_n[0] (the energy right after minimization) in the equilibration detection,
         # TODO:         then number_equilibrated is 0. Find a better way than just discarding first frame.
-        self._equilibration_data = get_equilibration_data(u_n[1:])
+        self._equilibration_data = autils.get_equilibration_data(u_n[1:])
 
     def _create_mbar_from_scratch(self):
         u_kln, unsampled_u_kln = self.get_states_energies()
         self._get_equilibration_data_auto(input_data=u_kln)
         number_equilibrated, g_t, Neff_max = self._equilibration_data
-        u_kln = remove_unequilibrated_data(u_kln, number_equilibrated, -1)
-        unsampled_u_kln = remove_unequilibrated_data(unsampled_u_kln, number_equilibrated, -1)
+        u_kln = autils.remove_unequilibrated_data(u_kln, number_equilibrated, -1)
+        unsampled_u_kln = autils.remove_unequilibrated_data(unsampled_u_kln, number_equilibrated, -1)
         # decorrelate_data subsample the energies only based on g_t so both ends up with same indices.
-        u_kln = subsample_data_along_axis(u_kln, g_t, -1)
-        unsampled_u_kln = subsample_data_along_axis(unsampled_u_kln, g_t, -1)
+        u_kln = autils.subsample_data_along_axis(u_kln, g_t, -1)
+        unsampled_u_kln = autils.subsample_data_along_axis(unsampled_u_kln, g_t, -1)
         mbar_ukn, mbar_N_k = self._prepare_mbar_input_data(u_kln, unsampled_u_kln)
         self._create_mbar(mbar_ukn, mbar_N_k)
 
@@ -1102,11 +883,11 @@ class ReplicaExchangeAnalyzer(MultiStateSamplerAnalyzer):
 
     """
     The ReplicaExchangeAnalyzer is the analyzer for a simulation generated from a Replica Exchange sampler simulation,
-    implemented as an instance of the :class:`YankPhaseAnalyzer`.
+    implemented as an instance of the :class:`PhaseAnalyzer`.
 
     See Also
     --------
-    YankPhaseAnalyzer
+    PhaseAnalyzer
 
     """
     pass
@@ -1116,12 +897,12 @@ class ParallelTemperingAnalyzer(ReplicaExchangeAnalyzer):
     """
     The ParallelTemperingAnalyzer is the analyzer for a simulation generated from a Parallel Tempering sampler
     simulation, implemented as an instance of the :class:`ReplicaExchangeAnalyzer` as the sampler is a subclass of
-    the :class:`yank.sampling.ReplicaExchangeSampler`
+    the :class:`yank.multistate.ReplicaExchangeSampler`
 
     See Also
     --------
     ReplicaExchangeAnalyzer
-    YankPhaseAnalyzer
+    PhaseAnalyzer
 
     """
     pass
@@ -1132,9 +913,9 @@ class ParallelTemperingAnalyzer(ReplicaExchangeAnalyzer):
 class MultiPhaseAnalyzer(object):
     """
     Multiple Phase Analyzer creator, not to be directly called itself, but instead called by adding or subtracting
-    different implemented :class:`YankPhaseAnalyzer` or other :class:`MultiPhaseAnalyzers`'s. The individual Phases of
+    different implemented :class:`PhaseAnalyzer` or other :class:`MultiPhaseAnalyzers`'s. The individual Phases of
     the :class:`MultiPhaseAnalyzer` are only references to existing Phase objects, not copies. All
-    :class:`YankPhaseAnalyzer` and :class:`MultiPhaseAnalyzer` classes support ``+`` and ``-`` operations.
+    :class:`PhaseAnalyzer` and :class:`MultiPhaseAnalyzer` classes support ``+`` and ``-`` operations.
 
     The observables of this phase are determined through inspection of all the passed in phases and only observables
     which are shared can be computed. For example:
@@ -1200,7 +981,7 @@ class MultiPhaseAnalyzer(object):
         """
         # Determine
         observables = []
-        for observable in _ObservablesRegistry.observables():
+        for observable in autils.ObservablesRegistry.observables:
             shared_observable = True
             for phase in phases['phases']:
                 if observable not in phase.observables:
@@ -1237,7 +1018,7 @@ class MultiPhaseAnalyzer(object):
 
     @property
     def phases(self):
-        """List of implemented :class:`YankPhaseAnalyzer`'s objects this :class:`MultiPhaseAnalyzer` is tied to"""
+        """List of implemented :class:`PhaseAnalyzer`'s objects this :class:`MultiPhaseAnalyzer` is tied to"""
         return self._phases
 
     @property
@@ -1262,13 +1043,13 @@ class MultiPhaseAnalyzer(object):
         """
         Function to combine the phases regardless of operator to reduce code duplication. Creates a new
         :class:`MultiPhaseAnalyzer` object based on the combined phases of the other. Accepts either a
-        :class:`YankPhaseAnalyzer` or a :class:`MultiPhaseAnalyzer`.
+        :class:`PhaseAnalyzer` or a :class:`MultiPhaseAnalyzer`.
 
         If the names have collision, they are re-named with an extra digit at the end.
 
         Parameters
         ----------
-        other : :class:`MultiPhaseAnalyzer` or :class:`YankPhaseAnalyzer`
+        other : :class:`MultiPhaseAnalyzer` or :class:`PhaseAnalyzer`
         operator : sign of the operator connecting the two objects
 
         Returns
@@ -1276,7 +1057,7 @@ class MultiPhaseAnalyzer(object):
         output : :class:`MultiPhaseAnalyzer`
             New :class:`MultiPhaseAnalyzer` where the phases are the combined list of the individual phases from each
             component. Because the memory pointers to the individual phases are the same, changing any
-            single :class:`YankPhaseAnalyzer`'s
+            single :class:`PhaseAnalyzer`'s
             reference_state objects updates all :class:`MultiPhaseAnalyzer` objects they are tied to
 
         """
@@ -1294,7 +1075,7 @@ class MultiPhaseAnalyzer(object):
             final_new_names = []
             for name in new_names:
                 other_names = [n for n in new_names if n != name]
-                final_new_names.append(generate_phase_name(name, other_names + names))
+                final_new_names.append(autils.generate_phase_name(name, other_names + names))
             names.extend(final_new_names)
             for new_sign in new_signs:
                 if (operator == '-' and new_sign == '+') or (operator == '+' and new_sign == '-'):
@@ -1303,8 +1084,8 @@ class MultiPhaseAnalyzer(object):
                     signs.append('+')
             signs.extend(new_signs)
             phases.extend(new_phases)
-        elif isinstance(other, YankPhaseAnalyzer):
-            names.append(generate_phase_name(other.name, names))
+        elif isinstance(other, PhaseAnalyzer):
+            names.append(autils.generate_phase_name(other.name, names))
             if (operator == '-' and other._sign == '+') or (operator == '+' and other._sign == '-'):
                 signs.append('-')
             else:
@@ -1388,21 +1169,21 @@ class MultiPhaseAnalyzer(object):
             """Helper function to cast the observable in terms of observable's registry"""
             observable = getattr(single_phase, "get_" + observable_name)()
             if isinstance(single_phase, MultiPhaseAnalyzer):
-                if observable_name in _ObservablesRegistry.observables_with_error():
-                    observable_payload = {}
+                if observable_name in autils.ObservablesRegistry.observables_with_error:
+                    observable_payload = dict()
                     observable_payload['value'], observable_payload['error'] = observable
                 else:
                     observable_payload = observable
             else:
                 raise_registry_error = False
-                if observable_name in _ObservablesRegistry.observables_with_error():
+                if observable_name in autils.ObservablesRegistry.observables_with_error:
                     observable_payload = {}
-                    if observable_name in _ObservablesRegistry.observables_defined_by_phase():
+                    if observable_name in autils.ObservablesRegistry.observables_defined_by_phase:
                         observable_payload['value'], observable_payload['error'] = observable
-                    elif observable_name in _ObservablesRegistry.observables_defined_by_single_state():
+                    elif observable_name in autils.ObservablesRegistry.observables_defined_by_single_state:
                         observable_payload['value'] = observable[0][single_phase.reference_states[0]]
                         observable_payload['error'] = observable[1][single_phase.reference_states[0]]
-                    elif observable_name in _ObservablesRegistry.observables_defined_by_two_states():
+                    elif observable_name in autils.ObservablesRegistry.observables_defined_by_two_states:
                         observable_payload['value'] = observable[0][single_phase.reference_states[0],
                                                                     single_phase.reference_states[1]]
                         observable_payload['error'] = observable[1][single_phase.reference_states[0],
@@ -1410,11 +1191,11 @@ class MultiPhaseAnalyzer(object):
                     else:
                         raise_registry_error = True
                 else:  # No error
-                    if observable_name in _ObservablesRegistry.observables_defined_by_phase():
+                    if observable_name in autils.ObservablesRegistry.observables_defined_by_phase:
                         observable_payload = observable
-                    elif observable_name in _ObservablesRegistry.observables_defined_by_single_state():
+                    elif observable_name in autils.ObservablesRegistry.observables_defined_by_single_state:
                         observable_payload = observable[single_phase.reference_states[0]]
-                    elif observable_name in _ObservablesRegistry.observables_defined_by_two_states():
+                    elif observable_name in autils.ObservablesRegistry.observables_defined_by_two_states:
                         observable_payload = observable[single_phase.reference_states[0],
                                                         single_phase.reference_states[1]]
                     else:
@@ -1425,14 +1206,14 @@ class MultiPhaseAnalyzer(object):
             return observable_payload
 
         def modify_final_output(passed_output, payload, sign):
-            if observable_name in _ObservablesRegistry.observables_with_error():
+            if observable_name in autils.ObservablesRegistry.observables_with_error:
                 if sign == '+':
                     passed_output['value'] += payload['value']
                 else:
                     passed_output['value'] -= payload['value']
-                if observable_name in _ObservablesRegistry.observables_with_error_adding_linear():
+                if observable_name in autils.ObservablesRegistry.observables_with_error_adding_linear:
                     passed_output['error'] += payload['error']
-                elif observable_name in _ObservablesRegistry.observables_with_error_adding_quadrature():
+                elif observable_name in autils.ObservablesRegistry.observables_with_error_adding_quadrature:
                     passed_output['error'] = (passed_output['error']**2 + payload['error']**2)**0.5
             else:
                 if sign == '+':
@@ -1441,14 +1222,14 @@ class MultiPhaseAnalyzer(object):
                     passed_output -= payload
             return passed_output
 
-        if observable_name in _ObservablesRegistry.observables_with_error():
+        if observable_name in autils.ObservablesRegistry.observables_with_error:
             final_output = {'value': 0, 'error': 0}
         else:
             final_output = 0
         for phase, phase_sign in zip(self.phases, self.signs):
             phase_observable = prepare_phase_observable(phase)
             final_output = modify_final_output(final_output, phase_observable, phase_sign)
-        if observable_name in _ObservablesRegistry.observables_with_error():
+        if observable_name in autils.ObservablesRegistry.observables_with_error:
             # Cast output to tuple
             final_output = (final_output['value'], final_output['error'])
         return final_output
@@ -1521,7 +1302,6 @@ def analyze_directory(source_directory):
         calculation_type, DeltaH, dDeltaH, DeltaH * kT / units.kilocalories_per_mole,
         dDeltaH * kT / units.kilocalories_per_mole))
 
-
 # ==========================================
 # HELPER FUNCTIONS FOR TRAJECTORY EXTRACTION
 # ==========================================
@@ -1559,7 +1339,7 @@ def extract_u_n(ncfile):
     energies = ncfile.variables['energies']
     u_kln_replica = np.zeros([nstates, nstates, niterations], np.float64)
     for n in range(niterations):
-        u_kln_replica[:,:,n] = energies[n,:,:]
+        u_kln_replica[:, :, n] = energies[n, :, :]
     logger.info("Done.")
 
     # Deconvolute replicas
@@ -1573,7 +1353,7 @@ def extract_u_n(ncfile):
     # Compute total negative log probability over all iterations.
     u_n = np.zeros([niterations], np.float64)
     for iteration in range(niterations):
-        u_n[iteration] = np.sum(np.diagonal(u_kln[:,:,iteration]))
+        u_n[iteration] = np.sum(np.diagonal(u_kln[:, :, iteration]))
 
     return u_n
 
