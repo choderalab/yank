@@ -5,8 +5,8 @@
 # ==============================================================================
 
 """
-Analyze
-=======
+MultiStateAnalyzers
+===================
 
 Analysis tools and module for MultiStateSampler simulations. Provides programmatic and automatic
 "best practices" integration to determine free energy and other observables.
@@ -20,17 +20,16 @@ Fully extensible to support new samplers and observables.
 # MODULE IMPORTS
 # =============================================================================================
 
-import os
+import re
 import abc
 import copy
-import yaml
-import mdtraj
+
 import logging
 import numpy as np
 import simtk.unit as units
-import openmmtools as mmtools
 
-from . import analyzerutils as autils
+
+from . import analyzerutils as utils
 from ..multistatereporter import MultiStateReporter
 
 from pymbar import MBAR, timeseries
@@ -46,9 +45,8 @@ __all__ = [
     'ReplicaExchangeAnalyzer',
     'ParallelTemperingAnalyzer',
     'MultiPhaseAnalyzer',
-    'analyze_directory',
-    'extract_u_n',
-    'extract_trajectory'
+    'ObservablesRegistry',
+    'default_observables_registry'
 ]
 
 # =============================================================================================
@@ -102,6 +100,251 @@ def get_analyzer(file_base_path):
 # MODULE CLASSES
 # =============================================================================================
 
+class ObservablesRegistry(object):
+    """
+    Registry of computable observables.
+
+    This is a class accessed by the :class:`PhaseAnalyzer` objects to check
+    which observables can be computed, and then provide a regular categorization of them.
+
+    This registry is a required linked component of any PhaseAnalyzer and especially of the MultiPhaseAnalyzer.
+    This is not an internal class to the PhaseAnalyzer however because it can be instanced, extended, and customized
+    as part of the API for this module.
+
+    To define your own methods:
+    1) Choose a unique observable name.
+    2) Categorize the observable in one of the following ways by adding to the list in the "observables_X" method:
+
+        2a) "defined_by_phase":
+            Depends on the Phase as a whole (state independent)
+
+        2b) "defined_by_single_state":
+            Computed entirely from one state, e.g. Radius of Gyration
+
+        2c) "defined_by_two_states":
+            Property is relative to some reference state, such as Free Energy Difference
+
+    3) Optionally categorize the error category calculation in the "observables_with_error_adding_Y" methods
+       If not placed in an error category, the observable will be assumed not to carry error
+       Examples: A, B, C are the observable in 3 phases, eA, eB, eC are the error of the observable in each phase
+
+        3a) "linear": Error between phases adds linearly.
+            If C = A + B, eC = eA + eB
+
+        3b) "quadrature": Error between phases adds in the square.
+            If C = A + B, eC = sqrt(eA^2 + eB^2)
+
+    4) Finally, to add this observable to the phase, implement a "get_{method name}" method to the subclass of
+       :class:`YankPhaseAnalyzer`. Any :class:`MultiPhaseAnalyzer` composed of this phase will automatically have the
+       "get_{method name}" if all other phases in the :class:`MultiPhaseAnalyzer` have the same method.
+    """
+
+    def __init__(self):
+        """Register Defaults"""
+        # Create empty registry
+        self._observables = {'two_state': set(),
+                             'one_state': set(),
+                             'phase': set()}
+        self._errors = {'quad': set(),
+                        'linear': set(),
+                        None: set()}
+
+    def register_two_state_observable(self, name: str,
+                                      error_class: Optional[str]=None,
+                                      re_register: bool=False):
+        """
+        Register a new two state observable, or re-register an existing one.
+
+        Parameters
+        ----------
+        name: str
+            Name of the observable, will be cast to all lower case and spaces replaced with underscores
+        error_class: "quad", "linear", or None
+            How the error of the observable is computed when added with other errors from the same observable.
+
+            * "quad": Adds in the quadrature, Observable C = A + B, Error eC = sqrt(eA**2 + eB**2)
+
+            * "linear": Adds linearly,  Observable C = A + B, Error eC = eA + eB
+
+            * None: Does not carry error
+
+        re_register: bool, optional, Default: False
+            Re-register an existing observable
+        """
+
+        self._register_observable(name, "two_state", error_class, re_register=re_register)
+
+    def register_one_state_observable(self, name: str,
+                                      error_class: Optional[str]=None,
+                                      re_register: bool=False):
+        """
+        Register a new one state observable, or re-register an existing one.
+
+        Parameters
+        ----------
+        name: str
+            Name of the observable, will be cast to all lower case and spaces replaced with underscores
+        error_class: "quad", "linear", or None
+            How the error of the observable is computed when added with other errors from the same observable.
+
+            * "quad": Adds in the quadrature, Observable C = A + B, Error eC = sqrt(eA**2 + eB**2)
+
+            * "linear": Adds linearly,  Observable C = A + B, Error eC = eA + eB
+
+            * None: Does not carry error
+
+        re_register: bool, optional, Default: False
+            Re-register an existing observable
+        """
+
+        self._register_observable(name, "one_state", error_class, re_register=re_register)
+
+    def register_phase_observable(self, name: str,
+                                  error_class: Optional[str]=None,
+                                  re_register: bool=False):
+        """
+        Register a new observable defined by phaee, or re-register an existing one.
+
+        Parameters
+        ----------
+        name: str
+            Name of the observable, will be cast to all lower case and spaces replaced with underscores
+        error_class: "quad", "linear", or None
+            How the error of the observable is computed when added with other errors from the same observable.
+
+            * "quad": Adds in the quadrature, Observable C = A + B, Error eC = sqrt(eA**2 + eB**2)
+
+            * "linear": Adds linearly,  Observable C = A + B, Error eC = eA + eB
+
+            * None: Does not carry error
+
+        re_register: bool, optional, Default: False
+            Re-register an existing observable
+        """
+
+        self._register_observable(name, "phase", error_class, re_register=re_register)
+
+    ########################
+    # Define the observables
+    ########################
+    @property
+    def observables(self) -> tuple:
+        """
+        Set of observables which are derived from the subsets below
+        """
+        observables = set()
+        for subset_key in self._observables:
+            observables |= self._observables[subset_key]
+        return tuple(observables)
+
+    # ------------------------------------------------
+    # Exclusive Observable categories
+    # The intersection of these should be the null set
+    # ------------------------------------------------
+
+    @property
+    def observables_defined_by_two_states(self) -> tuple:
+        """
+        Observables that require an i and a j state to define the observable accurately between phases
+        """
+        return self._get_observables('two_state')
+
+    @property
+    def observables_defined_by_single_state(self) -> tuple:
+        """
+        Defined observables which are fully defined by a single state, and not by multiple states such as differences
+        """
+        return self._get_observables('one_state')
+
+    @property
+    def observables_defined_by_phase(self) -> tuple:
+        """
+        Observables which are defined by the phase as a whole, and not defined by any 1 or more states
+        e.g. Standard State Correction
+        """
+        return self._get_observables('phase')
+
+    ##########################################
+    # Define the observables which carry error
+    # This should be a subset of observables
+    ##########################################
+
+    @property
+    def observables_with_error(self) -> tuple:
+        """Determine which observables have error by inspecting the the error subsets"""
+        observables = set()
+        for subset_key in self._errors:
+            if subset_key is not None:
+                observables |= self._errors[subset_key]
+        return tuple(observables)
+
+    # ------------------------------------------------
+    # Exclusive Error categories
+    # The intersection of these should be the null set
+    # ------------------------------------------------
+
+    @property
+    def observables_with_error_adding_quadrature(self) -> tuple:
+        """Observable C = A + B, Error eC = sqrt(eA**2 + eB**2)"""
+        return self._get_errors('quad')
+
+    @property
+    def observables_with_error_adding_linear(self) -> tuple:
+        """Observable C = A + B, Error eC = eA + eB"""
+        return self._get_errors('linear')
+
+    @property
+    def observables_without_error(self) -> tuple:
+        return self._get_errors(None)
+
+    # ------------------
+    # Internal functions
+    # ------------------
+
+    def _get_observables(self, key) -> tuple:
+        return tuple(self._observables[key])
+
+    def _get_errors(self, key) -> tuple:
+        return tuple(self._errors[key])
+
+    @staticmethod
+    def _cast_observable_name(name) -> str:
+        return re.sub(" +", "_", name.lower())
+
+    def _register_observable(self, obs_name: str,
+                             obs_calc_class: str,
+                             obs_error_class: Union[None, str],
+                             re_register: bool=False):
+        obs_name = self._cast_observable_name(obs_name)
+        if not re_register and obs_name in self.observables:
+            raise ValueError("{} is already a registered observable! "
+                             "Consider setting re_register key!".format(obs_name))
+        self._check_obs_class(obs_calc_class)
+        self._check_obs_error_class(obs_error_class)
+        obs_name_set = {obs_name}  # set(single_object) throws an error, set(string) splits each char
+        # Throw out existing observable if present (set difference)
+        for obs_key in self._observables:
+            self._observables[obs_key] -= obs_name_set
+        for obs_err_key in self._errors:
+            self._errors[obs_err_key] -= obs_name_set
+        # Add new observable to correct classifiers (set union)
+        self._observables[obs_calc_class] |= obs_name_set
+        self._errors[obs_error_class] |= obs_name_set
+
+    def _check_obs_class(self, obs_class):
+        assert obs_class in self._observables, "{} not a known observable class!".format(obs_class)
+
+    def _check_obs_error_class(self, obs_error):
+        assert obs_error is None or obs_error in self._errors, \
+            "{} not a known observable error class!".format(obs_error)
+
+# Create a default registry and register some stock values
+default_observables_registry = ObservablesRegistry()
+default_observables_registry.register_two_state_observable('free_energy', error_class='quad')
+default_observables_registry.register_two_state_observable('entropy', error_class='quad')
+default_observables_registry.register_two_state_observable('enthalpy', error_class='quad')
+
+
 # ---------------------------------------------------------------------------------------------
 # Phase Analyzers
 # ---------------------------------------------------------------------------------------------
@@ -119,6 +362,9 @@ class PhaseAnalyzer(ABC):
 
     Analyzer works in units of kT unless specifically stated otherwise. To convert back to a unit set, just multiply by
     the .kT property.
+
+    A PhaseAnalyzer also needs an ObservablesRegistry to track how to handle each observable given implemented within
+    for things like error and cross-phase analysis.
 
     Parameters
     ----------
@@ -146,6 +392,10 @@ class PhaseAnalyzer(ABC):
         For instance, the initial guess of relative free energies to give to MBAR would be something like:
         ``{'initial_f_k':[0,1,2,3]}``
 
+    registry : ObservablesRegistry instance
+        Instanced ObservablesRegistry with all observables implemented through a ``get_X`` function classified and
+        registered. Any cross-phase analysis must use the same instance of an ObservablesRegistry
+
 
     Attributes
     ----------
@@ -155,17 +405,23 @@ class PhaseAnalyzer(ABC):
     reference_states
     kT
     reporter
+    registry
 
     See Also
     --------
-    ObservableRegistry
+    ObservablesRegistry
 
     """
-    def __init__(self, reporter, name=None, reference_states=(0, -1), analysis_kwargs=None):
+    def __init__(self, reporter,
+                 name=None, reference_states=(0, -1), analysis_kwargs=None,
+                 registry=default_observables_registry):
         """
         The reporter provides the hook into how to read the data, all other options control where differences are
         measured from and how each phase interfaces with other phases.
         """
+        if not isinstance(registry, ObservablesRegistry):
+            raise ValueError("Registry must be an instanced ObservablesRegistry")
+        self.registry = registry
         if not reporter.is_open():
             reporter.open(mode='r')
         self._reporter = reporter
@@ -174,7 +430,7 @@ class PhaseAnalyzer(ABC):
         # We determine valid observables by negation instead of just having each child implement the method to enforce
         # uniform function naming conventions.
         self._computed_observables = {}  # Cache of observables so the phase can be retrieved once computed
-        for observable in autils.ObservablesRegistry.observables:
+        for observable in self.registry.observables:
             if hasattr(self, "get_" + observable):
                 observables.append(observable)
                 self._computed_observables[observable] = None
@@ -254,18 +510,6 @@ class PhaseAnalyzer(ABC):
     def reporter(self, value):
         """Make sure users cannot overwrite the reporter."""
         raise ValueError("You cannot re-assign the reporter for this analyzer!")
-
-    # Abstract methods
-    @abc.abstractmethod
-    def analyze_phase(self, *args, **kwargs):
-        """
-        Auto-analysis function for the phase
-
-        Function which broadly handles "auto-analysis" for those that do not wish to call all the methods on their own.
-
-        Returns a dictionary of analysis objects
-        """
-        raise NotImplementedError()
 
     @abc.abstractmethod
     def _create_mbar_from_scratch(self):
@@ -427,7 +671,7 @@ class PhaseAnalyzer(ABC):
         # Reset self._sign
         self._sign = '+'
         if self.name is None:
-            names.append(autils.generate_phase_name(self.name, []))
+            names.append(utils.generate_phase_name(self.name, []))
         else:
             names.append(self.name)
         if isinstance(other, MultiPhaseAnalyzer):
@@ -437,7 +681,7 @@ class PhaseAnalyzer(ABC):
             final_new_names = []
             for name in new_names:
                 other_names = [n for n in new_names if n != name]
-                final_new_names.append(autils.generate_phase_name(name, other_names + names))
+                final_new_names.append(utils.generate_phase_name(name, other_names + names))
             names.extend(final_new_names)
             for new_sign in new_signs:
                 if operator != '+' and new_sign == '+':
@@ -446,7 +690,7 @@ class PhaseAnalyzer(ABC):
                     signs.append('+')
             phases.extend(new_phases)
         elif isinstance(other, PhaseAnalyzer):
-            names.append(autils.generate_phase_name(other.name, names))
+            names.append(utils.generate_phase_name(other.name, names))
             if operator != '+' and other._sign == '+':
                 signs.append('-')
             else:
@@ -813,23 +1057,6 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         entropy_dict = self._computed_observables['entropy']
         return entropy_dict['value'], entropy_dict['error']
 
-    def get_standard_state_correction(self):
-        """
-        Compute the standard state correction free energy associated with the Phase.
-
-        This usually is just a stored variable, but it may need other calculations.
-
-        Returns
-        -------
-        standard_state_correction : float
-            Free energy contribution from the standard_state_correction
-
-        """
-        if self._computed_observables['standard_state_correction'] is None:
-            ssc = self._reporter.read_dict('metadata')['standard_state_correction']
-            self._computed_observables['standard_state_correction'] = ssc
-        return self._computed_observables['standard_state_correction']
-
     def _get_equilibration_data_auto(self, input_data=None):
         """
         Automatically generate the equilibration data from best practices, part of the :func:`_create_mbar_from_scratch`
@@ -848,35 +1075,19 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         # Discard equilibration samples.
         # TODO: if we include u_n[0] (the energy right after minimization) in the equilibration detection,
         # TODO:         then number_equilibrated is 0. Find a better way than just discarding first frame.
-        self._equilibration_data = autils.get_equilibration_data(u_n[1:])
+        self._equilibration_data = utils.get_equilibration_data(u_n[1:])
 
     def _create_mbar_from_scratch(self):
         u_kln, unsampled_u_kln = self.get_states_energies()
         self._get_equilibration_data_auto(input_data=u_kln)
         number_equilibrated, g_t, Neff_max = self._equilibration_data
-        u_kln = autils.remove_unequilibrated_data(u_kln, number_equilibrated, -1)
-        unsampled_u_kln = autils.remove_unequilibrated_data(unsampled_u_kln, number_equilibrated, -1)
+        u_kln = utils.remove_unequilibrated_data(u_kln, number_equilibrated, -1)
+        unsampled_u_kln = utils.remove_unequilibrated_data(unsampled_u_kln, number_equilibrated, -1)
         # decorrelate_data subsample the energies only based on g_t so both ends up with same indices.
-        u_kln = autils.subsample_data_along_axis(u_kln, g_t, -1)
-        unsampled_u_kln = autils.subsample_data_along_axis(unsampled_u_kln, g_t, -1)
+        u_kln = utils.subsample_data_along_axis(u_kln, g_t, -1)
+        unsampled_u_kln = utils.subsample_data_along_axis(unsampled_u_kln, g_t, -1)
         mbar_ukn, mbar_N_k = self._prepare_mbar_input_data(u_kln, unsampled_u_kln)
         self._create_mbar(mbar_ukn, mbar_N_k)
-
-    def analyze_phase(self, cutoff=0.05):
-        if self._mbar is None:
-            self._create_mbar_from_scratch()
-        number_equilibrated, g_t, _ = self._equilibration_data
-        self.show_mixing_statistics(cutoff=cutoff, number_equilibrated=number_equilibrated)
-        data = {}
-        # Accumulate free energy differences
-        Deltaf_ij, dDeltaf_ij = self.get_free_energy()
-        DeltaH_ij, dDeltaH_ij = self.get_enthalpy()
-        data['DeltaF'] = Deltaf_ij[self.reference_states[0], self.reference_states[1]]
-        data['dDeltaF'] = dDeltaf_ij[self.reference_states[0], self.reference_states[1]]
-        data['DeltaH'] = DeltaH_ij[self.reference_states[0], self.reference_states[1]]
-        data['dDeltaH'] = dDeltaH_ij[self.reference_states[0], self.reference_states[1]]
-        data['DeltaF_standard_state_correction'] = self.get_standard_state_correction()
-        return data
 
 
 class ReplicaExchangeAnalyzer(MultiStateSamplerAnalyzer):
@@ -959,6 +1170,8 @@ class MultiPhaseAnalyzer(object):
 
             ``PhaseA.get_standard_state_correction() + PhaseB.get_standard_state_correction()``
 
+    Each phase MUST use the same ObservablesRegistry, otherwise an error is raised
+
     This class is public to see its API.
 
     Parameters
@@ -972,6 +1185,12 @@ class MultiPhaseAnalyzer(object):
     phases
     names
     signs
+    registry
+
+    See Also
+    --------
+    PhaseAnalyzer
+    ObservablesRegistry
 
     """
     def __init__(self, phases):
@@ -979,9 +1198,17 @@ class MultiPhaseAnalyzer(object):
         Create the compound phase which is any combination of phases to generate a new MultiPhaseAnalyzer.
 
         """
-        # Determine
+        # Compare ObservableRegistries
+        ref_registry = phases['phases'][0].registry
+        for phase in phases['phases'][1:]:
+            # Use is comparison since we are checking same insetance
+            if phase.registry is not ref_registry:
+                raise ValueError("Not all phases have the same ObservablesRegistry! Observable calculation "
+                                 "will be inconsistent!")
+        self.registry = ref_registry
+        # Determine available observables
         observables = []
-        for observable in autils.ObservablesRegistry.observables:
+        for observable in self.registry.observables:
             shared_observable = True
             for phase in phases['phases']:
                 if observable not in phase.observables:
@@ -1075,7 +1302,7 @@ class MultiPhaseAnalyzer(object):
             final_new_names = []
             for name in new_names:
                 other_names = [n for n in new_names if n != name]
-                final_new_names.append(autils.generate_phase_name(name, other_names + names))
+                final_new_names.append(utils.generate_phase_name(name, other_names + names))
             names.extend(final_new_names)
             for new_sign in new_signs:
                 if (operator == '-' and new_sign == '+') or (operator == '+' and new_sign == '-'):
@@ -1085,7 +1312,7 @@ class MultiPhaseAnalyzer(object):
             signs.extend(new_signs)
             phases.extend(new_phases)
         elif isinstance(other, PhaseAnalyzer):
-            names.append(autils.generate_phase_name(other.name, names))
+            names.append(utils.generate_phase_name(other.name, names))
             if (operator == '-' and other._sign == '+') or (operator == '+' and other._sign == '-'):
                 signs.append('-')
             else:
@@ -1169,21 +1396,21 @@ class MultiPhaseAnalyzer(object):
             """Helper function to cast the observable in terms of observable's registry"""
             observable = getattr(single_phase, "get_" + observable_name)()
             if isinstance(single_phase, MultiPhaseAnalyzer):
-                if observable_name in autils.ObservablesRegistry.observables_with_error:
+                if observable_name in self.registry.observables_with_error:
                     observable_payload = dict()
                     observable_payload['value'], observable_payload['error'] = observable
                 else:
                     observable_payload = observable
             else:
                 raise_registry_error = False
-                if observable_name in autils.ObservablesRegistry.observables_with_error:
+                if observable_name in self.registry.observables_with_error:
                     observable_payload = {}
-                    if observable_name in autils.ObservablesRegistry.observables_defined_by_phase:
+                    if observable_name in self.registry.observables_defined_by_phase:
                         observable_payload['value'], observable_payload['error'] = observable
-                    elif observable_name in autils.ObservablesRegistry.observables_defined_by_single_state:
+                    elif observable_name in self.registry.observables_defined_by_single_state:
                         observable_payload['value'] = observable[0][single_phase.reference_states[0]]
                         observable_payload['error'] = observable[1][single_phase.reference_states[0]]
-                    elif observable_name in autils.ObservablesRegistry.observables_defined_by_two_states:
+                    elif observable_name in self.registry.observables_defined_by_two_states:
                         observable_payload['value'] = observable[0][single_phase.reference_states[0],
                                                                     single_phase.reference_states[1]]
                         observable_payload['error'] = observable[1][single_phase.reference_states[0],
@@ -1191,11 +1418,11 @@ class MultiPhaseAnalyzer(object):
                     else:
                         raise_registry_error = True
                 else:  # No error
-                    if observable_name in autils.ObservablesRegistry.observables_defined_by_phase:
+                    if observable_name in self.registry.observables_defined_by_phase:
                         observable_payload = observable
-                    elif observable_name in autils.ObservablesRegistry.observables_defined_by_single_state:
+                    elif observable_name in self.registry.observables_defined_by_single_state:
                         observable_payload = observable[single_phase.reference_states[0]]
-                    elif observable_name in autils.ObservablesRegistry.observables_defined_by_two_states:
+                    elif observable_name in self.registry.observables_defined_by_two_states:
                         observable_payload = observable[single_phase.reference_states[0],
                                                         single_phase.reference_states[1]]
                     else:
@@ -1206,14 +1433,14 @@ class MultiPhaseAnalyzer(object):
             return observable_payload
 
         def modify_final_output(passed_output, payload, sign):
-            if observable_name in autils.ObservablesRegistry.observables_with_error:
+            if observable_name in self.registry.observables_with_error:
                 if sign == '+':
                     passed_output['value'] += payload['value']
                 else:
                     passed_output['value'] -= payload['value']
-                if observable_name in autils.ObservablesRegistry.observables_with_error_adding_linear:
+                if observable_name in self.registry.observables_with_error_adding_linear:
                     passed_output['error'] += payload['error']
-                elif observable_name in autils.ObservablesRegistry.observables_with_error_adding_quadrature:
+                elif observable_name in self.registry.observables_with_error_adding_quadrature:
                     passed_output['error'] = (passed_output['error']**2 + payload['error']**2)**0.5
             else:
                 if sign == '+':
@@ -1222,289 +1449,14 @@ class MultiPhaseAnalyzer(object):
                     passed_output -= payload
             return passed_output
 
-        if observable_name in autils.ObservablesRegistry.observables_with_error:
+        if observable_name in self.registry.observables_with_error:
             final_output = {'value': 0, 'error': 0}
         else:
             final_output = 0
         for phase, phase_sign in zip(self.phases, self.signs):
             phase_observable = prepare_phase_observable(phase)
             final_output = modify_final_output(final_output, phase_observable, phase_sign)
-        if observable_name in autils.ObservablesRegistry.observables_with_error:
+        if observable_name in self.registry.observables_with_error:
             # Cast output to tuple
             final_output = (final_output['value'], final_output['error'])
         return final_output
-
-
-def analyze_directory(source_directory):
-    """
-    Analyze contents of store files to compute free energy differences.
-
-    This function is needed to preserve the old auto-analysis style of YANK. What it exactly does can be refined when
-    more analyzers and simulations are made available. For now this function exposes the API.
-
-    Parameters
-    ----------
-    source_directory : string
-       The location of the simulation storage files.
-
-    """
-    analysis_script_path = os.path.join(source_directory, 'analysis.yaml')
-    if not os.path.isfile(analysis_script_path):
-        err_msg = 'Cannot find analysis.yaml script in {}'.format(source_directory)
-        logger.error(err_msg)
-        raise RuntimeError(err_msg)
-    with open(analysis_script_path, 'r') as f:
-        analysis = yaml.load(f)
-    phase_names = [phase_name for phase_name, sign in analysis]
-    data = dict()
-    for phase_name, sign in analysis:
-        phase_path = os.path.join(source_directory, phase_name + '.nc')
-        phase = get_analyzer(phase_path)
-        data[phase_name] = phase.analyze_phase()
-        kT = phase.kT
-
-    # Compute free energy and enthalpy
-    DeltaF = 0.0
-    dDeltaF = 0.0
-    DeltaH = 0.0
-    dDeltaH = 0.0
-    for phase_name, sign in analysis:
-        DeltaF -= sign * (data[phase_name]['DeltaF'] + data[phase_name]['DeltaF_standard_state_correction'])
-        dDeltaF += data[phase_name]['dDeltaF']**2
-        DeltaH -= sign * (data[phase_name]['DeltaH'] + data[phase_name]['DeltaF_standard_state_correction'])
-        dDeltaH += data[phase_name]['dDeltaH']**2
-    dDeltaF = np.sqrt(dDeltaF)
-    dDeltaH = np.sqrt(dDeltaH)
-
-    # Attempt to guess type of calculation
-    calculation_type = ''
-    for phase in phase_names:
-        if 'complex' in phase:
-            calculation_type = ' of binding'
-        elif 'solvent1' in phase:
-            calculation_type = ' of solvation'
-
-    # Print energies
-    logger.info('')
-    logger.info('Free energy{:<13}: {:9.3f} +- {:.3f} kT ({:.3f} +- {:.3f} kcal/mol)'.format(
-        calculation_type, DeltaF, dDeltaF, DeltaF * kT / units.kilocalories_per_mole,
-        dDeltaF * kT / units.kilocalories_per_mole))
-    logger.info('')
-
-    for phase in phase_names:
-        logger.info('DeltaG {:<17}: {:9.3f} +- {:.3f} kT'.format(phase, data[phase]['DeltaF'],
-                                                                 data[phase]['dDeltaF']))
-        if data[phase]['DeltaF_standard_state_correction'] != 0.0:
-            logger.info('DeltaG {:<17}: {:18.3f} kT'.format('restraint',
-                                                            data[phase]['DeltaF_standard_state_correction']))
-    logger.info('')
-    logger.info('Enthalpy{:<16}: {:9.3f} +- {:.3f} kT ({:.3f} +- {:.3f} kcal/mol)'.format(
-        calculation_type, DeltaH, dDeltaH, DeltaH * kT / units.kilocalories_per_mole,
-        dDeltaH * kT / units.kilocalories_per_mole))
-
-# ==========================================
-# HELPER FUNCTIONS FOR TRAJECTORY EXTRACTION
-# ==========================================
-
-def extract_u_n(ncfile):
-    """
-    Extract timeseries of u_n = - log q(X_n) from store file
-
-    where q(X_n) = \pi_{k=1}^K u_{s_{nk}}(x_{nk})
-
-    with X_n = [x_{n1}, ..., x_{nK}] is the current collection of replica configurations
-    s_{nk} is the current state of replica k at iteration n
-    u_k(x) is the kth reduced potential
-
-    TODO: Figure out a way to remove this function
-
-    Parameters
-    ----------
-    ncfile : netCDF4.Dataset
-       Open NetCDF file to analyze
-
-    Returns
-    -------
-    u_n : numpy array of numpy.float64
-       u_n[n] is -log q(X_n)
-    """
-
-    # Get current dimensions.
-    niterations = ncfile.variables['energies'].shape[0]
-    nstates = ncfile.variables['energies'].shape[1]
-    natoms = ncfile.variables['energies'].shape[2]
-
-    # Extract energies.
-    logger.info("Reading energies...")
-    energies = ncfile.variables['energies']
-    u_kln_replica = np.zeros([nstates, nstates, niterations], np.float64)
-    for n in range(niterations):
-        u_kln_replica[:, :, n] = energies[n, :, :]
-    logger.info("Done.")
-
-    # Deconvolute replicas
-    logger.info("Deconvoluting replicas...")
-    u_kln = np.zeros([nstates, nstates, niterations], np.float64)
-    for iteration in range(niterations):
-        state_indices = ncfile.variables['states'][iteration, :]
-        u_kln[state_indices,:,iteration] = energies[iteration, :, :]
-    logger.info("Done.")
-
-    # Compute total negative log probability over all iterations.
-    u_n = np.zeros([niterations], np.float64)
-    for iteration in range(niterations):
-        u_n[iteration] = np.sum(np.diagonal(u_kln[:, :, iteration]))
-
-    return u_n
-
-
-# ==============================================================================
-# Extract trajectory from NetCDF4 file
-# ==============================================================================
-
-def extract_trajectory(nc_path, nc_checkpoint_file=None, state_index=None, replica_index=None,
-                       start_frame=0, end_frame=-1, skip_frame=1, keep_solvent=True,
-                       discard_equilibration=False, image_molecules=False):
-    """Extract phase trajectory from the NetCDF4 file.
-
-    Parameters
-    ----------
-    nc_path : str
-        Path to the primary nc_file storing the analysis options
-    nc_checkpoint_file : str or None, Optional
-        File name of the checkpoint file housing the main trajectory
-        Used if the checkpoint file is differently named from the default one chosen by the nc_path file.
-        Default: None
-    state_index : int, optional
-        The index of the alchemical state for which to extract the trajectory.
-        One and only one between state_index and replica_index must be not None
-        (default is None).
-    replica_index : int, optional
-        The index of the replica for which to extract the trajectory. One and
-        only one between state_index and replica_index must be not None (default
-        is None).
-    start_frame : int, optional
-        Index of the first frame to include in the trajectory (default is 0).
-    end_frame : int, optional
-        Index of the last frame to include in the trajectory. If negative, will
-        count from the end (default is -1).
-    skip_frame : int, optional
-        Extract one frame every skip_frame (default is 1).
-    keep_solvent : bool, optional
-        If False, solvent molecules are ignored (default is True).
-    discard_equilibration : bool, optional
-        If True, initial equilibration frames are discarded (see the method
-        pymbar.timeseries.detectEquilibration() for details, default is False).
-
-    Returns
-    -------
-    trajectory: mdtraj.Trajectory
-        The trajectory extracted from the netcdf file.
-
-    """
-    # Check correct input
-    if (state_index is None) == (replica_index is None):
-        raise ValueError('One and only one between "state_index" and '
-                         '"replica_index" must be specified.')
-    if not os.path.isfile(nc_path):
-        raise ValueError('Cannot find file {}'.format(nc_path))
-
-    # Import simulation data
-    try:
-        reporter = MultiStateReporter(nc_path, open_mode='r', checkpoint_storage=nc_checkpoint_file)
-        metadata = reporter.read_dict('metadata')
-        reference_system = mmtools.utils.deserialize(metadata['reference_state']).system
-        topology = mmtools.utils.deserialize(metadata['topography']).topology
-
-        # Determine if system is periodic
-        is_periodic = reference_system.usesPeriodicBoundaryConditions()
-        logger.info('Detected periodic boundary conditions: {}'.format(is_periodic))
-
-        # Get dimensions
-        # Assume full iteration until proven otherwise
-        full_iteration = True
-        trajectory_storage = reporter._storage_checkpoint
-        if not keep_solvent:
-            # If tracked solute particles, use any last iteration, set with this logic test
-            full_iteration = len(reporter.analysis_particle_indices) == 0
-            if not full_iteration:
-                trajectory_storage = reporter._storage_analysis
-                topology = topology.subset(reporter.analysis_particle_indices)
-
-        n_iterations = reporter.read_last_iteration(full_iteration=full_iteration)
-        n_frames = trajectory_storage.variables['positions'].shape[0]
-        n_atoms = trajectory_storage.variables['positions'].shape[2]
-        logger.info('Number of frames: {}, atoms: {}'.format(n_frames, n_atoms))
-
-        # Determine frames to extract
-        if start_frame <= 0:
-            # Discard frame 0 with minimized energy which
-            # throws off automatic equilibration detection.
-            start_frame = 1
-        if end_frame < 0:
-            end_frame = n_frames + end_frame + 1
-        frame_indices = range(start_frame, end_frame, skip_frame)
-        if len(frame_indices) == 0:
-            raise ValueError('No frames selected')
-        logger.info('Extracting frames from {} to {} every {}'.format(
-            start_frame, end_frame, skip_frame))
-
-        # Discard equilibration samples
-        if discard_equilibration:
-            u_n = extract_u_n(reporter._storage_analysis)
-            n_equil_iterations, g, n_eff = timeseries.detectEquilibration(u_n)
-            logger.info(("Discarding initial {} equilibration samples (leaving {} "
-                         "effectively uncorrelated samples)...").format(n_equil_iterations, n_eff))
-            # Find first frame post-equilibration.
-            if not full_iteration:
-                for iteration in range(n_equil_iterations, n_iterations):
-                    n_equil_frames = reporter._calculate_checkpoint_iteration(iteration)
-                    if n_equil_frames is not None:
-                        break
-            else:
-                n_equil_frames = n_equil_iterations
-            frame_indices = frame_indices[n_equil_frames:-1]
-
-        # Extract state positions and box vectors.
-        # MDTraj Cython code expects float32 positions.
-        positions = np.zeros((len(frame_indices), n_atoms, 3), dtype=np.float32)
-        if is_periodic:
-            box_vectors = np.zeros((len(frame_indices), 3, 3), dtype=np.float32)
-        if state_index is not None:
-            logger.info('Extracting positions of state {}...'.format(state_index))
-
-            # Deconvolute state indices
-            state_indices = np.zeros(len(frame_indices))
-            for i, iteration in enumerate(frame_indices):
-                replica_indices = reporter._storage_analysis.variables['states'][iteration, :]
-                state_indices[i] = np.where(replica_indices == state_index)[0][0]
-
-            # Extract state positions and box vectors
-            for i, iteration in enumerate(frame_indices):
-                replica_index = state_indices[i]
-                positions[i, :, :] = trajectory_storage.variables['positions'][iteration, replica_index, :, :].astype(np.float32)
-                if is_periodic:
-                    box_vectors[i, :, :] = trajectory_storage.variables['box_vectors'][iteration, replica_index, :, :].astype(np.float32)
-
-        else:  # Extract replica positions and box vectors
-            logger.info('Extracting positions of replica {}...'.format(replica_index))
-
-            for i, iteration in enumerate(frame_indices):
-                positions[i, :, :] = trajectory_storage.variables['positions'][iteration, replica_index, :, :].astype(np.float32)
-                if is_periodic:
-                    box_vectors[i, :, :] = trajectory_storage.variables['box_vectors'][iteration, replica_index, :, :].astype(np.float32)
-    finally:
-        reporter.close()
-
-    # Create trajectory object
-    logger.info('Creating trajectory object...')
-    trajectory = mdtraj.Trajectory(positions, topology)
-    if is_periodic:
-        trajectory.unitcell_vectors = box_vectors
-
-    # Force periodic boundary conditions to molecules positions
-    if image_molecules:
-        logger.info('Applying periodic boundary conditions to molecules positions...')
-        trajectory.image_molecules(inplace=True)
-
-    return trajectory

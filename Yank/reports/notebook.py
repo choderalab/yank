@@ -15,7 +15,7 @@ from matplotlib.colors import LinearSegmentedColormap, NoNorm
 from matplotlib import gridspec
 from simtk import unit as units
 from .. import version
-from ..multistate import analyzers as analyze
+from .. import analyze
 
 kB = units.BOLTZMANN_CONSTANT_kB * units.AVOGADRO_CONSTANT_NA
 
@@ -148,7 +148,7 @@ class HealthReportData(object):
             self._n_discarded = discard_from_start
             self.u_ns[phase_name] = analyzer.get_timeseries(u_kln)
             # Timeseries statistics
-            g_t, Neff_t = analyze.get_equilibration_data_per_sample(self.u_ns[phase_name])
+            g_t, Neff_t = analyze.analysis.get_equilibration_data_per_sample(self.u_ns[phase_name])
             self.Neff_maxs[phase_name] = Neff_t.max()
             self.nequils[phase_name] = Neff_t.argmax()
             self.g_ts[phase_name] = g_t[int(self.nequils[phase_name])]

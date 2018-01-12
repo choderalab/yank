@@ -13,8 +13,7 @@ Analyze YANK output file.
 # MODULE IMPORTS
 # =============================================================================================
 
-from .. import utils
-from ..multistate import analyzers as analyze
+from .. import utils, analyze
 import re
 import os
 import pkg_resources
