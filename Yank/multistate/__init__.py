@@ -8,7 +8,7 @@
 MultiState
 ==========
 
-Multistate Sampling simulation algorithms and specific variants.
+Multistate Sampling simulation algorithms, specific variants, and analyzers
 
 This module provides a general facility for running multiple thermodynamic state multistate simulations, both general
 as well as derived classes for special cases such as parallel tempering (in which
@@ -29,11 +29,18 @@ Provided classes include:
 - :class:`yank.multistate.MultiStateReporter`
     Replica Exchange reporter class to store all variables and data
 
-
 Analyzers
 ---------
 The MultiState module also provides analysis modules to analyze simulations and compute observables from data generated
 under any of the MultiStateSampler's
+
+Extending and Subclassing
+-------------------------
+Subclassing a sampler and analyzer is done by importing and extending any of the following:
+
+    * The base ``MultiStateSampler`` from ``multistatesampler``
+    * The base ``MultiStateReporter`` from ``multistatereporter``
+    * The base ``MultiStateAnalyzer`` or ``PhaseAnalyzer`` and base `ObservablesRegistry`` from ``multistateanalyzer``
 
 COPYRIGHT
 ---------
@@ -53,16 +60,7 @@ This code is licensed under the latest available version of the MIT License.
 
 from .multistatesampler import MultiStateSampler
 from .multistatereporter import MultiStateReporter
-from .replicaexchangesampler import ReplicaExchangeSampler
-from .paralleltemperingsampler import ParallelTemperingSampler
-from .samplingutils import *
-from . import analyzers
-
-__all__ = [
-    'MultiStateReporter',
-    'MultiStateSampler',
-    'ReplicaExchangeSampler',
-    'ParallelTemperingSampler',
-    'SimulationNaNError',
-    'analyzers'
-]
+from .replicaexchange import ReplicaExchangeSampler, ReplicaExchangeAnalyzer
+from .paralleltempering import ParallelTemperingSampler, ParallelTemperingAnalyzer
+from .multistateanalyzer import *
+from .utils import *

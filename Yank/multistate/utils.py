@@ -5,18 +5,25 @@
 # ==============================================================================
 
 """
-Analyzer Utilities
-===================
+Multistate Utilities
+====================
 
-Utilities and common functions for MultiStateSampler analyzers.
+Sampling Utilities for the YANK Multistate Package. A collection of functions and small classes
+which are common to help the samplers and analyzers and other public hooks.
 
+COPYRIGHT
+
+Current version by Andrea Rizzi <andrea.rizzi@choderalab.org>, Levi N. Naden <levi.naden@choderalab.org> and
+John D. Chodera <john.chodera@choderalab.org> while at Memorial Sloan Kettering Cancer Center.
+
+Original version by John D. Chodera <jchodera@gmail.com> while at the University of
+California Berkeley.
+
+LICENSE
+
+This code is licensed under the latest available version of the MIT License.
 
 """
-
-# =============================================================================================
-# MODULE IMPORTS
-# =============================================================================================
-
 import logging
 import numpy as np
 
@@ -31,7 +38,17 @@ __all__ = [
     'get_equilibration_data_per_sample',
     'remove_unequilibrated_data',
     'subsample_data_along_axis',
+    'SimulationNaNError'
 ]
+
+
+# =============================================================================================
+# Sampling Exceptions
+# =============================================================================================
+
+class SimulationNaNError(Exception):
+    """Error when a simulation goes to NaN"""
+    pass
 
 
 # =============================================================================================

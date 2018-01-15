@@ -1,7 +1,7 @@
 #!/usr/local/bin/env python
 
 """
-Test replicaexchangesampler.py facility.
+Test replicaexchange.py facility.
 
 TODO
 
@@ -33,8 +33,8 @@ from simtk import openmm, unit
 
 from yank import mpi
 from yank.multistate import MultiStateReporter, MultiStateSampler, ReplicaExchangeSampler, ParallelTemperingSampler
+from yank.multistate import ReplicaExchangeAnalyzer
 from yank.multistate.multistatereporter import _DictYamlLoader
-import yank.multistate.analyzers as analyze
 from yank.utils import config_root_logger  # This is only function tying these test to the main YANK code
 
 # quiet down some citation spam
@@ -196,7 +196,7 @@ def test_replica_exchange(verbose=False, verbose_simulation=False):
         simulation.run()
 
         # Create Analyzer.
-        analyzer = analyze.get_analyzer(storage)
+        analyzer = ReplicaExchangeAnalyzer(storage)
 
         # TODO: Check if deviations exceed tolerance.
         Delta_f_ij, dDelta_f_ij = analyzer.get_free_energy()

@@ -41,6 +41,7 @@ import openmmtools as mmtools
 from .. import mpi
 from .multistatesampler import MultiStateSampler
 from .multistatereporter import MultiStateReporter
+from .multistateanalyzer import MultiStateSamplerAnalyzer
 
 
 logger = logging.getLogger(__name__)
@@ -405,6 +406,19 @@ class ReplicaExchangeSampler(MultiStateSampler):
                 citation_stack = [gibbs_citations] + citation_stack
         super()._display_citations(overwrite_global=overwrite_global, citation_stack=citation_stack)
 
+
+class ReplicaExchangeAnalyzer(MultiStateSamplerAnalyzer):
+
+    """
+    The ReplicaExchangeAnalyzer is the analyzer for a simulation generated from a Replica Exchange sampler simulation,
+    implemented as an instance of the :class:`PhaseAnalyzer`.
+
+    See Also
+    --------
+    PhaseAnalyzer
+
+    """
+    pass
 
 # ==============================================================================
 # MAIN AND TESTS

@@ -135,7 +135,7 @@ setup(
     # Helper line which did not work reliably for the packages key
     # + ['yank.{}'.format(package) for package in find_packages('yank')],
     packages=['yank', "yank.tests", "yank.tests.data", "yank.commands", "yank.reports", "yank.schema",
-              'yank.multistate', 'yank.multistate.mixing', 'yank.multistate.analyzers'],
+              'yank.multistate', 'yank.multistate.mixing'],
 
     package_data={'yank': find_package_data('Yank/tests/data', 'yank') + ['reports/*.ipynb'],
                   },

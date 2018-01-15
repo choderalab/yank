@@ -28,7 +28,7 @@ import numpy as np
 import simtk.unit as units
 import openmmtools as mmtools
 from pymbar import timeseries
-from .multistate import analyzers as analysis, MultiStateReporter
+from . import multistate
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================================
 
 # Extend registry to support standard_state_correction
-yank_registry = analysis.default_observables_registry
+yank_registry = multistate.default_observables_registry
 yank_registry.register_phase_observable('standard_state_correction')
 
 
@@ -47,7 +47,7 @@ yank_registry.register_phase_observable('standard_state_correction')
 # =============================================================================================
 
 
-class YankPhaseAnalyzer(analysis.PhaseAnalyzer):
+class YankPhaseAnalyzer(multistate.PhaseAnalyzer):
 
     def __init__(self, *args, registry=yank_registry, **kwargs):
         super().__init__(*args, registry=registry, **kwargs)
@@ -65,7 +65,7 @@ class YankPhaseAnalyzer(analysis.PhaseAnalyzer):
         raise NotImplementedError()
 
 
-class YankMultiStateSamplerAnalyzer(analysis.MultiStateSamplerAnalyzer, YankPhaseAnalyzer):
+class YankMultiStateSamplerAnalyzer(multistate.MultiStateSamplerAnalyzer, YankPhaseAnalyzer):
 
     def get_standard_state_correction(self):
         """
@@ -101,11 +101,11 @@ class YankMultiStateSamplerAnalyzer(analysis.MultiStateSamplerAnalyzer, YankPhas
         return data
 
 
-class YankReplicaExchangeAnalyzer(analysis.ReplicaExchangeAnalyzer, YankMultiStateSamplerAnalyzer):
+class YankReplicaExchangeAnalyzer(multistate.ReplicaExchangeAnalyzer, YankMultiStateSamplerAnalyzer):
     pass
 
 
-class YankParallelTemperingAnalyzer(analysis.ParallelTemperingAnalyzer, YankMultiStateSamplerAnalyzer):
+class YankParallelTemperingAnalyzer(multistate.ParallelTemperingAnalyzer, YankMultiStateSamplerAnalyzer):
     pass
 
 
@@ -131,7 +131,7 @@ def get_analyzer(file_base_path):
         Analyzer for the specific phase.
     """
     # Eventually extend this to get more reporters, but for now simple placeholder
-    reporter = MultiStateReporter(file_base_path, open_mode='r')
+    reporter = multistate.MultiStateReporter(file_base_path, open_mode='r')
     """
     storage = infer_storage_format_from_extension('complex.nc')  # This is always going to be nc for now.
     metadata = storage.metadata
@@ -326,7 +326,7 @@ def extract_trajectory(nc_path, nc_checkpoint_file=None, state_index=None, repli
 
     # Import simulation data
     try:
-        reporter = MultiStateReporter(nc_path, open_mode='r', checkpoint_storage=nc_checkpoint_file)
+        reporter = multistate.MultiStateReporter(nc_path, open_mode='r', checkpoint_storage=nc_checkpoint_file)
         metadata = reporter.read_dict('metadata')
         reference_system = mmtools.utils.deserialize(metadata['reference_state']).system
         topology = mmtools.utils.deserialize(metadata['topography']).topology

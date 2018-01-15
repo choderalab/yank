@@ -20,30 +20,24 @@ Fully extensible to support new samplers and observables.
 # MODULE IMPORTS
 # =============================================================================================
 
-import re
 import abc
 import copy
-
 import logging
+import re
+from typing import Optional, NamedTuple, Union
+
 import numpy as np
 import simtk.unit as units
-
-
-from . import analyzerutils as utils
-from ..multistatereporter import MultiStateReporter
-
 from pymbar import MBAR, timeseries
-from typing import Optional, NamedTuple, Union
+
+from . import utils
 
 ABC = abc.ABC
 logger = logging.getLogger(__name__)
 
 __all__ = [
-    'get_analyzer',
     'PhaseAnalyzer',
     'MultiStateSamplerAnalyzer',
-    'ReplicaExchangeAnalyzer',
-    'ParallelTemperingAnalyzer',
     'MultiPhaseAnalyzer',
     'ObservablesRegistry',
     'default_observables_registry'
@@ -54,46 +48,6 @@ __all__ = [
 # =============================================================================================
 
 kB = units.BOLTZMANN_CONSTANT_kB * units.AVOGADRO_CONSTANT_NA
-
-
-# =============================================================================================
-# MODULE FUNCTIONS
-# =============================================================================================
-
-def get_analyzer(file_base_path):
-    """
-    Utility function to convert storage file to a Reporter and Analyzer by reading the data on file
-
-    For now this is mostly placeholder functions since there is only the implemented :class:`ReplicaExchangeAnalyzer`,
-    but creates the API for the user to work with.
-
-    Parameters
-    ----------
-    file_base_path : string
-        Complete path to the storage file with filename and extension.
-
-    Returns
-    -------
-    analyzer : instance of implemented :class:`PhaseAnalyzer`
-        Analyzer for the specific phase.
-    """
-    # Eventually extend this to get more reporters, but for now simple placeholder
-    reporter = MultiStateReporter(file_base_path, open_mode='r')
-    """
-    storage = infer_storage_format_from_extension('complex.nc')  # This is always going to be nc for now.
-    metadata = storage.metadata
-    sampler_class = metadata['sampler_full_name']
-    module_name, cls_name = sampler_full_name.rsplit('.', 1)
-    module = importlib.import_module(module_name)
-    cls = getattr(module, cls_name)
-    reporter = cls.create_reporter('complex.nc')
-    """
-    # Eventually change this to auto-detect simulation from reporter:
-    if True:
-        analyzer = ReplicaExchangeAnalyzer(reporter)
-    else:
-        raise RuntimeError("Cannot automatically determine analyzer for Reporter: {}".format(reporter))
-    return analyzer
 
 
 # =============================================================================================
@@ -1088,35 +1042,6 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         unsampled_u_kln = utils.subsample_data_along_axis(unsampled_u_kln, g_t, -1)
         mbar_ukn, mbar_N_k = self._prepare_mbar_input_data(u_kln, unsampled_u_kln)
         self._create_mbar(mbar_ukn, mbar_N_k)
-
-
-class ReplicaExchangeAnalyzer(MultiStateSamplerAnalyzer):
-
-    """
-    The ReplicaExchangeAnalyzer is the analyzer for a simulation generated from a Replica Exchange sampler simulation,
-    implemented as an instance of the :class:`PhaseAnalyzer`.
-
-    See Also
-    --------
-    PhaseAnalyzer
-
-    """
-    pass
-
-
-class ParallelTemperingAnalyzer(ReplicaExchangeAnalyzer):
-    """
-    The ParallelTemperingAnalyzer is the analyzer for a simulation generated from a Parallel Tempering sampler
-    simulation, implemented as an instance of the :class:`ReplicaExchangeAnalyzer` as the sampler is a subclass of
-    the :class:`yank.multistate.ReplicaExchangeSampler`
-
-    See Also
-    --------
-    ReplicaExchangeAnalyzer
-    PhaseAnalyzer
-
-    """
-    pass
 
 
 # https://choderalab.slack.com/files/levi.naden/F4G6L9X8S/quick_diagram.png

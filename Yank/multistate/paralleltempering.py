@@ -32,7 +32,7 @@ import logging
 import numpy as np
 import openmmtools as mmtools
 
-from .replicaexchangesampler import ReplicaExchangeSampler
+from .replicaexchange import ReplicaExchangeSampler, ReplicaExchangeAnalyzer
 from .multistatereporter import MultiStateReporter
 
 logger = logging.getLogger(__name__)
@@ -216,6 +216,20 @@ class ParallelTemperingSampler(ReplicaExchangeSampler):
 
         # Return the new energies.
         return energy_thermodynamic_states, energy_unsampled_states
+
+class ParallelTemperingAnalyzer(ReplicaExchangeAnalyzer):
+    """
+    The ParallelTemperingAnalyzer is the analyzer for a simulation generated from a Parallel Tempering sampler
+    simulation, implemented as an instance of the :class:`ReplicaExchangeAnalyzer` as the sampler is a subclass of
+    the :class:`yank.multistate.ReplicaExchangeSampler`
+
+    See Also
+    --------
+    ReplicaExchangeAnalyzer
+    PhaseAnalyzer
+
+    """
+    pass
 
 # ==============================================================================
 # MAIN AND TESTS

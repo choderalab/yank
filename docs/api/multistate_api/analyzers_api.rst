@@ -1,9 +1,5 @@
 .. _API_analyzer:
 
-.. automodule:: yank.multistate.analyzers
-   :members:
-   :inherited-members:
-
-.. automodule:: yank.analyze
+.. automodule:: yank.multistate.multistateanalyzer
    :members:
    :inherited-members:
