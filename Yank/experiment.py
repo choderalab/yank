@@ -452,6 +452,8 @@ class Experiment(object):
         # Handle case in which we don't alternate between phases.
         if self.switch_phase_interval <= 0:
             switch_phase_interval = self.number_of_iterations
+        else:
+            switch_phase_interval = self.switch_phase_interval
 
         # Count down the iterations to run.
         iterations_left = [None, None]
