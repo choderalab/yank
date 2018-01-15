@@ -1333,7 +1333,8 @@ class AlchemicalPhase(object):
         # counterions to make sure that the solvation box is always neutral.
         if system.usesPeriodicBoundaryConditions():
             alchemical_counterions = mpi.run_single_node(0, pipeline.find_alchemical_counterions,
-                                                         system, topography, alchemical_region_name)
+                                                         system, topography, alchemical_region_name,
+                                                         broadcast_result=True)
             alchemical_atoms += alchemical_counterions
 
             # Sort them by index for safety. We don't want to
