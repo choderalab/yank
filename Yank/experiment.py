@@ -2260,6 +2260,10 @@ class ExperimentBuilder(object):
         else:
             platform = openmm.Platform.getPlatformByName(platform_name)
 
+        # Set CUDA DeterministicForces (necessary for MBAR).
+        if platform_name == 'CUDA':
+            platform.setPropertyDefaultValue('DeterministicForces', 'true')
+
         # Use only a single CPU thread if we are using the CPU platform.
         # TODO: Since there is an environment variable that can control this,
         # TODO: we may want to avoid doing this.

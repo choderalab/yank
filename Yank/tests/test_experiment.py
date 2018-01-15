@@ -1891,7 +1891,7 @@ def test_setup_multiple_parameters_system():
 # Platform configuration tests
 # ==============================================================================
 
-def test_platform_precision_configuration():
+def test_platform_configuration():
     """Test that the precision for platform is configured correctly."""
     available_platforms = [openmm.Platform.getPlatform(i).getName()
                            for i in range(openmm.Platform.getNumPlatforms())]
@@ -1913,6 +1913,7 @@ def test_platform_precision_configuration():
                 platform = exp_builder._configure_platform(platform_name=platform_name,
                                                             platform_precision=precision)
                 assert platform.getPropertyDefaultValue('CudaPrecision') == precision
+                assert platform.getPropertyDefaultValue('DeterministicForces') == 'true'
             elif platform_name == 'OpenCL':
                 if ExperimentBuilder._opencl_device_support_precision(precision):
                     platform = exp_builder._configure_platform(platform_name=platform_name,
