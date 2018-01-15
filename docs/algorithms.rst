@@ -655,7 +655,7 @@ Automated convergence detection
 YANK has the ability to run a simulation until the free energy difference in a phase reaches a user-specified target
 uncertainty.
 If this option is set, either through the :ref:`yaml options <yaml_options_online_analysis_parameters>` or
-:meth:`the ReplicaExchange API <yank.repex.ReplicaExchange>`, then each phase will be simulated until either the
+:meth:`the Sampling API <yank.multistate.MultiStateSampler`, then each phase will be simulated until either the
 error free energy difference reaches the target, or the maximum number of iterations has been reached.
 
 Free energy error alone is a helpful, but not necessarily sufficient metric of convergence, and

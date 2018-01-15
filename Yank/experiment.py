@@ -19,21 +19,20 @@ created by going through the Command Line Interface with the ``yank script`` com
 # GLOBAL IMPORTS
 # =============================================================================
 
-import os
-import copy
-import yaml
-import logging
 import collections
+import copy
+import logging
+import os
 
 import cerberus
 import cerberus.errors
-
 import openmmtools as mmtools
 import openmoltools as moltools
+import yaml
 from simtk import unit, openmm
 from simtk.openmm.app import PDBFile, AmberPrmtopFile
 
-from . import utils, pipeline, mpi, restraints, repex, schema
+from . import utils, pipeline, mpi, restraints, schema, multistate
 from .yank import AlchemicalPhase, Topography
 
 logger = logging.getLogger(__name__)
@@ -212,7 +211,7 @@ class AlchemicalPhaseFactory(object):
 
     Parameters
     ----------
-    sampler : yank.repex.ReplicaExchange
+    sampler : yank.sampling.ReplicaExchangeSampler
         Sampler which will carry out the simulation
     thermodynamic_state : openmmtools.states.ThermodynamicState
         Reference thermodynamic state without any alchemical modifications
@@ -231,9 +230,9 @@ class AlchemicalPhaseFactory(object):
 
         Each of the ``parameter_values`` lists for every ``parameter_name`` should be the same length.
 
-    storage : yank.repex.Reporter or str
+    storage : yank.sampling.MultiStateReporter or str
         Reporter object to use, or file path to create the reporter at
-        Will be a :class:`yank.repex.Reporter` internally if str is given
+        Will be a :class:`yank.multistate.MultiStateReporter` internally if str is given
     restraint : yank.restraint.ReceptorLigandRestraint or None, Optional, Default: None
         Optional restraint to apply to the system
     alchemical_regions : openmmtools.alchemy.AlchemicalRegion or None, Optional, Default: None
@@ -315,8 +314,8 @@ class AlchemicalPhaseFactory(object):
             else:
                 solute_atoms = ()
             # We don't allow checkpoint file overwriting in YAML file
-            reporter = repex.Reporter(self.storage, checkpoint_interval=checkpoint_interval,
-                                      analysis_particle_indices=solute_atoms)
+            reporter = multistate.MultiStateReporter(self.storage, checkpoint_interval=checkpoint_interval,
+                                                     analysis_particle_indices=solute_atoms)
             create_kwargs['storage'] = reporter
             self.storage = reporter
 
@@ -494,7 +493,7 @@ class Experiment(object):
                 iterations_to_run = min(iterations_left[phase_id], switch_phase_interval)
                 try:
                     alchemical_phase.run(n_iterations=iterations_to_run)
-                except utils.SimulationNaNError:
+                except multistate.SimulationNaNError:
                     # Simulation has NaN'd, this experiment is done, flag phases as done and send error up stack
                     self._are_phases_completed = [True] * len(self._are_phases_completed)
                     raise
@@ -1007,7 +1006,7 @@ class ExperimentBuilder(object):
 
         experiment_options = _filter_options(self.EXPERIMENT_DEFAULT_OPTIONS)
         phase_options = _filter_options(AlchemicalPhaseFactory.DEFAULT_OPTIONS)
-        sampler_options = _filter_options(repex.ReplicaExchange.default_options())
+        sampler_options = _filter_options(multistate.ReplicaExchangeSampler.default_options())
         alchemical_region_options = _filter_options(mmtools.alchemy._ALCHEMICAL_REGION_ARGS)
 
         return experiment_options, phase_options, sampler_options, alchemical_region_options
@@ -1196,7 +1195,7 @@ class ExperimentBuilder(object):
         template_options = cls.EXPERIMENT_DEFAULT_OPTIONS.copy()
         template_options.update(AlchemicalPhaseFactory.DEFAULT_OPTIONS)
         template_options.update(mmtools.alchemy._ALCHEMICAL_REGION_ARGS)
-        template_options.update(repex.ReplicaExchange.default_options())
+        template_options.update(multistate.ReplicaExchangeSampler.default_options())
 
         if validate_general_options is True:
             template_options.update(cls.GENERAL_DEFAULT_OPTIONS.copy())
@@ -2387,10 +2386,11 @@ class ExperimentBuilder(object):
 
         """
         class DummyReporter(object):
-            """A dummy reporter since we don't need to store repex stuff on disk."""
+            """A dummy reporter since we don't need to store MultiState stuff on disk."""
             def nothing(self, *args, **kwargs):
                 """This serves both as an attribute and a callable."""
                 pass
+
             def __getattr__(self, _):
                 return self.nothing
 
@@ -2818,7 +2818,7 @@ class ExperimentBuilder(object):
                                                                    reassign_velocities=True,
                                                                    n_restart_attempts=6))
             mcmc_move = mmtools.mcmc.SequenceMove(move_list=move_list)
-            sampler = repex.ReplicaExchange(mcmc_moves=mcmc_move, **sampler_opts)
+            sampler = multistate.ReplicaExchangeSampler(mcmc_moves=mcmc_move, **sampler_opts)
 
             # Create phases.
             phases[phase_idx] = AlchemicalPhaseFactory(sampler, thermodynamic_state, sampler_state,
@@ -2871,7 +2871,7 @@ class ExperimentBuilder(object):
         # Trap a NaN'd simulation by capturing only the error we can handle, let all others raise normally
         try:
             built_experiment.run(n_iterations=switch_experiment_interval)
-        except utils.SimulationNaNError:
+        except multistate.SimulationNaNError:
             # Print out to critical logger.
             nan_warning_string = ('\n\n'  # Initial blank line for spacing.
                                   '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n'

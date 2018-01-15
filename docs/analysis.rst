@@ -148,8 +148,9 @@ binary to be on the current system path).
 Programmatic Analysis
 ^^^^^^^^^^^^^^^^^^^^^
 
-The full :doc:`analyze module's API <api/analyze_api>` provides extensible, granular access to the analysis suite.
+The full :doc:`analyze module's API <api/multistate_api/analyzers_api>` provides extensible, granular access to the analysis suite.
 This is helpful if you want to add new analysis methods, manipulate the data yourself, or integrate the analysis tools
-into your own code. Simply ``import yank.analyze`` into your code and use the :doc:`API <api/analyze_api>` to your
-own desire. Should you find that you want your changes permanently added to YANK, feel free to
+into your own code. Simply ``import yank.analyze`` into your code and use the
+:doc:`API <api/multistate_api/analyzers_api>` to your own desire. Should you find that you want your changes permanently
+added to YANK, feel free to
 `open a pull request on GitHub <https://github.com/choderalab/yank/pulls>`_ to start the conversation and consideration!
