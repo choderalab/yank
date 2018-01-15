@@ -277,8 +277,8 @@ def find_alchemical_counterions(system, topography, region_name):
         return []
 
     # Find net charge of all ions in the system.
-    ions_net_charges = {ion_id: compute_net_charge(system, [ion_id])
-                        for ion_id in topography.ions_atoms}
+    ions_net_charges = [(ion_id, compute_net_charge(system, [ion_id]))
+                        for ion_id in topography.ions_atoms]
     topology = topography.topology
     ions_names_charges = [(topology.atom(ion_id).residue.name, ions_net_charges[ion_id])
                           for ion_id in ions_net_charges]
@@ -286,7 +286,7 @@ def find_alchemical_counterions(system, topography, region_name):
 
     # Find minimal subset of counterions whose charges sums to -mol_net_charge.
     for n_ions in range(1, len(ions_net_charges) + 1):
-        for ion_subset in itertools.combinations(ions_net_charges.items(), n_ions):
+        for ion_subset in itertools.combinations(ions_net_charges, n_ions):
             counterions_indices, counterions_charges = zip(*ion_subset)
             if sum(counterions_charges) == -mol_net_charge:
                 return counterions_indices
