@@ -419,6 +419,23 @@ class ReceptorLigandRestraint(ABC):
         raise NotImplementedError('{} does not support automatic determination of the '
                                   'restraint parameters'.format(self.__class__.__name__))
 
+    @classmethod
+    def _add_force_in_separate_group(cls, system, restraint_force):
+        """Add the force to the System in a separate force group when possible."""
+        # OpenMM supports a maximum of 32 force groups.
+        available_force_groups = set(range(32))
+        for force in system.getForces():
+            available_force_groups.discard(force.getForceGroup())
+
+        # If the System is full, just separate the force from nonbonded interactions.
+        if len(available_force_groups) == 0:
+            nonbonded_force = mmtools.forces.find_nonbonded_force(system)
+            available_force_groups = set(range(32))
+            available_force_groups.discard(nonbonded_force.getForceGroup())
+
+        restraint_force.setForceGroup(min(available_force_groups))
+        system.addForce(restraint_force)
+
 
 class _RestrainedAtomsProperty(object):
     """
@@ -587,7 +604,7 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
 
         # Get a copy of the system of the ThermodynamicState, modify it and set it back.
         system = thermodynamic_state.system
-        system.addForce(restraint_force)
+        self._add_force_in_separate_group(system, restraint_force)
         thermodynamic_state.system = system
 
     def get_standard_state_correction(self, thermodynamic_state):
@@ -1548,7 +1565,7 @@ class Boresch(ReceptorLigandRestraint):
 
         # Get a copy of the system of the ThermodynamicState, modify it and set it back.
         system = thermodynamic_state.system
-        system.addForce(restraint_force)
+        self._add_force_in_separate_group(system, restraint_force)
         thermodynamic_state.system = system
 
     def get_standard_state_correction(self, thermodynamic_state):
