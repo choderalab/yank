@@ -301,6 +301,36 @@ class RestraintState(object):
         for force, parameter_id in cls._get_system_forces_parameters(system):
             force.setGlobalParameterDefaultValue(parameter_id, 1.0)
 
+    def _find_force_groups_to_update(self, context, current_context_state):
+        """Find the force groups whose energy must be recomputed after applying self.
+
+        Parameters
+        ----------
+        context : Context
+            The context, currently in `current_context_state`, that will
+            be moved to this state.
+        current_context_state : ThermodynamicState
+            The full thermodynamic state of the given context. This is
+            guaranteed to be compatible with self.
+
+        Returns
+        -------
+        force_groups_to_update : set of int
+            The indices of the force groups whose energy must be computed
+            again after applying this state, assuming the context to be in
+            `current_context_state`.
+        """
+        # Check if lambda_restraints will change.
+        if self.lambda_restraints == current_context_state.lambda_restraints:
+            return set()
+
+        # Find all the force groups that need to be updated.
+        force_groups_to_update = set()
+        system = context.getSystem()
+        for force, _ in self._get_system_forces_parameters(system):
+            force_groups_to_update.add(force.getForceGroup())
+        return force_groups_to_update
+
     @staticmethod
     def _get_system_forces_parameters(system):
         """Yields the system's forces having a ``lambda_restraints`` parameter.

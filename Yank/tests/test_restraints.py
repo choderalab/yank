@@ -466,6 +466,24 @@ class TestRestraintState(object):
             with nose.tools.assert_raises(yank.restraints.RestraintStateError):
                 compound_state.system = unrestrained_system
 
+    def test_find_force_groups_to_update(self):
+        integrator = openmm.VerletIntegrator(1.0*unit.femtosecond)
+        for compound_state in self.get_restraint_cases():
+            context = compound_state.create_context(copy.deepcopy(integrator))
+
+            # Find the restraint force group.
+            system = context.getSystem()
+            force, _ = next(yank.restraints.RestraintState._get_system_forces_parameters(system))
+            force_group = force.getForceGroup()
+
+            # No force group should be updated if we don't move.
+            assert compound_state._find_force_groups_to_update(context, compound_state) == set()
+
+            # We need to update the force if the current state changes.
+            compound_state2 = copy.deepcopy(compound_state)
+            compound_state2.lambda_restraints = 0.5
+            assert compound_state._find_force_groups_to_update(context, compound_state2) == {force_group}
+
 
 # ==============================================================================
 # MAIN
