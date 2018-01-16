@@ -1964,13 +1964,13 @@ def test_alchemical_phase_factory_building():
 
         # AbsoluteAlchemicalFactory options.
         template_script['options']['alchemical_pme_treatment'] = 'exact'
-        template_script['options']['disable_alchemical_dispersion_correction'] = True
 
         # Test that options are passed to AlchemicalPhaseFactory correctly.
         exp_builder = ExperimentBuilder(script=template_script)
         for experiment in exp_builder.build_experiments():
             for phase_factory in experiment.phases:
                 assert phase_factory.alchemical_factory.alchemical_pme_treatment == 'exact'
+                # Overwrite AbsoluteAlchemicalFactory default for disable_alchemical_dispersion_correction.
                 assert phase_factory.alchemical_factory.disable_alchemical_dispersion_correction == True
 
 

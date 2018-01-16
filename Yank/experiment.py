@@ -1234,13 +1234,24 @@ class ExperimentBuilder(object):
                                'number_of_iterations': integer_or_infinity,
                                'anisotropic_dispersion_cutoff': check_anisotropic_cutoff}
 
-        # Validate parameters
+        # Validate parameters.
         try:
             validated_options = utils.validate_parameters(options, template_options, check_unknown=True,
                                                           process_units_str=True, float_to_int=True,
                                                           special_conversions=special_conversions)
         except (TypeError, ValueError) as e:
             raise YamlParseError(str(e))
+
+        # Overwrite defaults.
+        defaults_to_overwrite = {
+            # With the analytical dispersion correction for alchemical atoms,
+            # the computation of the energy matrix becomes super slow.
+            'disable_alchemical_dispersion_correction': True,
+        }
+        for option, default_value in defaults_to_overwrite.items():
+            if option not in validated_options:
+                validated_options[option] = default_value
+
         return validated_options
 
     @classmethod
