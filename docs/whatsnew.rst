@@ -6,6 +6,13 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the GitHub yank releases page <https://github.com/choderalab/yank/releases>`_.
 
+0.20.1 Alchemical factory options and fast computation of the energy matrix
+---------------------------------------------------------------------------
+- Allow user to specify options for ``openmmtools.alchemy.AbsoluteAlchemicalFactory`` in the YAML file. In particular,
+  this introduces exact treatment of PME electrostatics for charged ligands. `[docs] <http://getyank.org/latest/yamlpages/options.html#alchemical_pme_treatment>`_
+- Major optimization of the computation of the energy matrix.
+- Bump minimum required version of ``openmmtools`` to ``0.13.5``.
+
 0.20.0 Support for processing proteins through PDBFixer
 -------------------------------------------------------
 - Adds an optional ``pdbfixer`` directive to the ``molecules`` section of the YAML file
