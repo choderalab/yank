@@ -301,7 +301,7 @@ class RestraintState(object):
         for force, parameter_id in cls._get_system_forces_parameters(system):
             force.setGlobalParameterDefaultValue(parameter_id, 1.0)
 
-    def _find_force_groups_to_update(self, context, current_context_state):
+    def _find_force_groups_to_update(self, context, current_context_state, memo):
         """Find the force groups whose energy must be recomputed after applying self.
 
         Parameters
@@ -312,6 +312,9 @@ class RestraintState(object):
         current_context_state : ThermodynamicState
             The full thermodynamic state of the given context. This is
             guaranteed to be compatible with self.
+        memo : dict
+            A dictionary that can be used by the state for memoization
+            to speed up consecutive calls on the same context.
 
         Returns
         -------
@@ -324,12 +327,12 @@ class RestraintState(object):
         if self.lambda_restraints == current_context_state.lambda_restraints:
             return set()
 
-        # Find all the force groups that need to be updated.
-        force_groups_to_update = set()
-        system = context.getSystem()
-        for force, _ in self._get_system_forces_parameters(system):
-            force_groups_to_update.add(force.getForceGroup())
-        return force_groups_to_update
+        # Update memo if this is the first call for this context.
+        if len(memo) == 0:
+            system = context.getSystem()
+            for force, _ in self._get_system_forces_parameters(system):
+                memo['lambda_restraints'] = force.getForceGroup()
+        return {memo['lambda_restraints']}
 
     @staticmethod
     def _get_system_forces_parameters(system):
@@ -354,6 +357,7 @@ class RestraintState(object):
                 if parameter_name == 'lambda_restraints':
                     found_restraint = True
                     yield force, parameter_id
+                    break
 
         # Raise error if the system doesn't have a restraint.
         if found_restraint is False:
