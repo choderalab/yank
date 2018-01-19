@@ -11,7 +11,8 @@ The full release history can be viewed `at the GitHub yank releases page <https:
 - Allow user to specify options for ``openmmtools.alchemy.AbsoluteAlchemicalFactory`` in the YAML file. In particular,
   this introduces exact treatment of PME electrostatics for charged ligands. `[docs] <http://getyank.org/latest/yamlpages/options.html#alchemical_pme_treatment>`_
 - Major optimization of the computation of the energy matrix.
-- Bump minimum required version of ``openmmtools`` to ``0.13.5``.
+- Added the option ``max_n_contexts``. `[docs] <http://getyank.org/latest/yamlpages/options.html#max_n_contexts>`_
+- Bumped minimum required version of ``openmmtools`` to ``0.14.0``.
 
 0.20.0 Support for processing proteins through PDBFixer
 -------------------------------------------------------
