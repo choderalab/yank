@@ -280,8 +280,7 @@ class RestraintState(object):
         except Exception:
             raise RestraintStateError('The context does not have a restraint.')
 
-    @classmethod
-    def _standardize_system(cls, system):
+    def _standardize_system(self, system):
         """Standardize the given system.
 
         Set lambda_restraints of the system to 1.0.
@@ -298,8 +297,28 @@ class RestraintState(object):
 
         """
         # Set lambda_restraints to 1.0 in all forces that have it.
-        for force, parameter_id in cls._get_system_forces_parameters(system):
+        for force, parameter_id in self._get_system_forces_parameters(system):
             force.setGlobalParameterDefaultValue(parameter_id, 1.0)
+
+    def _on_setattr(self, standard_system, attribute_name):
+        """Check if the standard system needs changes after a state attribute is set.
+
+        Parameters
+        ----------
+        standard_system : simtk.openmm.System
+            The standard system before setting the attribute.
+        attribute_name : str
+            The name of the attribute that has just been set or retrieved.
+
+        Returns
+        -------
+        need_changes : bool
+            True if the standard system has to be updated, False if no change
+            occurred.
+
+        """
+        # There are no attributes that can be set that can alter the standard system.
+        return False
 
     def _find_force_groups_to_update(self, context, current_context_state, memo):
         """Find the force groups whose energy must be recomputed after applying self.
