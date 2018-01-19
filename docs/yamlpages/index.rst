@@ -41,6 +41,7 @@ Detailed Options List
     * :ref:`experiments_dir <yaml_options_experiments_dir>`
     * :ref:`platform <yaml_options_platform>`
     * :ref:`precision <yaml_options_precision>`
+    * :ref:`max_n_contexts <yaml_options_max_n_contexts>`
     * :ref:`switch_experiment_interval <yaml_options_switch_experiment_interval>`
     * :ref:`processes_per_experiment <yaml_options_processes_per_experiment>`
 

@@ -175,6 +175,23 @@ Valid options: [auto]/double/mixed/single
 
 
 
+.. _yaml_options_max_n_contexts:
+
+.. rst-class:: html-toggle
+
+``max_n_contexts``
+------------------
+.. code-block:: yaml
+
+   options:
+     max_n_contexts: 3
+
+The maximum number of GPU contexts that can be in memory during the simulation. In general, YANK does not need more
+than 3 contexts.
+
+Valid options (3): <Integer>
+
+
 
 .. _yaml_options_switch_experiment_interval:
 
