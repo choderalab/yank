@@ -1121,7 +1121,7 @@ class TestReplicaExchange(object):
                 states = reporter.read_sampler_states(i)
                 assert type(energies) is np.ndarray
                 if reporter._calculate_checkpoint_iteration(i) is not None:
-                    assert type(states[0].positions) is unit.Quantity
+                    assert type(states[0].positions) is mmtools.utils.TrackedQuantity
                 else:
                     assert states is None
 
