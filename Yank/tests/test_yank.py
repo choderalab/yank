@@ -417,7 +417,8 @@ class TestAlchemicalPhase(object):
         name, thermodynamic_state, sampler_state, topography = self.host_guest_implicit
         protocol = {
             'lambda_sterics': [0.0, 0.5, 1.0],
-            'temperature': [300, 320, 300] * unit.kelvin
+            'temperature': [300, 320, 300] * unit.kelvin,
+            'update_alchemical_charges': [True, True, False]
         }
         alchemical_phase = AlchemicalPhase(sampler=ReplicaExchange())
         with self.temporary_storage_path() as storage_path:

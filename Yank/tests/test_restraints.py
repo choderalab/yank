@@ -66,6 +66,19 @@ class HostGuestNoninteracting(testsystems.HostGuestVacuum):
                          for index in range(self.system.getNumForces())}
         self.system.removeForce(force_indices['NonbondedForce'])
 
+    @staticmethod
+    def build_test_case():
+        """Create a new ThermodynamicState, SamplerState and Topography."""
+        # Create a test system
+        t = HostGuestNoninteracting()
+
+        # Create states and topography encoding the info to determine the parameters.
+        topography = Topography(t.topology, ligand_atoms='resname B2')
+        sampler_state = states.SamplerState(positions=t.positions)
+        thermodynamic_state = states.ThermodynamicState(system=t.system, temperature=300.0*unit.kelvin)
+        return thermodynamic_state, sampler_state, topography
+
+
 expected_restraints = {
     'Harmonic': yank.restraints.Harmonic,
     'FlatBottom': yank.restraints.FlatBottom,
@@ -342,22 +355,44 @@ def test_available_restraint_classes():
 
 def test_restraint_dispatch():
     """Test dispatch of various restraint types."""
+    thermodynamic_state, sampler_state, topography = HostGuestNoninteracting.build_test_case()
     for restraint_type, restraint_class in expected_restraints.items():
-        # Create a test system
-        t = HostGuestNoninteracting()
-
-        # Create states and topography encoding the info to determine the parameters.
-        topography = Topography(t.topology, ligand_atoms='resname B2')
-        sampler_state = states.SamplerState(positions=t.positions)
-        thermodynamic_state = states.ThermodynamicState(system=t.system, temperature=300.0*unit.kelvin)
-
         # Add restraints and determine parameters.
+        thermo_state = copy.deepcopy(thermodynamic_state)
         restraint = yank.restraints.create_restraint(restraint_type)
-        restraint.determine_missing_parameters(thermodynamic_state, sampler_state, topography)
+        restraint.determine_missing_parameters(thermo_state, sampler_state, topography)
 
         # Check that we got the right restraint class.
         assert restraint.__class__.__name__ == restraint_type
         assert restraint.__class__ is restraint_class
+
+
+def test_restraint_force_group():
+    "The restraint force should be placed in its own force group for optimization."
+    thermodynamic_state, sampler_state, topography = HostGuestNoninteracting.build_test_case()
+    for restraint_type, restraint_class in expected_restraints.items():
+        # Add restraints and determine parameters.
+        thermo_state = copy.deepcopy(thermodynamic_state)
+        restraint = yank.restraints.create_restraint(restraint_type)
+        restraint.determine_missing_parameters(thermo_state, sampler_state, topography)
+        restraint.restrain_state(thermo_state)
+
+        # Find the force group of the restraint force.
+        system = thermo_state.system
+        for force_idx, force in enumerate(system.getForces()):
+            try:
+                parameter_name = force.getGlobalParameterName(0)
+            except AttributeError:
+                continue
+            if parameter_name == 'lambda_restraints':
+                restraint_force_idx = force_idx
+                restraint_force_group = force.getForceGroup()
+                break
+
+        # No other force should have the same force group.
+        for force_idx, force in enumerate(system.getForces()):
+            if force_idx != restraint_force_idx:
+                assert force.getForceGroup() != restraint_force_group
 
 
 # ==============================================================================
@@ -430,6 +465,24 @@ class TestRestraintState(object):
             # Trying to assign a System without a Restraint raises an error.
             with nose.tools.assert_raises(yank.restraints.RestraintStateError):
                 compound_state.system = unrestrained_system
+
+    def test_find_force_groups_to_update(self):
+        integrator = openmm.VerletIntegrator(1.0*unit.femtosecond)
+        for compound_state in self.get_restraint_cases():
+            context = compound_state.create_context(copy.deepcopy(integrator))
+
+            # Find the restraint force group.
+            system = context.getSystem()
+            force, _ = next(yank.restraints.RestraintState._get_system_forces_parameters(system))
+            force_group = force.getForceGroup()
+
+            # No force group should be updated if we don't move.
+            assert compound_state._find_force_groups_to_update(context, compound_state, memo={}) == set()
+
+            # We need to update the force if the current state changes.
+            compound_state2 = copy.deepcopy(compound_state)
+            compound_state2.lambda_restraints = 0.5
+            assert compound_state._find_force_groups_to_update(context, compound_state2, memo={}) == {force_group}
 
 
 # ==============================================================================

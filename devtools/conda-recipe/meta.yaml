@@ -20,7 +20,7 @@ requirements:
     - netcdf4
     - openmm >=7.1
     - mdtraj >=1.7.2
-    - openmmtools >=0.13.4
+    - openmmtools >=0.14.0
     - pymbar
     - ambermini >=16.16.0
     - docopt
@@ -42,7 +42,7 @@ requirements:
     - netcdf4
     - openmm >=7.1
     - mdtraj >=1.7.2
-    - openmmtools >=0.13.4
+    - openmmtools >=0.14.0
     - pymbar
     - ambermini >=16.16.0
     - docopt

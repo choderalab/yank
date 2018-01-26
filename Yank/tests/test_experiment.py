@@ -316,8 +316,9 @@ def test_yaml_parsing():
     test: 2
     """
     exp_builder = ExperimentBuilder(textwrap.dedent(yaml_content))
+    # The plus 1 is because we overwrite disable_alchemical_dispersion_correction.
     expected_n_options = (len(exp_builder.GENERAL_DEFAULT_OPTIONS) +
-                          len(exp_builder.EXPERIMENT_DEFAULT_OPTIONS))
+                          len(exp_builder.EXPERIMENT_DEFAULT_OPTIONS) + 1)
     assert len(exp_builder._options) == expected_n_options
 
     # Correct parsing
@@ -334,6 +335,7 @@ def test_yaml_parsing():
         precision: mixed
         switch_experiment_interval: -2.0
         processes_per_experiment: 2
+        max_n_contexts: 9
         switch_phase_interval: 32
         temperature: 300*kelvin
         pressure: null
@@ -361,7 +363,10 @@ def test_yaml_parsing():
     """
 
     exp_builder = ExperimentBuilder(textwrap.dedent(yaml_content))
-    assert len(exp_builder._options) == 35
+    assert len(exp_builder._options) == 36
+
+    # The global context cache has been set.
+    assert mmtools.cache.global_context_cache.capacity == 9
 
     # Check correct types
     assert exp_builder._options['output_dir'] == '/path/to/output/'
@@ -1964,13 +1969,13 @@ def test_alchemical_phase_factory_building():
 
         # AbsoluteAlchemicalFactory options.
         template_script['options']['alchemical_pme_treatment'] = 'exact'
-        template_script['options']['disable_alchemical_dispersion_correction'] = True
 
         # Test that options are passed to AlchemicalPhaseFactory correctly.
         exp_builder = ExperimentBuilder(script=template_script)
         for experiment in exp_builder.build_experiments():
             for phase_factory in experiment.phases:
                 assert phase_factory.alchemical_factory.alchemical_pme_treatment == 'exact'
+                # Overwrite AbsoluteAlchemicalFactory default for disable_alchemical_dispersion_correction.
                 assert phase_factory.alchemical_factory.disable_alchemical_dispersion_correction == True
 
 
