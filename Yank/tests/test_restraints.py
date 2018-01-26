@@ -477,12 +477,12 @@ class TestRestraintState(object):
             force_group = force.getForceGroup()
 
             # No force group should be updated if we don't move.
-            assert compound_state._find_force_groups_to_update(context, compound_state) == set()
+            assert compound_state._find_force_groups_to_update(context, compound_state, memo={}) == set()
 
             # We need to update the force if the current state changes.
             compound_state2 = copy.deepcopy(compound_state)
             compound_state2.lambda_restraints = 0.5
-            assert compound_state._find_force_groups_to_update(context, compound_state2) == {force_group}
+            assert compound_state._find_force_groups_to_update(context, compound_state2, memo={}) == {force_group}
 
 
 # ==============================================================================
