@@ -1203,7 +1203,9 @@ class ExperimentBuilder(object):
         template_options = cls.EXPERIMENT_DEFAULT_OPTIONS.copy()
         template_options.update(AlchemicalPhaseFactory.DEFAULT_OPTIONS)
         template_options.update(mmtools.alchemy._ALCHEMICAL_REGION_ARGS)
-        template_options.update(utils.get_keyword_args(multistate.ReplicaExchangeSampler.__init__))
+        sampler = multistate.ReplicaExchangeSampler
+        # Recursive search for calls to __init__ from the sampler structure
+        template_options.update(utils.get_keyword_args(sampler.__init__, try_mro_from_class=sampler))
         template_options.update(utils.get_keyword_args(
             mmtools.alchemy.AbsoluteAlchemicalFactory.__init__))
 
