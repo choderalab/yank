@@ -41,6 +41,7 @@ Detailed Options List
     * :ref:`experiments_dir <yaml_options_experiments_dir>`
     * :ref:`platform <yaml_options_platform>`
     * :ref:`precision <yaml_options_precision>`
+    * :ref:`max_n_contexts <yaml_options_max_n_contexts>`
     * :ref:`switch_experiment_interval <yaml_options_switch_experiment_interval>`
     * :ref:`processes_per_experiment <yaml_options_processes_per_experiment>`
 
@@ -86,6 +87,9 @@ Detailed Options List
     * :ref:`softcore_d <yaml_options_alchemical_electrostatics>`
     * :ref:`softcore_e <yaml_options_alchemical_electrostatics>`
     * :ref:`softcore_f <yaml_options_alchemical_electrostatics>`
+    * :ref:`alchemical_pme_treatment <yaml_options_alchemical_pme_treatment>`
+    * :ref:`disable_alchemical_dispersion_correction <yaml_options_disable_alchemical_dispersion_correction>`
+    * :ref:`split_alchemical_forces <yaml_options_split_alchemical_forces>`
 
   * :ref:`Online Analysis Parameters <yaml_options_online_analysis_parameters>`
 

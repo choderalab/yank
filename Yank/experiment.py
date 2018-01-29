@@ -211,7 +211,7 @@ class AlchemicalPhaseFactory(object):
 
     Parameters
     ----------
-    sampler : yank.sampling.ReplicaExchangeSampler
+    sampler : yank.multistate.ReplicaExchangeSampler
         Sampler which will carry out the simulation
     thermodynamic_state : openmmtools.states.ThermodynamicState
         Reference thermodynamic state without any alchemical modifications
@@ -230,7 +230,7 @@ class AlchemicalPhaseFactory(object):
 
         Each of the ``parameter_values`` lists for every ``parameter_name`` should be the same length.
 
-    storage : yank.sampling.MultiStateReporter or str
+    storage : yank.multistate.MultiStateReporter or str
         Reporter object to use, or file path to create the reporter at
         Will be a :class:`yank.multistate.MultiStateReporter` internally if str is given
     restraint : yank.restraint.ReceptorLigandRestraint or None, Optional, Default: None
@@ -432,7 +432,7 @@ class Experiment(object):
 
     def run(self, n_iterations=None):
         """
-        Run the experiment
+        Run the experiment.
 
         Runs until either the maximum number of iterations have been reached or the sampler
         for that phase reports its own completion (e.g. online analysis)
@@ -451,6 +451,8 @@ class Experiment(object):
         # Handle case in which we don't alternate between phases.
         if self.switch_phase_interval <= 0:
             switch_phase_interval = self.number_of_iterations
+        else:
+            switch_phase_interval = self.switch_phase_interval
 
         # Count down the iterations to run.
         iterations_left = [None, None]
@@ -607,6 +609,7 @@ class ExperimentBuilder(object):
         'experiments_dir': 'experiments',
         'platform': 'fastest',
         'precision': 'auto',
+        'max_n_contexts': 3,
         'switch_experiment_interval': 0,
         'processes_per_experiment': None
     }
@@ -760,7 +763,7 @@ class ExperimentBuilder(object):
             # The cache has been already used. Empty it before switching platform.
             mmtools.cache.global_context_cache.empty()
             mmtools.cache.global_context_cache.platform = platform
-        mmtools.cache.global_context_cache.capacity = 3
+        mmtools.cache.global_context_cache.capacity = self._options['max_n_contexts']
 
         # Initialize and configure database with molecules, solvents and systems
         setup_dir = os.path.join(self._options['output_dir'], self._options['setup_dir'])
@@ -888,7 +891,7 @@ class ExperimentBuilder(object):
 
         for experiment_idx, (exp_path, exp_description) in enumerate(self._expand_experiments()):
             # Determine the final number of iterations for this experiment.
-            _, _, sampler_options, _ = self._determine_experiment_options(exp_description)
+            _, _, sampler_options, _, _ = self._determine_experiment_options(exp_description)
             number_of_iterations = sampler_options['number_of_iterations']
 
             # Determine the phases status.
@@ -990,6 +993,8 @@ class ExperimentBuilder(object):
             The options to pass to the ReplicaExchange constructor.
         alchemical_region_options : dict
             The options to pass to AlchemicalRegion.
+        alchemical_factory_options : dict
+            The options to pass to AlchemicalFactory.
 
         """
         # First discard general options.
@@ -1008,8 +1013,11 @@ class ExperimentBuilder(object):
         phase_options = _filter_options(AlchemicalPhaseFactory.DEFAULT_OPTIONS)
         sampler_options = _filter_options(multistate.ReplicaExchangeSampler.default_options())
         alchemical_region_options = _filter_options(mmtools.alchemy._ALCHEMICAL_REGION_ARGS)
+        alchemical_factory_options = _filter_options(utils.get_keyword_args(
+            mmtools.alchemy.AbsoluteAlchemicalFactory.__init__))
 
-        return experiment_options, phase_options, sampler_options, alchemical_region_options
+        return (experiment_options, phase_options, sampler_options,
+                alchemical_region_options, alchemical_factory_options)
 
     # --------------------------------------------------------------------------
     # Combinatorial expansion
@@ -1195,7 +1203,9 @@ class ExperimentBuilder(object):
         template_options = cls.EXPERIMENT_DEFAULT_OPTIONS.copy()
         template_options.update(AlchemicalPhaseFactory.DEFAULT_OPTIONS)
         template_options.update(mmtools.alchemy._ALCHEMICAL_REGION_ARGS)
-        template_options.update(multistate.ReplicaExchangeSampler.default_options())
+        template_options.update(utils.get_keyword_args(multistate.ReplicaExchangeSampler.__init__))
+        template_options.update(utils.get_keyword_args(
+            mmtools.alchemy.AbsoluteAlchemicalFactory.__init__))
 
         if validate_general_options is True:
             template_options.update(cls.GENERAL_DEFAULT_OPTIONS.copy())
@@ -1205,6 +1215,7 @@ class ExperimentBuilder(object):
         template_options.pop('alchemical_bonds')
         template_options.pop('alchemical_angles')
         template_options.pop('alchemical_torsions')
+        template_options.pop('switch_width')  # AbsoluteAlchemicalFactory
 
         # Some options need to be treated differently.
         def integer_or_infinity(value):
@@ -1222,13 +1233,24 @@ class ExperimentBuilder(object):
                                'number_of_iterations': integer_or_infinity,
                                'anisotropic_dispersion_cutoff': check_anisotropic_cutoff}
 
-        # Validate parameters
+        # Validate parameters.
         try:
             validated_options = utils.validate_parameters(options, template_options, check_unknown=True,
                                                           process_units_str=True, float_to_int=True,
                                                           special_conversions=special_conversions)
         except (TypeError, ValueError) as e:
             raise YamlParseError(str(e))
+
+        # Overwrite defaults.
+        defaults_to_overwrite = {
+            # With the analytical dispersion correction for alchemical atoms,
+            # the computation of the energy matrix becomes super slow.
+            'disable_alchemical_dispersion_correction': True,
+        }
+        for option, default_value in defaults_to_overwrite.items():
+            if option not in validated_options:
+                validated_options[option] = default_value
+
         return validated_options
 
     @classmethod
@@ -2250,6 +2272,10 @@ class ExperimentBuilder(object):
         else:
             platform = openmm.Platform.getPlatformByName(platform_name)
 
+        # Set CUDA DeterministicForces (necessary for MBAR).
+        if platform_name == 'CUDA':
+            platform.setPropertyDefaultValue('DeterministicForces', 'true')
+
         # Use only a single CPU thread if we are using the CPU platform.
         # TODO: Since there is an environment variable that can control this,
         # TODO: we may want to avoid doing this.
@@ -2634,11 +2660,15 @@ class ExperimentBuilder(object):
 
         # Get and validate experiment sub-options and divide them by class.
         exp_opts = self._determine_experiment_options(experiment)
-        exp_opts, phase_opts, sampler_opts, alchemical_region_opts = exp_opts
+        (exp_opts, phase_opts, sampler_opts,
+         alchemical_region_opts, alchemical_factory_opts) = exp_opts
 
         # Configure logger file for this experiment.
         experiment_log_file_path = self._get_experiment_log_path(experiment_path)
         utils.config_root_logger(self._options['verbose'], experiment_log_file_path)
+
+        # Initialize alchemical factory.
+        alchemical_factory = mmtools.alchemy.AbsoluteAlchemicalFactory(**alchemical_factory_opts)
 
         # Get ligand resname for alchemical atom selection. If we can't
         # find it, this is a solvation free energy calculation.
@@ -2824,7 +2854,7 @@ class ExperimentBuilder(object):
             phases[phase_idx] = AlchemicalPhaseFactory(sampler, thermodynamic_state, sampler_state,
                                                        topography, phase_protocol, storage=phase_path,
                                                        restraint=restraint, alchemical_regions=alchemical_region,
-                                                       **phase_opts)
+                                                       alchemical_factory=alchemical_factory, **phase_opts)
 
         # Dump analysis script
         results_dir = self._get_experiment_dir(experiment_path)

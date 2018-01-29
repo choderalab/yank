@@ -280,8 +280,7 @@ class RestraintState(object):
         except Exception:
             raise RestraintStateError('The context does not have a restraint.')
 
-    @classmethod
-    def _standardize_system(cls, system):
+    def _standardize_system(self, system):
         """Standardize the given system.
 
         Set lambda_restraints of the system to 1.0.
@@ -298,8 +297,61 @@ class RestraintState(object):
 
         """
         # Set lambda_restraints to 1.0 in all forces that have it.
-        for force, parameter_id in cls._get_system_forces_parameters(system):
+        for force, parameter_id in self._get_system_forces_parameters(system):
             force.setGlobalParameterDefaultValue(parameter_id, 1.0)
+
+    def _on_setattr(self, standard_system, attribute_name):
+        """Check if the standard system needs changes after a state attribute is set.
+
+        Parameters
+        ----------
+        standard_system : simtk.openmm.System
+            The standard system before setting the attribute.
+        attribute_name : str
+            The name of the attribute that has just been set or retrieved.
+
+        Returns
+        -------
+        need_changes : bool
+            True if the standard system has to be updated, False if no change
+            occurred.
+
+        """
+        # There are no attributes that can be set that can alter the standard system.
+        return False
+
+    def _find_force_groups_to_update(self, context, current_context_state, memo):
+        """Find the force groups whose energy must be recomputed after applying self.
+
+        Parameters
+        ----------
+        context : Context
+            The context, currently in `current_context_state`, that will
+            be moved to this state.
+        current_context_state : ThermodynamicState
+            The full thermodynamic state of the given context. This is
+            guaranteed to be compatible with self.
+        memo : dict
+            A dictionary that can be used by the state for memoization
+            to speed up consecutive calls on the same context.
+
+        Returns
+        -------
+        force_groups_to_update : set of int
+            The indices of the force groups whose energy must be computed
+            again after applying this state, assuming the context to be in
+            `current_context_state`.
+        """
+        # Check if lambda_restraints will change.
+        if self.lambda_restraints == current_context_state.lambda_restraints:
+            return set()
+
+        # Update memo if this is the first call for this context.
+        if len(memo) == 0:
+            system = context.getSystem()
+            for force, _ in self._get_system_forces_parameters(system):
+                memo['lambda_restraints'] = force.getForceGroup()
+        return {memo['lambda_restraints']}
 
     @staticmethod
     def _get_system_forces_parameters(system):
@@ -324,6 +376,7 @@ class RestraintState(object):
                 if parameter_name == 'lambda_restraints':
                     found_restraint = True
                     yield force, parameter_id
+                    break
 
         # Raise error if the system doesn't have a restraint.
         if found_restraint is False:
@@ -418,6 +471,23 @@ class ReceptorLigandRestraint(ABC):
         """
         raise NotImplementedError('{} does not support automatic determination of the '
                                   'restraint parameters'.format(self.__class__.__name__))
+
+    @classmethod
+    def _add_force_in_separate_group(cls, system, restraint_force):
+        """Add the force to the System in a separate force group when possible."""
+        # OpenMM supports a maximum of 32 force groups.
+        available_force_groups = set(range(32))
+        for force in system.getForces():
+            available_force_groups.discard(force.getForceGroup())
+
+        # If the System is full, just separate the force from nonbonded interactions.
+        if len(available_force_groups) == 0:
+            nonbonded_force = mmtools.forces.find_nonbonded_force(system)
+            available_force_groups = set(range(32))
+            available_force_groups.discard(nonbonded_force.getForceGroup())
+
+        restraint_force.setForceGroup(min(available_force_groups))
+        system.addForce(restraint_force)
 
 
 class _RestrainedAtomsProperty(object):
@@ -587,7 +657,7 @@ class RadiallySymmetricRestraint(ReceptorLigandRestraint):
 
         # Get a copy of the system of the ThermodynamicState, modify it and set it back.
         system = thermodynamic_state.system
-        system.addForce(restraint_force)
+        self._add_force_in_separate_group(system, restraint_force)
         thermodynamic_state.system = system
 
     def get_standard_state_correction(self, thermodynamic_state):
@@ -1548,7 +1618,7 @@ class Boresch(ReceptorLigandRestraint):
 
         # Get a copy of the system of the ThermodynamicState, modify it and set it back.
         system = thermodynamic_state.system
-        system.addForce(restraint_force)
+        self._add_force_in_separate_group(system, restraint_force)
         thermodynamic_state.system = system
 
     def get_standard_state_correction(self, thermodynamic_state):

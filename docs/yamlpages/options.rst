@@ -175,6 +175,23 @@ Valid options: [auto]/double/mixed/single
 
 
 
+.. _yaml_options_max_n_contexts:
+
+.. rst-class:: html-toggle
+
+``max_n_contexts``
+------------------
+.. code-block:: yaml
+
+   options:
+     max_n_contexts: 3
+
+The maximum number of GPU contexts that can be in memory during the simulation. In general, YANK does not need more
+than 3 contexts.
+
+Valid options (3): <Integer>
+
+
 
 .. _yaml_options_switch_experiment_interval:
 
@@ -839,6 +856,69 @@ Valid Options for ``softcore_beta`` (0.0): <Float>
 
 Valid Options for ``softcore_[d,e,f]`` (1,1,2): <Integer preferred, Float accepted>
 
+
+
+
+.. _yaml_options_alchemical_pme_treatment
+
+.. rst-class:: html-toggle
+
+``alchemical_pme_treatment``
+----------------------------
+.. code-block:: yaml
+
+   options:
+     alchemical_pme_treatment: direct-space
+
+When using PME, by default YANK runs the simulation modeling exclusively the direct space of PME. The reciprocal space
+is taken into account by reweighting the end states (the same reweighting performed for the anisotropic long-range
+dispersion correction). This makes it very fast to compute the energy matrix at each iteration. However, charged ligands
+may have a poor overlap between the direct-space-only and the full PME space. In this case, convergence rates can be
+very long, and it is recommended to use exact treatment of PME electrostatics.
+
+Valid Options: [direct-space]/exact/coulomb
+
+
+
+
+.. _yaml_options_disable_alchemical_dispersion_correction:
+
+.. rst-class:: html-toggle
+
+``disable_alchemical_dispersion_correction``
+--------------------------------------------
+.. code-block:: yaml
+
+   options:
+     disable_alchemical_dispersion_correction: yes
+
+By default, the contribution of the alchemical atoms to the analytical long-range dispersion correction is not included
+to speed up the computation of the energy matrix. This contribution is included in the end states anisotropic long-range
+dispersion correction.
+
+Valid Options: [yes]/no
+
+
+
+
+.. _yaml_options_split_alchemical_forces:
+
+.. rst-class:: html-toggle
+
+``split_alchemical_forces``
+---------------------------
+.. code-block:: yaml
+
+   options:
+     split_alchemical_forces: yes
+
+By default, the alchemical forces are split into their own OpenMM force groups to speed up the computation of the energy
+matrix. If your input system is particularly loaded with forces, and they occupy many force group, you may incur into
+errors during the creation of the alchemical system as OpenMM supports a maximum of 32 force groups. In this case, it is
+recommended to merge some of your forces into a single group. If this is not possible, set this to ``no`` to proceed
+without this optimization.
+
+Valid Options: [yes]/no
 
 .. [1] Quantity strings are of the format: ``<float> * <unit>`` where ``<unit>`` is any valid unit specified in the "Valid Options" for an option. e.g. "<Quantity Length>" indicates any measure of length may be used for <unit> such as nanometer or angstrom.
    Compound units are also parsed such as ``kilogram / meter**3`` for density.
