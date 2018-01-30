@@ -1059,9 +1059,7 @@ def get_keyword_args(function_to_inspect, try_mro_from_class=None):
 
     """
 
-    master_mro_stack = []
-
-    def stack_up_argspec(input_argspec):
+    def extract_kwargs(input_argspec):
         defaults = input_argspec.defaults
         if defaults is None:
             defaults = []
@@ -1076,26 +1074,24 @@ def get_keyword_args(function_to_inspect, try_mro_from_class=None):
         return cycle_kwargs
 
     def build_argspec(input_function, input_cls):
-        priority_argspec = inspect.getfullargspec(input_function)
-        priority_kwargs = stack_up_argspec(priority_argspec)
-        if input_cls is not None and priority_argspec.varkw is not None:
+        agspec = inspect.getfullargspec(input_function)
+        kwargs = extract_kwargs(agspec)
+        if input_cls is not None and agspec.varkw is not None:
             try:
-                trace = inspect.getmro(input_cls)
-                inner_kwargs = {}
-                for cls in trace[1:]:
-                    if cls not in master_mro_stack:
-                        try:
-                            inner_function = getattr(cls, input_function.__name__)
-                            inner_kwargs = {**build_argspec(inner_function, cls), **inner_kwargs}
-                        except AttributeError:
-                            # class of the MRO does not have the
-                            pass
-                        master_mro_stack.append(cls)
+                mro = inspect.getmro(input_cls)
             except AttributeError:
-                # No MRO, input_function is not part of a class
-                inner_kwargs = {}
-            priority_kwargs = {**inner_kwargs, **priority_kwargs}
-        return priority_kwargs
+                # No MRO
+                mro = [input_cls]
+            for cls in mro[1:]:
+                try:
+                    parent_function = getattr(cls, input_function.__name__)
+                except AttributeError:
+                    # Class does not have a method name
+                    pass
+                else:
+                    inner_argspec = inspect.getfullargspec(parent_function)
+                    kwargs = {**extract_kwargs(inner_argspec), **kwargs}
+        return kwargs
 
     kwargs = build_argspec(function_to_inspect, try_mro_from_class)
     return kwargs
