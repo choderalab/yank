@@ -95,7 +95,12 @@ class SAMSSampler(MultiStateSampler):
     Initialize simulation object with options. Run with a GHMC integrator:
 
     >>> move = mcmc.GHMCMove(timestep=2.0*unit.femtoseconds, n_steps=50)
-    >>> simulation = SAMSSampler(mcmc_moves=move, number_of_iterations=2),
+    >>> simulation = SAMSSampler(mcmc_moves=move, number_of_iterations=2,
+    >>>                          update_scheme='restricted-range', locality=5,
+    >>>                          update_stages='two-stage', flatness_threshold=0.2,
+    >>>                          update_method='rao-blackwellized',
+    >>>                          adapt_target_probabilities=False)
+
 
     Create a single-replica SAMS simulation bound to a storage file and run:
 
@@ -103,10 +108,7 @@ class SAMSSampler(MultiStateSampler):
     >>> reporter = MultiStateReporter(storage_path, checkpoint_interval=1)
     >>> simulation.create(thermodynamic_states=thermodynamic_states,
     >>>                   sampler_states=states.SamplerState(testsystem.positions),
-    >>>                   storage=reporter,
-    >>>                   update_scheme='restricted-range', locality=5,
-    >>>                   update_stages='two-stage', update_method='rao-blackwellized',
-    >>>                   adapt_target_probabilities=False)
+    >>>                   storage=reporter)
     >>> simulation.run()  # This runs for a maximum of 2 iterations.
     >>> simulation.iteration
     2
