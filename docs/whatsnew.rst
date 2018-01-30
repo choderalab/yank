@@ -6,6 +6,14 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the GitHub yank releases page <https://github.com/choderalab/yank/releases>`_.
 
+0.Y.Z Support for self-adjusted mixture sampling (SAMS) single-replica calculations
+-----------------------------------------------------------------------------------
+- Multiple multi-state sampling schemes are now available via the YAML file:
+
+  - ``MultiStateSampler``: independent simulations are run at each alchemical state
+  - ``ReplicaExchangeSampler``: replica-exchange among Hamiltonians
+  - ``SAMSSampler``: self-adjusted mixture sampling (SAMS), which can support single-replica calculations
+
 0.20.1 Alchemical factory options and fast computation of the energy matrix
 ---------------------------------------------------------------------------
 - Allow user to specify options for ``openmmtools.alchemy.AbsoluteAlchemicalFactory`` in the YAML file. In particular,
