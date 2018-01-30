@@ -475,7 +475,7 @@ class MultiStateSampler(object):
     # -------------------------------------------------------------------------
 
     _TITLE_TEMPLATE = ('Multi-state sampler simulation created using MultiStateSampler class '
-                       'of yank.repex on {}')
+                       'of yank.multistate on {}')
 
     def create(self, thermodynamic_states, sampler_states, storage,
                initial_thermodynamic_states=None, unsampled_thermodynamic_states=None,
@@ -1070,7 +1070,7 @@ class MultiStateSampler(object):
             file_name = 'iteration{}-replica{}-state{}'.format(self._iteration, replica_id,
                                                                thermodynamic_state_id)
             e.serialize_error(os.path.join(output_dir, file_name))
-            message = ('This Repex simulation threw a NaN!\nLook for error logs in:\n'
+            message = ('This Multistate Sampler simulation threw a NaN!\nLook for error logs in:\n'
                        '\tDirectory: {}\tFile Name Base: {}').format(output_dir, file_name)
             logger.critical(message)
             raise SimulationNaNError(message)
@@ -1149,24 +1149,23 @@ class MultiStateSampler(object):
         # Compute energy for all thermodynamic states.
         for energies, states in [(energy_thermodynamic_states, self._thermodynamic_states),
                                  (energy_unsampled_states, self._unsampled_states)]:
-            for i, state in enumerate(states):
-                # Check if we need to request a new Context.
-                if i == 0 or not state.is_state_compatible(context_state):
-                    context_state = state
+            # Group thermodynamic states by compatibility.
+            compatible_groups, original_indices = mmtools.states.group_by_compatibility(states)
 
-                    # Get the context, any Integrator works.
-                    context, integrator = mmtools.cache.global_context_cache.get_context(state)
+            # Compute the reduced potentials of all the compatible states.
+            for compatible_group, state_indices in zip(compatible_groups, original_indices):
+                # Get the context, any Integrator works.
+                context, integrator = mmtools.cache.global_context_cache.get_context(compatible_group[0])
 
-                    # Update positions and box vectors. We don't need
-                    # to set Context velocities for the potential.
-                    sampler_state.apply_to_context(context, ignore_velocities=True)
-                else:
-                    # If this state is compatible with the context, just fix the
-                    # thermodynamic state as positions/box vectors are the same.
-                    state.apply_to_context(context)
+                # Update positions and box vectors. We don't need
+                # to set Context velocities for the potential.
+                sampler_state.apply_to_context(context, ignore_velocities=True)
 
-                # Compute energy.
-                energies[i] = state.reduced_potential(context)
+                # Compute and update the reduced potentials.
+                compatible_energies = mmtools.states.ThermodynamicState.reduced_potential_at_states(
+                    context, compatible_group)
+                for energy_idx, state_idx in enumerate(state_indices):
+                    energies[state_idx] = compatible_energies[energy_idx]
 
         # Return the new energies.
         return energy_thermodynamic_states, energy_unsampled_states

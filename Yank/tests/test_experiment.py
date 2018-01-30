@@ -316,8 +316,9 @@ def test_yaml_parsing():
     test: 2
     """
     exp_builder = ExperimentBuilder(textwrap.dedent(yaml_content))
+    # The plus 1 is because we overwrite disable_alchemical_dispersion_correction.
     expected_n_options = (len(exp_builder.GENERAL_DEFAULT_OPTIONS) +
-                          len(exp_builder.EXPERIMENT_DEFAULT_OPTIONS))
+                          len(exp_builder.EXPERIMENT_DEFAULT_OPTIONS) + 1)
     assert len(exp_builder._options) == expected_n_options
 
     # Correct parsing
@@ -334,6 +335,7 @@ def test_yaml_parsing():
         precision: mixed
         switch_experiment_interval: -2.0
         processes_per_experiment: 2
+        max_n_contexts: 9
         switch_phase_interval: 32
         temperature: 300*kelvin
         pressure: null
@@ -356,10 +358,15 @@ def test_yaml_parsing():
         replica_mixing_scheme: null
         annihilate_sterics: no
         annihilate_electrostatics: true
+        alchemical_pme_treatment: direct-space
+        disable_alchemical_dispersion_correction: no
     """
 
     exp_builder = ExperimentBuilder(textwrap.dedent(yaml_content))
-    assert len(exp_builder._options) == 33
+    assert len(exp_builder._options) == 36
+
+    # The global context cache has been set.
+    assert mmtools.cache.global_context_cache.capacity == 9
 
     # Check correct types
     assert exp_builder._options['output_dir'] == '/path/to/output/'
@@ -1889,7 +1896,7 @@ def test_setup_multiple_parameters_system():
 # Platform configuration tests
 # ==============================================================================
 
-def test_platform_precision_configuration():
+def test_platform_configuration():
     """Test that the precision for platform is configured correctly."""
     available_platforms = [openmm.Platform.getPlatform(i).getName()
                            for i in range(openmm.Platform.getNumPlatforms())]
@@ -1911,6 +1918,7 @@ def test_platform_precision_configuration():
                 platform = exp_builder._configure_platform(platform_name=platform_name,
                                                             platform_precision=precision)
                 assert platform.getPropertyDefaultValue('CudaPrecision') == precision
+                assert platform.getPropertyDefaultValue('DeterministicForces') == 'true'
             elif platform_name == 'OpenCL':
                 if ExperimentBuilder._opencl_device_support_precision(precision):
                     platform = exp_builder._configure_platform(platform_name=platform_name,
@@ -1943,6 +1951,32 @@ def test_default_platform_precision():
                 assert platform.getPropertyDefaultValue('OpenCLPrecision') == 'mixed'
             else:
                 assert platform.getPropertyDefaultValue('OpenCLPrecision') == 'single'
+
+
+# ==============================================================================
+# Experiment building
+# ==============================================================================
+
+def test_alchemical_phase_factory_building():
+    """Test that options are passed to AlchemicalPhaseFactory correctly."""
+    with mmtools.utils.temporary_directory() as tmp_dir:
+        template_script = get_template_script(tmp_dir)
+
+        # Remove systems we don't need to setup.
+        del template_script['systems']['explicit-system']
+        del template_script['systems']['hydration-system']
+        template_script['experiments']['system'] = 'implicit-system'
+
+        # AbsoluteAlchemicalFactory options.
+        template_script['options']['alchemical_pme_treatment'] = 'exact'
+
+        # Test that options are passed to AlchemicalPhaseFactory correctly.
+        exp_builder = ExperimentBuilder(script=template_script)
+        for experiment in exp_builder.build_experiments():
+            for phase_factory in experiment.phases:
+                assert phase_factory.alchemical_factory.alchemical_pme_treatment == 'exact'
+                # Overwrite AbsoluteAlchemicalFactory default for disable_alchemical_dispersion_correction.
+                assert phase_factory.alchemical_factory.disable_alchemical_dispersion_correction == True
 
 
 # ==============================================================================

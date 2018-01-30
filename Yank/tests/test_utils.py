@@ -158,8 +158,27 @@ def test_get_keyword_args():
     """Test get_keyword_args() function."""
     def f(a, b, c=True, d=3.0):
         pass
-    expected = {'c': True, 'd': 3.0}
-    assert expected == get_keyword_args(f)
+
+    class dummy(object):
+        def __init__(self, an_arg, a_kw_arg=True):
+            pass
+
+    class subdummy(dummy):
+        def __init__(self, *args, my_own_kw=False, **kwargs):
+            super().__init__(*args, **kwargs)
+
+    expected_fn = {'c': True, 'd': 3.0}
+    expected_cls = {"a_kw_arg": True}
+    expected_subcls = {"my_own_kw": False}
+    expected_true_cls = {"my_own_kw": False, "a_kw_arg": True}
+    # Ensure the expected outcome is achieved, both with and without the mro class to search
+    assert expected_fn == get_keyword_args(f)
+    assert expected_fn == get_keyword_args(f, try_mro_from_class=dummy)
+    assert expected_cls == get_keyword_args(dummy.__init__)
+    assert expected_cls == get_keyword_args(dummy.__init__, try_mro_from_class=dummy)
+    assert expected_subcls == get_keyword_args(subdummy.__init__)
+    assert expected_true_cls == get_keyword_args(subdummy.__init__, try_mro_from_class=subdummy)
+
 
 
 def test_validate_parameters():
