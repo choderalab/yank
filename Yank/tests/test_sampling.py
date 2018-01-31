@@ -1512,12 +1512,18 @@ class TestSAMSSampler(TestMultiStateSampler):
     def test_stored_properties(self):
         """Test that storage is kept in sync with options. Unique to SAMSSampler"""
         additional_values = {}
-        for property_name in [
-            'update_scheme', 'locality', 'update_stages', 'update_method', 'adapt_target_probabilities'
-            ]:
-            additional_values.update(self.property_creator(property_name, property_name, None, None))
+        options = {
+            'state_update_scheme' : 'global-jump',
+            'locality' : 5,
+            'update_stages' : 'two-stage',
+            'weight_update_method' : 'rao-blackwellized',
+            'adapt_target_probabilities' : False,
+            }
+        for (name, value) in options.items():
+            additional_values.update(self.property_creator(name, name, value, value))
         self.actual_stored_properties_check(additional_properties=additional_values)
 
+    # TODO: Test all update methods
 
 # ==============================================================================
 # MAIN AND TESTS

@@ -28,6 +28,7 @@ import math
 import logging
 import numpy as np
 import openmmtools as mmtools
+from scipy.misc import logsumexp
 
 from .. import mpi
 from .multistatesampler import MultiStateSampler
@@ -52,13 +53,13 @@ class SAMSSampler(MultiStateSampler):
     ----------
     log_target_probabilities : array-like
         log_target_probabilities[state_index] is the log target probability for state ``state_index``
-    update_scheme : str
+    state_update_scheme : str
         Thermodynamic state sampling scheme. One of ['global-jump', 'local-jump', 'restricted-range']
     locality : int
         Number of neighboring states on either side to consider for local update schemes
     update_stages : str
         Number of stages to use for update. One of ['one-stage', 'two-stage']
-    update_method : str
+    weight_update_method : str
         Method to use for updating log weights in SAMS. One of ['optimal', 'rao-blackwellized']
     adapt_target_probabilities : bool
             If True, target probabilities will be adapted to achieve minimal thermodynamic length between terminal thermodynamic states.
@@ -96,9 +97,9 @@ class SAMSSampler(MultiStateSampler):
 
     >>> move = mcmc.GHMCMove(timestep=2.0*unit.femtoseconds, n_steps=50)
     >>> simulation = SAMSSampler(mcmc_moves=move, number_of_iterations=2,
-    >>>                          update_scheme='restricted-range', locality=5,
+    >>>                          state_update_scheme='restricted-range', locality=5,
     >>>                          update_stages='two-stage', flatness_threshold=0.2,
-    >>>                          update_method='rao-blackwellized',
+    >>>                          weight_update_method='rao-blackwellized',
     >>>                          adapt_target_probabilities=False)
 
 
@@ -151,9 +152,9 @@ class SAMSSampler(MultiStateSampler):
 
     def __init__(self,
                 log_target_probabilities=None,
-                update_scheme='restricted-range', locality=5,
+                state_update_scheme='restricted-range', locality=5,
                 update_stages='two-stage', flatness_threshold=0.2,
-                update_method='rao-blackwellized',
+                weight_update_method='rao-blackwellized',
                 adapt_target_probabilities=False,
                 **kwargs):
         """Initialize a SAMS sampler.
@@ -164,7 +165,7 @@ class SAMSSampler(MultiStateSampler):
             ``log_target_probabilities[state_index]`` is the log target probability for thermodynamic state ``state_index``
             When converged, each state should be sampled with the specified log probability.
             If None, uniform probabilities for all states will be assumed.
-        update_scheme : str, optional, default='global-jump'
+        state_update_scheme : str, optional, default='global-jump'
             Specifies the scheme used to sample new thermodynamic states given fixed sampler states.
             One of ['global-jump', 'local-jump', 'restricted-range']
             ``global_jump`` will allow the sampler to access any thermodynamic state
@@ -178,7 +179,7 @@ class SAMSSampler(MultiStateSampler):
             ``two-stage`` will use a heuristic first stage to achieve flat histograms before switching to the asymptotically optimal scheme
         flatness_threshold : float, optiona, default=0.2
             Histogram relative flatness threshold to use for first stage of two-stage scheme.
-        update_method : str, optional, default='rao-blackwellized'
+        weight_update_method : str, optional, default='rao-blackwellized'
             Method to use for updating log weights in SAMS. One of ['optimal', 'rao-blackwellized']
             ``rao-blackwellized`` will update log free energy estimate for all states for which energies were computed
             ``optimal`` will use integral counts to update log free energy estimate of current state only
@@ -189,33 +190,54 @@ class SAMSSampler(MultiStateSampler):
         # Initialize multi-state sampler
         super(SAMSSampler, self).__init__(**kwargs)
         self.log_target_probabilities = log_target_probabilities
-        self.update_scheme = update_scheme
+        self.state_update_scheme = state_update_scheme
         self.locality = locality
         self.update_stages = update_stages
         self.flatness_threshold = flatness_threshold
-        self.update_method = update_method
+        self.weight_update_method = weight_update_method
         self.adapt_target_probabilities = adapt_target_probabilities
 
     class _StoredProperty(MultiStateSampler._StoredProperty):
 
         @staticmethod
-        def _update_scheme_validator(instance, scheme):
+        def _state_update_scheme_validator(instance, scheme):
             supported_schemes = ['global-jump', 'local-jump', 'restricted-range']
             if scheme not in supported_schemes:
                 raise ValueError("Unknown update scheme '{}'. Supported values "
                                  "are {}.".format(scheme, supported_schemes))
             return scheme
 
+        @staticmethod
+        def _update_stages_validator(instance, scheme):
+            supported_schemes = ['one-stage', 'two-stage']
+            if scheme not in supported_schemes:
+                raise ValueError("Unknown update scheme '{}'. Supported values "
+                                 "are {}.".format(scheme, supported_schemes))
+            return scheme
+
+        @staticmethod
+        def _weight_update_method_validator(instance, scheme):
+            supported_schemes = ['optimal', 'rao-blackwellized']
+            if scheme not in supported_schemes:
+                raise ValueError("Unknown update scheme '{}'. Supported values "
+                                 "are {}.".format(scheme, supported_schemes))
+            return scheme
+
+        @staticmethod
+        def _adapt_target_probabilities_validator(instance, scheme):
+            supported_schemes = [True, False]
+            if scheme not in supported_schemes:
+                raise ValueError("Unknown update scheme '{}'. Supported values "
+                                 "are {}.".format(scheme, supported_schemes))
+            return scheme
+
     log_target_probabilities = _StoredProperty('log_target_probabilities', validate_function=None)
-
-    update_scheme = _StoredProperty('update_scheme', validate_function=_StoredProperty._update_scheme_validator)
-
-    # TODO: Implement validate functions
+    state_update_scheme = _StoredProperty('state_update_scheme', validate_function=_StoredProperty._state_update_scheme_validator)
     locality = _StoredProperty('locality', validate_function=None)
-    update_stages = _StoredProperty('update_stages', validate_function=None)
+    update_stages = _StoredProperty('update_stages', validate_function=_StoredProperty._update_stages_validator)
     flatness_threshold = _StoredProperty('flatness_threshold', validate_function=None)
-    update_method = _StoredProperty('update_method', validate_function=None)
-    adapt_target_probabilities = _StoredProperty('adapt_target_probabilities', validate_function=None)
+    weight_update_method = _StoredProperty('weight_update_method', validate_function=_StoredProperty._weight_update_method_validator)
+    adapt_target_probabilities = _StoredProperty('adapt_target_probabilities', validate_function=_StoredProperty._adapt_target_probabilities_validator)
 
     def create(self, thermodynamic_states: list, sampler_states:list, storage,
                **kwargs):
@@ -254,13 +276,127 @@ class SAMSSampler(MultiStateSampler):
         metadata : dict, optional
            Simulation metadata to be stored in the file.
         """
-        # TODO: Initialize SAMS-specific statistics
-
         # Initialize replica-exchange simulation.
         super(SAMSSampler, self).create(thermodynamic_states, sampler_states, storage=storage, **kwargs)
 
-
     # TODO: Implement SAMS-specific state and weight update schemes
+
+    @mpi.on_single_node(0, broadcast_result=True)
+    def _mix_replicas(self):
+        """Update thermodynamic states according to user-specified scheme."""
+        logger.debug("Updating thermodynamic states...")
+
+        # Reset storage to keep track of swap attempts this iteration.
+        self._n_accepted_matrix[:, :] = 0
+        self._n_proposed_matrix[:, :] = 0
+
+        # Perform swap attempts according to requested scheme.
+        with mmtools.utils.time_it('Mixing of replicas'):
+            if self.state_update_scheme == 'global-jump':
+                pass
+            elif self.state_update_scheme == 'local-jump':
+                pass
+            elif self.state_update_scheme == 'restricted-range':
+                pass
+            else:
+                assert self.replica_mixing_scheme is None
+
+        # Determine fraction of swaps accepted this iteration.
+        n_swaps_proposed = self._n_proposed_matrix.sum()
+        n_swaps_accepted = self._n_accepted_matrix.sum()
+        swap_fraction_accepted = 0.0
+        if n_swaps_proposed > 0:
+            # TODO drop casting to float when dropping Python 2 support.
+            swap_fraction_accepted = float(n_swaps_accepted) / n_swaps_proposed
+        logger.debug("Accepted {}/{} attempted swaps ({:.1f}%)".format(n_swaps_accepted, n_swaps_proposed,
+                                                                       swap_fraction_accepted * 100.0))
+
+        # Return new states indices for MPI broadcasting.
+        return self._replica_thermodynamic_states
+
+    def _local_jump(self):
+        n_replica, n_states, locality = self.n_replicas, self.n_states, self.locality
+        for (replica_index, current_state_index) in enumerate(self._replica_thermodynamic_states):
+            u_k = np.zeros([n_states], np.float64)
+            log_P_k = np.zeros([n_states], np.float64)
+            # Determine current neighborhood.
+            neighborhood = range(max(0, current_state_index - locality), min(n_states, current_state_index + locality + 1))
+            neighborhood_size = len(neighborhood)
+            # Propose a move from the current neighborhood.
+            proposed_state_index = np.random.choice(neighborhood, p=np.ones([len(neighborhood)], np.float64) / float(neighborhood_size))
+            # Determine neighborhood for proposed state.
+            proposed_neighborhood = range(max(0, proposed_state_index - locality), min(n_states, proposed_state_index + locality + 1))
+            proposed_neighborhood_size = len(proposed_neighborhood)
+            # Compute state log weights.
+            log_Gamma_j_L = - float(proposed_neighborhood_size) # log probability of proposing return
+            log_Gamma_L_j = - float(neighborhood_size)          # log probability of proposing new state
+            L = current_state_index
+            # Compute potential for all states in neighborhood
+            for j in neighborhood:
+                u_k[j] = self._energy_thermodynamic_states[replica_index, j]
+            # Compute log of probability of selecting each state in neighborhood
+            for j in neighborhood:
+                if j != L:
+                    log_P_k[j] = log_Gamma_L_j + min(0.0, log_Gamma_j_L - log_Gamma_L_j + (self.log_weights[j] - u_k[j]) - (self.log_weights[L] - u_k[L]))
+            P_k = np.zeros([n_states], np.float64)
+            P_k[neighborhood] = np.exp(log_P_k[neighborhood])
+            # Compute probability to return to current state L
+            P_k[L] = 0.0
+            P_k[L] = 1.0 - P_k[neighborhood].sum()
+            log_P_k[L] = np.log(P_k[L])
+            # Update context.
+            thermodynamic_state_index = np.random.choice(neighborhood, p=P_k[neighborhood])
+            self._replica_thermodynamic_states[replica_index] = thermodynamic_state
+
+            # TODO: Update log weights
+
+    def _global_jump(self):
+        """
+        Global jump scheme.
+        This method is described after Eq. 3 in [2]
+        """
+        n_replica, n_states = self.n_replicas, self.n_states
+        for (replica_index, current_state_index) in enumerate(self._thermodynamic_states):
+            u_k = np.zeros([n_states], np.float64)
+            log_P_k = np.zeros([n_states], np.float64)
+            # Compute unnormalized log probabilities for all thermodynamic states
+            neighborhood = range(n_states)
+            for state_index in neighborhood:
+                u_k[state_index] = self._energy_thermodynamic_states[replica_index, state_index]
+                log_P_k[state_index] = self.log_weights[state_index] - u_k[state_index]
+            log_P_k -= logsumexp(log_P_k)
+            # Update sampler Context to current thermodynamic state.
+            P_k = np.exp(log_P_k[neighborhood])
+            thermodynamic_state_index = np.random.choice(neighborhood, p=P_k)
+            self._replica_thermodynamic_states[replica_index] = thermodynamic_state_index
+
+        # TODO: Update log weights
+
+    def _restricted_range(self):
+        n_replica, n_states, locality = self.n_replicas, self.n_states, self.locality
+        for (replica_index, current_state_index) in enumerate(self._thermodynamic_states):
+            u_k = np.zeros([n_states], np.float64)
+            log_P_k = np.zeros([n_states], np.float64)
+            # Propose new state from current neighborhood.
+            neighborhood = range(max(0, current_state_index - locality), min(n_states, current_state_index + locality + 1))
+            for j in neighborhood:
+                u_k[j] = self._energy_thermodynamic_states[replica_index, j]
+                log_P_k[j] = self.log_weights[j] - u_k[j]
+            log_P_k[neighborhood] -= logsumexp(log_P_k[neighborhood])
+            P_k = np.exp(log_P_k[neighborhood])
+            proposed_state_index = np.random.choice(neighborhood, p=P_k)
+            # Determine neighborhood of proposed state.
+            proposed_neighborhood = range(max(0, proposed_state_index - locality), min(n_states, proposed_state_index + locality + 1))
+            for j in proposed_neighborhood:
+                if j not in neighborhood:
+                    u_k[j] = self._energy_thermodynamic_states[replica_index, j]
+            # Accept or reject.
+            log_P_accept = logsumexp(self.log_weights[neighborhood] - u_k[neighborhood]) - logsumexp(self.log_weights[proposed_neighborhood] - u_k[proposed_neighborhood])
+            if (log_P_accept >= 0.0) or (np.random.rand() < np.exp(log_P_accept)):
+                thermodynamic_state_index = proposed_state_index
+            self._replica_thermodynamic_states[replica_index] = thermodynamic_state_index
+
+            # TODO: Update log weights
 
 class SAMSAnalyzer(MultiStateSamplerAnalyzer):
     """
