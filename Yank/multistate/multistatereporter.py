@@ -707,6 +707,7 @@ class MultiStateReporter(object):
         """
         iteration = self._calculate_last_iteration(iteration)
         energy_thermodynamic_states = self._storage_analysis.variables['energies'][iteration, :, :]
+        energy_thermodynamic_states = self._storage_analysis.variables['energies'][iteration, :, :]
         try:
             energy_unsampled_states = self._storage_analysis.variables['unsampled_energies'][iteration, :, :]
         except KeyError:
