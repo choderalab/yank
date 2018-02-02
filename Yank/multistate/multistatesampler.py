@@ -101,6 +101,10 @@ class MultiStateSampler(object):
         Since the initial samples likely not to yield a good estimate of free energy, save time and just skip them
         If ``online_analysis_interval`` is None, this does nothing
 
+    locality : int > 0, optional, default None
+        If None, the energies at all states will be computed for every replica each iteration.
+        If int > 0, energies will only be computed for states ``range(max(0, state-locality), min(n_states, state+locality))``.
+
     Attributes
     ----------
     n_replicas
@@ -127,7 +131,8 @@ class MultiStateSampler(object):
 
     def __init__(self, mcmc_moves=None, number_of_iterations=1,
                  online_analysis_interval=None, online_analysis_target_error=0.2,
-                 online_analysis_minimum_iterations=50):
+                 online_analysis_minimum_iterations=50,
+                 locality=None):
         # These will be set on initialization. See function
         # create() for explanation of single variables.
         self._thermodynamic_states = None
@@ -156,6 +161,9 @@ class MultiStateSampler(object):
         # usage because any change to these attribute implies a change
         # in the storage file as well. Use properties for checks.
         self.number_of_iterations = number_of_iterations
+
+        # Store locality
+        self.locality = locality
 
         # Online analysis options.
         self.online_analysis_interval = online_analysis_interval
@@ -218,6 +226,7 @@ class MultiStateSampler(object):
         logger.debug("Reading storage file {}...".format(reporter.filepath))
         thermodynamic_states, unsampled_states = reporter.read_thermodynamic_states()
         sampler_states = reporter.read_sampler_states(iteration=iteration)
+        # TODO: Read self._replica_neighborhoods
         state_indices = reporter.read_replica_thermodynamic_states(iteration=iteration)
         energy_thermodynamic_states, energy_unsampled_states = reporter.read_energies(iteration=iteration)
         n_accepted_matrix, n_proposed_matrix = reporter.read_mixing_statistics(iteration=iteration)
@@ -451,6 +460,14 @@ class MultiStateSampler(object):
                 raise ValueError("online_analysis_minimum_iterations must be an integer >= 0")
             return online_analysis_minimum_iterations
 
+        @staticmethod
+        def _locality_validator(instance, locality):
+            if instance.locality is not None:
+                if instance.locality <= 0:
+                    raise ValueError("locality must be an int > 0")
+            return locality
+
+
     number_of_iterations = _StoredProperty('number_of_iterations',
                                            validate_function=_StoredProperty._number_of_iterations_validator)
     online_analysis_interval = _StoredProperty('online_analysis_interval',
@@ -459,7 +476,8 @@ class MultiStateSampler(object):
                                                    validate_function=_StoredProperty._oa_target_error_validator)
     online_analysis_minimum_iterations = _StoredProperty('online_analysis_minimum_iterations',
                                                          validate_function=_StoredProperty._oa_min_iter_validator)
-
+    locality = _StoredProperty('locality',
+                               validate_function=_StoredProperty._locality_validator)
     @property
     def metadata(self):
         """A copy of the metadata dictionary passed on creation (read-only)."""
@@ -578,6 +596,8 @@ class MultiStateSampler(object):
 
         # Deep copy sampler states.
         self._sampler_states = [copy.deepcopy(sampler_state) for sampler_state in sampler_states]
+
+        # TODO: Create replica neighborhoods.
 
         # Make sure all sampler states have box vectors defined; add dummies if needed.
         default_box_vectors = thermodynamic_states[0].system.getDefaultPeriodicBoxVectors()
@@ -761,10 +781,14 @@ class MultiStateSampler(object):
 
             # Attempt replica swaps to sample from equilibrium permuation of
             # states associated with replicas. This step synchronizes replicas.
+            # TODO: Can we just have self._mix_replicas() update self._replica_thermodynamic_states directly?
             self._replica_thermodynamic_states = self._mix_replicas()
 
             # Propagate replicas.
             self._propagate_replicas()
+
+            # Update the list of states for which energies are to be computed
+            self._update_neighbors()
 
             # Compute energies of all replicas at all states.
             self._compute_energies()
@@ -978,6 +1002,7 @@ class MultiStateSampler(object):
         """
         self._reporter.write_sampler_states(self._sampler_states, self._iteration)
         self._reporter.write_replica_thermodynamic_states(self._replica_thermodynamic_states, self._iteration)
+        # TODO: Store self._replica_neighbors
         self._reporter.write_mcmc_moves(self._mcmc_moves)  # MCMCMoves can store internal statistics.
         self._reporter.write_energies(self._energy_thermodynamic_states, self._energy_unsampled_states,
                                       self._iteration)
@@ -1020,6 +1045,35 @@ class MultiStateSampler(object):
         """Store __init__ parameters (beside MCMCMoves) in storage file."""
         logger.debug("Storing general ReplicaExchange options...")
         self._reporter.write_dict('options', self.options)
+
+    # -------------------------------------------------------------------------
+    # Locality
+    # -------------------------------------------------------------------------
+
+    def _neighborhood(self, state_index):
+        """Compute the states in the local neighborhood determined by self.locality
+
+        Parameters
+        ----------
+        current_state_index : int
+            The currrent state
+
+        Returns
+        -------
+        neighborhood : list of int
+            The states in the local neighborhood
+        """
+        if self.locality == None:
+            # Global range
+            return range(self.n_states)
+        else:
+            # Local neighborhood
+            return range(max(0, state_index - self.locality), min(self.n_states, state_index + self.locality + 1))
+
+    def _update_neighbors(self):
+        """Update the neighbors for each state."""
+        for (replica_index, state_index) in enumerate(self._replica_thermodynamic_states):
+            self._replica_neighbors[replica_index] = self._neighborhood(state_index)
 
     # -------------------------------------------------------------------------
     # Internal-usage: Distributed tasks.
@@ -1146,8 +1200,12 @@ class MultiStateSampler(object):
         # Retrieve sampler state associated to this replica.
         sampler_state = self._sampler_states[replica_id]
 
+        # Retrieve neighborhood of thermodynamic states for which energies are to be computed
+        state_id = self._replica_thermodynamic_states[replica_id]
+        neighborhood = self._neighbors(state_id)
+
         # Compute energy for all thermodynamic states.
-        for energies, states in [(energy_thermodynamic_states, self._thermodynamic_states),
+        for energies, states in [(energy_thermodynamic_states, self._thermodynamic_states[neighborhood]),
                                  (energy_unsampled_states, self._unsampled_states)]:
             # Group thermodynamic states by compatibility.
             compatible_groups, original_indices = mmtools.states.group_by_compatibility(states)

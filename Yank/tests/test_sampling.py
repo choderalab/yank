@@ -1,7 +1,7 @@
 #!/usr/local/bin/env python
 
 """
-Test replicaexchange.py facility.
+Test multistate samplers
 
 TODO
 
@@ -32,7 +32,7 @@ from openmmtools import testsystems
 from simtk import openmm, unit
 
 from yank import mpi
-from yank.multistate import MultiStateReporter, MultiStateSampler, ReplicaExchangeSampler, ParallelTemperingSampler
+from yank.multistate import MultiStateReporter, MultiStateSampler, ReplicaExchangeSampler, ParallelTemperingSampler, SAMSSampler
 from yank.multistate import ReplicaExchangeAnalyzer
 from yank.multistate.multistatereporter import _DictYamlLoader
 from yank.utils import config_root_logger  # This is only function tying these test to the main YANK code
@@ -1492,6 +1492,38 @@ class TestParallelTempering(TestMultiStateSampler):
                     sampler_state.apply_to_context(context)
                     energies[i][j] = state.reduced_potential(context)
         return energy_thermodynamic_states, energy_unsampled_states
+
+class TestSAMSSampler(TestMultiStateSampler):
+    """Test suite for SAMSSampler class."""
+
+    # ------------------------------------
+    # VARIABLES TO SET FOR EACH TEST CLASS
+    # ------------------------------------
+
+    N_SAMPLERS = 1
+    N_STATES = 3
+    SAMPLER = SAMSSampler
+    REPORTER = MultiStateReporter
+
+    # --------------------------------------
+    # Tests overwritten from base test suite
+    # --------------------------------------
+
+    def test_stored_properties(self):
+        """Test that storage is kept in sync with options. Unique to SAMSSampler"""
+        additional_values = {}
+        options = {
+            'state_update_scheme' : 'global-jump',
+            'locality' : 5,
+            'update_stages' : 'two-stage',
+            'weight_update_method' : 'rao-blackwellized',
+            'adapt_target_probabilities' : False,
+            }
+        for (name, value) in options.items():
+            additional_values.update(self.property_creator(name, name, value, value))
+        self.actual_stored_properties_check(additional_properties=additional_values)
+
+    # TODO: Test all update methods
 
 # ==============================================================================
 # MAIN AND TESTS

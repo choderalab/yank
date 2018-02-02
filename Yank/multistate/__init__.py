@@ -26,6 +26,9 @@ Provided classes include:
 - :class:`yank.multistate.ParallelTemperingSampler`
     Convenience subclass of ReplicaExchange for parallel tempering simulations
     (one System object, many temperatures).
+- :class:`yank.multistate.SAMSSampler`
+    Derived class from MultiStateSampler which allows sampled thermodynamic states
+    to be sampled using self-adjusted mixture sampling (SAMS)
 - :class:`yank.multistate.MultiStateReporter`
     Replica Exchange reporter class to store all variables and data
 
@@ -62,5 +65,6 @@ from .multistatesampler import MultiStateSampler
 from .multistatereporter import MultiStateReporter
 from .replicaexchange import ReplicaExchangeSampler, ReplicaExchangeAnalyzer
 from .paralleltempering import ParallelTemperingSampler, ParallelTemperingAnalyzer
+from .sams import SAMSSampler
 from .multistateanalyzer import *
 from .utils import *
