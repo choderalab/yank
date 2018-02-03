@@ -226,7 +226,7 @@ class ParallelTemperingAnalyzer(ReplicaExchangeAnalyzer):
     See Also
     --------
     ReplicaExchangeAnalyzer
-    PhaseAnalyzer
+    MultiStateSamplerAnalyzer
 
     """
     pass

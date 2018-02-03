@@ -462,8 +462,8 @@ class MultiStateSampler(object):
 
         @staticmethod
         def _locality_validator(instance, locality):
-            if instance.locality is not None:
-                if instance.locality <= 0:
+            if locality is not None:
+                if (type(locality) != int) or (locality <= 0):
                     raise ValueError("locality must be an int > 0")
             return locality
 
@@ -476,8 +476,8 @@ class MultiStateSampler(object):
                                                    validate_function=_StoredProperty._oa_target_error_validator)
     online_analysis_minimum_iterations = _StoredProperty('online_analysis_minimum_iterations',
                                                          validate_function=_StoredProperty._oa_min_iter_validator)
-    locality = _StoredProperty('locality',
-                               validate_function=_StoredProperty._locality_validator)
+    locality = _StoredProperty('locality', validate_function=_StoredProperty._locality_validator)
+
     @property
     def metadata(self):
         """A copy of the metadata dictionary passed on creation (read-only)."""
@@ -779,21 +779,16 @@ class MultiStateSampler(object):
             logger.debug('Iteration {}/{}'.format(self._iteration, iteration_limit))
             timer.start('Iteration')
 
-            # Attempt replica swaps to sample from equilibrium permuation of
-            # states associated with replicas. This step synchronizes replicas.
-            # TODO: Can we just have self._mix_replicas() update self._replica_thermodynamic_states directly?
-            self._replica_thermodynamic_states = self._mix_replicas()
+            # Update thermodynamic states
+            self._mix_replicas()
 
             # Propagate replicas.
             self._propagate_replicas()
 
-            # Update the list of states for which energies are to be computed
-            self._update_neighbors()
-
-            # Compute energies of all replicas at all states.
+            # Compute energies of all replicas at all states
             self._compute_energies()
 
-            # Write iteration to storage file.
+            # Write iteration to storage file
             self._report_iteration()
 
             # Compute online free energy
@@ -1065,15 +1060,10 @@ class MultiStateSampler(object):
         """
         if self.locality == None:
             # Global neighborhood
-            return range(self.n_states)
+            return slice(0, self.n_states)
         else:
             # Local neighborhood specified by 'locality'
-            return range(max(0, state_index - self.locality), min(self.n_states, state_index + self.locality + 1))
-
-    def _update_neighbors(self):
-        """Update the neighbors for each state."""
-        for (replica_index, state_index) in enumerate(self._replica_thermodynamic_states):
-            self._replica_neighbors[replica_index] = self._neighborhood(state_index)
+            return slice(max(0, state_index - self.locality), min(self.n_states, state_index + self.locality + 1))
 
     # -------------------------------------------------------------------------
     # Internal-usage: Distributed tasks.
@@ -1202,7 +1192,7 @@ class MultiStateSampler(object):
 
         # Retrieve neighborhood of thermodynamic states for which energies are to be computed
         state_id = self._replica_thermodynamic_states[replica_id]
-        neighborhood = self._neighbors(state_id)
+        neighborhood = self._neighborhood(state_id)
 
         # Compute energy for all thermodynamic states.
         for energies, states in [(energy_thermodynamic_states, self._thermodynamic_states[neighborhood]),
@@ -1249,9 +1239,6 @@ class MultiStateSampler(object):
             swap_fraction_accepted = n_swaps_accepted / n_swaps_proposed  # Python 3 uses true division for /
         logger.debug("Accepted {}/{} attempted swaps ({:.1f}%)".format(n_swaps_accepted, n_swaps_proposed,
                                                                        swap_fraction_accepted * 100.0))
-
-        # Return new states indices for MPI broadcasting.
-        return self._replica_thermodynamic_states
 
     # -------------------------------------------------------------------------
     # Internal-usage: Online Analysis.

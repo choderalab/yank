@@ -163,17 +163,18 @@ class ObservablesRegistry(object):
         ----------
         name: str
             Name of the observable, will be cast to all lower case and spaces replaced with underscores
-        error_class: "quad", "linear", or None
+        error_class: 'quad', 'linear', or None
             How the error of the observable is computed when added with other errors from the same observable.
 
-            * "quad": Adds in the quadrature, Observable C = A + B, Error eC = sqrt(eA**2 + eB**2)
+            * 'quad': Adds in the quadrature, Observable C = A + B, Error eC = sqrt(eA**2 + eB**2)
 
-            * "linear": Adds linearly,  Observable C = A + B, Error eC = eA + eB
+            * 'linear': Adds linearly,  Observable C = A + B, Error eC = eA + eB
 
             * None: Does not carry error
 
         re_register: bool, optional, Default: False
             Re-register an existing observable
+
         """
 
         self._register_observable(name, "phase", error_class, re_register=re_register)

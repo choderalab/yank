@@ -54,6 +54,8 @@ logger = logging.getLogger(__name__)
 # MULTISTATE SAMPLER REPORTER
 # ==============================================================================
 
+MISSING_VALUE = np.NaN # value for populating missing/masked values
+
 class MultiStateReporter(object):
     """Handle storage write/read operations and different format conventions.
 
@@ -707,7 +709,6 @@ class MultiStateReporter(object):
         """
         iteration = self._calculate_last_iteration(iteration)
         energy_thermodynamic_states = self._storage_analysis.variables['energies'][iteration, :, :]
-        energy_thermodynamic_states = self._storage_analysis.variables['energies'][iteration, :, :]
         try:
             energy_unsampled_states = self._storage_analysis.variables['unsampled_energies'][iteration, :, :]
         except KeyError:
@@ -745,6 +746,8 @@ class MultiStateReporter(object):
                                                                    ('iteration', 'replica', 'state'),
                                                                    zlib=False,
                                                                    chunksizes=(1, n_replicas, n_states))
+            ncvar_energies.missing_value = MISSING_VALUE
+            ncvar_energies.set_auto_mask(True)
             ncvar_energies.units = 'kT'
             ncvar_energies.long_name = ("energies[iteration][replica][state] is the reduced (unitless) "
                                         "energy of replica 'replica' from iteration 'iteration' evaluated "
