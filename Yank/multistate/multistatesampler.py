@@ -226,9 +226,8 @@ class MultiStateSampler(object):
         logger.debug("Reading storage file {}...".format(reporter.filepath))
         thermodynamic_states, unsampled_states = reporter.read_thermodynamic_states()
         sampler_states = reporter.read_sampler_states(iteration=iteration)
-        # TODO: Read self._replica_neighborhoods
         state_indices = reporter.read_replica_thermodynamic_states(iteration=iteration)
-        energy_thermodynamic_states, energy_unsampled_states = reporter.read_energies(iteration=iteration)
+        energy_thermodynamic_states, neighborhoods, energy_unsampled_states = reporter.read_energies(iteration=iteration)
         n_accepted_matrix, n_proposed_matrix = reporter.read_mixing_statistics(iteration=iteration)
         metadata = reporter.read_dict('metadata')
 
@@ -249,6 +248,7 @@ class MultiStateSampler(object):
         sampler._sampler_states = sampler_states
         sampler._replica_thermodynamic_states = state_indices
         sampler._energy_thermodynamic_states = energy_thermodynamic_states
+        sampler._neighborhoods = neighborhoods
         sampler._energy_unsampled_states = energy_unsampled_states
         sampler._n_accepted_matrix = n_accepted_matrix
         sampler._n_proposed_matrix = n_proposed_matrix
@@ -597,8 +597,6 @@ class MultiStateSampler(object):
         # Deep copy sampler states.
         self._sampler_states = [copy.deepcopy(sampler_state) for sampler_state in sampler_states]
 
-        # TODO: Create replica neighborhoods.
-
         # Make sure all sampler states have box vectors defined; add dummies if needed.
         default_box_vectors = thermodynamic_states[0].system.getDefaultPeriodicBoxVectors()
         for sampler_state in self._sampler_states:
@@ -639,6 +637,7 @@ class MultiStateSampler(object):
         # is the reduced potential computed at the positions of SamplerState sampler_states[k]
         # and ThermodynamicState thermodynamic/unsampled_states[l].
         self._energy_thermodynamic_states = np.zeros([self.n_replicas, self.n_states], np.float64)
+        self._neighborhoods = np.zeros([self.n_replicas, self.n_states], 'i1')
         self._energy_unsampled_states = np.zeros([self.n_replicas, len(self._unsampled_states)], np.float64)
 
         # Display papers to be cited.
@@ -758,7 +757,7 @@ class MultiStateSampler(object):
                     # If not the special case, raise the error normally
                     raise e
             mpi.run_single_node(0, self._reporter.write_energies, self._energy_thermodynamic_states,
-                                self._energy_unsampled_states, self._iteration)
+                                self._neighborhoods, self._energy_unsampled_states, self._iteration)
             self._check_nan_energy()
 
         timer = mmtools.utils.Timer()
@@ -853,24 +852,25 @@ class MultiStateSampler(object):
         Checks both sampled and unsampled thermodynamic states.
 
         """
-        # Check thermodynamic state energies.
-        if np.any(np.isnan(self._energy_thermodynamic_states)) or np.any(np.isnan(self._energy_unsampled_states)):
-            # Find faulty replicas to create error message.
-            faulty_replicas = set()
+        # Find faulty replicas to create error message.
+        faulty_replicas = set()
 
-            # Check sampled thermodynamic states first.
-            state_type = 'thermodynamic state'
+        # Check sampled thermodynamic states first.
+        state_type = 'thermodynamic state'
+
+        for (replica_id, state_id) in enumerate(self._replica_thermodynamic_states):
+            neighborhood = self._neighborhood(state_id)
+            if np.any(np.isnan(self._energy_thermodynamic_states[replica_id,neighborhood])):
+                faulty_replicas.add(replica_id)
+
+        # If there are no NaNs in energies, the problem is in the unsampled states.
+        if (len(faulty_replicas) == 0) and (self._energy_unsampled_states.shape[1] > 0):
+            state_type = 'unsampled thermodynamic state'
             for replica_id in range(self.n_replicas):
-                if np.any(np.isnan(self._energy_thermodynamic_states[replica_id])):
+                if np.any(np.isnan(self._energy_unsampled_states[replica_id])):
                     faulty_replicas.add(replica_id)
 
-            # If there are no NaNs in energies, the problem is in the unsampled states.
-            if len(faulty_replicas) == 0:
-                state_type = 'unsampled thermodynamic state'
-                for replica_id in range(self.n_replicas):
-                    if np.any(np.isnan(self._unsampled_states[replica_id])):
-                        faulty_replicas.add(replica_id)
-
+        if len(faulty_replicas) > 0:
             # Raise exception.
             err_msg = "NaN encountered in {} energies for replicas {}".format(state_type, faulty_replicas)
             logger.critical(err_msg)
@@ -999,7 +999,7 @@ class MultiStateSampler(object):
         self._reporter.write_replica_thermodynamic_states(self._replica_thermodynamic_states, self._iteration)
         # TODO: Store self._replica_neighbors
         self._reporter.write_mcmc_moves(self._mcmc_moves)  # MCMCMoves can store internal statistics.
-        self._reporter.write_energies(self._energy_thermodynamic_states, self._energy_unsampled_states,
+        self._reporter.write_energies(self._energy_thermodynamic_states, self._neighborhoods, self._energy_unsampled_states,
                                       self._iteration)
         self._reporter.write_mixing_statistics(self._n_accepted_matrix, self._n_proposed_matrix, self._iteration)
         self._reporter.write_timestamp(self._iteration)
@@ -1170,6 +1170,12 @@ class MultiStateSampler(object):
     def _compute_energies(self):
         """Compute energies of all replicas at all states."""
 
+        # Determine neighborhoods (all nodes)
+        self._neighborhoods[:,:] = False
+        for (replica_index, state_index) in enumerate(self._replica_thermodynamic_states):
+            neighborhood = self._neighborhood(state_index)
+            self._neighborhoods[replica_index,neighborhood] = True
+
         # Distribute energy computation across nodes. Only node 0 receives
         # all the energies since it needs to store them and mix states.
         new_energies, replica_ids = mpi.distribute(self._compute_replica_energies, range(self.n_replicas),
@@ -1184,15 +1190,15 @@ class MultiStateSampler(object):
     def _compute_replica_energies(self, replica_id):
         """Compute the energy for the replica in every ThermodynamicState."""
         # Initialize replica energies for each thermodynamic state.
-        energy_thermodynamic_states = np.zeros(self.n_states)
+        energy_thermodynamic_states = np.ma.zeros(self.n_states)
         energy_unsampled_states = np.zeros(len(self._unsampled_states))
 
         # Retrieve sampler state associated to this replica.
         sampler_state = self._sampler_states[replica_id]
 
-        # Retrieve neighborhood of thermodynamic states for which energies are to be computed
-        state_id = self._replica_thermodynamic_states[replica_id]
-        neighborhood = self._neighborhood(state_id)
+        # Determine neighborhood
+        state_index = self._replica_thermodynamic_states[replica_id]
+        neighborhood = self._neighborhood(state_index)
 
         # Compute energy for all thermodynamic states.
         for energies, states in [(energy_thermodynamic_states, self._thermodynamic_states[neighborhood]),

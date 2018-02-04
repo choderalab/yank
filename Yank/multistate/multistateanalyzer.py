@@ -829,7 +829,7 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         """
         logger.info("Reading energies...")
         # Returns the energies in kln format
-        energy_thermodynamic_states, energy_unsampled_states = self._reporter.read_energies()
+        energy_thermodynamic_states, neighborhoods, energy_unsampled_states = self._reporter.read_energies()
         n_iterations, n_replicas, n_states = energy_thermodynamic_states.shape
         _, _, n_unsampled_states = energy_unsampled_states.shape
         energy_matrix_replica = np.zeros([n_replicas, n_states, n_iterations], np.float64)

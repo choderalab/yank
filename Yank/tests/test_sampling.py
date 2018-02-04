@@ -448,14 +448,26 @@ class TestReporter(object):
 
     def test_store_energies(self):
         """Check storage of energies."""
-        thermodynamic_states_energies = np.array([[1, 2, 3], [1, 2, 3], [1, 2, 3]])
-        unsampled_states_energies = np.array([[1, 2], [2, 3.0], [3, 9.0]])
+        energy_thermodynamic_states = np.array(
+            [[0, 2, 3],
+             [1, 2, 0],
+             [1, 2, 3]])
+        energy_neighborhoods = np.array(
+            [[0, 1, 1],
+             [1, 1, 0],
+             [1, 1, 3]]
+        )
+        energy_unsampled_states = np.array(
+            [[1, 2],
+             [2, 3.0],
+             [3, 9.0]])
 
         with self.temporary_reporter() as reporter:
-            reporter.write_energies(thermodynamic_states_energies, unsampled_states_energies, iteration=0)
-            restored_ts, restored_us = reporter.read_energies(iteration=0)
-            assert np.all(thermodynamic_states_energies == restored_ts)
-            assert np.all(unsampled_states_energies == restored_us)
+            reporter.write_energies(energy_thermodynamic_states, energy_neighborhoods, energy_unsampled_states, iteration=0)
+            restored_energy_thermodynamic_states, restored_energy_neighborhoods, restored_energy_unsampled_states = reporter.read_energies(iteration=0)
+            assert np.all(energy_thermodynamic_states == restored_energy_thermodynamic_states)
+            assert np.all(energy_neighborhoods == restored_energy_neighborhoods)
+            assert np.all(energy_unsampled_states == restored_energy_unsampled_states)
 
     def test_ensure_dimension_exists(self):
         """Test ensuring that a dimension exists works as expected."""
@@ -726,7 +738,7 @@ class TestMultiStateSampler(object):
 
         with self.temporary_storage_path() as storage_path:
             reporter = self.REPORTER(storage_path, checkpoint_interval=1)
-            sampler = self.SAMPLER()
+            sampler = self.SAMPLER(locality=1)
             self.call_sampler_create(sampler, reporter,
                                      thermodynamic_states,
                                      sampler_states, unsampled_states)
@@ -837,7 +849,7 @@ class TestMultiStateSampler(object):
         with self.temporary_storage_path() as storage_path:
             number_of_iterations = 3
             move = mmtools.mcmc.LangevinDynamicsMove(n_steps=1)
-            sampler = self.SAMPLER(mcmc_moves=move, number_of_iterations=number_of_iterations)
+            sampler = self.SAMPLER(mcmc_moves=move, number_of_iterations=number_of_iterations, locality=1)
             reporter = self.REPORTER(storage_path, checkpoint_interval=1)
             self.call_sampler_create(sampler, reporter,
                                      thermodynamic_states, sampler_states,
@@ -886,12 +898,15 @@ class TestMultiStateSampler(object):
                         assert np.all(original.box_vectors == restored.box_vectors)
 
                 # Check energies. Non 0 nodes only hold their energies.
+                original_neighborhoods = original_dict.pop('_neighborhoods')
+                restored_neighborhoods = restored_dict.pop('_neighborhoods')
                 original_ets = original_dict.pop('_energy_thermodynamic_states')
                 restored_ets = restored_dict.pop('_energy_thermodynamic_states')
                 original_eus = original_dict.pop('_energy_unsampled_states')
                 restored_eus = restored_dict.pop('_energy_unsampled_states')
                 for replica_id in range(n_replicas):
                     if replica_id in node_replica_ids:
+                        assert np.allclose(original_neighborhoods[replica_id], restored_neighborhoods[replica_id])
                         assert np.allclose(original_ets[replica_id], restored_ets[replica_id])
                         assert np.allclose(original_eus[replica_id], restored_eus[replica_id])
 
@@ -1037,7 +1052,7 @@ class TestMultiStateSampler(object):
             # Let MultiStateSampler distribute the computation of energies among nodes.
             sampler._compute_energies()
 
-            # Compute the energies independently.
+            # Compute energies at all states
             energy_thermodynamic_states = np.zeros((n_replicas, n_states))
             energy_unsampled_states = np.zeros((n_replicas, len(unsampled_states)))
             for energies, states in [(energy_thermodynamic_states, thermodynamic_states),
@@ -1054,7 +1069,9 @@ class TestMultiStateSampler(object):
             # Only node 0 has all the energies.
             mpicomm = mpi.get_mpicomm()
             if mpicomm is None or mpicomm.rank == 0:
-                assert np.allclose(sampler._energy_thermodynamic_states, energy_thermodynamic_states)
+                for replica_index in range(n_replicas):
+                    neighborhood = sampler._neighborhoods[replica_index,:]
+                    assert np.allclose(sampler._energy_thermodynamic_states[replica_index,neighborhood], energy_thermodynamic_states[replica_index,neighborhood])
                 assert np.allclose(sampler._energy_unsampled_states, energy_unsampled_states)
 
     def test_minimize(self):
@@ -1227,7 +1244,7 @@ class TestMultiStateSampler(object):
             reporter.close()
             reporter = self.REPORTER(storage_path, open_mode='r', checkpoint_interval=2)
             for i in range(n_iterations):
-                energies, _ = reporter.read_energies(i)
+                energies, _, _ = reporter.read_energies(i)
                 states = reporter.read_sampler_states(i)
                 assert type(energies) is np.ndarray
                 if reporter._calculate_checkpoint_iteration(i) is not None:
@@ -1252,7 +1269,7 @@ class TestMultiStateSampler(object):
             sampler.run()
             reporter.close()
             reporter = self.REPORTER(storage_path, open_mode='a', checkpoint_interval=2)
-            all_energies, _ = reporter.read_energies()
+            all_energies, _, _ = reporter.read_energies()
             # Break the checkpoint
             last_index = 4
             reporter.write_last_iteration(last_index)  # 5th iteration
@@ -1260,17 +1277,17 @@ class TestMultiStateSampler(object):
             del reporter
             reporter = self.REPORTER(storage_path, open_mode='r', checkpoint_interval=2)
             # Check single positive index within range
-            energies, _ = reporter.read_energies(1)
+            energies, _, _ = reporter.read_energies(1)
             assert np.all(energies == all_energies[1])
             # Check negative index was moved
-            energies, _ = reporter.read_energies(-1)
+            energies, _, _ = reporter.read_energies(-1)
             assert np.all(energies == all_energies[last_index])
             # Check slice
-            energies, _ = reporter.read_energies()
+            energies, _, _ = reporter.read_energies()
             assert np.all(
                 energies == all_energies[:last_index + 1])  # +1 to make sure we get the last index
             # Check negative slicing
-            energies, _ = reporter.read_energies(slice(-1, None, -1))
+            energies, _, _ = reporter.read_energies(slice(-1, None, -1))
             assert np.all(energies == all_energies[last_index::-1])
             # Errors
             with assert_raises(IndexError):
@@ -1331,11 +1348,11 @@ class TestMultiStateSampler(object):
                                      unsampled_states)
             # Propagate.
             sampler.run()
-            energies_str, _ = sampler._reporter.read_energies()
+            energies_str, _, _ = sampler._reporter.read_energies()
             reporter = self.REPORTER(storage_path)
             del sampler
             sampler = self.SAMPLER.from_storage(reporter)
-            energies_rep, _ = sampler._reporter.read_energies()
+            energies_rep, _, _ = sampler._reporter.read_energies()
             assert np.all(energies_str == energies_rep)
 
     def test_online_analysis_works(self):
