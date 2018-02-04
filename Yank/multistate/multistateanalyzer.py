@@ -545,7 +545,7 @@ class PhaseAnalyzer(ABC):
         raise NotImplementedError("This class has not implemented this function")
 
     @staticmethod
-    def reformat_energies_for_mbar(u_kln: np.ndarray, n_k: Optional[np.ndarray]=None) -> np.ndarray:
+    def reformat_energies_for_mbar(u_kln: np.ndarray, n_k: Optional[np.ndarray]=None):
         """
         Convert u_kln formatted energies into u_ln formatted energies.
 
