@@ -576,7 +576,8 @@ class TestMultiStateSampler(object):
     def call_sampler_create(cls, sampler, reporter,
                             thermodynamic_states,
                             sampler_states,
-                            unsampled_states):
+                            unsampled_states,
+                            locality):
         """Helper function to call the create method for the sampler"""
         # Allows initial thermodynamic states to be handled by the built in methods
         sampler.create(thermodynamic_states, sampler_states, reporter, unsampled_thermodynamic_states=unsampled_states)

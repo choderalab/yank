@@ -183,7 +183,7 @@ class ObservablesRegistry(object):
     # Define the observables
     ########################
     @property
-    def observables(self) -> tuple:
+    def observables(self):
         """
         Set of observables which are derived from the subsets below
         """
@@ -198,21 +198,21 @@ class ObservablesRegistry(object):
     # ------------------------------------------------
 
     @property
-    def observables_defined_by_two_states(self) -> tuple:
+    def observables_defined_by_two_states(self):
         """
         Observables that require an i and a j state to define the observable accurately between phases
         """
         return self._get_observables('two_state')
 
     @property
-    def observables_defined_by_single_state(self) -> tuple:
+    def observables_defined_by_single_state(self):
         """
         Defined observables which are fully defined by a single state, and not by multiple states such as differences
         """
         return self._get_observables('one_state')
 
     @property
-    def observables_defined_by_phase(self) -> tuple:
+    def observables_defined_by_phase(self):
         """
         Observables which are defined by the phase as a whole, and not defined by any 1 or more states
         e.g. Standard State Correction
@@ -225,7 +225,7 @@ class ObservablesRegistry(object):
     ##########################################
 
     @property
-    def observables_with_error(self) -> tuple:
+    def observables_with_error(self):
         """Determine which observables have error by inspecting the the error subsets"""
         observables = set()
         for subset_key in self._errors:
@@ -239,27 +239,27 @@ class ObservablesRegistry(object):
     # ------------------------------------------------
 
     @property
-    def observables_with_error_adding_quadrature(self) -> tuple:
+    def observables_with_error_adding_quadrature(self):
         """Observable C = A + B, Error eC = sqrt(eA**2 + eB**2)"""
         return self._get_errors('quad')
 
     @property
-    def observables_with_error_adding_linear(self) -> tuple:
+    def observables_with_error_adding_linear(self):
         """Observable C = A + B, Error eC = eA + eB"""
         return self._get_errors('linear')
 
     @property
-    def observables_without_error(self) -> tuple:
+    def observables_without_error(self):
         return self._get_errors(None)
 
     # ------------------
     # Internal functions
     # ------------------
 
-    def _get_observables(self, key) -> tuple:
+    def _get_observables(self, key):
         return tuple(self._observables[key])
 
-    def _get_errors(self, key) -> tuple:
+    def _get_errors(self, key):
         return tuple(self._errors[key])
 
     @staticmethod

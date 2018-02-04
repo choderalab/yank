@@ -209,6 +209,9 @@ class ReplicaExchangeSampler(MultiStateSampler):
             if replica_mixing_scheme not in supported_schemes:
                 raise ValueError("Unknown replica mixing scheme '{}'. Supported values "
                                  "are {}.".format(replica_mixing_scheme, supported_schemes))
+            if instance.locality != None:
+                if replica_mixing_scheme not in ['swap-neighbors']:
+                    raise ValueError("replica_mixing_scheme must be 'swap_neighbors' if locality is used")
             return replica_mixing_scheme
 
     replica_mixing_scheme = _StoredProperty('replica_mixing_scheme',
@@ -348,6 +351,8 @@ class ReplicaExchangeSampler(MultiStateSampler):
     def _mix_neighboring_replicas(self):
         """Attempt exchanges between neighboring replicas only."""
         logger.debug("Will attempt to swap only neighboring replicas.")
+
+        # TODO: Extend this to allow more remote swaps or more thorough mixing if locality > 1.
 
         # Attempt swaps of pairs of replicas using traditional scheme (e.g. [0,1], [2,3], ...).
         offset = np.random.randint(2)  # Offset is 0 or 1.
