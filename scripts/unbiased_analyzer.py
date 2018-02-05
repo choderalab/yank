@@ -640,4 +640,4 @@ if __name__ == '__main__':
     if energy_cutoff is not None and distance_cutoff is not None:
         raise ValueError('Only one between energy and distance cutoff can be specified.')
 
-    analyze_directory(args.store, energy_cutoff)
+    analyze_directory(args.store, energy_cutoff, distance_cutoff)
