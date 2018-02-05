@@ -4,6 +4,7 @@ import os
 import copy
 import scipy
 import logging
+import collections
 
 import yaml
 import numpy as np
@@ -135,9 +136,22 @@ class UnbiasedAnalyzer(analyze.ReplicaExchangeAnalyzer):
     @restraint_energy_cutoff.setter
     def restraint_energy_cutoff(self, new_value):
         self._restraint_energy_cutoff = new_value
-        self._invalidate_observables()
-        u_kn, N_k = self._compute_unbiased_mbar_data()
-        self._create_mbar(u_kn, N_k)
+        if self._mbar is not None:
+            self._invalidate_observables()
+            u_kn, N_k = self._compute_unbiased_mbar_data()
+            self._create_mbar(u_kn, N_k)
+
+    @property
+    def restraint_distance_cutoff(self):
+        return self._restraint_distance_cutoff
+
+    @restraint_distance_cutoff.setter
+    def restraint_distance_cutoff(self, new_value):
+        self._restraint_distance_cutoff = new_value
+        if self._mbar is not None:
+            self._invalidate_observables()
+            u_kn, N_k = self._compute_unbiased_mbar_data()
+            self._create_mbar(u_kn, N_k)
 
     def _read_thermodynamic_states(self):
         """Read thermodynamic states and caches useful info in the meantime."""
@@ -189,15 +203,18 @@ class UnbiasedAnalyzer(analyze.ReplicaExchangeAnalyzer):
         weights_group1, weights_group2 = restraint_data[4:]
 
         # Recompute unbiased SSC with given cutoffs.
+        # TODO: This code is redundant with yank.py.
+        # TODO: Compute average box volume here?
         box_vectors = reduced_system.getDefaultPeriodicBoxVectors()
+        box_volume = mmtools.states._box_vectors_volume(box_vectors)
+        ssc = - np.log(yank.restraints.V0 / box_volume)
         if self._restraint_distance_cutoff is not None or self._restraint_energy_cutoff is not None:
             max_dimension = np.max(unit.Quantity(box_vectors) / unit.nanometers) * unit.nanometers
-            ssc = self._compute_standard_state_correction(restraint_force, unbiased=True, max_distance=max_dimension)
-        else:  # Limit the cutoff to the simulation box
-            # TODO: This code is redundant with yank.py.
-            # TODO: Compute average box volume here?
-            box_volume = mmtools.states._box_vectors_volume(box_vectors)
-            ssc = - np.log(yank.restraints.V0 / box_volume)
+            ssc_cutoff = self._compute_standard_state_correction(restraint_force, unbiased=True, max_distance=max_dimension)
+            # The restraint volume can't be bigger than the box volume.
+            if ssc_cutoff < ssc:
+                ssc = ssc_cutoff
+
         self._computed_observables['standard_state_correction'] = ssc
         logger.debug('New standard state correction: {} kT'.format(ssc))
 
@@ -505,11 +522,18 @@ def analyze_phase(analyzer):
     return data
 
 
-def analyze_directory(source_directory, energy_cutoffs=None, solvent_df=None, solvent_ddf=None):
+def analyze_directory(source_directory, energy_cutoffs=None, distance_cutoffs=None, solvent_df=None, solvent_ddf=None):
     # Handle default value.
-    if not isinstance(energy_cutoffs, list):
-        energy_cutoffs = [energy_cutoffs]
-    complex_phase_names = ['complex-' + str(energy_cutoff) for energy_cutoff in energy_cutoffs]
+    if isinstance(energy_cutoffs, collections.Iterable):
+        cutoffs = energy_cutoffs
+        cutoff_attribute = 'restraint_energy_cutoff'
+    elif isinstance(distance_cutoffs, collections.Iterable):
+        cutoffs = distance_cutoffs
+        cutoff_attribute = 'restraint_distance_cutoff'
+    else:
+        raise ValueError('One between energy or distance cutoff must be specified.')
+
+    complex_phase_names = ['complex-' + str(cutoff) for cutoff in cutoffs]
 
     analysis_script_path = os.path.join(source_directory, 'analysis.yaml')
     with open(analysis_script_path, 'r') as f:
@@ -527,14 +551,13 @@ def analyze_directory(source_directory, energy_cutoffs=None, solvent_df=None, so
 
         phase_path = os.path.join(source_directory, phase_name + '.nc')
         reporter = repex.Reporter(phase_path, open_mode='r')
-        phase = UnbiasedAnalyzer(reporter, restraint_energy_cutoff=energy_cutoffs[0])
+        phase = UnbiasedAnalyzer(reporter)
         kT = phase.kT
 
         # For the complex phase, analyze at all cutoffs.
         if phase_name == 'complex':
-            data[complex_phase_names[0]] = analyze_phase(phase)
-            for complex_phase_name, energy_cutoff in zip(complex_phase_names[1:], energy_cutoffs[1:]):
-                phase.restraint_energy_cutoff = energy_cutoff
+            for complex_phase_name, cutoff in zip(complex_phase_names, cutoffs):
+                setattr(phase, cutoff_attribute, cutoff)
                 data[complex_phase_name] = analyze_phase(phase)
         else:
             data[phase_name] = analyze_phase(phase)
@@ -545,7 +568,7 @@ def analyze_directory(source_directory, energy_cutoffs=None, solvent_df=None, so
     all_free_energies = []
     all_sscs = []
     phase_names = [phase_name for phase_name, sign in analysis]
-    for complex_phase_name, energy_cutoff in zip(complex_phase_names, energy_cutoffs):
+    for complex_phase_name, cutoff in zip(complex_phase_names, cutoffs):
         DeltaF = 0.0
         dDeltaF = 0.0
         for phase_name, sign in analysis:
@@ -568,7 +591,7 @@ def analyze_directory(source_directory, energy_cutoffs=None, solvent_df=None, so
 
         # Print energies
         logger.info('')
-        logger.info('Reporting free energy for cutoff: {}'.format(energy_cutoff))
+        logger.info('Reporting free energy for cutoff: {}'.format(cutoff))
         logger.info('-------------------------------------')
         logger.info('Free energy{:<13}: {:9.3f} +- {:.3f} kT ({:.3f} +- {:.3f} kcal/mol)'.format(
             calculation_type, DeltaF, dDeltaF, DeltaF * kT / unit.kilocalories_per_mole,
@@ -594,6 +617,8 @@ if __name__ == '__main__':
     parser.add_argument('-v', '--verbose', action='store_true', default=False)
     parser.add_argument('--energy-cutoff', metavar='energy_cutoff', type=float,
                         default=None, help='Energy cutoff in kT units.')
+    parser.add_argument('--distance-cutoff', metavar='distance_cutoff', type=float,
+                        default=None, help='Distance cutoff in nanometers.')
     args = parser.parse_args()
 
     if args.verbose:
@@ -605,5 +630,14 @@ if __name__ == '__main__':
         energy_cutoff = args.energy_cutoff
     else:
         energy_cutoff = None
+
+    if args.distance_cutoff:
+        distance_cutoff = args.distance_cutoff * unit.nanometers
+    else:
+        distance_cutoff = None
+
+    # The function doesn't currently support both cutoff and needs to be fixed.
+    if energy_cutoff is not None and distance_cutoff is not None:
+        raise ValueError('Only one between energy and distance cutoff can be specified.')
 
     analyze_directory(args.store, energy_cutoff)
