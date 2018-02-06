@@ -1337,14 +1337,13 @@ class MultiStateSampler(object):
 
         logZ = - self._last_mbar_f_k
 
-        for (replica_index, state_index) in self._replica_thermodynamic_states:
+        for (replica_index, state_index) in enumerate(self._replica_thermodynamic_states):
             neighborhood = self._neighborhood(state_index)
             u_k = self._energy_thermodynamic_states[state_index,:]
             log_P_k = np.zeros([self.n_states], np.float64)
             log_pi_k = np.zeros([self.n_states], np.float64)
             log_weights = np.zeros([self.n_states], np.float64)
-            for j in neighborhood:
-                log_P_k[j] = log_weights[j] - u_k[j]
+            log_P_k[neighborhood] = log_weights[neighborhood] - u_k[neighborhood]
             log_P_k[neighborhood] -= logsumexp(log_P_k[neighborhood])
             logZ[neighborhood] += gamma * np.exp(log_P_k[neighborhood] - log_pi_k[neighborhood])
 
