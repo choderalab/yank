@@ -790,21 +790,20 @@ class MultiStateSampler(object):
             # Write iteration to storage file
             self._report_iteration()
 
-            # Compute online free energy
-            if (self.online_analysis_interval is not None and
-                        self._iteration > self.online_analysis_minimum_iterations and
-                            self._iteration % self.online_analysis_interval == 0):
-                # Executed only by node 0 and broadcasted to be used in _is_completed().
-                self._last_err_free_energy = self._run_online_analysis()
+            # Update analysis
+            self._update_analysis()
+
+            # Computing timing information
+            iteration_time = timer.stop('Iteration')
+            partial_total_time = timer.partial('Run ReplicaExchange')
+            time_per_iteration = partial_total_time / (self._iteration - run_initial_iteration)
+            estimated_time_remaining = time_per_iteration * (iteration_limit - self._iteration)
+            estimated_total_time = time_per_iteration * iteration_limit
+            estimated_finish_time = time.time() + estimated_time_remaining
+            # TODO: Transmit timing information
 
             # Show timing statistics if debug level is activated.
             if logger.isEnabledFor(logging.DEBUG):
-                iteration_time = timer.stop('Iteration')
-                partial_total_time = timer.partial('Run ReplicaExchange')
-                time_per_iteration = partial_total_time / (self._iteration - run_initial_iteration)
-                estimated_time_remaining = time_per_iteration * (iteration_limit - self._iteration)
-                estimated_total_time = time_per_iteration * iteration_limit
-                estimated_finish_time = time.time() + estimated_time_remaining
                 logger.debug("Iteration took {:.3f}s.".format(iteration_time))
                 if estimated_time_remaining != float('inf'):
                     logger.debug("Estimated completion in {}, at {} (consuming total wall clock time {}).".format(
@@ -997,7 +996,6 @@ class MultiStateSampler(object):
         """
         self._reporter.write_sampler_states(self._sampler_states, self._iteration)
         self._reporter.write_replica_thermodynamic_states(self._replica_thermodynamic_states, self._iteration)
-        # TODO: Store self._replica_neighbors
         self._reporter.write_mcmc_moves(self._mcmc_moves)  # MCMCMoves can store internal statistics.
         self._reporter.write_energies(self._energy_thermodynamic_states, self._neighborhoods, self._energy_unsampled_states,
                                       self._iteration)
@@ -1247,14 +1245,23 @@ class MultiStateSampler(object):
                                                                        swap_fraction_accepted * 100.0))
 
     # -------------------------------------------------------------------------
-    # Internal-usage: Online Analysis.
+    # Internal-usage: Offline and online analysis
     # -------------------------------------------------------------------------
 
     @mpi.on_single_node(rank=0, broadcast_result=True)
     @mpi.delayed_termination
-    @mmtools.utils.with_timer('Computing online free energy estimate')
-    def _run_online_analysis(self):
-        """Compute the free energy during simulation run"""
+    @mmtools.utils.with_timer('Computing offline free energy estimate')
+    def _offline_analysis(self):
+        """Compute offline estimate of free energies
+
+        This scheme only works with global localities.
+        """
+        # TODO: Currently, this just uses MBAR, which only works for global neighborhoods.
+        # TODO: Add Local WHAM support.
+
+        if (self._locality != None):
+            raise Exception('Cannot use MBAR with non-global locality.')
+
         # This relative import is down here because having it at the top causes an ImportError.
         # __init__ pulls in multistate, which pulls in analyze, which pulls in MultiState. Because the first
         # MultiStateSampler never finished importing, its not in the name space which causes relative analyze import of
@@ -1306,8 +1313,82 @@ class MultiStateSampler(object):
         self._reporter.write_mbar_free_energies(self._iteration, self._last_mbar_f_k,
                                                 (free_energy, self._last_err_free_energy))
 
-        # Broadcast the last free energy used to determine completion.
         return self._last_err_free_energy
+
+    @mpi.on_single_node(rank=0, broadcast_result=True)
+    @mpi.delayed_termination
+    @mmtools.utils.with_timer('Computing online free energy estimate')
+    def _online_analysis(self, gamma0=1.0):
+        """Perform online analysis of free energies
+
+        This scheme works with all localities: global and local.
+
+        """
+        timer = mmtools.utils.Timer()
+        timer.start("Online analysis")
+        from scipy.special import logsumexp
+
+        # TODO: This is experimental
+
+        gamma = gamma0 / float(self._iteration+1)
+
+        if self._last_mbar_f_k is None:
+            self._last_mbar_f_k = np.zeros([self.n_states], np.float64)
+
+        logZ = - self._last_mbar_f_k
+
+        for (replica_index, state_index) in self._replica_thermodynamic_states:
+            neighborhood = self._neighborhood(state_index)
+            u_k = self._energy_thermodynamic_states[state_index,:]
+            log_P_k = np.zeros([self.n_states], np.float64)
+            log_pi_k = np.zeros([self.n_states], np.float64)
+            log_weights = np.zeros([self.n_states], np.float64)
+            for j in neighborhood:
+                log_P_k[j] = log_weights[j] - u_k[j]
+            log_P_k[neighborhood] -= logsumexp(log_P_k[neighborhood])
+            logZ[neighborhood] += gamma * np.exp(log_P_k[neighborhood] - log_pi_k[neighborhood])
+
+        # Subtract off logZ[0] to prevent logZ from growing without bound
+        logZ[:] -= logZ[0]
+
+        self._last_mbar_f_k = -logZ
+        free_energy = free_energy[idx, jdx]
+        self._last_err_free_energy = np.Inf
+
+        # Store free energy estimate
+        self._reporter.write_mbar_free_energies(self._iteration, self._last_mbar_f_k,
+                                                (free_energy, self._last_err_free_energy))
+
+        timer.stop("Online analysis")
+
+        return self._last_err_free_energy
+
+    def _update_analysis(self):
+        """Update online analysis of free energies"""
+
+        # TODO: Currently, this just calls the offline analysis at certain intervals, if requested.
+        # TODO: Refactor this to always compute fast online analysis, updating with offline analysis infrequently.
+
+        # TODO: Simplify this
+        if (self.online_analysis_interval is None):
+            analysis_to_perform = None
+        elif (self._iteration <= self.online_analysis_minimum_iterations):
+            analysis_to_perform = 'online'
+        elif (self._iteration % self.online_analysis_interval != 0):
+            analysis_to_perform = 'online'
+        elif (self._locality != None):
+            analysis_to_perform = 'online'
+        else:
+            # All conditions are met for offline analysis
+            analysis_to_perform = 'offline'
+
+        # Execute selected analysis (only runs on node 0)
+        if analysis_to_perform == 'online':
+            self._last_err_free_energy = self._online_analysis()
+        elif analysis_to_perform == 'offline':
+            self._last_err_free_energy = self._offline_analysis()
+
+        return
 
     @staticmethod
     def _read_last_free_energy(reporter, iteration):

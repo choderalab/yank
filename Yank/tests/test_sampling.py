@@ -576,8 +576,7 @@ class TestMultiStateSampler(object):
     def call_sampler_create(cls, sampler, reporter,
                             thermodynamic_states,
                             sampler_states,
-                            unsampled_states,
-                            locality):
+                            unsampled_states):
         """Helper function to call the create method for the sampler"""
         # Allows initial thermodynamic states to be handled by the built in methods
         sampler.create(thermodynamic_states, sampler_states, reporter, unsampled_thermodynamic_states=unsampled_states)
@@ -740,6 +739,8 @@ class TestMultiStateSampler(object):
         with self.temporary_storage_path() as storage_path:
             reporter = self.REPORTER(storage_path, checkpoint_interval=1)
             sampler = self.SAMPLER(locality=1)
+            if hasattr(sampler, 'replica_mixing_scheme'):
+                sampler.replica_mixing_scheme = 'swap-neighbors' # required for non-global locality
             self.call_sampler_create(sampler, reporter,
                                      thermodynamic_states,
                                      sampler_states, unsampled_states)
@@ -850,7 +851,7 @@ class TestMultiStateSampler(object):
         with self.temporary_storage_path() as storage_path:
             number_of_iterations = 3
             move = mmtools.mcmc.LangevinDynamicsMove(n_steps=1)
-            sampler = self.SAMPLER(mcmc_moves=move, number_of_iterations=number_of_iterations, locality=1)
+            sampler = self.SAMPLER(mcmc_moves=move, number_of_iterations=number_of_iterations, locality=2)
             reporter = self.REPORTER(storage_path, checkpoint_interval=1)
             self.call_sampler_create(sampler, reporter,
                                      thermodynamic_states, sampler_states,
