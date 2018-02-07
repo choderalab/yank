@@ -417,6 +417,7 @@ class ReplicaExchangeAnalyzer(MultiStateSamplerAnalyzer):
 
     See Also
     --------
+    PhaseAnalyzer
     MultiStateSamplerAnalyzer
 
     """
