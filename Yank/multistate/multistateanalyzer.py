@@ -818,15 +818,32 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
 
         Returns
         -------
-        energy_matrix : ndarray of shape (K,N)
+        energy_matrix : ndarray of shape [n_replicas, n_states, n_iterations]
             Potential energy matrix of the sampled states
             Energy is from each drawn sample n, evaluated at every sampled state k
-        unsampled_energy_matrix : ndarray of shape (L,N)
+        unsampled_energy_matrix : ndarray of shape [n_replicas, n_unsamped_states, n_iterations]
             Potential energy matrix of the unsampled states
             Energy from each drawn sample n, evaluated at unsampled state l
             If no unsampled states were drawn, this will be shape (0,N)
 
         """
+        logger.info("Reading energies...")
+        # Returns the energies in kln format
+        energy_thermodynamic_states, neighborhoods, energy_unsampled_states = self._reporter.read_energies()
+        n_iterations, n_replicas, n_states = energy_thermodynamic_states.shape
+        _, _, n_unsampled_states = energy_unsampled_states.shape
+        energy_matrix_replica = np.zeros([n_replicas, n_states, n_iterations], np.float64)
+        unsampled_energy_matrix_replica = np.zeros([n_replicas, n_unsampled_states, n_iterations], np.float64)
+        for n in range(n_iterations):
+            energy_matrix_replica[:, :, n] = energy_thermodynamic_states[n, :, :]
+            unsampled_energy_matrix_replica[:, :, n] = energy_unsampled_states[n, :, :]
+        logger.info("Done.")
+
+        # TODO: Figure out what format we need the data in to be useful for both global and local MBAR/WHAM
+        # For now, we simply can't handle analysis of non-global calculations.
+        if np.any(neighborhoods == 0):
+            raise Exception('Non-global MBAR analysis not implemented yet.')
+
         logger.info("Reading energies...")
         # Returns the energies in kln format
         energy_thermodynamic_states, neighborhoods, energy_unsampled_states = self._reporter.read_energies()
