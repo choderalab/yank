@@ -1188,7 +1188,7 @@ class MultiStateSampler(object):
     def _compute_replica_energies(self, replica_id):
         """Compute the energy for the replica in every ThermodynamicState."""
         # Initialize replica energies for each thermodynamic state.
-        energy_thermodynamic_states = np.ma.zeros(self.n_states)
+        energy_thermodynamic_states = np.zeros(self.n_states)
         energy_unsampled_states = np.zeros(len(self._unsampled_states))
 
         # Retrieve sampler state associated to this replica.
