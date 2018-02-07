@@ -141,6 +141,7 @@ class MultiStateSampler(object):
         self._replica_thermodynamic_states = None
         self._iteration = None
         self._energy_thermodynamic_states = None
+        self._neighborhoods = None
         self._energy_unsampled_states = None
         self._n_accepted_matrix = None
         self._n_proposed_matrix = None
