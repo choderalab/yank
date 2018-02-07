@@ -211,7 +211,7 @@ class ReplicaExchangeSampler(MultiStateSampler):
                                  "are {}.".format(replica_mixing_scheme, supported_schemes))
             if instance.locality != None:
                 if replica_mixing_scheme not in ['swap-neighbors']:
-                    raise ValueError("replica_mixing_scheme must be 'swap_neighbors' if locality is used")
+                    raise ValueError("replica_mixing_scheme must be 'swap-neighbors' if locality is used")
             return replica_mixing_scheme
 
     replica_mixing_scheme = _StoredProperty('replica_mixing_scheme',
