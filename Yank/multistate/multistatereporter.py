@@ -54,7 +54,7 @@ logger = logging.getLogger(__name__)
 # MULTISTATE SAMPLER REPORTER
 # ==============================================================================
 
-MISSING_VALUE = np.inf # value for populating missing values
+MISSING_VALUE = np.NaN # value for populating missing values
 
 class MultiStateReporter(object):
     """Handle storage write/read operations and different format conventions.
