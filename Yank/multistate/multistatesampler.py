@@ -1199,7 +1199,7 @@ class MultiStateSampler(object):
         neighborhood = self._neighborhood(state_index)
 
         # Compute energy for all thermodynamic states.
-        for energies, states in [(energy_thermodynamic_states, self._thermodynamic_states[neighborhood]),
+        for energies, states in [(energy_thermodynamic_states[neighborhood], self._thermodynamic_states[neighborhood]),
                                  (energy_unsampled_states, self._unsampled_states)]:
             # Group thermodynamic states by compatibility.
             compatible_groups, original_indices = mmtools.states.group_by_compatibility(states)
