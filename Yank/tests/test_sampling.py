@@ -737,10 +737,13 @@ class TestMultiStateSampler(object):
         n_samplers = len(sampler_states)
 
         with self.temporary_storage_path() as storage_path:
+            kwargs = dict()
+            kwargs['locality'] = 1
+            if hasattr(self.SAMPLER, 'replica_mixing_scheme'):
+                # TODO: Test both 'swap-all' with locality=None and 'swap-neighbors' with locality=1?
+                kwargs['replica_mixing_scheme'] = 'swap-neighbors' # required for non-global locality
             reporter = self.REPORTER(storage_path, checkpoint_interval=1)
-            sampler = self.SAMPLER(locality=1)
-            if hasattr(sampler, 'replica_mixing_scheme'):
-                sampler.replica_mixing_scheme = 'swap-neighbors' # required for non-global locality
+            sampler = self.SAMPLER(**kwargs)
             self.call_sampler_create(sampler, reporter,
                                      thermodynamic_states,
                                      sampler_states, unsampled_states)
@@ -851,7 +854,12 @@ class TestMultiStateSampler(object):
         with self.temporary_storage_path() as storage_path:
             number_of_iterations = 3
             move = mmtools.mcmc.LangevinDynamicsMove(n_steps=1)
-            sampler = self.SAMPLER(mcmc_moves=move, number_of_iterations=number_of_iterations, locality=2)
+            kwargs = dict()
+            kwargs['locality'] = 2
+            if hasattr(self.SAMPLER, 'replica_mixing_scheme'):
+                # TODO: Test both 'swap-all' with locality=None and 'swap-neighbors' with locality=1?
+                kwargs['replica_mixing_scheme'] = 'swap-neighbors' # required for non-global locality
+            sampler = self.SAMPLER(mcmc_moves=move, number_of_iterations=number_of_iterations, **kwargs)
             reporter = self.REPORTER(storage_path, checkpoint_interval=1)
             self.call_sampler_create(sampler, reporter,
                                      thermodynamic_states, sampler_states,
