@@ -54,7 +54,7 @@ logger = logging.getLogger(__name__)
 # MULTISTATE SAMPLER REPORTER
 # ==============================================================================
 
-MISSING_VALUE = np.NaN # value for populating missing/masked values
+MISSING_VALUE = np.inf # value for populating missing values
 
 class MultiStateReporter(object):
     """Handle storage write/read operations and different format conventions.
@@ -749,7 +749,7 @@ class MultiStateReporter(object):
                                                                    'f8',
                                                                    ('iteration', 'replica', 'state'),
                                                                    zlib=False,
-                                                                   fill_value=0.0,
+                                                                   fill_value=MISSING_VALUE,
                                                                    chunksizes=(1, n_replicas, n_states))
             ncvar_energies.units = 'kT'
             ncvar_energies.long_name = ("energies[iteration][replica][state] is the reduced (unitless) "
@@ -1116,9 +1116,9 @@ class MultiStateReporter(object):
             online_group = analysis_nc.createGroup('online_analysis')
             # larger chunks, faster operations, small matrix anyways
             online_group.createVariable('f_k', float, dimensions=('iteration', 'f_k_length'),
-                                        zlib=True, chunksizes=(1, len(f_k)), fill_value=np.inf)
+                                        zlib=True, chunksizes=(1, len(f_k)), fill_value=MISSING_VALUE)
             online_group.createVariable('free_energy', float, dimensions=('iteration', 'Df'),
-                                        zlib=True, chunksizes=(1, 2), fill_value=np.inf)
+                                        zlib=True, chunksizes=(1, 2), fill_value=MISSING_VALUE)
         online_group = analysis_nc.groups['online_analysis']
         online_group.variables['f_k'][iteration] = f_k
         online_group.variables['free_energy'][iteration, :] = free_energy
