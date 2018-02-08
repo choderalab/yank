@@ -710,9 +710,16 @@ class MultiStateReporter(object):
             ``sampler_states[iteration, i]`` and ThermodynamicState ``unsampled_thermodynamic_states[iteration, j]``.
 
         """
+        # Determine last consistent iteration
         iteration = self._calculate_last_iteration(iteration)
+        # Retrieve energies at all thermodynamic states
         energy_thermodynamic_states = np.array(self._storage_analysis.variables['energies'][iteration, :, :], np.float64)
-        energy_neighborhoods = np.array(self._storage_analysis.variables['neighborhoods'][iteration, :, :], 'i1')
+        # Retrieve neighborhoods, assuming global neighborhoods if reading a pre-neighborhoods file
+        try:
+            energy_neighborhoods = np.array(self._storage_analysis.variables['neighborhoods'][iteration, :, :], 'i1')
+        except KeyError:
+            energy_neighborhoods = np.ones(energy_thermodynamic_states.shape, 'i1')
+        # Read energies at unsampled states, if present
         try:
             energy_unsampled_states = np.array(self._storage_analysis.variables['unsampled_energies'][iteration, :, :], np.float64)
         except KeyError:
