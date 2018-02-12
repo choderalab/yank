@@ -101,6 +101,10 @@ class MultiStateSampler(object):
         Since the initial samples likely not to yield a good estimate of free energy, save time and just skip them
         If ``online_analysis_interval`` is None, this does nothing
 
+    locality : int > 0, optional, default None
+        If None, the energies at all states will be computed for every replica each iteration.
+        If int > 0, energies will only be computed for states ``range(max(0, state-locality), min(n_states, state+locality))``.
+
     Attributes
     ----------
     n_replicas
@@ -127,7 +131,8 @@ class MultiStateSampler(object):
 
     def __init__(self, mcmc_moves=None, number_of_iterations=1,
                  online_analysis_interval=None, online_analysis_target_error=0.2,
-                 online_analysis_minimum_iterations=50):
+                 online_analysis_minimum_iterations=50,
+                 locality=None):
         # These will be set on initialization. See function
         # create() for explanation of single variables.
         self._thermodynamic_states = None
@@ -136,6 +141,7 @@ class MultiStateSampler(object):
         self._replica_thermodynamic_states = None
         self._iteration = None
         self._energy_thermodynamic_states = None
+        self._neighborhoods = None
         self._energy_unsampled_states = None
         self._n_accepted_matrix = None
         self._n_proposed_matrix = None
@@ -156,6 +162,9 @@ class MultiStateSampler(object):
         # usage because any change to these attribute implies a change
         # in the storage file as well. Use properties for checks.
         self.number_of_iterations = number_of_iterations
+
+        # Store locality
+        self.locality = locality
 
         # Online analysis options.
         self.online_analysis_interval = online_analysis_interval
@@ -219,7 +228,7 @@ class MultiStateSampler(object):
         thermodynamic_states, unsampled_states = reporter.read_thermodynamic_states()
         sampler_states = reporter.read_sampler_states(iteration=iteration)
         state_indices = reporter.read_replica_thermodynamic_states(iteration=iteration)
-        energy_thermodynamic_states, energy_unsampled_states = reporter.read_energies(iteration=iteration)
+        energy_thermodynamic_states, neighborhoods, energy_unsampled_states = reporter.read_energies(iteration=iteration)
         n_accepted_matrix, n_proposed_matrix = reporter.read_mixing_statistics(iteration=iteration)
         metadata = reporter.read_dict('metadata')
 
@@ -240,6 +249,7 @@ class MultiStateSampler(object):
         sampler._sampler_states = sampler_states
         sampler._replica_thermodynamic_states = state_indices
         sampler._energy_thermodynamic_states = energy_thermodynamic_states
+        sampler._neighborhoods = neighborhoods
         sampler._energy_unsampled_states = energy_unsampled_states
         sampler._n_accepted_matrix = n_accepted_matrix
         sampler._n_proposed_matrix = n_proposed_matrix
@@ -451,6 +461,14 @@ class MultiStateSampler(object):
                 raise ValueError("online_analysis_minimum_iterations must be an integer >= 0")
             return online_analysis_minimum_iterations
 
+        @staticmethod
+        def _locality_validator(instance, locality):
+            if locality is not None:
+                if (type(locality) != int) or (locality <= 0):
+                    raise ValueError("locality must be an int > 0")
+            return locality
+
+
     number_of_iterations = _StoredProperty('number_of_iterations',
                                            validate_function=_StoredProperty._number_of_iterations_validator)
     online_analysis_interval = _StoredProperty('online_analysis_interval',
@@ -459,6 +477,7 @@ class MultiStateSampler(object):
                                                    validate_function=_StoredProperty._oa_target_error_validator)
     online_analysis_minimum_iterations = _StoredProperty('online_analysis_minimum_iterations',
                                                          validate_function=_StoredProperty._oa_min_iter_validator)
+    locality = _StoredProperty('locality', validate_function=_StoredProperty._locality_validator)
 
     @property
     def metadata(self):
@@ -619,6 +638,7 @@ class MultiStateSampler(object):
         # is the reduced potential computed at the positions of SamplerState sampler_states[k]
         # and ThermodynamicState thermodynamic/unsampled_states[l].
         self._energy_thermodynamic_states = np.zeros([self.n_replicas, self.n_states], np.float64)
+        self._neighborhoods = np.zeros([self.n_replicas, self.n_states], 'i1')
         self._energy_unsampled_states = np.zeros([self.n_replicas, len(self._unsampled_states)], np.float64)
 
         # Display papers to be cited.
@@ -738,7 +758,7 @@ class MultiStateSampler(object):
                     # If not the special case, raise the error normally
                     raise e
             mpi.run_single_node(0, self._reporter.write_energies, self._energy_thermodynamic_states,
-                                self._energy_unsampled_states, self._iteration)
+                                self._neighborhoods, self._energy_unsampled_states, self._iteration)
             self._check_nan_energy()
 
         timer = mmtools.utils.Timer()
@@ -759,34 +779,32 @@ class MultiStateSampler(object):
             logger.debug('Iteration {}/{}'.format(self._iteration, iteration_limit))
             timer.start('Iteration')
 
-            # Attempt replica swaps to sample from equilibrium permuation of
-            # states associated with replicas. This step synchronizes replicas.
-            self._replica_thermodynamic_states = self._mix_replicas()
+            # Update thermodynamic states
+            self._mix_replicas()
 
             # Propagate replicas.
             self._propagate_replicas()
 
-            # Compute energies of all replicas at all states.
+            # Compute energies of all replicas at all states
             self._compute_energies()
 
-            # Write iteration to storage file.
+            # Write iteration to storage file
             self._report_iteration()
 
-            # Compute online free energy
-            if (self.online_analysis_interval is not None and
-                        self._iteration > self.online_analysis_minimum_iterations and
-                            self._iteration % self.online_analysis_interval == 0):
-                # Executed only by node 0 and broadcasted to be used in _is_completed().
-                self._last_err_free_energy = self._run_online_analysis()
+            # Update analysis
+            self._update_analysis()
+
+            # Computing timing information
+            iteration_time = timer.stop('Iteration')
+            partial_total_time = timer.partial('Run ReplicaExchange')
+            time_per_iteration = partial_total_time / (self._iteration - run_initial_iteration)
+            estimated_time_remaining = time_per_iteration * (iteration_limit - self._iteration)
+            estimated_total_time = time_per_iteration * iteration_limit
+            estimated_finish_time = time.time() + estimated_time_remaining
+            # TODO: Transmit timing information
 
             # Show timing statistics if debug level is activated.
             if logger.isEnabledFor(logging.DEBUG):
-                iteration_time = timer.stop('Iteration')
-                partial_total_time = timer.partial('Run ReplicaExchange')
-                time_per_iteration = partial_total_time / (self._iteration - run_initial_iteration)
-                estimated_time_remaining = time_per_iteration * (iteration_limit - self._iteration)
-                estimated_total_time = time_per_iteration * iteration_limit
-                estimated_finish_time = time.time() + estimated_time_remaining
                 logger.debug("Iteration took {:.3f}s.".format(iteration_time))
                 if estimated_time_remaining != float('inf'):
                     logger.debug("Estimated completion in {}, at {} (consuming total wall clock time {}).".format(
@@ -834,24 +852,25 @@ class MultiStateSampler(object):
         Checks both sampled and unsampled thermodynamic states.
 
         """
-        # Check thermodynamic state energies.
-        if np.any(np.isnan(self._energy_thermodynamic_states)) or np.any(np.isnan(self._energy_unsampled_states)):
-            # Find faulty replicas to create error message.
-            faulty_replicas = set()
+        # Find faulty replicas to create error message.
+        faulty_replicas = set()
 
-            # Check sampled thermodynamic states first.
-            state_type = 'thermodynamic state'
+        # Check sampled thermodynamic states first.
+        state_type = 'thermodynamic state'
+
+        for (replica_id, state_id) in enumerate(self._replica_thermodynamic_states):
+            neighborhood = self._neighborhood(state_id)
+            if np.any(np.isnan(self._energy_thermodynamic_states[replica_id,neighborhood])):
+                faulty_replicas.add(replica_id)
+
+        # If there are no NaNs in energies, the problem is in the unsampled states.
+        if (len(faulty_replicas) == 0) and (self._energy_unsampled_states.shape[1] > 0):
+            state_type = 'unsampled thermodynamic state'
             for replica_id in range(self.n_replicas):
-                if np.any(np.isnan(self._energy_thermodynamic_states[replica_id])):
+                if np.any(np.isnan(self._energy_unsampled_states[replica_id])):
                     faulty_replicas.add(replica_id)
 
-            # If there are no NaNs in energies, the problem is in the unsampled states.
-            if len(faulty_replicas) == 0:
-                state_type = 'unsampled thermodynamic state'
-                for replica_id in range(self.n_replicas):
-                    if np.any(np.isnan(self._unsampled_states[replica_id])):
-                        faulty_replicas.add(replica_id)
-
+        if len(faulty_replicas) > 0:
             # Raise exception.
             err_msg = "NaN encountered in {} energies for replicas {}".format(state_type, faulty_replicas)
             logger.critical(err_msg)
@@ -979,7 +998,7 @@ class MultiStateSampler(object):
         self._reporter.write_sampler_states(self._sampler_states, self._iteration)
         self._reporter.write_replica_thermodynamic_states(self._replica_thermodynamic_states, self._iteration)
         self._reporter.write_mcmc_moves(self._mcmc_moves)  # MCMCMoves can store internal statistics.
-        self._reporter.write_energies(self._energy_thermodynamic_states, self._energy_unsampled_states,
+        self._reporter.write_energies(self._energy_thermodynamic_states, self._neighborhoods, self._energy_unsampled_states,
                                       self._iteration)
         self._reporter.write_mixing_statistics(self._n_accepted_matrix, self._n_proposed_matrix, self._iteration)
         self._reporter.write_timestamp(self._iteration)
@@ -1020,6 +1039,30 @@ class MultiStateSampler(object):
         """Store __init__ parameters (beside MCMCMoves) in storage file."""
         logger.debug("Storing general ReplicaExchange options...")
         self._reporter.write_dict('options', self.options)
+
+    # -------------------------------------------------------------------------
+    # Locality
+    # -------------------------------------------------------------------------
+
+    def _neighborhood(self, state_index):
+        """Compute the states in the local neighborhood determined by self.locality
+
+        Parameters
+        ----------
+        current_state_index : int
+            The currrent state
+
+        Returns
+        -------
+        neighborhood : list of int
+            The states in the local neighborhood
+        """
+        if self.locality == None:
+            # Global neighborhood
+            return slice(0, self.n_states)
+        else:
+            # Local neighborhood specified by 'locality'
+            return slice(max(0, state_index - self.locality), min(self.n_states, state_index + self.locality + 1))
 
     # -------------------------------------------------------------------------
     # Internal-usage: Distributed tasks.
@@ -1126,6 +1169,12 @@ class MultiStateSampler(object):
     def _compute_energies(self):
         """Compute energies of all replicas at all states."""
 
+        # Determine neighborhoods (all nodes)
+        self._neighborhoods[:,:] = False
+        for (replica_index, state_index) in enumerate(self._replica_thermodynamic_states):
+            neighborhood = self._neighborhood(state_index)
+            self._neighborhoods[replica_index,neighborhood] = True
+
         # Distribute energy computation across nodes. Only node 0 receives
         # all the energies since it needs to store them and mix states.
         new_energies, replica_ids = mpi.distribute(self._compute_replica_energies, range(self.n_replicas),
@@ -1146,8 +1195,12 @@ class MultiStateSampler(object):
         # Retrieve sampler state associated to this replica.
         sampler_state = self._sampler_states[replica_id]
 
+        # Determine neighborhood
+        state_index = self._replica_thermodynamic_states[replica_id]
+        neighborhood = self._neighborhood(state_index)
+
         # Compute energy for all thermodynamic states.
-        for energies, states in [(energy_thermodynamic_states, self._thermodynamic_states),
+        for energies, states in [(energy_thermodynamic_states[neighborhood], self._thermodynamic_states[neighborhood]),
                                  (energy_unsampled_states, self._unsampled_states)]:
             # Group thermodynamic states by compatibility.
             compatible_groups, original_indices = mmtools.states.group_by_compatibility(states)
@@ -1192,18 +1245,24 @@ class MultiStateSampler(object):
         logger.debug("Accepted {}/{} attempted swaps ({:.1f}%)".format(n_swaps_accepted, n_swaps_proposed,
                                                                        swap_fraction_accepted * 100.0))
 
-        # Return new states indices for MPI broadcasting.
-        return self._replica_thermodynamic_states
-
     # -------------------------------------------------------------------------
-    # Internal-usage: Online Analysis.
+    # Internal-usage: Offline and online analysis
     # -------------------------------------------------------------------------
 
     @mpi.on_single_node(rank=0, broadcast_result=True)
     @mpi.delayed_termination
-    @mmtools.utils.with_timer('Computing online free energy estimate')
-    def _run_online_analysis(self):
-        """Compute the free energy during simulation run"""
+    @mmtools.utils.with_timer('Computing offline free energy estimate')
+    def _offline_analysis(self):
+        """Compute offline estimate of free energies
+
+        This scheme only works with global localities.
+        """
+        # TODO: Currently, this just uses MBAR, which only works for global neighborhoods.
+        # TODO: Add Local WHAM support.
+
+        if (self._locality != None):
+            raise Exception('Cannot use MBAR with non-global locality.')
+
         # This relative import is down here because having it at the top causes an ImportError.
         # __init__ pulls in multistate, which pulls in analyze, which pulls in MultiState. Because the first
         # MultiStateSampler never finished importing, its not in the name space which causes relative analyze import of
@@ -1255,8 +1314,81 @@ class MultiStateSampler(object):
         self._reporter.write_mbar_free_energies(self._iteration, self._last_mbar_f_k,
                                                 (free_energy, self._last_err_free_energy))
 
-        # Broadcast the last free energy used to determine completion.
         return self._last_err_free_energy
+
+    @mpi.on_single_node(rank=0, broadcast_result=True)
+    @mpi.delayed_termination
+    @mmtools.utils.with_timer('Computing online free energy estimate')
+    def _online_analysis(self, gamma0=1.0):
+        """Perform online analysis of free energies
+
+        This scheme works with all localities: global and local.
+
+        """
+        timer = mmtools.utils.Timer()
+        timer.start("Online analysis")
+        from scipy.special import logsumexp
+
+        # TODO: This is experimental
+
+        gamma = gamma0 / float(self._iteration+1)
+
+        if self._last_mbar_f_k is None:
+            self._last_mbar_f_k = np.zeros([self.n_states], np.float64)
+
+        logZ = - self._last_mbar_f_k
+
+        for (replica_index, state_index) in enumerate(self._replica_thermodynamic_states):
+            neighborhood = self._neighborhood(state_index)
+            u_k = self._energy_thermodynamic_states[replica_index,:]
+            log_P_k = np.zeros([self.n_states], np.float64)
+            log_pi_k = np.zeros([self.n_states], np.float64)
+            log_weights = np.zeros([self.n_states], np.float64)
+            log_P_k[neighborhood] = log_weights[neighborhood] - u_k[neighborhood]
+            log_P_k[neighborhood] -= logsumexp(log_P_k[neighborhood])
+            logZ[neighborhood] += gamma * np.exp(log_P_k[neighborhood] - log_pi_k[neighborhood])
+
+        # Subtract off logZ[0] to prevent logZ from growing without bound
+        logZ[:] -= logZ[0]
+
+        self._last_mbar_f_k = -logZ
+        free_energy = self._last_mbar_f_k[-1] - self._last_mbar_f_k[0]
+        self._last_err_free_energy = np.Inf
+
+        # Store free energy estimate
+        self._reporter.write_mbar_free_energies(self._iteration, self._last_mbar_f_k,
+                                                (free_energy, self._last_err_free_energy))
+
+        timer.stop("Online analysis")
+
+        return self._last_err_free_energy
+
+    def _update_analysis(self):
+        """Update online analysis of free energies"""
+
+        # TODO: Currently, this just calls the offline analysis at certain intervals, if requested.
+        # TODO: Refactor this to always compute fast online analysis, updating with offline analysis infrequently.
+
+        # TODO: Simplify this
+        if (self.online_analysis_interval is None):
+            analysis_to_perform = None
+        elif (self._iteration <= self.online_analysis_minimum_iterations):
+            analysis_to_perform = 'online'
+        elif (self._iteration % self.online_analysis_interval != 0):
+            analysis_to_perform = 'online'
+        elif (self._locality != None):
+            analysis_to_perform = 'online'
+        else:
+            # All conditions are met for offline analysis
+            analysis_to_perform = 'offline'
+
+        # Execute selected analysis (only runs on node 0)
+        if analysis_to_perform == 'online':
+            self._last_err_free_energy = self._online_analysis()
+        elif analysis_to_perform == 'offline':
+            self._last_err_free_energy = self._offline_analysis()
+
+        return
 
     @staticmethod
     def _read_last_free_energy(reporter, iteration):

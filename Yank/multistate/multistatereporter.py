@@ -54,6 +54,8 @@ logger = logging.getLogger(__name__)
 # MULTISTATE SAMPLER REPORTER
 # ==============================================================================
 
+MISSING_VALUE = np.NaN # value for populating missing values
+
 class MultiStateReporter(object):
     """Handle storage write/read operations and different format conventions.
 
@@ -700,22 +702,33 @@ class MultiStateReporter(object):
         energy_thermodynamic_states : n_replicas x n_states numpy.ndarray
             ``energy_thermodynamic_states[iteration, i, j]`` is the reduced potential computed at
             SamplerState ``sampler_states[iteration, i]`` and ThermodynamicState ``thermodynamic_states[iteration, j]``.
+        energy_neighborhoods : n_replicas x n_states numpy.ndarray
+            energy_neighborhoods[replica_index, state_index] is 1 if the energy was computed for this state,
+            0 otherwise
         energy_unsampled_states : n_replicas x n_unsampled_states numpy.ndarray
             ``energy_unsampled_states[iteration, i, j]`` is the reduced potential computed at SamplerState
             ``sampler_states[iteration, i]`` and ThermodynamicState ``unsampled_thermodynamic_states[iteration, j]``.
 
         """
+        # Determine last consistent iteration
         iteration = self._calculate_last_iteration(iteration)
-        energy_thermodynamic_states = self._storage_analysis.variables['energies'][iteration, :, :]
+        # Retrieve energies at all thermodynamic states
+        energy_thermodynamic_states = np.array(self._storage_analysis.variables['energies'][iteration, :, :], np.float64)
+        # Retrieve neighborhoods, assuming global neighborhoods if reading a pre-neighborhoods file
         try:
-            energy_unsampled_states = self._storage_analysis.variables['unsampled_energies'][iteration, :, :]
+            energy_neighborhoods = np.array(self._storage_analysis.variables['neighborhoods'][iteration, :, :], 'i1')
+        except KeyError:
+            energy_neighborhoods = np.ones(energy_thermodynamic_states.shape, 'i1')
+        # Read energies at unsampled states, if present
+        try:
+            energy_unsampled_states = np.array(self._storage_analysis.variables['unsampled_energies'][iteration, :, :], np.float64)
         except KeyError:
             # There are no unsampled thermodynamic states.
             unsampled_shape = energy_thermodynamic_states.shape[:-1] + (0,)
             energy_unsampled_states = np.zeros(unsampled_shape)
-        return energy_thermodynamic_states, energy_unsampled_states
+        return energy_thermodynamic_states, energy_neighborhoods, energy_unsampled_states
 
-    def write_energies(self, energy_thermodynamic_states, energy_unsampled_states, iteration):
+    def write_energies(self, energy_thermodynamic_states, energy_neighborhoods, energy_unsampled_states, iteration):
         """Store the energy matrix at the given iteration on the analysis file
 
         Parameters
@@ -723,6 +736,9 @@ class MultiStateReporter(object):
         energy_thermodynamic_states : n_replicas x n_states numpy.ndarray
             ``energy_thermodynamic_states[i][j]`` is the reduced potential computed at
             SamplerState ``sampler_states[i]`` and ThermodynamicState ``thermodynamic_states[j]``.
+        energy_neighborhoods : n_replicas x n_states numpy.ndarray
+            energy_neighborhoods[replica_index, state_index] is 1 if the energy was computed for this state,
+            0 otherwise
         energy_unsampled_states : n_replicas x n_unsampled_states numpy.ndarray
             ``energy_unsampled_states[i][j]`` is the reduced potential computed at SamplerState
             ``sampler_states[i]`` and ThermodynamicState ``unsampled_thermodynamic_states[j]``.
@@ -730,32 +746,40 @@ class MultiStateReporter(object):
             The iteration at which to store the data.
 
         """
-        # Initialize schema if needed.
+        n_replicas, n_states = energy_thermodynamic_states.shape
+
+        # Create dimensions and variables if they weren't created by other functions.
+        self._ensure_dimension_exists('replica', n_replicas)
+        self._ensure_dimension_exists('state', n_states)
         if 'energies' not in self._storage_analysis.variables:
-            n_replicas, n_states = energy_thermodynamic_states.shape
-
-            # Create dimensions if they weren't created by other functions.
-            self._ensure_dimension_exists('replica', n_replicas)
-            self._ensure_dimension_exists('state', n_states)
-
-            # Create variable for thermodynamic state energies with units and descriptions.
             ncvar_energies = self._storage_analysis.createVariable('energies',
                                                                    'f8',
                                                                    ('iteration', 'replica', 'state'),
                                                                    zlib=False,
+                                                                   fill_value=MISSING_VALUE,
                                                                    chunksizes=(1, n_replicas, n_states))
             ncvar_energies.units = 'kT'
             ncvar_energies.long_name = ("energies[iteration][replica][state] is the reduced (unitless) "
                                         "energy of replica 'replica' from iteration 'iteration' evaluated "
                                         "at the thermodynamic state 'state'.")
 
+        if 'neighborhoods' not in self._storage_analysis.variables:
+            ncvar_neighborhoods = self._storage_analysis.createVariable('neighborhoods',
+                                                                   'i1',
+                                                                   ('iteration', 'replica', 'state'),
+                                                                   zlib=False,
+                                                                   fill_value=1, # old-style files will be upgraded to have all states
+                                                                   chunksizes=(1, n_replicas, n_states))
+            ncvar_neighborhoods.long_name = ("neighborhoods[iteration][replica][state] is 1 if this energy was computed "
+                                             "during this iteration.")
+
+        if 'unsampled_energies' not in self._storage_analysis.variables:
             # Check if we have unsampled states.
             if energy_unsampled_states.shape[1] > 0:
-                if 'unsampled_energies' not in self._storage_analysis.variables:
-                    n_unsampled_states = len(energy_unsampled_states[0])
+                n_unsampled_states = len(energy_unsampled_states[0])
+                self._ensure_dimension_exists('unsampled', n_unsampled_states)
 
-                    # Create replica dimension if it wasn't created by other functions.
-                    self._ensure_dimension_exists('unsampled', n_unsampled_states)
+                if 'unsampled_energies' not in self._storage_analysis.variables:
 
                     # Create variable for thermodynamic state energies with units and descriptions.
                     ncvar_unsampled = self._storage_analysis.createVariable('unsampled_energies',
@@ -771,8 +795,9 @@ class MultiStateReporter(object):
                                                  "(unitless) energy of replica 'replica' from iteration 'iteration' "
                                                  "evaluated at unsampled thermodynamic state 'state'.")
 
-        # Store states energy.
-        self._storage_analysis.variables['energies'][iteration, :, :] = energy_thermodynamic_states[:, :]
+        # Store values
+        self._storage_analysis.variables['energies'][iteration,:,:] = energy_thermodynamic_states
+        self._storage_analysis.variables['neighborhoods'][iteration,:,:] = energy_neighborhoods
         if energy_unsampled_states.shape[1] > 0:
             self._storage_analysis.variables['unsampled_energies'][iteration, :, :] = energy_unsampled_states[:, :]
 
@@ -1098,9 +1123,9 @@ class MultiStateReporter(object):
             online_group = analysis_nc.createGroup('online_analysis')
             # larger chunks, faster operations, small matrix anyways
             online_group.createVariable('f_k', float, dimensions=('iteration', 'f_k_length'),
-                                        zlib=True, chunksizes=(1, len(f_k)), fill_value=np.inf)
+                                        zlib=True, chunksizes=(1, len(f_k)), fill_value=MISSING_VALUE)
             online_group.createVariable('free_energy', float, dimensions=('iteration', 'Df'),
-                                        zlib=True, chunksizes=(1, 2), fill_value=np.inf)
+                                        zlib=True, chunksizes=(1, 2), fill_value=MISSING_VALUE)
         online_group = analysis_nc.groups['online_analysis']
         online_group.variables['f_k'][iteration] = f_k
         online_group.variables['free_energy'][iteration, :] = free_energy

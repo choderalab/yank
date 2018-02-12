@@ -90,6 +90,7 @@ class ParallelTemperingSampler(ReplicaExchangeSampler):
 
     See Also
     --------
+    MultiStateSampler
     ReplicaExchangeSampler
 
     """
@@ -225,8 +226,8 @@ class ParallelTemperingAnalyzer(ReplicaExchangeAnalyzer):
 
     See Also
     --------
-    ReplicaExchangeAnalyzer
     PhaseAnalyzer
+    ReplicaExchangeAnalyzer
 
     """
     pass

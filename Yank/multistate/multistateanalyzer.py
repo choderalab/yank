@@ -163,17 +163,18 @@ class ObservablesRegistry(object):
         ----------
         name: str
             Name of the observable, will be cast to all lower case and spaces replaced with underscores
-        error_class: "quad", "linear", or None
+        error_class: 'quad', 'linear', or None
             How the error of the observable is computed when added with other errors from the same observable.
 
-            * "quad": Adds in the quadrature, Observable C = A + B, Error eC = sqrt(eA**2 + eB**2)
+            * 'quad': Adds in the quadrature, Observable C = A + B, Error eC = sqrt(eA**2 + eB**2)
 
-            * "linear": Adds linearly,  Observable C = A + B, Error eC = eA + eB
+            * 'linear': Adds linearly,  Observable C = A + B, Error eC = eA + eB
 
             * None: Does not carry error
 
         re_register: bool, optional, Default: False
             Re-register an existing observable
+
         """
 
         self._register_observable(name, "phase", error_class, re_register=re_register)
@@ -182,7 +183,7 @@ class ObservablesRegistry(object):
     # Define the observables
     ########################
     @property
-    def observables(self) -> tuple:
+    def observables(self):
         """
         Set of observables which are derived from the subsets below
         """
@@ -197,21 +198,21 @@ class ObservablesRegistry(object):
     # ------------------------------------------------
 
     @property
-    def observables_defined_by_two_states(self) -> tuple:
+    def observables_defined_by_two_states(self):
         """
         Observables that require an i and a j state to define the observable accurately between phases
         """
         return self._get_observables('two_state')
 
     @property
-    def observables_defined_by_single_state(self) -> tuple:
+    def observables_defined_by_single_state(self):
         """
         Defined observables which are fully defined by a single state, and not by multiple states such as differences
         """
         return self._get_observables('one_state')
 
     @property
-    def observables_defined_by_phase(self) -> tuple:
+    def observables_defined_by_phase(self):
         """
         Observables which are defined by the phase as a whole, and not defined by any 1 or more states
         e.g. Standard State Correction
@@ -224,7 +225,7 @@ class ObservablesRegistry(object):
     ##########################################
 
     @property
-    def observables_with_error(self) -> tuple:
+    def observables_with_error(self):
         """Determine which observables have error by inspecting the the error subsets"""
         observables = set()
         for subset_key in self._errors:
@@ -238,27 +239,27 @@ class ObservablesRegistry(object):
     # ------------------------------------------------
 
     @property
-    def observables_with_error_adding_quadrature(self) -> tuple:
+    def observables_with_error_adding_quadrature(self):
         """Observable C = A + B, Error eC = sqrt(eA**2 + eB**2)"""
         return self._get_errors('quad')
 
     @property
-    def observables_with_error_adding_linear(self) -> tuple:
+    def observables_with_error_adding_linear(self):
         """Observable C = A + B, Error eC = eA + eB"""
         return self._get_errors('linear')
 
     @property
-    def observables_without_error(self) -> tuple:
+    def observables_without_error(self):
         return self._get_errors(None)
 
     # ------------------
     # Internal functions
     # ------------------
 
-    def _get_observables(self, key) -> tuple:
+    def _get_observables(self, key):
         return tuple(self._observables[key])
 
-    def _get_errors(self, key) -> tuple:
+    def _get_errors(self, key):
         return tuple(self._errors[key])
 
     @staticmethod
@@ -544,7 +545,7 @@ class PhaseAnalyzer(ABC):
         raise NotImplementedError("This class has not implemented this function")
 
     @staticmethod
-    def reformat_energies_for_mbar(u_kln: np.ndarray, n_k: Optional[np.ndarray]=None) -> np.ndarray:
+    def reformat_energies_for_mbar(u_kln: np.ndarray, n_k: Optional[np.ndarray]=None):
         """
         Convert u_kln formatted energies into u_ln formatted energies.
 
@@ -817,10 +818,10 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
 
         Returns
         -------
-        energy_matrix : ndarray of shape (K,N)
+        energy_matrix : ndarray of shape [n_replicas, n_states, n_iterations]
             Potential energy matrix of the sampled states
             Energy is from each drawn sample n, evaluated at every sampled state k
-        unsampled_energy_matrix : ndarray of shape (L,N)
+        unsampled_energy_matrix : ndarray of shape [n_replicas, n_unsamped_states, n_iterations]
             Potential energy matrix of the unsampled states
             Energy from each drawn sample n, evaluated at unsampled state l
             If no unsampled states were drawn, this will be shape (0,N)
@@ -828,7 +829,24 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         """
         logger.info("Reading energies...")
         # Returns the energies in kln format
-        energy_thermodynamic_states, energy_unsampled_states = self._reporter.read_energies()
+        energy_thermodynamic_states, neighborhoods, energy_unsampled_states = self._reporter.read_energies()
+        n_iterations, n_replicas, n_states = energy_thermodynamic_states.shape
+        _, _, n_unsampled_states = energy_unsampled_states.shape
+        energy_matrix_replica = np.zeros([n_replicas, n_states, n_iterations], np.float64)
+        unsampled_energy_matrix_replica = np.zeros([n_replicas, n_unsampled_states, n_iterations], np.float64)
+        for n in range(n_iterations):
+            energy_matrix_replica[:, :, n] = energy_thermodynamic_states[n, :, :]
+            unsampled_energy_matrix_replica[:, :, n] = energy_unsampled_states[n, :, :]
+        logger.info("Done.")
+
+        # TODO: Figure out what format we need the data in to be useful for both global and local MBAR/WHAM
+        # For now, we simply can't handle analysis of non-global calculations.
+        if np.any(neighborhoods == 0):
+            raise Exception('Non-global MBAR analysis not implemented yet.')
+
+        logger.info("Reading energies...")
+        # Returns the energies in kln format
+        energy_thermodynamic_states, neighborhoods, energy_unsampled_states = self._reporter.read_energies()
         n_iterations, n_replicas, n_states = energy_thermodynamic_states.shape
         _, _, n_unsampled_states = energy_unsampled_states.shape
         energy_matrix_replica = np.zeros([n_replicas, n_states, n_iterations], np.float64)
