@@ -38,6 +38,8 @@ Optional Arguments:
                                 1 <= job_id <= n_jobs. In this case, njobs must be specified as well and YANK will
                                 run only 1/n_jobs of the experiments. This can be used to run several separate YANK
                                 executions in parallel starting from the same script.
+                                Alternatively, a zero-indexed environment variable name can be specified, in which
+                                case the jobid will be taken from this variable (0 <= environment variable < n_jobs).
   --njobs=INTEGER               Specify the total number of parallel executions. jobid has to be specified too.
   -o, --override=OVERRIDE       Override a single option in the script file. May be specified multiple times.
                                 Specified as a nested dictionary of the form:
@@ -93,7 +95,17 @@ def dispatch(args):
         override = str(override_dict).replace("'", "").replace('"', '')
 
     if args['--jobid']:
-        job_id = int(args['--jobid'])
+        job_id = args['--jobid']
+        try:
+            # Try processing it as an integer
+            job_id = int(job_id)
+        except ValueError:
+            if job_id in os.environ:
+                # Take the value of the environment variable
+                job_id = int(os.environ[job_id]) + 1
+            else:
+                raise ValueError("--jobid '%s' unknown" % job_id)
+
     else:
         job_id = None
     if args['--njobs']:
