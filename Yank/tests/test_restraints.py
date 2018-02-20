@@ -26,7 +26,8 @@ import nose
 from nose.plugins.attrib import attr
 
 import yank.restraints
-from yank import experiment, analyze, Topography
+from yank import experiment, Topography
+import yank.multistate as multistate
 
 
 # =============================================================================================
@@ -144,8 +145,10 @@ def general_restraint_run(options):
         yaml_builder.run_experiments()
         # Estimate Free Energies
         ncfile_path = os.path.join(output_directory, 'experiments', 'complex.nc')
+        reporter = multistate.MultiStateReporter(ncfile_path, open_mode='r')
         ncfile = netcdf.Dataset(ncfile_path, 'r')
-        Deltaf_ij, dDeltaf_ij = analyze.estimate_free_energies(ncfile)
+        analyzer = multistate.ReplicaExchangeAnalyzer(ncfile)
+        Deltaf_ij, dDeltaf_ij = analyzer.get_free_energy()
         # Correct the sign for the fact that we are adding vs removing the restraints
         DeltaF_simulated = Deltaf_ij[-1, 0]
         dDeltaF_simulated = dDeltaf_ij[-1, 0]

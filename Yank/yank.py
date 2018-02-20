@@ -17,23 +17,22 @@ Interface for automated free energy calculations.
 # ==============================================================================
 
 import abc
+import collections
 import copy
-import time
-import logging
 import functools
 import importlib
-import collections
+import logging
+import time
+from typing import Union, Tuple, List, Set
 
 import mdtraj
-import pandas
 import numpy as np
 import openmmtools as mmtools
+import pandas
 from simtk import unit, openmm
 
-from . import utils, pipeline, repex, mpi
+from . import pipeline, mpi, multistate
 from .restraints import RestraintState, RestraintParameterError, V0
-
-from typing import Union, Tuple, List, Set
 
 logger = logging.getLogger(__name__)
 
@@ -672,7 +671,9 @@ class IMultiStateSampler(mmtools.utils.SubhookedABCMeta):
 
     @abc.abstractmethod
     def create(self, thermodynamic_state, sampler_states, storage,
-               unsampled_thermodynamic_states, metadata):
+               unsampled_thermodynamic_states=None,
+               initial_thermodynamic_states=None,
+               metadata=None):
         """Create new simulation and initialize the storage.
 
         Parameters
@@ -686,10 +687,13 @@ class IMultiStateSampler(mmtools.utils.SubhookedABCMeta):
             The path to the storage file or a Reporter object to forward
             to the sampler. In the future, this will be able to take a
             Storage class as well.
-        unsampled_thermodynamic_states : list of openmmtools.states.ThermodynamicState
+        unsampled_thermodynamic_states : list of openmmtools.states.ThermodynamicState, Optional, Default: None
             These are ThermodynamicStates that are not propagated, but their
             reduced potential is computed at each iteration for each replica.
             These energy can be used as data for reweighting schemes.
+        initial_thermodynamic_states : None or list or array-like of int of length len(sampler_states), optional,
+            default: None.
+            Initial thermodynamic_state index for each sampler_state.
         metadata : dict
            Simulation metadata to be stored in the file.
 
@@ -901,7 +905,7 @@ class AlchemicalPhase(object):
 
             If `None`, the correction won't be applied (units of length, default
             is None).
-        alchemical_regions : openmmtools.alchemy.AlchemicalRegion, optional
+        alchemical_regions : openmmtools.alchemy.AlchemicalRegion or None, optional, default: None
             If specified, this is the ``AlchemicalRegion`` that will be passed
             to the ``AbsoluteAlchemicalFactory``, otherwise the ligand will be
             alchemically modified according to the given protocol.
@@ -1219,7 +1223,7 @@ class AlchemicalPhase(object):
         """Retrieve the MultiStateSampler class used from the storage."""
         # Handle str and Reporter argument value.
         if isinstance(storage, str):
-            reporter = repex.Reporter(storage)
+            reporter = multistate.MultiStateReporter(storage)
         else:
             reporter = storage
 

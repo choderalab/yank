@@ -1,7 +1,7 @@
 #!/usr/local/bin/env python
 
 """
-Test analyze.py facility.
+Test multistate.analyzers facility.
 
 """
 
@@ -10,21 +10,21 @@ Test analyze.py facility.
 # =============================================================================================
 
 import os
+import re
 import copy
 import shutil
 import tempfile
 
-import pymbar
 import numpy as np
-from simtk import unit
-from nose.tools import assert_raises
-
 import openmmtools as mmtools
+import pymbar
+from nose.tools import assert_raises
 from openmmtools import testsystems
+from simtk import unit
 
-from yank import analyze
 from yank.yank import Topography
-from yank.repex import Reporter, ReplicaExchange
+from yank.multistate import MultiStateReporter, ReplicaExchangeSampler
+import yank.analyze as analyze
 
 # ==============================================================================
 # MODULE CONSTANTS
@@ -39,6 +39,9 @@ kB = unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA  # Boltzmann constan
 
 class BlankPhase(analyze.YankPhaseAnalyzer):
     """Create a blank phase class with no get_X (observable) methods for testing the MultiPhaseAnalyzer"""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
     def analyze_phase(self, *args, **kwargs):
         pass
 
@@ -108,7 +111,10 @@ class TestPhaseAnalyzer(object):
         hostguest_alchemical = factory.create_alchemical_system(hostguest_test.system, alchemical_region)
 
         # Translate the sampler states to be different one from each other.
-        hostguest_sampler_states = [mmtools.states.SamplerState(hostguest_test.positions + 10*i*unit.nanometers)
+        positions = hostguest_test.positions
+        box_vectors = hostguest_test.system.getDefaultPeriodicBoxVectors()
+        hostguest_sampler_states = [mmtools.states.SamplerState(positions=positions + 10*i*unit.nanometers,
+                                                                box_vectors=box_vectors)
                                     for i in range(n_states)]
 
         # Create the three basic thermodynamic states.
@@ -156,9 +162,9 @@ class TestPhaseAnalyzer(object):
         cls.tmp_dir = tempfile.mkdtemp()
         storage_path = os.path.join(cls.tmp_dir, 'test_analyze.nc')
         move = mmtools.mcmc.LangevinDynamicsMove(n_steps=1)
-        cls.repex = ReplicaExchange(mcmc_moves=move, number_of_iterations=n_steps)
-        cls.reporter = Reporter(storage_path, checkpoint_interval=checkpoint_interval,
-                                analysis_particle_indices=analysis_atoms)
+        cls.repex = ReplicaExchangeSampler(mcmc_moves=move, number_of_iterations=n_steps)
+        cls.reporter = MultiStateReporter(storage_path, checkpoint_interval=checkpoint_interval,
+                                          analysis_particle_indices=analysis_atoms)
         cls.repex.create(thermodynamic_states, sampler_states, storage=cls.reporter,
                          unsampled_thermodynamic_states=unsampled_states, metadata=metadata)
         # run some iterations
@@ -174,14 +180,14 @@ class TestPhaseAnalyzer(object):
         shutil.rmtree(cls.tmp_dir)
 
     def test_repex_phase_initialize(self):
-        """Test that the Repex Phase analyzer initializes correctly"""
-        phase = analyze.ReplicaExchangeAnalyzer(self.reporter, name=self.repex_name)
+        """Test that the MultiState Phase analyzer initializes correctly"""
+        phase = analyze.YankReplicaExchangeAnalyzer(self.reporter, name=self.repex_name)
         assert phase.reporter is self.reporter
         assert phase.name == self.repex_name
 
     def test_repex_mixing_stats(self):
-        """Test that the Repex Phase yields mixing stats that make sense"""
-        phase = analyze.ReplicaExchangeAnalyzer(self.reporter, name=self.repex_name)
+        """Test that the MultiState Phase yields mixing stats that make sense"""
+        phase = analyze.YankReplicaExchangeAnalyzer(self.reporter, name=self.repex_name)
         t, mu, g = phase.generate_mixing_statistics()
         # Output is the correct number of states
         assert t.shape == (self.n_states, self.n_states)
@@ -199,7 +205,7 @@ class TestPhaseAnalyzer(object):
 
         We do this in one function since the test for each part would be a bunch of repeated recreation of the phase
         """
-        phase = analyze.ReplicaExchangeAnalyzer(self.reporter, name=self.repex_name)
+        phase = analyze.YankReplicaExchangeAnalyzer(self.reporter, name=self.repex_name)
         u_sampled, u_unsampled = phase.get_states_energies()
         # Test energy output matches appropriate MBAR shapes
         assert u_sampled.shape == (self.n_states, self.n_states, self.n_steps)
@@ -210,7 +216,7 @@ class TestPhaseAnalyzer(object):
         discard = 1
         # Generate mbar semi-manually, use phases's static methods
         n_eq, g_t, Neff_max = pymbar.timeseries.detectEquilibration(u_n[discard:])
-        u_sampled_sub = analyze.remove_unequilibrated_data(u_sampled, n_eq, -1)
+        u_sampled_sub = analyze.multistate.remove_unequilibrated_data(u_sampled, n_eq, -1)
         # Make sure output from subsample is what we expect
         assert u_sampled_sub.shape == (self.n_states, self.n_states, Neff_max)
         # Generate MBAR from phase
@@ -240,7 +246,7 @@ class TestPhaseAnalyzer(object):
     def test_multi_phase(self):
         """Test MultiPhaseAnalysis"""
         # Create the phases
-        full_phase = analyze.ReplicaExchangeAnalyzer(self.reporter, name=self.repex_name)
+        full_phase = analyze.YankReplicaExchangeAnalyzer(self.reporter, name=self.repex_name)
         blank_phase = BlankPhase(self.reporter, name="blank")
         fe_phase = FreeEnergyPhase(self.reporter, name="fe")
         fes_phase = FEStandardStatePhase(self.reporter, name="fes")
@@ -304,3 +310,9 @@ class TestPhaseAnalyzer(object):
         solute_trajectory = analyze.extract_trajectory(self.reporter.filepath, state_index=0, keep_solvent=False)
         assert len(solute_trajectory) == self.n_steps - 1
         assert solute_trajectory.n_atoms == len(self.analysis_atoms)
+
+    def test_yank_registry(self):
+        """Test that observable registry is implemented correctly for a given class"""
+        phase = analyze.YankReplicaExchangeAnalyzer(self.reporter, name=self.repex_name)
+        observables = set(analyze.yank_registry.observables)
+        assert set(phase.observables) == observables

@@ -2,12 +2,8 @@
 YANK is a testbed for experimenting with algorithms for the efficient computation of small molecule binding free energies to biomolecular targets using alchemical methods.
 YANK is built on OpenMM, the API for molecular simulation, and uses its GPU-accelerated library implementation for hardware acceleration.
 """
-from __future__ import print_function
-import os
-import sys
 import distutils.extension
-from setuptools import setup, Extension, find_packages
-import glob
+from setuptools import setup
 import os
 from os.path import relpath, join
 import subprocess
@@ -15,7 +11,7 @@ from Cython.Build import cythonize
 DOCLINES = __doc__.split("\n")
 
 ########################
-VERSION = "0.20.1"  # Primary base version of the build
+VERSION = "0.21.0"  # Primary base version of the build
 DEVBUILD = 0  # Dev build status, Either None or Integer
 ISRELEASED = False  # Are we releasing this as a full cut?
 __version__ = VERSION
@@ -120,7 +116,8 @@ def find_package_data(data_root, package_root):
 # SETUP
 ################################################################################
 
-mixing_ext = distutils.extension.Extension("yank.mixing._mix_replicas", ['./Yank/mixing/_mix_replicas.pyx'])
+mixing_ext = distutils.extension.Extension("yank.multistate.mixing._mix_replicas",
+                                           ['./Yank/multistate/mixing/_mix_replicas.pyx'])
 
 write_version_py()
 setup(
@@ -135,7 +132,11 @@ setup(
     platforms=['Linux', 'Mac OS-X', 'Unix', 'Windows'],
     classifiers=CLASSIFIERS.splitlines(),
     package_dir={'yank': 'Yank'},
-    packages=['yank', "yank.tests", "yank.tests.data", "yank.commands", "yank.mixing", "yank.reports", "yank.schema"], #+ ['yank.{}'.format(package) for package in find_packages('yank')],
+    # Helper line which did not work reliably for the packages key
+    # + ['yank.{}'.format(package) for package in find_packages('yank')],
+    packages=['yank', "yank.tests", "yank.tests.data", "yank.commands", "yank.reports", "yank.schema",
+              'yank.multistate', 'yank.multistate.mixing'],
+
     package_data={'yank': find_package_data('Yank/tests/data', 'yank') + ['reports/*.ipynb'],
                   },
     zip_safe=False,

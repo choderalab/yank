@@ -1036,13 +1036,20 @@ def generate_signature_schema(func, update_keys=None, exclude_keys=frozenset()):
     return func_schema
 
 
-def get_keyword_args(function):
+def get_keyword_args(function_to_inspect, try_mro_from_class=None):
     """Inspect function signature and return keyword args with their default values.
 
     Parameters
     ----------
-    function : function
+    function_to_inspect : function
         The function to interrogate.
+    try_mro_from_class : any Class or None
+        Try and trace the method resolution order (MRO) of the ``function_to_inspect`` by inferring a method stack from
+        the supplied class.
+        The signature of the function is checked in every MRO up the stack so long as there exists as
+        **kwargs in the method call. This is setting will yield expected results in every case, for instance, if
+        the method does not call `super()`, or the Super class has a different function name.
+        In the case of conflicting keywords, the lower MRO function is preferred.
 
     Returns
     -------
@@ -1051,9 +1058,42 @@ def get_keyword_args(function):
         function that do not have a default value will not be included.
 
     """
-    argspec = inspect.getargspec(function)
-    kwargs = argspec.args[len(argspec.args) - len(argspec.defaults):]
-    kwargs = {arg: value for arg, value in zip(kwargs, argspec.defaults)}
+
+    def extract_kwargs(input_argspec):
+        defaults = input_argspec.defaults
+        if defaults is None:
+            defaults = []
+        n_defaults = len(defaults)
+        n_args = len(input_argspec.args)
+        # Cycle through the kwargs only
+        cycle_kwargs = input_argspec.args[n_args - n_defaults:]
+        cycle_kwargs = {arg: value for arg, value in zip(cycle_kwargs, defaults)}
+        # Handle the kwonlyargs for calls with `def F(a,b *args, x=True, **kwargs)
+        if input_argspec.kwonlydefaults is not None:
+            cycle_kwargs = {**cycle_kwargs, **input_argspec.kwonlydefaults}
+        return cycle_kwargs
+
+    def build_argspec(input_function, input_cls):
+        agspec = inspect.getfullargspec(input_function)
+        kwargs = extract_kwargs(agspec)
+        if input_cls is not None and agspec.varkw is not None:
+            try:
+                mro = inspect.getmro(input_cls)
+            except AttributeError:
+                # No MRO
+                mro = [input_cls]
+            for cls in mro[1:]:
+                try:
+                    parent_function = getattr(cls, input_function.__name__)
+                except AttributeError:
+                    # Class does not have a method name
+                    pass
+                else:
+                    inner_argspec = inspect.getfullargspec(parent_function)
+                    kwargs = {**extract_kwargs(inner_argspec), **kwargs}
+        return kwargs
+
+    kwargs = build_argspec(function_to_inspect, try_mro_from_class)
     return kwargs
 
 
@@ -1824,15 +1864,6 @@ class TLeap:
         if unit_name[0].isdigit():
             unit_name = 'M' + unit_name
         return unit_name
-
-
-# =============================================================================================
-# YANK Exceptions
-# =============================================================================================
-
-class SimulationNaNError(Exception):
-    """Error when a simulation goes to NaN"""
-    pass
 
 
 # =============================================================================================

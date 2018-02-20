@@ -425,7 +425,7 @@ too long, you might consider reducing the ``ph_tolerance``.
 
 Define molecular regions in the molecule which can be used in upcoming features such as defining restraint regions in
 more general ways, or specific atom subsets you want to track through the :class:`yank.yank.Topography` object which is
-stored as part of the simulation's metadata, accessible through :class:`yank.repex.Reporter`.
+stored as part of the simulation's metadata, accessible through :class:`yank.sampling.Reporter`.
 
 Any number of user defined regions can be specified for every molecule, so long as their name is unique between all
 molecules which ultimately wind up in a :doc:`system <systems>`. E.g. If you have 2 ligands you want to bind to a
