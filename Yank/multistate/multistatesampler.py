@@ -1059,10 +1059,10 @@ class MultiStateSampler(object):
         """
         if self.locality == None:
             # Global neighborhood
-            return slice(0, self.n_states)
+            return list(range(0, self.n_states))
         else:
             # Local neighborhood specified by 'locality'
-            return slice(max(0, state_index - self.locality), min(self.n_states, state_index + self.locality + 1))
+            return list(range(max(0, state_index - self.locality), min(self.n_states, state_index + self.locality + 1)))
 
     # -------------------------------------------------------------------------
     # Internal-usage: Distributed tasks.
@@ -1198,9 +1198,10 @@ class MultiStateSampler(object):
         # Determine neighborhood
         state_index = self._replica_thermodynamic_states[replica_id]
         neighborhood = self._neighborhood(state_index)
+        neighborhood_slice = slice(neighborhood[0], neighborhood[-1])
 
         # Compute energy for all thermodynamic states.
-        for energies, states in [(energy_thermodynamic_states[neighborhood], self._thermodynamic_states[neighborhood]),
+        for energies, states in [(energy_thermodynamic_states[neighborhood_slice], self._thermodynamic_states[neighborhood_slice]),
                                  (energy_unsampled_states, self._unsampled_states)]:
             # Group thermodynamic states by compatibility.
             compatible_groups, original_indices = mmtools.states.group_by_compatibility(states)

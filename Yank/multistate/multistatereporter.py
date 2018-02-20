@@ -1060,6 +1060,49 @@ class MultiStateReporter(object):
         """
         self._storage_analysis.variables['last_iteration'][0] = iteration
 
+    def read_logZ(self, iteration):
+        """
+        Read logZ at a given iteration from file.
+
+        Parameters
+        ----------
+        iteration : int
+            iteration to read the free energies from
+
+            if the iteration was not written at a the given iteration, then the free_energies are all 0
+
+        Returns
+        -------
+        logZ : np.array with shape [n_states]
+            Dimensionless logZ
+        """
+        online_group = self._storage_analysis.groups['online_analysis']
+        logZ = online_group.variables['logZ'][iteration]
+        return logZ
+
+    def write_logZ(self, iteration: int, log_Z: np.ndarray):
+        """
+        Write logZ
+
+        Parameters
+        ----------
+        iteration : int,
+            Iteration at which to save the free energy.
+            Reads the current energy up to this value and stores it in the analysis reporter
+        logZ : np.array with shape [n_states]
+            Dimensionless logZ
+        """
+        analysis_nc = self._storage_analysis
+        if 'logZ' not in analysis_nc.dimensions:
+            analysis_nc.createDimension('logZ_length', len(logZ))
+            if 'online_analysis' not in analysis_nc.groups:
+                online_group = analysis_nc.createGroup('online_analysis')
+                # larger chunks, faster operations, small matrix anyways
+                online_group.createVariable('logZ', float, dimensions=('iteration', 'logZ_length'),
+                                            zlib=True, chunksizes=(1, len(logZ)), fill_value=MISSING_VALUE)
+        online_group = analysis_nc.groups['online_analysis']
+        online_group.variables['logZ'][iteration] = logZ
+
     def read_mbar_free_energies(self, iteration):
         """
         Read the MBAR dimensionless free energy at a given iteration from file.

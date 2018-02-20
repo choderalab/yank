@@ -62,5 +62,6 @@ from .multistatesampler import MultiStateSampler
 from .multistatereporter import MultiStateReporter
 from .replicaexchange import ReplicaExchangeSampler, ReplicaExchangeAnalyzer
 from .paralleltempering import ParallelTemperingSampler, ParallelTemperingAnalyzer
+from .sams import SAMSSampler, SAMSAnalyzer
 from .multistateanalyzer import *
 from .utils import *

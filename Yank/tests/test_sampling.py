@@ -32,8 +32,8 @@ from openmmtools import testsystems
 from simtk import openmm, unit
 
 from yank import mpi
-from yank.multistate import MultiStateReporter, MultiStateSampler, ReplicaExchangeSampler, ParallelTemperingSampler
-from yank.multistate import ReplicaExchangeAnalyzer
+from yank.multistate import MultiStateReporter, MultiStateSampler, ReplicaExchangeSampler, ParallelTemperingSampler, SAMSSampler
+from yank.multistate import ReplicaExchangeAnalyzer, SAMSAnalyzer
 from yank.multistate.multistatereporter import _DictYamlLoader
 from yank.utils import config_root_logger  # This is only function tying these test to the main YANK code
 
@@ -134,7 +134,7 @@ def compute_harmonic_oscillator_expectations(K, temperature):
 # ==============================================================================
 
 @attr('slow')  # Skip on Travis-CI
-def test_replica_exchange(verbose=False, verbose_simulation=False):
+def test_replica_exchange_harmonic_oscillator(verbose=False, verbose_simulation=False):
     """Free energies and average potential energies of a 3D harmonic oscillator are correctly computed."""
     # Define mass of carbon atom.
     mass = 12.0 * unit.amu
@@ -239,6 +239,116 @@ def test_replica_exchange(verbose=False, verbose_simulation=False):
     if verbose:
         print("PASSED.")
 
+
+# ==============================================================================
+# TEST ANALYSIS SAMS
+# ==============================================================================
+
+@attr('slow')  # Skip on Travis-CI
+def test_sams_harmonic_oscillator(verbose=False, verbose_simulation=False):
+    """Free energies and average potential energies of a 3D harmonic oscillator are correctly computed."""
+    # Define mass of carbon atom.
+    mass = 12.0 * unit.amu
+
+    sampler_states = list()
+    thermodynamic_states = list()
+    analytical_results = list()
+    f_i_analytical = list()  # Dimensionless free energies.
+    u_i_analytical = list()  # Reduced potentials.
+
+    # Define thermodynamic states.
+    Ks = [500.00, 400.0, 300.0] * unit.kilocalories_per_mole / unit.angstroms**2  # Spring constants.
+    temperatures = [300.0, 350.0, 400.0] * unit.kelvin  # Temperatures.
+    for (K, temperature) in zip(Ks, temperatures):
+        # Create harmonic oscillator system.
+        testsystem = testsystems.HarmonicOscillator(K=K, mass=mass, mm=openmm)
+
+        # Create thermodynamic state and save positions.
+        system, positions = [testsystem.system, testsystem.positions]
+        sampler_states.append(mmtools.states.SamplerState(positions))
+        thermodynamic_states.append(mmtools.states.ThermodynamicState(system=system, temperature=temperature))
+
+        # Store analytical results.
+        results = compute_harmonic_oscillator_expectations(K, temperature)
+        analytical_results.append(results)
+        f_i_analytical.append(results['f'])
+        reduced_potential = results['potential']['mean'] / (kB * temperature)
+        u_i_analytical.append(reduced_potential)
+
+    # Compute analytical Delta_f_ij
+    nstates = len(f_i_analytical)
+    f_i_analytical = np.array(f_i_analytical)
+    u_i_analytical = np.array(u_i_analytical)
+    s_i_analytical = u_i_analytical - f_i_analytical
+    Delta_f_ij_analytical = np.zeros([nstates, nstates], np.float64)
+    Delta_u_ij_analytical = np.zeros([nstates, nstates], np.float64)
+    Delta_s_ij_analytical = np.zeros([nstates, nstates], np.float64)
+    for i in range(nstates):
+        for j in range(nstates):
+            Delta_f_ij_analytical[i, j] = f_i_analytical[j] - f_i_analytical[i]
+            Delta_u_ij_analytical[i, j] = u_i_analytical[j] - u_i_analytical[i]
+            Delta_s_ij_analytical[i, j] = s_i_analytical[j] - s_i_analytical[i]
+
+    # Create and configure simulation object.
+    move = mmtools.mcmc.LangevinDynamicsMove(timestep=2.0*unit.femtoseconds,
+                                             collision_rate=20.0/unit.picosecond,
+                                             n_steps=500, reassign_velocities=True)
+    simulation = SAMSSampler(mcmc_moves=move, number_of_iterations=200)
+
+    # Define file for temporary storage.
+    with mmtools.utils.temporary_directory() as tmp_dir:
+        storage = os.path.join(tmp_dir, 'test_storage.nc')
+        reporter = MultiStateReporter(storage, checkpoint_interval=1)
+        simulation.create(thermodynamic_states, sampler_states, reporter)
+
+        # Run simulation we keep the debug info off during the simulation
+        # to not clog the output, and reactivate it for analysis.
+        config_root_logger(verbose_simulation)
+        simulation.run()
+
+        # Create Analyzer.
+        analyzer = SAMSAnalyzer(storage)
+
+        # TODO: Check if deviations exceed tolerance.
+        Delta_f_ij, dDelta_f_ij = analyzer.get_free_energy()
+        error = np.abs(Delta_f_ij - Delta_f_ij_analytical)
+        indices = np.where(dDelta_f_ij > 0.0)
+        nsigma = np.zeros([nstates,nstates], np.float32)
+        nsigma[indices] = error[indices] / dDelta_f_ij[indices]
+        MAX_SIGMA = 6.0 # maximum allowed number of standard errors
+        if np.any(nsigma > MAX_SIGMA):
+            print("Delta_f_ij")
+            print(Delta_f_ij)
+            print("Delta_f_ij_analytical")
+            print(Delta_f_ij_analytical)
+            print("error")
+            print(error)
+            print("stderr")
+            print(dDelta_f_ij)
+            print("nsigma")
+            print(nsigma)
+            raise Exception("Dimensionless free energy difference exceeds MAX_SIGMA of %.1f" % MAX_SIGMA)
+
+        Delta_u_ij, dDelta_u_ij = analyzer.get_enthalpy()
+        error = Delta_u_ij - Delta_u_ij_analytical
+        nsigma = np.zeros([nstates,nstates], np.float32)
+        nsigma[indices] = error[indices] / dDelta_f_ij[indices]
+        if np.any(nsigma > MAX_SIGMA):
+            print("Delta_u_ij")
+            print(Delta_u_ij)
+            print("Delta_u_ij_analytical")
+            print(Delta_u_ij_analytical)
+            print("error")
+            print(error)
+            print("nsigma")
+            print(nsigma)
+            raise Exception("Dimensionless potential energy difference exceeds MAX_SIGMA of %.1f" % MAX_SIGMA)
+
+        # Clean up.
+        del simulation
+
+    if verbose:
+        print("PASSED.")
 
 # ==============================================================================
 # TEST REPORTER
@@ -1449,6 +1559,69 @@ class TestReplicaExchange(TestMultiStateSampler):
         additional_values.update(self.property_creator('replica_mixing_scheme', 'replica_mixing_scheme', None, None))
         self.actual_stored_properties_check(additional_properties=additional_values)
 
+class TestSingleReplicaSAMS(TestMultiStateSampler):
+    """Test suite for SAMSSampler class."""
+
+    # ------------------------------------
+    # VARIABLES TO SET FOR EACH TEST CLASS
+    # ------------------------------------
+
+    N_SAMPLERS = 1
+    N_STATES = 5
+    SAMPLER = SAMSSampler
+    REPORTER = MultiStateReporter
+
+    # --------------------------------------
+    # Tests overwritten from base test suite
+    # --------------------------------------
+
+    def test_stored_properties(self):
+        """Test that storage is kept in sync with options. Unique to SAMSSampler"""
+        additional_values = {}
+        options = {
+            'state_update_scheme' : 'local-jump',
+            'locality' : 2,
+            'update_stages' : 'one-stage',
+            'weight_update_method' : 'optimal',
+            'adapt_target_probabilities' : False,
+            }
+        for (name, value) in options.items():
+            additional_values.update(self.property_creator(name, name, value, value))
+        self.actual_stored_properties_check(additional_properties=additional_values)
+
+    # TODO: Test all update methods
+
+class TestMultipleReplicaSAMS(TestMultiStateSampler):
+    """Test suite for SAMSSampler class."""
+
+    # ------------------------------------
+    # VARIABLES TO SET FOR EACH TEST CLASS
+    # ------------------------------------
+
+    N_SAMPLERS = 2
+    N_STATES = 5
+    SAMPLER = SAMSSampler
+    REPORTER = MultiStateReporter
+
+    # --------------------------------------
+    # Tests overwritten from base test suite
+    # --------------------------------------
+
+    def test_stored_properties(self):
+        """Test that storage is kept in sync with options. Unique to SAMSSampler"""
+        additional_values = {}
+        options = {
+            'state_update_scheme' : 'restricted-range',
+            'locality' : 3,
+            'update_stages' : 'two-stage',
+            'weight_update_method' : 'rao-blackwellized',
+            'adapt_target_probabilities' : False,
+            }
+        for (name, value) in options.items():
+            additional_values.update(self.property_creator(name, name, value, value))
+        self.actual_stored_properties_check(additional_properties=additional_values)
+
+    # TODO: Test all update methods
 
 class TestParallelTempering(TestMultiStateSampler):
 
