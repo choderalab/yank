@@ -2773,7 +2773,7 @@ class ExperimentBuilder(object):
             if solvent_id is None:
                 system_options = None
             else:
-                system_options = utils.merge_dict(self._db.solvents[solvent_id], exp_opts)
+                system_options = {**self._db.solvents[solvent_id], **exp_opts}
             logger.info("Reading phase {}".format(phase_name))
             system, topology, sampler_state = pipeline.read_system_files(
                 positions_file_path, parameters_file_path, system_options,

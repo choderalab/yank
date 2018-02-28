@@ -776,29 +776,6 @@ def update_nested_dict(original, updated):
 # Conversion utilities
 # ==============================================================================
 
-def merge_dict(dict1, dict2):
-    """Return the union of two dictionaries in through Python version agnostic code.
-
-    In Python 3.5 there is a syntax to do this ``{**dict1, **dict2}`` but
-    in Python 2 you need to go through ``update()``.
-
-    TODO: Refactor to no longer need this now that Python 2 is dropped
-
-    Parameters
-    ----------
-    dict1 : dict
-    dict2 : dict
-
-    Returns
-    -------
-    merged_dict : dict
-        Union of dict1 and dict2
-    """
-    merged_dict = dict1.copy()
-    merged_dict.update(dict2)
-    return merged_dict
-
-
 def underscore_to_camelcase(underscore_str):
     """Convert the given string from ``underscore_case`` to ``camelCase``.
 
