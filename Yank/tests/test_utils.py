@@ -9,6 +9,7 @@ Test various utility functions.
 # GLOBAL IMPORTS
 # =============================================================================================
 
+import abc
 import textwrap
 
 import openmoltools as omt
@@ -124,6 +125,35 @@ def test_expand_id_nodes():
                             'sys3': {'prmtopfile': 'mysystem.prmtop'}}
 
 
+def test_find_all_subclasses():
+    """Test find_all_subclasses() function."""
+    # Diamond inheritance.
+    class A:
+        pass
+
+    class B(A):
+        pass
+
+    class C(A, abc.ABC):
+        @abc.abstractmethod
+        def m(self):
+            pass
+
+    class D(B, C, abc.ABC):
+        @abc.abstractmethod
+        def m(self):
+            pass
+
+    class E(D):
+        def m(self):
+            pass
+
+    assert find_all_subclasses(B) == {D, E}
+    assert find_all_subclasses(B, discard_abstract=True) == {E}
+    assert find_all_subclasses(A) == {B, D, E, C}
+    assert find_all_subclasses(A, discard_abstract=True) == {B, E}
+
+
 def test_generate_signature_schema():
     """Test generate_signature_schema() function."""
     def f(a, b, camelCase=True, none=None, quantity=3.0*unit.angstroms):
@@ -180,7 +210,6 @@ def test_get_keyword_args():
     assert expected_true_cls == get_keyword_args(subdummy.__init__, try_mro_from_class=subdummy)
 
 
-
 def test_validate_parameters():
     """Test validate_parameters function."""
 
@@ -230,12 +259,14 @@ def test_validate_parameters():
                                        special_conversions=special_conv)
     assert convert_pars['length'] == '1.0*nanometers'
 
+
 @tools.raises(ValueError)
 def test_incompatible_parameters():
     """Check that validate_parameters raises exception with unknown parameter."""
     template_pars = {'int': 3}
     wrong_pars = {'int': 3.0}
     validate_parameters(wrong_pars, template_pars)
+
 
 @tools.raises(TypeError)
 def test_unknown_parameters():

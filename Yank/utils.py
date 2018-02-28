@@ -776,6 +776,66 @@ def update_nested_dict(original, updated):
 # Conversion utilities
 # ==============================================================================
 
+def find_all_subclasses(parent_cls, discard_abstract=False):
+    """Return a set of all the classes inheriting from ``parent_cls``.
+
+    The functions handle multiple inheritance and discard the same classes.
+
+    Parameters
+    ----------
+    parent_cls : type
+        The parent class.
+    discard_abstract : bool, optional
+        If True, abstract classes are not returned (default is False).
+
+    Returns
+    -------
+    subclasses : set of type
+        The set of all the classes inheriting from ``parent_cls``.
+
+    """
+    subclasses = set()
+    for subcls in parent_cls.__subclasses__():
+        if not (discard_abstract and inspect.isabstract(subcls)):
+            subclasses.add(subcls)
+        subclasses.update(find_all_subclasses(subcls, discard_abstract))
+    return subclasses
+
+
+def find_subclass(parent_cls, subcls_name):
+    """Return the class called ``subcls_name`` inheriting from ``parent_cls``.
+
+    Parameters
+    ----------
+    parent_cls : type
+        The parent class.
+    subcls_name : str
+        The name of the class inheriting from ``parent_cls``.
+
+    Returns
+    -------
+    subcls : type
+        The class inheriting from ``parent_cls`` called ``subcls_name``.
+
+    Raises
+    ------
+    ValueError
+        If there is no class or there are multiple classes called ``subcls_name``
+        that inherit from ``parent_cls``.
+    """
+    subclasses = []
+    for subcls in find_all_subclasses(parent_cls):
+        if subcls.__name__ == subcls_name:
+            subclasses.append(subcls)
+    if len(subclasses) == 0:
+        raise ValueError('Could not found class {} inheriting from {}'
+                         ''.format(subcls_name, parent_cls))
+    if len(subclasses) > 1:
+        raise ValueError('Found multiple classes inheriting from {}: {}'
+                         ''.format(parent_cls, subclasses))
+    return subclasses[0]
+
+
 def underscore_to_camelcase(underscore_str):
     """Convert the given string from ``underscore_case`` to ``camelCase``.
 
