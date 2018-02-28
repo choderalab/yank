@@ -1229,7 +1229,7 @@ class ExperimentBuilder(object):
             if cutoff == 'auto':
                 return cutoff
             else:
-                return utils.process_unit_bearing_str(cutoff, unit.angstroms)
+                return utils.quantity_from_string(cutoff, unit.angstroms)
 
         special_conversions = {'constraints': to_openmm_app,
                                'number_of_iterations': integer_or_infinity,
@@ -1331,9 +1331,9 @@ class ExperimentBuilder(object):
             validator: int_or_all_string
         """
         # Build small molecule Epik by hand as dict since we are fetching from another source
-        epik_schema = utils.generate_signature_schema(moltools.schrodinger.run_epik,
-                                                      update_keys={'select': {'required': False, 'type': 'integer'}},
-                                                      exclude_keys=['extract_range'])
+        epik_schema = schema.generate_signature_schema(moltools.schrodinger.run_epik,
+                                                       update_keys={'select': {'required': False, 'type': 'integer'}},
+                                                       exclude_keys=['extract_range'])
         epik_schema = {'epik': {
             'required': False,
             'type': 'dict',
@@ -1500,7 +1500,7 @@ class ExperimentBuilder(object):
 
             See call to :func:`utils.to_unit_validator` for call
             """
-            unit_validator = utils.to_unit_validator(compatible_units)
+            unit_validator = schema.to_unit_validator(compatible_units)
 
             def _to_unit_unless_none(input_quantity):
                 if input_quantity is None:
@@ -1512,8 +1512,8 @@ class ExperimentBuilder(object):
         # Define solvents Schema
         # Create the basic solvent schema, ignoring things which have a dependency
         # Some keys we manually tweak
-        base_solvent_schema = utils.generate_signature_schema(AmberPrmtopFile.createSystem,
-                                                              exclude_keys=['nonbonded_method'])
+        base_solvent_schema = schema.generate_signature_schema(AmberPrmtopFile.createSystem,
+                                                               exclude_keys=['nonbonded_method'])
         implicit_solvent_default_schema = {'implicit_solvent': base_solvent_schema.pop('implicit_solvent')}
         rigid_water_default_schema = {'rigid_water': base_solvent_schema.pop('rigid_water')}
         nonbonded_cutoff_default_schema = {'nonbonded_cutoff': base_solvent_schema.pop('nonbonded_cutoff')}
@@ -1531,7 +1531,7 @@ class ExperimentBuilder(object):
         explicit_only_keys = {
             'clearance': {
                 'type': 'quantity',
-                'coerce': utils.to_unit_validator(unit.angstrom),
+                'coerce': schema.to_unit_validator(unit.angstrom),
             },
             'solvent_model': {
                 'type': 'string',

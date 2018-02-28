@@ -1,4 +1,6 @@
 import os
+import copy
+import inspect
 import logging
 import cerberus
 import simtk.unit as unit
@@ -6,6 +8,8 @@ import simtk.unit as unit
 from datetime import date
 from openmmtools.utils import typename
 from collections.abc import Mapping, Sequence
+
+from .. import utils
 
 logger = logging.getLogger(__name__)
 
@@ -103,9 +107,20 @@ class YANKCerberusValidator(cerberus.Validator):
             return True
 
 
-# ====================================================
-# UTILITY FUNCTIONS
-# ====================================================
+# ==============================================================================
+# STATIC VALIDATORS
+# ==============================================================================
+
+def to_unit_validator(compatible_units):
+    """Function generator to test unit bearing strings with Cerberus."""
+    def _to_unit_validator(quantity_str):
+        return utils.quantity_from_string(quantity_str, compatible_units)
+    return _to_unit_validator
+
+
+# ==============================================================================
+# AUTOMATIC SCHEMA GENERATION
+# ==============================================================================
 
 def generate_unknown_type_validator(a_type):
     """
@@ -173,3 +188,75 @@ def type_to_cerberus_map(a_type):
     except KeyError:
         type_map = generate_unknown_type_validator(a_type)
     return type_map
+
+
+def generate_signature_schema(func, update_keys=None, exclude_keys=frozenset()):
+    """Generate a dictionary to test function signatures with Cerberus' Schema.
+
+    Parameters
+    ----------
+    func : function
+        The function used to build the schema.
+    update_keys : dict
+        Keys in here have priority over automatic generation. It can be
+        used to make an argument mandatory, or to use a specific validator.
+    exclude_keys : list-like
+        Keys in here are ignored and not included in the schema.
+
+    Returns
+    -------
+    func_schema : dict
+        The dictionary to be used as Cerberus Validator schema. Contains all keyword
+        variables in the function signature as optional argument with
+        the default type as validator. Unit bearing strings are converted.
+        Argument with default None are always accepted. Camel case
+        parameters in the function are converted to underscore style.
+
+    Examples
+    --------
+    >>> from cerberus import Validator
+    >>> def f(a, b, camelCase=True, none=None, quantity=3.0*unit.angstroms):
+    ...     pass
+    >>> f_dict = generate_signature_schema(f, exclude_keys=['quantity'])
+    >>> print(isinstance(f_dict, dict))
+    True
+    >>> f_validator = Validator(generate_signature_schema(f))
+    >>> f_validator.validated({'quantity': '1.0*nanometer'})
+    {'quantity': Quantity(value=1.0, unit=nanometer)}
+
+    """
+    if update_keys is None:
+        update_keys = {}
+
+    func_schema = {}
+    arg_spec = inspect.getfullargspec(func)
+    args = arg_spec.args
+    defaults = arg_spec.defaults
+
+    # Check keys that must be excluded from first pass
+    exclude_keys = set(exclude_keys)
+    exclude_keys.update(update_keys)
+
+    # Transform camelCase to underscore
+    args = [utils.camelcase_to_underscore(arg) for arg in args]
+
+    # Build schema
+    optional_validator = {'required': False}  # Keys are always optional for this type
+    for arg, default_value in zip(args[-len(defaults):], defaults):
+        if arg not in exclude_keys:  # User defined keys are added later
+            if default_value is None:  # None defaults are always accepted, and considered nullable
+                validator = {'nullable': True}
+            elif isinstance(default_value, unit.Quantity):  # Convert unit strings
+                validator = {'coerce': to_unit_validator(default_value.unit)}
+            else:
+                validator = type_to_cerberus_map(type(default_value))
+            # Add the argument to the existing schema as a keyword
+            # To the new keyword, add the optional flag and the "validator" flag
+            # of either 'validator' or 'type' depending on how it was processed
+            func_schema = {**func_schema, **{arg: {**optional_validator, **validator}}}
+
+    # Add special user keys
+    func_schema.update(update_keys)
+
+    return func_schema
+

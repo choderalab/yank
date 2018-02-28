@@ -40,12 +40,9 @@ import parmed
 import numpy as np
 from simtk import unit
 
-
 import openmmtools as mmtools
-from openmoltools.utils import unwrap_py2  # Shortcuts for other modules
 
 from . import mpi
-from .schema import type_to_cerberus_map
 
 
 # ========================================================================================
@@ -967,86 +964,6 @@ def quantity_from_string(expression, compatible_units=None):
                             "".format(expression, str(compatible_units)))
 
     return quantity
-
-
-def to_unit_validator(compatible_units):
-    """Function generator to test unit bearing strings with Cerberus."""
-    def _to_unit_validator(quantity_str):
-        return quantity_from_string(quantity_str, compatible_units)
-    return _to_unit_validator
-
-
-def generate_signature_schema(func, update_keys=None, exclude_keys=frozenset()):
-    """Generate a dictionary to test function signatures with Cerberus' Schema.
-
-    Parameters
-    ----------
-    func : function
-        The function used to build the schema.
-    update_keys : dict
-        Keys in here have priority over automatic generation. It can be
-        used to make an argument mandatory, or to use a specific validator.
-    exclude_keys : list-like
-        Keys in here are ignored and not included in the schema.
-
-    Returns
-    -------
-    func_schema : dict
-        The dictionary to be used as Cerberus Validator schema. Contains all keyword
-        variables in the function signature as optional argument with
-        the default type as validator. Unit bearing strings are converted.
-        Argument with default None are always accepted. Camel case
-        parameters in the function are converted to underscore style.
-
-    Examples
-    --------
-    >>> from cerberus import Validator
-    >>> def f(a, b, camelCase=True, none=None, quantity=3.0*unit.angstroms):
-    ...     pass
-    >>> f_dict = generate_signature_schema(f, exclude_keys=['quantity'])
-    >>> print(isinstance(f_dict, dict))
-    True
-    >>> f_validator = Validator(generate_signature_schema(f))
-    >>> f_validator.validated({'quantity': '1.0*nanometer'})
-    {'quantity': Quantity(value=1.0, unit=nanometer)}
-
-    """
-    if update_keys is None:
-        update_keys = {}
-
-    func_schema = {}
-    arg_spec = inspect.getfullargspec(unwrap_py2(func))
-    args = arg_spec.args
-    defaults = arg_spec.defaults
-
-    # Check keys that must be excluded from first pass
-    exclude_keys = set(exclude_keys)
-    exclude_keys.update(update_keys)
-    # TODO: Make sure we dont need to convert this line
-    # exclude_keys.update({k._schema for k in update_keys if isinstance(k, Optional)})
-
-    # Transform camelCase to underscore
-    args = [camelcase_to_underscore(arg) for arg in args]
-
-    # Build schema
-    optional_validator = {'required': False}  # Keys are always optional for this type
-    for arg, default_value in zip(args[-len(defaults):], defaults):
-        if arg not in exclude_keys:  # User defined keys are added later
-            if default_value is None:  # None defaults are always accepted, and considered nullable
-                validator = {'nullable': True}
-            elif isinstance(default_value, unit.Quantity):  # Convert unit strings
-                validator = {'coerce': to_unit_validator(default_value.unit)}
-            else:
-                validator = type_to_cerberus_map(type(default_value))
-            # Add the argument to the existing schema as a keyword
-            # To the new keyword, add the optional flag and the "validator" flag
-            # of either 'validator' or 'type' depending on how it was processed
-            func_schema = {**func_schema, **{arg: {**optional_validator, **validator}}}
-
-    # Add special user keys
-    func_schema.update(update_keys)
-
-    return func_schema
 
 
 def get_keyword_args(function, try_mro_from_class=None):
