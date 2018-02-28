@@ -34,7 +34,7 @@ import mdtraj as md
 import openmmtools as mmtools
 from simtk import openmm, unit
 
-from . import pipeline
+from . import pipeline, utils
 from .utils import methoddispatch
 
 logger = logging.getLogger(__name__)
@@ -75,28 +75,17 @@ def available_restraint_classes():
         ``restraint_classes[name]`` is the class corresponding to ``name``
 
     """
-    # Get a list of all subclasses of ReceptorLigandRestraint
-    def get_all_subclasses(check_cls):
-        """Find all subclasses of a given class recursively."""
-        all_subclasses = []
-
-        for subclass in check_cls.__subclasses__():
-            all_subclasses.append(subclass)
-            all_subclasses.extend(get_all_subclasses(subclass))
-
-        return all_subclasses
+    restraint_subclasses = utils.find_all_subclasses(ReceptorLigandRestraint,
+                                                     discard_abstract=True)
 
     # Build an index of all names, ensuring there are no name collisions.
     available_restraints = dict()
-    for cls in get_all_subclasses(ReceptorLigandRestraint):
-        classname = cls.__name__
-        if inspect.isabstract(cls):
-            # Skip abstract base classes
-            pass
-        elif classname in available_restraints:
-            raise ValueError("More than one restraint subclass has the name '{}'.".format(classname))
+    for cls in restraint_subclasses:
+        cls_name = cls.__name__
+        if cls_name in available_restraints:
+            raise ValueError("More than one restraint subclass has the name '{}'.".format(cls_name))
         else:
-            available_restraints[classname] = cls
+            available_restraints[cls_name] = cls
 
     return available_restraints
 
@@ -112,7 +101,7 @@ def available_restraint_types():
 
     """
     available_restraints = available_restraint_classes()
-    return available_restraints.keys()
+    return list(available_restraints.keys())
 
 
 def create_restraint(restraint_type, **kwargs):
@@ -126,11 +115,7 @@ def create_restraint(restraint_type, **kwargs):
         Parameters to pass to the restraint constructor.
 
     """
-    available_restraints = available_restraint_classes()
-    if restraint_type not in available_restraints:
-        raise ValueError("Restraint type {} unknown. Options are: {}".format(
-            restraint_type, str(available_restraints.keys())))
-    cls = available_restraints[restraint_type]
+    cls = utils.find_subclass(ReceptorLigandRestraint, restraint_type)
     return cls(**kwargs)
 
 
