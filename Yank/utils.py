@@ -1036,12 +1036,12 @@ def generate_signature_schema(func, update_keys=None, exclude_keys=frozenset()):
     return func_schema
 
 
-def get_keyword_args(function_to_inspect, try_mro_from_class=None):
+def get_keyword_args(function, try_mro_from_class=None):
     """Inspect function signature and return keyword args with their default values.
 
     Parameters
     ----------
-    function_to_inspect : function
+    function : callable
         The function to interrogate.
     try_mro_from_class : any Class or None
         Try and trace the method resolution order (MRO) of the ``function_to_inspect`` by inferring a method stack from
@@ -1073,27 +1073,23 @@ def get_keyword_args(function_to_inspect, try_mro_from_class=None):
             cycle_kwargs = {**cycle_kwargs, **input_argspec.kwonlydefaults}
         return cycle_kwargs
 
-    def build_argspec(input_function, input_cls):
-        agspec = inspect.getfullargspec(input_function)
-        kwargs = extract_kwargs(agspec)
-        if input_cls is not None and agspec.varkw is not None:
+    agspec = inspect.getfullargspec(function)
+    kwargs = extract_kwargs(agspec)
+    if try_mro_from_class is not None and agspec.varkw is not None:
+        try:
+            mro = inspect.getmro(try_mro_from_class)
+        except AttributeError:
+            # No MRO
+            mro = [try_mro_from_class]
+        for cls in mro[1:]:
             try:
-                mro = inspect.getmro(input_cls)
+                parent_function = getattr(cls, function.__name__)
             except AttributeError:
-                # No MRO
-                mro = [input_cls]
-            for cls in mro[1:]:
-                try:
-                    parent_function = getattr(cls, input_function.__name__)
-                except AttributeError:
-                    # Class does not have a method name
-                    pass
-                else:
-                    inner_argspec = inspect.getfullargspec(parent_function)
-                    kwargs = {**extract_kwargs(inner_argspec), **kwargs}
-        return kwargs
-
-    kwargs = build_argspec(function_to_inspect, try_mro_from_class)
+                # Class does not have a method name
+                pass
+            else:
+                inner_argspec = inspect.getfullargspec(parent_function)
+                kwargs = {**extract_kwargs(inner_argspec), **kwargs}
     return kwargs
 
 
