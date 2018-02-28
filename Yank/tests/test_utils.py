@@ -20,7 +20,7 @@ from yank.schema.validator import *
 
 
 # =============================================================================================
-# TESTING FUNCTIONS
+# COMBINATORIAL TREE
 # =============================================================================================
 
 def test_set_tree_path():
@@ -124,6 +124,10 @@ def test_expand_id_nodes():
                             'sys2': {'molecules': CombinatorialLeaf(['mol1_1', 'mol1_2', 'mol2_3', 'mol2_4'])},
                             'sys3': {'prmtopfile': 'mysystem.prmtop'}}
 
+
+# ==============================================================================
+# CONVERSION UTILITIES
+# ==============================================================================
 
 def test_find_all_subclasses():
     """Test find_all_subclasses() function."""
@@ -248,7 +252,7 @@ def test_validate_parameters():
     assert convert_pars['time'] == 1.0 * unit.femtoseconds
 
     # If check_unknown flag is not True it should not raise an error
-    validate_parameters({'unkown': 0}, template_pars)
+    validate_parameters({'unknown': 0}, template_pars)
 
     # Test special conversion
     def convert_length(length):
@@ -285,17 +289,30 @@ def test_underscore_to_camelcase():
 
 
 def test_quantity_from_string():
-    """Test the quantity from string function to ensure output is as expected"""
-    tests = [
+    """Test the quantity from string function to ensure output is as expected."""
+    test_cases = [
         # (string,                                 expected Unit)
-        ('3',                                      3.0), # Handle basic float
-        ('meter',                                  unit.meter), # Handle basic unit object
-        ('300 * kelvin',                           300*unit.kelvin), # Handle standard Quantity
-        ('" 0.3 * kilojoules_per_mole / watt**3"', 0.3*unit.kilojoules_per_mole/unit.watt**3), # Handle division, exponent, nested string
-        ('1*meter / (4*second)',                   0.25*unit.meter/unit.second), # Handle compound math and parenthesis
-        ('1 * watt**2 /((1* kelvin)**3 / gram)',   1*(unit.watt**2)*(unit.gram)/(unit.kelvin**3)) #Handle everything
-        ]
-    assert all(expected == quantity_from_string(passed_string) for passed_string, expected in tests)
+        ('3',                                      3.0),  # Handle basic float
+        ('meter',                                  unit.meter),  # Handle basic unit object
+        ('300 * kelvin',                           300*unit.kelvin),  # Handle standard Quantity
+        ('" 0.3 * kilojoules_per_mole / watt**3"', 0.3*unit.kilojoules_per_mole/unit.watt**3),  # Handle division, exponent, nested string
+        ('1*meter / (4*second)',                   0.25*unit.meter/unit.second),  # Handle compound math and parenthesis
+        ('1 * watt**2 /((1* kelvin)**3 / gram)',   1*(unit.watt**2)*(unit.gram)/(unit.kelvin**3))  #Handle everything
+    ]
+
+    for expression, expected in test_cases:
+        assert expected == quantity_from_string(expression)
+
+        # Test incompatible units.
+        with tools.assert_raises(TypeError):
+            quantity_from_string(expression, compatible_units=unit.second)
+
+        # Test compatibile units.
+        try:
+            expected_unit = expected.unit.in_unit_system(unit.md_unit_system)
+        except AttributeError:
+            continue
+        assert expected == quantity_from_string(expression, compatible_units=expected_unit)
 
 
 def test_TLeap_script():

@@ -901,8 +901,8 @@ def camelcase_to_underscore(camelcase_str):
     return underscore_str.lower()
 
 
-def quantity_from_string(expression):
-    """Create a Quantity object from a string expression
+def quantity_from_string(expression, compatible_units=None):
+    """Create a Quantity object from a string expression.
 
     All the functions in the standard module math are available together
     with most of the methods inside the ``simtk.unit`` module.
@@ -911,17 +911,33 @@ def quantity_from_string(expression):
     ----------
     expression : str
         The mathematical expression to rebuild a Quantity as a string.
+    compatible_units : simtk.unit.Unit, optional
+       If given, the result is checked for compatibility against the
+       specified units, and an exception raised if not compatible.
+
+       `Note`: The output is not converted to ``compatible_units``, they
+       are only used as a unit to validate the input.
 
     Returns
     -------
     quantity
         The result of the evaluated expression.
 
+    Raises
+    ------
+    TypeError
+        If ``compatible_units`` is given and the quantity in expression is
+        either unit-less or has incompatible units.
+
     Examples
     --------
     >>> expr = '4 * kilojoules / mole'
     >>> quantity_from_string(expr)
     Quantity(value=4.000000000000002, unit=kilojoule/mole)
+
+    >>> expr = '1.0*second'
+    >>> quantity_from_string(expr, compatible_units=unit.femtosecond)
+    Quantity(value=1.0, unit=second)
 
     """
     # Retrieve units from unit module.
@@ -937,66 +953,26 @@ def quantity_from_string(expression):
     if expression[0] == '/':
         expression = '(' + expression[1:] + ')**(-1)'
 
-    return mmtools.utils.math_eval(expression, variables=quantity_from_string._units)
+    # Evaluate expressions.
+    quantity = mmtools.utils.math_eval(expression, variables=quantity_from_string._units)
 
-
-def process_unit_bearing_str(quantity_str, compatible_units):
-    """
-    Process a unit-bearing string to produce a Quantity.
-
-    Parameters
-    ----------
-    quantity_str : str
-        A string containing a value with a unit of measure.
-    compatible_units : simtk.unit.Unit
-       The result will be checked for compatibility with specified units, and an
-       exception raised if not compatible.
-
-       `Note`: The output is not converted to ``compatible_units``, they are only used as a unit to validate the input
-       against.
-
-    Returns
-    -------
-    quantity : simtk.unit.Quantity
-       The specified string, returned as a Quantity.
-
-    Raises
-    ------
-    TypeError
-        If ``quantity_str`` does not contains units.
-    ValueError
-        If the units attached to ``quantity_str`` are incompatible with ``compatible_units``
-
-    See Also
-    --------
-    quantity_from_string
-
-    Examples
-    --------
-    >>> process_unit_bearing_str('1.0*micrometers', unit.nanometers)
-    Quantity(value=1.0, unit=micrometer)
-
-    """
-
-    # Convert string of a Quantity to actual Quantity
-    quantity = quantity_from_string(quantity_str)
     # Check to make sure units are compatible with expected units.
-    try:
-        quantity.unit.is_compatible(compatible_units)
-    except:
-        raise TypeError("String %s does not have units attached." % quantity_str)
-    # Check that units are compatible with what we expect.
-    if not quantity.unit.is_compatible(compatible_units):
-        raise ValueError("Units of %s must be compatible with %s" % (quantity_str,
-                                                                     str(compatible_units)))
-    # Return unit-bearing quantity.
+    if compatible_units is not None:
+        try:
+            is_compatible = quantity.unit.is_compatible(compatible_units)
+        except AttributeError:
+            raise TypeError("String {} does not have units attached.".format(expression))
+        if not is_compatible:
+            raise TypeError("Units of {} must be compatible with {}"
+                            "".format(expression, str(compatible_units)))
+
     return quantity
 
 
 def to_unit_validator(compatible_units):
     """Function generator to test unit bearing strings with Cerberus."""
     def _to_unit_validator(quantity_str):
-        return process_unit_bearing_str(quantity_str, compatible_units)
+        return quantity_from_string(quantity_str, compatible_units)
     return _to_unit_validator
 
 
@@ -1193,7 +1169,7 @@ def validate_parameters(parameters, template_parameters, check_unknown=False,
     >>> input_pars['unspecified'] = 'input'  # this can be of any type since the template is None
     >>> input_pars['to_be_converted'] = {'key': 3}
     >>> input_pars['length'] = '1.0*nanometers'
-    >>> input_pars['unknown'] = 'test'  # this will be silently filtered if check_unkown=False
+    >>> input_pars['unknown'] = 'test'  # this will be silently filtered if check_unknown=False
 
 
     Validate the parameters
@@ -1237,7 +1213,7 @@ def validate_parameters(parameters, template_parameters, check_unknown=False,
             if float_to_int and type(templ_value) is int:
                 validated_par[par] = int(value)
             elif process_units_str and isinstance(templ_value, unit.Quantity):
-                validated_par[par] = process_unit_bearing_str(value, templ_value.unit)
+                validated_par[par] = quantity_from_string(value, templ_value.unit)
 
             # Check for incompatible types
             if type(validated_par[par]) != type(templ_value) and templ_value is not None:
