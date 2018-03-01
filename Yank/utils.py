@@ -773,7 +773,7 @@ def update_nested_dict(original, updated):
 # Conversion utilities
 # ==============================================================================
 
-def find_all_subclasses(parent_cls, discard_abstract=False):
+def find_all_subclasses(parent_cls, discard_abstract=False, include_parent=True):
     """Return a set of all the classes inheriting from ``parent_cls``.
 
     The functions handle multiple inheritance and discard the same classes.
@@ -784,6 +784,9 @@ def find_all_subclasses(parent_cls, discard_abstract=False):
         The parent class.
     discard_abstract : bool, optional
         If True, abstract classes are not returned (default is False).
+    include_parent : bool, optional
+        If True, the parent class will be included, unless it is abstract
+        and ``discard_abstract`` is ``True``.
 
     Returns
     -------
@@ -796,6 +799,9 @@ def find_all_subclasses(parent_cls, discard_abstract=False):
         if not (discard_abstract and inspect.isabstract(subcls)):
             subclasses.add(subcls)
         subclasses.update(find_all_subclasses(subcls, discard_abstract))
+
+    if include_parent and not inspect.isabstract(parent_cls):
+        subclasses.add(parent_cls)
     return subclasses
 
 

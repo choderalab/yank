@@ -152,10 +152,10 @@ def test_find_all_subclasses():
         def m(self):
             pass
 
-    assert find_all_subclasses(B) == {D, E}
-    assert find_all_subclasses(B, discard_abstract=True) == {E}
-    assert find_all_subclasses(A) == {B, D, E, C}
-    assert find_all_subclasses(A, discard_abstract=True) == {B, E}
+    assert find_all_subclasses(B) == {B, D, E}
+    assert find_all_subclasses(B, discard_abstract=True, include_parent=False) == {E}
+    assert find_all_subclasses(A) == {A, B, D, E, C}
+    assert find_all_subclasses(A, discard_abstract=True, include_parent=False) == {B, E}
 
 
 def test_get_keyword_args():
