@@ -208,7 +208,8 @@ class SAMSSampler(MultiStateSampler):
         self.gamma0 = gamma0
         self.log_Z_guess = log_Z_guess
         # Private variables
-        self._replica_neighbors = None # self._replica_neighbors[replica_index] is a list of states that form the neighborhood of ``replica_index``
+        # self._replica_neighbors[replica_index] is a list of states that form the neighborhood of ``replica_index``
+        self._replica_neighbors = None
 
     class _StoredProperty(MultiStateSampler._StoredProperty):
 
@@ -254,8 +255,15 @@ class SAMSSampler(MultiStateSampler):
     gamma0 = _StoredProperty('gamma0', validate_function=None)
     log_Z_guess = _StoredProperty('log_Z_guess', validate_function=None)
 
-    def create(self, thermodynamic_states: list, sampler_states:list, storage,
-               **kwargs):
+    def _initialize_stage(self):
+        self._t0 = 0  # reference iteration to subtract
+        if self.update_stages == 'one-stage':
+            self._stage = 'asymptotically-optimal'  # start with asymptotically-optimal stage
+        elif self.update_stages == 'two-stage':
+            self._stage = 'initial'  # start with rapid heuristic adaptation initial stage
+
+    def _pre_write_create(self, thermodynamic_states: list, sampler_states: list, storage,
+                          **kwargs):
         """Initialize SAMS sampler.
 
         Parameters
@@ -292,7 +300,7 @@ class SAMSSampler(MultiStateSampler):
            Simulation metadata to be stored in the file.
         """
         # Initialize replica-exchange simulation.
-        super(SAMSSampler, self).create(thermodynamic_states, sampler_states, storage=storage, **kwargs)
+        super(SAMSSampler, self)._pre_write_create(thermodynamic_states, sampler_states, storage=storage, **kwargs)
 
         if self.state_update_scheme == 'global-jump':
             self.locality = None # override locality to be global
@@ -303,11 +311,8 @@ class SAMSSampler(MultiStateSampler):
                 self.locality = None
 
         # Record current weight update stage
-        self._t0 = 0 # reference iteration to subtract
-        if self.update_stages == 'one-stage':
-            self._stage = 'asymptotically-optimal' # start with asymptotically-optimal stage
-        elif self.update_stages == 'two-stage':
-            self._stage = 'initial' # start with rapid heuristic adaptation initial stage
+        self._initialize_stage()
+
 
         # Update log target probabilities
         if self.log_target_probabilities is None:
@@ -344,17 +349,19 @@ class SAMSSampler(MultiStateSampler):
             last stored iteration.
 
         """
-        sampler = MultiStateSampler.from_storage(storage)
-
-        sampler._reporter.open(mode='a')
-        cls._logZ = sampler._reporter.read_logZ()
-        sampler._reporter.close()
+        sampler = super(SAMSSampler, cls).from_storage(storage)
+        # sampler._reporter.open('r')
+        sampler._logZ = sampler._reporter.read_logZ(sampler._iteration)
+        # sampler._reporter.close()
+        sampler._update_log_weights()
+        sampler._initialize_stage()
+        sampler._update_stage()
 
         return sampler
 
     def _report_iteration(self):
         super(SAMSSampler, self)._report_iteration()
-        self._reporter.write_logZ(self._logZ)
+        self._reporter.write_logZ(self._iteration, self._logZ)
 
     @mpi.on_single_node(0, broadcast_result=True)
     def _mix_replicas(self):
@@ -511,7 +518,7 @@ class SAMSSampler(MultiStateSampler):
             pi_k = np.exp(self.log_target_probabilities)
             relative_error_k = np.abs(pi_k - empirical_pi_k) / pi_k
             if np.all(relative_error_k < self.flatness_threshold):
-                # Histograms are sufficiently flat; switch to asymptotically optimal schem
+                # Histograms are sufficiently flat; switch to asymptotically optimal scheme
                 self._stage = 'asymptotically-optimal'
                 self._t0 = self._iteration
 
@@ -566,8 +573,8 @@ class SAMSSampler(MultiStateSampler):
         # Subtract off logZ[0] to prevent logZ from growing without bound
         self._logZ[:] -= self._logZ[0]
 
-        # Store gamma
-        self._reporter.write_online_data_dynamic_and_static(self._iteration, gammas=gammas)
+        # Store gamma (non-per-iteration)
+        self._reporter.write_online_analysis_data(None, gammas=gammas)
 
     def _update_log_weights(self):
         """

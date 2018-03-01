@@ -1275,7 +1275,7 @@ class MultiStateReporter(object):
             variable_parameters = self._determine_netcdf_variable_parameters(iteration, data, storage)
             storage.createVariable(variable, variable_parameters['dtype'],
                                    dimensions=variable_parameters['dims'],
-                                   cunksizes=variable_parameters['chunks'],
+                                   chunksizes=variable_parameters['chunks'],
                                    zlib=False)
         # Get the variable
         nc_var = storage[variable]

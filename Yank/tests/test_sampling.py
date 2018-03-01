@@ -1046,6 +1046,10 @@ class TestMultiStateSampler(object):
                 original_dict.pop('_cached_transition_counts', None)
                 original_dict.pop('_cached_last_replica_thermodynamic_states', None)
 
+                # TODO: Remove these debug lines -LNN
+                # if self.SAMPLER == SAMSSampler:
+                #     import pdb
+                #     pdb.set_trace()
                 # Check all other arrays. Instantiate list so that we can pop from original_dict.
                 for attr, original_value in list(original_dict.items()):
                     if isinstance(original_value, np.ndarray):
@@ -1058,6 +1062,7 @@ class TestMultiStateSampler(object):
                 assert original_dict == restored_dict
 
                 # Run few iterations to see that we restore also after a while.
+
                 if iteration == 0:
                     sampler.run(number_of_iterations)
 
