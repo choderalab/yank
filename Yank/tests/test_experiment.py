@@ -101,7 +101,7 @@ def get_template_script(output_dir='.', keep_schrodinger=False, keep_openeye=Fal
     ---
     options:
         output_dir: {output_dir}
-        number_of_iterations: 0
+        default_number_of_iterations: 0
         temperature: 300*kelvin
         pressure: 1*atmosphere
         minimize: no
@@ -244,7 +244,7 @@ def get_functionality_script(output_directory=',', number_of_iter=0, experiment_
       minimize: no
       verbose: no
       output_dir: {output_directory}
-      number_of_iterations: {number_of_iter}
+      default_number_of_iterations: {number_of_iter}
       nsteps_per_iteration: 10
       temperature: 300*kelvin
       pressure: null
@@ -349,7 +349,7 @@ def test_yaml_parsing():
         collision_rate: 5.0 / picosecond
         timestep: 2.0 * femtosecond
         nsteps_per_iteration: 2500
-        number_of_iterations: .inf
+        default_number_of_iterations: .inf
         equilibration_timestep: 1.0 * femtosecond
         number_of_equilibration_iterations: 100
         minimize: False
@@ -377,7 +377,7 @@ def test_yaml_parsing():
     assert exp_builder._options['randomize_ligand_sigma_multiplier'] == 1.0e-2
     assert exp_builder._options['nsteps_per_iteration'] == 2500
     assert type(exp_builder._options['nsteps_per_iteration']) is int
-    assert exp_builder._options['number_of_iterations'] == float('inf')
+    assert exp_builder._options['default_number_of_iterations'] == float('inf')
     assert exp_builder._options['number_of_equilibration_iterations'] == 100
     assert type(exp_builder._options['number_of_equilibration_iterations']) is int
     assert exp_builder._options['minimize'] is False
@@ -672,6 +672,34 @@ def test_validation_wrong_systems():
         modified_script = basic_script.copy()
         modified_script['systems'] = {'sys': system}
         yield assert_raises_regexp, YamlParseError, regexp, exp_builder.parse, modified_script
+
+
+def test_validation_correct_samplers():
+    """Correct samplers YAML validation."""
+    samplers = [
+        {'type': 'MultiStateSampler', 'locality': 3},
+        {'type': 'ReplicaExchangeSampler'},
+        {'type': 'ReplicaExchangeSampler', 'number_of_iterations': 5, 'replica_mixing_scheme': 'swap-neighbors'},
+        {'type': 'ReplicaExchangeSampler', 'number_of_iterations': 5, 'replica_mixing_scheme': None}
+    ]
+    for sampler in samplers:
+        yield ExperimentBuilder._validate_samplers, {'samplers': {'sampler1': sampler}}
+
+
+def test_validation_wrong_samplers():
+    """YAML validation raises exception with wrong experiments specification."""
+    # Each test case is a pair (regexp_error, sampler_description).
+    samplers = [
+        ("locality must be an int",
+            {'type': 'MultiStateSampler', 'locality': 3.0}),
+        ("Could not found class NonExistentSampler",
+            {'type': 'NonExistentSampler'}),
+        ("found unknown parameter",
+            {'type': 'ReplicaExchangeSampler', 'unknown_kwarg': 5}),
+    ]
+    for regexp, sampler in samplers:
+        script = {'samplers': {'sampler1': sampler}}
+        yield assert_raises_regexp, YamlParseError, regexp, ExperimentBuilder._validate_samplers, script
 
 
 def test_order_phases():
@@ -1964,58 +1992,97 @@ def test_default_platform_precision():
 # Experiment building
 # ==============================================================================
 
-def test_alchemical_phase_factory_building():
-    """Test that options are passed to AlchemicalPhaseFactory correctly."""
-    with mmtools.utils.temporary_directory() as tmp_dir:
-        template_script = get_template_script(tmp_dir)
+class TestExperimentBuilding(object):
+    """Test that options are passed correctly from YAML to the built objects."""
+
+    @classmethod
+    def get_implicit_template_script(cls, output_dir):
+        """Return the template script with only an implicit system."""
+        template_script = get_template_script(output_dir)
 
         # Remove systems we don't need to setup.
         del template_script['systems']['explicit-system']
         del template_script['systems']['hydration-system']
         template_script['experiments']['system'] = 'implicit-system'
+        return template_script
 
-        # AbsoluteAlchemicalFactory options.
-        template_script['options']['alchemical_pme_treatment'] = 'exact'
+    def test_alchemical_phase_factory_building(self):
+        """Test that options are passed to AlchemicalPhaseFactory correctly."""
+        with mmtools.utils.temporary_directory() as tmp_dir:
+            template_script = self.get_implicit_template_script(tmp_dir)
 
-        # Test that options are passed to AlchemicalPhaseFactory correctly.
-        exp_builder = ExperimentBuilder(script=template_script)
-        for experiment in exp_builder.build_experiments():
-            for phase_factory in experiment.phases:
-                assert phase_factory.alchemical_factory.alchemical_pme_treatment == 'exact'
-                # Overwrite AbsoluteAlchemicalFactory default for disable_alchemical_dispersion_correction.
-                assert phase_factory.alchemical_factory.disable_alchemical_dispersion_correction == True
+            # AbsoluteAlchemicalFactory options.
+            template_script['options']['alchemical_pme_treatment'] = 'exact'
 
+            # Test that options are passed to AlchemicalPhaseFactory correctly.
+            exp_builder = ExperimentBuilder(script=template_script)
+            for experiment in exp_builder.build_experiments():
+                for phase_factory in experiment.phases:
+                    assert phase_factory.alchemical_factory.alchemical_pme_treatment == 'exact'
+                    # Overwrite AbsoluteAlchemicalFactory default for disable_alchemical_dispersion_correction.
+                    assert phase_factory.alchemical_factory.disable_alchemical_dispersion_correction == True
 
-def test_restraint_building():
-    """Test that experiment restraints are built correctly."""
-    with mmtools.utils.temporary_directory() as tmp_dir:
-        template_script = get_template_script(tmp_dir)
+    def test_restraint_building(self):
+        """Test that experiment restraints are built correctly."""
+        with mmtools.utils.temporary_directory() as tmp_dir:
+            template_script = self.get_implicit_template_script(tmp_dir)
 
-        # Remove systems we don't need to setup.
-        del template_script['systems']['explicit-system']
-        del template_script['systems']['hydration-system']
-        template_script['experiments']['system'] = 'implicit-system'
+            # Restraint options.
+            template_script['experiments']['restraint'] = {
+                'type': 'Harmonic',
+                'restrained_receptor_atoms': [10, 11, 12],
+                'restrained_ligand_atoms': 'resname MOL',
+                'spring_constant': '8*kilojoule_per_mole/nanometers**2'
+            }
 
-        # Restraint options.
-        template_script['experiments']['restraint'] = {
-            'type': 'Harmonic',
-            'restrained_receptor_atoms': [10, 11, 12],
-            'restrained_ligand_atoms': 'resname MOL',
-            'spring_constant': '8*kilojoule_per_mole/nanometers**2'
-        }
+            # Test that options are passed to the restraint correctly.
+            exp_builder = ExperimentBuilder(script=template_script)
+            for experiment in exp_builder.build_experiments():
+                restraint = experiment.phases[0].restraint
+                assert isinstance(restraint, restraints.Harmonic)
+                assert restraint.restrained_receptor_atoms == [10, 11, 12]
+                assert restraint.restrained_ligand_atoms == 'resname MOL'
+                print(restraint.spring_constant)
+                assert restraint.spring_constant.unit.is_compatible(
+                    unit.kilojoule_per_mole/unit.nanometers**2)
 
-        # Test that options are passed to AlchemicalPhaseFactory correctly.
-        exp_builder = ExperimentBuilder(script=template_script)
-        for experiment in exp_builder.build_experiments():
-            restraint = experiment.phases[0].restraint
-            assert isinstance(restraint, restraints.Harmonic)
-            assert restraint.restrained_receptor_atoms == [10, 11, 12]
-            assert restraint.restrained_ligand_atoms == 'resname MOL'
-            print(restraint.spring_constant)
-            assert restraint.spring_constant.unit.is_compatible(
-                unit.kilojoule_per_mole/unit.nanometers**2)
+                assert experiment.phases[1].restraint is None
 
-            assert experiment.phases[1].restraint is None
+    def test_sampler_building(self):
+        """Test that experiment sampler is correctly."""
+        with mmtools.utils.temporary_directory() as tmp_dir:
+            template_script = self.get_implicit_template_script(tmp_dir)
+            template_script['options']['resume_setup'] = True
+            default_number_of_iterations = template_script['options']['default_number_of_iterations']
+
+            # Add tested samplers.
+            template_script['samplers'] = {
+                'my-sampler1': {
+                    'type': 'ReplicaExchangeSampler',
+                    'number_of_iterations': 9,
+                    'replica_mixing_scheme': 'swap-neighbors',
+                },
+                'my-sampler2': {
+                    'type': 'MultiStateSampler',
+                    'locality': 5
+                }
+            }
+
+            # Test that options are passed to the sampler correctly.
+            for sampler_id, sampler_description in template_script['samplers'].items():
+                template_script['experiments']['sampler'] = sampler_id
+                exp_builder = ExperimentBuilder(script=template_script)
+                for experiment in exp_builder.build_experiments():
+                    for phase in experiment.phases:
+                        for k, v in sampler_description.items():
+                            if k == 'type':
+                                assert phase.sampler.__class__.__name__ == v
+                            else:
+                                assert getattr(phase.sampler, k) == v
+
+                        # If number_of_iterations is not specified, the default is used.
+                        if 'number_of_iterations' not in sampler_description:
+                            assert phase.sampler.number_of_iterations == default_number_of_iterations
 
 
 # ==============================================================================
@@ -2169,7 +2236,7 @@ def test_yaml_extension():
 
         yaml_extension = """
         options:
-            number_of_iterations: {}
+            default_number_of_iterations: {}
         solvents:
             GBSA-OBC2:
                 implicit_solvent: HCT
@@ -2184,7 +2251,7 @@ def test_yaml_extension():
         options:
             experiments_dir: .
             output_dir: .
-            number_of_iterations: {}
+            default_number_of_iterations: {}
         molecules:{}
             p-xylene:
                 filepath: {}
@@ -2314,7 +2381,7 @@ def test_run_experiment():
         options:
             resume_setup: no
             resume_simulation: no
-            number_of_iterations: 0
+            default_number_of_iterations: 0
             output_dir: {}
             setup_dir: ''
             experiments_dir: ''
@@ -2460,7 +2527,7 @@ def test_splitting():
     for replacement in [{'options': {'integrator_splitting': None}},
                         {'options': {'integrator_splitting': "O { V R V } O"}}]:
         with mmtools.utils.temporary_directory() as tmp_dir:
-            replacement['options']['number_of_iterations'] = 1
+            replacement['options']['default_number_of_iterations'] = 1
             solvation_stock(tmp_dir, overwrite_options=replacement)
 
 

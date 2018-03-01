@@ -10,7 +10,7 @@ from openmmtools.utils import typename
 from openmoltools.utils import unwrap_py2
 from collections.abc import Mapping, Sequence
 
-from .. import utils, restraints
+from .. import utils, restraints, multistate
 
 logger = logging.getLogger(__name__)
 
@@ -100,8 +100,10 @@ class YANKCerberusValidator(cerberus.Validator):
                      'files'.format(field, file_paths, file_extension_type))
 
     def _validator_is_restraint_constructor(self, field, constructor_description):
-        self._check_subclass_constructor(field, restraints.ReceptorLigandRestraint,
-                                         constructor_description)
+        self._check_subclass_constructor(field, call_restraint_constructor, constructor_description)
+
+    def _validator_is_sampler_constructor(self, field, constructor_description):
+        self._check_subclass_constructor(field, call_sampler_constructor, constructor_description)
 
     # ====================================================
     # DATA TYPES
@@ -115,50 +117,126 @@ class YANKCerberusValidator(cerberus.Validator):
     # INTERNAL USAGE
     # ====================================================
 
-    def _check_subclass_constructor(self, field, parent_cls, constructor_description):
-        """Check that the constructor description for parent_cls' child is valid."""
-        # Retrieve subclass from 'type' keyword.
-        constructor_description = copy.deepcopy(constructor_description)
-        subcls_name = constructor_description.pop('type', None)
-        if subcls_name is None:
-            self._error(field, "'type' must be specified")
-            return
-        elif not isinstance(subcls_name, str):
-            self._error(field, "'type' must be a string")
-            return
+    def _check_subclass_constructor(self, field, call_constructor_func,
+                                    constructor_description):
+        """Utility function for logging constructor validation errors."""
         try:
-            subcls = utils.find_subclass(parent_cls, subcls_name)
-        except ValueError as e:
+            call_constructor_func(constructor_description)
+        except RuntimeError as e:
             self._error(field, str(e))
-            return
-
-        # Validate init keyword arguments.
-        constructor_kwargs = utils.get_keyword_args(subcls.__init__, try_mro_from_class=subcls)
-        try:
-            validated_kwargs = utils.validate_parameters(parameters=constructor_description,
-                                                         template_parameters=constructor_kwargs,
-                                                         check_unknown=True, process_units_str=True,
-                                                         float_to_int=True)
-        except (TypeError, ValueError) as e:
-            self._error(field, 'Validation of {} constructor failed with: {}'.format(field, str(e)))
-            return
-
-        # Attempt to instantiate object.
-        try:
-            subcls(**validated_kwargs)
-        except Exception as e:
-            self._error(field, 'Attempt to initialize {} failed with: {}'.format(field, str(e)))
 
 
 # ==============================================================================
-# STATIC VALIDATORS
+# STATIC VALIDATORS/COERCERS
 # ==============================================================================
 
-def to_unit_validator(compatible_units):
+def to_unit_coercer(compatible_units):
     """Function generator to test unit bearing strings with Cerberus."""
-    def _to_unit_validator(quantity_str):
+    def _to_unit_coercer(quantity_str):
         return utils.quantity_from_string(quantity_str, compatible_units)
-    return _to_unit_validator
+    return _to_unit_coercer
+
+
+def to_integer_or_infinity_coercer(value):
+    """Coerce everything that is not infinity to an integer."""
+    if value != float('inf'):
+        value = int(value)
+    return value
+
+
+# ==============================================================================
+# OBJECT CONSTRUCTORS PARSING
+# ==============================================================================
+
+def call_constructor(parent_cls, constructor_description, special_conversions=None,
+                     convert_quantity_strings=False):
+    """Convert the constructor representation into an object.
+
+    Parameters
+    ----------
+    parent_cls : type
+        Only objects that inherit from this class are created.
+    constructor_description : dict
+        Must contain the key 'type' with the name (string) of the subclass
+        of ``parent_cls`` and all keyword arguments to pass to its ``__init__``
+        method.
+    special_conversions : dict, optional
+        Special conversions to pass to ``yank.utils.validate_parameters``.
+    convert_quantity_strings : bool, optional
+        If True, all the string constructor values are attempted to be
+        converted to quantities before creating the object (default is
+        False).
+
+    Returns
+    -------
+    obj: parent_cls
+        The new instance of the object.
+
+    Raises
+    ------
+    RuntimeError
+        If an error occurred parsing the constructor description of
+        while creating the object.
+
+    See Also
+    --------
+    yank.utils.validate_parameters
+
+    """
+    if special_conversions is None:
+        special_conversions = {}
+
+    # Check Retrieve subclass from 'type' keyword.
+    constructor_description = copy.deepcopy(constructor_description)
+    subcls_name = constructor_description.pop('type', None)
+    if subcls_name is None:
+        raise RuntimeError("'type' must be specified")
+    elif not isinstance(subcls_name, str):
+        raise RuntimeError("'type' must be a string")
+    try:
+        subcls = utils.find_subclass(parent_cls, subcls_name)
+    except ValueError as e:
+        raise RuntimeError(str(e))
+
+    # Validate init keyword arguments.
+    constructor_kwargs = utils.get_keyword_args(subcls.__init__, try_mro_from_class=subcls)
+    try:
+        constructor_kwargs = utils.validate_parameters(
+            parameters=constructor_description, template_parameters=constructor_kwargs,
+            check_unknown=True, process_units_str=True, float_to_int=True,
+            special_conversions=special_conversions
+        )
+    except (TypeError, ValueError) as e:
+        raise RuntimeError('Validation of constructor failed with: {}'.format(str(e)))
+
+    # Convert all string quantities if required.
+    if convert_quantity_strings:
+        for key, value in constructor_kwargs.items():
+            try:
+                quantity = utils.quantity_from_string(value)
+            except:
+                pass
+            else:
+                constructor_kwargs[key] = quantity
+
+    # Attempt to instantiate object.
+    try:
+        obj = subcls(**constructor_kwargs)
+    except Exception as e:
+        raise RuntimeError('Attempt to initialize failed with: {}'.format(str(e)))
+
+    return obj
+
+
+def call_restraint_constructor(constructor_description):
+    return call_constructor(restraints.ReceptorLigandRestraint, constructor_description,
+                            convert_quantity_strings=True)
+
+
+def call_sampler_constructor(constructor_description):
+    special_conversions = {'number_of_iterations': to_integer_or_infinity_coercer}
+    return call_constructor(multistate.MultiStateSampler, constructor_description,
+                            special_conversions=special_conversions)
 
 
 # ==============================================================================
@@ -290,7 +368,7 @@ def generate_signature_schema(func, update_keys=None, exclude_keys=frozenset()):
             if default_value is None:  # None defaults are always accepted, and considered nullable
                 validator = {'nullable': True}
             elif isinstance(default_value, unit.Quantity):  # Convert unit strings
-                validator = {'coerce': to_unit_validator(default_value.unit)}
+                validator = {'coerce': to_unit_coercer(default_value.unit)}
             else:
                 validator = type_to_cerberus_map(type(default_value))
             # Add the argument to the existing schema as a keyword
