@@ -1997,7 +1997,7 @@ class ExperimentBuilder(object):
         restraint:
             required: no
             type: dict
-            validator: ensure_type_is_key
+            validator: is_restraint_constructor
             keyschema:
                 type: string
         """
@@ -2008,8 +2008,6 @@ class ExperimentBuilder(object):
         experiment_schema['protocol']['allowed'] = [str(key) for key in self._protocols.keys()]
         # Options validator
         experiment_schema['options']['coerce'] = coerce_and_validate_options_here_against_existing
-        # Restraint requirements
-        experiment_schema['restraint']['validator'] = ensure_restraint_type_is_key
 
         experiment_validator = schema.YANKCerberusValidator(experiment_schema)
         # Schema validation
@@ -2641,6 +2639,19 @@ class ExperimentBuilder(object):
         if not os.path.isdir(directory):
             os.makedirs(directory)
 
+    def _create_experiment_restraint(self, experiment_description):
+        """Create a restraint object for the experiment."""
+        # Determine restraint description (None if not specified).
+        restraint_description = experiment_description.get('restraint', None)
+        if restraint_description is not None:
+            restraint_parameters = copy.deepcopy(restraint_description)
+            restraint_type = restraint_parameters.pop('type')
+            # Convert quantity parameters.
+            restraint_parameters = {par: convert_if_quantity(value)
+                                    for par, value in restraint_parameters.items()}
+            return restraints.create_restraint(restraint_type, **restraint_parameters)
+        return None
+
     def _build_experiment(self, experiment_path, experiment):
         """Prepare a single experiment.
 
@@ -2745,9 +2756,6 @@ class ExperimentBuilder(object):
             else:
                 protocol = yaml_script['protocols'][experiment['protocol']]
 
-        # Determine restraint description (None if not specified).
-        restraint_descr = experiment.get('restraint')
-
         # Get system files.
         system_files_paths = self._db.get_system(system_id)
         gromacs_include_dir = self._db.systems[system_id].get('gromacs_include_dir', None)
@@ -2809,12 +2817,8 @@ class ExperimentBuilder(object):
 
             # Apply restraint only if this is the first phase. AlchemicalPhase
             # will take care of raising an error if the phase type does not support it.
-            if (phase_idx == 0 and restraint_descr is not None and
-                        restraint_descr['type'] is not None):
-                restraint_type = restraint_descr['type']
-                restraint_parameters = {par: convert_if_quantity(value) for par, value in restraint_descr.items()
-                                        if par != 'type'}
-                restraint = restraints.create_restraint(restraint_type, **restraint_parameters)
+            if phase_idx == 0:
+                restraint = self._create_experiment_restraint(experiment)
             else:
                 restraint = None
 

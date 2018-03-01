@@ -7,9 +7,10 @@ import simtk.unit as unit
 
 from datetime import date
 from openmmtools.utils import typename
+from openmoltools.utils import unwrap_py2
 from collections.abc import Mapping, Sequence
 
-from .. import utils
+from .. import utils, restraints
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +99,10 @@ class YANKCerberusValidator(cerberus.Validator):
         logger.debug('Correctly recognized {}files ({}) as {} '
                      'files'.format(field, file_paths, file_extension_type))
 
+    def _validator_is_restraint_constructor(self, field, constructor_description):
+        self._check_subclass_constructor(field, restraints.ReceptorLigandRestraint,
+                                         constructor_description)
+
     # ====================================================
     # DATA TYPES
     # ====================================================
@@ -105,6 +110,44 @@ class YANKCerberusValidator(cerberus.Validator):
     def _validate_type_quantity(self, value):
         if isinstance(value, unit.Quantity):
             return True
+
+    # ====================================================
+    # INTERNAL USAGE
+    # ====================================================
+
+    def _check_subclass_constructor(self, field, parent_cls, constructor_description):
+        """Check that the constructor description for parent_cls' child is valid."""
+        # Retrieve subclass from 'type' keyword.
+        constructor_description = copy.deepcopy(constructor_description)
+        subcls_name = constructor_description.pop('type', None)
+        if subcls_name is None:
+            self._error(field, "'type' must be specified")
+            return
+        elif not isinstance(subcls_name, str):
+            self._error(field, "'type' must be a string")
+            return
+        try:
+            subcls = utils.find_subclass(parent_cls, subcls_name)
+        except ValueError as e:
+            self._error(field, str(e))
+            return
+
+        # Validate init keyword arguments.
+        constructor_kwargs = utils.get_keyword_args(subcls.__init__, try_mro_from_class=subcls)
+        try:
+            validated_kwargs = utils.validate_parameters(parameters=constructor_description,
+                                                         template_parameters=constructor_kwargs,
+                                                         check_unknown=True, process_units_str=True,
+                                                         float_to_int=True)
+        except (TypeError, ValueError) as e:
+            self._error(field, 'Validation of {} constructor failed with: {}'.format(field, str(e)))
+            return
+
+        # Attempt to instantiate object.
+        try:
+            subcls(**validated_kwargs)
+        except Exception as e:
+            self._error(field, 'Attempt to initialize {} failed with: {}'.format(field, str(e)))
 
 
 # ==============================================================================
@@ -229,7 +272,7 @@ def generate_signature_schema(func, update_keys=None, exclude_keys=frozenset()):
         update_keys = {}
 
     func_schema = {}
-    arg_spec = inspect.getfullargspec(func)
+    arg_spec = inspect.getfullargspec(unwrap_py2(func))
     args = arg_spec.args
     defaults = arg_spec.defaults
 

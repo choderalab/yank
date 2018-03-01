@@ -786,7 +786,7 @@ def test_validation_wrong_protocols():
 
 
 def test_validation_correct_experiments():
-    """YAML validation raises exception with wrong experiments specification."""
+    """Correct experimentYAML validation."""
     exp_builder = ExperimentBuilder()
     basic_script = """
     ---
@@ -804,11 +804,10 @@ def test_validation_correct_experiments():
     experiments = [
         {'system': 'sys', 'protocol': 'absolute-binding'},
         {'system': 'sys', 'protocol': 'absolute-binding', 'restraint': {'type': 'Harmonic'}},
-        {'system': 'sys', 'protocol': 'absolute-binding', 'restraint': {'type': None}},
         {'system': 'sys', 'protocol': 'absolute-binding', 'restraint': {
             'type': 'Harmonic', 'spring_constant': '8*kilojoule_per_mole/nanometers**2'}},
         {'system': 'sys', 'protocol': 'absolute-binding', 'restraint': {
-            'type': 'FlatBottom', 'well_radius': '5.2*nanometers', 'restrained_receptor_atom': 1644}},
+            'type': 'FlatBottom', 'well_radius': '5.2*nanometers', 'restrained_receptor_atoms': 1644}},
         {'system': 'sys', 'protocol': 'absolute-binding', 'restraint': {
             'type': 'Boresch', 'restrained_receptor_atoms': [1335, 1339, 1397],
             'restrained_ligand_atoms': [2609, 2607, 2606], 'r_aA0': '0.35*nanometer',
@@ -840,7 +839,15 @@ def test_validation_wrong_experiments():
         {'system': 'unknownsys', 'protocol': 'absolute-binding'},
         {'system': 'sys', 'protocol': 'unknownprotocol'},
         {'system': 'sys'},
-        {'protocol': 'absolute-binding'}
+        {'protocol': 'absolute-binding'},
+
+        # Restraint does not specify "type".
+        {'system': 'sys', 'protocol': 'absolute-binding', 'restraint': {
+            'spring_constant': '8*kilojoule_per_mole/nanometers**2'}},
+
+        # Restraint has unknown constructor parameter.
+        {'system': 'sys', 'protocol': 'absolute-binding', 'restraint': {
+            'type': 'Harmonic', 'unknown': '3*meters'}},
     ]
     for experiment in experiments:
         modified_script = basic_script.copy()
@@ -1977,6 +1984,38 @@ def test_alchemical_phase_factory_building():
                 assert phase_factory.alchemical_factory.alchemical_pme_treatment == 'exact'
                 # Overwrite AbsoluteAlchemicalFactory default for disable_alchemical_dispersion_correction.
                 assert phase_factory.alchemical_factory.disable_alchemical_dispersion_correction == True
+
+
+def test_restraint_building():
+    """Test that experiment restraints are built correctly."""
+    with mmtools.utils.temporary_directory() as tmp_dir:
+        template_script = get_template_script(tmp_dir)
+
+        # Remove systems we don't need to setup.
+        del template_script['systems']['explicit-system']
+        del template_script['systems']['hydration-system']
+        template_script['experiments']['system'] = 'implicit-system'
+
+        # Restraint options.
+        template_script['experiments']['restraint'] = {
+            'type': 'Harmonic',
+            'restrained_receptor_atoms': [10, 11, 12],
+            'restrained_ligand_atoms': 'resname MOL',
+            'spring_constant': '8*kilojoule_per_mole/nanometers**2'
+        }
+
+        # Test that options are passed to AlchemicalPhaseFactory correctly.
+        exp_builder = ExperimentBuilder(script=template_script)
+        for experiment in exp_builder.build_experiments():
+            restraint = experiment.phases[0].restraint
+            assert isinstance(restraint, restraints.Harmonic)
+            assert restraint.restrained_receptor_atoms == [10, 11, 12]
+            assert restraint.restrained_ligand_atoms == 'resname MOL'
+            print(restraint.spring_constant)
+            assert restraint.spring_constant.unit.is_compatible(
+                unit.kilojoule_per_mole/unit.nanometers**2)
+
+            assert experiment.phases[1].restraint is None
 
 
 # ==============================================================================
