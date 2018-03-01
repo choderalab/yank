@@ -23,8 +23,6 @@ This code is licensed under the latest available version of the MIT License.
 
 """
 
-import copy
-import math
 import logging
 import numpy as np
 import openmmtools as mmtools
@@ -40,6 +38,7 @@ logger = logging.getLogger(__name__)
 # ==============================================================================
 # PARALLEL TEMPERING
 # ==============================================================================
+
 
 class SAMSSampler(MultiStateSampler):
     """Self-adjusted mixture sampling (SAMS), also known as optimally-adjusted mixture sampling.
@@ -64,7 +63,7 @@ class SAMSSampler(MultiStateSampler):
         If True, target probabilities will be adapted to achieve minimal thermodynamic length between terminal thermodynamic states.
     gamma0 : float, optional, default=0.0
         Initial weight adaptation rate.
-    log_Z_guess : array-like of shape [n_states] of floats, optiona, default=None
+    log_Z_guess : array-like of shape [n_states] of floats, optional, default=None
         Initial guess for logZ for all states, if available.
 
     References
@@ -154,14 +153,14 @@ class SAMSSampler(MultiStateSampler):
                        'class of yank.multistate on {}')
 
     def __init__(self,
-                log_target_probabilities=None,
-                state_update_scheme='global-jump', locality=5,
-                update_stages='two-stage', flatness_threshold=0.2,
-                weight_update_method='rao-blackwellized',
-                adapt_target_probabilities=False,
-                gamma0=1.0,
-                log_Z_guess=None,
-                **kwargs):
+                 log_target_probabilities=None,
+                 state_update_scheme='global-jump', locality=5,
+                 update_stages='two-stage', flatness_threshold=0.2,
+                 weight_update_method='rao-blackwellized',
+                 adapt_target_probabilities=False,
+                 gamma0=1.0,
+                 log_Z_guess=None,
+                 **kwargs):
         """Initialize a SAMS sampler.
 
         Parameters
@@ -295,12 +294,12 @@ class SAMSSampler(MultiStateSampler):
         # Initialize replica-exchange simulation.
         super(SAMSSampler, self).create(thermodynamic_states, sampler_states, storage=storage, **kwargs)
 
-        if (self.state_update_scheme == 'global-jump'):
+        if self.state_update_scheme == 'global-jump':
             self.locality = None # override locality to be global
-        if (self.locality is not None):
-            if (self.locality < 1):
+        if self.locality is not None:
+            if self.locality < 1:
                 raise Exception('locality must be >= 1')
-            elif (self.locality >= n_states):
+            elif self.locality >= self.n_states:
                 self.locality = None
 
         # Record current weight update stage
@@ -318,14 +317,15 @@ class SAMSSampler(MultiStateSampler):
         self._logZ = np.zeros([self.n_states], np.float64)
         if self.log_Z_guess is not None:
             if len(self.log_Z_guess) != self.n_states:
-                raise Exception('Initial log_Z_guess (dim {}) must have same number of states as n_states ({})'.format(len(log_Z_guess), self.n_states))
+                raise Exception('Initial log_Z_guess (dim {}) must have same number of states as n_states ({})'.format(
+                    len(self.log_Z_guess), self.n_states))
             self._logZ = np.array(self.log_Z_guess, np.float64)
 
         # Update log weights
         self._update_log_weights()
 
-
     # TODO: Get rid of from_storage() when we move read_logZ and write_logZ to multistatesampler.py
+    # LNN: I'm not sure we can since the "logZ" data is not the only thing we are restoring (e.g. other options)
     @classmethod
     def from_storage(cls, storage):
         """Constructor from an existing storage file.
@@ -347,7 +347,7 @@ class SAMSSampler(MultiStateSampler):
         sampler = MultiStateSampler.from_storage(storage)
 
         sampler._reporter.open(mode='a')
-        self._logZ = sampler._reporter.read_logZ()
+        cls._logZ = sampler._reporter.read_logZ()
         sampler._reporter.close()
 
         return sampler
@@ -515,6 +515,7 @@ class SAMSSampler(MultiStateSampler):
                 self._stage = 'asymptotically-optimal'
                 self._t0 = self._iteration
 
+
     def _update_logZ_estimates(self):
         """
         Update the logZ estimates according to selected SAMS update method
@@ -531,6 +532,8 @@ class SAMSSampler(MultiStateSampler):
         # Update which stage we're in, checking histogram flatness
         self._update_stage()
 
+        gammas = np.zeros(self.n_states)
+
         # Update logZ estimates from all replicas
         for (replica_index, state_index) in enumerate(self._replica_thermodynamic_states):
             # Compute attenuation factor gamma
@@ -544,6 +547,7 @@ class SAMSSampler(MultiStateSampler):
                 raise Exception('Programming error:unreachable code')
 
             # TODO: Store gamma for each replica: self.ncfile.variables['gamma'][self.iteration] = gamma
+            gammas[state_index] = gamma
 
             # Update online logZ estimate
             if self.weight_update_method == 'optimal':
@@ -562,6 +566,9 @@ class SAMSSampler(MultiStateSampler):
         # Subtract off logZ[0] to prevent logZ from growing without bound
         self._logZ[:] -= self._logZ[0]
 
+        # Store gamma
+        self._reporter.write_online_data_dynamic_and_static(self._iteration, gammas=gammas)
+
     def _update_log_weights(self):
         """
         Update the log weights based on current online logZ estimates
@@ -571,6 +578,7 @@ class SAMSSampler(MultiStateSampler):
         # TODO: If target probabilities are adapted, we need to store them as well
 
         self.log_weights = self.log_target_probabilities[:] - self._logZ[:]
+
 
 class SAMSAnalyzer(MultiStateSamplerAnalyzer):
     """

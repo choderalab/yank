@@ -1261,7 +1261,7 @@ class MultiStateSampler(object):
         # TODO: Currently, this just uses MBAR, which only works for global neighborhoods.
         # TODO: Add Local WHAM support.
 
-        if (self._locality != None):
+        if (self.locality != None):
             raise Exception('Cannot use MBAR with non-global locality.')
 
         # This relative import is down here because having it at the top causes an ImportError.
@@ -1312,8 +1312,12 @@ class MultiStateSampler(object):
             return
 
         # Write out the numbers
-        self._reporter.write_mbar_free_energies(self._iteration, self._last_mbar_f_k,
-                                                (free_energy, self._last_err_free_energy))
+        #TODO: Remove call if tests pass -LNN
+        # self._reporter.write_mbar_free_energies(self._iteration, self._last_mbar_f_k,
+        #                                         (free_energy, self._last_err_free_energy))
+        self._reporter.write_online_data_dynamic_and_static(self._iteration,
+                                                            f_k=self._last_mbar_f_k,
+                                                            free_energy=(free_energy, self._last_err_free_energy))
 
         return self._last_err_free_energy
 
@@ -1357,8 +1361,12 @@ class MultiStateSampler(object):
         self._last_err_free_energy = np.Inf
 
         # Store free energy estimate
-        self._reporter.write_mbar_free_energies(self._iteration, self._last_mbar_f_k,
-                                                (free_energy, self._last_err_free_energy))
+        # TODO: Remove this call if tests pass -LNN
+        # self._reporter.write_mbar_free_energies(self._iteration, self._last_mbar_f_k,
+        #                                         (free_energy, self._last_err_free_energy))
+        self._reporter.write_online_data_dynamic_and_static(self._iteration,
+                                                            f_k=self._last_mbar_f_k,
+                                                            free_energy=(free_energy, self._last_err_free_energy))
 
         timer.stop("Online analysis")
 
@@ -1377,7 +1385,7 @@ class MultiStateSampler(object):
             analysis_to_perform = 'online'
         elif (self._iteration % self.online_analysis_interval != 0):
             analysis_to_perform = 'online'
-        elif (self._locality != None):
+        elif (self.locality != None):
             analysis_to_perform = 'online'
         else:
             # All conditions are met for offline analysis
@@ -1399,16 +1407,22 @@ class MultiStateSampler(object):
 
         # Search for a valid free energy from the given iteration
         # to the start of the calculation.
-        for index in range(iteration, 0, -1):
-            try:
-                last_f_k, last_free_energy = reporter.read_mbar_free_energies(index)
-            except (IndexError, KeyError):
-                # No such f_k written yet (or variable created).
-                break
-            # Find an f_k that is not all zeros (or masked and empty)
-            if not (np.ma.is_masked(last_f_k) or np.all(last_f_k == 0)):
-                break  # Don't need to continue the loop if we already found one
-
+        try:
+            free_energy_data = reporter.read_online_analysis_data(None, 'f_k', 'free_energy')
+            last_f_k = free_energy_data['f_k']
+            last_free_energy = free_energy_data['free_energy']
+        except ValueError:
+            for index in range(iteration, 0, -1):
+                try:
+                    free_energy_data = reporter.read_online_analysis_data(index, 'f_k', 'free_energy')
+                    last_f_k = free_energy_data['f_k']
+                    last_free_energy = free_energy_data['free_energy']
+                except (IndexError, KeyError, ValueError):
+                    # No such f_k written yet (or variable created).
+                    break
+                # Find an f_k that is not all zeros (or masked and empty)
+                if not (np.ma.is_masked(last_f_k) or np.all(last_f_k == 0)):
+                    break  # Don't need to continue the loop if we already found one
         return last_f_k, last_free_energy
 
     def _is_completed(self, iteration_limit=None):
