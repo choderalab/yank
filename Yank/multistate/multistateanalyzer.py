@@ -374,6 +374,9 @@ class PhaseAnalyzer(ABC):
         The reporter provides the hook into how to read the data, all other options control where differences are
         measured from and how each phase interfaces with other phases.
         """
+        if type(reporter) is str:
+            raise ValueError('reporter must be a MultiStateReporter instance')
+
         if not isinstance(registry, ObservablesRegistry):
             raise ValueError("Registry must be an instanced ObservablesRegistry")
         self.registry = registry

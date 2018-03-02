@@ -514,6 +514,9 @@ class SAMSSampler(MultiStateSampler):
         if (self.update_stages == 'two-stage') and (self._stage == 'initial'):
             # Check histogram flatness
             N_k = self._state_histogram()
+            if N_k.sum() == 0:
+                # No samples yet; don't do anything.
+                return
             empirical_pi_k = N_k[:] / N_k.sum()
             pi_k = np.exp(self.log_target_probabilities)
             relative_error_k = np.abs(pi_k - empirical_pi_k) / pi_k

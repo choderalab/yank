@@ -307,7 +307,7 @@ def test_sams_harmonic_oscillator(verbose=False, verbose_simulation=False):
         simulation.run()
 
         # Create Analyzer.
-        analyzer = SAMSAnalyzer(storage)
+        analyzer = SAMSAnalyzer(reporter)
 
         # TODO: Check if deviations exceed tolerance.
         Delta_f_ij, dDelta_f_ij = analyzer.get_free_energy()
@@ -895,8 +895,12 @@ class TestMultiStateSampler(object):
                         options_to_store[parameter_name] = getattr(sampler, '_' + parameter_name)
             options_to_store.pop('mcmc_moves')  # mcmc_moves are stored separately
             for key, value in options_to_store.items():
-                assert stored_options[key] == value
-                assert getattr(sampler, '_' + key) == value
+                if np.isscalar(value):
+                    assert stored_options[key] == value, "stored_options['%s'] = %s, but value = %s" % (key, stored_options[key], value)
+                    assert getattr(sampler, '_' + key) == value, "getattr(sampler, '%s') = %s, but value = %s" % ('_' + key, getattr(sampler, '_' + key), value)
+                else:
+                    assert np.all(stored_options[key] == value), "stored_options['%s'] = %s, but value = %s" % (key, stored_options[key], value)
+                    assert np.all(getattr(sampler, '_' + key) == value), "getattr(sampler, '%s') = %s, but value = %s" % ('_' + key, getattr(sampler, '_' + key), value)
 
             # A default title has been added to the stored metadata.
             metadata = reporter.read_dict('metadata')
@@ -1123,6 +1127,9 @@ class TestMultiStateSampler(object):
         """
         thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(self.alanine_test)
         n_replicas = len(sampler_states)
+        if n_replicas == 1:
+            # This test is intended for use with more than one replica
+            return
 
         with self.temporary_storage_path() as storage_path:
             # For this test to work, positions should be the same but
@@ -1130,7 +1137,7 @@ class TestMultiStateSampler(object):
             # the same condition.
             original_diffs = [np.average(sampler_states[i].positions - sampler_states[i+1].positions)
                               for i in range(n_replicas - 1)]
-            assert not np.allclose(original_diffs, [0 for _ in range(n_replicas - 1)])
+            assert not np.allclose(original_diffs, [0 for _ in range(n_replicas - 1)]), "sampler %s failed" % self.SAMPLER
 
             # Create a replica exchange that propagates only 1 femtosecond
             # per iteration so that positions won't change much.
@@ -1208,6 +1215,9 @@ class TestMultiStateSampler(object):
         thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(self.alanine_test)
         n_states = len(thermodynamic_states)
         n_replicas = len(sampler_states)
+        if n_replicas == 1:
+            # This test is intended for use with more than one replica
+            return
 
         with self.temporary_storage_path() as storage_path:
             sampler = self.SAMPLER()
@@ -1482,11 +1492,11 @@ class TestMultiStateSampler(object):
         thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(self.alanine_test)
         with self.temporary_storage_path() as storage_path:
             n_iterations = 5
-            online_interval = 2
+            online_interval = 1
             move = mmtools.mcmc.IntegratorMove(openmm.VerletIntegrator(1.0 * unit.femtosecond), n_steps=1)
             sampler = self.SAMPLER(mcmc_moves=move, number_of_iterations=n_iterations,
                                    online_analysis_interval=online_interval,
-                                   online_analysis_minimum_iterations=0)
+                                   online_analysis_minimum_iterations=3)
             self.call_sampler_create(sampler, storage_path,
                                      thermodynamic_states, sampler_states,
                                      unsampled_states)
@@ -1505,7 +1515,7 @@ class TestMultiStateSampler(object):
 
             # Error should not be 0 yet
             assert sampler._last_err_free_energy != 0
-            assert sampler._last_err_free_energy == last_err_free_energy
+            assert sampler._last_err_free_energy == last_err_free_energy, "SAMPLER %s : sampler._last_err_free_energy = %s, last_err_free_energy = %s" % (self.SAMPLER, sampler._last_err_free_energy, last_err_free_energy)
 
     def test_online_analysis_stops(self):
         """Test online analysis will stop the simulation"""
@@ -1616,7 +1626,7 @@ class TestMultipleReplicaSAMS(TestMultiStateSampler):
         """Test that storage is kept in sync with options. Unique to SAMSSampler"""
         additional_values = {}
         options = {
-            'state_update_scheme' : 'restricted-range',
+            'state_update_scheme' : 'restricted-range-jump',
             'locality' : 3,
             'update_stages' : 'two-stage',
             'weight_update_method' : 'rao-blackwellized',
