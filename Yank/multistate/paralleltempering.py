@@ -172,6 +172,13 @@ class ParallelTemperingSampler(ReplicaExchangeSampler):
         energy_thermodynamic_states = np.zeros(self.n_states)
         energy_unsampled_states = np.zeros(len(self._unsampled_states))
 
+        # Determine neighborhood
+        state_index = self._replica_thermodynamic_states[replica_id]
+        neighborhood = self._neighborhood(state_index)
+        # Only compute energies over neighborhoods
+        energy_neighborhood_states = energy_thermodynamic_states[neighborhood]  # Array, can be indexed like this
+        neighborhood_thermodynamic_states = [self._thermodynamic_states[n] for n in neighborhood]  # List
+
         # Retrieve sampler states associated to this replica.
         sampler_state = self._sampler_states[replica_id]
 
@@ -192,9 +199,9 @@ class ParallelTemperingSampler(ReplicaExchangeSampler):
         reference_reduced_potential /= reference_beta
 
         # Update potential energy by temperature.
-        for thermodynamic_state_id, thermodynamic_state in enumerate(self._thermodynamic_states):
+        for thermodynamic_state_id, thermodynamic_state in enumerate(neighborhood_thermodynamic_states):
             beta = 1.0 / (mmtools.constants.kB * thermodynamic_state.temperature)
-            energy_thermodynamic_states[thermodynamic_state_id] = beta * reference_reduced_potential
+            energy_neighborhood_states[thermodynamic_state_id] = beta * reference_reduced_potential
 
         # Since no assumptions can be made about the unsampled thermodynamic states, do it the hard way
         for unsampled_id, state in enumerate(self._unsampled_states):
@@ -216,7 +223,8 @@ class ParallelTemperingSampler(ReplicaExchangeSampler):
             energy_unsampled_states[unsampled_id] = state.reduced_potential(context)
 
         # Return the new energies.
-        return energy_thermodynamic_states, energy_unsampled_states
+        return energy_neighborhood_states, energy_unsampled_states
+
 
 class ParallelTemperingAnalyzer(ReplicaExchangeAnalyzer):
     """

@@ -911,9 +911,6 @@ class TestMultiStateSampler(object):
         """Test that citations are displayed and suppressed as needed."""
         thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(self.alanine_test)
 
-        # Remove one sampler state to verify distribution over states.
-        sampler_states = sampler_states[:-1]
-
         with self.temporary_storage_path() as storage_path:
             sampler = self.SAMPLER()
             reporter = self.REPORTER(storage_path, checkpoint_interval=1)
@@ -1050,10 +1047,6 @@ class TestMultiStateSampler(object):
                 original_dict.pop('_cached_transition_counts', None)
                 original_dict.pop('_cached_last_replica_thermodynamic_states', None)
 
-                # TODO: Remove these debug lines -LNN
-                # if self.SAMPLER == SAMSSampler:
-                #     import pdb
-                #     pdb.set_trace()
                 # Check all other arrays. Instantiate list so that we can pop from original_dict.
                 for attr, original_value in list(original_dict.items()):
                     if isinstance(original_value, np.ndarray):
@@ -1066,7 +1059,6 @@ class TestMultiStateSampler(object):
                 assert original_dict == restored_dict
 
                 # Run few iterations to see that we restore also after a while.
-
                 if iteration == 0:
                     sampler.run(number_of_iterations)
 
@@ -1319,6 +1311,7 @@ class TestMultiStateSampler(object):
                     mmtools.mcmc.MCRotationMove(),
                     mmtools.mcmc.GHMCMove(n_steps=1)
                 ])
+
                 sampler = self.SAMPLER(mcmc_moves=moves, number_of_iterations=2)
                 reporter = self.REPORTER(storage_path, checkpoint_interval=1)
                 self.call_sampler_create(sampler, reporter,
@@ -1337,7 +1330,7 @@ class TestMultiStateSampler(object):
 
                 # Extract the sampled thermodynamic states
                 # Only use propagated states since the last iteration is not subject to MCMC moves
-                sampled_states = list(reporter.read_replica_thermodynamic_states()[:-1].flat)
+                sampled_states = list(reporter.read_replica_thermodynamic_states()[1:].flat)
 
                 # All replicas must have moves with updated statistics.
                 for state_index, sequence_move in enumerate(sampler._mcmc_moves):
@@ -1574,6 +1567,7 @@ class TestReplicaExchange(TestMultiStateSampler):
         additional_values.update(self.property_creator('replica_mixing_scheme', 'replica_mixing_scheme', None, None))
         self.actual_stored_properties_check(additional_properties=additional_values)
 
+
 class TestSingleReplicaSAMS(TestMultiStateSampler):
     """Test suite for SAMSSampler class."""
 
@@ -1594,17 +1588,18 @@ class TestSingleReplicaSAMS(TestMultiStateSampler):
         """Test that storage is kept in sync with options. Unique to SAMSSampler"""
         additional_values = {}
         options = {
-            'state_update_scheme' : 'local-jump',
-            'locality' : 2,
-            'update_stages' : 'one-stage',
-            'weight_update_method' : 'optimal',
-            'adapt_target_probabilities' : False,
+            'state_update_scheme': 'local-jump',
+            'locality': 2,
+            'update_stages': 'one-stage',
+            'weight_update_method': 'optimal',
+            'adapt_target_probabilities': False,
             }
         for (name, value) in options.items():
             additional_values.update(self.property_creator(name, name, value, value))
         self.actual_stored_properties_check(additional_properties=additional_values)
 
     # TODO: Test all update methods
+
 
 class TestMultipleReplicaSAMS(TestMultiStateSampler):
     """Test suite for SAMSSampler class."""
@@ -1626,17 +1621,18 @@ class TestMultipleReplicaSAMS(TestMultiStateSampler):
         """Test that storage is kept in sync with options. Unique to SAMSSampler"""
         additional_values = {}
         options = {
-            'state_update_scheme' : 'restricted-range-jump',
-            'locality' : 3,
-            'update_stages' : 'two-stage',
+            'state_update_scheme': 'restricted-range-jump',
+            'locality': 3,
+            'update_stages': 'two-stage',
             'weight_update_method' : 'rao-blackwellized',
-            'adapt_target_probabilities' : False,
+            'adapt_target_probabilities': False,
             }
         for (name, value) in options.items():
             additional_values.update(self.property_creator(name, name, value, value))
         self.actual_stored_properties_check(additional_properties=additional_values)
 
     # TODO: Test all update methods
+
 
 class TestParallelTempering(TestMultiStateSampler):
 
@@ -1705,6 +1701,7 @@ class TestParallelTempering(TestMultiStateSampler):
                     energies[i][j] = state.reduced_potential(context)
         return energy_thermodynamic_states, energy_unsampled_states
 
+
 # ==============================================================================
 # MAIN AND TESTS
 # ==============================================================================
@@ -1715,4 +1712,4 @@ if __name__ == "__main__":
 
     # Test simple system of harmonic oscillators.
     # Disabled until we fix the test
-    test_replica_exchange()
+    # test_replica_exchange()
