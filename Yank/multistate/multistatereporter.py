@@ -9,7 +9,7 @@ Multistatereporter
 ==================
 
 Master multi-thermodynamic state reporter module. Handles all Disk I/O
-reporting operations for any MultiStateSampeler derived classes.
+reporting operations for any MultiStateSampler derived classes.
 
 COPYRIGHT
 
@@ -35,6 +35,7 @@ import time
 import uuid
 import yaml
 import logging
+import warnings
 import collections
 
 import numpy as np
@@ -54,7 +55,9 @@ logger = logging.getLogger(__name__)
 # MULTISTATE SAMPLER REPORTER
 # ==============================================================================
 
-MISSING_VALUE = np.NaN # value for populating missing values
+# Value for populating missing values
+MISSING_VALUE = np.NaN
+
 
 class MultiStateReporter(object):
     """Handle storage write/read operations and different format conventions.
@@ -225,35 +228,6 @@ class MultiStateReporter(object):
             else:
                 open_check_list.append(storage.isopen())
         return np.all(open_check_list)
-
-    def _ensure_dimension_exists(self, dimname, dimsize):
-        """
-        Ensure a dimension exists and is of the appropriate size,
-        creating it if it does not already exist.
-
-        A ``ValueError`` is raised if ``dimsize`` does not match the existing dimension size.
-
-        Parameters
-        ----------
-        dimname : str
-            The dimension name
-        dimsize : int
-            The dimension size
-
-        """
-        if dimname not in self._storage_analysis.dimensions:
-            self._storage_analysis.createDimension(dimname, dimsize)
-        else:
-            # Check dimension matches expected size
-            dimension = self._storage_analysis.dimensions[dimname]
-            if dimsize == 0:
-                if not dimension.isunlimited():
-                    raise ValueError("NetCDF dimension {} already exists: was previously unlimited, but tried to "
-                                     "redeclare it with size {}".format(dimension.name, dimsize))
-            else:
-                if not int(dimension.size) == int(dimsize):
-                    raise ValueError("NetCDF dimension {} already exists: was previously size {}, but tried to "
-                                     "redeclare it with dimension {}".format(dimension.name, dimension.size, dimsize))
 
     def open(self, mode='r', convention='ReplicaExchange', netcdf_format='NETCDF4'):
         """
@@ -1060,6 +1034,55 @@ class MultiStateReporter(object):
         """
         self._storage_analysis.variables['last_iteration'][0] = iteration
 
+    def read_logZ(self, iteration):
+        """
+        Read logZ at a given iteration from file.
+
+        Parameters
+        ----------
+        iteration : int
+            iteration to read the free energies from
+
+            if the iteration was not written at a the given iteration, then the free_energies are all 0
+
+        Returns
+        -------
+        logZ : np.array with shape [n_states]
+            Dimensionless logZ
+        """
+        # TODO: Remove commented block (or whole thing) when tests pass -LNN
+        data = self.read_online_analysis_data(None, "log_z")
+        return data['log_z']
+        # online_group = self._storage_analysis.groups['online_analysis']
+        # logZ = online_group.variables['logZ'][iteration]
+        # return logZ
+
+    def write_logZ(self, iteration: int, log_z: np.ndarray):
+        """
+        Write logZ
+
+        Parameters
+        ----------
+        iteration : int,
+            Iteration at which to save the free energy.
+            Reads the current energy up to this value and stores it in the analysis reporter
+        log_z : np.array with shape [n_states]
+            Dimensionless log Z
+        """
+        self.write_online_data_dynamic_and_static(iteration, log_z=log_z)
+        # TODO: Remove commended block if tests work (Could also remove function entirely)-LNN
+        # analysis_nc = self._storage_analysis
+        # if 'logZ' not in analysis_nc.dimensions:
+        #     analysis_nc.createDimension('logZ_length', len(logZ))
+        #     if 'online_analysis' not in analysis_nc.groups:
+        #         online_group = analysis_nc.createGroup('online_analysis')
+        #         # larger chunks, faster operations, small matrix anyways
+        #         online_group.createVariable('logZ', float, dimensions=('iteration', 'logZ_length'),
+        #                                     zlib=True, chunksizes=(1, len(logZ)), fill_value=MISSING_VALUE)
+        # online_group = analysis_nc.groups['online_analysis']
+        # online_group.variables['logZ'][iteration] = logZ
+
+    # TODO: Remove function if tests pass -LNN
     def read_mbar_free_energies(self, iteration):
         """
         Read the MBAR dimensionless free energy at a given iteration from file.
@@ -1093,6 +1116,7 @@ class MultiStateReporter(object):
         free_energy = online_group.variables['free_energy'][iteration, :]
         return f_k, free_energy
 
+    # TODO: Remove function if tests pass -LNN
     def write_mbar_free_energies(self, iteration: int, f_k: np.ndarray, free_energy: tuple):
         """
         Write the mbar free energies at the current iteration. See :func:`read_mbar_free_energies` for more information
@@ -1130,9 +1154,218 @@ class MultiStateReporter(object):
         online_group.variables['f_k'][iteration] = f_k
         online_group.variables['free_energy'][iteration, :] = free_energy
 
+    def read_online_analysis_data(self, iteration, *keys: str):
+        """
+
+        Parameters
+        ----------
+        iteration : int or None
+            Iteration to fetch data at
+        keys : str
+            Variables to fetch data from
+
+        Returns
+        -------
+        online_analysis_data : dict
+            Data requested by *keys argument from online analysis, if they exist on disk
+
+        Warnings
+        --------
+        RuntimeWarning : If some keys were not found as requested
+
+        Raises
+        ------
+        ValueError : If no requested keys were found in the storage.
+        """
+        collected_variables = {}
+        collected_iteration_failure = []
+        collected_not_found = []
+        storage = self._storage_analysis.groups["online_analysis"]
+        for variable in keys:
+            try:
+                data = self._read_1d_online_data(iteration, variable, storage)
+                collected_variables[variable] = data
+            except IndexError:
+                if self._find_alternate_variable(iteration, variable, storage):
+                    collected_iteration_failure.append(variable)
+                else:
+                    collected_not_found.append(variable)
+        # Nothing found
+        if not collected_variables and not collected_iteration_failure:
+            raise ValueError("None of the requested keys could be found on disk!")
+        # Found some things possibly named wrong, still nothing to return
+        elif not collected_variables:
+            base_error = ("No variables found on disk with{} per-iteration data, but we did find the following " 
+                          "variables of the same name with{} per-iteration data. Possibly you meant those?"
+                          )
+            for failure in collected_iteration_failure:
+                base_error += "\n\t-{}".format(failure)
+            if iteration is None:
+                raise ValueError(base_error.format("out", ""))
+            else:
+                raise ValueError(base_error.format("", "out"))
+        elif collected_iteration_failure or collected_not_found:
+            base_warn = ("Some requested variables were found, others were missing or found on disk under {}per"
+                         "-iteration data:")
+            if iteration is None:
+                iteration_str = ""
+            else:
+                iteration_str = "non-"
+            base_warn = base_warn.format(iteration_str)
+            for failure in collected_iteration_failure:
+                base_warn += "\n\t{}per-iteration: {}".format(iteration_str, failure)
+            for missing in collected_not_found:
+                base_warn += "\n\tMissing: {}".format(missing)
+            warnings.warn(base_warn, RuntimeWarning)
+        return collected_variables
+
+    def write_online_analysis_data(self, iteration: Union[int, None], **kwargs):
+        """
+        Write semi-arbitrary 1-D numeric online analysis data to storage with optional per-iteration flag.
+        This function helps generalize what information is stored by any given reporter, while still
+        enforcing a regular input and output.
+
+        The logic of what to store and how is similar, but not exact to the :func:`write_dict`.
+
+        ``iteration`` accepts an integer as to indicate this this information should be written
+        on a per-iteration basis. The iteration the data are written to is the integer argument.
+        Pass ``None`` if this is *not* per-iteration data and stored independent of the iteration dimension
+
+        ``**kwargs`` are processed as the variable/value pairs to store and there must be *at least one*
+        This should be 1-D or scalar numerical value (e.g. numpy array, list, or tuple of numbers; NOT string, dict,
+        etc.). Type is inferred from the first value of data input.
+
+        Parameters
+        ----------
+        iteration : int or None
+            Optional iteration to write the data under, if ``None``, the variables will not be written on a
+            per-iteration basis
+        kwargs : pairs of name:value of numeric 1-D or scalar data
+            Name of variable and value to write to disk
+
+        Raises
+        ------
+        TypeError : If no values are given to ``**kwargs``
+        ValueError : If ``iteration`` is not an integer
+
+        """
+        self._resolve_iteration_args(iteration)
+        self._resolve_kwargs_exist(kwargs)
+        group = self._ensure_group_exists_and_get("online_analysis")
+        for name, value in kwargs.items():
+            self._write_1d_online_data(iteration, name, value, group)
+
+    def write_online_data_dynamic_and_static(self, iteration: int, **kwargs):
+        """
+        Helper function to do a :func:`write_online_analysis_data` call twice, both
+        with and without setting iteration.
+
+        See Also
+        --------
+        write_online_analysis_data
+        """
+        self.write_online_analysis_data(None, **kwargs)
+        self.write_online_analysis_data(iteration, **kwargs)
+
+    def _write_1d_online_data(self, iteration, variable, data, storage):
+        """Store data on disk given pre-calculated parameters"""
+        if iteration is not None:
+            variable = variable + "_iter"
+        if variable not in storage.variables:
+            variable_parameters = self._determine_netcdf_variable_parameters(iteration, data, storage)
+            storage.createVariable(variable, variable_parameters['dtype'],
+                                   dimensions=variable_parameters['dims'],
+                                   chunksizes=variable_parameters['chunks'],
+                                   zlib=False)
+        # Get the variable
+        nc_var = storage[variable]
+        # Only get the specific iteration if specified
+        if iteration is not None:
+            nc_var = nc_var[iteration]
+        # Write data
+        nc_var[:] = data
+
+    @staticmethod
+    def _find_alternate_variable(iteration, variable, storage):
+        """Helper function to figure out what went wrong when data not found"""
+        iter_var = variable + "_iter"
+        if iteration is None and iter_var in storage:
+            return True
+        elif iteration is not None and variable in storage:
+            return True
+        return False
+
+    @staticmethod
+    def _read_1d_online_data(iteration, variable, storage):
+        """Read data on disk given storage object
+
+        Returns
+        -------
+        data
+        """
+        if iteration is not None:
+            variable = variable + "_iter"
+        nc_var = storage[variable]
+        nc_data = nc_var
+        if iteration is not None:
+            nc_data = nc_data[iteration]
+        data = nc_data[:]
+        if nc_var.dimensions[-1] == "scalar":
+            return data[0]
+        else:
+            return data
+
+
+    def _determine_netcdf_variable_parameters(self, iteration, data, storage):
+        """
+        Pre-determine the variable information needed to create the variable on the storage layer
+        """
+
+        try:
+            # Check for known numpy types
+            dtype = data.dtype
+            size = len(data)
+            data_dim = "dim_size{}".format(size)
+        except AttributeError:
+            try:
+                dtype = type(data[0])
+                size = len(data)
+                data_dim = "dim_size{}".format(size)
+            except (IndexError, TypeError):
+                dtype = type(data)
+                size = 1
+                # Use existing scalar dimension
+                data_dim = "scalar"
+        self._ensure_dimension_exists(data_dim, size, storage=storage)
+        if iteration is not None:
+            dims = ("iteration", data_dim)
+            chunks = (1, size)
+        else:
+            dims = (data_dim,)
+            chunks = (size,)
+        return {'dtype': dtype, 'dims': dims, 'chunks': chunks}
+
     # -------------------------------------------------------------------------
     # Internal-usage.
     # -------------------------------------------------------------------------
+
+    @staticmethod
+    def _resolve_iteration_args(iteration_arg):
+        """
+        Ensure iterations given as iterations are integer or None
+        """
+        err_message = "Only an int or None is allowed for iteration"
+        # Ensures int check if its a core int, np.int32, np.int64, or signed/unsigned variants
+        if iteration_arg is not None and not np.issubdtype(type(iteration_arg), np.integer):
+            raise ValueError(err_message)
+
+    @staticmethod
+    def _resolve_kwargs_exist(kwargs):
+        """
+        Ensure keyword args exist (at least 1)
+        """
+        if len(kwargs) == 0:
+            raise TypeError("There must be at least 1 keyword arg!")
 
     def _resolve_nc_path(self, path, storage):
         """Return the NC group or variable at the end of the path.
@@ -1226,6 +1459,59 @@ class MultiStateReporter(object):
             else:
                 raise ValueError("Iteration must be either an int or a slice!")
         return cast_iteration
+
+    def _ensure_dimension_exists(self, dim_name, dim_size, storage=None):
+        """
+        Ensure a dimension exists and is of the appropriate size,
+        creating it if it does not already exist.
+
+        A ``ValueError`` is raised if ``dim_size`` does not match the existing dimension size.
+
+        Parameters
+        ----------
+        dim_name : str
+            The dimension name
+        dim_size : int
+            The dimension size
+        storage : netCDF4.Dataset or netCDF4.Group, optional, default: None
+            Storage layer to check the dimension against. If none, the _storage_analysis is used
+
+        """
+        if storage is None:
+            storage = self._storage_analysis
+        if dim_name not in storage.dimensions:
+            storage.createDimension(dim_name, dim_size)
+        else:
+            # Check dimension matches expected size
+            dimension = storage.dimensions[dim_name]
+            if dim_size == 0:
+                if not dimension.isunlimited():
+                    raise ValueError("NetCDF dimension {} already exists: was previously unlimited, but tried to "
+                                     "redeclare it with size {}".format(dimension.name, dim_size))
+            else:
+                if not int(dimension.size) == int(dim_size):
+                    raise ValueError("NetCDF dimension {} already exists: was previously size {}, but tried to "
+                                     "redeclare it with dimension {}".format(dimension.name, dimension.size, dim_size))
+
+    def _ensure_group_exists_and_get(self, group_name, storage=None):
+        """
+        Ensure a group exists and fetch it if it does, creating first if it does not.
+
+        A ``ValueError`` is raised if ``dimsize`` does not match the existing dimension size.
+
+        Parameters
+        ----------
+        group_name : str
+            The group name
+        storage : known storage object or None, default None
+            Storage object to check against, if None, assumes the analysis storage
+
+        """
+        if storage is None:
+            storage = self._storage_analysis
+        if group_name not in storage.groups:
+            storage.createGroup(group_name)
+        return storage.groups[group_name]
 
     @staticmethod
     def _initialize_sampler_variables_on_file(dataset, n_atoms, n_replicas, is_periodic):

@@ -420,7 +420,8 @@ class MultiStateSampler(object):
                 new_value = self._validate_function(instance, new_value)
             setattr(instance, '_' + self._option_name, new_value)
             # Update storage if we ReplicaExchange is initialized.
-            if instance._thermodynamic_states is not None:
+            # TODO: JDC Please review this change!
+            if instance._thermodynamic_states is not None and instance._reporter is not None:
                 mpi.run_single_node(0, instance._store_options)
 
         # ----------------------------------
@@ -496,7 +497,7 @@ class MultiStateSampler(object):
     _TITLE_TEMPLATE = ('Multi-state sampler simulation created using MultiStateSampler class '
                        'of yank.multistate on {}')
 
-    def create(self, thermodynamic_states, sampler_states, storage,
+    def create(self, thermodynamic_states: list, sampler_states, storage,
                initial_thermodynamic_states=None, unsampled_thermodynamic_states=None,
                metadata=None):
         """Create new multistate sampler simulation.
@@ -541,6 +542,35 @@ class MultiStateSampler(object):
            Simulation metadata to be stored in the file.
         """
 
+        self._pre_write_create(thermodynamic_states, sampler_states, storage,
+                               initial_thermodynamic_states=initial_thermodynamic_states,
+                               unsampled_thermodynamic_states=unsampled_thermodynamic_states,
+                               metadata=metadata)
+
+        # Handle case in which storage is a string.
+        reporter = self._reporter_from_storage(storage, check_exist=False)
+
+        # Display papers to be cited.
+        self._display_citations()
+
+        # Close the reporter file so its ready for use
+        reporter.close()
+        self._reporter = reporter
+        self._initialize_reporter()
+
+    def _pre_write_create(self,
+                          thermodynamic_states,
+                          sampler_states,
+                          storage,
+                          initial_thermodynamic_states=None,
+                          unsampled_thermodynamic_states=None,
+                          metadata=None):
+        """
+        Internal function which allocates and sets up ALL variables prior to actually using them.
+        This is helpful to ensure subclasses have all variables created prior to writing them out with
+        :func:`_report_iteration`.
+        All calls to this function should be *identical* to :func:`create` itself
+        """
         # Make sure sampler_states is an iterable of SamplerStates for later.
         if isinstance(sampler_states, mmtools.states.SamplerState):
             sampler_states = [sampler_states]
@@ -640,14 +670,7 @@ class MultiStateSampler(object):
         self._energy_thermodynamic_states = np.zeros([self.n_replicas, self.n_states], np.float64)
         self._neighborhoods = np.zeros([self.n_replicas, self.n_states], 'i1')
         self._energy_unsampled_states = np.zeros([self.n_replicas, len(self._unsampled_states)], np.float64)
-
-        # Display papers to be cited.
-        self._display_citations()
-
-        # Close the reporter file so its ready for use
         reporter.close()
-        self._reporter = reporter
-        self._initialize_reporter()
 
     @mmtools.utils.with_timer('Minimizing all replicas')
     def minimize(self, tolerance=1.0 * unit.kilojoules_per_mole / unit.nanometers,
@@ -834,8 +857,7 @@ class MultiStateSampler(object):
 
     def __repr__(self):
         """Return a 'formal' representation that can be used to reconstruct the class, if possible."""
-        # TODO: Can we make this a more useful expression?
-        return "<instance of MultiStateSampler>"
+        return "<instance of {}>".format(self.__class__.__name__)
 
     def __del__(self):
         # The reporter could be None if MultiStateSampler was not created.
@@ -1059,10 +1081,10 @@ class MultiStateSampler(object):
         """
         if self.locality == None:
             # Global neighborhood
-            return slice(0, self.n_states)
+            return list(range(0, self.n_states))
         else:
             # Local neighborhood specified by 'locality'
-            return slice(max(0, state_index - self.locality), min(self.n_states, state_index + self.locality + 1))
+            return list(range(max(0, state_index - self.locality), min(self.n_states, state_index + self.locality + 1)))
 
     # -------------------------------------------------------------------------
     # Internal-usage: Distributed tasks.
@@ -1173,7 +1195,7 @@ class MultiStateSampler(object):
         self._neighborhoods[:,:] = False
         for (replica_index, state_index) in enumerate(self._replica_thermodynamic_states):
             neighborhood = self._neighborhood(state_index)
-            self._neighborhoods[replica_index,neighborhood] = True
+            self._neighborhoods[replica_index, neighborhood] = True
 
         # Distribute energy computation across nodes. Only node 0 receives
         # all the energies since it needs to store them and mix states.
@@ -1183,7 +1205,8 @@ class MultiStateSampler(object):
         # Update energy matrices. Non-0 nodes update only the energies computed by this replica.
         for replica_id, energies in zip(replica_ids, new_energies):
             energy_thermodynamic_states, energy_unsampled_states = energies  # Unpack.
-            self._energy_thermodynamic_states[replica_id] = energy_thermodynamic_states
+            neighborhood = self._neighborhood(self._replica_thermodynamic_states[replica_id])
+            self._energy_thermodynamic_states[replica_id, neighborhood] = energy_thermodynamic_states
             self._energy_unsampled_states[replica_id] = energy_unsampled_states
 
     def _compute_replica_energies(self, replica_id):
@@ -1198,9 +1221,12 @@ class MultiStateSampler(object):
         # Determine neighborhood
         state_index = self._replica_thermodynamic_states[replica_id]
         neighborhood = self._neighborhood(state_index)
+        # Only compute energies over neighborhoods
+        energy_neighborhood_states = energy_thermodynamic_states[neighborhood]  # Array, can be indexed like this
+        neighborhood_thermodynamic_states = [self._thermodynamic_states[n] for n in neighborhood]  # List
 
         # Compute energy for all thermodynamic states.
-        for energies, states in [(energy_thermodynamic_states[neighborhood], self._thermodynamic_states[neighborhood]),
+        for energies, states in [(energy_neighborhood_states, neighborhood_thermodynamic_states),
                                  (energy_unsampled_states, self._unsampled_states)]:
             # Group thermodynamic states by compatibility.
             compatible_groups, original_indices = mmtools.states.group_by_compatibility(states)
@@ -1221,7 +1247,7 @@ class MultiStateSampler(object):
                     energies[state_idx] = compatible_energies[energy_idx]
 
         # Return the new energies.
-        return energy_thermodynamic_states, energy_unsampled_states
+        return energy_neighborhood_states, energy_unsampled_states
 
     # -------------------------------------------------------------------------
     # Internal-usage: Replicas mixing.
@@ -1260,7 +1286,7 @@ class MultiStateSampler(object):
         # TODO: Currently, this just uses MBAR, which only works for global neighborhoods.
         # TODO: Add Local WHAM support.
 
-        if (self._locality != None):
+        if (self.locality != None):
             raise Exception('Cannot use MBAR with non-global locality.')
 
         # This relative import is down here because having it at the top causes an ImportError.
@@ -1311,8 +1337,12 @@ class MultiStateSampler(object):
             return
 
         # Write out the numbers
-        self._reporter.write_mbar_free_energies(self._iteration, self._last_mbar_f_k,
-                                                (free_energy, self._last_err_free_energy))
+        #TODO: Remove call if tests pass -LNN
+        # self._reporter.write_mbar_free_energies(self._iteration, self._last_mbar_f_k,
+        #                                         (free_energy, self._last_err_free_energy))
+        self._reporter.write_online_data_dynamic_and_static(self._iteration,
+                                                            f_k=self._last_mbar_f_k,
+                                                            free_energy=(free_energy, self._last_err_free_energy))
 
         return self._last_err_free_energy
 
@@ -1356,8 +1386,12 @@ class MultiStateSampler(object):
         self._last_err_free_energy = np.Inf
 
         # Store free energy estimate
-        self._reporter.write_mbar_free_energies(self._iteration, self._last_mbar_f_k,
-                                                (free_energy, self._last_err_free_energy))
+        # TODO: Remove this call if tests pass -LNN
+        # self._reporter.write_mbar_free_energies(self._iteration, self._last_mbar_f_k,
+        #                                         (free_energy, self._last_err_free_energy))
+        self._reporter.write_online_data_dynamic_and_static(self._iteration,
+                                                            f_k=self._last_mbar_f_k,
+                                                            free_energy=(free_energy, self._last_err_free_energy))
 
         timer.stop("Online analysis")
 
@@ -1376,7 +1410,7 @@ class MultiStateSampler(object):
             analysis_to_perform = 'online'
         elif (self._iteration % self.online_analysis_interval != 0):
             analysis_to_perform = 'online'
-        elif (self._locality != None):
+        elif (self.locality != None):
             analysis_to_perform = 'online'
         else:
             # All conditions are met for offline analysis
@@ -1398,16 +1432,22 @@ class MultiStateSampler(object):
 
         # Search for a valid free energy from the given iteration
         # to the start of the calculation.
-        for index in range(iteration, 0, -1):
-            try:
-                last_f_k, last_free_energy = reporter.read_mbar_free_energies(index)
-            except (IndexError, KeyError):
-                # No such f_k written yet (or variable created).
-                break
-            # Find an f_k that is not all zeros (or masked and empty)
-            if not (np.ma.is_masked(last_f_k) or np.all(last_f_k == 0)):
-                break  # Don't need to continue the loop if we already found one
-
+        try:
+            free_energy_data = reporter.read_online_analysis_data(None, 'f_k', 'free_energy')
+            last_f_k = free_energy_data['f_k']
+            last_free_energy = free_energy_data['free_energy']
+        except ValueError:
+            for index in range(iteration, 0, -1):
+                try:
+                    free_energy_data = reporter.read_online_analysis_data(index, 'f_k', 'free_energy')
+                    last_f_k = free_energy_data['f_k']
+                    last_free_energy = free_energy_data['free_energy']
+                except (IndexError, KeyError, ValueError):
+                    # No such f_k written yet (or variable created).
+                    break
+                # Find an f_k that is not all zeros (or masked and empty)
+                if not (np.ma.is_masked(last_f_k) or np.all(last_f_k == 0)):
+                    break  # Don't need to continue the loop if we already found one
         return last_f_k, last_free_energy
 
     def _is_completed(self, iteration_limit=None):
