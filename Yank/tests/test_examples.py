@@ -59,7 +59,7 @@ def run_example(path, example):
         # adjust yaml simulation parameters
         with open(yaml_path, 'r') as f:
             test_yaml_script = yaml.load(f)
-        test_yaml_script['options']['number_of_iterations'] = n_iterations
+        test_yaml_script['options']['default_number_of_iterations'] = n_iterations
         test_yaml_script['options']['output_dir'] = testoutput_dir
         with open(testyaml_path, 'w') as f:
             f.write(yaml.dump(test_yaml_script))

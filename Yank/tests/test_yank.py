@@ -592,7 +592,7 @@ def notest_LennardJonesPair(**kwargs):
 #
 #     # Initialize YANK object.
 #     options = dict()
-#     options['number_of_iterations'] = 10
+#     options['default_number_of_iterations'] = 10
 #     options['platform'] = openmm.Platform.getPlatformByName("Reference") # use Reference platform for speed
 #     options['mc_rotation'] = False
 #     options['mc_displacement'] = True

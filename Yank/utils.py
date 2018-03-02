@@ -40,12 +40,9 @@ import parmed
 import numpy as np
 from simtk import unit
 
-
 import openmmtools as mmtools
-from openmoltools.utils import unwrap_py2  # Shortcuts for other modules
 
 from . import mpi
-from .schema import type_to_cerberus_map
 
 
 # ========================================================================================
@@ -776,27 +773,70 @@ def update_nested_dict(original, updated):
 # Conversion utilities
 # ==============================================================================
 
-def merge_dict(dict1, dict2):
-    """Return the union of two dictionaries in through Python version agnostic code.
+def find_all_subclasses(parent_cls, discard_abstract=False, include_parent=True):
+    """Return a set of all the classes inheriting from ``parent_cls``.
 
-    In Python 3.5 there is a syntax to do this ``{**dict1, **dict2}`` but
-    in Python 2 you need to go through ``update()``.
-
-    TODO: Refactor to no longer need this now that Python 2 is dropped
+    The functions handle multiple inheritance and discard the same classes.
 
     Parameters
     ----------
-    dict1 : dict
-    dict2 : dict
+    parent_cls : type
+        The parent class.
+    discard_abstract : bool, optional
+        If True, abstract classes are not returned (default is False).
+    include_parent : bool, optional
+        If True, the parent class will be included, unless it is abstract
+        and ``discard_abstract`` is ``True``.
 
     Returns
     -------
-    merged_dict : dict
-        Union of dict1 and dict2
+    subclasses : set of type
+        The set of all the classes inheriting from ``parent_cls``.
+
     """
-    merged_dict = dict1.copy()
-    merged_dict.update(dict2)
-    return merged_dict
+    subclasses = set()
+    for subcls in parent_cls.__subclasses__():
+        if not (discard_abstract and inspect.isabstract(subcls)):
+            subclasses.add(subcls)
+        subclasses.update(find_all_subclasses(subcls, discard_abstract))
+
+    if include_parent and not inspect.isabstract(parent_cls):
+        subclasses.add(parent_cls)
+    return subclasses
+
+
+def find_subclass(parent_cls, subcls_name):
+    """Return the class called ``subcls_name`` inheriting from ``parent_cls``.
+
+    Parameters
+    ----------
+    parent_cls : type
+        The parent class.
+    subcls_name : str
+        The name of the class inheriting from ``parent_cls``.
+
+    Returns
+    -------
+    subcls : type
+        The class inheriting from ``parent_cls`` called ``subcls_name``.
+
+    Raises
+    ------
+    ValueError
+        If there is no class or there are multiple classes called ``subcls_name``
+        that inherit from ``parent_cls``.
+    """
+    subclasses = []
+    for subcls in find_all_subclasses(parent_cls):
+        if subcls.__name__ == subcls_name:
+            subclasses.append(subcls)
+    if len(subclasses) == 0:
+        raise ValueError('Could not found class {} inheriting from {}'
+                         ''.format(subcls_name, parent_cls))
+    if len(subclasses) > 1:
+        raise ValueError('Found multiple classes inheriting from {}: {}'
+                         ''.format(parent_cls, subclasses))
+    return subclasses[0]
 
 
 def underscore_to_camelcase(underscore_str):
@@ -864,8 +904,8 @@ def camelcase_to_underscore(camelcase_str):
     return underscore_str.lower()
 
 
-def quantity_from_string(expression):
-    """Create a Quantity object from a string expression
+def quantity_from_string(expression, compatible_units=None):
+    """Create a Quantity object from a string expression.
 
     All the functions in the standard module math are available together
     with most of the methods inside the ``simtk.unit`` module.
@@ -874,17 +914,33 @@ def quantity_from_string(expression):
     ----------
     expression : str
         The mathematical expression to rebuild a Quantity as a string.
+    compatible_units : simtk.unit.Unit, optional
+       If given, the result is checked for compatibility against the
+       specified units, and an exception raised if not compatible.
+
+       `Note`: The output is not converted to ``compatible_units``, they
+       are only used as a unit to validate the input.
 
     Returns
     -------
     quantity
         The result of the evaluated expression.
 
+    Raises
+    ------
+    TypeError
+        If ``compatible_units`` is given and the quantity in expression is
+        either unit-less or has incompatible units.
+
     Examples
     --------
     >>> expr = '4 * kilojoules / mole'
     >>> quantity_from_string(expr)
     Quantity(value=4.000000000000002, unit=kilojoule/mole)
+
+    >>> expr = '1.0*second'
+    >>> quantity_from_string(expr, compatible_units=unit.femtosecond)
+    Quantity(value=1.0, unit=second)
 
     """
     # Retrieve units from unit module.
@@ -900,148 +956,28 @@ def quantity_from_string(expression):
     if expression[0] == '/':
         expression = '(' + expression[1:] + ')**(-1)'
 
-    return mmtools.utils.math_eval(expression, variables=quantity_from_string._units)
+    # Evaluate expressions.
+    quantity = mmtools.utils.math_eval(expression, variables=quantity_from_string._units)
 
-
-def process_unit_bearing_str(quantity_str, compatible_units):
-    """
-    Process a unit-bearing string to produce a Quantity.
-
-    Parameters
-    ----------
-    quantity_str : str
-        A string containing a value with a unit of measure.
-    compatible_units : simtk.unit.Unit
-       The result will be checked for compatibility with specified units, and an
-       exception raised if not compatible.
-
-       `Note`: The output is not converted to ``compatible_units``, they are only used as a unit to validate the input
-       against.
-
-    Returns
-    -------
-    quantity : simtk.unit.Quantity
-       The specified string, returned as a Quantity.
-
-    Raises
-    ------
-    TypeError
-        If ``quantity_str`` does not contains units.
-    ValueError
-        If the units attached to ``quantity_str`` are incompatible with ``compatible_units``
-
-    See Also
-    --------
-    quantity_from_string
-
-    Examples
-    --------
-    >>> process_unit_bearing_str('1.0*micrometers', unit.nanometers)
-    Quantity(value=1.0, unit=micrometer)
-
-    """
-
-    # Convert string of a Quantity to actual Quantity
-    quantity = quantity_from_string(quantity_str)
     # Check to make sure units are compatible with expected units.
-    try:
-        quantity.unit.is_compatible(compatible_units)
-    except:
-        raise TypeError("String %s does not have units attached." % quantity_str)
-    # Check that units are compatible with what we expect.
-    if not quantity.unit.is_compatible(compatible_units):
-        raise ValueError("Units of %s must be compatible with %s" % (quantity_str,
-                                                                     str(compatible_units)))
-    # Return unit-bearing quantity.
+    if compatible_units is not None:
+        try:
+            is_compatible = quantity.unit.is_compatible(compatible_units)
+        except AttributeError:
+            raise TypeError("String {} does not have units attached.".format(expression))
+        if not is_compatible:
+            raise TypeError("Units of {} must be compatible with {}"
+                            "".format(expression, str(compatible_units)))
+
     return quantity
 
 
-def to_unit_validator(compatible_units):
-    """Function generator to test unit bearing strings with Cerberus."""
-    def _to_unit_validator(quantity_str):
-        return process_unit_bearing_str(quantity_str, compatible_units)
-    return _to_unit_validator
-
-
-def generate_signature_schema(func, update_keys=None, exclude_keys=frozenset()):
-    """Generate a dictionary to test function signatures with Cerberus' Schema.
-
-    Parameters
-    ----------
-    func : function
-        The function used to build the schema.
-    update_keys : dict
-        Keys in here have priority over automatic generation. It can be
-        used to make an argument mandatory, or to use a specific validator.
-    exclude_keys : list-like
-        Keys in here are ignored and not included in the schema.
-
-    Returns
-    -------
-    func_schema : dict
-        The dictionary to be used as Cerberus Validator schema. Contains all keyword
-        variables in the function signature as optional argument with
-        the default type as validator. Unit bearing strings are converted.
-        Argument with default None are always accepted. Camel case
-        parameters in the function are converted to underscore style.
-
-    Examples
-    --------
-    >>> from cerberus import Validator
-    >>> def f(a, b, camelCase=True, none=None, quantity=3.0*unit.angstroms):
-    ...     pass
-    >>> f_dict = generate_signature_schema(f, exclude_keys=['quantity'])
-    >>> print(isinstance(f_dict, dict))
-    True
-    >>> f_validator = Validator(generate_signature_schema(f))
-    >>> f_validator.validated({'quantity': '1.0*nanometer'})
-    {'quantity': Quantity(value=1.0, unit=nanometer)}
-
-    """
-    if update_keys is None:
-        update_keys = {}
-
-    func_schema = {}
-    arg_spec = inspect.getfullargspec(unwrap_py2(func))
-    args = arg_spec.args
-    defaults = arg_spec.defaults
-
-    # Check keys that must be excluded from first pass
-    exclude_keys = set(exclude_keys)
-    exclude_keys.update(update_keys)
-    # TODO: Make sure we dont need to convert this line
-    # exclude_keys.update({k._schema for k in update_keys if isinstance(k, Optional)})
-
-    # Transform camelCase to underscore
-    args = [camelcase_to_underscore(arg) for arg in args]
-
-    # Build schema
-    optional_validator = {'required': False}  # Keys are always optional for this type
-    for arg, default_value in zip(args[-len(defaults):], defaults):
-        if arg not in exclude_keys:  # User defined keys are added later
-            if default_value is None:  # None defaults are always accepted, and considered nullable
-                validator = {'nullable': True}
-            elif isinstance(default_value, unit.Quantity):  # Convert unit strings
-                validator = {'coerce': to_unit_validator(default_value.unit)}
-            else:
-                validator = type_to_cerberus_map(type(default_value))
-            # Add the argument to the existing schema as a keyword
-            # To the new keyword, add the optional flag and the "validator" flag
-            # of either 'validator' or 'type' depending on how it was processed
-            func_schema = {**func_schema, **{arg: {**optional_validator, **validator}}}
-
-    # Add special user keys
-    func_schema.update(update_keys)
-
-    return func_schema
-
-
-def get_keyword_args(function_to_inspect, try_mro_from_class=None):
+def get_keyword_args(function, try_mro_from_class=None):
     """Inspect function signature and return keyword args with their default values.
 
     Parameters
     ----------
-    function_to_inspect : function
+    function : callable
         The function to interrogate.
     try_mro_from_class : any Class or None
         Try and trace the method resolution order (MRO) of the ``function_to_inspect`` by inferring a method stack from
@@ -1073,27 +1009,23 @@ def get_keyword_args(function_to_inspect, try_mro_from_class=None):
             cycle_kwargs = {**cycle_kwargs, **input_argspec.kwonlydefaults}
         return cycle_kwargs
 
-    def build_argspec(input_function, input_cls):
-        agspec = inspect.getfullargspec(input_function)
-        kwargs = extract_kwargs(agspec)
-        if input_cls is not None and agspec.varkw is not None:
+    agspec = inspect.getfullargspec(function)
+    kwargs = extract_kwargs(agspec)
+    if try_mro_from_class is not None and agspec.varkw is not None:
+        try:
+            mro = inspect.getmro(try_mro_from_class)
+        except AttributeError:
+            # No MRO
+            mro = [try_mro_from_class]
+        for cls in mro[1:]:
             try:
-                mro = inspect.getmro(input_cls)
+                parent_function = getattr(cls, function.__name__)
             except AttributeError:
-                # No MRO
-                mro = [input_cls]
-            for cls in mro[1:]:
-                try:
-                    parent_function = getattr(cls, input_function.__name__)
-                except AttributeError:
-                    # Class does not have a method name
-                    pass
-                else:
-                    inner_argspec = inspect.getfullargspec(parent_function)
-                    kwargs = {**extract_kwargs(inner_argspec), **kwargs}
-        return kwargs
-
-    kwargs = build_argspec(function_to_inspect, try_mro_from_class)
+                # Class does not have a method name
+                pass
+            else:
+                inner_argspec = inspect.getfullargspec(parent_function)
+                kwargs = {**extract_kwargs(inner_argspec), **kwargs}
     return kwargs
 
 
@@ -1160,7 +1092,7 @@ def validate_parameters(parameters, template_parameters, check_unknown=False,
     >>> input_pars['unspecified'] = 'input'  # this can be of any type since the template is None
     >>> input_pars['to_be_converted'] = {'key': 3}
     >>> input_pars['length'] = '1.0*nanometers'
-    >>> input_pars['unknown'] = 'test'  # this will be silently filtered if check_unkown=False
+    >>> input_pars['unknown'] = 'test'  # this will be silently filtered if check_unknown=False
 
 
     Validate the parameters
@@ -1204,7 +1136,7 @@ def validate_parameters(parameters, template_parameters, check_unknown=False,
             if float_to_int and type(templ_value) is int:
                 validated_par[par] = int(value)
             elif process_units_str and isinstance(templ_value, unit.Quantity):
-                validated_par[par] = process_unit_bearing_str(value, templ_value.unit)
+                validated_par[par] = quantity_from_string(value, templ_value.unit)
 
             # Check for incompatible types
             if type(validated_par[par]) != type(templ_value) and templ_value is not None:

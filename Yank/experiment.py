@@ -99,29 +99,6 @@ def to_openmm_app(input_string):
     return getattr(openmm.app, input_string)
 
 
-def convert_if_quantity(value):
-    """
-    Try to convert a passed value to quantity
-
-    Parameters
-    ----------
-    value : int, float, or simtk.unit.Quantity as string
-        This function tries to take a string which can be converted to a quantity with the
-        :func:`yank.utils.quantity_from_string`, or just a number
-
-    Returns
-    -------
-    output : value or simtk.unit.Quantity
-        Returns either the Quantity which was converted from string, or the original value.
-
-    """
-    try:
-        quantity = utils.quantity_from_string(value)
-    except:
-        return value
-    return quantity
-
-
 def _is_phase_completed(status, number_of_iterations):
     """Check if the stored simulation is completed.
 
@@ -211,7 +188,7 @@ class AlchemicalPhaseFactory(object):
 
     Parameters
     ----------
-    sampler : yank.multistate.ReplicaExchangeSampler
+    sampler : yank.multistate.MultiStateSampler
         Sampler which will carry out the simulation
     thermodynamic_state : openmmtools.states.ThermodynamicState
         Reference thermodynamic state without any alchemical modifications
@@ -557,7 +534,7 @@ class ExperimentBuilder(object):
     ...     yaml_content = '''
     ...     ---
     ...     options:
-    ...       number_of_iterations: 1
+    ...       default_number_of_iterations: 1
     ...       output_dir: {}
     ...     molecules:
     ...       T4lysozyme:
@@ -626,7 +603,8 @@ class ExperimentBuilder(object):
         'timestep': 2.0 * unit.femtosecond,
         'collision_rate': 1.0 / unit.picosecond,
         'mc_displacement_sigma': 10.0 * unit.angstroms,
-        'integrator_splitting': 'V R O R V'
+        'integrator_splitting': 'V R O R V',
+        'default_number_of_iterations': 5000
     }
 
     def __init__(self, script=None, job_id=None, n_jobs=None):
@@ -773,6 +751,7 @@ class ExperimentBuilder(object):
         self._db.systems = self._validate_systems(yaml_content.get('systems', {}))
 
         # Validate protocols
+        self._samplers = self._validate_samplers(yaml_content)
         self._protocols = self._validate_protocols(yaml_content.get('protocols', {}))
 
         # Validate experiments
@@ -891,8 +870,8 @@ class ExperimentBuilder(object):
 
         for experiment_idx, (exp_path, exp_description) in enumerate(self._expand_experiments()):
             # Determine the final number of iterations for this experiment.
-            _, _, sampler_options, _, _ = self._determine_experiment_options(exp_description)
-            number_of_iterations = sampler_options['number_of_iterations']
+            sampler = self._create_experiment_sampler(exp_description, mc_atoms=[])
+            number_of_iterations = sampler.number_of_iterations
 
             # Determine the phases status.
             phases = collections.OrderedDict()
@@ -1011,12 +990,11 @@ class ExperimentBuilder(object):
 
         experiment_options = _filter_options(self.EXPERIMENT_DEFAULT_OPTIONS)
         phase_options = _filter_options(AlchemicalPhaseFactory.DEFAULT_OPTIONS)
-        sampler_options = _filter_options(multistate.ReplicaExchangeSampler.default_options())
         alchemical_region_options = _filter_options(mmtools.alchemy._ALCHEMICAL_REGION_ARGS)
         alchemical_factory_options = _filter_options(utils.get_keyword_args(
             mmtools.alchemy.AbsoluteAlchemicalFactory.__init__))
 
-        return (experiment_options, phase_options, sampler_options,
+        return (experiment_options, phase_options,
                 alchemical_region_options, alchemical_factory_options)
 
     # --------------------------------------------------------------------------
@@ -1203,9 +1181,6 @@ class ExperimentBuilder(object):
         template_options = cls.EXPERIMENT_DEFAULT_OPTIONS.copy()
         template_options.update(AlchemicalPhaseFactory.DEFAULT_OPTIONS)
         template_options.update(mmtools.alchemy._ALCHEMICAL_REGION_ARGS)
-        sampler = multistate.ReplicaExchangeSampler
-        # Recursive search for calls to __init__ from the sampler structure
-        template_options.update(utils.get_keyword_args(sampler.__init__, try_mro_from_class=sampler))
         template_options.update(utils.get_keyword_args(
             mmtools.alchemy.AbsoluteAlchemicalFactory.__init__))
 
@@ -1219,20 +1194,14 @@ class ExperimentBuilder(object):
         template_options.pop('alchemical_torsions')
         template_options.pop('switch_width')  # AbsoluteAlchemicalFactory
 
-        # Some options need to be treated differently.
-        def integer_or_infinity(value):
-            if value != float('inf'):
-                value = int(value)
-            return value
-
         def check_anisotropic_cutoff(cutoff):
             if cutoff == 'auto':
                 return cutoff
             else:
-                return utils.process_unit_bearing_str(cutoff, unit.angstroms)
+                return utils.quantity_from_string(cutoff, unit.angstroms)
 
         special_conversions = {'constraints': to_openmm_app,
-                               'number_of_iterations': integer_or_infinity,
+                               'default_number_of_iterations': schema.to_integer_or_infinity_coercer,
                                'anisotropic_dispersion_cutoff': check_anisotropic_cutoff}
 
         # Validate parameters.
@@ -1331,9 +1300,9 @@ class ExperimentBuilder(object):
             validator: int_or_all_string
         """
         # Build small molecule Epik by hand as dict since we are fetching from another source
-        epik_schema = utils.generate_signature_schema(moltools.schrodinger.run_epik,
-                                                      update_keys={'select': {'required': False, 'type': 'integer'}},
-                                                      exclude_keys=['extract_range'])
+        epik_schema = schema.generate_signature_schema(moltools.schrodinger.run_epik,
+                                                       update_keys={'select': {'required': False, 'type': 'integer'}},
+                                                       exclude_keys=['extract_range'])
         epik_schema = {'epik': {
             'required': False,
             'type': 'dict',
@@ -1494,13 +1463,13 @@ class ExperimentBuilder(object):
             """
             return to_openmm_app(input_string) if input_string is not None else None
 
-        def to_unit_validator_unless_none(compatible_units):
+        def to_unit_unless_none_coercer(compatible_units):
             """
-            Extension to the :func:`utils.to_unit_validator` method which also allows a None object to be set
+            Extension to the :func:`utils.to_unit_coercer` method which also allows a None object to be set
 
-            See call to :func:`utils.to_unit_validator` for call
+            See call to :func:`utils.to_unit_coercer` for call
             """
-            unit_validator = utils.to_unit_validator(compatible_units)
+            unit_validator = schema.to_unit_coercer(compatible_units)
 
             def _to_unit_unless_none(input_quantity):
                 if input_quantity is None:
@@ -1512,8 +1481,8 @@ class ExperimentBuilder(object):
         # Define solvents Schema
         # Create the basic solvent schema, ignoring things which have a dependency
         # Some keys we manually tweak
-        base_solvent_schema = utils.generate_signature_schema(AmberPrmtopFile.createSystem,
-                                                              exclude_keys=['nonbonded_method'])
+        base_solvent_schema = schema.generate_signature_schema(AmberPrmtopFile.createSystem,
+                                                               exclude_keys=['nonbonded_method'])
         implicit_solvent_default_schema = {'implicit_solvent': base_solvent_schema.pop('implicit_solvent')}
         rigid_water_default_schema = {'rigid_water': base_solvent_schema.pop('rigid_water')}
         nonbonded_cutoff_default_schema = {'nonbonded_cutoff': base_solvent_schema.pop('nonbonded_cutoff')}
@@ -1531,7 +1500,7 @@ class ExperimentBuilder(object):
         explicit_only_keys = {
             'clearance': {
                 'type': 'quantity',
-                'coerce': utils.to_unit_validator(unit.angstrom),
+                'coerce': schema.to_unit_coercer(unit.angstrom),
             },
             'solvent_model': {
                 'type': 'string',
@@ -1547,7 +1516,7 @@ class ExperimentBuilder(object):
             },
             'ionic_strength': {
                 'type': 'quantity',
-                'coerce': to_unit_validator_unless_none(unit.molar),
+                'coerce': to_unit_unless_none_coercer(unit.molar),
                 'default_setter': ionic_strength_if_explicit_else_none,
                 'nullable': True
             },
@@ -1923,6 +1892,33 @@ class ExperimentBuilder(object):
                 raise YamlParseError(error.format(system_id, yaml.dump(system_validator.errors)))
         return validated_systems
 
+    @classmethod
+    def _validate_samplers(cls, yaml_content):
+        """Validate samplers section."""
+        sampler_descriptions = yaml_content.get('samplers', None)
+        if sampler_descriptions is None:
+            return {}
+
+        sampler_schema = """
+        samplers:
+            keyschema:
+                type: string
+            valueschema:
+                type: dict
+                validator: is_sampler_constructor
+                keyschema:
+                    type: string
+        """
+        sampler_schema = yaml.load(sampler_schema)
+
+        sampler_validator = schema.YANKCerberusValidator(sampler_schema)
+        if sampler_validator.validate({'samplers': sampler_descriptions}):
+            validated_samplers = sampler_validator.document
+        else:
+            error = "Samplers validation failed with:\n{}"
+            raise YamlParseError(error.format(yaml.dump(sampler_validator.errors)))
+        return validated_samplers['samplers']
+
     def _parse_experiments(self, yaml_content):
         """Validate experiments.
 
@@ -1990,6 +1986,10 @@ class ExperimentBuilder(object):
             required: yes
             type: string
             allowed: PROTOCOL_IDS_POPULATED_AT_RUNTIME
+        sampler:
+            required: no
+            type: string
+            allowed: SAMPLER_IDS_POPULATED_AT_RUNTIME
         options:
             required: no
             type: dict
@@ -1997,7 +1997,7 @@ class ExperimentBuilder(object):
         restraint:
             required: no
             type: dict
-            validator: ensure_type_is_key
+            validator: is_restraint_constructor
             keyschema:
                 type: string
         """
@@ -2006,10 +2006,9 @@ class ExperimentBuilder(object):
         # Populate valid types
         experiment_schema['system']['allowed'] = [str(key) for key in self._db.systems.keys()]
         experiment_schema['protocol']['allowed'] = [str(key) for key in self._protocols.keys()]
+        experiment_schema['sampler']['allowed'] = [str(key) for key in self._samplers.keys()]
         # Options validator
         experiment_schema['options']['coerce'] = coerce_and_validate_options_here_against_existing
-        # Restraint requirements
-        experiment_schema['restraint']['validator'] = ensure_restraint_type_is_key
 
         experiment_validator = schema.YANKCerberusValidator(experiment_schema)
         # Schema validation
@@ -2641,6 +2640,79 @@ class ExperimentBuilder(object):
         if not os.path.isdir(directory):
             os.makedirs(directory)
 
+    def _create_experiment_restraint(self, experiment_description):
+        """Create a restraint object for the experiment."""
+        # Determine restraint description (None if not specified).
+        restraint_description = experiment_description.get('restraint', None)
+        if restraint_description is not None:
+            return schema.call_restraint_constructor(restraint_description)
+        return None
+
+    def _create_experiment_mcmc_move(self, experiment_description, mc_atoms):
+        """Create the MCMCMove for the experiment sampler."""
+        # TODO this will take an mcmc_move_id instead of experiment_description
+        # TODO          once the mcmc_moves section will be added to the YAML script.
+        experiment_options = self._determine_experiment_options(experiment_description)[0]
+
+        # Apply MC rotation displacement to ligand.
+        if len(mc_atoms) > 0:
+            displacement_sigma = experiment_options['mc_displacement_sigma']
+            move_list = [
+                mmtools.mcmc.MCDisplacementMove(displacement_sigma=displacement_sigma,
+                                                atom_subset=mc_atoms),
+                mmtools.mcmc.MCRotationMove(atom_subset=mc_atoms)
+            ]
+        else:
+            move_list = []
+
+        # Creating Langevin integrator move.
+        integrator_splitting = experiment_options['integrator_splitting']
+        if integrator_splitting is not None:
+            logger.debug('Using Langevin integrator with splitting {}'.format(integrator_splitting))
+            move_list.append(mmtools.mcmc.LangevinSplittingDynamicsMove(
+                timestep=experiment_options['timestep'],
+                collision_rate=experiment_options['collision_rate'],
+                n_steps=experiment_options['nsteps_per_iteration'],
+                reassign_velocities=True,
+                n_restart_attempts=6,
+                splitting=integrator_splitting,
+                measure_shadow_work=False,
+                measure_heat=False)
+            )
+        else:
+            logger.debug('Using OpenMM Langevin integrator.')
+            move_list.append(mmtools.mcmc.LangevinDynamicsMove(
+                timestep=experiment_options['timestep'],
+                collision_rate=experiment_options['collision_rate'],
+                n_steps=experiment_options['nsteps_per_iteration'],
+                reassign_velocities=True,
+                n_restart_attempts=6)
+            )
+
+        return mmtools.mcmc.SequenceMove(move_list=move_list)
+
+    def _create_experiment_sampler(self, experiment_description, mc_atoms):
+        """Create the sampler object associated to the given experiment."""
+        # Check if we need to use the default sampler.
+        sampler_id = experiment_description.get('sampler', None)
+        if sampler_id is None:
+            constructor_description = {'type': 'ReplicaExchangeSampler'}
+        else:
+            constructor_description = copy.deepcopy(self._samplers[sampler_id])
+
+        # Overwrite default number of iterations if not specified.
+        if 'number_of_iterations' not in constructor_description:
+            experiment_options = self._determine_experiment_options(experiment_description)[0]
+            default_number_of_iterations = experiment_options['default_number_of_iterations']
+            constructor_description['number_of_iterations'] = default_number_of_iterations
+
+        # Create the MCMCMove for the sampler.
+        mcmc_move = self._create_experiment_mcmc_move(experiment_description, mc_atoms)
+        constructor_description['mcmc_moves'] = mcmc_move
+
+        # Create the sampler.
+        return schema.call_sampler_constructor(constructor_description)
+
     def _build_experiment(self, experiment_path, experiment):
         """Prepare a single experiment.
 
@@ -2662,8 +2734,7 @@ class ExperimentBuilder(object):
 
         # Get and validate experiment sub-options and divide them by class.
         exp_opts = self._determine_experiment_options(experiment)
-        (exp_opts, phase_opts, sampler_opts,
-         alchemical_region_opts, alchemical_factory_opts) = exp_opts
+        (exp_opts, phase_opts, alchemical_region_opts, alchemical_factory_opts) = exp_opts
 
         # Configure logger file for this experiment.
         experiment_log_file_path = self._get_experiment_log_path(experiment_path)
@@ -2745,9 +2816,6 @@ class ExperimentBuilder(object):
             else:
                 protocol = yaml_script['protocols'][experiment['protocol']]
 
-        # Determine restraint description (None if not specified).
-        restraint_descr = experiment.get('restraint')
-
         # Get system files.
         system_files_paths = self._db.get_system(system_id)
         gromacs_include_dir = self._db.systems[system_id].get('gromacs_include_dir', None)
@@ -2773,7 +2841,7 @@ class ExperimentBuilder(object):
             if solvent_id is None:
                 system_options = None
             else:
-                system_options = utils.merge_dict(self._db.solvents[solvent_id], exp_opts)
+                system_options = {**self._db.solvents[solvent_id], **exp_opts}
             logger.info("Reading phase {}".format(phase_name))
             system, topology, sampler_state = pipeline.read_system_files(
                 positions_file_path, parameters_file_path, system_options,
@@ -2809,12 +2877,8 @@ class ExperimentBuilder(object):
 
             # Apply restraint only if this is the first phase. AlchemicalPhase
             # will take care of raising an error if the phase type does not support it.
-            if (phase_idx == 0 and restraint_descr is not None and
-                        restraint_descr['type'] is not None):
-                restraint_type = restraint_descr['type']
-                restraint_parameters = {par: convert_if_quantity(value) for par, value in restraint_descr.items()
-                                        if par != 'type'}
-                restraint = restraints.create_restraint(restraint_type, **restraint_parameters)
+            if phase_idx == 0:
+                restraint = self._create_experiment_restraint(experiment)
             else:
                 restraint = None
 
@@ -2822,35 +2886,10 @@ class ExperimentBuilder(object):
             # We don't try displacing and rotating the ligand with a Boresch restraint
             # since the attempts would likely always fail.
             if len(topography.ligand_atoms) > 0 and not isinstance(restraint, restraints.Boresch):
-                move_list = [
-                    mmtools.mcmc.MCDisplacementMove(displacement_sigma=exp_opts['mc_displacement_sigma'],
-                                                    atom_subset=topography.ligand_atoms),
-                    mmtools.mcmc.MCRotationMove(atom_subset=topography.ligand_atoms)
-                ]
+                mc_atoms = topography.ligand_atoms
             else:
-                move_list = []
-
-            # Creating Langevin integrator move.
-            integrator_splitting = exp_opts['integrator_splitting']
-            if exp_opts['integrator_splitting'] is not None:
-                logger.debug('Using Langevin integrator with splitting {}'.format(integrator_splitting))
-                move_list.append(mmtools.mcmc.LangevinSplittingDynamicsMove(timestep=exp_opts['timestep'],
-                                                                            collision_rate=exp_opts['collision_rate'],
-                                                                            n_steps=exp_opts['nsteps_per_iteration'],
-                                                                            reassign_velocities=True,
-                                                                            n_restart_attempts=6,
-                                                                            splitting=integrator_splitting,
-                                                                            measure_shadow_work=False,
-                                                                            measure_heat=False))
-            else:
-                logger.debug('Using OpenMM Langevin integrator.')
-                move_list.append(mmtools.mcmc.LangevinDynamicsMove(timestep=exp_opts['timestep'],
-                                                                   collision_rate=exp_opts['collision_rate'],
-                                                                   n_steps=exp_opts['nsteps_per_iteration'],
-                                                                   reassign_velocities=True,
-                                                                   n_restart_attempts=6))
-            mcmc_move = mmtools.mcmc.SequenceMove(move_list=move_list)
-            sampler = multistate.ReplicaExchangeSampler(mcmc_moves=mcmc_move, **sampler_opts)
+                mc_atoms = []
+            sampler = self._create_experiment_sampler(experiment, mc_atoms)
 
             # Create phases.
             phases[phase_idx] = AlchemicalPhaseFactory(sampler, thermodynamic_state, sampler_state,
@@ -2863,7 +2902,7 @@ class ExperimentBuilder(object):
         mpi.run_single_node(0, self._save_analysis_script, results_dir, phase_names)
 
         # Return new Experiment object.
-        return Experiment(phases, sampler_opts['number_of_iterations'],
+        return Experiment(phases, sampler.number_of_iterations,
                           exp_opts['switch_phase_interval'])
 
     # --------------------------------------------------------------------------

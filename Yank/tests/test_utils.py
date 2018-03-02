@@ -9,6 +9,7 @@ Test various utility functions.
 # GLOBAL IMPORTS
 # =============================================================================================
 
+import abc
 import textwrap
 
 import openmoltools as omt
@@ -19,7 +20,7 @@ from yank.schema.validator import *
 
 
 # =============================================================================================
-# TESTING FUNCTIONS
+# COMBINATORIAL TREE
 # =============================================================================================
 
 def test_set_tree_path():
@@ -124,34 +125,37 @@ def test_expand_id_nodes():
                             'sys3': {'prmtopfile': 'mysystem.prmtop'}}
 
 
-def test_generate_signature_schema():
-    """Test generate_signature_schema() function."""
-    def f(a, b, camelCase=True, none=None, quantity=3.0*unit.angstroms):
+# ==============================================================================
+# CONVERSION UTILITIES
+# ==============================================================================
+
+def test_find_all_subclasses():
+    """Test find_all_subclasses() function."""
+    # Diamond inheritance.
+    class A:
         pass
 
-    f_schema = generate_signature_schema(f)
-    assert len(f_schema) == 3
-    for v in f_schema.values():
-        assert isinstance(v, dict)
-        assert v['required'] is False
+    class B(A):
+        pass
 
-    # Remove Optional() marker for comparison
-    assert f_schema['camel_case']['type'] == 'boolean'
-    assert f_schema['none']['nullable'] is True
-    assert hasattr(f_schema['quantity']['coerce'], '__call__')  # Callable validator
+    class C(A, abc.ABC):
+        @abc.abstractmethod
+        def m(self):
+            pass
 
-    # Check conversion
-    f_validator = YANKCerberusValidator(f_schema)
-    assert f_validator.validated({'quantity': '5*angstrom'}) == {'quantity': 5*unit.angstrom}
+    class D(B, C, abc.ABC):
+        @abc.abstractmethod
+        def m(self):
+            pass
 
-    # Check update
-    optional_instance = {'camel_case': {'type': 'integer'}, 'none': {'type': 'float'}}
-    updated_schema = generate_signature_schema(f, update_keys=optional_instance,
-                                               exclude_keys={'quantity'})
-    assert len(updated_schema) == 2
-    assert updated_schema['none'].get('nullable') is None
-    assert updated_schema['none'].get('type') == 'float'
-    assert updated_schema['camel_case'].get('type') == 'integer'
+    class E(D):
+        def m(self):
+            pass
+
+    assert find_all_subclasses(B) == {B, D, E}
+    assert find_all_subclasses(B, discard_abstract=True, include_parent=False) == {E}
+    assert find_all_subclasses(A) == {A, B, D, E, C}
+    assert find_all_subclasses(A, discard_abstract=True, include_parent=False) == {B, E}
 
 
 def test_get_keyword_args():
@@ -178,7 +182,6 @@ def test_get_keyword_args():
     assert expected_cls == get_keyword_args(dummy.__init__, try_mro_from_class=dummy)
     assert expected_subcls == get_keyword_args(subdummy.__init__)
     assert expected_true_cls == get_keyword_args(subdummy.__init__, try_mro_from_class=subdummy)
-
 
 
 def test_validate_parameters():
@@ -219,7 +222,7 @@ def test_validate_parameters():
     assert convert_pars['time'] == 1.0 * unit.femtoseconds
 
     # If check_unknown flag is not True it should not raise an error
-    validate_parameters({'unkown': 0}, template_pars)
+    validate_parameters({'unknown': 0}, template_pars)
 
     # Test special conversion
     def convert_length(length):
@@ -230,12 +233,14 @@ def test_validate_parameters():
                                        special_conversions=special_conv)
     assert convert_pars['length'] == '1.0*nanometers'
 
+
 @tools.raises(ValueError)
 def test_incompatible_parameters():
     """Check that validate_parameters raises exception with unknown parameter."""
     template_pars = {'int': 3}
     wrong_pars = {'int': 3.0}
     validate_parameters(wrong_pars, template_pars)
+
 
 @tools.raises(TypeError)
 def test_unknown_parameters():
@@ -254,17 +259,30 @@ def test_underscore_to_camelcase():
 
 
 def test_quantity_from_string():
-    """Test the quantity from string function to ensure output is as expected"""
-    tests = [
+    """Test the quantity from string function to ensure output is as expected."""
+    test_cases = [
         # (string,                                 expected Unit)
-        ('3',                                      3.0), # Handle basic float
-        ('meter',                                  unit.meter), # Handle basic unit object
-        ('300 * kelvin',                           300*unit.kelvin), # Handle standard Quantity
-        ('" 0.3 * kilojoules_per_mole / watt**3"', 0.3*unit.kilojoules_per_mole/unit.watt**3), # Handle division, exponent, nested string
-        ('1*meter / (4*second)',                   0.25*unit.meter/unit.second), # Handle compound math and parenthesis
-        ('1 * watt**2 /((1* kelvin)**3 / gram)',   1*(unit.watt**2)*(unit.gram)/(unit.kelvin**3)) #Handle everything
-        ]
-    assert all(expected == quantity_from_string(passed_string) for passed_string, expected in tests)
+        ('3',                                      3.0),  # Handle basic float
+        ('meter',                                  unit.meter),  # Handle basic unit object
+        ('300 * kelvin',                           300*unit.kelvin),  # Handle standard Quantity
+        ('" 0.3 * kilojoules_per_mole / watt**3"', 0.3*unit.kilojoules_per_mole/unit.watt**3),  # Handle division, exponent, nested string
+        ('1*meter / (4*second)',                   0.25*unit.meter/unit.second),  # Handle compound math and parenthesis
+        ('1 * watt**2 /((1* kelvin)**3 / gram)',   1*(unit.watt**2)*(unit.gram)/(unit.kelvin**3))  #Handle everything
+    ]
+
+    for expression, expected in test_cases:
+        assert expected == quantity_from_string(expression)
+
+        # Test incompatible units.
+        with tools.assert_raises(TypeError):
+            quantity_from_string(expression, compatible_units=unit.second)
+
+        # Test compatibile units.
+        try:
+            expected_unit = expected.unit.in_unit_system(unit.md_unit_system)
+        except AttributeError:
+            continue
+        assert expected == quantity_from_string(expression, compatible_units=expected_unit)
 
 
 def test_TLeap_script():
