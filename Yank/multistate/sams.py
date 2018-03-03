@@ -367,8 +367,6 @@ class SAMSSampler(MultiStateSampler):
 
     def _report_iteration(self):
         super(SAMSSampler, self)._report_iteration()
-        # TODO: Can we write these within the functions that compute them?
-        # This requires we extend the iteration number first
         self._reporter.write_logZ(self._iteration, self._logZ)
 
     @mpi.on_single_node(0, broadcast_result=True)
@@ -485,7 +483,7 @@ class SAMSSampler(MultiStateSampler):
             for j in neighborhood:
                 u_k[j] = self._energy_thermodynamic_states[replica_index, j]
                 log_P_k[j] = self.log_weights[j] - u_k[j]
-            logger.debug('  Neighborhood u_k    : %s' % str(u_k[neighborhood]))
+            logger.debug('  Relative     u_k    : %s' % str(u_k[neighborhood] - u_k[current_state_index]))
             log_P_k[neighborhood] -= logsumexp(log_P_k[neighborhood])
             logger.debug('  Neighborhood log_P_k: %s' % str(log_P_k[neighborhood]))
             P_k = np.exp(log_P_k[neighborhood])
@@ -574,9 +572,9 @@ class SAMSSampler(MultiStateSampler):
             if self._stage == 'initial':
                 beta_factor = 0.4
                 t = self._iteration
-                gamma = self.gamma0 * max(pi_k[state_index], t**(-beta_factor)) # Eq. 15
+                gamma = self.gamma0 * min(pi_k[state_index], t**(-beta_factor)) # Eq. 15
             elif self._stage == 'asymptotically-optimal':
-                gamma = self.gamma0 / float(self._iteration - self._t0 + 1./self.gamma0) # prefactor in Eq. 9 and 12 from [1]
+                gamma = 1.0 / float(self._iteration - self._t0 + 1./self.gamma0) # prefactor in Eq. 9 and 12 from [1]
             else:
                 raise Exception('Programming error:unreachable code')
 
@@ -585,13 +583,16 @@ class SAMSSampler(MultiStateSampler):
             # Update online logZ estimate
             if self.weight_update_method == 'optimal':
                 # Based on Eq. 9 of Ref. [1]
-                self._logZ[state_index] += gamma * np.exp(-log_pi_k[state_index])
+                logZ_update = gamma * np.exp(-log_pi_k[state_index])
+                logger.debug('  optimal logZ increment: %s' % str(logZ_update))
+                self._logZ[state_index] += logZ_update
             elif self.weight_update_method == 'rao-blackwellized':
                 # Based on Eq. 12 of Ref [1]
                 # TODO: This has to be the previous state index and log_P_k used before update; store neighborhood?
                 # TODO: Can we use masked arrays for this purpose?
                 log_P_k = jump_and_mix_data.replica_log_P_k[replica_index,:]
-                neighborhood = self._neighborhoods[replica_index,:]
+                neighborhood = np.where(self._neighborhoods[replica_index,:])[0] # compact list of states defining neighborhood
+                logger.debug('  using neighborhood: %s' % str(neighborhood))
                 logger.debug('  using log_P_k : %s' % str(log_P_k[neighborhood]))
                 logger.debug('  using log_pi_k: %s' % str(log_pi_k[neighborhood]))
                 logZ_update = gamma * np.exp(log_P_k[neighborhood] - log_pi_k[neighborhood])
