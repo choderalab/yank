@@ -434,12 +434,12 @@ class SAMSSampler(MultiStateSampler):
             P_k[L] = 1.0 - P_k[neighborhood].sum()
             log_P_k[L] = np.log(P_k[L])
             # Update context.
-            thermodynamic_state_index = np.random.choice(neighborhood, p=P_k[neighborhood])
-            self._replica_thermodynamic_states[replica_index] = thermodynamic_state_index
+            new_state_index = np.random.choice(neighborhood, p=P_k[neighborhood])
+            self._replica_thermodynamic_states[replica_index] = new_state_index
             # Accumulate statistics
             jump_and_mix_data.replica_log_P_k[replica_index,:] = log_P_k[:]
             self._n_proposed_matrix[current_state_index, neighborhood] += 1
-            self._n_accepted_matrix[current_state_index, thermodynamic_state_index] += 1
+            self._n_accepted_matrix[current_state_index, new_state_index] += 1
 
     def _global_jump(self, jump_and_mix_data):
         """
@@ -458,12 +458,12 @@ class SAMSSampler(MultiStateSampler):
             log_P_k -= logsumexp(log_P_k)
             # Update sampler Context to current thermodynamic state.
             P_k = np.exp(log_P_k[neighborhood])
-            thermodynamic_state_index = np.random.choice(neighborhood, p=P_k)
-            self._replica_thermodynamic_states[replica_index] = thermodynamic_state_index
+            new_state_index = np.random.choice(neighborhood, p=P_k)
+            self._replica_thermodynamic_states[replica_index] = new_state_index
             # Accumulate statistics
             jump_and_mix_data.replica_log_P_k[replica_index,:] = log_P_k[:]
             self._n_proposed_matrix[current_state_index, neighborhood] += 1
-            self._n_accepted_matrix[current_state_index, thermodynamic_state_index] += 1
+            self._n_accepted_matrix[current_state_index, new_state_index] += 1
 
     def _restricted_range_jump(self, jump_and_mix_data):
         n_replica, n_states, locality = self.n_replicas, self.n_states, self.locality
@@ -485,13 +485,14 @@ class SAMSSampler(MultiStateSampler):
                     u_k[j] = self._energy_thermodynamic_states[replica_index, j]
             # Accept or reject.
             log_P_accept = logsumexp(self.log_weights[neighborhood] - u_k[neighborhood]) - logsumexp(self.log_weights[proposed_neighborhood] - u_k[proposed_neighborhood])
+            new_state_index = current_state_index
             if (log_P_accept >= 0.0) or (np.random.rand() < np.exp(log_P_accept)):
-                thermodynamic_state_index = proposed_state_index
+                new_state_index = proposed_state_index
             self._replica_thermodynamic_states[replica_index] = thermodynamic_state_index
             # Accumulate statistics
             jump_and_mix_data.replica_log_P_k[replica_index,:] = log_P_k[:]
             self._n_proposed_matrix[current_state_index, neighborhood] += 1
-            self._n_accepted_matrix[current_state_index, thermodynamic_state_index] += 1
+            self._n_accepted_matrix[current_state_index, new_state_index] += 1
 
     def _state_histogram(self):
         """
