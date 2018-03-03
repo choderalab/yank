@@ -155,7 +155,7 @@ class SAMSSampler(MultiStateSampler):
     def __init__(self,
                  number_of_iterations=1,
                  log_target_probabilities=None,
-                 state_update_scheme='global-jump', locality=5,
+                 state_update_scheme='restricted-range-jump', locality=5,
                  update_stages='two-stage', flatness_threshold=0.2,
                  weight_update_method='rao-blackwellized',
                  adapt_target_probabilities=False,
@@ -170,7 +170,7 @@ class SAMSSampler(MultiStateSampler):
             ``log_target_probabilities[state_index]`` is the log target probability for thermodynamic state ``state_index``
             When converged, each state should be sampled with the specified log probability.
             If None, uniform probabilities for all states will be assumed.
-        state_update_scheme : str, optional, default='global-jump'
+        state_update_scheme : str, optional, default='restricted-range-jump'
             Specifies the scheme used to sample new thermodynamic states given fixed sampler states.
             One of ['global-jump', 'local-jump', 'restricted-range-jump']
             ``global_jump`` will allow the sampler to access any thermodynamic state
@@ -314,7 +314,6 @@ class SAMSSampler(MultiStateSampler):
         # Record current weight update stage
         self._initialize_stage()
 
-
         # Update log target probabilities
         if self.log_target_probabilities is None:
             self.log_target_probabilities = np.zeros([self.n_states], np.float64) - np.log(self.n_states) # log(1/n_states)
@@ -356,14 +355,20 @@ class SAMSSampler(MultiStateSampler):
         # sampler._reporter.open('r')
         sampler._logZ = sampler._reporter.read_logZ(sampler._iteration)
         # sampler._reporter.close()
+
+        # Compute log weights from log target probability and logZ estimate
         sampler._update_log_weights()
+
+        # Determine t0
         sampler._initialize_stage()
         sampler._update_stage()
 
         return sampler
 
     def _report_iteration(self):
-        super(SAMSSampler, self)._report_iteration() # finalizes iteration
+        super(SAMSSampler, self)._report_iteration()
+        # TODO: Can we write these within the functions that compute them?
+        # This requires we extend the iteration number first
         self._reporter.write_logZ(self._iteration, self._logZ)
 
     @mpi.on_single_node(0, broadcast_result=True)
@@ -469,7 +474,7 @@ class SAMSSampler(MultiStateSampler):
 
     def _restricted_range_jump(self, jump_and_mix_data):
         n_replica, n_states, locality = self.n_replicas, self.n_states, self.locality
-        logger.debug('Using restricted range jump with locality of %d' % self.locality)
+        logger.debug('Using restricted range jump with locality %s' % str(self.locality))
         for (replica_index, current_state_index) in enumerate(self._replica_thermodynamic_states):
             u_k = np.zeros([n_states], np.float64)
             log_P_k = np.zeros([n_states], np.float64)
@@ -484,7 +489,7 @@ class SAMSSampler(MultiStateSampler):
             log_P_k[neighborhood] -= logsumexp(log_P_k[neighborhood])
             logger.debug('  Neighborhood log_P_k: %s' % str(log_P_k[neighborhood]))
             P_k = np.exp(log_P_k[neighborhood])
-            logger.debug('  Neighborhood P_k    : %s' % str(P_k[neighborhood]))
+            logger.debug('  Neighborhood P_k    : %s' % str(P_k))
             proposed_state_index = np.random.choice(neighborhood, p=P_k)
             logger.debug('  Proposed state      : %d' % proposed_state_index)
             # Determine neighborhood of proposed state.
@@ -562,25 +567,20 @@ class SAMSSampler(MultiStateSampler):
 
         logger.debug('  stage: %s' % self._stage)
 
-        gammas = np.zeros(self.n_states)
-
         # Update logZ estimates from all replicas
         for (replica_index, state_index) in enumerate(self._replica_thermodynamic_states):
             logger.debug(' Replica %d state %d' % (replica_index, state_index))
             # Compute attenuation factor gamma
             if self._stage == 'initial':
                 beta_factor = 0.4
-                t = self._iteration + 1.0
-                gamma = min(pi_k[state_index], t**(-beta_factor)) # Eq. 15
+                t = self._iteration
+                gamma = self.gamma0 * max(pi_k[state_index], t**(-beta_factor)) # Eq. 15
             elif self._stage == 'asymptotically-optimal':
-                gamma = 1.0 / float(self._iteration - self._t0 + 1./self.gamma0) # prefactor in Eq. 9 and 12 from [1]
+                gamma = self.gamma0 / float(self._iteration - self._t0 + 1./self.gamma0) # prefactor in Eq. 9 and 12 from [1]
             else:
                 raise Exception('Programming error:unreachable code')
 
-            # TODO: Store gamma for each replica: self.ncfile.variables['gamma'][self.iteration] = gamma
-            gammas[state_index] = gamma
-
-            logger.debug('  gammas: %s' % str(gammas))
+            logger.debug('  gamma: %s' % gamma)
 
             # Update online logZ estimate
             if self.weight_update_method == 'optimal':
@@ -590,9 +590,13 @@ class SAMSSampler(MultiStateSampler):
                 # Based on Eq. 12 of Ref [1]
                 # TODO: This has to be the previous state index and log_P_k used before update; store neighborhood?
                 # TODO: Can we use masked arrays for this purpose?
-                neighborhood = self._neighborhoods[replica_index,:]
                 log_P_k = jump_and_mix_data.replica_log_P_k[replica_index,:]
-                self._logZ[neighborhood] += gamma * np.exp(log_P_k[neighborhood] - log_pi_k[neighborhood])
+                neighborhood = self._neighborhoods[replica_index,:]
+                logger.debug('  using log_P_k : %s' % str(log_P_k[neighborhood]))
+                logger.debug('  using log_pi_k: %s' % str(log_pi_k[neighborhood]))
+                logZ_update = gamma * np.exp(log_P_k[neighborhood] - log_pi_k[neighborhood])
+                logger.debug('  Rao-Blackwellized logZ increment: %s' % str(logZ_update))
+                self._logZ[neighborhood] += logZ_update
             else:
                 raise Exception('Programming error: Unreachable code')
 
@@ -601,8 +605,8 @@ class SAMSSampler(MultiStateSampler):
 
         logger.debug('  logZ: %s' % str(self._logZ))
 
-        # Store gamma (non-per-iteration)
-        self._reporter.write_online_analysis_data(None, gammas=gammas)
+        # Store gamma
+        self._reporter.write_online_analysis_data(self._iteration, gamma=gamma)
 
     def _update_log_weights(self):
         """

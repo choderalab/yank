@@ -930,9 +930,10 @@ class AlchemicalPhase(object):
         is_complex = len(topography.receptor_atoms) > 0
 
         # We currently don't support reaction field.
-        nonbonded_method = mmtools.forces.find_nonbonded_force(reference_system).getNonbondedMethod()
-        if nonbonded_method == openmm.NonbondedForce.CutoffPeriodic:
-            raise RuntimeError('CutoffPeriodic is not supported yet. Use PME for explicit solvent.')
+        # DEBUG: Commented out by JDC for testing
+        #nonbonded_method = mmtools.forces.find_nonbonded_force(reference_system).getNonbondedMethod()
+        #if nonbonded_method == openmm.NonbondedForce.CutoffPeriodic:
+        #    raise RuntimeError('CutoffPeriodic is not supported yet. Use PME for explicit solvent.')
 
         # Make sure sampler_states is a list of SamplerStates.
         if isinstance(sampler_states, mmtools.states.SamplerState):

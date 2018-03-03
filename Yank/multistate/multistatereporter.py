@@ -1276,15 +1276,16 @@ class MultiStateReporter(object):
             logger.debug('Creating new NetCDF variable %s with parameters: %s' % (variable, variable_parameters)) # DEBUG
             storage.createVariable(variable, variable_parameters['dtype'],
                                    dimensions=variable_parameters['dims'],
-                                   chunksizes=variable_parameters['chunks'],
+                                   chunksizes=variable_parameters['chunksizes'],
                                    zlib=False)
         # Get the variable
         nc_var = storage[variable]
         # Only get the specific iteration if specified
+
         if iteration is not None:
-            nc_var = nc_var[iteration]
-        # Write data
-        nc_var[:] = data
+            nc_var[iteration,:] = data
+        else:
+            nc_var[:] = data
 
     @staticmethod
     def _find_alternate_variable(iteration, variable, storage):
@@ -1322,29 +1323,32 @@ class MultiStateReporter(object):
         Pre-determine the variable information needed to create the variable on the storage layer
         """
 
-        try:
-            # Check for known numpy types
-            dtype = data.dtype
-            size = len(data)
-            data_dim = "dim_size{}".format(size)
-        except AttributeError:
+        if np.isscalar(data):
+            # Scalar data
+            size = 1
             try:
-                dtype = type(data[0])
-                size = len(data)
-                data_dim = "dim_size{}".format(size)
-            except (IndexError, TypeError):
-                dtype = type(data)
-                size = 1
-                # Use existing scalar dimension
-                data_dim = "scalar"
+                dtype = data.dtype # numpy
+            except AttributeError:
+                dtype = type(data) # python
+        else:
+            # Array data
+            size = len(data)
+            try:
+                dtype = data.dtype # numpy
+            except AttributeError:
+                dtype = type(data[0]) # python
+
+        data_dim = "dim_size{}".format(size)
+
         self._ensure_dimension_exists(data_dim, size, storage=storage)
+
         if iteration is not None:
             dims = ("iteration", data_dim)
             chunks = (1, size)
         else:
             dims = (data_dim,)
             chunks = (size,)
-        return {'dtype': dtype, 'dims': dims, 'chunks': chunks}
+        return {'dtype': dtype, 'dims': dims, 'chunksizes': chunks}
 
     # -------------------------------------------------------------------------
     # Internal-usage.
