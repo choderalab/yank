@@ -861,7 +861,7 @@ class MultiStateSampler(object):
 
     def __del__(self):
         # The reporter could be None if MultiStateSampler was not created.
-        if self._reporter is not None:
+        if hasattr(self, '_reporter') and (self._reporter is not None):
             mpi.run_single_node(0, self._reporter.close)
 
     # -------------------------------------------------------------------------

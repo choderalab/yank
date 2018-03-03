@@ -153,6 +153,7 @@ class SAMSSampler(MultiStateSampler):
                        'class of yank.multistate on {}')
 
     def __init__(self,
+                 number_of_iterations=1,
                  log_target_probabilities=None,
                  state_update_scheme='global-jump', locality=5,
                  update_stages='two-stage', flatness_threshold=0.2,
@@ -196,7 +197,7 @@ class SAMSSampler(MultiStateSampler):
             Initial guess for logZ for all states, if available.
         """
         # Initialize multi-state sampler
-        super(SAMSSampler, self).__init__(**kwargs)
+        super(SAMSSampler, self).__init__(number_of_iterations=number_of_iterations, **kwargs)
         # Options
         self.log_target_probabilities = log_target_probabilities
         self.state_update_scheme = state_update_scheme
