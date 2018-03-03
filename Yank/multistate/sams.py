@@ -488,7 +488,7 @@ class SAMSSampler(MultiStateSampler):
             new_state_index = current_state_index
             if (log_P_accept >= 0.0) or (np.random.rand() < np.exp(log_P_accept)):
                 new_state_index = proposed_state_index
-            self._replica_thermodynamic_states[replica_index] = thermodynamic_state_index
+            self._replica_thermodynamic_states[replica_index] = new_state_index
             # Accumulate statistics
             jump_and_mix_data.replica_log_P_k[replica_index,:] = log_P_k[:]
             self._n_proposed_matrix[current_state_index, neighborhood] += 1
