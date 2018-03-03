@@ -1051,13 +1051,13 @@ class MultiStateReporter(object):
             Dimensionless logZ
         """
         # TODO: Remove commented block (or whole thing) when tests pass -LNN
-        data = self.read_online_analysis_data(None, "log_z")
-        return data['log_z']
+        data = self.read_online_analysis_data(None, "logZ")
+        return data['logZ']
         # online_group = self._storage_analysis.groups['online_analysis']
         # logZ = online_group.variables['logZ'][iteration]
         # return logZ
 
-    def write_logZ(self, iteration: int, log_z: np.ndarray):
+    def write_logZ(self, iteration: int, logZ: np.ndarray):
         """
         Write logZ
 
@@ -1066,10 +1066,10 @@ class MultiStateReporter(object):
         iteration : int,
             Iteration at which to save the free energy.
             Reads the current energy up to this value and stores it in the analysis reporter
-        log_z : np.array with shape [n_states]
+        logZ : np.array with shape [n_states]
             Dimensionless log Z
         """
-        self.write_online_data_dynamic_and_static(iteration, log_z=log_z)
+        self.write_online_data_dynamic_and_static(iteration, logZ=logZ)
         # TODO: Remove commended block if tests work (Could also remove function entirely)-LNN
         # analysis_nc = self._storage_analysis
         # if 'logZ' not in analysis_nc.dimensions:
@@ -1195,7 +1195,7 @@ class MultiStateReporter(object):
             raise ValueError("None of the requested keys could be found on disk!")
         # Found some things possibly named wrong, still nothing to return
         elif not collected_variables:
-            base_error = ("No variables found on disk with{} per-iteration data, but we did find the following " 
+            base_error = ("No variables found on disk with{} per-iteration data, but we did find the following "
                           "variables of the same name with{} per-iteration data. Possibly you meant those?"
                           )
             for failure in collected_iteration_failure:
@@ -1270,9 +1270,10 @@ class MultiStateReporter(object):
     def _write_1d_online_data(self, iteration, variable, data, storage):
         """Store data on disk given pre-calculated parameters"""
         if iteration is not None:
-            variable = variable + "_iter"
+            variable = variable + "_history"
         if variable not in storage.variables:
             variable_parameters = self._determine_netcdf_variable_parameters(iteration, data, storage)
+            logger.debug('Creating new NetCDF variable %s with parameters: %s' % (variable, variable_parameters)) # DEBUG
             storage.createVariable(variable, variable_parameters['dtype'],
                                    dimensions=variable_parameters['dims'],
                                    chunksizes=variable_parameters['chunks'],
@@ -1288,7 +1289,7 @@ class MultiStateReporter(object):
     @staticmethod
     def _find_alternate_variable(iteration, variable, storage):
         """Helper function to figure out what went wrong when data not found"""
-        iter_var = variable + "_iter"
+        iter_var = variable + "_history"
         if iteration is None and iter_var in storage:
             return True
         elif iteration is not None and variable in storage:
@@ -1304,7 +1305,7 @@ class MultiStateReporter(object):
         data
         """
         if iteration is not None:
-            variable = variable + "_iter"
+            variable = variable + "_history"
         nc_var = storage[variable]
         nc_data = nc_var
         if iteration is not None:

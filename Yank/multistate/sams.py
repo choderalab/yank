@@ -63,7 +63,7 @@ class SAMSSampler(MultiStateSampler):
         If True, target probabilities will be adapted to achieve minimal thermodynamic length between terminal thermodynamic states.
     gamma0 : float, optional, default=0.0
         Initial weight adaptation rate.
-    log_Z_guess : array-like of shape [n_states] of floats, optional, default=None
+    logZ_guess : array-like of shape [n_states] of floats, optional, default=None
         Initial guess for logZ for all states, if available.
 
     References
@@ -160,7 +160,7 @@ class SAMSSampler(MultiStateSampler):
                  weight_update_method='rao-blackwellized',
                  adapt_target_probabilities=False,
                  gamma0=1.0,
-                 log_Z_guess=None,
+                 logZ_guess=None,
                  **kwargs):
         """Initialize a SAMS sampler.
 
@@ -193,7 +193,7 @@ class SAMSSampler(MultiStateSampler):
             (EXPERIMENTAL)
         gamma0 : float, optional, default=0.0
             Initial weight adaptation rate.
-        log_Z_guess : array-like of shape [n_states] of floats, optiona, default=None
+        logZ_guess : array-like of shape [n_states] of floats, optiona, default=None
             Initial guess for logZ for all states, if available.
         """
         # Initialize multi-state sampler
@@ -207,7 +207,7 @@ class SAMSSampler(MultiStateSampler):
         self.weight_update_method = weight_update_method
         self.adapt_target_probabilities = adapt_target_probabilities
         self.gamma0 = gamma0
-        self.log_Z_guess = log_Z_guess
+        self.logZ_guess = logZ_guess
         # Private variables
         # self._replica_neighbors[replica_index] is a list of states that form the neighborhood of ``replica_index``
         self._replica_neighbors = None
@@ -254,7 +254,7 @@ class SAMSSampler(MultiStateSampler):
     weight_update_method = _StoredProperty('weight_update_method', validate_function=_StoredProperty._weight_update_method_validator)
     adapt_target_probabilities = _StoredProperty('adapt_target_probabilities', validate_function=_StoredProperty._adapt_target_probabilities_validator)
     gamma0 = _StoredProperty('gamma0', validate_function=None)
-    log_Z_guess = _StoredProperty('log_Z_guess', validate_function=None)
+    logZ_guess = _StoredProperty('logZ_guess', validate_function=None)
 
     def _initialize_stage(self):
         self._t0 = 0  # reference iteration to subtract
@@ -321,11 +321,11 @@ class SAMSSampler(MultiStateSampler):
 
         # Record initial logZ estimates
         self._logZ = np.zeros([self.n_states], np.float64)
-        if self.log_Z_guess is not None:
-            if len(self.log_Z_guess) != self.n_states:
-                raise Exception('Initial log_Z_guess (dim {}) must have same number of states as n_states ({})'.format(
-                    len(self.log_Z_guess), self.n_states))
-            self._logZ = np.array(self.log_Z_guess, np.float64)
+        if self.logZ_guess is not None:
+            if len(self.logZ_guess) != self.n_states:
+                raise Exception('Initial logZ_guess (dim {}) must have same number of states as n_states ({})'.format(
+                    len(self.logZ_guess), self.n_states))
+            self._logZ = np.array(self.logZ_guess, np.float64)
 
         # Update log weights
         self._update_log_weights()
@@ -361,13 +361,13 @@ class SAMSSampler(MultiStateSampler):
         return sampler
 
     def _report_iteration(self):
-        super(SAMSSampler, self)._report_iteration()
+        super(SAMSSampler, self)._report_iteration() # finalizes iteration
         self._reporter.write_logZ(self._iteration, self._logZ)
 
     @mpi.on_single_node(0, broadcast_result=True)
     def _mix_replicas(self):
         """Update thermodynamic states according to user-specified scheme."""
-        logger.debug("Updating thermodynamic states...")
+        logger.debug("Updating thermodynamic states using %s scheme..." % self.state_update_scheme)
 
         # Reset storage to keep track of swap attempts this iteration.
         self._n_accepted_matrix[:, :] = 0
@@ -467,17 +467,24 @@ class SAMSSampler(MultiStateSampler):
 
     def _restricted_range_jump(self, jump_and_mix_data):
         n_replica, n_states, locality = self.n_replicas, self.n_states, self.locality
+        logger.debug('Using restricted range jump with locality of %d' % self.locality)
         for (replica_index, current_state_index) in enumerate(self._replica_thermodynamic_states):
             u_k = np.zeros([n_states], np.float64)
             log_P_k = np.zeros([n_states], np.float64)
             # Propose new state from current neighborhood.
             neighborhood = self._neighborhood(current_state_index)
+            logger.debug('  Current state       : %d' % current_state_index)
+            logger.debug('  Neighborhood        : %s' % str(neighborhood))
             for j in neighborhood:
                 u_k[j] = self._energy_thermodynamic_states[replica_index, j]
                 log_P_k[j] = self.log_weights[j] - u_k[j]
+            logger.debug('  Neighborhood u_k    : %s' % str(u_k[neighborhood]))
             log_P_k[neighborhood] -= logsumexp(log_P_k[neighborhood])
+            logger.debug('  Neighborhood log_P_k: %s' % str(log_P_k[neighborhood]))
             P_k = np.exp(log_P_k[neighborhood])
+            logger.debug('  Neighborhood P_k    : %s' % str(P_k[neighborhood]))
             proposed_state_index = np.random.choice(neighborhood, p=P_k)
+            logger.debug('  Proposed state      : %d' % proposed_state_index)
             # Determine neighborhood of proposed state.
             proposed_neighborhood = self._neighborhood(proposed_state_index)
             for j in proposed_neighborhood:
@@ -485,9 +492,11 @@ class SAMSSampler(MultiStateSampler):
                     u_k[j] = self._energy_thermodynamic_states[replica_index, j]
             # Accept or reject.
             log_P_accept = logsumexp(self.log_weights[neighborhood] - u_k[neighborhood]) - logsumexp(self.log_weights[proposed_neighborhood] - u_k[proposed_neighborhood])
+            logger.debug('  log_P_accept        : %f' % log_P_accept)
             new_state_index = current_state_index
             if (log_P_accept >= 0.0) or (np.random.rand() < np.exp(log_P_accept)):
                 new_state_index = proposed_state_index
+            logger.debug('  new_state_index     : %d' % new_state_index)
             self._replica_thermodynamic_states[replica_index] = new_state_index
             # Accumulate statistics
             jump_and_mix_data.replica_log_P_k[replica_index,:] = log_P_k[:]
@@ -506,6 +515,7 @@ class SAMSSampler(MultiStateSampler):
         # TODO: Instead of summing each iteration, store `number_of_state_visits[:]` in storage?
         replica_thermodynamic_states = self._reporter.read_replica_thermodynamic_states(iteration=slice(0,self._iteration))
         N_k, _ = np.histogram(replica_thermodynamic_states, bins=np.arange(-0.5, self.n_states+0.5))
+        logger.debug('  state histogram counts: %s' % str(N_k))
         return N_k
 
     def _update_stage(self):
@@ -525,6 +535,7 @@ class SAMSSampler(MultiStateSampler):
             if np.all(relative_error_k < self.flatness_threshold):
                 # Histograms are sufficiently flat; switch to asymptotically optimal scheme
                 self._stage = 'asymptotically-optimal'
+                # TODO: On resuming, we need to recompute or restore t0, or use some other way to compute it
                 self._t0 = self._iteration
 
     def _update_logZ_estimates(self, jump_and_mix_data):
@@ -540,13 +551,18 @@ class SAMSSampler(MultiStateSampler):
         log_pi_k = self.log_target_probabilities
         pi_k = np.exp(self.log_target_probabilities)
 
+        logger.debug('Updating logZ estimates...')
+
         # Update which stage we're in, checking histogram flatness
         self._update_stage()
+
+        logger.debug('  stage: %s' % self._stage)
 
         gammas = np.zeros(self.n_states)
 
         # Update logZ estimates from all replicas
         for (replica_index, state_index) in enumerate(self._replica_thermodynamic_states):
+            logger.debug(' Replica %d state %d' % (replica_index, state_index))
             # Compute attenuation factor gamma
             if self._stage == 'initial':
                 beta_factor = 0.4
@@ -559,6 +575,8 @@ class SAMSSampler(MultiStateSampler):
 
             # TODO: Store gamma for each replica: self.ncfile.variables['gamma'][self.iteration] = gamma
             gammas[state_index] = gamma
+
+            logger.debug('  gammas: %s' % str(gammas))
 
             # Update online logZ estimate
             if self.weight_update_method == 'optimal':
@@ -576,6 +594,8 @@ class SAMSSampler(MultiStateSampler):
 
         # Subtract off logZ[0] to prevent logZ from growing without bound
         self._logZ[:] -= self._logZ[0]
+
+        logger.debug('  logZ: %s' % str(self._logZ))
 
         # Store gamma (non-per-iteration)
         self._reporter.write_online_analysis_data(None, gammas=gammas)
