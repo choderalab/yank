@@ -318,6 +318,8 @@ class SAMSSampler(MultiStateSampler):
         # Update log target probabilities
         if self.log_target_probabilities is None:
             self.log_target_probabilities = np.zeros([self.n_states], np.float64) - np.log(self.n_states) # log(1/n_states)
+            logger.debug('Setting log target probabilities: %s' % str(self.log_target_probabilities))
+            logger.debug('Target probabilities: %s' % str(np.exp(self.log_target_probabilities)))
 
         # Record initial logZ estimates
         self._logZ = np.zeros([self.n_states], np.float64)
@@ -547,11 +549,13 @@ class SAMSSampler(MultiStateSampler):
         [1] http://www.stat.rutgers.edu/home/ztan/Publication/SAMS_redo4.pdf
 
         """
+        logger.debug('Updating logZ estimates...')
+
         # Retrieve target probabilities
         log_pi_k = self.log_target_probabilities
         pi_k = np.exp(self.log_target_probabilities)
-
-        logger.debug('Updating logZ estimates...')
+        logger.debug('  log target probabilities log_pi_k: %s' % str(log_pi_k))
+        logger.debug('  target probabilities pi_k: %s' % str(pi_k))
 
         # Update which stage we're in, checking histogram flatness
         self._update_stage()
