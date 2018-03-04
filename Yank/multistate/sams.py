@@ -527,16 +527,39 @@ class SAMSSampler(MultiStateSampler):
         Determine which adaptation stage we're in by checking histogram flatness.
 
         """
+        # TODO: Make this a user option
+        #flatness_criteria = 'minimum-visits' # DEBUG
+        flatness_criteria = 'logZ-flatness' # DEBUG
+        minimum_visits = 1
+        N_k = self._state_histogram()
         if (self.update_stages == 'two-stage') and (self._stage == 'initial'):
-            # Check histogram flatness
-            N_k = self._state_histogram()
+            advance = False
             if N_k.sum() == 0:
                 # No samples yet; don't do anything.
                 return
-            empirical_pi_k = N_k[:] / N_k.sum()
-            pi_k = np.exp(self.log_target_probabilities)
-            relative_error_k = np.abs(pi_k - empirical_pi_k) / pi_k
-            if np.all(relative_error_k < self.flatness_threshold):
+
+            if flatness_criteria == 'minimum-visits':
+                # Advance if every state has been visited at least once
+                if np.all(N_k >= minimum_visits):
+                    advance = True
+            elif flatness_criteria == 'flatness-threshold':
+                # Check histogram flatness
+                empirical_pi_k = N_k[:] / N_k.sum()
+                pi_k = np.exp(self.log_target_probabilities)
+                relative_error_k = np.abs(pi_k - empirical_pi_k) / pi_k
+                if np.all(relative_error_k < self.flatness_threshold):
+                    advance = True
+            elif flatness_criteria == 'logZ-flatness':
+                # TODO: Advance to asymptotically optimal scheme when logZ update fractional counts per state exceed threshold
+                # for all states.
+                criteria = abs(self._logZ / self.gamma0) > self.flatness_threshold
+                logger.debug('logZ-flatness criteria met: %s' % str(int(criteria)))
+                if np.all(criteria):
+                    advance = True
+            else:
+                raise ValueError("Unknown flatness_criteria %s" % flatness_criteria)
+
+            if advance:
                 # Histograms are sufficiently flat; switch to asymptotically optimal scheme
                 self._stage = 'asymptotically-optimal'
                 # TODO: On resuming, we need to recompute or restore t0, or use some other way to compute it
@@ -570,10 +593,12 @@ class SAMSSampler(MultiStateSampler):
             # Compute attenuation factor gamma
             if self._stage == 'initial':
                 beta_factor = 0.4
+                #beta_factor = 1.0 # DEBUG
+                #beta_factor = float(self.gamma0 / self.n_states) # DEBUG
                 t = self._iteration
                 gamma = self.gamma0 * min(pi_k[state_index], t**(-beta_factor)) # Eq. 15
             elif self._stage == 'asymptotically-optimal':
-                gamma = 1.0 / float(self._iteration - self._t0 + 1./self.gamma0) # prefactor in Eq. 9 and 12 from [1]
+                gamma = 1.0 / float(self._iteration + 1 - self._t0 + 1./self.gamma0) # prefactor in Eq. 9 and 12 from [1]
             else:
                 raise Exception('Programming error:unreachable code')
 
@@ -601,7 +626,7 @@ class SAMSSampler(MultiStateSampler):
                 raise Exception('Programming error: Unreachable code')
 
         # Subtract off logZ[0] to prevent logZ from growing without bound
-        self._logZ[:] -= self._logZ[0]
+        #self._logZ[:] -= self._logZ[0]
 
         logger.debug('  logZ: %s' % str(self._logZ))
 
