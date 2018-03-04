@@ -135,7 +135,7 @@ def compute_harmonic_oscillator_expectations(K, temperature):
 
 @attr('slow')  # Skip on Travis-CI
 def test_replica_exchange_harmonic_oscillator(verbose=False, verbose_simulation=False):
-    """Free energies and average potential energies of a 3D harmonic oscillator are correctly computed."""
+    """Test harmonic oscillator free energies for replica-exchange."""
     # Define mass of carbon atom.
     mass = 12.0 * unit.amu
 
@@ -246,7 +246,7 @@ def test_replica_exchange_harmonic_oscillator(verbose=False, verbose_simulation=
 
 @attr('slow')  # Skip on Travis-CI
 def test_sams_harmonic_oscillator(verbose=False, verbose_simulation=False):
-    """Free energies and average potential energies of a 3D harmonic oscillator are correctly computed."""
+    """Harmonic oscillator free energies for SAMS."""
     # Define mass of carbon atom.
     mass = 12.0 * unit.amu
 

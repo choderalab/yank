@@ -155,7 +155,7 @@ class SAMSSampler(MultiStateSampler):
     def __init__(self,
                  number_of_iterations=1,
                  log_target_probabilities=None,
-                 state_update_scheme='restricted-range-jump', locality=5,
+                 state_update_scheme='global-jump', locality=5,
                  update_stages='two-stage', flatness_threshold=0.2,
                  weight_update_method='rao-blackwellized',
                  adapt_target_probabilities=False,
@@ -170,7 +170,7 @@ class SAMSSampler(MultiStateSampler):
             ``log_target_probabilities[state_index]`` is the log target probability for thermodynamic state ``state_index``
             When converged, each state should be sampled with the specified log probability.
             If None, uniform probabilities for all states will be assumed.
-        state_update_scheme : str, optional, default='restricted-range-jump'
+        state_update_scheme : str, optional, default='global-jump'
             Specifies the scheme used to sample new thermodynamic states given fixed sampler states.
             One of ['global-jump', 'local-jump', 'restricted-range-jump']
             ``global_jump`` will allow the sampler to access any thermodynamic state
@@ -471,18 +471,17 @@ class SAMSSampler(MultiStateSampler):
             self._n_accepted_matrix[current_state_index, new_state_index] += 1
 
     def _restricted_range_jump(self, jump_and_mix_data):
+        # TODO: This has an major bug in that we also need to compute energies in `proposed_neighborhood`.
+        # I'm working on a way to make this work.
         n_replica, n_states, locality = self.n_replicas, self.n_states, self.locality
         logger.debug('Using restricted range jump with locality %s' % str(self.locality))
         for (replica_index, current_state_index) in enumerate(self._replica_thermodynamic_states):
-            u_k = np.zeros([n_states], np.float64)
+            u_k = self._energy_thermodynamic_states[replica_index, :]
             log_P_k = np.zeros([n_states], np.float64)
             # Propose new state from current neighborhood.
             neighborhood = self._neighborhood(current_state_index)
             logger.debug('  Current state       : %d' % current_state_index)
             logger.debug('  Neighborhood        : %s' % str(neighborhood))
-            for j in neighborhood:
-                u_k[j] = self._energy_thermodynamic_states[replica_index, j]
-                log_P_k[j] = self.log_weights[j] - u_k[j]
             logger.debug('  Relative     u_k    : %s' % str(u_k[neighborhood] - u_k[current_state_index]))
             log_P_k[neighborhood] -= logsumexp(log_P_k[neighborhood])
             logger.debug('  Neighborhood log_P_k: %s' % str(log_P_k[neighborhood]))
@@ -492,12 +491,12 @@ class SAMSSampler(MultiStateSampler):
             logger.debug('  Proposed state      : %d' % proposed_state_index)
             # Determine neighborhood of proposed state.
             proposed_neighborhood = self._neighborhood(proposed_state_index)
-            for j in proposed_neighborhood:
-                if j not in neighborhood:
-                    u_k[j] = self._energy_thermodynamic_states[replica_index, j]
+            logger.debug('  Proposed neighborhood        : %s' % str(proposed_neighborhood))
             # Accept or reject.
             log_P_accept = logsumexp(self.log_weights[neighborhood] - u_k[neighborhood]) - logsumexp(self.log_weights[proposed_neighborhood] - u_k[proposed_neighborhood])
             logger.debug('  log_P_accept        : %f' % log_P_accept)
+            logger.debug('     logsumexp(g[forward] - u[forward]) : %f' % logsumexp(self.log_weights[neighborhood] - u_k[neighborhood]))
+            logger.debug('     logsumexp(g[reverse] - u[reverse]) : %f' % logsumexp(self.log_weights[proposed_neighborhood] - u_k[proposed_neighborhood]))
             new_state_index = current_state_index
             if (log_P_accept >= 0.0) or (np.random.rand() < np.exp(log_P_accept)):
                 new_state_index = proposed_state_index
