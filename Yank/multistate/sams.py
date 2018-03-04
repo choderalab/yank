@@ -553,7 +553,7 @@ class SAMSSampler(MultiStateSampler):
                 # TODO: Advance to asymptotically optimal scheme when logZ update fractional counts per state exceed threshold
                 # for all states.
                 criteria = abs(self._logZ / self.gamma0) > self.flatness_threshold
-                logger.debug('logZ-flatness criteria met: %s' % str(int(criteria)))
+                logger.debug('logZ-flatness criteria met: %s' % str(np.array(criteria, 'i1')))
                 if np.all(criteria):
                     advance = True
             else:
