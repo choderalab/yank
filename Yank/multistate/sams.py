@@ -625,8 +625,9 @@ class SAMSSampler(MultiStateSampler):
             else:
                 raise Exception('Programming error: Unreachable code')
 
-        # Subtract off logZ[0] to prevent logZ from growing without bound
-        #self._logZ[:] -= self._logZ[0]
+        # Subtract off logZ[0] to prevent logZ from growing without bound once we reach the asymptotically optimal stage
+        if self._stage == 'asymptotically-optimal':
+            self._logZ[:] -= self._logZ[0]
 
         logger.debug('  logZ: %s' % str(self._logZ))
 
