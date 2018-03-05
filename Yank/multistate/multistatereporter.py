@@ -55,10 +55,6 @@ logger = logging.getLogger(__name__)
 # MULTISTATE SAMPLER REPORTER
 # ==============================================================================
 
-# Value for populating missing values
-MISSING_VALUE = np.NaN
-
-
 class MultiStateReporter(object):
     """Handle storage write/read operations and different format conventions.
 
@@ -86,8 +82,6 @@ class MultiStateReporter(object):
         of the iteration at which energies is written, hence why it must be greater than or equal to 1.
         Checkpoint information cannot be written on iterations which where ``iteration % checkpoint_interval != 0``.
 
-        Attempting to read checkpointing information results in a masked array where only entries which were written
-        are unmasked
     checkpoint_storage : str or None, optional
         Optional name of the checkpoint point file. This file is used to save trajectory information and other less
         frequently accessed data.
@@ -270,6 +264,7 @@ class MultiStateReporter(object):
         # TODO: Figure out how to move around the analysis file without the checkpoint file
         # Cast this to a common name space for operation below
         primary_ncfiles['analysis'] = netcdf.Dataset(self._storage_file_analysis, mode, version=netcdf_format)
+        primary_ncfiles['analysis'].set_auto_mask(False)
         if mode == 'w':
             sub_ncfiles['checkpoint'] = netcdf.Dataset(self._storage_file_checkpoint, mode, version=netcdf_format)
         else:  # Read/append mode
@@ -730,7 +725,6 @@ class MultiStateReporter(object):
                                                                    'f8',
                                                                    ('iteration', 'replica', 'state'),
                                                                    zlib=False,
-                                                                   fill_value=MISSING_VALUE,
                                                                    chunksizes=(1, n_replicas, n_states))
             ncvar_energies.units = 'kT'
             ncvar_energies.long_name = ("energies[iteration][replica][state] is the reduced (unitless) "
@@ -1147,9 +1141,9 @@ class MultiStateReporter(object):
             online_group = analysis_nc.createGroup('online_analysis')
             # larger chunks, faster operations, small matrix anyways
             online_group.createVariable('f_k', float, dimensions=('iteration', 'f_k_length'),
-                                        zlib=True, chunksizes=(1, len(f_k)), fill_value=MISSING_VALUE)
+                                        zlib=True, chunksizes=(1, len(f_k)))
             online_group.createVariable('free_energy', float, dimensions=('iteration', 'Df'),
-                                        zlib=True, chunksizes=(1, 2), fill_value=MISSING_VALUE)
+                                        zlib=True, chunksizes=(1, 2))
         online_group = analysis_nc.groups['online_analysis']
         online_group.variables['f_k'][iteration] = f_k
         online_group.variables['free_energy'][iteration, :] = free_energy

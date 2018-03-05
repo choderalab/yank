@@ -563,7 +563,7 @@ class SAMSSampler(MultiStateSampler):
                 # Histograms are sufficiently flat; switch to asymptotically optimal scheme
                 self._stage = 'asymptotically-optimal'
                 # TODO: On resuming, we need to recompute or restore t0, or use some other way to compute it
-                self._t0 = self._iteration
+                self._t0 = self._iteration - 1
 
     def _update_logZ_estimates(self, jump_and_mix_data):
         """
@@ -591,14 +591,13 @@ class SAMSSampler(MultiStateSampler):
         for (replica_index, state_index) in enumerate(self._replica_thermodynamic_states):
             logger.debug(' Replica %d state %d' % (replica_index, state_index))
             # Compute attenuation factor gamma
+            beta_factor = 0.8
+            pi_star = pi_k.min()
+            t = float(self._iteration)
             if self._stage == 'initial':
-                beta_factor = 0.4
-                #beta_factor = 1.0 # DEBUG
-                #beta_factor = float(self.gamma0 / self.n_states) # DEBUG
-                t = self._iteration
-                gamma = self.gamma0 * min(pi_k[state_index], t**(-beta_factor)) # Eq. 15
+                gamma = self.gamma0 * min(pi_star, t**(-beta_factor)) # Eq. 15 of [1]
             elif self._stage == 'asymptotically-optimal':
-                gamma = 1.0 / float(self._iteration + 1 - self._t0 + 1./self.gamma0) # prefactor in Eq. 9 and 12 from [1]
+                gamma = self.gamma0 * min(pi_star, (t - self._t0 + self._t0**beta_factor)**(-1)) # Eq. 15 of [1]
             else:
                 raise Exception('Programming error:unreachable code')
 
