@@ -483,6 +483,7 @@ class SAMSSampler(MultiStateSampler):
             logger.debug('  Current state       : %d' % current_state_index)
             logger.debug('  Neighborhood        : %s' % str(neighborhood))
             logger.debug('  Relative     u_k    : %s' % str(u_k[neighborhood] - u_k[current_state_index]))
+            log_P_k[neighborhood] = self.log_weights[neighborhood] - u_k[neighborhood]
             log_P_k[neighborhood] -= logsumexp(log_P_k[neighborhood])
             logger.debug('  Neighborhood log_P_k: %s' % str(log_P_k[neighborhood]))
             P_k = np.exp(log_P_k[neighborhood])
