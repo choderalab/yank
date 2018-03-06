@@ -2372,7 +2372,7 @@ class ExperimentBuilder(object):
                 continue
 
             # Determine output directory and create it if it doesn't exist.
-            self._safe_makedirs(os.path.dirname(script_filepath))
+            os.makedirs(os.path.dirname(script_filepath), exist_ok=True)
 
             # Check if any of the phases needs to have its path generated.
             protocol = self._protocols[experiment['protocol']]
@@ -2625,20 +2625,6 @@ class ExperimentBuilder(object):
         analysis_script_path = os.path.join(results_dir, 'analysis.yaml')
         with open(analysis_script_path, 'w') as f:
             yaml.dump(analysis, f)
-
-    @mpi.on_single_node(rank=0, sync_nodes=True)
-    def _safe_makedirs(self, directory):
-        """Create directory and avoid race conditions.
-
-        This is executed only on node 0 to avoid race conditions. The
-        processes are synchronized at the end so that the non-0 nodes
-        won't raise an IO error when trying to write a file in a non-
-        existing directory.
-
-        """
-        # TODO when dropping Python 2, remove this and use os.makedirs(, exist_ok=True)
-        if not os.path.isdir(directory):
-            os.makedirs(directory)
 
     def _create_experiment_restraint(self, experiment_description):
         """Create a restraint object for the experiment."""
