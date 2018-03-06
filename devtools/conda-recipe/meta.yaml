@@ -18,7 +18,7 @@ requirements:
     - scipy
     - setuptools
     - netcdf4
-    - openmm >=7.1
+    - openmm >=7.3.0
     - mdtraj >=1.7.2
     - openmmtools >=0.14.0
     - pymbar
@@ -40,7 +40,7 @@ requirements:
     - scipy
     - cython
     - netcdf4
-    - openmm >=7.1
+    - openmm >=7.3.0
     - mdtraj >=1.7.2
     - openmmtools >=0.14.0
     - pymbar
