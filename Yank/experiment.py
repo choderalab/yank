@@ -2428,8 +2428,8 @@ class ExperimentBuilder(object):
         protocol = self._protocols[experiment['protocol']]
         phases_to_generate = self._find_automatic_protocol_phases(protocol)
 
-        # Build experiment.
-        exp = self._build_experiment(experiment_path, experiment)
+        # Build experiment. Use a dummy protocol for building since it hasn't been generated yet.
+        exp = self._build_experiment(experiment_path, experiment, use_dummy_protocol=True)
 
         # Generate protocols.
         optimal_protocols = collections.OrderedDict.fromkeys(phases_to_generate)
@@ -2614,6 +2614,52 @@ class ExperimentBuilder(object):
         with open(file_path, 'w') as f:
             f.write(yaml_content)
 
+    def _get_experiment_protocol(self, experiment_path, experiment_description,
+                                 use_dummy_protocol=False):
+        """Obtain the protocol for this experiment.
+
+        This masks whether the protocol is hardcoded in the input YAML
+        script or it has been generated automatically.
+
+        Parameters
+        ----------
+        experiment_path : str
+            The directory where to store the output files relative to the main
+            output directory as specified by the user in the YAML script.
+        experiment_description : dict
+            A dictionary describing a single experiment.
+        use_dummy_protocol : bool, optional
+            If True, automatically-generated protocols that have not been found
+            are substituted by a dummy protocol.
+
+        Returns
+        -------
+        protocol : dict
+            A dictionary thermodynamic_variable -> list of values.
+
+        """
+        protocol_id = experiment_description['protocol']
+        protocol = copy.deepcopy(self._protocols[protocol_id])
+
+        # Check if there are automatically-generated protocols.
+        generated_alchemical_paths = self._find_automatic_protocol_phases(protocol)
+        if len(generated_alchemical_paths) > 0:
+            yaml_script_file_path = self._get_generated_yaml_script_path(experiment_path)
+
+            # Use a dummy protocol if the file doesn't exist.
+            try:
+                with open(yaml_script_file_path, 'r') as f:
+                    yaml_script = yaml.load(f, Loader=YankLoader)
+            except FileNotFoundError:
+                if not use_dummy_protocol:
+                    raise
+                for phase_name in generated_alchemical_paths:
+                    protocol[phase_name]['alchemical_path'] = {}
+            else:
+                protocol = yaml_script['protocols'][protocol_id]
+
+        return protocol
+
     # --------------------------------------------------------------------------
     # Experiment building
     # --------------------------------------------------------------------------
@@ -2699,7 +2745,7 @@ class ExperimentBuilder(object):
         # Create the sampler.
         return schema.call_sampler_constructor(constructor_description)
 
-    def _build_experiment(self, experiment_path, experiment):
+    def _build_experiment(self, experiment_path, experiment, use_dummy_protocol=False):
         """Prepare a single experiment.
 
         Parameters
@@ -2709,6 +2755,9 @@ class ExperimentBuilder(object):
             output directory as specified by the user in the YAML script.
         experiment : dict
             A dictionary describing a single experiment
+        use_dummy_protocol : bool, optional
+            If True, automatically-generated protocols that have not been found
+            are substituted by a dummy protocol.
 
         Returns
         -------
@@ -2782,25 +2831,8 @@ class ExperimentBuilder(object):
                 solvent_ids = [None, None]
                 regions = {}
 
-        # Obtain the protocol for this experiment. We need to load the
-        # alchemical path from the single-experiment YAML file if it has
-        # been automatically generated.
-        protocol = copy.deepcopy(self._protocols[experiment['protocol']])
-        generated_alchemical_paths = self._find_automatic_protocol_phases(protocol)
-        if len(generated_alchemical_paths) > 0:
-            yaml_script_file_path = self._get_generated_yaml_script_path(experiment_path)
-
-            # The file won't exist if _build_experiment has been called
-            # within _generate_experiment_protocol. In this case we just
-            # use a dummy protocol.
-            try:
-                with open(yaml_script_file_path, 'r') as f:
-                    yaml_script = yaml.load(f, Loader=YankLoader)
-            except FileNotFoundError:
-                for phase_name in generated_alchemical_paths:
-                    protocol[phase_name]['alchemical_path'] = {}
-            else:
-                protocol = yaml_script['protocols'][experiment['protocol']]
+        # Obtain the protocol for this experiment.
+        protocol = self._get_experiment_protocol(experiment_path, experiment, use_dummy_protocol)
 
         # Get system files.
         system_files_paths = self._db.get_system(system_id)

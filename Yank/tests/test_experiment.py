@@ -2540,7 +2540,17 @@ def test_automatic_alchemical_path():
         yaml_script['experiments']['protocol'] = 'hydration-protocol'
 
         exp_builder = ExperimentBuilder(yaml_script)
-        exp_builder._check_resume()  # check_resume should not raise exceptions
+
+        # ExperimentBuilder._get_experiment_protocol handles dummy protocols.
+        experiment_path, experiment_description = next(exp_builder._expand_experiments())
+        with assert_raises(FileNotFoundError):
+            exp_builder._get_experiment_protocol(experiment_path, experiment_description)
+        dummy_protocol = exp_builder._get_experiment_protocol(experiment_path, experiment_description,
+                                                              use_dummy_protocol=True)
+        assert dummy_protocol['solvent2']['alchemical_path'] == {}  # This is the dummy protocol.
+
+        # check_resume should not raise exceptions at this point.
+        exp_builder._check_resume()
 
         # Building the experiment should generate the alchemical path.
         for experiment in exp_builder.build_experiments():
