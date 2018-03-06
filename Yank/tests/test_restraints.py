@@ -84,6 +84,7 @@ expected_restraints = {
     'Harmonic': yank.restraints.Harmonic,
     'FlatBottom': yank.restraints.FlatBottom,
     'Boresch': yank.restraints.Boresch,
+    'RMSD': yank.restraints.RMSD,
 }
 
 restraint_test_yaml = """
@@ -239,6 +240,8 @@ def test_partial_parametrization():
         ('FlatBottom', dict(well_radius=1.0*unit.angstrom, restrained_ligand_atoms=[130])),
         ('Boresch', dict(restrained_ligand_atoms=[130, 131, 136],
                          K_r=1.0*unit.kilojoule_per_mole/unit.angstroms**2))
+        ('RMSD', dict(restrained_ligand_atoms=[130, 131, 136],
+                         K_RMSD=1.0*unit.kilojoule_per_mole/unit.angstroms**2))
     ]
 
     for restraint_type, kwargs in test_cases:
@@ -269,6 +272,11 @@ def test_partial_parametrization():
             # Boresch restraint.
             elif isinstance(force, openmm.CustomCompoundBondForce):
                 particles, _ = force.getBondParameters(0)
+                assert particles == tuple(restraint.restrained_receptor_atoms + restraint.restrained_ligand_atoms)
+            # RMSD restraint.
+            elif isinstance(force, openmm.CustomCVForce):
+                rmsd_cv = force.getCollectiveVariable(0)
+                particles = rmsd_cv.getParticles()
                 assert particles == tuple(restraint.restrained_receptor_atoms + restraint.restrained_ligand_atoms)
 
 
