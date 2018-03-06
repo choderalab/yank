@@ -363,6 +363,24 @@ Note that the analytical standard state correction described in Eq. 32 of :cite:
 
 .. warning:: Symmetry corrections for symmetric ligands are **not** automatically applied; see Ref :cite:`Boresch2003` and :cite:`Mobley2006:orientational-restraints` for more information on correcting for ligand symmetry.
 
+RMSD restraints (``RMSD``)
+""""""""""""""""""""""""""
+
+If the RMSD restraints are used, the ligand and protein atoms are restrained via a flat-bottom harmonic restraint applied to the
+least-squares RMSD: ``lambda_restraints * step(RMSD - RMSD0) * (K_RMSD/2) * (RMSD - RMSD0)^2``
+
+Standard use of RMSD restraints to define the binding mode to evaluate is to leave these restraints on throughout the entire
+alchemical protocol.
+
+If the receptor and ligand atom sets are not defined, receptor CA atoms (``name CA`` selection for MDTraj) and ligand heavy atoms are used.
+
+.. warning:: The RMSD restraints must also be applied in the solvent phase of the calculation, but this is not implemented yet.
+
+.. warning:: No standard state correction is yet computed for RMSD restraints. This will likely be applied in the solvent phase by
+             releasing the ligand into a defined volume that is then corrected to the standard-state volume.
+
+.. warning:: Symmetry corrections for symmetric ligands are **not** automatically applied; see Ref :cite:`Boresch2003` and :cite:`Mobley2006:orientational-restraints` for more information on correcting for ligand symmetry.
+
 Restraint Selection Flowchart
 -----------------------------
 
@@ -699,4 +717,3 @@ the subdominant eigenvalue :math:`\lambda_2 \in [0,1]` gives an estimate of the 
 
 :math:`\tau_{\lambda}` is then the estimate for how many iterations must elapse before the collection of replicas
 fully mix once. The closer this value is to unity (1), the better.
-
