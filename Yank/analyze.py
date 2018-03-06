@@ -325,6 +325,7 @@ def extract_trajectory(nc_path, nc_checkpoint_file=None, state_index=None, repli
         raise ValueError('Cannot find file {}'.format(nc_path))
 
     # Import simulation data
+    reporter = None
     try:
         reporter = multistate.MultiStateReporter(nc_path, open_mode='r', checkpoint_storage=nc_checkpoint_file)
         metadata = reporter.read_dict('metadata')
@@ -409,7 +410,8 @@ def extract_trajectory(nc_path, nc_checkpoint_file=None, state_index=None, repli
                 if is_periodic:
                     box_vectors[i, :, :] = trajectory_storage.variables['box_vectors'][iteration, replica_index, :, :].astype(np.float32)
     finally:
-        reporter.close()
+        if reporter is not None:
+            reporter.close()
 
     # Create trajectory object
     logger.info('Creating trajectory object...')
