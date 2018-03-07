@@ -24,6 +24,7 @@ import copy
 import logging
 import os
 
+import numpy as np
 import cerberus
 import cerberus.errors
 import openmmtools as mmtools
@@ -588,7 +589,7 @@ class ExperimentBuilder(object):
         'precision': 'auto',
         'max_n_contexts': 3,
         'switch_experiment_interval': 0,
-        'processes_per_experiment': None
+        'processes_per_experiment': 'auto'
     }
 
     # These options can be overwritten also in the "experiment"
@@ -776,21 +777,21 @@ class ExperimentBuilder(object):
             self._generate_experiments_protocols()
 
             # Find all the experiments to distribute among mpicomms.
-            all_experiments = [experiment for experiment in self._expand_experiments()]
-            processes_per_experiment = self._options['processes_per_experiment']
+            all_experiments = list(self._expand_experiments())
 
             # Cycle between experiments every switch_experiment_interval iterations
             # until all of them are done.
             while len(all_experiments) > 0:
-                # Distribute experiments across MPI communicators if requested.
-                completed = [False] * len(all_experiments)
-                if processes_per_experiment is None:
+                # Allocate the MPI processes to the experiments that still have to be completed.
+                group_size = self._get_experiment_mpi_group_size(all_experiments)
+                if group_size is None:
+                    completed = [False] * len(all_experiments)
                     for exp_index, exp in enumerate(all_experiments):
                         completed[exp_index] = self._run_experiment(exp)
                 else:
                     completed = mpi.distribute(self._run_experiment,
                                                distributed_args=all_experiments,
-                                               group_size=processes_per_experiment,
+                                               group_size=group_size,
                                                send_results_to='all')
 
                 # Remove any completed experiments, releasing possible parallel resources
@@ -1108,8 +1109,8 @@ class ExperimentBuilder(object):
         Each generated experiment is uniquely named. If job_id and n_jobs are
         set, this returns only the experiments assigned to this particular job.
 
-        Returns
-        -------
+        Yields
+        ------
         experiment_path : str
             A unique path where to save the experiment output files relative to
             the main output directory specified by the user in the options.
@@ -1200,9 +1201,15 @@ class ExperimentBuilder(object):
             else:
                 return utils.quantity_from_string(cutoff, unit.angstroms)
 
+        def check_processes_per_experiment(processes_per_experiment):
+            if processes_per_experiment == 'auto':
+                return processes_per_experiment
+            return int(processes_per_experiment)
+
         special_conversions = {'constraints': to_openmm_app,
                                'default_number_of_iterations': schema.to_integer_or_infinity_coercer,
-                               'anisotropic_dispersion_cutoff': check_anisotropic_cutoff}
+                               'anisotropic_dispersion_cutoff': check_anisotropic_cutoff,
+                               'processes_per_experiment': check_processes_per_experiment}
 
         # Validate parameters.
         try:
@@ -2634,7 +2641,7 @@ class ExperimentBuilder(object):
 
         Returns
         -------
-        protocol : dict
+        protocol : OrderedDict
             A dictionary thermodynamic_variable -> list of values.
 
         """
@@ -2671,6 +2678,71 @@ class ExperimentBuilder(object):
         analysis_script_path = os.path.join(results_dir, 'analysis.yaml')
         with open(analysis_script_path, 'w') as f:
             yaml.dump(analysis, f)
+
+    def _get_experiment_mpi_group_size(self, experiments):
+        """Return the MPI group size to pass when executing the experiments.
+
+        The heuristic tries to allocate the MPI processes among the experiments
+        roughly according to their computational costs using the number of states
+        of the first phase (either complex or solvent1).
+
+        Parameters
+        ----------
+        experiments : list of pairs
+            Each pair contains (experiment_path, experiment_description) of an
+            experiment that needs to be run (i.e. that hasn't been completed yet).
+
+        Returns
+        -------
+        groups_size : list of integers
+            The MPI processes groups to pass to mpi.distribute().
+
+        """
+        n_experiments = len(experiments)
+
+        # Check if we need to run the experiments sequentially.
+        mpicomm = mpi.get_mpicomm()
+        processes_per_experiment = self._options['processes_per_experiment']
+        if processes_per_experiment is None or mpicomm is None:
+            return None
+
+        # Obtain the number of MPI processes available.
+        n_mpi_processes = mpicomm.size
+
+        # Check if the user has specified an hardcoded
+        # number of processes per experiments.
+        if processes_per_experiment != 'auto':
+            # If more processes are requested than MPI processes, run serially.
+            if processes_per_experiment >= n_mpi_processes:
+                return None
+            return processes_per_experiment
+
+        # If there are less MPI processes than experiments, completely split the MPI comm.
+        if n_mpi_processes <= n_experiments:
+            return 1
+
+        # Split the mpicomm among the experiments.
+        group_size = min(1, int(n_mpi_processes / n_experiments))
+
+        # Estimate the computational cost of each experiment taken as the
+        # number of thermodynamic states of the complex phase.
+        experiment_costs = np.zeros(n_experiments)
+        for experiment_idx, (experiment_path, experiment_description) in enumerate(experiments):
+            protocol = self._get_experiment_protocol(experiment_path, experiment_description)
+            first_phase_name = next(iter(protocol))  # protocol is an OrderedDict
+            n_states = len(protocol[first_phase_name]['alchemical_path']['lambda_electrostatics'])
+            experiment_costs[experiment_idx] = n_states
+
+        # Find the index of the most expensive jobs.
+        n_expensive_experiments = n_mpi_processes - n_experiments
+        expensive_experiment_indices = list(reversed(np.argsort(experiment_costs)))
+        expensive_experiment_indices = expensive_experiment_indices[:n_expensive_experiments]
+
+        # The most expensive jobs are allocated an extra MPI process.
+        group_size = [group_size for _ in range(n_experiments)]
+        for expensive_experiment_idx in expensive_experiment_indices:
+            group_size[expensive_experiment_idx] += 1
+        return group_size
 
     def _create_experiment_restraint(self, experiment_description):
         """Create a restraint object for the experiment."""

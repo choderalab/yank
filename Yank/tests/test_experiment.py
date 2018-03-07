@@ -189,8 +189,8 @@ def get_template_script(output_dir='.', keep_schrodinger=False, keep_openeye=Fal
         hydration-protocol:
             solvent1:
                 alchemical_path:
-                    lambda_electrostatics: [1.0, 0.5, 0.0]
-                    lambda_sterics: [1.0, 0.5, 0.0]
+                    lambda_electrostatics: [1.0, 0.0]
+                    lambda_sterics: [1.0, 0.0]
             solvent2:
                 alchemical_path:
                     lambda_electrostatics: [1.0, 0.0]
@@ -397,14 +397,52 @@ def test_paths_properties():
     assert exp_builder._db.setup_dir == os.path.join('output2', 'setup2')
 
 
+def test_auto_processes_per_experiment():
+    """Test the automatic determination of processes_per_experiment."""
+    # Create a script with 3 experiments.
+    # The first two experiments have less number of states than the third.
+    template_script = get_template_script()
+    template_script['experiment1'] = copy.deepcopy(template_script['experiments'])
+    template_script['experiment1']['system'] = utils.CombinatorialLeaf(['explicit-system', 'implicit-system'])
+    template_script['experiment1']['protocol'] = 'hydration-protocol'
+    template_script['experiment2'] = copy.deepcopy(template_script['experiments'])
+    template_script['experiment2']['system'] = 'hydration-system'
+    template_script['experiments'] = ['experiment1', 'experiment2']
+
+    exp_builder = ExperimentBuilder(template_script)
+    experiments = list(exp_builder._expand_experiments())
+
+    # The default is auto.
+    assert exp_builder._options['processes_per_experiment'] == 'auto'
+
+    # When there is no MPI environment the calculation is serial.
+    assert exp_builder._get_experiment_mpi_group_size(experiments) is None
+
+    # In an MPI environment, the MPI communicator is split according
+    # to the number of experiments still have to be completed. Each
+    # test case is pair (experiments, MPICOMM size, expected return value).
+    test_cases = [
+        (experiments, 4, [1, 1, 2]),
+        (experiments[1:], 4, [2, 2]),
+        (list(reversed(experiments[1:])), 3, [2, 1]),
+        (experiments, 2, 1)
+    ]
+
+    for i, (exp, mpicomm_size, expected_result) in enumerate(test_cases):
+        with mpi._simulated_mpi_environment(size=mpicomm_size):
+            err_msg = 'experiments: {}\nMPICOMM size: {}\nexpected result: {}'.format(*test_cases[i])
+            assert exp_builder._get_experiment_mpi_group_size(exp) == expected_result, err_msg
+
+
 def test_validation_wrong_options():
     """YAML validation raises exception with wrong molecules."""
     options = [
-        {'unknown_options': 3},
-        {'minimize': 100}
+        ("found unknown parameter", {'unknown_options': 3}),
+        ("parameter minimize=100 is incompatible with True", {'minimize': 100}),
+        ("invalid literal for int", {'processes_per_experiment': 'incorrect_string'})
     ]
-    for option in options:
-        yield assert_raises, YamlParseError, ExperimentBuilder._validate_options, option, True
+    for regex, option in options:
+        yield assert_raises_regexp, YamlParseError, regex, ExperimentBuilder._validate_options, option, True
 
 
 def test_validation_correct_molecules():
