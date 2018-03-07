@@ -265,12 +265,12 @@ Specifying Simulation Stop Conditions
 =====================================
 
 YANK simulations will run until one of two stop conditions are met, if specified: either the
-:ref:`maximum number of iterations <yaml_options_number_of_iterations>` is reached, or the
+:ref:`maximum number of iterations <yaml_options_default_number_of_iterations>` is reached, or the
 :ref:`error in free energy difference of the phase <yaml_options_online_analysis_parameters>` reaches a target value
 through online analysis.
 These options can be combined to change when YANK stops a simulation.
 
-Specifying a :ref:`maximum number of iterations <yaml_options_number_of_iterations>` will tell YANK to run each phase
+Specifying a :ref:`maximum number of iterations <yaml_options_default_number_of_iterations>` will tell YANK to run each phase
 up to the target number of iterations. This options accepts any positive integer, ``0`` (zero), or infinity
 (``.inf`` in the .yaml, ``float('inf')`` or ``numpy.inf`` in the API). Setting this option to ``0`` will tell YANK to only handle file
 initialization and input preparation, without running any production simulation. Setting this to ``.inf`` will

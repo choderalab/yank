@@ -27,7 +27,7 @@ Options Heading
    options:
      minimize: yes
      verbose: yes
-     number_of_iterations: 500
+     default_number_of_iterations: 500
      temperature: 300*kelvin
      pressure: null
      output_dir: hgoutput
@@ -38,7 +38,7 @@ to see what is happening.
 We will be running implicit, non-periodic NVT system. So we set the ``temperature``, then set the ``pressure`` to ``null``
 to ensure we are in NVT mode.
 
-Finally, we set a limited number of iterations with ``number_of_iterations`` (for this example) and choose a specific
+Finally, we set a limited number of iterations with ``default_number_of_iterations`` (for this example) and choose a specific
 output directory called ``hgoutput``. Note that this folder is relative to the ``yank.yaml`` file.
 
 

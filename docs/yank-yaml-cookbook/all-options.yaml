@@ -50,7 +50,7 @@ options:
   minimize_tolerance: 1.0 * kilojoules_per_mole / nanometers    # Set minimization tolerance.
   number_of_equilibration_iterations: 1                         # Number of equilibration iterations.
   equilibration_timestep: 1.0 * femtosecond                     # Timestep for use in equilibration.
-  number_of_iterations: 1                                       # Number of replica-exchange iterations to simulate.
+  default_number_of_iterations: 1                               # The default number of iterations to simulate.
   nsteps_per_iteration: 500                                     # Number of timesteps per iteration.
   timestep: 2.0 * femtosecond                                   # Timestep for Langevin dyanmics.
   replica_mixing_scheme: swap-all                               # Specify how to mix replicas. Possible values are

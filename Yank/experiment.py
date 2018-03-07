@@ -969,8 +969,6 @@ class ExperimentBuilder(object):
             self._options.
         phase_options : dict
             The options to pass to the AlchemicalPhaseFactory constructor.
-        sampler_options : dict
-            The options to pass to the ReplicaExchange constructor.
         alchemical_region_options : dict
             The options to pass to AlchemicalRegion.
         alchemical_factory_options : dict

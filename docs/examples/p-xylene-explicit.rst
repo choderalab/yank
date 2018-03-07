@@ -313,7 +313,7 @@ the following options:
 .. code-block:: yaml
 
    options:
-     number_of_iterations: <Some Integer>
+     default_number_of_iterations: <Some Integer>
      resume_simulation: yes
 
 where you replace ``<Some Integer>`` with a number larger than the number of iterations you just ran.

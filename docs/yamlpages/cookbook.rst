@@ -50,7 +50,7 @@ In this example:
     experiments_dir: experiments
     randomize_ligand: yes
     minimize: yes
-    number_of_iterations: 2000
+    default_number_of_iterations: 2000
     temperature: 300*kelvin
     pressure: null
   
@@ -124,7 +124,7 @@ In this Example:
      minimize: yes
      verbose: yes
      output_dir: .
-     number_of_iterations: 2000
+     default_number_of_iterations: 2000
      temperature: 300*kelvin
      pressure: 1*atmosphere
 
