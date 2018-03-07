@@ -14,7 +14,7 @@ options:
   temperature: 310*kelvin
   pressure: 1*atmosphere
   constraints: HBonds
-  number_of_iterations: 200
+  default_number_of_iterations: 200
   minimize: yes
 
 

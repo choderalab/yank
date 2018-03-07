@@ -220,13 +220,15 @@ Valid options (0): <Integer>
 .. code-block:: yaml
 
    options:
-     processes_per_experiment: null
+     processes_per_experiment: auto
 
 When running YANK on multiple processes with MPI, you can run several experiments in parallel by using this option to
-allocate a given number of processes to each experiment. If ``null``, the experiments are performed one after the
-other on all the available MPI processes.
+allocate a given number of processes to each experiment. This option is ignored if YANK is not run with MPI. If ``null``,
+the experiments are performed one after the other on all the available MPI processes. When ``auto`` is selected, YANK
+tries to run as many experiment as possible in parallel on independent MPI processes. Currently, only
+``processes_per_experiment = 1`` is supported for the SAMS sampler.
 
-Valid options (null): null / <Integer>
+Valid options (auto): auto / null / <Integer>
 
 
 
@@ -540,19 +542,20 @@ Valid Options (1.0 * femtosecond): <Quantity Time> [1]_
 
 
 
-.. _yaml_options_number_of_iterations:
+.. _yaml_options_default_number_of_iterations:
 
 .. rst-class:: html-toggle
 
-``number_of_iterations``
-------------------------
+``default_number_of_iterations``
+--------------------------------
 .. code-block:: yaml
 
    options:
-     number_of_iterations: 1
+     default_number_of_iterations: 1
 
-Number of iterations for production simulation. Note: If :ref:`resume_simulation <yaml_options_resume_simulation>` is
-set, this option can be used to extend previous simulations past their original number of iterations.
+Default number of iterations for the samplers that do not explicitly specify the option ``number_of_iterations``.
+Note: If :ref:`resume_simulation <yaml_options_resume_simulation>` is set, this option can be used to extend previous
+simulations past their original number of iterations.
 
 Specifying ``0`` will run through the setup, create all the simulation files, store all options, and minimize the
 initial configurations (if specified), but will not run any production simulations.

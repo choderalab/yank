@@ -24,6 +24,7 @@ import copy
 import logging
 import os
 
+import numpy as np
 import cerberus
 import cerberus.errors
 import openmmtools as mmtools
@@ -588,7 +589,7 @@ class ExperimentBuilder(object):
         'precision': 'auto',
         'max_n_contexts': 3,
         'switch_experiment_interval': 0,
-        'processes_per_experiment': None
+        'processes_per_experiment': 'auto'
     }
 
     # These options can be overwritten also in the "experiment"
@@ -776,21 +777,21 @@ class ExperimentBuilder(object):
             self._generate_experiments_protocols()
 
             # Find all the experiments to distribute among mpicomms.
-            all_experiments = [experiment for experiment in self._expand_experiments()]
-            processes_per_experiment = self._options['processes_per_experiment']
+            all_experiments = list(self._expand_experiments())
 
             # Cycle between experiments every switch_experiment_interval iterations
             # until all of them are done.
             while len(all_experiments) > 0:
-                # Distribute experiments across MPI communicators if requested.
-                completed = [False] * len(all_experiments)
-                if processes_per_experiment is None:
+                # Allocate the MPI processes to the experiments that still have to be completed.
+                group_size = self._get_experiment_mpi_group_size(all_experiments)
+                if group_size is None:
+                    completed = [False] * len(all_experiments)
                     for exp_index, exp in enumerate(all_experiments):
                         completed[exp_index] = self._run_experiment(exp)
                 else:
                     completed = mpi.distribute(self._run_experiment,
                                                distributed_args=all_experiments,
-                                               group_size=processes_per_experiment,
+                                               group_size=group_size,
                                                send_results_to='all')
 
                 # Remove any completed experiments, releasing possible parallel resources
@@ -968,8 +969,6 @@ class ExperimentBuilder(object):
             self._options.
         phase_options : dict
             The options to pass to the AlchemicalPhaseFactory constructor.
-        sampler_options : dict
-            The options to pass to the ReplicaExchange constructor.
         alchemical_region_options : dict
             The options to pass to AlchemicalRegion.
         alchemical_factory_options : dict
@@ -1108,8 +1107,8 @@ class ExperimentBuilder(object):
         Each generated experiment is uniquely named. If job_id and n_jobs are
         set, this returns only the experiments assigned to this particular job.
 
-        Returns
-        -------
+        Yields
+        ------
         experiment_path : str
             A unique path where to save the experiment output files relative to
             the main output directory specified by the user in the options.
@@ -1200,9 +1199,15 @@ class ExperimentBuilder(object):
             else:
                 return utils.quantity_from_string(cutoff, unit.angstroms)
 
+        def check_processes_per_experiment(processes_per_experiment):
+            if processes_per_experiment == 'auto' or processes_per_experiment is None:
+                return processes_per_experiment
+            return int(processes_per_experiment)
+
         special_conversions = {'constraints': to_openmm_app,
                                'default_number_of_iterations': schema.to_integer_or_infinity_coercer,
-                               'anisotropic_dispersion_cutoff': check_anisotropic_cutoff}
+                               'anisotropic_dispersion_cutoff': check_anisotropic_cutoff,
+                               'processes_per_experiment': check_processes_per_experiment}
 
         # Validate parameters.
         try:
@@ -2372,7 +2377,7 @@ class ExperimentBuilder(object):
                 continue
 
             # Determine output directory and create it if it doesn't exist.
-            self._safe_makedirs(os.path.dirname(script_filepath))
+            os.makedirs(os.path.dirname(script_filepath), exist_ok=True)
 
             # Check if any of the phases needs to have its path generated.
             protocol = self._protocols[experiment['protocol']]
@@ -2428,8 +2433,8 @@ class ExperimentBuilder(object):
         protocol = self._protocols[experiment['protocol']]
         phases_to_generate = self._find_automatic_protocol_phases(protocol)
 
-        # Build experiment.
-        exp = self._build_experiment(experiment_path, experiment)
+        # Build experiment. Use a dummy protocol for building since it hasn't been generated yet.
+        exp = self._build_experiment(experiment_path, experiment, use_dummy_protocol=True)
 
         # Generate protocols.
         optimal_protocols = collections.OrderedDict.fromkeys(phases_to_generate)
@@ -2614,6 +2619,52 @@ class ExperimentBuilder(object):
         with open(file_path, 'w') as f:
             f.write(yaml_content)
 
+    def _get_experiment_protocol(self, experiment_path, experiment_description,
+                                 use_dummy_protocol=False):
+        """Obtain the protocol for this experiment.
+
+        This masks whether the protocol is hardcoded in the input YAML
+        script or it has been generated automatically.
+
+        Parameters
+        ----------
+        experiment_path : str
+            The directory where to store the output files relative to the main
+            output directory as specified by the user in the YAML script.
+        experiment_description : dict
+            A dictionary describing a single experiment.
+        use_dummy_protocol : bool, optional
+            If True, automatically-generated protocols that have not been found
+            are substituted by a dummy protocol.
+
+        Returns
+        -------
+        protocol : OrderedDict
+            A dictionary thermodynamic_variable -> list of values.
+
+        """
+        protocol_id = experiment_description['protocol']
+        protocol = copy.deepcopy(self._protocols[protocol_id])
+
+        # Check if there are automatically-generated protocols.
+        generated_alchemical_paths = self._find_automatic_protocol_phases(protocol)
+        if len(generated_alchemical_paths) > 0:
+            yaml_script_file_path = self._get_generated_yaml_script_path(experiment_path)
+
+            # Use a dummy protocol if the file doesn't exist.
+            try:
+                with open(yaml_script_file_path, 'r') as f:
+                    yaml_script = yaml.load(f, Loader=YankLoader)
+            except FileNotFoundError:
+                if not use_dummy_protocol:
+                    raise
+                for phase_name in generated_alchemical_paths:
+                    protocol[phase_name]['alchemical_path'] = {}
+            else:
+                protocol = yaml_script['protocols'][protocol_id]
+
+        return protocol
+
     # --------------------------------------------------------------------------
     # Experiment building
     # --------------------------------------------------------------------------
@@ -2626,19 +2677,80 @@ class ExperimentBuilder(object):
         with open(analysis_script_path, 'w') as f:
             yaml.dump(analysis, f)
 
-    @mpi.on_single_node(rank=0, sync_nodes=True)
-    def _safe_makedirs(self, directory):
-        """Create directory and avoid race conditions.
+    def _get_experiment_mpi_group_size(self, experiments):
+        """Return the MPI group size to pass when executing the experiments.
 
-        This is executed only on node 0 to avoid race conditions. The
-        processes are synchronized at the end so that the non-0 nodes
-        won't raise an IO error when trying to write a file in a non-
-        existing directory.
+        The heuristic tries to allocate the MPI processes among the experiments
+        roughly according to their computational costs using the number of states
+        of the first phase (either complex or solvent1).
+
+        Parameters
+        ----------
+        experiments : list of pairs
+            Each pair contains (experiment_path, experiment_description) of an
+            experiment that needs to be run (i.e. that hasn't been completed yet).
+
+        Returns
+        -------
+        groups_size : list of integers
+            The MPI processes groups to pass to mpi.distribute().
 
         """
-        # TODO when dropping Python 2, remove this and use os.makedirs(, exist_ok=True)
-        if not os.path.isdir(directory):
-            os.makedirs(directory)
+        mpicomm = mpi.get_mpicomm()
+        n_experiments = len(experiments)
+        processes_per_experiment = self._options['processes_per_experiment']
+
+        # Check if we need to run the experiments sequentially.
+        if mpicomm is None:
+            return None
+        n_mpi_processes = mpicomm.size
+
+        # If we are using SAMS samplers, use 1 process only for all experiments.
+        # TODO when n_replicas is a parameter of the constructor, remove this.
+        sampler_names = {self._create_experiment_sampler(exp[1], []).__class__.__name__ for exp in experiments}
+        if 'SAMSSampler' in sampler_names:
+            if processes_per_experiment != 'auto':
+                logger.warning('The option "processes_per_experiment" will be overwritten as SAMS '
+                               'simulations are currently only compatible with processes_per_experiment=1')
+            if n_mpi_processes > n_experiments:
+                logger.warning('One MPI process will be assigned to each experiment but there are '
+                               'more MPI processes than experiments. Some process will be unused.')
+            return 1
+
+        # Check if the user has specified an hardcoded
+        # number of processes per experiments.
+        if processes_per_experiment != 'auto':
+            # If more processes are requested than MPI processes, run serially.
+            if processes_per_experiment is not None and processes_per_experiment >= n_mpi_processes:
+                return None
+            return processes_per_experiment
+
+        # If there are less MPI processes than experiments, completely split the MPI comm.
+        if n_mpi_processes <= n_experiments:
+            return 1
+
+        # Split the mpicomm among the experiments.
+        group_size = min(1, int(n_mpi_processes / n_experiments))
+
+        # Estimate the computational cost of each experiment taken as the
+        # number of thermodynamic states of the complex phase.
+        experiment_costs = np.zeros(n_experiments)
+        for experiment_idx, (experiment_path, experiment_description) in enumerate(experiments):
+            protocol = self._get_experiment_protocol(experiment_path, experiment_description)
+            first_phase_name = next(iter(protocol))  # protocol is an OrderedDict
+            n_states = len(protocol[first_phase_name]['alchemical_path']['lambda_electrostatics'])
+            experiment_costs[experiment_idx] = n_states
+
+        # Find the index of the most expensive jobs.
+        n_expensive_experiments = n_mpi_processes - n_experiments
+        expensive_experiment_indices = list(reversed(np.argsort(experiment_costs)))
+        expensive_experiment_indices = expensive_experiment_indices[:n_expensive_experiments]
+
+        # The most expensive jobs are allocated an extra MPI process.
+        group_size = [group_size for _ in range(n_experiments)]
+        for expensive_experiment_idx in expensive_experiment_indices:
+            group_size[expensive_experiment_idx] += 1
+        return group_size
 
     def _create_experiment_restraint(self, experiment_description):
         """Create a restraint object for the experiment."""
@@ -2713,7 +2825,7 @@ class ExperimentBuilder(object):
         # Create the sampler.
         return schema.call_sampler_constructor(constructor_description)
 
-    def _build_experiment(self, experiment_path, experiment):
+    def _build_experiment(self, experiment_path, experiment, use_dummy_protocol=False):
         """Prepare a single experiment.
 
         Parameters
@@ -2723,6 +2835,9 @@ class ExperimentBuilder(object):
             output directory as specified by the user in the YAML script.
         experiment : dict
             A dictionary describing a single experiment
+        use_dummy_protocol : bool, optional
+            If True, automatically-generated protocols that have not been found
+            are substituted by a dummy protocol.
 
         Returns
         -------
@@ -2796,25 +2911,8 @@ class ExperimentBuilder(object):
                 solvent_ids = [None, None]
                 regions = {}
 
-        # Obtain the protocol for this experiment. We need to load the
-        # alchemical path from the single-experiment YAML file if it has
-        # been automatically generated.
-        protocol = copy.deepcopy(self._protocols[experiment['protocol']])
-        generated_alchemical_paths = self._find_automatic_protocol_phases(protocol)
-        if len(generated_alchemical_paths) > 0:
-            yaml_script_file_path = self._get_generated_yaml_script_path(experiment_path)
-
-            # The file won't exist if _build_experiment has been called
-            # within _generate_experiment_protocol. In this case we just
-            # use a dummy protocol.
-            try:
-                with open(yaml_script_file_path, 'r') as f:
-                    yaml_script = yaml.load(f, Loader=YankLoader)
-            except FileNotFoundError:
-                for phase_name in generated_alchemical_paths:
-                    protocol[phase_name]['alchemical_path'] = {}
-            else:
-                protocol = yaml_script['protocols'][experiment['protocol']]
+        # Obtain the protocol for this experiment.
+        protocol = self._get_experiment_protocol(experiment_path, experiment, use_dummy_protocol)
 
         # Get system files.
         system_files_paths = self._db.get_system(system_id)

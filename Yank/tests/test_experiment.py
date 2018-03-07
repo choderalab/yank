@@ -176,6 +176,11 @@ def get_template_script(output_dir='.', keep_schrodinger=False, keep_openeye=Fal
             solvent2: vacuum
             leap:
                 parameters: [leaprc.protein.ff14SB, leaprc.gaff]
+    samplers:
+        repex:
+            type: ReplicaExchangeSampler
+        sams:
+            type: SAMSSampler
     protocols:
         absolute-binding:
             complex:
@@ -189,8 +194,8 @@ def get_template_script(output_dir='.', keep_schrodinger=False, keep_openeye=Fal
         hydration-protocol:
             solvent1:
                 alchemical_path:
-                    lambda_electrostatics: [1.0, 0.5, 0.0]
-                    lambda_sterics: [1.0, 0.5, 0.0]
+                    lambda_electrostatics: [1.0, 0.0]
+                    lambda_sterics: [1.0, 0.0]
             solvent2:
                 alchemical_path:
                     lambda_electrostatics: [1.0, 0.0]
@@ -397,14 +402,68 @@ def test_paths_properties():
     assert exp_builder._db.setup_dir == os.path.join('output2', 'setup2')
 
 
+def test_processes_per_experiment():
+    """Test the determination of processes_per_experiment option."""
+    # Create a script with 4 experiments.
+    template_script = get_template_script()
+    template_script['experiment1'] = copy.deepcopy(template_script['experiments'])
+    template_script['experiment1']['system'] = utils.CombinatorialLeaf(['explicit-system', 'implicit-system'])
+    # The first two experiments have less number of states than the other two.
+    template_script['experiment1']['protocol'] = 'hydration-protocol'
+    template_script['experiment2'] = copy.deepcopy(template_script['experiments'])
+    template_script['experiment2']['system'] = 'hydration-system'
+    # The last experiment uses SAMS.
+    template_script['experiment2']['sampler'] = utils.CombinatorialLeaf(['repex', 'sams'])
+    template_script['experiments'] = ['experiment1', 'experiment2']
+
+    exp_builder = ExperimentBuilder(template_script)
+    experiments = list(exp_builder._expand_experiments())
+
+    # The default is auto.
+    assert exp_builder._options['processes_per_experiment'] == 'auto'
+
+    # When there is no MPI environment the calculation is serial.
+    assert exp_builder._get_experiment_mpi_group_size(experiments) is None
+
+    # In an MPI environment, the MPI communicator is split according
+    # to the number of experiments still have to be completed. Each
+    # test case is pair (experiments, MPICOMM size, expected return value).
+    test_cases = [
+        (experiments, 5, 1),
+        (experiments[:-1], 4, [1, 1, 2]),
+        (experiments[1:-1], 4, [2, 2]),
+        (list(reversed(experiments[1:-1])), 3, [2, 1]),
+        (experiments[:-1], 2, 1)
+    ]
+
+    for i, (exp, mpicomm_size, expected_result) in enumerate(test_cases):
+        with mpi._simulated_mpi_environment(size=mpicomm_size):
+            result = exp_builder._get_experiment_mpi_group_size(exp)
+            err_msg = ('experiments: {}\nMPICOMM size: {}\nexpected result: {}'
+                       '\nresult: {}').format(*test_cases[i], result)
+            assert result == expected_result, err_msg
+
+    # Test manual setting of processes_per_experiments.
+    test_cases = [2, None]
+    for processes_per_experiment in test_cases:
+        exp_builder._options['processes_per_experiment'] = processes_per_experiment
+        # Serial execution is always None.
+        assert exp_builder._get_experiment_mpi_group_size(experiments) is None
+        with mpi._simulated_mpi_environment(size=5):
+            assert exp_builder._get_experiment_mpi_group_size(experiments[:-1]) == processes_per_experiment
+            # When there are SAMS sampler, it's always 1.
+            assert exp_builder._get_experiment_mpi_group_size(experiments) == 1
+
+
 def test_validation_wrong_options():
     """YAML validation raises exception with wrong molecules."""
     options = [
-        {'unknown_options': 3},
-        {'minimize': 100}
+        ("found unknown parameter", {'unknown_options': 3}),
+        ("parameter minimize=100 is incompatible with True", {'minimize': 100}),
+        ("invalid literal for int", {'processes_per_experiment': 'incorrect_string'})
     ]
-    for option in options:
-        yield assert_raises, YamlParseError, ExperimentBuilder._validate_options, option, True
+    for regex, option in options:
+        yield assert_raises_regexp, YamlParseError, regex, ExperimentBuilder._validate_options, option, True
 
 
 def test_validation_correct_molecules():
@@ -2540,7 +2599,17 @@ def test_automatic_alchemical_path():
         yaml_script['experiments']['protocol'] = 'hydration-protocol'
 
         exp_builder = ExperimentBuilder(yaml_script)
-        exp_builder._check_resume()  # check_resume should not raise exceptions
+
+        # ExperimentBuilder._get_experiment_protocol handles dummy protocols.
+        experiment_path, experiment_description = next(exp_builder._expand_experiments())
+        with assert_raises(FileNotFoundError):
+            exp_builder._get_experiment_protocol(experiment_path, experiment_description)
+        dummy_protocol = exp_builder._get_experiment_protocol(experiment_path, experiment_description,
+                                                              use_dummy_protocol=True)
+        assert dummy_protocol['solvent2']['alchemical_path'] == {}  # This is the dummy protocol.
+
+        # check_resume should not raise exceptions at this point.
+        exp_builder._check_resume()
 
         # Building the experiment should generate the alchemical path.
         for experiment in exp_builder.build_experiments():

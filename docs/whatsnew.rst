@@ -6,6 +6,11 @@ This section features and improvements of note in each release.
 
 The full release history can be viewed `at the GitHub yank releases page <https://github.com/choderalab/yank/releases>`_.
 
+Development
+-----------
+- Renamed global option ``number_of_iterations`` to ``default_number_of_iterations``. `[docs] <http://getyank.org/latest/yamlpages/options.html#default_number_of_iterations>`_
+- Added support for automatic determination of ``processes_per_experiment`` (now the default). `[docs] <http://getyank.org/latest/yamlpages/options.html#processes_per_experiment>`_
+
 0.20.1 Alchemical factory options and fast computation of the energy matrix
 ---------------------------------------------------------------------------
 - Allow user to specify options for ``openmmtools.alchemy.AbsoluteAlchemicalFactory`` in the YAML file. In particular,

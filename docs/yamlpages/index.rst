@@ -64,7 +64,7 @@ Detailed Options List
     * :ref:`minimize_tolerance <yaml_options_minimize_tolerance>`
     * :ref:`number_of_equilibration_iterations <yaml_options_number_of_equilibration_iterations>`
     * :ref:`equilibration_timestep <yaml_options_equilibration_timestep>`
-    * :ref:`number_of_iterations <yaml_options_number_of_iterations>`
+    * :ref:`default_number_of_iterations <yaml_options_default_number_of_iterations>`
     * :ref:`nsteps_per_iteration <yaml_options_nsteps_per_iteration>`
     * :ref:`timestep <yaml_options_timestep>`
     * :ref:`checkpoint_interval <yaml_options_checkpoint_interval>`
