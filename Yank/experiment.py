@@ -1202,7 +1202,7 @@ class ExperimentBuilder(object):
                 return utils.quantity_from_string(cutoff, unit.angstroms)
 
         def check_processes_per_experiment(processes_per_experiment):
-            if processes_per_experiment == 'auto':
+            if processes_per_experiment == 'auto' or processes_per_experiment is None:
                 return processes_per_experiment
             return int(processes_per_experiment)
 
@@ -2698,35 +2698,37 @@ class ExperimentBuilder(object):
             The MPI processes groups to pass to mpi.distribute().
 
         """
+        mpicomm = mpi.get_mpicomm()
         n_experiments = len(experiments)
+        processes_per_experiment = self._options['processes_per_experiment']
 
         # Check if we need to run the experiments sequentially.
-        mpicomm = mpi.get_mpicomm()
-        processes_per_experiment = self._options['processes_per_experiment']
-        if processes_per_experiment is None or mpicomm is None:
+        if mpicomm is None:
             return None
-
-        # Obtain the number of MPI processes available.
         n_mpi_processes = mpicomm.size
+
+        # If we are using SAMS samplers, use 1 process only for all experiments.
+        # TODO when n_replicas is a parameter of the constructor, remove this.
+        sampler_names = {self._create_experiment_sampler(exp[1], []).__class__.__name__ for exp in experiments}
+        if 'SAMSSampler' in sampler_names:
+            if processes_per_experiment != 'auto':
+                logger.warning('The option "processes_per_experiment" will be overwritten as SAMS '
+                               'simulations are currently only compatible with processes_per_experiment=1')
+            if n_mpi_processes > n_experiments:
+                logger.warning('One MPI process will be assigned to each experiment but there are '
+                               'more MPI processes than experiments. Some process will be unused.')
+            return 1
 
         # Check if the user has specified an hardcoded
         # number of processes per experiments.
         if processes_per_experiment != 'auto':
             # If more processes are requested than MPI processes, run serially.
-            if processes_per_experiment >= n_mpi_processes:
+            if processes_per_experiment is not None and processes_per_experiment >= n_mpi_processes:
                 return None
             return processes_per_experiment
 
         # If there are less MPI processes than experiments, completely split the MPI comm.
         if n_mpi_processes <= n_experiments:
-            return 1
-
-        # If we are using SAMS samplers, use 1 process only.
-        # TODO when n_replicas is a parameter of the constructor, remove this.
-        sampler_names = {self._create_experiment_sampler(exp[1], []).__class__.__name__ for exp in experiments}
-        if 'SAMSSampler' in sampler_names:
-            logger.warning('One MPI process will be assigned to each experiment but there are '
-                           'more MPI processes than experiments. Some process will be unused.')
             return 1
 
         # Split the mpicomm among the experiments.

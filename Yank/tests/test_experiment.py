@@ -402,8 +402,8 @@ def test_paths_properties():
     assert exp_builder._db.setup_dir == os.path.join('output2', 'setup2')
 
 
-def test_auto_processes_per_experiment():
-    """Test the automatic determination of processes_per_experiment."""
+def test_processes_per_experiment():
+    """Test the determination of processes_per_experiment option."""
     # Create a script with 4 experiments.
     template_script = get_template_script()
     template_script['experiment1'] = copy.deepcopy(template_script['experiments'])
@@ -442,6 +442,17 @@ def test_auto_processes_per_experiment():
             err_msg = ('experiments: {}\nMPICOMM size: {}\nexpected result: {}'
                        '\nresult: {}').format(*test_cases[i], result)
             assert result == expected_result, err_msg
+
+    # Test manual setting of processes_per_experiments.
+    test_cases = [2, None]
+    for processes_per_experiment in test_cases:
+        exp_builder._options['processes_per_experiment'] = processes_per_experiment
+        # Serial execution is always None.
+        assert exp_builder._get_experiment_mpi_group_size(experiments) is None
+        with mpi._simulated_mpi_environment(size=5):
+            assert exp_builder._get_experiment_mpi_group_size(experiments[:-1]) == processes_per_experiment
+            # When there are SAMS sampler, it's always 1.
+            assert exp_builder._get_experiment_mpi_group_size(experiments) == 1
 
 
 def test_validation_wrong_options():
