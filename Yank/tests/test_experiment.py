@@ -176,6 +176,11 @@ def get_template_script(output_dir='.', keep_schrodinger=False, keep_openeye=Fal
             solvent2: vacuum
             leap:
                 parameters: [leaprc.protein.ff14SB, leaprc.gaff]
+    samplers:
+        repex:
+            type: ReplicaExchangeSampler
+        sams:
+            type: SAMSSampler
     protocols:
         absolute-binding:
             complex:
@@ -399,14 +404,16 @@ def test_paths_properties():
 
 def test_auto_processes_per_experiment():
     """Test the automatic determination of processes_per_experiment."""
-    # Create a script with 3 experiments.
-    # The first two experiments have less number of states than the third.
+    # Create a script with 4 experiments.
     template_script = get_template_script()
     template_script['experiment1'] = copy.deepcopy(template_script['experiments'])
     template_script['experiment1']['system'] = utils.CombinatorialLeaf(['explicit-system', 'implicit-system'])
+    # The first two experiments have less number of states than the other two.
     template_script['experiment1']['protocol'] = 'hydration-protocol'
     template_script['experiment2'] = copy.deepcopy(template_script['experiments'])
     template_script['experiment2']['system'] = 'hydration-system'
+    # The last experiment uses SAMS.
+    template_script['experiment2']['sampler'] = utils.CombinatorialLeaf(['repex', 'sams'])
     template_script['experiments'] = ['experiment1', 'experiment2']
 
     exp_builder = ExperimentBuilder(template_script)
@@ -422,16 +429,19 @@ def test_auto_processes_per_experiment():
     # to the number of experiments still have to be completed. Each
     # test case is pair (experiments, MPICOMM size, expected return value).
     test_cases = [
-        (experiments, 4, [1, 1, 2]),
-        (experiments[1:], 4, [2, 2]),
-        (list(reversed(experiments[1:])), 3, [2, 1]),
-        (experiments, 2, 1)
+        (experiments, 5, 1),
+        (experiments[:-1], 4, [1, 1, 2]),
+        (experiments[1:-1], 4, [2, 2]),
+        (list(reversed(experiments[1:-1])), 3, [2, 1]),
+        (experiments[:-1], 2, 1)
     ]
 
     for i, (exp, mpicomm_size, expected_result) in enumerate(test_cases):
         with mpi._simulated_mpi_environment(size=mpicomm_size):
-            err_msg = 'experiments: {}\nMPICOMM size: {}\nexpected result: {}'.format(*test_cases[i])
-            assert exp_builder._get_experiment_mpi_group_size(exp) == expected_result, err_msg
+            result = exp_builder._get_experiment_mpi_group_size(exp)
+            err_msg = ('experiments: {}\nMPICOMM size: {}\nexpected result: {}'
+                       '\nresult: {}').format(*test_cases[i], result)
+            assert result == expected_result, err_msg
 
 
 def test_validation_wrong_options():

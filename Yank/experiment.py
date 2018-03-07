@@ -2721,6 +2721,14 @@ class ExperimentBuilder(object):
         if n_mpi_processes <= n_experiments:
             return 1
 
+        # If we are using SAMS samplers, use 1 process only.
+        # TODO when n_replicas is a parameter of the constructor, remove this.
+        sampler_names = {self._create_experiment_sampler(exp[1], []).__class__.__name__ for exp in experiments}
+        if 'SAMSSampler' in sampler_names:
+            logger.warning('One MPI process will be assigned to each experiment but there are '
+                           'more MPI processes than experiments. Some process will be unused.')
+            return 1
+
         # Split the mpicomm among the experiments.
         group_size = min(1, int(n_mpi_processes / n_experiments))
 
