@@ -149,7 +149,7 @@ class SAMSSampler(MultiStateSampler):
 
     """
 
-    _TITLE_TEMPLATE = ('Self-adjusted mixture sampling (SAMS) simultion using SAMSSampler '
+    _TITLE_TEMPLATE = ('Self-adjusted mixture sampling (SAMS) simulation using SAMSSampler '
                        'class of yank.multistate on {}')
 
     def __init__(self,
@@ -211,6 +211,7 @@ class SAMSSampler(MultiStateSampler):
         # Private variables
         # self._replica_neighbors[replica_index] is a list of states that form the neighborhood of ``replica_index``
         self._replica_neighbors = None
+        self._cached_state_histogram = None
 
     class _StoredProperty(MultiStateSampler._StoredProperty):
 
@@ -331,43 +332,30 @@ class SAMSSampler(MultiStateSampler):
         # Update log weights
         self._update_log_weights()
 
-    # TODO: Get rid of from_storage() when we move read_logZ and write_logZ to multistatesampler.py
-    # LNN: I'm not sure we can since the "logZ" data is not the only thing we are restoring (e.g. other options)
-    @classmethod
-    def from_storage(cls, storage):
-        """Constructor from an existing storage file.
-
-        Parameters
-        ----------
-        storage : str or Reporter
-            If str: The path to the storage file.
-            If :class:`Reporter`: uses the :class:`Reporter` options
-            In the future this will be able to take a Storage class as well.
-
-        Returns
-        -------
-        sampler : SAMSSampler
-            A new instance of MultiStateSampler (or subclass) in the same state of the
-            last stored iteration.
-
-        """
-        sampler = super(SAMSSampler, cls).from_storage(storage)
-        # sampler._reporter.open('r')
-        sampler._logZ = sampler._reporter.read_logZ(sampler._iteration)
-        # sampler._reporter.close()
+    def _restore_sampler_from_reporter(self, reporter):
+        super()._restore_sampler_from_reporter(reporter)
+        self._cached_state_histogram = self._compute_state_histogram(reporter=reporter)
+        self._logZ = reporter.read_logZ(self._iteration)
 
         # Compute log weights from log target probability and logZ estimate
-        sampler._update_log_weights()
+        self._update_log_weights()
 
         # Determine t0
-        sampler._initialize_stage()
-        sampler._update_stage()
+        self._initialize_stage()
+        self._update_stage()
 
-        return sampler
-
-    def _report_iteration(self):
-        super(SAMSSampler, self)._report_iteration()
+    @mpi.on_single_node(rank=0, broadcast_result=False, sync_nodes=False)
+    @mpi.delayed_termination
+    def _report_iteration_items(self):
+        super(SAMSSampler, self)._report_iteration_items()
         self._reporter.write_logZ(self._iteration, self._logZ)
+        # Split into which states and how many samplers are in each state
+        # Trying to do histogram[replica_thermo_states] += 1 does not correctly handle multiple
+        # replicas in the same state.
+        states, counts = np.unique(self._replica_thermodynamic_states, return_counts=True)
+        if self._cached_state_histogram is None:
+            self._cached_state_histogram = np.zeros(self.n_states, dtype=int)
+        self._cached_state_histogram[states] += counts
 
     @mpi.on_single_node(0, broadcast_result=True)
     def _mix_replicas(self):
@@ -508,6 +496,7 @@ class SAMSSampler(MultiStateSampler):
             self._n_proposed_matrix[current_state_index, neighborhood] += 1
             self._n_accepted_matrix[current_state_index, new_state_index] += 1
 
+    @property
     def _state_histogram(self):
         """
         Compute the histogram for the number of times each state has been visited.
@@ -517,11 +506,17 @@ class SAMSSampler(MultiStateSampler):
         N_k : array-like of shape [n_states] of int
             N_k[state_index] is the number of times a replica has visited state ``state_index``
         """
-        # TODO: Instead of summing each iteration, store `number_of_state_visits[:]` in storage?
-        replica_thermodynamic_states = self._reporter.read_replica_thermodynamic_states(iteration=slice(0,self._iteration))
-        N_k, _ = np.histogram(replica_thermodynamic_states, bins=np.arange(-0.5, self.n_states+0.5))
-        logger.debug('  state histogram counts: %s' % str(N_k))
-        return N_k
+        if self._cached_state_histogram is None:
+            self._cached_state_histogram = self._compute_state_histogram()
+        return self._cached_state_histogram
+
+    def _compute_state_histogram(self, reporter=None):
+        """ Compute state histogram from disk"""
+        if reporter is None:
+            reporter = self._reporter
+        replica_thermodynamic_states = reporter.read_replica_thermodynamic_states()
+        n_k, _ = np.histogram(replica_thermodynamic_states, bins=np.arange(-0.5, self.n_states + 0.5))
+        return n_k
 
     def _update_stage(self):
         """
@@ -532,7 +527,8 @@ class SAMSSampler(MultiStateSampler):
         #flatness_criteria = 'minimum-visits' # DEBUG
         flatness_criteria = 'logZ-flatness' # DEBUG
         minimum_visits = 1
-        N_k = self._state_histogram()
+        N_k = self._state_histogram
+        logger.debug('    state histogram counts: {}'.format(self._cached_state_histogram))
         if (self.update_stages == 'two-stage') and (self._stage == 'initial'):
             advance = False
             if N_k.sum() == 0:
@@ -668,6 +664,7 @@ class SAMSAnalyzer(MultiStateSamplerAnalyzer):
 # ==============================================================================
 # MAIN AND TESTS
 # ==============================================================================
+
 
 if __name__ == "__main__":
     import doctest

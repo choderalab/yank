@@ -1044,12 +1044,8 @@ class MultiStateReporter(object):
         logZ : np.array with shape [n_states]
             Dimensionless logZ
         """
-        # TODO: Remove commented block (or whole thing) when tests pass -LNN
         data = self.read_online_analysis_data(None, "logZ")
         return data['logZ']
-        # online_group = self._storage_analysis.groups['online_analysis']
-        # logZ = online_group.variables['logZ'][iteration]
-        # return logZ
 
     def write_logZ(self, iteration: int, logZ: np.ndarray):
         """
@@ -1064,17 +1060,6 @@ class MultiStateReporter(object):
             Dimensionless log Z
         """
         self.write_online_data_dynamic_and_static(iteration, logZ=logZ)
-        # TODO: Remove commended block if tests work (Could also remove function entirely)-LNN
-        # analysis_nc = self._storage_analysis
-        # if 'logZ' not in analysis_nc.dimensions:
-        #     analysis_nc.createDimension('logZ_length', len(logZ))
-        #     if 'online_analysis' not in analysis_nc.groups:
-        #         online_group = analysis_nc.createGroup('online_analysis')
-        #         # larger chunks, faster operations, small matrix anyways
-        #         online_group.createVariable('logZ', float, dimensions=('iteration', 'logZ_length'),
-        #                                     zlib=True, chunksizes=(1, len(logZ)), fill_value=MISSING_VALUE)
-        # online_group = analysis_nc.groups['online_analysis']
-        # online_group.variables['logZ'][iteration] = logZ
 
     # TODO: Remove function if tests pass -LNN
     def read_mbar_free_energies(self, iteration):
@@ -1285,9 +1270,9 @@ class MultiStateReporter(object):
     def _find_alternate_variable(iteration, variable, storage):
         """Helper function to figure out what went wrong when data not found"""
         iter_var = variable + "_history"
-        if iteration is None and iter_var in storage:
+        if iteration is None and iter_var in storage.variables:
             return True
-        elif iteration is not None and variable in storage:
+        elif iteration is not None and variable in storage.variables:
             return True
         return False
 
@@ -1311,7 +1296,6 @@ class MultiStateReporter(object):
         else:
             return data
 
-
     def _determine_netcdf_variable_parameters(self, iteration, data, storage):
         """
         Pre-determine the variable information needed to create the variable on the storage layer
@@ -1321,16 +1305,16 @@ class MultiStateReporter(object):
             # Scalar data
             size = 1
             try:
-                dtype = data.dtype # numpy
+                dtype = data.dtype  # numpy
             except AttributeError:
-                dtype = type(data) # python
+                dtype = type(data)  # python
         else:
             # Array data
             size = len(data)
             try:
-                dtype = data.dtype # numpy
+                dtype = data.dtype  # numpy
             except AttributeError:
-                dtype = type(data[0]) # python
+                dtype = type(data[0])  # python
 
         data_dim = "dim_size{}".format(size)
 
