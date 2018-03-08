@@ -344,8 +344,8 @@ class SAMSSampler(MultiStateSampler):
 
     @mpi.on_single_node(rank=0, broadcast_result=False, sync_nodes=False)
     @mpi.delayed_termination
-    def _report_iteration(self):
-        super(SAMSSampler, self)._report_iteration()
+    def _report_iteration_items(self):
+        super(SAMSSampler, self)._report_iteration_items()
         self._reporter.write_logZ(self._iteration, self._logZ)
         try:
             # Might just try calling `self._state_histograms` instead (code duplication reduction)

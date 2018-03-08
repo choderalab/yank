@@ -1130,6 +1130,22 @@ class MultiStateSampler(object):
         termination is delayed so that the file is not written only with
         partial data if the program gets interrupted.
 
+        Subclasses should not attempt to modify this function as it can
+        force either duplicated or missed ``sync()`` calls
+        """
+        # Call report_iteration_items for a subclass-friendly function
+        self._report_iteration_items()
+        self._reporter.write_timestamp(self._iteration)
+        self._reporter.write_last_iteration(self._iteration)
+        self._reporter.sync()
+
+    @mpi.on_single_node(rank=0, broadcast_result=False, sync_nodes=False)
+    @mpi.delayed_termination
+    def _report_iteration_items(self):
+        """
+        Sub-function of :func:`_report_iteration` which handles all the actual individual item reporting in a
+        sub-class friendly way. The final actions of writing timestamp, last-good-iteration, and syncing
+        should be left to the :func:`_report_iteration` and subclasses should extend this function instead
         """
         self._reporter.write_sampler_states(self._sampler_states, self._iteration)
         self._reporter.write_replica_thermodynamic_states(self._replica_thermodynamic_states, self._iteration)
@@ -1137,9 +1153,6 @@ class MultiStateSampler(object):
         self._reporter.write_energies(self._energy_thermodynamic_states, self._neighborhoods, self._energy_unsampled_states,
                                       self._iteration)
         self._reporter.write_mixing_statistics(self._n_accepted_matrix, self._n_proposed_matrix, self._iteration)
-        self._reporter.write_timestamp(self._iteration)
-        self._reporter.write_last_iteration(self._iteration)
-        self._reporter.sync()
 
     @classmethod
     def default_options(cls):
