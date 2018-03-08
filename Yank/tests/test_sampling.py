@@ -1654,7 +1654,7 @@ class TestSingleReplicaSAMS(TestMultiStateSampler):
             reporter = self.REPORTER(storage_path, open_mode='a', checkpoint_interval=2)
             replica_thermodynamic_states = reporter.read_replica_thermodynamic_states()
             N_k, _ = np.histogram(replica_thermodynamic_states, bins=np.arange(-0.5, sampler.n_states + 0.5))
-            assert np.all(sampler._state_histogram() == N_k)
+            assert np.all(sampler._state_histogram == N_k)
 
     # TODO: Test all update methods
 

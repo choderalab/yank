@@ -207,6 +207,12 @@ class MultiStateSampler(object):
         """
         sampler, reporter = cls._instantiate_sampler_from_storage(storage)
         sampler._restore_sampler_from_reporter(reporter)
+        # Close reading reporter.
+        reporter.close()
+        # We open the reporter only in node 0 in append mode ready for use
+        sampler._reporter = reporter
+        mpi.run_single_node(0, sampler._reporter.open, mode='a',
+                            broadcast_result=False, sync_nodes=False)
         # Don't write the new last iteration, we have not technically written anything yet, so there is no "junk"
         return sampler
 
@@ -958,9 +964,6 @@ class MultiStateSampler(object):
         else:
             last_mbar_f_k, last_err_free_energy = None, None
 
-        # Close reading reporter.
-        reporter.close()
-
         # Assign attributes.
         self._iteration = iteration
         self._thermodynamic_states = thermodynamic_states
@@ -976,11 +979,6 @@ class MultiStateSampler(object):
 
         self._last_mbar_f_k = last_mbar_f_k
         self._last_err_free_energy = last_err_free_energy
-
-        # We open the reporter only in node 0.
-        self._reporter = reporter
-        mpi.run_single_node(0, self._reporter.open, mode='a',
-                            broadcast_result=False, sync_nodes=False)
 
     def _check_nan_energy(self):
         """Checks that energies are finite and abort otherwise.
