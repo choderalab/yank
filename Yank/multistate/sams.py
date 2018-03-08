@@ -149,7 +149,7 @@ class SAMSSampler(MultiStateSampler):
 
     """
 
-    _TITLE_TEMPLATE = ('Self-adjusted mixture sampling (SAMS) simultion using SAMSSampler '
+    _TITLE_TEMPLATE = ('Self-adjusted mixture sampling (SAMS) simulation using SAMSSampler '
                        'class of yank.multistate on {}')
 
     def __init__(self,
@@ -331,43 +331,33 @@ class SAMSSampler(MultiStateSampler):
         # Update log weights
         self._update_log_weights()
 
-    # TODO: Get rid of from_storage() when we move read_logZ and write_logZ to multistatesampler.py
-    # LNN: I'm not sure we can since the "logZ" data is not the only thing we are restoring (e.g. other options)
-    @classmethod
-    def from_storage(cls, storage):
-        """Constructor from an existing storage file.
-
-        Parameters
-        ----------
-        storage : str or Reporter
-            If str: The path to the storage file.
-            If :class:`Reporter`: uses the :class:`Reporter` options
-            In the future this will be able to take a Storage class as well.
-
-        Returns
-        -------
-        sampler : SAMSSampler
-            A new instance of MultiStateSampler (or subclass) in the same state of the
-            last stored iteration.
-
-        """
-        sampler = super(SAMSSampler, cls).from_storage(storage)
-        # sampler._reporter.open('r')
-        sampler._logZ = sampler._reporter.read_logZ(sampler._iteration)
-        # sampler._reporter.close()
+    def _restore_sampler_from_reporter(self, reporter):
+        super()._restore_sampler_from_reporter(reporter)
+        self._logZ = self._reporter.read_logZ(self._iteration)
 
         # Compute log weights from log target probability and logZ estimate
-        sampler._update_log_weights()
+        self._update_log_weights()
 
         # Determine t0
-        sampler._initialize_stage()
-        sampler._update_stage()
+        self._initialize_stage()
+        self._update_stage()
 
-        return sampler
-
+    @mpi.on_single_node(rank=0, broadcast_result=False, sync_nodes=False)
+    @mpi.delayed_termination
     def _report_iteration(self):
         super(SAMSSampler, self)._report_iteration()
         self._reporter.write_logZ(self._iteration, self._logZ)
+        try:
+            # Might just try calling `self._state_histograms` instead (code duplication reduction)
+            state_histogram = self._reporter.read_online_analysis_data(None, "state_histogram")["state_histogram"]
+        except ValueError:
+            state_histogram = np.zeros(self.n_states, dtype=int)
+        # Split into which states and how many samplers are in each state
+        # Trying to do histogram[replica_thermo_states] += 1 does not correctly handle multiple
+        # replicas in the same state.
+        states, counts = np.unique(self._replica_thermodynamic_states, return_counts=True)
+        state_histogram[states] += counts
+        self._reporter.write_online_analysis_data(None, state_histogram=state_histogram)
 
     @mpi.on_single_node(0, broadcast_result=True)
     def _mix_replicas(self):
@@ -517,9 +507,8 @@ class SAMSSampler(MultiStateSampler):
         N_k : array-like of shape [n_states] of int
             N_k[state_index] is the number of times a replica has visited state ``state_index``
         """
-        # TODO: Instead of summing each iteration, store `number_of_state_visits[:]` in storage?
-        replica_thermodynamic_states = self._reporter.read_replica_thermodynamic_states(iteration=slice(0,self._iteration))
-        N_k, _ = np.histogram(replica_thermodynamic_states, bins=np.arange(-0.5, self.n_states+0.5))
+        data = self._reporter.read_online_analysis_data(None, "state_histogram")
+        N_k = data["state_histogram"]
         logger.debug('  state histogram counts: %s' % str(N_k))
         return N_k
 
@@ -668,6 +657,7 @@ class SAMSAnalyzer(MultiStateSamplerAnalyzer):
 # ==============================================================================
 # MAIN AND TESTS
 # ==============================================================================
+
 
 if __name__ == "__main__":
     import doctest

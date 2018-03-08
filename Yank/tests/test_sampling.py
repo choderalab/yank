@@ -350,6 +350,7 @@ def test_sams_harmonic_oscillator(verbose=False, verbose_simulation=False):
     if verbose:
         print("PASSED.")
 
+
 # ==============================================================================
 # TEST REPORTER
 # ==============================================================================
@@ -463,7 +464,7 @@ class TestReporter(object):
             assert thermodynamic_state_2['_Reporter__compatible_state'] == 'thermodynamic_states/3'
 
     def test_write_sampler_states(self):
-        """Check correct storage of thermodynamic states."""
+        """Check correct storage of sampler states."""
         analysis_particles = (1, 2)
         with self.temporary_reporter(analysis_particle_indices=analysis_particles, checkpoint_interval=2) as reporter:
             # Create sampler states.
@@ -779,6 +780,14 @@ class TestMultiStateSampler(object):
         hostguest_unsampled_states = [copy.deepcopy(nonalchemical_state)]
 
         cls.hostguest_test = (hostguest_compound_states, hostguest_sampler_states, hostguest_unsampled_states)
+
+        # Debugging Messages to sent to Nose with --nocapture enabled
+        output_descr = "Testing Sampler: {}  -- States: {}  -- Samplers: {}".format(
+            cls.SAMPLER.__name__, cls.N_STATES, cls.N_SAMPLERS)
+        len_output = len(output_descr)
+        print("#" * len_output)
+        print(output_descr)
+        print("#" * len_output)
 
     @staticmethod
     @contextlib.contextmanager
@@ -1496,19 +1505,47 @@ class TestMultiStateSampler(object):
             # Run
             sampler.run()
 
-            # The stored values of online analysis should be up to date.
-            last_written_free_energy = self.SAMPLER._read_last_free_energy(sampler._reporter, sampler.iteration)
-            last_mbar_f_k, (last_free_energy, last_err_free_energy) = last_written_free_energy
+            def validate_this_test():
+                # The stored values of online analysis should be up to date.
+                last_written_free_energy = self.SAMPLER._read_last_free_energy(sampler._reporter, sampler.iteration)
+                last_mbar_f_k, (last_free_energy, last_err_free_energy) = last_written_free_energy
 
-            assert len(sampler._last_mbar_f_k) == len(thermodynamic_states)
-            assert not np.all(sampler._last_mbar_f_k == 0)
-            assert np.all(sampler._last_mbar_f_k == last_mbar_f_k)
+                assert len(sampler._last_mbar_f_k) == len(thermodynamic_states)
+                assert not np.all(sampler._last_mbar_f_k == 0)
+                assert np.all(sampler._last_mbar_f_k == last_mbar_f_k)
 
-            assert last_free_energy is not None
+                assert last_free_energy is not None
 
-            # Error should not be 0 yet
-            assert sampler._last_err_free_energy != 0
-            assert sampler._last_err_free_energy == last_err_free_energy, "SAMPLER %s : sampler._last_err_free_energy = %s, last_err_free_energy = %s" % (self.SAMPLER, sampler._last_err_free_energy, last_err_free_energy)
+                # Error should not be 0 yet
+                assert sampler._last_err_free_energy != 0
+
+                assert sampler._last_err_free_energy == last_err_free_energy, \
+                    ("SAMPLER %s : sampler._last_err_free_energy = %s, "
+                     "last_err_free_energy = %s" % (self.SAMPLER.__name__,
+                                                    sampler._last_err_free_energy,
+                                                    last_err_free_energy)
+                     )
+            try:
+                validate_this_test()
+            except AssertionError as e:
+                # Handle case where MBAR does not have a converged free energy yet by attempting to run longer
+                # Only run up until we have sampled every state, or we hit some cycle limit
+                cycle_limit = 20  # Put some upper limit of cycles
+                cycles = 0
+                while (not np.unique(sampler._reporter.read_replica_thermodynamic_states()).size == self.N_STATES
+                       or cycles == cycle_limit):
+                    sampler.extend(20)
+                    try:
+                        validate_this_test()
+                    except AssertionError:
+                        # If the max error count internally is reached, its a RuntimeError and won't be trapped
+                        # So it will be raised correctly
+                        pass
+                    else:
+                        # Test is good, let it pass by returning here
+                        return
+                # If we get here, we have not validated, raise original error
+                raise e
 
     def test_online_analysis_stops(self):
         """Test online analysis will stop the simulation"""
@@ -1598,10 +1635,31 @@ class TestSingleReplicaSAMS(TestMultiStateSampler):
             additional_values.update(self.property_creator(name, name, value, value))
         self.actual_stored_properties_check(additional_properties=additional_values)
 
+    def test_state_histogram(self):
+        """Ensure SAMS on-the-fly state histograms match actually visited states"""
+        thermodynamic_states, sampler_states, unsampled_states = copy.deepcopy(self.alanine_test)
+        with self.temporary_storage_path() as storage_path:
+            # For this test, we simply check that the checkpointing writes on the interval
+            # We don't care about the numbers, per se, but we do care about when things are written
+            n_iterations = 10
+            move = mmtools.mcmc.IntegratorMove(openmm.VerletIntegrator(1.0 * unit.femtosecond), n_steps=1)
+            sampler = self.SAMPLER(mcmc_moves=move, number_of_iterations=n_iterations)
+            reporter = self.REPORTER(storage_path, checkpoint_interval=2)
+            self.call_sampler_create(sampler, reporter,
+                                     thermodynamic_states, sampler_states,
+                                     unsampled_states)
+            # Propagate.
+            sampler.run()
+            reporter.close()
+            reporter = self.REPORTER(storage_path, open_mode='a', checkpoint_interval=2)
+            replica_thermodynamic_states = reporter.read_replica_thermodynamic_states()
+            N_k, _ = np.histogram(replica_thermodynamic_states, bins=np.arange(-0.5, sampler.n_states + 0.5))
+            assert np.all(sampler._state_histogram() == N_k)
+
     # TODO: Test all update methods
 
 
-class TestMultipleReplicaSAMS(TestMultiStateSampler):
+class TestMultipleReplicaSAMS(TestSingleReplicaSAMS):
     """Test suite for SAMSSampler class."""
 
     # ------------------------------------
@@ -1609,9 +1667,6 @@ class TestMultipleReplicaSAMS(TestMultiStateSampler):
     # ------------------------------------
 
     N_SAMPLERS = 2
-    N_STATES = 5
-    SAMPLER = SAMSSampler
-    REPORTER = MultiStateReporter
 
     # --------------------------------------
     # Tests overwritten from base test suite
