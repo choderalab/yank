@@ -2817,6 +2817,8 @@ class ExperimentBuilder(object):
             default_number_of_iterations = experiment_options['default_number_of_iterations']
             constructor_description['number_of_iterations'] = default_number_of_iterations
 
+        return constructor_description
+
     def _get_experiment_number_of_iterations(self, experiment_description):
         """Return the number of iterations for the experiment.
 
