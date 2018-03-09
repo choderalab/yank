@@ -871,8 +871,7 @@ class ExperimentBuilder(object):
 
         for experiment_idx, (exp_path, exp_description) in enumerate(self._expand_experiments()):
             # Determine the final number of iterations for this experiment.
-            sampler = self._create_experiment_sampler(exp_description, mc_atoms=[])
-            number_of_iterations = sampler.number_of_iterations
+            number_of_iterations = self._get_experiment_number_of_iterations(exp_description)
 
             # Determine the phases status.
             phases = collections.OrderedDict()
@@ -2803,8 +2802,8 @@ class ExperimentBuilder(object):
 
         return mmtools.mcmc.SequenceMove(move_list=move_list)
 
-    def _create_experiment_sampler(self, experiment_description, mc_atoms):
-        """Create the sampler object associated to the given experiment."""
+    def _get_experiment_sampler_constructor(self, experiment_description):
+        """Return the experiment sampler constructor description or the default if None is specified."""
         # Check if we need to use the default sampler.
         sampler_id = experiment_description.get('sampler', None)
         if sampler_id is None:
@@ -2818,10 +2817,22 @@ class ExperimentBuilder(object):
             default_number_of_iterations = experiment_options['default_number_of_iterations']
             constructor_description['number_of_iterations'] = default_number_of_iterations
 
+    def _get_experiment_number_of_iterations(self, experiment_description):
+        """Return the number of iterations for the experiment.
+
+        Resolve the priority between default_number_of_iterations and the
+        options specified in the sampler used for the experiment.
+        """
+        constructor_description = self._get_experiment_sampler_constructor(experiment_description)
+        return constructor_description['number_of_iterations']
+
+    def _create_experiment_sampler(self, experiment_description, mc_atoms):
+        """Create the sampler object associated to the given experiment."""
+        # Obtain the sampler's constructor description.
+        constructor_description = self._get_experiment_sampler_constructor(experiment_description)
         # Create the MCMCMove for the sampler.
         mcmc_move = self._create_experiment_mcmc_move(experiment_description, mc_atoms)
         constructor_description['mcmc_moves'] = mcmc_move
-
         # Create the sampler.
         return schema.call_sampler_constructor(constructor_description)
 
@@ -3000,8 +3011,8 @@ class ExperimentBuilder(object):
         mpi.run_single_node(0, self._save_analysis_script, results_dir, phase_names)
 
         # Return new Experiment object.
-        return Experiment(phases, sampler.number_of_iterations,
-                          exp_opts['switch_phase_interval'])
+        number_of_iterations = self._get_experiment_number_of_iterations(experiment)
+        return Experiment(phases, number_of_iterations, exp_opts['switch_phase_interval'])
 
     # --------------------------------------------------------------------------
     # Experiment run
