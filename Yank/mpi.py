@@ -624,8 +624,10 @@ def _simulated_mpi_environment(**kwargs):
     global _simulated_mpicomm
     old_simulated_mpicomm = _simulated_mpicomm
     _simulated_mpicomm = _DummyMPIComm(**kwargs)
-    yield
-    _simulated_mpicomm = old_simulated_mpicomm
+    try:
+        yield
+    finally:
+        _simulated_mpicomm = old_simulated_mpicomm
 
 
 # ==============================================================================
