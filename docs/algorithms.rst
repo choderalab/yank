@@ -461,16 +461,45 @@ show with this state selection scheme and number of swap attempts, that you will
 distribution without too much computational overhead :cite:`Chodera2011`.
 This speeds up mixing and reduces the total number of samples you need to get uncorrelated samples.
 
+Sampling from multiple alchemical (or other thermodynamic) states
+=================================================================
+
+YANK provides several schemes for sampling from multiple thermodynamic states within a single calculation:
+* ``MultistateSampler``: Independent simulations at distinct thermodynamic states
+* ``ReplicaExchangeSampler``: Replica exchange among thermodynamic states (also called Hamiltonian exchange if only the Hamiltonian is changing)
+* ``SAMSSampler``: Self-adjusted mixture sampling (also known as optimally-adjusted mixture sampling)
+
+While the thermodynamic states sampled usually differ only in the alchemical parameters, other thermodynamic parameters (such as temperature) can be modulated as well at intermediate alchemical states.
+This may be useful in, for example, experimenting with ways to reduce correlation times.
+
+In all of these schemes, one or more **replicas** is simulated.
+Each iteration includes the following phases:
+* Allow replicas to switch thermoynamic states (optional)
+* Allow replicas to sample a new configuration using Markov chain Monte Carlo (MCMC)
+* Each replica computes the potential energy of the current configuration in multiple thermodynamic states
+* Data is written to disk
+
+Below, we describe some of the aspects of these samplers, followed by the MCMC approaches that can be used to sample new configurations.
+
+Independent simulations at multiple thermodynamic states
+--------------------------------------------------------
+
+The ``MultiStateSampler`` allows independent simulations from multiple thermodynamic states to be sampled.
+
+
+Replica exchange
+----------------
+
+The ``ReplicaExchangeSampler`` implements a replica exchange scheme with Gibbs sampling :cite:`Chodera2011` to sample multiple thermodynamic
+states in a manner that improves mixing of the overall Markov chain.
+
 Markov chain Monte Carlo
 ========================
 
-YANK implements a replica exchange scheme with Gibbs sampling :cite:`Chodera2011` to sample multiple thermodynamic
-states in a manner that improves mixing of the overall Markov chain. In between replica exchange attempts, YANK uses
-compositions of Markov chain Monte Carlo (MCMC) moves from the
-`openmmtools.mcmc module <http://openmmtools.readthedocs.io/en/latest/mcmc.html>`_
-to sample from the equilibrium distribution at each thermodynamic states. Each MCMC move is
-treated as a single, independent, MCMC move carried out in sequence so that samples are drawn from the equilibrium
-distribution at each step. Should one move be rejected, the other moves will still be carried out.
+To generate samples from individual thermodynamic states, YANK uses compositions of Markov chain Monte Carlo (MCMC) moves from the
+`openmmtools.mcmc module <http://openmmtools.readthedocs.io/en/latest/mcmc.html>`_.
+Each MCMC move is treated as a single, independent, MCMC move carried out in sequence so that samples are drawn from the equilibrium distribution at each step.
+Should one move be rejected, the other moves will still be carried out.
 
 Generalized Hybrid Monte Carlo
 ------------------------------
@@ -699,4 +728,3 @@ the subdominant eigenvalue :math:`\lambda_2 \in [0,1]` gives an estimate of the 
 
 :math:`\tau_{\lambda}` is then the estimate for how many iterations must elapse before the collection of replicas
 fully mix once. The closer this value is to unity (1), the better.
-
