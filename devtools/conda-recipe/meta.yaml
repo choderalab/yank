@@ -14,22 +14,7 @@ requirements:
   build:
     - python
     - cython
-    - numpy
-    - scipy
     - setuptools
-    - netcdf4
-    - openmm >=7.1
-    - mdtraj >=1.7.2
-    - openmmtools >=0.14.0
-    - pymbar
-    - ambermini >=16.16.0
-    - docopt
-    - openmoltools
-    - sphinxcontrib-bibtex
-    - cerberus
-    - matplotlib
-    - jupyter
-    - pdbfixer
     #- gcc 4.8.2 # [linux]
     #- gcc 4.8.2 # [osx]
 
