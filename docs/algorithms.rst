@@ -474,24 +474,75 @@ This may be useful in, for example, experimenting with ways to reduce correlatio
 
 In all of these schemes, one or more **replicas** is simulated.
 Each iteration includes the following phases:
-* Allow replicas to switch thermoynamic states (optional)
+* Allow replicas to switch thermodynamic states (optional)
 * Allow replicas to sample a new configuration using Markov chain Monte Carlo (MCMC)
 * Each replica computes the potential energy of the current configuration in multiple thermodynamic states
 * Data is written to disk
 
 Below, we describe some of the aspects of these samplers, followed by the MCMC approaches that can be used to sample new configurations.
 
-Independent simulations at multiple thermodynamic states
---------------------------------------------------------
+``MultiStateSampler``: Independent simulations at multiple thermodynamic states
+-------------------------------------------------------------------------------
 
 The ``MultiStateSampler`` allows independent simulations from multiple thermodynamic states to be sampled.
+In this case, the MCMC scheme is used to propagate each replica by sampling from a fixed thermodynamic state.
 
+.. math::
 
-Replica exchange
-----------------
+   s_{k,n+1} = s_{k, n}
+   x_{k,n+1} \sim p(x | s_{k, n+1})
 
-The ``ReplicaExchangeSampler`` implements a replica exchange scheme with Gibbs sampling :cite:`Chodera2011` to sample multiple thermodynamic
-states in a manner that improves mixing of the overall Markov chain.
+An inclusive "neighborhood" of thermodynamic states around this specified state can be used to define which thermodynamic states the reduced potential should be computed for after each iteration.
+If all thermodynamic states are included in this neighborhood (the default), the MBAR scheme [CITE] can be used to optimally estimate free energies and uncertainties.
+If a restricted neighborhood is used (in order to reduce the amount of time spent in the energy evaluation stage), a variant of the L-WHAM (local weighted histogram analysis method) [CITE] is used to extract an estimate from all available information.
+
+``ReplicaExchangeSampler``: Replica exchange among thermodynamic states
+-----------------------------------------------------------------------
+
+The ``ReplicaExchangeSampler`` implements a replica exchange scheme with Gibbs sampling :cite:`Chodera2011` to sample multiple thermodynamic states in a manner that improves mixing of the overall Markov chain.
+By allowing replicas to execute a random walk in thermodynamic state space, correlation times may be reduced when sampling certain thermodynamic states (such as those with alchemically-softened potentials or elevated temperatures).
+
+``SAMSSampler``: Self-adjusted mixture sampling
+-----------------------------------------------
+
+The ``SAMSSampler`` implements self-adjusted mixture sampling (SAMS; also known as optimally adjusted mixture sampling) [CITE].
+This combines one or more replicas that sample from an expanded ensemble with an asymptotically optimal Wang-Landau-like weight update scheme.
+
+.. math::
+
+   s_{k,n+1} = p(s | x_{k,n}
+   x_{k,n+1} \sim p(x | s_{k, n+1})
+
+SAMS state update schemes
+"""""""""""""""""""""""""
+
+Several state update schemes are available:
+* ``global-jump`` (default): The sampler can jump to any thermodynamic state (RECOMMENDED)
+* ``restricted-range-jump``: The sampler can jump to any thermodynamic state within the specified local neighborhood (EXPERIMENTAL)
+* ``local-jump``: Only proposals within the specified neighborhood are considered, but rejection rates may be high
+
+SAMS Locality
+"""""""""""""
+
+The local neighborhood is specified by the ``locality`` parameter.
+If this is a positive integer, the neighborhood will be defined by state indices ``[k - locality, k + locality]``.
+Reducing locality will restrict the range of states for which reduced potentials are evaluated, which can speed up the energy evaluation stage of each iteration at the cost of restricting the amount of information available for free energy estimation.
+By default, the ``locality`` is global, such that energies at all thermodynamic states are computed; this allows the use of MBAR in data analysis.
+
+SAMS weight adaptation algorithm
+"""""""""""""""""""""""""""""""""
+
+SAMS provides two ways of accumulating log weights each iteration:
+* ``optimal`` accumulates weight only in the currently visited state ``s``
+* ``rao-blackwellized`` accumulates fractional weight in all states within the energy evaluation neighborhood
+
+SAMS initial weight adaptation stage
+""""""""""""""""""""""""""""""""""""
+
+Because the asymptotically-optimal weight adaptation scheme works best only when the log weights are close to optimal, a heuristic initial stage is used to more rapidly adapt the log weights before the asymptotically optimal scheme is used.
+The behavior of this first stage can be controlled by setting two parameters:
+* ``gamma0`` controls the initial rate of weight adaptation. By default, this is 1.0, but can be set larger (e.g., 10.0) if the free energy differences between states are much larger.
+* ``flatness_threshold`` controls the number of (fractional) visits to each thermodynamic state that must be accumulated before the asymptotically optimal weight adaptation scheme is used.
 
 Markov chain Monte Carlo
 ========================
