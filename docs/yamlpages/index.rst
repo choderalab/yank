@@ -21,6 +21,8 @@ All Pages
    molecules <molecules>
    solvents <solvents>
    systems <systems>
+   mcmc <mcmc>
+   samplers <samplers>
    protocols <protocols>
    experiments <experiments>
    Combinatorial Options <combinatorial>
@@ -168,6 +170,16 @@ Detailed Options List
     * :ref:`solvent <yaml_systems_user_defined>`
     * :ref:`gromacs_include_dir <yaml_systems_user_defined>`
 
+* :doc:`mcmc <mcmc>`
+
+.. todo::
+
+   This section needs to be completed
+
+* :doc:`samplers <samplers`
+
+  * :ref: `Samplers syntax <yaml_samplers_example>`
+
 * :doc:`protocols <protocols>`
 
   * :ref:`Protocols Syntax <yaml_protocols_example>`
@@ -181,11 +193,12 @@ Detailed Options List
 
   * :ref:`How-To Video <yaml_protocols_video>`
 
-* :doc:`experiements <experiments>`
+* :doc:`experiments <experiments>`
 
   * :ref:`Experiments Syntax <yaml_experiments_syntax>`
 
     * :ref:`system <yaml_experiments_syntax>`
+    * :ref:`sampler <yaml_experiments_syntax>`
     * :ref:`protocol <yaml_experiments_syntax>`
     * :ref:`options <yaml_experiments_syntax>`
     * :ref:`restraint <yaml_experiments_syntax>`
