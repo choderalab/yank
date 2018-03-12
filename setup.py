@@ -141,20 +141,7 @@ setup(
                   },
     zip_safe=False,
     python_requires=">=3.5",
-    install_requires=[
-        'numpy',
-        'scipy',
-        'cython',
-        'openmm>=7.1',
-        'pymbar',
-        'openmmtools>=0.14.0',
-        'docopt>=0.6.1',
-        'netcdf4',
-        'cerberus',
-        'openmoltools>=0.7.5',
-        'mdtraj',
-        'pyyaml',
-        'pdbfixer'
-        ],
+    # This has been removed in favor of the conda meta.yaml file dependencies
+    # install_requires=[],
     ext_modules=cythonize(mixing_ext),
     entry_points={'console_scripts': ['yank = yank.cli:main']})
