@@ -55,6 +55,7 @@ requirements:
     - matplotlib
     - jupyter
     - pdbfixer
+    - libnetcdf >=4.6.0
     #- libgcc
 
 test:
