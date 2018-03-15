@@ -71,22 +71,40 @@ class YankMultiStateSamplerAnalyzer(multistate.MultiStateSamplerAnalyzer, YankPh
         """
         Compute the standard state correction free energy associated with the Phase.
 
-        This usually is just a stored variable, but it may need other calculations.
-
         Returns
         -------
         standard_state_correction : float
             Free energy contribution from the standard_state_correction
 
         """
+        if self._computed_observables['standard_state_correction'] is not None:
+            return self._computed_observables['standard_state_correction']
+
+        # Determine if we need to recompute the standard state correction.
+        compute_ssc = True
+        try:
+            restraint_force, _, _ = self._get_restraint_data()
+        except (mmtools.forces.NoForceFoundError, TypeError):
+            compute_ssc = False
+
+        if compute_ssc:
+            thermodynamic_state = self._get_end_thermodynamic_states()[0]
+            # TODO: Compute average box volume here to feed to max_volume?
+            ssc = restraint_force.compute_standard_state_correction(
+                thermodynamic_state, square_well=True, radius_cutoff=self.restraint_distance_cutoff,
+                energy_cutoff=self.restraint_energy_cutoff, max_volume='system')
+
+            # Update observable.
+            self._computed_observables['standard_state_correction'] = ssc
+            logger.debug('Computed a new standard state correction of {} kT'.format(ssc))
+
+        # Reads the SSC from the reporter if compute_ssc is False.
         if self._computed_observables['standard_state_correction'] is None:
             ssc = self._reporter.read_dict('metadata')['standard_state_correction']
             self._computed_observables['standard_state_correction'] = ssc
         return self._computed_observables['standard_state_correction']
 
     def analyze_phase(self, cutoff=0.05):
-        if self._mbar is None:
-            self._create_mbar_from_scratch()
         number_equilibrated, g_t, _ = self._equilibration_data
         self.show_mixing_statistics(cutoff=cutoff, number_equilibrated=number_equilibrated)
         data = {}

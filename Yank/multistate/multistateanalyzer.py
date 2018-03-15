@@ -22,13 +22,17 @@ Fully extensible to support new samplers and observables.
 
 import abc
 import copy
+import inspect
 import logging
 import re
 from typing import Optional, NamedTuple, Union
 
+import mdtraj
 import numpy as np
+from simtk import openmm
 import simtk.unit as units
 from pymbar import MBAR, timeseries
+import openmmtools as mmtools
 
 from . import utils
 
@@ -48,6 +52,37 @@ __all__ = [
 # =============================================================================================
 
 kB = units.BOLTZMANN_CONSTANT_kB * units.AVOGADRO_CONSTANT_NA
+
+
+# =============================================================================================
+# UTILITY FUNCTIONS
+# =============================================================================================
+
+def compute_centroid_distance(positions_group1, positions_group2, weights_group1, weights_group2):
+    """Compute the distance between the centers of mass of the two groups.
+
+    The two positions given must have the same units.
+
+    Parameters
+    ----------
+    positions_group1 : numpy.array
+        The positions of the particles in the first CustomCentroidBondForce group.
+    positions_group2 : numpy.array
+        The positions of the particles in the second CustomCentroidBondForce group.
+    weights_group1 : list of float
+        The mass of the particle in the first CustomCentroidBondForce group.
+    weights_group2 : list of float
+        The mass of the particles in the second CustomCentroidBondForce group.
+
+    """
+    assert len(positions_group1) == len(weights_group1)
+    assert len(positions_group2) == len(weights_group2)
+    # Compute center of mass for each group.
+    com_group1 = np.average(positions_group1, axis=0, weights=weights_group1)
+    com_group2 = np.average(positions_group2, axis=0, weights=weights_group2)
+    # Compute distance between centers of mass.
+    distance = np.linalg.norm(com_group1 - com_group2)
+    return distance
 
 
 # =============================================================================================
@@ -367,46 +402,49 @@ class PhaseAnalyzer(ABC):
     ObservablesRegistry
 
     """
-    def __init__(self, reporter,
-                 name=None, reference_states=(0, -1), analysis_kwargs=None,
-                 registry=default_observables_registry):
+    def __init__(self, reporter, name=None, reference_states=(0, -1),
+                 restraint_energy_cutoff=None, restraint_distance_cutoff=None, max_n_iterations=None,
+                 analysis_kwargs=None, registry=default_observables_registry):
         """
         The reporter provides the hook into how to read the data, all other options control where differences are
         measured from and how each phase interfaces with other phases.
         """
+        # Check arguments.
         if type(reporter) is str:
             raise ValueError('reporter must be a MultiStateReporter instance')
-
         if not isinstance(registry, ObservablesRegistry):
             raise ValueError("Registry must be an instanced ObservablesRegistry")
+        if analysis_kwargs is None:
+            analysis_kwargs = {}
+        elif not isinstance(analysis_kwargs, dict):
+            raise ValueError('analysis_kwargs must be either None or a dictionary')
+
         self.registry = registry
         if not reporter.is_open():
             reporter.open(mode='r')
         self._reporter = reporter
-        observables = []
-        # Auto-determine the computable observables by inspection of non-flagged methods
-        # We determine valid observables by negation instead of just having each child implement the method to enforce
-        # uniform function naming conventions.
-        self._computed_observables = {}  # Cache of observables so the phase can be retrieved once computed
-        for observable in self.registry.observables:
-            if hasattr(self, "get_" + observable):
-                observables.append(observable)
-                self._computed_observables[observable] = None
-        # Cast observables to an immutable
-        self._observables = tuple(observables)
+
+        # Initialize cacheed observables so the phase can be retrieved once computed.
+        self._computed_observables = {observable: None for observable in self.observables}
+
         # Internal properties
         self._name = name
         # Start as default sign +, handle all sign conversion at preparation time
         self._sign = '+'
-        self._equilibration_data = None  # Internal tracker so the functions can get this data without recalculating it
-        # External properties
-        self._reference_states = None  # initialize the cache object
+        self._reference_states = None  # Initialize the cache object.
         self.reference_states = reference_states
-        self._mbar = None
+        self._extra_analysis_kwargs = analysis_kwargs
+
+        # Initialize cached values that are read directly from the Reporter.
+        self._n_iterations = None
+        self._n_replicas = None
+        self._end_thermodynamic_states = None
         self._kT = None
-        if type(analysis_kwargs) not in [type(None), dict]:
-            raise ValueError('analysis_kwargs must be either None or a dictionary')
-        self._extra_analysis_kwargs = analysis_kwargs if (analysis_kwargs is not None) else dict()
+
+        # Cached values with dependencies.
+        self._cache = {}  # This cache should be always set with _update_cache().
+        if max_n_iterations is not None:
+            self.max_n_iterations = max_n_iterations
 
     @property
     def name(self):
@@ -419,19 +457,16 @@ class PhaseAnalyzer(ABC):
 
     @property
     def observables(self):
-        """
-        List of observables that the instanced analyzer can compute/fetch.
-
-        This list is automatically compiled upon class initialization based on the functions implemented in the subclass
-        """
-        return self._observables
-
-    @property
-    def mbar(self):
-        """MBAR object tied to this phase"""
-        if self._mbar is None:
-            self._create_mbar_from_scratch()
-        return self._mbar
+        """List of observables that the instanced analyzer can compute/fetch."""
+        # Auto-determine the computable observables by inspection of non-flagged methods
+        # We determine valid observables by negation instead of just having each child
+        # implement the method to enforce uniform function naming conventions.
+        observables = []
+        for observable in self.registry.observables:
+            if hasattr(self, "get_" + observable):
+                observables.append(observable)
+        # Cast observables to an immutable.
+        return tuple(observables)
 
     @property
     def reference_states(self):
@@ -447,6 +482,37 @@ class PhaseAnalyzer(ABC):
         self._reference_states = (i, j)
 
     @property
+    def n_iterations(self):
+        """int: The total number of iterations of the phase."""
+        if self._n_iterations is None:
+            # The + 1 accounts for iteration 0.
+            self._n_iterations = self._reporter.read_last_iteration(full_iteration=False)
+        return self._n_iterations
+
+    @property
+    def n_replicas(self):
+        """int: Number of replicas."""
+        if self._n_replicas is None:
+            replica_state_indices = self._reporter.read_replica_thermodynamic_states(iteration=0)
+            _, self._n_replicas = replica_state_indices.shape
+        return self._n_replicas
+
+    def _get_end_thermodynamic_states(self):
+        """Read thermodynamic states at the ends of the protocol."""
+        # TODO: what if reference_states changes? This should become a CachedProperty.
+        # Check cached values.
+        if self._end_thermodynamic_states is None:
+            sampled_states, unsampled_states = self._reporter.read_thermodynamic_states()
+            if len(unsampled_states) == 0:
+                self._end_thermodynamic_states = [sampled_states[0], sampled_states[-1]]
+            else:
+                self._end_thermodynamic_states = unsampled_states
+            # Cache other useful informations since we have already read this.
+            # TODO should we read temperatures of all the states and let kT property depend on reference_states?
+            self._kT = self._end_thermodynamic_states[0].kT
+        return self._end_thermodynamic_states
+
+    @property
     def kT(self):
         """
         Quantity of boltzmann constant times temperature of the phase in units of energy per mol
@@ -454,9 +520,7 @@ class PhaseAnalyzer(ABC):
         Allows conversion between dimensionless energy and unit bearing energy
         """
         if self._kT is None:
-            thermodynamic_states, _ = self._reporter.read_thermodynamic_states()
-            temperature = thermodynamic_states[0].temperature
-            self._kT = kB * temperature
+            self._get_end_thermodynamic_states()
         return self._kT
 
     @property
@@ -469,41 +533,157 @@ class PhaseAnalyzer(ABC):
         """Make sure users cannot overwrite the reporter."""
         raise ValueError("You cannot re-assign the reporter for this analyzer!")
 
-    @abc.abstractmethod
-    def _create_mbar_from_scratch(self):
-        """
-        This method should automatically do everything needed to make the MBAR object from file. It should make all
-        the assumptions needed to make the MBAR object.  Typically many of these functions will be needed for the
-        :func:`analyze_phase` function.
+    # -------------------------------------------------------------------------
+    # Cached properties functions/classes.
+    # -------------------------------------------------------------------------
 
-        Should call the :func:`_prepare_mbar_input_data` to get the data ready for
+    class CachedProperty(object):
+        """Descriptor of a cached value with a dependency graph.
 
-        Returns nothing, but the self.mbar object should be set after this.
-        """
-        raise NotImplementedError()
-
-    @abc.abstractmethod
-    def _prepare_mbar_input_data(self, *args, **kwargs):
-        """
-        Prepare a set of data for MBAR, because each analyzer may need to do something else to prepare for MBAR, it
-        should have its own function to do that with.
+        Automatically takes care of invalidating the values of the cache
+        that depend on this property.
 
         Parameters
         ----------
-        args : arguments needed to generate the appropriate Returns
-        kwargs : keyword arguments needed to generate the appropriate Returns
+        name : str
+            The name of the parameter in the cache.
+        default : object, optional
+            The default value in case the cache doesn't contain a value
+            for this. If a callable, this function must have the signature
+            ``default(instance)``. By default, AttributeError is raised
+            on a cache miss.
+        validator : callable, optional
+            A function to call before setting a new value with signature
+            ``validator(instance, new_value)``.
+        check_changes : bool, optional
+            If True, the cache dependencies will be invalidated only if
+            the new value differs from the old one (default is False).
 
-        Returns
-        -------
-        energy_matrix : energy matrix of shape (K,N) indexed by k,n
-            K is the total number of states observables are desired
-            N is the total number of samples drawn from ALL states
-            The nth configuration is the energy evaluated in the kth thermodynamic state
-        samples_per_state : 1-D iterable of shape K
-            The number of samples drawn from each kth state
-            The \sum samples_per_state = N
         """
-        raise NotImplementedError()
+        def __init__(self, name, dependencies=(), default=AttributeError,
+                     validator=None, check_changes=False):
+            # TODO make observables CachedProperties?
+            assert name != 'observables'  # Reserved name.
+            # TODO use __setname__() when dropping Python 3.5 support.
+            self.name = name
+            self.dependencies = dependencies
+            self._default = default
+            self._validator = validator
+            self._check_changes = check_changes
+
+        def __get__(self, instance, owner_class=None):
+            # If called as a class descriptor, return the descriptor.
+            if instance is None:
+                return self
+            # Check if the value is cached and fall back to default value.
+            try:
+                value = instance._cache[self.name]
+            except KeyError:
+                value = self._get_default(instance)
+            return value
+
+        def __set__(self, instance, new_value):
+            if self._validator is not None:
+                new_value = self._validator(instance, new_value)
+            instance._update_cache(self.name, new_value, self._check_changes)
+
+        def _get_default(self, instance):
+            if self._default is AttributeError:
+                err_msg = 'Reference before assignment {}.{}'.format(instance, self.name)
+                raise AttributeError(err_msg)
+            elif callable(self._default):
+                value = self._default(instance)
+            else:
+                value = self._default
+            return value
+
+    @classmethod
+    def _get_cache_dependency_graph(cls):
+        """dict: cached_value -> list of cache values to invalidate."""
+        # Retrieve all cached properties.
+        cached_properties = {value for name, value in inspect.getmembers(cls)
+                             if isinstance(value, cls.CachedProperty)}
+        # Build the dependency graph.
+        dependency_graph = {}
+        for cached_property in cached_properties:
+            for dependency in cached_property.dependencies:
+                try:
+                    dependency_graph[dependency].add(cached_property.name)
+                except KeyError:
+                    dependency_graph[dependency] = {cached_property.name}
+        # Hard-code observable dependency since those are not CachedProperties.
+        # TODO make observables CachedProperties?
+        dependency['mbar'] = ['observables']
+        return dependency_graph
+
+    def _update_cache(self, key, new_value, check_changes=False):
+        """Update the cache entry and invalidate values that depend on it.
+
+        Parameters
+        ----------
+        key : str
+            The name of the value to update.
+        value : object
+            The new value of the key.
+        check_changes : bool, optional
+            If True and the new value is equal to the current one,
+            the dependent cache values are not invalidated.
+
+        """
+        invalidate_cache = True
+        try:
+            old_value = self._cache[key]
+        except KeyError:
+            invalidate_cache = False
+        else:
+            if check_changes and old_value == new_value:
+                invalidate_cache = False
+        # Update value and invalidate the cache.
+        self._cache[key] = new_value
+        if invalidate_cache:
+            self._invalidate_cache_values(key)
+
+    def _invalidate_cache_values(self, key):
+        """Invalidate all the cache dependencies of key.
+
+        Parameters
+        ----------
+        key : str
+            The name of the cached whose dependencies must be invalidated.
+
+        """
+        dependency_graph = self._get_cache_dependency_graph()
+        for k in dependency_graph[key]:
+            # Invalidate observables that are in a separate cache.
+            if k == 'observables':
+                for observable in self.observables:
+                    self._computed_observables[observable] = None
+            else:
+                # Invalidate dependencies of k.
+                self._invalidate_cache_values(k)
+                # Remove k.
+                self._cache.pop(k, None)
+
+    # -------------------------------------------------------------------------
+    # Cached properties.
+    # -------------------------------------------------------------------------
+
+    @staticmethod
+    def _max_n_iterations_validator(instance, new_value):
+        if new_value > instance.n_iterations:
+            new_value = instance.n_iterations
+        return new_value
+
+    max_n_iterations = CachedProperty(
+        name='max_n_iterations',
+        validator=_max_n_iterations_validator.__func__,
+        default=lambda instance: instance.n_iterations,
+        check_changes=True
+    )
+
+    # -------------------------------------------------------------------------
+    # Abstract methods.
+    # -------------------------------------------------------------------------
 
     @abc.abstractmethod
     def get_states_energies(self):
@@ -546,6 +726,10 @@ class PhaseAnalyzer(ABC):
         """
 
         raise NotImplementedError("This class has not implemented this function")
+
+    # -------------------------------------------------------------------------
+    # MBAR routines.
+    # -------------------------------------------------------------------------
 
     @staticmethod
     def reformat_energies_for_mbar(u_kln: np.ndarray, n_k: Optional[np.ndarray]=None):
@@ -608,15 +792,14 @@ class PhaseAnalyzer(ABC):
            Number of samples drawn from each kth state; if None, will be extracted from the ncfile
 
         """
-
-        # Delete observables cache since we are now resetting the estimator
-        for observable in self.observables:
-            self._computed_observables[observable] = None
-
         # Initialize MBAR (computing free energy estimates, which may take a while)
         logger.info("Computing free energy differences...")
-        mbar = MBAR(energy_matrix, samples_per_state, **self._extra_analysis_kwargs)
-        self._mbar = mbar
+        self.mbar = MBAR(energy_matrix, samples_per_state, **self._extra_analysis_kwargs)
+        return self.mbar
+
+    # -------------------------------------------------------------------------
+    # Analysis combination.
+    # -------------------------------------------------------------------------
 
     def _combine_phases(self, other, operator='+'):
         """
@@ -693,6 +876,18 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
 
     """
 
+    def __init__(self, *args, restraint_energy_cutoff=None, restraint_distance_cutoff=None, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # Initialize cached values that are derived directly from the Reporter.
+        self._restraint_data = None
+        self._restraint_energies_kn = None
+        self._restraint_distances_kn = None
+
+        # Cached values with dependencies.
+        self.restraint_energy_cutoff = restraint_energy_cutoff
+        self.restraint_distance_cutoff = restraint_distance_cutoff
+
     # TODO use class syntax and add docstring after dropping python 3.5 support.
     _MixingStatistics = NamedTuple('MixingStatistics', [
         ('transition_matrix', np.ndarray),
@@ -725,9 +920,7 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         """
         # Read data from disk
         if number_equilibrated is None:
-            if self._equilibration_data is None:
-                self._get_equilibration_data_auto()
-            number_equilibrated, _, _ = self._equilibration_data
+            number_equilibrated = self.n_equilibration_iterations
         states = self._reporter.read_replica_thermodynamic_states()
         n_iterations, n_replicas = states.shape
         n_states = self._reporter.n_states
@@ -815,9 +1008,41 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         logger.info('Replica state index statistical inefficiency is '
                     '{:.3f}'.format(mixing_statistics.statistical_inefficiency))
 
+    def _get_restraint_data(self):
+        """Return the two unsampled states and a reduced version of them containing only the restraint force."""
+        # Check cached value.
+        if self._restraint_data is not None:
+            return self._restraint_data
+
+        # Isolate the end states.
+        end_states = self._get_end_thermodynamic_states()
+
+        # Isolate restraint force.
+        system = end_states[0].system
+        restraint_parent_class = mmtools.forces.RadiallySymmetricRestraintForce
+        # This raises mmtools.forces.NoForceFoundError if there's no restraint to unbias.
+        force_idx, restraint_force = mmtools.forces.find_forces(system, force_type=restraint_parent_class,
+                                                                only_one=True, include_subclasses=True)
+
+        # Check that the restraint was turned on at the end states.
+        if end_states[0].lambda_restraints != 1.0 or end_states[-1].lambda_restraints != 1.0:
+            raise TypeError('Cannot unbias a restraint that is turned off at one of the end states.')
+
+        # Read the centroid weights (mass) of the restrained particles.
+        weights_group1 = [system.getParticleMass(i) for i in restraint_force.restrained_atom_indices1]
+        weights_group2 = [system.getParticleMass(i) for i in restraint_force.restrained_atom_indices2]
+
+        # Cache value so that we won't have to deserialize the system again.
+        self._restraint_data = restraint_force, weights_group1, weights_group2
+        return self._restraint_data
+
+    # -------------------------------------------------------------------------
+    # MBAR creation.
+    # -------------------------------------------------------------------------
+
     def get_states_energies(self):
         """
-        Extract and decorrelate energies from the ncfile to gather energies common data for other functions
+        Extract and deconvolute energies from the ncfile to gather energies common data for other functions.
 
         Returns
         -------
@@ -830,28 +1055,26 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
             If no unsampled states were drawn, this will be shape (0,N)
 
         """
+        return self._get_states_energies(truncate_max_n_iterations=False)
+
+    def _get_states_energies(self, truncate_max_n_iterations=False):
+        """Extract and deconvolute energies from nc file. Optionally truncate to self.max_n_iterations."""
         logger.info("Reading energies...")
-        # Returns the energies in kln format
         energy_thermodynamic_states, neighborhoods, energy_unsampled_states = self._reporter.read_energies()
         n_iterations, n_replicas, n_states = energy_thermodynamic_states.shape
         _, _, n_unsampled_states = energy_unsampled_states.shape
-        energy_matrix_replica = np.zeros([n_replicas, n_states, n_iterations], np.float64)
-        unsampled_energy_matrix_replica = np.zeros([n_replicas, n_unsampled_states, n_iterations], np.float64)
-        for n in range(n_iterations):
-            energy_matrix_replica[:, :, n] = energy_thermodynamic_states[n, :, :]
-            unsampled_energy_matrix_replica[:, :, n] = energy_unsampled_states[n, :, :]
-        logger.info("Done.")
 
         # TODO: Figure out what format we need the data in to be useful for both global and local MBAR/WHAM
         # For now, we simply can't handle analysis of non-global calculations.
         if np.any(neighborhoods == 0):
             raise Exception('Non-global MBAR analysis not implemented yet.')
 
-        logger.info("Reading energies...")
-        # Returns the energies in kln format
-        energy_thermodynamic_states, neighborhoods, energy_unsampled_states = self._reporter.read_energies()
-        n_iterations, n_replicas, n_states = energy_thermodynamic_states.shape
-        _, _, n_unsampled_states = energy_unsampled_states.shape
+        # Truncate the number of iterations to self.max_n_iterations if requested.
+        if truncate_max_n_iterations:
+            # The +1 accounts for minimization iteration.
+            n_iterations = self.max_n_iterations + 1
+
+        # Convert shape from iterations x replicas x states to replicas x states x iterations
         energy_matrix_replica = np.zeros([n_replicas, n_states, n_iterations], np.float64)
         unsampled_energy_matrix_replica = np.zeros([n_replicas, n_unsampled_states, n_iterations], np.float64)
         for n in range(n_iterations):
@@ -900,15 +1123,32 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
             u_n[iteration] = np.sum(np.diagonal(passed_timeseries[:, :, iteration]))
         return u_n
 
-    def _prepare_mbar_input_data(self, sampled_energy_matrix, unsampled_energy_matrix):
-        """Convert the sampled and unsampled energy matrices into MBAR ready data"""
+    def _compute_equilibrated_energies(self):
+        """Return the energies after discarding equilibration and iterations > max_n_iterations."""
+        u_kln, unsampled_u_kln = self._get_states_energies(truncate_max_n_iterations=True)
+
+        # Discard equilibration iterations.
+        number_equilibrated, g_t, Neff_max = self._get_equilibration_data_auto(u_kln)
+        u_kln = utils.remove_unequilibrated_data(u_kln, number_equilibrated, -1)
+        unsampled_u_kln = utils.remove_unequilibrated_data(unsampled_u_kln, number_equilibrated, -1)
+
+        # Subsample the energies only based on g_t so both ends up with same indices.
+        u_kln = utils.subsample_data_along_axis(u_kln, g_t, -1)
+        unsampled_u_kln = utils.subsample_data_along_axis(unsampled_u_kln, g_t, -1)
+        return u_kln, unsampled_u_kln
+
+    def _compute_decorrelated_energies(self):
+        """Return an MBAR-ready decorrelated energy matrix."""
+        sampled_energy_matrix, unsampled_energy_matrix = self._compute_equilibrated_energies()
         nstates, _, niterations = sampled_energy_matrix.shape
         _, nunsampled, _ = unsampled_energy_matrix.shape
         # Subsample data to obtain uncorrelated samples
         N_k = np.zeros(nstates, np.int32)
         N = niterations  # number of uncorrelated samples
         N_k[:] = N
-        mbar_ready_energy_matrix = self.reformat_energies_for_mbar(sampled_energy_matrix)
+        u_kn = self.reformat_energies_for_mbar(sampled_energy_matrix)
+
+        # Add unsampled states.
         if nunsampled > 0:
             new_energy_matrix = np.zeros([nstates + 2, N_k.sum()])
             N_k_new = np.zeros(nstates + 2, np.int32)
@@ -916,25 +1156,235 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
             # Add augmented unsampled energies to the new matrix
             new_energy_matrix[[0, -1], :] = unsampled_kn[[0, -1], :]
             # Fill in the old energies to the middle states
-            new_energy_matrix[1:-1, :] = mbar_ready_energy_matrix
+            new_energy_matrix[1:-1, :] = u_kn
             N_k_new[1:-1] = N_k
             # Notify users
             logger.info("Found expanded cutoff states in the energies!")
             logger.info("Free energies will be reported relative to them instead!")
             # Reset values, last step in case something went wrong so we dont overwrite u_kn on accident
-            mbar_ready_energy_matrix = new_energy_matrix
+            u_kn = new_energy_matrix
             N_k = N_k_new
-        return mbar_ready_energy_matrix, N_k
+
+        # These cached values speed up considerably the computation of the
+        # free energy profile along the restraint distance/energy cutoff.
+        self._decorrelated_u_kn = u_kn
+        self._decorrelated_N_k = N_k
+        return self._decorrelated_u_kn, self._decorrelated_N_k
+
+    def _compute_unbiased_energies(self):
+        """Unbias the restraint, apply energy/distance cutoff and cut to max_n_iterations."""
+
+        # Check if we need to unbias the restraint.
+        try:
+            restraint_data = self._get_restraint_data()
+        except (TypeError, mmtools.forces.NoForceFoundError) as e:
+            # If we don't need to unbias the restraint there's nothing else to do.
+            logger.info(str(e) + ' The restraint will not be unbiased.')
+            self._unbiased_decorrelated_u_kn = self._decorrelated_u_kn
+            self._unbiased_decorrelated_N_k = self._decorrelated_N_k
+            return self._unbiased_decorrelated_u_kn, self._unbiased_decorrelated_N_k
+
+        is_cutoff_distance = self.restraint_distance_cutoff is not None
+        is_cutoff_energy = self.restraint_energy_cutoff is not None
+
+        # Compute the restraint energies/distances.
+        restraint_force, weights_group1, weights_group2 = restraint_data
+
+        logger.debug('Found {} restraint. The restraint will be unbiased.')
+        logger.debug('Receptor restrained atoms: {}'.format(restraint_force.restrained_atom_indices1))
+        logger.debug('ligand restrained atoms: {}'.format(restraint_force.restrained_atom_indices2))
+
+        # Compute restraint energies/distances.
+        distances_kn, energies_kn = self._compute_restraint_energies(
+            restraint_force, weights_group1, weights_group2, compute_distances=is_cutoff_distance)
+
+        # Convert energies to kT unit for comparison to energy cutoff.
+        energies_kn = energies_kn / self.kT
+        logger.debug('Restraint energy mean: {} kT; std: {} kT'
+                     ''.format(np.mean(energies_kn), np.std(energies_kn, ddof=1)))
+
+        # Don't modify the cached decorrelated energies.
+        u_kn = copy.deepcopy(self._decorrelated_u_kn)
+        N_k = copy.deepcopy(self._decorrelated_N_k)
+        n_decorrelated_iterations_kn = u_kn.shape[1]
+        assert len(energies_kn) == n_decorrelated_iterations_kn
+        assert len(self._decorrelated_state_indices_kn) == n_decorrelated_iterations_kn
+
+        # We need to take into account the initial unsampled states to index correctly N_k.
+        state_idx_shift = 0
+        while N_k[state_idx_shift] == 0:
+            state_idx_shift +=1
+
+        # Determine which samples are outside the cutoffs or have to be truncated.
+        columns_to_keep = []
+        for iteration_kn_idx, state_idx in enumerate(self._decorrelated_state_indices_kn):
+            if ((is_cutoff_energy and energies_kn[iteration_kn_idx] > self.restraint_energy_cutoff) or
+                    (is_cutoff_distance and distances_kn[iteration_kn_idx] > self.restraint_distance_cutoff)):
+                # Update the number of samples generated from its state.
+                N_k[state_idx + state_idx_shift] -= 1
+            else:
+                columns_to_keep.append(iteration_kn_idx)
+
+        # Drop all columns that exceed the cutoff(s).
+        n_discarded = n_decorrelated_iterations_kn - len(columns_to_keep)
+        logger.debug('Discarding {}/{} samples outside the cutoffs (restraint_distance_cutoff: {}, '
+                     'restraint_energy_cutoff: {}).'.format(n_discarded, n_decorrelated_iterations_kn,
+                                                            self.restraint_distance_cutoff,
+                                                            self.restraint_energy_cutoff))
+        u_kn = u_kn[:, columns_to_keep]
+
+        # Add new end states that don't include the restraint.
+        energies_kn = energies_kn[columns_to_keep]
+        n_states, n_iterations = u_kn.shape
+        n_states_new = n_states + 2
+        N_k_new = np.zeros(n_states_new, N_k.dtype)
+        u_kn_new = np.zeros((n_states_new, n_iterations), u_kn.dtype)
+        u_kn_new[0, :] = u_kn[0] - energies_kn
+        u_kn_new[-1, :] = u_kn[-1] - energies_kn
+        # Copy old values.
+        N_k_new[1:-1] = N_k
+        u_kn_new[1:-1, :] = u_kn
+
+        # Cache new values.
+        self._unbiased_decorrelated_u_kn = u_kn_new
+        self._unbiased_decorrelated_N_k = N_k_new
+        return self._unbiased_decorrelated_u_kn, self._unbiased_decorrelated_N_k
+
+    def _compute_restraint_energies(self, restraint_force, weights_group1, weights_group2,
+                                    compute_distances=False):
+        """Compute the restrain distances for the given iterations.
+
+        Parameters
+        ----------
+        restraint_force : openmmtools.forces.RadiallySymmetricRestraintForce
+            The restraint force.
+        weights_group1 : list of float
+            The mass of the particle in the first CustomCentroidBondForce group.
+        weights_group2 : list of float
+            The mass of the particles in the second CustomCentroidBondForce group.
+        compute_distances : bool, optional
+            If True, the distances will be computed as well. This step is
+            unnecessary if only a cutoff on the energy was specified.
+
+        Returns
+        -------
+        restraint_energies_kn : simtk.unit.Quantity
+            The restrain energies at the decorrelated iterations for each frame
+            (units of energy/mole).
+        restraint_distances_kn : simtk.unit.Quantity or None
+            If ``compute_distances`` is False, this is None. Otherwise, this array
+            has the restrain distances at the decorrelated iterations for each frame.
+
+        """
+        ENERGY_UNIT = units.kilojoules_per_mole
+        MDTRAJ_DISTANCE_UNIT = units.nanometers
+        decorrelated_iterations = self._decorrelated_iterations  # Shortcut.
+
+        def extract_decorrelated_iterations(cached_dict):
+            if cached_dict is None:
+                return None
+            # TODO
+
+        # Check cached values.
+        if compute_distances and self._restraint_distances_kn is not None:
+            compute_distances = False
+        if self._restraint_energies_kn is not None and not compute_distances:
+            return self._restraint_energies_kn, self._restraint_distances_kn
+
+        # Don't modify the original restraint force.
+        restraint_force = copy.deepcopy(restraint_force)
+        assert restraint_force.getDefaultGlobalParameter
+
+        # Store the original indices of the restrained atoms.
+        restrained_atom_indices = restraint_force.restrained_atom_indices1 + restraint_force.restrained_atom_indices2
+
+        # Create new system with only solute and restraint forces.
+        reduced_system = openmm.System()
+        for weight in weights_group1 + weights_group2:
+            reduced_system.addParticle(weight)
+        # Adapt the restraint force atom indices to the reduced system.
+        n_atoms1 = len(weights_group1)
+        n_atoms = n_atoms1 + len(weights_group2)
+        restraint_force.restrained_atom_indices1 = list(range(n_atoms1))
+        restraint_force.restrained_atom_indices2 = list(range(n_atoms1, n_atoms))
+        reduced_system.addForce(restraint_force)
+
+        # subset_particles_indices = list(self._reporter.analysis_particle_indices)
+        replica_state_indices = self._reporter.read_replica_thermodynamic_states()
+        n_correlated_iterations, self._n_replicas = replica_state_indices.shape
+
+        # Create output arrays. We unfold the replicas the same way
+        # it is done during the kln_to_kn conversion.
+        n_frames_kn = self.n_replicas * (self.n_iterations + 1)  # The +1 is for the minimization data.
+        energies_kn = np.zeros(n_frames_kn, dtype=np.float64) * ENERGY_UNIT
+        distances_kn = None
+
+        if compute_distances:
+            # Create topology with only the restrained atoms.
+            serialized_topography = self._reporter.read_dict('metadata/topography')
+            topology = mmtools.utils.deserialize(serialized_topography).topology
+            topology = topology.subset(restrained_atom_indices)
+
+            distances_kn = np.zeros(n_frames_kn, dtype=np.float32)
+            # Initialize trajectory object needed for imaging molecules.
+            trajectory = mdtraj.Trajectory(xyz=np.zeros((n_atoms, 3)), topology=topology)
+
+        # Create context used to compute the energies.
+        integrator = openmm.VerletIntegrator(1.0*units.femtosecond)
+        context = openmm.Context(reduced_system, integrator)
+
+        # TODO: we need to provide a reporter generator to iterate over single
+        # TODO:     iterations but reading automatically one chunksize at a time.
+        # chunk_size = self._reporter.checkpoint_interval
+        # iterations_groups = itertools.groupby(enumerate(decorrelated_iterations), key=lambda x: int(x[1] / chunk_size))
+
+        # Pre-computing energies/distances.
+        logger.debug('Computing restraint energies...')
+        for iteration_idx, iteration in enumerate(decorrelated_iterations):
+            # Obtain solute only sampler states.
+            sampler_states = self._reporter.read_sampler_states(iteration=iteration,
+                                                                analysis_particles_only=True)
+
+            for replica_idx, sampler_state in enumerate(sampler_states):
+                # Deconvolute index.
+                state_idx = replica_state_indices[iteration, replica_idx]
+                frame_idx = state_idx*len(decorrelated_iterations) + iteration_idx
+
+                sliced_sampler_state = sampler_state[restrained_atom_indices]
+                sliced_sampler_state.apply_to_context(context)
+                potential_energy = context.getState(getEnergy=True).getPotentialEnergy()
+                energies_kn[frame_idx] = potential_energy
+
+                if compute_distances:
+                    # Check if an analytical solution is available.
+                    try:
+                        restraint_force.distance_at_energy(potential_energy)
+                    except (NotImplementedError, ValueError):
+                        # Update trajectory positions/box vectors.
+                        trajectory.xyz = (sampler_state.positions[restrained_atom_indices] / MDTRAJ_DISTANCE_UNIT).astype(np.float32)
+                        trajectory.unitcell_vectors = np.array([sampler_state.box_vectors / MDTRAJ_DISTANCE_UNIT], dtype=np.float32)
+                        trajectory.image_molecules(inplace=True, make_whole=False)
+                        positions_group1 = trajectory.xyz[0][restraint_force.restrained_atom_indices1]
+                        positions_group2 = trajectory.xyz[0][restraint_force.restrained_atom_indices2]
+
+                        # Set output arrays.
+                        distances_kn[frame_idx] = compute_centroid_distance(positions_group1, positions_group2,
+                                                                            weights_group1, weights_group2)
+
+        # Save cache files and set MDTraj units for distances.
+        if distances_kn is not None:
+            self._restraint_distances_kn = distances_kn * MDTRAJ_DISTANCE_UNIT
+        self._restraint_energies_kn = energies_kn
+        return self._restraint_energies_kn, self._restraint_distances_kn
+
+    # -------------------------------------------------------------------------
+    # Observables.
+    # -------------------------------------------------------------------------
 
     def _compute_free_energy(self):
         """
         Estimate free energies of all alchemical states.
         """
-
-        # Create MBAR object if not provided
-        if self._mbar is None:
-            self._create_mbar_from_scratch()
-
         nstates = self.mbar.N_k.size
 
         # Get matrix of dimensionless free energy differences and uncertainty estimate.
@@ -988,8 +1438,6 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
 
     def _compute_enthalpy_and_entropy(self):
         """Function to compute the cached values of enthalpy and entropy"""
-        if self._mbar is None:
-            self._create_mbar_from_scratch()
         (f_k, df_k, H_k, dH_k, S_k, dS_k) = self.mbar.computeEntropyAndEnthalpy()
         enthalpy = {'value': H_k, 'error': dH_k}
         entropy = {'value': S_k, 'error': dS_k}
@@ -1034,8 +1482,7 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
 
     def _get_equilibration_data_auto(self, input_data=None):
         """
-        Automatically generate the equilibration data from best practices, part of the :func:`_create_mbar_from_scratch`
-        routine.
+        Automatically generate the equilibration data from best practices.
 
         Parameters
         ----------
@@ -1045,25 +1492,112 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         Returns nothing, but sets self._equilibration_data
         """
         if input_data is None:
-            input_data, _ = self.get_states_energies()
+            input_data, _ = self._get_states_energies(truncate_max_n_iterations=True)
         u_n = self.get_timeseries(input_data)
         # Discard equilibration samples.
         # TODO: if we include u_n[0] (the energy right after minimization) in the equilibration detection,
         # TODO:         then number_equilibrated is 0. Find a better way than just discarding first frame.
-        self._equilibration_data = utils.get_equilibration_data(u_n[1:])
+        equilibration_data = list(utils.get_equilibration_data(u_n[1:]))
+        # Discard also minimization frame.
+        equilibration_data[0] += 1
+        self._equilibration_data = tuple(equilibration_data)
+        logger.debug('Equilibration data: {}'.format(equilibration_data))
+        return self._equilibration_data
 
-    def _create_mbar_from_scratch(self):
-        u_kln, unsampled_u_kln = self.get_states_energies()
-        self._get_equilibration_data_auto(input_data=u_kln)
-        number_equilibrated, g_t, Neff_max = self._equilibration_data
-        u_kln = utils.remove_unequilibrated_data(u_kln, number_equilibrated, -1)
-        unsampled_u_kln = utils.remove_unequilibrated_data(unsampled_u_kln, number_equilibrated, -1)
-        # decorrelate_data subsample the energies only based on g_t so both ends up with same indices.
-        u_kln = utils.subsample_data_along_axis(u_kln, g_t, -1)
-        unsampled_u_kln = utils.subsample_data_along_axis(unsampled_u_kln, g_t, -1)
-        mbar_ukn, mbar_N_k = self._prepare_mbar_input_data(u_kln, unsampled_u_kln)
-        self._create_mbar(mbar_ukn, mbar_N_k)
+    # -------------------------------------------------------------------------
+    # Cached properties.
+    # -------------------------------------------------------------------------
 
+    restraint_energy_cutoff = PhaseAnalyzer.CachedProperty(
+        name='restraint_energy_cutoff',
+        check_changes=True,
+    )
+    restraint_distance_cutoff = PhaseAnalyzer.CachedProperty(
+        name='restraint_distance_cutoff',
+        check_changes=True
+    )
+
+    _equilibration_data = PhaseAnalyzer.CachedProperty(
+        name='equilibration_data',
+        dependencies=['max_n_iterations'],
+        check_changes=True,
+        default=lambda instance: instance._get_equilibration_data_auto()
+    )
+
+    @staticmethod
+    def _decorrelated_state_indices_kn_default_func(instance):
+        decorrelated_iterations = instance._decorrelated_iterations  # Shortcut.
+        replica_state_indices = instance._reporter.read_replica_thermodynamic_states()
+        n_correlated_iterations, instance._n_replicas = replica_state_indices.shape
+
+        # Initialize output array.
+        n_frames = instance.n_replicas * len(decorrelated_iterations)
+        decorrelated_state_indices_kn = np.zeros(n_frames, dtype=np.int32)
+
+        # Map kn columns to the state.
+        for iteration_idx, iteration in enumerate(decorrelated_iterations):
+            for replica_idx in range(instance.n_replicas):
+                # Deconvolute index.
+                state_idx = replica_state_indices[iteration, replica_idx]
+                frame_idx = state_idx*len(decorrelated_iterations) + iteration_idx
+                # Set output array.
+                decorrelated_state_indices_kn[frame_idx] = state_idx
+        instance._decorrelated_state_indices_kn = decorrelated_state_indices_kn
+        return decorrelated_state_indices_kn
+
+    _decorrelated_state_indices_kn = PhaseAnalyzer.CachedProperty(
+        name='decorrelated_state_indices_kn',
+        dependencies=['equilibration_data'],
+        default=_decorrelated_state_indices_kn_default_func.__func__
+    )
+    _decorrelated_u_kn = PhaseAnalyzer.CachedProperty(
+        name='decorrelated_u_kn',
+        dependencies=['equilibration_data'],
+        default=lambda instance: instance._compute_decorrelated_energies()[0]
+    )
+    _decorrelated_N_k = PhaseAnalyzer.CachedProperty(
+        name='decorrelated_N_k',
+        dependencies=['equilibration_data'],
+        default=lambda instance: instance._compute_decorrelated_energies()[1]
+    )
+    _unbiased_decorrelated_u_kn = PhaseAnalyzer.CachedProperty(
+        name='unbiased_decorrelated_u_kn',
+        dependencies=['restraint_energy_cutoff', 'restraint_distance_cutoff',
+                      'decorrelated_state_indices_kn', 'decorrelated_u_kn', 'decorrelated_N_k'],
+        default=lambda instance: instance._compute_unbiased_energies()[0]
+    )
+    _unbiased_decorrelated_N_k = PhaseAnalyzer.CachedProperty(
+        name='unbiased_decorrelated_N_k',
+        dependencies=['restraint_energy_cutoff', 'restraint_distance_cutoff',
+                      'decorrelated_state_indices_kn', 'decorrelated_u_kn', 'decorrelated_N_k'],
+        default=lambda instance: instance._compute_unbiased_energies()[1]
+    )
+    mbar = PhaseAnalyzer.CachedProperty(
+        name='mbar',
+        dependencies=['unbiased_decorrelated_u_kn', 'unbiased_decorrelated_N_k'],
+        default=lambda instance: instance._create_mbar(instance._unbiased_decorrelated_u_kn,
+                                                       instance._unbiased_decorrelated_N_k)
+    )
+
+    # -------------------------------------------------------------------------
+    # Dynamic properties.
+    # -------------------------------------------------------------------------
+
+    @property
+    def n_equilibration_iterations(self):
+        return self._equilibration_data[0]
+
+    @property
+    def statistical_inefficiency(self):
+        return self._equilibration_data[1]
+
+    @property
+    def _decorrelated_iterations(self):
+        """list of int: the indices of the decorrelated iterations truncated to max_n_iterations."""
+        equilibrium_iterations = np.array(range(self.n_equilibration_iterations, self.max_n_iterations + 1))
+        decorrelated_iterations_indices = timeseries.subsampleCorrelatedData(equilibrium_iterations,
+                                                                             self.statistical_inefficiency)
+        return equilibrium_iterations[decorrelated_iterations_indices]
 
 # https://choderalab.slack.com/files/levi.naden/F4G6L9X8S/quick_diagram.png
 
