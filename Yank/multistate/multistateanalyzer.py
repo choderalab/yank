@@ -550,8 +550,9 @@ class PhaseAnalyzer(ABC):
         default : object, optional
             The default value in case the cache doesn't contain a value
             for this. If a callable, this function must have the signature
-            ``default(instance)``. By default, AttributeError is raised
-            on a cache miss.
+            ``default(instance)``. After the first cache miss, the default
+            value is cached. By default, AttributeError is raised on a
+            cache miss.
         validator : callable, optional
             A function to call before setting a new value with signature
             ``validator(instance, new_value)``.
@@ -580,6 +581,8 @@ class PhaseAnalyzer(ABC):
                 value = instance._cache[self.name]
             except KeyError:
                 value = self._get_default(instance)
+                # Cache default value for next use.
+                instance._update_cache(self.name, value, self._check_changes)
             return value
 
         def __set__(self, instance, new_value):
@@ -613,7 +616,7 @@ class PhaseAnalyzer(ABC):
                     dependency_graph[dependency] = {cached_property.name}
         # Hard-code observable dependency since those are not CachedProperties.
         # TODO make observables CachedProperties?
-        dependency['mbar'] = ['observables']
+        dependency_graph['mbar'] = {'observables'}
         return dependency_graph
 
     def _update_cache(self, key, new_value, check_changes=False):

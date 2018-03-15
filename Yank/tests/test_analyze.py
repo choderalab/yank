@@ -18,7 +18,7 @@ import tempfile
 import numpy as np
 import openmmtools as mmtools
 import pymbar
-from nose.tools import assert_raises
+from nose.tools import assert_raises, assert_equal
 from openmmtools import testsystems
 from simtk import unit
 
@@ -316,3 +316,45 @@ class TestPhaseAnalyzer(object):
         phase = analyze.YankReplicaExchangeAnalyzer(self.reporter, name=self.repex_name)
         observables = set(analyze.yank_registry.observables)
         assert set(phase.observables) == observables
+
+    def test_cache_dependency_graph_generation(self):
+        """Test that the dependency graph used to invalidate cached values is generated correctly."""
+        cache_dependency_graph = analyze.YankReplicaExchangeAnalyzer._get_cache_dependency_graph()
+        test_cases = [
+            ('mbar', {'observables'}),
+            ('unbiased_decorrelated_u_kn', {'mbar'}),
+            ('equilibration_data', {'decorrelated_state_indices_kn',
+                                    'decorrelated_u_kn', 'decorrelated_N_k'})
+        ]
+        for cached_property, properties_to_invalidate in test_cases:
+            assert_equal(cache_dependency_graph[cached_property], properties_to_invalidate,
+                         msg='Property "{}"'.format(cached_property))
+
+    def test_cached_properties_dependencies(self):
+        """Test that cached properties are invalidated when their dependencies change."""
+        analyzer = analyze.YankReplicaExchangeAnalyzer(self.reporter, name=self.repex_name)
+
+        def check_cached_properties(is_in):
+            for cached_property in cached_properties:
+                assert (cached_property in analyzer._cache) is is_in, '{} is not cached'.format(cached_property)
+
+        # Test-precondition: make sure the dependencies are as expected.
+        assert 'equilibration_data' in analyze.YankReplicaExchangeAnalyzer._decorrelated_state_indices_kn.dependencies
+        assert 'max_n_iterations' in analyze.YankReplicaExchangeAnalyzer._equilibration_data.dependencies
+
+        # The cached value and its dependencies are generated lazily when calling the property.
+        cached_properties = ['decorrelated_state_indices_kn', 'equilibration_data', 'max_n_iterations']
+        yield check_cached_properties, False
+        analyzer._decorrelated_state_indices_kn
+        yield check_cached_properties, True
+
+        # If we invalidate one of the dependencies, the values that depend on it are invalidated too.
+        analyzer.max_n_iterations = analyzer.n_iterations - 1
+        cached_properties.remove('max_n_iterations')
+        yield check_cached_properties, False
+
+        # Dependent values are not invalidated if the dependency doesn't change.
+        analyzer._decorrelated_state_indices_kn  # Generate dependent values.
+        check_cached_properties(is_in=True)  # Test pre-condition.
+        analyzer.max_n_iterations = analyzer.n_iterations - 1
+        yield check_cached_properties, True  # Cached values are still there.
