@@ -415,6 +415,7 @@ class MultiStateReporter(object):
         states_serializations = dict()
 
         # Read state information.
+        logger.debug("Starting in on loading")  # !LNN DB
         for state_type, state_list in states.items():
             # There may not be unsampled states.
             if state_type not in self._storage_analysis.groups:
@@ -422,8 +423,10 @@ class MultiStateReporter(object):
                 continue
 
             # We keep looking for states until we can't find them anymore.
+            logger.debug("Reading n_states")  # !LNN DB
             n_states = len(self._storage_analysis.groups[state_type].variables)
             for state_id in range(n_states):
+                logger.debug("Reading state dict")  # !LNN DB
                 serialized_state = self.read_dict('{}/state{}'.format(state_type, state_id))
 
                 # Find the thermodynamic state representation.
@@ -445,6 +448,7 @@ class MultiStateReporter(object):
                     serialized_thermodynamic_state['standard_system'] = serialized_standard_system
 
                 # Create ThermodynamicState object.
+                logger.debug("Deserializing")  # !LNN DB
                 states[state_type].append(mmtools.utils.deserialize(serialized_state))
                 state_id += 1
 
