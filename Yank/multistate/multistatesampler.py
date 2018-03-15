@@ -208,12 +208,15 @@ class MultiStateSampler(object):
         sampler, reporter = cls._instantiate_sampler_from_storage(storage)
         sampler._restore_sampler_from_reporter(reporter)
         # Close reading reporter.
+        logger.debug("Closing reporter")  # !LNN DB
         reporter.close()
         # We open the reporter only in node 0 in append mode ready for use
         sampler._reporter = reporter
+        logger.debug("Opening reporter on node 0")  # !LNN DB
         mpi.run_single_node(0, sampler._reporter.open, mode='a',
                             broadcast_result=False, sync_nodes=False)
         # Don't write the new last iteration, we have not technically written anything yet, so there is no "junk"
+        logger.debug("Returning self")  # !LNN DB
         return sampler
 
 
@@ -951,20 +954,27 @@ class MultiStateSampler(object):
         # Retrieve other attributes.
         logger.debug("Reading storage file {}...".format(reporter.filepath))
         thermodynamic_states, unsampled_states = reporter.read_thermodynamic_states()
+        logger.debug("Loading sampler states")  # !LNN DB
         sampler_states = reporter.read_sampler_states(iteration=iteration)
+        logger.debug("Loading replica thermo states")  # !LNN DB
         state_indices = reporter.read_replica_thermodynamic_states(iteration=iteration)
+        logger.debug("Loading energies")  # !LNN DB
         energy_thermodynamic_states, neighborhoods, energy_unsampled_states = reporter.read_energies(iteration=iteration)
+        logger.debug("Loading mixing stats")  # !LNN DB
         n_accepted_matrix, n_proposed_matrix = reporter.read_mixing_statistics(iteration=iteration)
+        logger.debug("Loading metadata")  # !LNN DB
         metadata = reporter.read_dict('metadata')
 
         # Search for last cached free energies only if online analysis is activated.
         if self.online_analysis_interval is not None:
+            logger.debug("Loading last free energy estimates")  # !LNN DB
             online_analysis_info = self._read_last_free_energy(reporter, iteration)
             last_mbar_f_k, (_, last_err_free_energy) = online_analysis_info
         else:
             last_mbar_f_k, last_err_free_energy = None, None
 
         # Assign attributes.
+        logger.debug("Assigning parameters")  # !LNN DB
         self._iteration = iteration
         self._thermodynamic_states = thermodynamic_states
         self._unsampled_states = unsampled_states

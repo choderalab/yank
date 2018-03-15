@@ -334,14 +334,19 @@ class SAMSSampler(MultiStateSampler):
 
     def _restore_sampler_from_reporter(self, reporter):
         super()._restore_sampler_from_reporter(reporter)
+        logger.debug("Loading histograms")  # !LNN DB
         self._cached_state_histogram = self._compute_state_histogram(reporter=reporter)
+        logger.debug("Loading logZ data")  # !LNN DB
         self._logZ = reporter.read_logZ(self._iteration)
 
         # Compute log weights from log target probability and logZ estimate
+        logger.debug("Updating weights")  # !LNN DB
         self._update_log_weights()
 
         # Determine t0
+        logger.debug("Initializing t0")  # !LNN DB
         self._initialize_stage()
+        logger.debug("Recomputing t0 from data")  # !LNN DB
         self._update_stage()
 
     @mpi.on_single_node(rank=0, broadcast_result=False, sync_nodes=False)
