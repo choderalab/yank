@@ -367,6 +367,9 @@ class PhaseAnalyzer(ABC):
         Unique name you want to assign this phase, this is the name that will appear in :class:`MultiPhaseAnalyzer`'s.
         If not set, it will be given the arbitrary name "phase#" where # is an integer, chosen in order that it is
         assigned to the :class:`MultiPhaseAnalyzer`.
+    max_n_iterations : int, optional
+        The maximum number of iterations to analyze. If not provided, all
+        the iterations will be analyzed.
     reference_states : tuple of ints, length 2, Optional, Default: (0,-1)
         Integers ``i`` and ``j`` of the state that is used for reference in observables, "O". These values are only used
         when reporting single numbers or combining observables through :class:`MultiPhaseAnalyzer` (since the number of
@@ -394,8 +397,11 @@ class PhaseAnalyzer(ABC):
     ----------
     name
     observables
-    mbar
+    max_n_iterations
     reference_states
+    n_iterations
+    n_replicas
+    n_states
     kT
     reporter
     registry
@@ -627,13 +633,13 @@ class PhaseAnalyzer(ABC):
         return dependency_graph
 
     def _update_cache(self, key, new_value, check_changes=False):
-        """Update the cache entry and invalidate values that depend on it.
+        """Update the cache entry and invalidate the values that depend on it.
 
         Parameters
         ----------
         key : str
             The name of the value to update.
-        value : object
+        new_value : object
             The new value of the key.
         check_changes : bool, optional
             If True and the new value is equal to the current one,
@@ -680,6 +686,7 @@ class PhaseAnalyzer(ABC):
 
     @staticmethod
     def _max_n_iterations_validator(instance, new_value):
+        """The maximum allowed value for max_n_iterations is n_iterations."""
         if new_value is None or new_value > instance.n_iterations:
             new_value = instance.n_iterations
         return new_value
@@ -879,6 +886,44 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
     The MultiStateSamplerAnalyzer is the analyzer for a simulation generated from a MultiStateSampler simulation,
     implemented as an instance of the :class:`PhaseAnalyzer`.
 
+    Parameters
+    ----------
+    unbias_restraint : bool, optional
+        If True and a radially-symmetric restraint was used in the simulation,
+        the analyzer will remove the bias introduced by the restraint by
+        reweighting each of the end-points to a state using a square-well
+        potential restraint.
+
+    restraint_energy_cutoff : float or 'auto', optional
+        When the restraint is unbiased, the analyzer discards all the samples
+        for which the restrain potential energy (in kT) is above this cutoff.
+        Effectively, this is equivalent to placing a hard wall potential at a
+        restraint distance such that the restraint potential energy is equal to
+        ``restraint_energy_cutoff``.
+
+        If ``'auto'`` and ``restraint_distance_cutoff`` is ``None``, this will
+        be set to the 99-percentile of the distribution of the restraint energies
+        in the bound state.
+
+    restraint_distance_cutoff : simtk.unit.Quantity or 'auto', optional
+        When the restraint is unbiased, the analyzer discards all the samples
+        for which the distance between the restrained atoms is above this cutoff.
+        Effectively, this is equivalent to placing a hard wall potential at a
+        restraint distance ``restraint_distance_cutoff``.
+
+        If ``'auto'`` and ``restraint_energy_cutoff`` is not specified, this will
+        be set to the 99-percentile of the distribution of the restraint distances
+        in the bound state.
+
+    Attributes
+    ----------
+    unbias_restraint
+    restraint_energy_cutoff
+    restraint_distance_cutoff
+    mbar
+    n_equilibration_iterations
+    statistical_inefficiency
+
     See Also
     --------
     PhaseAnalyzer
@@ -890,7 +935,7 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         super().__init__(*args, **kwargs)
 
         # Initialize cached values that are derived directly from the Reporter.
-        self._restraint_data = None
+        self._radially_symmetric_restraint_data = None
         self._restraint_energies = {}
         self._restraint_distances = {}
 
@@ -1019,11 +1064,29 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         logger.info('Replica state index statistical inefficiency is '
                     '{:.3f}'.format(mixing_statistics.statistical_inefficiency))
 
-    def _get_restraint_data(self):
-        """Return the two unsampled states and a reduced version of them containing only the restraint force."""
+    def _get_radially_symmetric_restraint_data(self):
+        """Return the radially-symmetric restraint force used in the bound state.
+
+        Returns
+        -------
+        restraint_force : openmmtools.forces.RadiallySymmetricRestraintForce
+            The restraint force used in the bound state.
+        weights_group1 : list of simtk.unit.Quantity
+            The masses of the restrained atoms in the first centroid group.
+        weights_group2 : list of simtk.unit.Quantity
+            The masses of the restrained atoms in the second centroid group.
+
+        Raises
+        ------
+        TypeError
+            If the end states don't have lambda_restraints set to 1.
+        openmmtools.forces.NoForceFoundError
+            If there are no radially-symmetric restraints in the bound state.
+
+        """
         # Check cached value.
-        if self._restraint_data is not None:
-            return self._restraint_data
+        if self._radially_symmetric_restraint_data is not None:
+            return self._radially_symmetric_restraint_data
 
         # Isolate the end states.
         end_states = self._get_end_thermodynamic_states()
@@ -1046,8 +1109,8 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         weights_group2 = [system.getParticleMass(i) for i in restraint_force.restrained_atom_indices2]
 
         # Cache value so that we won't have to deserialize the system again.
-        self._restraint_data = restraint_force, weights_group1, weights_group2
-        return self._restraint_data
+        self._radially_symmetric_restraint_data = restraint_force, weights_group1, weights_group2
+        return self._radially_symmetric_restraint_data
 
     # -------------------------------------------------------------------------
     # MBAR creation.
@@ -1068,10 +1131,14 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
             If no unsampled states were drawn, this will be shape (0,N)
 
         """
+        # TODO: should we keep it unified and always truncate to max_n_iterations?
         return self._get_states_energies(truncate_max_n_iterations=False)
 
     def _get_states_energies(self, truncate_max_n_iterations=False):
-        """Extract and deconvolute energies from nc file. Optionally truncate to self.max_n_iterations."""
+        """Extract and deconvolute energies from nc file.
+
+        Optionally truncate the data to self.max_n_iterations.
+        """
         logger.info("Reading energies...")
         energy_thermodynamic_states, neighborhoods, energy_unsampled_states = self._reporter.read_energies()
         n_iterations, n_replicas, n_states = energy_thermodynamic_states.shape
@@ -1151,7 +1218,16 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         return u_kln, unsampled_u_kln
 
     def _compute_decorrelated_energies(self):
-        """Return an MBAR-ready decorrelated energy matrix."""
+        """Return an MBAR-ready decorrelated energy matrix.
+
+        Returns
+        -------
+        decorrelated_u_kn : np.array
+            A n_states x (n_sampled_states * n_decorrelated_iterations)
+            array of energies (in kT).
+        decorrelated_N_k : np.array
+            The total number of samples drawn from each state.
+        """
         sampled_energy_matrix, unsampled_energy_matrix = self._compute_equilibrated_energies()
         nstates, _, niterations = sampled_energy_matrix.shape
         _, nunsampled, _ = unsampled_energy_matrix.shape
@@ -1185,12 +1261,28 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         return self._decorrelated_u_kn, self._decorrelated_N_k
 
     def _compute_unbiased_energies(self):
-        """Unbias the restraint, and apply restraint energy/distance cutoffs."""
+        """Unbias the restraint, and apply restraint energy/distance cutoffs.
+
+        When there is a restraint to unbias, the function adds two extra unbiased
+        states at the end points of the energy matrix. Otherwise, the return value
+        is identical to self._compute_uncorrelated_energies().
+
+        Returns
+        -------
+        unbiased_decorrelated_u_kn : np.array
+            A n_states x (n_sampled_states * n_unbiased_decorrelated_iterations)
+            array of energies (in kT), where n_unbiased_decorrelated_iterations
+            is generally <= n_decorrelated_iterations whe a restraint cutoff is
+            set.
+        unbiased_decorrelated_N_k : np.array
+            The total number of samples drawn from each state (including the
+            unbiased states).
+        """
         # Check if we need to unbias the restraint.
         unbias_restraint = self.unbias_restraint
         if unbias_restraint:
             try:
-                restraint_data = self._get_restraint_data()
+                restraint_data = self._get_radially_symmetric_restraint_data()
             except (TypeError, mmtools.forces.NoForceFoundError) as e:
                 # If we don't need to unbias the restraint there's nothing else to do.
                 logger.info(str(e) + ' The restraint will not be unbiased.')
@@ -1288,7 +1380,7 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
 
     def _compute_restraint_energies(self, restraint_force, weights_group1, weights_group2,
                                     compute_distances=False):
-        """Compute the restrain distances for the given iterations.
+        """Compute the restrain energies and distances for the uncorrelated iterations.
 
         Parameters
         ----------
@@ -1305,11 +1397,12 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
         Returns
         -------
         restraint_energies_kn : simtk.unit.Quantity
-            The restrain energies at the decorrelated iterations for each frame
-            (units of energy/mole).
+            A (n_sampled_states * n_decorrelated_iterations)-long array with
+            the restrain energies (units of energy/mole).
         restraint_distances_kn : simtk.unit.Quantity or None
-            If ``compute_distances`` is False, this is None. Otherwise, this array
-            has the restrain distances at the decorrelated iterations for each frame.
+            If ``compute_distances`` is False, this is None. Otherwise, this is
+            a (n_sampled_states * n_decorrelated_iterations)-long array with
+            the restrain distances (units of length) for each frame.
 
         """
         decorrelated_iterations = self._decorrelated_iterations  # Shortcut.
@@ -1603,6 +1696,7 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
 
     @staticmethod
     def _decorrelated_state_indices_kn_default_func(instance):
+        """Compute the replica thermodynamic state indices in kn formats."""
         decorrelated_iterations = instance._decorrelated_iterations  # Shortcut.
         replica_state_indices = instance._reporter.read_replica_thermodynamic_states()
         n_correlated_iterations, instance._n_replicas = replica_state_indices.shape
@@ -1662,10 +1756,12 @@ class MultiStateSamplerAnalyzer(PhaseAnalyzer):
 
     @property
     def n_equilibration_iterations(self):
+        """int: The number of equilibration interations."""
         return self._equilibration_data[0]
 
     @property
     def statistical_inefficiency(self):
+        """float: The statistical inefficiency of the sampler."""
         return self._equilibration_data[1]
 
     @property
